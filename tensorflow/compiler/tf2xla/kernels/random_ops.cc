@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/loops.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -135,7 +136,9 @@ class RandomShuffleOp : public XlaOpKernel {
       xla::XlaOp curr = input;
       for (int i = 0; i < rounds; ++i) {
         xla::XlaOp keys = xla::RngUniform(zero, max_value, key_shape);
-        xla::XlaOp sorted = xla::Sort(keys, {curr});
+        xla::XlaOp sorted = xla::Sort(
+            {keys, curr}, xla::CreateScalarLtComputation(
+                              {xla::U32, ctx->input_xla_type(0)}, builder));
         curr = xla::GetTupleElement(sorted, 1);
       }
 

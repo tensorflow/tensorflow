@@ -40,7 +40,9 @@ def _as_operation(op_or_tensor):
 
 class UnliftableError(Exception):
   """Raised if a Tensor cannot be lifted from the graph."""
-  pass
+
+  # Prevent autograph from rewriting this error.
+  ag_pass_through = True
 
 
 def _constant_inputs(op_or_tensor):
@@ -207,7 +209,8 @@ def _copy_non_source(op, graph, op_map):
         op_type=op.type,
         inputs=copied_inputs,
         dtypes=[x.dtype for x in op.outputs],
-        attrs=op.node_def.attr,
+        attrs={key: value for key, value in op.node_def.attr.items()
+               if not key.startswith("_class")},  # b/128981532.
         name=op.name)
   op_map[op] = copied_op
   for i, o in enumerate(op.outputs):

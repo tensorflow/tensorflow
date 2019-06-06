@@ -395,7 +395,7 @@ class ConvRNN2D(RNN):
       updates = []
       for i in range(len(states)):
         updates.append(K.update(self.states[i], states[i]))
-      self.add_update(updates, inputs=True)
+      self.add_update(updates)
 
     if self.return_sequences:
       output = outputs

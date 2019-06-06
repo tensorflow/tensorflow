@@ -159,7 +159,7 @@ def placeholder(dtype, axes, name=None):
 
     lt.placeholder(tf.float32, ['batch', ('channel', ['r', 'g', 'b'])])
 
-  See tf.placeholder for more details.
+  See tf.compat.v1.placeholder for more details.
 
   Args:
     dtype: The type of elements in the tensor to be fed.

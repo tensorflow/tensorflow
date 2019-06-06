@@ -38,9 +38,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
+#include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/amdgpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
@@ -99,6 +101,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
@@ -145,7 +148,7 @@ string GetROCDLDir(const HloModuleConfig& config) {
 // It takes a compiler pointer, as passes may compile and execute HLOs on the
 // fly for cuDNN verification or other purposes.
 Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
-                         DeviceMemoryAllocator* device_allocator,
+                         se::DeviceMemoryAllocator* device_allocator,
                          Compiler* compiler) {
   {
     HloPassPipeline pipeline("optimization");
@@ -180,6 +183,13 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
 
+      // If MIOpen batchnorms are enabled, rewrite batchnorm HLOs to MIOpen
+      // calls where possible.  Not every batchnorm op can be implemented as a
+      // call to MIOpen, so decompose any remaining batchnorm ops into a soup of
+      // HLOs.
+      if (hlo_module->config().debug_options().xla_gpu_use_cudnn_batchnorm()) {
+        pass.AddPass<CudnnBatchNormRewriter>();
+      }
       pass.AddPass<BatchNormExpander>(
           /*rewrite_training_op=*/true,
           /*rewrite_inference_op=*/true,
@@ -378,14 +388,15 @@ AMDGPUCompiler::AMDGPUCompiler()
 
 StatusOr<std::unique_ptr<HloModule>> AMDGPUCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    DeviceMemoryAllocator* device_allocator) {
+    se::DeviceMemoryAllocator* device_allocator) {
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   VLOG(3) << "*** HLO Before Optimization";
   XLA_VLOG_LINES(3, module->ToString());
 
   XLA_SCOPED_LOGGING_TIMER("AMDGPUCompiler::RunHloPasses");
-  tracing::ScopedActivity activity("HLO Transforms", module->name(),
-                                   /*is_expensive=*/true);
+  tensorflow::profiler::TraceMe activity(
+      [&] { return absl::StrCat("HLO Transforms:", module->name()); },
+      tensorflow::profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(
       OptimizeHloModule(module.get(), stream_exec, device_allocator, this));
 
@@ -396,7 +407,7 @@ StatusOr<std::unique_ptr<HloModule>> AMDGPUCompiler::RunHloPasses(
 
 StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    DeviceMemoryAllocator* device_allocator) {
+    se::DeviceMemoryAllocator* device_allocator) {
   XLA_SCOPED_LOGGING_TIMER("AMDGPUCompiler::RunBackend");
 
   TF_RET_CHECK(stream_exec != nullptr);
@@ -434,26 +445,11 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
           BufferSizeBytesFunction(),
           /*color_alignment=*/
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
-          /*allow_input_output_aliasing=*/false,
           /*allocate_buffers_for_constants=*/true));
-  // BufferAssignment::Stats::ToString() and BufferAssignment::ToString()
-  // include headers, so no need for us to print them ourselves.
-  XLA_VLOG_LINES(1, buffer_assignment->GetStats().ToString());
-  XLA_VLOG_LINES(2, buffer_assignment->ToString());
-  VLOG(3) << "*** HLO After Optimization";
-  XLA_VLOG_LINES(3, module->ToString());
-#if 0
+  DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
 
-  const string xla_dump_optimized_hlo_proto_to =
-      module->config().debug_options().xla_dump_hlo_as_text();
-  if (!xla_dump_optimized__hlo_proto_to.empty()) {
-    HloProto proto = MakeHloProto(*module, *buffer_assignment);
-    TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
-        proto, xla_dump_optimized_hlo_proto_to, module->name()));
-  }
-#endif
   IrEmitterContext ir_emitter_context(module.get(), buffer_assignment.get(),
-                                      &stream_exec->GetDeviceDescription(),
+                                      stream_exec->platform(), &stream_exec->GetDeviceDescription(),
                                       &llvm_module);
 
   HloComputation* entry_computation = module->entry_computation();

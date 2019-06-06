@@ -332,8 +332,8 @@ def scatter_nd_update(ref, indices, updates, use_locking=True, name=None):
       ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
       indices = tf.constant([[4], [3], [1] ,[7]])
       updates = tf.constant([9, 10, 11, 12])
-      update = tf.scatter_nd_update(ref, indices, updates)
-      with tf.Session() as sess:
+      update = tf.compat.v1.scatter_nd_update(ref, indices, updates)
+      with tf.compat.v1.Session() as sess:
         print sess.run(update)
   ```
 
@@ -446,8 +446,8 @@ def scatter_nd_add(ref, indices, updates, use_locking=False, name=None):
   ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
   indices = tf.constant([[4], [3], [1], [7]])
   updates = tf.constant([9, 10, 11, 12])
-  add = tf.scatter_nd_add(ref, indices, updates)
-  with tf.Session() as sess:
+  add = tf.compat.v1.scatter_nd_add(ref, indices, updates)
+  with tf.compat.v1.Session() as sess:
     print sess.run(add)
   ```
 
@@ -563,8 +563,8 @@ def scatter_nd_sub(ref, indices, updates, use_locking=False, name=None):
   ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
   indices = tf.constant([[4], [3], [1] ,[7]])
   updates = tf.constant([9, 10, 11, 12])
-  op = tf.scatter_nd_sub(ref, indices, updates)
-  with tf.Session() as sess:
+  op = tf.compat.v1.scatter_nd_sub(ref, indices, updates)
+  with tf.compat.v1.Session() as sess:
     print sess.run(op)
   ```
 
@@ -819,7 +819,7 @@ def scatter_min(ref, indices, updates, use_locking=False, name=None):
 @deprecation.deprecated(
     "2018-11-29", "Use the batch_scatter_update method of Variable instead.")
 def batch_scatter_update(ref, indices, updates, use_locking=True, name=None):
-  """Generalization of `tf.scatter_update` to axis different than 0.
+  """Generalization of `tf.compat.v1.scatter_update` to axis different than 0.
 
   Analogous to `batch_gather`. This assumes that `ref`, `indices` and `updates`
   have a series of leading dimensions that are the same for all of them, and the
@@ -841,18 +841,19 @@ def batch_scatter_update(ref, indices, updates, use_locking=True, name=None):
   `var[i_1, ..., i_n, indices[i_1, ..., i_n, j]] = updates[i_1, ..., i_n, j]`
 
   When indices is a 1D tensor, this operation is equivalent to
-  `tf.scatter_update`.
+  `tf.compat.v1.scatter_update`.
 
   To avoid this operation there would be 2 alternatives:
   1) Reshaping the variable by merging the first `ndims` dimensions. However,
      this is not possible because `tf.reshape` returns a Tensor, which we
-     cannot use `tf.scatter_update` on.
+     cannot use `tf.compat.v1.scatter_update` on.
   2) Looping over the first `ndims` of the variable and using
-     `tf.scatter_update` on the subtensors that result of slicing the first
+     `tf.compat.v1.scatter_update` on the subtensors that result of slicing the
+     first
      dimension. This is a valid option for `ndims = 1`, but less efficient than
      this implementation.
 
-  See also `tf.scatter_update` and `tf.scatter_nd_update`.
+  See also `tf.compat.v1.scatter_update` and `tf.compat.v1.scatter_nd_update`.
 
   Args:
     ref: `Variable` to scatter onto.
@@ -887,7 +888,7 @@ def batch_scatter_update(ref, indices, updates, use_locking=True, name=None):
     # coordinates we created with the original indices.
 
     # For example if indices.shape = [2, 3, 4], we should generate the following
-    # indices for tf.scatter_nd_update:
+    # indices for tf.compat.v1.scatter_nd_update:
     # nd_indices[:, :, 0] = [[0, 0, 0], [1, 1, 1]]
     # nd_indices[:, :, 1] = [[0, 1, 2], [0, 1, 2]]
     # nd_indices[:, :, 2] = indices

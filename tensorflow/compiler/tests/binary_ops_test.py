@@ -39,7 +39,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
   """Test cases for binary operators."""
 
   def _testBinary(self, op, a, b, expected, equality_test=None):
-    with self.cached_session() as session:
+    with self.session() as session:
       with self.test_scope():
         pa = array_ops.placeholder(dtypes.as_dtype(a.dtype), a.shape, name="a")
         pb = array_ops.placeholder(dtypes.as_dtype(b.dtype), b.shape, name="b")
@@ -1046,7 +1046,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
 
   def testBatchMatMulBroadcast(self):
     """Tests broadcasting behavior of BatchMatMul."""
-    with compat.forward_compatibility_horizon(2019, 4, 19):
+    with compat.forward_compatibility_horizon(2019, 4, 26):
       # [2, 3] @ [1, 3, 4] -> [1, 2, 4]
       self._testBinary(
           math_ops.matmul,

@@ -16,12 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_TENSOR_LIST_UTILS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_TENSOR_LIST_UTILS_H_
 
-// TensorList utilities.
-//
-// Tensor lists are represented as tuple consisting of a pre-allocated buffer
-// consisting of the tensors (and where dim 0 is the list index), along with a
-// scalar telling us the next index to push a value at.
-
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -31,36 +25,97 @@ namespace tensorflow {
 // Whether the input expression at `index` corresponds to a TensorList.
 bool IsTensorListInput(XlaOpKernelContext* ctx, int index);
 
-// Builds a TensorList from its constituents, `buffer` and `push_index`.
-Status BuildTensorList(const xla::XlaOp& buffer, const xla::XlaOp& push_index,
-                       xla::XlaOp* output_list);
+// Whether the TensorList is initialized (has known data type and shape).
+Status IsTensorListInitialized(xla::XlaOp list, bool* is_initialized);
 
-// Returns the buffer for the TensorList.
-Status GetTensorListBuffer(const xla::XlaOp& op, xla::XlaOp* buffer);
+// Whether the TensorList is a nested TensorList.
+// Input must be an initialized TensorList.
+// Non-nested and nested TensorLists are both supported.
+Status IsNestedTensorList(xla::XlaOp list, bool* is_nested_list);
 
-// Returns the push_index for the TensorList.
-Status GetTensorListPushIndex(const xla::XlaOp& op, xla::XlaOp* push_index);
+// Builds a non-nested TensorList from `buffer` and `push_index`.
+Status BuildNonNestedTensorList(xla::XlaOp buffer, xla::XlaOp push_index,
+                                xla::XlaOp* output_list);
 
-// Returns the shape of the TensorList buffer.
-Status GetTensorListBufferShape(const xla::XlaOp& op,
-                                TensorShape* buffer_shape);
+// Returns buffer shape for the TensorList.
+// Input must be an initialized TensorList.
+// Non-nested and nested TensorLists are both supported.
+Status GetTensorListBufferShape(xla::XlaOp list, xla::Shape* buffer_shape);
 
-// Inputs the TensorList shape and returns the buffer shape.
-Status GetTensorListBufferShape(const xla::Shape& list_shape,
-                                TensorShape* buffer_shape);
+// Returns buffer for the TensorList.
+// Input must be an initialized TensorList.
+// Non-nested and nested TensorLists are both supported.
+Status GetTensorListBuffer(xla::XlaOp list, xla::XlaOp* buffer);
 
-// Returns whether the TensorList has been initialized.
-//
-// A TensorList is considered initialized if its element_shape is completely
-// known.
-Status IsTensorListInitialized(const xla::XlaOp& op, bool* is_initialized);
+// Returns push index for the TensorList.
+// Input must be an initialized TensorList.
+// Non-nested and nested TensorLists are both supported.
+Status GetTensorListPushIndex(xla::XlaOp list, xla::XlaOp* push_index);
 
-// Inputs an uninitialized list and a buffer_shape and returns an initialized
-// list. The initialized list uses the dtype and push index of the uninitialized
-// list and is filled with zeros.
-Status InitializeTensorList(const xla::XlaOp& uninitialized_list,
-                            const TensorShape& buffer_shape,
-                            xla::XlaOp* output_list);
+// Returns a new TensorList with given push_index.
+// Input must be an initialized TensorList.
+// Non-nested and nested TensorLists are both supported.
+Status SetTensorListPushIndex(xla::XlaOp list, xla::XlaOp push_index,
+                              xla::XlaOp* result);
+
+// Returns an uninitialized TensorList.
+xla::XlaOp BuildUninitializedTensorList(xla::XlaBuilder* b,
+                                        int64 leading_dimension);
+
+// Returns leading dimension for the TensorList.
+// Input can be initialized or uninitialized TensorList.
+// Non-nested and nested TensorLists are both supported.
+Status GetLeadingDimForTensorList(xla::XlaOp list, int64* leading_dim);
+
+// Returns TensorList shape for the element shape.
+// Element shape must be a normal tensor shape.
+Status GetTensorListShapeFromElementShape(const xla::Shape& element_shape,
+                                          int64 leading_dim,
+                                          xla::Shape* tensor_list_shape);
+
+// Returns a TensorList filled by zeros with the given shape.
+Status CreateZerosTensorListWithShape(xla::XlaBuilder* b,
+                                      const xla::Shape& list_shape,
+                                      xla::XlaOp* list);
+
+// If the TensorList is initialized, check that its shape matches element shape;
+// If the TensorList is uninitialized, initialize it with the element shape.
+// Input can be initialized or uninitialized TensorList.
+// "element" can be normal tensor or TensorList.
+Status GetInitializedTensorListForElement(xla::XlaOp list, xla::XlaOp element,
+                                          bool element_is_tensor_list,
+                                          xla::XlaOp* initialized_list);
+
+// Executes TensorListPushBack with given TensorList and element.
+// Input must be an initialized TensorList.
+// Non-nested and nested TensorLists are both supported.
+Status ExecuteTensorListPushBack(xla::XlaOp list, xla::XlaOp element,
+                                 bool element_is_tensor_list,
+                                 xla::XlaOp* result);
+
+// Executes TensorListPopBack with given TensorList.
+// Input must be an initialized TensorList.
+// Non-nested and nested TensorLists are both supported.
+Status ExecuteTensorListPopBack(xla::XlaOp list, xla::XlaOp* list_result,
+                                xla::XlaOp* element_result,
+                                bool* element_is_tensor_list);
+
+// Executes TensorListSetItem with given TensorList, index and element.
+// Input must be an initialized TensorList.
+// Only non-nested TensorList is supported.
+Status ExecuteTensorListSetItem(xla::XlaOp list, xla::XlaOp index,
+                                xla::XlaOp element, xla::XlaOp* result);
+
+// Executes TensorListGetItem with given TensorList and index.
+// Input must be an initialized TensorList.
+// Only non-nested TensorList is supported.
+Status ExecuteTensorListGetItem(xla::XlaOp list, xla::XlaOp index,
+                                xla::XlaOp* result);
+
+// Executes TensorListPushBack with given tensor and push index.
+// "tensor" must be a normal tensor.
+Status ExecuteTensorListFromTensor(int push_index, xla::XlaOp tensor,
+                                   xla::XlaOp* result);
 
 }  // namespace tensorflow
 

@@ -149,7 +149,7 @@ struct NumTrue<GPUDevice, T, TIndex> {
       OpKernelContext* ctx, const GPUDevice& d,
       typename TTypes<T>::ConstFlat input,
       typename TTypes<TIndex>::Scalar num_true) {
-    const gpuStream_t& cu_stream = GetGPUStream(ctx);
+    const gpuStream_t& cu_stream = GetGpuStream(ctx);
 
     std::size_t temp_storage_bytes = 0;
     const T* input_data = input.data();
@@ -168,7 +168,7 @@ struct NumTrue<GPUDevice, T, TIndex> {
       return errors::Internal(
           "WhereOp: Could not launch gpuprim::DeviceReduce::Sum to calculate "
           "temp_storage_bytes, status: ",
-          GPU_GET_ERROR_STRING(first_success));
+          GpuGetErrorString(first_success));
     }
 
     Tensor temp_storage;
@@ -187,8 +187,7 @@ struct NumTrue<GPUDevice, T, TIndex> {
       return errors::Internal(
           "WhereOp: Could not launch gpuprim::DeviceReduce::Sum to count "
           "number of true / nonzero indices.  temp_storage_bytes: ",
-          temp_storage_bytes, ", status: ",
-          GPU_GET_ERROR_STRING(second_success));
+          temp_storage_bytes, ", status: ", GpuGetErrorString(second_success));
     }
 
     return Status::OK();
@@ -277,7 +276,7 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
       return Status::OK();
     }
 
-    const gpuStream_t& cu_stream = GetGPUStream(ctx);
+    const gpuStream_t& cu_stream = GetGpuStream(ctx);
 
     std::size_t temp_storage_bytes = 0;
 
@@ -306,7 +305,7 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
           "WhereOp: Could not launch gpuprim::DeviceSelect::Flagged to "
           "calculate "
           "temp_storage_bytes, status: ",
-          GPU_GET_ERROR_STRING(first_success));
+          GpuGetErrorString(first_success));
     }
 
     Tensor temp_storage;
@@ -326,7 +325,7 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
       return errors::Internal(
           "WhereOp: Could not launch gpuprim::DeviceSelect::Flagged to copy "
           "indices out, status: ",
-          GPU_GET_ERROR_STRING(second_success));
+          GpuGetErrorString(second_success));
     }
 
     // TODO(ebrevdo): Find a way to synchronously copy back data from
@@ -336,9 +335,10 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
         CalculateStrides<TIndex, T, NDIM>(input);
     const TIndex output_rows = output.dimension(0);
     GpuLaunchConfig config = GetGpuLaunchConfig(output_rows, d);
-    GPU_LAUNCH_KERNEL((PropagateWhereIndicesKernel<NDIM, TIndex>),
-        config.block_count, config.thread_per_block, 0, d.stream(),
-            output_rows, strides, output.data());
+    TF_CHECK_OK(GpuLaunchKernel(PropagateWhereIndicesKernel<NDIM, TIndex>,
+                                 config.block_count, config.thread_per_block, 0,
+                                 d.stream(), output_rows, strides,
+                                 output.data()));
 
     return Status::OK();
   }

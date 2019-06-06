@@ -17,14 +17,14 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/parameterized_truncated_normal_op.h"
-
 #include <assert.h>
 #include <stdio.h>
+
 #include <cmath>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/parameterized_truncated_normal_op.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
@@ -161,7 +161,7 @@ __global__ void __launch_bounds__(1024)
       Eigen::array<T, 4> z;
       Eigen::array<T, 4> g;
 
-      const T plusFactor = (normMin < T(0)) ? T(0) : normMin * normMin;
+      const T plusFactor = (normMin < T(0)) ? T(0) : T(normMin * normMin);
 
       int numIterations = 0;
       while (numIterations < kMaxIterations) {
@@ -242,15 +242,13 @@ struct TruncatedNormalFunctor<GPUDevice, T> {
                   typename TTypes<T>::Flat output) {
     const auto config = GetGpuLaunchConfig(num_elements, d);
 
-    GPU_LAUNCH_KERNEL(TruncatedNormalKernel<T>,
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-        gen, output.data(), num_batches, samples_per_batch, num_elements,
-        means.data(), means.dimension(0) == 1, stddevs.data(),
-        stddevs.dimension(0) == 1, minvals.data(),
-        minvals.dimension(0) == 1, maxvals.data(),
-        maxvals.dimension(0) == 1,
-        static_cast<int64>(kMaxIterations));
-  };
+    TF_CHECK_OK(GpuLaunchKernel(
+        TruncatedNormalKernel<T>, config.block_count, config.thread_per_block,
+        0, d.stream(), gen, output.data(), num_batches, samples_per_batch,
+        num_elements, means.data(), means.dimension(0) == 1, stddevs.data(),
+        stddevs.dimension(0) == 1, minvals.data(), minvals.dimension(0) == 1,
+        maxvals.data(), maxvals.dimension(0) == 1, kMaxIterations));
+  }
 };
 
 // Explicit instantiation of the GPU distributions functors

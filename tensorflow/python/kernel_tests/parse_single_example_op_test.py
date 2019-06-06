@@ -212,7 +212,7 @@ class ParseExampleTest(test.TestCase):
                 "a": parsing_ops.FixedLenFeature((1, 3), dtypes.float32)
             }
         },
-        # TODO(mrry): Consider matching the `tf.parse_example()` error message.
+        # TODO(mrry): Consider matching the `io.parse_example()` error message.
         expected_err=(errors_impl.OpError, "Key: a."))
 
   def testDenseDefaultNoShapeShouldFail(self):
@@ -774,7 +774,7 @@ class ParseExampleTest(test.TestCase):
                         (2, 1, 1), dtype=dtypes.string, allow_missing=True),
             }
         },
-        # TODO(mrry): Consider matching the `tf.parse_example()` error message.
+        # TODO(mrry): Consider matching the `io.parse_example()` error message.
         expected_err=(errors_impl.OpError, "Key: b."))
 
     self._test(

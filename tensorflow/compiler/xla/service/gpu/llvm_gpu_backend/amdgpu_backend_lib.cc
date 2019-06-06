@@ -64,6 +64,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
@@ -480,12 +481,11 @@ StatusOr<std::vector<uint8>> CompileToHsaco(llvm::Module* module,
                                 const string& rocdl_dir_path) {
   static std::once_flag backend_init_flag;
   std::call_once(backend_init_flag, GPUBackendInit, hlo_module_config);
-
   std::vector<uint8> hsaco;
   {
-    tensorflow::tracing::ScopedActivity activity(
-        "Compiling IR", llvm_ir::AsString(module->getName()),
-        /*is_expensive=*/true);
+    tensorflow::profiler::TraceMe activity(
+        [&] { return absl::StrCat("Compiling IR", llvm_ir::AsString(module->getName())); },
+        tensorflow::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " +
                              llvm_ir::AsString(module->getName()));
     TF_ASSIGN_OR_RETURN(

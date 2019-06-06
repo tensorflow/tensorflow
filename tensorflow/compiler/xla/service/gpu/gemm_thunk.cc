@@ -406,12 +406,29 @@ Status ExecuteOnStreamParameterized(
     // TODO(b/112111608): Implement auto tune for batched gemm.
     VLOG(2) << "Batch size is non-singular, using generic algorithm";
   } else {
+#if !defined(TENSORFLOW_USE_ROCM)
+
+    // Disabling GEMM auto-tuning on the ROCm platform because it is not
+    // supported (GetBlasGemmAlgorithms returns an empty list)
+    //
+    // Calling the gemm auto-tuner is supposed to be harmless (even for cases
+    // where it does ot work like ROCm), but there seems to be one exception
+    // For some reason the gemm auto-tuning code tries to directly allocate
+    // GPU memory, as opposed to using stream_executor::ScratchAllocator
+    // (like the conv algo picker code). Depending the gemm operation parameters
+    // the amount of memory that the auto-tuner tries to allocate, can
+    // exceed 100MB, which can result in memory allocation failure. This is
+    // because TF already grabs all available GPU memory during initialization,
+    // and there is not much free memory left after that point.
+
     // Autotune may fail for various reasons (e.g. when when CUDA 8 and GPU
     // sm_50 or older are used). In that case the returned best_algorithm
     // will be an empty optional.
     best_algorithm = DoGemmAutotune<Element>(
         batch_size, lhs_matrix, rhs_matrix, output_matrix, stream, output_shape,
         alpha, beta, instr_descr);
+
+#endif
   }
 
   bool launch_ok = DoGemmWithAlgorithm<Element>(
@@ -446,7 +463,7 @@ GemmThunk::GemmThunk(const BufferAllocation::Slice& lhs_buffer,
       implements_whole_instruction_(implements_whole_instruction) {}
 
 Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                  se::Stream* stream,
+                                  se::Stream* stream, const RunId& /*run_id*/,
                                   HloExecutionProfiler* profiler) {
   auto fn = [&]() {
     switch (output_shape_.element_type()) {

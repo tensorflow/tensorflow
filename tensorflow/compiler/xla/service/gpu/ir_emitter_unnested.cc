@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
+
 #include <algorithm>
 #include <cstring>
 #include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
-
-#include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #ifndef TENSORFLOW_USE_ROCM
@@ -47,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
@@ -192,8 +194,8 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
       llvm::Function::Create(kernel_type, llvm::GlobalValue::ExternalLinkage,
                              kernel_name.c_str(), module);
 
-  kernel->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
-  kernel->addFnAttr("amdgpu-flat-work-group-size", "1, 1024");
+  // Annotate function as a GPU kernel.
+  AnnotateFunctionAsGpuKernel(module, kernel, &b_);
 
   // Add dereferenceable and alignment information to each of the kernel's
   // parameters.
@@ -510,7 +512,35 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
   }
 #endif
 
-  return IrEmitter::HandleCustomCall(custom_call);
+  if (void* call_target = CustomCallTargetRegistry::Global()->Lookup(
+          custom_call->custom_call_target(),
+          ir_emitter_context_->platform()->Name())) {
+    const auto& assn = ir_emitter_context_->buffer_assignment();
+    auto get_slices_for_instr = [&](const HloInstruction* instr) {
+      ShapeTree<BufferAllocation::Slice> slices(instr->shape());
+      slices.ForEachMutableElement([&](const ShapeIndex& index,
+                                       BufferAllocation::Slice* slice) {
+        StatusOr<BufferAllocation::Slice> s = assn.GetUniqueSlice(instr, index);
+        if (s.ok()) {
+          *slice = s.ValueOrDie();
+        }
+      });
+      return slices;
+    };
+    std::vector<ShapeTree<BufferAllocation::Slice>> operand_slices;
+    for (const auto* operand : custom_call->operands()) {
+      operand_slices.push_back(get_slices_for_instr(operand));
+    }
+    ShapeTree<BufferAllocation::Slice> result_slices =
+        get_slices_for_instr(custom_call);
+    AddThunkToThunkSequence(absl::make_unique<CustomCallThunk>(
+        call_target, std::move(operand_slices), std::move(result_slices),
+        Cast<HloCustomCallInstruction>(custom_call)->opaque(), custom_call));
+    return Status::OK();
+  }
+
+  return Unimplemented("No registered implementation for custom call to \"%s\"",
+                       custom_call->custom_call_target());
 }
 
 Status IrEmitterUnnested::HandleFft(HloInstruction* fft) {
@@ -997,7 +1027,8 @@ Status IrEmitterUnnested::HandleRng(HloInstruction* rng) {
   // Emit a kernel to increment the global state for Philox RNG algorithm.
   std::unique_ptr<Thunk> increment_seed_thunk =
       BuildKernelThunk(rng, /*implements_whole_instruction=*/false);
-  llvm_ir::IncrementVariableForPhiloxRngState(1, module_, &b_);
+  unsigned global_address_space = GetGlobalMemoryAddressSpace(*module_);
+  llvm_ir::IncrementVariableForPhiloxRngState(1, module_, &b_, global_address_space);
 
   // Build the SequentialThunk for the RNG hlo.
   std::vector<std::unique_ptr<Thunk>> thunks;
@@ -3212,7 +3243,7 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
           });
 
       // Wait for all threads to reach this point using `__syncthreads` in CUDA.
-      EmitCallToTargetFunction(TargetFunctionID::kBarrierId, {}, {}, PRIMITIVE_TYPE_INVALID, {}, {}, &b_);
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierId, {}, {}, &b_);
     }
 
     llvm_ir::TiledParameterInfo tiled_param_info(param_shmem_buffers, y, x);
@@ -3234,7 +3265,7 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
     // buffer for the current tile before we move on to process the next tile
     // and overwrite the shared memory buffers.
     if (block_contains_multi_tiles && !tiled_param_ids.empty()) {
-      EmitCallToTargetFunction(TargetFunctionID::kBarrierId, {}, {}, PRIMITIVE_TYPE_INVALID,  {}, {}, &b_);
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierId, {}, {}, &b_);
     }
   };
 
@@ -3796,6 +3827,8 @@ Status IrEmitterUnnested::EmitConstantGlobals() {
     //
     // We may have to be more more clever here in the future if we notice that
     // we're keeping around too many globals because of their linkage.
+    unsigned global_address_space =
+        GetGlobalMemoryAddressSpace(*(ir_emitter_context_->llvm_module()));
     llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
         global_type, /*isConstant=*/should_emit_initializer,
         llvm::GlobalValue::ExternalLinkage,
@@ -3803,7 +3836,7 @@ Status IrEmitterUnnested::EmitConstantGlobals() {
         llvm_ir::AsStringRef(
             llvm_ir::ConstantBufferAllocationToGlobalName(allocation)),
         /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-        /*AddressSpace=*/llvm_ir::kAMDGPUGlobalMemoryAddrSpace,
+        /*AddressSpace=*/global_address_space,
         /*isExternallyInitialized=*/false);
     global_for_const->setAlignment(kConstantBufferAlignBytes);
     ir_emitter_context_->llvm_module()->getGlobalList().push_back(

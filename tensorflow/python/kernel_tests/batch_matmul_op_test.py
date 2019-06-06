@@ -28,7 +28,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
@@ -143,7 +142,7 @@ def _GetBatchMatmulOpBroadcastingTest(dtype, adjoint_a, adjoint_b,
                                       use_static_shape):
 
   def Test(self):
-    with compat.forward_compatibility_horizon(2019, 4, 19):
+    with compat.forward_compatibility_horizon(2019, 4, 26):
       np.random.seed(42)
       self._testBroadcasting(dtype, adjoint_a, adjoint_b, use_static_shape)
 
@@ -200,7 +199,7 @@ def _GetBatchMatmulGradientWithBroadcastingTest(dtype, adjoint_a, adjoint_b):
     def CheckGradients(self, a_shape, b_shape):
       self._compare(a_shape, b_shape, dtype, adjoint_a, adjoint_b)
 
-    with compat.forward_compatibility_horizon(2019, 4, 19):
+    with compat.forward_compatibility_horizon(2019, 4, 26):
       CheckGradients(self, [1, 5, 2, 3], [7, 1, 3, 2])
       CheckGradients(self, [2, 3], [1, 3, 5])
       CheckGradients(self, [2, 3], [5, 3, 5])
@@ -231,7 +230,7 @@ class BatchMatMulBenchmark(test.Benchmark):
 
   def benchmarkBatchMatMulBroadcast(self):
     for (a_shape, b_shape) in self.shape_pairs:
-      with compat.forward_compatibility_horizon(2019, 4, 19):
+      with compat.forward_compatibility_horizon(2019, 4, 26):
         with ops.Graph().as_default(), \
             session.Session(config=benchmark.benchmark_config()) as sess, \
             ops.device("/cpu:0"):
@@ -264,17 +263,6 @@ class BatchMatMulBenchmark(test.Benchmark):
               name="batch_matmul_manual_broadcast_cpu_{}_{}".format(
                   a_shape, b_shape))
 
-          # Use linear_operator_util.matmul_with_broadcast.
-          name_template = (
-              "batch_matmul_manual_broadcast_with_linear_operator_util"
-              "_cpu_{}_{}"
-          )
-          self.run_op_benchmark(
-              sess,
-              linear_operator_util.matmul_with_broadcast(matrix_a, matrix_b),
-              min_iters=50,
-              name=name_template.format(a_shape, b_shape))
-
 
 if __name__ == "__main__":
   dtypes_to_test = [np.float16, np.float32, np.float64, np.complex64,
@@ -293,27 +281,20 @@ if __name__ == "__main__":
               "testBatchMatmulOp_" + name + "_{}".format(use_static_shape_),
               _GetBatchMatmulOpTest(dtype_, adjoint_a_, adjoint_b_,
                                     use_static_shape_))
-          # Broadcasting is supported only in v2.
-          # ROCm: BatchMatmul broadcasting is currently unsupported, refer to PR 387 for details
-          if not test.is_built_with_rocm():
-            setattr(
-                BatchMatmulOpTest, "testBatchMatmulBroadcasting_" + name +
-                ("_%s" % use_static_shape_),
-                _GetBatchMatmulOpBroadcastingTest(dtype_, adjoint_a_, adjoint_b_,
-                                                use_static_shape_))
+          setattr(
+              BatchMatmulOpTest, "testBatchMatmulBroadcasting_" + name +
+              ("_%s" % use_static_shape_),
+              _GetBatchMatmulOpBroadcastingTest(dtype_, adjoint_a_, adjoint_b_,
+                                              use_static_shape_))
         if dtype_ == np.int32:
           continue
 
-        if not test.is_built_with_rocm():
-          # TODO: Fix BatchMatmulGradientTest on ROCm
-          setattr(BatchMatmulGradientTest, "testBatchMatmulGradient_" + name,
-                _GetBatchMatmulGradientTest(dtype_, adjoint_a_, adjoint_b_))
+        setattr(BatchMatmulGradientTest, "testBatchMatmulGradient_" + name,
+              _GetBatchMatmulGradientTest(dtype_, adjoint_a_, adjoint_b_))
 
-          # ROCm: BatchMatmul broadcasting is currently unsupported, refer to PR 387 for details
-          # Broadcasting is supported only in v2.
-          setattr(
-              BatchMatmulGradientTest,
-              "testBatchMatmulGradientWithBroadcasting_" + name,
-              _GetBatchMatmulGradientWithBroadcastingTest(dtype_, adjoint_a_,
-                                                          adjoint_b_))
+        setattr(
+            BatchMatmulGradientTest,
+            "testBatchMatmulGradientWithBroadcasting_" + name,
+            _GetBatchMatmulGradientWithBroadcastingTest(dtype_, adjoint_a_,
+                                                        adjoint_b_))
   test.main()

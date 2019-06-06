@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <cmath>
 #include <vector>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "third_party/cub/device/device_segmented_radix_sort.cuh"
 #include "third_party/cub/iterator/counting_input_iterator.cuh"
@@ -401,9 +402,9 @@ cudaError LaunchTopKKernel(const cudaStream_t& stream, int num_shards,
   // We are limited by the amount of shared memory we have per block.
   auto shared_memory_size = (num_shards + 1) * k * sizeof(Entry<T>);
 
-  GPU_LAUNCH_KERNEL(TopKKernel<T>, batch_size, num_shards,
+  TF_CHECK_OK(GpuLaunchKernel(TopKKernel<T>, batch_size, num_shards,
                                shared_memory_size, stream, input, length, k,
-                               sorted, output, indices);
+                               sorted, output, indices));
   return cudaGetLastError();
 }
 

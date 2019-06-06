@@ -17,10 +17,9 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/sparse_tensor_dense_matmul_op.h"
-
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/kernels/sparse_tensor_dense_matmul_op.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
@@ -47,7 +46,7 @@ __global__ void SparseTensorDenseMatMulKernel(int nnz, int m, int b_rows,
     // out[i, j]
     T* out_location = out + i * p + j;
     if (!FastBoundsCheck(k, n)) {
-      GpuAtomicAdd(out_location, Eigen::NumTraits<T>::quiet_NaN());
+      GpuAtomicAdd(out_location, std::numeric_limits<T>::quiet_NaN());
       continue;
     }
 
@@ -81,10 +80,11 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
     // out.size()?  Perhaps p * nnz ?
     GpuLaunchConfig config = GetGpuLaunchConfig(p * nnz, d);
 
-    GPU_LAUNCH_KERNEL((SparseTensorDenseMatMulKernel<T, Tindices, ADJ_A, ADJ_B>),
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-        nnz, m, b_rows, b_cols, p, a_indices.data(), a_values.data(), b.data(),
-        out.data());
+    TF_CHECK_OK(GpuLaunchKernel(
+        SparseTensorDenseMatMulKernel<T, Tindices, ADJ_A, ADJ_B>,
+        config.block_count, config.thread_per_block, 0, d.stream(), nnz, m,
+        b_rows, b_cols, p, a_indices.data(), a_values.data(), b.data(),
+        out.data()));
 
     return Status::OK();
   }

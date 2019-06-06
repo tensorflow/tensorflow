@@ -19,9 +19,9 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_DNN_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_DNN_H_
 
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/temporary_device_memory.h"
@@ -215,6 +215,8 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<float>* y, DeviceMemory<float>* batch_mean,
       DeviceMemory<float>* batch_var, DeviceMemory<float>* saved_mean,
       DeviceMemory<float>* saved_inv_var, bool is_training,
+      ScratchAllocator* reserve_space_allocator,
+      ScratchAllocator* workspace_allocator,
       std::function<const DeviceMemory<float>&()> var_to_inv_var,
       std::function<void()> inv_var_to_var) override;
 
@@ -228,6 +230,8 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<Eigen::half>* y, DeviceMemory<float>* batch_mean,
       DeviceMemory<float>* batch_var, DeviceMemory<float>* saved_mean,
       DeviceMemory<float>* saved_inv_var, bool is_training,
+      ScratchAllocator* reserve_space_allocator,
+      ScratchAllocator* workspace_allocator,
       std::function<const DeviceMemory<float>&()> var_to_inv_var,
       std::function<void()> inv_var_to_var) override;
 
@@ -238,7 +242,9 @@ class MIOpenSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
-      DeviceMemory<float>* offset_backprop) override;
+      DeviceMemory<float>* offset_backprop,
+      DeviceMemory<uint8>* reserve_space_data,
+      ScratchAllocator* workspace_allocator) override;
 
   bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<Eigen::half>& y_backprop,
@@ -247,8 +253,9 @@ class MIOpenSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       DeviceMemory<Eigen::half>* x_backprop,
-      DeviceMemory<float>* scale_backprop,
-      DeviceMemory<float>* offset_backprop) override;
+      DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+      DeviceMemory<uint8>* reserve_space_data,
+      ScratchAllocator* workspace_allocator) override;
 
   port::Status DoConvolve(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,

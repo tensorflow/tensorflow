@@ -2,9 +2,10 @@
 #   Wrap NVIDIA (https://github.com/NVIDIA/nccl) NCCL with tensorflow ops.
 #   APIs are meant to change over time.
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 

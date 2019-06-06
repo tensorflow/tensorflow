@@ -71,12 +71,7 @@ RUN apt-get update --allow-insecure-repositories && \
 #RUN ln -s /opt/rocm/hcc-1.0 /opt/rocm/hcc
 
 # Build HIP from source
-# roc-2.3.x branch as base + cherry-pick the merge commit for PR 981 (hipModuleGetGlobal fix)
-# the git config is required for the git cherry-pick command...
-RUN cd $HOME && git clone -b roc-2.3.x https://github.com/ROCm-Developer-Tools/HIP.git && \
-    cd $HOME/HIP && \
-    git cherry-pick --no-commit 4b7177ac4225c32ed0b02096a83b78fab0b9347a && \
-    mkdir -p build && cd build && cmake .. && make package -j $(nproc) && dpkg -i ./hip*.deb
+# RUN cd $HOME && git clone -b <> https://github.com/ROCm-Developer-Tools/HIP.git && cd $HOME/HIP && mkdir -p build && cd build && cmake .. && make package -j $(nproc) && dpkg -i ./hip*.deb
 
 # Roll back OpenCL toolset to ROCm2.2 base
 RUN cd $HOME && wget http://repo.radeon.com/rocm/apt/2.2/pool/main/r/rocm-opencl/rocm-opencl_1.2.0-2019030702_amd64.deb && \
@@ -102,7 +97,7 @@ RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906" >> /opt/rocm/bin/target.lst'
 #RUN cd $HOME && git clone -b <> https://github.com/ROCmSoftwarePlatform/rocFFT.git && cd rocFFT && ./install.sh -id
 
 # Build rocRAND from source
-#RUN cd $HOME && git clone -b <> https://github.com/ROCmSoftwarePlatform/rocRAND.git && mkdir rocRAND/build && cd rocRAND/build && HIP_PLATFORM=hcc CXX=hcc cmake .. && make package -j $(nproc) && dpkg -i ./rocrand*.deb
+#RUN cd $HOME && git clone -b <> https://github.com/ROCmSoftwarePlatform/rocRAND.git && mkdir rocRAND/build && cd rocRAND/build && CXX=hcc cmake .. && make package -j $(nproc) && dpkg -i ./rocrand*.deb
 
 # Build MIOpen from source
 #RUN cd $HOME && git clone -b <> https://github.com/RadeonOpenCompute/rocm-cmake.git && cd $HOME/rocm-cmake && mkdir -p build && cd build && cmake .. && make package -j$(nproc) && dpkg -i ./rocm-cmake*.deb
@@ -132,5 +127,6 @@ COPY install/.bazelrc /etc/bazel.bazelrc
 ENV TF_NEED_ROCM 1
 
 # This is a temporary workaround to fix Out-Of-Memory errors we are running into with XLA perf tests
-# By default, HIP runtime "hides" 200MB from the TF Runtime, we need to up that to 500MB
-ENV HIP_HIDDEN_FREE_MEM=500
+# By default, HIP runtime "hides" 256MB from the TF Runtime, but with recent changes (update to ROCm2.3, dynamic loading of roc* libs, et al)
+# it seems that we need to up the threshold slightly to 320MB
+ENV HIP_HIDDEN_FREE_MEM=320

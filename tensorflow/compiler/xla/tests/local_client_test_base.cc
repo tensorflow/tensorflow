@@ -35,17 +35,16 @@ namespace xla {
 
 /* static */ TestAllocator* LocalClientTestBase::allocator_;
 
-StatusOr<OwningDeviceMemory> TestAllocator::Allocate(int device_ordinal,
-                                                     uint64 size,
-                                                     bool retry_on_failure) {
+StatusOr<se::OwningDeviceMemory> TestAllocator::Allocate(
+    int device_ordinal, uint64 size, bool retry_on_failure) {
   VLOG(2) << "Allocate(" << device_ordinal << ", " << size << ")";
   {
     tensorflow::mutex_lock lock(count_mutex_);
     allocation_count_++;
     device_allocation_count_[device_ordinal]++;
   }
-  return StreamExecutorMemoryAllocator::Allocate(device_ordinal, size,
-                                                 retry_on_failure);
+  return se::StreamExecutorMemoryAllocator::Allocate(device_ordinal, size,
+                                                     retry_on_failure);
 }
 
 Status TestAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase mem) {
@@ -55,7 +54,7 @@ Status TestAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase mem) {
     deallocation_count_++;
     device_deallocation_count_[device_ordinal]++;
   }
-  return StreamExecutorMemoryAllocator::Deallocate(device_ordinal, mem);
+  return se::StreamExecutorMemoryAllocator::Deallocate(device_ordinal, mem);
 }
 
 int64 TestAllocator::allocation_count() const {
@@ -118,8 +117,10 @@ LocalClientTestBase::LocalClientTestBase(se::Platform* platform)
     : local_client_(
           ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie()),
       thread_pool_wrapper_(new EigenThreadPoolWrapper()) {
+  // Take the first executor, since it's the default one.
   stream_executor_ = PlatformUtil::GetStreamExecutors(local_client_->platform())
-                         .ValueOrDie()[local_client_->default_device_ordinal()];
+                         .ValueOrDie()
+                         .front();
   transfer_manager_ =
       TransferManager::GetForPlatform(local_client_->platform()).ValueOrDie();
 }

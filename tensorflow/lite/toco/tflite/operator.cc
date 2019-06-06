@@ -22,6 +22,7 @@ limitations under the License.
 
 // TODO(ycling): Consider refactoring to extract the LSTM definition out of
 // graph_transformation module.
+#include "tensorflow/lite/delegates/flex/whitelisted_flex_ops.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/graph_transformations/lstm_utils.h"
 #include "tensorflow/lite/toco/model.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/lite/toco/tflite/custom_operator.h"
 #include "tensorflow/lite/toco/tflite/simple_operator.h"
 #include "tensorflow/lite/toco/tflite/types.h"
-#include "tensorflow/lite/toco/tflite/whitelisted_flex_ops.h"
 
 namespace toco {
 
@@ -1203,6 +1203,12 @@ class Mean : public BuiltinOperator<MeanOperator, ::tflite::ReducerOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -1800,6 +1806,13 @@ class Unpack : public BuiltinOperator<UnpackOperator, ::tflite::UnpackOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8/uint8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8 ||
+        input_array.data_type == ArrayDataType::kUint8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -2341,6 +2354,20 @@ class Select : public SimpleOperator<SelectOperator> {
   }
 };
 
+class FloorDiv : public SimpleOperator<FloorDivOperator> {
+ public:
+  explicit FloorDiv() : SimpleOperator("FLOOR_DIV", OperatorType::kFloorDiv) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports float input types.
+    if (input_array.data_type == ArrayDataType::kFloat) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
 namespace {
 // Build a vector containing all the known operators.
 std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
@@ -2512,6 +2539,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(
       MakeUnique<SimpleOperator<EluOperator>>("ELU", OperatorType::kElu));
   ops.push_back(
+      MakeUnique<SimpleOperator<RoundOperator>>("ROUND", OperatorType::kRound));
+  ops.push_back(
       MakeUnique<SimpleOperator<ReluOperator>>("RELU", OperatorType::kRelu));
   ops.push_back(MakeUnique<SimpleOperator<Relu1Operator>>(
       "RELU_N1_TO_1", OperatorType::kRelu1));
@@ -2545,8 +2574,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       "LOGICAL_AND", OperatorType::kLogicalAnd));
   ops.emplace_back(new SimpleOperator<LogicalNotOperator>(
       "LOGICAL_NOT", OperatorType::kLogicalNot));
-  ops.emplace_back(new SimpleOperator<FloorDivOperator>(
-      "FLOOR_DIV", OperatorType::kFloorDiv));
+  ops.push_back(MakeUnique<FloorDiv>());
   ops.emplace_back(new SimpleOperator<FloorModOperator>(
       "FLOOR_MOD", OperatorType::kFloorMod));
   ops.emplace_back(
@@ -2618,7 +2646,7 @@ bool ShouldExportAsFlexOp(bool enable_select_tf_ops,
     return false;
   }
 
-  if (!IsWhitelistedFlexOp(tensorflow_op_name)) {
+  if (!::tflite::flex::IsWhitelistedFlexOp(tensorflow_op_name)) {
     LOG(WARNING) << "Op " << tensorflow_op_name
                  << " is a valid TensorFlow op but has not been whitelisted for"
                     " the TensorFlow Lite flex op set.";

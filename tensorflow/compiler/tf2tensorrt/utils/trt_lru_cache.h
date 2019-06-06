@@ -21,11 +21,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
-#include "tensorrt/include/NvInfer.h"
+#include "third_party/tensorrt/NvInfer.h"
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {
@@ -100,17 +101,14 @@ class LRUCache {
   }
 
   // Creates n free positions in cache
-  Status DiscardOld(size_t n = 0) {
-    if (n > capacity_) {
-      return errors::Internal("Insufficient capacity in cache (capacity = ",
-                              capacity_, ", requested ", n, ")");
-    }
+  void DiscardOld(size_t n = 0) {
+    DCHECK(capacity_ >= n) << "Insufficient capacity in cache (capacity = "
+                           << capacity_ << ", requested " << n << ")";
     while (objects_.size() > (capacity_ - n)) {
       key_type discard_key = keys_.back();
       keys_.pop_back();
       objects_.erase(discard_key);
     }
-    return Status::OK();
   }
 };
 
@@ -141,6 +139,13 @@ struct EngineContext {
 
 class TRTEngineCacheResource : public ResourceBase {
  public:
+  // According to the TensorRT API, the logger is considered a singleton by the
+  // TensorRT library, and multiple instances of IRuntime and/or IBuilder must
+  // all use the same logger. So here we make it a singleton.
+  //
+  // TODO(laigd): use this logger in all places where conversion happens.
+  static Logger& GetLogger();
+
   TRTEngineCacheResource(OpKernelContext* ctx, size_t capacity);
 
   ~TRTEngineCacheResource() override;

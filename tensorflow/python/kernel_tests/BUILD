@@ -2,9 +2,8 @@
 
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
@@ -132,6 +131,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:client_testlib",
@@ -236,7 +236,10 @@ cuda_py_test(
         "//tensorflow/python/ops/linalg",
     ],
     shard_count = 5,
-    tags = ["no_gpu"],
+    tags = [
+        "no_gpu",  # TODO(b/131773093): Re-enable.
+        "nomsan",  # TODO(b/131773093): Re-enable.
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -465,6 +468,15 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "fingerprint_op_test",
+    size = "small",
+    srcs = ["fingerprint_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
     name = "fractional_avg_pool_op_test",
     size = "small",
     srcs = ["fractional_avg_pool_op_test.py"],
@@ -524,7 +536,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "in_topk_op_test",
     size = "small",
     srcs = ["in_topk_op_test.py"],
@@ -534,6 +546,7 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:nn_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -587,7 +600,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "logging_ops_test",
     size = "small",
     srcs = ["logging_ops_test.py"],
@@ -600,6 +613,7 @@ tf_py_test(
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -1070,6 +1084,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:string_ops",
         "//tensorflow/python/ops/ragged:ragged_string_ops",
+        "//tensorflow/python/ops/ragged:ragged_test_util",
     ],
 )
 
@@ -1104,6 +1119,34 @@ tf_py_test(
     name = "string_strip_op_test",
     size = "small",
     srcs = ["string_strip_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:string_ops",
+    ],
+)
+
+tf_py_test(
+    name = "string_lower_op_test",
+    size = "small",
+    srcs = ["string_lower_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:string_ops",
+    ],
+)
+
+tf_py_test(
+    name = "string_upper_op_test",
+    size = "small",
+    srcs = ["string_upper_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
@@ -1230,6 +1273,7 @@ cuda_py_test(
     ],
     shard_count = 10,
     tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -1330,6 +1374,10 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "no_cuda", # fails on CUDA, do not upstream tag
+        "no_rocm",
     ],
 )
 
@@ -1717,7 +1765,10 @@ cuda_py_test(
         "//tensorflow/python:while_v2",
     ],
     shard_count = 16,
-    tags = ["no_cuda",], # fails on CUDA, but not on ROCm, do not upstream tag
+    tags = [
+        "notsan",  # TODO(b/132205147): Re-enable this.
+        "no_cuda", # fails on CUDA, but not on ROCm, do not upstream tag
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -1746,7 +1797,6 @@ tf_py_test(
         "//tensorflow/python:control_flow_util_v2",
         "//tensorflow/python:while_v2",
     ],
-    tags = ["no_gpu"],  # TODO(b/117796385): runs out of memory
 )
 
 cuda_py_test(
@@ -2273,7 +2323,6 @@ cuda_py_test(
     ],
     shard_count = 6,
     tags = [
-        "no_oss",
         "no_windows_gpu",
     ],
     xla_enable_strict_auto_jit = True,
@@ -2492,7 +2541,10 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
     ],
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows",
+        "no_windows_gpu",
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -2678,6 +2730,7 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:cond_v2",
         "//tensorflow/python:while_v2",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
@@ -3197,6 +3250,7 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:data_flow_ops",
     ],
+    tags = ["no_oss"],  # b/124474135
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3388,7 +3442,9 @@ cuda_py_test(
     tags = [
         "no_windows",
     ],
-    # b/127344411: xla_enable_strict_auto_jit = True,
+    # TODO(b/127344411): This test passes because XLA does not actually cluster
+    # the self_adjoint_eig op.
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -3425,7 +3481,9 @@ cuda_py_test(
         "no_oss",  # b/117185141.
         "nomsan",  # TODO(b/117236102): Re-enable in msan build.
     ],
-    # b/127344411: xla_enable_strict_auto_jit = True,
+    # TODO(b/127344411): This test passes because XLA does not actually cluster
+    # the svd op.
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -3445,7 +3503,7 @@ cuda_py_test(
         "no_windows_gpu",
         "nomsan",
     ],
-    # b/127344411: xla_enable_strict_auto_jit = True,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -3783,4 +3841,20 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
     ],
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "tridiagonal_matmul_op_test",
+    size = "medium",
+    srcs = ["tridiagonal_matmul_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:linalg_ops",
+    ],
+    shard_count = 10,
+    tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = True,
 )

@@ -25,7 +25,7 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
-TIMEOUT = 10
+TIMEOUT = 100
 
 
 class MapStageTest(test.TestCase):

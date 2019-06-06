@@ -81,6 +81,9 @@ FunctionDef FuncWithListOutput();
 // x:T -> x + x.
 FunctionDef XAddX();
 
+// x: T, y:T -> x + y.
+FunctionDef XAddY();
+
 // x:T -> x * 2, where x is int32.
 FunctionDef XTimesTwoInt32();
 
@@ -111,6 +114,9 @@ FunctionDef EmptyBodySwap();
 // x:float, y:resource -> y:resource, 2*x:float.
 FunctionDef ResourceOutput();
 
+// x:resource -> x:resource
+FunctionDef ResourceIdentity();
+
 // x:resource -> y:float.
 FunctionDef ReadResourceVariable();
 
@@ -131,6 +137,9 @@ FunctionDef RandomUniformLess();
 
 // x:T -> y: TensorSliceDatasetOp::Dataset
 FunctionDef MakeTensorSliceDataset();
+
+// x:T -> y: T, idx: out_idx
+FunctionDef Unique();
 
 void FunctionTestSchedClosure(std::function<void()> fn);
 

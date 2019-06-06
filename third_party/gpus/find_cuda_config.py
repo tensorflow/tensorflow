@@ -53,6 +53,7 @@ tf_<library>_header_dir: ...
 tf_<library>_library_dir: ...
 """
 
+import io
 import os
 import glob
 import platform
@@ -104,6 +105,10 @@ def _matches_version(actual_version, required_version):
   """
   if actual_version is None:
     return False
+
+  # Strip spaces from the versions.
+  actual_version = actual_version.strip()
+  required_version = required_version.strip()
   return actual_version.startswith(required_version)
 
 
@@ -115,8 +120,8 @@ def _at_least_version(actual_version, required_version):
 
 def _get_header_version(path, name):
   """Returns preprocessor defines in C header file."""
-  for line in open(path, "r").readlines():
-    match = re.match("#define %s (\d+)" % name, line)
+  for line in io.open(path, "r", encoding="utf-8").readlines():
+    match = re.match("#define %s +(\d+)" % name, line)
     if match:
       return match.group(1)
   return ""
@@ -136,10 +141,13 @@ def _get_ld_config_paths():
   pattern = re.compile(".* => (.*)")
   result = set()
   for line in output.splitlines():
-    match = pattern.match(line.decode("ascii"))
+    try:
+      match = pattern.match(line.decode("ascii"))
+    except UnicodeDecodeError:
+      match = False
     if match:
       result.add(os.path.dirname(match.group(1)))
-  return list(result)
+  return sorted(list(result))
 
 
 def _get_default_cuda_paths(cuda_version):
@@ -155,42 +163,47 @@ def _get_default_cuda_paths(cuda_version):
             "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v%s\\" %
             cuda_version)
     ]
-  return ["/usr/local/cuda-%s" % cuda_version, "/usr"] + _get_ld_config_paths()
+  return ["/usr/local/cuda-%s" % cuda_version, "/usr/local/cuda", "/usr"
+         ] + _get_ld_config_paths()
 
 
-def _header_paths(base_paths):
-  return _cartesian_product(base_paths, [
+def _header_paths():
+  """Returns hard-coded set of relative paths to look for header files."""
+  return [
       "",
       "include",
       "include/cuda",
       "include/*-linux-gnu",
       "extras/CUPTI/include",
       "include/cuda/CUPTI",
-  ])
+  ]
 
 
-def _library_paths(base_paths):
-  return _cartesian_product(base_paths, [
+def _library_paths():
+  """Returns hard-coded set of relative paths to look for library files."""
+  return [
       "",
       "lib64",
       "lib",
       "lib/*-linux-gnu",
       "lib/x64",
       "extras/CUPTI/*",
-  ])
+  ]
 
 
-def _not_found_error(paths, filepattern):
+def _not_found_error(base_paths, relative_paths, filepattern):
+  base_paths = "".join(["\n        '%s'" % path for path in sorted(base_paths)])
+  relative_paths = "".join(["\n        '%s'" % path for path in relative_paths])
   return ConfigError(
-      "Could not find any %s in:%s" %
-      (filepattern, "".join(["\n        %s" % path for path in sorted(paths)])))
+      "Could not find any %s in any subdirectory:%s\nof:%s\n" %
+      (filepattern, relative_paths, base_paths))
 
 
-def _find_file(paths, filepattern):
-  for path in paths:
+def _find_file(base_paths, relative_paths, filepattern):
+  for path in _cartesian_product(base_paths, relative_paths):
     for file in glob.glob(os.path.join(path, filepattern)):
       return file
-  raise _not_found_error(paths, filepattern)
+  raise _not_found_error(base_paths, relative_paths, filepattern)
 
 
 def _find_library(base_paths, library_name, required_version):
@@ -203,24 +216,26 @@ def _find_library(base_paths, library_name, required_version):
   else:
     filepattern = ".".join(["lib" + library_name, "so"] +
                            required_version.split(".")[:1]) + "*"
-  return _find_file(_library_paths(base_paths), filepattern)
+  return _find_file(base_paths, _library_paths(), filepattern)
 
 
-def _find_versioned_file(paths, filepattern, required_version, get_version):
+def _find_versioned_file(base_paths, relative_paths, filepattern,
+                         required_version, get_version):
   """Returns first valid path to a file that matches the requested version."""
-  for path in paths:
+  for path in _cartesian_product(base_paths, relative_paths):
     for file in glob.glob(os.path.join(path, filepattern)):
       actual_version = get_version(file)
       if _matches_version(actual_version, required_version):
         return file, actual_version
   raise _not_found_error(
-      paths, filepattern + " matching version '%s'" % required_version)
+      base_paths, relative_paths,
+      filepattern + " matching version '%s'" % required_version)
 
 
 def _find_header(base_paths, header_name, required_version, get_version):
   """Returns first valid path to a header that matches the requested version."""
-  return _find_versioned_file(
-      _header_paths(base_paths), header_name, required_version, get_version)
+  return _find_versioned_file(base_paths, _header_paths(), header_name,
+                              required_version, get_version)
 
 
 def _find_cuda_config(base_paths, required_version):
@@ -247,20 +262,18 @@ def _find_cuda_config(base_paths, required_version):
     return None
 
   nvcc_name = "nvcc.exe" if _is_windows() else "nvcc"
-  nvcc_path, nvcc_version = _find_versioned_file(
-      _cartesian_product(base_paths, [
-          "",
-          "bin",
-      ]), nvcc_name, cuda_version, get_nvcc_version)
+  nvcc_path, nvcc_version = _find_versioned_file(base_paths, [
+      "",
+      "bin",
+  ], nvcc_name, cuda_version, get_nvcc_version)
 
-  nvvm_path = _find_file(
-      _cartesian_product(base_paths, [
-          "nvvm/libdevice",
-          "share/cuda",
-          "lib/nvidia-cuda-toolkit/libdevice",
-      ]), "libdevice*.10.bc")
+  nvvm_path = _find_file(base_paths, [
+      "nvvm/libdevice",
+      "share/cuda",
+      "lib/nvidia-cuda-toolkit/libdevice",
+  ], "libdevice*.10.bc")
 
-  cupti_header_path = _find_file(_header_paths(base_paths), "cupti.h")
+  cupti_header_path = _find_file(base_paths, _header_paths(), "cupti.h")
   cupti_library_path = _find_library(base_paths, "cupti", required_version)
 
   cuda_binary_dir = os.path.dirname(nvcc_path)
@@ -311,7 +324,7 @@ def _find_cublas_config(base_paths, required_version, cuda_version):
 
   else:
     # There is no version info available before CUDA 10.1, just find the file.
-    header_path = _find_file(_header_paths(base_paths), "cublas_api.h")
+    header_path = _find_file(base_paths, _header_paths(), "cublas_api.h")
     # cuBLAS version is the same as CUDA version (x.y).
     cublas_version = required_version
 
@@ -374,13 +387,24 @@ def _find_tensorrt_config(base_paths, required_version):
         _get_header_version(path, name)
         for name in ("NV_TENSORRT_MAJOR", "NV_TENSORRT_MINOR",
                      "NV_TENSORRT_PATCH"))
+    # `version` is a generator object, so we convert it to a list before using
+    # it (muitiple times below).
+    version = list(version)
+    if not all(version):
+      return None  # Versions not found, make _matches_version returns False.
     return ".".join(version)
 
-  header_path, header_version = _find_header(base_paths, "NvInfer.h",
-                                             required_version,
-                                             get_header_version)
-  tensorrt_version = header_version.split(".")[0]
+  try:
+    header_path, header_version = _find_header(base_paths, "NvInfer.h",
+                                               required_version,
+                                               get_header_version)
+  except ConfigError:
+    # TensorRT 6 moved the version information to NvInferVersion.h.
+    header_path, header_version = _find_header(base_paths, "NvInferVersion.h",
+                                               required_version,
+                                               get_header_version)
 
+  tensorrt_version = header_version.split(".")[0]
   library_path = _find_library(base_paths, "nvinfer", tensorrt_version)
 
   return {
@@ -397,6 +421,20 @@ def _list_from_env(env_name, default=[]):
   return default
 
 
+def _get_legacy_path(env_name, default=[]):
+  """Returns a path specified by a legacy environment variable.
+
+  CUDNN_INSTALL_PATH, NCCL_INSTALL_PATH, TENSORRT_INSTALL_PATH set to
+  '/usr/lib/x86_64-linux-gnu' would previously find both library and header
+  paths. Detect those and return '/usr', otherwise forward to _list_from_env().
+  """
+  if env_name in os.environ:
+    match = re.match("^(/[^/ ]*)+/lib/\w+-linux-gnu/?$", os.environ[env_name])
+    if match:
+      return [match.group(1)]
+  return _list_from_env(env_name, default)
+
+
 def _normalize_path(path):
   """Returns normalized path, with forward slashes on Windows."""
   path = os.path.normpath(path)
@@ -411,6 +449,7 @@ def find_cuda_config():
   cuda_version = os.environ.get("TF_CUDA_VERSION", "")
   base_paths = _list_from_env("TF_CUDA_PATHS",
                               _get_default_cuda_paths(cuda_version))
+  base_paths = [path for path in base_paths if os.path.exists(path)]
 
   result = {}
   if "cuda" in libraries:
@@ -418,22 +457,26 @@ def find_cuda_config():
     result.update(_find_cuda_config(cuda_paths, cuda_version))
 
     cuda_version = result["cuda_version"]
+    cublas_paths = base_paths
+    if tuple(int(v) for v in cuda_version.split(".")) < (10, 1):
+      # Before CUDA 10.1, cuBLAS was in the same directory as the toolkit.
+      cublas_paths = cuda_paths
     cublas_version = os.environ.get("TF_CUBLAS_VERSION", "")
-    result.update(_find_cublas_config(cuda_paths, cublas_version, cuda_version))
+    result.update(
+        _find_cublas_config(cublas_paths, cublas_version, cuda_version))
 
   if "cudnn" in libraries:
-    cudnn_paths = _list_from_env("CUDNN_INSTALL_PATH", base_paths)
+    cudnn_paths = _get_legacy_path("CUDNN_INSTALL_PATH", base_paths)
     cudnn_version = os.environ.get("TF_CUDNN_VERSION", "")
     result.update(_find_cudnn_config(cudnn_paths, cudnn_version))
 
   if "nccl" in libraries:
-    nccl_paths = _list_from_env("NCCL_INSTALL_PATH",
-                                base_paths) + _list_from_env("NCCL_HDR_PATH")
+    nccl_paths = _get_legacy_path("NCCL_INSTALL_PATH", base_paths)
     nccl_version = os.environ.get("TF_NCCL_VERSION", "")
     result.update(_find_nccl_config(nccl_paths, nccl_version))
 
   if "tensorrt" in libraries:
-    tensorrt_paths = _list_from_env("TENSORRT_INSTALL_PATH", base_paths)
+    tensorrt_paths = _get_legacy_path("TENSORRT_INSTALL_PATH", base_paths)
     tensorrt_version = os.environ.get("TF_TENSORRT_VERSION", "")
     result.update(_find_tensorrt_config(tensorrt_paths, tensorrt_version))
 

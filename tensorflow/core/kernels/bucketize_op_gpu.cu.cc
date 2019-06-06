@@ -18,7 +18,6 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -39,11 +38,8 @@ __global__ void BucketizeCustomKernel(
     GpuDeviceArrayStruct<float> boundaries_array, int32* out) {
   const float* boundaries = GetGpuDeviceArrayOnDevice(&boundaries_array);
 
-#if GOOGLE_CUDA
-  extern __shared__ __align__(sizeof(float)) unsigned char shared_mem[];
-#elif TENSORFLOW_USE_ROCM
-  HIP_DYNAMIC_SHARED(unsigned char, shared_mem);
-#endif
+  GPU_DYNAMIC_SHARED_MEM_DECL(sizeof(float), unsigned char, shared_mem);
+
   float* shared_mem_boundaries = reinterpret_cast<float*>(shared_mem);
 
   if (useSharedMem) {
@@ -102,17 +98,16 @@ struct BucketizeFunctor<GPUDevice, T> {
     const int32 kMaxSharedMemBytes = 16384;
     if (shared_mem_size < d.sharedMemPerBlock() &&
         shared_mem_size < kMaxSharedMemBytes) {
-      GPU_LAUNCH_KERNEL((BucketizeCustomKernel<T, true>),
-          dim3(config.block_count), dim3(config.thread_per_block),
-          shared_mem_size, d.stream(),
-          input.size(), input.data(), boundaries_vector.size(),
-          boundaries_array.data(), output.data());
+      TF_CHECK_OK(GpuLaunchKernel(BucketizeCustomKernel<T, true>,
+                                  config.block_count, config.thread_per_block,
+                                  shared_mem_size, d.stream(), input.size(),
+                                  input.data(), boundaries_vector.size(),
+                                  boundaries_array.data(), output.data()));
     } else {
-      GPU_LAUNCH_KERNEL((BucketizeCustomKernel<T, false>),
-          dim3(config.block_count), dim3(config.thread_per_block), 0,
-          d.stream(),
-          input.size(), input.data(), boundaries_vector.size(),
-          boundaries_array.data(), output.data());
+      TF_CHECK_OK(GpuLaunchKernel(
+          BucketizeCustomKernel<T, false>, config.block_count,
+          config.thread_per_block, 0, d.stream(), input.size(), input.data(),
+          boundaries_vector.size(), boundaries_array.data(), output.data()));
     }
     return Status::OK();
   }

@@ -17,6 +17,7 @@ limitations under the License.
 // operators using XLA via the XLA "CUDA" or "ROCM" (GPU) backend.
 
 #include <set>
+
 #include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -61,7 +63,8 @@ class XlaGpuDeviceFactory : public DeviceFactory {
 };
 
 Status XlaGpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
-  auto platform = se::MultiPlatformManager::PlatformWithName("CUDA");
+  auto platform =
+      se::MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName());
   if (!platform.ok()) {
     // Treat failures as non-fatal; there might not be a GPU in the machine.
     VLOG(1) << "Failed to create XLA_GPU device: " << platform.status();
@@ -95,14 +98,16 @@ Status XlaGpuDeviceFactory::CreateDevices(
   registration.cluster_control_trigger = true;
   registration.elide_assert_and_checknumerics = true;
   registration.cluster_variant_ops = true;
+  registration.cluster_slow_ops = true;
+  registration.cluster_inaccurate_ops = true;
   XlaOpRegistry::RegisterCompilationDevice(DEVICE_XLA_GPU, registration);
 
   static XlaDeviceOpRegistrations* registrations =
       RegisterXlaDeviceKernels(DEVICE_XLA_GPU, DEVICE_GPU_XLA_JIT);
   (void)registrations;
 
-  // XXX FIXME devise a way to cope with multiple platforms
-  auto platform = se::MultiPlatformManager::PlatformWithName("ROCM");
+  auto platform =
+      se::MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName());
   if (!platform.ok()) {
     // Treat failures as non-fatal; there might not be a GPU in the machine.
     VLOG(1) << "Failed to create XLA_GPU device: " << platform.status();

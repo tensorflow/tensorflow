@@ -161,7 +161,7 @@ def implicit_val_and_grad(f):
   Example:
 
   ```python
-  dense_layer = tf.layers.Dense(1)
+  dense_layer = tf.compat.v1.layers.Dense(1)
   def loss(x, y):
     return tf.reduce_sum(tf.square(dense_layer(x) - y))
 
@@ -175,7 +175,7 @@ def implicit_val_and_grad(f):
   print('Value of loss: %s' % value)
 
   # Apply the gradients to Variables.
-  optimizer = tf.train.GradientDescentOptimizer(0.1)
+  optimizer = tf.compat.v1.train.GradientDescentOptimizer(0.1)
   optimizer.apply_gradients(grads_and_vars)
   ```
 
@@ -235,7 +235,7 @@ def implicit_grad(f):
   Example:
 
   ```python
-  dense_layer = tf.layers.Dense(1)
+  dense_layer = tf.compat.v1.layers.Dense(1)
   def loss(x, y):
     return tf.reduce_sum(tf.square(dense_layer(x) - y))
 
@@ -248,7 +248,7 @@ def implicit_grad(f):
   grads_and_vars = grad_fn(x, y)
 
   # Apply the gradients to Variables.
-  optimizer = tf.train.GradientDescentOptimizer(0.1)
+  optimizer = tf.compat.v1.train.GradientDescentOptimizer(0.1)
   optimizer.apply_gradients(grads_and_vars)
   ```
 
@@ -568,8 +568,8 @@ def _aggregate_grads(gradients):
       if isinstance(grad, ops.Tensor):
         indexed_slices = ops.IndexedSlices(
             grad,
-            math_ops.range(grad.shape[0]),
-            constant_op.constant(grad.shape.as_list()))
+            math_ops.range(array_ops.shape(grad)[0]),
+            array_ops.shape(grad))
         indexed_slices_list.append(indexed_slices)
       else:
         indexed_slices_list.append(grad)
@@ -668,9 +668,9 @@ class GradientTape(object):
   Operations are recorded if they are executed within this context manager and
   at least one of their inputs is being "watched".
 
-  Trainable variables (created by `tf.Variable` or `tf.get_variable`, where
-  `trainable=True` is default in both cases) are automatically watched. Tensors
-  can be manually watched by invoking the `watch` method on this context
+  Trainable variables (created by `tf.Variable` or `tf.compat.v1.get_variable`,
+  where `trainable=True` is default in both cases) are automatically watched.
+  Tensors can be manually watched by invoking the `watch` method on this context
   manager.
 
   For example, consider the function `y = x * x`. The gradient at `x = 3.0` can
@@ -723,7 +723,7 @@ class GradientTape(object):
   with tf.GradientTape(watch_accessed_variables=False) as tape:
     tape.watch(variable_a)
     y = variable_a ** 2  # Gradients will be available for `variable_a`.
-    z = variable_b ** 3  # No gradients will be avaialble since `variable_b` is
+    z = variable_b ** 3  # No gradients will be available since `variable_b` is
                          # not being watched.
   ```
 
@@ -863,6 +863,7 @@ class GradientTape(object):
 
     Equivalent to exiting and reentering the tape context manager with a new
     tape. For example, the two following code blocks are equivalent:
+
     ```
     with tf.GradientTape() as t:
       loss = loss_fn()
@@ -992,7 +993,7 @@ class GradientTape(object):
                experimental_use_pfor=True):
     """Computes the jacobian using operations recorded in context of this tape.
 
-    See http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant for the
+    See [wikipedia article](http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant) for the
     definition of a Jacobian.
 
     Example usage:
@@ -1093,26 +1094,28 @@ class GradientTape(object):
                      experimental_use_pfor=True):
     """Computes and stacks per-example jacobians.
 
-    See http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant for the
-    definition of a Jacobian.  This function is essentially an efficient
+    See [wikipedia article](http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant) for the
+    definition of a Jacobian. This function is essentially an efficient
     implementation of the following:
+    
     `tf.stack([self.jacobian(y[i], x[i]) for i in range(x.shape[0])])`.
 
     Note that compared to `GradientTape.jacobian` which computes gradient of
     each output value w.r.t each input value, this function is useful when
-    `target[i,...] is independent of `source[j,...]` for `j != i`. This
-    independence assumption allows more efficient computation as compared to
+    `target[i,...]` is independent of `source[j,...]` for `j != i`. This
+    assumption allows more efficient computation as compared to
     `GradientTape.jacobian`. The output, as well as intermediate activations,
     are lower dimensional and avoid a bunch of redundant zeros which would
     result in the jacobian computation given the independence assumption.
 
     Example usage:
+
     ```python
     with tf.GradientTape() as g:
-      x = tf.constant([[1, 2], [3, 4]], dtype=tf.float32)
+      x = tf.constant([[1., 2.], [3., 4.]], dtype=tf.float32)
       g.watch(x)
       y = x * x
-    batch_jacobian = g.batch_jacobian(y, x)
+    batch_jacobian = g.batch_jacobian(y, x) 
     # batch_jacobian is [[[2,  0], [0,  4]], [[6,  0], [0,  8]]]
     ```
 

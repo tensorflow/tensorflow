@@ -222,9 +222,9 @@ void FillPhiloxRandom<GPUDevice, Distribution>::operator()(
       (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
       block_size;
 
-  GPU_LAUNCH_KERNEL(FillPhiloxRandomKernelLaunch<Distribution>,
-		    num_blocks, block_size, 0, d.stream(), gen, data,
-		    size, dist);
+  TF_CHECK_OK(GpuLaunchKernel(FillPhiloxRandomKernelLaunch<Distribution>,
+                              num_blocks, block_size, 0, d.stream(), gen, data,
+                              size, dist));
 }
 
 }  // namespace functor

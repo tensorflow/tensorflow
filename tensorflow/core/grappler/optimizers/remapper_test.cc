@@ -406,7 +406,9 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNorm) {
   auto variance = Placeholder(s.WithOpName("variance"), DT_FLOAT, scale_shape);
 
   std::vector<int> strides = {1, 1, 1, 1};
-  auto conv = ops::Conv2D(s.WithOpName("conv"), input, filter, strides, "SAME");
+  auto conv = ops::Conv2D(
+      s.WithOpName("conv"), input, filter, strides, "EXPLICIT",
+      ops::Conv2D::Attrs().ExplicitPaddings({0, 0, 1, 2, 3, 4, 0, 0}));
   ops::FusedBatchNorm::Attrs attrs;
   attrs = attrs.IsTraining(false);
   auto batch_norm = ops::FusedBatchNorm(s.WithOpName("batch_norm"), conv, scale,

@@ -19,13 +19,12 @@ limitations under the License.
 
 #include <stdio.h>
 
-#include "tensorflow/core/kernels/split_lib.h"
-
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/gpu_device_array_gpu.h"
-#include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/kernels/split_lib_gpu.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 namespace functor {
@@ -125,11 +124,7 @@ __global__ void split_v_kernel(const T* input_ptr,
   int num_outputs = output_ptr_data.size;
 
   // verbose declaration needed due to template
-#if GOOGLE_CUDA
-  extern __shared__ __align__(sizeof(T)) unsigned char smem[];
-#elif TENSORFLOW_USE_ROCM
-  HIP_DYNAMIC_SHARED(unsigned char, smem);
-#endif
+  GPU_DYNAMIC_SHARED_MEM_DECL(sizeof(T), unsigned char, smem);
   IntType* smem_col_scan = reinterpret_cast<IntType*>(smem);
 
   if (useSmem) {
@@ -199,17 +194,18 @@ __global__ void SplitVOpKernel_fixed(const T* input, int32 prefix_dim_size,
 }
 
 template <typename T>
-  void SplitOpGPULaunch<T>:: Run(const Eigen::GpuDevice& d, const T* input, int32 prefix_dim_size,
-           int32 split_dim_size, int32 suffix_dim_size,
-           const GpuDeviceArrayStruct<T*>& output_ptr_data) {
-    GpuLaunchConfig config = GetGpuLaunchConfig(
-        prefix_dim_size * split_dim_size * suffix_dim_size, d);
+void SplitOpGPULaunch<T>::Run(const Eigen::GpuDevice& d, const T* input,
+                              int32 prefix_dim_size, int32 split_dim_size,
+                              int32 suffix_dim_size,
+                              const GpuDeviceArrayStruct<T*>& output_ptr_data) {
+  GpuLaunchConfig config =
+      GetGpuLaunchConfig(prefix_dim_size * split_dim_size * suffix_dim_size, d);
 
-    GPU_LAUNCH_KERNEL(SplitOpKernel<T>,
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-        input, prefix_dim_size, split_dim_size, suffix_dim_size,
-        output_ptr_data);
-  }
+  TF_CHECK_OK(GpuLaunchKernel(SplitOpKernel<T>, config.block_count,
+                              config.thread_per_block, 0, d.stream(), input,
+                              prefix_dim_size, split_dim_size, suffix_dim_size,
+                              output_ptr_data));
+}
 
 template <typename T, typename IntType>
 void SplitVOpGPULaunch<T, IntType>::Run(
@@ -221,10 +217,10 @@ void SplitVOpGPULaunch<T, IntType>::Run(
     GpuLaunchConfig config =
         GetGpuLaunchConfig(total_rows * total_cols, gpu_device);
 
-    GPU_LAUNCH_KERNEL(SplitVOpKernel_fixed<T>,
-                      dim3(config.block_count), dim3(config.thread_per_block), 0,
-                      gpu_device.stream(),
-                      input_ptr, total_rows, total_cols, output_ptr_data);
+    TF_CHECK_OK(GpuLaunchKernel(SplitVOpKernel_fixed<T>, config.block_count,
+                                config.thread_per_block, 0, gpu_device.stream(),
+                                input_ptr, total_rows, total_cols,
+                                output_ptr_data));
   } else {
     auto config = GetGpu2DLaunchConfig(total_cols, total_rows, gpu_device);
     IntType smem_max = gpu_device.sharedMemPerBlock();
@@ -234,15 +230,15 @@ void SplitVOpGPULaunch<T, IntType>::Run(
     // 4096 inputs is a lot, most code will take the smem path
     const int32 kMaxSmemBytesPerformance = 16384;
     if (smem_usage < smem_max && smem_usage < kMaxSmemBytesPerformance) {
-      GPU_LAUNCH_KERNEL((split_v_kernel<T, IntType, true>),
-                        dim3(config.block_count), dim3(config.thread_per_block),
-                        smem_usage, gpu_device.stream(), input_ptr, output_scan,
-                        total_rows, total_cols, output_ptr_data);
+      TF_CHECK_OK(GpuLaunchKernel(
+          split_v_kernel<T, IntType, true>, config.block_count,
+          config.thread_per_block, smem_usage, gpu_device.stream(), input_ptr,
+          output_scan, total_rows, total_cols, output_ptr_data));
     } else {
-      GPU_LAUNCH_KERNEL((split_v_kernel<T, IntType, false>),
-                        dim3(config.block_count), dim3(config.thread_per_block),
-                        0, gpu_device.stream(), input_ptr, output_scan, total_rows,
-                        total_cols, output_ptr_data);
+      TF_CHECK_OK(GpuLaunchKernel(
+          split_v_kernel<T, IntType, false>, config.block_count,
+          config.thread_per_block, 0, gpu_device.stream(), input_ptr,
+          output_scan, total_rows, total_cols, output_ptr_data));
     }
   }
 }

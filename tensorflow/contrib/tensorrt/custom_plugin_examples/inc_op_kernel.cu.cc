@@ -21,9 +21,10 @@ limitations under the License.
 #include <vector>
 
 #define EIGEN_USE_GPU
-#include "cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
@@ -39,7 +40,7 @@ void IncrementKernel(const float* d_input, float inc, float* d_output,
   int threads_per_block = 256;
   int blocks_per_grid = (count + threads_per_block - 1) / threads_per_block;
 
-  TF_CHECK_OK(CudaLaunchKernel(VecInc, threads_per_block, blocks_per_grid, 0,
+  TF_CHECK_OK(GpuLaunchKernel(VecInc, threads_per_block, blocks_per_grid, 0,
                                stream, d_input, inc, d_output, count));
 }
 

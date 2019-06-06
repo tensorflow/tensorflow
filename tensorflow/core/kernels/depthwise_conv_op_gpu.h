@@ -191,12 +191,10 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNHWCSmall(
   typedef typename detail::PseudoHalfType<T>::Type S;
   assert(CanLaunchDepthwiseConv2dGPUSmall(args));
   // Holds block plus halo and filter data for blockDim.x depths.
-#if GOOGLE_CUDA
-  extern __shared__ __align__(8) unsigned char shared_memory[];
   static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
-#elif TENSORFLOW_USE_ROCM
-  HIP_DYNAMIC_SHARED(unsigned char, shared_memory);
-#endif
+
+  GPU_DYNAMIC_SHARED_MEM_DECL(8, unsigned char, shared_memory);
+
   S* const shared_data = reinterpret_cast<S*>(shared_memory);
 
   const int num_batches = args.batch;
@@ -483,12 +481,10 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNCHWSmall(
   typedef typename detail::PseudoHalfType<T>::Type S;
   assert(CanLaunchDepthwiseConv2dGPUSmall(args));
   // Holds block plus halo and filter data for blockDim.z depths.
-#if GOOGLE_CUDA
-  extern __shared__ __align__(8) unsigned char shared_memory[];
   static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
-#elif TENSORFLOW_USE_ROCM
-  HIP_DYNAMIC_SHARED(unsigned char, shared_memory);
-#endif
+
+  GPU_DYNAMIC_SHARED_MEM_DECL(8, unsigned char, shared_memory);
+
   S* const shared_data = reinterpret_cast<S*>(shared_memory);
 
   const int num_batches = args.batch;
@@ -666,10 +662,9 @@ Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
   GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
       num_outputs, device, kernel, shared_memory_size,
       block_dim.x * block_dim.y * block_dim.z);
-  GPU_LAUNCH_KERNEL(kernel,
-           dim3(config.block_count), dim3(block_dim), shared_memory_size,
-           device.stream(),
-           args, input, filter, output);
+  TF_CHECK_OK(GpuLaunchKernel(kernel, config.block_count, block_dim,
+                              shared_memory_size, device.stream(), args, input,
+                              filter, output));
   return Status::OK();
 }
 
@@ -759,10 +754,10 @@ Status LaunchDepthwiseConv2dGPU(OpKernelContext* ctx, const DepthwiseArgs& args,
                                       kKnownDepthMultiplier < 0
                                   ? std::numeric_limits<int>::max()
                                   : device.getNumGpuMultiProcessors();
-  GPU_LAUNCH_KERNEL(kernel,
-           dim3(std::min(max_block_count, config.block_count)),
-           dim3(config.thread_per_block), 0, device.stream(),
-           args, input, filter, output, num_outputs);
+  TF_CHECK_OK(GpuLaunchKernel(kernel,
+                              std::min(max_block_count, config.block_count),
+                              config.thread_per_block, 0, device.stream(), args,
+                              input, filter, output, num_outputs));
 
   return Status::OK();
 }
@@ -978,9 +973,9 @@ Status LaunchDepthwiseConv2dBackpropInputGPU(OpKernelContext* ctx,
   auto device = ctx->eigen_gpu_device();
   GpuLaunchConfig config =
       GetGpuLaunchConfig(num_in_backprop, device, kernel, 0, 0);
-  GPU_LAUNCH_KERNEL(kernel, dim3(config.block_count),
-                    dim3(config.thread_per_block), 0, device.stream(), args,
-                    out_backprop, filter, in_backprop, num_in_backprop);
+  TF_CHECK_OK(GpuLaunchKernel(
+      kernel, config.block_count, config.thread_per_block, 0, device.stream(),
+      args, out_backprop, filter, in_backprop, num_in_backprop));
   return Status::OK();
 }
 
@@ -1171,12 +1166,10 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall(
   typedef typename detail::PseudoHalfType<T>::Type S;
   assert(CanLaunchDepthwiseConv2dBackpropFilterGPUSmall(args, blockDim.z));
   // Holds block plus halo and filter data for blockDim.x depths.
-#if GOOGLE_CUDA
-  extern __shared__ __align__(8) unsigned char shared_memory[];
   static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
-#elif TENSORFLOW_USE_ROCM
-  HIP_DYNAMIC_SHARED(unsigned char, shared_memory);
-#endif
+
+  GPU_DYNAMIC_SHARED_MEM_DECL(8, unsigned char, shared_memory);
+
   S* const shared_data = reinterpret_cast<S*>(shared_memory);
 
   const int num_batches = args.batch;
@@ -1448,12 +1441,10 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNCHWSmall(
   typedef typename detail::PseudoHalfType<T>::Type S;
   assert(CanLaunchDepthwiseConv2dBackpropFilterGPUSmall(args, blockDim.x));
   // Holds block plus halo and filter data for blockDim.z depths.
-#if GOOGLE_CUDA
-  extern __shared__ __align__(8) unsigned char shared_memory[];
   static_assert(sizeof(S) <= 8, "Insufficient aligement detected");
-#elif TENSORFLOW_USE_ROCM
-  HIP_DYNAMIC_SHARED(unsigned char, shared_memory);
-#endif
+
+  GPU_DYNAMIC_SHARED_MEM_DECL(8, unsigned char, shared_memory);
+
   S* const shared_data = reinterpret_cast<S*>(shared_memory);
 
   const int num_batches = args.batch;
@@ -1635,10 +1626,9 @@ Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
   GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
       num_out_backprop, device, kernel, shared_memory_size,
       block_dim.x * block_dim.y * block_dim.z);
-  GPU_LAUNCH_KERNEL(kernel,
-           dim3(config.block_count), dim3(block_dim), shared_memory_size,
-           device.stream(),
-           args, out_backprop, input, filter_backprop);
+  TF_CHECK_OK(GpuLaunchKernel(kernel, config.block_count, block_dim,
+                              shared_memory_size, device.stream(), args,
+                              out_backprop, input, filter_backprop));
   return Status::OK();
 }
 
@@ -1739,9 +1729,9 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
   auto device = ctx->eigen_gpu_device();
   GpuLaunchConfig config =
       GetGpuLaunchConfig(num_out_backprop, device, kernel, 0, 0);
-  GPU_LAUNCH_KERNEL(kernel,
-      dim3(config.block_count), dim3(config.thread_per_block), 0, device.stream(),
-      args, out_backprop, input, filter_backprop, num_out_backprop);
+  TF_CHECK_OK(GpuLaunchKernel(
+      kernel, config.block_count, config.thread_per_block, 0, device.stream(),
+      args, out_backprop, input, filter_backprop, num_out_backprop));
   return Status::OK();
 }
 

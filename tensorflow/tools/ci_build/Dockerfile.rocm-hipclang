@@ -140,7 +140,7 @@ RUN cd $HOME && git clone --single-branch -b master-rocm-2.3 https://github.com/
 RUN cd $HOME && git clone --single-branch -b master https://github.com/ROCmSoftwarePlatform/rocFFT.git && cd rocFFT && ./install.sh -id --hip-clang
 
 # Build rocRAND from source
-RUN cd $HOME && git clone --single-branch -b master-rocm-2.3 https://github.com/ROCmSoftwarePlatform/rocRAND.git && mkdir rocRAND/build && cd rocRAND/build && HIP_PLATFORM=hcc CXX=/opt/rocm/hip/bin/hipcc cmake .. && make package -j $(nproc) && dpkg -i ./rocrand*.deb
+RUN cd $HOME && git clone --single-branch -b master-rocm-2.3 https://github.com/ROCmSoftwarePlatform/rocRAND.git && mkdir rocRAND/build && cd rocRAND/build && CXX=/opt/rocm/hip/bin/hipcc cmake .. && make package -j $(nproc) && dpkg -i ./rocrand*.deb
 
 RUN cd $HOME && git clone --single-branch -b master https://github.com/ROCmSoftwarePlatform/MIOpen.git
 RUN cd $HOME/MIOpen && mkdir build && cd build && \

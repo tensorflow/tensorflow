@@ -17,12 +17,11 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/searchsorted_op.h"
-
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/searchsorted_op.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
@@ -68,11 +67,10 @@ struct UpperBoundFunctor<GPUDevice, T, OutType> {
     GpuLaunchConfig config =
         GetGpuLaunchConfig(values.size(), device);
 
-    GPU_LAUNCH_KERNEL(UpperBoundKernel<T>,
-           dim3(config.block_count), dim3(config.thread_per_block), 0,
-           device.stream(),
-           sorted_inputs.data(), batch_size, num_inputs, num_values,
-           values.data(), output->data());
+    TF_CHECK_OK(GpuLaunchKernel(
+        UpperBoundKernel<T, OutType>, config.block_count,
+        config.thread_per_block, 0, device.stream(), sorted_inputs.data(),
+        batch_size, num_inputs, num_values, values.data(), output->data()));
 
     return Status::OK();
   }
@@ -89,11 +87,10 @@ struct LowerBoundFunctor<GPUDevice, T, OutType> {
     GpuLaunchConfig config =
         GetGpuLaunchConfig(values.size(), device);
 
-    GPU_LAUNCH_KERNEL(LowerBoundKernel<T>,
-           dim3(config.block_count), dim3(config.thread_per_block), 0,
-           device.stream(),
-           sorted_inputs.data(), batch_size, num_inputs, num_values,
-           values.data(), output->data());
+    TF_CHECK_OK(GpuLaunchKernel(
+        LowerBoundKernel<T, OutType>, config.block_count,
+        config.thread_per_block, 0, device.stream(), sorted_inputs.data(),
+        batch_size, num_inputs, num_values, values.data(), output->data()));
 
     return Status::OK();
   }

@@ -23,7 +23,7 @@ namespace xla {
 namespace gpu {
 
 Status TupleThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                   se::Stream* stream,
+                                   se::Stream* stream, const RunId& /*run_id*/,
                                    HloExecutionProfiler* profiler) {
   auto size = tuple_element_buffers_.size();
   auto tuple_element_buffer_addresses = absl::make_unique<void*[]>(size);

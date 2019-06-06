@@ -31,7 +31,7 @@ bool IsBuiltWithROCm();
 //
 //     OR
 //
-//   TENSORFLOW_USE_ROCM is defined     
+//   TENSORFLOW_USE_ROCM is defined
 //
 bool GpuSupportsHalfMatMulAndConv();
 

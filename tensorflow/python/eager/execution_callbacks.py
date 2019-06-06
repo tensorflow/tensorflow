@@ -40,7 +40,7 @@ class ExecutionCallback(enum.Enum):
   IGNORE: take no action.
   PRINT:  print a warning to `stdout`.
   RAISE:  raise an error (e.g. `InfOrNanError`).
-  WARN:   print a warning using `tf.logging.warn`.
+  WARN:   print a warning using `tf.compat.v1.logging.warn`.
   """
 
   IGNORE = "ignore"
@@ -353,10 +353,10 @@ def errstate(inf_or_nan=None):
 
   Example:
   ```
-  c = tf.log(0.)  # -inf
+  c = tf.math.log(0.)  # -inf
 
   with errstate(inf_or_nan=ExecutionCallback.RAISE):
-    tf.log(0.)  # <-- Raises InfOrNanError.
+    tf.math.log(0.)  # <-- Raises InfOrNanError.
   ```
 
   Args:

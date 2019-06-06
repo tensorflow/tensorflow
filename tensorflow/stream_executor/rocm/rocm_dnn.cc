@@ -103,8 +103,8 @@ class MIOpenHandle {
  public:
   // Takes ownership of the executor context and the lock to access MIOpen
   // using handle.
-  MIOpenHandle(rocm::ScopedActivateExecutorContext context, mutex_lock lock,
-               miopenHandle_t handle)
+  MIOpenHandle(rocm::ScopedActivateExecutorContext context,
+               std::unique_ptr<absl::MutexLock> lock, miopenHandle_t handle)
       : context_(std::move(context)), lock_(std::move(lock)), handle_(handle) {}
 
   // Returns MIOpen handle. To be passed directly to MIOpen APIs, don't keep
@@ -113,7 +113,7 @@ class MIOpenHandle {
 
  private:
   rocm::ScopedActivateExecutorContext context_;
-  mutex_lock lock_;
+  std::unique_ptr<absl::MutexLock> lock_;
   miopenHandle_t handle_;  // Not owned.
 };
 
@@ -133,9 +133,9 @@ static port::ThreadPool* InitMIOpenThreadpool() {
   return miopen_threadpool_;
 }
 
-static mutex miopen_threadpool_mu(LINKER_INITIALIZED);
+static absl::Mutex miopen_threadpool_mu{absl::kConstInit};
 static port::ThreadPool* GetROCmThreadpool() {
-  mutex_lock lock(miopen_threadpool_mu);
+  absl::MutexLock lock(&miopen_threadpool_mu);
   static port::ThreadPool* miopen_threadpool = InitMIOpenThreadpool();
   return miopen_threadpool;
 }
@@ -347,7 +347,7 @@ class CachedFusionPlans {
                            miopenFusionPlanDescriptor_t* fusion_plan,
                            miopenFusionDirection_t fusion_direction,
                            miopenTensorDescriptor_t input_descriptor) {
-    mutex_lock lock{cachedPlansMutex};
+    absl::MutexLock lock{&cachedPlansMutex};
 
     bool foundCachedPlan = false;
 
@@ -371,7 +371,7 @@ class CachedFusionPlans {
 
   // need to figure out the right place to call this routine
   static void Clear() {
-    mutex_lock lock{cachedPlansMutex};
+    absl::MutexLock lock{&cachedPlansMutex};
 
     for (auto it : cachedPlans) {
       auto status = wrap::miopenDestroyFusionPlan(it.second);
@@ -388,19 +388,19 @@ class CachedFusionPlans {
 
   // is the Fusion plan corresponding to this hash unsupported
   static bool isUnsupportedFusionPlan(uint64 hash) {
-    mutex_lock lock{cachedPlansMutex};
+    absl::MutexLock lock{&cachedPlansMutex};
     return unsupportedPlans.count(hash) > 0;
   }
 
   // mark the given hash value as corresponding to an unsupported fusion plan
   static void markFusionPlanUnsupported(uint64 hash) {
-    mutex_lock lock{cachedPlansMutex};
+    absl::MutexLock lock{&cachedPlansMutex};
     unsupportedPlans.insert(hash);
   }
 
  private:
   // mutex to guard access to all data within this class
-  static mutex cachedPlansMutex;
+  static absl::Mutex cachedPlansMutex;
 
   // map of hash-value to MIOpen Fusion plan descriptors
   // need to be able share this across more than one stream and hence static
@@ -411,7 +411,7 @@ class CachedFusionPlans {
   static std::set<uint64> unsupportedPlans;
 };
 
-mutex CachedFusionPlans::cachedPlansMutex;
+absl::Mutex CachedFusionPlans::cachedPlansMutex;
 std::map<uint64, miopenFusionPlanDescriptor_t> CachedFusionPlans::cachedPlans;
 std::set<uint64> CachedFusionPlans::unsupportedPlans;
 
@@ -483,7 +483,7 @@ class MIOpenAccess {
   explicit MIOpenAccess(miopenHandle_t handle) : handle_(handle) {}
 
   ~MIOpenAccess() {
-    mutex_lock lock(mutex_);
+    absl::MutexLock lock(&mutex_);
     wrap::miopenDestroy(handle_);
   }
 
@@ -502,7 +502,8 @@ class MIOpenAccess {
   // therefore a bad idea (performance wise) to call any MIOpen APIs that
   // enqueue work in the stream.
   MIOpenHandle GetHandle(GpuExecutor* executor, Stream* stream) {
-    mutex_lock lock(mutex_);
+    auto lock = absl::make_unique<absl::MutexLock>(&mutex_);
+    mutex_.AssertHeld();
     rocm::ScopedActivateExecutorContext context(executor);
     hipStream_t hip_stream = stream ? AsGpuStreamValue(stream) : nullptr;
     auto status = wrap::miopenSetStream(handle_, hip_stream);
@@ -512,7 +513,7 @@ class MIOpenAccess {
 
  private:
   // Guards the enqueueing of MIOpen operations via the handle_ below.
-  mutex mutex_;
+  absl::Mutex mutex_;
 
   // MIOpen library handle.
   miopenHandle_t handle_ GUARDED_BY(mutex_);  // Owned.
@@ -3030,6 +3031,8 @@ bool MIOpenSupport::DoBatchNormalizationForward(
     DeviceMemory<Eigen::half>* y, DeviceMemory<float>* batch_mean,
     DeviceMemory<float>* batch_var, DeviceMemory<float>* saved_mean,
     DeviceMemory<float>* saved_inv_var, bool is_training,
+    ScratchAllocator* reserve_space_allocator,
+    ScratchAllocator* workspace_allocator,
     std::function<const DeviceMemory<float>&()> var_to_inv_var,
     std::function<void()> inv_var_to_var) {
   return DoBatchNormalizationForwardImpl<Eigen::half, float>(
@@ -3049,6 +3052,8 @@ bool MIOpenSupport::DoBatchNormalizationForward(
     DeviceMemory<float>* y, DeviceMemory<float>* batch_mean,
     DeviceMemory<float>* batch_var, DeviceMemory<float>* saved_mean,
     DeviceMemory<float>* saved_inv_var, bool is_training,
+    ScratchAllocator* reserve_space_allocator,
+    ScratchAllocator* workspace_allocator,
     std::function<const DeviceMemory<float>&()> var_to_inv_var,
     std::function<void()> inv_var_to_var) {
   return DoBatchNormalizationForwardImpl<float, float>(
@@ -3114,9 +3119,10 @@ bool MIOpenSupport::DoBatchNormalizationBackward(
     const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
     const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-    DeviceMemory<Eigen::half>* x_backprop,
-    DeviceMemory<float>* scale_backprop,
-    DeviceMemory<float>* offset_backprop) {
+    DeviceMemory<Eigen::half>* x_backprop, DeviceMemory<float>* scale_backprop,
+    DeviceMemory<float>* offset_backprop,
+    DeviceMemory<uint8>* reserve_space_data,
+    ScratchAllocator* workspace_allocator) {
   return DoBatchNormalizationBackwardImpl<Eigen::half, float>(
       stream, miopenHalf, miopenFloat, y_backprop, x, scale, mean, inv_var,
       x_desc, scale_offset_desc, epsilon, x_backprop, scale_backprop,
@@ -3130,7 +3136,9 @@ bool MIOpenSupport::DoBatchNormalizationBackward(
     const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
-    DeviceMemory<float>* offset_backprop) {
+    DeviceMemory<float>* offset_backprop,
+    DeviceMemory<uint8>* reserve_space_data,
+    ScratchAllocator* workspace_allocator) {
   return DoBatchNormalizationBackwardImpl<float, float>(
       stream, miopenFloat, miopenFloat, y_backprop, x, scale, mean, variance,
       x_desc, scale_offset_desc, epsilon, x_backprop, scale_backprop,

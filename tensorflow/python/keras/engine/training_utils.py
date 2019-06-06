@@ -31,18 +31,18 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor_utils
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras.utils import generic_utils
-from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
+from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -263,6 +263,9 @@ def standardize_single_array(x, expected_shape=None):
   if x is None:
     return None
 
+  if composite_tensor_utils.is_composite_or_composite_value(x):
+    return x
+
   if (x.shape is not None and len(x.shape) == 1 and
       (expected_shape is None or len(expected_shape) != 1)):
     if tensor_util.is_tensor(x):
@@ -330,6 +333,7 @@ def standardize_input_data(data,
   else:
     data = data.values if data.__class__.__name__ == 'DataFrame' else data
     data = [data]
+
   if shapes is not None:
     data = [
         standardize_single_array(x, shape) for (x, shape) in zip(data, shapes)
@@ -367,8 +371,11 @@ def standardize_input_data(data,
           if not tensorshape:
             continue
           data_shape = tuple(tensorshape.as_list())
+        elif composite_tensor_utils.is_composite_or_composite_value(data[i]):
+          data_shape = composite_tensor_utils.get_shape(data[i])
         else:
           data_shape = data[i].shape
+
         shape = shapes[i]
         if len(data_shape) != len(shape):
           raise ValueError('Error when checking ' + exception_prefix +
@@ -683,7 +690,7 @@ def standardize_weights(y,
   # Iterator may return sample_weight as 1-tuple
   if isinstance(sample_weight, tuple):
     sample_weight = sample_weight[0]
-  if sample_weight_mode is not None:
+  if sample_weight_mode is not None and sample_weight_mode != 'samplewise':
     if sample_weight_mode != 'temporal':
       raise ValueError('"sample_weight_mode '
                        'should be None or "temporal". '
@@ -866,7 +873,8 @@ def call_metric_function(metric_fn,
       weights = mask
     else:
       # Update dimensions of weights to match with mask.
-      mask, _, weights = squeeze_or_expand_dimensions(mask, None, weights)
+      mask, _, weights = losses_utils.squeeze_or_expand_dimensions(
+          mask, None, weights)
       weights *= mask
 
   if y_pred is not None:
@@ -876,7 +884,7 @@ def call_metric_function(metric_fn,
 
 
 def get_loss_function(loss):
-  """Returns the loss function corresponding to the given loss input."""
+  """Returns the loss corresponding to the loss input in `compile` API."""
   if loss is None or isinstance(loss, losses.Loss):
     return loss
 
@@ -891,7 +899,14 @@ def get_loss_function(loss):
   # Wrap loss function with signature `(y_true, y_pred, **kwargs)`
   # in `LossFunctionWrapper` class.
   loss_fn = losses.get(loss)
-  return losses.LossFunctionWrapper(loss_fn, name=loss_fn.__name__)
+
+  # For losses which are given as strings/functions in the compile API,
+  # we always set the loss reduction type to be `SUM_OVER_BATCH_SIZE`
+  # (both in distribution strategy context and otherwise).
+  return losses.LossFunctionWrapper(
+      loss_fn,
+      name=loss_fn.__name__,
+      reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE)
 
 
 def validate_dataset_input(x, y, sample_weight, validation_split=None):
@@ -985,9 +1000,11 @@ def check_steps_argument(input_data, steps, steps_name):
   return False
 
 
-def cast_single_tensor(x):
-  if tensor_util.is_tensor(x) and x.dtype.is_floating:
-    return math_ops.cast(x, dtype=K.floatx())
+def cast_single_tensor(x, dtype=None):
+  x = ops.convert_to_tensor(x)
+  dtype = dtype or K.floatx()
+  if x.dtype.is_floating:
+    return math_ops.cast(x, dtype=dtype)
   return x
 
 
@@ -1000,91 +1017,67 @@ def cast_if_floating_dtype(x):
 
   Returns:
     Converted input.
-
-  Raises:
-    RuntimeError: if data isn't tensors.
   """
-  if not has_tensors(x):
-    raise RuntimeError(
-        'Please provide tensors for casting, got: {x}'.format(x=x))
-
   return nest.map_structure(cast_single_tensor, x)
 
 
-def get_output_sample_weight_and_mode(skip_target_weighing_indices,
-                                      sample_weight_mode, output_name,
-                                      output_index):
-  """Returns the sample weight and weight mode for a single output."""
-  if output_index in skip_target_weighing_indices:
-    return None, None
+def cast_if_floating_to_model_input_dtypes(x, model):
+  """Casts the given data tensors to the dtypes of the model inputs.
 
-  if sample_weight_mode == 'temporal':
-    default_value = [[1.]]
-    shape = [None, None]
-    mode = 'temporal'
-  else:
-    default_value = [1.]
-    shape = [None]
-    mode = None
-  if context.executing_eagerly():
-    weight = None
-  else:
-    weight = array_ops.placeholder_with_default(
-        constant_op.constant(default_value, dtype=K.floatx()),
-        shape=shape,
-        name=output_name + '_sample_weights')
-  return weight, mode
-
-
-def prepare_sample_weights(output_names, sample_weight_mode,
-                           skip_target_weighing_indices):
-  """Prepares sample weights for the model.
+  Casts only if the input is already a floating point type.
 
   Args:
-    output_names: List of model output names.
-    sample_weight_mode: sample weight mode user input passed from compile API.
-    skip_target_weighing_indices: Indices of output for which sample weights
-      should be skipped.
+    x: tensor or list/tuple of tensors.
+    model: The model.
 
   Returns:
-    A pair of list of sample weights and sample weight modes
-      (one for each output).
+    Converted input. Each tensor is casted to the corresponding input in
+    `model.inputs`.
+  """
+  # TODO(b/131372221): We should probably cast even if the input is not
+  # floating-point.
+  input_dtypes = nest.map_structure(lambda t: t.dtype, model.inputs)
+  return nest.map_structure(cast_single_tensor, x, input_dtypes)
+
+
+def prepare_sample_weight_modes(training_endpoints, sample_weight_mode):
+  """Prepares sample weight modes for the model.
+
+  Args:
+    training_endpoints: List of model _TrainingEndpoints.
+    sample_weight_mode: sample weight mode user input passed from compile API.
 
   Raises:
     ValueError: In case of invalid `sample_weight_mode` input.
   """
-  sample_weights = []
-  sample_weight_modes = []
+
   if isinstance(sample_weight_mode, collections.Mapping):
-    generic_utils.check_for_unexpected_keys('sample_weight_mode',
-                                            sample_weight_mode, output_names)
-    for i, name in enumerate(output_names):
-      if (i not in skip_target_weighing_indices and
-          name not in sample_weight_mode):
-        raise ValueError('Output missing from sample_weight_modes dictionary')
-      weight, mode = get_output_sample_weight_and_mode(
-          skip_target_weighing_indices, sample_weight_mode.get(name), name, i)
-      sample_weights.append(weight)
-      sample_weight_modes.append(mode)
-  elif isinstance(sample_weight_mode, list):
-    if len(sample_weight_mode) != len(output_names):
+    generic_utils.check_for_unexpected_keys(
+        'sample_weight_mode', sample_weight_mode,
+        [e.output_name for e in training_endpoints])
+
+    for end_point in training_endpoints:
+      if not end_point.should_skip_target_weights():
+        if end_point.output_name not in sample_weight_mode:
+          raise ValueError('Output ' + end_point.output_name +
+                           'missing from `_sample_weight_modes` dictionary')
+        else:
+          end_point.sample_weight_mode = sample_weight_mode.get(
+              end_point.output_name)
+  elif isinstance(sample_weight_mode, (list, tuple)):
+    if len(sample_weight_mode) != len(training_endpoints):
       raise ValueError('When passing a list as sample_weight_mode, '
                        'it should have one entry per model output. '
-                       'The model has ' + str(len(output_names)) +
+                       'The model has ' + str(len(training_endpoints)) +
                        ' outputs, but you passed ' +
-                       str(len(sample_weight_mode)) + 'sample_weight_modes')
-    for i, name in enumerate(output_names):
-      weight, mode = get_output_sample_weight_and_mode(
-          skip_target_weighing_indices, sample_weight_mode[i], name, i)
-      sample_weights.append(weight)
-      sample_weight_modes.append(mode)
+                       str(len(sample_weight_mode)) + '_sample_weight_modes.')
+    for mode, endpoint in zip(sample_weight_mode, training_endpoints):
+      if not endpoint.should_skip_target_weights():
+        endpoint.sample_weight_mode = mode
   else:
-    for i, name in enumerate(output_names):
-      weight, mode = get_output_sample_weight_and_mode(
-          skip_target_weighing_indices, sample_weight_mode, name, i)
-      sample_weights.append(weight)
-      sample_weight_modes.append(mode)
-  return sample_weights, sample_weight_modes
+    for endpoint in training_endpoints:
+      if not endpoint.should_skip_target_weights():
+        endpoint.sample_weight_mode = sample_weight_mode
 
 
 def prepare_loss_functions(loss, output_names):
@@ -1129,11 +1122,13 @@ def prepare_loss_functions(loss, output_names):
   return loss_functions
 
 
-def prepare_loss_weights(output_names, loss_weights=None):
+def prepare_loss_weights(training_endpoints, loss_weights=None):
   """Converts loss weights to a list of loss weights.
 
+  The result loss weights will be populated on the trainging endpoint.
+
   Arguments:
-      output_names: List of model output names.
+      training_endpoints: List of model training endpoints.
       loss_weights: Optional list or dictionary specifying scalar coefficients
         (Python floats) to weight the loss contributions of different model
         outputs. The loss value that will be minimized by the model will then be
@@ -1142,32 +1137,31 @@ def prepare_loss_weights(output_names, loss_weights=None):
             mapping to the model's outputs. If a dict, it is expected to map
             output names (strings) to scalar coefficients.
 
-  Returns:
-      A list of loss weights of python floats.
-
   Raises:
       ValueError: If loss weight is a dict with key not in model output names,
           or if loss is a list with len not equal to model outputs.
   """
   if loss_weights is None:
-    weights_list = [1.] * len(output_names)
+    for e in training_endpoints:
+      e.loss_weight = 1.
   elif isinstance(loss_weights, collections.Mapping):
-    generic_utils.check_for_unexpected_keys('loss_weights', loss_weights,
-                                            output_names)
-    weights_list = [loss_weights.get(name, 1.) for name in output_names]
+    generic_utils.check_for_unexpected_keys(
+        'loss_weights', loss_weights,
+        [e.output_name for e in training_endpoints])
+    for e in training_endpoints:
+      e.loss_weight = loss_weights.get(e.output_name, 1.)
   elif isinstance(loss_weights, list):
-    if len(loss_weights) != len(output_names):
+    if len(loss_weights) != len(training_endpoints):
       raise ValueError('When passing a list as loss_weights, '
                        'it should have one entry per model output. '
-                       'The model has ' + str(len(output_names)) +
+                       'The model has ' + str(len(training_endpoints)) +
                        ' outputs, but you passed loss_weights=' +
                        str(loss_weights))
-    weights_list = loss_weights
+    for w, e in zip(loss_weights, training_endpoints):
+      e.loss_weight = w
   else:
     raise TypeError('Could not interpret loss_weights argument: ' +
                     str(loss_weights) + ' - expected a list of dicts.')
-
-  return weights_list
 
 
 # TODO(rohanj): This is a hack to get around not depending on feature_column and
@@ -1322,14 +1316,17 @@ def is_dataset_or_iterator(data):
 
 def get_iterator(dataset):
   """Create and initialize an iterator from a dataset."""
-  iterator = dataset_ops.make_initializable_iterator(dataset)
+  if context.executing_eagerly():
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
+  else:
+    iterator = dataset_ops.make_initializable_iterator(dataset)
   initialize_iterator(iterator)
   return iterator
 
 
 def initialize_iterator(iterator):
-  init_op = iterator.initializer
   if not context.executing_eagerly():
+    init_op = iterator.initializer
     K.get_session((init_op,)).run(init_op)
 
 
@@ -1481,9 +1478,9 @@ class ModelInputs(object):
         if dtype.is_floating:
           dtype = K.floatx()
         v = K.placeholder(shape=shape, name=k, dtype=dtype)
-      elif isinstance(v, tensor_shape.TensorShape):
-        shape = (None,) + tuple(v.as_list()[1:])
-        v = K.placeholder(shape=shape, name=k)
+      elif isinstance(v, tensor_spec.TensorSpec):
+        shape = (None,) + tuple(v.shape.as_list()[1:])
+        v = K.placeholder(shape=shape, name=k, dtype=v.dtype)
 
       self._flattened_inputs[i] = v
 
@@ -1605,3 +1602,58 @@ def should_run_validation(validation_freq, epoch):
     raise ValueError('`validation_freq` must be an Integer or '
                      '`collections.Container` (e.g. list, tuple, etc.)')
   return one_indexed_epoch in validation_freq
+
+
+class TrainingLoop(object):
+  """TrainingLoop is a wrapper class around the training logic.
+
+  This class is trying to encapsulate the different logic of fit/eval/predict
+  with regard to different data input and model condition.
+
+  Note that TrainingLoop is stateless, which means it doesn't contain any
+  internal field and can be reused with different model and inputs.
+  """
+
+  def fit(self,
+          model,
+          x=None,
+          y=None,
+          batch_size=None,
+          epochs=1,
+          verbose=1,
+          callbacks=None,
+          validation_split=0.,
+          validation_data=None,
+          shuffle=True,
+          class_weight=None,
+          sample_weight=None,
+          initial_epoch=0,
+          steps_per_epoch=None,
+          validation_steps=None,
+          validation_freq=1,
+          **kwargs):
+    """Train the model with the inputs and targets."""
+    raise NotImplementedError()
+
+  def evaluate(self,
+               model,
+               x=None,
+               y=None,
+               batch_size=None,
+               verbose=1,
+               sample_weight=None,
+               steps=None,
+               callbacks=None,
+               **kwargs):
+    """Returns the loss value & metrics values for the model in test mode."""
+    raise NotImplementedError()
+
+  def predict(self,
+              model,
+              x,
+              batch_size=None,
+              verbose=0,
+              steps=None,
+              callbacks=None,
+              **kwargs):
+    raise NotImplementedError()

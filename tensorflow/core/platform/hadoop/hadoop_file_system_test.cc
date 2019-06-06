@@ -207,7 +207,7 @@ TEST_F(HadoopFileSystemTest, WriteWhileReading) {
   // Skip the test if we're not testing on HDFS. Hadoop's local filesystem
   // implementation makes no guarantees that writable files are readable while
   // being written.
-  if (!str_util::StartsWith(fname, "hdfs://")) {
+  if (!absl::StartsWith(fname, "hdfs://")) {
     return;
   }
 

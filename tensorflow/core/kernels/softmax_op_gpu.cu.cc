@@ -23,12 +23,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/platform/types.h"
-
-#include "tensorflow/core/util/gpu_kernel_helper.h"
-
 #include "tensorflow/core/kernels/reduction_gpu_kernels.cu.h"
 #include "tensorflow/core/kernels/reduction_ops_common.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 #if GOOGLE_CUDA
 namespace gpuprim = ::cub;
@@ -135,7 +133,7 @@ template <typename T>
 class SoftmaxOpGPU : public OpKernel {
  public:
   explicit SoftmaxOpGPU(OpKernelConstruction* context) : OpKernel(context) {
-    log_ = str_util::StartsWith(type_string(), "Log");
+    log_ = absl::StartsWith(type_string(), "Log");
   }
 
   void Compute(OpKernelContext* context) override {
@@ -150,7 +148,7 @@ class SoftmaxOpGPU : public OpKernel {
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, logits_in_.shape(), &softmax_out));
 
-    const gpuStream_t& cu_stream = GetGPUStream(context);
+    const gpuStream_t& cu_stream = GetGpuStream(context);
     if (logits_in_.NumElements() > 0) {
       Tensor max_logits;
       Tensor sum_probs;
@@ -186,13 +184,12 @@ class SoftmaxOpGPU : public OpKernel {
           context, const_cast<acc_type*>(sum_probs.flat<acc_type>().data()),
           input_itr, rows, cols);
 
-      GPU_LAUNCH_KERNEL((GenerateNormalizedProb<T, acc_type>),
-          dim3(numBlocks), dim3(numThreads), 0, cu_stream,
-              reinterpret_cast<const T*>(logits_in_.flat<T>().data()),
-              reinterpret_cast<const acc_type*>(
-                  sum_probs.flat<acc_type>().data()),
-              reinterpret_cast<const T*>(max_logits.flat<T>().data()),
-              const_cast<T*>(softmax_out->flat<T>().data()), rows, cols, log_);
+      TF_CHECK_OK(GpuLaunchKernel(
+          (GenerateNormalizedProb<T, acc_type>), numBlocks, numThreads, 0,
+          cu_stream, reinterpret_cast<const T*>(logits_in_.flat<T>().data()),
+          reinterpret_cast<const acc_type*>(sum_probs.flat<acc_type>().data()),
+          reinterpret_cast<const T*>(max_logits.flat<T>().data()),
+          const_cast<T*>(softmax_out->flat<T>().data()), rows, cols, log_));
     }
   }
 

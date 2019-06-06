@@ -126,6 +126,16 @@ xla::PrimitiveType XlaOpKernelContext::input_xla_type(int index) {
   return type;
 }
 
+xla::PrimitiveType XlaOpKernelContext::InputXlaType(absl::string_view name) {
+  xla::PrimitiveType type;
+  Status status = DataTypeToPrimitiveType(InputType(name), &type);
+  if (!status.ok()) {
+    SetStatus(status);
+    return xla::PRIMITIVE_TYPE_INVALID;
+  }
+  return type;
+}
+
 Status XlaOpKernelContext::ConstantInput(int index,
                                          xla::Literal* constant_literal) {
   return ConstantInputReshaped(
@@ -167,9 +177,9 @@ Status XlaOpKernelContext::ConstantInputReshaped(
   absl::optional<Tensor> constant = constant_or_status.ValueOrDie();
   if (!constant.has_value()) {
     return errors::InvalidArgument(
-        "Input ", index, " to ", context_->op_kernel().type_string(),
-        " operator must be a compile-time constant.\n"
-        "\n"
+        "Input ", index, " to node `", context_->op_kernel().name(),
+        "` with op ", context_->op_kernel().type_string(),
+        " must be a compile-time constant.\n\n"
         "XLA compilation requires that operator arguments that represent "
         "shapes or dimensions be evaluated to concrete values at compile time. "
         "This error means that a shape or dimension argument could not be "

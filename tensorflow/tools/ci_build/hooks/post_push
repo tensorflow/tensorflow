@@ -1,0 +1,10 @@
+#!/bin/bash
+
+echo "current image name: "$IMAGE_NAME
+
+GIT_COMMIT_HASH=`git rev-parse --short HEAD`
+NEW_IMAGE_NAME=$DOCKER_REPO":dev-"$GIT_COMMIT_HASH
+echo "new image name: "$NEW_IMAGE_NAME
+
+docker tag $IMAGE_NAME $NEW_IMAGE_NAME
+docker push $NEW_IMAGE_NAME

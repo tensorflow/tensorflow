@@ -76,7 +76,7 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
     int num_levels = levels.size();
     T* d_levels = levels.data();
     int num_samples = values.size();
-    const gpuStream_t& stream = GetGPUStream(context);
+    const gpuStream_t& stream = GetGpuStream(context);
 
     // The first HistogramRange is to obtain the temp storage size required
     // with d_temp_storage = NULL passed to the call.
@@ -92,7 +92,7 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
     if (err != gpuSuccess) {
       return errors::Internal(
           "Could not launch HistogramRange to get temp storage: ",
-          GPU_GET_ERROR_STRING(err), ".");
+          GpuGetErrorString(err), ".");
     }
 
     Tensor temp_storage;
@@ -114,8 +114,8 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
         /* num_samples */ num_samples,
         /* stream */ stream);
     if (err != gpuSuccess) {
-      return errors::Internal("Could not launch HistogramRange: ",
-                              GPU_GET_ERROR_STRING(err), ".");
+      return errors::Internal(
+          "Could not launch HistogramRange: ", GpuGetErrorString(err), ".");
     }
 
     return Status::OK();

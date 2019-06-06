@@ -514,10 +514,10 @@ Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library,
   auto flr = pflr->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
 
   std::unique_ptr<Graph> graph_out;
-  s = EncapsulateSubgraphsInFunctions(
-      "_encapsulate", /*outside_compilation_attribute=*/"", *graph,
-      /*rewrite_subgraph_fn=*/{},
-      /*reuse_existing_functions=*/false, &graph_out, lib_def.get());
+  s = EncapsulateSubgraphsInFunctions("_encapsulate", *graph,
+                                      /*rewrite_subgraph_fn=*/{},
+                                      /*reuse_existing_functions=*/false,
+                                      &graph_out, lib_def.get());
   if (!s.ok()) return s;
 
   std::unordered_map<string, XlaClusterInfo> clusters;
@@ -537,8 +537,9 @@ Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library,
                      XlaClusterInfo{func, func_name_attrs, xla_computation_node,
                                     std::map<string, int>{}});
   }
+  bool modified;
   s = ExtractOutsideCompilation("_encapsulate", "_outside", clusters,
-                                graph_out.get(), flr, lib_def.get());
+                                graph_out.get(), flr, lib_def.get(), &modified);
   if (!s.ok()) return s;
 
   GraphDef graphdef_out;
@@ -745,7 +746,7 @@ TEST(EncapsulateSubgraphsTest, InputDeduplication) {
   FunctionLibraryDefinition library(OpRegistry::Global(), {});
   std::unique_ptr<Graph> graph;
   TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
-      "_cluster", "", graph_before_encapsulation,
+      "_cluster", graph_before_encapsulation,
       /*rewrite_subgraph_fn=*/{},
       /*reuse_existing_functions=*/false, &graph, &library));
 
@@ -797,7 +798,7 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Simple) {
   FunctionLibraryDefinition library(OpRegistry::Global(), {});
   int guaranteed_consts = 0;
   TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
-      "_encapsulate", "", graph_before,
+      "_encapsulate", graph_before,
       /*rewrite_subgraph_fn=*/
       [&guaranteed_consts](const std::vector<OutputTensor>& arg_source_tensors,
                            std::unique_ptr<Graph>* graph_ptr,
@@ -842,7 +843,7 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Add) {
   FunctionLibraryDefinition library(OpRegistry::Global(), {});
   int guaranteed_consts = 0;
   TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
-      "_encapsulate", "", graph_before,
+      "_encapsulate", graph_before,
       /*rewrite_subgraph_fn=*/
       [&guaranteed_consts](const std::vector<OutputTensor>& arg_source_tensors,
                            std::unique_ptr<Graph>* graph_ptr,
@@ -1105,8 +1106,10 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
             {"shapes", absl::Span<const DataType>({})},
             {"_outside_compilation_subgraph", "O2"},
             {"_xla_token_input_nodes",
-             absl::Span<const string>({"_xla_token_arg_node"})}},
-           {"F"}},
+             absl::Span<const string>(
+                 {"_xla_token_arg_node",
+                  "outside_compilation_O1_host_compute"})}},
+           {"F", "outside_compilation_O1_host_compute"}},
           {{"outside_compilation_O1_host_compute"},
            "XlaHostCompute",
            {"C:o:0", "D:o:0"},
@@ -1985,7 +1988,10 @@ TEST(EncapsulateSubgraphsTest,
             {"shapes", absl::Span<const TensorShapeProto>({})},
             {"_outside_compilation_subgraph", "O2"},
             {"_xla_token_input_nodes",
-             absl::Span<const string>({"_xla_token_arg_node"})}}},
+             absl::Span<const string>(
+                 {"_xla_token_arg_node",
+                  "outside_compilation_O1_host_compute"})}},
+           {"outside_compilation_O1_host_compute"}},
       },
       {{"e_0_retval_retval", "outside_compilation_O1_host_compute:outputs:0"},
        {"h_0_retval_retval", "H:o:0"}});
@@ -2110,7 +2116,10 @@ TEST(EncapsulateSubgraphsTest,
             {"shapes", absl::Span<const TensorShapeProto>({})},
             {"_outside_compilation_subgraph", "O2"},
             {"_xla_token_input_nodes",
-             absl::Span<const string>({"_xla_token_arg_node"})}}},
+             absl::Span<const string>(
+                 {"_xla_token_arg_node",
+                  "outside_compilation_O1_host_compute"})}},
+           {"outside_compilation_O1_host_compute"}},
           {{"outside_compilation_O1_host_compute"},
            "XlaHostCompute",
            {"D:o:0"},
@@ -2258,8 +2267,9 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationClusterDependency) {
          {"shapes", absl::Span<const TensorShapeProto>({})},
          {"_outside_compilation_subgraph", "O2"},
          {"_xla_token_input_nodes",
-          absl::Span<const string>({"_xla_token_arg_node"})}},
-        {}},
+          absl::Span<const string>(
+              {"_xla_token_arg_node", "outside_compilation_O1_host_compute"})}},
+        {"outside_compilation_O1_host_compute"}},
        {{"outside_compilation_O3_host_compute"},
         "XlaHostCompute",
         {"D:o:0"},
@@ -2271,8 +2281,11 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationClusterDependency) {
          {"shapes", absl::Span<const TensorShapeProto>({})},
          {"_outside_compilation_subgraph", "O3"},
          {"_xla_token_input_nodes",
-          absl::Span<const string>({"_xla_token_arg_node"})}},
-        {}}},
+          absl::Span<const string>({"_xla_token_arg_node",
+                                    "outside_compilation_O1_host_compute",
+                                    "outside_compilation_O2_host_compute"})}},
+        {"outside_compilation_O1_host_compute",
+         "outside_compilation_O2_host_compute"}}},
       {{"e_0_retval_retval", "outside_compilation_O1_host_compute:outputs:0"},
        {"h_0_retval_retval", "H:o:0"}});
 

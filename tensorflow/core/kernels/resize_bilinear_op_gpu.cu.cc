@@ -19,10 +19,9 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/resize_bilinear_op.h"
-
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/resize_bilinear_op.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
@@ -118,31 +117,31 @@ __global__ void ResizeBilinearGradKernel(
 
     const float dtop = (1 - y_lerp) * input_grad[in_idx];
     GpuAtomicAdd(output_grad +
-                      ((b * original_height + top_y_index) * original_width +
-                       left_x_index) *
-                          channels +
-                      c,
-                  static_cast<T>((1 - x_lerp) * dtop));
+                     ((b * original_height + top_y_index) * original_width +
+                      left_x_index) *
+                         channels +
+                     c,
+                 static_cast<T>((1 - x_lerp) * dtop));
     GpuAtomicAdd(output_grad +
-                      ((b * original_height + top_y_index) * original_width +
-                       right_x_index) *
-                          channels +
-                      c,
-                  static_cast<T>(x_lerp * dtop));
+                     ((b * original_height + top_y_index) * original_width +
+                      right_x_index) *
+                         channels +
+                     c,
+                 static_cast<T>(x_lerp * dtop));
 
     const float dbottom = y_lerp * input_grad[in_idx];
     GpuAtomicAdd(output_grad +
-                      ((b * original_height + bottom_y_index) * original_width +
-                       left_x_index) *
-                          channels +
-                      c,
-                  static_cast<T>((1 - x_lerp) * dbottom));
+                     ((b * original_height + bottom_y_index) * original_width +
+                      left_x_index) *
+                         channels +
+                     c,
+                 static_cast<T>((1 - x_lerp) * dbottom));
     GpuAtomicAdd(output_grad +
-                      ((b * original_height + bottom_y_index) * original_width +
-                       right_x_index) *
-                          channels +
-                      c,
-                  static_cast<T>(x_lerp * dbottom));
+                     ((b * original_height + bottom_y_index) * original_width +
+                      right_x_index) *
+                         channels +
+                     c,
+                 static_cast<T>(x_lerp * dbottom));
   }
 }
 
@@ -153,7 +152,7 @@ __global__ void LegacyResizeBilinearKernel(const int32 nthreads,
                                            int in_height, int in_width,
                                            int channels, int out_height,
                                            int out_width, float* output) {
-    GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
+  GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
     // out_idx = c + channels * (x + out_width * (y + out_height * b))
     int idx = out_idx;
     const int c = idx % channels;
@@ -229,31 +228,31 @@ __global__ void LegacyResizeBilinearGradKernel(
 
     const float dtop = (1 - y_lerp) * input_grad[in_idx];
     GpuAtomicAdd(output_grad +
-                      ((b * original_height + top_y_index) * original_width +
-                       left_x_index) *
-                          channels +
-                      c,
-                  static_cast<T>((1 - x_lerp) * dtop));
+                     ((b * original_height + top_y_index) * original_width +
+                      left_x_index) *
+                         channels +
+                     c,
+                 static_cast<T>((1 - x_lerp) * dtop));
     GpuAtomicAdd(output_grad +
-                      ((b * original_height + top_y_index) * original_width +
-                       right_x_index) *
-                          channels +
-                      c,
-                  static_cast<T>(x_lerp * dtop));
+                     ((b * original_height + top_y_index) * original_width +
+                      right_x_index) *
+                         channels +
+                     c,
+                 static_cast<T>(x_lerp * dtop));
 
     const float dbottom = y_lerp * input_grad[in_idx];
     GpuAtomicAdd(output_grad +
-                      ((b * original_height + bottom_y_index) * original_width +
-                       left_x_index) *
-                          channels +
-                      c,
-                  static_cast<T>((1 - x_lerp) * dbottom));
+                     ((b * original_height + bottom_y_index) * original_width +
+                      left_x_index) *
+                         channels +
+                     c,
+                 static_cast<T>((1 - x_lerp) * dbottom));
     GpuAtomicAdd(output_grad +
-                      ((b * original_height + bottom_y_index) * original_width +
-                       right_x_index) *
-                          channels +
-                      c,
-                  static_cast<T>(x_lerp * dbottom));
+                     ((b * original_height + bottom_y_index) * original_width +
+                      right_x_index) *
+                         channels +
+                     c,
+                 static_cast<T>(x_lerp * dbottom));
   }
 }
 
@@ -278,19 +277,22 @@ struct ResizeBilinear<GPUDevice, T> {
 
     const int total_count = batch * out_height * out_width * channels;
     if (total_count == 0) return;
+
     GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
     if (half_pixel_centers) {
-      GPU_LAUNCH_KERNEL(ResizeBilinearKernel<T>,
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-        config.virtual_thread_count, images.data(), height_scale,
-        width_scale, batch, in_height, in_width, channels, out_height,
-        out_width, output.data());
+      TF_CHECK_OK(
+          GpuLaunchKernel(ResizeBilinearKernel<T>, dim3(config.block_count),
+                          dim3(config.thread_per_block), 0, d.stream(),
+                          config.virtual_thread_count, images.data(),
+                          height_scale, width_scale, batch, in_height, in_width,
+                          channels, out_height, out_width, output.data()));
     } else {
-      GPU_LAUNCH_KERNEL(LegacyResizeBilinearKernel<T>,
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-        config.virtual_thread_count, images.data(), height_scale,
-        width_scale, batch, in_height, in_width, channels, out_height,
-        out_width, output.data());
+      TF_CHECK_OK(GpuLaunchKernel(
+          LegacyResizeBilinearKernel<T>, dim3(config.block_count),
+          dim3(config.thread_per_block), 0, d.stream(),
+          config.virtual_thread_count, images.data(), height_scale, width_scale,
+          batch, in_height, in_width, channels, out_height, out_width,
+          output.data()));
     }
   }
 };
@@ -318,27 +320,27 @@ struct ResizeBilinearGrad<GPUDevice, T> {
     total_count = batch * original_height * original_width * channels;
     if (total_count == 0) return;
     config = GetGpuLaunchConfig(total_count, d);
-    GPU_LAUNCH_KERNEL(SetZero,
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-        config.virtual_thread_count, output_grad.data());
+    TF_CHECK_OK(GpuLaunchKernel(
+        SetZero<T>, config.block_count, config.thread_per_block, 0, d.stream(),
+        config.virtual_thread_count, output_grad.data()));
 
     // Accumulate.
     total_count = batch * resized_height * resized_width * channels;
     config = GetGpuLaunchConfig(total_count, d);
     if (half_pixel_centers) {
-      GPU_LAUNCH_KERNEL(
+      TF_CHECK_OK(GpuLaunchKernel(
           ResizeBilinearGradKernel<T>, config.block_count,
           config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
           input_grad.data(), height_scale, width_scale, batch, original_height,
           original_width, channels, resized_height, resized_width,
-          output_grad.data());
+          output_grad.data()));
     } else {
-      GPU_LAUNCH_KERNEL(
+      TF_CHECK_OK(GpuLaunchKernel(
           LegacyResizeBilinearGradKernel<T>, config.block_count,
           config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
           input_grad.data(), height_scale, width_scale, batch, original_height,
           original_width, channels, resized_height, resized_width,
-          output_grad.data());
+          output_grad.data()));
     }
   }
 };

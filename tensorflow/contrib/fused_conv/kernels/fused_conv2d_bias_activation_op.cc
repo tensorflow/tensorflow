@@ -17,6 +17,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA
 
+#define EIGEN_USE_THREADS
+
 #include "tensorflow/contrib/fused_conv/kernels/fused_conv2d_bias_activation_op.h"
 
 #include "tensorflow/core/framework/bounds_check.h"
@@ -27,16 +29,21 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/conv_2d.h"
+#include "tensorflow/core/kernels/cwise_ops.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/use_cudnn.h"
 
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#endif  // defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+
 #if GOOGLE_CUDA
 #include "google/protobuf/duration.pb.h"
 #include "absl/time/time.h"
-#include "cuda/include/cudnn.h"
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/stream_executor.h"
@@ -49,6 +56,7 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
@@ -59,6 +67,11 @@ struct RawType {
 template <>
 struct RawType<qint8> {
   using type = int8;
+};
+
+template <>
+struct RawType<quint8> {
+  using type = uint8;
 };
 
 // Template struct to convert int8x4 to int32.
@@ -75,6 +88,207 @@ struct Int8x4ToInt32<int8> {
   using type = int32;
 };
 }  // namespace
+
+// WARNING: Packing specializations defined in eigen_spatial_convolutions.h do
+// not support packing expressions of QInt8/QUInt8 type. However, default Eigen
+// gebp_kernel for QInt8/QUInt is too slow to be considered useful for anything.
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+
+// We rely on MKL-DNN quantized gemm for the quantized convolution on CPU (see
+// eigen_contraction_kernel.h). Unfortunately because of 's8*u8 + s8*u8 -> s16'
+// accumulation saturation on Skylake, we can't use `s8s8s32_gemm`, instead we
+// rely on `s8u8s32_gemm`. However to guarantee no loss of precision we must
+// ensure that 'u8' fits into 'u7' (values are in [0, 128) range). This is
+// usually true in practice anyway, because inputs into the convolution are
+// typically after Relu activation.
+//
+// MKL-DNN issue: https://github.com/intel/mkl-dnn/issues/476
+bool AllValuesFitIntoUInt7(const Tensor& conv_input) {
+  static constexpr int8 kMinRange = static_cast<int8>(0);
+  static constexpr int8 kMaxRange = static_cast<int8>(127);
+
+  bool all_in_range;
+
+  auto in0 = conv_input.bit_casted_shaped<int8, 1>({conv_input.NumElements()});
+  typename TTypes<bool>::Scalar(&all_in_range, 1) =
+      ((in0 >= in0.constant(kMinRange)) && (in0 <= in0.constant(kMaxRange)))
+          .all();
+
+  return all_in_range;
+}
+
+template <typename BiasType, typename ScaleType>
+class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
+  using T = qint8;       // conv_input and filter type
+  using UT = quint8;     // conv_input type used for expression evaluation
+  using TempT = qint32;  // temporary accumulator type for tensor contraction
+
+ public:
+  void launch(OpKernelContext* ctx, bool cudnn_use_autotune,
+              const Tensor& conv_input, ScaleType conv_input_scale,
+              const Tensor& filter, int32 row_stride, int32 col_stride,
+              const Eigen::PaddingType& padding, const Tensor& side_input,
+              ScaleType side_input_scale, const Tensor& bias,
+              ActivationMode activation_mode, TensorFormat data_format,
+              FilterTensorFormat filter_format, Tensor* output) {
+    static_assert(std::is_same<BiasType, ScaleType>::value,
+                  "Scale and Bias must be of the same type.");
+
+    // Output tensor has type T (QInt8), but we can only evaluate QInt8/QUInt8
+    // Tensor contraction using 32-bit accumulation (QInt32).
+    Tensor temp_output(DataTypeToEnum<TempT>::value, output->shape());
+
+    constexpr int32 row_dilation = 1;
+    constexpr int32 col_dilation = 1;
+
+    DCHECK(AllValuesFitIntoUInt7(conv_input))
+        << "All values in conv_input tensor must be in [0, 127) range on CPU";
+
+    auto& device = ctx->eigen_device<CPUDevice>();
+
+    // CPU convolution works with input in NHWC and filter in HWIO data formats.
+    // NOTE: This code is mostly shared with 'Conv2D' and 'FusedConv2D'.
+
+    BiasActivationOutputKernel output_kernel(conv_input_scale, side_input,
+                                             side_input_scale, bias,
+                                             activation_mode, output);
+
+    if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 && row_stride == 1 &&
+        col_stride == 1) {
+      int conv_width =  // Width for the convolution step.
+          output->dim_size(0) * output->dim_size(1) * output->dim_size(2);
+
+      Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
+      dim_pair[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 0);
+
+      auto out = temp_output.shaped<TempT, 2>({conv_width, filter.dim_size(3)});
+      auto in0 =
+          conv_input.bit_casted_shaped<UT, 2>({conv_width, filter.dim_size(2)});
+      auto in1 = filter.shaped<T, 2>({filter.dim_size(2), filter.dim_size(3)});
+
+      out.device(device) = in0.contract(in1, dim_pair, output_kernel);
+
+    } else if (filter.dim_size(0) == conv_input.dim_size(1) &&
+               filter.dim_size(1) == conv_input.dim_size(2) &&
+               row_dilation == 1 && col_dilation == 1 &&
+               padding == Eigen::PaddingType::PADDING_VALID) {
+      // If the input data and filter have the same height/width,
+      // reduce the 2D convolution to matrix multiplication.
+      const auto k =  // Length of reduction dimension.
+          filter.dim_size(0) * filter.dim_size(1) * filter.dim_size(2);
+
+      Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
+      dim_pair[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 0);
+
+      auto out = temp_output.shaped<TempT, 2>(
+          {conv_input.dim_size(0), filter.dim_size(3)});
+      auto in0 =
+          conv_input.bit_casted_shaped<UT, 2>({conv_input.dim_size(0), k});
+      auto in1 = filter.shaped<T, 2>({k, filter.dim_size(3)});
+
+      out.device(device) = in0.contract(in1, dim_pair, output_kernel);
+
+    } else {
+      auto out = temp_output.tensor<TempT, 4>();
+      auto in0 = conv_input.bit_casted_tensor<UT, 4>();
+      auto in1 = filter.tensor<T, 4>();
+
+      // Need to swap row/col when calling Eigen.
+      out.device(device) =
+          Eigen::SpatialConvolution(in0, in1, col_stride, row_stride, padding,
+                                    col_dilation, row_dilation, output_kernel);
+    }
+  }
+
+ private:
+  // Contraction output mapper for temporary QInt32 tensor.
+  using ContractionOutputMapper =
+      Eigen::internal::blas_data_mapper<TempT, Eigen::Index, Eigen::ColMajor>;
+
+  // This output kernel computes an expressions corresponding to cuDNN
+  // implementation of INT8 cudnnConvolutionBiasActivationForward:
+  // https://docs.nvidia.com/deeplearning/sdk/cudnn-developer-guide/index.html#scaling-parameters__fig-conv-bias-activation-forward
+  struct BiasActivationOutputKernel {
+    static constexpr int8 kMaxRange = 127;
+    static constexpr int8 kMinRange = -128;
+
+    explicit BiasActivationOutputKernel(ScaleType conv_input_scale,
+                                        const Tensor& side_input,
+                                        ScaleType side_input_scale,
+                                        const Tensor& bias,
+                                        ActivationMode activation_mode,
+                                        Tensor* output)
+        : activation_mode(activation_mode),
+          conv_input_scale(conv_input_scale),
+          bias_data(bias.flat<BiasType>().data()),
+          side_input_data(side_input.flat<T>().data()),
+          side_input_scale(side_input_scale),
+          output_data(const_cast<T*>(output->flat<T>().data())) {}
+
+    EIGEN_ALWAYS_INLINE void operator()(
+        const ContractionOutputMapper& conv_output_mapper,
+        const Eigen::TensorContractionParams& params, Eigen::Index i,
+        Eigen::Index j, Eigen::Index num_rows, Eigen::Index num_cols) const {
+      DCHECK(params.swapped_arguments);
+
+      const auto stride = conv_output_mapper.stride();
+
+      const BiasType* bias_base = bias_data + i;
+      typename TTypes<BiasType>::UnalignedConstTensor bias(bias_base, num_rows);
+
+      const T* side_input_base = side_input_data + i + j * stride;
+      T* output_base = output_data + i + j * stride;
+
+      for (int col = 0; col < num_cols; ++col) {
+        // A column of an output tensor after QInt8xQInt8 -> QInt32 contraction.
+        // This is a temporary tensor, that we will scale, add bias with
+        // side_input, and quantize before writing to final output tensor.
+        typename TTypes<TempT>::UnalignedConstTensor conv_output(
+            &conv_output_mapper(0, col), num_rows);
+
+        // A column of side input tensor corresponding to conv output row.
+        typename TTypes<T>::UnalignedConstTensor side_input(
+            side_input_base + col * stride, num_rows);
+
+        // A column of output quantized tensor corresponding to conv output row.
+        typename TTypes<T>::UnalignedTensor output(output_base + col * stride,
+                                                   num_rows);
+
+        auto conv_output_scaled =
+            conv_output.cast<ScaleType>() * conv_input_scale;
+        ScaleType lower_bound = (activation_mode == ActivationMode::NONE
+                                     ? static_cast<ScaleType>(kMinRange)
+                                     : 0);
+        if (side_input_scale == 0.0f) {
+          output =
+              (conv_output_scaled + bias)
+                  // scalar_round_op_google uses HALF_TO_EVEN.
+                  .unaryExpr(Eigen::internal::scalar_round_op_google<float>())
+                  .clip(lower_bound, static_cast<ScaleType>(kMaxRange))
+                  .template cast<T>();
+        } else {
+          auto side_input_scaled =
+              side_input.cast<ScaleType>() * side_input_scale;
+          output =
+              (conv_output_scaled + bias + side_input_scaled)
+                  // scalar_round_op_google uses HALF_TO_EVEN.
+                  .unaryExpr(Eigen::internal::scalar_round_op_google<float>())
+                  .clip(lower_bound, static_cast<ScaleType>(kMaxRange))
+                  .template cast<T>();
+        }
+      }
+    }
+
+   private:
+    ActivationMode activation_mode;
+    ScaleType conv_input_scale;
+    const BiasType* bias_data;
+    const T* side_input_data;
+    ScaleType side_input_scale;
+    T* output_data;
+  };
+};
+#endif  // defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 
 // T is the element type of the conv_input, filter and side_input tensors.
 // BiasType is the element type of the bias tensor, which can be different.
@@ -120,19 +334,45 @@ class FusedConv2DBiasActivationOp : public OpKernel {
         errors::Unimplemented("Convolutional strides are not supported in "
                               "the batch and depth dimensions."));
 
-    // Assuming qint8 <--> NCHW_VECT_C, OIHW_VECT_I (int8x4) here.
-    constexpr bool is_int8x4 = std::is_same<T, qint8>::value;
+    std::vector<int32> dilations;
+    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations));
+    OP_REQUIRES(context, dilations == std::vector<int32>({1, 1, 1, 1}),
+                errors::InvalidArgument("Dilations must be all equal to 1."));
 
-    // Note: Only NCHW_VECT_C format is supported for int8.
-    // This is because it is expected to be the fastest, and our previous tests
-    // found cudnn 6 does not fully support the other formats for int8 mode.
-    OP_REQUIRES(context, (is_int8x4 == (data_format_ == FORMAT_NCHW_VECT_C)),
-                errors::InvalidArgument(
-                    "qint8 should be used with data_format NCHW_VECT_C."));
+    constexpr bool is_cpu = std::is_same<Device, CPUDevice>::value;
+    constexpr bool is_gpu = std::is_same<Device, GPUDevice>::value;
+    OP_REQUIRES(context, is_cpu || is_gpu,
+                errors::InvalidArgument("Unknown Device type."));
 
-    OP_REQUIRES(context, (is_int8x4 == (filter_format_ == FORMAT_OIHW_VECT_I)),
-                errors::InvalidArgument(
-                    "qint8 should be used with filter_format OIHW_VECT_I."));
+    constexpr bool is_qint8 = std::is_same<T, qint8>::value;
+
+    if (is_qint8 && is_gpu) {
+      // Assuming qint8 <--> NCHW_VECT_C, OIHW_VECT_I (int8x4) here.
+
+      // Note: Only NCHW_VECT_C format is supported for int8 on GPU.
+      // This is because it is expected to be the fastest, and our previous
+      // tests found cudnn 6 does not fully support the other formats for int8
+      // mode.
+      OP_REQUIRES(
+          context, data_format_ == FORMAT_NCHW_VECT_C,
+          errors::InvalidArgument(
+              "qint8 should be used with data_format NCHW_VECT_C on GPU."));
+      OP_REQUIRES(
+          context, filter_format_ == FORMAT_OIHW_VECT_I,
+          errors::InvalidArgument(
+              "qint8 should be used with filter_format OIHW_VECT_I on GPU."));
+
+    } else if (is_qint8 && is_cpu) {
+      // On CPU we implement convolution with Eigen Tensor contraction, it
+      // requries NHWC and HWIO formats for input and kernel.
+
+      OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
+                  errors::InvalidArgument(
+                      "qint8 should be used with data_format NHWC on CPU."));
+      OP_REQUIRES(context, filter_format_ == FORMAT_HWIO,
+                  errors::InvalidArgument(
+                      "qint8 should be used with filter_format HWIO on CPU."));
+    }
 
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_type_));
     eigen_padding_type_ = BrainPadding2EigenPadding(padding_type_);
@@ -255,6 +495,15 @@ class FusedConv2DBiasActivationOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(FusedConv2DBiasActivationOp);
 };
 
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+REGISTER_KERNEL_BUILDER(
+    Name("FusedConv2DBiasActivation")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<qint8>("T")
+        .TypeConstraint<float>("Tbias"),
+    FusedConv2DBiasActivationOp<CPUDevice, qint8, float, float>);
+#endif  // defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+
 #if GOOGLE_CUDA
 namespace dnn = se::dnn;
 
@@ -308,9 +557,8 @@ tensorflow::ComputeCapability GetComputeCapability(
   return cc;
 }
 
-void LogFusedConvAutotuneResults(
-    se::dnn::ConvolutionKind kind, se::dnn::DataType element_type,
-    const se::dnn::BatchDescriptor& input_desc,
+void LogFusedConvForwardAutotuneResults(
+    se::dnn::DataType element_type, const se::dnn::BatchDescriptor& input_desc,
     const se::dnn::FilterDescriptor& filter_desc,
     const se::dnn::BatchDescriptor& output_desc,
     const se::dnn::ConvolutionDescriptor& conv_desc, double conv_scale,
@@ -319,7 +567,7 @@ void LogFusedConvAutotuneResults(
   AutotuningLog log;
   {
     ConvolutionProto instr;
-    instr.set_kind(kind);
+    instr.set_kind(se::dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION);
     *instr.mutable_input() = input_desc.ToProto(element_type);
     *instr.mutable_filter() = filter_desc.ToProto(element_type);
     *instr.mutable_output() = output_desc.ToProto(element_type);
@@ -726,8 +974,7 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
             absl::Milliseconds(profile_result.elapsed_time_in_ms()));
       }
     }
-    internal::LogFusedConvAutotuneResults(
-        se::dnn::ConvolutionKind::FORWARD,
+    internal::LogFusedConvForwardAutotuneResults(
         se::dnn::ToDataType<typename RawType<T>::type>::value, conv_input_desc,
         filter_desc, output_desc, conv_desc, conv_input_scale, side_input_scale,
         dnn_activation_mode, stream->parent(), results);

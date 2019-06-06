@@ -51,7 +51,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       const HloInstruction* hlo,
       const HloToElementGeneratorMap& operand_to_generator) override;
 
-
  protected:
   StatusOr<llvm::Value*> EmitFloatBinaryOp(const HloInstruction* op,
                                            llvm::Value* lhs_value,
@@ -93,9 +92,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
                                   llvm::Value* value) override;
 
-  StatusOr<llvm::Value*> EmitRoundNearestAfz(PrimitiveType prim_type,
-                                             llvm::Value* value) override;
-
   llvm::Value* EmitThreadId() override;
 
  private:
@@ -109,8 +105,7 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   llvm::Value* EmitDeviceFunctionCall(
       const string& callee_name, absl::Span<llvm::Value* const> operands,
       absl::Span<const PrimitiveType> input_type, PrimitiveType output_type,
-      absl::Span<const llvm::Attribute::AttrKind> attributes,
-      llvm::IRBuilder<>* ir_builder, llvm::Module* module);
+      absl::Span<const llvm::Attribute::AttrKind> attributes);
 
   // Emits IR to call an LLVM intrinsic of type [T] -> T.  Adjusts
   // callee_name according to T.  Returns the IR value that represents the
@@ -119,11 +114,11 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       const string& callee_name, absl::Span<llvm::Value* const> operands,
       absl::Span<const PrimitiveType> input_types, PrimitiveType output_type);
 
-  // Emits IR to call a ROCDL function of type [T] -> T.  Adjusts
+  // Emits IR to call a libdevice function of type [T] -> T.  Adjusts
   // callee_name according to T.  Returns the IR value that represents the
   // return value of the function.
   StatusOr<llvm::Value*> EmitLibdeviceMathCall(
-      TargetFunctionID callee_id, absl::Span<llvm::Value* const> operands,
+      TargetDeviceFunctionID func_id, absl::Span<llvm::Value* const> operands,
       absl::Span<const PrimitiveType> input_types, PrimitiveType output_type);
 
   // Emits IR to call a function of type [T] -> T.  Does not munge callee_name.
@@ -132,7 +127,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       const string& callee_name, absl::Span<llvm::Value* const> operands,
       absl::Span<const PrimitiveType> input_types, PrimitiveType output_type);
 
-  const HloModuleConfig& hlo_module_config_;
   NestedComputer compute_nested_;
 };
 

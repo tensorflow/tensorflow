@@ -33,14 +33,18 @@ from tensorflow.python.eager import context as eager_context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.losses import loss_reduction
+from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
 
@@ -82,12 +86,24 @@ class UpdateContext(object):
 
 @tf_export(v1=["distribute.get_loss_reduction"])
 def get_loss_reduction():
-  """DEPRECATED: Now always returns `tf.distribute.ReduceOp.SUM`.
+  """`tf.distribute.ReduceOp` corresponding to the last loss reduction.
 
-  We now always make the complete adjustment when computing the loss, so
-  code should always add gradients/losses across replicas, never average.
+  This is used to decide whether loss should be scaled in optimizer (used only
+  for estimator + v1 optimizer use case).
+
+  Returns:
+    `tf.distribute.ReduceOp` corresponding to the last loss reduction for
+    estimator and v1 optimizer use case. `tf.distribute.ReduceOp.SUM` otherwise.
   """
-  return reduce_util.ReduceOp.SUM
+  if not distribution_strategy_context.get_strategy()._scale_loss_for_estimator:  # pylint: disable=protected-access
+    # If we are not in Estimator context then return 'SUM'. We do not need to
+    # scale loss in the optimizer.
+    return reduce_util.ReduceOp.SUM
+  last_reduction = ops.get_default_graph()._last_loss_reduction  # pylint: disable=protected-access
+  if (last_reduction == losses_impl.Reduction.SUM or
+      last_reduction == loss_reduction.ReductionV2.SUM):
+    return reduce_util.ReduceOp.SUM
+  return reduce_util.ReduceOp.MEAN
 
 
 # ------------------------------------------------------------------------------
@@ -331,10 +347,29 @@ class Strategy(object):
   def __init__(self, extended):
     self._extended = extended
 
+    # Flag that is used to indicate whether distribution strategy is used with
+    # Estimator. This is required for backward compatibility of loss scaling
+    # when using v1 optimizer with estimator.
+    self._scale_loss_for_estimator = False
+
   @property
   def extended(self):
     """`tf.distribute.StrategyExtended` with additional methods."""
     return self._extended
+
+  @tf_contextlib.contextmanager
+  def _scale_loss_for_estimator_enabled(self):
+    """Scope which sets a flag used for scaling losses in optimizer.
+
+    Yields:
+      `_scale_loss_for_estimator_enabled` is a context manager with a
+      side effect, but doesn't return a value.
+    """
+    self._scale_loss_for_estimator = True
+    try:
+      yield
+    finally:
+      self._scale_loss_for_estimator = False
 
   def scope(self):
     """Returns a context manager selecting this Strategy as current.
@@ -398,9 +433,28 @@ class Strategy(object):
   def experimental_distribute_dataset(self, dataset):
     """Distributes a tf.data.Dataset instance provided via `dataset`.
 
-    Data from the given dataset will be distributed evenly across all the
-    compute replicas. This function assumes that the input dataset is batched
-    by the global batch size.
+    In a multi-worker setting, we will first attempt to distribute the dataset
+    by attempting to detect whether the dataset is being created out of
+    ReaderDatasets (e.g. TFRecordDataset, TextLineDataset, etc.) and if so,
+    attempting to shard the input files. Note that there has to be at least one
+    input file per worker. If you have less than one input file per worker, we
+    suggest that you should disable distributing your dataset using the method
+    below.
+
+    If that attempt is unsuccessful (e.g. the dataset is created from a
+    Dataset.range), we will shard the dataset evenly at the end by appending a
+    `.shard` operation to the end of the processing pipeline. This will cause
+    the entire preprocessing pipeline for all the data to be run on every
+    worker, and each worker will do redundant work. We will print a warning
+    if this method of sharding is selected. In this case, consider using
+    `experimental_distribute_datasets_from_function` instead.
+
+    You can disable dataset distribution using the `auto_shard` option in
+    `tf.data.experimental.DistributeOptions`.
+
+    Within each host, we will also split the data among all the worker devices
+    (if more than one a present), and this will happen even if multi-worker
+    sharding is disabled using the method above.
 
     The following is an example:
 
@@ -408,7 +462,8 @@ class Strategy(object):
     strategy = tf.distribute.MirroredStrategy()
 
     # Create a dataset
-    dataset = dataset_ops.Dataset.range(10).batch(2)
+    dataset = dataset_ops.Dataset.TFRecordDataset([
+      "/a/1.tfr", "/a/2.tfr", "/a/3.tfr", /a/4.tfr"])
 
     # Distribute that dataset
     dist_dataset = strategy.experimental_distribute_dataset(dataset)
@@ -419,14 +474,60 @@ class Strategy(object):
     ```
 
     Args:
-      dataset: `tf.data.Dataset` that will be distributed evenly across all
-        replicas.
+      dataset: `tf.data.Dataset` that will be sharded across all replicas using
+        the rules stated above.
 
     Returns:
       A `DistributedDataset` which returns inputs for each step of the
       computation.
     """
     return self._extended._experimental_distribute_dataset(dataset)  # pylint: disable=protected-access
+
+  def experimental_distribute_datasets_from_function(self, dataset_fn):
+    """Distributes `tf.data.Dataset` instances created by calls to `dataset_fn`.
+
+    `dataset_fn` will be called once for each worker in the strategy. Each
+    replica on that worker will dequeue one batch of inputs from the local
+    `Dataset` (i.e. if a worker has two replicas, two batches will be dequeued
+    from the `Dataset` every step).
+
+    This method can be used for several purposes. For example, where
+    `experimental_distribute_dataset` is unable to shard the input files, this
+    method might be used to manually shard the dataset (avoiding the slow
+    fallback behavior in `experimental_distribute_dataset`). In cases where the
+    dataset is infinite, this sharding can be done by creating dataset replicas
+    that differ only in their random seed.
+
+    The `dataset_fn` should take an `tf.distribute.InputContext` instance where
+    information about batching and input replication can be accessed:
+
+    ```
+    def dataset_fn(input_context):
+      batch_size = input_context.get_per_replica_batch_size(global_batch_size)
+      d = tf.data.Dataset.from_tensors([[1.]]).repeat().batch(batch_size)
+      return d.shard(
+          input_context.num_input_pipelines, input_context.input_pipeline_id)
+
+    inputs = strategy.experimental_distribute_datasets_from_function(dataset_fn)
+
+    for batch in inputs:
+      replica_results = strategy.experimental_run_v2(replica_fn, args=(batch,))
+    ```
+
+    IMPORTANT: The `Dataset` returned by `dataset_fn` should have a per-replica
+    batch size, unlike `distribute_dataset`, which uses the global batch size.
+    This may be computed using `input_context.get_per_replica_batch_size`.
+
+    Args:
+      dataset_fn: A function taking a `tf.distribute.InputContext` instance and
+        returning a `tf.data.Dataset`.
+
+    Returns:
+      A `DistributedDatasetsFromFunction` which returns inputs for each step of
+      the computation.
+    """
+    return self._extended._experimental_distribute_datasets_from_function(  # pylint: disable=protected-access
+        dataset_fn)
 
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """Runs ops in `fn` on each replica, with the given arguments.
@@ -527,10 +628,15 @@ class Strategy(object):
           raise ValueError(
               "`axis` = %r out of range for `value` with rank %d" %
               (axis, v.shape.rank))
-        if v.shape[axis] is not None:
+        # TF v2 returns `None` for unknown dimensions and an integer for
+        # known dimension, whereas TF v1 returns tensor_shape.Dimension(None)
+        # or tensor_shape.Dimension(integer). `dimension_value` hides this
+        # difference, always returning `None` or an integer.
+        dim = tensor_shape.dimension_value(v.shape[axis])
+        if dim is not None:
           # By returning a python value in the static shape case, we can
           # maybe get a fast path for reducing the denominator.
-          return numer, v.shape[axis]
+          return numer, dim
       elif axis < 0:
         axis = axis + array_ops.rank(v)
       denom = array_ops.shape_v2(v, out_type=dtypes.int64)[axis]
@@ -864,11 +970,23 @@ class StrategyExtendedV2(object):
 
     ```
     with my_strategy.scope():
-      iterator = my_strategy.make_dataset_iterator(dataset)
-      session.run(iterator.initialize())
-      replica_train_ops = my_strategy.experimental_run_v2(
-          replica_fn, args=(iterator.get_next(),))
-      train_op = my_strategy.group(replica_train_ops)
+      @tf.function
+      def distribute_train_epoch(dataset):
+        def replica_fn(input):
+          # process input and return result
+          return result
+
+        total_result = 0
+        for x in dataset:
+          per_replica_result = my_strategy.experimental_run_v2(replica_fn,
+                                                               args=(x,))
+          total_result += my_strategy.reduce(tf.distribute.ReduceOp.SUM,
+                                             per_replica_result, axis=None)
+        return total_result
+
+      dist_dataset = my_strategy.experimental_distribute_dataset(dataset)
+      for _ in range(EPOCHS):
+        train_result = distribute_train_epoch(dist_dataset)
     ```
 
     This takes an ordinary `dataset` and `replica_fn` and runs it
@@ -877,6 +995,11 @@ class StrategyExtendedV2(object):
     using `my_strategy`'s policy, and library functions called by
     `replica_fn` can use the `get_replica_context()` API to get enhanced
     behavior in this case.
+
+    You can use the `reduce` API to aggregate results across replicas and use
+    this as a return value from one iteration over the distributed dataset. Or
+    you can use `tf.keras.metrics` such as loss, accuracy etc. to
+    accumulate metrics across steps in a given epoch.
 
   * If you want to write a distributed algorithm, you may use any of
     the `tf.distribute.Strategy` APIs inside a
@@ -946,13 +1069,13 @@ class StrategyExtendedV2(object):
     for `d`
   * `with d.extended.colocate_vars_with(v)`: in replica/cross-replica context,
     variables will be created with locality V(`v`). That is, if we write
-    `with d.extended.colocate_vars_with(v1): v2 = tf.get_variable(...)`,
-    then `v2` will have locality V(`v1`), i.e. locality V(`v2`) will equal
-    V(`v1`).
+    `with d.extended.colocate_vars_with(v1):
+    v2 = tf.Variable(...)`, then `v2` will have locality V(`v1`),
+    i.e. locality V(`v2`) will equal V(`v1`).
   * `with d.extended.colocate_vars_with(d.extended.non_slot_devices(...))`: in
     replica/cross-replica context, variables will be created with locality N
-  * `v = tf.get_variable(...)`: in replica/cross-replica context, creates
-    a variable (which by definition will have locality V(`v`), though
+  * `v = tf.Variable(...)`: in replica/cross-replica context,
+    creates a variable (which by definition will have locality V(`v`), though
     will match another locality if inside a `colocate_vars_with`
     scope).
   * `d.make_dataset_iterator(dataset)`: in cross-replica
@@ -1090,7 +1213,7 @@ class StrategyExtendedV2(object):
     No operations should be added to the graph inside this scope, it
     should only be used when creating variables (some implementations
     work by changing variable creation, others work by using a
-    tf.colocate_with() scope).
+    tf.compat.v1.colocate_with() scope).
 
     This may only be used inside `self.scope()`.
 
@@ -1098,11 +1221,11 @@ class StrategyExtendedV2(object):
 
     ```
     with strategy.scope():
-      var1 = tf.get_variable(...)
+      var1 = tf.Variable(...)
       with strategy.extended.colocate_vars_with(var1):
         # var2 and var3 will be created on the same device(s) as var1
-        var2 = tf.get_variable(...)
-        var3 = tf.get_variable(...)
+        var2 = tf.Variable(...)
+        var3 = tf.Variable(...)
 
       def fn(v1, v2, v3):
         # operates on v1 from var1, v2 from var2, and v3 from var3
@@ -1141,6 +1264,9 @@ class StrategyExtendedV2(object):
     raise NotImplementedError("must be implemented in descendants")
 
   def _experimental_distribute_dataset(self, dataset):
+    raise NotImplementedError("must be implemented in descendants")
+
+  def _experimental_distribute_datasets_from_function(self, dataset_fn):
     raise NotImplementedError("must be implemented in descendants")
 
   def _reduce(self, reduce_op, value):
@@ -1801,7 +1927,7 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
   def _update_non_slot(self, colocate_with, fn, args, kwargs, should_group):
     # TODO(josh11b): Figure out what we should be passing to UpdateContext()
     # once that value is used for something.
-    with ops.colocate_with(colocate_with), UpdateContext(colocate_with):
+    with UpdateContext(colocate_with):
       result = fn(*args, **kwargs)
       if should_group:
         return result

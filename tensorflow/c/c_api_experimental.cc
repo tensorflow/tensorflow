@@ -18,10 +18,12 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/checkpoint_reader.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -36,6 +38,7 @@ using tensorflow::FunctionDef;
 using tensorflow::Node;
 using tensorflow::NodeBuilder;
 using tensorflow::Status;
+using tensorflow::errors::InvalidArgument;
 
 namespace {
 typedef std::unique_ptr<TF_Function, decltype(&TF_DeleteFunction)>
@@ -64,6 +67,24 @@ void TF_EnableXLACompilation(TF_SessionOptions* options, unsigned char enable) {
   } else {
     optimizer_options->set_global_jit_level(tensorflow::OptimizerOptions::OFF);
   }
+}
+
+unsigned char TF_SetXlaEnableLazyCompilation(unsigned char enable) {
+  tensorflow::BuildXlaOpsPassFlags* flags =
+      tensorflow::GetBuildXlaOpsPassFlags();
+  bool original = flags->tf_xla_enable_lazy_compilation;
+  flags->tf_xla_enable_lazy_compilation = enable;
+  return original;
+}
+
+void TF_SetXLaAutoJitMode(const char* mode) {
+  tensorflow::SetXlaAutoJitFlagFromFlagString(mode);
+}
+
+void TF_SetXlaMinClusterSize(int size) {
+  tensorflow::MarkForCompilationPassFlags* flags =
+      tensorflow::GetMarkForCompilationPassFlags();
+  flags->tf_xla_min_cluster_size = size;
 }
 
 TF_Buffer* TF_CreateConfig(unsigned char enable_xla_compilation,
@@ -130,7 +151,7 @@ const char* TF_GraphDebugString(TF_Graph* graph, size_t* len) {
 }
 
 char* TF_FunctionDebugString(TF_Function* func, size_t* len) {
-  const auto& debug_str = func->fdef.DebugString();
+  const auto& debug_str = DebugString(func->fdef);
   *len = debug_str.size();
   char* ret = static_cast<char*>(malloc(*len + 1));
   memcpy(ret, debug_str.c_str(), *len + 1);
@@ -557,6 +578,73 @@ void TF_MakeInternalErrorStatus(TF_Status* status, const char* errMsg) {
   status->status = tensorflow::errors::Internal(errMsg);
 }
 
+struct TF_CheckpointReader : public tensorflow::checkpoint::CheckpointReader {
+  using tensorflow::checkpoint::CheckpointReader::CheckpointReader;
+  std::vector<std::string> variable_list;
+};
+
+TF_CheckpointReader* TF_NewCheckpointReader(const char* filename,
+                                            TF_Status* status) {
+  TF_CheckpointReader* reader = new TF_CheckpointReader(filename, status);
+  if (!status->status.ok()) return nullptr;
+  const auto& m = reader->GetVariableToDataTypeMap();
+  for (auto it = m.begin(); it != m.end(); ++it)
+    reader->variable_list.push_back(it->first);
+  std::sort(reader->variable_list.begin(), reader->variable_list.end());
+  return reader;
+}
+
+void TF_DeleteCheckpointReader(TF_CheckpointReader* reader) { delete reader; }
+
+int TF_CheckpointReaderHasTensor(TF_CheckpointReader* reader,
+                                 const char* name) {
+  return reader->HasTensor(name);
+}
+
+const char* TF_CheckpointReaderGetVariable(TF_CheckpointReader* reader,
+                                           int index) {
+  return reader->variable_list[index].c_str();
+}
+
+int TF_CheckpointReaderSize(TF_CheckpointReader* reader) {
+  return reader->variable_list.size();
+}
+
+TF_DataType TF_CheckpointReaderGetVariableDataType(TF_CheckpointReader* reader,
+                                                   const char* name) {
+  const auto& m = reader->GetVariableToDataTypeMap();
+  return static_cast<TF_DataType>(m.at(name));
+}
+
+TF_Tensor* TF_CheckpointReaderGetTensor(TF_CheckpointReader* reader,
+                                        const char* name, TF_Status* status) {
+  std::unique_ptr<tensorflow::Tensor> tensor;
+  reader->GetTensor(name, &tensor, status);
+  if (!status->status.ok()) return nullptr;
+  return tensorflow::TF_TensorFromTensor(*tensor.get(), status);
+}
+
+void TF_CheckpointReaderGetVariableShape(TF_CheckpointReader* reader,
+                                         const char* name, int64_t* dims,
+                                         int num_dims, TF_Status* status) {
+  const auto& shape = reader->GetVariableToShapeMap().at(name);
+  int rank = shape.dims();
+  if (num_dims != rank) {
+    status->status = InvalidArgument("Expected rank is ", num_dims,
+                                     " but actual rank is ", rank);
+    return;
+  }
+  for (int i = 0; i < num_dims; i++) {
+    dims[i] = shape.dim_size(i);
+  }
+}
+
+int TF_CheckpointReaderGetVariableNumDims(TF_CheckpointReader* reader,
+                                          const char* name) {
+  const auto& m = reader->GetVariableToShapeMap();
+  return m.at(name).dims();
+}
+
 // This builder is used in the eager API to build a NodeDef.
 struct TF_AttrBuilder : public tensorflow::AttrBuilder {
   using tensorflow::AttrBuilder::AttrBuilder;
@@ -676,7 +764,7 @@ tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
 
   LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
 
-  LOG_AND_RETURN_IF_ERROR(ctx->context.StoreCollectiveOpsServer(
+  LOG_AND_RETURN_IF_ERROR(ctx->context->StoreCollectiveOpsServer(
       std::move(server), grpc_server->worker_env()->device_mgr,
       grpc_server->worker_env()->collective_executor_mgr));
 

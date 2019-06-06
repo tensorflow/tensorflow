@@ -16,25 +16,38 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_GPU_DEVICE_FUNCTIONS_H_
 #define TENSORFLOW_CORE_UTIL_GPU_DEVICE_FUNCTIONS_H_
 
+/**
+ * Wrappers and helpers for CUDA device code.
+ *
+ * Wraps the warp-cooperative intrinsics introduced in CUDA 9 to provide
+ * backwards compatibility, see go/volta-porting for details.
+ * Provides atomic operations on types that aren't natively supported.
+ */
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <algorithm>
 #include <complex>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #if GOOGLE_CUDA
-#include "cuda/include/cuComplex.h"
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuComplex.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #endif
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/gpu_cuda_alias.h"
 
 namespace tensorflow {
 
 // According to HIP developer guide at
 // https://github.com/ROCm-Developer-Tools/HIP/blob/master/docs/markdown/hip_kernel_language.md#assert
-// assert is not supported by HIP. While we are waiting for assert support in hip kernels, the assert
-// call should be macroed to NOP so that it does not block us from creating a debug build
+// assert is not supported by HIP. While we are waiting for assert support in
+// hip kernels, the assert call should be macroed to NOP so that it does not
+// block us from creating a debug build
 #if TENSORFLOW_USE_ROCM
-  #define assert(x) {}
+#undef assert
+#define assert(x) \
+  {}
 #endif
 
 namespace detail {
@@ -82,6 +95,10 @@ class GpuGridRange {
   T end_;
 };
 
+#ifndef TENSORFLOW_USE_ROCM
+template <typename... T>
+using CudaGridRange = GpuGridRange<T...>;
+#endif
 }  // namespace detail
 
 // Helper to visit indices in the range 0 <= i < count, using the x-coordinate
@@ -91,45 +108,52 @@ class GpuGridRange {
 template <typename T>
 __device__ detail::GpuGridRange<T> GpuGridRangeX(T count) {
   return detail::GpuGridRange<T>(blockIdx.x * blockDim.x + threadIdx.x,
-                                  gridDim.x * blockDim.x, count);
+                                 gridDim.x * blockDim.x, count);
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeX, CudaGridRangeX);
 
 // Helper to visit indices in the range 0 <= i < count using the y-coordinate.
 // Usage: for(int i : GpuGridRangeY(count)) { visit(i); }
 template <typename T>
 __device__ detail::GpuGridRange<T> GpuGridRangeY(T count) {
   return detail::GpuGridRange<T>(blockIdx.y * blockDim.y + threadIdx.y,
-                                  gridDim.y * blockDim.y, count);
+                                 gridDim.y * blockDim.y, count);
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeY, CudaGridRangeY);
 
 // Helper to visit indices in the range 0 <= i < count using the z-coordinate.
 // Usage: for(int i : GpuGridRangeZ(count)) { visit(i); }
 template <typename T>
 __device__ detail::GpuGridRange<T> GpuGridRangeZ(T count) {
   return detail::GpuGridRange<T>(blockIdx.z * blockDim.z + threadIdx.z,
-                                  gridDim.z * blockDim.z, count);
+                                 gridDim.z * blockDim.z, count);
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeZ, CudaGridRangeZ);
 
 #if GOOGLE_CUDA
 // Mask for all 32 threads in a warp.
-const unsigned kCudaWarpAll = 0xffffffff;
+__device__ const unsigned kCudaWarpAll = 0xffffffff;
 #elif TENSORFLOW_USE_ROCM
 // ROCM TODO add ROCM implementation
 // Mask for all 64 threads in a wavefront.
-const unsigned kCudaWarpAll = 0xffffffff;
+__device__ const unsigned kCudaWarpAll = 0xffffffff;
 #endif
 
 // Returns the warp lane ID of the calling thread
 __device__ inline unsigned GpuLaneId() {
   unsigned int lane_id;
 #if GOOGLE_CUDA
+#if __clang__
+  return __nvvm_read_ptx_sreg_laneid();
+#else   // __clang__
   asm("mov.u32 %0, %%laneid;" : "=r"(lane_id));
+#endif  // __clang__
 #elif TENSORFLOW_USE_ROCM
-  // ROCM TODO add ROCM implementation
   lane_id = __lane_id();
 #endif
   return lane_id;
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuLaneId, CudaLaneId);
 
 namespace detail {
 // Returns true if mask is a valid parameter for __shfl*sync to return a well
@@ -144,7 +168,7 @@ namespace detail {
 // positives, because the implementation shuffles with the same mask that
 // we are validating. Run on Pascal if you suspect that the mask is incorrect.
 __device__ inline bool GpuValidateShuffleSyncMask(unsigned mask,
-                                                   unsigned src_lane) {
+                                                  unsigned src_lane) {
   unsigned src_dst_mask = 1u << GpuLaneId() | 1u << src_lane;
 #if CUDA_VERSION >= 9000
   unsigned src_lane_mask = __shfl_sync(mask, mask, src_lane);
@@ -152,11 +176,14 @@ __device__ inline bool GpuValidateShuffleSyncMask(unsigned mask,
 #if GOOGLE_CUDA
   unsigned src_lane_mask = __shfl(mask, src_lane);
 #elif TENSORFLOW_USE_ROCM
-  unsigned src_lane_mask = __shfl(static_cast<int>(mask), static_cast<int>(src_lane));
+  unsigned src_lane_mask =
+      __shfl(static_cast<int>(mask), static_cast<int>(src_lane));
 #endif
 #endif
   return (src_dst_mask & ~mask) == 0 && src_lane_mask == mask;
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuValidateShuffleSyncMask,
+                                  CudaValidateShuffleSyncMask);
 
 // Returns the actual source lane for shuffle.
 __device__ inline unsigned GpuShuffleGetSrcLane(int src_lane, int width) {
@@ -165,6 +192,7 @@ __device__ inline unsigned GpuShuffleGetSrcLane(int src_lane, int width) {
   int lane_offset = src_lane & width - 1;
   return lane_base + lane_offset;
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleGetSrcLane, CudaShuffleGetSrcLane);
 
 // Returns the source lane for shuffle up.
 __device__ inline unsigned GpuShuffleUpGetSrcLane(unsigned delta, int width) {
@@ -174,16 +202,19 @@ __device__ inline unsigned GpuShuffleUpGetSrcLane(unsigned delta, int width) {
   }
   return lane_id - delta;
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleUpGetSrcLane,
+                                  CudaShuffleUpGetSrcLane);
 
 // Returns the source lane for shuffle down.
-__device__ inline unsigned GpuShuffleDownGetSrcLane(unsigned delta,
-                                                     int width) {
+__device__ inline unsigned GpuShuffleDownGetSrcLane(unsigned delta, int width) {
   unsigned lane_id = GpuLaneId();
   if ((lane_id & width - 1) + delta >= width) {
     return lane_id;
   }
   return lane_id + delta;
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleDownGetSrcLane,
+                                  CudaShuffleDownGetSrcLane);
 
 // Returns the source lane for shuffle xor.
 __device__ inline unsigned GpuShuffleXorGetSrcLane(int lane_mask, int width) {
@@ -194,6 +225,8 @@ __device__ inline unsigned GpuShuffleXorGetSrcLane(int lane_mask, int width) {
   }
   return src_lane;
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleXorGetSrcLane,
+                                  CudaShuffleXorGetSrcLane);
 }  // namespace detail
 
 // For all *_sync wrappers below, it is illegal to synchronize threads from
@@ -212,6 +245,7 @@ __device__ inline void GpuSyncWarp(unsigned mask = kCudaWarpAll) {
   __syncwarp(mask);
 #endif
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuSyncWarp, CudaSyncWarp);
 
 // Wrapper for __ballot_sync. All threads in 'mask' must call this function in
 // convergence, see comment above for details.
@@ -223,6 +257,7 @@ __device__ inline unsigned GpuBallotSync(unsigned mask, int pred) {
   return __ballot(pred) & mask;  // Apply mask to match __ballot_sync's spec.
 #endif
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuBallotSync, CudaBallotSync);
 
 // Wrapper for __any_sync. All threads in 'mask' must call this function in
 // convergence, see comment above for details.
@@ -234,6 +269,7 @@ __device__ inline int GpuAnySync(unsigned mask, int pred) {
   return __any(pred);
 #endif
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAnySync, CudaAnySync);
 
 // Wrapper for __all_sync. All threads in 'mask' must call this function in
 // convergence, see comment above for details.
@@ -245,12 +281,13 @@ __device__ inline int GpuAllSync(unsigned mask, int pred) {
   return __all(pred);
 #endif
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAllSync, CudaAllSync);
 
 // Wrapper for __shfl_sync. All threads in 'mask' must call this function in
 // convergence, see comment above for details.
 template <typename T>
 __device__ T GpuShuffleSync(unsigned mask, T value, int src_lane,
-                             int width = warpSize) {
+                            int width = warpSize) {
   assert(!(width & width - 1));
   assert(detail::GpuValidateShuffleSyncMask(
       mask, detail::GpuShuffleGetSrcLane(src_lane, width)));
@@ -265,29 +302,31 @@ __device__ T GpuShuffleSync(unsigned mask, T value, int src_lane,
 // instead of float for lo and hi (which is incorrect with ftz, for example).
 // See b/69446944.
 __device__ inline double GpuShuffleSync(unsigned mask, double value,
-                                         int src_lane, int width = warpSize) {
-  unsigned lo, hi;
+                                        int src_lane, int width = warpSize) {
 #if GOOGLE_CUDA
-  asm volatile("mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(value));
+  auto tmp = __double_as_longlong(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = GpuShuffleSync(mask, hi, src_lane, width);
   lo = GpuShuffleSync(mask, lo, src_lane, width);
-  asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
-  return value;
+  return __longlong_as_double(static_cast<uint64_t>(hi) << 32 | lo);
 #elif TENSORFLOW_USE_ROCM
-  uint64_t tmp = static_cast<uint64_t>(value);
-  lo = static_cast<unsigned>(tmp);
-  hi = static_cast<unsigned>(tmp >> 32);
+  auto tmp = static_cast<uint64_t>(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = __shfl(static_cast<int>(hi), src_lane, width);
   lo = __shfl(static_cast<int>(lo), src_lane, width);
-  return static_cast<double>(static_cast<uint64_t>(hi) << 32 | static_cast<uint64_t>(lo));
+  return static_cast<double>(static_cast<uint64_t>(hi) << 32 |
+                             static_cast<uint64_t>(lo));
 #endif
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleSync, CudaShuffleSync);
 
 // Wrapper for __shfl_up_sync. All threads in 'mask' must call this function in
 // convergence, see comment above for details.
 template <typename T>
 __device__ inline T GpuShuffleUpSync(unsigned mask, T value, unsigned delta,
-                                      int width = warpSize) {
+                                     int width = warpSize) {
   assert(!(width & width - 1));
   assert(detail::GpuValidateShuffleSyncMask(
       mask, detail::GpuShuffleUpGetSrcLane(delta, width)));
@@ -302,30 +341,32 @@ __device__ inline T GpuShuffleUpSync(unsigned mask, T value, unsigned delta,
 // instead of float for lo and hi (which is incorrect with ftz, for example).
 // See b/69446944.
 __device__ inline double GpuShuffleUpSync(unsigned mask, double value,
-                                           unsigned delta,
-                                           int width = warpSize) {
-  unsigned lo, hi;
+                                          unsigned delta,
+                                          int width = warpSize) {
 #if GOOGLE_CUDA
-  asm volatile("mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(value));
+  auto tmp = __double_as_longlong(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = GpuShuffleUpSync(mask, hi, delta, width);
   lo = GpuShuffleUpSync(mask, lo, delta, width);
-  asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
-  return value;
+  return __longlong_as_double(static_cast<uint64_t>(hi) << 32 | lo);
 #elif TENSORFLOW_USE_ROCM
-  uint64_t tmp = static_cast<uint64_t>(value);
-  lo = static_cast<unsigned>(tmp);
-  hi = static_cast<unsigned>(tmp >> 32);
+  auto tmp = static_cast<uint64_t>(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = __shfl_up(static_cast<int>(hi), delta, width);
   lo = __shfl_up(static_cast<int>(lo), delta, width);
-  return static_cast<double>(static_cast<uint64_t>(hi) << 32 | static_cast<uint64_t>(lo));
+  return static_cast<double>(static_cast<uint64_t>(hi) << 32 |
+                             static_cast<uint64_t>(lo));
 #endif
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleUpSync, CudaShuffleUpSync);
 
 // Wrapper for __shfl_down_sync. All threads in 'mask' must call this function
 // in convergence, see comment above for details.
 template <typename T>
 __device__ inline T GpuShuffleDownSync(unsigned mask, T value, unsigned delta,
-                                        int width = warpSize) {
+                                       int width = warpSize) {
   assert(!(width & width - 1));
   assert(detail::GpuValidateShuffleSyncMask(
       mask, detail::GpuShuffleDownGetSrcLane(delta, width)));
@@ -340,30 +381,32 @@ __device__ inline T GpuShuffleDownSync(unsigned mask, T value, unsigned delta,
 // instead of float for lo and hi (which is incorrect with ftz, for example).
 // See b/69446944.
 __device__ inline double GpuShuffleDownSync(unsigned mask, double value,
-                                             unsigned delta,
-                                             int width = warpSize) {
-  unsigned lo, hi;
+                                            unsigned delta,
+                                            int width = warpSize) {
 #if GOOGLE_CUDA
-  asm volatile("mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(value));
+  auto tmp = __double_as_longlong(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = GpuShuffleDownSync(mask, hi, delta, width);
   lo = GpuShuffleDownSync(mask, lo, delta, width);
-  asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
-  return value;
+  return __longlong_as_double(static_cast<uint64_t>(hi) << 32 | lo);
 #elif TENSORFLOW_USE_ROCM
-  uint64_t tmp = static_cast<uint64_t>(value);
-  lo = static_cast<unsigned>(tmp);
-  hi = static_cast<unsigned>(tmp >> 32);
+  auto tmp = static_cast<uint64_t>(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = __shfl_down(static_cast<int>(hi), delta, width);
   lo = __shfl_down(static_cast<int>(lo), delta, width);
-  return static_cast<double>(static_cast<uint64_t>(hi) << 32 | static_cast<uint64_t>(lo));
+  return static_cast<double>(static_cast<uint64_t>(hi) << 32 |
+                             static_cast<uint64_t>(lo));
 #endif
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleDownSync, CudaShuffleDownSync);
 
 // Wrapper for __shfl_xor_sync. All threads in 'mask' must call this function in
 // convergence, see comment above for details.
 template <typename T>
 __device__ T GpuShuffleXorSync(unsigned mask, T value, int lane_mask,
-                                int width = warpSize) {
+                               int width = warpSize) {
   assert(!(width & width - 1));
   assert(detail::GpuValidateShuffleSyncMask(
       mask, detail::GpuShuffleXorGetSrcLane(lane_mask, width)));
@@ -379,14 +422,18 @@ __device__ T GpuShuffleXorSync(unsigned mask, T value, int lane_mask,
 #endif
 }
 
-
 #if TENSORFLOW_USE_ROCM
-__device__ inline Eigen::half GpuShuffleXorSync(unsigned mask, Eigen::half value, int lane_mask,
-                                int width = warpSize) {
+__device__ inline Eigen::half GpuShuffleXorSync(unsigned mask,
+                                                Eigen::half value,
+                                                int lane_mask,
+                                                int width = warpSize) {
   assert(!(width & width - 1));
   assert(detail::GpuValidateShuffleSyncMask(
       mask, detail::GpuShuffleXorGetSrcLane(lane_mask, width)));
-  return static_cast<Eigen::half>(__shfl_xor(static_cast<float>(value), lane_mask, width));
+  // TODO(rocm): This doesn't preserve NaN payload and flushes denorms to zero,
+  // maybe this should be implemented differently?
+  return static_cast<Eigen::half>(
+      __shfl_xor(static_cast<float>(value), lane_mask, width));
 }
 #endif
 
@@ -394,24 +441,26 @@ __device__ inline Eigen::half GpuShuffleXorSync(unsigned mask, Eigen::half value
 // instead of float for lo and hi (which is incorrect with ftz, for example).
 // See b/69446944.
 __device__ inline double GpuShuffleXorSync(unsigned mask, double value,
-                                            int lane_mask,
-                                            int width = warpSize) {
-  unsigned lo, hi;
+                                           int lane_mask,
+                                           int width = warpSize) {
 #if GOOGLE_CUDA
-  asm volatile("mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(value));
+  auto tmp = __double_as_longlong(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = GpuShuffleXorSync(mask, hi, lane_mask, width);
   lo = GpuShuffleXorSync(mask, lo, lane_mask, width);
-  asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
-  return value;
+  return __longlong_as_double(static_cast<uint64_t>(hi) << 32 | lo);
 #elif TENSORFLOW_USE_ROCM
-  uint64_t tmp = static_cast<uint64_t>(value);
-  lo = static_cast<unsigned>(tmp);
-  hi = static_cast<unsigned>(tmp >> 32);
+  auto tmp = static_cast<uint64_t>(value);
+  auto lo = static_cast<unsigned>(tmp);
+  auto hi = static_cast<unsigned>(tmp >> 32);
   hi = __shfl_xor(static_cast<int>(hi), lane_mask, width);
   lo = __shfl_xor(static_cast<int>(lo), lane_mask, width);
-  return static_cast<double>(static_cast<uint64_t>(hi) << 32 | static_cast<uint64_t>(lo));
+  return static_cast<double>(static_cast<uint64_t>(hi) << 32 |
+                             static_cast<uint64_t>(lo));
 #endif
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleXorSync, CudaShuffleXorSync);
 
 // Wrapper for __ldg.
 template <typename T>
@@ -446,6 +495,7 @@ __host__ __device__ inline std::complex<double> GpuLdg(
   return *address;
 #endif
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuLdg, CudaLdg);
 
 // Zeroes count elements starting at ptr using all threads of a 1-D grid.
 // Note: this function does not synchronize, and therefore the memory range is
@@ -453,7 +503,8 @@ __host__ __device__ inline std::complex<double> GpuLdg(
 template <typename T>
 __global__ void SetZero(const int count, T* ptr) {
   // Check that the grid is one dimensional and index doesn't overflow.
-  assert(blockDim.y == 1 && blockDim.z == 1);
+  assert(blockDim.y == 1);
+  assert(blockDim.z == 1);
   assert(blockDim.x * gridDim.x / blockDim.x == gridDim.x);
   for (int i : GpuGridRangeX(count)) {
     ptr[i] = T(0);
@@ -464,7 +515,8 @@ __global__ void SetZero(const int count, T* ptr) {
 template <typename T>
 __global__ void SetToValue(const int count, T* ptr, T value) {
   // Check that the grid is one dimensional and index doesn't overflow.
-  assert(blockDim.y == 1 && blockDim.z == 1);
+  assert(blockDim.y == 1);
+  assert(blockDim.z == 1);
   assert(blockDim.x * gridDim.x / blockDim.x == gridDim.x);
   for (int i : GpuGridRangeX(count)) {
     ptr[i] = value;
@@ -483,6 +535,7 @@ __device__ T GpuAtomicCasHelper(T* ptr, F accumulate) {
   } while (assumed != old);
   return old;
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicCasHelper, CudaAtomicCasHelper);
 
 // Overload for floating point (using integer comparison to handle NaN
 // correctly).
@@ -496,15 +549,16 @@ __device__ float GpuAtomicCasHelper(float* ptr, F accumulate) {
 template <typename F>
 __device__ double GpuAtomicCasHelper(double* ptr, F accumulate) {
 #if TENSORFLOW_USE_ROCM
-  // FIXME : remove the workaround below once bug is fixed
+  // FIXME: remove the workaround below once bug is fixed.
   // HIP has a bug in the implementation of __longlong_as_double
-  // So workaround it by using reinterpret_cast<double*>
-  uint64_t result = GpuAtomicCasHelper(
-      reinterpret_cast<tensorflow::uint64*>(ptr),
-      [accumulate](tensorflow::uint64 a) {
-	return __double_as_longlong(accumulate(*(reinterpret_cast<double*>(&a))));
-      });
- return *(reinterpret_cast<double*>(&result));
+  // So workaround it by using reinterpret_cast<double*>.
+  uint64_t result =
+      GpuAtomicCasHelper(reinterpret_cast<tensorflow::uint64*>(ptr),
+                         [accumulate](tensorflow::uint64 a) {
+                           return __double_as_longlong(
+                               accumulate(*(reinterpret_cast<double*>(&a))));
+                         });
+  return *(reinterpret_cast<double*>(&result));
 #else
   return __longlong_as_double(GpuAtomicCasHelper(
       reinterpret_cast<tensorflow::uint64*>(ptr),
@@ -570,29 +624,18 @@ __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicAdd(T* ptr, U value) {
 }
 
 __device__ inline Eigen::half GpuAtomicAdd(Eigen::half* ptr,
-                                            Eigen::half value) {
+                                           Eigen::half value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](Eigen::half a) { return a + value; });
 }
 
-
 #if (__CUDA_ARCH__ < 600) || TENSORFLOW_USE_ROCM
 __device__ inline double GpuAtomicAdd(double* ptr, double value) {
   return detail::GpuAtomicCasHelper(ptr,
-                                     [value](double a) { return a + value; });
-}
-#elif __clang__
-// Clang cannot compile __nvvm_atom_add_gen_d builtin yet, use inline PTX.
-// see https://reviews.llvm.org/D39638
-__device__ inline double GpuAtomicAdd(double* ptr, double value) {
-  double result;
-  asm volatile("atom.add.f64 %0, [%1], %2;"
-               : "=d"(result)
-               : "l"(ptr), "d"(value)
-               : "memory");
-  return result;
+                                    [value](double a) { return a + value; });
 }
 #endif
+
 // GpuAtomicAdd
 // Specializations of GpuAtomicAdd for complex types, which GpuAtomicAdd does
 // not support. We treat a std::complex<T>* as a T* (the C++ standard section
@@ -603,7 +646,7 @@ __device__ inline double GpuAtomicAdd(double* ptr, double value) {
 // ROCM TODO support GpuAtomicAdd for std::complex<>
 #if GOOGLE_CUDA
 __device__ inline std::complex<float> GpuAtomicAdd(std::complex<float>* ptr,
-                                                    std::complex<float> value) {
+                                                   std::complex<float> value) {
   auto ptr_scalar = reinterpret_cast<float*>(ptr);
   return std::complex<float>(GpuAtomicAdd(ptr_scalar, value.real()),
                              GpuAtomicAdd(ptr_scalar + 1, value.imag()));
@@ -616,6 +659,7 @@ __device__ inline std::complex<double> GpuAtomicAdd(
                               GpuAtomicAdd(ptr_scalar + 1, value.imag()));
 }
 #endif
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicAdd, CudaAtomicAdd);
 
 // GpuAtomicSub
 template <typename T, typename U>
@@ -633,15 +677,16 @@ __device__ inline double GpuAtomicSub(double* ptr, double value) {
 }
 
 __device__ inline tensorflow::uint64 GpuAtomicSub(tensorflow::uint64* ptr,
-                                                   tensorflow::uint64 value) {
+                                                  tensorflow::uint64 value) {
   return GpuAtomicAdd(ptr, -value);
 }
 
 __device__ inline Eigen::half GpuAtomicSub(Eigen::half* ptr,
-                                            Eigen::half value) {
+                                           Eigen::half value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](Eigen::half a) { return a - value; });
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicSub, CudaAtomicSub);
 
 // GpuAtomicMax
 template <typename T, typename U>
@@ -677,8 +722,8 @@ __device__ inline double GpuAtomicMax(double* ptr, double value) {
 #else
 
 __device__ inline float GpuAtomicMax(float* ptr, float value) {
-  return detail::GpuAtomicCasHelper(
-      ptr, [value](float a) { return max(a, value); });
+  return detail::GpuAtomicCasHelper(ptr,
+                                    [value](float a) { return max(a, value); });
 }
 
 __device__ inline double GpuAtomicMax(double* ptr, double value) {
@@ -689,18 +734,19 @@ __device__ inline double GpuAtomicMax(double* ptr, double value) {
 #endif
 
 __device__ inline Eigen::half GpuAtomicMax(Eigen::half* ptr,
-                                            Eigen::half value) {
+                                           Eigen::half value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](Eigen::half a) { return max(a, value); });
 }
 
 #if __CUDA_ARCH__ < 320
 __device__ inline tensorflow::uint64 GpuAtomicMax(tensorflow::uint64* ptr,
-                                                   tensorflow::uint64 value) {
+                                                  tensorflow::uint64 value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](tensorflow::uint64 a) { return max(a, value); });
 }
 #endif
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMax, CudaAtomicMax);
 
 // GpuAtomicMin
 template <typename T, typename U>
@@ -736,8 +782,8 @@ __device__ inline double GpuAtomicMin(double* ptr, double value) {
 #else
 
 __device__ inline float GpuAtomicMin(float* ptr, float value) {
-  return detail::GpuAtomicCasHelper(
-      ptr, [value](float a) { return min(a, value); });
+  return detail::GpuAtomicCasHelper(ptr,
+                                    [value](float a) { return min(a, value); });
 }
 
 __device__ inline double GpuAtomicMin(double* ptr, double value) {
@@ -748,34 +794,36 @@ __device__ inline double GpuAtomicMin(double* ptr, double value) {
 #endif
 
 __device__ inline Eigen::half GpuAtomicMin(Eigen::half* ptr,
-                                            Eigen::half value) {
+                                           Eigen::half value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](Eigen::half a) { return min(a, value); });
 }
 
 #if __CUDA_ARCH__ < 320
 __device__ inline tensorflow::uint64 GpuAtomicMin(tensorflow::uint64* ptr,
-                                                   tensorflow::uint64 value) {
+                                                  tensorflow::uint64 value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](tensorflow::uint64 a) { return min(a, value); });
 }
 #endif
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMin, CudaAtomicMin);
 
 // GpuAtomicMul
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicMul(T* ptr, U value) {
   return detail::GpuAtomicCasHelper(ptr, [value](T a) { return a * value; });
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMul, CudaAtomicMul);
 
 // GpuAtomicDiv
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicDiv(T* ptr, U value) {
   return detail::GpuAtomicCasHelper(ptr, [value](T a) { return a / value; });
 }
+CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicDiv, CudaAtomicDiv);
 
-#if GOOGLE_CUDA
 // Operator overloads for complex numbers.
-
+#if GOOGLE_CUDA
 __device__ inline std::complex<float> operator+(const std::complex<float>& a,
                                                 const std::complex<float>& b) {
   auto result = cuCaddf(make_cuComplex(a.real(), a.imag()),
@@ -831,7 +879,7 @@ __device__ inline std::complex<double> operator/(
                        make_cuDoubleComplex(b.real(), b.imag()));
   return std::complex<double>(result.x, result.y);
 }
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow
 

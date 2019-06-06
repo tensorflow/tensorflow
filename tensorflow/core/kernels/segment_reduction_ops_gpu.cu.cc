@@ -19,12 +19,13 @@ limitations under the License.
 
 // We need to include gpu_kernel_helper.h before segment_reduction_ops.h
 // See comment in segment_reduction_ops.h for more details.
+// clang-format off
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+// clang-format on
 
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
-
 
 namespace tensorflow {
 
@@ -138,9 +139,9 @@ void SegmentSumFunctor<T, Index>::operator()(
   }
   // Set 'output' to zeros.
   GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
-  GPU_LAUNCH_KERNEL(SetZero<T>,
-      dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-      output.size(), output.data());
+  TF_CHECK_OK(GpuLaunchKernel(SetZero<T>, config.block_count,
+                               config.thread_per_block, 0, d.stream(),
+                               output.size(), output.data()));
   if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
     return;
   }
@@ -163,10 +164,11 @@ void SegmentSumFunctor<T, Index>::operator()(
       input_inner_dim_size * input_outer_dim_num_stripe;
 
   config = GetGpuLaunchConfig(total_stripe_count, d);
-  GPU_LAUNCH_KERNEL((SortedSegmentSumCustomKernel<T, Index, OuterDimTileSize>),
-      dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
+  TF_CHECK_OK(GpuLaunchKernel(
+      SortedSegmentSumCustomKernel<T, Index, OuterDimTileSize>,
+      config.block_count, config.thread_per_block, 0, d.stream(),
       input_outer_dim_size, input_inner_dim_size, output_rows,
-      segment_ids.data(), data, output.data(), total_stripe_count);
+      segment_ids.data(), data, output.data(), total_stripe_count));
 }
 
 template <typename T, typename Index, typename InitialValueF,
@@ -183,9 +185,9 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     // Set 'output' to initial value.
     GPUDevice d = ctx->template eigen_device<GPUDevice>();
     GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
-    GPU_LAUNCH_KERNEL(SetToValue<T>,
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-        output.size(), output.data(), InitialValueF()());
+    TF_CHECK_OK(GpuLaunchKernel(
+        SetToValue<T>, config.block_count, config.thread_per_block, 0,
+        d.stream(), output.size(), output.data(), InitialValueF()()));
     if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
       return;
     }
@@ -198,10 +200,11 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     const Index input_inner_dim_size = data_size / input_outer_dim_size;
     config = GetGpuLaunchConfig(data_size, d);
 
-    GPU_LAUNCH_KERNEL((UnsortedSegmentCustomKernel<T, Index, ReductionF>),
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-        input_outer_dim_size, input_inner_dim_size, num_segments,
-        segment_ids.data(), data, output.data());
+    TF_CHECK_OK(
+        GpuLaunchKernel(UnsortedSegmentCustomKernel<T, Index, ReductionF>,
+                        config.block_count, config.thread_per_block, 0,
+                        d.stream(), input_outer_dim_size, input_inner_dim_size,
+                        num_segments, segment_ids.data(), data, output.data()));
   }
 };
 

@@ -194,7 +194,7 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     }  // A Tuple contains an array of pointers. Use i8*.
     case TUPLE:
     // An Opaque is like a void*, use i8*.
-    case OPAQUE:
+    case OPAQUE_TYPE:
       return llvm::Type::getInt8PtrTy(module->getContext());
     case TOKEN:
       // Tokens do not have a physical representation, but the compiler needs
@@ -264,15 +264,14 @@ llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
       /*AddNull=*/false);
 }
 
-llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
-                                               llvm::Type* tile_type,
-                                               absl::string_view name) {
-  const int kNVPTXSharedMemoryAddrSpace = 3;
+llvm::GlobalVariable* AllocateSharedMemoryTile(
+    llvm::Module* module, llvm::Type* tile_type, absl::string_view name,
+    unsigned int shared_memory_address_space) {
   return new llvm::GlobalVariable(
       *module, tile_type,
       /*isConstant=*/false, llvm::GlobalValue::PrivateLinkage,
       llvm::UndefValue::get(tile_type), AsStringRef(name), nullptr,
-      llvm::GlobalValue::NotThreadLocal, kNVPTXSharedMemoryAddrSpace);
+      llvm::GlobalValue::NotThreadLocal, shared_memory_address_space);
 }
 
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
@@ -690,7 +689,7 @@ std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
 }
 
 llvm::GlobalVariable* GetOrCreateVariableForPhiloxRngState(
-    llvm::Module* module, llvm::IRBuilder<>* b) {
+    llvm::Module* module, llvm::IRBuilder<>* b, unsigned int global_address_space) {
   static const char* kPhiloxRngStateVariableName = "philox_rng_state";
   llvm::GlobalVariable* state_ptr =
       module->getNamedGlobal(kPhiloxRngStateVariableName);
@@ -704,16 +703,17 @@ llvm::GlobalVariable* GetOrCreateVariableForPhiloxRngState(
         /*Name=*/kPhiloxRngStateVariableName,
         /*InsertBefore=*/nullptr,
         /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-        /*AddressSpace=*/llvm_ir::kAMDGPUGlobalMemoryAddrSpace,
+        /*AddressSpace=*/global_address_space, 
         /*isExternallyInitialized=*/false);
   }
   return state_ptr;
 }
 
 void IncrementVariableForPhiloxRngState(int64 value, llvm::Module* module,
-                                        llvm::IRBuilder<>* builder) {
+                                        llvm::IRBuilder<>* builder, 
+                                         unsigned int global_address_space) {
   llvm::GlobalVariable* state_ptr =
-      GetOrCreateVariableForPhiloxRngState(module, builder);
+      GetOrCreateVariableForPhiloxRngState(module, builder, global_address_space);
   llvm::Value* state_value_old = builder->CreateLoad(state_ptr, "load_state");
   // If the 64-bit value overflows, we use the wraparound value. This should
   // be fine in practice as we only add one to the value each time when a RNG is

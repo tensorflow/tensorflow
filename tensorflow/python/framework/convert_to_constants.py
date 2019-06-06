@@ -18,12 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import variable_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.grappler import tf_optimizer
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.saver import export_meta_graph
 
@@ -42,6 +45,19 @@ def _run_inline_graph_optimization(func):
   """
   meta_graph = export_meta_graph(
       graph_def=func.graph.as_graph_def(), graph=func.graph)
+
+  # Clear the initializer_name for the variables collections, since they are not
+  # needed after saved to saved_model.
+  for name in [
+      "variables", "model_variables", "trainable_variables", "local_variables"
+  ]:
+    raw_list = []
+    for raw in meta_graph.collection_def["variables"].bytes_list.value:
+      variable = variable_pb2.VariableDef()
+      variable.ParseFromString(raw)
+      variable.ClearField("initializer_name")
+      raw_list.append(variable.SerializeToString())
+    meta_graph.collection_def[name].bytes_list.value[:] = raw_list
 
   # Add a collection 'train_op' so that Grappler knows the outputs.
   fetch_collection = meta_graph_pb2.CollectionDef()
@@ -109,14 +125,35 @@ def convert_variables_to_constants_v2(func):
   input_tensors = func.inputs[-len(func.captured_inputs):]
   for var in func.graph.variables:
     index = func.captured_inputs.index(var.handle)
-    tensor = input_tensors[index]
-    node_name = get_name(tensor.name)
-    tensor_data[node_name] = var.numpy()
-    map_name_to_handle[node_name] = var.handle
+    tensor_name = get_name(input_tensors[index].name)
+    tensor_data[tensor_name] = var.numpy()
+    map_name_to_handle[tensor_name] = var.handle
+
+  # Get mapping from input name to value for non-variable placeholders.
+  map_name_to_value = {}
+  for name_tensor, value_tensor in zip(input_tensors, func.captured_inputs):
+    tensor_name = get_name(name_tensor.name)
+    if tensor_name not in map_name_to_handle:
+      map_name_to_value[tensor_name] = value_tensor
 
   resource_identities = {}
-  resource_placeholders = {}
+  placeholders = {}
+  converted_input_indices = set()
+  reference_variables = []
   for node in graph_def.node:
+    if node.name in map_name_to_value:
+      # Get the dtype and data for the Placeholders whose values are stored as
+      # Tensors. This is the case for values that were originally Const ops.
+      tensor = map_name_to_value[node.name]
+      placeholders[node.name] = {
+          "dtype": node.attr["dtype"],
+          "data": tensor.numpy(),
+      }
+      converted_input_indices.add(
+          func.captured_inputs.index(map_name_to_value[node.name]))
+    # Collect the reference variables that cannot be lifted.
+    if node.op == "VariableV2":
+      reference_variables.append(node)
     if node.op == "ReadVariableOp":
       # Get name of Placeholder op associated with ReadVariableOp. There can be
       # an Identity in between the ReadVariableOp and Placeholder. Store the
@@ -130,22 +167,51 @@ def convert_variables_to_constants_v2(func):
                          "to the ReadVariableOp.")
       # Build a map of Placeholder ops that are inputs to ReadVariableOps to the
       # variable's dtype and data.
-      resource_placeholders[input_name] = {
+      placeholders[input_name] = {
           "dtype": node.attr["dtype"],
           "data": tensor_data[input_name],
       }
+      converted_input_indices.add(
+          func.captured_inputs.index(map_name_to_handle[input_name]))
 
   # Reconstruct the graph with constants in place of variables.
   output_graph_def = graph_pb2.GraphDef()
   how_many_converted = 0
 
-  converted_input_indices = set([])
+  # Add identity node after the reference variable and get the tensor values
+  # for them.
+  if reference_variables:
+    reference_variable_tensors = []
+    with func.graph.as_default():
+      for node in reference_variables:
+        identity_node = array_ops.identity(
+            func.graph.as_graph_element(node.name + ":0"))
+        reference_variable_tensors.append(identity_node.name)
+
+    reference_variable_values = func.prune([], reference_variable_tensors)()
+
+    # Add values of reference variables as constant nodes.
+    for node, value in zip(reference_variables, reference_variable_values):
+      output_node = output_graph_def.node.add()
+      dtype = attr_value_pb2.AttrValue()
+      dtype.type = value.dtype.as_datatype_enum
+
+      output_node.op = "Const"
+      output_node.name = node.name
+      output_node.attr["dtype"].CopyFrom(dtype)
+      output_node.attr["value"].tensor.CopyFrom(
+          tensor_util.make_tensor_proto(value))
+      how_many_converted += 1
+
   for input_node in graph_def.node:
+    # Skip VariableV2 node, since their values are added by the identity nodes.
+    if input_node.op == "VariableV2":
+      continue
     output_node = output_graph_def.node.add()
-    # Convert Placeholder ops that are inputs to ReadVariableOps into Const ops.
-    if input_node.name in resource_placeholders:
-      dtype = resource_placeholders[input_node.name]["dtype"]
-      data = resource_placeholders[input_node.name]["data"]
+    # Convert Placeholder ops to Const ops.
+    if input_node.name in placeholders:
+      dtype = placeholders[input_node.name]["dtype"]
+      data = placeholders[input_node.name]["data"]
 
       output_node.op = "Const"
       output_node.name = input_node.name
@@ -154,8 +220,6 @@ def convert_variables_to_constants_v2(func):
           tensor_util.make_tensor_proto(
               data, dtype=dtype.type, shape=data.shape))
       how_many_converted += 1
-      converted_input_indices.add(
-          func.captured_inputs.index(map_name_to_handle[input_node.name]))
     # Change the dtype for Identity ops that are inputs to ReadVariableOps.
     elif input_node.name in resource_identities:
       output_node.CopyFrom(input_node)

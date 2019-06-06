@@ -9,6 +9,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/flat_map_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
@@ -17,7 +18,6 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "flat_map_dataset";
-constexpr char kOpName[] = "FlatMapDataset";
 
 class FlatMapDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -39,12 +39,13 @@ class FlatMapDatasetOpTest : public DatasetOpsTestBase {
       const DataTypeVector &output_types,
       const std::vector<PartialTensorShape> &output_shapes,
       std::unique_ptr<OpKernel> *op_kernel) {
-    NodeDef node_def =
-        test::function::NDef(kNodeName, kOpName, {"input_dataset"},
-                             {{"f", func},
-                              {"Targuments", {}},
-                              {"output_types", output_types},
-                              {"output_shapes", output_shapes}});
+    NodeDef node_def = test::function::NDef(
+        kNodeName, name_utils::OpName(FlatMapDatasetOp::kDatasetType),
+        {FlatMapDatasetOp::kInputDataset},
+        {{FlatMapDatasetOp::kF, func},
+         {FlatMapDatasetOp::kTarguments, {}},
+         {FlatMapDatasetOp::kOutputTypes, output_types},
+         {FlatMapDatasetOp::kOutputShapes, output_shapes}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
     return Status::OK();
   }
@@ -263,7 +264,8 @@ TEST_F(FlatMapDatasetOpTest, DatasetTypeString) {
                              &flat_map_dataset));
   core::ScopedUnref scoped_unref(flat_map_dataset);
 
-  EXPECT_EQ(flat_map_dataset->type_string(), kOpName);
+  EXPECT_EQ(flat_map_dataset->type_string(),
+            name_utils::OpName(FlatMapDatasetOp::kDatasetType));
 }
 
 TEST_P(ParameterizedFlatMapDatasetOpTest, DatasetOutputDtypes) {
@@ -496,7 +498,9 @@ TEST_F(FlatMapDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(flat_map_dataset->MakeIterator(iterator_ctx.get(), "Iterator",
                                               &iterator));
 
-  EXPECT_EQ(iterator->prefix(), "Iterator::FlatMap");
+  EXPECT_EQ(
+      iterator->prefix(),
+      name_utils::IteratorPrefix(FlatMapDatasetOp::kDatasetType, "Iterator"));
 }
 
 TEST_P(ParameterizedFlatMapDatasetOpTest, Roundtrip) {

@@ -27,7 +27,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
@@ -79,7 +78,6 @@ def convert_structure_to_signature(structure, arg_names=None):
     Identical structure that has TensorSpec objects instead of Tensors and
     UknownArgument instead of any unsupported types.
   """
-  structure = composite_tensor.replace_composites_with_components(structure)
   def encode_arg(arg, path):
     """A representation for this argument, for converting into signatures."""
     if isinstance(arg, ops.Tensor):
@@ -303,6 +301,7 @@ class FuncGraph(ops.Graph):
       old_device_stack = self._device_function_stack
       if context.executing_eagerly():
         if self._distribution_strategy_stack:
+          self._device_function_stack = self._device_function_stack.copy()
           self._add_device_to_stack(context.context().device_name)
       else:
         if (self._distribution_strategy_stack
@@ -370,7 +369,6 @@ class FuncGraph(ops.Graph):
       name=None,
       attrs=None,
       op_def=None,
-      compute_shapes=True,
       compute_device=True):
     # When capturing by value, do the read outside
     reverse_captures = dict((v, k) for k, v in self.captures.items())
@@ -383,8 +381,14 @@ class FuncGraph(ops.Graph):
             context.context())
       else:
         op = ops.get_default_graph().create_op(
-            op_type, uncaptured_inputs, dtypes, input_types, name, attrs,
-            op_def, compute_shapes, compute_device)
+            op_type,
+            uncaptured_inputs,
+            dtypes,
+            input_types,
+            name,
+            attrs,
+            op_def,
+            compute_device=compute_device)
         value = op.outputs[0]
     captured_value = self.capture(value)
     return captured_value.op
@@ -432,11 +436,11 @@ class FuncGraph(ops.Graph):
     Returns:
       An `Operation` object.
     """
+    del compute_shapes
     if self.capture_by_value and op_type in ["ReadVariableOp",
                                              "ResourceGather"]:
-      return self._capture_by_value(
-          op_type, inputs, dtypes, input_types, name, attrs, op_def,
-          compute_shapes, compute_device)
+      return self._capture_by_value(op_type, inputs, dtypes, input_types, name,
+                                    attrs, op_def, compute_device)
 
     # This capturing logic interacts poorly with control flow contexts which
     # want to replace inputs of ops far too late in the process. This can lead
@@ -687,19 +691,21 @@ def func_graph_from_py_func(name,
         _, original_func = tf_decorator.unwrap(python_func)
 
         def wrapper(*args, **kwargs):
-          # Note: functions annotated with @tf.function should always be
-          # converted even though they would meet autograph's whitelisting
-          # criteria.
-          # If this assumption is ever broken, converted_call will need to
-          # handle the possibility of original_func still being a shim, e.g.
-          # bound to WeakrefSelf.
-          return autograph.converted_call(
-              original_func, None,
-              autograph.ConversionOptions(
-                  recursive=True,
-                  optional_features=autograph_options,
-                  force_conversion=True,
-              ), args, kwargs)
+          """Calls a converted version of original_func."""
+          # TODO(mdan): Push this block higher in tf.function's call stack.
+          try:
+            return autograph.converted_call(
+                original_func, None,
+                autograph.ConversionOptions(
+                    recursive=True,
+                    optional_features=autograph_options,
+                    force_conversion=True,
+                ), args, kwargs)
+          except Exception as e:  # pylint:disable=broad-except
+            if hasattr(e, "ag_error_metadata"):
+              raise e.ag_error_metadata.to_exception(type(e))
+            else:
+              raise
 
         # Wrapping around a decorator allows checks like tf_inspect.getargspec
         # to be accurate.
@@ -751,13 +757,6 @@ def func_graph_from_py_func(name,
 
   if add_control_dependencies:
     func_graph.control_outputs.extend(control_manager.ops_which_must_run)
-
-# Register any other functions defined in the graph.
-  with ops.init_scope():
-    if context.executing_eagerly():
-      for f in func_graph._functions.values():  # pylint: disable=protected-access
-        # TODO(ashankar): What about the gradient registry?
-        context.add_function(f._c_func.func)  # pylint: disable=protected-access
 
   return func_graph
 

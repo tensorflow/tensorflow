@@ -463,13 +463,13 @@ class TensorListResize : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TensorListResize").Device(DEVICE_CPU),
                         TensorListResize);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_KERNEL_BUILDER(
     Name("TensorListResize").Device(DEVICE_GPU).HostMemory("size"),
     TensorListResize);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class TensorListSetItem : public OpKernel {
  public:

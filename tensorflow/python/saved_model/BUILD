@@ -5,12 +5,12 @@ package(
     # TODO(drpng): change that to //third_party/tensorflow:internal
     # when we have migrated all users.
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
@@ -330,6 +330,10 @@ tf_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
     ],
+    tags = [
+        "no_rocm",
+        "no_cuda",
+    ],
 )
 
 py_library(
@@ -378,7 +382,7 @@ py_library(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "load_test",
     srcs = ["load_test.py"],
     additional_deps = [
@@ -396,6 +400,7 @@ tf_py_test(
     ],
     shard_count = 10,
     tags = ["no_mac"],  # TODO(b/124822121): Re-enable this test.
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(

@@ -54,6 +54,16 @@ class RemoteDevice : public Device {
   TF_DISALLOW_COPY_AND_ASSIGN(RemoteDevice);
 };
 
+void AsRemoteDevices(
+    Env* env,
+    const protobuf::RepeatedPtrField<DeviceAttributes>& device_attributes,
+    std::vector<std::unique_ptr<Device>>* remote_devices) {
+  for (const auto& da : device_attributes) {
+    auto d = new RemoteDevice(env, da);
+    remote_devices->emplace_back(d);
+  }
+}
+
 void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
                       const string& worker_name, NewRemoteDevicesDone done) {
   WorkerInterface* wi = worker_cache->CreateWorker(worker_name);

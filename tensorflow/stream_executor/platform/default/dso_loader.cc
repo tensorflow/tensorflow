@@ -18,8 +18,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "cuda/cuda_config.h"
-#include "tensorflow/core/platform/load_library.h"
+#include "third_party/gpus/cuda/cuda_config.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/path.h"
@@ -83,6 +82,14 @@ port::StatusOr<void*> GetCufftDsoHandle() {
   return GetDsoHandle("cufft", GetCudaLibVersion());
 }
 
+port::StatusOr<void*> GetCusolverDsoHandle() {
+  return GetDsoHandle("cusolver", GetCudaLibVersion());
+}
+
+port::StatusOr<void*> GetCusparseDsoHandle() {
+  return GetDsoHandle("cusparse", GetCudaLibVersion());
+}
+
 port::StatusOr<void*> GetCurandDsoHandle() {
   return GetDsoHandle("curand", GetCudaLibVersion());
 }
@@ -144,6 +151,16 @@ port::StatusOr<void*> GetCurandDsoHandle() {
 
 port::StatusOr<void*> GetCufftDsoHandle() {
   static auto result = new auto(DsoLoader::GetCufftDsoHandle());
+  return *result;
+}
+
+port::StatusOr<void*> GetCusolverDsoHandle() {
+  static auto result = new auto(DsoLoader::GetCusolverDsoHandle());
+  return *result;
+}
+
+port::StatusOr<void*> GetCusparseDsoHandle() {
+  static auto result = new auto(DsoLoader::GetCusparseDsoHandle());
   return *result;
 }
 

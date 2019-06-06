@@ -1,8 +1,9 @@
-package(default_visibility = [
-    "//visibility:public",
-])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load(
     "//tensorflow/lite:build_def.bzl",
@@ -13,9 +14,9 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load(
     "//tensorflow:tensorflow.bzl",
+    "py_test",  # @unused
     "tf_cc_binary",
     "tf_cc_test",
-    "py_test",
 )
 
 [gen_zip_test(
@@ -93,6 +94,7 @@ py_binary(
     data = [
         "//tensorflow/lite/toco",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":generate_examples_lib",

@@ -273,6 +273,7 @@ class ScatterNdUpdateOp : public OpKernel {
     if (dtype_ == DT_RESOURCE) {
       Var* v;
       OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+      core::ScopedUnref scoped_unref(v);
       Tensor* t = v->tensor();
       params = *t;
       params_shape = params.shape();
@@ -727,7 +728,7 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
     slice_shape.RemoveLastDims(1);
     return errors::InvalidArgument(
         "indices", SliceDebugString(slice_shape, bad_i), " = [",
-        str_util::Join(
+        absl::StrJoin(
             gtl::ArraySlice<Index>(&indices_flat(bad_i, 0), slice_dim), ", "),
         "] does not index into shape ", shape.DebugString());
   }

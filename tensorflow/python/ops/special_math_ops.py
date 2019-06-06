@@ -26,8 +26,10 @@ import string
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
@@ -130,6 +132,39 @@ def bessel_i1(x, name=None):
   """
   with ops.name_scope(name, 'bessel_i1', [x]):
     return math_ops.exp(math_ops.abs(x)) * math_ops.bessel_i1e(x)
+
+
+@ops.RegisterGradient('XlaEinsum')
+def _einsum_grad(op, grad):
+  equation = op.get_attr('equation')
+  if isinstance(equation, bytes):
+    equation = equation.decode()
+
+  inputs, output = equation.split('->')
+  left, right = inputs.split(',')
+
+  return [
+      gen_xla_ops.xla_einsum(
+          grad,
+          op.inputs[1],
+          equation='{},{}->{}'.format(output, right, left),
+          name=None),
+      gen_xla_ops.xla_einsum(
+          grad,
+          op.inputs[0],
+          equation='{},{}->{}'.format(output, left, right),
+          name=None)
+  ]
+
+
+def _enclosing_tpu_context():
+  # pylint: disable=protected-access
+  context = ops.get_default_graph()._get_control_flow_context()
+  # pylint: enable=protected-access
+  while context is not None and not isinstance(
+      context, control_flow_ops.XLAControlFlowContext):
+    context = context.outer_context
+  return context
 
 
 @tf_export('einsum', 'linalg.einsum')
@@ -240,6 +275,12 @@ def einsum(equation, *inputs, **kwargs):
             ' because index "%s" is summed over more than two inputs.', a)
         return _exponential_space_einsum(equation, *inputs)
 
+    # Use xla_einsum if executing on TPU and if the operation is a 2 input
+    # einsum supported by XlaEinsumOp.
+    if _enclosing_tpu_context() is not None and len(inputs) == 2:
+      return gen_xla_ops.xla_einsum(
+          inputs[0], inputs[1], input_axis_labels[0] + ',' +
+          input_axis_labels[1] + '->' + output_axis_labels)
     temp = inputs[0]
     temp_axis_labels = input_axis_labels[0]
     for i in xrange(len(inputs) - 1):

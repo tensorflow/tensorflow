@@ -17,8 +17,8 @@
 
 See the [Testing](https://tensorflow.org/api_guides/python/test) guide.
 
-Note: `tf.test.mock` is an alias to the python `mock` or `unittest.mock`
-depending on the python version.
+Note: `tf.compat.v1.test.mock` is an alias to the python `mock` or
+`unittest.mock` depending on the python version.
 """
 
 from __future__ import absolute_import

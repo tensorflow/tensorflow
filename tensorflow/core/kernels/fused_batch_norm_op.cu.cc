@@ -16,7 +16,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #if GOOGLE_CUDA
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #endif
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
@@ -40,9 +40,10 @@ void VarianceToInvVariance<T>::operator()(const Eigen::GpuDevice& d,
                                           const T* variance, double epsilon,
                                           int channels, T* inv_variance) {
   GpuLaunchConfig config = GetGpuLaunchConfig(channels, d);
-  GPU_LAUNCH_KERNEL(VarianceToInvVarianceKernel,
-      dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-      config.virtual_thread_count, variance, epsilon, inv_variance);
+  TF_CHECK_OK(GpuLaunchKernel(VarianceToInvVarianceKernel<T>,
+                               config.block_count, config.thread_per_block, 0,
+                               d.stream(), config.virtual_thread_count,
+                               variance, epsilon, inv_variance));
 }
 
 template <class T>
@@ -67,9 +68,10 @@ void InvVarianceToVariance<T>::operator()(const Eigen::GpuDevice& d,
                                           double epsilon, int sample_size,
                                           int channels, T* variance) {
   GpuLaunchConfig config = GetGpuLaunchConfig(channels, d);
-  GPU_LAUNCH_KERNEL(InvVarianceToVarianceKernel,
-      dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-      config.virtual_thread_count, epsilon, sample_size, variance);
+  TF_CHECK_OK(GpuLaunchKernel(InvVarianceToVarianceKernel<T>,
+                               config.block_count, config.thread_per_block, 0,
+                               d.stream(), config.virtual_thread_count, epsilon,
+                               sample_size, variance));
 }
 
 template <class T>
