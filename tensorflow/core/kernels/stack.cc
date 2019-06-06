@@ -16,7 +16,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/stack.h"
 
 #include <limits.h>
+
 #include <atomic>
+#include <map>
+#include <queue>
+#include <stack>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
@@ -62,6 +66,8 @@ class Stack : public ResourceBase {
                                      "its max_size (", max_size_, ")");
     }
     stack_.push_back(value);
+    int index = stack_.size() - 1;
+    unswapped_ids_.push(index);
     return Status::OK();
   }
 
@@ -72,15 +78,85 @@ class Stack : public ResourceBase {
       return errors::InvalidArgument("Stack[", stack_name_,
                                      "] is empty when calling Pop().");
     }
+    int index = stack_.size() - 1;
+    while (is_swapping_ins_[index]) {
+      cond_swapping_ins_[index].wait(l);
+      index = stack_.size() - 1;
+    }
     *value = stack_.back();
     stack_.pop_back();
     return Status::OK();
   }
 
+  Status SwapOut(TensorAndAllocation* value, Tensor* cpu_tensor) {
+    mutex_lock l(mu_);
+    TF_RETURN_IF_ERROR(CheckNotClosed());
+
+    value->tensor = *cpu_tensor;
+    value->swapped_to_cpu = true;
+
+    return Status::OK();
+  }
+
+  Status SwapIn(TensorAndAllocation* value, Tensor* device_tensor) {
+    mutex_lock l(mu_);
+    TF_RETURN_IF_ERROR(CheckNotClosed());
+
+    value->tensor = *device_tensor;
+    value->swapped_to_cpu = false;
+
+    return Status::OK();
+  }
+
+  bool GetTensorToSwapOut(
+      TensorAndAllocation** value,
+      std::function<bool(const TensorAndAllocation&)> cond) {
+    mutex_lock l(mu_);
+    bool can_swap = false;
+    while (!can_swap) {
+      if (unswapped_ids_.empty()) {
+        break;
+      }
+      int index = unswapped_ids_.front();
+      unswapped_ids_.pop();
+      if (!cond(stack_[index])) {
+        continue;
+      }
+      swapped_ids_.push(index);
+      *value = &stack_[index];
+      can_swap = true;
+    }
+    return can_swap;
+  }
+
+  bool GetTensorToSwapIn(TensorAndAllocation** value, int& index) {
+    mutex_lock l(mu_);
+    bool can_unswap = false;
+    while (!can_unswap) {
+      if (swapped_ids_.empty()) {
+        break;
+      }
+      index = swapped_ids_.top();
+      swapped_ids_.pop();
+      if (index >= stack_.size()) {
+        continue;
+      }
+      *value = &stack_[index];
+      is_swapping_ins_[index] = true;
+      can_unswap = true;
+    }
+    return can_unswap;
+  }
+
+  void FinishSwappingIn(int index) {
+    mutex_lock l(mu_);
+    is_swapping_ins_[index] = false;
+    cond_swapping_ins_[index].notify_one();
+  }
+
   // We don't swap the first tensor on the stack and any subsequent tensors
   // that share the buffer with the first tensor.
   bool IsUsefulToSwap(const Tensor& tensor) const {
-    mutex_lock l(mu_);
     if (stack_.empty()) {
       return false;
     }
@@ -114,6 +190,12 @@ class Stack : public ResourceBase {
   int max_size_;
   bool closed_ GUARDED_BY(mu_);
   std::vector<TensorAndAllocation> stack_ GUARDED_BY(mu_);
+
+  std::queue<int> unswapped_ids_ GUARDED_BY(mu_);
+  std::stack<int> swapped_ids_ GUARDED_BY(mu_);
+
+  std::map<int, bool> is_swapping_ins_ GUARDED_BY(mu_);
+  std::map<int, condition_variable> cond_swapping_ins_;
 
   Status CheckNotClosed() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (closed_) {
@@ -231,52 +313,64 @@ void StackPushOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     return;
   }
 
-  // Push the tensor onto the stack. Swap the tensor to CPU if instructed.
+  // Push the tensor onto the stack.
+  // Swap the oldest tensor to CPU if instructed.
   const Tensor& tensor = ctx->input(1);
   AllocatorAttributes alloc_attrs = ctx->input_alloc_attr(1);
+
+  OP_REQUIRES_OK_ASYNC(ctx, stack->Push({tensor, alloc_attrs, false}), done);
+  ctx->set_output(0, tensor);
+
   // For now, we use a simple heuristic for swapping: A GPU tensor is moved
   // to CPU if the tensor has more than kCopyThreshold bytes and the GPU
   // allocator says more than kOccupancy of the memory is in use.
   static constexpr int kCopyThreshold = 2048;
   static constexpr double kOccupancy = 0.7;
-  if (swap_memory_ && !alloc_attrs.on_host() &&
-      tensor.TotalBytes() > kCopyThreshold && stack->IsUsefulToSwap(tensor)) {
-    DeviceContext* device_ctxt = ctx->op_device_context();
-    auto device = static_cast<tensorflow::Device*>(ctx->device());
-    Allocator* allocator = device->GetAllocator(alloc_attrs);
-    absl::optional<AllocatorStats> stats = allocator->GetStats();
-    if (stats && *stats->bytes_limit &&
-        stats->bytes_in_use > (*stats->bytes_limit * kOccupancy)) {
-      // Asynchronously copy the tensor from GPU to CPU memory.
-      // TODO(yuanbyu): Swap the oldest tensor first.
-      AllocatorAttributes host_alloc_attrs;
-      host_alloc_attrs.set_gpu_compatible(true);
-      host_alloc_attrs.set_on_host(true);
-      Allocator* cpu_allocator = device->GetAllocator(host_alloc_attrs);
-      Tensor* cpu_tensor =
-          new Tensor(cpu_allocator, tensor.dtype(), tensor.shape());
-      device_ctxt->CopyDeviceTensorToCPU(
-          &tensor, "StackPush", device, cpu_tensor,
-          [cpu_tensor, stack, ctx, done](const Status& s) {
-            ctx->SetStatus(s);
-            if (s.ok()) {
-              AllocatorAttributes alloc_attrs = ctx->input_alloc_attr(1);
-              ctx->SetStatus(stack->Push({*cpu_tensor, alloc_attrs, true}));
-            }
-            if (ctx->status().ok()) {
-              ctx->set_output(0, *cpu_tensor);
-            }
-            done();
-            delete cpu_tensor;
-          });
-      return;
-    }
+
+  if (!swap_memory_ || alloc_attrs.on_host()) {
+    done();
+    return;
   }
 
-  // Execute synchronously if not swapped.
-  OP_REQUIRES_OK_ASYNC(ctx, stack->Push({tensor, alloc_attrs, false}), done);
-  ctx->set_output(0, tensor);
-  done();
+  DeviceContext* device_ctxt = ctx->op_device_context();
+  auto device = static_cast<tensorflow::Device*>(ctx->device());
+  Allocator* allocator = device->GetAllocator(alloc_attrs);
+  absl::optional<AllocatorStats> stats = allocator->GetStats();
+  if (!stats || !*stats->bytes_limit ||
+      stats->bytes_in_use <= (*stats->bytes_limit * kOccupancy)) {
+    done();
+    return;
+  }
+
+  // Obtain the oldest unswapped TensorAndAllocation.
+  Stack::TensorAndAllocation* to_swap_out;
+  if (!stack->GetTensorToSwapOut(
+          &to_swap_out,
+          [stack](const Stack::TensorAndAllocation& value) -> bool {
+            return value.tensor.TotalBytes() > kCopyThreshold &&
+                   stack->IsUsefulToSwap(value.tensor);
+          })) {
+    done();
+    return;
+  }
+
+  // Asynchronously copy the tensor from GPU to CPU memory.
+  // Swap the oldest tensor first.
+  AllocatorAttributes host_alloc_attrs;
+  host_alloc_attrs.set_gpu_compatible(true);
+  host_alloc_attrs.set_on_host(true);
+  Allocator* cpu_allocator = device->GetAllocator(host_alloc_attrs);
+  Tensor* cpu_tensor = new Tensor(cpu_allocator, (to_swap_out->tensor).dtype(),
+                                  (to_swap_out->tensor).shape());
+  device_ctxt->CopyDeviceTensorToCPU(
+      &(to_swap_out->tensor), "StackPush", device, cpu_tensor,
+      [stack, to_swap_out, cpu_tensor, done](const Status& s) {
+        if (s.ok()) {
+          stack->SwapOut(to_swap_out, cpu_tensor);
+        }
+        done();
+        delete cpu_tensor;
+      });
 }
 
 bool StackPushOp::IsExpensive() { return false; }
@@ -319,6 +413,40 @@ void StackPopOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     ctx->set_output(0, value.tensor);
     done();
   }
+
+  // This is the reverse of the heuristic for swapping out, asynchronously
+  // swap in most recent swapped tensors if the GPU allocator says less than
+  // kOccupancy of the memory is in use.
+  static constexpr double kOccupancy = 0.7;
+
+  DeviceContext* device_ctxt = ctx->op_device_context();
+  Device* device = static_cast<Device*>(ctx->device());
+  Allocator* gpu_allocator = device->GetAllocator(value.alloc_attrs);
+  absl::optional<AllocatorStats> stats = gpu_allocator->GetStats();
+  if (!stats || !*stats->bytes_limit ||
+      stats->bytes_in_use > (*stats->bytes_limit * kOccupancy)) {
+    return;
+  }
+
+  // Obtain the most recent swapped TensorAndAllocation.
+  Stack::TensorAndAllocation* to_swap_in;
+  int to_swap_in_index;
+  if (!stack->GetTensorToSwapIn(&to_swap_in, to_swap_in_index)) {
+    return;
+  }
+
+  Tensor* device_tensor =
+      new Tensor(gpu_allocator, (to_swap_in->tensor).dtype(),
+                 (to_swap_in->tensor).shape());
+  device_ctxt->CopyCPUTensorToDevice(
+      &(to_swap_in->tensor), device, device_tensor,
+      [stack, to_swap_in, device_tensor, to_swap_in_index](const Status& s) {
+        if (s.ok()) {
+          stack->SwapIn(to_swap_in, device_tensor);
+        }
+        delete device_tensor;
+        stack->FinishSwappingIn(to_swap_in_index);
+      });
 }
 
 bool StackPopOp::IsExpensive() { return false; }
