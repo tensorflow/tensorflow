@@ -19,7 +19,6 @@
 * Wraps losses passed to the `compile` API (strings and v1 losses) which are not instances of v2 `Loss` class in `LossWrapper` class. => All losses will now use `SUM_OVER_BATCH_SIZE` reduction as default.
 * Disable `run_eagerly` and distribution strategy if there are symbolic tensors added to the model using `add_metric` or `add_loss`.
 * tf.linspace(start, stop, num) now always uses "stop" as last value (for num > 1)
-* `ResourceVariable` and `Variable` no longer accepts `constraint` in the constructor, nor expose it as a @property.
 * The behavior of tf.gather is now correct when axis=None and batch_dims<0.
 * Only create a GCS directory object if the object does not already exist.
 * In `map_vectorization` optimization, reduce the degree of parallelism in the vectorized map node.
