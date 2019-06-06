@@ -23,6 +23,7 @@
 #include "mlir/Analysis/Dominance.h"
 #include "mlir/IR/Operation.h"
 #include "llvm/Support/GenericDomTreeConstruction.h"
+
 using namespace mlir;
 using namespace mlir::detail;
 
@@ -34,7 +35,7 @@ template class llvm::DomTreeNodeBase<Block>;
 // DominanceInfoBase
 //===----------------------------------------------------------------------===//
 
-/// Recalculate the dominance info for the provided function.
+/// Recalculate the dominance info.
 template <bool IsPostDom>
 void DominanceInfoBase<IsPostDom>::recalculate(Function *function) {
   dominanceInfos.clear();
@@ -47,6 +48,23 @@ void DominanceInfoBase<IsPostDom>::recalculate(Function *function) {
 
   /// Build the dominance for each of the operation regions.
   function->walk([&](Operation *op) {
+    for (auto &region : op->getRegions()) {
+      // Don't compute dominance if the region is empty.
+      if (region.empty())
+        continue;
+      auto opDominance = llvm::make_unique<base>();
+      opDominance->recalculate(region);
+      dominanceInfos.try_emplace(&region, std::move(opDominance));
+    }
+  });
+}
+
+template <bool IsPostDom>
+void DominanceInfoBase<IsPostDom>::recalculate(Operation *op) {
+  dominanceInfos.clear();
+
+  /// Build the dominance for each of the operation regions.
+  op->walk([&](Operation *op) {
     for (auto &region : op->getRegions()) {
       // Don't compute dominance if the region is empty.
       if (region.empty())

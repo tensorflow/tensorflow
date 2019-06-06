@@ -27,6 +27,7 @@ extern template class llvm::DominatorTreeBase<mlir::Block, true>;
 namespace mlir {
 using DominanceInfoNode = llvm::DomTreeNodeBase<Block>;
 class Function;
+class Operation;
 
 namespace detail {
 template <bool IsPostDom> class DominanceInfoBase {
@@ -34,14 +35,16 @@ template <bool IsPostDom> class DominanceInfoBase {
 
 public:
   DominanceInfoBase(Function *function) { recalculate(function); }
+  DominanceInfoBase(Operation *op) { recalculate(op); }
   DominanceInfoBase(DominanceInfoBase &&) = default;
   DominanceInfoBase &operator=(DominanceInfoBase &&) = default;
 
   DominanceInfoBase(const DominanceInfoBase &) = delete;
   DominanceInfoBase &operator=(const DominanceInfoBase &) = delete;
 
-  /// Recalculate the dominance info for the provided function.
+  /// Recalculate the dominance info.
   void recalculate(Function *function);
+  void recalculate(Operation *op);
 
   /// Get the root dominance node of the given region.
   DominanceInfoNode *getRootNode(Region *region) {
