@@ -32,6 +32,10 @@ def tflite_copts():
             "/DTF_COMPILE_LIBRARY",
             "/wd4018",  # -Wno-sign-compare
         ],
+        str(Label("//tensorflow:linux_aarch64")): [
+            "-flax-vector-conversions",
+            "-fomit-frame-pointer",
+        ],
         "//conditions:default": [
             "-Wno-sign-compare",
         ],
