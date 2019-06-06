@@ -33,7 +33,7 @@ limitations under the License.
 // The reference implementation can have no platform-specific dependencies, so
 // it just returns a static image. For real applications, you should
 // ensure there's a specialized implementation that accesses hardware APIs.
-TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int* image_size,
-                      uint8_t** image_data);
+TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int image_width,
+                      int image_height, int channels, uint8_t* image_data);
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MICRO_VISION_IMAGE_PROVIDER_H_

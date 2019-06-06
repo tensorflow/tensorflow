@@ -25,14 +25,8 @@ namespace tensorflow {
 void OpsTestBase::SetDevice(const DeviceType& device_type,
                             std::unique_ptr<Device> device) {
   CHECK(device_) << "No device provided";
-
-  device_ = device.get();
-  device_mgr_ = absl::make_unique<DeviceMgr>(std::move(device));
-  pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
-      device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, flib_def_.get(),
-      OptimizerOptions());
-
   device_type_ = device_type;
+  device_ = std::move(device);
 #ifdef GOOGLE_CUDA
   if (device_type == DEVICE_GPU) {
     managed_allocator_.reset(new GpuManagedAllocator());
@@ -44,7 +38,6 @@ void OpsTestBase::SetDevice(const DeviceType& device_type,
 #else
   CHECK_NE(device_type, DEVICE_GPU)
       << "Requesting GPU on binary compiled without GOOGLE_CUDA.";
-  allocator_ = device_->GetAllocator(AllocatorAttributes());
 #endif
 }
 

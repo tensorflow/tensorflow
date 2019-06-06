@@ -73,3 +73,19 @@ tflite_micro_cc_test(
         "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
 )
+
+cc_binary(
+    name = "micro_vision",
+    srcs = [
+        "main.cc",
+    ],
+    deps = [
+        ":image_provider",
+        ":model_settings",
+        ":person_detect_model_data",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/kernels:all_ops_resolver",
+        "//tensorflow/lite/schema:schema_fbs",
+    ],
+)

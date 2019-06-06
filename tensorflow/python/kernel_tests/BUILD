@@ -2309,6 +2309,20 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "unsorted_segment_join_op_test",
+    size = "small",
+    srcs = ["unsorted_segment_join_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:string_ops",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
     name = "reduction_ops_test",
     size = "medium",
     srcs = ["reduction_ops_test.py"],

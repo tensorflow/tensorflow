@@ -164,6 +164,15 @@ def unwrap_outputs(distribution_strategy, grouped_outputs,
                                       grouped_outputs[0], axis=None)
   all_outputs = flatten_per_replica_values(distribution_strategy,
                                            grouped_outputs[1:])
+  if (is_tpu_strategy(distribution_strategy) and
+      ops.executing_eagerly_outside_functions()):
+    # Choose 1 value per replica in the TPU case since all replicas produce the
+    # same output.
+    # We only do this in eager mode for now since this function is used in
+    # both graph and eager mode and in the graph case we currently don't use
+    # experimental_run so would need to be removed when we converge the graph
+    # code path as well.
+    all_outputs = all_outputs[::distribution_strategy.num_replicas_in_sync]
   return [loss] + all_outputs
 
 
@@ -578,6 +587,9 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   """
   strategy = model._distribution_strategy
   inputs, targets, sample_weights = _get_input_from_iterator(inputs, model)
+  if is_tpu_strategy(strategy):
+    if sample_weights is not None:
+      raise ValueError('TPUStrategy does not support sample weights.')
 
   # When the inputs are dict, then we want to flatten it in the same order as
   # the input layers, such that the data are fed into the input layers in the
@@ -611,8 +623,8 @@ def is_distributing_by_cloning(model):
   """Decide whether this model is going to be distributed via cloning.
 
   We are going to distribute the model by cloning if the user has signaled
-  that intent by not setting `cloning=False` in `Model.compile()` unless we
-  are in graph mode or running on TPU.
+  that intent by setting `cloning=True` in `Model.compile()` unless we are in
+  graph mode.
 
   Args:
     model: Keras model to distribute.
@@ -621,9 +633,15 @@ def is_distributing_by_cloning(model):
     True if the `model` is going to be distributed using cloning and False
     otherwise.
   """
+  if (is_tpu_strategy(model._distribution_strategy) and
+      context.executing_eagerly):
+    if model._cloning:
+      logging.warning(
+          'Model cloning is not supported in TPU Strategy in Eager mode.'
+          'cloning argument will be ignored.')
+    return False
   return (model._cloning or model._compile_distribution or
-          not ops.executing_eagerly_outside_functions() or
-          K.is_tpu_strategy(model._distribution_strategy))
+          not ops.executing_eagerly_outside_functions())
 
 
 def _custom_compile_for_predict(model):

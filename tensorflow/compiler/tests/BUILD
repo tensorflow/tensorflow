@@ -264,7 +264,6 @@ tf_xla_py_test(
     name = "cond_test",
     size = "small",
     srcs = ["cond_test.py"],
-    disabled_backends = ["cpu_ondemand"],  # b/129021699
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -1195,26 +1194,6 @@ tf_cuda_cc_test(
         "notap",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
-)
-
-tf_cuda_cc_test(
-    name = "unary_ops_composition_test",
-    srcs = ["unary_ops_composition_test.cc"],
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/compiler/jit",
-        "//tensorflow/compiler/jit:common",
-        "//tensorflow/compiler/jit:xla_kernel_creator",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels:ops_testutil",
-        "//tensorflow/core/kernels:ops_util",
-    ],
 )
 
 py_library(

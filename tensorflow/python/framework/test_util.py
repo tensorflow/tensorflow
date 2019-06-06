@@ -1553,6 +1553,44 @@ def use_deterministic_cudnn(func):
 
 
 # The description is just for documentation purposes.
+def enable_tf_xla_constant_folding(description):
+
+  if not isinstance(description, str):
+    raise ValueError("'description' should be string, got {}".format(
+        type(description)))
+
+  def enable_tf_xla_constant_folding_impl(func):
+    """Enable constant folding during the call to this function.
+
+    Some tests fail without constant folding.
+
+    Args:
+      func: Function to run with constant folding turned on.
+
+    Returns:
+      Decorated function.
+    """
+
+    def decorator(f):
+
+      def decorated(self, *args, **kwargs):
+        original_var = pywrap_tensorflow.TF_GetXlaConstantFoldingDisabled()
+        pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(False)
+        result = f(self, *args, **kwargs)
+        pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(original_var)
+        return result
+
+      return decorated
+
+    if func is not None:
+      return decorator(func)
+
+    return decorator
+
+  return enable_tf_xla_constant_folding_impl
+
+
+# The description is just for documentation purposes.
 def disable_xla(description):
 
   def disable_xla_impl(func):
@@ -1677,9 +1715,12 @@ class TensorFlowTestCase(googletest.TestCase):
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TensorFlowTestCase, self).__init__(methodName)
     if is_xla_enabled():
-      pywrap_tensorflow.TF_SetXLaAutoJitMode("2")
+      pywrap_tensorflow.TF_SetXlaAutoJitMode("2")
       pywrap_tensorflow.TF_SetXlaMinClusterSize(1)
       pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(False)
+      # Constant folding secretly runs code on TF:Classic CPU, so we also
+      # disable it here.
+      pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(True)
 
     self._threads = []
     self._tempdir = None

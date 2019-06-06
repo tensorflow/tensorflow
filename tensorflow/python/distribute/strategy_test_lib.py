@@ -426,6 +426,23 @@ class DistributionTestBase(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         run_and_concatenate(strategy, i)
 
+  def _test_trainable_variable(self, strategy):
+    with strategy.scope():
+      v1 = variables.Variable(1.0)
+      self.assertEqual(True, v1.trainable)
+
+      v2 = variables.Variable(
+          1.0, synchronization=variables.VariableSynchronization.ON_READ)
+      self.assertEqual(False, v2.trainable)
+
+      with self.assertRaisesRegexp(
+          ValueError,
+          "Synchronization value can be set to VariableSynchronization.ON_READ "
+          "only for non-trainable variables"):
+        _ = variables.Variable(
+            1.0, trainable=True,
+            synchronization=variables.VariableSynchronization.ON_READ)
+
 
 class OneDeviceDistributionTestBase(test.TestCase):
   """Some tests that should work with any one-device DistributionStrategy."""

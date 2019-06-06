@@ -2112,7 +2112,8 @@ Status GraphProperties::UpdateEnqueue(
 
 Status GraphProperties::InferStatically(bool assume_valid_feeds,
                                         bool aggressive_shape_inference,
-                                        bool include_tensor_values) {
+                                        bool include_input_tensor_values,
+                                        bool include_output_tensor_values) {
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item_.graph.library());
   std::unordered_map<string, std::unordered_set<int>> fed_ports;
@@ -2271,7 +2272,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
                                           &input_properties[i]);
         input.port_id = i;
         GraphView::OutputPort fanin = graph_view.GetRegularFanin(input);
-        if (include_tensor_values) {
+        if (include_input_tensor_values) {
           // Export tensor value to input_properties.value.
           if (IsConstant(*fanin.node)) {
             const TensorProto& raw_val =
@@ -2303,7 +2304,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
       for (int i = 0; i < ic->num_outputs(); ++i) {
         shape_manager->AsTensorProperties(ic->output(i), ctx->output_types[i],
                                           &output_properties[i]);
-        if (include_tensor_values) {
+        if (include_output_tensor_values) {
           // Export tensor value to output_properties.value.
           if (IsConstant(node)) {
             // TODO(rmlarsen): Eliminate this copy.

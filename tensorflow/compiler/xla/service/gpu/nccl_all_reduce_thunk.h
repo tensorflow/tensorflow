@@ -59,9 +59,7 @@ class NcclAllReduceThunk : public Thunk {
                      const HloInstruction* all_reduce);
   ~NcclAllReduceThunk() override;
 
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream, const RunId& run_id,
-                         HloExecutionProfiler* profiler) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   // Extra data stored in NcclAllReduceThunk whose types we don't want exposed

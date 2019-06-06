@@ -558,7 +558,9 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
     return false;
   }
   GraphProperties properties(*item);
-  s = properties.InferStatically(false);
+  s = properties.InferStatically(/*assume_valid_feeds=*/false,
+                                 /*aggressive_shape_inference=*/false,
+                                 /*include_tensor_values=*/false);
   if (!s.ok()) {
     VLOG(1) << "Failed to infer shapes: " << s.error_message();
     return false;
@@ -1148,7 +1150,11 @@ bool SwappingPass(RewriterConfig::MemOptType optimization_level,
 
   // Estimate the size of the data to swap for each node.
   GraphProperties properties(*item);
-  if (!properties.InferStatically(true).ok()) {
+  if (!properties
+           .InferStatically(/*assume_valid_feeds=*/true,
+                            /*aggressive_shape_inference=*/false,
+                            /*include_tensor_values=*/false)
+           .ok()) {
     return false;
   }
   for (auto& swap : nodes_to_swap) {

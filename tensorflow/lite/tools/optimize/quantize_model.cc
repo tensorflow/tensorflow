@@ -69,7 +69,7 @@ TfLiteStatus QuantizeBias(ModelT* model, const TensorT* input_tensor,
     }
     return utils::SymmetricPerChannelBiasQuantize(
         model, bias_tensor, input_tensor->quantization->scale[0],
-        weight_scales.data(), channel_dim_size, channel_dim_index);
+        weight_scales.data(), channel_dim_size);
   } else {
     if (weight_scales.size() != 1) {
       error_reporter->Report(

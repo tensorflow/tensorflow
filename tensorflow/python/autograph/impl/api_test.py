@@ -43,6 +43,7 @@ from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_inspect
 
 tf = utils.fake_tf()
@@ -189,6 +190,27 @@ class ApiTest(test.TestCase):
     self.assertListEqual(
         list(tf_inspect.getfullargspec(tc.called_member)),
         list(tf_inspect.getfullargspec(tc.called_member_converted)))
+
+  @test_util.run_deprecated_v1
+  def test_do_not_convert_preserves_argspec(self):
+
+    class TestClass(object):
+
+      @api.do_not_convert(run_as=api.RunMode.GRAPH)
+      def test_method(self, x, y):
+        z = x + y
+        return z
+
+      test_method_do_not_convert = api.do_not_convert(
+          run_as=api.RunMode.GRAPH)(test_method)
+
+    tc = TestClass()
+    self.assertTrue(tf_inspect.ismethod(tc.test_method_do_not_convert))
+    self.assertAllEqual(('x', 'y'), function_utils.fn_args(
+        tc.test_method_do_not_convert))
+    self.assertListEqual(
+        list(tf_inspect.getfullargspec(tc.test_method)),
+        list(tf_inspect.getfullargspec(tc.test_method_do_not_convert)))
 
   @test_util.run_deprecated_v1
   def test_convert_call_site_decorator(self):

@@ -133,8 +133,10 @@ def assert_input_compatibility(input_spec, inputs, layer_name):
   of a layer (if any). If not, a clear and actional exception gets raised.
 
   Arguments:
-      input_spec: An InputSpec instance, or None.
-      inputs: Input tensor or list of input tensors.
+      input_spec: An InputSpec instance, list of InputSpec instances, a nested
+          structure of InputSpec instances, or None.
+      inputs: Input tensor, list of input tensors, or a nested structure of
+          input tensors.
       layer_name: String, name of the layer (for error message formatting).
 
   Raises:

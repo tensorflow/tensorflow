@@ -272,7 +272,10 @@ void InitializeTypedBuffer(se::Stream* stream, se::DeviceMemory<T> buffer,
       using RandomType =
           typename std::conditional<std::is_same<T, Eigen::half>::value, float,
                                     T>::type;
-      element = T(UniformDistribution(RandomType(0), RandomType(1), &gen));
+      // Scale down the values for fp16 to have less overflows.
+      auto upper_bound =
+          RandomType(std::is_same<T, Eigen::half>::value ? 0.1 : 1.0);
+      element = T(UniformDistribution(RandomType(0), upper_bound, &gen));
     }
     return ret;
   }();
@@ -517,13 +520,17 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     }
   }
 
-  // Choose the fastest convolution that doesn't produce a REDZONE_MODIFIED
-  // error.
-  //
   // For now, we ignore WRONG_RESULT failures because false-positives are
   // possible (e.g. perhaps the reference algorithm is the one that's
   // incorrect!).  But we don't ignore REDZONE_MODIFIED failures because they're
   // quite severe and can be detected with high accuracy.
+  auto has_failure = [](const AutotuneResult& r) {
+    return r.has_failure() &&
+           r.failure().kind() != AutotuneResult::WRONG_RESULT;
+  };
+
+  // Choose the fastest convolution that doesn't produce a REDZONE_MODIFIED
+  // error.
   //
   // TODO(jlebar): We ought to be able to detect redzone reads by noticing NaNs
   // in the output of the conv and skip those.
@@ -531,9 +538,9 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
   // The successful one should have a smaller key, since we are doing
   // min_element. If they are both unsuccessful, keep the earlier one in
   // the vector by comparing pointers.
-  auto result_comparison_key = [](const AutotuneResult& r) {
+  auto result_comparison_key = [&has_failure](const AutotuneResult& r) {
     return std::make_tuple(
-        r.has_failure() && r.failure().kind() != AutotuneResult::WRONG_RESULT,
+        has_failure(r),
         tensorflow::proto_utils::FromDurationProto(r.run_time()));
   };
   const auto& best_result = absl::c_min_element(
@@ -542,7 +549,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
         return result_comparison_key(lhs) < result_comparison_key(rhs);
       });
 
-  if (best_result != profile_results.end() && !best_result->has_failure()) {
+  if (best_result != profile_results.end() && !has_failure(*best_result)) {
     return *best_result;
   }
 

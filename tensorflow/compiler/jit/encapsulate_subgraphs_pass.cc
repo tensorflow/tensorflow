@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
@@ -1230,7 +1231,10 @@ Status EncapsulateSubgraphsPass::Run(
         // However since we are only allowed to specify the filter at the "Node"
         // level there is no good way to allow the above behavior. So we
         // disallow any sort of constant folding on Variant nodes for now.
-        auto cf_consider_fn = [](const Node* n) {
+        bool disable_constant_folding =
+            GetBuildXlaOpsPassFlags()->tf_xla_disable_constant_folding;
+        auto cf_consider_fn = [disable_constant_folding](const Node* n) {
+          if (disable_constant_folding) return false;
           for (const auto& output_arg : n->op_def().output_arg()) {
             if (output_arg.type() == DT_VARIANT) {
               return false;

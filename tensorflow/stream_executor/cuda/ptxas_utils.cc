@@ -134,6 +134,10 @@ port::StatusOr<absl::Span<const uint8>> CompilePtxOrGetCached(
 port::StatusOr<std::vector<uint8>> CompilePtx(int device_ordinal,
                                               const char* ptx_contents,
                                               PtxCompilationOptions options) {
+#if defined(PLATFORM_WINDOWS)
+  // Subprocess launch code does not compile on Windows.
+  return port::InternalError("Invoking ptxas not supported on Windows");
+#else
   gpu::GpuDeviceHandle handle;
   TF_RETURN_IF_ERROR(CUDADriver::GetDevice(device_ordinal, &handle));
   int cc_major;
@@ -210,6 +214,7 @@ port::StatusOr<std::vector<uint8>> CompilePtx(int device_ordinal,
                                                   cubin_path, &cubin));
   std::vector<uint8> cubin_vector(cubin.begin(), cubin.end());
   return cubin_vector;
+#endif
 }
 
 }  // namespace cuda

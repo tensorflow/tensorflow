@@ -92,7 +92,7 @@ class Options(object):
     # If a particular model is affected by a known bug count it as a Toco
     # error.
     self.known_bugs_are_errors = False
-    # Raise an exception if any toco error is encountered.
+    # Raise an exception if any converter error is encountered.
     self.ignore_converter_errors = False
     # Include intermediate graphdefs in the output zip files.
     self.save_graphdefs = False
@@ -446,7 +446,7 @@ def make_zip_of_tests(options,
       fail because the one or more combination of parameters is invalid.
 
   Raises:
-    RuntimeError: if there are toco errors that can't be ignored.
+    RuntimeError: if there are converter errors that can't be ignored.
   """
   zip_path = os.path.join(options.output_path, options.zip_to_output)
   parameter_count = 0
@@ -576,11 +576,11 @@ def make_zip_of_tests(options,
         if not options.known_bugs_are_errors:
           for pattern, bug_number in options.known_bugs.items():
             if re.search(pattern, label):
-              print("Ignored TOCO error due to bug %s" % bug_number)
+              print("Ignored converter error due to bug %s" % bug_number)
               ignore_error = True
         if not ignore_error:
           toco_errors += 1
-          print("-----------------\ntoco error!\n%s\n-----------------\n" %
+          print("-----------------\nconverter error!\n%s\n-----------------\n" %
                 report["toco_log"])
 
       convert_report.append((param_dict, report))

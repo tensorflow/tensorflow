@@ -119,23 +119,14 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
       values: A 1-D tensor of any type and shape `[N]`.
       dense_shape: A 1-D int64 tensor of shape `[ndims]`.
     """
-    if isinstance(indices, tensor_spec.TensorSpec):
-      # TODO(b/133606651) Remove this code path -- replaced by TypeSpec.
-      if not isinstance(values, tensor_spec.TensorSpec):
-        raise TypeError("Expected values to be a TensorSpec")
-      if not isinstance(dense_shape, tensor_spec.TensorSpec):
-        raise TypeError("Expected dense_shape to be a TensorSpec")
-      if indices.dtype != dtypes.int64 or dense_shape.dtype != dtypes.int64:
-        raise TypeError("indices and dense_shape must have dtype=int64")
-    else:
-      with ops.name_scope(None, "SparseTensor", [indices, values, dense_shape]):
-        indices = ops.convert_to_tensor(
-            indices, name="indices", dtype=dtypes.int64)
-        # TODO(touts): Consider adding mutable_values() when 'values'
-        # is a VariableOp and updating users of SparseTensor.
-        values = ops.internal_convert_to_tensor(values, name="values")
-        dense_shape = ops.convert_to_tensor(
-            dense_shape, name="dense_shape", dtype=dtypes.int64)
+    with ops.name_scope(None, "SparseTensor", [indices, values, dense_shape]):
+      indices = ops.convert_to_tensor(
+          indices, name="indices", dtype=dtypes.int64)
+      # TODO(touts): Consider adding mutable_values() when 'values'
+      # is a VariableOp and updating users of SparseTensor.
+      values = ops.internal_convert_to_tensor(values, name="values")
+      dense_shape = ops.convert_to_tensor(
+          dense_shape, name="dense_shape", dtype=dtypes.int64)
     self._indices = indices
     self._values = values
     self._dense_shape = dense_shape
@@ -239,31 +230,21 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
   def _override_operator(operator, func):
     _override_helper(SparseTensor, operator, func)
 
-  def _to_components(self):
-    return (self._indices, self._values, self._dense_shape)
-
-  @classmethod
-  def _from_components(cls, components, metadata):
-    return cls(*components)
-
-  def _shape_invariant_to_components(self, shape=None):
-    if shape is None:
-      shape = self.dense_shape.shape
-    if shape.ndims is None:
-      shape = tensor_shape.TensorShape([None])
-    if shape.ndims != 1:
-      raise ValueError("Shape invariant for SparseTensor must have the form "
-                       "TensorShape([r]), got %r" % shape)
-    rank = tensor_shape.dimension_value(shape[0])
-    return (
-        tensor_shape.TensorShape([None, rank]),  # indices
-        tensor_shape.TensorShape([None]),  # values
-        tensor_shape.TensorShape([rank])  # dense_shape
-        )
-
   @property
-  def _is_graph_tensor(self):
-    return hasattr(self._values, "graph")
+  def _type_spec(self):
+    return SparseTensorSpec(self.shape, self.dtype)
+
+  def _shape_invariant_to_type_spec(self, shape):
+    # From the tf.while_loop docs: "If a loop variable is a SparseTensor, the
+    # shape invariant must be TensorShape([r]) where r is the rank of the dense
+    # tensor represented by the sparse tensor. It means the shapes of the three
+    # tensors of the SparseTensor are ([None], [None, r], [r]). NOTE: The shape
+    # invariant here is the shape of the SparseTensor.dense_shape property. It
+    # must be the shape of a vector.
+    if shape.ndims is not None and shape.ndims != 1:
+      raise ValueError("Expected a shape with 1 dimension")
+    rank = tensor_shape.dimension_value(shape[0])
+    return SparseTensorSpec(tensor_shape.unknown_shape(rank), self.dtype)
 
   def consumers(self):
     return self._consumers()

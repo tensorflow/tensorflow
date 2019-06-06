@@ -252,7 +252,11 @@ class SingleOpModel {
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                         bool allow_fp32_relax_to_fp16 = false);
 
+  // Executes inference, asserting success.
   void Invoke();
+
+  // Executes inference *without* asserting success.
+  TfLiteStatus InvokeUnchecked();
 
   void PopulateStringTensor(int index, const std::vector<string>& content) {
     auto tensor = interpreter_->tensor(index);

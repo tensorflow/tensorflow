@@ -226,6 +226,9 @@ class MirroredTwoDeviceDistributionTest(
   def testSummaryForReplicaZeroOnly(self, distribution):
     self._test_summary_for_replica_zero_only(distribution)
 
+  def testTrainableVariables(self, distribution):
+    self._test_trainable_variable(distribution)
+
 
 def one_device_combinations():
   return combinations.combine(

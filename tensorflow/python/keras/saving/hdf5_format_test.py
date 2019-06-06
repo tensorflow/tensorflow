@@ -662,7 +662,8 @@ class TestWholeModelSaving(test.TestCase):
       for i in range(4):
         f = keras.layers.Dense(2, name='dense_%d' % (i,))(f)
       model = keras.Model(inputs=[x], outputs=[f])
-      model.compile(loss='mse', optimizer='adam', metrics=['acc'])
+      model.compile(
+          'adam', loss=keras.losses.MeanSquaredError(), metrics=['acc'])
 
       x = np.random.random((1, 2))
       y = np.random.random((1, 2))

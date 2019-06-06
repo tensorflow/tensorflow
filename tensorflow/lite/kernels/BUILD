@@ -1251,6 +1251,7 @@ cc_test(
     name = "tile_test",
     size = "small",
     srcs = ["tile_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1434,6 +1435,7 @@ cc_test(
     name = "logical_test",
     size = "small",
     srcs = ["logical_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",

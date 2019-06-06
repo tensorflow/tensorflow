@@ -228,10 +228,6 @@ def do_not_convert(func=None, run_as=RunMode.GRAPH, return_dtypes=None):
         return_dtypes=return_dtypes)
 
   @functools.wraps(func)
-  def graph_wrapper(*args, **kwargs):
-    return func(*args, **kwargs)
-
-  @functools.wraps(func)
   def py_func_wrapper(*args, **kwargs):
     if kwargs:
       raise NotImplementedError('RunMode.PY_FUNC does not yet support kwargs')
@@ -240,7 +236,7 @@ def do_not_convert(func=None, run_as=RunMode.GRAPH, return_dtypes=None):
         func, return_dtypes, args, kwargs, use_dummy_return=not return_dtypes)
 
   if run_as == RunMode.GRAPH:
-    wrapper = graph_wrapper
+    wrapper = func
   elif run_as == RunMode.PY_FUNC:
     wrapper = py_func_wrapper
   else:

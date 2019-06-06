@@ -1174,7 +1174,8 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
       TF_RETURN_IF_ERROR(ctx.graph_properties.InferStatically(
           /*assume_valid_feeds=*/false,
           /*aggressive_shape_inference=*/false,
-          /*include_tensor_values=*/true));
+          /*include_input_tensor_values=*/true,
+          /*include_output_tensor_values=*/false));
       ctx.inferred_graph_properties = true;
     }
 

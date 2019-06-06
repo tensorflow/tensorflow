@@ -275,6 +275,7 @@ Stream::~Stream() {
                  << status;
   }
   temporary_memory_manager_.ForceDeallocateAll();
+  RunAfterBlockHostUntilDoneCallbacks();
 
   if (allocated_) {
     parent_->DeallocateStream(this);
@@ -5149,6 +5150,20 @@ Stream &Stream::ThenDoHostCallbackWithStatus(
   return *this;
 }
 
+Stream &Stream::ThenRunAfterNextBlockHostUntilDone(
+    std::function<void()> callback) {
+  VLOG_CALL(PARAM(callback));
+
+  if (!ok()) {
+    LOG(INFO) << DebugStreamPointers()
+              << " was in error state before adding callback to be run after "
+                 "next block-host-until-done.";
+  }
+  absl::MutexLock lock(&mu_);
+  after_block_host_until_done_callbacks_.push_back(std::move(callback));
+  return *this;
+}
+
 Stream &Stream::ThenFft(fft::Plan *plan,
                         const DeviceMemory<std::complex<float>> &input,
                         DeviceMemory<std::complex<float>> *output) {
@@ -5284,7 +5299,20 @@ port::Status Stream::BlockHostUntilDone() {
 
   port::Status error = parent_->BlockHostUntilDone(this);
   CheckError(error.ok());
+
+  RunAfterBlockHostUntilDoneCallbacks();
   return error;
+}
+
+void Stream::RunAfterBlockHostUntilDoneCallbacks() {
+  std::vector<std::function<void()>> callbacks;
+  {
+    absl::MutexLock lock(&mu_);
+    std::swap(callbacks, after_block_host_until_done_callbacks_);
+  }
+  for (const auto &fn : callbacks) {
+    fn();
+  }
 }
 
 string Stream::DebugStreamPointers() const {

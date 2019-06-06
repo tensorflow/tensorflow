@@ -71,6 +71,10 @@ py_test(
     srcs = ["trainer_hooks_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = [
+        # TODO(b/134605801): Re-enable this test.
+        "no_oss",
+    ],
     deps = [
         ":trainer_hooks",
         "//tensorflow/contrib/framework:framework_py",

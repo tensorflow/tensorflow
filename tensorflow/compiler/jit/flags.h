@@ -96,6 +96,10 @@ struct BuildXlaOpsPassFlags {
   // If true then insert Print nodes to print out values produced by XLA
   // clusters.  Useful for debugging.
   bool tf_xla_print_cluster_outputs;
+
+  // Disables all constant folding. The primary use for this is for testing to
+  // guarantee that tests are run on XLA and not on TF's CPU implementation.
+  bool tf_xla_disable_constant_folding;
 };
 
 // Flags for the IntroduceFloatingPointJitter pass.

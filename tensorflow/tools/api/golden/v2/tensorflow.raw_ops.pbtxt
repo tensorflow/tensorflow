@@ -4393,6 +4393,10 @@ tf_module {
     argspec: "args=[\'indices\', \'dims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "UnsortedSegmentJoin"
+    argspec: "args=[\'inputs\', \'segment_ids\', \'num_segments\', \'separator\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
+  }
+  member_method {
     name: "UnsortedSegmentMax"
     argspec: "args=[\'data\', \'segment_ids\', \'num_segments\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

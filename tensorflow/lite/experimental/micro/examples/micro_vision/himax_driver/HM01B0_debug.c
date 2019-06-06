@@ -12,15 +12,24 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_RELU_OP_H_
-#define TENSORFLOW_COMPILER_TF2XLA_KERNELS_RELU_OP_H_
 
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "HM01B0_debug.h"
+#include "am_util.h" // NOLINT
 
-namespace xla {
-XlaOp Relu(XlaOp x);
-XlaOp Relu6(XlaOp x);
-}  // namespace xla
+void hm01b0_framebuffer_dump(uint8_t* frame, uint32_t length) {
+  am_util_stdio_printf("+++ frame +++");
 
-#endif  // TENSORFLOW_COMPILER_TF2XLA_KERNELS_RELU_OP_H_
+  for (uint32_t i = 0; i < length; i++) {
+    if ((i & 0xF) == 0x00) {
+      am_util_stdio_printf("\n0x%08LX ", i);
+      // this delay is to let itm have time to flush out data.
+      am_util_delay_ms(1);
+    }
+
+    am_util_stdio_printf("%02X ", frame[i]);
+  }
+
+  am_util_stdio_printf("\n--- frame ---\n");
+  am_util_delay_ms(1);
+}
+

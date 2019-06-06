@@ -27,6 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
@@ -95,6 +96,9 @@ def convert_structure_to_signature(structure, arg_names=None):
       else:
         name = "/".join([str(p) for p in path])
       return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
+    if isinstance(arg, composite_tensor.CompositeTensor):
+      # TODO(b/133606651) Do we need to inject arg_name?
+      return arg._type_spec  # pylint: disable=protected-access
     if isinstance(arg, (
         int,
         float,
@@ -108,7 +112,7 @@ def convert_structure_to_signature(structure, arg_names=None):
 
   # We are using the flattened paths to name the TensorSpecs. We need an
   # explicit name for them downstream.
-  flattened = nest.flatten_with_tuple_paths(structure, expand_composites=True)
+  flattened = nest.flatten_with_tuple_paths(structure)
   if arg_names:
     if len(arg_names) != len(structure):
       raise ValueError(
@@ -120,7 +124,7 @@ def convert_structure_to_signature(structure, arg_names=None):
     ]
 
   mapped = [encode_arg(arg, path) for path, arg in flattened]
-  return nest.pack_sequence_as(structure, mapped, expand_composites=True)
+  return nest.pack_sequence_as(structure, mapped)
 
 
 class FuncGraph(ops.Graph):

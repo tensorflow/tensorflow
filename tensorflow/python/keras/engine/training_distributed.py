@@ -26,6 +26,7 @@ from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -166,8 +167,6 @@ def experimental_tpu_fit_loop(model,
   # TODO(fchollet): add support for `steps_per_epoch=None` in TPU loops.
   current_strategy = model._distribution_strategy
   iterator = dist_utils.get_iterator(dataset, current_strategy)
-  steps_per_epoch = training_utils.infer_steps_for_dataset(
-      dataset, steps_per_epoch, epochs, steps_name='steps_per_epoch')
 
   scope = dist_utils.distributed_scope(
       strategy=current_strategy, learning_phase=1)
@@ -185,12 +184,8 @@ def experimental_tpu_fit_loop(model,
     tensor = model._all_metrics_tensors[name]
     initial_loop_values[name] = array_ops.zeros(tensor.shape, tensor.dtype)
 
-  if steps_per_epoch is not None:
-    iteration_value = min(steps_per_epoch,
-                          current_strategy.extended.steps_per_run)
-  else:
-    raise ValueError('Number of steps could not be infered from the data, '
-                     'please pass the steps_per_epoch argument.')
+  iteration_value = min(steps_per_epoch,
+                        current_strategy.extended.steps_per_run)
 
   steps_per_run = K.variable(
       value=iteration_value,
@@ -320,8 +315,6 @@ def experimental_tpu_test_loop(model,
   mode = ModeKeys.TEST
   current_strategy = model._distribution_strategy
   iterator = dist_utils.get_iterator(dataset, current_strategy)
-  steps = training_utils.infer_steps_for_dataset(dataset, steps,
-                                                 steps_name='steps')
 
   scope = dist_utils.distributed_scope(
       strategy=current_strategy, learning_phase=0)
@@ -449,8 +442,6 @@ def experimental_tpu_predict_loop(model,
       (if the model has multiple outputs).
   """
   mode = ModeKeys.PREDICT
-  steps = training_utils.infer_steps_for_dataset(dataset, steps,
-                                                 steps_name='steps')
   dataset_fully_shaped = dist_utils.is_dataset_shape_fully_defined(dataset)
   padding_handler = None
   if not dataset_fully_shaped:
@@ -653,32 +644,40 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
                        'distribution strategies.')
 
     if dist_utils.is_tpu_strategy(model._distribution_strategy):
-      return experimental_tpu_fit_loop(
-          model,
-          dataset,
-          epochs=epochs,
-          verbose=verbose,
-          callbacks=callbacks,
-          val_dataset=val_dataset,
-          initial_epoch=initial_epoch,
-          steps_per_epoch=steps_per_epoch,
-          validation_steps=validation_steps,
-          validation_freq=validation_freq)
-    else:
-      return training_arrays.fit_loop(
-          model,
-          dataset,
-          batch_size=batch_size,
-          epochs=epochs,
-          verbose=verbose,
-          callbacks=callbacks,
-          val_inputs=val_dataset,
-          shuffle=shuffle,
-          initial_epoch=initial_epoch,
-          steps_per_epoch=steps_per_epoch,
-          validation_steps=validation_steps,
-          validation_freq=validation_freq,
-          steps_name='steps_per_epoch')
+      steps_per_epoch = training_utils.infer_steps_for_dataset(
+          dataset, steps_per_epoch, epochs, steps_name='steps_per_epoch')
+      if steps_per_epoch is None:
+        raise ValueError('Number of steps could not be infered from the data, '
+                         'please pass the steps_per_epoch argument.')
+
+      if not context.executing_eagerly():
+        # Run TPU training in a custom loop in graph mode.
+        return experimental_tpu_fit_loop(
+            model,
+            dataset,
+            epochs=epochs,
+            verbose=verbose,
+            callbacks=callbacks,
+            val_dataset=val_dataset,
+            initial_epoch=initial_epoch,
+            steps_per_epoch=steps_per_epoch,
+            validation_steps=validation_steps,
+            validation_freq=validation_freq)
+
+    return training_arrays.fit_loop(
+        model,
+        dataset,
+        batch_size=batch_size,
+        epochs=epochs,
+        verbose=verbose,
+        callbacks=callbacks,
+        val_inputs=val_dataset,
+        shuffle=shuffle,
+        initial_epoch=initial_epoch,
+        steps_per_epoch=steps_per_epoch,
+        validation_steps=validation_steps,
+        validation_freq=validation_freq,
+        steps_name='steps_per_epoch')
 
   def evaluate(self,
                model,
@@ -702,16 +701,24 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
         allow_partial_batch=True)
 
     if dist_utils.is_tpu_strategy(model._distribution_strategy):
-      return experimental_tpu_test_loop(
-          model, dataset, verbose=verbose, steps=steps, callbacks=callbacks)
-    else:
-      return training_arrays.test_loop(
-          model,
-          inputs=dataset,
-          batch_size=batch_size,
-          verbose=verbose,
-          steps=steps,
-          callbacks=callbacks)
+      steps = training_utils.infer_steps_for_dataset(
+          dataset, steps, steps_name='steps')
+      if steps is None:
+        raise ValueError('Number of steps could not be infered from the data, '
+                         'please pass the steps argument.')
+
+      if not context.executing_eagerly():
+        # Run TPU evaluation in a custom loop in graph mode.
+        return experimental_tpu_test_loop(
+            model, dataset, verbose=verbose, steps=steps, callbacks=callbacks)
+
+    return training_arrays.test_loop(
+        model,
+        inputs=dataset,
+        batch_size=batch_size,
+        verbose=verbose,
+        steps=steps,
+        callbacks=callbacks)
 
   def predict(self,
               model,
@@ -731,16 +738,21 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
         batch_size=batch_size,
         allow_partial_batch=True)
     if dist_utils.is_tpu_strategy(model._distribution_strategy):
-      return experimental_tpu_predict_loop(
-          model, dataset, verbose=verbose, steps=steps, callbacks=callbacks)
-    else:
-      return training_arrays.predict_loop(
-          model,
-          dataset,
-          batch_size=batch_size,
-          verbose=verbose,
-          steps=steps,
-          callbacks=callbacks)
+      steps = training_utils.infer_steps_for_dataset(
+          dataset, steps, steps_name='steps')
+      if steps is None:
+        raise ValueError('Number of steps could not be infered from the data, '
+                         'please pass the steps argument.')
+      if not context.executing_eagerly():
+        return experimental_tpu_predict_loop(
+            model, dataset, verbose=verbose, steps=steps, callbacks=callbacks)
+    return training_arrays.predict_loop(
+        model,
+        dataset,
+        batch_size=batch_size,
+        verbose=verbose,
+        steps=steps,
+        callbacks=callbacks)
 
   def _process_batch_and_step_size(
       self, model, inputs, batch_size, steps_per_epoch, mode):
