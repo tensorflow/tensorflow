@@ -336,9 +336,10 @@ public:
   static void build(Builder *builder, OperationState *result, StringRef name,
                     FunctionType type, ArrayRef<NamedAttribute> attrs);
 
-  /// Parsing/Printing methods.
+  /// Operation hooks.
   static ParseResult parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
+  LogicalResult verify();
 
   /// Returns the name of this function.
   StringRef getName() { return getAttrOfType<StringAttr>("name").getValue(); }

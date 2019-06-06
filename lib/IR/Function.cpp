@@ -418,6 +418,29 @@ void FuncOp::print(OpAsmPrinter *p) {
   *p << '\n';
 }
 
+LogicalResult FuncOp::verify() {
+  // If this function is external there is nothing to do.
+  if (isExternal())
+    return success();
+
+  // Verify that the argument list of the function and the arg list of the entry
+  // block line up.
+  Block &entryBlock = front();
+  auto fnInputTypes = getType().getInputs();
+  if (fnInputTypes.size() != entryBlock.getNumArguments())
+    return emitOpError("entry block must have ")
+           << fnInputTypes.size() << " arguments to match function signature";
+
+  for (unsigned i = 0, e = entryBlock.getNumArguments(); i != e; ++i)
+    if (fnInputTypes[i] != entryBlock.getArgument(i)->getType())
+      return emitOpError("type of entry block argument #")
+             << i << '(' << entryBlock.getArgument(i)->getType()
+             << ") must match the type of the corresponding argument in "
+             << "function signature(" << fnInputTypes[i] << ')';
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // Function Argument Attribute.
 //===----------------------------------------------------------------------===//
