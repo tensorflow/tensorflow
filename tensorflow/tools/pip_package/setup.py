@@ -139,6 +139,7 @@ class InstallCommand(InstallCommandBase):
     ret = InstallCommandBase.finalize_options(self)
     self.install_headers = os.path.join(self.install_purelib,
                                         'tensorflow', 'include')
+    self.install_lib = self.install_platlib
     return ret
 
 
