@@ -41,11 +41,20 @@ py_library(
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras:saving",
+        "//tensorflow/python/keras/distribute:multi_worker_training_state",
         "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
         "//tensorflow/python/keras/mixed_precision/experimental:policy",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
     ],
+)
+
+py_library(
+    name = "multi_worker_training_state",
+    srcs = [
+        "multi_worker_training_state.py",
+    ],
+    srcs_version = "PY2AND3",
 )
 
 py_library(
@@ -149,7 +158,7 @@ distribute_py_test(
 
 distribute_py_test(
     name = "keras_embedding_model_correctness_test",
-    size = "medium",
+    size = "large",
     srcs = ["keras_embedding_model_correctness_test.py"],
     full_precision = True,
     main = "keras_embedding_model_correctness_test.py",
@@ -227,6 +236,7 @@ distribute_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm_v2",
         "no_windows_gpu",
         "notsan",
     ],
@@ -321,10 +331,33 @@ cuda_py_test(
         ":multi_worker_testing_utils",
         "//tensorflow/python/keras",
     ],
-    shard_count = 14,
+    # TODO(b/132384649): Enable for guitar and oss tests.
     tags = [
-        "multi_and_single_gpu",
-        "no_oss",  # TODO(b/132384649): Flakily times out.
+        "no_oss",
+        "noguitar",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "multi_worker_fault_tolerance_test",
+    srcs = ["multi_worker_fault_tolerance_test.py"],
+    additional_deps = [
+        ":distribute",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:distribute_config",
+        "//tensorflow/python/distribute:distribute_coordinator",
+        ":multi_worker_testing_utils",
+        "//tensorflow/python/keras",
+    ],
+    shard_count = 14,
+    # TODO(b/132384649): Enable for guitar and oss tests.
+    tags = [
+        "no_oss",
+        "noguitar",
     ],
     xla_enable_strict_auto_jit = True,
 )

@@ -58,6 +58,7 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
     *new std::unordered_map<string, Node::NodeClass>({
         // Keep in same order as NodeClass values
         REF_CLASS("Switch", NC_SWITCH),
+        REF_CLASS("_SwitchN", NC_SWITCH),
         REF_CLASS("Merge", NC_MERGE),
         REF_CLASS("Enter", NC_ENTER),
         REF_CLASS("Exit", NC_EXIT),

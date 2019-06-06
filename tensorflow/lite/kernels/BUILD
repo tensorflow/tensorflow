@@ -23,6 +23,15 @@ config_setting(
     define_values = {"tflite_with_ruy": "false"},
 )
 
+config_setting(
+    name = "chromiumos_arm64",
+    values = {
+        "crosstool_top": "//external:chromiumos/crosstool",
+        "cpu": "arm",
+    },
+    visibility = ["//visibility:public"],
+)
+
 # Suppress warnings that are introduced by Eigen Tensor.
 EXTRA_EIGEN_COPTS = select({
     "//tensorflow:ios": [
@@ -119,8 +128,8 @@ cc_library(
     name = "tflite_with_ruy_default",
     visibility = ["//visibility:private"],
     deps = select({
-        # TODO(b/133306271): Enable for ARM64 after validating performance.
-        "//tensorflow:android_arm64": [],
+        "//tensorflow:android_arm64": [":tflite_with_ruy_enabled"],
+        ":chromiumos_arm64": [":tflite_with_ruy_enabled"],
         "//conditions:default": [],
     }),
 )
@@ -514,6 +523,7 @@ cc_test(
     name = "activations_test",
     size = "small",
     srcs = ["activations_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -527,6 +537,7 @@ cc_test(
     name = "add_test",
     size = "small",
     srcs = ["add_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -662,6 +673,7 @@ cc_test(
     name = "conv_test",
     size = "small",
     srcs = ["conv_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -676,6 +688,7 @@ cc_test(
     name = "depthwise_conv_test",
     size = "small",
     srcs = ["depthwise_conv_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -706,6 +719,7 @@ cc_test(
     name = "basic_rnn_test",
     size = "small",
     srcs = ["basic_rnn_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -831,6 +845,7 @@ cc_test(
     name = "l2norm_test",
     size = "small",
     srcs = ["l2norm_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -870,6 +885,7 @@ cc_test(
     name = "maximum_minimum_test",
     size = "small",
     srcs = ["maximum_minimum_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -896,6 +912,7 @@ cc_test(
     name = "mul_test",
     size = "small",
     srcs = ["mul_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1043,6 +1060,7 @@ cc_test(
     name = "fully_connected_test",
     size = "small",
     srcs = ["fully_connected_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",

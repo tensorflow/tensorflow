@@ -372,9 +372,11 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
                           PtxOptsFromConfig(config)));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ComparisonKernelT<ElementT>> comparison_kernel,
-      (CreateTypedKernel<se::DeviceMemory<ElementT>, se::DeviceMemory<ElementT>,
-                         float, uint64, se::DeviceMemory<uint64>>(
-          kernel_name, buffer_compare_ptx, compiled_ptx, executor)));
+      (executor->CreateTypedKernel<se::DeviceMemory<ElementT>,
+                                   se::DeviceMemory<ElementT>, float, uint64,
+                                   se::DeviceMemory<uint64>>(
+          kernel_name, buffer_compare_ptx, compiled_ptx)));
+
   LaunchDimensions dim =
       CalculateLaunchDimensions(buffer_shape, executor->GetDeviceDescription());
 

@@ -1657,6 +1657,11 @@ ops.register_proto_function(
     proto_type=variable_pb2.VariableDef,
     to_proto=_to_proto_fn,
     from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.METRIC_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
 
 
 def is_resource_variable(var):
@@ -1755,6 +1760,9 @@ class UninitializedVariable(ResourceVariable):
               value = self._read_variable_op()
             self._graph_element = value
           ops.add_to_collection(ops.GraphKeys.GLOBAL_VARIABLES, self)
+          # Do *not* add to TRAINABLE_VARIABLES here, even if self._trainable,
+          # because retraining or frozen use of imported SavedModels is
+          # controlled at higher levels of model building.
     self._unique_id = unique_id
     self._handle_name = handle_name + ":0"
     self._constraint = constraint

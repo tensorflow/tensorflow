@@ -50,7 +50,7 @@ class FunctionLibraryRuntime;
 // https://www.tensorflow.org/code/tensorflow/core/common_runtime/kernel_benchmark_testlib.h
 // and
 // https://www.tensorflow.org/code/tensorflow/core/kernels/ops_testutil.h
-class KernelAndDevice {
+class KernelAndDevice : public core::RefCounted {
  public:
   // Populates this with a kernel appropriate for 'ndef'.
   //

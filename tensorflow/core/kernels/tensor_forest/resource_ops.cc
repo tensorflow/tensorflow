@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/boosted_trees/boosted_trees.pb.h"
 #include "tensorflow/core/kernels/tensor_forest/resources.h"
+#include "tensorflow/core/lib/core/refcount.h"
 
 namespace tensorflow {
 
@@ -55,11 +56,10 @@ class TensorForestTreeSerializeOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    TensorForestTreeResource* decision_tree_resource;
+    core::RefCountPtr<TensorForestTreeResource> decision_tree_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &decision_tree_resource));
     mutex_lock l(*decision_tree_resource->get_mutex());
-    core::ScopedUnref unref_me(decision_tree_resource);
     Tensor* output_config_t = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(0, TensorShape(), &output_config_t));
@@ -74,13 +74,11 @@ class TensorForestTreeDeserializeOp : public OpKernel {
   explicit TensorForestTreeDeserializeOp(OpKernelConstruction* context)
       : OpKernel(context) {}
   void Compute(OpKernelContext* context) override {
-    TensorForestTreeResource* decision_tree_resource;
+    core::RefCountPtr<TensorForestTreeResource> decision_tree_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &decision_tree_resource));
 
     mutex_lock l(*decision_tree_resource->get_mutex());
-    core::ScopedUnref unref_me(decision_tree_resource);
-
     const Tensor* tree_config_t;
     OP_REQUIRES_OK(context, context->input("tree_config", &tree_config_t));
 
@@ -102,11 +100,10 @@ class TensorForestTreeSizeOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    TensorForestTreeResource* decision_tree_resource;
+    core::RefCountPtr<TensorForestTreeResource> decision_tree_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &decision_tree_resource));
     mutex_lock l(*decision_tree_resource->get_mutex());
-    core::ScopedUnref unref_me(decision_tree_resource);
     Tensor* output_t = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape(), &output_t));

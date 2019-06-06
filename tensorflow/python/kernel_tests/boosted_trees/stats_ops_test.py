@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import boosted_trees_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import googletest
 
 
@@ -657,6 +658,123 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
       ]
       expected_stats_summary = np.swapaxes(expected_stats_summary, 1, 2)
       self.assertAllClose(expected_stats_summary, result)
+
+  def _get_dense_summaries_from_sparse_features(self, max_splits, num_buckets,
+                                                batch_size, feature_dims,
+                                                logits_dims, hess_dims):
+    np.random.seed(0)
+    stats_dims = logits_dims + hess_dims
+    node_ids = np.random.randint(max_splits, size=batch_size)
+    gradients = np.random.uniform(5.0, size=(batch_size, logits_dims))
+    hessians = np.random.uniform(5.0, size=(batch_size, hess_dims))
+    dense_indices = np.random.randint(2, size=(batch_size, feature_dims))
+    feature_indices = np.argwhere(dense_indices == 1)
+    missing_feature_indices = np.argwhere(dense_indices == 0)
+    feature_values = np.random.randint(num_buckets, size=len(feature_indices))
+    feature_shape = np.asarray([batch_size, feature_dims])
+    # Last bucket is for missing values.
+    dense_summary = np.zeros(
+        (max_splits, feature_dims, num_buckets + 1, stats_dims))
+    for (instance, f_dim), bucket in zip(feature_indices, feature_values):
+      node_id = node_ids[instance]
+      dense_summary[node_id][f_dim][bucket] += np.concatenate(
+          [gradients[instance], hessians[instance]])
+
+    for instance, f_dim in missing_feature_indices:
+      node_id = node_ids[instance]
+      dense_summary[node_id][f_dim][num_buckets] += np.concatenate(
+          [gradients[instance], hessians[instance]])
+
+    return (node_ids, gradients, hessians, feature_indices, feature_values,
+            feature_shape, dense_summary)
+
+  def testMakeSparseStatsSummarySingleFeatureDimension(self):
+    batch_size = 10
+    max_splits = 2
+    num_buckets = 2
+    feature_dims = 1
+    logits_dims = 1
+    hess_dims = 1
+
+    (node_ids, gradients, hessians, feature_indices, feature_values,
+     feature_shape,
+     expected_dense_summary) = self._get_dense_summaries_from_sparse_features(
+         max_splits, num_buckets, batch_size, feature_dims, logits_dims,
+         hess_dims)
+
+    (summary_indices, summary_values,
+     summary_shape) = boosted_trees_ops.boosted_trees_sparse_aggregate_stats(
+         node_ids, gradients, hessians, feature_indices, feature_values,
+         feature_shape, max_splits, num_buckets)
+    dense_result = sparse_ops.sparse_to_dense(summary_indices, summary_shape,
+                                              summary_values)
+    self.assertAllClose(expected_dense_summary, dense_result)
+
+  def testMakeSparseStatsSummaryMultiDimFeature(self):
+    batch_size = 10
+    max_splits = 2
+    num_buckets = 2
+    feature_dims = 1
+    logits_dims = 1
+    hess_dims = 1
+
+    (node_ids, gradients, hessians, feature_indices, feature_values,
+     feature_shape,
+     expected_dense_summary) = self._get_dense_summaries_from_sparse_features(
+         max_splits, num_buckets, batch_size, feature_dims, logits_dims,
+         hess_dims)
+
+    (summary_indices, summary_values,
+     summary_shape) = boosted_trees_ops.boosted_trees_sparse_aggregate_stats(
+         node_ids, gradients, hessians, feature_indices, feature_values,
+         feature_shape, max_splits, num_buckets)
+    dense_result = sparse_ops.sparse_to_dense(summary_indices, summary_shape,
+                                              summary_values)
+    self.assertAllClose(expected_dense_summary, dense_result)
+
+  def testMakeSparseStatsSummaryMultiClass(self):
+    batch_size = 10
+    max_splits = 2
+    num_buckets = 2
+    feature_dims = 1
+    logits_dims = 2
+    hess_dims = 2
+
+    (node_ids, gradients, hessians, feature_indices, feature_values,
+     feature_shape,
+     expected_dense_summary) = self._get_dense_summaries_from_sparse_features(
+         max_splits, num_buckets, batch_size, feature_dims, logits_dims,
+         hess_dims)
+
+    (summary_indices, summary_values,
+     summary_shape) = boosted_trees_ops.boosted_trees_sparse_aggregate_stats(
+         node_ids, gradients, hessians, feature_indices, feature_values,
+         feature_shape, max_splits, num_buckets)
+    dense_result = sparse_ops.sparse_to_dense(summary_indices, summary_shape,
+                                              summary_values)
+    self.assertAllClose(expected_dense_summary, dense_result)
+
+  def testMakeSparseStatsSummaryMultiClassAndMultiFeatureDim(self):
+    batch_size = 10
+    max_splits = 2
+    num_buckets = 2
+    feature_dim = 2
+    logits_dims = 2
+    hess_dims = 2
+
+    (node_ids, gradients, hessians, feature_indices, feature_values,
+     feature_shape,
+     expected_dense_summary) = self._get_dense_summaries_from_sparse_features(
+         max_splits, num_buckets, batch_size, feature_dim, logits_dims,
+         hess_dims)
+
+    (summary_indices, summary_values,
+     summary_shape) = boosted_trees_ops.boosted_trees_sparse_aggregate_stats(
+         node_ids, gradients, hessians, feature_indices, feature_values,
+         feature_shape, max_splits, num_buckets)
+    dense_result = sparse_ops.sparse_to_dense(summary_indices, summary_shape,
+                                              summary_values)
+    self.assertAllClose(expected_dense_summary, dense_result)
 
   def _verify_precision(self, length):
     with self.cached_session():

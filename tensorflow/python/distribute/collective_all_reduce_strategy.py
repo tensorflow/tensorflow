@@ -313,7 +313,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
               with ops.device(device):
                 initial_value = initial_value_fn()
                 assert not callable(initial_value)
-                initial_value = ops.convert_to_tensor(initial_value)
+                initial_value = ops.convert_to_tensor(
+                    initial_value, dtype=kwargs.get("dtype", None))
 
                 assert index == 0, index
                 if self._num_workers > 1:

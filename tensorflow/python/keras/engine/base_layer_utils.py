@@ -55,10 +55,8 @@ class CallConvention(enum.Enum):
 def create_mean_metric(value, name=None):
   # TODO(psv): Remove this import when b/110718070 is fixed.
   from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
-  from tensorflow.python.keras.distribute import distributed_training_utils  # pylint: disable=g-import-not-at-top
   metric_obj = metrics_module.Mean(name=name)
-  return (metric_obj,
-          distributed_training_utils.call_replica_local_fn(metric_obj, value))
+  return metric_obj, metric_obj(value)
 
 
 def make_variable(name,
@@ -290,8 +288,17 @@ def is_in_eager_or_tf_function():
 
 def is_in_tf_function():
   """Returns if inside of a tf.function."""
-  return (ops.executing_eagerly_outside_functions() and
-          not context.executing_eagerly() and not is_in_keras_graph())
+  if not ops.inside_function():
+    return False
+  # Check if inside Keras FuncGraph.
+  if is_in_keras_graph():
+    return False
+  # Check for a v1 `wrap_function` FuncGraph.
+  graph = ops.get_default_graph()
+  if (getattr(graph, 'name', False) and
+      graph.name.startswith('wrapped_function')):
+    return False
+  return True
 
 
 def uses_keras_history(tensors):

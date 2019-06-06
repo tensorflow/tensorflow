@@ -175,7 +175,7 @@ def _convert_tf1_model(flags):
       if option not in ops_set_options:
         raise ValueError("Invalid value for --target_ops. Options: "
                          "{0}".format(",".join(ops_set_options)))
-      converter.target_ops.add(lite.OpsSet(option))
+      converter.target_spec.supported_ops.add(lite.OpsSet(option))
 
   if flags.post_training_quantize:
     converter.post_training_quantize = flags.post_training_quantize
