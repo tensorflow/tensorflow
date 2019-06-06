@@ -2080,6 +2080,15 @@ def is_jpeg(contents, name=None):
   Returns:
      A scalar boolean tensor indicating if 'contents' may be a JPEG image.
      is_jpeg is susceptible to false positives.
+
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> path_to_img = './images/some_image.jpeg'
+    >> img = tf.io.read_file(path_to_img)
+    >> tf.io.is_jpeg(img)
+    <tf.Tensor 'is_jpeg/Equal:0' shape=() dtype=bool>
+    ```
   """
   # Normal JPEGs start with \xff\xd8\xff\xe0
   # JPEG with EXIF starts with \xff\xd8\xff\xe1
@@ -2099,6 +2108,15 @@ def _is_png(contents, name=None):
   Returns:
      A scalar boolean tensor indicating if 'contents' may be a PNG image.
      is_png is susceptible to false positives.
+
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> path_to_img = './images/some_image.png'
+    >> img = tf.io.read_file(path_to_img)
+    >> tf.io.is_png(img)
+    <tf.Tensor 'is_png/Equal:0' shape=() dtype=bool>
+    ```
   """
   with ops.name_scope(name, 'is_png'):
     substr = string_ops.substr(contents, 0, 3)
