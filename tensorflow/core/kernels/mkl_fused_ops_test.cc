@@ -299,103 +299,103 @@ TYPED_TEST_CASE_P(MklFusedConv2DWithBiasOpTest);
 // -------------------------------------------------------------------------- //
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolution) {
-  const int KFilterSize = 1;
-  const int KFilterCount = 12;
-  this->VerifyFusedConv2D(KFilterSize, KFilterCount, {"BiasAdd"});
+  const int kFilterSize = 1;
+  const int kFilterCount = 12;
+  this->VerifyFusedConv2D(kFilterSize, kFilterCount, {"BiasAdd"});
 }
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolution) {
-  const int KFilterSize = 3;
-  const int KFilterCount = 12;
-  this->VerifyFusedConv2D(KFilterSize, KFilterCount, {"BiasAdd"});
+  const int kFilterSize = 3;
+  const int kFilterCount = 12;
+  this->VerifyFusedConv2D(kFilterSize, kFilterCount, {"BiasAdd"});
 }
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolutionAndRelu) {
-  const int KFilterSize = 1;
-  const int KFilterCount = 12;
-  this->VerifyFusedConv2D(KFilterSize, KFilterCount, {"BiasAdd", "Relu"});
+  const int kFilterSize = 1;
+  const int kFilterCount = 12;
+  this->VerifyFusedConv2D(kFilterSize, kFilterCount, {"BiasAdd", "Relu"});
 }
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndRelu) {
-  const int KFilterSize = 3;
-  const int KFilterCount = 12;
-  this->VerifyFusedConv2D(KFilterSize, KFilterCount, {"BiasAdd", "Relu"});
+  const int kFilterSize = 3;
+  const int kFilterCount = 12;
+  this->VerifyFusedConv2D(kFilterSize, kFilterCount, {"BiasAdd", "Relu"});
 }
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolutionAndRelu6) {
-  const int KFilterSize = 1;
-  const int KFilterCount = 12;
-  this->VerifyFusedConv2D(KFilterSize, KFilterCount, {"BiasAdd", "Relu6"});
+  const int kFilterSize = 1;
+  const int kFilterCount = 12;
+  this->VerifyFusedConv2D(kFilterSize, kFilterCount, {"BiasAdd", "Relu6"});
 }
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndRelu6) {
-  const int KFilterSize = 3;
-  const int KFilterCount = 12;
-  this->VerifyFusedConv2D(KFilterSize, KFilterCount, {"BiasAdd", "Relu6"});
+  const int kFilterSize = 3;
+  const int kFilterCount = 12;
+  this->VerifyFusedConv2D(kFilterSize, kFilterCount, {"BiasAdd", "Relu6"});
 }
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolutionAndElu) {
-  const int KFilterSize = 1;
-  const int KFilterCount = 12;
-  this->VerifyFusedConv2D(KFilterSize, KFilterCount, {"BiasAdd", "Elu"});
+  const int kFilterSize = 1;
+  const int kFilterCount = 12;
+  this->VerifyFusedConv2D(kFilterSize, kFilterCount, {"BiasAdd", "Elu"});
 }
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndElu) {
-  const int KFilterSize = 3;
-  const int KFilterCount = 12;
-  this->VerifyFusedConv2D(KFilterSize, KFilterCount, {"BiasAdd", "Elu"});
+  const int kFilterSize = 3;
+  const int kFilterCount = 12;
+  this->VerifyFusedConv2D(kFilterSize, kFilterCount, {"BiasAdd", "Elu"});
 }
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolutionAndAdd) {
-  const int KFilterSize = 1;
-  const int KFilterCount = 3;
-  this->VerifyFusedConv2D(KFilterSize, KFilterCount, {"BiasAdd", "Add"});
+  const int kFilterSize = 1;
+  const int kFilterCount = 3;
+  this->VerifyFusedConv2D(kFilterSize, kFilterCount, {"BiasAdd", "Add"});
 }
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndAdd) {
-  const int KFilterSize = 3;
-  const int KFilterCount = 3;
-  this->VerifyFusedConv2D(KFilterSize, KFilterCount, {"BiasAdd", "Add"});
+  const int kFilterSize = 3;
+  const int kFilterCount = 3;
+  this->VerifyFusedConv2D(kFilterSize, kFilterCount, {"BiasAdd", "Add"});
 }
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolutionAndAddRelu) {
-  const int KFilterSize = 1;
-  const int KFilterCount = 3;
-  this->VerifyFusedConv2D(KFilterSize, KFilterCount,
+  const int kFilterSize = 1;
+  const int kFilterCount = 3;
+  this->VerifyFusedConv2D(kFilterSize, kFilterCount,
                           {"BiasAdd", "Add", "Relu"});
 }
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndAddRelu) {
-  const int KFilterSize = 3;
-  const int KFilterCount = 3;
-  this->VerifyFusedConv2D(KFilterSize, KFilterCount,
+  const int kFilterSize = 3;
+  const int kFilterCount = 3;
+  this->VerifyFusedConv2D(kFilterSize, kFilterCount,
                           {"BiasAdd", "Add", "Relu"});
 }
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolutionAndAddRelu6) {
-  const int KFilterSize = 1;
-  const int KFilterCount = 3;
-  this->VerifyFusedConv2D(KFilterSize, KFilterCount,
+  const int kFilterSize = 1;
+  const int kFilterCount = 3;
+  this->VerifyFusedConv2D(kFilterSize, kFilterCount,
                           {"BiasAdd", "Add", "Relu6"});
 }
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndAddRelu6) {
-  const int KFilterSize = 3;
-  const int KFilterCount = 3;
-  this->VerifyFusedConv2D(KFilterSize, KFilterCount,
+  const int kFilterSize = 3;
+  const int kFilterCount = 3;
+  this->VerifyFusedConv2D(kFilterSize, kFilterCount,
                           {"BiasAdd", "Add", "Relu6"});
 }
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolutionAndAddElu) {
-  const int KFilterSize = 1;
-  const int KFilterCount = 3;
-  this->VerifyFusedConv2D(KFilterSize, KFilterCount, {"BiasAdd", "Add", "Elu"});
+  const int kFilterSize = 1;
+  const int kFilterCount = 3;
+  this->VerifyFusedConv2D(kFilterSize, kFilterCount, {"BiasAdd", "Add", "Elu"});
 }
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndAddElu) {
-  const int KFilterSize = 3;
-  const int KFilterCount = 3;
-  this->VerifyFusedConv2D(KFilterSize, KFilterCount, {"BiasAdd", "Add", "Elu"});
+  const int kFilterSize = 3;
+  const int kFilterCount = 3;
+  this->VerifyFusedConv2D(kFilterSize, kFilterCount, {"BiasAdd", "Add", "Elu"});
 }
 
 REGISTER_TYPED_TEST_CASE_P(
@@ -461,9 +461,9 @@ TEST_F(FusedPadConvOpTest, PaddingConvTest) {
   Tensor image(DT_FLOAT, {image_batch_count, image_height, image_width, depth});
   test::FillValues<float>(&image, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
 
-  const int KFilterSize = 3;
-  const int KFilterCount = 1;
-  Tensor filter(DT_FLOAT, {KFilterSize, KFilterSize, depth, KFilterCount});
+  const int kFilterSize = 3;
+  const int kFilterCount = 1;
+  Tensor filter(DT_FLOAT, {kFilterSize, kFilterSize, depth, kFilterCount});
   test::FillValues<float>(&filter, {1, 4, 7, 2, 5, 8, 3, 6, 9});
 
   const int padding_height = 4;
@@ -489,9 +489,9 @@ TEST_F(FusedPadConvOpTest, PaddingConvTestNchw) {
   Tensor image(DT_FLOAT, {image_batch_count, depth, image_height, image_width});
   test::FillValues<float>(&image, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
 
-  const int KFilterSize = 3;
-  const int KFilterCount = 1;
-  Tensor filter(DT_FLOAT, {KFilterSize, KFilterSize, depth, KFilterCount});
+  const int kFilterSize = 3;
+  const int kFilterCount = 1;
+  Tensor filter(DT_FLOAT, {kFilterSize, kFilterSize, depth, kFilterCount});
   test::FillValues<float>(&filter, {1, 4, 7, 2, 5, 8, 3, 6, 9});
 
   const int padding_height = 4;
@@ -567,9 +567,9 @@ TEST_F(FilterCacheTest, Conv2DFilterCacheTest) {
   Tensor image(DT_FLOAT, {image_batch_count, image_height, image_width, depth});
   test::FillValues<float>(&image, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
 
-  const int KFilterSize = 3;
-  const int KFilterCount = 1;
-  Tensor filter(DT_FLOAT, {KFilterSize, KFilterSize, depth, KFilterCount});
+  const int kFilterSize = 3;
+  const int kFilterCount = 1;
+  Tensor filter(DT_FLOAT, {kFilterSize, kFilterSize, depth, kFilterCount});
   test::FillValues<float>(&filter, {1, 4, 7, 2, 5, 8, 3, 6, 9});
 
   Tensor expected(DT_FLOAT, TensorShape({1, 1, 2, 1}));
@@ -761,31 +761,31 @@ class MklPadWithFusedConv2DOpTest : public OpsTestBase {
 TYPED_TEST_CASE_P(MklPadWithFusedConv2DOpTest);
 
 TYPED_TEST_P(MklPadWithFusedConv2DOpTest, WithBiasAndRoundPad) {
-  const int KFilterSize = 1;
-  const int KFilterCount = 12;
+  const int kFilterSize = 1;
+  const int kFilterCount = 12;
   this->SetPaddingList(2, 2, 1, 1);
-  this->VerifyPadAndConv2DWithBias(KFilterSize, KFilterCount);
+  this->VerifyPadAndConv2DWithBias(kFilterSize, kFilterCount);
 }
 
 TYPED_TEST_P(MklPadWithFusedConv2DOpTest, WithBiasAndPartialPad) {
-  const int KFilterSize = 1;
-  const int KFilterCount = 12;
+  const int kFilterSize = 1;
+  const int kFilterCount = 12;
   this->SetPaddingList(4, 0, 2, 0);
-  this->VerifyPadAndConv2DWithBias(KFilterSize, KFilterCount);
+  this->VerifyPadAndConv2DWithBias(kFilterSize, kFilterCount);
 }
 
 TYPED_TEST_P(MklPadWithFusedConv2DOpTest, WithBiasReluAndRoundPad) {
-  const int KFilterSize = 1;
-  const int KFilterCount = 12;
+  const int kFilterSize = 1;
+  const int kFilterCount = 12;
   this->SetPaddingList(2, 2, 1, 1);
-  this->VerifyPadAndConv2DWithBiasRelu(KFilterSize, KFilterCount);
+  this->VerifyPadAndConv2DWithBiasRelu(kFilterSize, kFilterCount);
 }
 
 TYPED_TEST_P(MklPadWithFusedConv2DOpTest, WithBiasReluAndPartialPad) {
-  const int KFilterSize = 1;
-  const int KFilterCount = 12;
+  const int kFilterSize = 1;
+  const int kFilterCount = 12;
   this->SetPaddingList(4, 0, 2, 0);
-  this->VerifyPadAndConv2DWithBiasRelu(KFilterSize, KFilterCount);
+  this->VerifyPadAndConv2DWithBiasRelu(kFilterSize, kFilterCount);
 }
 
 REGISTER_TYPED_TEST_CASE_P(MklPadWithFusedConv2DOpTest,  //
