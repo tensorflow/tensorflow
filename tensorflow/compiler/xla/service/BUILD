@@ -555,6 +555,7 @@ tf_cc_test(
     srcs = ["hlo_instruction_test.cc"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_parser",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:protobuf_util",
@@ -2917,6 +2918,7 @@ tf_cc_test(
     srcs = ["hlo_dce_test.cc"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_dce",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
@@ -3857,6 +3859,7 @@ cc_library(
     hdrs = ["hlo_parser.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_lexer",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
