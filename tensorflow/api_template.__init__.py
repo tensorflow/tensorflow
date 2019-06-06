@@ -138,7 +138,6 @@ except NameError:
 
 # Add module aliases
 if hasattr(_current_module, 'keras'):
-  layers = keras.layers
   losses = keras.losses
   metrics = keras.metrics
   optimizers = keras.optimizers
