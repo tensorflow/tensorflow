@@ -1016,16 +1016,13 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
   }
 
   // Check if the Identity is driven by a Switch on its true path.
-  Node* switch_node = nullptr;
-  for (const Edge* e : node->in_edges()) {
-    if (e->src()->IsSwitch() && e->src_output() == 1) {
-      switch_node = e->src();
-      break;
-    }
-  }
-  if (switch_node == nullptr) {
+  auto it = absl::c_find_if(node->in_edges(), [](const Edge* e) {
+    return e->src()->IsSwitch() && e->src_output() == 1;
+  });
+  if (it == node->in_edges().end()) {
     return false;
   }
+  const Node* switch_node = (*it)->src();
 
   // Check if the Switch is driven by LoopCond.
   const Node* maybe_loopcond;
