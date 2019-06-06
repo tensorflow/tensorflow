@@ -65,7 +65,6 @@ from tensorflow.python.compat.v2_compat import enable_v2_behavior  # pylint: dis
 # Add module aliases
 _current_module = _sys.modules[__name__]
 if hasattr(_current_module, 'keras'):
-  layers = keras.layers
   losses = keras.losses
   metrics = keras.metrics
   optimizers = keras.optimizers
