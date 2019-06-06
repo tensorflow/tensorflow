@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,20 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_C_TF_STATUS_HELPER_H_
-#define TENSORFLOW_C_TF_STATUS_HELPER_H_
+#ifndef TENSORFLOW_C_TF_STATUS_INTERNAL_H_
+#define TENSORFLOW_C_TF_STATUS_INTERNAL_H_
 
-#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/lib/core/status.h"
 
-namespace tensorflow {
+// Internal structures used by the status C API. These are likely to change
+// and should not be depended on.
 
-// Set the attribute of "tf_status" from the attributes of "status".
-void Set_TF_Status_from_Status(TF_Status* tf_status, const Status& status);
+struct TF_Status {
+  tensorflow::Status status;
+};
 
-// Returns a "status" from "tf_status".
-Status StatusFromTF_Status(const TF_Status* tf_status);
-
-}  // namespace tensorflow
-
-#endif  // TENSORFLOW_C_TF_STATUS_HELPER_H_
+#endif  // TENSORFLOW_C_TF_STATUS_INTERNAL_H_

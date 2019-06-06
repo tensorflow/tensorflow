@@ -58,7 +58,6 @@ tf_cuda_library(
         "c_api.h",
         "c_api_internal.h",
         "tf_datatype.h",
-        "tf_status.h",
         "tf_tensor.h",
     ],
     visibility = [
@@ -78,7 +77,7 @@ tf_cuda_library(
             "//tensorflow/core:op_gen_lib",
             "//tensorflow/core/distributed_runtime:server_lib",
         ],
-    }),
+    }) + [":tf_status_internal"],
 )
 
 cc_library(
@@ -102,6 +101,7 @@ tf_cuda_library(
         ":c_api_no_xla",
         ":c_api_internal",
         ":tf_attrtype",
+        ":tf_status_internal",
     ] + select({
         "//tensorflow:with_xla_support": [
             "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -126,6 +126,7 @@ tf_cuda_library(
         ":c_api_internal",
         ":tf_attrtype",
         ":tf_datatype",
+        ":tf_status_internal",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
@@ -153,6 +154,22 @@ tf_cuda_library(
     }),
 )
 
+tf_cuda_library(
+    name = "tf_status_internal",
+    hdrs = [
+        "tf_status.h",
+        "tf_status_internal.h",
+    ],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:lib",
+        ],
+    }),
+)
+
 cc_library(
     name = "tf_status",
     srcs = ["tf_status.cc"],
@@ -163,7 +180,7 @@ cc_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            "//tensorflow/c:c_api_internal",
+            ":tf_status_internal",
             "//tensorflow/core:lib",
         ],
     }),
@@ -246,8 +263,8 @@ tf_cuda_library(
     hdrs = ["tf_status_helper.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":c_api_internal",
         ":c_api_no_xla",
+        ":tf_status_internal",
         "//tensorflow/core:lib",
     ],
 )
