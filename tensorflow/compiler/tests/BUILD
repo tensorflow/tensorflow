@@ -1195,6 +1195,26 @@ tf_cuda_cc_test(
     deps = [":randomized_tests_library"],
 )
 
+tf_cuda_cc_test(
+    name = "unary_ops_composition_test",
+    srcs = ["unary_ops_composition_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/compiler/jit",
+        "//tensorflow/compiler/jit:common",
+        "//tensorflow/compiler/jit:xla_kernel_creator",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
 py_library(
     name = "lstm",
     testonly = 1,
