@@ -2182,7 +2182,15 @@ def decode_image(contents,
   Returns:
     `Tensor` with type `dtype` and a 3- or 4-dimensional shape, depending on
     the file type and the value of the `expand_animations` parameter.
-
+  
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> path_to_img = './images/some_image.png'
+    >> img = tf.io.read_file(path_to_img)
+    >> img = tf.image.decode_image(img, channels=3)
+    ```
+    
   Raises:
     ValueError: On incorrect number of channels.
   """
