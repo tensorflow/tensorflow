@@ -134,7 +134,7 @@ func @block_arg_no_close_paren() {
 // -----
 
 func @block_first_has_predecessor() {
-// expected-error@-1 {{entry block of function may not have predecessors}}
+// expected-error@-1 {{entry block of region may not have predecessors}}
 ^bb42:
   br ^bb43
 ^bb43:
