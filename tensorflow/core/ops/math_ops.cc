@@ -146,7 +146,7 @@ REGISTER_OP("_MklBatchMatMul")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
     .SetShapeFn(shape_inference::BatchMatMulShape);
-#endif // INTEL_MKL
+#endif  // INTEL_MKL
 
 // --------------------------------------------------------------------------
 // Casting Ops
@@ -880,7 +880,7 @@ REGISTER_OP("_MklMatMul")
     .Attr("transpose_b: bool = false")
     .Attr("T: {float, double, complex64, complex128}")
     .SetShapeFn(shape_inference::MatMulShape);
-#endif // INTEL_MKL
+#endif  // INTEL_MKL
 
 REGISTER_OP("SparseMatMul")
     .Input("a: Ta")
