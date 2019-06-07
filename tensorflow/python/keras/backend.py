@@ -211,10 +211,8 @@ def get_uid(prefix=''):
 def reset_uids():
   """Resets graph identifiers.
   """
-  per_graph_object_name_uids = PER_GRAPH_OBJECT_NAME_UIDS
-  keys = list(per_graph_object_name_uids.keys())
-  for key in keys:
-    del per_graph_object_name_uids[key]
+
+  PER_GRAPH_OBJECT_NAME_UIDS.clear()
 
 
 @keras_export('keras.backend.clear_session')
