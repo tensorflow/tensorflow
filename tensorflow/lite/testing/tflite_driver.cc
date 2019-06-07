@@ -27,6 +27,8 @@ namespace tflite {
 namespace testing {
 
 namespace {
+const double kRelativeThreshold = 1e-2f;
+const double kAbsoluteThreshold = 1e-4f;
 
 // Returns the value in the given position in a tensor.
 template <typename T>
@@ -69,9 +71,17 @@ void SetTensorData(const std::vector<T>& values, TfLitePtrUnion* data) {
 
 class TfLiteDriver::Expectation {
  public:
-  Expectation() {
+  Expectation()
+      : relative_threshold_(kRelativeThreshold),
+        absolute_threshold_(kAbsoluteThreshold) {
     data_.raw = nullptr;
     num_elements_ = 0;
+  }
+  Expectation(double relative_threshold, double absolute_threshold) {
+    data_.raw = nullptr;
+    num_elements_ = 0;
+    relative_threshold_ = relative_threshold;
+    absolute_threshold_ = absolute_threshold;
   }
   ~Expectation() { delete[] data_.raw; }
   template <typename T>
@@ -115,10 +125,6 @@ class TfLiteDriver::Expectation {
  private:
   template <typename T>
   bool TypedCheck(bool verbose, const TfLiteTensor& tensor) {
-    // TODO(ahentz): must find a way to configure the tolerance.
-    constexpr double kRelativeThreshold = 1e-2f;
-    constexpr double kAbsoluteThreshold = 1e-4f;
-
     size_t tensor_size = tensor.bytes / sizeof(T);
 
     if (tensor_size != num_elements_) {
@@ -136,10 +142,10 @@ class TfLiteDriver::Expectation {
       bool error_is_large = false;
       // For very small numbers, try absolute error, otherwise go with
       // relative.
-      if (std::abs(reference) < kRelativeThreshold) {
-        error_is_large = (diff > kAbsoluteThreshold);
+      if (std::abs(reference) < relative_threshold_) {
+        error_is_large = (diff > absolute_threshold_);
       } else {
-        error_is_large = (diff > kRelativeThreshold * std::abs(reference));
+        error_is_large = (diff > relative_threshold_ * std::abs(reference));
       }
       if (error_is_large) {
         good_output = false;
@@ -154,6 +160,8 @@ class TfLiteDriver::Expectation {
 
   TfLitePtrUnion data_;
   size_t num_elements_;
+  double relative_threshold_;
+  double absolute_threshold_;
 };
 
 template <>
@@ -228,7 +236,9 @@ bool TfLiteDriver::Expectation::Check(bool verbose,
 
 TfLiteDriver::TfLiteDriver(bool use_nnapi, const string& delegate_name,
                            bool reference_kernel)
-    : use_nnapi_(use_nnapi) {
+    : use_nnapi_(use_nnapi),
+      relative_threshold_(kRelativeThreshold),
+      absolute_threshold_(kAbsoluteThreshold) {
   if (reference_kernel) {
     resolver_.reset(new ops::builtin::BuiltinRefOpResolver);
   } else {
@@ -356,13 +366,20 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
   }
 }
 
+void TfLiteDriver::SetThreshold(double relative_threshold,
+                                double absolute_threshold) {
+  relative_threshold_ = relative_threshold;
+  absolute_threshold_ = absolute_threshold;
+}
+
 void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
   if (!IsValid()) return;
   auto* tensor = interpreter_->tensor(id);
   if (expected_output_.count(id) != 0) {
     Invalidate(absl::StrCat("Overridden expectation for tensor '", id, "'"));
   }
-  expected_output_[id].reset(new Expectation);
+  expected_output_[id].reset(
+      new Expectation(relative_threshold_, absolute_threshold_));
   switch (tensor->type) {
     case kTfLiteFloat32:
       expected_output_[id]->SetData<float>(csv_values);
