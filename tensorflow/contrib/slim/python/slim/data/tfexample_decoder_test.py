@@ -77,7 +77,6 @@ class TFExampleDecoderTest(test.TestCase):
       # so that it should be interpreted correctly.
       if image.dtype == np.float32 and sys.byteorder == "big":
         image = image.astype('<f4')
-
       return constant_op.constant(image.tostring(), dtype=dtypes.string)
 
   def GenerateImage(self, image_format, image_shape, image_dtype=np.uint8):
