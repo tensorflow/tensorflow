@@ -1687,6 +1687,10 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
+    tags = [
+        # TODO(b/134600611): Re-enable this test.
+        "notap",
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
