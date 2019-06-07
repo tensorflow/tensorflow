@@ -1677,6 +1677,11 @@ TEST(XlaCompilationTest, IterationIncrementAndGroupDeps) {
   EXPECT_EQ(clusters["some_ctrl_input"], clusters["matmul_0"]);
 }
 
+// Test a pattern where a special Identity node is driving consts in a loop.
+// Expect that the Identity node will not go into any clusters.  Note that we
+// create an incomplete graph here (e.g., lacking Enter/Exit/NextIteration,
+// etc.) just enough to test the pattern, as a complete graph may be too
+// cumbersome and unnecessary.
 TEST(XlaCompilationTest, DontClusterTheSpecialIdentityDrivingConstsInLoop) {
   Scope root = Scope::NewRootScope().ExitOnError();
 
@@ -1685,8 +1690,6 @@ TEST(XlaCompilationTest, DontClusterTheSpecialIdentityDrivingConstsInLoop) {
   Output loop_cond = ops::LoopCond(root.WithOpName("loop_cond"), cond);
   ops::Switch switch_node(root.WithOpName("switch"), value, loop_cond);
 
-  // The special identity driving consts. Expect that is is not in any
-  // clusters.
   Output identity =
       ops::Identity(root.WithOpName("identity"), switch_node.output_true);
   Output const_node = ops::Const(root.WithOpName("const"), 1.0f);

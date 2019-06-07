@@ -1025,9 +1025,9 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
   const Node* switch_node = (*it)->src();
 
   // Check if the Switch is driven by LoopCond.
-  const Node* maybe_loopcond;
-  TF_RETURN_IF_ERROR(switch_node->input_node(1, &maybe_loopcond));
-  if (!maybe_loopcond->IsLoopCond()) {
+  const Node* maybe_loop_cond;
+  TF_RETURN_IF_ERROR(switch_node->input_node(1, &maybe_loop_cond));
+  if (!maybe_loop_cond->IsLoopCond()) {
     return false;
   }
 
