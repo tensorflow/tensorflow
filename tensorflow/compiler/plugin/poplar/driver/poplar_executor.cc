@@ -715,6 +715,10 @@ Status PoplarExecutor::ConfigurePoplarDevice(const IpuOptions& cfg) {
                       std::to_string(max_compilation_threads));
   }
 
+  if (!tensorflow::GetPoplarXlaFlags().save_oom_profiler.empty()) {
+    option_flags_.set("debug.allowOutOfMemory", "true");
+  }
+
   for (auto opt : option_flags_) {
     VLOG(1) << "Engine option: " << opt.first << " = " << opt.second;
   }

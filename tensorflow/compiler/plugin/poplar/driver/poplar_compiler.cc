@@ -696,8 +696,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
       } catch (const std::exception& e) {
         if (poplarExecutor->CompilerReportingEnabled()) {
-          DumpIfPoplarOutOfMemoryAllocationException(
-              poplarExecutor->GetReportFlags());
+          DumpIfPoplarOutOfMemoryAllocationException(poplarExecutor);
         }
         return PoplarExceptionToTensorflowStatus("[Compile engine] ", e);
       }

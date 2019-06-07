@@ -140,6 +140,9 @@ parameters.
 ``--max_compilation_threads`` sets the maximum number of threads which Poplar
 is allowed to use for compiling the executable.
 
+``--save_oom_profiler`` specifies a file where the compilation profile will be
+stored in the event of an out-of-memory when compiling.
+
 ``--save_vertex_graph`` dumps the Poplar vertex graph (DOT file) to the given
 directory.
 
