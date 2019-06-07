@@ -301,7 +301,7 @@ class NormalizeTest(test_lib.TestCase):
                 matrix = np.random.randn(*shape).astype(dtype)
                 if dtype in (np.complex64, np.complex128):
                   matrix += 1j * np.random.randn(*shape).astype(dtype)
-                tf_n = nn_impl.normalize(matrix, ord, axis)
+                tf_n, _ = nn_impl.normalize(matrix, ord, axis)
                 np_n = self._Normalize(matrix, ord, axis)
                 self.assertAllClose(tf_n, np_n, rtol=1e-5, atol=1e-5)
 
