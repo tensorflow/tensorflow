@@ -2965,11 +2965,38 @@ void GetTensorDimsWithProtoShape(const Tensor& tensor, nvinfer1::Dims* dims) {
   }
 }
 
+template <typename Input>
+inline bool IsIntegerInInt32Bounds(const Input& inp) {
+  static_assert(std::is_integral<Input>::value,
+                "This function is only implemented for integral types.");
+  // If Input is always within the range of int32, return true.
+  if (sizeof(Input) < sizeof(int32) || std::is_same<Input, int32>::value) {
+    return true;
+  }
+  // Otherwise, we need to check the value of the input. If the input is
+  // unsigned, we only check the upper bound.
+  if (!std::numeric_limits<Input>::is_signed) {
+    return inp <= static_cast<Input>(std::numeric_limits<int32>::max());
+  }
+  // We can safely cast lowest() here since we now know that Input is signed and
+  // sizeof(Input) >= sizeof(int32)
+  return (inp >= static_cast<Input>(std::numeric_limits<int32>::lowest()) &&
+          inp <= static_cast<Input>(std::numeric_limits<int32>::max()));
+}
+
 template <DataType dtype>
-void CopyToTrtInt32Array(const Tensor& tensor, int32* dst) {
+Status CopyToTrtInt32Array(const Tensor& tensor, int32* dst) {
   typedef typename EnumToDataType<dtype>::Type CType;
   const CType* src = tensor.flat<CType>().data();
-  std::copy(src, src + tensor.NumElements(), dst);
+  for (int i = 0; i < tensor.NumElements(); ++i) {
+    // This becomes a no-op if CType is within bounds of int32
+    if (!IsIntegerInInt32Bounds(src[i])) {
+      return errors::InvalidArgument("Value at index ", i,
+                                     " is outside the range of int32");
+    }
+    dst[i] = static_cast<int32>(src[i]);
+  }
+  return Status::OK();
 }
 
 Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
@@ -2981,11 +3008,7 @@ Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
   // TODO(aaroey): FP16 will remain in half format and is not converted to
   // FP32, but the converter currently uses all float weights as FP32. Fix
   // this.
-  DataType converted_dtype = dtype;
-  if (dtype == DataType::DT_INT8 || dtype == DataType::DT_UINT8 ||
-      dtype == DataType::DT_INT16 || dtype == DataType::DT_UINT16) {
-    converted_dtype = DT_INT32;
-  }
+  DataType converted_dtype = DataTypeIsInteger(dtype) ? DT_INT32 : dtype;
 
   // Verify that the dtype is supported by TensorRT. Otherwise, return an error.
   nvinfer1::DataType trt_dtype;
@@ -3009,25 +3032,35 @@ Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
     return Status::OK();
   }
 
+  Status status = Status::OK();
   // Copy tensor elements after casting them to the converted DataType.
   int32* dst = static_cast<int32*>(weights->GetValues());
   switch (dtype) {
     case DT_INT8:
-      CopyToTrtInt32Array<DT_INT8>(tensor, dst);
+      status = CopyToTrtInt32Array<DT_INT8>(tensor, dst);
       break;
     case DT_UINT8:
-      CopyToTrtInt32Array<DT_UINT8>(tensor, dst);
+      status = CopyToTrtInt32Array<DT_UINT8>(tensor, dst);
       break;
     case DT_INT16:
-      CopyToTrtInt32Array<DT_INT16>(tensor, dst);
+      status = CopyToTrtInt32Array<DT_INT16>(tensor, dst);
       break;
     case DT_UINT16:
-      CopyToTrtInt32Array<DT_UINT16>(tensor, dst);
+      status = CopyToTrtInt32Array<DT_UINT16>(tensor, dst);
+      break;
+    case DT_UINT32:
+      status = CopyToTrtInt32Array<DT_UINT32>(tensor, dst);
+      break;
+    case DT_INT64:
+      status = CopyToTrtInt32Array<DT_INT64>(tensor, dst);
+      break;
+    case DT_UINT64:
+      status = CopyToTrtInt32Array<DT_UINT64>(tensor, dst);
       break;
     default:
       return errors::Internal("Unexpected DataType: ", DataTypeString(dtype));
   }
-  return Status::OK();
+  return status;
 }
 
 // Convert a Const NodeDef to TRT_ShapedWeights. This is a special converter, it
