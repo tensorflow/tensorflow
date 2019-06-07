@@ -19,4 +19,4 @@ add_llvm_library(MLIRTypeUtilities
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Support
   )
-target_link_libraries(MLIRTypeUtilities MLIRIR MLIRStandardOps)
+target_link_libraries(MLIRTypeUtilities MLIRIR)
