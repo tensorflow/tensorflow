@@ -1144,6 +1144,10 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 5,
+    tags = [
+        # TODO(b/134780716): Re-enable this test.
+        "notap",
+    ],
 )
 
 cuda_py_test(
