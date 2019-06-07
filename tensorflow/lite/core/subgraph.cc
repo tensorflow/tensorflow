@@ -288,11 +288,6 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
     return kTfLiteOk;
   }
 
-  TFLITE_LOG(tflite::TFLITE_LOG_INFO,
-             "Replacing %d node(s) with delegate (%s) node.",
-             nodes_to_replace->size,
-             registration.custom_name ? registration.custom_name : "unknown");
-
   // Annotate the registration as DELEGATE op.
   registration.builtin_code = BuiltinOperator_DELEGATE;
 
@@ -302,6 +297,13 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   std::vector<NodeSubset> node_subsets;
   PartitionGraphIntoIndependentNodeSubsets(&info, nodes_to_replace,
                                            &node_subsets);
+
+  TFLITE_LOG(
+      tflite::TFLITE_LOG_INFO,
+      "Replacing %d node(s) with delegate (%s) node, yielding %zu partitions.",
+      nodes_to_replace->size,
+      registration.custom_name ? registration.custom_name : "unknown",
+      node_subsets.size());
 
   execution_plan_.clear();
 
