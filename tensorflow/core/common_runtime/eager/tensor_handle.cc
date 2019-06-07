@@ -347,7 +347,7 @@ Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
 }
 
 Device* GetResourceDevice(const Tensor& t, EagerContext* ctx) {
-  if (t.dtype() != DT_RESOURCE) {
+  if (t.dtype() != DT_RESOURCE || ctx == nullptr) {
     return nullptr;
   }
   const ResourceHandle& resource_handle = t.flat<ResourceHandle>()(0);
