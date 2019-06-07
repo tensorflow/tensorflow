@@ -516,6 +516,37 @@ static bool getBit(const char *rawData, size_t bitPos) {
   return (rawData[bitPos / CHAR_BIT] & (1 << (bitPos % CHAR_BIT))) != 0;
 }
 
+/// Writes value to the bit position `bitPos` in array `rawData`.
+static void writeBits(char *rawData, size_t bitPos, APInt value) {
+  size_t bitWidth = value.getBitWidth();
+
+  // If the bitwidth is 1 we just toggle the specific bit.
+  if (bitWidth == 1)
+    return setBit(rawData, bitPos, value.isOneValue());
+
+  // Otherwise, the bit position is guaranteed to be byte aligned.
+  assert((bitPos % CHAR_BIT) == 0 && "expected bitPos to be 8-bit aligned");
+  std::copy_n(reinterpret_cast<const char *>(value.getRawData()),
+              llvm::divideCeil(bitWidth, CHAR_BIT),
+              rawData + (bitPos / CHAR_BIT));
+}
+
+/// Reads the next `bitWidth` bits from the bit position `bitPos` in array
+/// `rawData`.
+static APInt readBits(const char *rawData, size_t bitPos, size_t bitWidth) {
+  // Handle a boolean bit position.
+  if (bitWidth == 1)
+    return APInt(1, getBit(rawData, bitPos) ? 1 : 0);
+
+  // Otherwise, the bit position must be 8-bit aligned.
+  assert((bitPos % CHAR_BIT) == 0 && "expected bitPos to be 8-bit aligned");
+  APInt result(bitWidth, 0);
+  std::copy_n(rawData + (bitPos / CHAR_BIT),
+              llvm::divideCeil(bitWidth, CHAR_BIT),
+              (char *)(result.getRawData()));
+  return result;
+}
+
 /// Constructs a new iterator.
 DenseElementsAttr::RawElementIterator::RawElementIterator(
     DenseElementsAttr attr, size_t index)
@@ -531,39 +562,6 @@ APInt DenseElementsAttr::RawElementIterator::operator*() const {
 //===----------------------------------------------------------------------===//
 // DenseElementsAttr
 //===----------------------------------------------------------------------===//
-
-DenseElementsAttr DenseElementsAttr::getRaw(ShapedType type,
-                                            ArrayRef<char> data) {
-  assert((static_cast<uint64_t>(type.getSizeInBits()) <=
-          data.size() * APInt::APINT_WORD_SIZE) &&
-         "Input data bit size should be larger than that type requires");
-  assert((type.isa<RankedTensorType>() || type.isa<VectorType>()) &&
-         "type must be ranked tensor or vector");
-  assert(type.hasStaticShape() && "type must have static shape");
-  return Base::get(type.getContext(), StandardAttributes::DenseElements, type,
-                   data);
-}
-
-/// Overload of the raw 'get' method that asserts that the given type is of
-/// integer type.
-DenseElementsAttr DenseElementsAttr::getRawIntOrFloat(ShapedType type,
-                                                      ArrayRef<char> data,
-                                                      bool isInt) {
-  assert(isInt ? type.getElementType().isa<IntegerType>()
-               : type.getElementType().isa<FloatType>());
-  return getRaw(type, data);
-}
-
-DenseElementsAttr DenseElementsAttr::get(ShapedType type,
-                                         ArrayRef<bool> values) {
-  assert(type.getNumElements() == static_cast<int64_t>(values.size()));
-  assert(type.getElementType().isInteger(1));
-
-  std::vector<char> buff(llvm::divideCeil(values.size(), CHAR_BIT));
-  for (int i = 0, e = values.size(); i != e; ++i)
-    writeBits(buff.data(), i, llvm::APInt(1, values[i]));
-  return getRaw(type, buff);
-}
 
 DenseElementsAttr DenseElementsAttr::get(ShapedType type,
                                          ArrayRef<Attribute> values) {
@@ -602,6 +600,62 @@ DenseElementsAttr DenseElementsAttr::get(ShapedType type,
     writeBits(data.data(), i * storageBitWidth, intVal);
   }
   return getRaw(type, data);
+}
+
+DenseElementsAttr DenseElementsAttr::get(ShapedType type,
+                                         ArrayRef<bool> values) {
+  assert(type.getNumElements() == static_cast<int64_t>(values.size()));
+  assert(type.getElementType().isInteger(1));
+
+  std::vector<char> buff(llvm::divideCeil(values.size(), CHAR_BIT));
+  for (int i = 0, e = values.size(); i != e; ++i)
+    writeBits(buff.data(), i, llvm::APInt(1, values[i]));
+  return getRaw(type, buff);
+}
+
+// Constructs a dense elements attribute from an array of raw APInt values.
+// Each APInt value is expected to have the same bitwidth as the element type
+// of 'type'.
+DenseElementsAttr DenseElementsAttr::get(ShapedType type,
+                                         ArrayRef<APInt> values) {
+  assert(static_cast<int64_t>(values.size()) == type.getNumElements() &&
+         "expected 'values' to contain the same number of elements as 'type'");
+
+  size_t bitWidth = getDenseElementBitwidth(type.getElementType());
+  size_t storageBitWidth = getDenseElementStorageWidth(bitWidth);
+  std::vector<char> elementData(bitWidth * values.size());
+  for (unsigned i = 0, e = values.size(); i != e; ++i) {
+    assert(values[i].getBitWidth() == bitWidth);
+    writeBits(elementData.data(), i * storageBitWidth, values[i]);
+  }
+  return getRaw(type, elementData);
+}
+
+DenseElementsAttr DenseElementsAttr::getRaw(ShapedType type,
+                                            ArrayRef<char> data) {
+  assert((static_cast<uint64_t>(type.getSizeInBits()) <=
+          data.size() * APInt::APINT_WORD_SIZE) &&
+         "Input data bit size should be larger than that type requires");
+  assert((type.isa<RankedTensorType>() || type.isa<VectorType>()) &&
+         "type must be ranked tensor or vector");
+  assert(type.hasStaticShape() && "type must have static shape");
+  return Base::get(type.getContext(), StandardAttributes::DenseElements, type,
+                   data);
+}
+
+/// Overload of the 'getRaw' method that asserts that the given type is of
+/// integer type.
+DenseElementsAttr DenseElementsAttr::getRawIntOrFloat(ShapedType type,
+                                                      ArrayRef<char> data,
+                                                      bool isInt) {
+  assert(isInt ? type.getElementType().isa<IntegerType>()
+               : type.getElementType().isa<FloatType>());
+  return getRaw(type, data);
+}
+
+/// Return the raw storage data held by this attribute.
+ArrayRef<char> DenseElementsAttr::getRawData() const {
+  return static_cast<ImplType *>(impl)->data;
 }
 
 /// Returns the number of elements held by this attribute.
@@ -700,60 +754,6 @@ DenseElementsAttr DenseElementsAttr::mapValues(
   return cast<DenseFPElementsAttr>().mapValues(newElementType, mapping);
 }
 
-ArrayRef<char> DenseElementsAttr::getRawData() const {
-  return static_cast<ImplType *>(impl)->data;
-}
-
-// Constructs a dense elements attribute from an array of raw APInt values.
-// Each APInt value is expected to have the same bitwidth as the element type
-// of 'type'.
-DenseElementsAttr DenseElementsAttr::get(ShapedType type,
-                                         ArrayRef<APInt> values) {
-  assert(static_cast<int64_t>(values.size()) == type.getNumElements() &&
-         "expected 'values' to contain the same number of elements as 'type'");
-
-  size_t bitWidth = getDenseElementBitwidth(type.getElementType());
-  size_t storageBitWidth = getDenseElementStorageWidth(bitWidth);
-  std::vector<char> elementData(bitWidth * values.size());
-  for (unsigned i = 0, e = values.size(); i != e; ++i) {
-    assert(values[i].getBitWidth() == bitWidth);
-    writeBits(elementData.data(), i * storageBitWidth, values[i]);
-  }
-  return getRaw(type, elementData);
-}
-
-/// Writes value to the bit position `bitPos` in array `rawData`.
-void DenseElementsAttr::writeBits(char *rawData, size_t bitPos, APInt value) {
-  size_t bitWidth = value.getBitWidth();
-
-  // If the bitwidth is 1 we just toggle the specific bit.
-  if (bitWidth == 1)
-    return setBit(rawData, bitPos, value.isOneValue());
-
-  // Otherwise, the bit position is guaranteed to be byte aligned.
-  assert((bitPos % CHAR_BIT) == 0 && "expected bitPos to be 8-bit aligned");
-  std::copy_n(reinterpret_cast<const char *>(value.getRawData()),
-              llvm::divideCeil(bitWidth, CHAR_BIT),
-              rawData + (bitPos / CHAR_BIT));
-}
-
-/// Reads the next `bitWidth` bits from the bit position `bitPos` in array
-/// `rawData`.
-APInt DenseElementsAttr::readBits(const char *rawData, size_t bitPos,
-                                  size_t bitWidth) {
-  // Handle a boolean bit position.
-  if (bitWidth == 1)
-    return APInt(1, getBit(rawData, bitPos) ? 1 : 0);
-
-  // Otherwise, the bit position must be 8-bit aligned.
-  assert((bitPos % CHAR_BIT) == 0 && "expected bitPos to be 8-bit aligned");
-  APInt result(bitWidth, 0);
-  std::copy_n(rawData + (bitPos / CHAR_BIT),
-              llvm::divideCeil(bitWidth, CHAR_BIT),
-              (char *)(result.getRawData()));
-  return result;
-}
-
 //===----------------------------------------------------------------------===//
 // DenseIntElementsAttr
 //===----------------------------------------------------------------------===//
@@ -794,7 +794,7 @@ static ShapedType mappingHelper(Fn mapping, Attr &attr, ShapedType inType,
   for (auto value : attr) {
     auto newInt = mapping(value);
     assert(newInt.getBitWidth() == bitWidth);
-    attr.writeBits(data.data(), elementIdx * storageBitWidth, newInt);
+    writeBits(data.data(), elementIdx * storageBitWidth, newInt);
     ++elementIdx;
   }
 

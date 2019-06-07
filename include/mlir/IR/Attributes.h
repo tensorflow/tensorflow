@@ -502,6 +502,11 @@ class DenseElementsAttr
 public:
   using Base::Base;
 
+  /// Method for support type inquiry through isa, cast and dyn_cast.
+  static bool classof(Attribute attr) {
+    return attr.getKind() == StandardAttributes::DenseElements;
+  }
+
   /// Constructs a dense elements attribute from an array of element values.
   /// Each element attribute value is expected to be an element of 'type'.
   /// 'type' must be a vector or tensor with static shape.
@@ -528,6 +533,13 @@ public:
   /// Overload of the above 'get' method that is specialized for boolean values.
   static DenseElementsAttr get(ShapedType type, ArrayRef<bool> values);
 
+  //===--------------------------------------------------------------------===//
+  // Value Querying
+  //===--------------------------------------------------------------------===//
+
+  /// Return the raw storage data held by this attribute.
+  ArrayRef<char> getRawData() const;
+
   /// Returns the number of elements held by this attribute.
   size_t size() const;
 
@@ -537,6 +549,10 @@ public:
 
   /// Return the held element values as Attributes in 'values'.
   void getValues(SmallVectorImpl<Attribute> &values) const;
+
+  //===--------------------------------------------------------------------===//
+  // Mutation Utilities
+  //===--------------------------------------------------------------------===//
 
   /// Return a new DenseElementsAttr that has the same data as the current
   /// attribute, but has been reshaped to 'newType'. The new type must have the
@@ -556,21 +572,6 @@ public:
   DenseElementsAttr
   mapValues(Type newElementType,
             llvm::function_ref<APInt(const APFloat &)> mapping) const;
-
-  ArrayRef<char> getRawData() const;
-
-  /// Writes value to the bit position `bitPos` in array `rawData`. If the
-  /// bitwidth of `value` is not 1, then `bitPos` must be 8-bit aligned.
-  static void writeBits(char *rawData, size_t bitPos, APInt value);
-
-  /// Reads the next `bitWidth` bits from the bit position `bitPos` in array
-  /// `rawData`. If `bitWidth` is not 1, then `bitPos` must be 8-bit aligned.
-  static APInt readBits(const char *rawData, size_t bitPos, size_t bitWidth);
-
-  /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool classof(Attribute attr) {
-    return attr.getKind() == StandardAttributes::DenseElements;
-  }
 
 protected:
   /// A utility iterator that allows walking over the internal raw APInt values.
@@ -622,6 +623,11 @@ protected:
     return RawElementIterator(*this, size());
   }
 
+  /// Constructs a dense elements attribute from an array of raw APInt values.
+  /// Each APInt value is expected to have the same bitwidth as the element type
+  /// of 'type'. 'type' must be a vector or tensor with static shape.
+  static DenseElementsAttr get(ShapedType type, ArrayRef<APInt> values);
+
   /// Get or create a new dense elements attribute instance with the given raw
   /// data buffer. 'type' must be a vector or tensor with static shape.
   static DenseElementsAttr getRaw(ShapedType type, ArrayRef<char> data);
@@ -630,11 +636,6 @@ protected:
   /// integer or floating-point type.
   static DenseElementsAttr getRawIntOrFloat(ShapedType type,
                                             ArrayRef<char> data, bool isInt);
-
-  /// Constructs a dense elements attribute from an array of raw APInt values.
-  /// Each APInt value is expected to have the same bitwidth as the element type
-  /// of 'type'. 'type' must be a vector or tensor with static shape.
-  static DenseElementsAttr get(ShapedType type, ArrayRef<APInt> values);
 };
 
 /// An attribute that represents a reference to a dense integer vector or tensor
