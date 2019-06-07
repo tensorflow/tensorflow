@@ -1452,6 +1452,13 @@ class NNAPIDelegateKernel {
           return BasicMappingFn<ANEURALNETWORKS_LOGICAL_AND>;
         }
       } break;
+      case kTfLiteBuiltinLogicalNot: {
+        const auto input_type = context->tensors[node->inputs->data[0]].type;
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12 &&
+            input_type == kTfLiteBool) {
+          return BasicMappingFn<ANEURALNETWORKS_LOGICAL_NOT>;
+        }
+      } break;
       default:
         // All other operators are not mapped.
         return nullptr;
