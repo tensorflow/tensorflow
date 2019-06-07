@@ -365,6 +365,39 @@ tf_cuda_library(
 )
 
 cc_library(
+    name = "gpu_debug_info_manager",
+    srcs = [
+        "gpu_debug_info_manager.cc",
+    ],
+    hdrs = [
+        "gpu_debug_info_manager.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_proto_util",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_debug_info_manager_test",
+    srcs = ["gpu_debug_info_manager_test.cc"],
+    deps = [
+        ":gpu_constants",
+        ":gpu_debug_info_manager",
+        ":gpu_hlo_schedule",
+        ":stream_assignment",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "gpu_executable",
     srcs = [
         "cholesky_thunk.cc",
@@ -414,6 +447,7 @@ cc_library(
         ":buffer_allocations",
         ":cudnn_conv_runner",
         ":cusolver_context",
+        ":gpu_debug_info_manager",
         ":hlo_execution_profiler",
         ":infeed_manager",
         ":ir_emission_utils",

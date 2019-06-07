@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_debug_info_manager.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
@@ -52,8 +53,8 @@ GpuExecutable::GpuExecutable(
     const string& ptx, const std::vector<uint8>& cubin,
     std::pair<int, int> compute_capability,
     std::unique_ptr<const ThunkSchedule> thunk_schedule,
-    std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<const BufferAssignment> assignment,
+    std::shared_ptr<HloModule> hlo_module,
+    std::shared_ptr<const BufferAssignment> assignment,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
@@ -62,12 +63,26 @@ GpuExecutable::GpuExecutable(
       cubin_(cubin),
       compute_capability_(compute_capability),
       thunk_schedule_(std::move(thunk_schedule)),
-      assignment_(std::move(assignment)) {}
+      assignment_(std::move(assignment)) {
+  CHECK(has_module() && assignment_);
+  GpuDebugInfoManager::Get()->RegisterModule(module().name(), shared_module(),
+                                             assignment_);
+}
+
+GpuExecutable::~GpuExecutable() {
+  CHECK(has_module() && assignment_);
+  GpuDebugInfoManager::Get()->UnregisterModule(module().name(), shared_module(),
+                                               assignment_);
+}
 
 Status GpuExecutable::ExecuteThunks(
     const ServiceExecutableRunOptions* run_options,
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
     HloExecutionProfile* hlo_execution_profile) {
+  GpuDebugInfoManager::Get()->OnModuleStart(module().name());
+  auto cleanup = MakeCleanup(
+      [&]() { GpuDebugInfoManager::Get()->OnModuleStop(module().name()); });
+
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
 
