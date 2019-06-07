@@ -966,6 +966,32 @@ cuda_py_test(
     xla_enable_strict_auto_jit = True,
 )
 
+cuda_py_test(
+    name = "mirrored_variable_test",
+    srcs = ["mirrored_variable_test.py"],
+    additional_deps = [
+        ":collective_all_reduce_strategy",
+        ":combinations",
+        ":strategy_combinations",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+    ],
+    tags = [
+        "guitar",
+        "multi_and_single_gpu",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
 distribute_py_test(
     name = "metrics_v1_test",
     srcs = ["metrics_v1_test.py"],
