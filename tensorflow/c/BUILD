@@ -1,10 +1,6 @@
 # Description:
 # C API for TensorFlow, for use by client language bindings.
 
-package(
-    licenses = ["notice"],  # Apache 2.0
-)
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -14,6 +10,10 @@ load(
     "tf_kernel_library",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 # -----------------------------------------------------------------------------
 # Public targets
