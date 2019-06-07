@@ -312,8 +312,11 @@ xla::XlaOp ResizeUsingDilationAndConvolution(
   }
 
   // Split convolutions into independent dimensions if they would be a very
-  // large kernel.
-  if (dims.kernel_size[0] * dims.kernel_size[1] < kMax2DKernelSize) {
+  // large kernel or if one or more of the dimensions are already equal.
+  bool decompose_resize =
+      in_size[0] == out_size[0] || in_size[1] == out_size[1] ||
+      dims.kernel_size[0] * dims.kernel_size[1] >= kMax2DKernelSize;
+  if (!decompose_resize) {
     xla::XlaOp kernel = MakeGeneralResizeKernel(builder, type, dims.kernel_size,
                                                 channels, is_kernel_bilinear);
     output =

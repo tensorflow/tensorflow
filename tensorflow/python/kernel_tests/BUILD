@@ -1687,6 +1687,10 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
+    tags = [
+        # TODO(b/134600611): Re-enable this test.
+        "notap",
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -2309,6 +2313,20 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "unsorted_segment_join_op_test",
+    size = "small",
+    srcs = ["unsorted_segment_join_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:string_ops",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
     name = "reduction_ops_test",
     size = "medium",
     srcs = ["reduction_ops_test.py"],
@@ -2898,7 +2916,8 @@ cuda_py_test(
         "no_rocm",
         "optonly",  # flaky timeouts unless optimized
     ],
-    xla_enable_strict_auto_jit = True,
+    # TODO(b/134677329): Re-enable this test.
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(

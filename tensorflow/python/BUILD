@@ -17,9 +17,10 @@ visibility = [
     "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
 ]
 
-package(default_visibility = visibility)
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = visibility,
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -111,6 +112,7 @@ py_library(
         "//tensorflow/python/tools/api/generator:__pkg__",
         "//tensorflow/tools/api/tests:__pkg__",
         "//tensorflow/tools/compatibility/update:__pkg__",
+        "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
         ":array_ops",
@@ -705,13 +707,11 @@ py_library(
         ":framework_for_generated_wrappers",
         ":function",
         ":graph_util",
-        ":indexed_slices_tensor_spec",
         ":lib",
         ":platform",
         ":pywrap_tensorflow",
         ":random_seed",
         ":sparse_tensor",
-        ":sparse_tensor_spec",
         ":tensor_spec",
         ":tensor_util",
         ":type_spec",
@@ -1249,30 +1249,6 @@ py_library(
         ":type_spec",
         ":util",
         "//third_party/py/numpy",
-    ],
-)
-
-py_library(
-    name = "sparse_tensor_spec",
-    srcs = ["framework/sparse_tensor_spec.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":dtypes",
-        ":sparse_tensor",
-        ":tensor_shape",
-        ":tensor_spec",
-    ],
-)
-
-py_library(
-    name = "indexed_slices_tensor_spec",
-    srcs = ["framework/indexed_slices_tensor_spec.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":dtypes",
-        ":framework_ops",
-        ":sparse_tensor",
-        ":tensor_shape",
     ],
 )
 
@@ -2258,6 +2234,13 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/contrib/text:__pkg__",
         "//learning/brain/contrib/text/python/ragged:__pkg__",
         "//tensorflow/python/ops/ragged:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "rnn_ops_gen",
+    visibility = [
+        "//tensorflow/contrib/rnn:__pkg__",
     ],
 )
 
@@ -4109,10 +4092,22 @@ cuda_py_test(
         ":variables",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
-        "//tensorflow/python/distribute:mirrored_strategy",
     ],
     tags = ["no_windows"],
     xla_enable_strict_auto_jit = True,
+)
+
+py_test(
+    name = "nn_loss_scaling_utilities_test",
+    size = "small",
+    srcs = ["ops/nn_loss_scaling_utilities_test.py"],
+    python_version = "PY2",
+    deps = [
+        ":client_testlib",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )
 
 cuda_py_test(

@@ -159,7 +159,13 @@ def pfor(loop_fn, iters, parallel_iterations=None):
   """
   def f():
     return _pfor_impl(loop_fn, iters, parallel_iterations=parallel_iterations)
-  if context.executing_eagerly():
+  control_flow_context = ops.get_default_graph()._get_control_flow_context()  # pylint: disable=protected-access
+  # Note that we wrap into a tf.function if in eager execution mode or under
+  # XLA compilation. The latter is so that we don't compile operations like
+  # tf.placeholder that are created by the loop body.
+  if (context.executing_eagerly() or
+      (control_flow_context is not None and
+       control_flow_context.IsXLAContext())):
     f = function.defun(f)
   return f()
 

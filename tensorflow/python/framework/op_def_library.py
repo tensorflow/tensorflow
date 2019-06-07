@@ -618,7 +618,12 @@ class OpDefLibrary(object):
           attr_value = base_types[0]
           if input_arg.type_attr in attrs:
             if attrs[input_arg.type_attr] != attr_value:
-              assert False, "Unreachable"
+              raise TypeError(
+                  "Input '%s' of '%s' Op has type %s that does not "
+                  "match type %s of argument '%s'." %
+                  (input_name, op_type_name, dtypes.as_dtype(attr_value).name,
+                   dtypes.as_dtype(attrs[input_arg.type_attr]).name,
+                   inferred_from[input_arg.type_attr]))
           else:
             for base_type in base_types:
               _SatisfiesTypeConstraint(base_type,

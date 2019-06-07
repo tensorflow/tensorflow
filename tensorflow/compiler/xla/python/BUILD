@@ -134,8 +134,14 @@ tf_cc_test(
 
 cc_library(
     name = "local_client",
-    srcs = ["local_client.cc"],
-    hdrs = ["local_client.h"],
+    srcs = [
+        "local_client.cc",
+        "python_ref_manager.cc",
+        "python_ref_manager.h",
+    ],
+    hdrs = [
+        "local_client.h",
+    ],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",

@@ -1,4 +1,7 @@
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [":internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "internal",
@@ -12,10 +15,6 @@ package_group(
     includes = [
         "//tensorflow/compiler/tf2xla:friends",
     ],
-)
-
-package(
-    default_visibility = [":internal"],
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
@@ -264,7 +263,6 @@ tf_xla_py_test(
     name = "cond_test",
     size = "small",
     srcs = ["cond_test.py"],
-    disabled_backends = ["cpu_ondemand"],  # b/129021699
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",

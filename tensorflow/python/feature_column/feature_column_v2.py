@@ -144,7 +144,8 @@ from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 # TODO(b/118385027): Dependency on keras can be problematic if Keras moves out
 # of the main repo.
-from tensorflow.python.keras import utils
+from tensorflow.python.keras import initializers
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.ops import array_ops
@@ -478,6 +479,27 @@ class DenseFeatures(_BaseFeaturesLayer):
         output_tensors.append(processed_tensors)
     return self._verify_and_concat_tensors(output_tensors)
 
+  def get_config(self):
+    # Import here to avoid circular imports.
+    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
+    column_configs = serialization.serialize_feature_columns(
+        self._feature_columns)
+    config = {'feature_columns': column_configs}
+
+    base_config = super(  # pylint: disable=bad-super-call
+        DenseFeatures, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+  @classmethod
+  def from_config(cls, config, custom_objects=None):
+    # Import here to avoid circular imports.
+    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
+    config_cp = config.copy()
+    config_cp['feature_columns'] = serialization.deserialize_feature_columns(
+        config['feature_columns'], custom_objects=custom_objects)
+
+    return cls(**config_cp)
+
 
 class _LinearModelLayer(Layer):
   """Layer that contains logic for `LinearModel`."""
@@ -571,6 +593,32 @@ class _LinearModelLayer(Layer):
       predictions = nn_ops.bias_add(
           predictions_no_bias, self.bias, name='weighted_sum')
       return predictions
+
+  def get_config(self):
+    # Import here to avoid circular imports.
+    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
+    column_configs = serialization.serialize_feature_columns(
+        self._feature_columns)
+    config = {
+        'feature_columns': column_configs,
+        'units': self._units,
+        'sparse_combiner': self._sparse_combiner
+    }
+
+    base_config = super(  # pylint: disable=bad-super-call
+        _LinearModelLayer, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+  @classmethod
+  def from_config(cls, config, custom_objects=None):
+    # Import here to avoid circular imports.
+    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
+    config_cp = config.copy()
+    columns = serialization.deserialize_feature_columns(
+        config_cp['feature_columns'], custom_objects=custom_objects)
+
+    del config_cp['feature_columns']
+    return cls(feature_columns=columns, **config_cp)
 
 
 class LinearModel(training.Model):
@@ -2251,7 +2299,7 @@ class FeatureColumn(object):
         config['dtype'] = self.dtype.name
 
         # Non-trivial dependencies should be Keras-(de)serializable.
-        config['normalizer_fn'] = utils.serialize_keras_object(
+        config['normalizer_fn'] = generic_utils.serialize_keras_object(
             self.normalizer_fn)
 
         return config
@@ -2264,7 +2312,7 @@ class FeatureColumn(object):
         kwargs['parent'] = deserialize_feature_column(
             config['parent'], custom_objects, columns_by_name)
         kwargs['dtype'] = dtypes.as_dtype(config['dtype'])
-        kwargs['normalizer_fn'] = utils.deserialize_keras_object(
+        kwargs['normalizer_fn'] = generic_utils.deserialize_keras_object(
           config['normalizer_fn'], custom_objects=custom_objects)
         return cls(**kwargs)
 
@@ -2813,7 +2861,8 @@ class NumericColumn(
   def _get_config(self):
     """See 'FeatureColumn` base class."""
     config = dict(zip(self._fields, self))
-    config['normalizer_fn'] = utils.serialize_keras_object(self.normalizer_fn)
+    config['normalizer_fn'] = generic_utils.serialize_keras_object(
+        self.normalizer_fn)
     config['dtype'] = self.dtype.name
     return config
 
@@ -2822,9 +2871,18 @@ class NumericColumn(
     """See 'FeatureColumn` base class."""
     _check_config_keys(config, cls._fields)
     kwargs = config.copy()
-    kwargs['normalizer_fn'] = utils.deserialize_keras_object(
+    kwargs['normalizer_fn'] = generic_utils.deserialize_keras_object(
         config['normalizer_fn'], custom_objects=custom_objects)
     kwargs['dtype'] = dtypes.as_dtype(config['dtype'])
+
+    # Keras serialization uses nest to listify everything.
+    # This causes problems with the NumericColumn shape, which becomes
+    # unhashable. We could try to solve this on the Keras side, but that
+    # would require lots of tracking to avoid changing existing behavior.
+    # Instead, we ensure here that we revive correctly.
+    if isinstance(config['shape'], list):
+      kwargs['shape'] = tuple(config['shape'])
+
     return cls(**kwargs)
 
 
@@ -3199,7 +3257,7 @@ class EmbeddingColumn(
     config = dict(zip(self._fields, self))
     config['categorical_column'] = serialize_feature_column(
         self.categorical_column)
-    config['initializer'] = utils.serialize_keras_object(self.initializer)
+    config['initializer'] = initializers.serialize(self.initializer)
     return config
 
   @classmethod
@@ -3210,7 +3268,7 @@ class EmbeddingColumn(
     kwargs = config.copy()
     kwargs['categorical_column'] = deserialize_feature_column(
         config['categorical_column'], custom_objects, columns_by_name)
-    kwargs['initializer'] = utils.deserialize_keras_object(
+    kwargs['initializer'] = initializers.deserialize(
         config['initializer'], custom_objects=custom_objects)
     return cls(**kwargs)
 

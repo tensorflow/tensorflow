@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
+from tensorflow.lite.python.convert import ConverterError
 from tensorflow.lite.python.interpreter import Interpreter
 from tensorflow.python import keras
 from tensorflow.python.client import session
@@ -1190,15 +1191,17 @@ class FromSavedModelTest(test_util.TensorFlowTestCase):
         input_arrays=['inputA'],
         input_shapes={'inputA': [1, 16, 16, 3]})
 
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
+    # Since we only partially specify the input, this is not allowed.
+    with self.assertRaises(ConverterError):
+      _ = converter.convert()
 
     # Check case where input shape is None.
     converter = lite.TFLiteConverter.from_saved_model(
         saved_model_dir, input_arrays=['inputA'], input_shapes={'inputA': None})
 
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
+    # Since we only partially specify the input, this is not allowed.
+    with self.assertRaises(ConverterError):
+      _ = converter.convert()
 
   def testSimpleModelTocoConverter(self):
     """Test a SavedModel with deprecated TocoConverter."""

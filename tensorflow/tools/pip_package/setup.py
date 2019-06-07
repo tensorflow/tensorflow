@@ -103,7 +103,6 @@ if sys.version_info < (3, 4):
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
-    'freeze_graph = tensorflow.python.tools.freeze_graph:run_main',
     'toco_from_protos = tensorflow.lite.toco.python.toco_from_protos:main',
     'tflite_convert = tensorflow.lite.python.tflite_convert:main',
     'toco = tensorflow.lite.python.tflite_convert:main',
@@ -116,6 +115,11 @@ CONSOLE_SCRIPTS = [
     'tf_upgrade_v2 = tensorflow.tools.compatibility.tf_upgrade_v2_main:main',
 ]
 # pylint: enable=line-too-long
+
+# Only keep freeze_graph console script in 1.X.
+if _VERSION.startswith('1.') and '_2.0' not in project_name:
+  CONSOLE_SCRIPTS.append(
+      'freeze_graph = tensorflow.python.tools.freeze_graph:run_main')
 
 # remove the tensorboard console script if building tf_nightly
 if 'tf_nightly' in project_name:
@@ -137,8 +141,9 @@ class InstallCommand(InstallCommandBase):
 
   def finalize_options(self):
     ret = InstallCommandBase.finalize_options(self)
-    self.install_headers = os.path.join(self.install_purelib,
-                                        'tensorflow', 'include')
+    self.install_headers = os.path.join(self.install_purelib, 'tensorflow_core',
+                                        'include')
+    self.install_lib = self.install_platlib
     return ret
 
 
@@ -175,14 +180,14 @@ class InstallHeaders(Command):
     # directories for -I
     install_dir = re.sub('/google/protobuf_archive/src', '', install_dir)
 
-    # Copy external code headers into tensorflow/include.
+    # Copy external code headers into tensorflow_core/include.
     # A symlink would do, but the wheel file that gets created ignores
     # symlink within the directory hierarchy.
     # NOTE(keveman): Figure out how to customize bdist_wheel package so
     # we can do the symlink.
     external_header_locations = [
-        'tensorflow/include/external/eigen_archive/',
-        'tensorflow/include/external/com_google_absl/',
+        'tensorflow_core/include/external/eigen_archive/',
+        'tensorflow_core/include/external/com_google_absl/',
     ]
     for location in external_header_locations:
       if location in install_dir:

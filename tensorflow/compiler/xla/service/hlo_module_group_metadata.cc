@@ -128,6 +128,21 @@ Status HloModuleGroupMetadata::Build() {
       TF_RETURN_IF_ERROR(computation->Accept(&function_visitor));
     }
   }
+
+  // While building the companion sets, initial sets may be removed by inserting
+  // nullptr in companion_sets_. Prune those removed sets to compact.
+  std::vector<std::unique_ptr<std::vector<HloInstruction*>>> sets;
+  for (int64 i = 0; i < companion_sets_.size(); ++i) {
+    if (companion_sets_[i] == nullptr) {
+      continue;
+    }
+    sets.push_back(std::move(companion_sets_[i]));
+    for (HloInstruction* hlo : *sets.back()) {
+      companion_set_index_[hlo] = sets.size() - 1;
+    }
+  }
+  companion_sets_ = std::move(sets);
+
   TF_RETURN_IF_ERROR(VerifyCompanionSets());
   if (VLOG_IS_ON(4)) {
     DumpCollectedStats();

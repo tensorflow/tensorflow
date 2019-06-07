@@ -132,6 +132,7 @@ function prepare_src() {
   popd > /dev/null
   cp -R $RUNFILES/third_party/eigen3 ${TMPDIR}/third_party
 
+  cp tensorflow/virtual_root.__init__.py ${TMPDIR}
   cp tensorflow/tools/pip_package/MANIFEST.in ${TMPDIR}
   cp tensorflow/tools/pip_package/README ${TMPDIR}
   cp tensorflow/tools/pip_package/setup.py ${TMPDIR}
@@ -157,6 +158,21 @@ function build_wheel() {
   fi
 
   pushd ${TMPDIR} > /dev/null
+
+  # In order to break the circular dependency between tensorflow and
+  # tensorflow_estimator which forces us to do a multi-step release, we are
+  # creating a virtual pip package called tensorflow and moving all the tf code
+  # into another pip called tensorflow_core:
+  #
+  #   * move code from tensorflow to tensorflow_core
+  #   * create the virtual pip package: create folder and __init__.py file with
+  #     needed code for transparent forwarding
+  #
+  # This is transparent to internal code or to code not using the pip packages.
+  mv tensorflow tensorflow_core
+  mkdir tensorflow
+  mv virtual_root.__init__.py tensorflow/__init__.py
+
   rm -f MANIFEST
   echo $(date) : "=== Building wheel"
   "${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel ${PKG_NAME_FLAG} >/dev/null

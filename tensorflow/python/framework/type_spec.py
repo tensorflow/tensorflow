@@ -23,6 +23,7 @@ import numpy as np
 import six
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
@@ -488,11 +489,8 @@ def _type_spec_from_value(value):
     # Note: we do not include Tensor names when constructing TypeSpecs.
     return tensor_spec.TensorSpec(value.shape, value.dtype)
 
-  # TODO(b/133606651) Uncomment the following two lines when CompositeTensor
-  # is updated to define a _type_spec field:
-  #
-  # if isinstance(value, composite_tensor.CompositeTensor):
-  #   return value._type_spec  # pylint: disable=protected-access
+  if isinstance(value, composite_tensor.CompositeTensor):
+    return value._type_spec  # pylint: disable=protected-access
 
   for entry in reversed(_TYPE_CONVERSION_FUNCTION_REGISTRY):
     type_object, converter_fn, allow_subclass = entry

@@ -53,10 +53,18 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+
+# Loaded lazily due to a circular dependency (roughly
+# tf.function->autograph->->dataset->tf.function).
+# TODO(b/133251390): Use a regular import.
+ag_ctx = lazy_loader.LazyLoader(
+    "ag_ctx", globals(),
+    "tensorflow.python.autograph.core.ag_ctx")
 
 
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
@@ -1004,18 +1012,49 @@ class FunctionSpec(object):
         new_defaults = fullargspec.defaults
         new_args = fullargspec.args
         if fullargspec.defaults:
-          num_defaults = len(fullargspec.defaults)
-          args_with_default = fullargspec.args[-num_defaults:]
+          # To be able to canonicalize the function properly, we want to ignore
+          # default values that are overridden via a partial kwarg. For example:
+          #
+          #   def func(a, b, c, d=5, e=7):
+          #     return a, b, c, d, e
+          #   p_func = functools.partial(tf.function(func, 10, e=9))
+          #
+          # Here we want to drop from the defaults the parameter `e`. If we
+          # forwarded the call to the partial function with a default for `e`
+          # we would get an error for passing two values for one parameter.
+          #
+          # Note that this has a limitation: we can only override parameters at
+          # the end of the parameter list.
+          #
+          # In this case we want to end up with 3 arguments (b, c, d) and 1
+          # default value (5). We do this by constructing a mask where 0 stands
+          # for a value that was overridden by a partial kwarg. The seemingly
+          # complicated logic below does just that - for arguments (b, c, d, e)
+          # we would get a mask (1, 1, 1, 0).
+          old_args = fullargspec.args
+          old_defaults = fullargspec.defaults
+
+          no_default = object()
+          num_args_without_defaults = len(old_args) - len(old_defaults)
+          left_padding = tuple([no_default] * num_args_without_defaults)
+
+          args_with_defaults = zip(old_args, left_padding + old_defaults)
+
+          # Create a mask where 0 stands for args that had a partial kwarg
+          # defined.
           non_keyword_defaults_mask = [
-              0 if key in unwrapped.keywords else 1 for key in args_with_default
+              0 if key in unwrapped.keywords else 1 for key in old_args
           ]
           # Keep only arguments and defaults that were not kwargs of partial.
-          new_defaults = tuple(
-              itertools.compress(fullargspec.defaults,
-                                 non_keyword_defaults_mask))
-          new_args = list(
-              itertools.compress(fullargspec.args, non_keyword_defaults_mask))
-
+          new_args_with_defaults = list(
+              itertools.compress(args_with_defaults, non_keyword_defaults_mask))
+          # Keep all args.
+          new_args = [arg for arg, _ in new_args_with_defaults]
+          # Keep only real default values.
+          new_defaults = [
+              default for _, default in new_args_with_defaults
+              if default is not no_default
+          ]
         fullargspec = tf_inspect.FullArgSpec(
             args=new_args,
             varargs=fullargspec.varargs,
@@ -1136,7 +1175,12 @@ class FunctionSpec(object):
 
     if not kwargs:
       inputs = args
-      for index in sorted(self._arg_indices_to_default_values.keys()):
+      default_keys = sorted(self._arg_indices_to_default_values.keys())
+      if default_keys:
+        assert min(default_keys) <= len(
+            args), "Not enough arguments (%s, %s, %s)" % (args, default_keys,
+                                                          self.arg_names)
+      for index in default_keys:
         if index >= len(args):
           inputs += (self._arg_indices_to_default_values[index],)
     else:
@@ -1336,8 +1380,15 @@ class Function(object):
 
   def __call__(self, *args, **kwargs):
     """Calls a graph function specialized to the inputs."""
-    graph_function, args, kwargs = self._maybe_define_function(args, kwargs)
-    return graph_function._filtered_call(args, kwargs)  # pylint: disable=protected-access
+
+    # Note: This context may not be placed inside func_graph because it's called
+    # by internal TF APIs, and we only want it to track explicit user
+    # configuration.
+    ag_status = (
+        ag_ctx.Status.ENABLED if self._autograph else ag_ctx.Status.DISABLED)
+    with ag_ctx.ControlStatusCtx(status=ag_status):
+      graph_function, args, kwargs = self._maybe_define_function(args, kwargs)
+      return graph_function._filtered_call(args, kwargs)  # pylint: disable=protected-access
 
   @property
   def python_function(self):

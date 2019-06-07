@@ -1360,8 +1360,62 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedConv2D_Positive3) {
             "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
 }
 
-// Rewrite test for _FusedConv2D Op with BiasAdd+Add fusion
+// Rewrite test for _FusedConv2D Op with BiasAdd+Relu6 fusion
 TEST_F(MklLayoutPassTest, NodeRewrite_FusedConv2D_Positive4) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: '_FusedConv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'num_args'         value { i: 1 } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'fused_ops'"
+      "             value { list: {s: 'BiasAdd', s: 'Relu6'} } }"
+      " attr { key: 'epsilon'          value { f: 0.001 }}"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['D', 'C'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(Input);D(_MklFusedConv2D);DMT/_0(Const);"
+            "DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;"
+            "A:control->DMT/_0:control;A:control->DMT/_1:control;"
+            "A:control->DMT/_2:control;B->D:1;C->D:2;C->E:1;D->E;"
+            "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
+}
+
+// Rewrite test for _FusedConv2D Op with BiasAdd+Elu fusion
+TEST_F(MklLayoutPassTest, NodeRewrite_FusedConv2D_Positive5) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: '_FusedConv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'num_args'         value { i: 1 } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'fused_ops'"
+      "             value { list: {s: 'BiasAdd', s: 'Elu'} } }"
+      " attr { key: 'epsilon'          value { f: 0.001 }}"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['D', 'C'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(Input);D(_MklFusedConv2D);DMT/_0(Const);"
+            "DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;"
+            "A:control->DMT/_0:control;A:control->DMT/_1:control;"
+            "A:control->DMT/_2:control;B->D:1;C->D:2;C->E:1;D->E;"
+            "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
+}
+
+// Rewrite test for _FusedConv2D Op with BiasAdd+Add fusion
+TEST_F(MklLayoutPassTest, NodeRewrite_FusedConv2D_Positive6) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
       "node { name: 'B' op: 'Input'}"
@@ -1390,7 +1444,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedConv2D_Positive4) {
 }
 
 // Rewrite test for _FusedConv2D Op with BiasAdd+Add+Relu fusion
-TEST_F(MklLayoutPassTest, NodeRewrite_FusedConv2D_Positive5) {
+TEST_F(MklLayoutPassTest, NodeRewrite_FusedConv2D_Positive7) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
       "node { name: 'B' op: 'Input'}"

@@ -285,7 +285,7 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   OP_REQUIRES_OK_ASYNC(
       ctx,
       ctx->resource_manager()->LookupOrCreate(
-          "TF-TRT-Calibration", name(),
+          std::string(kCalibrationContainerName), name(),
           reinterpret_cast<TRTCalibrationResource**>(&calib_res),
           {[ctx, this](TRTCalibrationResource** cr) -> Status {
             return this->AllocateCalibrationResources(ctx, cr);
@@ -542,7 +542,7 @@ EngineContext* TRTEngineOp::GetEngine(
   // Get engine cache.
   TRTEngineCacheResource* cache_res = nullptr;
   auto status = ctx->resource_manager()->LookupOrCreate(
-      std::string(kCalibrationContainerName), string(resource_name), &cache_res,
+      "TF-TRT-Engine-Cache", string(resource_name), &cache_res,
       {[this, ctx](TRTEngineCacheResource** cr) -> Status {
         *cr = new TRTEngineCacheResource(ctx, this->max_cached_engines_);
         return Status::OK();

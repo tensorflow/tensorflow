@@ -278,6 +278,10 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
     ],
+    tags = [
+        # TODO(b/134605801): Re-enable this test.
+        "no_oss",
+    ],
 )
 
 cuda_py_test(

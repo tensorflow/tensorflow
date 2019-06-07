@@ -509,26 +509,13 @@ class BatchNormalizationBase(Layer):
     else:
       momentum = ops.convert_to_tensor(self.momentum)
     if training_value or training_value is None:
-      if distribution_strategy_context.in_cross_replica_context():
-        strategy = distribution_strategy_context.get_strategy()
-        def mean_update():
-          return strategy.extended.update(self.moving_mean,
-                                          self._assign_moving_average,
-                                          (mean, self.momentum, inputs_size))
+      def mean_update():
+        return self._assign_moving_average(self.moving_mean, mean, momentum,
+                                           inputs_size)
 
-        def variance_update():
-          return strategy.extended.update(
-              self.moving_variance, self._assign_moving_average,
-              (variance, self.momentum, inputs_size))
-      else:
-
-        def mean_update():
-          return self._assign_moving_average(self.moving_mean, mean, momentum,
-                                             inputs_size)
-
-        def variance_update():
-          return self._assign_moving_average(self.moving_variance, variance,
-                                             momentum, inputs_size)
+      def variance_update():
+        return self._assign_moving_average(self.moving_variance, variance,
+                                           momentum, inputs_size)
 
       self.add_update(mean_update)
       self.add_update(variance_update)
@@ -684,7 +671,9 @@ class BatchNormalizationBase(Layer):
 
     # Determine a boolean value for `training`: could be True, False, or None.
     training_value = tf_utils.constant_value(training)
-    if training_value is not False:
+    if training_value == False:  # pylint: disable=singleton-comparison,g-explicit-bool-comparison
+      mean, variance = self.moving_mean, self.moving_variance
+    else:
       if self.adjustment:
         adj_scale, adj_bias = self.adjustment(array_ops.shape(inputs))
         # Adjust only during training.
@@ -741,49 +730,23 @@ class BatchNormalizationBase(Layer):
         d = _broadcast(array_ops.stop_gradient(d, name='renorm_d'))
         scale, offset = _compose_transforms(r, d, scale, offset)
 
-      if distribution_strategy_context.in_cross_replica_context():
-        strategy = distribution_strategy_context.get_strategy()
+      def _do_update(var, value):
+        """Compute the updates for mean and variance."""
+        return self._assign_moving_average(var, value, self.momentum,
+                                           inputs_size)
 
-        def _do_update(var, value):
-          """Compute the updates for mean and variance."""
-          return strategy.extended.update(
-              var,
-              self._assign_moving_average, (value, self.momentum, inputs_size),
-              group=False)
-        # We need to unwrap the moving_mean or moving_variance in the case of
-        # training being false to match the output of true_fn and false_fn
-        # in the smart cond.
-        def mean_update():
-          true_branch = lambda: _do_update(self.moving_mean, new_mean)
-          false_branch = lambda: strategy.unwrap(self.moving_mean)
-          return tf_utils.smart_cond(training, true_branch, false_branch)
+      def mean_update():
+        true_branch = lambda: _do_update(self.moving_mean, new_mean)
+        false_branch = lambda: self.moving_mean
+        return tf_utils.smart_cond(training, true_branch, false_branch)
 
-        def variance_update():
-          return tf_utils.smart_cond(
-              training, lambda: _do_update(self.moving_variance, new_variance),
-              lambda: strategy.unwrap(self.moving_variance))
-      else:
-        def _do_update(var, value):
-          """Compute the updates for mean and variance."""
-          return self._assign_moving_average(var, value, self.momentum,
-                                             inputs_size)
-
-
-        def mean_update():
-          true_branch = lambda: _do_update(self.moving_mean, new_mean)
-          false_branch = lambda: self.moving_mean
-          return tf_utils.smart_cond(training, true_branch, false_branch)
-
-        def variance_update():
-          true_branch = lambda: _do_update(self.moving_variance, new_variance)
-          false_branch = lambda: self.moving_variance
-          return tf_utils.smart_cond(training, true_branch, false_branch)
+      def variance_update():
+        true_branch = lambda: _do_update(self.moving_variance, new_variance)
+        false_branch = lambda: self.moving_variance
+        return tf_utils.smart_cond(training, true_branch, false_branch)
 
       self.add_update(mean_update)
       self.add_update(variance_update)
-
-    else:
-      mean, variance = self.moving_mean, self.moving_variance
 
     mean = math_ops.cast(mean, inputs.dtype)
     variance = math_ops.cast(variance, inputs.dtype)
