@@ -480,9 +480,9 @@ def normalize(tensor,
 
   Returns:
     normalized: A normalized `Tensor` with the same shape as `tensor`.
-    norm: The computed norms with the same shape as `tensor` but the final axis
-      is 1 instead. Same as running
-      `tf.linalg.norm(tensor, ord, axis keepdims=True)`.
+    norm: The computed norms with the same shape and dtype `tensor` but the 
+      final axis is 1 instead. Same as running
+      `tf.cast(tf.linalg.norm(tensor, ord, axis keepdims=True), tensor.dtype)`.
 
   Raises:
     ValueError: If `ord` or `axis` is invalid.
@@ -490,6 +490,7 @@ def normalize(tensor,
   with ops.name_scope(name, "normalize", [tensor]) as name:
     tensor = ops.convert_to_tensor(tensor)
     norm = linalg_ops.norm(tensor, ord, axis, keepdims=True)
+    norm = math_ops.cast(norm, tensor.dtype)
     normalized = tensor / norm
     return normalized, norm
 
