@@ -208,16 +208,15 @@ def RunLSTM(sess,
 
   if is_training:
     if num_proj:
-      outputs, state_tuple, inp_grad, state_grad, wgrad, bgrad, pwgrad = \
-      sess.run([
-          outputs_op, state_tuple_op, inp_grad_op,
-          (hgrad_op, cgrad_op), wgrad_op, bgrad_op, pwgrad_op
-      ])
+      (outputs, state_tuple, inp_grad, state_grad, wgrad, bgrad,
+       pwgrad) = sess.run([
+           outputs_op, state_tuple_op, inp_grad_op,
+           (hgrad_op, cgrad_op), wgrad_op, bgrad_op, pwgrad_op])
       (cu_outputs, cu_state_tuple, cu_inp_grad, cu_state_grad, cu_wgrad,
        cu_bgrad, cu_pwgrad) = sess.run([
            cu_outputs_op, cu_state_tuple_op, cu_inp_grad_op,
-           (cu_hgrad_op, cu_cgrad_op), cu_wgrad_op, cu_bgrad_op, cu_pwgrad_op],
-           feed_dict={inputs: inputs_np} if dynamic_shape_input else None)
+           (cu_hgrad_op, cu_cgrad_op), cu_wgrad_op, cu_bgrad_op, cu_pwgrad_op
+       ], feed_dict={inputs: inputs_np} if dynamic_shape_input else None)
     else:
       outputs, state_tuple, inp_grad, state_grad, wgrad, bgrad = sess.run([
           outputs_op, state_tuple_op, inp_grad_op,
@@ -225,9 +224,9 @@ def RunLSTM(sess,
       (cu_outputs, cu_state_tuple, cu_inp_grad, cu_state_grad, cu_wgrad,
        cu_bgrad) = sess.run([
            cu_outputs_op, cu_state_tuple_op, cu_inp_grad_op,
-           (cu_hgrad_op, cu_cgrad_op), cu_wgrad_op, cu_bgrad_op],
-           feed_dict={inputs: inputs_np} if dynamic_shape_input else None)
-    
+           (cu_hgrad_op, cu_cgrad_op), cu_wgrad_op, cu_bgrad_op
+       ], feed_dict={inputs: inputs_np} if dynamic_shape_input else None)
+
     logging.vlog(1, "outputs: %s" % outputs)
     logging.vlog(1, "cu_outputs: %s" % cu_outputs)
     logging.vlog(1, "state_tuple: %s" % str(state_tuple))
