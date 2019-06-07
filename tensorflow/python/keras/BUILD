@@ -161,6 +161,7 @@ py_library(
         "engine/base_layer.py",
         "engine/input_layer.py",
         "engine/network.py",
+        "engine/node.py",
         "engine/partial_batch_padding_handler.py",
         "engine/saving.py",
         "engine/sequential.py",
