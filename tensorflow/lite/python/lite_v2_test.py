@@ -328,6 +328,33 @@ class FromSavedModelTest(TestModels):
     self.assertIn('This converter can only convert a single ConcreteFunction',
                   str(error.exception))
 
+  def testKerasSequentialModel(self):
+    """Test a simple sequential tf.Keras model."""
+    self.skipTest('b/134660903')
+    input_data = constant_op.constant(1., shape=[1, 1])
+
+    x = np.array([[1.], [2.]])
+    y = np.array([[2.], [4.]])
+
+    model = keras.models.Sequential([
+        keras.layers.Dropout(0.2),
+        keras.layers.Dense(1),
+    ])
+    model.compile(optimizer='sgd', loss='mean_squared_error')
+    model.fit(x, y, epochs=1)
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save(model, save_dir)
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = model.predict(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    self.assertEqual(expected_value, actual_value)
+
 
 class FromKerasModelTest(TestModels):
 
@@ -337,11 +364,13 @@ class FromKerasModelTest(TestModels):
     input_data = constant_op.constant(1., shape=[1, 1])
 
     # Create a simple Keras model.
-    x = [-1, 0, 1, 2, 3, 4]
-    y = [-3, -1, 1, 3, 5, 7]
+    x = np.array([[1.], [2.]])
+    y = np.array([[2.], [4.]])
 
-    model = keras.models.Sequential(
-        [keras.layers.Dense(units=1, input_shape=[1])])
+    model = keras.models.Sequential([
+        keras.layers.Dropout(0.2),
+        keras.layers.Dense(units=1, input_shape=[1])
+    ])
     model.compile(optimizer='sgd', loss='mean_squared_error')
     model.fit(x, y, epochs=1)
 
