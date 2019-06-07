@@ -521,13 +521,14 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       pass.AddPass<HloDCE>();
       pass.AddPass<WhileLoopConstantSinking>();
       pass.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_opts);
+      pass.AddPass<ReshapeMover>();
       pass.AddPass<SortSimplifier>();
       pass.AddPass<HloPassFix<FuseOpsLate>>(resources.annotations);
-      pass.AddPass<FuseWideConst>(resources.annotations);
       pass.AddPass<HloDCE>();
       pass.AddPass<WhileLoopConditionSimplify>();
       pass.AddPass<HloPassFix<WhileLoopToRepeatSimplify>>();
     }
+    pipeline.AddPass<FuseWideConst>(resources.annotations);
     pipeline.AddPass<HloSubcomputationUnification>();
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
     pipeline.AddPass<RecomputeInstructions>(
