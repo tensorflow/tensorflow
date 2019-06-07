@@ -73,6 +73,9 @@ class VocabInfo(
   Returns:
     A `VocabInfo` which represents the vocabulary information for warm-starting.
 
+  Raises:
+    ValueError: `axis` is nether 0 or 1.
+
       Example Usage:
 ```python
       embeddings_vocab_info = tf.VocabInfo(
