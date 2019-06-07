@@ -289,16 +289,14 @@ class Layer(module.Module):
       name: Variable name.
       shape: Variable shape. Defaults to scalar if unspecified.
       dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
-      initializer: initializer instance (callable).
-      regularizer: regularizer instance (callable).
-      trainable: whether the variable should be part of the layer's
+      initializer: Initializer instance (callable).
+      regularizer: Regularizer instance (callable).
+      trainable: Boolean, whether the variable should be part of the layer's
         "trainable_variables" (e.g. variables, biases)
-        or "non_trainable_variables" (e.g. BatchNorm mean, stddev).
-        Note, if the current variable scope is marked as non-trainable
-        then this parameter is ignored and any added variables are also
-        marked as non-trainable. `trainable` defaults to `True` unless
-        `synchronization` is set to `ON_READ`.
-      constraint: constraint instance (callable).
+        or "non_trainable_variables" (e.g. BatchNorm mean and variance).
+        Note that `trainable` cannot be `True` if `synchronization`
+        is set to `ON_READ`.
+      constraint: Constraint instance (callable).
       partitioner: Partitioner to be passed to the `Trackable` API.
       use_resource: Whether to use `ResourceVariable`.
       synchronization: Indicates when a distributed a variable will be
@@ -314,8 +312,8 @@ class Layer(module.Module):
         `collections`.
 
     Returns:
-      The created variable.  Usually either a `Variable` or `ResourceVariable`
-      instance.  If `partitioner` is not `None`, a `PartitionedVariable`
+      The created variable. Usually either a `Variable` or `ResourceVariable`
+      instance. If `partitioner` is not `None`, a `PartitionedVariable`
       instance is returned.
 
     Raises:
