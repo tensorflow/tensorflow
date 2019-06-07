@@ -323,6 +323,13 @@ class Conv1D(Conv):
     kernel_constraint: Constraint function applied to the kernel matrix.
     bias_constraint: Constraint function applied to the bias vector.
 
+  Examples:
+    ```python
+    # Small convolutional model for 128-length vectors
+    model = Sequential()
+    model.add(Conv1D(32, 3, activation='relu', input_shape(, 128))
+    ```
+
   Input shape:
     3D tensor with shape: `(batch_size, steps, input_dim)`
 
