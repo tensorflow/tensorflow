@@ -108,6 +108,7 @@ Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
   std::tie(operand_desc, scale_offset_desc) =
       MakeDescriptors(hlo_instruction()->shape(), feature_index_);
 
+  se::DeviceMemory<float> null_device_ptr(nullptr);
   se::DeviceMemory<float> output(buffer_allocations.GetDeviceAddress(output_));
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
@@ -117,9 +118,11 @@ Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(offset_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(mean_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(variance_)),
+      /*side_input=*/null_device_ptr,
       operand_desc,                         //
       scale_offset_desc,                    //
       epsilon_,                             //
+      se::dnn::ActivationMode::kNone,       //
       &output,                              //
       /*batch_mean=*/nullptr,               //
       /*batch_var=*/nullptr,                //
@@ -194,9 +197,11 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(offset_)),
       /*estimated_mean=*/null_device_ptr,
       /*estimated_variance=*/null_device_ptr,
+      /*side_input=*/null_device_ptr,
       operand_desc,                          //
       scale_offset_desc,                     //
       epsilon_,                              //
+      se::dnn::ActivationMode::kNone,        //
       &output_data,                          //
       /*batch_mean=*/&null_device_ptr,       //
       /*batch_var=*/&null_device_ptr,        //

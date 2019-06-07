@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 
-// Tests cross-GPU all-reduce operatons.
+// Tests cross-GPU operatons.
 //
 // This test requires at least four GPUs.  For instructions on running this
 // within Google, see go/multi-gpu-unit-test.
@@ -37,7 +37,7 @@ namespace {
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
 
-class MultiDeviceAllReduceTest : public HloTestBase {
+class CollectiveOpsTest : public HloTestBase {
  protected:
   std::unique_ptr<HloModule> MakeCrsModule(
       int64 num_elems, std::vector<std::vector<int64>> replica_groups,
@@ -103,7 +103,7 @@ absl::flat_hash_set<int> OpenNcclChannels() {
   return gpu::NcclAllReduceThunk::DevicesWithOpenNcclChannels();
 }
 
-XLA_TEST_F(MultiDeviceAllReduceTest, TwoReplicasOneOperand) {
+XLA_TEST_F(CollectiveOpsTest, AllReduce_TwoReplicasOneOperand) {
   auto config = GetModuleConfigForTest();
   config.set_replica_count(2);
   auto module = MakeCrsModule(/*num_elems=*/3, /*replica_groups=*/{}, config);
@@ -119,7 +119,7 @@ XLA_TEST_F(MultiDeviceAllReduceTest, TwoReplicasOneOperand) {
 
 // Tries all-to-all operations across all 2^kNumDevices - 1 combinations of
 // devices in sequence.
-XLA_TEST_F(MultiDeviceAllReduceTest, AllCombinations) {
+XLA_TEST_F(CollectiveOpsTest, AllReduce_AllCombinations) {
   const int64 kNumDevices = 4;
   const int64 kNumElems = 1024;
 
@@ -149,7 +149,7 @@ XLA_TEST_F(MultiDeviceAllReduceTest, AllCombinations) {
 
 // Check that the NCCL data structures in our all-reduce implementation are
 // cached as we expect.
-XLA_TEST_F(MultiDeviceAllReduceTest, NcclChannelCaching) {
+XLA_TEST_F(CollectiveOpsTest, AllReduce_NcclChannelCaching) {
   const int64 kNumElems = 1024;
 
   std::vector<float> input_vec(kNumElems);
@@ -226,7 +226,7 @@ XLA_TEST_F(MultiDeviceAllReduceTest, NcclChannelCaching) {
 
 // Runs the same executable many times concurrently.  The all-reduces should not
 // conflict with one another.
-XLA_TEST_F(MultiDeviceAllReduceTest, ManyConcurrentAllReduces) {
+XLA_TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
   const int64 kNumElems = 1024;
   const int64 kNumThreads = 200;
   const int64 kRunsPerThread = 10;
@@ -268,7 +268,7 @@ XLA_TEST_F(MultiDeviceAllReduceTest, ManyConcurrentAllReduces) {
 //  {0}, {1,2}, {3}
 // meaning, the all-reduce is a nop for devices 0 and 3, and only devices 1 and
 // 2 actually exchange data with each other.
-XLA_TEST_F(MultiDeviceAllReduceTest, ThreeReplicaGroups) {
+XLA_TEST_F(CollectiveOpsTest, AllReduce_ThreeReplicaGroups) {
   // Test a prime number so it's not all powers of 2.
   const int64 kNumElems = 137;
 
@@ -297,6 +297,29 @@ XLA_TEST_F(MultiDeviceAllReduceTest, ThreeReplicaGroups) {
   EXPECT_TRUE(LiteralTestUtil::Equal(input_literal_doubled, results[1]));
   EXPECT_TRUE(LiteralTestUtil::Equal(input_literal_doubled, results[2]));
   EXPECT_TRUE(LiteralTestUtil::Equal(input_literal, results[3]));
+}
+
+XLA_TEST_F(CollectiveOpsTest, ReplicaId) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    ROOT id = u32[] replica-id()
+  }
+  )";
+  const int64 kNumReplicas = 4;
+
+  auto config = GetModuleConfigForTest();
+  config.set_replica_count(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kModuleStr));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                                            /*use_threads=*/true));
+
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (uint32 i = 0; i < kNumReplicas; ++i) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR0(i), results[i]));
+  }
 }
 
 }  // namespace

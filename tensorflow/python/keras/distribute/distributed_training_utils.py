@@ -893,7 +893,7 @@ def _make_execution_function_with_cloning(model, mode):
     distributed_function = _make_graph_execution_function(model, mode)
 
   # We cache the distributed execution function on the model since creating
-  # distributed models and exection functions are expensive.
+  # distributed models and execution functions are expensive.
   distributed_model._distributed_function = distributed_function
   distributed_model._recompile_exec_function = False
   return distributed_function

@@ -19,6 +19,7 @@ filegroup(
 py_library(
     name = "core",
     srcs = [
+        "ag_ctx.py",
         "config.py",
         "config_lib.py",
         "converter.py",

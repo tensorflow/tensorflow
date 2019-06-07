@@ -1,7 +1,12 @@
 # Description:
 #   RPC communication interfaces and implementations for TensorFlow.
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//tensorflow:internal",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -31,10 +36,6 @@ load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-
-package(default_visibility = [
-    "//tensorflow:internal",
-])
 
 cc_library(
     name = "grpc_util",

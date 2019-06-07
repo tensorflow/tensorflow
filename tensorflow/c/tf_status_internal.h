@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,23 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#ifndef TENSORFLOW_C_TF_STATUS_INTERNAL_H_
+#define TENSORFLOW_C_TF_STATUS_INTERNAL_H_
 
-#define EIGEN_USE_GPU
-#include "tensorflow/contrib/rnn/kernels/gru_ops.h"
+#include "tensorflow/core/lib/core/status.h"
 
-namespace tensorflow {
-namespace functor {
+// Internal structures used by the status C API. These are likely to change
+// and should not be depended on.
 
-typedef Eigen::GpuDevice GPUDevice;
+struct TF_Status {
+  tensorflow::Status status;
+};
 
-#define DEFINE_GPU_SPECS(T)                              \
-  template struct GRUBlockCellFprop<GPUDevice, T, true>; \
-  template struct GRUBlockCellBprop<GPUDevice, T, true>;
-
-DEFINE_GPU_SPECS(float);
-#undef DEFINE_GPU_SPECS
-
-}  // end namespace functor
-}  // end namespace tensorflow
-#endif  // GOOGLE_CUDA
+#endif  // TENSORFLOW_C_TF_STATUS_INTERNAL_H_

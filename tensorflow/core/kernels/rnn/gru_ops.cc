@@ -15,7 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/contrib/rnn/kernels/gru_ops.h"
+#include "tensorflow/core/kernels/rnn/gru_ops.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 

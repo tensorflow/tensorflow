@@ -13,29 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/c/c_api.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-
-class LSTMOpsTest : public ::testing::Test {
- public:
-  static void SetUpTestSuite() {
-    TF_Status* status = TF_NewStatus();
-    auto* lib = TF_LoadLibrary(
-        "tensorflow/contrib/rnn/python/ops/_lstm_ops.so", status);
-    TF_Code code = TF_GetCode(status);
-    string status_msg(TF_Message(status));
-    TF_DeleteStatus(status);
-    ASSERT_EQ(TF_OK, code) << status_msg;
-    TF_DeleteLibraryHandle(lib);
-  }
-};
 
 static string JoinedCopies(const string& s, int copies) {
   string res;
@@ -45,7 +31,34 @@ static string JoinedCopies(const string& s, int copies) {
   return res;
 }
 
-TEST_F(LSTMOpsTest, LSTMBlockCell_ShapeFn) {
+TEST(RnnOpsTest, GRUBlockCell_ShapeFn) {
+  ShapeInferenceTestOp op("GRUBlockCell");
+
+  // Rank checks.
+  INFER_ERROR("must be rank 2", op, "[?];?;?;?;?;?");
+  INFER_ERROR("must be rank 2", op, "?;[?];?;?;?;?");
+
+  // Output
+  INFER_OK(op, "?;?;?;?;?;?", "[?,?];[?,?];[?,?];[?,?]");
+  INFER_OK(op, "[?,?];[?,?];?;?;?;?",
+           "[d0_0,d1_1];[d0_0,d1_1];[d0_0,d1_1];[d0_0,d1_1]");
+}
+
+TEST(RnnOpsTest, GRUBlockCellGrad_ShapeFn) {
+  ShapeInferenceTestOp op("GRUBlockCellGrad");
+
+  // Rank checks.
+  INFER_ERROR("must be rank 2", op, "[?];?;?;?;?;?;?;?;?;?");
+  INFER_ERROR("must be rank 2", op, "?;[?];?;?;?;?;?;?;?;?");
+  INFER_ERROR("must be rank 2", op, "?;?;[?];?;?;?;?;?;?;?");
+
+  // Output
+  INFER_OK(op, "?;?;?;?;?;?;?;?;?;?", "[?,?];[?,?];[?,?];[?,?]");
+  INFER_OK(op, "[?,?];[?,?];[?,?];?;?;?;?;?;?;?",
+           "in0;[d0_0,d1_1];[d0_0,d1_1];[d0_0,d2_1]");
+}
+
+TEST(RnnOpsTest, LSTMBlockCell_ShapeFn) {
   ShapeInferenceTestOp op("LSTMBlockCell");
 
   // Last 6 inputs don't affect shape inference.
@@ -60,7 +73,7 @@ TEST_F(LSTMOpsTest, LSTMBlockCell_ShapeFn) {
   INFER_OK(op, "[?,?];[?,?]" + input_suffix, JoinedCopies("[d0_0,d1_1]", 7));
 }
 
-TEST_F(LSTMOpsTest, LSTMBlockCellGrad_ShapeFn) {
+TEST(RnnOpsTest, LSTMBlockCellGrad_ShapeFn) {
   ShapeInferenceTestOp op("LSTMBlockCellGrad");
 
   // Last 14 inputs don't affect shape inference.
@@ -78,7 +91,7 @@ TEST_F(LSTMOpsTest, LSTMBlockCellGrad_ShapeFn) {
            "[d0_0,d1_1];[d0_0,16];[d1_1];[d1_1];[d1_1]");
 }
 
-TEST_F(LSTMOpsTest, BlockLSTM_ShapeFn) {
+TEST(RnnOpsTest, BlockLSTM_ShapeFn) {
   ShapeInferenceTestOp op("BlockLSTM");
 
   TF_ASSERT_OK(NodeDefBuilder("test", "BlockLSTM")
@@ -110,7 +123,7 @@ TEST_F(LSTMOpsTest, BlockLSTM_ShapeFn) {
   INFER_ERROR("must be evenly divisible", op, "?;?" + infix + "[11]");
 }
 
-TEST_F(LSTMOpsTest, BlockLSTMGrad_ShapeFn) {
+TEST(RnnOpsTest, BlockLSTMGrad_ShapeFn) {
   ShapeInferenceTestOp op("BlockLSTMGrad");
   TF_ASSERT_OK(NodeDefBuilder("test", "BlockLSTMGrad")
                    .Input({"seq_len_max", 0, DT_INT64})

@@ -104,7 +104,6 @@ OpKernel::OpKernel(OpKernelConstruction* context,
       input_name_map_(context->num_inputs()),
       output_name_map_(context->num_outputs()),
       graph_def_version_(context->graph_def_version()),
-      is_internal_(absl::StartsWith(type_string(), "_")),
       cost_estimate_(OpKernel::kInitialCostEstimateCycles) {
   OP_REQUIRES_OK(context,
                  NameRangesForNode(*def_, *context->op_def_, &input_name_map_,
@@ -392,18 +391,18 @@ Status OpKernelContext::input_ref_mutex(StringPiece name, mutex** out_mutex) {
 }
 
 const Tensor& OpKernelContext::input(int index) {
-  DCHECK_GE(index, 0);
-  DCHECK_LT(index, num_inputs()) << " name: " << op_kernel().name();
-  DCHECK(!input_is_ref(index));
+  CHECK_GE(index, 0);
+  CHECK_LT(index, num_inputs()) << " name: " << op_kernel().name();
+  CHECK(!input_is_ref(index));
   const Tensor& tensor = *((*params_->inputs)[index].tensor);
   record_tensor_reference(tensor);
   return tensor;
 }
 
 Tensor OpKernelContext::mutable_input(int index, bool lock_held) {
-  DCHECK_GE(index, 0);
-  DCHECK_LT(index, num_inputs());
-  DCHECK(input_is_ref(index));
+  CHECK_GE(index, 0);
+  CHECK_LT(index, num_inputs());
+  CHECK(input_is_ref(index));
   // return a copy of the Ref acquired while holding the mutex
   if (lock_held) {
     Tensor& tensor = *((*params_->inputs)[index].tensor);
@@ -419,9 +418,9 @@ Tensor OpKernelContext::mutable_input(int index, bool lock_held) {
 
 void OpKernelContext::replace_ref_input(int index, const Tensor& tensor,
                                         bool lock_held) {
-  DCHECK_GE(index, 0);
-  DCHECK_LT(index, num_inputs());
-  DCHECK(input_is_ref(index));
+  CHECK_GE(index, 0);
+  CHECK_LT(index, num_inputs());
+  CHECK(input_is_ref(index));
   // should only modify the tensor while holding the mutex
   if (lock_held) {
     *(*params_->inputs)[index].tensor = tensor;
@@ -434,9 +433,9 @@ void OpKernelContext::replace_ref_input(int index, const Tensor& tensor,
 
 void OpKernelContext::forward_ref_input_to_ref_output(int input_index,
                                                       int output_index) {
-  DCHECK_GE(input_index, 0);
-  DCHECK_LT(input_index, num_inputs());
-  DCHECK(input_is_ref(input_index));
+  CHECK_GE(input_index, 0);
+  CHECK_LT(input_index, num_inputs());
+  CHECK(input_is_ref(input_index));
   set_output_ref(output_index, (*params_->inputs)[input_index].mutex_if_ref,
                  (*params_->inputs)[input_index].tensor);
 }
@@ -492,8 +491,8 @@ std::unique_ptr<Tensor> OpKernelContext::forward_input(
     int input_index, int output_index, DataType output_dtype,
     const TensorShape& output_shape, MemoryType output_memory_type,
     const AllocatorAttributes& output_attr) {
-  DCHECK_GE(input_index, 0);
-  DCHECK_LT(input_index, num_inputs());
+  CHECK_GE(input_index, 0);
+  CHECK_LT(input_index, num_inputs());
   const TensorValue& input = (*params_->inputs)[input_index];
   // Check whether at graph construction time this output was marked
   // either for no forwarding or with a reservation for this input.
@@ -573,9 +572,9 @@ Status OpKernelContext::forward_input_or_allocate_temp(
 }
 
 void OpKernelContext::delete_ref_input(int index, bool lock_held) {
-  DCHECK_GE(index, 0);
-  DCHECK_LT(index, num_inputs());
-  DCHECK(input_is_ref(index));
+  CHECK_GE(index, 0);
+  CHECK_LT(index, num_inputs());
+  CHECK(input_is_ref(index));
   // should only modify the tensor while holding the mutex
   if (lock_held) {
     delete (*params_->inputs)[index].tensor;
@@ -657,8 +656,15 @@ void OpKernelContext::maybe_initialize_scope_id_set() {
 
 Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
                                         Tensor** tensor) {
-  DCHECK_GE(index, 0);
-  DCHECK_LT(index, num_outputs());
+  if (index < 0) {
+    return errors::Internal("allocate_output with bad index=", index,
+                            " kernel=", params_->op_kernel->name());
+  }
+  if (index >= num_outputs()) {
+    return errors::Internal("allocate_output with bad index=", index,
+                            " num_outputs=", num_outputs(),
+                            " kernel=", params_->op_kernel->name());
+  }
   bool forward_expected =
       (params_->forward_from_array != nullptr && index >= 0 &&
        params_->forward_from_array[index] >= 0);
@@ -727,11 +733,27 @@ Status OpKernelContext::allocate_tensor(
 Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
                                         Tensor** output,
                                         AllocatorAttributes attr) {
-  DCHECK_GE(index, 0);
-  DCHECK_LT(index, outputs_.size());
+  if (index < 0) {
+    return errors::Internal("allocate_output with bad index=", index,
+                            " kernel=", params_->op_kernel->name());
+  }
+  if (index >= num_outputs()) {
+    return errors::Internal("allocate_output with bad index=", index,
+                            " num_outputs=", outputs_.size(),
+                            " kernel=", params_->op_kernel->name());
+  }
   const DataType type = params_->op_kernel->output_type(index);
-  DCHECK(!IsRefType(type));
-  DCHECK(mutable_output(index) == nullptr);
+  if (IsRefType(type)) {
+    return errors::Internal("allocate_output with ref type. index=", index,
+                            " type=", type,
+                            " kernel=", params_->op_kernel->name());
+  }
+  if (mutable_output(index) != nullptr) {
+    return errors::Internal("allocate_output on same index multiple times.",
+                            " index = ", index,
+                            " mutable_output(index) = ", mutable_output(index),
+                            " kernel=", params_->op_kernel->name());
+  }
   if (attr.scope_id > 0) {
     maybe_initialize_scope_id_set();
     if (!allocated_scope_ids_->insert(attr.scope_id).second) {
@@ -836,11 +858,11 @@ Status OpKernelContext::set_output(StringPiece name, const Tensor& tensor) {
 }
 
 void OpKernelContext::set_output(int index, const Tensor& tensor) {
-  DCHECK_GE(index, 0);
-  DCHECK_LT(index, outputs_.size());
+  CHECK_GE(index, 0);
+  CHECK_LT(index, outputs_.size());
   const DataType type = params_->op_kernel->output_type(index);
-  DCHECK(!IsRefType(type));
-  DCHECK_EQ(mutable_output(index), nullptr);
+  CHECK(!IsRefType(type));
+  CHECK_EQ(mutable_output(index), nullptr);
 
   bool allocate_and_copy = false;
   const bool never_forward =
@@ -875,7 +897,7 @@ void OpKernelContext::set_output(int index, const Tensor& tensor) {
     auto new_tensor = MakeUnique<Tensor>();
     Status s = allocate_tensor(type, tensor.shape(), new_tensor.get(),
                                output_alloc_attr(index));
-    TF_DCHECK_OK(s);
+    TF_CHECK_OK(s);
     device()->CopyTensorInSameDevice(&tensor, new_tensor.get(),
                                      op_device_context(), [](const Status&) {});
     outputs_[index] = TensorValue(new_tensor.release());
@@ -906,9 +928,9 @@ void OpKernelContext::set_output(int index, const Tensor& tensor) {
 
 void OpKernelContext::set_output_ref(int index, mutex* mu,
                                      Tensor* tensor_for_ref) {
-  DCHECK_GE(index, 0);
-  DCHECK_LT(index, outputs_.size());
-  DCHECK(IsRefType(params_->op_kernel->output_type(index)));
+  CHECK_GE(index, 0);
+  CHECK_LT(index, outputs_.size());
+  CHECK(IsRefType(params_->op_kernel->output_type(index)));
   record_tensor_reference(*tensor_for_ref);
   outputs_[index] = TensorValue(mu, tensor_for_ref);
 }

@@ -113,13 +113,28 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:random_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:tensor_array_grad",
-        "//tensorflow/python:random_ops",
         "//tensorflow/python:util",
     ],
     tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "xla_control_flow_ops_test",
+    srcs = ["xla_control_flow_ops_test.py"],
+    additional_deps = [
+        ":control_flow_ops",
+        ":test_util",
+        "//tensorflow/python/compiler/xla:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+    ],
+    tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = True,
+    xla_enabled = True,
 )
 
 cuda_py_test(

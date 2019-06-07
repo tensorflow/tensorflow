@@ -2264,10 +2264,10 @@ def _convert_cast(pfor_input):
 @RegisterPForWithArgs("Xlogy", math_ops.xlogy)
 @RegisterPForWithArgs("Zeta", math_ops.zeta)
 def _convert_cwise(pfor_input, op_type, op_func):
-  # Note that ops handled here do not have attributes except "T" and "Tout", and
-  # hence don't need extra arguments passed to the cwise_op call below.
+  # Note that ops handled here do not have attributes except those listed below
+  # and hence don't need extra arguments passed to the cwise_op call below.
   for attr in pfor_input.op.node_def.attr.keys():
-    assert attr in [u"T", u"Tout"], (op_type, attr)
+    assert attr in [u"T", u"Tout", u"_xla_compile_id"], (op_type, attr)
   pfor_input.expanddim_inputs_for_broadcast()
   return wrap(op_func(*[x.t for x in pfor_input.inputs]), True)
 
@@ -2379,6 +2379,16 @@ def _convert_select(pfor_input):
                               lambda: _unflatten_first_dim(outputs[0], n),
                               lambda: outputs[0])
   return [wrap(out, True) for x in outputs]
+
+
+@RegisterPFor("SelectV2")
+def _convert_selectv2(pfor_input):
+  pfor_input.expanddim_inputs_for_broadcast()
+  cond = pfor_input.input(0)[0]
+  t = pfor_input.input(1)[0]
+  e = pfor_input.input(2)[0]
+  out = array_ops.where_v2(cond, t, e)
+  return wrap(out, True)
 
 
 # random_ops

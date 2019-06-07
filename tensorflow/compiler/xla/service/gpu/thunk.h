@@ -59,6 +59,7 @@ class Thunk {
     kMemzero,
     kNcclAllReduce,
     kOutfeed,
+    kReplicaId,
     kSequential,
     kTriangularSolve,
     kTuple,

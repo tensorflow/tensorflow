@@ -1370,25 +1370,21 @@ class TensorArraySpec(type_spec.TypeSpec):
     self._infer_shape = infer_shape
 
   def is_compatible_with(self, other):
-    # We check all fields *except* infer_shape.
-    # TODO(b/133606651) Verify that this is the correct behavior.
-
     # pylint: disable=protected-access
     if not isinstance(other, type_spec.TypeSpec):
       other = type_spec.type_spec_from_value(other)
+
+    # Note: we intentionally exclude infer_shape in this check.
     return (isinstance(other, TensorArraySpec) and
             self._dtype.is_compatible_with(other._dtype) and
             self._element_shape.is_compatible_with(other._element_shape) and
             self._dynamic_size == other._dynamic_size)
 
   def most_specific_compatible_type(self, other):
-    # TODO(b/133606651) Verify that this is the correct behavior for combining
-    # infer_shape values.
-
     # pylint: disable=protected-access
     if not self.is_compatible_with(other):
       raise ValueError("Types are not compatible")
-    infer_shape = self._infer_shape or other._infer_shape
+    infer_shape = self._infer_shape and other._infer_shape
     return TensorArraySpec(
         self._element_shape.most_specific_compatible_shape(
             other._element_shape),

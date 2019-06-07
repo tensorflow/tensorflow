@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/replica_id_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
@@ -1398,6 +1399,12 @@ Status IrEmitterUnnested::HandleTupleSelect(HloInstruction* tuple_select) {
   AddThunkToThunkSequence(
       BuildKernelThunk(tuple_select, /*implements_whole_instruction=*/true));
   return IrEmitter::HandleTupleSelect(tuple_select);
+}
+
+Status IrEmitterUnnested::HandleReplicaId(HloInstruction* hlo) {
+  AddThunkToThunkSequence(
+      absl::make_unique<ReplicaIdThunk>(GetAllocationSlice(*hlo), hlo));
+  return Status::OK();
 }
 
 namespace {

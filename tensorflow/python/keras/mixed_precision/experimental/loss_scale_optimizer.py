@@ -172,12 +172,33 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
     return self._optimizer.apply_gradients(grads_and_vars, name)
 
   @property
+  def iterations(self):
+    return self._optimizer.iterations
+
+  @iterations.setter
+  def iterations(self, variable):
+    self._optimizer.iterations = variable
+
+  # For the most part, we only expose methods in the base OptimizerV2, not
+  # individual subclasses like Adam. However, although "learning_rate" and "lr"
+  # properties are not part of the base OptimizerV2 class, they are part of most
+  # subclasses, so we expose them here for convenience.
+
+  @property
   def learning_rate(self):
     return self._optimizer.learning_rate
 
   @learning_rate.setter
   def learning_rate(self, lr):
     self._optimizer.learning_rate = lr
+
+  @property
+  def lr(self):
+    return self._optimizer.lr
+
+  @lr.setter
+  def lr(self, lr):
+    self._optimizer.lr = lr
 
   def get_slot_names(self):
     """A list of names for this optimizer's slots."""
@@ -187,10 +208,6 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
 
   # TODO(reedwm): Maybe throw an error if mixed precision is used without this
   # optimizer being used.
-
-  # TODO(reedwm): Define __getattr__ to delegate all methods/attributes to
-  # self._optimizer. This is tricky because the super class overrides
-  # __getattribute__.
 
   # TODO(reedwm): Implement get_config and from_config. This will first require
   # implementing deserialization support for OptimizerV2.

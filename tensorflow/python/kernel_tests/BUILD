@@ -1687,6 +1687,10 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
+    tags = [
+        # TODO(b/134600611): Re-enable this test.
+        "notap",
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -2912,7 +2916,8 @@ cuda_py_test(
         "no_rocm",
         "optonly",  # flaky timeouts unless optimized
     ],
-    xla_enable_strict_auto_jit = True,
+    # TODO(b/134677329): Re-enable this test.
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(

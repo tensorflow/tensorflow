@@ -357,6 +357,9 @@ TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,
 
 TfLiteStatus QuantizeWeight(ModelT* model, TensorT* tensor, bool per_channel,
                             int per_axis_index) {
+  // TODO(suharshs): Currently we conflate quantizing weights and constants. Its
+  // possible that the right thing to do is asymmetric quantize the weight. Add
+  // support for this.
   if (per_channel) {
     return SymmetricQuantizeTensorPerChannel(model, tensor, per_axis_index);
   } else {

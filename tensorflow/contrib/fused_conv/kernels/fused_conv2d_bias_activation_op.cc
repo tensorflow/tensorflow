@@ -715,7 +715,6 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
                           &extra_left_padding, &extra_right_padding);
     if (extra_top_padding != 0 || extra_bottom_padding != 0 ||
         extra_left_padding != 0 || extra_right_padding != 0) {
-      Tensor transformed_input;
       const int new_conv_input_rows =
           conv_input_rows + extra_top_padding + extra_bottom_padding;
       const int new_conv_input_cols =

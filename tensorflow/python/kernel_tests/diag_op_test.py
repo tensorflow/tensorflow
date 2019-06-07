@@ -133,7 +133,6 @@ class MatrixSetDiagTest(test.TestCase):
       self.assertAllEqual(mat_set_diag_batch, self.evaluate(output))
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("Diagonal operations do not support bool in XLA")
   def testSquareBatch(self):
     self._testSquareBatch(np.float32)
     self._testSquareBatch(np.float64)
@@ -247,7 +246,6 @@ class MatrixDiagPartTest(test.TestCase):
       self.assertAllEqual(mat_batch_diag.eval(), v_batch)
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("Diagonal operations do not support bool in XLA")
   def testSquareBatch(self):
     self._testSquareBatch(np.float32)
     self._testSquareBatch(np.float64)

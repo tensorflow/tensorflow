@@ -1512,6 +1512,7 @@ port::StatusOr<DeviceMemory<uint8>> CreateRnnWorkspace(
 port::StatusOr<DeviceMemory<uint8>> CreateBatchNormForwardWorkspace(
     Stream* stream, const CudnnHandle& cudnn, const cudnnBatchNormMode_t& mode,
     const cudnnBatchNormOps_t& bn_ops,
+    const cudnnActivationDescriptor_t& activation_desc,
     const CudnnTensorDescriptor& x_descriptor,
     const CudnnTensorDescriptor& scale_offset_descriptor,
     ScratchAllocator* workspace_allocator) {
@@ -1520,10 +1521,10 @@ port::StatusOr<DeviceMemory<uint8>> CreateBatchNormForwardWorkspace(
   RETURN_IF_CUDNN_ERROR(
       cudnnGetBatchNormalizationForwardTrainingExWorkspaceSize(
           /*handle=*/cudnn.handle(), /*mode=*/mode, /*bnOps=*/bn_ops,
-          /*xDesc=*/x_descriptor.handle(), /*zDesc=*/nullptr,
+          /*xDesc=*/x_descriptor.handle(), /*zDesc=*/x_descriptor.handle(),
           /*yDesc=*/x_descriptor.handle(),
           /*bnScaleBiasMeanVarDesc=*/scale_offset_descriptor.handle(),
-          /*activationDesc=*/nullptr,
+          /*activationDesc=*/activation_desc,
           /*sizeInBytes=*/&workspace_size_in_bytes));
   // Allocate the workspace.
   if (workspace_size_in_bytes == 0) {
@@ -3239,22 +3240,23 @@ bool CudnnSupport::DoBatchNormalizationForward(
     const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
     const DeviceMemory<float>& estimated_mean,
     const DeviceMemory<float>& estimated_variance,
-    const dnn::BatchDescriptor& x_desc,
+    const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-    DeviceMemory<float>* y, DeviceMemory<float>* batch_mean,
-    DeviceMemory<float>* batch_var, DeviceMemory<float>* saved_mean,
-    DeviceMemory<float>* saved_inv_var, bool is_training,
-    ScratchAllocator* reserve_space_allocator,
+    dnn::ActivationMode activation_mode, DeviceMemory<float>* y,
+    DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
+    DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
+    bool is_training, ScratchAllocator* reserve_space_allocator,
     ScratchAllocator* workspace_allocator,
     std::function<const DeviceMemory<float>&()> var_to_inv_var,
     std::function<void()> inv_var_to_var) {
   return IsStatusOk(
       DoBatchNormalizationForwardImpl<float, float>(
           stream, dnn::DataType::kFloat, dnn::DataType::kFloat, x, scale,
-          offset, estimated_mean, estimated_variance, x_desc, scale_offset_desc,
-          epsilon, y, batch_mean, batch_var, saved_mean, saved_inv_var,
-          is_training, reserve_space_allocator, workspace_allocator,
-          std::move(var_to_inv_var), std::move(inv_var_to_var)),
+          offset, estimated_mean, estimated_variance, side_input, x_desc,
+          scale_offset_desc, epsilon, activation_mode, y, batch_mean, batch_var,
+          saved_mean, saved_inv_var, is_training, reserve_space_allocator,
+          workspace_allocator, std::move(var_to_inv_var),
+          std::move(inv_var_to_var)),
       /*report_error=*/true);
 }
 
@@ -3263,22 +3265,23 @@ bool CudnnSupport::DoBatchNormalizationForward(
     const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
     const DeviceMemory<float>& estimated_mean,
     const DeviceMemory<float>& estimated_variance,
-    const dnn::BatchDescriptor& x_desc,
+    const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-    DeviceMemory<Eigen::half>* y, DeviceMemory<float>* batch_mean,
-    DeviceMemory<float>* batch_var, DeviceMemory<float>* saved_mean,
-    DeviceMemory<float>* saved_inv_var, bool is_training,
-    ScratchAllocator* reserve_space_allocator,
+    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y,
+    DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
+    DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
+    bool is_training, ScratchAllocator* reserve_space_allocator,
     ScratchAllocator* workspace_allocator,
     std::function<const DeviceMemory<float>&()> var_to_inv_var,
     std::function<void()> inv_var_to_var) {
   return IsStatusOk(
       DoBatchNormalizationForwardImpl<Eigen::half, float>(
           stream, dnn::DataType::kHalf, dnn::DataType::kFloat, x, scale, offset,
-          estimated_mean, estimated_variance, x_desc, scale_offset_desc,
-          epsilon, y, batch_mean, batch_var, saved_mean, saved_inv_var,
-          is_training, reserve_space_allocator, workspace_allocator,
-          std::move(var_to_inv_var), std::move(inv_var_to_var)),
+          estimated_mean, estimated_variance, side_input, x_desc,
+          scale_offset_desc, epsilon, activation_mode, y, batch_mean, batch_var,
+          saved_mean, saved_inv_var, is_training, reserve_space_allocator,
+          workspace_allocator, std::move(var_to_inv_var),
+          std::move(inv_var_to_var)),
       /*report_error=*/true);
 }
 
@@ -3289,9 +3292,10 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
     const DeviceMemory<U>& scale, const DeviceMemory<U>& offset,
     const DeviceMemory<U>& estimated_mean,
     const DeviceMemory<U>& estimated_variance,
-    const dnn::BatchDescriptor& x_desc,
+    const DeviceMemory<U>& side_input, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-    DeviceMemory<T>* y, DeviceMemory<U>* batch_mean, DeviceMemory<U>* batch_var,
+    dnn::ActivationMode activation_mode, DeviceMemory<T>* y,
+    DeviceMemory<U>* batch_mean, DeviceMemory<U>* batch_var,
     DeviceMemory<U>* saved_mean, DeviceMemory<U>* saved_inv_var,
     bool is_training, ScratchAllocator* reserve_space_allocator,
     ScratchAllocator* workspace_allocator,
@@ -3312,19 +3316,36 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
 
   DeviceMemory<uint8> workspace;
   DeviceMemory<uint8> reserve_space;
+
 #if CUDNN_VERSION >= 7402
-  const cudnnBatchNormOps_t bn_ops = CUDNN_BATCHNORM_OPS_BN;
+  const auto get_bn_ops = [&]() -> cudnnBatchNormOps_t {
+    if (side_input.is_null()) {
+      return activation_mode == dnn::ActivationMode::kNone
+                 ? CUDNN_BATCHNORM_OPS_BN
+                 : CUDNN_BATCHNORM_OPS_BN_ACTIVATION;
+    } else {
+      return CUDNN_BATCHNORM_OPS_BN_ADD_ACTIVATION;
+    }
+  };
+  const cudnnBatchNormOps_t bn_ops = get_bn_ops();
+
+  // We use Nan propagation to be consistent with CudnnSupport::DoActivate(...).
+  CudnnActivationDescriptor activation_desc(
+      activation_mode, CUDNN_PROPAGATE_NAN, x_desc.value_max());
+
   if (reserve_space_allocator != nullptr && workspace_allocator != nullptr) {
-    SE_ASSIGN_OR_RETURN(workspace,
-                        CreateBatchNormForwardWorkspace(
-                            stream, cudnn, mode, bn_ops, x_descriptor,
-                            scale_offset_descriptor, workspace_allocator))
+    SE_ASSIGN_OR_RETURN(
+        workspace,
+        CreateBatchNormForwardWorkspace(
+            stream, cudnn, mode, bn_ops, activation_desc.handle(), x_descriptor,
+            scale_offset_descriptor, workspace_allocator))
     if (is_training) {
       size_t reserve_space_size_in_bytes = 0;
       RETURN_IF_CUDNN_ERROR(
           cudnnGetBatchNormalizationTrainingExReserveSpaceSize(
               /*handle=*/cudnn.handle(), /*mode=*/mode, /*bnOps=*/bn_ops,
-              /*activationDesc=*/nullptr, /*xDesc=*/x_descriptor.handle(),
+              /*activationDesc=*/activation_desc.handle(),
+              /*xDesc=*/x_descriptor.handle(),
               /*sizeInBytes=*/&reserve_space_size_in_bytes));
       SE_ASSIGN_OR_RETURN(reserve_space,
                           reserve_space_allocator->AllocateBytes(
@@ -3332,6 +3353,19 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
     }
   }
 #endif
+
+  auto check_no_side_input_or_activation = [&]() -> port::Status {
+    if (activation_mode != dnn::ActivationMode::kNone ||
+        !side_input.is_null()) {
+      return port::Status(
+          port::error::INTERNAL,
+          absl::StrCat(
+              "Side input and activation are not supported by cuDNN version: ",
+              CUDNN_VERSION));
+    } else {
+      return port::Status::OK();
+    }
+  };
 
   if (is_training) {
     CHECK_EQ(batch_mean->is_null(), batch_var->is_null())
@@ -3361,8 +3395,8 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
           /*beta=*/&zero,
           /*xDesc=*/x_descriptor.handle(),
           /*xData=*/x.opaque(),
-          /*zDesc=*/nullptr,
-          /*zData=*/nullptr,
+          /*zDesc=*/x_descriptor.handle(),
+          /*zData=*/side_input.opaque(),
           /*yDesc=*/x_descriptor.handle(),
           /*yData=*/y->opaque(),
           /*bnScaleBiasMeanVarDesc=*/scale_offset_descriptor.handle(),
@@ -3374,7 +3408,7 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
           /*epsilon=*/epsilon,
           /*resultSaveMean=*/saved_mean->opaque(),
           /*resultSaveInvVariance=*/saved_inv_var->opaque(),
-          /*activationDesc=*/nullptr,
+          /*activationDesc=*/activation_desc.handle(),
           /*workspace=*/workspace.opaque(),
           /*workSpaceSizeInBytes=*/workspace.size(),
           /*reserveSpace=*/reserve_space.opaque(),
@@ -3382,6 +3416,7 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
     }
 #endif
     if (!called) {
+      SE_RETURN_IF_ERROR(check_no_side_input_or_activation());
       RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationForwardTraining(
           cudnn.handle(), mode, &one, &zero, x_descriptor.handle(), x.opaque(),
           x_descriptor.handle(), y->opaque(), scale_offset_descriptor.handle(),
@@ -3391,6 +3426,7 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
     }
   } else {
     const void* maybe_inv_var = estimated_variance.opaque();
+    SE_RETURN_IF_ERROR(check_no_side_input_or_activation());
     RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationForwardInference(
         cudnn.handle(), mode, &one, &zero, x_descriptor.handle(), x.opaque(),
         x_descriptor.handle(), y->opaque(), scale_offset_descriptor.handle(),

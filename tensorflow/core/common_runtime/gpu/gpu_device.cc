@@ -510,6 +510,13 @@ Status BaseGPUDevice::FillContextMap(const Graph* graph,
   return Status::OK();
 }
 
+string BaseGPUDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
+                                                 const int& stream_id) {
+  return strings::StrCat(op_kernel.name(), " op ", op_kernel.type_string(),
+                         " on GPU ", tf_gpu_id_.value(), " stream[", stream_id,
+                         "]");
+}
+
 void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   profiler::TraceMe activity(
       [&] {
@@ -528,27 +535,7 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   // implemented (or otherwise tries to launch a GPU kernel
   // directly), we need to establish a stacked-scoped environment
   // that directs it to execute on the proper device.  Otherwise we
-  // expect the Op to use StreamExecutor directly and correctly.  The
-  // way we make this discrimination is quite hacky: At the moment
-  // the only non-Eigen GPU Op is the recv-op, which is known to be
-  // asynchronous.
-  if (op_kernel->is_internal() && op_kernel->type_string() == "_Recv") {
-    context->SetStatus(errors::Internal(
-        "Invalid synchronous 'Compute' on GPU for '_Recv' op"));
-  } else {
-    ComputeHelper(op_kernel, context);
-  }
-}
-
-string BaseGPUDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
-                                                 const int& stream_id) {
-  return strings::StrCat(op_kernel.name(), " op ", op_kernel.type_string(),
-                         " on GPU ", tf_gpu_id_.value(), " stream[", stream_id,
-                         "]");
-}
-
-void BaseGPUDevice::ComputeHelper(OpKernel* op_kernel,
-                                  OpKernelContext* context) {
+  // expect the Op to use StreamExecutor directly and correctly.
   GPUDeviceContext* gpu_device_context = device_contexts_[0];
   if (context->op_device_context() != nullptr) {
     gpu_device_context =

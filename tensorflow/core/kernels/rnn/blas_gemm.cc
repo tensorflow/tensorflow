@@ -19,8 +19,8 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
-#include "tensorflow/contrib/rnn/kernels/blas_gemm.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/kernels/rnn/blas_gemm.h"
 namespace tensorflow {
 
 #if GOOGLE_CUDA

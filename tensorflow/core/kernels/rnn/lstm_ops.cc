@@ -19,7 +19,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA
 
-#include "tensorflow/contrib/rnn/kernels/lstm_ops.h"
+#include "tensorflow/core/kernels/rnn/lstm_ops.h"
 
 #include <memory>
 #include <vector>

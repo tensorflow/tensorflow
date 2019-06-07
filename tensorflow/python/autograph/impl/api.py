@@ -34,6 +34,7 @@ from enum import Enum
 import six
 # pylint:enable=g-bad-import-order
 
+from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import conversion
 from tensorflow.python.autograph.operators import py_builtins
@@ -156,19 +157,20 @@ def convert(recursive=False, optional_features=None):
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
       """Wrapper that calls the converted version of f."""
-      try:
-        return converted_call(
-            f, None,
-            converter.ConversionOptions(
-                recursive=recursive,
-                force_conversion=True,
-                optional_features=optional_features,
-            ), args, kwargs)
-      except Exception as e:  # pylint:disable=broad-except
-        if hasattr(e, 'ag_error_metadata'):
-          raise e.ag_error_metadata.to_exception(type(e))
-        else:
-          raise
+      with ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED):
+        try:
+          return converted_call(
+              f, None,
+              converter.ConversionOptions(
+                  recursive=recursive,
+                  force_conversion=True,
+                  optional_features=optional_features,
+              ), args, kwargs)
+        except Exception as e:  # pylint:disable=broad-except
+          if hasattr(e, 'ag_error_metadata'):
+            raise e.ag_error_metadata.to_exception(type(e))
+          else:
+            raise
 
     wrapper = tf_decorator.make_decorator(f, wrapper)
 
@@ -228,6 +230,11 @@ def do_not_convert(func=None, run_as=RunMode.GRAPH, return_dtypes=None):
         return_dtypes=return_dtypes)
 
   @functools.wraps(func)
+  def graph_wrapper(*args, **kwargs):
+    with ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED):
+      return func(*args, **kwargs)
+
+  @functools.wraps(func)
   def py_func_wrapper(*args, **kwargs):
     if kwargs:
       raise NotImplementedError('RunMode.PY_FUNC does not yet support kwargs')
@@ -236,7 +243,7 @@ def do_not_convert(func=None, run_as=RunMode.GRAPH, return_dtypes=None):
         func, return_dtypes, args, kwargs, use_dummy_return=not return_dtypes)
 
   if run_as == RunMode.GRAPH:
-    wrapper = func
+    wrapper = graph_wrapper
   elif run_as == RunMode.PY_FUNC:
     wrapper = py_func_wrapper
   else:
@@ -477,15 +484,15 @@ def converted_call(f, owner, options, args, kwargs):
         ' attach the full output. Cause: %s', target_entity, e)
     return _call_unconverted(f, args, kwargs)
 
-  try:
-    with StackTraceMapper(converted_f), tf_stack.CurrentModuleFilter():
+  with StackTraceMapper(converted_f), tf_stack.CurrentModuleFilter():
+    try:
       if kwargs is not None:
         result = converted_f(*effective_args, **kwargs)
       else:
         result = converted_f(*effective_args)
-  except Exception as e:
-    _attach_metadata(e, converted_f, True)
-    raise
+    except Exception as e:
+      _attach_metadata(e, converted_f, True)
+      raise
 
   return result
 

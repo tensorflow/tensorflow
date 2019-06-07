@@ -150,6 +150,7 @@ cc_library(
         "//tensorflow/core:string_ops_op_lib",
         "//tensorflow/core:remote_fused_graph_ops_op_lib",
         "//tensorflow/core:random_ops_op_lib",
+        "//tensorflow/core:rnn_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:manip_ops_op_lib",
@@ -158,9 +159,6 @@ cc_library(
         "//tensorflow/core:control_flow_ops_op_lib",
         "//tensorflow/core:candidate_sampling_ops_op_lib",
         "//tensorflow/core:array_ops_op_lib",
-    ]) + if_not_v2([
-        "//tensorflow/contrib/rnn:gru_ops_op_lib",
-        "//tensorflow/contrib/rnn:lstm_ops_op_lib",
     ]),
     alwayslink = 1,
 )

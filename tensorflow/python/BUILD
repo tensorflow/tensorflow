@@ -17,9 +17,10 @@ visibility = [
     "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
 ]
 
-package(default_visibility = visibility)
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = visibility,
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -111,6 +112,7 @@ py_library(
         "//tensorflow/python/tools/api/generator:__pkg__",
         "//tensorflow/tools/api/tests:__pkg__",
         "//tensorflow/tools/compatibility/update:__pkg__",
+        "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
         ":array_ops",
@@ -2236,6 +2238,13 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "rnn_ops_gen",
+    visibility = [
+        "//tensorflow/contrib/rnn:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "tpu_ops_gen",
     visibility = [
         "//smartass/brain/configure/python:__pkg__",
@@ -4084,10 +4093,22 @@ cuda_py_test(
         ":variables",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
-        "//tensorflow/python/distribute:mirrored_strategy",
     ],
     tags = ["no_windows"],
     xla_enable_strict_auto_jit = True,
+)
+
+py_test(
+    name = "nn_loss_scaling_utilities_test",
+    size = "small",
+    srcs = ["ops/nn_loss_scaling_utilities_test.py"],
+    python_version = "PY2",
+    deps = [
+        ":client_testlib",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )
 
 cuda_py_test(

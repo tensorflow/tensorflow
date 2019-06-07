@@ -53,10 +53,18 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+
+# Loaded lazily due to a circular dependency (roughly
+# tf.function->autograph->->dataset->tf.function).
+# TODO(b/133251390): Use a regular import.
+ag_ctx = lazy_loader.LazyLoader(
+    "ag_ctx", globals(),
+    "tensorflow.python.autograph.core.ag_ctx")
 
 
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
@@ -1372,8 +1380,15 @@ class Function(object):
 
   def __call__(self, *args, **kwargs):
     """Calls a graph function specialized to the inputs."""
-    graph_function, args, kwargs = self._maybe_define_function(args, kwargs)
-    return graph_function._filtered_call(args, kwargs)  # pylint: disable=protected-access
+
+    # Note: This context may not be placed inside func_graph because it's called
+    # by internal TF APIs, and we only want it to track explicit user
+    # configuration.
+    ag_status = (
+        ag_ctx.Status.ENABLED if self._autograph else ag_ctx.Status.DISABLED)
+    with ag_ctx.ControlStatusCtx(status=ag_status):
+      graph_function, args, kwargs = self._maybe_define_function(args, kwargs)
+      return graph_function._filtered_call(args, kwargs)  # pylint: disable=protected-access
 
   @property
   def python_function(self):
