@@ -2,20 +2,6 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
-package(
-    default_visibility = [":internal"],
-    licenses = ["notice"],  # Apache 2.0
-)
-
-exports_files([
-    "LICENSE",
-    "ACKNOWLEDGMENTS",
-    # The leakr files are used by //third_party/cloud_tpu.
-    "leakr_badwords.dic",
-    "leakr_badfiles.dic",
-    "leakr_file_type_recipe.ftrcp",
-])
-
 load("//tensorflow:tensorflow.bzl", "VERSION")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library_additional_deps_impl")
@@ -41,6 +27,24 @@ load(
     "//third_party/ngraph:build_defs.bzl",
     "if_ngraph",
 )
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl_ml",
+)
+
+package(
+    default_visibility = [":internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files([
+    "LICENSE",
+    "ACKNOWLEDGMENTS",
+    # The leakr files are used by //third_party/cloud_tpu.
+    "leakr_badwords.dic",
+    "leakr_badfiles.dic",
+    "leakr_file_type_recipe.ftrcp",
+])
 
 # @unused
 TENSORFLOW_API_INIT_FILES_V2 = (
@@ -436,11 +440,6 @@ package_group(
         "//tensorflow/...",
         "//tensorflow_estimator/python/estimator/...",
     ],
-)
-
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl_ml",
 )
 
 filegroup(
