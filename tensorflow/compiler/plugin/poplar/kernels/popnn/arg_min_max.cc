@@ -88,7 +88,7 @@ class ArgMaxMinOp : public XlaOpKernel, IpuOpKernel {
         xla_shape = TensorShapeToXLAShape(index_xla_type, input_shape);
       } else {
         // Special case for vectors - the output shape is a scalar.
-        xla_shape = xla::ShapeUtil::MakeShape(index_xla_type, {1});
+        xla_shape = xla::ShapeUtil::MakeShape(index_xla_type, {});
       }
 
       // Call into either our ArgMin or ArgMax implementation depending on what

@@ -56,7 +56,7 @@ class ArgMinMaxOp : public PoplibsOpDef {
 
     std::vector<std::size_t> index_shape;
 
-    if (inst->shape().rank() > 1) {
+    if (inst->operand(0)->shape().rank() > 1) {
       // Roll the axis dim to the end.
       input = input.dimRoll(axis, input.rank() - 1);
 
@@ -74,15 +74,15 @@ class ArgMinMaxOp : public PoplibsOpDef {
     } else {
       // Special case for vectors.
       input = input.reshape({1, input.numElements()});
-      index_shape = {1};
+      index_shape = {};
     }
 
     // Call into the
     poplar::Tensor output;
     if (is_max) {
-      output = popnn::argMax(graph, input, seq, GetDebugName(inst) + "/ArgMax");
+      output = popnn::argMax(graph, input, seq, GetDebugName(inst));
     } else {
-      output = popnn::argMin(graph, input, seq, GetDebugName(inst) + "/ArgMin");
+      output = popnn::argMin(graph, input, seq, GetDebugName(inst));
     }
     output = output.reinterpret(poplar::INT);
 
