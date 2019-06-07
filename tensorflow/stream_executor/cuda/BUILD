@@ -103,9 +103,10 @@ cc_library(
     srcs = if_cuda_is_configured(["ptxas_utils.cc"]),
     hdrs = if_cuda_is_configured(["ptxas_utils.h"]),
     deps = if_cuda_is_configured([
-        "//tensorflow/stream_executor/gpu:gpu_helpers_header",
         ":cuda_driver",
+        ":ptxas_wrapper",
         "@com_google_absl//absl/types:span",
+        "//tensorflow/stream_executor/gpu:gpu_helpers_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/strings:str_format",
@@ -116,6 +117,10 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
     ]),
 )
+
+# Buildozer can not remove dependencies inside select guards, so we have to use
+# an intermediate target.
+cc_library(name = "ptxas_wrapper")
 
 cc_library(
     name = "cuda_driver",
