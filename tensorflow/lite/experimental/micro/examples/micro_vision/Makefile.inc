@@ -18,7 +18,7 @@ tensorflow/lite/experimental/micro/examples/micro_vision/person_image_data.h \
 $(MICRO_VISION_MODEL_HDRS)
 
 IMAGE_PROVIDER_TEST_SRCS := \
-tensorflow/lite/experimental/micro/examples/micro_vision/image_provider.cc
+tensorflow/lite/experimental/micro/examples/micro_vision/image_provider.cc \
 tensorflow/lite/experimental/micro/examples/micro_vision/image_provider_test.cc \
 tensorflow/lite/experimental/micro/examples/micro_vision/model_settings.cc \
 
