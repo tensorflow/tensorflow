@@ -769,6 +769,9 @@ public:
   /// Return the operation that this refers to.
   Operation *getOperation() { return OpState::getOperation(); }
 
+  /// Return the dialect that this refers to.
+  Dialect *getDialect() { return getOperation()->getDialect(); }
+
   /// Return the Region enclosing this Op.
   Region *getContainingRegion() { return getOperation()->getParentRegion(); }
 
