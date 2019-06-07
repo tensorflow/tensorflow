@@ -212,8 +212,10 @@ class Layer(module.Module):
     self._outbound_nodes = []
 
     call_fn_args = self._call_fn_args
-    self._expects_training_arg = 'training' in call_fn_args
-    self._expects_mask_arg = 'mask' in call_fn_args
+    self._expects_training_arg = ('training' in call_fn_args or
+                                  self._call_accepts_kwargs)
+    self._expects_mask_arg = ('mask' in call_fn_args or
+                              self._call_accepts_kwargs)
 
     # Whether the `call` method can be used to build a TF graph without issues.
     self._dynamic = dynamic
@@ -563,7 +565,14 @@ class Layer(module.Module):
     Raises:
       ValueError: if the layer's `call` method returns None (an invalid value).
     """
+    call_context = base_layer_utils.call_context()
     input_list = nest.flatten(inputs)
+
+    # We will attempt to build a TF graph if & only if all inputs are symbolic.
+    # This is always the case in graph mode. It can also be the case in eager
+    # mode when all inputs can be traced back to `keras.Input()` (when building
+    # models using the functional API).
+    build_graph = tf_utils.are_all_symbolic_tensors(input_list)
 
     # Accept NumPy and scalar inputs by converting to Tensors.
     if any(isinstance(x, (np.ndarray, float, int)) for x in input_list):
@@ -585,11 +594,31 @@ class Layer(module.Module):
         not self._call_arg_was_passed('mask', args, kwargs)):
       kwargs['mask'] = input_masks
 
-    # We will attempt to build a TF graph if & only if all inputs are symbolic.
-    # This is always the case in graph mode. It can also be the case in eager
-    # mode when all inputs can be traced back to `keras.Input()` (when building
-    # models using the functional API).
-    build_graph = tf_utils.are_all_symbolic_tensors(input_list)
+    # If `training` argument was not explicitly passed, propagate `training`
+    # value from this layer's calling layer.
+    training_arg_passed_by_framework = False
+    # Priority 1: `training` was explicitly passed.
+    if self._call_arg_was_passed('training', args, kwargs):
+      training_value = self._get_call_arg_value('training', args, kwargs)
+      if not self._expects_training_arg:
+        kwargs.pop('training')
+    else:
+      training_value = None
+      # Priority 2: `training` was passed to a parent layer.
+      if call_context.training is not None:
+        training_value = call_context.training
+      # Priority 3a: `learning_phase()` has been set.
+      elif backend.global_learning_phase_is_set():
+        training_value = backend.learning_phase()
+      # Priority 3b: Pass the `learning_phase()` if in the Keras FuncGraph.
+      elif build_graph:
+        with backend.get_graph().as_default():
+          if base_layer_utils.is_in_keras_graph():
+            training_value = backend.learning_phase()
+
+      if self._expects_training_arg and training_value is not None:
+        kwargs['training'] = training_value
+        training_arg_passed_by_framework = True
 
     # Only create Keras history if at least one tensor originates from a
     # `keras.Input`. Otherwise this Layer may be being used outside the Keras
@@ -599,12 +628,12 @@ class Layer(module.Module):
 
     # Clear eager losses on top level model call.
     # We are clearing the losses only on the top level model call and not on
-    # every layer/mode call because layer/model may be reused.
+    # every layer/model call because layer/model may be reused.
     if (base_layer_utils.is_in_eager_or_tf_function() and
-        not base_layer_utils.call_context().in_call):
+        not call_context.in_call):
       self._clear_losses()
 
-    with base_layer_utils.call_context().enter(self, inputs, build_graph):
+    with call_context.enter(self, inputs, build_graph, training_value):
       # Check input assumptions set after layer building, e.g. input shape.
       if build_graph:
         # Symbolic execution on symbolic tensors. We will attempt to build
@@ -635,21 +664,6 @@ class Layer(module.Module):
               call_fn = converted_func
           else:
             call_fn = self.call
-
-          # Explicitly pass the learning phase placeholder to `call` if
-          # the `training` argument was left unspecified by the user.
-          # This behavior is restricted to the managed Keras FuncGraph.
-          # TODO(omalleyt): Reconcile this with new `trainable` behavior
-          # when available.
-          learning_phase_passed_by_framework = False
-          if (base_layer_utils.is_in_keras_graph() and
-              self._expects_training_arg):
-            training_arg = None
-            if self._call_arg_was_passed('training', args, kwargs):
-              training_arg = self._get_call_arg_value('training', args, kwargs)
-            if training_arg is None:
-              learning_phase_passed_by_framework = True
-              kwargs['training'] = backend.learning_phase()
 
           if not self.dynamic:
             try:
@@ -692,7 +706,7 @@ class Layer(module.Module):
                              'Tensor or a list of Tensors, not None '
                              '(layer: ' + self.name + ').')
           if base_layer_utils.have_all_keras_metadata(inputs):
-            if learning_phase_passed_by_framework:
+            if training_arg_passed_by_framework:
               kwargs.pop('training')
             inputs, outputs = self._set_connectivity_metadata_(
                 inputs, outputs, args, kwargs)
@@ -2130,6 +2144,11 @@ class Layer(module.Module):
     if all_args and all_args[0] == 'self':
       return all_args[1:]
     return all_args
+
+  @property
+  @tracking.cached_per_instance
+  def _call_accepts_kwargs(self):
+    return tf_inspect.getfullargspec(self.call).varkw is not None
 
   @property
   @tracking.cached_per_instance
