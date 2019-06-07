@@ -38,16 +38,6 @@ namespace OpTrait {
 template <typename ConcreteType> class OneResult;
 }
 
-/// This type trait produces true if the specified type is in the specified
-/// type list.
-template <typename same, typename first, typename... more>
-struct typelist_contains {
-  static const bool value = std::is_same<same, first>::value ||
-                            typelist_contains<same, more...>::value;
-};
-template <typename same, typename first>
-struct typelist_contains<same, first> : std::is_same<same, first> {};
-
 /// This class represents success/failure for operation parsing. It is
 /// essentially a simple wrapper class around LogicalResult that allows for
 /// explicit conversion to bool. This allows for the parser to chain together
@@ -766,16 +756,14 @@ public:
 template <typename ConcreteType, template <typename T> class... Traits>
 class Op : public OpState,
            public Traits<ConcreteType>...,
-           public FoldingHook<
-               ConcreteType,
-               typelist_contains<OpTrait::OneResult<ConcreteType>, OpState,
-                                 Traits<ConcreteType>...>::value> {
+           public FoldingHook<ConcreteType,
+                              llvm::is_one_of<OpTrait::OneResult<ConcreteType>,
+                                              Traits<ConcreteType>...>::value> {
 public:
   /// Return if this operation contains the provided trait.
   template <template <typename T> class Trait>
   static constexpr bool hasTrait() {
-    return typelist_contains<Trait<ConcreteType>, OpState,
-                             Traits<ConcreteType>...>::value;
+    return llvm::is_one_of<Trait<ConcreteType>, Traits<ConcreteType>...>::value;
   }
 
   /// Return the operation that this refers to.
