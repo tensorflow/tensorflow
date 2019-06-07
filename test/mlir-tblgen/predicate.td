@@ -35,19 +35,6 @@ def OpC : NS_Op<"op_for_TCopVTEtIs", [
 // CHECK-LABEL: OpC::verify
 // CHECK: if (!((((*this->getOperation()).getNumOperands() > 0)) && (((*this->getOperation()).getOperand(0)->getType().isa<ShapedType>())) && (((*this->getOperation()).getOperand(0)->getType().cast<ShapedType>().getElementType().isInteger(32)))))
 
-
-def OpD : NS_Op<"op_for_TCOpVTEtIsSameAs", [
-    PredOpTrait<"first operand is a shaped type with the same "
-                "elemental type as itself",
-                TCopVTEtIsSameAs<0, 0>>]> {
-  let arguments = (ins AnyTensor:$x);
-}
-
-// CHECK-LABEL: OpD::verify
-// CHECK: if (!((((*this->getOperation()).getNumOperands() > std::max(0,0))) && (((*this->getOperation()).getOperand(0)->getType().isa<ShapedType>())) && (((*this->getOperation()).getOperand(0)->getType().isa<ShapedType>())) && (((*this->getOperation()).getOperand(0)->getType().cast<ShapedType>().getElementType() == (*this->getOperation()).getOperand(0)->getType().cast<ShapedType>().getElementType()))))
-// CHECK-NEXT: return emitOpError("failed to verify that first operand is a shaped type with the same elemental type as itself");
-
-
 def OpE : NS_Op<"op_for_TCresVTEtIsSameAsOp", [
     PredOpTrait<"first operand is a shaped type with the same "
                 "elemental type as first result",

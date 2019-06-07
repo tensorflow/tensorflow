@@ -17,6 +17,7 @@
 
 #include "TestDialect.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Support/TypeUtilities.h"
 
 using namespace mlir;
 

@@ -110,3 +110,11 @@ func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
   %0 = "test.arg_and_res_have_fixed_element_types"(%arg1, %arg0) {attr: ""}: (tensor<* x f32>, tensor<* x i32>) -> tensor<* x i16>
   return
 }
+
+// -----
+
+func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
+  // expected-error@+1 {{failed to verify that first and second operand have same element type}}
+  "test.operands_have_same_element_type"(%arg1, %arg0): (tensor<* x f32>, tensor<* x i32>) -> ()
+  return
+}

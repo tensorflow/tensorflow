@@ -1024,8 +1024,7 @@ class TCopVTEtIs<int idx, Type type> : And<[
 // given type.
 class ArgOrResultElementTypeIs<string name, Type type> : And<[
    SubstLeaves<"$_self",  "$" # name # ".getType()", IsShapedTypePred>,
-   SubstLeaves<"$_self",  "$" # name #
-     ".getType().cast<ShapedType>().getElementType()",
+   SubstLeaves<"$_self",  "mlir::getElementTypeOrSelf($" # name # ")",
      type.predicate>]>;
 
 // Predicate to verify that the i'th operand and the j'th operand have the same
@@ -1033,15 +1032,13 @@ class ArgOrResultElementTypeIs<string name, Type type> : And<[
 // Type Constraint operand `i`'s Element type is Same As operand `j`'s Element
 // type.
 class TCopVTEtIsSameAs<int i, int j> : And<[
-    CPred<"$_op.getNumOperands() > std::max(" # i # "," # j # ")">,
+    CPred<"$_op.getNumOperands() > std::max(" # i # "u," # j # "u)">,
     SubstLeaves<"$_self",  "$_op.getOperand(" # i # ")->getType()",
       IsShapedTypePred>,
     SubstLeaves<"$_self",  "$_op.getOperand(" # j # ")->getType()",
       IsShapedTypePred>,
-    // TODO: This could be made into C++ function instead.
-    CPred<"$_op.getOperand(" # i # ")->getType().cast<ShapedType>()."
-          "getElementType() == $_op.getOperand(" # j # ")->getType()."
-          "cast<ShapedType>().getElementType()">]>;
+    CPred<"mlir::getElementTypeOrSelf($_op.getOperand(" # i # ")) == "
+          "mlir::getElementTypeOrSelf($_op.getOperand(" # j # "))">]>;
 
 // Predicate to verify that the i'th result and the j'th operand have the same
 // elemental type.

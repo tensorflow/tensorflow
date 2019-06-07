@@ -96,6 +96,12 @@ def ArgAndResHaveFixedElementTypesOp :
   let results = (outs AnyVectorOrTensor:$res);
 }
 
+def OperandsHaveSameElementType : TEST_Op<"operands_have_same_element_type", [
+    PredOpTrait<"first and second operand have same element type",
+                TCopVTEtIsSameAs<0, 1>>]> {
+  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
+}
+
 //===----------------------------------------------------------------------===//
 // Test Patterns
 //===----------------------------------------------------------------------===//
