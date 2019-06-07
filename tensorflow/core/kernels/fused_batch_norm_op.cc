@@ -692,8 +692,8 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
             << " y_backprop shape: " << y_backprop.shape().DebugString()
             << " x shape: " << x.shape().DebugString()
             << " scale shape: " << scale.shape().DebugString()
-            << " tensor format: " << tensor_format
-            << " compute format: " << compute_format;
+            << " tensor format: " << ToString(tensor_format)
+            << " compute format: " << ToString(compute_format);
 
     // Inputs
     Tensor y_backprop_maybe_transformed = y_backprop;

@@ -26,6 +26,11 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/env_var.h"
+
+#if GOOGLE_CUDA
+#include "third_party/gpus/cudnn/cudnn.h"
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 namespace grappler {
@@ -40,12 +45,17 @@ namespace grappler {
 // MatMul + ... -> _FusedMatMul:
 //   (1) MatMul + BiasAdd + <Activation>
 //
+// FusedBatchNorm[$is_training] + ... -> _FusedBatchNormEx[$is_training]
+//   (1) FusedBatchNorm + <Activation>
+//   (2) FusedBatchNorm + SideInput + <Activation>
+//
 // Both Conv2D and MatMul implemented as Tensor contraction (on CPU), so all the
 // patterns are "ContractionWith...".
 namespace {
 
 constexpr char kFusedConv2D[] = "_FusedConv2D";
 constexpr char kFusedMatMul[] = "_FusedMatMul";
+constexpr char kFusedBatchNormEx[] = "_FusedBatchNormEx";
 
 constexpr char kDataFormat[] = "data_format";
 constexpr char kIsTraining[] = "is_training";
@@ -79,6 +89,17 @@ struct FusedBatchNorm {
       : fused_batch_norm(fused_batch_norm) {}
 
   const NodeDef* fused_batch_norm = nullptr;
+};
+
+// FusedBatchNorm[$is_training] with fused side input and/or activation.
+struct FusedBatchNormEx {
+  FusedBatchNormEx() = default;
+
+  const NodeDef* fused_batch_norm = nullptr;
+  const NodeDef* side_input = nullptr;
+  const NodeDef* activation = nullptr;
+  // Add node that will be invalidated by fusing side input and fused batch norm
+  const NodeDef* invalidated = nullptr;
 };
 
 // Contraction node followed by a BiasAdd.
@@ -445,12 +466,11 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx,
                              ContractionWithBatchNorm* matched) {
   if (!EigenSupportsContractionOutputKernel()) return false;
 
-  // Root of the pattern must be a FusedBatchNorm or a FusedBatchNormV2.
+  // Root of the pattern must be a FusedBatchNorm.
   if (!batch_norm || !IsFusedBatchNorm(*batch_norm)) return false;
 
-  // V2 has a separate data type for the scale/offset/mean/variance inputs.
-  if ((batch_norm->op() == "FusedBatchNormV2" ||
-       batch_norm->op() == "FusedBatchNormV3") &&
+  // FusedBatchNormV2 and V3 have an extra type parameter.
+  if (batch_norm->op() != "FusedBatchNorm" &&
       !HasDataType(batch_norm, DT_FLOAT, "U"))
     return false;
 
@@ -602,23 +622,15 @@ bool FindContractionWithBiasAndAddActivation(
 }
 #endif
 
-// Check that given node meets some basic FusedBatchNorm optimization
-// preconditions. We use this check to lazily infer graph properties which is
-// rather expensive.
-bool IsFusedBatchNormCandidate(const NodeDef& node) {
-  if (!IsFusedBatchNorm(node)) return false;
-  if (GetDataTypeFromAttr(node, "T") != DT_FLOAT) return false;
-
-  // Check that the node is in inference mode.
-  const auto& attr = node.attr();
-  if (attr.count(kIsTraining) > 0 && attr.at(kIsTraining).b()) return false;
-
-  return true;
-}
-
 bool FindFusedBatchNorm(const RemapperContext& ctx, const NodeDef* node,
                         FusedBatchNorm* matched) {
-  if (!IsFusedBatchNormCandidate(*node)) return false;
+  if (!IsFusedBatchNorm(*node)) return false;
+  if (GetDataTypeFromAttr(*node, "T") != DT_FLOAT) return false;
+
+  // Check that the node is in inference mode.
+  bool is_training = true;
+  if (!GetNodeAttr(*node, kIsTraining, &is_training).ok()) return false;
+  if (is_training) return false;
 
   const auto& props = ctx.graph_properties.GetInputProperties(node->name());
 
@@ -649,6 +661,139 @@ bool FindFusedBatchNorm(const RemapperContext& ctx, const NodeDef* node,
   return true;
 }
 
+// NOTE(ezhulenev): See `BatchnormSpatialPersistentEnabled` documentation in the
+// `tensorflow/stream_executor/cuda/cuda_dnn.cc` for details.
+bool BatchnormSpatialPersistentEnabled() {
+#if CUDNN_VERSION >= 7402
+  static bool is_enabled = [] {
+    bool is_enabled = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
+        "TF_USE_CUDNN_BATCHNORM_SPATIAL_PERSISTENT",
+        /*default_val=*/false, &is_enabled));
+    return is_enabled;
+  }();
+  return is_enabled;
+#else
+  return false;
+#endif
+}
+
+bool FindFusedBatchNormEx(const RemapperContext& ctx, const NodeDef* node,
+                          FusedBatchNormEx* matched) {
+  // Root of the pattern must be a Relu.
+  // TODO(ezhulenev): Forward control dependencies.
+  if (!IsRelu(*node) || HasControlFaninOrFanout(ctx.graph_view, node))
+    return false;
+
+  const NodeDef* relu = node;
+
+  // Returns true iff the node is a compatible FusedBatchNorm node.
+  const auto valid_batch_norm = [&](const NodeDef* fused_batch_norm) -> bool {
+    if (fused_batch_norm == nullptr || !IsFusedBatchNorm(*fused_batch_norm))
+      return false;
+
+    AttrSlice attr(*fused_batch_norm);
+
+    // We fuse FusedBatchNorm only on GPU, because on CPU we fuse it with
+    // contraction (MatMul or Conv2D node).
+    if (!NodeIsOnGpu(fused_batch_norm)) return false;
+
+    DataType t_dtype = GetDataTypeFromAttr(*fused_batch_norm, "T");
+    if (t_dtype != DT_FLOAT && t_dtype != DT_HALF) return false;
+
+    // Get the FusedBatchNorm training mode.
+    bool is_training;
+    if (!GetNodeAttr(attr, kIsTraining, &is_training).ok()) return false;
+    // TODO(ezhulenev): Add support for is_training=True and custom CUDA kernel.
+    if (!is_training) return false;
+
+    // In training mode we rely on cuDNN for computing FusedBatchNorm with side
+    // inputs and activation, and it has its own limitations. In inference mode
+    // we have a custom CUDA kernel that doesn't not have these constraints.
+    if (is_training) {
+      // cuDNN only supports NHWC data layout.
+      string data_format;
+      if (!GetNodeAttr(attr, kDataFormat, &data_format).ok()) return false;
+      if (data_format != "NHWC") return false;
+
+      // Data type must be DT_HALF.
+      if (t_dtype != DT_HALF) return false;
+
+      // Channel dimension must be a multiple of 4.
+      const auto& props =
+          ctx.graph_properties.GetInputProperties(fused_batch_norm->name());
+
+      const bool valid_channel_dim = !props.empty() &&
+                                     props[0].shape().dim_size() == 4 &&
+                                     props[0].shape().dim(3).size() % 4 == 0;
+      if (!valid_channel_dim) return false;
+
+      // cuDNN must support CUDNN_BATCHNORM_SPATIAL_PERSISTENT mode.
+      if (!BatchnormSpatialPersistentEnabled()) return false;
+    }
+
+    // FusedBatchNormV2 and V3 have an extra type parameter.
+    if ((fused_batch_norm->op() != "FusedBatchNorm") &&
+        !HasDataType(fused_batch_norm, DT_FLOAT, "U"))
+      return false;
+
+    // Check that only one node consumes the output of a FusedBatchNorm.
+    if (HasControlFaninOrFanout(ctx.graph_view, fused_batch_norm) ||
+        !HasSingleFanoutNode(ctx.graph_view, fused_batch_norm) ||
+        IsInPreserveSet(ctx, fused_batch_norm))
+      return false;
+
+    return true;
+  };
+
+  const auto relu_input_port = GraphView::InputPort(relu, 0);
+  const auto relu_fanin = ctx.graph_view.GetRegularFanin(relu_input_port);
+  if (!relu_fanin.node) return false;
+
+  // Input to a Relu can be a FusedBatchNorm.
+  if (valid_batch_norm(relu_fanin.node)) {
+    matched->activation = relu;
+    matched->side_input = nullptr;
+    matched->fused_batch_norm = relu_fanin.node;
+    matched->invalidated = nullptr;
+    return true;
+  }
+
+  // Input to a Relu can be an Add node with FusedBatchNorm as one of the inputs
+  if (IsAdd(*relu_fanin.node)) {
+    const NodeDef* add = relu_fanin.node;
+
+    // Check that only Relu node consumes the output of an Add node.
+    if (HasControlFaninOrFanout(ctx.graph_view, add) ||
+        !HasSingleFanoutNode(ctx.graph_view, add) || IsInPreserveSet(ctx, add))
+      return false;
+
+    const auto add_input_port_0 = GraphView::InputPort(add, 0);
+    const auto add_fanin_0 = ctx.graph_view.GetRegularFanin(add_input_port_0);
+
+    const auto add_input_port_1 = GraphView::InputPort(add, 1);
+    const auto add_fanin_1 = ctx.graph_view.GetRegularFanin(add_input_port_1);
+
+    if (valid_batch_norm(add_fanin_0.node)) {
+      matched->activation = relu;
+      matched->side_input = add_fanin_1.node;
+      matched->fused_batch_norm = add_fanin_0.node;
+      matched->invalidated = add;
+      return true;
+    }
+
+    if (valid_batch_norm(add_fanin_1.node)) {
+      matched->activation = relu;
+      matched->side_input = add_fanin_0.node;
+      matched->fused_batch_norm = add_fanin_1.node;
+      matched->invalidated = add;
+      return true;
+    }
+  }
+
+  return false;
+}
+
 void CopyConv2DAttributes(const NodeDef* conv2d, NodeDef* fused_conv2d) {
   DCHECK(IsConv2D(*conv2d)) << "Input node must be a Conv2D";
 
@@ -662,6 +807,27 @@ void CopyConv2DAttributes(const NodeDef* conv2d, NodeDef* fused_conv2d) {
   (*attr)["dilations"] = src_attr.at("dilations");
   (*attr)["data_format"] = src_attr.at("data_format");
   (*attr)["use_cudnn_on_gpu"] = src_attr.at("use_cudnn_on_gpu");
+}
+
+void CopyFusedBatchNormAttributes(const NodeDef* fused_batch_norm,
+                                  NodeDef* fused_batch_norm_ex) {
+  DCHECK(IsFusedBatchNorm(*fused_batch_norm))
+      << "Input node must be a FusedBatchNorm";
+
+  auto* attr = fused_batch_norm_ex->mutable_attr();
+  auto src_attr = fused_batch_norm->attr();
+
+  (*attr)["T"] = src_attr.at("T");
+  (*attr)["is_training"] = src_attr.at("is_training");
+  (*attr)["data_format"] = src_attr.at("data_format");
+  (*attr)["epsilon"] = src_attr.at("epsilon");
+
+  // FusedBatchNormV2 and V3 have an extra type parameter.
+  if (fused_batch_norm->op() != "FusedBatchNorm") {
+    (*attr)["U"] = src_attr.at("U");
+  } else {
+    (*attr)["U"] = src_attr.at("T");
+  }
 }
 
 void CopyMatMulAttributes(const NodeDef* matmul, NodeDef* fused_matmul) {
@@ -902,6 +1068,55 @@ void AddFusedContractionNode(
 }
 #endif
 
+void AddFusedBatchNormExNode(
+    const FusedBatchNormEx& matched, GraphDef* optimized_graph,
+    absl::flat_hash_set<const NodeDef*>* invalidated_nodes) {
+  VLOG(2) << "Fuse " << matched.activation->op() << " with FusedBatchNorm:"
+          << " side_input="
+          << (matched.side_input ? matched.side_input->name() : "<none>")
+          << " activation=" << matched.activation->name()
+          << " fused_batch_norm=" << matched.fused_batch_norm->name();
+
+  // Replace FusedBatchNorm with _FusedBatchNormEx + <SideInput> + <Activation>.
+  NodeDef* fused_op = optimized_graph->add_node();
+  fused_op->set_op(kFusedBatchNormEx);
+  fused_op->set_name(matched.fused_batch_norm->name());
+  fused_op->set_device(matched.fused_batch_norm->device());
+
+  fused_op->add_input(matched.fused_batch_norm->input(0));  // 0: input
+  fused_op->add_input(matched.fused_batch_norm->input(1));  // 1: scale
+  fused_op->add_input(matched.fused_batch_norm->input(2));  // 2: offset
+  fused_op->add_input(matched.fused_batch_norm->input(3));  // 3: estimated_mean
+  fused_op->add_input(matched.fused_batch_norm->input(4));  // 4: estimated_var
+
+  CopyFusedBatchNormAttributes(matched.fused_batch_norm, fused_op);
+
+  auto* attrs = fused_op->mutable_attr();
+  SetAttrValue(matched.activation->op(), &(*attrs)["activation_mode"]);
+
+  if (matched.side_input != nullptr) {
+    SetAttrValue(1, &(*attrs)["num_side_inputs"]);
+    fused_op->add_input(matched.side_input->name());  // 5: side_input
+  } else {
+    SetAttrValue(0, &(*attrs)["num_side_inputs"]);
+  }
+
+  // Turn activation node into Identity node.
+  NodeDef* identity_op = optimized_graph->add_node();
+  identity_op->set_op("Identity");
+  identity_op->set_name(matched.activation->name());
+  identity_op->set_device(matched.fused_batch_norm->device());
+  identity_op->add_input(matched.fused_batch_norm->name());
+  (*identity_op->mutable_attr())["T"] = attrs->at("T");
+
+  // Invalidate all nodes bypassed by this rewrite.
+  invalidated_nodes->insert(matched.activation);
+  invalidated_nodes->insert(matched.fused_batch_norm);
+  if (matched.side_input != nullptr) {
+    invalidated_nodes->insert(matched.invalidated);
+  }
+}
+
 void AddBatchNormNodes(const FusedBatchNorm& matched,
                        GraphDef* optimized_graph) {
   const NodeDef& fused_node = *matched.fused_batch_norm;
@@ -1044,6 +1259,55 @@ void AddBatchNormNodes(const FusedBatchNorm& matched,
   *r->add_input() = a->name();
   *r->add_input() = c->name();
 }
+
+// Check if a node is a candidate to one of the patterns that require inferred
+// shapes:
+//   (1) Splitting FusedBatchNorm into primitives.
+//   (2) Fusing side input and/or activation into FusedBatchNorm.
+bool RequiresInferredShapes(const RemapperContext& ctx, const NodeDef& node) {
+  // Candidate for a FusedBatchNorm splitting.
+  const auto is_batch_norm_candidate = [&]() -> bool {
+    if (!IsFusedBatchNorm(node)) return false;
+    if (GetDataTypeFromAttr(node, "T") != DT_FLOAT) return false;
+
+    bool is_training = true;
+    if (!GetNodeAttr(node, kIsTraining, &is_training).ok()) return false;
+    if (is_training) return false;
+
+    return true;
+  };
+
+  // Candidate for a FusedBatchNorm fusion.
+  const auto is_batch_norm_fusion_candidate = [&]() -> bool {
+    if (!IsRelu(node)) return false;
+
+    const auto relu_input_port = GraphView::InputPort(&node, 0);
+    const auto relu_fanin = ctx.graph_view.GetRegularFanin(relu_input_port);
+    if (!relu_fanin.node) return false;
+
+    if (IsFusedBatchNorm(*relu_fanin.node)) {
+      // FusedBatchNorm + Relu.
+      return true;
+
+    } else if (IsAdd(*relu_fanin.node)) {
+      // FusedBatchNorm + Add + Relu.
+      const NodeDef* add = relu_fanin.node;
+
+      const auto add_input_port_0 = GraphView::InputPort(add, 0);
+      const auto add_fanin_0 = ctx.graph_view.GetRegularFanin(add_input_port_0);
+      if (IsFusedBatchNorm(*add_fanin_0.node)) return true;
+
+      const auto add_input_port_1 = GraphView::InputPort(add, 1);
+      const auto add_fanin_1 = ctx.graph_view.GetRegularFanin(add_input_port_1);
+      if (IsFusedBatchNorm(*add_fanin_1.node)) return true;
+    }
+
+    return false;
+  };
+
+  return is_batch_norm_candidate() || is_batch_norm_fusion_candidate();
+}
+
 }  // namespace
 
 Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
@@ -1051,6 +1315,7 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
   // Supported graph patterns.
   // clang-format off
   FusedBatchNorm                        fused_batch_norm;
+  FusedBatchNormEx                      fused_batch_norm_ex;
   ContractionWithBiasAdd                contract_with_bias;
   ContractionWithBiasAddAndActivation   contract_with_bias_and_activation;
 #ifndef INTEL_MKL
@@ -1078,9 +1343,8 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
   // and Activation nodes that were fused into a Conv2D node.
   absl::flat_hash_set<const NodeDef*> invalidated_nodes;
 
-  // _FusedMatMul and _FusedConv2D kernels do not have registered gradient
-  // function, so we must not perform rewrite if the graph will be
-  // differentiated later.
+  // _Fused{...} kernels do not have registered gradient function, so we must
+  // not perform rewrite if the graph will be differentiated later.
   bool allow_non_differentiable_rewrites =
       item.optimization_options().allow_non_differentiable_rewrites;
 
@@ -1161,14 +1425,23 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
 #endif  // !INTEL_MKL
 
     // Infer properties lazily in case they are not needed.
-    if (!ctx.inferred_graph_properties && IsFusedBatchNormCandidate(node)) {
+    if (!ctx.inferred_graph_properties && RequiresInferredShapes(ctx, node)) {
+      const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
       // TODO(rmlarsen): Get rid of tensor value copies.
       TF_RETURN_IF_ERROR(ctx.graph_properties.InferStatically(
-          /*assume_valid_feeds=*/false,
+          assume_valid_feeds,
           /*aggressive_shape_inference=*/false,
           /*include_input_tensor_values=*/true,
           /*include_output_tensor_values=*/false));
       ctx.inferred_graph_properties = true;
+    }
+
+    // Remap FusedBatchNorm+<SideInput>+<Activation> into the _FusedBatchNormEx.
+    if (allow_non_differentiable_rewrites &&
+        FindFusedBatchNormEx(ctx, &node, &fused_batch_norm_ex)) {
+      AddFusedBatchNormExNode(fused_batch_norm_ex, optimized_graph,
+                              &invalidated_nodes);
+      continue;
     }
 
     // During inference, most of the inputs to FusedBatchNorm are constant, and
