@@ -521,16 +521,11 @@ Status CreateBroadcastableScalarConstant(OpConverterParams* params, float value,
 }
 
 // Convert an axis from TF format to TRT format while validating. TF format
-// includes the batch dimension, while TRT does not. TF can also use negative
-// indices.
-// TODO(tmorris): Use this method in more ops.
+// includes the batch dimension, while TRT does not if implicit batching is used
+// (i.e. for tensors). TF can also use negative indices.
 Status ConvertAxis(int tf_axis, int trt_nb_dims, absl::string_view node_name,
-                   int* trt_axis, bool is_weights=false) {
-  int tf_nb_dims = trt_nb_dims;
-  if (!is_weights) {
-    tf_nb_dims = trt_nb_dims + 1;
-  }
-    
+                   bool use_implicit_batch, int* trt_axis) {
+  const int tf_nb_dims = trt_nb_dims + (use_implicit_batch ? 1 : 0);
   // Check bounds.
   if (tf_axis < -tf_nb_dims || tf_axis >= tf_nb_dims) {
     return errors::InvalidArgument(
@@ -540,16 +535,13 @@ Status ConvertAxis(int tf_axis, int trt_nb_dims, absl::string_view node_name,
   // Make negative axis positive.
   if (tf_axis < 0) tf_axis += tf_nb_dims;
   // Don't allow axis to be the batch dimension.
-  if (tf_axis == 0 && !is_weights) {
+  if (use_implicit_batch && tf_axis == 0) {
     return errors::Unimplemented(
         "TensorRT does not allow manipulation of the batch dimension, at ",
         node_name);
   }
-  // Remove batch dimension.
-  *trt_axis = tf_axis;
-  if (!is_weights){
-    *trt_axis = tf_axis - 1;
-  }
+  // Remove batch dimension if it is implicit.
+  *trt_axis = use_implicit_batch ? tf_axis - 1 : tf_axis;
   return Status::OK();
 }
 
@@ -2069,8 +2061,8 @@ Status ConvertExpandDims(OpConverterParams* params) {
   // Use rank = nbDims + 1 for ConvertAxis's bounds checking to account for
   // ExpandDim's ability to add an axis at end of the shape.
   int trt_axis;
-  TF_RETURN_IF_ERROR(
-      ConvertAxis(axis[0], dims.nbDims + 1, node_def.name(), &trt_axis));
+  TF_RETURN_IF_ERROR(ConvertAxis(axis[0], dims.nbDims + 1, node_def.name(),
+                                 /*use_implicit_batch=*/true, &trt_axis));
   if (params->validation_only) return Status::OK();
 
   // ExpandDims: Insert new dim of size 1.
@@ -2105,8 +2097,8 @@ Status ConvertSqueeze(OpConverterParams* params) {
   for (int tf_axis : squeeze_dims) {
     // Make sure axis is valid.
     int trt_axis;
-    TF_RETURN_IF_ERROR(
-        ConvertAxis(tf_axis, dims.nbDims, node_def.name(), &trt_axis));
+    TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims, node_def.name(),
+                                   /*use_implicit_batch=*/true, &trt_axis));
     // Make sure target dimension is size 1.
     if (input_dims[trt_axis] != 1) {
       return errors::InvalidArgument(
@@ -3301,9 +3293,9 @@ Status ConvertReduce(OpConverterParams* params) {
   }
   for (int i = 0; i < tf_axes_list.size(); i++) {
     int trt_axis;
-    TF_RETURN_IF_ERROR(ConvertAxis(tf_axes_list[i],
-                                   tensor->getDimensions().nbDims,
-                                   node_def.name(), &trt_axis));
+    TF_RETURN_IF_ERROR(
+        ConvertAxis(tf_axes_list[i], tensor->getDimensions().nbDims,
+                    node_def.name(), /*use_implicit_batch=*/true, &trt_axis));
     axes |= (1 << trt_axis);
   }
 
@@ -3370,8 +3362,8 @@ Status ConvertPack(OpConverterParams* params) {
   const nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
   const int64 tf_axis = attrs.get<int64>("axis");
   int trt_axis;
-  TF_RETURN_IF_ERROR(
-      ConvertAxis(tf_axis, dims.nbDims + 1, node_def.name(), &trt_axis));
+  TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims + 1, node_def.name(),
+                                 /*use_implicit_batch=*/true, &trt_axis));
 
   // Compute expanded dimensions and then reshape input tensors.
   std::vector<int> tensor_dims(dims.d, dims.d + dims.nbDims);
@@ -3518,8 +3510,8 @@ Status ConvertSplitHelper(OpConverterParams* params,
   const nvinfer1::Dims dims = input.GetTrtDims();
   // Convert axis.
   int trt_axis;
-  TF_RETURN_IF_ERROR(
-      ConvertAxis(tf_axis, dims.nbDims, node_def.name(), &trt_axis));
+  TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims, node_def.name(),
+                                 /*use_implicit_batch=*/true, &trt_axis));
   // Dimension must equal num_splits for Unstack (when squeeze_after is true)
   if (squeeze_after && dims.d[trt_axis] != num_splits) {
     return errors::InvalidArgument(
@@ -3647,8 +3639,8 @@ Status ConvertConcat(OpConverterParams* params) {
   }
   int trt_axis = 0;
   const auto dim = inputs.at(0).GetTrtDims();
-  TF_RETURN_IF_ERROR(
-      ConvertAxis(axis[0], dim.nbDims, node_def.name(), &trt_axis));
+  TF_RETURN_IF_ERROR(ConvertAxis(axis[0], dim.nbDims, node_def.name(),
+                                 /*use_implicit_batch=*/true, &trt_axis));
   // Check that dimensions match on non-concatenate axis.
   TF_RETURN_IF_ERROR(VerifyShapesMatch(
       absl::Span<const TRT_TensorOrWeights>(inputs).first(num_inputs), trt_axis,
@@ -3837,7 +3829,8 @@ Status ConvertGather(OpConverterParams* params) {
   }
   int trt_axis = 0;
   TF_RETURN_IF_ERROR(ConvertAxis(axis[0], inputs.at(0).GetTrtDims().nbDims,
-                                 node_def.name(), &trt_axis, inputs.at(0).is_weights()));
+                                 node_def.name(), inputs.at(0).is_tensor(),
+                                 &trt_axis));
   const TRT_TensorOrWeights& indices_tensor = inputs.at(1);
   if (indices_tensor.batch_size() != 1) {
     return errors::InvalidArgument("Only indices with batch 1 are supported.");
@@ -4153,8 +4146,8 @@ Status ConvertArgMinMax(OpConverterParams* params) {
   int tf_axis = inputs.at(1).weights().GetSpan<int>()[0];
   int trt_axis;
   nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
-  TF_RETURN_IF_ERROR(
-      ConvertAxis(tf_axis, dims.nbDims, node_def.name(), &trt_axis));
+  TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims, node_def.name(),
+                                 /*use_implicit_batch=*/true, &trt_axis));
   nvinfer1::TopKOperation topk_op;
   if (node_def.op() == "ArgMin") {
     topk_op = nvinfer1::TopKOperation::kMIN;
