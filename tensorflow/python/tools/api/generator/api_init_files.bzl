@@ -30,6 +30,7 @@ TENSORFLOW_API_INIT_FILES = [
     "queue/__init__.py",
     "linalg/__init__.py",
     "lite/__init__.py",
+    "lite/experimental/__init__.py",
     "lookup/__init__.py",
     "lookup/experimental/__init__.py",
     "math/__init__.py",

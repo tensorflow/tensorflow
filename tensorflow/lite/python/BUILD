@@ -21,7 +21,10 @@ py_library(
 py_test(
     name = "interpreter_test",
     srcs = ["interpreter_test.py"],
-    data = ["//tensorflow/lite/python/testdata:interpreter_test_data"],
+    data = [
+        "//tensorflow/lite/python/testdata:interpreter_test_data",
+        "//tensorflow/lite/python/testdata:test_delegate.so",
+    ],
     python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [

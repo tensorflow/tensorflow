@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ctypes
 import sys
 import numpy as np
 
@@ -47,6 +48,76 @@ except ImportError:
   _tf_export = tf_export_dummy
 
 
+class Delegate(object):
+  """Python wrapper class to manage TfLiteDelegate objects.
+
+  Attributes:
+    library: Name of shared library containing the delegate with two functions:
+      TfLiteDelegate* tflite_plugin_create_delegate (char **, char **, int) void
+      tflite_plugin_destroy_delegate (TfLiteDelegate *)
+    options: Dictionary of options that are required to load the delegate. All
+      keys and values in the dictionary should be serializable. Consult the
+      documentation of the specific delegate for required and legal options.
+      (default None)
+  """
+
+  def __init__(self, library, options=None):
+    self._library = ctypes.pydll.LoadLibrary(library)
+    self._library.tflite_plugin_create_delegate.argtypes = [
+        ctypes.POINTER(ctypes.c_char_p),
+        ctypes.POINTER(ctypes.c_char_p), ctypes.c_int
+    ]
+    self._library.tflite_plugin_create_delegate.restype = ctypes.c_void_p
+
+    # Convert the options from a dictionary to lists of char pointers.
+    options = options or {}
+    options_keys = (ctypes.c_char_p * len(options))()
+    options_values = (ctypes.c_char_p * len(options))()
+    for idx, (key, value) in enumerate(options.items()):
+      options_keys[idx] = str(key)
+      options_values[idx] = str(value)
+
+    # Do not make a copy of _delegate_ptr. It is freed by Delegate's finalizer.
+    self._delegate_ptr = self._library.tflite_plugin_create_delegate(
+        options_keys, options_values, len(options))
+
+  def __del__(self):
+    self._library.tflite_plugin_destroy_delegate.argtypes = [ctypes.c_void_p]
+    self._library.tflite_plugin_destroy_delegate(self._delegate_ptr)
+
+  def _get_native_delegate_pointer(self):
+    """Returns the native TfLiteDelegate pointer.
+
+    It is not safe to copy this pointer because it needs to be freed.
+
+    Returns:
+      TfLiteDelegate *
+    """
+    return self._delegate_ptr
+
+
+@_tf_export('lite.experimental.load_delegate')
+def load_delegate(library, options=None):
+  """Returns a Delegate object.
+
+  The `library` is expected to have two functions:
+    TfLiteDelegate* tflite_plugin_create_delegate (char **, char **, int)
+    void tflite_plugin_destroy_delegate (TfLiteDelegate *)
+
+  Args:
+    library: Name of shared library containing the
+      [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates).
+    options: Dictionary of options that are required to load the delegate. All
+      keys and values in the dictionary should be serializable. Consult the
+      documentation of the specific delegate for required and legal options.
+      (default None)
+
+  Returns:
+    Delegate object.
+  """
+  return Delegate(library, options)
+
+
 @_tf_export('lite.Interpreter')
 class Interpreter(object):
   """Interpreter interface for TensorFlow Lite Models.
@@ -61,12 +132,19 @@ class Interpreter(object):
   you must use a synchronization primitive between the threads to ensure invoke
   has returned before calling tensor().
   """
-  def __init__(self, model_path=None, model_content=None):
+
+  def __init__(self,
+               model_path=None,
+               model_content=None,
+               experimental_delegates=None):
     """Constructor.
 
     Args:
       model_path: Path to TF-Lite Flatbuffer file.
       model_content: Content of model.
+      experimental_delegates: Experimental. Subject to change. List of
+        [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
+        objects returned by lite.load_delegate().
 
     Raises:
       ValueError: If the interpreter was unable to create.
@@ -89,6 +167,17 @@ class Interpreter(object):
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:
       raise ValueError('Can\'t both provide `model_path` and `model_content`')
+
+    # Each delegate is a wrapper that owns the delegates that have been loaded
+    # as plugins. The interpreter wrapper will be using them, but we need to
+    # hold them in a list so that the lifetime is preserved at least as long as
+    # the interpreter wrapper.
+    self._delegates = []
+    if experimental_delegates:
+      self._delegates = experimental_delegates
+      for delegate in self._delegates:
+        self._interpreter.ModifyGraphWithDelegate(
+            delegate._get_native_delegate_pointer())  # pylint: disable=protected-access
 
   def allocate_tensors(self):
     self._ensure_safe()
