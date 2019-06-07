@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
@@ -1030,9 +1029,6 @@ Status TrtNodeValidator::ValidateNode(
     const TrtPrecisionMode precision_mode,
     const grappler::GraphProperties& graph_properties) {
   const string& op = node_def.op();
-  // It doesn't support validation of plugins.
-  if (PluginFactoryTensorRT::GetInstance()->IsPlugin(op)) return Status::OK();
-
   // In INT8 mode, we will always apply the quantization ranges provided by
   // these ops to the relevant tensors. This happens regardless of the value of
   // use_calibration.
@@ -1131,15 +1127,11 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
   OpConverterParams params(this, node_def, inputs, &outputs,
                            /*arg_validation_only=*/false, &weight_store_);
   const string& op = node_def.op();
-  if (PluginFactoryTensorRT::GetInstance()->IsPlugin(op)) {
-    TF_RETURN_IF_ERROR(plugin_converter_(&params));
-  } else {
-    if (!op_registry_.count(op)) {
-      return errors::Unimplemented("No converter registered for op: ", op);
-    }
-    OpConverter op_converter = op_registry_.at(op);
-    TF_RETURN_IF_ERROR(op_converter(&params));
+  if (!op_registry_.count(op)) {
+    return errors::Unimplemented("No converter registered for op: ", op);
   }
+  OpConverter op_converter = op_registry_.at(op);
+  TF_RETURN_IF_ERROR(op_converter(&params));
 
   for (size_t i = 0; i < outputs.size(); ++i) {
     TRT_TensorOrWeights& output = outputs[i];
@@ -1859,45 +1851,6 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
         output_tensor, {0, 2, 3, 1}, &output_tensor));
   }
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
-  return Status::OK();
-}
-
-Status ConvertPlugin(OpConverterParams* params) {
-  const auto& inputs = params->inputs;
-  const auto& node_def = params->node_def;
-  // prepare input
-  std::vector<nvinfer1::ITensor*> all_inputs;
-  all_inputs.reserve(inputs.size());
-  for (const auto& input : inputs) {
-    all_inputs.emplace_back(input.tensor());
-  }
-
-  // plugin is owned by PluginFactory
-  // TODO(jie): destroy plugins later (resource management)
-  PluginTensorRT* plugin =
-      PluginFactoryTensorRT::GetInstance()->CreatePlugin(node_def.op());
-
-  // passing attributes
-  // TODO(jie): support more general attribute
-  TFAttrs attrs(node_def);
-  auto attr_key_vector = attrs.GetAllAttrKeys();
-  for (auto attr_key : attr_key_vector) {
-    // TODO(jie): support only list of float for toy example here.
-    auto data = attrs.get<std::vector<float>>(attr_key);
-    size_t size_data = data.size() * sizeof(float);
-    if (!plugin->SetAttribute(attr_key, static_cast<void*>(data.data()),
-                              size_data)) {
-      return errors::InvalidArgument("plugin SetAttribute failed");
-    }
-  }
-
-  nvinfer1::IPluginLayer* layer = params->converter->network()->addPlugin(
-      &all_inputs[0], static_cast<int>(inputs.size()), *plugin);
-
-  for (int i = 0; i < layer->getNbOutputs(); i++) {
-    nvinfer1::ITensor* output_tensor = layer->getOutput(i);
-    params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
-  }
   return Status::OK();
 }
 
@@ -4676,7 +4629,6 @@ void TrtNodeValidator::RegisterOpValidators() {
 
 void Converter::RegisterOpConverters() {
   RegisterValidatableOpConverters(&op_registry_);
-  plugin_converter_ = ConvertPlugin;
 }
 
 Status ConvertGraphDefToEngine(
