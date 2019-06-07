@@ -1,12 +1,12 @@
-package(
-    default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
-)
-
 load("//tensorflow/core:platform/default/build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_python_default_plugins")
 load("//tensorflow:tensorflow.bzl", "tf_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 py_library(
     name = "xla_client",
