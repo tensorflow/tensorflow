@@ -603,9 +603,9 @@ cc_library(
 
 tf_cc_test(
     name = "redzone_allocator_test",
-    srcs = ["redzone_allocator_test.cc"],
+    srcs = if_cuda_is_configured(["redzone_allocator_test.cc"]),
     tags = tf_cuda_tests_tags(),
-    deps = [
+    deps = if_cuda_is_configured([
         ":cuda_activation",
         ":cuda_gpu_executor",
         ":ptxas_utils",
@@ -617,5 +617,5 @@ tf_cc_test(
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:kernel",
-    ],
+    ]),
 )
