@@ -400,7 +400,8 @@ class ShapeUtil {
                                    absl::Span<const int64> dimensions,
                                    absl::Span<const int64> minor_to_major,
                                    absl::Span<const Tile> tiles = {},
-                                   int64 element_size_in_bits = 0);
+                                   int64 element_size_in_bits = 0,
+                                   int64 memory_space = 0);
 
   static Shape MakeShapeWithSparseLayout(PrimitiveType element_type,
                                          absl::Span<const int64> dimensions,
