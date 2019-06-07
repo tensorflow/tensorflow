@@ -1736,7 +1736,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
     AttributeError: Raises an attribute error when dtype is neither float nor integer
   """
   image = ops.convert_to_tensor(image, name='image')
-  dtype = tf.dtypes.as_dtype(dtype)
+  dtype = dtypes.as_dtype(dtype)
   if not dtype.is_floating and not dtype.is_integer:
     raise AttributeError("dtype must be either floating point or integer")
   if dtype == image.dtype:
