@@ -502,15 +502,31 @@ class DenseElementsAttr
 public:
   using Base::Base;
 
-  /// It assumes the elements in the input array have been truncated to the bits
-  /// width specified by the element type. 'type' must be a vector or tensor
-  /// with static shape.
-  static DenseElementsAttr get(ShapedType type, ArrayRef<char> data);
-
   /// Constructs a dense elements attribute from an array of element values.
   /// Each element attribute value is expected to be an element of 'type'.
   /// 'type' must be a vector or tensor with static shape.
   static DenseElementsAttr get(ShapedType type, ArrayRef<Attribute> values);
+
+  /// Constructs a dense integer elements attribute from an array of integer
+  /// or floating-point values. Each value is expected to be the same bitwidth
+  /// of the element type of 'type'. 'type' must be a vector or tensor with
+  /// static shape.
+  template <typename ShapeT, typename T>
+  static DenseElementsAttr get(ShapeT type, ArrayRef<T> values) {
+    static_assert(std::numeric_limits<T>::is_integer ||
+                      llvm::is_one_of<T, float, double>::value,
+                  "expected integer or floating point element type");
+
+    assert(type.getNumElements() == static_cast<int64_t>(values.size()));
+    assert(type.getElementTypeBitWidth() == (sizeof(T) * CHAR_BIT));
+    const char *data = reinterpret_cast<const char *>(values.data());
+    return getRawIntOrFloat(type,
+                            ArrayRef<char>(data, values.size() * sizeof(T)),
+                            /*isInt=*/std::numeric_limits<T>::is_integer);
+  }
+
+  /// Overload of the above 'get' method that is specialized for boolean values.
+  static DenseElementsAttr get(ShapedType type, ArrayRef<bool> values);
 
   /// Returns the number of elements held by this attribute.
   size_t size() const;
@@ -519,7 +535,13 @@ public:
   /// element, then a null attribute is returned.
   Attribute getValue(ArrayRef<uint64_t> index) const;
 
+  /// Return the held element values as Attributes in 'values'.
   void getValues(SmallVectorImpl<Attribute> &values) const;
+
+  /// Return a new DenseElementsAttr that has the same data as the current
+  /// attribute, but has been reshaped to 'newType'. The new type must have the
+  /// same total number of elements as well as element type.
+  DenseElementsAttr reshape(ShapedType newType);
 
   /// Generates a new DenseElementsAttr by mapping each int value to a new
   /// underlying APInt. The new values can represent either a integer or float.
@@ -600,6 +622,15 @@ protected:
     return RawElementIterator(*this, size());
   }
 
+  /// Get or create a new dense elements attribute instance with the given raw
+  /// data buffer. 'type' must be a vector or tensor with static shape.
+  static DenseElementsAttr getRaw(ShapedType type, ArrayRef<char> data);
+
+  /// Overload of the raw 'get' method that asserts that the given type is of
+  /// integer or floating-point type.
+  static DenseElementsAttr getRawIntOrFloat(ShapedType type,
+                                            ArrayRef<char> data, bool isInt);
+
   /// Constructs a dense elements attribute from an array of raw APInt values.
   /// Each APInt value is expected to have the same bitwidth as the element type
   /// of 'type'. 'type' must be a vector or tensor with static shape.
@@ -623,11 +654,6 @@ public:
   /// element type of 'type'. 'type' must be a vector or tensor with static
   /// shape.
   static DenseIntElementsAttr get(ShapedType type, ArrayRef<APInt> values);
-
-  /// Constructs a dense integer elements attribute from an array of integer
-  /// values. Each value is expected to be within the bitwidth of the element
-  /// type of 'type'. 'type' must be a vector or tensor with static shape.
-  static DenseIntElementsAttr get(ShapedType type, ArrayRef<int64_t> values);
 
   /// Generates a new DenseElementsAttr by mapping each value attribute, and
   /// constructing the DenseElementsAttr given the new element type.

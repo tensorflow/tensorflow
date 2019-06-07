@@ -189,11 +189,6 @@ ElementsAttr Builder::getSplatElementsAttr(ShapedType type, Attribute elt) {
 }
 
 ElementsAttr Builder::getDenseElementsAttr(ShapedType type,
-                                           ArrayRef<char> data) {
-  return DenseElementsAttr::get(type, data);
-}
-
-ElementsAttr Builder::getDenseElementsAttr(ShapedType type,
                                            ArrayRef<Attribute> values) {
   return DenseElementsAttr::get(type, values);
 }

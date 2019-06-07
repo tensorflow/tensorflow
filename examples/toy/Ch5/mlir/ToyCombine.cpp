@@ -83,8 +83,7 @@ struct SimplifyReshapeConstant : public mlir::OpRewritePattern<ReshapeOp> {
       //      auto oldType = constantOp.getType();
       auto newType = rewriter.getTensorType(
           reshapeType.getShape(), valueAttr.getType().getElementType());
-      auto newAttr =
-          mlir::DenseElementsAttr::get(newType, valueAttr.getRawData());
+      auto newAttr = valueAttr.reshape(newType);
       rewriter.replaceOpWithNewOp<ConstantOp>(reshape, reshapeType.getShape(),
                                               newAttr);
     } else if (auto valueAttr =

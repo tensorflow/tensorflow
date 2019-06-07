@@ -116,7 +116,6 @@ public:
   FunctionAttr getFunctionAttr(Function *value);
   FunctionAttr getFunctionAttr(StringRef value);
   ElementsAttr getSplatElementsAttr(ShapedType type, Attribute elt);
-  ElementsAttr getDenseElementsAttr(ShapedType type, ArrayRef<char> data);
   ElementsAttr getDenseElementsAttr(ShapedType type,
                                     ArrayRef<Attribute> values);
   ElementsAttr getDenseIntElementsAttr(ShapedType type,

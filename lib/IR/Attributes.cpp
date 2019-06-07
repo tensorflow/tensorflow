@@ -532,7 +532,8 @@ APInt DenseElementsAttr::RawElementIterator::operator*() const {
 // DenseElementsAttr
 //===----------------------------------------------------------------------===//
 
-DenseElementsAttr DenseElementsAttr::get(ShapedType type, ArrayRef<char> data) {
+DenseElementsAttr DenseElementsAttr::getRaw(ShapedType type,
+                                            ArrayRef<char> data) {
   assert((static_cast<uint64_t>(type.getSizeInBits()) <=
           data.size() * APInt::APINT_WORD_SIZE) &&
          "Input data bit size should be larger than that type requires");
@@ -541,6 +542,27 @@ DenseElementsAttr DenseElementsAttr::get(ShapedType type, ArrayRef<char> data) {
   assert(type.hasStaticShape() && "type must have static shape");
   return Base::get(type.getContext(), StandardAttributes::DenseElements, type,
                    data);
+}
+
+/// Overload of the raw 'get' method that asserts that the given type is of
+/// integer type.
+DenseElementsAttr DenseElementsAttr::getRawIntOrFloat(ShapedType type,
+                                                      ArrayRef<char> data,
+                                                      bool isInt) {
+  assert(isInt ? type.getElementType().isa<IntegerType>()
+               : type.getElementType().isa<FloatType>());
+  return getRaw(type, data);
+}
+
+DenseElementsAttr DenseElementsAttr::get(ShapedType type,
+                                         ArrayRef<bool> values) {
+  assert(type.getNumElements() == static_cast<int64_t>(values.size()));
+  assert(type.getElementType().isInteger(1));
+
+  std::vector<char> buff(llvm::divideCeil(values.size(), CHAR_BIT));
+  for (int i = 0, e = values.size(); i != e; ++i)
+    writeBits(buff.data(), i, llvm::APInt(1, values[i]));
+  return getRaw(type, buff);
 }
 
 DenseElementsAttr DenseElementsAttr::get(ShapedType type,
@@ -579,7 +601,7 @@ DenseElementsAttr DenseElementsAttr::get(ShapedType type,
            "expected value to have same bitwidth as element type");
     writeBits(data.data(), i * storageBitWidth, intVal);
   }
-  return get(type, data);
+  return getRaw(type, data);
 }
 
 /// Returns the number of elements held by this attribute.
@@ -650,6 +672,22 @@ void DenseElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
   llvm_unreachable("unexpected element type");
 }
 
+/// Return a new DenseElementsAttr that has the same data as the current
+/// attribute, but has been reshaped to 'newType'. The new type must have the
+/// same total number of elements as well as element type.
+DenseElementsAttr DenseElementsAttr::reshape(ShapedType newType) {
+  ShapedType curType = getType();
+  if (curType == newType)
+    return *this;
+
+  (void)curType;
+  assert(newType.getElementType() == curType.getElementType() &&
+         "expected the same element type");
+  assert(newType.getNumElements() == curType.getNumElements() &&
+         "expected the same number of elements");
+  return getRaw(newType, getRawData());
+}
+
 DenseElementsAttr DenseElementsAttr::mapValues(
     Type newElementType,
     llvm::function_ref<APInt(const APInt &)> mapping) const {
@@ -681,7 +719,7 @@ DenseElementsAttr DenseElementsAttr::get(ShapedType type,
     assert(values[i].getBitWidth() == bitWidth);
     writeBits(elementData.data(), i * storageBitWidth, values[i]);
   }
-  return get(type, elementData);
+  return getRaw(type, elementData);
 }
 
 /// Writes value to the bit position `bitPos` in array `rawData`.
@@ -728,22 +766,6 @@ DenseIntElementsAttr DenseIntElementsAttr::get(ShapedType type,
   return DenseElementsAttr::get(type, values).cast<DenseIntElementsAttr>();
 }
 
-/// Constructs a dense integer elements attribute from an array of integer
-/// values. Each value is expected to be within the bitwidth of the element
-/// type of 'type'.
-DenseIntElementsAttr DenseIntElementsAttr::get(ShapedType type,
-                                               ArrayRef<int64_t> values) {
-  auto eltType = type.getElementType();
-  size_t bitWidth = eltType.isBF16() ? 64 : eltType.getIntOrFloatBitWidth();
-
-  // Convert the raw integer values to APInt.
-  SmallVector<APInt, 8> apIntValues;
-  apIntValues.reserve(values.size());
-  for (auto value : values)
-    apIntValues.emplace_back(APInt(bitWidth, value));
-  return get(type, apIntValues);
-}
-
 void DenseIntElementsAttr::getValues(SmallVectorImpl<APInt> &values) const {
   values.reserve(size());
   values.assign(raw_begin(), raw_end());
@@ -786,7 +808,7 @@ DenseElementsAttr DenseIntElementsAttr::mapValues(
   auto newArrayType =
       mappingHelper(mapping, *this, getType(), newElementType, elementData);
 
-  return get(newArrayType, elementData);
+  return getRaw(newArrayType, elementData);
 }
 
 /// Method for supporting type inquiry through isa, cast and dyn_cast.
@@ -829,7 +851,7 @@ DenseElementsAttr DenseFPElementsAttr::mapValues(
   auto newArrayType =
       mappingHelper(mapping, *this, getType(), newElementType, elementData);
 
-  return get(newArrayType, elementData);
+  return getRaw(newArrayType, elementData);
 }
 
 /// Iterator access to the float element values.
