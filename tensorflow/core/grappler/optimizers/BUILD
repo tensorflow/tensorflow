@@ -1,7 +1,3 @@
-package(
-    licenses = ["notice"],  # Apache 2.0
-)
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_mkl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
@@ -10,6 +6,10 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "if_static",
+)
+
+package(
+    licenses = ["notice"],  # Apache 2.0
 )
 
 cc_library(
