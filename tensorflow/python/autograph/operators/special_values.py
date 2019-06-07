@@ -71,6 +71,12 @@ class UndefinedReturnValue(object):
   pass
 
 
+def retval(value):
+  if isinstance(value, UndefinedReturnValue):
+    return None
+  return value
+
+
 def is_undefined_return(value):
   """Checks whether `value` is the default return value."""
   return isinstance(value, UndefinedReturnValue)
