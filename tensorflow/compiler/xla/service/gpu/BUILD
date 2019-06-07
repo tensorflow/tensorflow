@@ -401,6 +401,7 @@ cc_library(
     name = "gpu_executable",
     srcs = [
         "cholesky_thunk.cc",
+        "collective_permute_thunk.cc",
         "conditional_thunk.cc",
         "convolution_thunk.cc",
         "copy_thunk.cc",
@@ -423,6 +424,7 @@ cc_library(
     ],
     hdrs = [
         "cholesky_thunk.h",
+        "collective_permute_thunk.h",
         "conditional_thunk.h",
         "convolution_thunk.h",
         "copy_thunk.h",
@@ -459,6 +461,7 @@ cc_library(
         ":thunk",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:refcounting_hash_map",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -470,6 +473,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_execution_profile",
         "//tensorflow/compiler/xla/service:logical_buffer",
         "//tensorflow/compiler/xla/service:shaped_buffer",

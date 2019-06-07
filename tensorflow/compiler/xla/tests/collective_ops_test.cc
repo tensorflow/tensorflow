@@ -61,7 +61,7 @@ class CollectiveOpsTest : public HloTestBase {
       replica_group_strs.push_back(
           absl::StrFormat("{%s}", absl::StrJoin(g, ",")));
     }
-    return ParseHloString(
+    return ParseAndReturnVerifiedModule(
                absl::StrReplaceAll(
                    kTemplate,
                    {{"NUM_ELEMS", absl::StrCat(num_elems)},
@@ -310,7 +310,8 @@ XLA_TEST_F(CollectiveOpsTest, ReplicaId) {
 
   auto config = GetModuleConfigForTest();
   config.set_replica_count(kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kModuleStr));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
 
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
                           ExecuteReplicated(std::move(module), {}, kNumReplicas,
@@ -320,6 +321,39 @@ XLA_TEST_F(CollectiveOpsTest, ReplicaId) {
   for (uint32 i = 0; i < kNumReplicas; ++i) {
     EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR0(i), results[i]));
   }
+}
+
+XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Simple) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    replica = u32[] replica-id()
+    ten = u32[] constant(10)
+    sum = u32[] add(replica, ten)
+    p = u32[2] broadcast(sum), dimensions={}
+    ROOT permute = u32[2] collective-permute(p), source_target_pairs={{1,0}, {0,1}, {0,2}}
+  }
+  )";
+  const int64 kNumReplicas = 4;
+
+  auto config = GetModuleConfigForTest();
+  config.set_replica_count(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                                            /*use_threads=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({11, 11}),
+                                     results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({10, 10}),
+                                     results[1]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({10, 10}),
+                                     results[2]));
+  // Nothing writes to replica 3, so it is memzero'ed.
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({0, 0}),
+                                     results[3]));
 }
 
 }  // namespace

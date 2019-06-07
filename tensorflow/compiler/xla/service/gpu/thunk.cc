@@ -22,6 +22,8 @@ absl::string_view ThunkKindToString(Thunk::Kind kind) {
   switch (kind) {
     case Thunk::kCholesky:
       return "kCholesky";
+    case Thunk::kCollectivePermute:
+      return "kCollectivePermute";
     case Thunk::kConditional:
       return "kConditional";
     case Thunk::kConvolution:
