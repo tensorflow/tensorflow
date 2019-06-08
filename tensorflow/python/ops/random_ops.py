@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -36,6 +37,17 @@ from tensorflow.python.ops.gen_random_ops import *
 
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
+
+def _ShapeTensor(shape):
+  """Convert to an int32 or int64 tensor, defaulting to int32 if empty."""
+  if isinstance(shape, (tuple, list)) and not shape:
+    dtype = dtypes.int32
+  else:
+    if isinstance(shape, (tuple, list)):
+      shape = [val.value if isinstance(
+          val, tensor_shape.Dimension) else val for val in shape]
+    dtype = None
+  return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
 
 
 @tf_export("random.normal", v1=["random.normal", "random_normal"])
