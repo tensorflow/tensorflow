@@ -318,7 +318,7 @@ class Layer(module.Module):
       instance is returned.
 
     Raises:
-      RuntimeError: If called with partioned variable regularization and
+      RuntimeError: If called with partitioned variable regularization and
         eager execution is enabled.
       ValueError: When giving unsupported dtype and no initializer or when
         trainable has been set to True with synchronization set as `ON_READ`.

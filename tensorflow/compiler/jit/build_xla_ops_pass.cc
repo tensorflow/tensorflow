@@ -242,8 +242,8 @@ Status DeviceRequiresCompilation(const jit::DeviceInfoCache& device_info_cache,
   return Status::OK();
 }
 
-// Replaces `n` with a `PartionedCall` op that calls the same function.
-Status ReplaceFunctionCallWithPartionedCall(
+// Replaces `n` with a `PartitionedCall` op that calls the same function.
+Status ReplaceFunctionCallWithPartitionedCall(
     const GraphOptimizationPassOptions& options,
     const FunctionLibraryDefinition& flib_def, Node* n, Graph* g,
     const NameAttrList& func, const Scope& root) {
@@ -414,7 +414,7 @@ Status ReplaceNodeWithXlaCompileAndXlaRun(
         DataToControl(root, inverse_predicated_compilation_key).node(), n);
     n->ClearAttr(kXlaCompiledKernelAttr);
 
-    TF_RETURN_IF_ERROR(ReplaceFunctionCallWithPartionedCall(
+    TF_RETURN_IF_ERROR(ReplaceFunctionCallWithPartitionedCall(
         options, flib_def, n, g, cluster_info.function, root));
   }
 
