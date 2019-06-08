@@ -26,7 +26,7 @@ NOTE: this script is only used in opensource.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from builtins import bytes
+from builtins import bytes  # pylint: disable=redefined-builtin
 import argparse
 import json
 import os
