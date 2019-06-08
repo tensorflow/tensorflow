@@ -25,6 +25,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
@@ -105,6 +106,14 @@ class RandomNormalTest(RandomOpTestCommon):
         self.assertAllClose(results[False], results[True], rtol=1e-3, atol=1e-3)
       else:
         self.assertAllClose(results[False], results[True], rtol=1e-6, atol=1e-6)
+
+  # Test case for GitHub issue 29434.
+  @test_util.run_deprecated_v1
+  def testWithShape(self):
+    for dt in dtypes.float16, dtypes.float32, dtypes.float64:
+      with self.session(use_gpu=True, graph=ops.Graph()) as sess:
+        rng = random_ops.random_normal((3, tensor_shape.Dimension(2), 1))
+        _ = self.evaluate(rng)
 
   @test_util.run_deprecated_v1
   def testSeed(self):
