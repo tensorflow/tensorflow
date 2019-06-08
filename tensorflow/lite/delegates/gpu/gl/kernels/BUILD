@@ -91,6 +91,26 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "conv_test",
+    srcs = ["conv_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":conv",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "depthwise_conv",
     srcs = ["depthwise_conv.cc"],
