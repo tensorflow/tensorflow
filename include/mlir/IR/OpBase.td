@@ -634,11 +634,14 @@ class TypeAttrBase<string retType, string description> :
 def TypeAttr : TypeAttrBase<"Type", "any type attribute">;
 
 // An enum attribute case.
-class EnumAttrCase<string sym> : StringBasedAttr<
+class EnumAttrCase<string sym, int val = -1> : StringBasedAttr<
     CPred<"$_self.cast<StringAttr>().getValue() == \"" # sym # "\"">,
     "case " # sym> {
   // The C++ enumerant symbol
   string symbol = sym;
+  // The C++ enumerant value
+  // A non-negative value must be provided if to use EnumsGen backend.
+  int value = val;
 }
 
 // An enum attribute. Its value can only be one from the given list of `cases`.
@@ -651,8 +654,42 @@ class EnumAttr<string name, string description, list<EnumAttrCase> cases> :
                     description> {
   // The C++ enum class name
   string className = name;
+
   // List of all accepted cases
   list<EnumAttrCase> enumerants = cases;
+
+  // The following fields are only used by the EnumsGen backend to generate
+  // an enum class definition and conversion utility functions.
+
+  // The underlying type for the C++ enum class. An empty string mean the
+  // underlying type is not explicitly specified.
+  string underlyingType = "";
+
+  // The C++ namespaces that the enum class definition and utility functions
+  // should be placed into.
+  //
+  // Normally you want to place the full namespace path here. If it is nested,
+  // use "::" as the delimiter, e.g., given "A::B", generated code will be
+  // placed in `namespace A { namespace B { ... } }`. To avoid placing in any
+  // namespace, use "".
+  // TODO(b/134741431): use dialect to provide the namespace.
+  string cppNamespace = "";
+
+  // The name of the utility function that converts a string to the
+  // corresponding symbol. It will have the following signature:
+  //
+  // ```c++
+  // llvm::Optional<<qualified-enum-class-name>> <fn-name>(llvm::StringRef);
+  // ```
+  string stringToSymbolFnName = "symbolize" # name;
+
+  // The name of the utility function that converts a symbol to the
+  // corresponding string. It will have the following signature:
+  //
+  // ```c++
+  // llvm::StringRef <fn-name>(<qualified-enum-class-name>);
+  // ```
+  string symbolToStringFnName = "stringify" # name;
 }
 
 class ElementsAttrBase<Pred condition, string description> :

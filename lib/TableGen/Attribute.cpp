@@ -144,16 +144,38 @@ StringRef tblgen::EnumAttrCase::getSymbol() const {
   return def->getValueAsString("symbol");
 }
 
+int64_t tblgen::EnumAttrCase::getValue() const {
+  return def->getValueAsInt("value");
+}
+
 tblgen::EnumAttr::EnumAttr(const llvm::Record *record) : Attribute(record) {
   assert(def->isSubClassOf("EnumAttr") &&
          "must be subclass of TableGen 'EnumAttr' class");
 }
+
+tblgen::EnumAttr::EnumAttr(const llvm::Record &record) : Attribute(&record) {}
 
 tblgen::EnumAttr::EnumAttr(const llvm::DefInit *init)
     : EnumAttr(init->getDef()) {}
 
 StringRef tblgen::EnumAttr::getEnumClassName() const {
   return def->getValueAsString("className");
+}
+
+StringRef tblgen::EnumAttr::getCppNamespace() const {
+  return def->getValueAsString("cppNamespace");
+}
+
+StringRef tblgen::EnumAttr::getUnderlyingType() const {
+  return def->getValueAsString("underlyingType");
+}
+
+StringRef tblgen::EnumAttr::getStringToSymbolFnName() const {
+  return def->getValueAsString("stringToSymbolFnName");
+}
+
+StringRef tblgen::EnumAttr::getSymbolToStringFnName() const {
+  return def->getValueAsString("symbolToStringFnName");
 }
 
 std::vector<tblgen::EnumAttrCase> tblgen::EnumAttr::getAllCases() const {

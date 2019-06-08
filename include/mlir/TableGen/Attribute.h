@@ -129,6 +129,9 @@ public:
 
   // Returns the symbol of this enum attribute case.
   StringRef getSymbol() const;
+
+  // Returns the value of this enum attribute case.
+  int64_t getValue() const;
 };
 
 // Wrapper class providing helper methods for accessing enum attributes defined
@@ -137,10 +140,25 @@ public:
 class EnumAttr : public Attribute {
 public:
   explicit EnumAttr(const llvm::Record *record);
+  explicit EnumAttr(const llvm::Record &record);
   explicit EnumAttr(const llvm::DefInit *init);
 
   // Returns the enum class name.
   StringRef getEnumClassName() const;
+
+  // Returns the C++ namespaces this enum class should be placed in.
+  StringRef getCppNamespace() const;
+
+  // Returns the underlying type.
+  StringRef getUnderlyingType() const;
+
+  // Returns the name of the utility function that converts a string to the
+  // corresponding symbol.
+  StringRef getStringToSymbolFnName() const;
+
+  // Returns the name of the utility function that converts a symbol to the
+  // corresponding string.
+  StringRef getSymbolToStringFnName() const;
 
   // Returns all allowed cases for this enum attribute.
   std::vector<EnumAttrCase> getAllCases() const;

@@ -618,7 +618,94 @@ duplication, which is being worked on right now.
 
 ## Attribute Definition
 
-TODO: This section is outdated. Update it.
+### Enum attributes
+
+Enum attributes can be defined using `EnumAttr`, which requires all its cases to
+be defined with `EnumAttrCase`. To facilitate the interaction between
+`EnumAttr`s and their C++ consumers, the [`EnumsGen`][EnumsGen] TableGen backend
+can generate a few common utilities, including an enum class,
+`llvm::DenseMapInfo` for the enum class, conversion functions from/to strings.
+This is controlled via the `-gen-enum-decls` and `-gen-enum-defs` command-line
+options of `mlir-tblgen`.
+
+For example, given the following `EnumAttr`:
+
+```tablegen
+def CaseA: EnumAttrCase<"caseA", 0>;
+def CaseB: EnumAttrCase<"caseB", 10>;
+
+def MyEnum: EnumAttr<"MyEnum", "An example enum", [CaseA, CaseB]> {
+  let cppNamespace = "Outer::Inner";
+  let underlyingType = "uint64_t";
+  let stringToSymbolFnName = "ConvertToEnum";
+  let symbolToStringFnName = "ConvertToString";
+}
+```
+
+The following will be generated via `mlir-tblgen -gen-enum-decls`:
+
+```c++
+namespace Outer {
+namespace Inner {
+// An example enum
+enum class MyEnum : uint64_t {
+  caseA = 0,
+  caseB = 10,
+};
+
+llvm::StringRef ConvertToString(MyEnum);
+llvm::Optional<MyEnum> ConvertToEnum(llvm::StringRef);
+} // namespace Inner
+} // namespace Outer
+
+namespace llvm {
+template<> struct DenseMapInfo<Outer::Inner::MyEnum> {
+  using StorageInfo = llvm::DenseMapInfo<uint64_t>;
+
+  static inline Outer::Inner::MyEnum getEmptyKey() {
+    return static_cast<Outer::Inner::MyEnum>(StorageInfo::getEmptyKey());
+  }
+
+  static inline Outer::Inner::MyEnum getTombstoneKey() {
+    return static_cast<Outer::Inner::MyEnum>(StorageInfo::getTombstoneKey());
+  }
+
+  static unsigned getHashValue(const Outer::Inner::MyEnum &val) {
+    return StorageInfo::getHashValue(static_cast<uint64_t>(val));
+  }
+
+  static bool isEqual(const Outer::Inner::MyEnum &lhs,
+                      const Outer::Inner::MyEnum &rhs) {
+    return lhs == rhs;
+  }
+};
+}
+```
+
+The following will be generated via `mlir-tblgen -gen-enum-defs`:
+
+```c++
+namespace Outer {
+namespace Inner {
+llvm::StringRef ConvertToString(MyEnum val) {
+  switch (val) {
+    case MyEnum::caseA: return "caseA";
+    case MyEnum::caseB: return "caseB";
+    default: return "";
+  }
+}
+
+llvm::Optional<MyEnum> ConvertToEnum(llvm::StringRef str) {
+  return llvm::StringSwitch<llvm::Optional<MyEnum>>(str)
+      .Case("caseA", MyEnum::caseA)
+      .Case("caseB", MyEnum::caseB)
+      .Default(llvm::None);
+}
+} // namespace Inner
+} // namespace Outer
+```
+
+TODO(b/132506080): This following is outdated. Update it.
 
 An attribute is a compile time known constant of an operation. Attributes are
 required to be known to construct an operation (e.g., the padding behavior is
@@ -829,3 +916,4 @@ TODO: Describe the generation of benefit metric given pattern.
 [TableGenBackend]: https://llvm.org/docs/TableGen/BackEnds.html#introduction
 [OpBase]: https://github.com/tensorflow/mlir/blob/master/include/mlir/IR/OpBase.td
 [OpDefinitionsGen]: https://github.com/tensorflow/mlir/blob/master/tools/mlir-tblgen/OpDefinitionsGen.cpp
+[EnumsGen]: https://github.com/tensorflow/mlir/blob/master/tools/mlir-tblgen/EnumsGen.cpp
