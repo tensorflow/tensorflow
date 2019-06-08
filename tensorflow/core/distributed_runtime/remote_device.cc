@@ -66,7 +66,7 @@ void AsRemoteDevices(
 
 void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
                       const string& worker_name, NewRemoteDevicesDone done) {
-  WorkerInterface* wi = worker_cache->CreateWorker(worker_name);
+  WorkerInterface* wi = worker_cache->GetOrCreateWorker(worker_name);
   if (wi == nullptr) {
     std::vector<Device*> empty;
     done(errors::NotFound("Device ", worker_name, " is not found."), &empty);
