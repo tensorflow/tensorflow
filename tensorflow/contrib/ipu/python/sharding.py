@@ -13,7 +13,8 @@
 # limitations under the License.
 # =============================================================================
 """
-Utility functions for assisting in sharding graphs across multiple IPUs.
+Utility functions for sharding graphs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 
 from tensorflow.core.framework import attr_value_pb2

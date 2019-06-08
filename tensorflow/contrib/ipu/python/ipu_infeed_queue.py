@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Contains class for creating input infeeds into TF graphs targeting the IPU.
+"""
+Infeed queue
+~~~~~~~~~~~~
 """
 
 from __future__ import absolute_import

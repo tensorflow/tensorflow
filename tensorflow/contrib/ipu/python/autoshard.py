@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Utilities for automatically applying sharding to a graph.
+"""
+Automatic graph sharding
+~~~~~~~~~~~~~~~~~~~~~~~~
 """
 
 from tensorflow.contrib.ipu.python import autoshard_cnn

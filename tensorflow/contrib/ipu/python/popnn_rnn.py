@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Popnn RNN operators."""
+"""
+Popnn recurrent operators
+~~~~~~~~~~~~~~~~~~~~~~~~~
+"""
 
 from __future__ import absolute_import
 from __future__ import division

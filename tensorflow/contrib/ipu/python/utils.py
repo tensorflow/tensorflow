@@ -13,7 +13,8 @@
 # limitations under the License.
 # =============================================================================
 """
-Utility functions related to the Graphcore IPU.
+General utility functions
+~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 
 from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent

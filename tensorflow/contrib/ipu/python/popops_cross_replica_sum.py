@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Popops CrossReplicaSum operator."""
+"""
+Popnn cross replica sum operator
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+"""
 
 from tensorflow.compiler.plugin.poplar.ops import gen_popops_ops
 

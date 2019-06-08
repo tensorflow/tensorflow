@@ -12,10 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Internal ops related to the Graphcore IPU."""
+"""
+Graphcore utility operations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+"""
 from functools import wraps
-from tensorflow.python.platform import tf_logging as logging
+
 from tensorflow.compiler.plugin.poplar.ops import gen_poputil_ops
+from tensorflow.python.platform import tf_logging as logging
 
 
 def remap(x, name=None):
