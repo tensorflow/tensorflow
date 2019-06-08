@@ -787,8 +787,7 @@ class ApiTest(test.TestCase):
 
     self.assertNotEqual(converted_recursive.ag_module,
                         converted_non_recursive.ag_module)
-    self.assertIn('internal_convert_user_code=True',
-                  tf_inspect.getsource(converted_recursive))
+    self.assertIn('ag__.STD', tf_inspect.getsource(converted_recursive))
     self.assertNotIn('internal_convert_user_code=False',
                      tf_inspect.getsource(converted_recursive))
     self.assertIn('internal_convert_user_code=False',
