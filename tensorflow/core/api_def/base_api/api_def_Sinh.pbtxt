@@ -3,8 +3,8 @@ op {
   summary: "Computes hyperbolic sine of x element-wise."
   description: << END
   Given an input tensor, this function computes hyperbolic sine of every
-  element in the tensor. Input range is `[-inf, inf]` and output range
-  is `[-inf, inf]`.
+  element in the tensor. Input range is `[-inf,inf]` and output range
+  is `[-inf,inf]`.
 
   ```python
   x = tf.constant([-float("inf"), -9, -0.5, 1, 1.2, 2, 10, float("inf")])
@@ -12,3 +12,4 @@ op {
   ```
 END
 }
+
