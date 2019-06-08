@@ -354,14 +354,18 @@ class ReturnStatementsTransformer(converter.Base):
         converted_body = converted_body[1:]
 
     if self.state[_Block].return_used:
+
       if self.default_to_null_return:
         template = """
           do_return_var_name = False
           retval_var_name = ag__.UndefinedReturnValue()
           body
+          # TODO(b/134753123) Remove the do_return_var_name tuple.
+          (do_return_var_name,)
           return ag__.retval(retval_var_name)
         """
       else:
+        # TODO(b/134753123) Fix loops that return when do_return is not set.
         template = """
           body
           return retval_var_name
