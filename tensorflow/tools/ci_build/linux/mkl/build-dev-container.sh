@@ -85,9 +85,10 @@ function build_container()
   TF_DOCKER_BUILD_ARGS+=("--build-arg https_proxy=${https_proxy}")
   TF_DOCKER_BUILD_ARGS+=("--build-arg socks_proxy=${socks_proxy}")
   TF_DOCKER_BUILD_ARGS+=("--build-arg no_proxy=${no_proxy}")
-  TF_DOCKER_BUILD_ARGS+=("--build-arg HTTP_PROXY=${http_proxy}")
-  TF_DOCKER_BUILD_ARGS+=("--build-arg SOCKS_PROXY=${socks_proxy}")
-  TF_DOCKER_BUILD_ARGS+=("--build-arg NO_PROXY=${no_proxy}")
+  TF_DOCKER_BUILD_ARGS+=("--build-arg HTTP_PROXY=${HTTP_PROXY}")
+  TF_DOCKER_BUILD_ARGS+=("--build-arg HTTPS_PROXY=${HTTPS_PROXY}")
+  TF_DOCKER_BUILD_ARGS+=("--build-arg SOCKS_PROXY=${SOCKS_PROXY}")
+  TF_DOCKER_BUILD_ARGS+=("--build-arg NO_PROXY=${NO_PROXY}")
 
   #Add --config=v2 build arg for TF v2
   if [[ ${BUILD_TF_V2_CONTAINERS} == "no" ]]; then
