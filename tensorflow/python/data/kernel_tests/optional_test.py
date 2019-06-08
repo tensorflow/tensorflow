@@ -255,9 +255,10 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("Tensor", lambda: constant_op.constant(37.0),
        structure.TensorStructure(dtypes.float32, [])),
       ("SparseTensor", lambda: sparse_tensor.SparseTensor(
-          indices=[[0]], values=constant_op.constant([0], dtype=dtypes.int32),
-          dense_shape=[1]),
-       structure.SparseTensorStructure(dtypes.int32, [1])),
+          indices=[[0, 1]],
+          values=constant_op.constant([0], dtype=dtypes.int32),
+          dense_shape=[10, 10]),
+       structure.SparseTensorStructure(dtypes.int32, [10, 10])),
       ("Nest", lambda: {
           "a": constant_op.constant(37.0),
           "b": (constant_op.constant(["Foo"]), constant_op.constant("Bar"))},
@@ -297,12 +298,13 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
     round_trip_opt = opt_structure._from_tensor_list(
         opt_structure._to_tensor_list(opt))
     if isinstance(tf_value, optional_ops.Optional):
-      self.assertEqual(
+      self._assertElementValueEqual(
           self.evaluate(tf_value.get_value()),
           self.evaluate(round_trip_opt.get_value().get_value()))
     else:
-      self.assertEqual(
-          self.evaluate(tf_value), self.evaluate(round_trip_opt.get_value()))
+      self._assertElementValueEqual(
+          self.evaluate(tf_value),
+          self.evaluate(round_trip_opt.get_value()))
 
   @parameterized.named_parameters(
       ("Tensor", np.array([1, 2, 3], dtype=np.int32),
@@ -398,6 +400,22 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
     opt_tensor = get_optional()
     val = consume_optional(opt_tensor)
     self.assertEqual(self.evaluate(val), 1.0)
+
+  def testLimitedRetracing(self):
+    trace_count = [0]
+
+    @def_function.function
+    def f(opt):
+      trace_count[0] += 1
+      return opt.get_value()
+
+    opt1 = optional_ops.Optional.from_value(constant_op.constant(37.0))
+    opt2 = optional_ops.Optional.from_value(constant_op.constant(42.0))
+
+    for _ in range(10):
+      self.assertEqual(self.evaluate(f(opt1)), 37.0)
+      self.assertEqual(self.evaluate(f(opt2)), 42.0)
+      self.assertEqual(trace_count[0], 1)
 
 
 if __name__ == "__main__":

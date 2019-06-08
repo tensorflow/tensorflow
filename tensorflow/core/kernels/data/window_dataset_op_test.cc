@@ -336,7 +336,9 @@ TEST_P(ParameterizedWindowDatasetOpTest, GetNext) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -412,7 +414,9 @@ TEST_F(WindowDatasetOpTest, DatasetNodeName) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -448,7 +452,9 @@ TEST_F(WindowDatasetOpTest, DatasetTypeString) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -484,7 +490,9 @@ TEST_P(ParameterizedWindowDatasetOpTest, DatasetOutputDtypes) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -521,7 +529,9 @@ TEST_P(ParameterizedWindowDatasetOpTest, DatasetOutputShapes) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -558,7 +568,9 @@ TEST_P(ParameterizedWindowDatasetOpTest, Cardinality) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -594,7 +606,9 @@ TEST_P(ParameterizedWindowDatasetOpTest, DatasetSave) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -635,7 +649,9 @@ TEST_P(ParameterizedWindowDatasetOpTest, IteratorOutputDtypes) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -679,7 +695,9 @@ TEST_P(ParameterizedWindowDatasetOpTest, IteratorOutputShapes) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -723,7 +741,9 @@ TEST_F(WindowDatasetOpTest, IteratorOutputPrefix) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -766,7 +786,9 @@ TEST_P(ParameterizedWindowDatasetOpTest, Roundtrip) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -865,7 +887,9 @@ TEST_F(WindowDatasetOpTest, InvalidArguments) {
     Tensor stride = test_case.stride;
     Tensor drop_remainder = test_case.drop_remainder;
     gtl::InlinedVector<TensorValue, 4> inputs(
-        {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+        {TensorValue(&range_dataset_tensor), TensorValue(&size),
+         TensorValue(&shift), TensorValue(&stride),
+         TensorValue(&drop_remainder)});
 
     std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
     TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(),

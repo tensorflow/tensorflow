@@ -418,6 +418,10 @@ class _ListWrapper(List, collections.MutableSequence,
     return copied
   # pylint: enable=protected-access
 
+  def __reduce_ex__(self, protocol):
+    return (self.__class__,
+            (self._storage,))
+
   def _make_storage(self, wrapped_list):
     """Use the user's original list for storage."""
     return wrapped_list
@@ -671,6 +675,10 @@ class _DictWrapper(TrackableDataStructure, wrapt.ObjectProxy):
             value, name=self._name_element(key))
          for key, value in self.__wrapped__.items()})
     self._update_snapshot()
+
+  def __reduce_ex__(self, protocol):
+    return (self.__class__,
+            (self.__wrapped__,))
 
   def __getattribute__(self, name):
     if (hasattr(type(self), name)

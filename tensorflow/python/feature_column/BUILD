@@ -13,7 +13,6 @@ py_library(
     deps = [
         ":feature_column",
         ":feature_column_v2",
-        ":sequence_feature_column",
         "//tensorflow/python:util",
     ],
 )
@@ -54,7 +53,11 @@ py_library(
 
 py_library(
     name = "feature_column_v2",
-    srcs = ["feature_column_v2.py"],
+    srcs = [
+        "feature_column_v2.py",
+        "sequence_feature_column.py",
+        "serialization.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":feature_column",
@@ -183,25 +186,6 @@ py_library(
 )
 
 py_library(
-    name = "sequence_feature_column",
-    srcs = ["sequence_feature_column.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":feature_column_v2",
-        ":utils",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:check_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:sparse_ops",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:variable_scope",
-    ],
-)
-
-py_library(
     name = "utils",
     srcs = ["utils.py"],
     srcs_version = "PY2AND3",
@@ -219,8 +203,6 @@ tf_py_test(
     srcs = ["sequence_feature_column_test.py"],
     additional_deps = [
         ":feature_column_v2",
-        ":feature_column_v2_test",
-        ":sequence_feature_column",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
@@ -229,12 +211,9 @@ tf_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:session",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
-    ],
-    tags = [
-        "no_pip",
-        "no_windows",
     ],
 )
 
@@ -246,7 +225,6 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":feature_column_v2",
-        ":sequence_feature_column",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:parsing_ops",

@@ -74,12 +74,11 @@ def get_image(size):
   return img_array
 
 
-def _convert(converter, version=1, **kwargs):
+def _convert(converter, **kwargs):
   """Converts the model.
 
   Args:
     converter: TFLiteConverter object.
-    version: Version of the converter. Only valid values are 1 and 2.
     **kwargs: Additional arguments to be passed into the converter. Supported
       flags are {"target_ops", "post_training_quantize"}.
 
@@ -89,14 +88,8 @@ def _convert(converter, version=1, **kwargs):
   Raises:
     ValueError: Invalid version number.
   """
-  if version not in (1, 2):
-    raise ValueError("Invalid TFLiteConverter version number.")
-
   if "target_ops" in kwargs:
-    if version == 1:
-      converter.target_ops = kwargs["target_ops"]
-    else:
-      converter.target_spec.supported_ops = kwargs["target_ops"]
+    converter.target_spec.supported_ops = kwargs["target_ops"]
   if "post_training_quantize" in kwargs:
     converter.post_training_quantize = kwargs["post_training_quantize"]
   return converter.convert()
@@ -461,7 +454,7 @@ def test_saved_model_v2(directory,
   concrete_func = model.signatures[signature_key]
 
   converter = _lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-  tflite_model = _convert(converter, version=2, **kwargs)
+  tflite_model = _convert(converter, **kwargs)
 
   compare_models_v2(tflite_model, concrete_func, input_data=input_data)
 
@@ -514,7 +507,7 @@ def test_keras_model_v2(filename, input_shapes=None, input_data=None, **kwargs):
       tensor.set_shape(shape)
 
   converter = _lite.TFLiteConverterV2.from_keras_model(keras_model)
-  tflite_model = _convert(converter, version=2, **kwargs)
+  tflite_model = _convert(converter, **kwargs)
 
   tf_eval_func = evaluate_keras_model(filename)
   compare_models_v2(tflite_model, tf_eval_func, input_data=input_data)

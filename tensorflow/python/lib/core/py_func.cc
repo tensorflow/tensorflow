@@ -81,7 +81,7 @@ Status MakeArgTuple(const PyCall* call, PyObject** tuple) {
     PyObject* arg = nullptr;
     const Tensor& t = call->ins[i];
     if (call->eager) {
-      arg = EagerTensorFromHandle(new TFE_TensorHandle(t, device, device));
+      arg = EagerTensorFromHandle(new TFE_TensorHandle(t, device));
       if (arg == nullptr) {
         Py_DECREF(lst);
         return errors::Internal("Unable to procure EagerTensor from Tensor.");

@@ -284,8 +284,8 @@ class OpNode {
           return tensorflow::errors::Internal(
               "Cannot read from invalid tensor index ", input_index);
         }
-        auto* handle = new tensorflow::TensorHandle(
-            buffer_map->GetTensor(input_index), nullptr, nullptr, nullptr);
+        auto* handle =
+            new tensorflow::TensorHandle(buffer_map->GetTensor(input_index));
         op_->MutableInputs()->push_back(handle);
       } else {
         // If this is a forwardable tensor, we will remove it from the previous

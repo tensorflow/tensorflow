@@ -664,6 +664,7 @@ tf_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 16,
+    tags = ["no_windows_gpu"],
 )
 
 tf_py_test(
@@ -1426,6 +1427,7 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:function",
     ],
+    tags = ["no_windows"],  # b/133869052
 )
 
 cuda_py_test(
@@ -1733,6 +1735,7 @@ cuda_py_test(
     size = "small",
     srcs = ["control_flow_ops_py_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",

@@ -212,6 +212,7 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
+        ":cpu_check",
         ":quantization_util",
         ":strided_slice_logic",
         ":types",
@@ -254,6 +255,7 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
+        ":cpu_check",
         ":optimized_base",
         ":quantization_util",
         ":strided_slice_logic",
@@ -505,10 +507,10 @@ cc_library(
         ":types",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:activation_functor",
+        "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:op_macros",
         "@arm_neon_2_x86_sse",
         "@gemmlowp//:fixedpoint",
-        "@gemmlowp//:profiler",
     ],
 )
 
@@ -560,12 +562,12 @@ cc_library(
     ],
     copts = NEON_FLAGS_IF_APPLICABLE,
     deps = [
-        "@com_google_absl//absl/base:core_headers",
+        ":cpu_check",
         "//tensorflow/lite/c:c_api_internal",
         "@arm_neon_2_x86_sse",
+        "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:op_macros",
         "@gemmlowp//:fixedpoint",
-        "@gemmlowp//:profiler",
     ] + select({
         ":aarch64": [
             ":neon_tensor_utils",
@@ -650,6 +652,7 @@ cc_test(
     name = "depthwiseconv_float_test",
     srcs = ["depthwiseconv_float_test.cc"],
     deps = [
+        ":cpu_check",
         ":optimized_base",
         ":reference_base",
         ":test_util",
@@ -811,6 +814,7 @@ cc_library(
         "optimized/cpu_check.h",
     ],
     deps = [
+        "//tensorflow/lite/kernels:cpu_backend_context",
     ] + select(
         {
             "//tensorflow:android": [

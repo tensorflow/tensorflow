@@ -150,7 +150,8 @@ bool IsControlFlow(const NodeDef& node) {
          node.op() == "LoopCond" ||
          node.op() == "Merge" ||
          node.op() == "NextIteration" ||
-         node.op() == "Switch";
+         node.op() == "Switch" ||
+         node.op() == "_SwitchN";
   // clang-format on
 }
 
@@ -523,7 +524,7 @@ bool IsSum(const NodeDef& node) { return node.op() == "Sum"; }
 
 bool IsSwitch(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "Switch" || op == "RefSwitch";
+  return op == "_SwitchN" || op == "Switch" || op == "RefSwitch";
 }
 
 bool IsSymbolicGradient(const NodeDef& node) {

@@ -69,61 +69,34 @@ void ExampleMulFloatWithBiasAddAndClamp(ruy::Context *context) {
   std::cout << "Result:\n" << dst << "\n";
 }
 
-void ExampleMulUint8Quantized(ruy::Context *context) {
-  const std::uint8_t lhs_data[] = {1, 2, 3, 4};
-  const std::uint8_t rhs_data[] = {1, 2, 3, 4};
+void ExampleMulUint8AsymmetricQuantized(ruy::Context *context) {
+  const std::uint8_t lhs_data[] = {124, 125, 126, 127};
+  const std::uint8_t rhs_data[] = {129, 130, 131, 132};
   std::uint8_t dst_data[4];
 
   ruy::Matrix<std::uint8_t> lhs;
   ruy::MakeSimpleLayout(2, 2, ruy::Order::kRowMajor, &lhs.layout);
   lhs.data = lhs_data;
+  lhs.zero_point = 125;
   ruy::Matrix<std::uint8_t> rhs;
   ruy::MakeSimpleLayout(2, 2, ruy::Order::kColMajor, &rhs.layout);
   rhs.data = rhs_data;
+  rhs.zero_point = 132;
   ruy::Matrix<std::uint8_t> dst;
   ruy::MakeSimpleLayout(2, 2, ruy::Order::kColMajor, &dst.layout);
   dst.data = dst_data;
+  dst.zero_point = 129;
 
   ruy::BasicSpec<std::int32_t, std::uint8_t> spec;
   spec.multiplier_fixedpoint = 1 << 30;
   spec.multiplier_exponent = 0;
   ruy::Mul<ruy::kAllPaths>(lhs, rhs, spec, context, &dst);
 
-  std::cout << "Example Mul, uint8 quantized:\n";
+  std::cout << "Example Mul, uint8 quantized with asymmetric zero points:\n";
   std::cout << "LHS:\n" << lhs;
   std::cout << "RHS:\n" << rhs;
   std::cout << "Result:\n" << dst << "\n";
 }
-
-void ExampleMulUint8QuantizedWithZeroPoints(ruy::Context *context) {
-  const std::uint8_t lhs_data[] = {1, 2, 3, 4};
-  const std::uint8_t rhs_data[] = {1, 2, 3, 4};
-  std::uint8_t dst_data[4];
-
-  ruy::Matrix<std::uint8_t> lhs;
-  ruy::MakeSimpleLayout(2, 2, ruy::Order::kRowMajor, &lhs.layout);
-  lhs.data = lhs_data;
-  lhs.zero_point = 2;
-  ruy::Matrix<std::uint8_t> rhs;
-  ruy::MakeSimpleLayout(2, 2, ruy::Order::kColMajor, &rhs.layout);
-  rhs.data = rhs_data;
-  rhs.zero_point = 3;
-  ruy::Matrix<std::uint8_t> dst;
-  ruy::MakeSimpleLayout(2, 2, ruy::Order::kColMajor, &dst.layout);
-  dst.data = dst_data;
-  dst.zero_point = 1;
-
-  ruy::BasicSpec<std::int32_t, std::uint8_t> spec;
-  spec.multiplier_fixedpoint = 1 << 30;
-  spec.multiplier_exponent = 0;
-  ruy::Mul<ruy::kAllPaths>(lhs, rhs, spec, context, &dst);
-
-  std::cout << "Example Mul, uint8 quantized with zero_point's:\n";
-  std::cout << "LHS:\n" << lhs;
-  std::cout << "RHS:\n" << rhs;
-  std::cout << "Result:\n" << dst << "\n";
-}
-
 void ExampleMulInt8PerChannelQuantized(ruy::Context *context) {
   const std::int8_t lhs_data[] = {1, 2, 3, 4};
   const std::int8_t rhs_data[] = {1, 2, 3, 4};
@@ -156,7 +129,6 @@ int main() {
   ruy::Context context;
   ExampleMulFloat(&context);
   ExampleMulFloatWithBiasAddAndClamp(&context);
-  ExampleMulUint8Quantized(&context);
-  ExampleMulUint8QuantizedWithZeroPoints(&context);
+  ExampleMulUint8AsymmetricQuantized(&context);
   ExampleMulInt8PerChannelQuantized(&context);
 }

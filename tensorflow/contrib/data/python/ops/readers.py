@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
@@ -45,7 +44,7 @@ def make_csv_dataset(
     shuffle=True,
     shuffle_buffer_size=10000,
     shuffle_seed=None,
-    prefetch_buffer_size=optimization.AUTOTUNE,
+    prefetch_buffer_size=dataset_ops.AUTOTUNE,
     num_parallel_reads=1,
     sloppy=False,
     num_rows_for_inference=100,
@@ -173,7 +172,7 @@ def make_batched_features_dataset(file_pattern,
                                   shuffle=True,
                                   shuffle_buffer_size=10000,
                                   shuffle_seed=None,
-                                  prefetch_buffer_size=optimization.AUTOTUNE,
+                                  prefetch_buffer_size=dataset_ops.AUTOTUNE,
                                   reader_num_threads=1,
                                   parser_num_threads=2,
                                   sloppy_ordering=False,

@@ -665,7 +665,6 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/data/experimental/ops:batching",
-        "//tensorflow/python/data/experimental/ops:optimization",
         "//tensorflow/python/data/experimental/ops:stats_aggregator",
         "//tensorflow/python/data/experimental/ops:stats_ops",
         "//tensorflow/python/data/experimental/ops:stats_options",
