@@ -292,6 +292,16 @@ def serialize(activation):
 
 @keras_export('keras.activations.deserialize')
 def deserialize(name, custom_objects=None):
+  """Inverse of the `serialize` function.
+  Arguments:
+      config: Optimizer configuration dictionary.
+      custom_objects: Optional dictionary mapping
+          names (strings) to custom objects
+          (classes and functions)
+          to be considered during deserialization.
+  Returns:
+      A Keras Optimizer instance.
+  """
   return deserialize_keras_object(
       name,
       module_objects=globals(),
