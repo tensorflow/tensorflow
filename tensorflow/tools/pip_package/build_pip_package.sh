@@ -176,6 +176,18 @@ function build_wheel() {
   rm -f MANIFEST
   echo $(date) : "=== Building wheel"
   "${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel ${PKG_NAME_FLAG} >/dev/null
+
+  # Fix include path by moving tensorflow_core/include/tensorflow{_core,}
+  WHEEL_TMPDIR=$(mktemp -d)
+  WHEEL=$(readlink -f dist/*.whl)
+  unzip $WHEEL -d $WHEEL_TMPDIR > /dev/null
+  rm $WHEEL
+  pushd $WHEEL_TMPDIR > /dev/null
+  mv tensorflow_core/include/tensorflow{_core,}
+  zip -r $WHEEL . > /dev/null
+  popd > /dev/null
+  rm -rf $WHEEL_TMPDIR
+
   mkdir -p ${DEST}
   cp dist/* ${DEST}
   popd > /dev/null
