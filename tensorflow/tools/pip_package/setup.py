@@ -179,6 +179,8 @@ class InstallHeaders(Command):
     # Get rid of some extra intervening directories so we can have fewer
     # directories for -I
     install_dir = re.sub('/google/protobuf_archive/src', '', install_dir)
+    install_dir = re.sub('/include/tensorflow_core/',
+                         '/include/tensorflow/', install_dir)
 
     # Copy external code headers into tensorflow_core/include.
     # A symlink would do, but the wheel file that gets created ignores
