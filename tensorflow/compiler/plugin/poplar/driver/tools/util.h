@@ -108,9 +108,16 @@ bool IsInterIpuCopy(const HloInstruction*);
 const HloInstruction* GetOperandLookThroughInterIpuCopy(
     const HloInstruction* inst, const int64 operand_idx);
 
-// This function returns true if the environment variable has been set. Using
-// synthetic data means that *no data* will be copied to/from the device.
+// This function returns true if the environment variable flag
+// "use_synthetic_data" has been set. Using synthetic data means that *no data*
+// ill be copied to/from the device.
 bool UseSyntheticData();
+
+// This function returns true if the environment variable flag
+// "synthetic_data_initializer" has been set. Using this flag means that all the
+// inputs to the graph will be initialized to some constant, meaning that all
+// the tensors will be always live.
+bool UseSyntheticDataInitializer();
 
 std::string GetDebugName(const HloInstruction*);
 

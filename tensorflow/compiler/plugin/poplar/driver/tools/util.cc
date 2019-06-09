@@ -275,6 +275,10 @@ const HloInstruction* GetOperandLookThroughInterIpuCopy(
 
 bool UseSyntheticData() { return PoplarXlaFlags::Get().use_synthetic_data; }
 
+bool UseSyntheticDataInitializer() {
+  return !PoplarXlaFlags::Get().synthetic_data_initializer.empty();
+}
+
 std::string GetDebugName(const HloInstruction* inst) {
   const std::string& tf_core_name = inst->metadata().op_name();
   return tf_core_name + "/" + inst->name();

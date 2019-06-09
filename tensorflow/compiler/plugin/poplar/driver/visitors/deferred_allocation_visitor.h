@@ -61,12 +61,12 @@ class DeferredAllocationVisitor : public FullVisitor {
   // Called by AllocateInput when allocating an input for an infeed.
   StatusOr<poplar::Tensor> PostProcessInfeedAllocation(
       const HloInstruction* inst, const int64 flat_tuple_index,
-      poplar::Tensor tensor);
+      const Shape& shape, poplar::Tensor tensor);
 
   // Called by AllocateInput when allocating an input for a paramter.
   virtual StatusOr<poplar::Tensor> PostProcessParameterAllocation(
       const HloInstruction* inst, const int64 flat_tuple_index,
-      poplar::Tensor tensor) = 0;
+      const Shape& shape, poplar::Tensor tensor) = 0;
 
   // Returns true if the passed parameter can be deferred.
   bool CanDeferAllocation(const HloInstruction* inst,

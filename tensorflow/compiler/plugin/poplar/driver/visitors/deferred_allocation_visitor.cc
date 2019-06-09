@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/ops/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/data_initializer.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -59,14 +60,14 @@ Status DeferredAllocationVisitor::AllocateInput(const HloInstruction* inst,
   switch (original_input->opcode()) {
     case HloOpcode::kInfeed: {
       TF_ASSIGN_OR_RETURN(
-          out, PostProcessInfeedAllocation(original_input,
-                                           original_flat_tuple_index, out));
+          out, PostProcessInfeedAllocation(
+                   original_input, original_flat_tuple_index, shape, out));
       break;
     }
     case HloOpcode::kParameter: {
       TF_ASSIGN_OR_RETURN(
-          out, PostProcessParameterAllocation(original_input,
-                                              original_flat_tuple_index, out));
+          out, PostProcessParameterAllocation(
+                   original_input, original_flat_tuple_index, shape, out));
       break;
     }
     default: {
@@ -197,17 +198,21 @@ Status DeferredAllocationVisitor::HandleInfeed(HloInstruction* inst) {
 
 StatusOr<poplar::Tensor> DeferredAllocationVisitor::PostProcessInfeedAllocation(
     const HloInstruction* inst, const int64 flat_tuple_index,
-    poplar::Tensor tensor) {
+    const Shape& shape, poplar::Tensor tensor) {
+  const HloInfeedInstruction* infeed = Cast<HloInfeedInstruction>(inst);
+
   poplar::Graph& master_graph = GetMasterGraph(resources_);
+  poplar::Tensor master_tensor = tensor;
+  Shape master_shape = shape;
+
+  if (HasReplicatedGraph(resources_)) {
+    master_tensor = master_graph.getNonReplicatedTensor(master_tensor);
+  }
+
   if (!UseSyntheticData()) {
-    poplar::Tensor master_tensor = tensor;
-
-    if (HasReplicatedGraph(resources_)) {
-      master_tensor = master_graph.getNonReplicatedTensor(master_tensor);
-    }
-
+    // Create a stream from the host.
     auto fifo = master_graph.addHostToDeviceFIFO(
-        GetInfeedCopyHandle(inst->name(), flat_tuple_index),
+        GetInfeedCopyHandle(infeed->name(), flat_tuple_index),
         master_tensor.elementType(), master_tensor.numElements());
 
     auto prog = poplar::program::Copy(fifo, master_tensor, false);
@@ -216,6 +221,22 @@ StatusOr<poplar::Tensor> DeferredAllocationVisitor::PostProcessInfeedAllocation(
     } else {
       sequence.add(prog);
     }
+  } else if (UseSyntheticData() && UseSyntheticDataInitializer()) {
+    // Initialize the tensor.
+
+    // The replicated shape has an extra dimension at the front.
+    if (HasReplicatedGraph(resources_)) {
+      auto replication_factor = resources_.replication_factor;
+      auto dimensions = master_shape.dimensions();
+      dimensions.insert(dimensions.begin(), replication_factor);
+      master_shape =
+          ShapeUtil::MakeShape(master_shape.element_type(), dimensions);
+    }
+
+    auto& initializer = DataInitializer::GetSyntheticDataInitializer();
+    TF_ASSIGN_OR_RETURN(auto literal, initializer.GetData(master_shape));
+    TF_RETURN_IF_ERROR(
+        SetInitialTensorValue(master_graph, master_tensor, literal));
   }
   return tensor;
 }

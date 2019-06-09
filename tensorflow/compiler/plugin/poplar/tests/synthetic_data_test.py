@@ -97,7 +97,8 @@ class IpuXlaVariableTestSyntheticData(test_util.TensorFlowTestCase):
 
 
 if __name__ == "__main__":
-  os.environ["TF_POPLAR_FLAGS"] = "--use_synthetic_data --use_ipu_model"
+  os.environ[
+      "TF_POPLAR_FLAGS"] = "--use_synthetic_data --use_ipu_model --synthetic_data_initializer=random"
   os.environ['TF_XLA_FLAGS'] = (
       '--tf_xla_min_cluster_size=1 ' + os.environ.get('TF_XLA_FLAGS', ''))
   googletest.main()

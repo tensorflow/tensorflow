@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/ops/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/data_initializer.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 
 namespace xla {
@@ -43,7 +44,7 @@ Status EntryVisitor::HandleParameter(HloInstruction* inst) {
 
 StatusOr<poplar::Tensor> EntryVisitor::PostProcessParameterAllocation(
     const HloInstruction* inst, const int64 flat_tuple_index,
-    poplar::Tensor tensor) {
+    const Shape& shape, poplar::Tensor tensor) {
   const auto& in_info = resources_.annotations.input_output_aliasing_map
                             .GetEntryInputInfos()[inst->parameter_number()];
 
@@ -62,25 +63,26 @@ StatusOr<poplar::Tensor> EntryVisitor::PostProcessParameterAllocation(
   poplar::program::Sequence& inter_ipu_copy_seq =
       in_info.IsStreaming() ? sequence : host_to_device_inter_ipu_copy;
 
-  if (!UseSyntheticData()) {
-    poplar::Graph& master_graph = GetMasterGraph(resources_);
-    poplar::Tensor master_tensor = tensor;
-    poplar::Tensor input_tensor = tensor;
+  poplar::Graph& master_graph = GetMasterGraph(resources_);
+  poplar::Tensor master_tensor = tensor;
+  poplar::Tensor input_tensor = tensor;
 
-    const auto replication_factor = resources_.replication_factor;
-    if (HasReplicatedGraph(resources_)) {
-      master_tensor = master_graph.getNonReplicatedTensor(master_tensor);
-      if (replication_factor != master_tensor.dim(0)) {
-        return xla::FailedPrecondition(
-            "Unable to stream replicated tensor - replication count does not "
-            "match (%llu vs %llu).",
-            replication_factor, master_tensor.dim(0));
-      }
-      // For replicated graphs we copy from the host to IPU 0, then copy to the
-      // other IPUs
-      input_tensor = master_tensor.slice(0, 1);
+  const auto replication_factor = resources_.replication_factor;
+  if (HasReplicatedGraph(resources_)) {
+    master_tensor = master_graph.getNonReplicatedTensor(master_tensor);
+    if (replication_factor != master_tensor.dim(0)) {
+      return xla::FailedPrecondition(
+          "Unable to stream replicated tensor - replication count does not "
+          "match (%llu vs %llu).",
+          replication_factor, master_tensor.dim(0));
     }
+    // For replicated graphs we copy from the host to IPU 0, then copy to the
+    // other IPUs
+    input_tensor = master_tensor.slice(0, 1);
+  }
 
+  if (!UseSyntheticData()) {
+    // Create a host stream.
     auto fifo = master_graph.addHostToDeviceFIFO(
         GetInputCopyHandle(inst->parameter_number(), flat_tuple_index),
         input_tensor.elementType(), input_tensor.numElements());
@@ -89,11 +91,18 @@ StatusOr<poplar::Tensor> EntryVisitor::PostProcessParameterAllocation(
         fifo, input_tensor,
         !in_info.IsStreaming() || always_rearrange_copies_on_the_host));
 
-    if (HasReplicatedGraph(resources_)) {
-      inter_ipu_copy_seq.add(poplar::program::Copy(
-          input_tensor.broadcast(replication_factor - 1, 0),
-          master_tensor.slice(1, replication_factor)));
-    }
+  } else if (UseSyntheticData() && UseSyntheticDataInitializer()) {
+    // Initialize the tensor to a constant value.
+    auto& initializer = DataInitializer::GetSyntheticDataInitializer();
+    TF_ASSIGN_OR_RETURN(auto literal, initializer.GetData(shape));
+    TF_RETURN_IF_ERROR(
+        SetInitialTensorValue(master_graph, input_tensor, literal));
+  }
+
+  if (HasReplicatedGraph(resources_)) {
+    inter_ipu_copy_seq.add(
+        poplar::program::Copy(input_tensor.broadcast(replication_factor - 1, 0),
+                              master_tensor.slice(1, replication_factor)));
   }
 
   if (!LayoutUtil::IsMonotonicWithDim0Major(

@@ -212,7 +212,8 @@ StatusOr<bool> InplaceSubComputationVisitor::HandleTensor(
 }
 
 StatusOr<poplar::Tensor> SubComputationVisitor::PostProcessParameterAllocation(
-    const HloInstruction* inst, int64 flat_tuple_index, poplar::Tensor tensor) {
+    const HloInstruction* inst, int64 flat_tuple_index, const Shape&,
+    poplar::Tensor tensor) {
   const auto param_num = inst->parameter_number();
   inputs_[param_num][flat_tuple_index] = tensor;
   has_allocation_target_[param_num][flat_tuple_index] = true;

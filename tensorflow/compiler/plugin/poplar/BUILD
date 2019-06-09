@@ -268,6 +268,7 @@ cc_library(
         "driver/ops/scatter_ops.cc",
         "driver/tensor.cc",
         "driver/tools/conversions.cc",
+        "driver/tools/data_initializer.cc",
         "driver/tools/mapping_helper.cc",
         "driver/tools/poplar_util.cc",
         "driver/visitors/deferred_allocation_visitor.cc",
@@ -296,6 +297,7 @@ cc_library(
         "driver/poplar_transfer_manager.h",
         "driver/tensor.h",
         "driver/tools/conversions.h",
+        "driver/tools/data_initializer.h",
         "driver/tools/mapping_helper.h",
         "driver/tools/spsc_queue.h",
         "driver/vertex_templates.h",
@@ -994,6 +996,19 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "data_initializer_test",
+    srcs = ["tests/data_initializer_test.cc"],
+    extra_copts = [
+        "-fexceptions",
+    ],
+    deps = [
+        ":poplar_lib",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
 py_library(
     name = "test_utils_py",
     srcs = ["tests/test_utils.py"],
@@ -1573,6 +1588,7 @@ test_suite(
         "conv_test",
         "conversions_test",
         "convolution_classifier_test",
+        "data_initializer_test",
         "deferred_allocation_visitor_test",
         "dependency_replacer_test",
         "device_test",

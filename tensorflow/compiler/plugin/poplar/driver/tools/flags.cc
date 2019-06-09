@@ -37,6 +37,11 @@ absl::flat_hash_map<std::string, std::string> GetFlagUsage() {
       {"use_synthetic_data",
        "If enabled, there will be no data transfers between the host and the "
        "IPU(s). (bool)"},
+      {"synthetic_data_initializer",
+       "If set when using synthetic data, all the inputs to the graph can be "
+       "initialized directly on the IPU either randomly "
+       "(synthetic_data_initializer=random) or to a constant value X "
+       "(synthetic_data_initializer=int)."},
       {"use_ipu_model",
        "If enabled, this computation will be executed on the IPU model. "
        "(bool)"},
@@ -87,6 +92,7 @@ PoplarXlaFlags::PoplarXlaFlags() {
       // clang-format off
     ADD_FLAG(help)
     ADD_FLAG(use_synthetic_data)
+    ADD_FLAG(synthetic_data_initializer)
     ADD_FLAG(use_ipu_model)
     ADD_FLAG(force_replicated_mode)
     ADD_FLAG(while_loop_brute_force_max_trip_count)
@@ -114,6 +120,11 @@ PoplarXlaFlags::PoplarXlaFlags() {
     as_string = flag_buffer;
   }
 
+  if (!use_synthetic_data && !synthetic_data_initializer.empty()) {
+    LOG(FATAL) << "The flag \"synthetic_data_initializer\" can only be used "
+                  "in combination with \"use_synthetic_data\".";
+  }
+
   if (deprecated_flags.add_all_reduce_copies) {
     LOG(INFO)
         << "The TensorFlow Poplar flag \"add_all_reduce_copies\" is "
@@ -122,6 +133,8 @@ PoplarXlaFlags::PoplarXlaFlags() {
 
   // Hash all the flags which affect the graph generation and compilation only.
   hlo_hash = std::hash<bool>()(use_synthetic_data);
+  hlo_hash = tensorflow::Hash64Combine(
+      hlo_hash, std::hash<std::string>()(synthetic_data_initializer));
   hlo_hash =
       tensorflow::Hash64Combine(hlo_hash, std::hash<bool>()(use_ipu_model));
   hlo_hash = tensorflow::Hash64Combine(

@@ -39,6 +39,10 @@ class PoplarXlaFlags {
   // IPU(s).
   bool use_synthetic_data = false;
 
+  // If enabled when using synthetic data, all the inputs to the graph will be
+  // initialized to the value passed on the IPU.
+  std::string synthetic_data_initializer = "";
+
   // If enabled, this computation will be executed on the IPU model.
   bool use_ipu_model = false;
 

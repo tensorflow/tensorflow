@@ -97,6 +97,17 @@ StatusOr<poplar::Tensor> AddIotaTensor(poplar::Graph& graph,
                                        CompilerResources& resources,
                                        const TensorMap& tensor_map);
 
+// Creates a constant tensor.
+StatusOr<poplar::Tensor> CreateConstantTensor(poplar::Graph& graph,
+                                              const xla::Literal& literal,
+                                              const xla::Shape& shape,
+                                              const poplar::Type& poplar_type,
+                                              const std::string& name);
+
+// Sets a value of a tensor to a constant.
+Status SetInitialTensorValue(poplar::Graph& graph, poplar::Tensor& tensor,
+                             const xla::Literal& literal);
+
 template <typename T>
 poplar::Tensor TileTensor(const T& multiples, const poplar::Tensor& in);
 

@@ -31,6 +31,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -1041,14 +1042,82 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
   return out;
 }
 
+namespace {
 template <typename TYPE>
-static void AddConstantTensor(poplar::Graph& graph, const xla::Literal& literal,
-                              const xla::Shape& shape, const poplar::Type& type,
-                              poplar::Tensor& tensor, const std::string& name) {
+void SetInitialTensorValueImpl(poplar::Graph& graph, poplar::Tensor& tensor,
+                               const xla::Literal& literal) {
+  const TYPE* data(static_cast<const TYPE*>(literal.untyped_data()));
+  size_t element_count = literal.element_count();
+  poplar::ArrayRef<TYPE> array(data, element_count);
+  graph.setInitialValue<TYPE>(tensor, array);
+}
+
+void SetFp16InitialTensorValueImpl(poplar::Graph& graph, poplar::Tensor& tensor,
+                                   const xla::Literal& literal) {
+  const uint16_t* data(static_cast<const uint16_t*>(literal.untyped_data()));
+  size_t element_count = literal.element_count();
+  poplar::ArrayRef<uint16_t> array(data, element_count);
+  graph.setInitialValueHalf(tensor, array);
+}
+
+void Set64BitInitialTensorValueImpl(poplar::Graph& graph,
+                                    poplar::Tensor& tensor,
+                                    const xla::Literal& literal) {
+  size_t element_count = literal.element_count();
+  const void* data(static_cast<const void*>(literal.untyped_data()));
+  std::vector<char> converted =
+      ConvInt64ToInt32(data, element_count * sizeof(int64), 0);
+
+  int32* data32 = reinterpret_cast<int32*>(converted.data());
+  poplar::ArrayRef<int32> array(data32, element_count);
+  graph.setInitialValue<int>(tensor, array);
+}
+}  // namespace
+
+Status SetInitialTensorValue(poplar::Graph& graph, poplar::Tensor& tensor,
+                             const xla::Literal& literal) {
+  const auto type = literal.shape().element_type();
+  switch (type) {
+    case PRED:
+      SetInitialTensorValueImpl<bool>(graph, tensor, literal);
+      break;
+    case S32:
+      SetInitialTensorValueImpl<int>(graph, tensor, literal);
+      break;
+    case U32:
+      SetInitialTensorValueImpl<unsigned>(graph, tensor, literal);
+      break;
+    case U64:
+    case S64:
+      Set64BitInitialTensorValueImpl(graph, tensor, literal);
+      break;
+    case F16:
+      SetFp16InitialTensorValueImpl(graph, tensor, literal);
+      break;
+    case F32:
+      SetInitialTensorValueImpl<float>(graph, tensor, literal);
+      break;
+    default:
+      return xla::InternalErrorStrCat(
+          StrCat("Unsupported type when calling SetInitialTensorValue ",
+                 primitive_util::LowercasePrimitiveTypeName(type)));
+  }
+  return Status::OK();
+}
+
+namespace {
+
+template <typename TYPE>
+poplar::Tensor CreateConstantTensorImpl(poplar::Graph& graph,
+                                        const xla::Literal& literal,
+                                        const xla::Shape& shape,
+                                        const poplar::Type& type,
+                                        const std::string& name) {
   int64 num_elements(ShapeUtil::ElementsIn(literal.shape()));
   std::vector<std::size_t> dim = PoplarShapeFromXlaShape(shape);
   const TYPE* data(static_cast<const TYPE*>(literal.untyped_data()));
 
+  poplar::Tensor tensor;
   if (num_elements == 0) {
     tensor = graph.addConstant(type, {0}, (TYPE)0, name);
   } else if (num_elements == 1) {
@@ -1058,16 +1127,19 @@ static void AddConstantTensor(poplar::Graph& graph, const xla::Literal& literal,
   }
   graph.setTileMapping(tensor, 0);
 
-  tensor = ConvertToDeviceLayout(shape, tensor);
+  return ConvertToDeviceLayout(shape, tensor);
 }
 
-static void AddFp16ConstantTensor(
-    poplar::Graph& graph, const xla::Literal& literal, const xla::Shape& shape,
-    const poplar::Type& type, poplar::Tensor& tensor, const std::string& name) {
+poplar::Tensor CreateFp16ConstantTensorImpl(poplar::Graph& graph,
+                                            const xla::Literal& literal,
+                                            const xla::Shape& shape,
+                                            const poplar::Type& type,
+                                            const std::string& name) {
   int64 num_elements(ShapeUtil::ElementsIn(literal.shape()));
   std::vector<std::size_t> dim = PoplarShapeFromXlaShape(shape);
   const uint16_t* data(static_cast<const uint16_t*>(literal.untyped_data()));
 
+  poplar::Tensor tensor;
   if (num_elements == 0) {
     tensor = graph.addConstantHalf(type, {0}, (uint16_t)0);
   } else if (num_elements == 1) {
@@ -1077,12 +1149,14 @@ static void AddFp16ConstantTensor(
   }
   graph.setTileMapping(tensor, 0);
 
-  tensor = ConvertToDeviceLayout(shape, tensor);
+  return ConvertToDeviceLayout(shape, tensor);
 }
 
-static void Add64BitConstantTensor(
-    poplar::Graph& graph, const xla::Literal& literal, const xla::Shape& shape,
-    const poplar::Type& type, poplar::Tensor& tensor, const std::string& name) {
+poplar::Tensor Create64BitConstantTensorImpl(poplar::Graph& graph,
+                                             const xla::Literal& literal,
+                                             const xla::Shape& shape,
+                                             const poplar::Type& type,
+                                             const std::string& name) {
   int64 num_elements(ShapeUtil::ElementsIn(literal.shape()));
   std::vector<std::size_t> dim = PoplarShapeFromXlaShape(shape);
   const void* data(static_cast<const void*>(literal.untyped_data()));
@@ -1092,6 +1166,7 @@ static void Add64BitConstantTensor(
 
   const int32* data32 = reinterpret_cast<const int32*>(converted.data());
 
+  poplar::Tensor tensor;
   if (num_elements == 0) {
     tensor = graph.addConstant(type, {0}, (int32)0, name);
   } else if (num_elements == 1) {
@@ -1100,37 +1175,42 @@ static void Add64BitConstantTensor(
     tensor = graph.addConstant(type, dim, data32, name);
   }
   graph.setTileMapping(tensor, 0);
+
+  return ConvertToDeviceLayout(shape, tensor);
 }
+}  // namespace
 
-template <typename TYPE>
-static void SetInitialTensorValue(poplar::Graph& graph, poplar::Tensor& tensor,
-                                  const xla::Literal& literal) {
-  const TYPE* data(static_cast<const TYPE*>(literal.untyped_data()));
-  size_t element_count = literal.element_count();
-  poplar::ArrayRef<TYPE> array(data, element_count);
-  graph.setInitialValue<TYPE>(tensor, array);
-}
-
-static void SetFp16InitialTensorValue(poplar::Graph& graph,
-                                      poplar::Tensor& tensor,
-                                      const xla::Literal& literal) {
-  const uint16_t* data(static_cast<const uint16_t*>(literal.untyped_data()));
-  size_t element_count = literal.element_count();
-  poplar::ArrayRef<uint16_t> array(data, element_count);
-  graph.setInitialValueHalf(tensor, array);
-}
-
-static void Set64BitInitialTensorValue(poplar::Graph& graph,
-                                       poplar::Tensor& tensor,
-                                       const xla::Literal& literal) {
-  size_t element_count = literal.element_count();
-  const void* data(static_cast<const void*>(literal.untyped_data()));
-  std::vector<char> converted =
-      ConvInt64ToInt32(data, element_count * sizeof(int64), 0);
-
-  int32* data32 = reinterpret_cast<int32*>(converted.data());
-  poplar::ArrayRef<int32> array(data32, element_count);
-  graph.setInitialValue<int>(tensor, array);
+StatusOr<poplar::Tensor> CreateConstantTensor(poplar::Graph& graph,
+                                              const xla::Literal& literal,
+                                              const xla::Shape& shape,
+                                              const poplar::Type& poplar_type,
+                                              const std::string& name) {
+  const auto type = literal.shape().element_type();
+  switch (type) {
+    case PRED:
+      return CreateConstantTensorImpl<bool>(graph, literal, shape, poplar_type,
+                                            name);
+    case S32:
+      return CreateConstantTensorImpl<int>(graph, literal, shape, poplar_type,
+                                           name);
+    case U32:
+      return CreateConstantTensorImpl<unsigned>(graph, literal, shape,
+                                                poplar_type, name);
+    case U64:
+    case S64:
+      return Create64BitConstantTensorImpl(graph, literal, shape, poplar_type,
+                                           name);
+    case F16:
+      return CreateFp16ConstantTensorImpl(graph, literal, shape, poplar_type,
+                                          name);
+    case F32:
+      return CreateConstantTensorImpl<float>(graph, literal, shape, poplar_type,
+                                             name);
+    default:
+      return xla::InternalErrorStrCat(
+          StrCat("Unsupported type when calling CreateConstantTensor ",
+                 primitive_util::LowercasePrimitiveTypeName(type)));
+  }
 }
 
 StatusOr<poplar::Tensor> AddConstantTensor(poplar::Graph& graph,
@@ -1146,58 +1226,12 @@ StatusOr<poplar::Tensor> AddConstantTensor(poplar::Graph& graph,
   if (has_tensor_target || ShapeUtil::ElementsIn(literal.shape()) > 32) {
     TF_ASSIGN_OR_RETURN(tensor,
                         AddTensor(graph, src, shape, resources, tensor_map));
-    switch (literal.shape().element_type()) {
-      case PRED:
-        SetInitialTensorValue<bool>(graph, tensor, literal);
-        break;
-      case S32:
-        SetInitialTensorValue<int>(graph, tensor, literal);
-        break;
-      case U32:
-        SetInitialTensorValue<unsigned>(graph, tensor, literal);
-        break;
-      case U64:
-      case S64:
-        Set64BitInitialTensorValue(graph, tensor, literal);
-        break;
-      case F16:
-        SetFp16InitialTensorValue(graph, tensor, literal);
-        break;
-      case F32:
-        SetInitialTensorValue<float>(graph, tensor, literal);
-        break;
-      default:
-        // The unsupported cases were caught in the call to PoplarDataType above
-        break;
-    }
+    TF_RETURN_IF_ERROR(SetInitialTensorValue(graph, tensor, literal));
     return ConvertToDeviceLayout(shape, tensor);
   } else {
     const auto& name = GetDebugName(src.first);
-    switch (literal.shape().element_type()) {
-      case PRED:
-        AddConstantTensor<bool>(graph, literal, shape, type, tensor, name);
-        break;
-      case S32:
-        AddConstantTensor<int>(graph, literal, shape, type, tensor, name);
-        break;
-      case U32:
-        AddConstantTensor<unsigned>(graph, literal, shape, type, tensor, name);
-        break;
-      case U64:
-      case S64:
-        Add64BitConstantTensor(graph, literal, shape, type, tensor, name);
-        break;
-      case F16:
-        AddFp16ConstantTensor(graph, literal, shape, type, tensor, name);
-        break;
-      case F32:
-        AddConstantTensor<float>(graph, literal, shape, type, tensor, name);
-        break;
-      default:
-        // The unsupported cases were caught in the call to PoplarDataType above
-        break;
-    }
-
+    TF_ASSIGN_OR_RETURN(
+        tensor, CreateConstantTensor(graph, literal, shape, type, name));
     std::vector<std::size_t> dim = PoplarShapeFromXlaShape(shape);
     return tensor.reshape(dim);
   }
