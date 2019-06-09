@@ -194,7 +194,7 @@ void SetFlagIfNotPresent(poplar::OptionFlags& opts, const std::string& key,
 
 void DumpIfPoplarOutOfMemoryAllocationException(
     const PoplarExecutor* poplarExecutor) {
-  auto dump_filename = tensorflow::GetPoplarXlaFlags().save_oom_profiler;
+  auto dump_filename = PoplarXlaFlags::Get().save_oom_profiler;
   if (!dump_filename.empty()) {
     try {
       std::rethrow_exception(std::current_exception());

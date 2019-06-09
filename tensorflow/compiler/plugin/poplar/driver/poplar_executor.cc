@@ -533,7 +533,7 @@ static bool DeviceConfigurationsEqual(const IpuOptions& a,
 }
 
 bool PoplarExecutor::HasPoplarDevice() {
-  const bool force_ipu_model = tensorflow::GetPoplarXlaFlags().use_ipu_model;
+  const bool force_ipu_model = PoplarXlaFlags::Get().use_ipu_model;
   // If the device has not been configured via configure_ipu_system, but we have
   // requested an IPU model, then we create a CPU device.
   if (!device_open_ && force_ipu_model) {
@@ -572,7 +572,7 @@ Status PoplarExecutor::ConfigurePoplarDevice(const IpuOptions& cfg) {
       hardware_configured_ = true;
     }
 
-    const bool force_ipu_model = tensorflow::GetPoplarXlaFlags().use_ipu_model;
+    const bool force_ipu_model = PoplarXlaFlags::Get().use_ipu_model;
 
     if (!force_ipu_model) {
       auto device_list = GetDeviceManager().getDevices();
@@ -709,13 +709,13 @@ Status PoplarExecutor::ConfigurePoplarDevice(const IpuOptions& cfg) {
   }
 
   const auto max_compilation_threads =
-      tensorflow::GetPoplarXlaFlags().max_compilation_threads;
+      PoplarXlaFlags::Get().max_compilation_threads;
   if (max_compilation_threads > 0) {
     option_flags_.set("opt.maxCompilationThreads",
                       std::to_string(max_compilation_threads));
   }
 
-  if (!tensorflow::GetPoplarXlaFlags().save_oom_profiler.empty()) {
+  if (!PoplarXlaFlags::Get().save_oom_profiler.empty()) {
     option_flags_.set("debug.allowOutOfMemory", "true");
   }
 
@@ -756,9 +756,8 @@ Status PoplarExecutor::ConfigurePoplarDevice(const IpuOptions& cfg) {
   poplar_target.push_back(std::hash<string>()(tf_git_version()));
   poplar_target.push_back(std::hash<string>()(poplar::packageHash()));
 
-  // Get envionment flag hash
-  const auto& flag_string = tensorflow::GetPoplarXlaFlags().as_string;
-  poplar_target.push_back(std::hash<string>()(flag_string));
+  // Get environment PoplarXlaFlags hash
+  poplar_target.push_back(PoplarXlaFlags::Get().hlo_hash);
 
   for (int64 h : poplar_target) {
     poplar_device_hash_ = tensorflow::Hash64Combine(poplar_device_hash_, h);
@@ -768,7 +767,7 @@ Status PoplarExecutor::ConfigurePoplarDevice(const IpuOptions& cfg) {
 }
 
 bool PoplarExecutor::HaveExecutableCache() const {
-  return !tensorflow::GetPoplarXlaFlags().executable_cache_path.empty();
+  return !PoplarXlaFlags::Get().executable_cache_path.empty();
 }
 
 std::string PoplarExecutor::CachedExecutableFilename(
@@ -779,8 +778,8 @@ std::string PoplarExecutor::CachedExecutableFilename(
 
   std::string filename = tensorflow::strings::Printf("%0llx.xla_engine", hash);
 
-  return tensorflow::io::JoinPath(
-      tensorflow::GetPoplarXlaFlags().executable_cache_path, filename);
+  return tensorflow::io::JoinPath(PoplarXlaFlags::Get().executable_cache_path,
+                                  filename);
 }
 
 bool PoplarExecutor::HaveCachedExecutable(const std::string& filename) const {
@@ -1579,11 +1578,11 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
     }
 
     try {
-      if (!tensorflow::GetPoplarXlaFlags().save_interval_report.empty() &&
+      if (!PoplarXlaFlags::Get().save_interval_report.empty() &&
           executable.ExecutionCount() == 0) {
-        auto filename = tensorflow::io::JoinPath(
-            tensorflow::GetPoplarXlaFlags().save_interval_report,
-            executable.module().name() + ".csv");
+        auto filename =
+            tensorflow::io::JoinPath(PoplarXlaFlags::Get().save_interval_report,
+                                     executable.module().name() + ".csv");
         VLOG(1) << "Dumping interval report " << filename;
         std::ofstream stream(filename);
         current_engine_->reportIntervals(stream);

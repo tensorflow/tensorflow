@@ -333,7 +333,7 @@ void setFpBehaviour(poplar::Graph& graph,
   }
 }
 
-void PrintHelpString() { LOG(INFO) << tensorflow::GetFlagUsageString(); }
+void PrintHelpString() { LOG(INFO) << PoplarXlaFlags::GetFlagUsageString(); }
 
 }  // namespace
 
@@ -353,7 +353,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         "NULL stream pointer in poplar compiler");
   }
 
-  if (tensorflow::GetPoplarXlaFlags().help) {
+  if (PoplarXlaFlags::Get().help) {
     std::call_once(help_flag_printed, &PrintHelpString);
   }
 
@@ -443,7 +443,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   if (replication_factor > 1) {
     if (!IsValidReplicatedGraph(module.get())) {
-      if (!tensorflow::GetPoplarXlaFlags().force_replicated_mode) {
+      if (!PoplarXlaFlags::Get().force_replicated_mode) {
         return xla::FailedPrecondition(
             "This is not a valid replicated graph because no All-Reduce "
             "operations were found. Did you use the "
@@ -554,7 +554,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
     // If user has specified to use the fallback scheduler use that, else use
     // the default look ahead scheduler.
-    if (tensorflow::GetPoplarXlaFlags().fallback_scheduler) {
+    if (PoplarXlaFlags::Get().fallback_scheduler) {
       pipeline.AddPass<HloMemoryScheduler>(
           size_function, CreateSyncListMemoryScheduler(
                              poplarExecutor->GetMaxAllReduceBufferSize()));
@@ -648,10 +648,10 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     progs.push_back(main_program);
     progs.push_back(visitor.GetDeviceToHost());
 
-    if (!tensorflow::GetPoplarXlaFlags().save_vertex_graph.empty()) {
-      auto filename = tensorflow::io::JoinPath(
-          tensorflow::GetPoplarXlaFlags().save_vertex_graph,
-          module->name() + ".vertex_graph");
+    if (!PoplarXlaFlags::Get().save_vertex_graph.empty()) {
+      auto filename =
+          tensorflow::io::JoinPath(PoplarXlaFlags::Get().save_vertex_graph,
+                                   module->name() + ".vertex_graph");
       VLOG(1) << "Dumping vertex graph " << filename;
       std::ofstream stream(filename);
       resources.main_graph.outputVertexGraph(stream, progs);

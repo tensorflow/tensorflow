@@ -273,9 +273,7 @@ const HloInstruction* GetOperandLookThroughInterIpuCopy(
   return IsInterIpuCopy(operand) ? operand->operand(0) : operand;
 }
 
-bool UseSyntheticData() {
-  return tensorflow::GetPoplarXlaFlags().use_synthetic_data;
-}
+bool UseSyntheticData() { return PoplarXlaFlags::Get().use_synthetic_data; }
 
 std::string GetDebugName(const HloInstruction* inst) {
   const std::string& tf_core_name = inst->metadata().op_name();

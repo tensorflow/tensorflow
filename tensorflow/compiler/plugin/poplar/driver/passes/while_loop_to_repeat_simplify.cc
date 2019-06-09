@@ -37,7 +37,7 @@ namespace {
 // Allow user to change the upper bound of the brute force method
 int64 GetMaxLoopTripCount() {
   auto max_trip_count =
-      tensorflow::GetPoplarXlaFlags().while_loop_brute_force_max_trip_count;
+      PoplarXlaFlags::Get().while_loop_brute_force_max_trip_count;
   return max_trip_count < 0 ? 128 : max_trip_count;
 }
 
