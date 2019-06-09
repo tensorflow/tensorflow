@@ -255,9 +255,7 @@ class TypeAlias<Type t, string description = t.description> :
 // class is used for supporting variadic operands/results. An op can declare no
 // more than one variadic operand/result, and that operand/result must be the
 // last one in the operand/result list.
-class Variadic<Type type, string descr = "">
-    // TODO(b/132908002): support variadic type conditions
-    : TypeConstraint<CPred<"true">, descr> {
+class Variadic<Type type> : TypeConstraint<type.predicate, type.description> {
   Type baseType = type;
 }
 
@@ -906,6 +904,9 @@ def Terminator       : NativeOpTrait<"IsTerminator">;
 // attribute content is used.
 def FirstAttrDerivedResultType :
   GenInternalOpTrait<"FirstAttrDerivedResultType">;
+
+// TODO(antiagainst): Turn the following into normal traits and generate
+// verification for them.
 
 // All variadic operands of the op have the same number of values.
 // A variadic operand contains an array of values whose array size is only

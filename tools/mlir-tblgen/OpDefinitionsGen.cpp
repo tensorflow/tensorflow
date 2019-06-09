@@ -448,6 +448,12 @@ private:
   // Generates verify method for the operation.
   void genVerifier();
 
+  // Generates verify statements for operands and results in the operation.
+  // The generated code will be attached to `body`.
+  void genOperandResultVerifier(OpMethodBody &body,
+                                Operator::value_range values,
+                                StringRef valueKind);
+
   // Generates verify statements for regions in the operation.
   // The generated code will be attached to `body`.
   void genRegionVerifier(OpMethodBody &body);
@@ -1022,39 +1028,8 @@ void OpEmitter::genVerifier() {
     body << "  }\n";
   }
 
-  // Emits verification code for an operand or result.
-  auto verifyValue = [&](const tblgen::NamedTypeConstraint &value, int index,
-                         bool isOperand) -> void {
-    // TODO: Handle variadic operand/result verification.
-    if (value.isVariadic())
-      return;
-
-    // TODO: Commonality between matchers could be extracted to have a more
-    // concise code.
-    if (value.hasPredicate()) {
-      auto description = value.constraint.getDescription();
-      body << "  if (!("
-           << tgfmt(
-                  value.constraint.getConditionTemplate(),
-                  &verifyCtx.withSelf("this->getOperation()->get" +
-                                      Twine(isOperand ? "Operand" : "Result") +
-                                      "(" + Twine(index) + ")->getType()"))
-           << ")) {\n";
-      body << "    return emitOpError(\"" << (isOperand ? "operand" : "result")
-           << " #" << index
-           << (description.empty() ? " type precondition failed"
-                                   : " must be " + Twine(description))
-           << "\");\n  }\n";
-    }
-  };
-
-  for (int i = 0, e = op.getNumOperands(); i < e; ++i) {
-    verifyValue(op.getOperand(i), i, /*isOperand=*/true);
-  }
-
-  for (int i = 0, e = op.getNumResults(); i < e; ++i) {
-    verifyValue(op.getResult(i), i, /*isOperand=*/false);
-  }
+  genOperandResultVerifier(body, op.getOperands(), "operand");
+  genOperandResultVerifier(body, op.getResults(), "result");
 
   for (auto &trait : op.getTraits()) {
     if (auto t = dyn_cast<tblgen::PredOpTrait>(&trait)) {
@@ -1071,6 +1046,37 @@ void OpEmitter::genVerifier() {
     body << codeInit->getValue() << "\n";
   else
     body << "  return mlir::success();\n";
+}
+
+void OpEmitter::genOperandResultVerifier(OpMethodBody &body,
+                                         Operator::value_range values,
+                                         StringRef valueKind) {
+  FmtContext fctx;
+  unsigned i = 0;
+  for (auto &staticValue : values) {
+    if (!staticValue.hasPredicate())
+      continue;
+
+    // Emit a loop to check all the dynamic values in the pack.
+    body << formatv("  for (Value *v : getODS{0}{1}s({2})) {{\n",
+                    // Capitalize the first letter to match the function name
+                    valueKind.substr(0, 1).upper(), valueKind.substr(1), i);
+
+    auto description = staticValue.constraint.getDescription();
+    body << "    (void)v;\n";
+    body << "    if (!("
+         << tgfmt(staticValue.constraint.getConditionTemplate(),
+                  &fctx.withSelf("v->getType()"))
+         << "))\n";
+    body << "      return emitOpError(\""
+         // TODO(b/129706806): Use the name of the operand/result here
+         << valueKind << " #" << i
+         << (description.empty() ? " type precondition failed"
+                                 : " must be " + Twine(description))
+         << "\");\n";
+    body << "  }\n";
+    ++i;
+  }
 }
 
 void OpEmitter::genRegionVerifier(OpMethodBody &body) {

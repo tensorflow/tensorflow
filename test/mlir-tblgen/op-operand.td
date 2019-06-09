@@ -26,10 +26,6 @@ def OpA : NS_Op<"one_normal_operand_op", []> {
 // CHECK:        assert(operands.size() == 1u && "mismatched number of parameters");
 // CHECK:        tblgen_state->addOperands(operands);
 
-// CHECK:      LogicalResult OpA::verify() {
-// CHECK:        if (!((this->getOperation()->getOperand(0)->getType().isInteger(32))))
-// CHECK-NEXT:     return emitOpError("operand #0 must be 32-bit integer");
-
 def OpB : NS_Op<"one_variadic_operand_op", []> {
   let arguments = (ins Variadic<I32>:$input);
 }
@@ -51,20 +47,6 @@ def OpD : NS_Op<"mix_variadic_and_normal_inputs_op", [SameVariadicOperandSize]> 
 
 // CHECK-LABEL: ArrayRef<Value *> OpDOperandAdaptor::input3
 // CHECK-NEXT:    return getODSOperands(2);
-
-// TODO(b/134305899): Move to use TestDialect after fixing verification.
-
-// CHECK-LABEL: Operation::operand_range OpD::getODSOperands(unsigned index)
-// CHECK-NEXT:    bool isVariadic[] = {true, false, true};
-// CHECK-NEXT:    int prevVariadicCount = 0;
-// CHECK-NEXT:    for (int i = 0; i < index; ++i)
-// CHECK-NEXT:      if (isVariadic[i]) ++prevVariadicCount;
-
-// CHECK:         int variadicSize = (getOperation()->getNumOperands() - 1) / 2;
-// CHECK:         int offset = index + (variadicSize - 1) * prevVariadicCount;
-// CHECK-NEXT:    int size = isVariadic[index] ? variadicSize : 1;
-
-// CHECK:         return {std::next(getOperation()->operand_begin(), offset), std::next(getOperation()->operand_begin(), offset + size)};
 
 // CHECK-LABEL: Operation::operand_range OpD::input1
 // CHECK-NEXT: return getODSOperands(0);

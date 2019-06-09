@@ -95,7 +95,7 @@ auto tblgen::Operator::result_begin() -> value_iterator {
 
 auto tblgen::Operator::result_end() -> value_iterator { return results.end(); }
 
-auto tblgen::Operator::getResults() -> llvm::iterator_range<value_iterator> {
+auto tblgen::Operator::getResults() -> value_range {
   return {result_begin(), result_end()};
 }
 
@@ -205,7 +205,7 @@ auto tblgen::Operator::operand_begin() -> value_iterator {
 auto tblgen::Operator::operand_end() -> value_iterator {
   return operands.end();
 }
-auto tblgen::Operator::getOperands() -> llvm::iterator_range<value_iterator> {
+auto tblgen::Operator::getOperands() -> value_range {
   return {operand_begin(), operand_end()};
 }
 

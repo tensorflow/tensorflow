@@ -203,7 +203,9 @@ def LLVM_PtrToIntOp
 // Call-related operations.
 def LLVM_CallOp : LLVM_Op<"call">,
                   Arguments<(ins OptionalAttr<FunctionAttr>:$callee,
-                             Variadic<LLVM_Type>)>,
+                             // TODO(b/133216756): fix test failure and
+                             // change to LLVM_Type
+                             Variadic<AnyType>)>,
                   Results<(outs Variadic<LLVM_Type>)>,
                   LLVM_TwoBuilders<LLVM_OneResultOpBuilder,
                                    LLVM_ZeroResultOpBuilder> {

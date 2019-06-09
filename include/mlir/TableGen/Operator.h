@@ -69,11 +69,12 @@ public:
   std::string getQualCppClassName() const;
 
   using value_iterator = NamedTypeConstraint *;
+  using value_range = llvm::iterator_range<value_iterator>;
 
   // Op result iterators.
   value_iterator result_begin();
   value_iterator result_end();
-  llvm::iterator_range<value_iterator> getResults();
+  value_range getResults();
 
   // Returns the number of results this op produces.
   int getNumResults() const;
@@ -110,7 +111,7 @@ public:
   // Op operand iterators.
   value_iterator operand_begin();
   value_iterator operand_end();
-  llvm::iterator_range<value_iterator> getOperands();
+  value_range getOperands();
 
   int getNumOperands() const { return operands.size(); }
   NamedTypeConstraint &getOperand(int index) { return operands[index]; }

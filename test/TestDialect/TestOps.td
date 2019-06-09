@@ -60,6 +60,31 @@ def NestedTupleOp : TEST_Op<"nested_tuple_32_bit"> {
   let results = (outs NestedTupleOf<[I32, F32]>);
 }
 
+//===----------------------------------------------------------------------===//
+// Test Operands
+//===----------------------------------------------------------------------===//
+
+def MixedNormalVariadicOperandOp : TEST_Op<
+    "mixed_normal_variadic_operand", [SameVariadicOperandSize]> {
+  let arguments = (ins
+    Variadic<AnyTensor>:$input1,
+    AnyTensor:$input2,
+    Variadic<AnyTensor>:$input3
+  );
+}
+
+//===----------------------------------------------------------------------===//
+// Test Results
+//===----------------------------------------------------------------------===//
+
+def MixedNormalVariadicResults : TEST_Op<
+    "mixed_normal_variadic_result", [SameVariadicResultSize]> {
+  let results = (outs
+    Variadic<AnyTensor>:$output1,
+    AnyTensor:$output2,
+    Variadic<AnyTensor>:$output3
+  );
+}
 
 //===----------------------------------------------------------------------===//
 // Test Attributes

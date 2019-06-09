@@ -639,7 +639,7 @@ func @extract_element_no_indices(%v : vector<3xf32>) {
 // -----
 
 func @extract_element_invalid_index_type(%v : vector<3xf32>, %i : i32) {
-  // expected-error@+1 {{index to extract_element must have 'index' type}}
+  // expected-error@+1 {{operand #1 must be index}}
   %0 = "std.extract_element"(%v, %i) : (vector<3xf32>, i32) -> f32
   return
 }

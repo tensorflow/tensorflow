@@ -17,10 +17,6 @@ def OpA : NS_Op<"one_normal_result_op", []> {
 // CHECK:         assert(resultTypes.size() == 1u && "mismatched number of return types");
 // CHECK-NEXT:    tblgen_state->addTypes(resultTypes);
 
-// CHECK-LABEL: LogicalResult OpA::verify()
-// CHECK:         if (!((this->getOperation()->getResult(0)->getType().isInteger(32))))
-// CHECK-NEXT:      return emitOpError("result #0 must be 32-bit integer");
-
 def OpB : NS_Op<"same_input_output_type_op", [SameOperandsAndResultType]> {
   let arguments = (ins I32:$x);
   let results = (outs I32:$y);
@@ -89,20 +85,6 @@ def OpG : NS_Op<"one_normal_and_one_variadic_result_op", []> {
 def OpI : NS_Op<"mix_variadic_and_normal_results_op", [SameVariadicResultSize]> {
   let results = (outs Variadic<AnyTensor>:$output1, AnyTensor:$output2, Variadic<AnyTensor>:$output3);
 }
-
-// TODO(b/134305899): Move to use TestDialect after fixing verification.
-
-// CHECK-LABEL: Operation::result_range OpI::getODSResults(unsigned index)
-// CHECK-NEXT:   bool isVariadic[] = {true, false, true};
-// CHECK-NEXT:   int prevVariadicCount = 0;
-// CHECK-NEXT:   for (int i = 0; i < index; ++i)
-// CHECK-NEXT:     if (isVariadic[i]) ++prevVariadicCount;
-
-// CHECK:        int variadicSize = (getOperation()->getNumResults() - 1) / 2;
-// CHECK:        int offset = index + (variadicSize - 1) * prevVariadicCount;
-// CHECK-NEXT:   int size = isVariadic[index] ? variadicSize : 1;
-
-// CHECK:        return {std::next(getOperation()->result_begin(), offset), std::next(getOperation()->result_begin(), offset + size)};
 
 // CHECK-LABEL: Operation::result_range OpI::output1
 // CHECK-NEXT:    return getODSResults(0);

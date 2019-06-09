@@ -1595,12 +1595,6 @@ static LogicalResult verify(ExtractElementOp op) {
   if (op.getType() != aggregateType.getElementType())
     return op.emitOpError("result type must match element type of aggregate");
 
-  // TODO(b/132908002) This should be covered by the op specification in
-  // tablegen, but for some reason it's not.
-  for (auto *idx : op.getIndices())
-    if (!idx->getType().isIndex())
-      return op.emitOpError("index to extract_element must have 'index' type");
-
   // Verify the # indices match if we have a ranked type.
   if (aggregateType.hasRank() &&
       aggregateType.getRank() != op.getNumOperands() - 1)
