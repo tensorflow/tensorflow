@@ -12,9 +12,6 @@ def OpA : NS_Op<"one_normal_result_op", []> {
   let results = (outs I32:$result);
 }
 
-// CHECK-LABEL: Value *OpA::result()
-// CHECK-NEXT:    return this->getOperation()->getResult(0)
-
 // CHECK-LABEL: void OpA::build
 // CHECK:         ArrayRef<Type> resultTypes, ArrayRef<Value *> operands
 // CHECK:         assert(resultTypes.size() == 1u && "mismatched number of return types");
@@ -68,9 +65,6 @@ def OpF : NS_Op<"one_variadic_result_op", []> {
   let results = (outs Variadic<I32>:$x);
 }
 
-// CHECK-LABEL: Operation::result_range OpF::x()
-// CHECK-NEXT:    return {std::next(result_begin(), 0), std::next(result_begin(), 0 + this->getNumResults() - 0)};
-
 // CHECK-LABEL: void OpF::build
 // CHECK-SAME:    ArrayRef<Type> x
 // CHECK-NOT:     assert
@@ -87,73 +81,39 @@ def OpG : NS_Op<"one_normal_and_one_variadic_result_op", []> {
 // CHECK-NEXT:   tblgen_state->types.push_back(x);
 // CHECK-NEXT:   tblgen_state->addTypes(y);
 
-// CHECK: 			void OpG::build
+// CHECK:       void OpG::build
 // CHECK:         ArrayRef<Type> resultTypes
 // CHECK:         assert(resultTypes.size() >= 1u && "mismatched number of return types");
 // CHECK-NEXT:    tblgen_state->addTypes(resultTypes);
-
-
-def OpH : NS_Op<"all_variadic_results_op", [SameVariadicResultSize]> {
-  let results = (outs Variadic<AnyTensor>:$output1, Variadic<AnyTensor>:$output2);
-}
-
-// CHECK-LABEL: Operation::result_range OpH::output1()
-// CHECK-NEXT:      variadicResultSize = (this->getNumResults() - 0) / 2;
-// CHECK-NEXT:      offset = 0 + variadicResultSize * 0;
-// CHECK-NEXT:      return {std::next(result_begin(), offset), std::next(result_begin(), offset + variadicResultSize)};
-
-// CHECK-LABEL: Operation::result_range OpH::output2()
-// CHECK-NEXT:      variadicResultSize = (this->getNumResults() - 0) / 2;
-// CHECK-NEXT:      offset = 0 + variadicResultSize * 1;
-// CHECK-NEXT:      return {std::next(result_begin(), offset), std::next(result_begin(), offset + variadicResultSize)};
-
-
-// CHECK-LABEL: OpH::build
-// CHECK-NEXT:    tblgen_state->addTypes(output1);
-// CHECK-NEXT:    tblgen_state->addTypes(output2);
 
 def OpI : NS_Op<"mix_variadic_and_normal_results_op", [SameVariadicResultSize]> {
   let results = (outs Variadic<AnyTensor>:$output1, AnyTensor:$output2, Variadic<AnyTensor>:$output3);
 }
 
-// CHECK-LABEL: Operation::result_range OpI::output1()
-// CHECK-NEXT:    variadicResultSize = (this->getNumResults() - 1) / 2;
-// CHECK-NEXT:    offset = 0 + variadicResultSize * 0;
-// CHECK-NEXT:    return {std::next(result_begin(), offset), std::next(result_begin(), offset + variadicResultSize)};
+// TODO(b/134305899): Move to use TestDialect after fixing verification.
 
-// CHECK-LABEL: Value *OpI::output2()
-// CHECK-NEXT:    variadicResultSize = (this->getNumResults() - 1) / 2;
-// CHECK-NEXT:    offset = 0 + variadicResultSize * 1;
-// CHECK-NEXT:    return this->getResult(offset);
+// CHECK-LABEL: Operation::result_range OpI::getODSResults(unsigned index)
+// CHECK-NEXT:   bool isVariadic[] = {true, false, true};
+// CHECK-NEXT:   int prevVariadicCount = 0;
+// CHECK-NEXT:   for (int i = 0; i < index; ++i)
+// CHECK-NEXT:     if (isVariadic[i]) ++prevVariadicCount;
 
-// CHECK-LABEL: Operation::result_range OpI::output3()
-// CHECK-NEXT:    variadicResultSize = (this->getNumResults() - 1) / 2;
-// CHECK-NEXT:    offset = 1 + variadicResultSize * 1;
-// CHECK-NEXT:    return {std::next(result_begin(), offset), std::next(result_begin(), offset + variadicResultSize)};
+// CHECK:        int variadicSize = (getOperation()->getNumResults() - 1) / 2;
+// CHECK:        int offset = index + (variadicSize - 1) * prevVariadicCount;
+// CHECK-NEXT:   int size = isVariadic[index] ? variadicSize : 1;
+
+// CHECK:        return {std::next(getOperation()->result_begin(), offset), std::next(getOperation()->result_begin(), offset + size)};
+
+// CHECK-LABEL: Operation::result_range OpI::output1
+// CHECK-NEXT:    return getODSResults(0);
+
+// CHECK-LABEL: Value *OpI::output2
+// CHECK-NEXT:    return *getODSResults(1).begin();
 
 // CHECK-LABEL: OpI::build
 // CHECK-NEXT:    tblgen_state->addTypes(output1);
 // CHECK-NEXT:    tblgen_state->types.push_back(output2);
 // CHECK-NEXT:    tblgen_state->addTypes(output3);
-
-def OpJ : NS_Op<"one_variadic_among_multi_normal_results_op", []> {
-  let results = (outs AnyTensor:$output1, AnyTensor:$output2, Variadic<AnyTensor>:$output3, AnyTensor:$output4, AnyTensor:$output5);
-}
-
-// CHECK-LABEL: Value *OpJ::output1()
-// CHECK-NEXT:    return this->getOperation()->getResult(0);
-
-// CHECK-LABEL: Value *OpJ::output2()
-// CHECK-NEXT:    return this->getOperation()->getResult(1);
-
-// CHECK-LABEL: Operation::result_range OpJ::output3()
-// CHECK-NEXT:    return {std::next(result_begin(), 2), std::next(result_begin(), 2 + this->getNumResults() - 4)};
-
-// CHECK-LABEL: Value *OpJ::output4()
-// CHECK-NEXT:    return this->getOperation()->getResult(this->getNumResults() - 2);
-
-// CHECK-LABEL: Value *OpJ::output5()
-// CHECK-NEXT:    return this->getOperation()->getResult(this->getNumResults() - 1);
 
 // Test that if the only operand is variadic, we acess the first value in the
 // pack to set result type

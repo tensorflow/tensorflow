@@ -42,6 +42,7 @@ def NS_AOp : NS_Op<"a_op", [NoSideEffect]> {
 // CHECK:  class AOpOperandAdaptor {
 // CHECK:  public:
 // CHECK:    AOpOperandAdaptor(ArrayRef<Value *> values);
+// CHECK:    ArrayRef<Value *> getODSOperands(unsigned index);
 // CHECK:    Value *a();
 // CHECK:    ArrayRef<Value *> b();
 // CHECK:  private:
@@ -53,8 +54,10 @@ def NS_AOp : NS_Op<"a_op", [NoSideEffect]> {
 // CHECK:   using Op::Op;
 // CHECK:   using OperandAdaptor = AOpOperandAdaptor;
 // CHECK:   static StringRef getOperationName();
+// CHECK:   Operation::operand_range getODSOperands(unsigned index);
 // CHECK:   Value *a();
 // CHECK:   Operation::operand_range b();
+// CHECK:   Operation::result_range getODSResults(unsigned index);
 // CHECK:   Value *r();
 // CHECK:   APInt attr1();
 // CHECK:   Optional< APFloat > attr2();

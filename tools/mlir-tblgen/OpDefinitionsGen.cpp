@@ -39,6 +39,36 @@ static const char *const tblgenNamePrefix = "tblgen_";
 static const char *const generatedArgName = "tblgen_arg";
 static const char *const builderOpState = "tblgen_state";
 
+// The logic to calculate the dynamic value range for an static operand/result
+// of an op with variadic operands/results. Note that this logic is not for
+// general use; it assumes all variadic operands/results must have the same
+// number of values.
+//
+// {0}: The list of whether each static operand/result is variadic.
+// {1}: The total number of non-variadic operands/results.
+// {2}: The total number of variadic operands/results.
+// {3}: The total number of dynamic values.
+// {4}: The begin iterator of the dynamic values.
+// {5}: "operand" or "result"
+const char *valueRangeCalcCode = R"(
+  bool isVariadic[] = {{{0}};
+  int prevVariadicCount = 0;
+  for (int i = 0; i < index; ++i)
+    if (isVariadic[i]) ++prevVariadicCount;
+
+  // Calculate how many dynamic values a static variadic {5} corresponds to.
+  // This assumes all static variadic {5}s have the same dynamic value count.
+  int variadicSize = ({3} - {1}) / {2};
+  // `index` passed in as the parameter is the static index which counts each
+  // {5} (variadic or not) as size 1. So here for each previous static variadic
+  // {5}, we need to offset by (variadicSize - 1) to get where the dynamic
+  // value pack for this static {5} starts.
+  int offset = index + (variadicSize - 1) * prevVariadicCount;
+  int size = isVariadic[index] ? variadicSize : 1;
+
+  return {{std::next({4}, offset), std::next({4}, offset + size)};
+)";
+
 static const char *const opCommentHeader = R"(
 //===----------------------------------------------------------------------===//
 // {0} {1}
@@ -548,76 +578,49 @@ static void generateNamedOperandGetters(const Operator &op, Class &opClass,
   const int numVariadicOperands = op.getNumVariadicOperands();
   const int numNormalOperands = numOperands - numVariadicOperands;
 
-  // Special case for ops without variadic operands: the i-th value is for the
-  // i-th operand defined in the op.
-  // Special case for ops with one variadic operand: the variadic operand can
-  // appear at any place, so the i-th value may not necessarily belong to the
-  // i-th operand definition. we need to calculate the index (range) for each
-  // operand.
-  if (numVariadicOperands <= 1) {
-    bool emittedVariadicOperand = false;
-    for (int i = 0; i != numOperands; ++i) {
-      const auto &operand = op.getOperand(i);
-      if (operand.name.empty())
-        continue;
-
-      if (operand.isVariadic()) {
-        auto &m = opClass.newMethod(rangeType, operand.name);
-        m.body() << formatv(
-            "  return {{std::next({2}, {0}), std::next({2}, {0} + {3} - {1})};",
-            i, numNormalOperands, rangeBeginCall, rangeSizeCall);
-        emittedVariadicOperand = true;
-      } else {
-        auto &m = opClass.newMethod("Value *", operand.name);
-
-        auto operandIndex =
-            emittedVariadicOperand
-                ? formatv("{0} - {1}", rangeSizeCall, numOperands - i).str()
-                : std::to_string(i);
-
-        m.body() << "  return "
-                 << formatv(getOperandCallPattern.data(), operandIndex)
-                 << ";\n";
-      }
-    }
-    return;
-  }
-
-  // If we have more than one variadic operands, we need more complicated logic
-  // to calculate the value range for each operand.
-
-  if (!op.hasTrait("SameVariadicOperandSize")) {
+  if (numVariadicOperands > 1 && !op.hasTrait("SameVariadicOperandSize")) {
     PrintFatalError(op.getLoc(), "op has multiple variadic operands but no "
                                  "specification over their sizes");
   }
 
-  int emittedNormalOperands = 0;
-  int emittedVariadicOperands = 0;
+  // First emit a "sink" getter method upon which we layer all nicer named
+  // getter methods.
+  auto &m = opClass.newMethod(rangeType, "getODSOperands", "unsigned index");
+
+  if (numVariadicOperands == 0) {
+    // We still need to match the return type, which is a range.
+    m.body() << "return {std::next(" << rangeBeginCall << ", index), std::next("
+             << rangeBeginCall << ", index + 1)};";
+  } else {
+    // Because the op can have arbitrarily interleaved variadic and non-variadic
+    // operands, we need to embed a list in the "sink" getter method for
+    // calculation at run-time.
+    llvm::SmallVector<StringRef, 4> isVariadic;
+    isVariadic.reserve(numOperands);
+    for (int i = 0; i < numOperands; ++i) {
+      isVariadic.push_back(llvm::toStringRef(op.getOperand(i).isVariadic()));
+    }
+    std::string isVariadicList = llvm::join(isVariadic, ", ");
+
+    m.body() << formatv(valueRangeCalcCode, isVariadicList, numNormalOperands,
+                        numVariadicOperands, rangeSizeCall, rangeBeginCall,
+                        "operand");
+  }
+
+  // Then we emit nicer named getter methods by redirecting to the "sink" getter
+  // method.
 
   for (int i = 0; i != numOperands; ++i) {
     const auto &operand = op.getOperand(i);
     if (operand.name.empty())
       continue;
 
-    const char *code = R"(
-  int variadicOperandSize = ({4} - {0}) / {1};
-  int offset = {2} + variadicOperandSize * {3};
-  return )";
-    auto sizeAndOffset =
-        formatv(code, numNormalOperands, numVariadicOperands,
-                emittedNormalOperands, emittedVariadicOperands, rangeSizeCall);
-
     if (operand.isVariadic()) {
       auto &m = opClass.newMethod(rangeType, operand.name);
-      m.body() << sizeAndOffset << "{std::next(" << rangeBeginCall
-               << ", offset), std::next(" << rangeBeginCall
-               << ", offset + variadicOperandSize)};";
-      ++emittedVariadicOperands;
+      m.body() << "return getODSOperands(" << i << ");";
     } else {
       auto &m = opClass.newMethod("Value *", operand.name);
-      m.body() << sizeAndOffset
-               << formatv(getOperandCallPattern.data(), "offset") << ";";
-      ++emittedNormalOperands;
+      m.body() << "return *getODSOperands(" << i << ").begin();";
     }
   }
 }
@@ -625,9 +628,9 @@ static void generateNamedOperandGetters(const Operator &op, Class &opClass,
 void OpEmitter::genNamedOperandGetters() {
   generateNamedOperandGetters(
       op, opClass, /*rangeType=*/"Operation::operand_range",
-      /*rangeBeginCall=*/"operand_begin()",
-      /*rangeSizeCall=*/"this->getNumOperands()",
-      /*getOperandCallPattern=*/"this->getOperation()->getOperand({0})");
+      /*rangeBeginCall=*/"getOperation()->operand_begin()",
+      /*rangeSizeCall=*/"getOperation()->getNumOperands()",
+      /*getOperandCallPattern=*/"getOperation()->getOperand({0})");
 }
 
 void OpEmitter::genNamedResultGetters() {
@@ -635,72 +638,44 @@ void OpEmitter::genNamedResultGetters() {
   const int numVariadicResults = op.getNumVariadicResults();
   const int numNormalResults = numResults - numVariadicResults;
 
-  // Special case for ops without variadic results: the i-th value is for the
-  // i-th result defined in the op.
-  // Special case for ops with one variadic result: the variadic result can
-  // appear at any place, so the i-th value may not necessarily belong to the
-  // i-th result definition. we need to calculate the index (range) for each
-  // result.
-  if (numVariadicResults <= 1) {
-    bool emittedVariadicResult = false;
-    for (int i = 0; i != numResults; ++i) {
-      const auto &result = op.getResult(i);
-      if (result.name.empty())
-        continue;
-
-      if (result.isVariadic()) {
-        auto &m = opClass.newMethod("Operation::result_range", result.name);
-        m.body() << formatv(
-            "  return {{std::next(result_begin(), {0}), "
-            "std::next(result_begin(), {0} + this->getNumResults() - {1})};",
-            i, numNormalResults);
-        emittedVariadicResult = true;
-      } else {
-        auto &m = opClass.newMethod("Value *", result.name);
-        m.body() << "  return this->getOperation()->getResult(";
-        if (emittedVariadicResult)
-          m.body() << "this->getNumResults() - " << numResults - i;
-        else
-          m.body() << i;
-        m.body() << ");\n";
-      }
-    }
-    return;
-  }
-
   // If we have more than one variadic results, we need more complicated logic
   // to calculate the value range for each result.
 
-  if (!op.hasTrait("SameVariadicResultSize")) {
+  if (numVariadicResults > 1 && !op.hasTrait("SameVariadicResultSize")) {
     PrintFatalError(op.getLoc(), "op has multiple variadic results but no "
                                  "specification over their sizes");
   }
 
-  int emittedNormalResults = 0;
-  int emittedVariadicResults = 0;
+  auto &m = opClass.newMethod("Operation::result_range", "getODSResults",
+                              "unsigned index");
+
+  if (numVariadicResults == 0) {
+    m.body() << "return {std::next(getOperation()->result_begin(), index), "
+                "std::next(getOperation()->result_begin(), index + 1)};";
+  } else {
+    llvm::SmallVector<StringRef, 4> isVariadic;
+    isVariadic.reserve(numResults);
+    for (int i = 0; i < numResults; ++i) {
+      isVariadic.push_back(llvm::toStringRef(op.getResult(i).isVariadic()));
+    }
+    std::string isVariadicList = llvm::join(isVariadic, ", ");
+
+    m.body() << formatv(valueRangeCalcCode, isVariadicList, numNormalResults,
+                        numVariadicResults, "getOperation()->getNumResults()",
+                        "getOperation()->result_begin()", "result");
+  }
 
   for (int i = 0; i != numResults; ++i) {
     const auto &result = op.getResult(i);
     if (result.name.empty())
       continue;
 
-    const char *code = R"(
-  int variadicResultSize = (this->getNumResults() - {0}) / {1};
-  int offset = {2} + variadicResultSize * {3};
-  return )";
-    auto sizeAndOffset = formatv(code, numNormalResults, numVariadicResults,
-                                 emittedNormalResults, emittedVariadicResults);
-
     if (result.isVariadic()) {
       auto &m = opClass.newMethod("Operation::result_range", result.name);
-      m.body() << sizeAndOffset
-               << "{std::next(result_begin(), offset), "
-                  "std::next(result_begin(), offset + variadicResultSize)};";
-      ++emittedVariadicResults;
+      m.body() << "return getODSResults(" << i << ");";
     } else {
       auto &m = opClass.newMethod("Value *", result.name);
-      m.body() << sizeAndOffset << "this->getResult(offset);";
-      ++emittedNormalResults;
+      m.body() << "return *getODSResults(" << i << ").begin();";
     }
   }
 }
