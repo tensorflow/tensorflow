@@ -38,6 +38,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import saving
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.utils import generic_utils
@@ -323,7 +324,7 @@ class Network(base_layer.Layer):
     self._track_layers(layers)
 
     # Create the node linking internal inputs to internal outputs.
-    base_layer.Node(
+    node_module.Node(
         outbound_layer=self,
         inbound_layers=[],
         node_indices=[],
@@ -372,8 +373,10 @@ class Network(base_layer.Layer):
   def _init_subclassed_network(self, name=None, **kwargs):
     self._base_init(name=name, **kwargs)
     self._is_graph_network = False
-    self._expects_training_arg = 'training' in self._call_fn_args
-    self._expects_mask_arg = 'mask' in self._call_fn_args
+    self._expects_training_arg = ('training' in self._call_fn_args or
+                                  self._call_accepts_kwargs)
+    self._expects_mask_arg = ('mask' in self._call_fn_args or
+                              self._call_accepts_kwargs)
     call_argspec = tf_inspect.getfullargspec(self.call)
     self._call_convention = self._determine_call_convention(call_argspec)
     self.outputs = []

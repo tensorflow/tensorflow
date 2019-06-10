@@ -45,6 +45,7 @@ from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
+from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.saving import saved_model
@@ -212,8 +213,10 @@ class Layer(module.Module):
     self._outbound_nodes = []
 
     call_fn_args = self._call_fn_args
-    self._expects_training_arg = 'training' in call_fn_args
-    self._expects_mask_arg = 'mask' in call_fn_args
+    self._expects_training_arg = ('training' in call_fn_args or
+                                  self._call_accepts_kwargs)
+    self._expects_mask_arg = ('mask' in call_fn_args or
+                              self._call_accepts_kwargs)
 
     # Whether the `call` method can be used to build a TF graph without issues.
     self._dynamic = dynamic
@@ -287,16 +290,14 @@ class Layer(module.Module):
       name: Variable name.
       shape: Variable shape. Defaults to scalar if unspecified.
       dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
-      initializer: initializer instance (callable).
-      regularizer: regularizer instance (callable).
-      trainable: whether the variable should be part of the layer's
+      initializer: Initializer instance (callable).
+      regularizer: Regularizer instance (callable).
+      trainable: Boolean, whether the variable should be part of the layer's
         "trainable_variables" (e.g. variables, biases)
-        or "non_trainable_variables" (e.g. BatchNorm mean, stddev).
-        Note, if the current variable scope is marked as non-trainable
-        then this parameter is ignored and any added variables are also
-        marked as non-trainable. `trainable` defaults to `True` unless
-        `synchronization` is set to `ON_READ`.
-      constraint: constraint instance (callable).
+        or "non_trainable_variables" (e.g. BatchNorm mean and variance).
+        Note that `trainable` cannot be `True` if `synchronization`
+        is set to `ON_READ`.
+      constraint: Constraint instance (callable).
       partitioner: Partitioner to be passed to the `Trackable` API.
       use_resource: Whether to use `ResourceVariable`.
       synchronization: Indicates when a distributed a variable will be
@@ -312,8 +313,8 @@ class Layer(module.Module):
         `collections`.
 
     Returns:
-      The created variable.  Usually either a `Variable` or `ResourceVariable`
-      instance.  If `partitioner` is not `None`, a `PartitionedVariable`
+      The created variable. Usually either a `Variable` or `ResourceVariable`
+      instance. If `partitioner` is not `None`, a `PartitionedVariable`
       instance is returned.
 
     Raises:
@@ -563,7 +564,14 @@ class Layer(module.Module):
     Raises:
       ValueError: if the layer's `call` method returns None (an invalid value).
     """
+    call_context = base_layer_utils.call_context()
     input_list = nest.flatten(inputs)
+
+    # We will attempt to build a TF graph if & only if all inputs are symbolic.
+    # This is always the case in graph mode. It can also be the case in eager
+    # mode when all inputs can be traced back to `keras.Input()` (when building
+    # models using the functional API).
+    build_graph = tf_utils.are_all_symbolic_tensors(input_list)
 
     # Accept NumPy and scalar inputs by converting to Tensors.
     if any(isinstance(x, (np.ndarray, float, int)) for x in input_list):
@@ -585,11 +593,31 @@ class Layer(module.Module):
         not self._call_arg_was_passed('mask', args, kwargs)):
       kwargs['mask'] = input_masks
 
-    # We will attempt to build a TF graph if & only if all inputs are symbolic.
-    # This is always the case in graph mode. It can also be the case in eager
-    # mode when all inputs can be traced back to `keras.Input()` (when building
-    # models using the functional API).
-    build_graph = tf_utils.are_all_symbolic_tensors(input_list)
+    # If `training` argument was not explicitly passed, propagate `training`
+    # value from this layer's calling layer.
+    training_arg_passed_by_framework = False
+    # Priority 1: `training` was explicitly passed.
+    if self._call_arg_was_passed('training', args, kwargs):
+      training_value = self._get_call_arg_value('training', args, kwargs)
+      if not self._expects_training_arg:
+        kwargs.pop('training')
+    else:
+      training_value = None
+      # Priority 2: `training` was passed to a parent layer.
+      if call_context.training is not None:
+        training_value = call_context.training
+      # Priority 3a: `learning_phase()` has been set.
+      elif backend.global_learning_phase_is_set():
+        training_value = backend.learning_phase()
+      # Priority 3b: Pass the `learning_phase()` if in the Keras FuncGraph.
+      elif build_graph:
+        with backend.get_graph().as_default():
+          if base_layer_utils.is_in_keras_graph():
+            training_value = backend.learning_phase()
+
+      if self._expects_training_arg and training_value is not None:
+        kwargs['training'] = training_value
+        training_arg_passed_by_framework = True
 
     # Only create Keras history if at least one tensor originates from a
     # `keras.Input`. Otherwise this Layer may be being used outside the Keras
@@ -599,12 +627,12 @@ class Layer(module.Module):
 
     # Clear eager losses on top level model call.
     # We are clearing the losses only on the top level model call and not on
-    # every layer/mode call because layer/model may be reused.
+    # every layer/model call because layer/model may be reused.
     if (base_layer_utils.is_in_eager_or_tf_function() and
-        not base_layer_utils.call_context().in_call):
+        not call_context.in_call):
       self._clear_losses()
 
-    with base_layer_utils.call_context().enter(self, inputs, build_graph):
+    with call_context.enter(self, inputs, build_graph, training_value):
       # Check input assumptions set after layer building, e.g. input shape.
       if build_graph:
         # Symbolic execution on symbolic tensors. We will attempt to build
@@ -635,21 +663,6 @@ class Layer(module.Module):
               call_fn = converted_func
           else:
             call_fn = self.call
-
-          # Explicitly pass the learning phase placeholder to `call` if
-          # the `training` argument was left unspecified by the user.
-          # This behavior is restricted to the managed Keras FuncGraph.
-          # TODO(omalleyt): Reconcile this with new `trainable` behavior
-          # when available.
-          learning_phase_passed_by_framework = False
-          if (base_layer_utils.is_in_keras_graph() and
-              self._expects_training_arg):
-            training_arg = None
-            if self._call_arg_was_passed('training', args, kwargs):
-              training_arg = self._get_call_arg_value('training', args, kwargs)
-            if training_arg is None:
-              learning_phase_passed_by_framework = True
-              kwargs['training'] = backend.learning_phase()
 
           if not self.dynamic:
             try:
@@ -692,7 +705,7 @@ class Layer(module.Module):
                              'Tensor or a list of Tensors, not None '
                              '(layer: ' + self.name + ').')
           if base_layer_utils.have_all_keras_metadata(inputs):
-            if learning_phase_passed_by_framework:
+            if training_arg_passed_by_framework:
               kwargs.pop('training')
             inputs, outputs = self._set_connectivity_metadata_(
                 inputs, outputs, args, kwargs)
@@ -1873,7 +1886,7 @@ class Layer(module.Module):
                                         input_tensors)
 
     # Create node, add it to inbound nodes.
-    Node(
+    node_module.Node(
         self,
         inbound_layers=inbound_layers,
         node_indices=node_indices,
@@ -2133,6 +2146,11 @@ class Layer(module.Module):
 
   @property
   @tracking.cached_per_instance
+  def _call_accepts_kwargs(self):
+    return tf_inspect.getfullargspec(self.call).varkw is not None
+
+  @property
+  @tracking.cached_per_instance
   def _should_compute_mask(self):
     return ('mask' in self._call_fn_args or
             getattr(self, 'compute_mask', None) is not None)
@@ -2239,125 +2257,6 @@ class Layer(module.Module):
     fns.update(super(Layer, self)._list_functions_for_serialization(
         serialization_cache))
     return fns
-
-
-class Node(object):
-  """A `Node` describes the connectivity between two layers.
-
-  Each time a layer is connected to some new input,
-  a node is added to `layer._inbound_nodes`.
-  Each time the output of a layer is used by another layer,
-  a node is added to `layer._outbound_nodes`.
-
-  Arguments:
-      outbound_layer: the layer that takes
-          `input_tensors` and turns them into `output_tensors`
-          (the node gets created when the `call`
-          method of the layer was called).
-      inbound_layers: a list of layers, the same length as `input_tensors`,
-          the layers from where `input_tensors` originate.
-      node_indices: a list of integers, the same length as `inbound_layers`.
-          `node_indices[i]` is the origin node of `input_tensors[i]`
-          (necessary since each inbound layer might have several nodes,
-          e.g. if the layer is being shared with a different data stream).
-      tensor_indices: a list of integers,
-          the same length as `inbound_layers`.
-          `tensor_indices[i]` is the index of `input_tensors[i]` within the
-          output of the inbound layer
-          (necessary since each inbound layer might
-          have multiple tensor outputs, with each one being
-          independently manipulable).
-      input_tensors: list of input tensors.
-      output_tensors: list of output tensors.
-      arguments: dictionary of keyword arguments that were passed to the
-          `call` method of the layer at the call that created the node.
-
-  `node_indices` and `tensor_indices` are basically fine-grained coordinates
-  describing the origin of the `input_tensors`.
-
-  A node from layer A to layer B is added to:
-    - A._outbound_nodes
-    - B._inbound_nodes
-  """
-
-  def __init__(self,
-               outbound_layer,
-               inbound_layers,
-               node_indices,
-               tensor_indices,
-               input_tensors,
-               output_tensors,
-               arguments=None):
-    # Layer instance (NOT a sequence)
-    if isinstance(outbound_layer, (list, tuple, dict)):
-      raise ValueError('`outbound_layer` should be a layer instance, '
-                       'not a list, tuple, or, dict.')
-
-    # this is the layer that takes a nested structure of input tensors
-    # and turns them into a nested structure of output tensors.
-    # the current node will be added to
-    # the inbound_nodes of outbound_layer.
-    self.outbound_layer = outbound_layer
-
-    # The following 3 properties describe where
-    # the input tensors come from: which layers,
-    # and for each layer, which node and which
-    # tensor output of each node.
-
-    # Nested structure of layer instances.
-    self.inbound_layers = inbound_layers
-    # Nested structure of integers, 1:1 mapping with inbound_layers.
-    self.node_indices = node_indices
-    # Nested of integers, 1:1 mapping with inbound_layers.
-    self.tensor_indices = tensor_indices
-
-    # Following 2 properties:
-    # tensor inputs and outputs of outbound_layer.
-
-    # Nested structure of tensors. 1:1 mapping with inbound_layers.
-    self.input_tensors = input_tensors
-    # Nested structure of tensors, created by outbound_layer.call().
-    self.output_tensors = output_tensors
-
-    # Following 2 properties: input and output shapes.
-
-    # Nested structure of shape tuples, shapes of input_tensors.
-    self.input_shapes = nest.map_structure(backend.int_shape, input_tensors)
-    # Nested structure of shape tuples, shapes of output_tensors.
-    self.output_shapes = nest.map_structure(backend.int_shape, output_tensors)
-
-    # Optional keyword arguments to layer's `call`.
-    self.arguments = arguments
-
-    # Add nodes to all layers involved.
-    for layer in nest.flatten(inbound_layers):
-      if layer is not None:
-        # For compatibility with external Keras, we use the deprecated
-        # accessor here.
-        layer.outbound_nodes.append(self)
-    # For compatibility with external Keras, we use the deprecated
-    # accessor here.
-    outbound_layer.inbound_nodes.append(self)
-
-  def iterate_inbound(self):
-    """Returns a list of tuples representing the inbound data.
-
-    Returns:
-      List of tuples like: (inbound_layer, node_index, tensor_index, tensor).
-    """
-    return zip(
-        nest.flatten(self.inbound_layers), nest.flatten(self.node_indices),
-        nest.flatten(self.tensor_indices), nest.flatten(self.input_tensors))
-
-  def get_config(self):
-    inbound_names = nest.map_structure(
-        lambda layer: layer.name if layer else None, self.inbound_layers)
-    return {
-        'outbound_layer': self.outbound_layer.name,
-        'inbound_layers': inbound_names,
-        'node_indices': self.node_indices,
-        'tensor_indices': self.tensor_indices
-    }
 
 
 class TensorFlowOpLayer(Layer):

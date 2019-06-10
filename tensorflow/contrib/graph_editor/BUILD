@@ -1,14 +1,14 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "graph_editor_py",

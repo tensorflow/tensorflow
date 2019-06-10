@@ -22,11 +22,20 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/platform/test.h"
 
+#if GOOGLE_CUDA
+#include "third_party/gpus/cudnn/cudnn.h"
+#endif  // GOOGLE_CUDA
+
 namespace tensorflow {
 namespace grappler {
 
 class RemapperTest : public GrapplerTest {
  protected:
+  void SetUp() override {
+    // This is a requirement for fusing FusedBatchNorm + SideInput + Activation.
+    setenv("TF_USE_CUDNN_BATCHNORM_SPATIAL_PERSISTENT", "1", 1 /* replace */);
+  }
+
   // TODO(b/119765980): Upgrade upstream Eigen to set `m_can_use_xsmm=false` for
   // contractions with non-default contraction output kernels.
   bool EigenSupportsContractionOutputKernel() {
@@ -100,6 +109,179 @@ TEST_F(RemapperTest, FusedBatchNormNCHW) {
     EXPECT_EQ(1, tensors.size());
     test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-5);
   }
+}
+
+TEST_F(RemapperTest, FuseBatchNormWithRelu) {
+  using ::tensorflow::ops::Placeholder;
+
+#if !defined(GOOGLE_CUDA) || !(CUDNN_VERSION >= 7402)
+  LOG(INFO) << "Skip FuseBatchNormWithRelu test. It requires "
+               "CUDNN_VERSION >= 7402.";
+#else
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  auto input_shape = ops::Placeholder::Shape({2, 8, 8, 24});
+  auto channels_shape = ops::Placeholder::Shape({24});
+
+  auto input = Placeholder(s.WithOpName("input"), DT_FLOAT, input_shape);
+  auto input_cast = ops::Cast(s.WithOpName("input_cast"), input, DT_HALF);
+  auto scale = Placeholder(s.WithOpName("scale"), DT_FLOAT, channels_shape);
+  auto offset = Placeholder(s.WithOpName("offset"), DT_FLOAT, channels_shape);
+  auto mean = Placeholder(s.WithOpName("mean"), DT_FLOAT, channels_shape);
+  auto var = Placeholder(s.WithOpName("var"), DT_FLOAT, channels_shape);
+
+  float epsilon = 0.1f;
+  auto fbn = ops::FusedBatchNormV3(
+      s.WithOpName("fused_batch_norm"), input_cast, scale, offset, mean, var,
+      ops::FusedBatchNormV3::IsTraining(true).Epsilon(epsilon).DataFormat(
+          "NHWC"));
+  auto relu = ops::Relu(s.WithOpName("relu"), fbn.y);
+  auto fetch = ops::Identity(s.WithOpName("fetch"), relu);
+
+  auto input_t = GenerateRandomTensor<DT_FLOAT>({2, 8, 8, 24});
+  auto scale_t = GenerateRandomTensor<DT_FLOAT>({24});
+  auto offset_t = GenerateRandomTensor<DT_FLOAT>({24});
+  auto mean_t = GenerateRandomTensor<DT_FLOAT>({0});  // empty for training
+  auto var_t = GenerateRandomTensor<DT_FLOAT>({0});   // empty for training
+
+  GrapplerItem item;
+  item.fetch = {"fetch"};
+  item.feed = {{"input", input_t},
+               {"scale", scale_t},
+               {"offset", offset_t},
+               {"mean", mean_t},
+               {"var", var_t}};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  // Place all nodes on GPU.
+  for (int i = 0; i < item.graph.node_size(); ++i) {
+    item.graph.mutable_node(i)->set_device("/device:GPU:0");
+  }
+
+  Remapper optimizer(RewriterConfig::AGGRESSIVE);  // trust placeholders shape
+  GraphDef output;
+  TF_CHECK_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "relu") {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ("fused_batch_norm", node.input(0));
+      found++;
+    }
+    if (node.name() == "fused_batch_norm") {
+      EXPECT_EQ("_FusedBatchNormEx", node.op());
+      EXPECT_EQ("input_cast", node.input(0));
+      EXPECT_EQ("scale", node.input(1));
+      EXPECT_EQ("offset", node.input(2));
+      EXPECT_EQ("mean", node.input(3));
+      EXPECT_EQ("var", node.input(4));
+
+      auto attr = node.attr();
+      EXPECT_EQ(0, attr["num_side_inputs"].i());
+      EXPECT_EQ("Relu", attr["activation_mode"].s());
+      found++;
+    }
+  }
+  EXPECT_EQ(2, found);
+
+  if (GetNumAvailableGPUs() > 0) {
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    EXPECT_EQ(1, tensors_expected.size());
+    EXPECT_EQ(1, tensors.size());
+    test::ExpectClose(tensors_expected[0], tensors[0], 1e-2, /*rtol=*/1e-2);
+  }
+#endif  // !defined(GOOGLE_CUDA) || !(CUDNN_VERSION >= 7402)
+}
+
+TEST_F(RemapperTest, FuseBatchNormWithAddAndRelu) {
+  using ::tensorflow::ops::Placeholder;
+
+#if !defined(GOOGLE_CUDA) || !(CUDNN_VERSION >= 7402)
+  LOG(INFO) << "Skip FuseBatchNormWithAddAndRelu test. It requires "
+               "CUDNN_VERSION >= 7402.";
+#else
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  auto input_shape = ops::Placeholder::Shape({2, 8, 8, 24});
+  auto channels_shape = ops::Placeholder::Shape({24});
+
+  auto input = Placeholder(s.WithOpName("input"), DT_FLOAT, input_shape);
+  auto input_cast = ops::Cast(s.WithOpName("input_cast"), input, DT_HALF);
+  auto scale = Placeholder(s.WithOpName("scale"), DT_FLOAT, channels_shape);
+  auto offset = Placeholder(s.WithOpName("offset"), DT_FLOAT, channels_shape);
+  auto mean = Placeholder(s.WithOpName("mean"), DT_FLOAT, channels_shape);
+  auto var = Placeholder(s.WithOpName("var"), DT_FLOAT, channels_shape);
+  auto side_input =
+      Placeholder(s.WithOpName("side_input"), DT_FLOAT, input_shape);
+  auto side_input_cast =
+      ops::Cast(s.WithOpName("side_input_cast"), side_input, DT_HALF);
+
+  float epsilon = 0.1f;
+  auto fbn = ops::FusedBatchNormV3(
+      s.WithOpName("fused_batch_norm"), input_cast, scale, offset, mean, var,
+      ops::FusedBatchNormV3::IsTraining(true).Epsilon(epsilon).DataFormat(
+          "NHWC"));
+  auto add = ops::Add(s.WithOpName("add"), fbn.y, side_input_cast);
+  auto relu = ops::Relu(s.WithOpName("relu"), add);
+  auto fetch = ops::Identity(s.WithOpName("fetch"), relu);
+
+  auto input_t = GenerateRandomTensor<DT_FLOAT>({2, 8, 8, 24});
+  auto scale_t = GenerateRandomTensor<DT_FLOAT>({24});
+  auto offset_t = GenerateRandomTensor<DT_FLOAT>({24});
+  auto mean_t = GenerateRandomTensor<DT_FLOAT>({0});  // empty for training
+  auto var_t = GenerateRandomTensor<DT_FLOAT>({0});   // empty for training
+  auto side_input_t = GenerateRandomTensor<DT_FLOAT>({2, 8, 8, 24});
+
+  GrapplerItem item;
+  item.fetch = {"fetch"};
+  item.feed = {{"input", input_t},   {"scale", scale_t},
+               {"offset", offset_t}, {"mean", mean_t},
+               {"var", var_t},       {"side_input", side_input_t}};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  // Place all nodes on GPU.
+  for (int i = 0; i < item.graph.node_size(); ++i) {
+    item.graph.mutable_node(i)->set_device("/device:GPU:0");
+  }
+
+  Remapper optimizer(RewriterConfig::AGGRESSIVE);  // trust placeholders shape
+  GraphDef output;
+  TF_CHECK_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "relu") {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ("fused_batch_norm", node.input(0));
+      found++;
+    }
+    if (node.name() == "fused_batch_norm") {
+      EXPECT_EQ("_FusedBatchNormEx", node.op());
+      EXPECT_EQ("input_cast", node.input(0));
+      EXPECT_EQ("scale", node.input(1));
+      EXPECT_EQ("offset", node.input(2));
+      EXPECT_EQ("mean", node.input(3));
+      EXPECT_EQ("var", node.input(4));
+      EXPECT_EQ("side_input_cast", node.input(5));
+
+      auto attr = node.attr();
+      EXPECT_EQ(1, attr["num_side_inputs"].i());
+      EXPECT_EQ("Relu", attr["activation_mode"].s());
+      found++;
+    }
+  }
+  EXPECT_EQ(2, found);
+
+  if (GetNumAvailableGPUs() > 0) {
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    EXPECT_EQ(1, tensors_expected.size());
+    EXPECT_EQ(1, tensors.size());
+    test::ExpectClose(tensors_expected[0], tensors[0], 1e-2, /*rtol=*/1e-2);
+  }
+#endif  // !defined(GOOGLE_CUDA) || !(CUDNN_VERSION >= 7402)
 }
 
 TEST_F(RemapperTest, FuseConv2DWithBias) {

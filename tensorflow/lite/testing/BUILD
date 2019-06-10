@@ -1,10 +1,3 @@
-package(
-    default_visibility = [
-        "//visibility:public",
-    ],
-    licenses = ["notice"],  # Apache 2.0
-)
-
 load(
     "//tensorflow/lite:build_def.bzl",
     "gen_zip_test",
@@ -17,6 +10,13 @@ load(
     "py_test",  # @unused
     "tf_cc_binary",
     "tf_cc_test",
+)
+
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 [gen_zip_test(

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -306,6 +307,8 @@ class HloParser {
                            std::vector<bool>* dynamic_dimensions);
   bool ParseShape(Shape* result);
   bool ParseLayout(Layout* layout);
+  bool ParseLayoutIntAttribute(int64* attr_value,
+                               absl::string_view attr_description);
   bool ParseTiles(std::vector<Tile>* tiles);
   bool ParseOpcode(HloOpcode* result);
   bool ParseFftType(FftType* result);
@@ -3512,14 +3515,43 @@ bool HloParser::ParseTiles(std::vector<Tile>* tiles) {
   return true;
 }
 
-// layout ::= '{' int64_list (':' tiles element_size_in_bits)? '}'
+// int_attribute
+//   ::= /*empty*/
+//   ::= attr_token '(' attr_value ')'
+// attr_token
+//   ::= 'E' | 'S'
+// attr_value
+//   ::= int64
+bool HloParser::ParseLayoutIntAttribute(int64* attr_value,
+                                        absl::string_view attr_description) {
+  if (!ParseToken(TokKind::kLparen,
+                  StrCat("expects ", attr_description, " to start with ",
+                         TokKindToString(TokKind::kLparen)))) {
+    return false;
+  }
+  if (!ParseInt64(attr_value)) {
+    return false;
+  }
+  if (!ParseToken(TokKind::kRparen,
+                  StrCat("expects ", attr_description, " to end with ",
+                         TokKindToString(TokKind::kRparen)))) {
+    return false;
+  }
+  return true;
+}
+
+// layout ::= '{' int64_list (':' tiles element_size_in_bits memory_space)? '}'
 // element_size_in_bits
 //   ::= /*empty*/
 //   ::= 'E' '(' int64 ')'
+// memory_space
+//   ::= /*empty*/
+//   ::= 'S' '(' int64 ')'
 bool HloParser::ParseLayout(Layout* layout) {
   std::vector<int64> minor_to_major;
   std::vector<Tile> tiles;
   tensorflow::int64 element_size_in_bits = 0;
+  tensorflow::int64 memory_space = 0;
 
   auto parse_and_add_item = [&]() {
     int64 i;
@@ -3553,21 +3585,13 @@ bool HloParser::ParseLayout(Layout* layout) {
       }
 
       if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "E") {
-        // Parse element size in bits.
         lexer_.Lex();
-        if (!ParseToken(TokKind::kLparen,
-                        StrCat("expects element size in bits to start with ",
-                               TokKindToString(TokKind::kLparen)))) {
-          return false;
-        }
-        if (!ParseInt64(&element_size_in_bits)) {
-          return false;
-        }
-        if (!ParseToken(TokKind::kRparen,
-                        StrCat("expects element size in bits to end with ",
-                               TokKindToString(TokKind::kRparen)))) {
-          return false;
-        }
+        ParseLayoutIntAttribute(&element_size_in_bits, "element size in bits");
+      }
+
+      if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "S") {
+        lexer_.Lex();
+        ParseLayoutIntAttribute(&memory_space, "memory space");
       }
     }
   }
@@ -3581,8 +3605,8 @@ bool HloParser::ParseLayout(Layout* layout) {
   for (int i = 0; i < tiles.size(); i++) {
     vec_tiles[i] = Tile(tiles[i]);
   }
-  *layout =
-      LayoutUtil::MakeLayout(minor_to_major, vec_tiles, element_size_in_bits);
+  *layout = LayoutUtil::MakeLayout(minor_to_major, vec_tiles,
+                                   element_size_in_bits, memory_space);
   return true;
 }
 

@@ -65,8 +65,9 @@ keyword arguments to functions that had their arguments reordered.
 
 - The script assumes that `tensorflow` is imported using `import tensorflow as tf`.
 
-- Note for upgrading to 2.0: Check out [tf2up.ml](http://tf2up.ml) for a convenient tool to upgrade Jupiter
-  notebooks and Python files in a github repository.
+- Note for upgrading to 2.0: Check out [tf2up.ml](http://tf2up.ml) for a
+  convenient tool to upgrade Jupyter notebooks and Python files in a GitHub
+  repository.
 
 - Note for upgrading to 1.0: There are some syntaxes that are not handleable with this script as this
 script was designed to use only standard python packages.

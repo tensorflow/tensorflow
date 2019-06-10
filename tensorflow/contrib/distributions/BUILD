@@ -2,6 +2,8 @@
 #   Contains ops for statistical distributions (with pdf, cdf, sample, etc...).
 #   APIs here are meant to evolve over time.
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
 package(
     default_visibility = [
         "//learning/brain/contrib/bayesflow:__subpackages__",
@@ -11,8 +13,6 @@ package(
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
     name = "bijectors_py",

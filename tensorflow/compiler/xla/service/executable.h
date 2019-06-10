@@ -105,7 +105,7 @@ class ExecutionOutput {
 class Executable {
  public:
   explicit Executable(
-      std::unique_ptr<HloModule> hlo_module,
+      std::shared_ptr<HloModule> hlo_module,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
       std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
       : hlo_module_(std::move(hlo_module)),
@@ -207,6 +207,7 @@ class Executable {
   }
 
   HloModule& module() const { return *hlo_module_; }
+  std::shared_ptr<HloModule> shared_module() const { return hlo_module_; }
 
   const bool has_module() const { return hlo_module_ != nullptr; }
 
@@ -238,7 +239,7 @@ class Executable {
   // HloModule this was compiled from. BufferAssignment keeps pointers to
   // HloInstructions owned by the HloModule so we need to keep the HloModule
   // around.
-  const std::unique_ptr<HloModule> hlo_module_;
+  const std::shared_ptr<HloModule> hlo_module_;
 
   // HloSnapshot this was compiled from. Null if not dumping executions.
   std::unique_ptr<HloSnapshot> hlo_snapshot_;

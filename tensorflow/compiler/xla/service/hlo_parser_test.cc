@@ -2831,6 +2831,33 @@ TEST_F(HloParserTest, ParseShapeStringWithSparseLayout) {
       << "actual: " << ShapeUtil::HumanString(actual);
 }
 
+TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
+  // Tile, element size, and memory space.
+  string shape_string = "pred[123,456]{1,0:T(2,128)E(1)S(3)}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0},
+                                                  {Tile({2, 128})}, 1, 3);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Element size and memory space.
+  shape_string = "pred[123,456]{1,0:E(1)S(3)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, 1, 3);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Memory space only.
+  shape_string = "pred[123,456]{1,0:S(3)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, 0, 3);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+}
+
 TEST_F(HloParserTest, ParseOpaqueType) {
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape("opaque[]"));
   Shape expected = ShapeUtil::MakeOpaqueShape();

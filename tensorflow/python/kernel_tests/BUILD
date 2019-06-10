@@ -2916,8 +2916,7 @@ cuda_py_test(
         "no_rocm",
         "optonly",  # flaky timeouts unless optimized
     ],
-    # TODO(b/134677329): Re-enable this test.
-    xla_enable_strict_auto_jit = False,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -3540,7 +3539,8 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
-    xla_enable_strict_auto_jit = True,
+    # TODO(b/134764123): Re-enable this test.
+    xla_enable_strict_auto_jit = False,
 )
 
 sycl_py_test(

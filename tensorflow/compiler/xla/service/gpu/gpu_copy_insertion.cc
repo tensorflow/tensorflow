@@ -54,12 +54,7 @@ StatusOr<bool> GpuCopyInsertion::Run(HloModule* module) {
     }
   }
 
-  // The GPU backend needs additional copies added due to deficiencies in
-  // buffer assignment.
-  TF_ASSIGN_OR_RETURN(bool buffer_assignment_changed,
-                      CopyInsertion::AddCopiesForBufferAssignment(module));
-
-  return changed || buffer_assignment_changed;
+  return changed;
 }
 
 }  // namespace gpu

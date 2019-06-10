@@ -1,3 +1,8 @@
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
+
 package(
     default_visibility = [
         "//tensorflow:internal",
@@ -6,11 +11,6 @@ package(
 )
 
 exports_files(["LICENSE"])
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
-)
 
 cc_library(
     name = "remote_tensor_handle",

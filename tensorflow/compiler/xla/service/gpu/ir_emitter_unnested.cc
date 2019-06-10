@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
@@ -1404,6 +1405,12 @@ Status IrEmitterUnnested::HandleTupleSelect(HloInstruction* tuple_select) {
 Status IrEmitterUnnested::HandleReplicaId(HloInstruction* hlo) {
   AddThunkToThunkSequence(
       absl::make_unique<ReplicaIdThunk>(GetAllocationSlice(*hlo), hlo));
+  return Status::OK();
+}
+
+Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {
+  AddThunkToThunkSequence(absl::make_unique<CollectivePermuteThunk>(
+      GetAllocationSlice(*hlo->operand(0)), GetAllocationSlice(*hlo), hlo));
   return Status::OK();
 }
 

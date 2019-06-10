@@ -843,7 +843,7 @@ def _wrap_layer_functions(layer, serialization_cache,
   # Manually trigger traces before restoring the overwritten functions. The
   # functions are traced within the layer call context to ensure that layer
   # functions (e.g. add_loss) behave as though running in graph mode.
-  with base_layer_utils.call_context().enter(layer, None, build_graph=True):
+  with base_layer_utils.call_context().enter(layer, None, True, None):
     for fn in fns.values():
       if fn is not None and fn.input_signature is not None:
         fn.get_concrete_function()

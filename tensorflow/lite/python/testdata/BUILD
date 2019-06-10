@@ -52,3 +52,23 @@ filegroup(
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
+
+cc_library(
+    name = "test_delegate",
+    testonly = 1,
+    srcs = ["test_delegate.cc"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
+    deps = [
+        "//tensorflow/lite/c:c_api_internal",
+    ],
+)
+
+cc_binary(
+    name = "test_delegate.so",
+    testonly = 1,
+    linkshared = 1,
+    linkstatic = 1,
+    deps = [
+        ":test_delegate",
+    ],
+)

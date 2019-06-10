@@ -211,10 +211,8 @@ def get_uid(prefix=''):
 def reset_uids():
   """Resets graph identifiers.
   """
-  per_graph_object_name_uids = PER_GRAPH_OBJECT_NAME_UIDS
-  keys = list(per_graph_object_name_uids.keys())
-  for key in keys:
-    del per_graph_object_name_uids[key]
+
+  PER_GRAPH_OBJECT_NAME_UIDS.clear()
 
 
 @keras_export('keras.backend.clear_session')
@@ -293,6 +291,10 @@ def learning_phase():
     return symbolic_learning_phase()
 
 
+def global_learning_phase_is_set():
+  return _DUMMY_EAGER_GRAPH in _GRAPH_LEARNING_PHASES
+
+
 def symbolic_learning_phase():
   graph = get_graph()
   with graph.as_default():
@@ -323,18 +325,6 @@ def set_learning_phase(value):
       # context and the internal Keras graph.
       _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
     _GRAPH_LEARNING_PHASES[get_graph()] = value
-
-
-def set_eager_learning_phase(value):
-  """Internal utility that sets the learning phase in eager execution only.
-
-  Arguments:
-      value: Learning phase value, either 0 or 1 (integers).
-  """
-  global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
-  assert value in {0, 1}
-  assert context.executing_eagerly()
-  _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
 
 
 @keras_export('keras.backend.learning_phase_scope')
@@ -381,9 +371,10 @@ def learning_phase_scope(value):
       elif graph in _GRAPH_LEARNING_PHASES:
         del _GRAPH_LEARNING_PHASES[graph]
 
+
 @tf_contextlib.contextmanager
 def eager_learning_phase_scope(value):
-  """Internal scope that sets the learning phase in eager execution only.
+  """Internal scope that sets the learning phase in eager / tf.function only.
 
   Arguments:
       value: Learning phase value, either 0 or 1 (integers).
@@ -397,13 +388,18 @@ def eager_learning_phase_scope(value):
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   assert value in {0, 1}
   assert ops.executing_eagerly_outside_functions()
-  previous_value = learning_phase()
+  global_learning_phase_was_set = global_learning_phase_is_set()
+  if global_learning_phase_was_set:
+    previous_value = learning_phase()
   try:
     _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
     yield
   finally:
-    # Restore learning phase to initial value.
-    _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
+    # Restore learning phase to initial value or unset.
+    if global_learning_phase_was_set:
+      _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
+    else:
+      del _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
 
 
 def _current_graph(op_input_list):

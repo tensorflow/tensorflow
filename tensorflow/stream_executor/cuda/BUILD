@@ -1,7 +1,7 @@
 # Description:
 #   CUDA-platform specific StreamExecutor support code.
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")
 load(
     "//tensorflow/stream_executor:build_defs.bzl",
     "stream_executor_friends",
@@ -601,11 +601,11 @@ cc_library(
     ]),
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "redzone_allocator_test",
-    srcs = if_cuda_is_configured(["redzone_allocator_test.cc"]),
+    srcs = ["redzone_allocator_test.cc"],
     tags = tf_cuda_tests_tags(),
-    deps = if_cuda_is_configured([
+    deps = [
         ":cuda_activation",
         ":cuda_gpu_executor",
         ":ptxas_utils",
@@ -617,5 +617,5 @@ tf_cc_test(
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:kernel",
-    ]),
+    ],
 )

@@ -801,5 +801,33 @@ TEST_F(HloVerifierTest, AllToAll_WrongNumberOfReplicasInGroup) {
               HasSubstr("Replica group has size 1"));
 }
 
+TEST_F(HloVerifierTest, CollectivePermuteSameSourceTwice) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128] parameter(0)
+    ROOT permute = f32[128] collective-permute(p0),
+      source_target_pairs={{0,1}, {0,2}, {1,0}}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kModuleStr));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Source 0 appears more than once"));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteSameTargetTwice) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128] parameter(0)
+    ROOT permute = f32[128] collective-permute(p0),
+      source_target_pairs={{0,2}, {1,2}, {2,0}}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kModuleStr));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Target 2 appears more than once"));
+}
+
 }  // namespace
 }  // namespace xla

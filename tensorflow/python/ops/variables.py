@@ -404,8 +404,8 @@ class Variable(six.with_metaclass(VariableMetaclass,
         that case, `dtype` must be specified. (Note that initializer functions
         from init_ops.py must first be bound to a shape before being used here.)
       trainable: If `True`, GradientTapes automatically watch uses
-        of this variable. Defaults to `True` unless `synchronization` is
-        set to `ON_READ`.
+        of this variable. Defaults to `True`, unless `synchronization` is
+        set to `ON_READ`, in which case it defaults to `False`.
       validate_shape: If `False`, allows the variable to be initialized with a
         value of unknown shape. If `True`, the default, the shape of
         `initial_value` must be known.
@@ -436,8 +436,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
-        when to synchronize. If `synchronization` is set to `ON_READ`,
-        `trainable` must not be set to `True`.
+        when to synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
@@ -1449,7 +1448,8 @@ class VariableV1(Variable):
       trainable: If `True`, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
-        Defaults to `True` unless `synchronization` is set to `ON_READ`.
+        Defaults to `True`, unless `synchronization` is set to `ON_READ`, in
+        which case it defaults to `False`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       validate_shape: If `False`, allows the variable to be initialized with a
@@ -1485,8 +1485,7 @@ class VariableV1(Variable):
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
-        when to synchronize. If `synchronization` is set to `ON_READ`,
-        `trainable` must not be set to `True`.
+        when to synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
@@ -1545,7 +1544,8 @@ class RefVariable(VariableV1):
       trainable: If `True`, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
-        Defaults to `True` unless `synchronization` is set to `ON_READ`.
+        Defaults to `True`, unless `synchronization` is set to `ON_READ`, in
+        which case it defaults to `False`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       validate_shape: If `False`, allows the variable to be initialized with a
@@ -1580,8 +1580,7 @@ class RefVariable(VariableV1):
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
-        when to synchronize. If `synchronization` is set to `ON_READ`,
-        `trainable` must not be set to `True`.
+        when to synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
@@ -1653,7 +1652,8 @@ class RefVariable(VariableV1):
       trainable: If `True`, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
-        Defaults to `True` unless `synchronization` is set to `ON_READ`.
+        Defaults to `True`, unless `synchronization` is set to `ON_READ`, in
+        which case it defaults to `False`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       validate_shape: If `False`, allows the variable to be initialized with a
@@ -1682,8 +1682,7 @@ class RefVariable(VariableV1):
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
-        when to synchronize. If `synchronization` is set to `ON_READ`,
-        `trainable` must not be set to `True`.
+        when to synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.

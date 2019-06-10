@@ -1,11 +1,6 @@
 # Description:
 #   Utilities that perform useful transformations on graphs
 
-package(
-    default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
-)
-
 load(
     "//tensorflow:tensorflow.bzl",
     "if_not_v2",
@@ -14,6 +9,11 @@ load(
     "tf_cc_test",
     "tf_copts",
     "tf_py_test",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])

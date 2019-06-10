@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/tensor.h"
@@ -1504,6 +1503,23 @@ TEST_F(OpConverterTest, ConvertConst) {
     RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                "Unsupported data type double");
   }
+  {
+    Reset();
+    Tensor tensor =
+        test::AsTensor<int64>({1, std::numeric_limits<int64>::max(), 1, 1, 1,
+                               std::numeric_limits<int64>::lowest()},
+                              TensorShape({2, 3}));
+    NodeDef node_def;
+    node_def.set_name("my_const");
+    node_def.set_op("Const");
+    (*node_def.mutable_attr())["dtype"].set_type(DT_INT64);
+    TensorProto* tensor_attr =
+        (*node_def.mutable_attr())["value"].mutable_tensor();
+    tensor_attr->Clear();
+    tensor.AsProtoTensorContent(tensor_attr);
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "outside the range of int32");
+  }
 
   TestConvertConst<DT_FLOAT, float, float>(this);
   TestConvertConst<DT_INT8, int8, int32>(this);
@@ -1511,6 +1527,9 @@ TEST_F(OpConverterTest, ConvertConst) {
   TestConvertConst<DT_INT16, int16, int32>(this);
   TestConvertConst<DT_UINT16, uint16, int32>(this);
   TestConvertConst<DT_INT32, int32, int32>(this);
+  TestConvertConst<DT_UINT32, uint32, int32>(this);
+  TestConvertConst<DT_INT64, int64, int32>(this);
+  TestConvertConst<DT_UINT64, uint64, int32>(this);
 }
 
 TEST_F(OpConverterTest, ConvertTranspose) {

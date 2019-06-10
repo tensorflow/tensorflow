@@ -347,7 +347,7 @@ Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
 }
 
 Device* GetResourceDevice(const Tensor& t, EagerContext* ctx) {
-  if (t.dtype() != DT_RESOURCE) {
+  if (t.dtype() != DT_RESOURCE || ctx == nullptr) {
     return nullptr;
   }
   const ResourceHandle& resource_handle = t.flat<ResourceHandle>()(0);
@@ -400,8 +400,14 @@ Status TensorHandle::GetResourceVariableDtypeAndShape(
   mutex_lock l(ctx_mutex_);
   resource_dtype_and_shape_status_ = GetResourceVariableDtypeAndShapeInternal(
       tensor_, resource_device_, &resource_dtype_and_shape_);
-  resource_dtype_and_shape_initialized_ = true;
-  *result = resource_dtype_and_shape_;
+
+  // TODO(endlessroad): the resource variable shape may be partially known at
+  // creation time, and it can be changed later. We may not want the cache in
+  // this case.
+  if (resource_dtype_and_shape_status_.ok()) {
+    resource_dtype_and_shape_initialized_ = true;
+    *result = resource_dtype_and_shape_;
+  }
   return resource_dtype_and_shape_status_;
 }
 

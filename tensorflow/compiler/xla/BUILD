@@ -1,3 +1,10 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_proto_library_py",
+)
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
@@ -17,13 +24,6 @@ package_group(
     packages = [
         "//tensorflow/compiler/xla/...",
     ],
-)
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
-load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_proto_library_py",
 )
 
 # Filegroup used to collect source files for dependency checking.

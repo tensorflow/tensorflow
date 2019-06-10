@@ -51,13 +51,17 @@ class GpuExecutable : public Executable {
  public:
   // cubin (i.e. the compiled ptx) may be empty, in which case we leave
   // compilation up to the GPU driver.
+  // We need to share ownership of hlo_module and assignment with profiler to
+  // safely keep a reference to these objects during tracing period, thus they
+  // are passed as shared pointers.
   GpuExecutable(const string& ptx, const std::vector<uint8>& cubin,
                 std::pair<int, int> compute_capability,
                 std::unique_ptr<const ThunkSchedule> thunk_schedule,
-                std::unique_ptr<HloModule> hlo_module,
-                std::unique_ptr<const BufferAssignment> assignment,
+                std::shared_ptr<HloModule> hlo_module,
+                std::shared_ptr<const BufferAssignment> assignment,
                 std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
+  ~GpuExecutable() override;
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -140,7 +144,7 @@ class GpuExecutable : public Executable {
 
   // Owns the buffer data at runtime. It provides information to allocate
   // memory for every output/temp buffers.
-  const std::unique_ptr<const BufferAssignment> assignment_;
+  const std::shared_ptr<const BufferAssignment> assignment_;
 
   // Cache of module handles and constant buffer allocation maps used by
   // `ResolveConstantGlobals`.

@@ -1,3 +1,13 @@
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
+load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites")
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
+
 package(
     default_visibility = [":internal"],
     licenses = ["notice"],  # Apache 2.0
@@ -15,16 +25,6 @@ package_group(
     includes = [
         "//tensorflow/compiler/tf2xla:friends",
     ],
-)
-
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
-load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites")
-load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
 )
 
 generate_backend_suites()
@@ -1144,6 +1144,10 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 5,
+    tags = [
+        # TODO(b/134780716): Re-enable this test.
+        "notap",
+    ],
 )
 
 cuda_py_test(

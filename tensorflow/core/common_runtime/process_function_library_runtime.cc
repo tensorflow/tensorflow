@@ -1157,12 +1157,12 @@ void ProcessFunctionLibraryRuntime::RunInternal(
     return;
   }
   if (parent_ != nullptr) {
-    parent_->Run(opts, local_handle, args, rets, std::move(done));
     auto cleanup_item = absl::make_unique<CleanUpItem>();
     cleanup_item->device = target_device;
     cleanup_item->step_id = opts.step_id;
     cleanup_item->local_handle = local_handle;
     cleanup_items->emplace_back(std::move(cleanup_item));
+    parent_->Run(opts, local_handle, args, rets, std::move(done));
     return;
   }
   done(errors::Internal("Could not find device"));

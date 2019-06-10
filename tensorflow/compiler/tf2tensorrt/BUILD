@@ -458,40 +458,12 @@ tf_cuda_cc_test(
 # Library for the plugin factory
 tf_cuda_library(
     name = "trt_plugins",
-    srcs = [
-        "plugin/trt_plugin.cc",
-        "plugin/trt_plugin_factory.cc",
-        "plugin/trt_plugin_utils.cc",
-    ],
-    hdrs = [
-        "plugin/trt_plugin.h",
-        "plugin/trt_plugin_factory.h",
-        "plugin/trt_plugin_utils.h",
-    ],
+    srcs = ["plugin/trt_plugin.cc"],
+    hdrs = ["plugin/trt_plugin.h"],
     deps = [
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([
-        "@local_config_tensorrt//:tensorrt",
-    ]),
-)
-
-tf_cuda_cc_test(
-    name = "trt_plugin_factory_test",
-    size = "small",
-    srcs = ["plugin/trt_plugin_factory_test.cc"],
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_windows",
-        "nomac",
-    ],
-    deps = [
-        ":trt_plugins",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ] + if_tensorrt([
-        "@local_config_cuda//cuda:cuda_headers",
         "@local_config_tensorrt//:tensorrt",
     ]),
 )
