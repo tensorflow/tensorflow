@@ -120,7 +120,6 @@ def _model_loss(model,
     inputs = nest.map_structure(ops.convert_to_tensor, inputs)
 
   outs = model(inputs, **kwargs)
-
   outs = nest.flatten(outs)
   masks = [getattr(t, '_keras_mask', None) for t in outs]
   targets = nest.flatten(targets)
@@ -226,6 +225,8 @@ def _process_single_batch(model,
       ValueError: If the model has no loss to optimize.
   """
   with backend.eager_learning_phase_scope(1 if training else 0):
+    current_trainable_state = model._get_trainable_state()
+    model._set_trainable_state(model._compiled_trainable_state)
     with GradientTape() as tape:
       outs, total_loss, output_losses, masks = (
           _model_loss(
@@ -256,8 +257,8 @@ def _process_single_batch(model,
         grads = tape.gradient(scaled_total_loss, model.trainable_weights)
         if loss_scale is not None:
           grads = loss_scale_optimizer.unscale_grads(grads, loss_scale)
-        model.optimizer.apply_gradients(zip(grads,
-                                            model.trainable_weights))
+        model.optimizer.apply_gradients(zip(grads, model.trainable_weights))
+    model._set_trainable_state(current_trainable_state)
     return outs, total_loss, output_losses, masks
 
 

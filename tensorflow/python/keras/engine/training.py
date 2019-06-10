@@ -278,6 +278,9 @@ class Model(network.Network):
     # all the model output/target/loss and related metadata.
     self._training_endpoints = []
 
+    # Used to freeze the behavior of the Model once `compile` has been called.
+    self._compiled_trainable_state = self._get_trainable_state()
+
     # Set tf.distribute.Strategy specific parameters.
     self._distributed_model_cache = {}
     self._distributed_function_cache = {}
@@ -1964,6 +1967,10 @@ class Model(network.Network):
     # train function even if one exists already. This is because
     # `_feed_sample_weights` list has been updated on re-copmpile.
     if getattr(self, 'train_function') is None or has_recompiled:
+      # Restore the compiled trainable state.
+      current_trainable_state = self._get_trainable_state()
+      self._set_trainable_state(self._compiled_trainable_state)
+
       inputs = (self._feed_inputs +
                 self._feed_targets +
                 self._feed_sample_weights)
@@ -1975,10 +1982,10 @@ class Model(network.Network):
           # Training updates
           updates = self.optimizer.get_updates(
               params=self._collected_trainable_weights, loss=self.total_loss)
-      # Unconditional updates
-      updates += self.get_updates_for(None)
-      # Conditional updates relevant to this model
-      updates += self.get_updates_for(self.inputs)
+          # Unconditional updates
+          updates += self.get_updates_for(None)
+          # Conditional updates relevant to this model
+          updates += self.get_updates_for(self.inputs)
 
       with K.name_scope('training'):
         # Gets loss and metrics. Updates weights at each call.
@@ -1988,6 +1995,9 @@ class Model(network.Network):
             name='train_function',
             **self._function_kwargs)
         setattr(self, 'train_function', fn)
+
+      # Restore the current trainable state
+      self._set_trainable_state(current_trainable_state)
 
   def _make_test_function(self):
     has_recompiled = self._recompile_weights_loss_and_weighted_metrics()

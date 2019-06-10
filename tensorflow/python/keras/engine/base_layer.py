@@ -1988,6 +1988,28 @@ class Layer(module.Module):
 
     return nest.map_structure(_make_placeholder_like, output_shapes)
 
+  def _get_trainable_state(self):
+    """Get the `trainable` state of each sublayer.
+
+    Returns:
+      A dict mapping all sublayers to their `trainable` value.
+    """
+    layers = trackable_layer_utils.filter_empty_layer_containers(self._layers)
+    # Keep track of each top-level layers' `trainable` as well as the
+    # state of all of its sublayers.
+    trainable_state = {self: self.trainable}
+    for layer in layers:
+      trainable_state.update(layer._get_trainable_state())
+    return trainable_state
+
+  def _set_trainable_state(self, trainable_state):
+    """Set `trainable` state for each sublayer."""
+    layers = trackable_layer_utils.filter_empty_layer_containers(self._layers)
+    if self in trainable_state:
+      self.trainable = trainable_state[self]
+    for layer in layers:
+      layer._set_trainable_state(trainable_state)
+
   @property
   def _obj_reference_counts(self):
     """A dictionary counting the number of attributes referencing an object."""
