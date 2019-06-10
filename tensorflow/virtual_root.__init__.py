@@ -74,7 +74,7 @@ _top_level_modules = [
     "tensorflow.compiler",
     "tensorflow.lite",
     "tensorflow.keras",
-    "tensorflow.contrib",
+    "tensorflow.contrib",  # ONLY FOR V1, REMOVED IN V2 (don't remove comment!)
     "tensorflow.compat",
 ]
 # Estimator needs to be handled separatedly so we can still allow both
