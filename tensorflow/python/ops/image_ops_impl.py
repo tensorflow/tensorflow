@@ -496,6 +496,8 @@ def rot90(image, k=1, name=None):
   tf_img=tf.convert_to_tensor(img) #converting numpy to tensor
   # rotating `tf_img` counter clockwise by 90 degrees
   rot_img=tf.image.rot90(tf_img,k=1) #rotated image
+  img.shape # TensorShape([1077, 1068, 3])
+  rot_img.shape # ensorShape([1068, 1077, 3])
   # fig=plt.plot(), plt.imshow(tf_img) # plots original image
   # fig=plt.plot(), plt.imshow(rot_img) # plots rotated image
   ```
