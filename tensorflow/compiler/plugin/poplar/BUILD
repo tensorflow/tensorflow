@@ -1021,7 +1021,8 @@ py_library(
 
 py_test(
     name = "arg_min_max_test",
-    size = "small",
+    size = "medium",
+    shard_count = 2,
     srcs = ["tests/arg_min_max_test.py"],
     deps = [
         ":test_utils_py",
