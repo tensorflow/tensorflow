@@ -3840,8 +3840,8 @@ Status ConvertGather(OpConverterParams* params) {
         "The input axis must be zero when params is a weight.");
   }
   if (params_input.is_tensor() && indices_input.batch_size() != 1) {
-    return errors::InvalidArgument(
-        "Only indices with batch 1 are supported when params is a tensor.");
+    return errors::Unimplemented(
+        "Indices must have a batch size of 1 when params is a tensor.");
   }
   // Both input are tensors, and the TF gather result will have rank:
   // (params.nbDims + 1) + (indices.nbDims + 1) - 1,

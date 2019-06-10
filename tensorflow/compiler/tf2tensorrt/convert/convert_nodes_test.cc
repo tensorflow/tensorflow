@@ -3964,7 +3964,7 @@ TEST_F(OpConverterTest, ConvertGather) {
                                "batch dimension, at my_gather");
   }
   {
-    // Axis is not equal zero and params is a weights
+    // Axis is not zero when params is a weight, should fail.
     Reset();
     AddTestWeights<int32>("params", {1, 3}, {1, 2, 3});
     AddTestTensor("indices", {2});
@@ -3972,6 +3972,16 @@ TEST_F(OpConverterTest, ConvertGather) {
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
         "The input axis must be zero when params is a weight.");
+  }
+  {
+    // Batch size of indices is not 1 when params is a tensor.
+    Reset();
+    AddTestTensor("params", {1, 2, 3}, /*batch_size=*/2);
+    AddTestTensor("indices", {2}, /*batch_size=*/2);
+    AddTestWeights<int32>("axis", {1}, {1});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Indices must have a batch size of 1 when params is a tensor.");
   }
 
   Reset();
