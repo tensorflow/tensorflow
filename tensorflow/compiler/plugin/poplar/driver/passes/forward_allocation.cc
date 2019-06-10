@@ -24,8 +24,10 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/tools/meta_graph.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
+
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -297,7 +299,7 @@ void ForwardAllocation::FlattenInputs(
       // We have guaranteed that we are only looking through GTEs.
       CHECK_EQ(user->opcode(), HloOpcode::kGetTupleElement);
       // We can only look through if it's inplace.
-      if (inplace_instructions.contains(user)) {
+      if (IsUsedInplace(user)) {
         std::vector<const HloInstruction*> new_path(path);
         new_path.push_back(user);
         FlattenInputs(user, new_path, input_to_deferred_allocation_path);
@@ -654,8 +656,7 @@ StatusOr<bool> ForwardAllocation::FindLayoutDependentTargets(
 ForwardAllocation::ForwardAllocation(CompilerAnnotations& annotations)
     : tensor_allocation_map(annotations.tensor_allocation_map),
       tensors_with_layout(annotations.tensors_with_layout),
-      deferred_allocations(annotations.deferred_allocations),
-      inplace_instructions(annotations.inplace_instructions) {}
+      deferred_allocations(annotations.deferred_allocations) {}
 
 StatusOr<bool> ForwardAllocation::Run(HloModule* module) {
   bool found_target = false;

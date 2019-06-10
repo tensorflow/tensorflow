@@ -30,16 +30,9 @@ namespace poplarplugin {
 
 class ExpressionOutliner : public HloModulePass {
  public:
-  ExpressionOutliner(struct CompilerAnnotations& annotations);
-
-  ~ExpressionOutliner() override = default;
-
   absl::string_view name() const override { return "expression-outline"; }
 
   StatusOr<bool> Run(HloModule* module);
-
- private:
-  struct CompilerAnnotations& annotations_;
 };
 
 }  // namespace poplarplugin

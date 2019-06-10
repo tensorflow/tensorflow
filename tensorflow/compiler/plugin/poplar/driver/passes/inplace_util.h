@@ -28,7 +28,6 @@ namespace poplarplugin {
 struct CompilerAnnotations;
 
 using OperandIndexes = std::vector<int64>;
-using InplaceInstructions = absl::flat_hash_set<const HloInstruction*>;
 using InplaceWorkList = absl::flat_hash_map<HloInstruction*, bool>;
 
 enum class HloInstructionType {
@@ -63,8 +62,7 @@ class HloInstructionDescription {
 
   static bool IsInplace(HloInstruction* inst,
                         HloReachabilityMap* reachability_map,
-                        InplaceWorkList& worklist,
-                        const InplaceInstructions& inplace_instructions);
+                        InplaceWorkList& worklist);
 
   const std::string ToString() const;
 

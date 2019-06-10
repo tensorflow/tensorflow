@@ -1,3 +1,17 @@
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/flags.h"
 
@@ -304,5 +318,36 @@ void GetAllDepNames(const HloInstruction* base,
   }
 }
 
+void MakeUsedInplace(HloInstruction* inst) {
+  auto backend_config =
+      inst->backend_config<PoplarBackendConfig>().ValueOrDie();
+  backend_config.set_is_inplace(true);
+  inst->set_backend_config(backend_config);
+}
+
+bool IsUsedInplace(const HloInstruction* inst) {
+  auto backend_config =
+      inst->backend_config<PoplarBackendConfig>().ValueOrDie();
+  return backend_config.is_inplace();
+}
+
+absl::flat_hash_set<const HloInstruction*> GetInplaceInstructions(
+    const HloComputation* comp) {
+  absl::flat_hash_set<const HloInstruction*> result;
+  absl::c_copy_if(
+      comp->instructions(), std::inserter(result, std::begin(result)),
+      [](const HloInstruction* inst) { return IsUsedInplace(inst); });
+  return result;
+}
+
+absl::flat_hash_set<const HloInstruction*> GetInplaceInstructions(
+    const HloModule* module) {
+  absl::flat_hash_set<const HloInstruction*> result;
+  for (auto comp : module->computations()) {
+    auto comp_inplace = GetInplaceInstructions(comp);
+    result.insert(comp_inplace.begin(), comp_inplace.end());
+  }
+  return result;
+}
 }  // namespace poplarplugin
 }  // namespace xla

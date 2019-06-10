@@ -16,8 +16,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_TOOLS_DATA_INITIALIZER_H_
 
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 #include <memory>
 #include <string>

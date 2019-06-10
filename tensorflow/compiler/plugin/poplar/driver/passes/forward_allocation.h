@@ -14,6 +14,7 @@ namespace xla {
 class HloModule;
 class HloComputation;
 class HloInstruction;
+class HloReachabilityMap;
 
 namespace poplarplugin {
 
@@ -51,7 +52,6 @@ class ForwardAllocation : public HloModulePass {
   TensorAllocationMap& tensor_allocation_map;
   DeferredAllocations& deferred_allocations;
   TensorsWithLayouts& tensors_with_layout;
-  const InplaceInstructions& inplace_instructions;
 };
 
 }  // namespace poplarplugin

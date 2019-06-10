@@ -5,9 +5,9 @@
 #include "tensorflow/compiler/plugin/poplar/driver/passes/allocation_finder.h"
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace poplar {
 class Tensor;
@@ -156,7 +156,7 @@ ArgVector FindInstructionInputs(TensorMap& map, CompilerResources& res,
                                 poplar::program::Sequence& seq,
                                 const bool expand_constants = true);
 
-bool AreInplaceOutputTensorsWritable(TensorMap& map, CompilerResources& res,
+bool AreInplaceOutputTensorsWritable(TensorMap& map,
                                      const HloInstruction* inst);
 
 /* Sometimes an inplace op cannot be performed because the input/output tensor

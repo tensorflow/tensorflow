@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/passes/expression_outliner.h"
-#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
-#include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 
 #include "tensorflow/core/lib/core/errors.h"
@@ -87,17 +85,13 @@ bool IsPopopsElementwise(const HloInstruction* inst) {
 
 }  // namespace
 
-ExpressionOutliner::ExpressionOutliner(struct CompilerAnnotations& annotations)
-    : annotations_(annotations){};
-
 StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
   HloComputation* comp = module->entry_computation();
 
   std::list<HloInstruction*> all_ops;
   for (auto* inst : comp->MakeInstructionPostOrder()) {
     if (IsPopopsElementwise(inst) && inst->user_count() == 1 &&
-        !annotations_.inplace_instructions.count(inst) &&
-        inst->control_predecessors().size() == 0 &&
+        !IsUsedInplace(inst) && inst->control_predecessors().size() == 0 &&
         inst->control_successors().size() == 0) {
       bool add_op = true;
       if (inst->IsElementwiseBinary()) {
@@ -183,7 +177,7 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
         bool ok_to_outline =
             (std::find(all_ops.begin(), all_ops.end(), op) != all_ops.end());
 
-        if (annotations_.inplace_instructions.count(op)) {
+        if (IsUsedInplace(op)) {
           ok_to_outline = false;
         }
 

@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/passes/fuse_ops_late.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/fuse_wide_const.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/hlo_computation_name_uniquify.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/inter_ipu_copy_inserter.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/not_supported_gather_expander.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/not_supported_scatter_expander.h"
@@ -536,8 +537,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         resources.annotations);
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<DependencyReplacer>(true);
-    pipeline.AddPass<InplaceFinder>(resources.annotations);
-    pipeline.AddPass<ExpressionOutliner>(resources.annotations);
+    pipeline.AddPass<InplaceFinder>();
+    pipeline.AddPass<ExpressionOutliner>();
     pipeline.AddPass<HloSubcomputationUnification>();
     pipeline.AddPass<ShardingPass>();
     pipeline.AddPass<InterIpuCopyInserter>();
@@ -564,7 +565,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
           size_function, CreateLookAheadMemoryScheduler(
                              poplarExecutor->GetMaxAllReduceBufferSize()));
     }
-    pipeline.AddPass<CombineAllReduce>(resources.annotations);
+    pipeline.AddPass<CombineAllReduce>();
 
     TF_RETURN_IF_ERROR(pipeline.Run(module.get()).status());
   }

@@ -206,7 +206,7 @@ StatusOr<poplar::program::Program> CreateUnaryElementwiseOp(
   TF_ASSIGN_OR_RETURN(popops::expr::UnaryOpType op, LookupUnaryFn(inst));
 
   poplar::Tensor out;
-  if (AreInplaceOutputTensorsWritable(tensor_map, res, inst)) {
+  if (AreInplaceOutputTensorsWritable(tensor_map, inst)) {
     popops::mapInPlace(graph, op, in, seq, GetDebugName(inst));
     out = in;
   } else {
@@ -229,7 +229,7 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
       poplar::Tensor rhs,
       FindInstructionInput(tensor_map, res, inst, 1, seq, false));
 
-  if (AreInplaceOutputTensorsWritable(tensor_map, res, inst)) {
+  if (AreInplaceOutputTensorsWritable(tensor_map, inst)) {
     TF_ASSIGN_OR_RETURN(
         ArgVectors inputs,
         FindInplaceOutputTensors(tensor_map, res, inst, seq, false));

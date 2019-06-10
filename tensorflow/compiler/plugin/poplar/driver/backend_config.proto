@@ -5,6 +5,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 package xla.poplarplugin;
 
 // Backend specific HloInstruction config
+// NEXT ID = 4
 message PoplarBackendConfig {
 
   // Instruction config for a fusion instruction
@@ -28,4 +29,5 @@ message PoplarBackendConfig {
     RepeatConfig repeat_config = 2;
   }
 
+  bool is_inplace = 3;
 };

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops/custom_ops/custom_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/conversions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/custom_ops/hlo_poplar_instruction.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/flags.h"
@@ -1513,9 +1514,9 @@ OutVector FindExpandedInstructionOutputs(TensorMap& map, CompilerResources& res,
   return outputs;
 }
 
-bool AreInplaceOutputTensorsWritable(TensorMap& map, CompilerResources& res,
+bool AreInplaceOutputTensorsWritable(TensorMap& map,
                                      const HloInstruction* inst) {
-  if (!res.annotations.inplace_instructions.contains(inst)) {
+  if (!IsUsedInplace(inst)) {
     return false;
   }
 
@@ -1586,8 +1587,7 @@ StatusOr<ArgVectors> FindInplaceOutputTensors(TensorMap& map,
   const bool is_inplace_read_write =
       inplace_description.GetType() == HloInstructionType::kInplaceReadWrite;
 
-  const bool is_still_inplace =
-      res.annotations.inplace_instructions.count(inst);
+  const bool is_still_inplace = IsUsedInplace(inst);
 
   // Get all the input tensors for all the inplace operands
   auto inplace_indexes = inplace_description.GetInplaceOperandIndexes();

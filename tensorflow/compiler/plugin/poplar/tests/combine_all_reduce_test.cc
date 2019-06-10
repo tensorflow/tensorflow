@@ -14,13 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/passes/combine_all_reduce.h"
+
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/schedulers/look_ahead_scheduler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/schedulers/sync_list_scheduler.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
-
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
-
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -69,13 +69,13 @@ add {
       CreateSyncListMemoryScheduler(64 * 1024));
   EXPECT_TRUE(scheduler.Run(module).ValueOrDie());
 
-  CompilerAnnotations annotations(module);
-  CombineAllReduce combine_all_reduce(annotations);
+  CombineAllReduce combine_all_reduce;
   EXPECT_TRUE(combine_all_reduce.Run(module).ValueOrDie());
 
   // Check the inplace instructions are all GTEs
-  EXPECT_EQ(annotations.inplace_instructions.size(), 3);
-  for (auto inplace_inst : annotations.inplace_instructions) {
+  auto inplace_instructions = GetInplaceInstructions(module);
+  EXPECT_EQ(inplace_instructions.size(), 3);
+  for (auto inplace_inst : inplace_instructions) {
     EXPECT_EQ(inplace_inst->opcode(), HloOpcode::kGetTupleElement);
     EXPECT_TRUE(inplace_inst->tuple_index() < 3);
   }
@@ -126,13 +126,13 @@ add {
       CreateLookAheadMemoryScheduler(64 * 1024));
   EXPECT_TRUE(scheduler.Run(module).ValueOrDie());
 
-  CompilerAnnotations annotations(module);
-  CombineAllReduce combine_all_reduce(annotations);
+  CombineAllReduce combine_all_reduce;
   EXPECT_TRUE(combine_all_reduce.Run(module).ValueOrDie());
 
   // Check the inplace instructions are all GTEs
-  EXPECT_EQ(annotations.inplace_instructions.size(), 3);
-  for (auto inplace_inst : annotations.inplace_instructions) {
+  auto inplace_instructions = GetInplaceInstructions(module);
+  EXPECT_EQ(inplace_instructions.size(), 3);
+  for (auto inplace_inst : inplace_instructions) {
     EXPECT_EQ(inplace_inst->opcode(), HloOpcode::kGetTupleElement);
     EXPECT_TRUE(inplace_inst->tuple_index() < 3);
   }

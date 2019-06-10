@@ -41,10 +41,6 @@ using InplaceRoute = std::vector<HloInstruction*>;
  */
 class InplaceFinder : public HloModulePass {
  public:
-  InplaceFinder(CompilerAnnotations& annotations);
-
-  ~InplaceFinder() = default;
-
   absl::string_view name() const override { return "inplace-finder"; }
 
   StatusOr<bool> Run(HloModule* module) override;
@@ -55,9 +51,6 @@ class InplaceFinder : public HloModulePass {
   std::multimap<HloInstruction*, InplaceRoute> routes;
 
   InplaceRoute current_route;
-
-  // The instruction annotations from the compiler
-  struct CompilerAnnotations& annotations_;
 
   InplaceWorkList worklist_;
 };
