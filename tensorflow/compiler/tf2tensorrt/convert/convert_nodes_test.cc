@@ -3871,12 +3871,12 @@ void TestConvertGather(OpConverterTest* test) {
                  true},
       TestParams{{1, 2, 3}, {}, {0}, 0, {2, 3}, {1, 2, 3, 4, 5, 6}, false},
       TestParams{{3, 2}, {2}, {0, 1}, 0, {2, 2}, {1, 2, 3, 4}, false},
-      TestParams{{2, 3}, {1, 2}, {0, 1}, 0, {1, 2, 3}, {1, 2, 3, 4, 5, 6}, false}
+      TestParams{
+          {2, 3}, {1, 2}, {0, 1}, 0, {1, 2, 3}, {1, 2, 3, 4, 5, 6}, false},
   };
 
   // Ok.
   for (int i = 0; i < kGatherOKCases; i++) {
-    //for (const bool params_is_tensor : {true, false}) {
     test->Reset();
     if (ok_params[i].params_is_tensor) {
       test->AddTestTensor("params", ok_params[i].params_dims, 1,
@@ -3966,15 +3966,13 @@ TEST_F(OpConverterTest, ConvertGather) {
   {
     // Axis is not equal zero and params is a weights
     Reset();
-    AddTestWeights<int32>("params", {3}, {1, 2, 3});
+    AddTestWeights<int32>("params", {1, 3}, {1, 2, 3});
     AddTestTensor("indices", {2});
     AddTestWeights<int32>("axis", {1}, {1});
-    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "The input axis must be a zero,"
-                               " in case of params is a weights");
- }
-
-
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input axis must be zero when params is a weight.");
+  }
 
   Reset();
   TestConvertGather<DT_FLOAT>(this);
