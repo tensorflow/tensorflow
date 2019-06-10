@@ -149,6 +149,41 @@ See entries in the :ref:`api-section` for more details.
 Replicated graphs
 ~~~~~~~~~~~~~~~~~
 
-TODO replicated graphs - they increase the batch size by doing stuff in parallel
-and must be done inside a training loop, with a dataset feed, and require
-cross replica summation ops to do the parameter updates.
+To improve performance, multiple IPUs can be configured to run in a data
+parallel mode.  The graph is said to be replicated across multiple IPUs.
+
+Selecting the number of replicas
+________________________________
+
+During system configuration, the user specifies the number of IPUs for the
+TensorFlow device using the `tensorflow.contrib.ipu.utils.auto_select_ipus()`
+function, or the `tensorflow.contrib.ipu.utils.select_ipus()` function.
+
+A graph can be sharded across multiple IPUs (model parallelism), and then
+replicated across IPUs (data parallelism).  When specifying the number of IPUs
+in the system, the user must specify a multiple of the number of shards used
+by the graph.
+
+For instance, if a graph is sharded over 2 IPUs, and the user specifies 8 IPUs
+to the `auto_select_ipus` function, then the graph will be replicated four
+times.
+
+Supplying data
+______________
+
+Data must be fed to a repliciated graph using DataSets and infeeds.  The
+`IPUInfeedQueue` and `IPUOutfeedQueue` classes require the number of
+replicas to be passed into the constructor in the `replication_factor`
+parameter.
+
+Performing parameter updates
+____________________________
+
+Each replica maintains its own copy of the graph, but during training it is
+important to ensure that the graph parameters are updated so that they are
+in sync across replicas.
+
+A wrapper for standard TensorFlow optimizers is used to add extra operations to
+the parameter update nodes in the graph to average updates across replicas. It
+is called `tensorflow.contrib.ipu.CrossReplicaOptimizer`.  See the
+:ref:`api-section` for more details.
