@@ -828,18 +828,13 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-<<<<<<< HEAD
-    shard_count = 3,
+    shard_count = 4,
     tags = ["notsan",
             # Test temporarily disabled due to test application failure (reshape failure)
             # on both Cuda and ROCm. Should re-enable once get fixed
             "no_rocm",
             "no_cuda",
     ],
-=======
-    shard_count = 4,
-    tags = ["notsan"],
->>>>>>> upstream/master
 )
 
 tf_py_test(

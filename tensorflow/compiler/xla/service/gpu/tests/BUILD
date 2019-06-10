@@ -32,16 +32,6 @@ filegroup(
     ]),
 )
 
-<<<<<<< HEAD
-load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags", "tf_gpu_tests_tags",
-)
-
-=======
->>>>>>> upstream/master
 cc_library(
     name = "gpu_codegen_test",
     testonly = True,

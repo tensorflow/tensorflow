@@ -23,16 +23,12 @@ limitations under the License.
 #include "llvm/IR/DataLayout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-<<<<<<< HEAD
 // XXX figure out how to cope with both platforms
 #if TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/amdgpu_compiler.h"
 #else
-#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
-#endif
-=======
 #include "tensorflow/compiler/xla/service/gpu/nvptx_constants.h"
->>>>>>> upstream/master
+#endif
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -191,17 +187,11 @@ static std::unique_ptr<xla::TransferManager> CreateGpuTransferManager() {
   return absl::make_unique<xla::gpu::GpuTransferManager>(
 #if TENSORFLOW_USE_ROCM
       /*id=*/stream_executor::rocm::kROCmPlatformId,
-      /*pointer_size=*/llvm::DataLayout(xla::gpu::AMDGPUCompiler::kDataLayout)
 #else
       /*id=*/stream_executor::cuda::kCudaPlatformId,
-<<<<<<< HEAD
-      /*pointer_size=*/llvm::DataLayout(xla::gpu::NVPTXCompiler::kDataLayout)
 #endif
-      .getPointerSize(0 /* default address space */));
-=======
       /*pointer_size=*/llvm::DataLayout(xla::gpu::kDataLayout)
           .getPointerSize(0 /* default address space */));
->>>>>>> upstream/master
 }
 
 static bool InitModule() {

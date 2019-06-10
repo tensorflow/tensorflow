@@ -55,23 +55,14 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   // Allocate 32MiB + 1 byte (to make things misaligned)
   constexpr int64 kAllocSize = (1 << 25) + 1;
 
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/redzone_allocator_test.cc
   // XXX FIXME devise a way to cope with multiple platforms
-  se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName())
-          .ValueOrDie();
-  se::StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
-  HloModuleConfig config;
-  se::StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
-  RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, config,
-=======
   Platform* platform =
-      MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
+      MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName())
+          .ValueOrDie();
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
   cuda::PtxCompilationOptions opts;
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
   RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, opts,
->>>>>>> upstream/master:tensorflow/stream_executor/cuda/redzone_allocator_test.cc
                              kRedzoneSize, kRedzonePattern);
 
   Stream stream(stream_exec);
@@ -140,22 +131,13 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
 TEST(RedzoneAllocatorTest, VeryLargeRedzone) {
   // Make sure the redzone size would require grid dimension > 65535.
   constexpr int64 kRedzoneSize = 65535 * 1024 + 1;
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/redzone_allocator_test.cc
-  se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName())
-          .ValueOrDie();
-  se::StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
-  HloModuleConfig config;
-  se::StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
-  RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, config,
-=======
   Platform* platform =
-      MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
+      MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName())
+          .ValueOrDie();
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
   cuda::PtxCompilationOptions opts;
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
   RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, opts,
->>>>>>> upstream/master:tensorflow/stream_executor/cuda/redzone_allocator_test.cc
                              kRedzoneSize, /*redzone_pattern=*/-1);
   Stream stream(stream_exec);
   stream.Init();

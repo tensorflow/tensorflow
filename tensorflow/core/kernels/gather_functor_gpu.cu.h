@@ -92,23 +92,6 @@ struct GatherFunctor<GPUDevice, T, Index> {
 
     GpuLaunchConfig config = GetGpuLaunchConfig(out_size, d);
     if (is_axis_zero) {
-<<<<<<< HEAD
-      // clang-format off
-      TF_CHECK_OK(GpuLaunchKernel(GatherOpKernel<T, Index, true>,
-          config.block_count, config.thread_per_block, 0,
-          d.stream(),
-          params.data(), indices.data(), out.data(), gather_dim_size,
-          indices_size, slice_size, out_size));
-      // clang-format on
-    } else {
-      // clang-format off
-      TF_CHECK_OK(GpuLaunchKernel(GatherOpKernel<T, Index, false>,
-          config.block_count, config.thread_per_block, 0,
-          d.stream(),
-          params.data(), indices.data(), out.data(), gather_dim_size,
-          indices_size, slice_size, out_size));
-      // clang-format on
-=======
       TF_CHECK_OK(GpuLaunchKernel(
           GatherOpKernel<T, Index, true>, config.block_count,
           config.thread_per_block, 0, d.stream(), params.data(), indices.data(),
@@ -118,7 +101,6 @@ struct GatherFunctor<GPUDevice, T, Index> {
           GatherOpKernel<T, Index, false>, config.block_count,
           config.thread_per_block, 0, d.stream(), params.data(), indices.data(),
           out.data(), gather_dim_size, indices_size, slice_size, out_size));
->>>>>>> upstream/master
     }
     // TODO(fpmc): enable indices validation on GPU.
     // Right now checking for indicies out of bound in the kernel would

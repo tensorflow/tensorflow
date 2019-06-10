@@ -180,11 +180,7 @@ struct functor_traits<div_no_nan_op<T>> {
     PacketAccess = false,
 #else
     PacketAccess = true,
-<<<<<<< HEAD
-#endif // TENSORFLOW_USE_ROCM
-=======
 #endif  // TENSORFLOW_USE_ROCM
->>>>>>> upstream/master
   };
 };
 
@@ -201,11 +197,7 @@ struct functor_traits<mul_no_nan_op<T>> {
     PacketAccess = false,
 #else
     PacketAccess = true,
-<<<<<<< HEAD
-#endif // TENSORFLOW_USE_ROCM
-=======
 #endif  // TENSORFLOW_USE_ROCM
->>>>>>> upstream/master
   };
 };
 
@@ -247,11 +239,7 @@ struct functor_traits<scalar_left<Tout, Tin, Binary>> {
     PacketAccess = false,
 #else
     PacketAccess = functor_traits<Binary>::PacketAccess,
-<<<<<<< HEAD
-#endif // TENSORFLOW_USE_ROCM
-=======
 #endif  // TENSORFLOW_USE_ROCM
->>>>>>> upstream/master
   };
 };
 
@@ -285,11 +273,7 @@ struct functor_traits<scalar_right<Tout, Tin, Binary>> {
     PacketAccess = false,
 #else
     PacketAccess = functor_traits<Binary>::PacketAccess,
-<<<<<<< HEAD
-#endif // TENSORFLOW_USE_ROCM
-=======
 #endif  // TENSORFLOW_USE_ROCM
->>>>>>> upstream/master
   };
 };
 
@@ -382,11 +366,8 @@ struct google_floor_div {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
                                                            const T& y) const {
     if ((x < T(0)) != (y < T(0))) {
-<<<<<<< HEAD
-=======
 // HIP does not have the device version of the abs routine defined
 // for all datatypes that T can resolve to
->>>>>>> upstream/master
 #if defined(__HIP_DEVICE_COMPILE__)
       T abs_x = (x < T(0)) ? -x : x;
       T abs_y = (y < T(0)) ? -y : y;

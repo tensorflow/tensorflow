@@ -280,21 +280,13 @@ static port::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
   return RedzoneCheckStatus::OK();
 }
 
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/redzone_allocator.cc
-StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones(
-    se::Stream* stream) const {
-  XLA_SCOPED_LOGGING_TIMER("Redzone checking");
-
+port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones(
+    Stream* stream) const {
   // Disable this routine for now because we do not yet know
   // how to enable the of the definition + calls to PtxOptsFromConfig
   // in both ROCm and CUDA modes
 #if DISABLED_CODE_IN_UPSTREAM_SYNC_150920
-  se::StreamExecutor* executor = stream->parent();
-=======
-port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones(
-    Stream* stream) const {
   StreamExecutor* executor = stream->parent();
->>>>>>> upstream/master:tensorflow/stream_executor/cuda/redzone_allocator.cc
 
   absl::Span<const uint8> compiled_ptx = {};
   port::StatusOr<absl::Span<const uint8>> compiled_ptx_or =

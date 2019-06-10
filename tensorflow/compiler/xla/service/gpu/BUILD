@@ -411,11 +411,7 @@ tf_cc_test(
 cc_library(
     name = "gpu_executable",
     srcs = [
-<<<<<<< HEAD
-=======
-        "cholesky_thunk.cc",
         "collective_permute_thunk.cc",
->>>>>>> upstream/master
         "conditional_thunk.cc",
         "convolution_thunk.cc",
         "copy_thunk.cc",
@@ -441,11 +437,7 @@ cc_library(
        ])
       +  if_rocm_is_configured(["amdgpu_executable.cc"]),
     hdrs = [
-<<<<<<< HEAD
-=======
-        "cholesky_thunk.h",
         "collective_permute_thunk.h",
->>>>>>> upstream/master
         "conditional_thunk.h",
         "convolution_thunk.h",
         "copy_thunk.h",
@@ -473,11 +465,7 @@ cc_library(
     deps = [
         ":buffer_allocations",
         ":cudnn_conv_runner",
-<<<<<<< HEAD
-=======
-        ":cusolver_context",
         ":gpu_debug_info_manager",
->>>>>>> upstream/master
         ":hlo_execution_profiler",
         ":infeed_manager",
         ":ir_emission_utils",
@@ -635,62 +623,6 @@ cc_library(
 )
 
 cc_library(
-<<<<<<< HEAD
-    name = "redzone_allocator",
-    srcs = ["redzone_allocator.cc"],
-    hdrs = ["redzone_allocator.h"],
-    deps = [
-        ":gpu_constants",
-        ":partition_assignment",
-        ":stream_executor_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo_module_config",
-        "//tensorflow/compiler/xla/service:shaped_buffer",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
-        "//tensorflow/stream_executor:device_memory",
-        "//tensorflow/stream_executor:stream_executor_headers",
-        "//tensorflow/stream_executor:device_memory_allocator",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
-        "//tensorflow/stream_executor/cuda:ptxas_utils",
-    ],
-)
-
-tf_cc_test(
-    name = "redzone_allocator_test",
-    srcs = ["redzone_allocator_test.cc"],
-    tags = ["no_rocm"]
-     + tf_cuda_tests_tags(),
-    deps = [
-        ":redzone_allocator",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo_module_config",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//tensorflow/core:stream_executor_no_cuda",
-        "//tensorflow/core:test",
-        "//tensorflow/stream_executor:device_memory_allocator",
-        "//tensorflow/stream_executor:event",
-        "//tensorflow/stream_executor:kernel",
-    ]
-     + if_cuda_is_configured([
-        ":cusolver_context",
-        "//tensorflow/stream_executor/cuda:cuda_activation",
-        "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
-        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
-     ])
-     + if_rocm_is_configured([
-        "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
-     ]),
-)
-
-cc_library(
-=======
->>>>>>> upstream/master
     name = "cudnn_conv_runner",
     srcs = ["cudnn_conv_runner.cc"],
     hdrs = ["cudnn_conv_runner.h"],
@@ -1010,11 +942,6 @@ cc_library(
     hdrs = ["gpu_transfer_manager.h"],
     deps = [
         ":infeed_manager",
-<<<<<<< HEAD
-        ":gpu_compiler",
-=======
-        ":nvptx_constants",
->>>>>>> upstream/master
         ":outfeed_manager",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
@@ -1031,7 +958,15 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/memory",
         "@llvm//:core",
-    ],
+    ]
+    + if_cuda_is_configured([
+       ":gpu_compiler",
+    ])
+    + if_rocm_is_configured([
+       ":nvptx_constants",
+    ]),
+)
+      
     alwayslink = True,  # Contains per-platform transfer manager registration
 )
 

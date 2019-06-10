@@ -33,44 +33,6 @@ class AutoClusteringTestImpl : public AutoClusteringTest {
         absl::StrCat(file_name_without_extension, ".pbtxt"),
         absl::StrCat(file_name_without_extension, ".golden_summary"));
   }
-<<<<<<< HEAD
-
-  // Decompress file ${key}.pbtxt.gz into ${key}.pbtxt
-  // and test auto clustering with the .pbtxt.
-  Status RunAutoClusteringTestWithGzippedPbtxt(absl::string_view key);
-};
-
-Status AutoClusteringTestImpl::RunAutoClusteringTestWithGzippedPbtxt(
-    absl::string_view key) {
-  string file_name_without_extension =
-      absl::StrCat(testing::TensorFlowSrcRoot(), "/compiler/jit/tests/", key);
-  string input_fname = absl::StrCat(file_name_without_extension, ".pbtxt.gz");
-  string pbtxt_fname = absl::StrCat(file_name_without_extension, ".pbtxt");
-  string summary_fname =
-      absl::StrCat(file_name_without_extension, ".golden_summary");
-
-  Env* env = Env::Default();
-  std::unique_ptr<RandomAccessFile> file_reader;
-  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(input_fname, &file_reader));
-  std::unique_ptr<io::RandomAccessInputStream> input_stream(
-      new io::RandomAccessInputStream(file_reader.get()));
-  constexpr int k_buffer_size = 256 << 10;  // 256kb
-  io::ZlibInputStream in(input_stream.get(),
-                         /*input_buffer_bytes=*/k_buffer_size,
-                         /*output_buffer_bytes=*/k_buffer_size,
-                         io::ZlibCompressionOptions::GZIP());
-  string decompressed_data;
-  Status s = in.ReadNBytes(INT_MAX, &decompressed_data);
-  if (!s.ok() && !errors::IsOutOfRange(s)) {
-    // OutOfRange is fine since we set the number of read bytes to INT_MAX.
-    // Only return other kinds of errors.
-    return s;
-  }
-  TF_RETURN_IF_ERROR(WriteStringToFile(env, pbtxt_fname, decompressed_data));
-
-  return AutoClusteringTest::RunAutoClusteringTest(pbtxt_fname, summary_fname);
-}
-=======
 
   // Test auto-clustering with a gzipped proto text file ${key}.pbtxt.gz.
   Status RunAutoClusteringTestWithGzippedPbtxt(absl::string_view key) {
@@ -82,7 +44,6 @@ Status AutoClusteringTestImpl::RunAutoClusteringTestWithGzippedPbtxt(
         absl::StrCat(file_name_without_extension, ".golden_summary"));
   }
 };
->>>>>>> upstream/master
 
 TEST_F(AutoClusteringTestImpl, KerasImagenetMain) {
   // Generated from

@@ -74,23 +74,17 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
     TargetIntrinsicID intrinsic_id, absl::Span<llvm::Value* const> operands,
     absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b);
 
-<<<<<<< HEAD
 // Obtain the target specific address space for global variables
 unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module);
 unsigned GetSharedMemoryAddressSpace(const llvm::Module& module);
 
 // Annotate the kernel as GPU kernel according to the GPU target.
 void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
-                           llvm::IRBuilder<>* b);
+                                 llvm::IRBuilder<>* b);
 
 std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
                                      PrimitiveType output_type,
                                      llvm::IRBuilder<>* b);
-=======
-// Annotate the kernel as GPU kernel according to the GPU target.
-void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
-                                 llvm::IRBuilder<>* b);
->>>>>>> upstream/master
 
 }  // namespace gpu
 }  // namespace xla

@@ -426,18 +426,14 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
   }
 };
 
-<<<<<<< HEAD
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-=======
-#ifndef GOOGLE_CUDA
+#if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
 namespace {
 // See implementation under GOOGLE_CUDA #ifdef below.
 bool BatchnormSpatialPersistentEnabled() { return false; }
 }  // namespace
 #endif
 
-#if GOOGLE_CUDA
->>>>>>> upstream/master
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace {
 

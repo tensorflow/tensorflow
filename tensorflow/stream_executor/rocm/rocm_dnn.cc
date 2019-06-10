@@ -3037,16 +3037,10 @@ bool MIOpenSupport::DoBatchNormalizationForward(
     std::function<void()> inv_var_to_var) {
   return DoBatchNormalizationForwardImpl<Eigen::half, float>(
       stream, dnn::DataType::kHalf, dnn::DataType::kFloat, x, scale, offset,
-<<<<<<< HEAD
-      estimated_mean, estimated_variance, x_desc, scale_offset_desc, epsilon,
-      y, batch_mean, batch_var, saved_mean, saved_inv_var, is_training,
-      std::move(var_to_inv_var), std::move(inv_var_to_var));
-=======
       estimated_mean, estimated_variance, side_input, x_desc, scale_offset_desc,
       epsilon, activation_mode, y, batch_mean, batch_var, saved_mean,
       saved_inv_var, is_training, std::move(var_to_inv_var),
       std::move(inv_var_to_var));
->>>>>>> upstream/master
 }
 
 bool MIOpenSupport::DoBatchNormalizationForward(
@@ -3065,16 +3059,10 @@ bool MIOpenSupport::DoBatchNormalizationForward(
     std::function<void()> inv_var_to_var) {
   return DoBatchNormalizationForwardImpl<float, float>(
       stream, dnn::DataType::kFloat, dnn::DataType::kFloat, x, scale, offset,
-<<<<<<< HEAD
-      estimated_mean, estimated_variance, x_desc, scale_offset_desc, epsilon,
-      y, batch_mean, batch_var, saved_mean, saved_inv_var, is_training,
-      std::move(var_to_inv_var), std::move(inv_var_to_var));
-=======
       estimated_mean, estimated_variance, side_input, x_desc, scale_offset_desc,
       epsilon, activation_mode, y, batch_mean, batch_var, saved_mean,
       saved_inv_var, is_training, std::move(var_to_inv_var),
       std::move(inv_var_to_var));
->>>>>>> upstream/master
 }
 
 template <class T, class U>

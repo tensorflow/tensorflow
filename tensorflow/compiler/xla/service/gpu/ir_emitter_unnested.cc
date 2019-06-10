@@ -40,14 +40,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
-<<<<<<< HEAD
 #ifndef TENSORFLOW_USE_ROCM
   #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #endif
-=======
-#include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/collective_permute_thunk.h"
->>>>>>> upstream/master
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"

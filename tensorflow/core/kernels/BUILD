@@ -4133,17 +4133,14 @@ tf_kernel_library(
     }) + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
-<<<<<<< HEAD
-    ]) + if_rocm([
-        "//tensorflow/core/platform/default/build_config:rocblas_plugin",
-        "//tensorflow/core/platform/default/build_config:miopen_plugin",
-=======
         "//tensorflow/stream_executor:tf_allocator_adapter",
         "//tensorflow/stream_executor/cuda:redzone_allocator",
         "//tensorflow/stream_executor/cuda:ptxas_utils",
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/core:stream_executor",
->>>>>>> upstream/master
+    ]) + if_rocm([
+        "//tensorflow/core/platform/default/build_config:rocblas_plugin",
+        "//tensorflow/core/platform/default/build_config:miopen_plugin",
     ]),
 )
 

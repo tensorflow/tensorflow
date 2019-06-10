@@ -164,8 +164,6 @@ Status AutoClusteringTest::RunAutoClusteringTestImpl(
   return Status::OK();
 }
 
-<<<<<<< HEAD
-=======
 Status AutoClusteringTest::RunAutoClusteringTestWithPbtxt(
     absl::string_view pbtxt_file_path,
     absl::string_view golden_summary_file_path) {
@@ -205,7 +203,6 @@ Status AutoClusteringTest::RunAutoClusteringTestWithGzippedPbtxt(
                                    golden_summary_file_path);
 }
 
->>>>>>> upstream/master
 #if defined(PLATFORM_GOOGLE)
 Status BenchmarkMarkForCompilation(absl::string_view graph_def_path,
                                    benchmark::State& state) {

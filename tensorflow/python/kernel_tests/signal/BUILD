@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")  # @unused
 
 package(
@@ -8,12 +8,6 @@ package(
 
 exports_files(["LICENSE"])
 
-<<<<<<< HEAD
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "py_test")  # @unused
-
-=======
->>>>>>> upstream/master
 py_library(
     name = "test_util",
     srcs = ["test_util.py"],

@@ -62,14 +62,13 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-<<<<<<< HEAD
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-=======
+
+#if GOOGLE_CUDA
 #include "tensorflow/stream_executor/cuda/ptxas_utils.h"
 #include "tensorflow/stream_executor/cuda/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
->>>>>>> upstream/master
 
 namespace tensorflow {
 
@@ -604,6 +603,7 @@ typedef AutoTuneSingleton<ConvAutoTuneGroup, ConvParameters,
                           se::dnn::AlgorithmConfig>
     AutoTuneConv;
 
+#if GOOGLE_CUDA
 // Check the passed allocator for redzone violations.
 // If violations have occurred, mark the corresponding autotune result
 // as a failure.
@@ -640,6 +640,7 @@ static void CheckRedzones(const se::cuda::RedzoneAllocator& rz_allocator,
     LOG(ERROR) << rz_check_status.redzone_failure_msg;
   }
 }
+#endif  // GOOGLE_CUDA
 
 template <typename T>
 void LaunchConv2DOp<GPUDevice, T>::operator()(

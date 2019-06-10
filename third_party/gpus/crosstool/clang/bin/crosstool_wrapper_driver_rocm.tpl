@@ -225,11 +225,7 @@ def main():
 
   if VERBOSE: print('PWD=' + os.getcwd())
   if VERBOSE: print('HIPCC_ENV=' + HIPCC_ENV)
-<<<<<<< HEAD
-  
-=======
 
->>>>>>> upstream/master
   if args.x and args.x[0] == 'rocm':
     # compilation for GPU objects
     if args.rocm_log: Log('-x rocm')

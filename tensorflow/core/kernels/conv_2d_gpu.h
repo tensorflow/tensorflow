@@ -443,17 +443,6 @@ struct TransformFilter<GPUDevice, T, int, NDIMS> {
 
     if (dst_filter_format == FORMAT_OIHW) {
       TF_CHECK_OK(GpuLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0>,
-<<<<<<< HEAD
-                                   config.block_count, config.thread_per_block,
-                                   0, d.stream(), config.virtual_thread_count,
-                                   in.data(), combined_dims, out.data()));
-
-    } else if (dst_filter_format == FORMAT_OHWI) {
-      TF_CHECK_OK(GpuLaunchKernel(ShuffleInTensor3Simple<T, 1, 2, 0>,
-                                   config.block_count, config.thread_per_block,
-                                   0, d.stream(), config.virtual_thread_count,
-                                   in.data(), combined_dims, out.data()));
-=======
                                   config.block_count, config.thread_per_block,
                                   0, d.stream(), config.virtual_thread_count,
                                   in.data(), combined_dims, out.data()));
@@ -464,7 +453,6 @@ struct TransformFilter<GPUDevice, T, int, NDIMS> {
                                   0, d.stream(), config.virtual_thread_count,
                                   in.data(), combined_dims, out.data()));
 
->>>>>>> upstream/master
     } else {
       LOG(ERROR) << "Unsupported filter format: "
                  << ToString(dst_filter_format);
@@ -983,15 +971,9 @@ void RunSwapDimension1And2InTensor3(const GPUDevice& d, const T* input,
     int total_element_count = input_dims[0] * input_dims[1] * input_dims[2];
     GpuLaunchConfig config = GetGpuLaunchConfig(total_element_count, d);
     TF_CHECK_OK(GpuLaunchKernel(ShuffleInTensor3Simple<T, 0, 2, 1, conjugate>,
-<<<<<<< HEAD
-                                 config.block_count, config.thread_per_block, 0,
-                                 d.stream(), config.virtual_thread_count, input,
-                                 input_dims, output));
-=======
                                 config.block_count, config.thread_per_block, 0,
                                 d.stream(), config.virtual_thread_count, input,
                                 input_dims, output));
->>>>>>> upstream/master
   }
 }
 
@@ -1022,15 +1004,9 @@ struct SwapDimension0And2InTensor3<GPUDevice, T, conjugate> {
     size_t total_size = combined_dims[0] * combined_dims[1] * combined_dims[2];
     GpuLaunchConfig config = GetGpuLaunchConfig(total_size, d);
     TF_CHECK_OK(GpuLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0, conjugate>,
-<<<<<<< HEAD
-                                 config.block_count, config.thread_per_block, 0,
-                                 d.stream(), config.virtual_thread_count, in,
-                                 input_dims, out));
-=======
                                 config.block_count, config.thread_per_block, 0,
                                 d.stream(), config.virtual_thread_count, in,
                                 input_dims, out));
->>>>>>> upstream/master
   }
 };
 
