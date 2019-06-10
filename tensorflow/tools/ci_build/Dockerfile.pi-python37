@@ -17,7 +17,7 @@ RUN /install/install_golang.sh
 
 # The following line installs the Python cross-compilation toolchain. All the
 # preceding dependencies should be kept in sync with the main CPU docker file.
-RUN /install/install_pi_python3_toolchain.sh
+RUN /install/install_pi_python37_toolchain.sh
 
 # Set up the master bazelrc configuration file.
 COPY install/.bazelrc /etc/bazel.bazelrc
