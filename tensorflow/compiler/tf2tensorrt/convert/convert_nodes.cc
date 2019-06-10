@@ -67,13 +67,6 @@ limitations under the License.
                             " failed to add TRT layer, at: ", node); \
   } while (0)
 
-#define TFTRT_RETURN_ERROR_IF_FALSE(status, node) \
-  do {                                            \
-    if (status == false) {                        \
-      TFTRT_INTERNAL_ERROR_AT_NODE(node);         \
-    }                                             \
-  } while (0)
-
 #define TFTRT_RETURN_ERROR_IF_NULLPTR(ptr, node) \
   do {                                           \
     if (ptr == nullptr) {                        \
@@ -161,17 +154,8 @@ class TFAttrs {
     return attrs_.count(key) ? this->get<T>(key) : default_value;
   }
 
-  std::vector<string> GetAllAttrKeys() const {
-    std::vector<string> attr_list;
-    for (const auto& attr_item : attrs_) {
-      attr_list.emplace_back(attr_item.first);
-    }
-    return attr_list;
-  }
-
  private:
-  typedef std::map<string, AttrValue const*> AttrMap;
-  AttrMap attrs_;
+  std::map<string, AttrValue const*> attrs_;
 };
 
 template <>
@@ -1127,10 +1111,11 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
   OpConverterParams params(this, node_def, inputs, &outputs,
                            /*arg_validation_only=*/false, &weight_store_);
   const string& op = node_def.op();
-  if (!op_registry_.count(op)) {
+  auto itr = op_registry_.find(op);
+  if (itr == op_registry_.end()) {
     return errors::Unimplemented("No converter registered for op: ", op);
   }
-  OpConverter op_converter = op_registry_.at(op);
+  OpConverter op_converter = itr->second;
   TF_RETURN_IF_ERROR(op_converter(&params));
 
   for (size_t i = 0; i < outputs.size(); ++i) {
@@ -1228,6 +1213,7 @@ Status Converter::RenameAndMarkOutputTensors(
     // outputs and inputs (type is inferred otherwise).
     tensor->setType(output.trt_dtype);
     VLOG(1) << "Marking output TRT tensor " << output.source_tensor_name
+            << " with data type " << DebugString(output.trt_dtype)
             << ", which feeds TF node " << output.dest_node_name;
   }
   return Status::OK();
@@ -1981,7 +1967,10 @@ Status ConvertReshape(OpConverterParams* params) {
           << ", reshape_dims=" << DebugString(reshape_dims);
   if (reshape_may_change_batch_dim) {
     const string msg = StrCat(
-        "Reshape on batch dimension is not supported, at ", node_def.name());
+        "Reshape on batch dimension is not supported, at ", node_def.name(),
+        ". input_batch_dim=", input_batch_dim, ", ", DebugString(input_dims),
+        "; reshape_batch_dim=", reshape_batch_dim, ", ",
+        DebugString(reshape_dims));
     return errors::Unimplemented(msg);
   }
 
@@ -4070,8 +4059,8 @@ Status ConvertSoftmax(OpConverterParams* params) {
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   nvinfer1::ITensor* tensor = inputs.at(0).tensor();
 
-  int nbDims = tensor->getDimensions().nbDims;
-  if (nbDims == 0) {
+  const int num_trt_dims = tensor->getDimensions().nbDims;
+  if (num_trt_dims == 0) {
     return errors::InvalidArgument(
         "TensorRT Softmax cannot apply on batch dimension, at",
         node_def.name());
@@ -4082,7 +4071,7 @@ Status ConvertSoftmax(OpConverterParams* params) {
       params->converter->network()->addSoftMax(*tensor);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   // Tensorflow SoftMax assumes applying softmax on the last dimension.
-  layer->setAxes(1 << (nbDims - 1));
+  layer->setAxes(1 << (num_trt_dims - 1));
 
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   // Quantization range for SoftMax is always (0, 1)
