@@ -1,0 +1,62 @@
+op {
+  graph_op_name: "UnsortedSegmentJoin"
+  in_arg {
+    name: "inputs"
+    description: <<END
+The input to be joined.
+END
+  }
+  in_arg {
+    name: "segment_ids"
+    description: <<END
+A tensor whose shape is a prefix of data.shape.  Negative segment ids are not
+supported.
+END
+  }
+  in_arg {
+    name: "num_segments"
+    description: <<END
+A scalar.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+END
+  }
+  attr {
+    name: "separator"
+    description: <<END
+The separator to use when joining.
+END
+  }
+  summary: "Joins the elements of `inputs` based on `segment_ids`."
+  description: <<END
+Computes the string join along segments of a tensor.
+Given `segment_ids` with rank `N` and `data` with rank `N+M`:
+
+    `output[i, k1...kM] = strings.join([data[j1...jN, k1...kM])`
+
+where the join is over all [j1...jN] such that segment_ids[j1...jN] = i.
+Strings are joined in row-major order.
+
+For example:
+
+```python
+inputs = [['Y', 'q', 'c'], ['Y', '6', '6'], ['p', 'G', 'a']]
+output_array = string_ops.unsorted_segment_join(inputs=inputs,
+                                                segment_ids=[1, 0, 1],
+                                                num_segments=2,
+                                                separator=':'))
+# output_array ==> [['Y', '6', '6'], ['Y:p', 'q:G', 'c:a']]
+
+
+inputs = ['this', 'is', 'a', 'test']
+output_array = string_ops.unsorted_segment_join(inputs=inputs,
+                                                segment_ids=[0, 0, 0, 0],
+                                                num_segments=1,
+                                                separator=':'))
+# output_array ==> ['this:is:a:test']
+```
+END
+}

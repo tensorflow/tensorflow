@@ -30,6 +30,7 @@ from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -80,6 +81,16 @@ class CompileTest(keras_parameterized.TestCase):
       if not isinstance(loss_list[i], losses.LossFunctionWrapper):
         self.assertEqual(model.loss_functions[i].fn, loss_list[i])
     self.assertAllEqual(model._loss_weights_list, [1.] * len(loss_list))
+
+  def test_respect_run_functions_eagerly(self):
+    with context.eager_mode():
+      model = testing_utils.get_small_sequential_mlp(
+          num_hidden=10, num_classes=2, input_dim=3)
+      model.compile('sgd', 'mse')
+      def_function.run_functions_eagerly(True)
+      self.assertTrue(model.run_eagerly)
+      def_function.run_functions_eagerly(False)
+      self.assertFalse(model.run_eagerly)
 
   @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters(('loss_string', 'mse'),

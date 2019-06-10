@@ -465,7 +465,6 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
     ],
     tags = [
-        "no_oss",  # TODO(b/117920141): Investigate breakage and re-enable.
         "no_windows_gpu",
     ],
     xla_enable_strict_auto_jit = True,

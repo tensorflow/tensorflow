@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/register.h"
 
-#include "tensorflow/lite/util.h"
-
 namespace tflite {
 namespace ops {
 
@@ -145,14 +143,6 @@ TfLiteRegistration* Register_MATRIX_DIAG();
 TfLiteRegistration* Register_QUANTIZE();
 TfLiteRegistration* Register_MATRIX_SET_DIAG();
 
-TfLiteStatus UnsupportedTensorFlowOp(TfLiteContext* context, TfLiteNode* node) {
-  context->ReportError(
-      context,
-      "Regular TensorFlow ops are not supported by this interpreter. Make sure "
-      "you invoke the Flex delegate before inference.");
-  return kTfLiteError;
-}
-
 const TfLiteRegistration* BuiltinOpResolver::FindOp(tflite::BuiltinOperator op,
                                                     int version) const {
   return MutableOpResolver::FindOp(op, version);
@@ -160,15 +150,6 @@ const TfLiteRegistration* BuiltinOpResolver::FindOp(tflite::BuiltinOperator op,
 
 const TfLiteRegistration* BuiltinOpResolver::FindOp(const char* op,
                                                     int version) const {
-  // Return the NULL Op for all ops whose name start with "Flex", allowing
-  // the interpreter to delegate their execution.
-  if (IsFlexOp(op)) {
-    static TfLiteRegistration null_op{
-        nullptr, nullptr, &UnsupportedTensorFlowOp,
-        nullptr, nullptr, BuiltinOperator_CUSTOM,
-        "Flex",  1};
-    return &null_op;
-  }
   return MutableOpResolver::FindOp(op, version);
 }
 

@@ -20,6 +20,8 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/tools/optimization:optimization_pass_runner_lib",

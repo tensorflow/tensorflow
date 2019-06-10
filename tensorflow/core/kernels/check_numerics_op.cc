@@ -183,7 +183,10 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
     TensorReference abnormal_detected_ref(abnormal_detected);
     auto check_cb = [this, stream, abnormal_detected_ref,
                      abnormal_detected_host, context, done]() {
+<<<<<<< HEAD
       // ROCM TODO: figure out a better way for this
+=======
+>>>>>>> upstream/master
 #if GOOGLE_CUDA
       se::cuda::ScopedActivateExecutorContext scoped_activation{
           stream->parent()};

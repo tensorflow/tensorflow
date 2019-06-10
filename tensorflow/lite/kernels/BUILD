@@ -1,13 +1,13 @@
+load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
+
 package(
     default_visibility = [
         "//visibility:public",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
 
 # Enables usage of ruy in TFLite kernels.
 # WARNING: This build flag is experimental and subject to change.
@@ -458,7 +458,6 @@ cc_library(
     deps = [
         ":builtin_op_kernels",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_internal",
     ],
 )
@@ -1252,6 +1251,7 @@ cc_test(
     name = "tile_test",
     size = "small",
     srcs = ["tile_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1268,6 +1268,7 @@ cc_test(
     srcs = [
         "comparisons_test.cc",
     ],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1435,6 +1436,7 @@ cc_test(
     name = "logical_test",
     size = "small",
     srcs = ["logical_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",

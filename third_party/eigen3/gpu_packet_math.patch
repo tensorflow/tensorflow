@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 --- a/Eigen/src/Core/arch/GPU/PacketMath.h
 +++ b/Eigen/src/Core/arch/GPU/PacketMath.h
 @@ -100,6 +100,7 @@
@@ -16,6 +17,8 @@
 
  template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float4 plset<float4>(const float& a) {
    return make_float4(a, a+1, a+2, a+3);
+=======
+>>>>>>> upstream/master
 --- a/Eigen/src/Geometry/arch/Geometry_SSE.h
 +++ b/Eigen/src/Geometry/arch/Geometry_SSE.h
 @@ -33,13 +33,14 @@

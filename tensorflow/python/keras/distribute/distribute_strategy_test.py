@@ -298,6 +298,11 @@ def strategy_minus_tpu_combinations():
 
 def tpu_strategy_combinations():
   return combinations.combine(distribution=tpu_strategies,
+                              mode=['graph', 'eager'])
+
+
+def tpu_strategy_combinations_graph_only():
+  return combinations.combine(distribution=tpu_strategies,
                               mode=['graph'])
 
 
@@ -313,8 +318,8 @@ def all_strategy_combinations_plus_cloning():
           cloning=[True, False]) +
       combinations.combine(
           distribution=tpu_strategies,
-          mode=['graph'],
-          cloning=[True, False]))
+          mode=['graph', 'eager'],
+          cloning=[False]))
 
 
 def all_strategy_minus_default_and_tpu_combinations():
@@ -334,8 +339,8 @@ def all_strategy_combinations_minus_default():
 
 
 def strategy_and_optimizer_combinations():
-  return combinations.times(
-      all_strategy_combinations(),
+  non_tpu_strategies = combinations.times(
+      strategy_minus_tpu_combinations(),
       # TODO(b/130808953):  Simplify when optimizers v1 work with cloning=False.
       combinations.combine(
           optimizer=[
@@ -353,6 +358,32 @@ def strategy_and_optimizer_combinations():
               strategy_combinations.rmsprop_optimizer_keras_v2_fn
           ],
           cloning=[True, False]))
+  # TODO(b/130808953):  Simplify when optimizers v1 work with cloning=False.
+  tpu_strategies_graph = combinations.combine(
+      distribution=tpu_strategies,
+      mode=['graph'],
+      cloning=[True],
+      optimizer=[
+          strategy_combinations.adagrad_optimizer_v1_fn,
+          strategy_combinations.adam_optimizer_v1_fn,
+          strategy_combinations.gradient_descent_optimizer_v1_fn,
+          strategy_combinations.rmsprop_optimizer_v1_fn,
+          strategy_combinations.adagrad_optimizer_keras_v2_fn,
+          strategy_combinations.adam_optimizer_keras_v2_fn,
+          strategy_combinations.gradient_descent_optimizer_keras_v2_fn,
+          strategy_combinations.rmsprop_optimizer_keras_v2_fn
+      ])
+  tpu_strategies_eager = combinations.combine(
+      distribution=tpu_strategies,
+      mode=['eager'],
+      cloning=[False],
+      optimizer=[
+          strategy_combinations.adagrad_optimizer_keras_v2_fn,
+          strategy_combinations.adam_optimizer_keras_v2_fn,
+          strategy_combinations.gradient_descent_optimizer_keras_v2_fn,
+          strategy_combinations.rmsprop_optimizer_keras_v2_fn
+      ])
+  return non_tpu_strategies + tpu_strategies_eager + tpu_strategies_graph
 
 
 class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
@@ -769,7 +800,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       self.assertAllEqual([6, 7], outs[1].shape)
 
   @combinations.generate(
-      combinations.times(tpu_strategy_combinations(),
+      combinations.times(tpu_strategy_combinations_graph_only(),
                          combinations.combine(batch_size=[4, 6])))
   def test_evaluate_with_partial_batch(self, distribution, batch_size):
     with self.cached_session():
@@ -812,7 +843,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
           rtol=1e-5)
 
   @combinations.generate(
-      combinations.times(tpu_strategy_combinations(),
+      combinations.times(tpu_strategy_combinations_graph_only(),
                          combinations.combine(cloning=[True, False])))
   def test_predict_with_partial_batch(self, distribution, cloning):
     with self.cached_session():
@@ -846,7 +877,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
           atol=1e-5,
           rtol=1e-5)
 
-  @combinations.generate(tpu_strategy_combinations())
+  @combinations.generate(tpu_strategy_combinations_graph_only())
   def test_no_target_model(self, distribution):
     with self.cached_session():
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
@@ -872,7 +903,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
         model.evaluate(inputs, steps=1)
 
   @combinations.generate(
-      combinations.times(tpu_strategy_combinations(),
+      combinations.times(tpu_strategy_combinations_graph_only(),
                          combinations.combine(cloning=[True, False])))
   def test_predict_multi_output_model_with_partial_batch(
       self, distribution, cloning):
@@ -1192,6 +1223,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
   def test_fit_eval_and_predict_with_optimizer(self, distribution, optimizer,
                                                cloning):
     with self.cached_session():
+
       with distribution.scope():
 
         model = get_model()
@@ -1341,7 +1373,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       self.assertAllClose(0.001, keras.backend.get_value(model.optimizer.lr))
 
   @combinations.generate(
-      combinations.times(tpu_strategy_combinations(),
+      combinations.times(tpu_strategy_combinations_graph_only(),
                          combinations.combine(batch_size=[4, 6])))
   def test_evaluate_with_dataset_with_partial_batch(self, distribution,
                                                     batch_size):
@@ -1382,7 +1414,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           rtol=1e-5)
 
   @combinations.generate(
-      combinations.times(tpu_strategy_combinations(),
+      combinations.times(tpu_strategy_combinations_graph_only(),
                          combinations.combine(cloning=[True, False])))
   def test_predict_with_dataset_with_partial_batch(self, distribution, cloning):
     with self.cached_session():
@@ -1411,7 +1443,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           rtol=1e-5)
 
   @combinations.generate(
-      combinations.times(tpu_strategy_combinations(),
+      combinations.times(tpu_strategy_combinations_graph_only(),
                          combinations.combine(cloning=[True, False])))
   def test_predict_multi_output_model_with_dataset_with_partial_batch(
       self, distribution, cloning):

@@ -188,8 +188,9 @@ def model_iteration(model,
 
   should_set_learning_phase = context.executing_eagerly() and model.run_eagerly
   if should_set_learning_phase:
-    old_learning_phase = backend.learning_phase()
-    backend.set_eager_learning_phase(1 if mode == ModeKeys.TRAIN else 0)
+    learning_phase_scope = backend.eager_learning_phase_scope(
+        1 if mode == ModeKeys.TRAIN else 0)
+    learning_phase_scope.__enter__()
 
   callbacks.model.stop_training = False
   callbacks._call_begin_hook(mode)
@@ -341,7 +342,7 @@ def model_iteration(model,
     enqueuer.stop()
 
   if should_set_learning_phase:
-    backend.set_eager_learning_phase(old_learning_phase)
+    learning_phase_scope.__exit__(None, None, None)
 
   if mode == ModeKeys.TRAIN:
     return model.history

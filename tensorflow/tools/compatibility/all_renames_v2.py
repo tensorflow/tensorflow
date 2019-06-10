@@ -275,6 +275,8 @@ manual_symbol_renames = {
         "tf.compat.v1.tpu.shutdown_system",
     "tf.contrib.training.checkpoints_iterator":
         "tf.train.checkpoints_iterator",
+    "tf.contrib.layers.recompute_grad":
+        "tf.recompute_grad",
     "tf.count_nonzero":
         "tf.math.count_nonzero",
     "tf.manip.batch_to_space_nd":
@@ -528,6 +530,12 @@ manual_symbol_renames = {
         "tf.nn.conv2d_transpose",
     "tf.test.compute_gradient":
         "tf.compat.v1.test.compute_gradient",
+    "tf.floor_div":
+        "tf.math.floordiv",
+    "tf.where":
+        "tf.compat.v1.where",
+    "tf.where_v2":
+        "tf.compat.v2.where",
 }
 # pylint: enable=line-too-long
 

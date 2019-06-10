@@ -100,6 +100,7 @@ void AllocateAndParseFlags() {
   build_ops_flags = new BuildXlaOpsPassFlags;
   build_ops_flags->tf_xla_enable_lazy_compilation = true;
   build_ops_flags->tf_xla_print_cluster_outputs = false;
+  build_ops_flags->tf_xla_disable_constant_folding = false;
 
   mark_for_compilation_flags = new MarkForCompilationPassFlags;
   mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_single_gpu =

@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.autograph.converters import control_flow
 from tensorflow.python.autograph.core import converter_testing
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -182,6 +183,18 @@ class ControlFlowTest(converter_testing.TestCase):
 
     self.assertTransformedResult(test_fn, constant_op.constant(1), (-1, 0))
     self.assertTransformedResult(test_fn, constant_op.constant(-1), (0, -2))
+
+  def test_if_sparse_tensor(self):
+
+    def test_fn(cond, a):
+      if cond:
+        a = -a
+      return a
+
+    st = sparse_tensor.SparseTensor(
+        indices=((0,),), values=(0,), dense_shape=(1,))
+    self.assertTransformedResult(test_fn, (st, constant_op.constant(1)), -1)
+    self.assertTransformedResult(test_fn, (None, constant_op.constant(1)), 1)
 
   @test_util.run_deprecated_v1
   def test_if_complex_outputs(self):

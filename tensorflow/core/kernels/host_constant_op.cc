@@ -52,7 +52,11 @@ REGISTER_KERNEL_BUILDER(Name("Const")
                             .HostMemory("output")
                             .TypeConstraint<int32>("dtype"),
                         _HostConstantOp);
+<<<<<<< HEAD
 #endif // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+=======
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+>>>>>>> upstream/master
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("Const")

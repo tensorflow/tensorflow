@@ -983,6 +983,7 @@ def _ShapesFullySpecifiedAndEqual(x, y, grad):
 
 
 @ops.RegisterGradient("Add")
+@ops.RegisterGradient("AddV2")
 def _AddGrad(op, grad):
   """Gradient for Add."""
   y = op.inputs[1]

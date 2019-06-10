@@ -59,7 +59,8 @@ class DecodeVideoOpTest(test.TestCase):
       video_op = ffmpeg.decode_video(contents)
       video = video_op.eval()
       self.assertEqual(video.shape, (frames, height, width, 3))
-      self.assertAllEqual(video[index, :, :, :], image)
+      # ffmpeg produces results where channels can be off 1.
+      self.assertAllClose(video[index, :, :, :], image, atol=1)
 
   def testMp4(self):
     self._loadFileAndTest('small.mp4', 560, 320, 166, 'small_100.bmp', 99)

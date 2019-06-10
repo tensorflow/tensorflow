@@ -258,10 +258,23 @@ def _hipcc_env(repository_ctx):
         A string containing environment variables for hipcc.
     """
     hipcc_env = ""
+<<<<<<< HEAD
     for name in ["HIP_CLANG_PATH", "DEVICE_LIB_PATH", "HIP_VDI_HOME",\
                  "HIPCC_VERBOSE", "HIPCC_COMPILE_FLAGS_APPEND", \
                  "HIPPCC_LINK_FLAGS_APPEND", "HCC_AMDGPU_TARGET", \
                  "HIP_PLATFORM"]:
+=======
+    for name in [
+        "HIP_CLANG_PATH",
+        "DEVICE_LIB_PATH",
+        "HIP_VDI_HOME",
+        "HIPCC_VERBOSE",
+        "HIPCC_COMPILE_FLAGS_APPEND",
+        "HIPPCC_LINK_FLAGS_APPEND",
+        "HCC_AMDGPU_TARGET",
+        "HIP_PLATFORM",
+    ]:
+>>>>>>> upstream/master
         if name in repository_ctx.os.environ:
             hipcc_env = (hipcc_env + " " + name + "=\"" +
                          repository_ctx.os.environ[name].strip() + "\";")
@@ -277,10 +290,18 @@ def _hipcc_is_hipclang(repository_ctx):
         A string "True" if hipcc is based on hip-clang toolchain.
         The functions returns "False" if not (ie: based on HIP/HCC toolchain).
     """
+<<<<<<< HEAD
+=======
+
+>>>>>>> upstream/master
     #  check user-defined hip-clang environment variables
     for name in ["HIP_CLANG_PATH", "HIP_VDI_HOME"]:
         if name in repository_ctx.os.environ:
             return "True"
+<<<<<<< HEAD
+=======
+
+>>>>>>> upstream/master
     # grep for "HIP_COMPILER=clang" in /opt/rocm/hip/lib/.hipInfo
     grep_result = _execute(
         repository_ctx,
@@ -292,7 +313,11 @@ def _hipcc_is_hipclang(repository_ctx):
         return "True"
     return "False"
 
+<<<<<<< HEAD
 def _if_hipcc_is_hipclang(repository_ctx, if_true, if_false=[]):
+=======
+def _if_hipcc_is_hipclang(repository_ctx, if_true, if_false = []):
+>>>>>>> upstream/master
     """
     Returns either the if_true or if_false arg based on whether hipcc
     is based on the hip-clang toolchain
@@ -751,7 +776,11 @@ def _create_local_rocm_repository(repository_ctx):
     rocm_defines["%{unfiltered_compile_flags}"] = to_list_of_strings([
         "-DTENSORFLOW_USE_ROCM=1",
         "-D__HIP_PLATFORM_HCC__",
+<<<<<<< HEAD
         "-DEIGEN_USE_HIP"
+=======
+        "-DEIGEN_USE_HIP",
+>>>>>>> upstream/master
     ] + _if_hipcc_is_hipclang(repository_ctx, [
         #
         # define "TENSORFLOW_COMPILER_IS_HIP_CLANG" when we are using clang
@@ -761,7 +790,11 @@ def _create_local_rocm_repository(repository_ctx):
         # tensorflow is being built with ROCm support
         # (only TENSORFLOW_USE_ROCM should be used for that purpose)
         #
+<<<<<<< HEAD
         "-DTENSORFLOW_COMPILER_IS_HIP_CLANG=1"
+=======
+        "-DTENSORFLOW_COMPILER_IS_HIP_CLANG=1",
+>>>>>>> upstream/master
     ]))
 
     rocm_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_rocm"

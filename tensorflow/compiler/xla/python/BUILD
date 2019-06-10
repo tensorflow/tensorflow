@@ -1,12 +1,12 @@
-package(
-    default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
-)
-
 load("//tensorflow/core:platform/default/build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_python_default_plugins")
 load("//tensorflow:tensorflow.bzl", "tf_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 py_library(
     name = "xla_client",
@@ -134,8 +134,14 @@ tf_cc_test(
 
 cc_library(
     name = "local_client",
-    srcs = ["local_client.cc"],
-    hdrs = ["local_client.h"],
+    srcs = [
+        "local_client.cc",
+        "python_ref_manager.cc",
+        "python_ref_manager.h",
+    ],
+    hdrs = [
+        "local_client.h",
+    ],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -167,6 +173,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:tf_allocator_adapter",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",

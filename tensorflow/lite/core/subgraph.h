@@ -317,10 +317,7 @@ class Subgraph {
   }
 
   // Prepare the given 'node' for execution.
-  TfLiteStatus OpPrepare(const TfLiteRegistration& op_reg, TfLiteNode* node) {
-    if (op_reg.prepare == nullptr) return kTfLiteOk;
-    return op_reg.prepare(context_, node);
-  }
+  TfLiteStatus OpPrepare(const TfLiteRegistration& op_reg, TfLiteNode* node);
 
   // Invoke the operator represented by 'node'.
   TfLiteStatus OpInvoke(const TfLiteRegistration& op_reg, TfLiteNode* node) {

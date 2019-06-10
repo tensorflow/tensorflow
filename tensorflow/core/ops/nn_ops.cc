@@ -220,6 +220,32 @@ REGISTER_OP("FusedBatchNormV3")
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormV3Shape);
 
+REGISTER_OP("_FusedBatchNormEx")
+    .Input("x: T")
+    .Input("scale: U")
+    .Input("offset: U")
+    .Input("mean: U")
+    .Input("variance: U")
+    .Input("side_input: num_side_inputs * T")
+    .Output("y: T")
+    .Output("batch_mean: U")
+    .Output("batch_variance: U")
+    .Output("reserve_space_1: U")
+    .Output("reserve_space_2: U")
+    .Output("reserve_space_3: U")
+    .Attr("T: {half, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("num_side_inputs: int >= 0 = 0")
+    .Attr("activation_mode: string = \"Identity\"")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormExShape)
+    .Doc(R"doc(
+*NOTE*: Do not invoke this operator directly in Python. Grappler is
+expected to create these operators.
+)doc");
+
 REGISTER_OP("FusedBatchNormGrad")
     .Input("y_backprop: T")
     .Input("x: T")

@@ -126,6 +126,9 @@ class Feature(enum.Enum):
     return tuple(set(cls.all()) - set(exclude) - {cls.ALL})
 
 
+STANDARD_OPTIONS = None  # Forward definition.
+
+
 class ConversionOptions(object):
   """Immutable container for global conversion flags.
 
@@ -188,6 +191,9 @@ class ConversionOptions(object):
     Returns:
       ast.Node
     """
+    if self == STANDARD_OPTIONS:
+      return parser.parse_expression('ag__.STD')
+
     template = """
       ag__.ConversionOptions(
           recursive=recursive_val,
@@ -212,6 +218,13 @@ class ConversionOptions(object):
             str(internal_convert_user_code)),
         optional_features_val=list_of_features(self.optional_features))
     return expr_ast[0].value
+
+
+STANDARD_OPTIONS = ConversionOptions(
+    recursive=True,
+    force_conversion=False,
+    internal_convert_user_code=True,
+    optional_features=None)
 
 
 class ProgramContext(

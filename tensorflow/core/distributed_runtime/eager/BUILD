@@ -1,3 +1,8 @@
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
+
 package(
     default_visibility = [
         "//tensorflow:internal",
@@ -6,11 +11,6 @@ package(
 )
 
 exports_files(["LICENSE"])
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
-)
 
 cc_library(
     name = "remote_tensor_handle",
@@ -70,6 +70,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
+        "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/memory",
     ],
 )

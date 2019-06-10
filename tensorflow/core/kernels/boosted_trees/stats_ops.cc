@@ -226,8 +226,6 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
       OpKernelConstruction* const context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("logits_dimension", &logits_dim_));
-    // TODO(crawles): multiclass support.
-    DCHECK_EQ(logits_dim_, 1);
   }
 
   void Compute(OpKernelContext* const context) override {
@@ -246,14 +244,21 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
     const int64 num_buckets = stats_summary_t->dim_size(2);
     const int64 hessian_dim = stats_summary_t->dim_size(3) - logits_dim_;
     DCHECK_GT(hessian_dim, 0);
+    DCHECK_LE(hessian_dim, logits_dim_ * logits_dim_);
 
     const Tensor* l1_t;
     OP_REQUIRES_OK(context, context->input("l1", &l1_t));
     const auto l1 = l1_t->scalar<float>()();
+    DCHECK_GE(l1, 0);
+    if (logits_dim_ > 1) {
+      // Multi-class L1 regularization not supported yet.
+      DCHECK_EQ(l1, 0);
+    }
 
     const Tensor* l2_t;
     OP_REQUIRES_OK(context, context->input("l2", &l2_t));
     const auto l2 = l2_t->scalar<float>()();
+    DCHECK_GE(l2, 0);
 
     const Tensor* tree_complexity_t;
     OP_REQUIRES_OK(context,
@@ -269,8 +274,8 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
     std::vector<float> output_gains;
     std::vector<int32> output_feature_dimensions;
     std::vector<int32> output_thresholds;
-    std::vector<float> output_left_node_contribs;
-    std::vector<float> output_right_node_contribs;
+    std::vector<Eigen::VectorXf> output_left_node_contribs;
+    std::vector<Eigen::VectorXf> output_right_node_contribs;
     std::vector<string> output_split_types;
 
     for (int node_id = node_id_first; node_id < node_id_last; ++node_id) {
@@ -283,13 +288,10 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
       float best_bucket = 0;
       float best_f_dim = 0;
       string best_split_type = INEQUALITY_DEFAULT_LEFT;
-      // TODO(crawles): multi-class support; as Eigen::VectorXf.
-      float best_contrib_for_left = 0;
-      float best_contrib_for_right = 0;
-      // Parent gain.
+      Eigen::VectorXf best_contrib_for_left(logits_dim_);
+      Eigen::VectorXf best_contrib_for_right(logits_dim_);
       float parent_gain;
       Eigen::VectorXf unused(logits_dim_);
-
       for (int f_dim = 0; f_dim < feature_dims; ++f_dim) {
         cum_grad.clear();
         cum_hess.clear();
@@ -303,18 +305,19 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
           }
           for (int i = logits_dim_; i < hessian_dim; ++i) {
             // Full hessian.
-            total_hess[i] += stats_summary(node_id, f_dim, bucket, i);
+            total_hess[i] +=
+                stats_summary(node_id, f_dim, bucket, logits_dim_ + i);
           }
           cum_grad.push_back(total_grad);
           cum_hess.push_back(total_hess);
         }
 
-        // TODO(crawles): Check if grad is almost zero.
-        if (total_hess.norm() < min_node_weight) {
-          // Do not split the node because not enough hessian.
-          break;
-        }
+        // Only need to check once as total_grad/total_hess will be the same for
+        // all features.
         if (f_dim == 0) {
+          if (total_hess.norm() < min_node_weight) {
+            break;
+          }
           CalculateWeightsAndGains(total_grad, total_hess, l1, l2, &unused,
                                    &parent_gain);
         }
@@ -340,9 +343,8 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
             best_gain = gain_for_left + gain_for_right;
             best_bucket = bucket;
             best_f_dim = f_dim;
-            // TODO(crawles): multi-class support.
-            best_contrib_for_left = contrib_for_left[0];
-            best_contrib_for_right = contrib_for_right[0];
+            best_contrib_for_left = contrib_for_left;
+            best_contrib_for_right = contrib_for_right;
           }
         }  // for bucket
       }    // for f_dim
@@ -390,18 +392,17 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
 
     // output_left_node_contribs
     Tensor* output_left_node_contribs_t;
-    // TODO(crawles): Using logits_dim_ for multi-class split.
-    OP_REQUIRES_OK(
-        context, context->allocate_output("left_node_contribs", {num_nodes, 1},
-                                          &output_left_node_contribs_t));
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                "left_node_contribs", {num_nodes, logits_dim_},
+                                &output_left_node_contribs_t));
     auto output_left_node_contribs_matrix =
         output_left_node_contribs_t->matrix<float>();
 
     // output_right_node_contribs
     Tensor* output_right_node_contribs_t;
-    OP_REQUIRES_OK(
-        context, context->allocate_output("right_node_contribs", {num_nodes, 1},
-                                          &output_right_node_contribs_t));
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                "right_node_contribs", {num_nodes, logits_dim_},
+                                &output_right_node_contribs_t));
     auto output_right_node_contribs_matrix =
         output_right_node_contribs_t->matrix<float>();
 
@@ -419,8 +420,12 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
       output_gains_vec(i) = output_gains[i] - tree_complexity;
       output_feature_dimensions_vec(i) = output_feature_dimensions[i];
       output_thresholds_vec(i) = output_thresholds[i];
-      output_left_node_contribs_matrix(i, 0) = output_left_node_contribs[i];
-      output_right_node_contribs_matrix(i, 0) = output_right_node_contribs[i];
+      for (int j = 0; j < logits_dim_; ++j) {
+        output_left_node_contribs_matrix(i, j) =
+            output_left_node_contribs[i][j];
+        output_right_node_contribs_matrix(i, j) =
+            output_right_node_contribs[i][j];
+      }
       output_split_types_vec(i) = output_split_types[i];
     }
   }

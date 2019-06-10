@@ -84,7 +84,7 @@ distribute_py_test(
     srcs = ["distribute_strategy_test.py"],
     full_precision = True,
     main = "distribute_strategy_test.py",
-    shard_count = 4,
+    shard_count = 5,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/117919883): Fix python error.
@@ -149,6 +149,8 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_windows_gpu",
+        # TODO(b/134764123): Re-enable this test.
+        "notap",
         "notsan",
     ],
     deps = [

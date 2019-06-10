@@ -64,6 +64,9 @@ std::map<string, string> kBrokenTests = {
     // SpaceToBatchND only supports 4D tensors.
     {R"(^\/space_to_batch_nd.*input_shape=\[1,4,4,4,1,1\])", "70848787"},
 
+    // BatchToSpaceND only supports 4D tensors.
+    {R"(^\/batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\])", "70848787"},
+
     // L2Norm only works for dim=-1.
     {R"(^\/l2norm_dim=-2,epsilon=.*,input_shape=\[.,.\])", "67963812"},
     {R"(^\/l2norm_dim=0,epsilon=.*,input_shape=\[.,.\])", "67963812"},
@@ -99,6 +102,9 @@ std::map<string, string> kBrokenTests = {
     {R"(^\/add.*dtype=tf\.int64)", "119126484"},
     {R"(^\/floor_div.*dtype=tf\.int64)", "119126484"},
     {R"(^\/squared_difference.*dtype=tf\.int64)", "119126484"},
+
+    // Select kernel doesn't support broadcasting yet.
+    {R"(^\/where.*1,2,3,1)", "134692786"},
 };
 
 // Additional list of tests that are expected to fail when
@@ -256,6 +262,12 @@ TEST_P(OpsTest, RunZipTests) {
   std::ifstream tflite_stream(tflite_test_case);
   ASSERT_TRUE(tflite_stream.is_open()) << tflite_test_case;
   tflite::testing::TfLiteDriver test_driver(FLAGS_use_nnapi);
+
+  if (test_path.find("fully_quantize=True") != std::string::npos) {
+    // TODO(b/134594898): Tighten this constraint.
+    test_driver.SetThreshold(5e-1f, 4e-1f);
+  }
+
   test_driver.SetModelBaseDir(tflite_dir);
 
   auto broken_tests = kBrokenTests;

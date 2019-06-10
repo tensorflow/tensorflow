@@ -363,19 +363,20 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // a non-OK status if "func" was not found in the library, OK otherwise.
   // Please be careful when replacing function: make sure all previous pointers
   // returned by `Find()` are no longer in use.
-  Status ReplaceFunction(const string& func, const FunctionDef& fdef);
+  Status ReplaceFunction(const string& func, const FunctionDef& fdef)
+      LOCKS_EXCLUDED(mu_);
 
   // Replaces the gradient corresponding to `grad.function_name()`. Returns
   // a non-OK status if "grad.function_name()" was not found in the library, OK
   // otherwise.
-  Status ReplaceGradient(const GradientDef& grad);
+  Status ReplaceGradient(const GradientDef& grad) LOCKS_EXCLUDED(mu_);
 
   // Removes the function corresponding to 'func'. Returns a non-OK status if
   // 'func' was not found in the library, OK otherwise.
   // Please be careful when removing function: make sure there are no other
   // nodes using the function, and all previous pointers returned by `Find()`
   // are no longer in use.
-  Status RemoveFunction(const string& func);
+  Status RemoveFunction(const string& func) LOCKS_EXCLUDED(mu_);
 
   // Adds the functions and gradients in 'other' to this function library.
   // Duplicate functions and gradients are ignored.

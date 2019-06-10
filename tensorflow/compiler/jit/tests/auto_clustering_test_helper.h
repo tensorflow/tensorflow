@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_TESTS_AUTO_CLUSTERING_TEST_HELPER_H_
 
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -46,8 +47,16 @@ namespace tensorflow {
 
 class AutoClusteringTest : public ::testing::Test {
  protected:
-  Status RunAutoClusteringTest(absl::string_view graph_def_file_path,
-                               absl::string_view golden_summary_file_path);
+  Status RunAutoClusteringTestWithPbtxt(
+      absl::string_view pbtxt_file_path,
+      absl::string_view golden_summary_file_path);
+  Status RunAutoClusteringTestWithGzippedPbtxt(
+      absl::string_view gzipped_pbtxt_file_path,
+      absl::string_view golden_summary_file_path);
+
+ private:
+  Status RunAutoClusteringTestImpl(GraphDef graphdef,
+                                   absl::string_view golden_summary_file_path);
 };
 
 #if defined(PLATFORM_GOOGLE)

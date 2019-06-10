@@ -1,10 +1,9 @@
-licenses(["notice"])  # Apache 2.0
-
 package(
     default_visibility = [
         "//learning/brain:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 package_group(

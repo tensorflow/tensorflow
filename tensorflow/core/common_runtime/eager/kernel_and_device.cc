@@ -358,13 +358,17 @@ Status KernelAndDeviceFunc::Run(
   for (const TensorValue& tensor_value : inputs) {
     input_vector.push_back(*tensor_value.tensor);
   }
-
-  pflr_->Run(opts, handle_, input_vector, outputs,
-             [&status, &done](const Status& s) {
-               status = s;
-               done.Notify();
-             });
-  done.WaitForNotification();
+  {
+    profiler::TraceMe activity(
+        [&] { return absl::StrCat("FunctionRun:", name()); },
+        profiler::TraceMeLevel::kInfo);
+    pflr_->Run(opts, handle_, input_vector, outputs,
+               [&status, &done](const Status& s) {
+                 status = s;
+                 done.Notify();
+               });
+    done.WaitForNotification();
+  }
 
   rendezvous->Unref();
   if (step_stats_collector != nullptr) {

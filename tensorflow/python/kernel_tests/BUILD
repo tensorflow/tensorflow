@@ -1461,6 +1461,7 @@ cuda_py_test(
         "noasan",
         "noguitar",
         "notap",
+        "optonly",
     ],
     xla_enable_strict_auto_jit = True,
 )
@@ -1691,6 +1692,10 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+    tags = [
+        # TODO(b/134600611): Re-enable this test.
+        "notap",
     ],
     xla_enable_strict_auto_jit = True,
 )
@@ -2303,6 +2308,20 @@ cuda_py_test(
     name = "reduce_join_op_test",
     size = "small",
     srcs = ["reduce_join_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:string_ops",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "unsorted_segment_join_op_test",
+    size = "small",
+    srcs = ["unsorted_segment_join_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
@@ -3522,7 +3541,8 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
-    xla_enable_strict_auto_jit = True,
+    # TODO(b/134764123): Re-enable this test.
+    xla_enable_strict_auto_jit = False,
 )
 
 sycl_py_test(

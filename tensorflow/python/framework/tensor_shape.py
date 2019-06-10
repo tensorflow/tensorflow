@@ -938,6 +938,16 @@ class TensorShape(object):
       except ValueError:
         raise ValueError("Shapes %s and %s are not compatible" % (self, other))
 
+  def __add__(self, other):
+    if not isinstance(other, TensorShape):
+      other = TensorShape(other)
+    return self.concatenate(other)
+
+  def __radd__(self, other):
+    if not isinstance(other, TensorShape):
+      other = TensorShape(other)
+    return other.concatenate(self)
+
   def concatenate(self, other):
     """Returns the concatenation of the dimension in `self` and `other`.
 

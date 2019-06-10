@@ -75,6 +75,8 @@ def strip_unused(input_graph_def, input_node_names, output_node_names,
       if "_output_shapes" in node.attr:
         placeholder_node.attr["_output_shapes"].CopyFrom(node.attr[
             "_output_shapes"])
+      if "shape" in node.attr:
+        placeholder_node.attr["shape"].CopyFrom(node.attr["shape"])
       inputs_replaced_graph_def.node.extend([placeholder_node])
     else:
       inputs_replaced_graph_def.node.extend([copy.deepcopy(node)])

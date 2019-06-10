@@ -30,7 +30,11 @@ typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
 __global__ void DiagGpuKernel(const int num_threads, const int64 size,
+<<<<<<< HEAD
                                const T* in, T* out) {
+=======
+                              const T* in, T* out) {
+>>>>>>> upstream/master
   GPU_1D_KERNEL_LOOP(index, num_threads) {
     // Fill the diagonal elements or set to zero in other place.
     if (index % (1 + size) == 0) {
@@ -62,6 +66,7 @@ struct DiagFunctor<GPUDevice, T> {
     const GPUDevice& device = context->eigen_device<GPUDevice>();
     GpuLaunchConfig diag_config =
         GetGpuLaunchConfig(virtual_thread_count, device);
+<<<<<<< HEAD
     TF_CHECK_OK(
         GpuLaunchKernel(DiagGpuKernel<T>, diag_config.block_count,
                          diag_config.thread_per_block, 0, device.stream(),
@@ -80,6 +85,12 @@ struct DiagFunctor<GPUDevice, T> {
           "Could not launch DiagOp kernel: ", hipGetErrorString(err), ".");
     }
 #endif
+=======
+    TF_CHECK_OK(GpuLaunchKernel(
+        DiagGpuKernel<T>, diag_config.block_count, diag_config.thread_per_block,
+        0, device.stream(), diag_config.virtual_thread_count, size, in, out));
+
+>>>>>>> upstream/master
     return Status::OK();
   }
 };
@@ -93,7 +104,11 @@ template struct DiagFunctor<GPUDevice, complex128>;
 
 template <typename T>
 __global__ void DiagPartGpuKernel(const int num_threads, const int64 size,
+<<<<<<< HEAD
                                    const T* in, T* out) {
+=======
+                                  const T* in, T* out) {
+>>>>>>> upstream/master
   GPU_1D_KERNEL_LOOP(index, num_threads) {
     out[index] = in[(1 + size) * index];
   }
@@ -113,6 +128,7 @@ struct DiagPartFunctor<GPUDevice, T> {
     GpuLaunchConfig diag_config = GetGpuLaunchConfig(size, device);
     TF_CHECK_OK(
         GpuLaunchKernel(DiagPartGpuKernel<T>, diag_config.block_count,
+<<<<<<< HEAD
                          diag_config.thread_per_block, 0, device.stream(),
                          diag_config.virtual_thread_count, size, in, out));
 
@@ -129,6 +145,11 @@ struct DiagPartFunctor<GPUDevice, T> {
           "Could not launch DiagPartOp kernel: ", hipGetErrorString(err), ".");
     }
 #endif
+=======
+                        diag_config.thread_per_block, 0, device.stream(),
+                        diag_config.virtual_thread_count, size, in, out));
+
+>>>>>>> upstream/master
     return Status::OK();
   }
 };

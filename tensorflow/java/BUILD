@@ -1,9 +1,10 @@
 # Description:
 # TensorFlow Java API.
 
-package(default_visibility = ["//visibility:private"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load(":build_defs.bzl", "JAVACOPTS")
 load(":src/gen/gen_ops.bzl", "tf_java_op_gen_srcjar")
