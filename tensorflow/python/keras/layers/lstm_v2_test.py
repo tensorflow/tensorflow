@@ -695,6 +695,29 @@ class LSTMV2Test(keras_parameterized.TestCase):
         },
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  def test_bidirectional(self):
+    batch = 128
+    timestep = 20
+    vocab_size = 1000
+    model = keras.Sequential([
+        keras.layers.Embedding(vocab_size, 64),
+        keras.layers.Bidirectional(rnn.LSTM(
+            64, return_sequences=True)),
+        keras.layers.Bidirectional(rnn.LSTM(32)),
+        keras.layers.Dense(64, activation='relu'),
+        keras.layers.Dense(1, activation='sigmoid')
+    ])
+
+    model.compile(loss='binary_crossentropy',
+                  optimizer='adam',
+                  metrics=['accuracy'])
+
+    x = np.random.randint(0, vocab_size, size=(batch, timestep))
+    y = np.random.randint(0, 1, size=(batch))
+    model.fit(x, y, epochs=1, shuffle=False)
+    model.evaluate(x, y)
+    model.predict(x)
+
 
 class LSTMLayerGraphOnlyTest(test.TestCase):
 
@@ -803,7 +826,7 @@ class LSTMLayerGraphOnlyTest(test.TestCase):
         existing_loss = loss_value
 
 
-class UnifiedLSTMPerformanceTest(test.Benchmark):
+class UnifiedLSTMPerformanceTest(test.TestCase):
 
   def _measure_performance(self, test_config, model, x_train, y_train):
     batch = test_config['batch']
@@ -913,29 +936,29 @@ class UnifiedLSTMPerformanceTest(test.Benchmark):
     cudnn_vs_unified = cudnn_sec_per_epoch / unified_lstm_sec_per_epoch
     unified_vs_normal = normal_lstm_sec_per_epoch / unified_lstm_sec_per_epoch
 
-    self.report_benchmark(name='keras_cudnn_lstm_' + mode,
-                          wall_time=cudnn_sec_per_epoch,
-                          iters=test_config['epoch'],
-                          extras=test_config)
-    self.report_benchmark(name='keras_unified_lstm_' + mode,
-                          wall_time=unified_lstm_sec_per_epoch,
-                          iters=test_config['epoch'],
-                          extras=test_config)
-    self.report_benchmark(name='keras_canonical_lstm_' + mode,
-                          wall_time=normal_lstm_sec_per_epoch,
-                          iters=test_config['epoch'],
-                          extras=test_config)
+    # self.report_benchmark(name='keras_cudnn_lstm_' + mode,
+    #                       wall_time=cudnn_sec_per_epoch,
+    #                       iters=test_config['epoch'],
+    #                       extras=test_config)
+    # self.report_benchmark(name='keras_unified_lstm_' + mode,
+    #                       wall_time=unified_lstm_sec_per_epoch,
+    #                       iters=test_config['epoch'],
+    #                       extras=test_config)
+    # self.report_benchmark(name='keras_canonical_lstm_' + mode,
+    #                       wall_time=normal_lstm_sec_per_epoch,
+    #                       iters=test_config['epoch'],
+    #                       extras=test_config)
 
     logging.info('Expect the performance of Unified LSTM is within 80% of '
                  'CuDNN LSTM, got {0:.2f}%'.format(cudnn_vs_unified * 100))
     logging.info('Expect the performance of Unified LSTM is more than 5 times'
                  ' of normal LSTM, got {0:.2f}'.format(unified_vs_normal))
 
-  def benchmark_performance_graph(self):
+  def test_performance_graph(self):
     with context.graph_mode(), session_lib.Session(config=_config):
       self._benchmark_performance_with_standard_cudnn_impl()
 
-  def benchmark_performance_eager(self):
+  def test_performance_eager(self):
     with context.eager_mode():
       self._benchmark_performance_with_standard_cudnn_impl()
 
