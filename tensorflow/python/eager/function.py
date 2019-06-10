@@ -506,6 +506,8 @@ class ConcreteFunction(object):
     self._num_positional_args = None
     self._func_graph = func_graph
     self._captured_inputs = list(self._func_graph.captures.keys())
+    self._captured_closures = [
+        x[0] for x in self._func_graph.deferred_captures.values()]
     self._num_outputs = len(self._func_graph.outputs)
     self._output_shapes = tuple(
         output.shape for output in self._func_graph.outputs)
@@ -766,7 +768,7 @@ class ConcreteFunction(object):
 
     self.__call__(*args) passes `args + self.captured_inputs` to the function.
     """
-    return self._captured_inputs
+    return self._captured_inputs + [x() for x in self._captured_closures]
 
   @property
   def function_def(self):

@@ -3057,6 +3057,42 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     train()
 
+  def testDeferredCapture(self):
+    value = 1.0
+
+    @def_function.function
+    def lazy_capture(x):
+      y = ops.get_default_graph().capture_call_time_value(
+          lambda: value, tensor_spec.TensorSpec(None))
+      return x + y
+
+    self.assertAllEqual(lazy_capture(2.0), 3.0)
+    # After changing the value of `value` the function call should return a
+    # different result.
+    value = 2.0
+    self.assertAllEqual(lazy_capture(2.0), 4.0)
+
+  def testDeferredCaptureWithKey(self):
+    value0 = 1.0
+    value1 = 2.0
+
+    @def_function.function
+    def lazy_capture(x):
+      w = ops.get_default_graph().capture_call_time_value(
+          lambda: value0, tensor_spec.TensorSpec(None), key=0)
+      y = ops.get_default_graph().capture_call_time_value(
+          lambda: value1, tensor_spec.TensorSpec(None), key=1)
+      def bad_closure():
+        raise ValueError('Should not run')
+      z = ops.get_default_graph().capture_call_time_value(
+          bad_closure, tensor_spec.TensorSpec(None), key=1)
+      return x + y + w + z
+
+    self.assertAllEqual(lazy_capture(2.0), 7.0)
+    value0 = 2.0
+    value1 = 3.0
+    self.assertAllEqual(lazy_capture(2.0), 10.0)
+
 if __name__ == '__main__':
   ops.enable_eager_execution(
       config=config_pb2.ConfigProto(device_count={'CPU': 4}))
