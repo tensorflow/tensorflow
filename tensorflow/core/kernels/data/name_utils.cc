@@ -41,6 +41,8 @@ string OpName(const string& dataset_type) {
     return "PrefetchDataset";
   } else if (dataset_type == "Range") {
     return "RangeDataset";
+  } else if (dataset_type == "Shard") {
+    return "ShardDataset";
   }
   LOG(WARNING) << "Unknown dataset type " << dataset_type << std::endl;
   return "UnknownDataset";
