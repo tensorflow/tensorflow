@@ -172,6 +172,14 @@ function build_wheel() {
   mv tensorflow tensorflow_core
   mkdir tensorflow
   mv virtual_root.__init__.py tensorflow/__init__.py
+  # TODO(mihaimaruseac): Remove the following hack once we move API in root pkg
+  # This sed-hack below is needed because in TF 1.* we include contrib as a top
+  # level module but that doesn't exist in TF 2.*. Unfortunately, python3 is too
+  # eager so we cannot test if contrib needs to exist before importing the
+  # __init__.py from the virtual root. Thus, we need to make the following hack
+  # at least until we can generate TF API in the virtual pip and keep the rest
+  # of the code in tensorflow_core
+  sed -ie /'ONLY FOR V1, REMOVED IN V2'/d tensorflow/__init__.py
 
   rm -f MANIFEST
   echo $(date) : "=== Building wheel"
