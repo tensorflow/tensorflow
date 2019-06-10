@@ -1748,7 +1748,7 @@ tensorflow::Status ConvertBatchNormWithGlobalNormalizationOperator(
 tensorflow::Status ConvertFusedBatchNormOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     const ModelFlags& model_flags, Model* model) {
-  CHECK_EQ(node.op(), "FusedBatchNorm");
+  CHECK((node.op() == "FusedBatchNorm") || (node.op() == "FusedBatchNormV3"));
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 5));
 
   // Declare shortcuts for the inputs.
@@ -2490,6 +2490,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"FloorDiv", ConvertSimpleOperator<FloorDivOperator, 2, 1>},
       {"FloorMod", ConvertSimpleOperator<FloorModOperator, 2, 1>},
       {"FusedBatchNorm", ConvertFusedBatchNormOperator},
+      {"FusedBatchNormV3", ConvertFusedBatchNormOperator},
       {"Gather", ConvertGatherOperator},
       {"GatherV2", ConvertGatherOperator},
       {"GatherNd", ConvertGatherNdOperator},
