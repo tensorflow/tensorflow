@@ -156,7 +156,10 @@ tf_py_test(
     data = [
         ":test_data",
     ],
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "nomsan",  # http://b/134927401
+    ],
 )
 
 py_library(
