@@ -30,6 +30,7 @@ import numpy
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
+from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -2727,6 +2728,17 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     output1, output2 = _call_concrete()
     self.assertEqual((5, 4, 2), self.evaluate(output1).shape)
     self.assertEqual((10, 4, 3), self.evaluate(output2).shape)
+
+  def testAutoGraphContext(self):
+
+    @def_function.function
+    def test_fn():
+      self.assertEqual(
+          ag_ctx.control_status_ctx().status, ag_ctx.Status.ENABLED)
+
+    prev_status = ag_ctx.control_status_ctx().status
+    test_fn()
+    self.assertEqual(ag_ctx.control_status_ctx().status, prev_status)
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):

@@ -157,7 +157,8 @@ def convert(recursive=False, optional_features=None):
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
       """Wrapper that calls the converted version of f."""
-      with ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED):
+      with ag_ctx.ControlStatusCtx(
+          status=ag_ctx.Status.ENABLED, options=optional_features):
         try:
           return converted_call(
               f, None,
