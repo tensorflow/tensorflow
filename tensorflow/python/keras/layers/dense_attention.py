@@ -149,10 +149,10 @@ class BaseDenseAttention(Layer):
   def compute_mask(self, inputs, mask=None):
     self._validate_call_args(inputs=inputs, mask=mask)
     if mask:
-      mask = mask[0]
-      if mask is None:
+      q_mask = mask[0]
+      if q_mask is None:
         return None
-      return ops.convert_to_tensor(mask[0])
+      return ops.convert_to_tensor(q_mask)
     return None
 
   def _validate_call_args(self, inputs, mask):
