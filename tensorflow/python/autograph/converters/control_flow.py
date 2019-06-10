@@ -286,8 +286,12 @@ class ControlFlowTransformer(converter.Base):
     live_in = anno.getanno(node, anno.Static.LIVE_VARS_IN)
     live_out = anno.getanno(node, anno.Static.LIVE_VARS_OUT)
     reserved_symbols = body_scope.referenced
+
     loop_state = []
     for s in modified_symbols:
+      if s.is_composite():
+        # TODO(mdan): Raise an error when this happens for a TF loop.
+        continue
 
       # Variables not live into or out of the loop are considered local to the
       # loop.
