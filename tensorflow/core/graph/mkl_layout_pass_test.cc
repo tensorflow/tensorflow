@@ -1111,7 +1111,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv3DTranspose_Positive) {
         attr {                \
           key: 'data_format'  \
           value {             \
-            s: 'NDHWC'         \
+            s: 'NDHWC'        \
           }                   \
         }                     \
         attr {                \
@@ -1265,7 +1265,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv3DTranspose_Negative) {
         attr {                \
           key: 'data_format'  \
           value {             \
-            s: 'NDHWC'         \
+            s: 'NDHWC'        \
           }                   \
         }                     \
         attr {                \
