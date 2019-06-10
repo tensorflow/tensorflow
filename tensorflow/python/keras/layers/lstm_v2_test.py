@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for UnifiedLSTM layer."""
+"""Tests for V2 LSTM layer."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -826,7 +826,7 @@ class LSTMLayerGraphOnlyTest(test.TestCase):
         existing_loss = loss_value
 
 
-class UnifiedLSTMPerformanceTest(test.TestCase):
+class UnifiedLSTMPerformanceTest(test.Benchmark):
 
   def _measure_performance(self, test_config, model, x_train, y_train):
     batch = test_config['batch']
@@ -936,29 +936,29 @@ class UnifiedLSTMPerformanceTest(test.TestCase):
     cudnn_vs_unified = cudnn_sec_per_epoch / unified_lstm_sec_per_epoch
     unified_vs_normal = normal_lstm_sec_per_epoch / unified_lstm_sec_per_epoch
 
-    # self.report_benchmark(name='keras_cudnn_lstm_' + mode,
-    #                       wall_time=cudnn_sec_per_epoch,
-    #                       iters=test_config['epoch'],
-    #                       extras=test_config)
-    # self.report_benchmark(name='keras_unified_lstm_' + mode,
-    #                       wall_time=unified_lstm_sec_per_epoch,
-    #                       iters=test_config['epoch'],
-    #                       extras=test_config)
-    # self.report_benchmark(name='keras_canonical_lstm_' + mode,
-    #                       wall_time=normal_lstm_sec_per_epoch,
-    #                       iters=test_config['epoch'],
-    #                       extras=test_config)
+    self.report_benchmark(name='keras_cudnn_lstm_' + mode,
+                          wall_time=cudnn_sec_per_epoch,
+                          iters=test_config['epoch'],
+                          extras=test_config)
+    self.report_benchmark(name='keras_unified_lstm_' + mode,
+                          wall_time=unified_lstm_sec_per_epoch,
+                          iters=test_config['epoch'],
+                          extras=test_config)
+    self.report_benchmark(name='keras_canonical_lstm_' + mode,
+                          wall_time=normal_lstm_sec_per_epoch,
+                          iters=test_config['epoch'],
+                          extras=test_config)
 
     logging.info('Expect the performance of Unified LSTM is within 80% of '
                  'CuDNN LSTM, got {0:.2f}%'.format(cudnn_vs_unified * 100))
     logging.info('Expect the performance of Unified LSTM is more than 5 times'
                  ' of normal LSTM, got {0:.2f}'.format(unified_vs_normal))
 
-  def test_performance_graph(self):
+  def benchmark_performance_graph(self):
     with context.graph_mode(), session_lib.Session(config=_config):
       self._benchmark_performance_with_standard_cudnn_impl()
 
-  def test_performance_eager(self):
+  def benchmark_performance_eager(self):
     with context.eager_mode():
       self._benchmark_performance_with_standard_cudnn_impl()
 
