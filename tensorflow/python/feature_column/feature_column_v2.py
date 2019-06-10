@@ -404,8 +404,8 @@ class DenseFeatures(_BaseFeaturesLayer):
   features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
   dense_tensor = feature_layer(features)
   for units in [128, 64, 32]:
-    dense_tensor = tf.compat.v1.layers.dense(dense_tensor, units, tf.nn.relu)
-  prediction = tf.compat.v1.layers.dense(dense_tensor, 1).
+    dense_tensor = tf.keras.layers.Dense(units, activation='relu')(dense_tensor)
+  prediction = tf.keras.layers.Dense(1)(dense_tensor)
   ```
   """
 
@@ -922,7 +922,7 @@ def embedding_column(categorical_column,
       `tf.embedding_lookup_sparse`.
     initializer: A variable initializer function to be used in embedding
       variable initialization. If not specified, defaults to
-      `tf.compat.v1.truncated_normal_initializer` with mean `0.0` and
+      `truncated_normal_initializer` with mean `0.0` and
       standard deviation `1/sqrt(dimension)`.
     ckpt_to_load_from: String representing checkpoint name/pattern from which to
       restore column weights. Required if `tensor_name_in_ckpt` is not `None`.
@@ -1045,7 +1045,7 @@ def shared_embedding_columns(categorical_columns,
       `tf.embedding_lookup_sparse`.
     initializer: A variable initializer function to be used in embedding
       variable initialization. If not specified, defaults to
-      `tf.compat.v1.truncated_normal_initializer` with mean `0.0` and
+      `truncated_normal_initializer` with mean `0.0` and
       standard deviation `1/sqrt(dimension)`.
     shared_embedding_collection_name: Optional name of the collection where
       shared embedding weights are added. If not given, a reasonable name will
@@ -1218,7 +1218,7 @@ def shared_embedding_columns_v2(categorical_columns,
       `tf.embedding_lookup_sparse`.
     initializer: A variable initializer function to be used in embedding
       variable initialization. If not specified, defaults to
-      `tf.compat.v1.truncated_normal_initializer` with mean `0.0` and standard
+      `truncated_normal_initializer` with mean `0.0` and standard
       deviation `1/sqrt(dimension)`.
     shared_embedding_collection_name: Optional collective name of these columns.
       If not given, a reasonable name will be chosen based on the names of
@@ -4460,7 +4460,7 @@ def _verify_static_batch_size_equality(tensors, columns):
   Raises:
     ValueError: in case of mismatched batch sizes.
   """
-  # bath_size is a tf.compat.v1.Dimension object.
+  # bath_size is a Dimension object.
   expected_batch_size = None
   for i in range(0, len(tensors)):
     batch_size = tensor_shape.Dimension(tensor_shape.dimension_value(
