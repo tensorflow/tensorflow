@@ -693,6 +693,10 @@ class DistributedVariable(DistributedDelegate, variables_lib.AbstractVariable):
     return self.primary.shape
 
   @property
+  def synchronization(self):
+    return self.primary.synchronization
+
+  @property
   def handle(self):
     device = None
     replica_context = distribution_strategy_context.get_replica_context()

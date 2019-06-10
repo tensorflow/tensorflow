@@ -12,7 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for saving and loading using tf's saved_model APIs with DS."""
+"""Tests for saving and loading with mixed APIs with distribution strategies.
+
+For saving, Keras's export_saved_model() API is used; and for loading,
+saved_model's load() API is used. Keras's export_save_model() when used with
+`serving_only` parameter equals to True should be the same as using
+tf.saved_model.save().
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,7 +27,9 @@ from __future__ import print_function
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import saved_model_test_base as test_base
 from tensorflow.python.eager import test
-from tensorflow.python.saved_model import saved_model
+from tensorflow.python.keras.saving import saved_model as keras_saved_model
+
+_DEFAULT_FUNCTION_KEY = 'serving_default'
 
 
 class SavedModelSaveAndLoadTest(test_base.TestSavedModelBase):
@@ -31,7 +39,7 @@ class SavedModelSaveAndLoadTest(test_base.TestSavedModelBase):
     super(SavedModelSaveAndLoadTest, self).setUp()
 
   def _save_model(self, model, saved_dir):
-    saved_model.save(model, saved_dir)
+    keras_saved_model.export_saved_model(model, saved_dir, serving_only=True)
 
   def _load_and_run_model(self, distribution, saved_dir, predict_dataset,
                           output_name):

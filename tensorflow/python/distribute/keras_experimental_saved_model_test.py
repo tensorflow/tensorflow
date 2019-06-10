@@ -45,17 +45,22 @@ class KerasExperimentalSaveLoadTest(test_base.TestSavedModelBase):
     self.run_test_save_no_strategy_restore_strategy(model_and_input,
                                                     distribution)
 
-  @combinations.generate(test_base.simple_models_with_strategies())
+  @combinations.generate(
+      combinations.times(test_base.simple_models_with_strategies(),
+                         combinations.combine(save_in_scope=[True, False])))
   def test_save_strategy_restore_no_strategy(self, model_and_input,
-                                             distribution):
+                                             distribution, save_in_scope):
     self.run_test_save_strategy_restore_no_strategy(model_and_input,
-                                                    distribution)
+                                                    distribution, save_in_scope)
 
-  @combinations.generate(test_base.simple_models_with_strategy_pairs())
+  @combinations.generate(
+      combinations.times(test_base.simple_models_with_strategy_pairs(),
+                         combinations.combine(save_in_scope=[True, False])))
   def test_save_strategy_restore_strategy(self, model_and_input,
-                                          distribution_pair):
+                                          distribution_pair, save_in_scope):
     self.run_test_save_strategy_restore_strategy(model_and_input,
-                                                 distribution_pair)
+                                                 distribution_pair,
+                                                 save_in_scope)
 
 
 if __name__ == '__main__':
