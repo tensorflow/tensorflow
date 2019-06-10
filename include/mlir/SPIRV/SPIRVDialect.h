@@ -32,6 +32,12 @@ namespace spirv {
 class SPIRVDialect : public Dialect {
 public:
   explicit SPIRVDialect(MLIRContext *context);
+
+  /// Parses a type registered to this dialect.
+  Type parseType(llvm::StringRef spec, Location loc) const override;
+
+  /// Prints a type registered to this dialect.
+  void printType(Type type, llvm::raw_ostream &os) const override;
 };
 
 } // end namespace spirv
