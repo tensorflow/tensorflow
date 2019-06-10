@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/histogram/histogram.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
@@ -302,7 +303,7 @@ class Node {
   }
 
   // Returns the per-element CPU time spent in the subtree rooted in this node.
-  double TotalProcessingTime() const LOCKS_EXCLUDED(mu_) {
+  double TotalProcessingTime() LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return TotalProcessingTimeLocked();
   }
@@ -342,14 +343,26 @@ class Node {
       SHARED_LOCKS_REQUIRED(mu_) = 0;
 
   // Returns the sum of per-element processing time for the inputs of this node.
+  // Processing time for a given input is a weighted combination of a median of
+  // processing history and the actual time. This is to reduce an uncertainty of
+  // processing time evaluation for newly created inputs.
   //
-  // TODO(jsimsa): use processing time history as a prior for future inputs
-  double ProcessingTimeForInputs() const SHARED_LOCKS_REQUIRED(mu_) {
-    int64 sum = 0;
+  // Uniform distribution of per-element processing times across different
+  // inputs is assumed.
+  double ProcessingTimeForInputs() SHARED_LOCKS_REQUIRED(mu_) {
+    double sum = 0;
+    double processing_time;
+    double prior_weight;
     for (auto& input : inputs_) {
       // Inputs for which autotuning is disabled are excluded.
       if (input->autotune()) {
-        sum += input->SelfProcessingTime();
+        processing_time = input->SelfProcessingTime();
+        // The fewer elements the input has produced so far, the more weight
+        // is assigned to the prior to reduce volatility.
+        prior_weight = 1.0L / static_cast<double>(2 << input->num_elements());
+        sum += (1.0L - prior_weight) * processing_time +
+               prior_weight * histogram_.Median();
+        histogram_.Add(processing_time);
       }
     }
     return sum;
@@ -365,8 +378,7 @@ class Node {
   }
 
   // Returns the per-element CPU time spent in the subtree rooted in this node.
-  virtual double TotalProcessingTimeLocked() const
-      SHARED_LOCKS_REQUIRED(mu_) = 0;
+  virtual double TotalProcessingTimeLocked() SHARED_LOCKS_REQUIRED(mu_) = 0;
 
   mutable mutex mu_;
   const int64 id_;
@@ -381,6 +393,9 @@ class Node {
   int64 num_elements_ GUARDED_BY(mu_) = 0;
   std::map<std::thread::id, int64> work_start_ GUARDED_BY(mu_);
   std::map<string, std::shared_ptr<Parameter>> parameters_ GUARDED_BY(mu_);
+
+  // Contains inputs processing time history.
+  histogram::ThreadSafeHistogram histogram_;
 
   // Inputs of this node. These can represent an iterator created from the input
   // dataset but also other input iterators (e.g. created by the user-defined
