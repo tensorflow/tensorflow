@@ -3507,6 +3507,20 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "normalize_op_test",
+    size = "medium",
+    srcs = ["normalize_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/ops:nn_impl",
+    ],
+    shard_count = 20,
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
     name = "tensordot_op_test",
     size = "medium",
     srcs = ["tensordot_op_test.py"],
