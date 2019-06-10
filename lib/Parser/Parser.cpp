@@ -58,9 +58,8 @@ class Parser;
 /// methods to access this.
 class ParserState {
 public:
-  ParserState(const llvm::SourceMgr &sourceMgr, Module *module)
-      : context(module->getContext()), module(module), lex(sourceMgr, context),
-        curToken(lex.lexToken()) {}
+  ParserState(const llvm::SourceMgr &sourceMgr, MLIRContext *ctx)
+      : context(ctx), lex(sourceMgr, ctx), curToken(lex.lexToken()) {}
 
   // A map from attribute alias identifier to Attribute.
   llvm::StringMap<Attribute> attributeAliasDefinitions;
@@ -76,9 +75,6 @@ private:
 
   // The context we're parsing into.
   MLIRContext *const context;
-
-  // This is the module we are parsing into.
-  Module *const module;
 
   // The lexer for the source file we're parsing.
   Lexer lex;
@@ -103,7 +99,6 @@ public:
   // Helper methods to get stuff from the parser-global state.
   ParserState &getState() const { return state; }
   MLIRContext *getContext() const { return state.context; }
-  Module *getModule() { return state.module; }
   const llvm::SourceMgr &getSourceMgr() { return state.lex.getSourceMgr(); }
 
   /// Parse a comma-separated list of elements up until the specified end token.
@@ -3620,7 +3615,7 @@ class ModuleParser : public Parser {
 public:
   explicit ModuleParser(ParserState &state) : Parser(state) {}
 
-  ParseResult parseModule();
+  ParseResult parseModule(Module *module);
 
 private:
   /// Parse an attribute alias declaration.
@@ -3638,7 +3633,7 @@ private:
       StringRef &name, FunctionType &type,
       SmallVectorImpl<std::pair<SMLoc, StringRef>> &argNames,
       SmallVectorImpl<SmallVector<NamedAttribute, 2>> &argAttrs);
-  ParseResult parseFunc();
+  ParseResult parseFunc(Module *module);
 };
 } // end anonymous namespace
 
@@ -3802,7 +3797,7 @@ ParseResult ModuleParser::parseFunctionSignature(
 ///   function-body ::= `{` block+ `}`
 ///   function-attributes ::= `attributes` attribute-dict
 ///
-ParseResult ModuleParser::parseFunc() {
+ParseResult ModuleParser::parseFunc(Module *module) {
   consumeToken();
 
   StringRef name;
@@ -3824,7 +3819,7 @@ ParseResult ModuleParser::parseFunc() {
   // Okay, the function signature was parsed correctly, create the function now.
   auto *function =
       new Function(getEncodedSourceLocation(loc), name, type, attrs);
-  getModule()->getFunctions().push_back(function);
+  module->getFunctions().push_back(function);
 
   // Verify no name collision / redefinition.
   if (function->getName() != name)
@@ -3864,7 +3859,7 @@ ParseResult ModuleParser::parseFunc() {
 }
 
 /// This is the top-level module parser.
-ParseResult ModuleParser::parseModule() {
+ParseResult ModuleParser::parseModule(Module *module) {
   while (1) {
     switch (getToken().getKind()) {
     default:
@@ -3894,7 +3889,7 @@ ParseResult ModuleParser::parseModule() {
       break;
 
     case Token::kw_func:
-      if (parseFunc())
+      if (parseFunc(module))
         return failure();
       break;
     }
@@ -3912,8 +3907,8 @@ Module *mlir::parseSourceFile(const llvm::SourceMgr &sourceMgr,
   // This is the result module we are parsing into.
   std::unique_ptr<Module> module(new Module(context));
 
-  ParserState state(sourceMgr, module.get());
-  if (ModuleParser(state).parseModule()) {
+  ParserState state(sourceMgr, context);
+  if (ModuleParser(state).parseModule(module.get())) {
     return nullptr;
   }
 
@@ -3952,4 +3947,14 @@ Module *mlir::parseSourceString(StringRef moduleStr, MLIRContext *context) {
   SourceMgr sourceMgr;
   sourceMgr.AddNewSourceBuffer(std::move(memBuffer), SMLoc());
   return parseSourceFile(sourceMgr, context);
+}
+
+Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context) {
+  SourceMgr sourceMgr;
+  auto memBuffer = MemoryBuffer::getMemBuffer(typeStr, /*BufferName=*/"",
+                                              /*RequiresNullTerminator=*/false);
+  sourceMgr.AddNewSourceBuffer(std::move(memBuffer), SMLoc());
+  SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, context);
+  ParserState state(sourceMgr, context);
+  return Parser(state).parseType();
 }

@@ -9,14 +9,19 @@ func @range(%arg0: index, %arg1: index, %arg2: index) {
 
 func @buffer(%arg0: index, %arg1: index) {
   %0 = muli %arg0, %arg0 : index
-  %1 = linalg.buffer_alloc %0 : !linalg.buffer<f32>
-  linalg.buffer_dealloc %1 : !linalg.buffer<f32>
+  %1 = linalg.buffer_alloc %0 : !linalg.buffer<vector<4xi8>>
+  linalg.buffer_dealloc %1 : !linalg.buffer<vector<4xi8>>
   return
 }
 // CHECK-LABEL: func @buffer(%arg0: index, %arg1: index) {
 //  CHECK-NEXT:  %0 = muli %arg0, %arg0 : index
-//  CHECK-NEXT:  %1 = linalg.buffer_alloc %0 : !linalg.buffer<f32>
-//  CHECK-NEXT:  linalg.buffer_dealloc %1 : !linalg.buffer<f32>
+//  CHECK-NEXT:  %1 = linalg.buffer_alloc %0 : !linalg.buffer<vector<4xi8>>
+//  CHECK-NEXT:  linalg.buffer_dealloc %1 : !linalg.buffer<vector<4xi8>>
+
+func @view_fun(%arg0: !linalg.view<?x?xvector<3x4xi4>>) {
+  return
+}
+// CHECK-LABEL: func @view_fun(%arg0: !linalg.view<?x?xvector<3x4xi4>>) {
 
 func @views(%arg0: index, %arg1: index, %arg2: index, %arg3: index, %arg4: index) {
   %0 = muli %arg0, %arg0 : index

@@ -23,7 +23,10 @@
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Linalg/IR/LinalgOps.h"
+#include "mlir/Parser.h"
 #include "mlir/Support/LLVM.h"
+
+#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 using namespace mlir::linalg;
@@ -88,23 +91,35 @@ Type mlir::linalg::BufferType::getElementType() {
 
 Type mlir::linalg::LinalgDialect::parseType(StringRef spec,
                                             Location loc) const {
+  StringRef origSpec = spec;
   MLIRContext *context = getContext();
   if (spec == "range")
     return RangeType::get(getContext());
-  // TODO(ntv): reuse mlir Parser once exposed.
-  if (spec == "buffer<f32>")
-    return BufferType::get(getContext(), FloatType::getF32(getContext()));
-  // TODO(ntv): reuse mlir Parser once exposed.
-  if (spec.startswith("view")) {
-    spec.consume_front("view");
-    // Just count the number of ? to get the rank, the type must be f32 for now.
-    unsigned rank = 0;
-    for (unsigned i = 0, e = spec.size(); i < e; ++i)
-      if (spec[i] == '?')
-        ++rank;
-    return ViewType::get(context, FloatType::getF32(context), rank);
+  else if (spec.consume_front("buffer")) {
+    if (spec.consume_front("<") && spec.consume_back(">")) {
+      if (auto t = mlir::parseType(spec, context))
+        return BufferType::get(getContext(), t);
+    }
+  } else if (spec.consume_front("view")) {
+    if (spec.consume_front("<") && spec.consume_back(">")) {
+      // Just count the number of ? to get the rank.
+      unsigned rank = 0;
+      for (unsigned i = 0, e = spec.size(); i < e; ++i) {
+        if (spec.consume_front("?")) {
+          ++rank;
+          if (!spec.consume_front("x")) {
+            context->emitError(loc,
+                               "expected a list of '?x' dimension specifiers: ")
+                << spec;
+            return Type();
+          }
+        }
+      }
+      if (auto t = mlir::parseType(spec, context))
+        return ViewType::get(context, t, rank);
+    }
   }
-  return (context->emitError(loc, "unknown Linalg type: " + spec), Type());
+  return (context->emitError(loc, "unknown Linalg type: " + origSpec), Type());
 }
 
 struct mlir::linalg::ViewTypeStorage : public TypeStorage {

@@ -69,10 +69,6 @@ ParseResult mlir::linalg::BufferAllocOp::parse(OpAsmParser *parser,
   auto indexTy = parser->getBuilder().getIndexType();
   if (parser->parseOperand(sizeInfo) || parser->parseColonType(bufferType))
     return failure();
-  if (bufferType.getElementType() != parser->getBuilder().getF32Type())
-    return parser->emitError(parser->getNameLoc(),
-                             "Only buffer<f32> supported until "
-                             "mlir::linalg::Parser pieces are exposed");
   return failure(parser->resolveOperands(sizeInfo, indexTy, result->operands) ||
                  parser->addTypeToList(bufferType, result->types));
 }
