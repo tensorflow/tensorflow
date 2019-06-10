@@ -757,6 +757,16 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "while_loop_alias_copy_test",
+    srcs = ["tests/while_loop_alias_copy_test.cc"],
+    deps = [
+        ":poplar_lib",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
     name = "commutative_instruction_reorder_operands_test",
     srcs = ["tests/commutative_instruction_reorder_operands_test.cc"],
     deps = [
@@ -1635,6 +1645,7 @@ test_suite(
         "topk_onehot_test",
         "update_op_dependencies_test",
         "variable_test",
+        "while_loop_alias_copy_test",
         "while_loop_condition_simplify_test",
         "while_loop_to_repeat_simplify_test",
         "wide_const_expansion_test",

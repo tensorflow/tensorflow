@@ -65,7 +65,8 @@ GetWhileAndRepeatAliasingCopies(poplar::Graph& graph,
       }
       // Check if we need to add a temporary copy.
       for (unsigned int o = 0; o < param_count; o++) {
-        if (i != o && visitor.InputIsAllocated(0, o)) {
+        if ((alias_type[i] != AliasType::IDENTICAL_ALIAS || i != o) &&
+            visitor.InputIsAllocated(0, o)) {
           if (body_outputs[o].intersectsWith(body_inputs[i])) {
             alias_type[i] = AliasType::PARTIAL_ALIAS;
           }
