@@ -131,9 +131,10 @@ void MemRefDataFlowOpt::forwardStoreToLoad(LoadOp loadOp) {
     unsigned nsLoops = getNumCommonSurroundingLoops(*loadOpInst, *storeOpInst);
     // Dependences at loop depth <= minSurroundingLoops do NOT matter.
     for (unsigned d = nsLoops + 1; d > minSurroundingLoops; d--) {
-      if (!checkMemrefAccessDependence(srcAccess, destAccess, d,
-                                       &dependenceConstraints,
-                                       /*dependenceComponents=*/nullptr))
+      DependenceResult result = checkMemrefAccessDependence(
+          srcAccess, destAccess, d, &dependenceConstraints,
+          /*dependenceComponents=*/nullptr);
+      if (!hasDependence(result))
         continue;
       depSrcStores.push_back(storeOpInst);
       // Check if this store is a candidate for forwarding; we only forward if

@@ -640,9 +640,10 @@ LogicalResult mlir::getBackwardComputationSliceState(
   bool readReadAccesses =
       isa<LoadOp>(srcAccess.opInst) && isa<LoadOp>(dstAccess.opInst);
   FlatAffineConstraints dependenceConstraints;
-  if (!checkMemrefAccessDependence(
-          srcAccess, dstAccess, /*loopDepth=*/1, &dependenceConstraints,
-          /*dependenceComponents=*/nullptr, /*allowRAR=*/readReadAccesses)) {
+  DependenceResult result = checkMemrefAccessDependence(
+      srcAccess, dstAccess, /*loopDepth=*/1, &dependenceConstraints,
+      /*dependenceComponents=*/nullptr, /*allowRAR=*/readReadAccesses);
+  if (!hasDependence(result)) {
     return failure();
   }
   // Get loop nest surrounding src operation.
@@ -922,9 +923,10 @@ bool mlir::isLoopParallel(AffineForOp forOp) {
     for (auto *dstOpInst : loadAndStoreOpInsts) {
       MemRefAccess dstAccess(dstOpInst);
       FlatAffineConstraints dependenceConstraints;
-      if (checkMemrefAccessDependence(srcAccess, dstAccess, depth,
-                                      &dependenceConstraints,
-                                      /*dependenceComponents=*/nullptr))
+      DependenceResult result = checkMemrefAccessDependence(
+          srcAccess, dstAccess, depth, &dependenceConstraints,
+          /*dependenceComponents=*/nullptr);
+      if (result.value != DependenceResult::NoDependence)
         return false;
     }
   }

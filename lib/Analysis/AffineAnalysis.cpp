@@ -681,8 +681,10 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
 
 // Builds a flat affine constraint system to check if there exists a dependence
 // between memref accesses 'srcAccess' and 'dstAccess'.
-// Returns 'false' if the accesses can be definitively shown not to access the
-// same element. Returns 'true' otherwise.
+// Returns 'NoDependence' if the accesses can be definitively shown not to
+// access the same element.
+// Returns 'HasDependence' if the accesses do access the same element.
+// Returns 'Failure' if an error or unsupported case was encountered.
 // If a dependence exists, returns in 'dependenceComponents' a direction
 // vector for the dependence, with a component for each loop IV in loops
 // common to both accesses (see Dependence in AffineAnalysis.h for details).
@@ -764,7 +766,7 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
 //
 //
 // TODO(andydavis) Support AffineExprs mod/floordiv/ceildiv.
-bool mlir::checkMemrefAccessDependence(
+DependenceResult mlir::checkMemrefAccessDependence(
     const MemRefAccess &srcAccess, const MemRefAccess &dstAccess,
     unsigned loopDepth, FlatAffineConstraints *dependenceConstraints,
     llvm::SmallVector<DependenceComponent, 2> *dependenceComponents,
@@ -774,13 +776,14 @@ bool mlir::checkMemrefAccessDependence(
   LLVM_DEBUG(srcAccess.opInst->dump(););
   LLVM_DEBUG(dstAccess.opInst->dump(););
 
-  // Return 'false' if these accesses do not acces the same memref.
+  // Return 'NoDependence' if these accesses do not access the same memref.
   if (srcAccess.memref != dstAccess.memref)
-    return false;
-  // Return 'false' if one of these accesses is not a StoreOp.
+    return DependenceResult::NoDependence;
+
+  // Return 'NoDependence' if one of these accesses is not a StoreOp.
   if (!allowRAR && !isa<StoreOp>(srcAccess.opInst) &&
       !isa<StoreOp>(dstAccess.opInst))
-    return false;
+    return DependenceResult::NoDependence;
 
   // Get composed access function for 'srcAccess'.
   AffineValueMap srcAccessMap;
@@ -793,14 +796,14 @@ bool mlir::checkMemrefAccessDependence(
   // Get iteration domain for the 'srcAccess' operation.
   FlatAffineConstraints srcDomain;
   if (failed(getInstIndexSet(srcAccess.opInst, &srcDomain)))
-    return false;
+    return DependenceResult::Failure;
 
   // Get iteration domain for 'dstAccess' operation.
   FlatAffineConstraints dstDomain;
   if (failed(getInstIndexSet(dstAccess.opInst, &dstDomain)))
-    return false;
+    return DependenceResult::Failure;
 
-  // Return 'false' if loopDepth > numCommonLoops and if the ancestor operation
+  // Return 'NoDependence' if loopDepth > numCommonLoops and if the ancestor
   // operation of 'srcAccess' does not properly dominate the ancestor
   // operation of 'dstAccess' in the same common operation block.
   // Note: this check is skipped if 'allowRAR' is true, because because RAR
@@ -810,7 +813,7 @@ bool mlir::checkMemrefAccessDependence(
   if (!allowRAR && loopDepth > numCommonLoops &&
       !srcAppearsBeforeDstInAncestralBlock(srcAccess, dstAccess, srcDomain,
                                            numCommonLoops)) {
-    return false;
+    return DependenceResult::NoDependence;
   }
   // Build dim and symbol position maps for each access from access operand
   // Value to position in merged contstraint system.
@@ -830,7 +833,7 @@ bool mlir::checkMemrefAccessDependence(
   // local variables for mod/div exprs are supported.
   if (failed(addMemRefAccessConstraints(srcAccessMap, dstAccessMap, valuePosMap,
                                         dependenceConstraints)))
-    return true;
+    return DependenceResult::Failure;
 
   // Add 'src' happens before 'dst' ordering constraints.
   addOrderingConstraints(srcDomain, dstDomain, loopDepth,
@@ -839,9 +842,9 @@ bool mlir::checkMemrefAccessDependence(
   addDomainConstraints(srcDomain, dstDomain, valuePosMap,
                        dependenceConstraints);
 
-  // Return false if the solution space is empty: no dependence.
+  // Return 'NoDependence' if the solution space is empty: no dependence.
   if (dependenceConstraints->isEmpty()) {
-    return false;
+    return DependenceResult::NoDependence;
   }
 
   // Compute dependence direction vector and return true.
@@ -852,7 +855,7 @@ bool mlir::checkMemrefAccessDependence(
 
   LLVM_DEBUG(llvm::dbgs() << "Dependence polyhedron:\n");
   LLVM_DEBUG(dependenceConstraints->dump());
-  return true;
+  return DependenceResult::HasDependence;
 }
 
 /// Gathers dependence components for dependences between all ops in loop nest
@@ -880,10 +883,10 @@ void mlir::getDependenceComponents(
         llvm::SmallVector<DependenceComponent, 2> depComps;
         // TODO(andydavis,bondhugula) Explore whether it would be profitable
         // to pre-compute and store deps instead of repeatedly checking.
-        if (checkMemrefAccessDependence(srcAccess, dstAccess, d,
-                                        &dependenceConstraints, &depComps)) {
+        DependenceResult result = checkMemrefAccessDependence(
+            srcAccess, dstAccess, d, &dependenceConstraints, &depComps);
+        if (hasDependence(result))
           depCompsVec->push_back(depComps);
-        }
       }
     }
   }
