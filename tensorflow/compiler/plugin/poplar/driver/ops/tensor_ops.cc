@@ -6,7 +6,6 @@
 #include "tensorflow/compiler/plugin/poplar/driver/tools/matcher_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
-#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -284,46 +283,29 @@ StatusOr<poplar::program::Program> CreateWideConstant(
       inst->fused_instructions_computation()->root_instruction();
 
   const HloInstruction* constant = root->operand(0);
+  CHECK_EQ(constant->opcode(), HloOpcode::kConstant);
   const Literal& constant_literal = constant->literal();
 
-  TensorSource src = std::make_pair(inst, 0);
-  poplar::Tensor out;
+  // Allocate the constant first.
+  TF_ASSIGN_OR_RETURN(
+      poplar::Tensor constant_tensor,
+      AddConstantTensor(graph, std::make_pair(constant, 0), constant->shape(),
+                        constant_literal, res, tensor_map));
 
+  // Broadcast the tensor to the right shape.
+  TF_ASSIGN_OR_RETURN(poplar::Tensor out,
+                      BroadcastTensor(constant_tensor, output_shape, {}));
   // For wide constants, check if they have an allocation target, if so then
-  // allocate the wide constant with that target, otherwise allocate the scalar
-  // constant and broadcast it.
+  // allocate the tensor with that target and copy the constant to that layout.
+  TensorSource src = std::make_pair(inst, 0);
   if (HasTensorAllocationTarget(src, res)) {
-    // Unfortunately Literals are quite limited, and to create a literal of a
-    // certain shape with the same value, we create a flat literal, repeatedly
-    // memcpy the value and then reshape the literal into the desired shape.
-    auto flat_shape = ShapeUtil::MakeShape(
-        output_shape.element_type(), {ShapeUtil::ElementsIn(output_shape)});
-    auto flat_literal = Literal(flat_shape);
-    char* dest_data = static_cast<char*>(flat_literal.untyped_data());
-    const char* source_data =
-        static_cast<const char*>(constant_literal.untyped_data());
-    const int64 primitive_size =
-        ShapeUtil::ByteSizeOfPrimitiveType(output_shape.element_type());
-
-    ShapeUtil::ForEachIndex(
-        flat_shape, [&](absl::Span<const int64> output_index) {
-          CHECK_EQ(output_index.size(), 1);
-          memcpy(dest_data + primitive_size * output_index[0], source_data,
-                 primitive_size);
-          return true;
-        });
-
-    TF_ASSIGN_OR_RETURN(auto literal,
-                        flat_literal.Reshape(output_shape.dimensions()));
-
-    TF_ASSIGN_OR_RETURN(out, AddConstantTensor(graph, src, output_shape,
-                                               literal, res, tensor_map));
-  } else {
-    TF_ASSIGN_OR_RETURN(
-        out,
-        AddConstantTensor(graph, std::make_pair(constant, 0), constant->shape(),
-                          constant_literal, res, tensor_map));
-    TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape, {}));
+    // Doing this copy rather than allocating a big constant and calling
+    // setInitialValue is a trade off between having a large tensor always live
+    // and a copy + a scalar constant always being live.
+    TF_ASSIGN_OR_RETURN(poplar::Tensor layout,
+                        AddTensor(graph, src, output_shape, res, tensor_map));
+    seq.add(poplar::program::Copy(out, layout));
+    out = layout;
   }
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 

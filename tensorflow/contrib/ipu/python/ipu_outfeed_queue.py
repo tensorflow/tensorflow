@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Contains class for creating output outfeeds into TF graphs targeting the
- IPU."""
+"""
+Outfeed queue
+~~~~~~~~~~~~~
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

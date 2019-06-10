@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Ops related to the Graphcore IPU."""
+"""
+Scoping contexts for IPUs
+~~~~~~~~~~~~~~~~~~~~~~~~~
+"""
 
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.compiler.xla import xla_data_pb2

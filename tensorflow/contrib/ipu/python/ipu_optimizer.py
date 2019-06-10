@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Optimizer that implements cross-replica gradient reduction for IPU.
-Based on the TPU CrossShardOptimizer.
+"""
+Optimizer wrapper for replicated graphs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 from __future__ import absolute_import
 from __future__ import division

@@ -138,6 +138,16 @@ def get_maximum_tile_size_from_events(report):
   return None
 
 
+def get_always_live_size_from_events(report):
+  lines = report.split('\n')
+  found = False
+  for l in lines:
+    m = re.match(r' +Always-live bytes: ([\d,]+)', l)
+    if m:
+      return int(m.group(1).replace(',', ''))
+  return None
+
+
 def check_compute_sets_not_in_blacklist(cs_list, bl):
   result = True
   fail_list = []

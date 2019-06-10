@@ -36,3 +36,12 @@ to `true`.
 
 This can be done with using the
 :py:func:`tensorflow.contrib.ipu.utils.set_compilation_options` function.
+
+Debugging Numerical Issues
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The values held in a tensor can be printed by calling ipu.internal.print_tensor.
+This function takes in a tensor and will print it to standard error as a side
+effect.
+
+See :py:func:`tensorflow.contrib.ipu.print_tensor`.

@@ -105,6 +105,8 @@ class WideConstExpansionTest(test_util.TensorFlowTestCase):
 
       max_tile_size = tu.get_maximum_tile_size_from_events(s)
       self.assertTrue(max_tile_size < 60000)
+      always_live_size = tu.get_always_live_size_from_events(s)
+      self.assertTrue(max_tile_size < 4500000)
 
 
 if __name__ == "__main__":

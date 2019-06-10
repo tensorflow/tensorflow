@@ -6,6 +6,7 @@
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_util.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/flags.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 
@@ -192,7 +193,7 @@ void SetFlagIfNotPresent(poplar::OptionFlags& opts, const std::string& key,
 }
 
 void DumpIfPoplarOutOfMemoryAllocationException(
-    poplar::OptionFlags report_options) {
+    const PoplarExecutor* poplarExecutor) {
   auto dump_filename = tensorflow::GetPoplarXlaFlags().save_oom_profiler;
   if (!dump_filename.empty()) {
     try {
@@ -205,11 +206,18 @@ void DumpIfPoplarOutOfMemoryAllocationException(
           LOG(WARNING) << "Unable to open file " << dump_filename
                        << ", the profiler summary will not be saved.";
         } else {
-          SetFlagIfNotPresent(report_options, "showVarStorage", "true");
+          if (poplarExecutor->CompilerReportingTextFormat()) {
+            auto opts = poplarExecutor->GetReportFlags();
+            SetFlagIfNotPresent(opts, "showVarStorage", "true");
+            poplar::printGraphSummary(stream, p_e.graphProfile, opts);
+          } else if (poplarExecutor->CompilerReportingCborFormat()) {
+            poplar::serializeToCBOR(stream, p_e.graphProfile);
+          } else {
+            poplar::serializeToJSON(stream, p_e.graphProfile);
+          }
+
           LOG(INFO) << "Profile summary has been saved to " << dump_filename
                     << ".";
-          poplar::printProfileSummary(stream, p_e.graphProfile, {},
-                                      report_options);
         }
       }
     }
