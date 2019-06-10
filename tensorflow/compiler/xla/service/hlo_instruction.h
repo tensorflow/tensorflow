@@ -1839,6 +1839,8 @@ class HloInstruction {
 // Explicit instantiations in hlo_instruction.cc.
 extern template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool);
 extern template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool);
+extern template Status HloInstruction::Visit(DfsHloVisitor* visitor);
+extern template Status HloInstruction::Visit(ConstDfsHloVisitor* visitor);
 
 string ToString(HloInstruction::FusionKind kind);
 StatusOr<HloInstruction::FusionKind> StringToFusionKind(
