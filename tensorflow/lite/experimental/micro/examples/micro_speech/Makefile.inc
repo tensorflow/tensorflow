@@ -103,6 +103,7 @@ $(KISSFFT_LIB_SRCS)
 MICRO_FEATURES_FFT_TEST_HDRS := \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/fft.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/fft_util.h \
+tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/micro_model_settings.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/static_alloc.h \
 $(KISSFFT_LIB_HDRS)
 
@@ -112,6 +113,9 @@ tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/filterba
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/filterbank_util.cc
 
 MICRO_FEATURES_FILTERBANK_TEST_HDRS := \
+tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/bits.h \
+tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/fft.h \
+tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/micro_model_settings.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/filterbank.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/filterbank_util.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/static_alloc.h
@@ -123,6 +127,7 @@ $(MICRO_FEATURES_LIB_SRCS)
 MICRO_FEATURES_FRONTEND_TEST_HDRS := \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/frontend.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/frontend_util.h \
+tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/micro_model_settings.h \
 $(MICRO_FEATURES_LIB_HDRS)
 
 MICRO_FEATURES_LOG_SCALE_TEST_SRCS := \
@@ -144,6 +149,7 @@ tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/noise_re
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/noise_reduction_util.cc
 
 MICRO_FEATURES_NOISE_REDUCTION_TEST_HDRS := \
+tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/micro_model_settings.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/noise_reduction.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/noise_reduction_util.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/static_alloc.h
@@ -154,11 +160,13 @@ tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/pcan_gai
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/pcan_gain_control_util.cc
 
 MICRO_FEATURES_PCAN_GAIN_CONTROL_TEST_HDRS := \
+tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/bits.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/pcan_gain_control.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/pcan_gain_control_util.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/static_alloc.h
 
 MICRO_FEATURES_WINDOW_TEST_SRCS := \
+tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/micro_model_settings.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/window_test.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/window.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/window_util.cc
