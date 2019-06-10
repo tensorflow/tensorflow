@@ -53,7 +53,7 @@ static const char *const builderOpState = "tblgen_state";
 const char *valueRangeCalcCode = R"(
   bool isVariadic[] = {{{0}};
   int prevVariadicCount = 0;
-  for (int i = 0; i < index; ++i)
+  for (unsigned i = 0; i < index; ++i)
     if (isVariadic[i]) ++prevVariadicCount;
 
   // Calculate how many dynamic values a static variadic {5} corresponds to.
