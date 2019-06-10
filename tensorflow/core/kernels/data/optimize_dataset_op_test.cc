@@ -55,13 +55,13 @@ class OptimizeDatasetOpTest : public DatasetOpsTestBase {
     GraphConstructorOptions graph_opts;
     graph_opts.allow_internal_ops = true;
     graph_opts.expect_device_spec = false;
-
     TF_RETURN_IF_ERROR(RunFunction(
         test::function::MakeRangeDataset(),
         /*attrs*/
         {{"output_types", output_types}, {"output_shapes", output_shapes}},
         /*inputs*/ {start, stop, step}, graph_opts,
         /*rets*/ {range_dataset}));
+    return Status::OK();
   }
 
   // Create a `TakeDataset` dataset as a variant tensor.
@@ -80,7 +80,6 @@ class OptimizeDatasetOpTest : public DatasetOpsTestBase {
         {{"output_types", output_types}, {"output_shapes", output_shapes}},
         /*inputs*/ {input_dataset, count_tensor}, graph_opts,
         /*rets*/ {take_dataset}));
-
     return Status::OK();
   }
 };
@@ -112,7 +111,7 @@ TEST_F(OptimizeDatasetOpTest, NoopElimination) {
   Tensor optimizations =
       CreateTensor<string>(TensorShape({1}), {"noop_elimination"});
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&take_dataset_tensor, &optimizations});
+      {TensorValue(&take_dataset_tensor), TensorValue(&optimizations)});
   std::unique_ptr<OpKernelContext> optimize_dataset_context;
   TF_ASSERT_OK(CreateOptimizeDatasetContext(
       optimize_dataset_kernel.get(), &inputs, &optimize_dataset_context));
