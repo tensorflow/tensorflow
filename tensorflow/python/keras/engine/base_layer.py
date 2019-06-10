@@ -329,7 +329,7 @@ class Layer(module.Module):
     for kwarg in kwargs:
       if kwarg not in ['getter', 'collections', 'experimental_autocast']:
         raise TypeError('Unknown keyword argument:', kwarg)
-    getter = kwargs.pop('getter', None)
+    getter = kwargs.pop('getter', base_layer_utils.make_variable)
     collections_arg = kwargs.pop('collections', None)
     # 'experimental_autocast' can be set to False by the caller to indicate an
     # AutoCastVariable should never be created.
@@ -371,12 +371,22 @@ class Layer(module.Module):
         raise ValueError('An initializer for variable %s of type %s is required'
                          ' for layer %s' % (name, dtype.base_dtype, self.name))
 
+    if autocast and self._mixed_precision_policy.should_cast_variables:
+      # Wrap 'getter' with a version that returns an AutoCastVariable.
+      old_getter = getter
+      def getter(*args, **kwargs):  # pylint: disable=function-redefined
+        variable = old_getter(*args, **kwargs)
+        if isinstance(variable, distribute_values.DistributedVariable):
+          return autocast_variable.AutoCastDistributedVariable(variable)
+        else:
+          return autocast_variable.AutoCastVariable(variable)
+
     variable = self._add_variable_with_custom_getter(
         name=name,
         shape=shape,
         # TODO(allenl): a `make_variable` equivalent should be added as a
         # `Trackable` method.
-        getter=getter or base_layer_utils.make_variable,
+        getter=getter,
         # Manage errors in Layer rather than Trackable.
         overwrite=True,
         initializer=initializer,
@@ -389,12 +399,6 @@ class Layer(module.Module):
         synchronization=synchronization,
         aggregation=aggregation)
     backend.track_variable(variable)
-
-    if autocast and self._mixed_precision_policy.should_cast_variables:
-      if isinstance(variable, distribute_values.DistributedVariable):
-        variable = autocast_variable.AutoCastDistributedVariable(variable)
-      else:
-        variable = autocast_variable.AutoCastVariable(variable)
 
     if regularizer is not None:
       # TODO(fchollet): in the future, this should be handled at the
