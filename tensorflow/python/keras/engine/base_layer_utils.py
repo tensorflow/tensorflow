@@ -467,6 +467,7 @@ def autocast_context_manager(input_list, should_cast):
 
 
 def is_subclassed(layer):
+  """Returns True if the object is a subclassed layer or subclassed model."""
   return (layer.__module__.find('keras.engine') == -1 and
           layer.__module__.find('keras.layers') == -1)
 

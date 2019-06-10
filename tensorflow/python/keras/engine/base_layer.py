@@ -647,8 +647,8 @@ class Layer(module.Module):
 
           # Wrapping `call` function in autograph to allow for dynamic control
           # dependencies in call. We are limiting this to subclassed layers as
-          # autograph is strictly needed only for subclassed layers.
-          # As an additional optimizatio, we avoid calling autograph if the
+          # autograph is strictly needed only for subclassed layers and models.
+          # As an additional optimization, we avoid calling autograph if the
           # function is already converted or marked for no conversion. The
           # effect is largely cosmetic - it avoid four extra frames in the call
           # stack.
