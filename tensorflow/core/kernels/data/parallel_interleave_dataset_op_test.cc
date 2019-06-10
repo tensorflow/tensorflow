@@ -12,7 +12,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/parallel_interleave_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -41,7 +40,8 @@ class ParallelInterleaveDatasetOpTest : public DatasetOpsTestBase {
       const std::vector<PartialTensorShape>& output_shapes, bool sloppy,
       std::unique_ptr<OpKernel>* op_kernel) {
     NodeDef node_def = test::function::NDef(
-        kNodeName, "ParallelInterleaveDatasetV2",
+        kNodeName,
+        name_utils::OpName(ParallelInterleaveDatasetOp::kDatasetType),
         {ParallelInterleaveDatasetOp::kInputDataset,
          ParallelInterleaveDatasetOp::kCycleLength,
          ParallelInterleaveDatasetOp::kBlockLength,
@@ -608,7 +608,7 @@ TEST_F(ParallelInterleaveDatasetOpTest, DatasetTypeString) {
   core::ScopedUnref scoped_unref(parallel_interleave_dataset);
 
   EXPECT_EQ(parallel_interleave_dataset->type_string(),
-            "ParallelInterleaveDatasetV2");
+            name_utils::OpName(ParallelInterleaveDatasetOp::kDatasetType));
 }
 
 TEST_P(ParameterizedParallelInterleaveDatasetOpTest, DatasetOutputDtypes) {

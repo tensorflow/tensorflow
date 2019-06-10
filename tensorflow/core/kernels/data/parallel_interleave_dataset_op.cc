@@ -82,6 +82,10 @@ constexpr char kIdSuffix[] = ".id";
 constexpr char kSizeSuffix[] = ".size";
 constexpr char kInputsSuffix[] = ".inputs";
 constexpr char kIsReadySuffix[] = ".is_ready";
+constexpr char kTFDataParallelInterleaveCurrent[] =
+    "tf_data_parallel_interleave_current";
+constexpr char kTFDataParallelInterleaveFuture[] =
+    "tf_data_parallel_interleave_future";
 
 // The motivation for creating an alternative implementation of parallel
 // interleave is to decouple the degree of parallelism from the cycle length.
@@ -512,13 +516,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       if (!current_elements_manager_) {
         auto new_ctx = std::make_shared<IteratorContext>(*ctx);
         current_elements_manager_ = ctx->StartThread(
-            "tf_data_parallel_interleave_current",
+            kTFDataParallelInterleaveCurrent,
             [this, new_ctx]() { CurrentElementsManager(new_ctx); });
       }
       if (!future_elements_manager_) {
         auto new_ctx = std::make_shared<IteratorContext>(*ctx);
         future_elements_manager_ = ctx->StartThread(
-            "tf_data_parallel_interleave_future",
+            kTFDataParallelInterleaveFuture,
             [this, new_ctx]() { FutureElementsManager(new_ctx); });
       }
     }
