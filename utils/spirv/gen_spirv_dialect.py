@@ -96,10 +96,15 @@ def gen_operand_kind_enum_attr(operand_kind):
 
   # Generate the definition for each enum case
   fmt_str = 'def SPV_{acronym}_{symbol} {colon:>{offset}} '\
-            'EnumAttrCase<"{symbol}">;'
-  case_defs = [fmt_str.format(acronym=kind_acronym, symbol=case[0],
-                              colon=':', offset=(max_len + 1 - len(case[0])))
-               for case in kind_cases]
+            'EnumAttrCase<"{symbol}", {value}>;'
+  case_defs = [
+      fmt_str.format(
+          acronym=kind_acronym,
+          symbol=case[0],
+          value=case[1],
+          colon=':',
+          offset=(max_len + 1 - len(case[0]))) for case in kind_cases
+  ]
   case_defs = '\n'.join(case_defs)
 
   # Generate the list of enum case names
@@ -115,7 +120,9 @@ def gen_operand_kind_enum_attr(operand_kind):
 
   # Generate the enum attribute definition
   enum_attr = 'def SPV_{name}Attr :\n    '\
-      'EnumAttr<"{name}", "valid SPIR-V {name}", [\n{cases}\n    ]>;'.format(
+      'EnumAttr<"{name}", "valid SPIR-V {name}", [\n{cases}\n    ]> {{\n'\
+      '  let cppNamespace = "::mlir::spirv";\n'\
+      '  let underlyingType = "uint32_t";\n}}'.format(
           name=kind_name, cases=case_names)
   return kind_name, case_defs + '\n' + enum_attr
 

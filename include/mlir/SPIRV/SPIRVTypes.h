@@ -24,6 +24,9 @@
 
 #include "mlir/IR/Types.h"
 
+// Pull in all enum type definitions and utility function declarations
+#include "mlir/SPIRV/SPIRVEnums.h.inc"
+
 namespace mlir {
 namespace spirv {
 
