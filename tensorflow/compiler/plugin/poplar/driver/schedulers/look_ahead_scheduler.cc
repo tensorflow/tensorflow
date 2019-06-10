@@ -543,7 +543,7 @@ void LookAheadScheduler::AddDepsToWaitOrReadyQueue(
 HloInstructionSequence LookAheadScheduler::CreateSchedule() {
   HloInstructionSequence schedule;
 
-  bool should_dump_dot = tensorflow::GetPoplarXlaFlags().dump_schedule_as_dot;
+  bool should_dump_dot = PoplarXlaFlags::Get().dump_schedule_as_dot;
 
   // Tracker to make sure at the end we have added the correct number of
   // instructions.
