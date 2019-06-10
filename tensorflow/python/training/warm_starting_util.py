@@ -74,7 +74,7 @@ class VocabInfo(
     A `VocabInfo` which represents the vocabulary information for warm-starting.
 
   Raises:
-    ValueError: `axis` is nether 0 or 1.
+    ValueError: `axis` is neither 0 or 1.
 
       Example Usage:
 ```python
