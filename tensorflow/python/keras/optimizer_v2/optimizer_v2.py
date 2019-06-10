@@ -996,7 +996,7 @@ def _var_key(var):
 
   # pylint: disable=protected-access
   # Get the distributed variable if it exists.
-  if getattr(var, "_distributed_container", None) is not None:
+  if hasattr(var, "_distributed_container"):
     var = var._distributed_container()
   if var._in_graph_mode:
     return var._shared_name
