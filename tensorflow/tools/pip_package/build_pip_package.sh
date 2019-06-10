@@ -162,16 +162,7 @@ function prepare_src() {
   # This is transparent to internal code or to code not using the pip packages.
   mv "${TMPDIR}/tensorflow" "${TMPDIR}/tensorflow_core"
   mkdir "${TMPDIR}/tensorflow"
-  # TODO(mihaimaruseac): Remove the following hack once we move API in root pkg
-  # This sed-hack below is needed because in TF 1.* we include contrib as a top
-  # level module but that doesn't exist in TF 2.*. Unfortunately, python3 is too
-  # eager so we cannot test if contrib needs to exist before importing the
-  # __init__.py from the virtual root. Thus, we need to make the following hack
-  # at least until we can generate TF API in the virtual pip and keep the rest
-  # of the code in tensorflow_core
-  sed -ie /'ONLY FOR V1, REMOVED IN V2'/d tensorflow/virtual_root.__init__.py
-  # Add the virtual pip __init__.py to the pip
-  cp tensorflow/virtual_root.__init__.py "${TMPDIR}/tensorflow/__init__.py"
+  mv "${TMPDIR}/tensorflow_core/virtual_root.__init__.py" "${TMPDIR}/tensorflow/__init__.py"
 }
 
 function build_wheel() {
