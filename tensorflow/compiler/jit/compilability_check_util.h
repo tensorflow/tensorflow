@@ -56,7 +56,7 @@ namespace tensorflow {
 // can be compiled.
 class RecursiveCompilabilityChecker {
  public:
-  // Contains node name and function name. If not is not inside a function
+  // Contains node name and function name. If the node is not inside a function
   // body, function name is an empty string.
   struct StackFrame {
     std::string name;
