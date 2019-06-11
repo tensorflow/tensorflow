@@ -36,7 +36,12 @@ die() {
 
 num_cpus() {
   # Get the number of CPUs
-  N_CPUS=$(grep -c ^processor /proc/cpuinfo)
+  if [[ -f /proc/cpuinfo ]]; then
+    N_CPUS=$(grep -c ^processor /proc/cpuinfo)
+  else
+    # Fallback method
+    N_CPUS=`getconf _NPROCESSORS_ONLN`
+  fi
   if [[ -z ${N_CPUS} ]]; then
     die "ERROR: Unable to determine the number of CPUs"
   fi
