@@ -2780,7 +2780,7 @@ void IrEmitterUnnested::EmitPrologueForReduction(
 void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForAllReduces(
     absl::Span<HloComputation* const> reducers,
     absl::Span<llvm::AllocaInst* const> partial_result_addresses) {
-  for (int distance = 16; distance >= 1; distance /= 2) {
+  for (int distance = kWarpSize/2; distance >= 1; distance /= 2) {
     for (int i = 0; i != reducers.size(); ++i) {
       llvm::Type* element_type =
           partial_result_addresses[i]->getType()->getElementType();
