@@ -302,8 +302,8 @@ class _ElementFetchMapper(_FetchMapper):
         self._unique_fetches.append(ops.get_default_graph().as_graph_element(
             fetch, allow_tensor=True, allow_operation=True))
       except TypeError as e:
-        raise TypeError('Fetch argument %r has invalid type %r, '
-                        'must be a string or Tensor. (%s)' %
+        raise TypeError('Fetch argument %r has invalid type %r. '
+                        'It must be a string or a Tensor. (%s)' %
                         (fetch, type(fetch), str(e)))
       except ValueError as e:
         raise ValueError('Fetch argument %r cannot be interpreted as a '
