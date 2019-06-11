@@ -810,6 +810,10 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
     options = *build_options;
   }
 
+  if (!options.device_allocator()) {
+    options.set_device_allocator(client->allocator());
+  }
+
   if (device_assignment) {
     if (device_assignment->replica_count() != options.num_replicas()) {
       return InvalidArgument(
