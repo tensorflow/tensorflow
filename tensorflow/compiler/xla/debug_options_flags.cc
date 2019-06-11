@@ -407,6 +407,11 @@ static void AllocateFlags() {
           bool_setter_for(&DebugOptions::set_xla_allow_excess_precision),
           flag_values->xla_allow_excess_precision(),
           "Allow xla to increase the output precision of an instruction."),
+      tensorflow::Flag(
+          "xla_gpu_force_conv_nchw",
+          bool_setter_for(&DebugOptions::set_xla_gpu_force_conv_nchw),
+          flag_values->xla_gpu_force_conv_nchw(),
+          "For cuDNN convolutions, always NCHW layouts."),
   });
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }
