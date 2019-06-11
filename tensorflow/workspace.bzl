@@ -181,12 +181,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "com_googlesource_code_re2",
-        sha256 = "a31397714a353587413d307337d0b58f8a2e20e2b9d02f2e24e3463fa4eeda81",
-        strip_prefix = "re2-2018-10-01",
+        sha256 = "3a84203f0455ea86d8200098dbe45942ebabb7e374b4c363f74e4362a0aeaaa3",
+        strip_prefix = "re2-506cfa4bffd060c06ec338ce50ea3468daa6c814",
         system_build_file = clean_dep("//third_party/systemlibs:re2.BUILD"),
         urls = [
-            "http://mirror.tensorflow.org/github.com/google/re2/archive/2018-10-01.tar.gz",
-            "https://github.com/google/re2/archive/2018-10-01.tar.gz",
+            "http://mirror.tensorflow.org/github.com/google/re2/archive/506cfa4bffd060c06ec338ce50ea3468daa6c814.zip",
+            "https://github.com/google/re2/archive/506cfa4bffd060c06ec338ce50ea3468daa6c814.zip",
         ],
     )
 
