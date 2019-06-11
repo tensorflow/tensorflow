@@ -1407,7 +1407,7 @@ Costs OpLevelCostEstimator::PredictEinsum(const OpContext& op_context) const {
   batch_matmul_op_context.op_info = batch_matmul_op_info;
   Costs costs = PredictCosts(batch_matmul_op_context);
   costs.inaccurate = costs.inaccurate || found_unknown_shapes;
-
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 
