@@ -470,6 +470,26 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "transpose_conv_test",
+    srcs = ["transpose_conv_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":test_util",
+        ":transpose_conv",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "upsampling_bilinear",
     srcs = ["upsampling_bilinear.cc"],
