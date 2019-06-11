@@ -19,16 +19,13 @@ from __future__ import print_function
 
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util.tf_export import tf_export
-
-
-_STRUCTURE_CONVERSION_FUNCTION_REGISTRY = {}
 
 
 # Define backwards-compatiblity wrappers for using TypeSpec and its subclasses
@@ -54,7 +51,7 @@ def TensorStructure(dtype, shape):
 
 @tf_export("data.experimental.SparseTensorStructure")
 def SparseTensorStructure(dtype, shape):
-  return sparse_tensor_lib.SparseTensorSpec(shape, dtype)
+  return sparse_tensor.SparseTensorSpec(shape, dtype)
 
 
 @tf_export("data.experimental.TensorArrayStructure")
@@ -85,14 +82,20 @@ def normalize_tensors(tensors):
   flat_tensors = nest.flatten(tensors)
   prepared = []
   with ops.name_scope("normalize_tensors"):
+    # Imported here to avoid circular dependency
+    from tensorflow.python.data.ops import dataset_ops  # pylint: disable=g-import-not-at-top
     for i, t in enumerate(flat_tensors):
-      if sparse_tensor_lib.is_sparse(t):
-        prepared.append(sparse_tensor_lib.SparseTensor.from_value(t))
-      elif ragged_tensor.is_ragged(t):
+      spec = type_spec.type_spec_from_value(t)
+      if isinstance(spec, sparse_tensor.SparseTensorSpec):
+        prepared.append(
+            sparse_tensor.SparseTensor.from_value(t))
+      elif isinstance(spec, ragged_tensor.RaggedTensorSpec):
         prepared.append(
             ragged_tensor.convert_to_tensor_or_ragged_tensor(
                 t, name="component_%d" % i))
-      elif isinstance(t, tensor_array_ops.TensorArray):
+      elif isinstance(spec, tensor_array_ops.TensorArraySpec):
+        prepared.append(t)
+      elif isinstance(spec, dataset_ops.DatasetStructure):
         prepared.append(t)
       else:
         prepared.append(ops.convert_to_tensor(t, name="component_%d" % i))
@@ -134,7 +137,7 @@ def convert_legacy_structure(output_types, output_shapes, output_classes):
                                                flat_classes):
     if isinstance(flat_class, type_spec.TypeSpec):
       flat_ret.append(flat_class)
-    elif issubclass(flat_class, sparse_tensor_lib.SparseTensor):
+    elif issubclass(flat_class, sparse_tensor.SparseTensor):
       flat_ret.append(SparseTensorStructure(flat_type, flat_shape))
     elif issubclass(flat_class, ops.Tensor):
       flat_ret.append(TensorStructure(flat_type, flat_shape))
@@ -194,8 +197,9 @@ class NestedStructure(type_spec.BatchableTypeSpec):
   def most_specific_compatible_type(self, other):
     if type(self) is not type(other):
       raise ValueError("Incompatible types")
-    return nest.map_structure(lambda a, b: a.most_specific_compatible_type(b),
-                              self._nested_structure, other._nested_structure)
+    return self._deserialize(
+        nest.map_structure(lambda a, b: a.most_specific_compatible_type(b),
+                           self._nested_structure, other._nested_structure))
 
   def __eq__(self, other):
     if not isinstance(other, NestedStructure):
@@ -325,5 +329,5 @@ type_spec.register_type_spec_from_value_converter(
 # Re-register SparseTensorValue -- it's a subclass of tuple, but we don't
 # want the NestedStructure registration to take precedence.
 type_spec.register_type_spec_from_value_converter(
-    sparse_tensor_lib.SparseTensorValue,
-    sparse_tensor_lib.SparseTensorSpec.from_value)
+    sparse_tensor.SparseTensorValue,
+    sparse_tensor.SparseTensorSpec.from_value)

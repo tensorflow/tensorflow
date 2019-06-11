@@ -245,27 +245,22 @@ MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level,
 }
 
 Status StartMonitoring(const tensorflow::string& service_addr, int duration_ms,
-                       int monitoring_level, bool timestamp, int num_queries) {
-  for (int query = 0; query < num_queries; ++query) {
-    MonitorRequest request =
-        PopulateMonitorRequest(duration_ms, monitoring_level, timestamp);
+                       int monitoring_level, bool timestamp, string* result) {
+  MonitorRequest request =
+      PopulateMonitorRequest(duration_ms, monitoring_level, timestamp);
 
-    ::grpc::ClientContext context;
-    ::grpc::ChannelArguments channel_args;
-    channel_args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH,
-                        std::numeric_limits<int32>::max());
-    std::unique_ptr<grpc::ProfilerService::Stub> stub =
-        grpc::ProfilerService::NewStub(::grpc::CreateCustomChannel(
-            "dns:///" + service_addr, ::grpc::InsecureChannelCredentials(),
-            channel_args));
-    MonitorResponse response;
-    TF_RETURN_IF_ERROR(
-        FromGrpcStatus(stub->Monitor(&context, request, &response)));
-
-    std::cout << "Cloud TPU Monitoring Results (Sample " << query + 1
-              << "):\n\n"
-              << response.data() << std::flush;
-  }
+  ::grpc::ClientContext context;
+  ::grpc::ChannelArguments channel_args;
+  channel_args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH,
+                      std::numeric_limits<int32>::max());
+  std::unique_ptr<grpc::ProfilerService::Stub> stub =
+      grpc::ProfilerService::NewStub(::grpc::CreateCustomChannel(
+          "dns:///" + service_addr, ::grpc::InsecureChannelCredentials(),
+          channel_args));
+  MonitorResponse response;
+  TF_RETURN_IF_ERROR(
+      FromGrpcStatus(stub->Monitor(&context, request, &response)));
+  *result = response.data();
   return Status::OK();
 }
 

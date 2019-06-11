@@ -338,6 +338,26 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "prelu_test",
+    srcs = ["prelu_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":prelu",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "relu",
     srcs = ["relu.cc"],

@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.data.python.ops import batching
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
@@ -45,8 +46,7 @@ class RestructuredDatasetTest(test_base.DatasetTestBase):
 
     for new_types, new_shape_lists in test_cases:
       # pylint: disable=protected-access
-      new = dataset_ops._RestructuredDataset(dataset, new_types,
-                                             new_shape_lists)
+      new = batching._RestructuredDataset(dataset, new_types, new_shape_lists)
       # pylint: enable=protected-access
       self.assertEqual(new_types, dataset_ops.get_legacy_output_types(new))
       if new_shape_lists is not None:
@@ -67,8 +67,7 @@ class RestructuredDatasetTest(test_base.DatasetTestBase):
     for new_types, new_shape_lists in fail_cases:
       with self.assertRaises(ValueError):
         # pylint: disable=protected-access
-        new = dataset_ops._RestructuredDataset(dataset, new_types,
-                                               new_shape_lists)
+        new = batching._RestructuredDataset(dataset, new_types, new_shape_lists)
         # pylint: enable=protected-access
 
 

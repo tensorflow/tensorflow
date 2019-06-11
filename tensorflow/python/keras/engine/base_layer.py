@@ -329,7 +329,7 @@ class Layer(module.Module):
     for kwarg in kwargs:
       if kwarg not in ['getter', 'collections', 'experimental_autocast']:
         raise TypeError('Unknown keyword argument:', kwarg)
-    getter = kwargs.pop('getter', None)
+    getter = kwargs.pop('getter', base_layer_utils.make_variable)
     collections_arg = kwargs.pop('collections', None)
     # 'experimental_autocast' can be set to False by the caller to indicate an
     # AutoCastVariable should never be created.
@@ -371,12 +371,22 @@ class Layer(module.Module):
         raise ValueError('An initializer for variable %s of type %s is required'
                          ' for layer %s' % (name, dtype.base_dtype, self.name))
 
+    if autocast and self._mixed_precision_policy.should_cast_variables:
+      # Wrap 'getter' with a version that returns an AutoCastVariable.
+      old_getter = getter
+      def getter(*args, **kwargs):  # pylint: disable=function-redefined
+        variable = old_getter(*args, **kwargs)
+        if isinstance(variable, distribute_values.DistributedVariable):
+          return autocast_variable.AutoCastDistributedVariable(variable)
+        else:
+          return autocast_variable.AutoCastVariable(variable)
+
     variable = self._add_variable_with_custom_getter(
         name=name,
         shape=shape,
         # TODO(allenl): a `make_variable` equivalent should be added as a
         # `Trackable` method.
-        getter=getter or base_layer_utils.make_variable,
+        getter=getter,
         # Manage errors in Layer rather than Trackable.
         overwrite=True,
         initializer=initializer,
@@ -389,12 +399,6 @@ class Layer(module.Module):
         synchronization=synchronization,
         aggregation=aggregation)
     backend.track_variable(variable)
-
-    if autocast and self._mixed_precision_policy.should_cast_variables:
-      if isinstance(variable, distribute_values.DistributedVariable):
-        variable = autocast_variable.AutoCastDistributedVariable(variable)
-      else:
-        variable = autocast_variable.AutoCastVariable(variable)
 
     if regularizer is not None:
       # TODO(fchollet): in the future, this should be handled at the
@@ -647,8 +651,8 @@ class Layer(module.Module):
 
           # Wrapping `call` function in autograph to allow for dynamic control
           # dependencies in call. We are limiting this to subclassed layers as
-          # autograph is strictly needed only for subclassed layers.
-          # As an additional optimizatio, we avoid calling autograph if the
+          # autograph is strictly needed only for subclassed layers and models.
+          # As an additional optimization, we avoid calling autograph if the
           # function is already converted or marked for no conversion. The
           # effect is largely cosmetic - it avoid four extra frames in the call
           # stack.
@@ -1379,10 +1383,6 @@ class Layer(module.Module):
         Input tensor or list of input tensors.
 
     Raises:
-        AttributeError: if the layer is connected to
-        more than one incoming layers.
-
-    Raises:
       RuntimeError: If called in Eager mode.
       AttributeError: If no inbound nodes are found.
     """
@@ -1510,8 +1510,11 @@ class Layer(module.Module):
   # Methods & attributes below are public aliases of other methods.            #
   ##############################################################################
 
+  @deprecation.deprecated(
+      date=None, instructions='Please use `layer.__call__` method instead.')
+  @doc_controls.do_not_doc_inheritable
   def apply(self, inputs, *args, **kwargs):
-    """Apply the layer on a input.
+    """Deprecated, do NOT use!
 
     This is an alias of `self.__call__`.
 
@@ -1525,9 +1528,11 @@ class Layer(module.Module):
     """
     return self.__call__(inputs, *args, **kwargs)
 
-  @doc_controls.for_subclass_implementers
+  @deprecation.deprecated(
+      date=None, instructions='Please use `layer.add_weight` method instead.')
+  @doc_controls.do_not_doc_inheritable
   def add_variable(self, *args, **kwargs):
-    """Alias for `add_weight`."""
+    """Deprecated, do NOT use! Alias for `add_weight`."""
     return self.add_weight(*args, **kwargs)
 
   @property
@@ -1983,6 +1988,28 @@ class Layer(module.Module):
       return ph
 
     return nest.map_structure(_make_placeholder_like, output_shapes)
+
+  def _get_trainable_state(self):
+    """Get the `trainable` state of each sublayer.
+
+    Returns:
+      A dict mapping all sublayers to their `trainable` value.
+    """
+    layers = trackable_layer_utils.filter_empty_layer_containers(self._layers)
+    # Keep track of each top-level layers' `trainable` as well as the
+    # state of all of its sublayers.
+    trainable_state = {self: self.trainable}
+    for layer in layers:
+      trainable_state.update(layer._get_trainable_state())
+    return trainable_state
+
+  def _set_trainable_state(self, trainable_state):
+    """Set `trainable` state for each sublayer."""
+    layers = trackable_layer_utils.filter_empty_layer_containers(self._layers)
+    if self in trainable_state:
+      self.trainable = trainable_state[self]
+    for layer in layers:
+      layer._set_trainable_state(trainable_state)
 
   @property
   def _obj_reference_counts(self):

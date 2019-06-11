@@ -145,7 +145,7 @@ TuningResolver::TuningResolver()
     : expiry_duration_(DurationFromSeconds(kExpirySecs)) {}
 
 Tuning TuningResolver::Resolve() {
-#if (defined RUY_OPT_SET) && !(RUY_OPT_SET & RUY_OPT_TUNING)
+#if !RUY_OPT_ENABLED(RUY_OPT_TUNING)
   return Tuning::kOutOfOrder;
 #endif
   if (unresolved_tuning_ != Tuning::kAuto) {

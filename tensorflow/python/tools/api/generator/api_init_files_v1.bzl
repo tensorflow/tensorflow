@@ -98,6 +98,8 @@ KERAS_API_INIT_FILES_V1 = [
     "keras/applications/mobilenet/__init__.py",
     "keras/applications/mobilenet_v2/__init__.py",
     "keras/applications/nasnet/__init__.py",
+    "keras/applications/resnet/__init__.py",
+    "keras/applications/resnet_v2/__init__.py",
     "keras/applications/resnet50/__init__.py",
     "keras/applications/vgg16/__init__.py",
     "keras/applications/vgg19/__init__.py",

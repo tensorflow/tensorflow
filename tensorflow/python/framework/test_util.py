@@ -20,8 +20,8 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-from collections import OrderedDict
 import contextlib
+import datetime
 import functools
 import gc
 import itertools
@@ -54,6 +54,7 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
+from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
@@ -857,10 +858,10 @@ def _combine_named_parameters(**kwargs):
     corresponding keyword argument values.
   """
   if not kwargs:
-    return [OrderedDict()]
+    return [collections.OrderedDict()]
 
   sort_by_key = lambda k: k[0][0]
-  kwargs = OrderedDict(sorted(kwargs.items(), key=sort_by_key))
+  kwargs = collections.OrderedDict(sorted(kwargs.items(), key=sort_by_key))
   first = list(kwargs.items())[0]
 
   rest = dict(list(kwargs.items())[1:])
@@ -872,9 +873,9 @@ def _combine_named_parameters(**kwargs):
     values = [values]
 
   combinations = [
-      OrderedDict(sorted(list(combined.items()) + [(key, v)], key=sort_by_key))
-      for v in values
-      for combined in rest_combined
+      collections.OrderedDict(sorted(list(combined.items()) + [(key, v)],  # pylint: disable=g-complex-comprehension
+                                     key=sort_by_key))
+      for v in values for combined in rest_combined
   ]
   return combinations
 
@@ -898,14 +899,14 @@ def generate_combinations_with_testcase_name(**kwargs):
   combinations = _combine_named_parameters(**kwargs)
   named_combinations = []
   for combination in combinations:
-    assert isinstance(combination, OrderedDict)
+    assert isinstance(combination, collections.OrderedDict)
     name = "".join([
         "_{}_{}".format("".join(filter(str.isalnum, key)),
                         "".join(filter(str.isalnum, str(value))))
         for key, value in combination.items()
     ])
     named_combinations.append(
-        OrderedDict(
+        collections.OrderedDict(
             list(combination.items()) +
             [("testcase_name", "_test{}".format(name))]))
 
@@ -1710,7 +1711,18 @@ class EagerSessionWarner(object):
 
 @tf_export("test.TestCase")
 class TensorFlowTestCase(googletest.TestCase):
-  """Base class for tests that need to test TensorFlow."""
+  """Base class for tests that need to test TensorFlow.
+
+  This class sets things up in a sensible manner for running tests of
+  TensorFlow functionality. In particular, it forces immediate compilation for
+  XLA, disabled XLA constant folding (to produce more comparable results), sets
+  random seeds to ensure repeatability.
+
+  The `setUp` method also sets the forward compatibility horizon to the far
+  future. This ensures that if `forward_compatible` is used to safely introduce
+  a new Op, the new code paths are tested. You can disable this behavior by
+  setting the TF_TEST_FORWARD_COMPATIBILITY_TODAY environment variable.
+  """
 
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TensorFlowTestCase, self).__init__(methodName)
@@ -1743,6 +1755,17 @@ class TensorFlowTestCase(googletest.TestCase):
     # summary writer.
     context.context().summary_writer = None
 
+    # By default test the eventual case, when forward compatibility switches are
+    # all flipped. If you use forward compatibility tooling, you must make
+    # sure to explicitly test the "before the switch" case by explicitly
+    # specifying a date in your test (using the forward_compatibility_horizon
+    # decorator), otherwise you will lose coverage.
+    self._forward_compatibility_horizon = (
+        fwd_compat._FORWARD_COMPATIBILITY_HORIZON)  # pylint: disable=protected-access
+
+    if not os.environ.get("TF_TEST_FORWARD_COMPATIBILITY_TODAY", None):
+      fwd_compat._FORWARD_COMPATIBILITY_HORIZON = datetime.date(2525, 1, 1)  # pylint: disable=protected-access
+
     # Avoiding calling setUp() for the poorly named test_session method.
     if self.id().endswith(".test_session"):
       self.skipTest("Not a test.")
@@ -1752,6 +1775,14 @@ class TensorFlowTestCase(googletest.TestCase):
       thread.check_termination()
 
     self._ClearCachedSession()
+
+    if not hasattr(self, "_forward_compatibility_horizon"):
+      logging.warn("TensorFlowTestCase.tearDown called without setUp having"
+                   " been called earlier. This is likely because you overrode"
+                   " setUp without calling super().")
+    else:
+      fwd_compat._FORWARD_COMPATIBILITY_HORIZON = (
+          self._forward_compatibility_horizon)  # pylint: disable=protected-access
 
   def _ClearCachedSession(self):
     if self._cached_session is not None:

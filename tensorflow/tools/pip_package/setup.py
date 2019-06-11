@@ -61,7 +61,7 @@ REQUIRED_PACKAGES = [
     'astor >= 0.6.0',
     'gast >= 0.2.0',
     'google_pasta >= 0.1.6',
-    'keras_applications >= 1.0.6',
+    'keras_applications >= 1.0.8',
     'keras_preprocessing >= 1.0.5',
     'networkx >= 2.2',
     'numpy >= 1.14.5, < 2.0',
@@ -149,7 +149,7 @@ class InstallCommand(InstallCommandBase):
 
   def finalize_options(self):
     ret = InstallCommandBase.finalize_options(self)
-    self.install_headers = os.path.join(self.install_platlib, 'tensorflow_core',
+    self.install_headers = os.path.join(self.install_purelib, 'tensorflow_core',
                                         'include')
     self.install_lib = self.install_platlib
     return ret
@@ -187,6 +187,8 @@ class InstallHeaders(Command):
     # Get rid of some extra intervening directories so we can have fewer
     # directories for -I
     install_dir = re.sub('/google/protobuf_archive/src', '', install_dir)
+    install_dir = re.sub('/include/tensorflow_core/', '/include/tensorflow/',
+                         install_dir)
 
     # Copy external code headers into tensorflow_core/include.
     # A symlink would do, but the wheel file that gets created ignores

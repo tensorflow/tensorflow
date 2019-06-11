@@ -1738,15 +1738,12 @@ class RaggedTensor(composite_tensor.CompositeTensor):
   #=============================================================================
   # String Encoding
   #=============================================================================
-  def __str__(self):
+  def __repr__(self):
     if self._is_eager():
       return "<tf.RaggedTensor %s>" % self.to_list()
     else:
-      return self.__repr__()
-
-  def __repr__(self):
-    return "tf.RaggedTensor(values=%s, row_splits=%s)" % (self._values,
-                                                          self._row_splits)
+      return "tf.RaggedTensor(values=%s, row_splits=%s)" % (self._values,
+                                                            self._row_splits)
 
   #=============================================================================
   # Eager Execution Mode

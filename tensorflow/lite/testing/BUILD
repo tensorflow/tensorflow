@@ -21,7 +21,7 @@ package(
 
 [gen_zip_test(
     name = "zip_test_%s" % test_name,
-    size = "large",
+    size = "medium",
     srcs = ["generated_examples_zip_test.cc"],
     args = args + select({
         "//tensorflow:android": [],
@@ -39,6 +39,8 @@ package(
     shard_count = 20,
     tags = tags + [
         "gen_zip_test",
+        "no_gpu",  # Executing with TF GPU configurations is redundant.
+        "no_oss",
         "tflite_not_portable_intentional",
     ],
     test_name = test_name,

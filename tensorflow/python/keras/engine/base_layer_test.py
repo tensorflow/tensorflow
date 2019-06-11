@@ -893,7 +893,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
     class MyLayer(keras.layers.Layer):
 
       def __init__(self):
-        super(MyLayer, self).__init__(self, dynamic=eager)
+        super(MyLayer, self).__init__(dynamic=eager)
 
       def build(self, input_shape):
         self.counter = self.add_weight(
@@ -931,7 +931,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
     class MyLayer(keras.layers.Layer):
 
       def __init__(self):
-        super(MyLayer, self).__init__(self, dynamic=eager)
+        super(MyLayer, self).__init__(dynamic=eager)
 
       def call(self, inputs, training=None):
         if training:
@@ -982,7 +982,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
     class MyLayer(keras.layers.Layer):
 
       def __init__(self):
-        super(MyLayer, self).__init__(self, dynamic=eager)
+        super(MyLayer, self).__init__(dynamic=eager)
 
       def call(self, inputs, training=None):
         if training:
