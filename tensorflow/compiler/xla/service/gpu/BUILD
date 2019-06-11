@@ -942,6 +942,7 @@ cc_library(
     hdrs = ["gpu_transfer_manager.h"],
     deps = [
         ":infeed_manager",
+        ":gpu_compiler",
         ":outfeed_manager",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
@@ -958,13 +959,7 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/memory",
         "@llvm//:core",
-    ]
-    + if_cuda_is_configured([
-       ":gpu_compiler",
-    ])
-    + if_rocm_is_configured([
-       ":nvptx_constants",
-    ]),
+    ],
     alwayslink = True,  # Contains per-platform transfer manager registration
 )
 
