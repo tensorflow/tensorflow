@@ -979,7 +979,7 @@ class TPUMirroredVariable(MirroredVariable):
 
     # Handle id is needed for get_replicated_var_handle to cache the variables
     # correctly since in eager mode different variables can have the same name.
-    if context.executing_eagerly():
+    if ops.executing_eagerly_outside_functions():
       self._handle_id = self._common_name + "_" + str(id(self.primary))
     else:
       self._handle_id = self._common_name
