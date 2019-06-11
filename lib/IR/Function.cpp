@@ -363,27 +363,7 @@ static void printFunctionSignature(OpAsmPrinter *p, FuncOp op) {
     p->printOptionalAttrDict(op.getArgAttrs(i));
   }
   *p << ')';
-
-  switch (fnType.getResults().size()) {
-  case 0:
-    break;
-  case 1: {
-    *p << " -> ";
-    auto resultType = fnType.getResults()[0];
-    bool resultIsFunc = resultType.isa<FunctionType>();
-    if (resultIsFunc)
-      *p << '(';
-    p->printType(resultType);
-    if (resultIsFunc)
-      *p << ')';
-    break;
-  }
-  default:
-    *p << " -> (";
-    interleaveComma(fnType.getResults(), *p);
-    *p << ')';
-    break;
-  }
+  p->printOptionalArrowTypeList(fnType.getResults());
 }
 
 void FuncOp::print(OpAsmPrinter *p) {

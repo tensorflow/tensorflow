@@ -85,6 +85,19 @@ public:
   virtual void printRegion(Region &blocks, bool printEntryBlockArgs = true,
                            bool printBlockTerminators = true) = 0;
 
+  /// Print an optional arrow followed by a type list.
+  void printOptionalArrowTypeList(ArrayRef<Type> types) {
+    if (types.empty())
+      return;
+    auto &os = getStream() << " -> ";
+    bool wrapped = types.size() != 1 || types[0].isa<FunctionType>();
+    if (wrapped)
+      os << '(';
+    interleaveComma(types, *this);
+    if (wrapped)
+      os << ')';
+  }
+
 private:
   OpAsmPrinter(const OpAsmPrinter &) = delete;
   void operator=(const OpAsmPrinter &) = delete;
