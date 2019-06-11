@@ -491,14 +491,10 @@ def rot90(image, k=1, name=None):
 
   For example:
   ```python
-  import matplotlib.pyplot as plt
-  img=plt.imread('https://www.tensorflow.org/images/tf_logo_transp.png')[:,:,1]
-  tf_img=tf.convert_to_tensor(img) # converting numpy to tensor
-  tf_img=tf.expand_dims(tf_img,-1) # expanding dims
-  # rotating `tf_img` counter clockwise by 90 degrees
-  rot_img=tf.image.rot90(tf_img,k=1) #rotated image
-  img.shape # TensorShape([1077, 1068, 1])
-  rot_img.shape # ensorShape([1068, 1077, 1])
+  a=tf.constant([[[1],[2]],[[3],[4]]])
+  # rotating `a` counter clockwise by 90 degrees
+  a_rot=tf.image.rot90(a,k=1) #rotated `a`
+  print(a_rot) # [[[2],[4]],[[1],[3]]]
   ```
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
