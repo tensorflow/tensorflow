@@ -24,6 +24,7 @@
 
 #include "mlir/Support/LLVM.h"
 
+#include <string>
 #include <vector>
 
 namespace llvm {
