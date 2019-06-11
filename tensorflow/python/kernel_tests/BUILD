@@ -3514,7 +3514,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python/ops:nn",
+        "//tensorflow/python:nn",
     ],
     shard_count = 20,
     xla_enable_strict_auto_jit = True,
