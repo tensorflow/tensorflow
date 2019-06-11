@@ -543,6 +543,26 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "upsampling_bilinear_test",
+    srcs = ["upsampling_bilinear_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":test_util",
+        ":upsampling_bilinear",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 TFLITE_GPU_BINARY_RELEASE_OPERATORS = [
     "add",
     "concat",
