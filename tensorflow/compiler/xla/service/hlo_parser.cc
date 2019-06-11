@@ -1453,6 +1453,16 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
           HloInstruction::CreateRng(shape, *distribution, operands));
       break;
     }
+    case HloOpcode::kRngGetAndUpdateState: {
+      optional<int64> delta;
+      attrs["delta"] = {/*required=*/true, AttrTy::kInt64, &delta};
+      if (!ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateRngGetAndUpdateState(shape, *delta));
+      break;
+    }
     case HloOpcode::kReducePrecision: {
       optional<int64> exponent_bits;
       optional<int64> mantissa_bits;

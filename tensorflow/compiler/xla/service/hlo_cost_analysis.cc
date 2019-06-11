@@ -655,6 +655,11 @@ Status HloCostAnalysis::HandleRng(const HloInstruction* random) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleRngGetAndUpdateState(
+    const HloInstruction* random) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
   if (fusion->IsCustomFusion()) {
     for (const HloInstruction* hlo :
