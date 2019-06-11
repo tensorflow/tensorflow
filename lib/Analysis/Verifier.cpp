@@ -55,6 +55,9 @@ public:
   /// Verify the body of the given function.
   LogicalResult verify(Function &fn);
 
+  /// Verify the given operation.
+  LogicalResult verify(Operation &op);
+
   /// Returns the registered dialect for a dialect-specific attribute.
   Dialect *getDialectForAttribute(const NamedAttribute &attr) {
     assert(attr.first.strref().contains('.') && "expected dialect attribute");
@@ -67,13 +70,12 @@ public:
 
 private:
   /// Verify the given potentially nested region or block.
-  LogicalResult verifyRegion(Region &region, bool isTopLevel);
-  LogicalResult verifyBlock(Block &block, bool isTopLevel);
+  LogicalResult verifyRegion(Region &region);
+  LogicalResult verifyBlock(Block &block);
   LogicalResult verifyOperation(Operation &op);
 
   /// Verify the dominance within the given IR unit.
   LogicalResult verifyDominance(Region &region);
-  LogicalResult verifyDominance(Block &block);
   LogicalResult verifyDominance(Operation &op);
 
   /// Emit an error for the given block.
@@ -104,7 +106,7 @@ private:
 /// Verify the body of the given function.
 LogicalResult OperationVerifier::verify(Function &fn) {
   // Verify the body first.
-  if (failed(verifyRegion(fn.getBody(), /*isTopLevel=*/true)))
+  if (failed(verifyRegion(fn.getBody())))
     return failure();
 
   // Since everything looks structurally ok to this point, we do a dominance
@@ -113,15 +115,34 @@ LogicalResult OperationVerifier::verify(Function &fn) {
   // resilient to malformed code.
   DominanceInfo theDomInfo(&fn);
   domInfo = &theDomInfo;
-  for (auto &block : fn)
-    if (failed(verifyDominance(block)))
+  if (failed(verifyDominance(fn.getBody())))
+    return failure();
+
+  domInfo = nullptr;
+  return success();
+}
+
+/// Verify the given operation.
+LogicalResult OperationVerifier::verify(Operation &op) {
+  // Verify the operation first.
+  if (failed(verifyOperation(op)))
+    return failure();
+
+  // Since everything looks structurally ok to this point, we do a dominance
+  // check for any nested regions. We do this as a second pass since malformed
+  // CFG's can cause dominator analysis constructure to crash and we want the
+  // verifier to be resilient to malformed code.
+  DominanceInfo theDomInfo(&op);
+  domInfo = &theDomInfo;
+  for (auto &region : op.getRegions())
+    if (failed(verifyDominance(region)))
       return failure();
 
   domInfo = nullptr;
   return success();
 }
 
-LogicalResult OperationVerifier::verifyRegion(Region &region, bool isTopLevel) {
+LogicalResult OperationVerifier::verifyRegion(Region &region) {
   if (region.empty())
     return success();
 
@@ -133,12 +154,12 @@ LogicalResult OperationVerifier::verifyRegion(Region &region, bool isTopLevel) {
 
   // Verify each of the blocks within the region.
   for (auto &block : region)
-    if (failed(verifyBlock(block, isTopLevel)))
+    if (failed(verifyBlock(block)))
       return failure();
   return success();
 }
 
-LogicalResult OperationVerifier::verifyBlock(Block &block, bool isTopLevel) {
+LogicalResult OperationVerifier::verifyBlock(Block &block) {
   for (auto *arg : block.getArguments())
     if (arg->getOwner() != &block)
       return emitError(block, "block argument not owned by block");
@@ -200,7 +221,7 @@ LogicalResult OperationVerifier::verifyOperation(Operation &op) {
 
   // Verify that all child regions are ok.
   for (auto &region : op.getRegions())
-    if (failed(verifyRegion(region, /*isTopLevel=*/false)))
+    if (failed(verifyRegion(region)))
       return failure();
 
   // If this is a registered operation, there is nothing left to do.
@@ -232,11 +253,12 @@ LogicalResult OperationVerifier::verifyOperation(Operation &op) {
   return success();
 }
 
-LogicalResult OperationVerifier::verifyDominance(Block &block) {
+LogicalResult OperationVerifier::verifyDominance(Region &region) {
   // Verify the dominance of each of the held operations.
-  for (auto &op : block)
-    if (failed(verifyDominance(op)))
-      return failure();
+  for (auto &block : region)
+    for (auto &op : block)
+      if (failed(verifyDominance(op)))
+        return failure();
   return success();
 }
 
@@ -257,9 +279,8 @@ LogicalResult OperationVerifier::verifyDominance(Operation &op) {
 
   // Verify the dominance of each of the nested blocks within this operation.
   for (auto &region : op.getRegions())
-    for (auto &block : region)
-      if (failed(verifyDominance(block)))
-        return failure();
+    if (failed(verifyDominance(region)))
+      return failure();
 
   return success();
 }
@@ -333,6 +354,13 @@ LogicalResult Function::verify() {
 
   // Finally, verify the body of the function.
   return opVerifier.verify(*this);
+}
+
+/// Perform (potentially expensive) checks of invariants, used to detect
+/// compiler bugs.  On error, this reports the error through the MLIRContext and
+/// returns failure.
+LogicalResult Operation::verify() {
+  return OperationVerifier(getContext()).verify(*this);
 }
 
 /// Perform (potentially expensive) checks of invariants, used to detect

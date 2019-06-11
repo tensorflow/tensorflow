@@ -106,8 +106,12 @@ bool DominanceInfoBase<IsPostDom>::properlyDominates(Block *a, Block *b) {
   }
 
   // Otherwise, use the standard dominance functionality.
+
+  // If we don't have a dominance information for this region, assume that b is
+  // dominated by anything.
   auto baseInfoIt = dominanceInfos.find(regionA);
-  assert(baseInfoIt != dominanceInfos.end() && "region info not found");
+  if (baseInfoIt == dominanceInfos.end())
+    return true;
   return baseInfoIt->second->properlyDominates(a, b);
 }
 
