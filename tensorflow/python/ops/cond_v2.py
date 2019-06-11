@@ -864,7 +864,6 @@ def _CaseGrad(op, *grads):  # pylint: disable=invalid-name
 
     for branch_graph, extra_outputs in zip(branch_graphs, extra_branch_outputs):
       branch_graph.outputs.extend(extra_outputs)
-    _make_indexed_slices_indices_types_match(_CASE, branch_graphs)
     # TODO(bjp): indicate it's an internal bug if this fails.
     _check_same_outputs(_CASE, branch_graphs)
 
@@ -919,6 +918,7 @@ def _build_case(branch_index, branch_graphs, branch_inputs, name=None):
     A list of Tensors which are the outputs of the Case op. Does not include
     added intermediate outputs.
   """
+  _make_indexed_slices_indices_types_match(_CASE, branch_graphs)
   _check_same_outputs(_CASE, branch_graphs)
 
   # Add inputs to branch_graphs to make them match. Note that this modifies the
