@@ -3,6 +3,7 @@ add_llvm_library(MLIRSPIRV
   SPIRVDialect.cpp
   SPIRVOps.cpp
   SPIRVTypes.cpp
+  Transforms/StdOpsToSPIRVConversion.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/SPIRV
@@ -10,6 +11,7 @@ add_llvm_library(MLIRSPIRV
 
 add_dependencies(MLIRSPIRV
   MLIRSPIRVOpsIncGen
-  MLIRSPIRVEnumsIncGen)
+  MLIRSPIRVEnumsIncGen
+  MLIRStdOpsToSPIRVConversionIncGen)
 
 target_link_libraries(MLIRSPIRV MLIRIR MLIRSupport)

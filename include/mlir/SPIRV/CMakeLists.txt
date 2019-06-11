@@ -7,3 +7,5 @@ set(LLVM_TARGET_DEFINITIONS SPIRVBase.td)
 mlir_tablegen(SPIRVEnums.h.inc -gen-enum-decls)
 mlir_tablegen(SPIRVEnums.cpp.inc -gen-enum-defs)
 add_public_tablegen_target(MLIRSPIRVEnumsIncGen)
+
+add_subdirectory(Transforms)

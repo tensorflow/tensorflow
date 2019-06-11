@@ -1,0 +1,3 @@
+set(LLVM_TARGET_DEFINITIONS StdOpsToSPIRVConversion.td)
+mlir_tablegen(StdOpsToSPIRVConversion.cpp.inc -gen-rewriters)
+add_public_tablegen_target(MLIRStdOpsToSPIRVConversionIncGen)
