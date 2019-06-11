@@ -705,8 +705,14 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     expected_layers = len(model.layers)
     self.assertEqual(expected_layers, len(loaded.keras_api.layers))
     input_arr = array_ops.ones((4, 3))
+    training_bool = constant_op.constant(False)
+
+    if model._expects_training_arg:
+      call_args = [input_arr, training_bool]
+    else:
+      call_args = [input_arr]
     self.assertAllClose(self.evaluate(model(input_arr)),
-                        self.evaluate(loaded(input_arr)))
+                        self.evaluate(loaded(*call_args)))
 
   @keras_parameterized.run_with_all_model_types
   def test_compiled_model(self):

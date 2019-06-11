@@ -66,7 +66,7 @@ def model_input_signature(model):
 
   Returns:
     A list containing either a single TensorSpec or an object with nested
-    TensorSpecs. This list does not contain the `training` argument.
+    TensorSpecs.
   """
   try:
     inputs = model.inputs
