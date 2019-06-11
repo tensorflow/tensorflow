@@ -120,6 +120,7 @@
   * Post-training quantization tool supports quantizing weights shared by multiple operations. The models made with versions of this tool will use INT8 types for weights and will only be executable interpreters from this version onwards.
   * Malformed gif images could result in an access out of bounds in the color palette of the frame. This has been fixed now
   * image.resize now considers proper pixel centers and has new kernels (incl. anti-aliasing).
+  * Add environment variable TF_CUDNN_DETERMINISTIC. Setting to "true" or "1" forces the selection of deterministic cuDNN convolution and max-pooling algorithms. When this is enabled, the algorithm selection procedure itself is also deterministic.
 * Performance
   * Turn on MKL-DNN contraction kernels by default. MKL-DNN dynamically dispatches the best kernel implementation based on CPU vector architecture. To disable them, build with --define=tensorflow_mkldnn_contraction_kernel=0.
   * Support for multi-host ncclAllReduce in Distribution Strategy.
