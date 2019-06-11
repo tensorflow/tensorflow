@@ -51,8 +51,6 @@ from tensorflow.python.util.tf_export import tf_export
 # For users with Python 3 or Python 2.7
 # with `from __future__ import print_function`, we could also allow lowercase.
 # See https://github.com/tensorflow/tensorflow/issues/18053
-
-
 # pylint: disable=invalid-name
 @deprecated("2018-08-20", "Use tf.print instead of tf.Print. Note that "
                           "tf.print returns a no-output operator that directly "
@@ -61,8 +59,15 @@ from tensorflow.python.util.tf_export import tf_export
                           "directly specified in session.run or used as a "
                           "control dependency for other operators. This is "
                           "only a concern in graph mode. Below is an example "
-                          "of how to ensure tf.print executes in graph mode:\n"
-                          """```python
+                          "of how to ensure tf.print executes in graph mode:\n")
+@tf_export(v1=["Print"])
+def Print(input_, data, message=None, first_n=None, summarize=None,
+          name=None):
+  """Prints a list of tensors.
+
+  For example:
+  
+  ```python
     sess = tf.Session()
     with sess.as_default():
         tensor = tf.range(10)
@@ -70,16 +75,11 @@ from tensorflow.python.util.tf_export import tf_export
         with tf.control_dependencies([print_op]):
           out = tf.add(tensor, tensor)
         sess.run(out)
-    ```
-Additionally, to use tf.print in python 2.7, users must make sure to import
-the following:
+  ```
+  Additionally, to use tf.print in python 2.7, users must make sure to import
+  the following:
 
   `from __future__ import print_function`
-""")
-@tf_export(v1=["Print"])
-def Print(input_, data, message=None, first_n=None, summarize=None,
-          name=None):
-  """Prints a list of tensors.
 
   This is an identity op (behaves like `tf.identity`) with the side effect
   of printing `data` when evaluating.
