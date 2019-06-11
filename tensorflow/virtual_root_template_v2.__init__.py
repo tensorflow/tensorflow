@@ -76,6 +76,7 @@ _top_level_modules = [
     "tensorflow.lite",
     "tensorflow.keras",
     "tensorflow.compat",
+    "tensorflow.examples",
 ]
 # Estimator needs to be handled separatedly so we can still allow both
 # import tensorflow_estimator and import tensorflow.estimator work
