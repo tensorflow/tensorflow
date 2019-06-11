@@ -37,3 +37,26 @@ The original paper on group normalization:
 
 See :py:func:`tensorflow.contrib.ipu.group_norm`.
 
+Instance normalization
+~~~~~~~~~~~~~~~~~~~~~~
+
+Instance normalization is another alternative to batch normalization.
+
+The original paper on instance normalization:
+`"Instance Normalization: The Missing Ingredient for Fast Stylization"
+Dmitry Ulyanov, Andrea Vedaldi, Victor Lempitsky
+<https://arxiv.org/abs/1607.08022>`_.
+
+See :py:func:`tensorflow.contrib.ipu.group_norm`.
+
+Layer normalization
+~~~~~~~~~~~~~~~~~~~
+
+Layer normalization is another alternative to batch normalization.
+
+The original paper on layer normalization:
+`"Layer Normalization" Jimmy Lei Ba, Jamie Ryan Kiros, Geoffrey E. Hinton
+<https://arxiv.org/abs/1607.06450>`_.
+
+See :py:func:`tensorflow.contrib.ipu.layer_norm`.
+
