@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/passes/expression_outliner.h"
-#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/tests/test_utils.h"
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -62,8 +61,7 @@ HloModule top
 
   auto* module = module_or_status.ValueOrDie().get();
 
-  CompilerAnnotations annotations(module);
-  ExpressionOutliner eo(annotations);
+  ExpressionOutliner eo;
   EXPECT_TRUE(eo.Run(module).ValueOrDie());
 
   auto* comp = module->entry_computation();
@@ -108,8 +106,7 @@ HloModule top
 
   auto* module = module_or_status.ValueOrDie().get();
 
-  CompilerAnnotations annotations(module);
-  ExpressionOutliner eo(annotations);
+  ExpressionOutliner eo;
   EXPECT_TRUE(eo.Run(module).ValueOrDie());
 
   auto* comp = module->entry_computation();
@@ -141,8 +138,7 @@ HloModule top
 
   auto* module = module_or_status.ValueOrDie().get();
 
-  CompilerAnnotations annotations(module);
-  ExpressionOutliner eo(annotations);
+  ExpressionOutliner eo;
   EXPECT_TRUE(eo.Run(module).ValueOrDie());
 
   auto* comp = module->entry_computation();
@@ -189,8 +185,7 @@ HloModule top
 
   auto* module = module_or_status.ValueOrDie().get();
 
-  CompilerAnnotations annotations(module);
-  ExpressionOutliner eo(annotations);
+  ExpressionOutliner eo;
   EXPECT_TRUE(eo.Run(module).ValueOrDie());
 
   auto* comp = module->entry_computation();
@@ -238,8 +233,7 @@ HloModule top
 
   auto* module = module_or_status.ValueOrDie().get();
 
-  CompilerAnnotations annotations(module);
-  ExpressionOutliner eo(annotations);
+  ExpressionOutliner eo;
   EXPECT_TRUE(eo.Run(module).ValueOrDie());
 
   auto* comp = module->entry_computation();
@@ -276,8 +270,7 @@ HloModule top
 
   auto* module = module_or_status.ValueOrDie().get();
 
-  CompilerAnnotations annotations(module);
-  ExpressionOutliner eo(annotations);
+  ExpressionOutliner eo;
   EXPECT_TRUE(eo.Run(module).ValueOrDie());
 
   auto* comp = module->entry_computation();
@@ -327,8 +320,7 @@ HloModule top
 
   auto* module = module_or_status.ValueOrDie().get();
 
-  CompilerAnnotations annotations(module);
-  ExpressionOutliner eo(annotations);
+  ExpressionOutliner eo;
   EXPECT_TRUE(eo.Run(module).ValueOrDie());
 
   auto* comp = module->entry_computation();
@@ -380,8 +372,7 @@ HloModule top
 
   auto* module = module_or_status.ValueOrDie().get();
 
-  CompilerAnnotations annotations(module);
-  ExpressionOutliner eo(annotations);
+  ExpressionOutliner eo;
   EXPECT_TRUE(eo.Run(module).ValueOrDie());
 
   auto* comp = module->entry_computation();

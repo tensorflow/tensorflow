@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_finder.h"
-#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+#include "tensorflow/compiler/plugin/poplar/driver/backend_config.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 
@@ -129,7 +129,6 @@ void InplaceFinder::RouteFinder(HloInstruction* inst,
 
 StatusOr<bool> InplaceFinder::Run(HloModule* module) {
   bool changed = false;
-  auto& inplace_instructions = annotations_.inplace_instructions;
   for (auto* comp : module->computations()) {
     if (IsPopOpsFusion(comp)) {
       continue;
@@ -231,9 +230,8 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
             inplace_priority_candidates_pair.second;
         for (auto* inst : inplace_instruction_candidates) {
           if (HloInstructionDescription::IsInplace(inst, reachability_map.get(),
-                                                   worklist_,
-                                                   inplace_instructions)) {
-            inplace_instructions.insert(inst);
+                                                   worklist_)) {
+            MakeUsedInplace(inst);
             changed = true;
           }
         }
@@ -245,9 +243,6 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
 
   return changed;
 }
-
-InplaceFinder::InplaceFinder(CompilerAnnotations& annotations)
-    : annotations_(annotations) {}
 
 }  // namespace poplarplugin
 }  // namespace xla

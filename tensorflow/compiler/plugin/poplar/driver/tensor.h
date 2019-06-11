@@ -5,9 +5,9 @@
 #include "tensorflow/compiler/plugin/poplar/driver/passes/allocation_finder.h"
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace poplar {
 class Tensor;
@@ -51,6 +51,12 @@ StatusOr<poplar::Tensor> AddScatterTensor(poplar::Graph& graph,
                                           const std::string& debug_name,
                                           const xla::Shape& shape_xla,
                                           const xla::Shape& slice_shape_xla);
+
+StatusOr<poplar::Tensor> AddGatherTensor(poplar::Graph& graph,
+                                         const std::string& debug_name,
+                                         const xla::Shape& shape_xla,
+                                         std::vector<std::size_t> slice_sizes,
+                                         std::vector<unsigned> start_index_map);
 
 StatusOr<poplar::Tensor> AddPlainTensor(poplar::Graph& graph,
                                         const std::string& debug_name,
@@ -97,6 +103,17 @@ StatusOr<poplar::Tensor> AddIotaTensor(poplar::Graph& graph,
                                        CompilerResources& resources,
                                        const TensorMap& tensor_map);
 
+// Creates a constant tensor.
+StatusOr<poplar::Tensor> CreateConstantTensor(poplar::Graph& graph,
+                                              const xla::Literal& literal,
+                                              const xla::Shape& shape,
+                                              const poplar::Type& poplar_type,
+                                              const std::string& name);
+
+// Sets a value of a tensor to a constant.
+Status SetInitialTensorValue(poplar::Graph& graph, poplar::Tensor& tensor,
+                             const xla::Literal& literal);
+
 template <typename T>
 poplar::Tensor TileTensor(const T& multiples, const poplar::Tensor& in);
 
@@ -139,7 +156,7 @@ ArgVector FindInstructionInputs(TensorMap& map, CompilerResources& res,
                                 poplar::program::Sequence& seq,
                                 const bool expand_constants = true);
 
-bool AreInplaceOutputTensorsWritable(TensorMap& map, CompilerResources& res,
+bool AreInplaceOutputTensorsWritable(TensorMap& map,
                                      const HloInstruction* inst);
 
 /* Sometimes an inplace op cannot be performed because the input/output tensor

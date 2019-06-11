@@ -10,10 +10,10 @@
 
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 #include <poplar/Program.hpp>
 #include <poplin/Convolution.hpp>
@@ -400,6 +400,10 @@ StatusOr<poplar::program::Program> CreateNormStatistics(
 
 StatusOr<poplar::program::Program> CreateScatter(
     CompilerResources& res, const HloScatterInstruction* inst,
+    TensorMap& tensor_map);
+
+StatusOr<poplar::program::Sequence> CreateGather(
+    CompilerResources& res, const HloGatherInstruction* inst,
     TensorMap& tensor_map);
 
 /* Optimization tests */

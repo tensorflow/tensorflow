@@ -5,6 +5,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import os
 import numpy as np
 import test_utils as tu
@@ -18,9 +19,24 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
+TYPES = (np.float16, np.float32, np.int32)
+TESTCASES = [{"testcase_name": np.dtype(x).name, "dtype": x} for x in TYPES]
 
-class ArgMinMax(test_util.TensorFlowTestCase):
-  def testArgMaxBasic(self):
+
+def _get_random_input(dtype, shape):
+  if np.issubdtype(dtype, np.integer):
+    info_fn = np.iinfo
+    random_fn = np.random.random_integers
+  else:
+    info_fn = np.finfo
+    random_fn = np.random.uniform
+  return random_fn(
+      info_fn(dtype).min, info_fn(dtype).max, size=shape).astype(dtype)
+
+
+class ArgMinMax(test_util.TensorFlowTestCase, parameterized.TestCase):
+  @parameterized.named_parameters(*TESTCASES)
+  def testArgMaxBasic(self, dtype):
     batchsize = 4
     n_categories = 1200
 
@@ -28,7 +44,7 @@ class ArgMinMax(test_util.TensorFlowTestCase):
       return math_ops.argmax(a, output_type=dtypes.int32)
 
     with ops.device('cpu'):
-      pa = array_ops.placeholder(np.float32, [3, 5, 2])
+      pa = array_ops.placeholder(dtype, [3, 5, 2])
       report = gen_ipu_ops.ipu_event_trace()
 
     with ops.device("/device:IPU:0"):
@@ -39,7 +55,7 @@ class ArgMinMax(test_util.TensorFlowTestCase):
     with tu.ipu_session() as sess:
       sess.run(report)
 
-      input = np.random.rand(3, 5, 2)
+      input = _get_random_input(dtype, (3, 5, 2))
 
       fd = {pa: input}
       result = sess.run(out, fd)
@@ -48,7 +64,8 @@ class ArgMinMax(test_util.TensorFlowTestCase):
       result = sess.run(report)
       self.assertTrue(len(result) == 3)
 
-  def testArgMaxHalf(self):
+  @parameterized.named_parameters(*TESTCASES)
+  def testArgMaxHalf(self, dtype):
     batchsize = 4
     n_categories = 1200
 
@@ -56,7 +73,7 @@ class ArgMinMax(test_util.TensorFlowTestCase):
       return math_ops.argmax(a, output_type=dtypes.int32)
 
     with ops.device('cpu'):
-      pa = array_ops.placeholder(np.float16, [3, 5, 2])
+      pa = array_ops.placeholder(dtype, [3, 5, 2])
 
     with ops.device("/device:IPU:0"):
       out = model(pa)
@@ -64,13 +81,14 @@ class ArgMinMax(test_util.TensorFlowTestCase):
     tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
-      input = np.random.rand(3, 5, 2)
+      input = _get_random_input(dtype, (3, 5, 2))
 
       fd = {pa: input}
       result = sess.run(out, fd)
       self.assertAllClose(result, np.argmax(input, axis=0))
 
-  def testArgMaxMultiDimensional(self):
+  @parameterized.named_parameters(*TESTCASES)
+  def testArgMaxMultiDimensional(self, dtype):
     batchsize = 4
     n_categories = 1200
 
@@ -78,7 +96,7 @@ class ArgMinMax(test_util.TensorFlowTestCase):
       return math_ops.argmax(a, axis=axis, output_type=dtypes.int32)
 
     with ops.device('cpu'):
-      pa = array_ops.placeholder(np.float32, [1, 2, 3, 4, 5, 6])
+      pa = array_ops.placeholder(dtype, [1, 2, 3, 4, 5, 6])
       p_axis = array_ops.placeholder(np.int32, shape=())
 
     with ops.device("/device:IPU:0"):
@@ -88,13 +106,14 @@ class ArgMinMax(test_util.TensorFlowTestCase):
 
     for axis in range(6):
       with tu.ipu_session() as sess:
-        input = np.random.rand(1, 2, 3, 4, 5, 6)
+        input = _get_random_input(dtype, (1, 2, 3, 4, 5, 6))
 
         fd = {pa: input, p_axis: axis}
         result = sess.run(out, fd)
         self.assertAllClose(result, np.argmax(input, axis=axis))
 
-  def testArgMinBasic(self):
+  @parameterized.named_parameters(*TESTCASES)
+  def testArgMinBasic(self, dtype):
     batchsize = 4
     n_categories = 1200
 
@@ -102,7 +121,7 @@ class ArgMinMax(test_util.TensorFlowTestCase):
       return math_ops.argmin(a, output_type=dtypes.int32)
 
     with ops.device('cpu'):
-      pa = array_ops.placeholder(np.float32, [3, 5, 2])
+      pa = array_ops.placeholder(dtype, [3, 5, 2])
       report = gen_ipu_ops.ipu_event_trace()
 
     with ops.device("/device:IPU:0"):
@@ -113,7 +132,7 @@ class ArgMinMax(test_util.TensorFlowTestCase):
     with tu.ipu_session() as sess:
       sess.run(report)
 
-      input = np.random.rand(3, 5, 2)
+      input = _get_random_input(dtype, (3, 5, 2))
 
       fd = {pa: input}
       result = sess.run(out, fd)
@@ -122,7 +141,8 @@ class ArgMinMax(test_util.TensorFlowTestCase):
       result = sess.run(report)
       self.assertTrue(len(result) == 3)
 
-  def testArgMinHalf(self):
+  @parameterized.named_parameters(*TESTCASES)
+  def testArgMinHalf(self, dtype):
     batchsize = 4
     n_categories = 1200
 
@@ -130,7 +150,7 @@ class ArgMinMax(test_util.TensorFlowTestCase):
       return math_ops.argmin(a, output_type=dtypes.int32)
 
     with ops.device('cpu'):
-      pa = array_ops.placeholder(np.float16, [3, 5, 2])
+      pa = array_ops.placeholder(dtype, [3, 5, 2])
 
     with ops.device("/device:IPU:0"):
       out = model(pa)
@@ -138,13 +158,14 @@ class ArgMinMax(test_util.TensorFlowTestCase):
     tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
-      input = np.random.rand(3, 5, 2)
+      input = _get_random_input(dtype, (3, 5, 2))
 
       fd = {pa: input}
       result = sess.run(out, fd)
       self.assertAllClose(result, np.argmin(input, axis=0))
 
-  def testArgMinMultiDimensional(self):
+  @parameterized.named_parameters(*TESTCASES)
+  def testArgMinMultiDimensional(self, dtype):
     batchsize = 4
     n_categories = 1200
 
@@ -152,7 +173,7 @@ class ArgMinMax(test_util.TensorFlowTestCase):
       return math_ops.argmin(a, axis=axis, output_type=dtypes.int32)
 
     with ops.device('cpu'):
-      pa = array_ops.placeholder(np.float32, [1, 2, 3, 4, 5, 6])
+      pa = array_ops.placeholder(dtype, [1, 2, 3, 4, 5, 6])
       p_axis = array_ops.placeholder(np.int32, shape=())
 
     with ops.device("/device:IPU:0"):
@@ -162,13 +183,14 @@ class ArgMinMax(test_util.TensorFlowTestCase):
 
     for axis in range(6):
       with tu.ipu_session() as sess:
-        input = np.random.rand(1, 2, 3, 4, 5, 6)
+        input = _get_random_input(dtype, (1, 2, 3, 4, 5, 6))
 
         fd = {pa: input, p_axis: axis}
         result = sess.run(out, fd)
         self.assertAllClose(result, np.argmin(input, axis=axis))
 
-  def testArgMaxNegativeDim(self):
+  @parameterized.named_parameters(*TESTCASES)
+  def testArgMaxNegativeDim(self, dtype):
     batchsize = 4
     n_categories = 1200
 
@@ -176,7 +198,7 @@ class ArgMinMax(test_util.TensorFlowTestCase):
       return math_ops.argmax(a, axis=-1, output_type=dtypes.int32)
 
     with ops.device('cpu'):
-      pa = array_ops.placeholder(np.float32, [3, 5, 2])
+      pa = array_ops.placeholder(dtype, [3, 5, 2])
       report = gen_ipu_ops.ipu_event_trace()
 
     with ops.device("/device:IPU:0"):
@@ -187,7 +209,7 @@ class ArgMinMax(test_util.TensorFlowTestCase):
     with tu.ipu_session() as sess:
       sess.run(report)
 
-      input = np.random.rand(3, 5, 2)
+      input = _get_random_input(dtype, (3, 5, 2))
 
       fd = {pa: input}
       result = sess.run(out, fd)
@@ -196,7 +218,8 @@ class ArgMinMax(test_util.TensorFlowTestCase):
       result = sess.run(report)
       self.assertTrue(len(result) == 3)
 
-  def testArgMaxVector(self):
+  @parameterized.named_parameters(*TESTCASES)
+  def testArgMaxVector(self, dtype):
     batchsize = 4
     n_categories = 1200
 
@@ -204,7 +227,7 @@ class ArgMinMax(test_util.TensorFlowTestCase):
       return math_ops.argmax(a, axis=0, output_type=dtypes.int32)
 
     with ops.device('cpu'):
-      pa = array_ops.placeholder(np.float32, [3])
+      pa = array_ops.placeholder(dtype, [3])
       report = gen_ipu_ops.ipu_event_trace()
 
     with ops.device("/device:IPU:0"):
@@ -215,11 +238,11 @@ class ArgMinMax(test_util.TensorFlowTestCase):
     with tu.ipu_session() as sess:
       sess.run(report)
 
-      input = np.random.rand(3)
+      input = _get_random_input(dtype, (3))
 
       fd = {pa: input}
       result = sess.run(out, fd)
-      self.assertAllClose(result[0], np.argmax(input))
+      self.assertAllClose(result, np.argmax(input))
 
       result = sess.run(report)
       self.assertTrue(len(result) == 3)

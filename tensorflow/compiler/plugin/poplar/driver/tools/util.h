@@ -1,3 +1,17 @@
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_TOOLS_UTIL_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_TOOLS_UTIL_H_
 
@@ -8,17 +22,20 @@
 
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/types/optional.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 
 class Shape;
 class Literal;
 class HloSharding;
+class HloInstruction;
+class HloComputation;
+class HloModule;
 
 namespace poplarplugin {
 namespace {
@@ -108,9 +125,16 @@ bool IsInterIpuCopy(const HloInstruction*);
 const HloInstruction* GetOperandLookThroughInterIpuCopy(
     const HloInstruction* inst, const int64 operand_idx);
 
-// This function returns true if the environment variable has been set. Using
-// synthetic data means that *no data* will be copied to/from the device.
+// This function returns true if the environment variable flag
+// "use_synthetic_data" has been set. Using synthetic data means that *no data*
+// ill be copied to/from the device.
 bool UseSyntheticData();
+
+// This function returns true if the environment variable flag
+// "synthetic_data_initializer" has been set. Using this flag means that all the
+// inputs to the graph will be initialized to some constant, meaning that all
+// the tensors will be always live.
+bool UseSyntheticDataInitializer();
 
 std::string GetDebugName(const HloInstruction*);
 
@@ -118,6 +142,19 @@ void GetAllDeps(const HloInstruction* base, std::vector<HloInstruction*>& deps);
 
 void GetAllDepNames(const HloInstruction* base,
                     std::vector<std::string>& names);
+
+// Configure the backend config of the instruction to indicate this instruction
+// is used inplace.
+void MakeUsedInplace(HloInstruction* inst);
+// Check whether this instruction is configured to be used inplace.
+bool IsUsedInplace(const HloInstruction* inst);
+
+// Get all the inplace instructions in a computation.
+absl::flat_hash_set<const HloInstruction*> GetInplaceInstructions(
+    const HloComputation* comp);
+// Get all the inplace instructions in a module.
+absl::flat_hash_set<const HloInstruction*> GetInplaceInstructions(
+    const HloModule* module);
 
 }  // namespace poplarplugin
 }  // namespace xla

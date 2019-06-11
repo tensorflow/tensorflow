@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // ==============================================================================*/
-
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/custom_op_replacer.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/fuse_ops_late.h"
@@ -55,12 +54,10 @@ ENTRY c1 {
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
 
-  CompilerAnnotations annotations(module0);
-
-  InplaceFinder inplaceFinder(annotations);
+  InplaceFinder inplaceFinder;
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
-  auto inplace_instructions = annotations.inplace_instructions;
+  auto inplace_instructions = GetInplaceInstructions(module0);
 
   EXPECT_THAT(inplace_instructions.size(), 2);
   std::set<std::string> in_place_ops = {"s", "t"};
@@ -112,15 +109,13 @@ ENTRY c1 {
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
 
-  CompilerAnnotations annotations(module0);
-
-  InplaceFinder inplaceFinder(annotations);
+  InplaceFinder inplaceFinder;
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
   std::set<std::string> in_place_ops = {"p0_b",  "p1_b",   "p2_b", "u0_b",
                                         "u1_b",  "root_b", "p0_c", "t",
                                         "while", "i_b"};
-  auto inplace_instructions = annotations.inplace_instructions;
+  auto inplace_instructions = GetInplaceInstructions(module0);
 
   EXPECT_THAT(inplace_instructions.size(), 10);
   for (const auto* inst : inplace_instructions) {
@@ -155,13 +150,11 @@ ENTRY c1 {
   auto* module0 = module.ValueOrDie().get();
   auto* entry = module0->entry_computation();
 
-  CompilerAnnotations annotations(module0);
-
-  InplaceFinder inplaceFinder(annotations);
+  InplaceFinder inplaceFinder;
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
   std::set<std::string> in_place_ops = {"u0", "u1", "root", "i"};
-  auto inplace_instructions = annotations.inplace_instructions;
+  auto inplace_instructions = GetInplaceInstructions(module0);
 
   EXPECT_THAT(inplace_instructions.size(), 4);
   for (const auto* inst : inplace_instructions) {
@@ -220,14 +213,12 @@ TEST_F(HloInplaceDependencyTest, MultipleUpdateInPlacePeers) {
   auto* module0 = module.ValueOrDie().get();
   auto* entry = module0->entry_computation();
 
-  CompilerAnnotations annotations(module0);
-
-  InplaceFinder inplaceFinder(annotations);
+  InplaceFinder inplaceFinder;
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
   std::set<std::string> either_in_place_ops = {"u0", "u1"};
   std::set<std::string> in_place_ops = {"root"};
-  auto& inplace_instructions = annotations.inplace_instructions;
+  auto inplace_instructions = GetInplaceInstructions(module0);
   // Only one of the binary ops can be update in place
   EXPECT_THAT(inplace_instructions.size(), 2);
   for (const auto* inst : inplace_instructions) {
@@ -276,12 +267,10 @@ TEST_F(HloInplaceDependencyTest, MultipleInplaceWithInterdependency) {
   auto* module0 = module.ValueOrDie().get();
   auto* entry = module0->entry_computation();
 
-  CompilerAnnotations annotations(module0);
-
-  InplaceFinder inplaceFinder(annotations);
+  InplaceFinder inplaceFinder;
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
-  auto& inplace_instructions = annotations.inplace_instructions;
+  auto inplace_instructions = GetInplaceInstructions(module0);
 
   // Only one of the binary ops can be update in place
   std::set<std::string> in_place_ops = {"u1", "root"};
@@ -334,12 +323,10 @@ TEST_F(HloInplaceDependencyTest, MultipleInplaceWithRightOrder) {
   auto* module0 = module.ValueOrDie().get();
   auto* entry = module0->entry_computation();
 
-  CompilerAnnotations annotations(module0);
-
-  InplaceFinder inplaceFinder(annotations);
+  InplaceFinder inplaceFinder;
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
-  auto& inplace_instructions = annotations.inplace_instructions;
+  auto inplace_instructions = GetInplaceInstructions(module0);
 
   std::set<std::string> in_place_ops = {"u0", "u1", "root"};
   EXPECT_THAT(inplace_instructions.size(), 3);
@@ -388,11 +375,9 @@ TEST_F(HloInplaceDependencyTest, InplaceCorrectDependencies) {
   auto* module0 = module.ValueOrDie().get();
   auto* entry = module0->entry_computation();
 
-  CompilerAnnotations annotations(module0);
-
-  InplaceFinder inplaceFinder(annotations);
+  InplaceFinder inplaceFinder;
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
-  auto& inplace_instructions = annotations.inplace_instructions;
+  auto inplace_instructions = GetInplaceInstructions(module0);
 
   std::set<std::string> in_place_ops = {"u1", "root"};
   EXPECT_THAT(inplace_instructions.size(), 2);
@@ -442,12 +427,10 @@ TEST_F(HloInplaceDependencyTest, InplaceInputOuputStreamedAndResourceVariable) {
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
 
-  CompilerAnnotations annotations(module0);
-
-  InplaceFinder inplaceFinder(annotations);
+  InplaceFinder inplaceFinder;
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
-  auto& inplace_instructions = annotations.inplace_instructions;
+  auto inplace_instructions = GetInplaceInstructions(module0);
 
   EXPECT_THAT(inplace_instructions.size(), 3);
   std::set<std::string> in_place_ops = {"u0", "u1", "root"};
@@ -472,12 +455,10 @@ TEST_F(HloInplaceDependencyTest, InplaceElementwiseBinary) {
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
 
-  CompilerAnnotations annotations(module0);
-
-  InplaceFinder inplaceFinder(annotations);
+  InplaceFinder inplaceFinder;
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
-  auto& inplace_instructions = annotations.inplace_instructions;
+  auto inplace_instructions = GetInplaceInstructions(module0);
   EXPECT_THAT(inplace_instructions.size(), 1);
 
   auto* inst = *(inplace_instructions.begin());
@@ -509,11 +490,11 @@ ENTRY c1 {
 
   FuseOpsLate fuseOpsLate(annotations);
   EXPECT_TRUE(fuseOpsLate.Run(module0).ValueOrDie());
-  InplaceFinder inplaceFinder(annotations);
+  InplaceFinder inplaceFinder;
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
   // Make sure that the only inplace instruction is a call to scaled add to.
-  auto& inplace_instructions = annotations.inplace_instructions;
+  auto inplace_instructions = GetInplaceInstructions(module0);
   EXPECT_THAT(inplace_instructions.size(), 1);
 
   EXPECT_TRUE(module0->entry_computation()->root_instruction() ==
@@ -555,12 +536,10 @@ ENTRY entry {
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
 
-  CompilerAnnotations annotations(module0);
-
-  InplaceFinder inplaceFinder(annotations);
+  InplaceFinder inplaceFinder;
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
-  auto& inplace_instructions = annotations.inplace_instructions;
+  auto inplace_instructions = GetInplaceInstructions(module0);
   EXPECT_THAT(inplace_instructions.size(), 7);
   std::set<std::string> in_place_ops = {
       "p_body.2", "root", "p_body.1", "add", "p_cond.1", "while_init", "while"};
@@ -598,10 +577,10 @@ ENTRY c1 {
   CustomOpReplacer custom_op_replacer;
   EXPECT_TRUE(custom_op_replacer.Run(module0).ValueOrDie());
 
-  InplaceFinder inplaceFinder(annotations);
+  InplaceFinder inplaceFinder;
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
-  auto inplace_instructions = annotations.inplace_instructions;
+  auto inplace_instructions = GetInplaceInstructions(module0);
 
   EXPECT_THAT(inplace_instructions.size(), 1);
   auto* inst = *(inplace_instructions.begin());
@@ -632,12 +611,10 @@ ENTRY c1 {
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
 
-  CompilerAnnotations annotations(module0);
-
-  InplaceFinder inplaceFinder(annotations);
+  InplaceFinder inplaceFinder;
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
-  auto inplace_instructions = annotations.inplace_instructions;
+  auto inplace_instructions = GetInplaceInstructions(module0);
   EXPECT_THAT(inplace_instructions.size(), 5);
   std::set<std::string> in_place_ops = {"p0_0", "p0_1", "p0_2", "a", "a2"};
   for (auto i : inplace_instructions) {
@@ -674,10 +651,10 @@ ENTRY c1 {
   CustomOpReplacer custom_op_replacer;
   EXPECT_TRUE(custom_op_replacer.Run(module0).ValueOrDie());
 
-  InplaceFinder inplaceFinder(annotations);
+  InplaceFinder inplaceFinder;
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
-  auto inplace_instructions = annotations.inplace_instructions;
+  auto inplace_instructions = GetInplaceInstructions(module0);
   EXPECT_THAT(inplace_instructions.size(), 1);
   std::set<std::string> in_place_ops = {"a"};
   for (auto i : inplace_instructions) {
@@ -701,12 +678,10 @@ ENTRY c1 {
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
 
-  CompilerAnnotations annotations(module0);
-
-  InplaceFinder inplaceFinder(annotations);
+  InplaceFinder inplaceFinder;
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
-  auto inplace_instructions = annotations.inplace_instructions;
+  auto inplace_instructions = GetInplaceInstructions(module0);
   EXPECT_THAT(inplace_instructions.size(), 1);
   std::set<std::string> in_place_ops = {"c"};
   for (auto i : inplace_instructions) {
@@ -731,12 +706,11 @@ ENTRY c1 {
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
   auto* comp = module0->entry_computation();
-  CompilerAnnotations annotations(module0);
 
-  InplaceFinder inplaceFinder(annotations);
+  InplaceFinder inplaceFinder;
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
-  auto inplace_instructions = annotations.inplace_instructions;
+  auto inplace_instructions = GetInplaceInstructions(module0);
   EXPECT_THAT(inplace_instructions.size(), 2);
   std::set<std::string> in_place_ops = {"a", "b"};
   for (auto i : inplace_instructions) {
@@ -778,11 +752,10 @@ ENTRY c1 {
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
   auto* comp = module0->entry_computation();
-  CompilerAnnotations annotations(module0);
 
-  InplaceFinder inplaceFinder(annotations);
+  InplaceFinder inplaceFinder;
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
-  auto inplace_instructions = annotations.inplace_instructions;
+  auto inplace_instructions = GetInplaceInstructions(module0);
   EXPECT_THAT(inplace_instructions.size(), 8);
   std::set<std::string> in_place_ops = {"c", "d", "e", "f", "g", "k", "l", "t"};
   for (auto i : inplace_instructions) {

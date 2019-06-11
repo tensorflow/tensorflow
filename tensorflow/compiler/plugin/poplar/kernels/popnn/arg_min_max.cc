@@ -77,7 +77,10 @@ class ArgMaxMinOp : public XlaOpKernel, IpuOpKernel {
     xla::XlaBuilder* b = ctx->builder();
 
     if (input_type(0) == DataType::DT_HALF ||
-        input_type(0) == DataType::DT_FLOAT) {
+        input_type(0) == DataType::DT_FLOAT ||
+        input_type(0) == DataType::DT_INT32 ||
+        input_type(0) == DataType::DT_UINT32 ||
+        input_type(0) == DataType::DT_BOOL) {
       // Add the axis as an attribute.
       attribute_map_.AddAttribute("axis", axis);
       // The output will be all the dims other than "axis".

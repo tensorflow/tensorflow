@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 #include "absl/container/flat_hash_map.h"
 

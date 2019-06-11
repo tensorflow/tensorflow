@@ -69,7 +69,7 @@ std::unique_ptr<CompilerResources> GetMockResources(HloModule* module,
 
 HloPassPipeline GetMockPipeline(CompilerResources& resources) {
   HloPassPipeline pipeline("mock_pipeline");
-  pipeline.AddPass<InplaceFinder>(resources.annotations);
+  pipeline.AddPass<InplaceFinder>();
   pipeline.AddPass<ShardingPass>();
   pipeline.AddPass<HloDCE>();
   pipeline.AddPass<ConvolutionClassifier>(resources.annotations);

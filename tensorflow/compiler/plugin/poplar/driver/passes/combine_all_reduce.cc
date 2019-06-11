@@ -14,8 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/passes/combine_all_reduce.h"
+#include "tensorflow/compiler/plugin/poplar/driver/backend_config.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
-#include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_util.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -119,11 +120,13 @@ StatusOr<std::vector<HloInstruction*>> Replace(HloComputation* comp, Iter begin,
 
   for (auto itr = begin; itr != end; ++itr) {
     // Add a get tuple to unpack the all-reduce result
-    result.push_back(comp->AddInstruction(HloInstruction::CreateGetTupleElement(
-        (*itr)->shape(), all_reduce, std::distance(begin, itr))));
+    auto gte = comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+        (*itr)->shape(), all_reduce, std::distance(begin, itr)));
+    MakeUsedInplace(gte);
+    result.push_back(gte);
 
     // Replace the op
-    TF_RETURN_IF_ERROR((*itr)->ReplaceAllUsesWith(result.back()));
+    TF_RETURN_IF_ERROR((*itr)->ReplaceAllUsesWith(gte));
     TF_RETURN_IF_ERROR(comp->RemoveInstruction(*itr));
   }
 
@@ -175,9 +178,6 @@ StatusOr<HloInstructionSequence> CombineAllReduce::CombineAllReduces(
                                     replacements.back()));
 
         replacements.insert(replacements.end(), ops.begin(), ops.end());
-        // Make sure that the new GTEs are added as inplace instructions.
-        absl::c_copy(ops, std::inserter(inplace_instructions,
-                                        inplace_instructions.end()));
       }
 
       // Replace the previous all reduce instruction in the schedule
@@ -209,8 +209,6 @@ StatusOr<HloInstructionSequence> CombineAllReduce::CombineAllReduces(
   return HloInstructionSequence(instructions);
 }
 
-CombineAllReduce::CombineAllReduce(CompilerAnnotations& annotations)
-    : inplace_instructions(annotations.inplace_instructions) {}
 StatusOr<bool> CombineAllReduce::Run(HloModule* module) {
   if (!module->has_schedule()) {
     return tensorflow::errors::FailedPrecondition(

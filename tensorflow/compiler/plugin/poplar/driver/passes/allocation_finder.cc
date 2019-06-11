@@ -207,6 +207,17 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
           }
           break;
         }
+        case HloOpcode::kGather: {
+          if (op_index == 0) {
+            auto t = TensorTarget(user, op_index, path);
+            auto i = tensor_allocation_map.find(src);
+            if (i != tensor_allocation_map.end()) {
+              tensor_allocation_map.erase(src);
+            }
+            tensor_allocation_map.insert(std::make_pair(src, t));
+          }
+          break;
+        }
         case HloOpcode::kCall: {
           // This also handles repeat loops which are represented as a Call
           // operation.

@@ -132,6 +132,11 @@ help for each option.
 data to the card when executing code.  This is used for testing performance
 without the overhead of data transfer.
 
+``--synthetic_data_initializer`` when used in combination with the
+``--use_synthetic_data`` flag, all the inputs to the graph will be initialized
+ directly on the IPU either randomly (synthetic_data_initializer=random) or to a
+ constant value X (synthetic_data_initializer=X)
+
 ``--force_replicated_mode`` allows graphs without ``AllReduce`` operations in
 them to be executed in replicated mode.  This might be required if replicated
 graphs are used in inference mode, or where there are no per-replica trainable

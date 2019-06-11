@@ -59,7 +59,7 @@ class SubComputationVisitor : public DeferredAllocationVisitor {
                                       poplar::Tensor& tensor);
 
   StatusOr<poplar::Tensor> PostProcessParameterAllocation(
-      const HloInstruction* inst, int64 flat_tuple_index,
+      const HloInstruction* inst, int64 flat_tuple_index, const Shape& shape,
       poplar::Tensor tensor) override;
 
   bool InputIsUsedInThisSubComputation(HloParameterInstruction* inst,

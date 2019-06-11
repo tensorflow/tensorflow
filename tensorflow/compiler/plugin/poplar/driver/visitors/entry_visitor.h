@@ -45,7 +45,7 @@ class EntryVisitor : public DeferredAllocationVisitor {
 
  protected:
   StatusOr<poplar::Tensor> PostProcessParameterAllocation(
-      const HloInstruction* inst, int64 flat_tuple_index,
+      const HloInstruction* inst, int64 flat_tuple_index, const Shape& shape,
       poplar::Tensor tensor) override;
 
  private:

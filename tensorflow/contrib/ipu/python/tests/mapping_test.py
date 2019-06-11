@@ -31,7 +31,7 @@ class MappingTest(test_util.TensorFlowTestCase):
 
     with ops.device('cpu'):
       i = array_ops.placeholder(np.int32, [256])
-      w = array_ops.placeholder(np.float32, [8192])
+      w = array_ops.placeholder(np.float32, [1024, 8])
       report = gen_ipu_ops.ipu_event_trace()
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
@@ -41,9 +41,12 @@ class MappingTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     ipu.utils.configure_ipu_system(cfg)
     with sl.Session() as sess:
+      i_h = np.arange(0, 3 * 256, 3)
+      w_h = np.arange(8192).reshape(1024, 8)
+      expect = np.take(w_h, i_h, axis=0)
 
-      result = sess.run(r, {i: np.arange(0, 3 * 256, 3), w: np.arange(8192)})
-      self.assertAllClose(result[0], np.arange(0, 3 * 256, 3))
+      result = sess.run(r, {i: i_h, w: w_h})
+      self.assertAllClose(result[0], expect)
 
       rep = sess.run(report)
 
@@ -64,7 +67,7 @@ class MappingTest(test_util.TensorFlowTestCase):
                   if len(tensor[7]) == 1 and tensor[4] == 0:
                     bad_maps += [tensor[0]]
 
-      self.assertEqual(len(bad_maps), 0)
+      self.assertEqual(bad_maps, [])
 
   def testMappingJson(self):
     def my_net(a, b, c):

@@ -251,6 +251,7 @@ cc_library(
         "driver/ops/custom_ops/poputil/replication_factor.cc",
         "driver/ops/dot_graph_caching.cc",
         "driver/ops/graph_caching_util.cc",
+        "driver/ops/gather_ops.cc",
         "driver/ops/map_ops.cc",
         "driver/ops/maths_ops.cc",
         "driver/ops/norm_graph_caching.cc",
@@ -268,6 +269,7 @@ cc_library(
         "driver/ops/scatter_ops.cc",
         "driver/tensor.cc",
         "driver/tools/conversions.cc",
+        "driver/tools/data_initializer.cc",
         "driver/tools/mapping_helper.cc",
         "driver/tools/poplar_util.cc",
         "driver/visitors/deferred_allocation_visitor.cc",
@@ -296,6 +298,7 @@ cc_library(
         "driver/poplar_transfer_manager.h",
         "driver/tensor.h",
         "driver/tools/conversions.h",
+        "driver/tools/data_initializer.h",
         "driver/tools/mapping_helper.h",
         "driver/tools/spsc_queue.h",
         "driver/vertex_templates.h",
@@ -755,6 +758,16 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "while_loop_alias_copy_test",
+    srcs = ["tests/while_loop_alias_copy_test.cc"],
+    deps = [
+        ":poplar_lib",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
     name = "commutative_instruction_reorder_operands_test",
     srcs = ["tests/commutative_instruction_reorder_operands_test.cc"],
     deps = [
@@ -994,6 +1007,19 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "data_initializer_test",
+    srcs = ["tests/data_initializer_test.cc"],
+    extra_copts = [
+        "-fexceptions",
+    ],
+    deps = [
+        ":poplar_lib",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
 py_library(
     name = "test_utils_py",
     srcs = ["tests/test_utils.py"],
@@ -1006,7 +1032,8 @@ py_library(
 
 py_test(
     name = "arg_min_max_test",
-    size = "small",
+    size = "medium",
+    shard_count = 2,
     srcs = ["tests/arg_min_max_test.py"],
     deps = [
         ":test_utils_py",
@@ -1573,6 +1600,7 @@ test_suite(
         "conv_test",
         "conversions_test",
         "convolution_classifier_test",
+        "data_initializer_test",
         "deferred_allocation_visitor_test",
         "dependency_replacer_test",
         "device_test",
@@ -1618,6 +1646,7 @@ test_suite(
         "topk_onehot_test",
         "update_op_dependencies_test",
         "variable_test",
+        "while_loop_alias_copy_test",
         "while_loop_condition_simplify_test",
         "while_loop_to_repeat_simplify_test",
         "wide_const_expansion_test",

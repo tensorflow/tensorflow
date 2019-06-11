@@ -25,10 +25,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 #include <poplar/exceptions.hpp>
 #include <poputil/exceptions.hpp>

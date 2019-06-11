@@ -173,8 +173,7 @@ bool IsInplaceReadWrite(HloInstruction* inst,
 // the current reachability graph.
 bool IsInplaceReadOnly(HloInstruction* inst,
                        HloReachabilityMap* reachability_map,
-                       InplaceWorkList& worklist,
-                       const InplaceInstructions& inplace_instructions) {
+                       InplaceWorkList& worklist) {
   // For read only instructions, not only do we need to consider whether `inst`
   // is inplace read/only, but we also need to consider the indirect source of
   // inst and all the indirect consumers of it.
@@ -288,7 +287,7 @@ bool IsInplaceReadOnly(HloInstruction* inst,
           to_visit.push(user);
         } else if (IsUsedAsInplace(user, node,
                                    HloInstructionType::kInplaceReadWrite) &&
-                   inplace_instructions.contains(user)) {
+                   IsUsedInplace(user)) {
           // If a kInplaceReadWrite user is using the current node as an inplace
           // input and the user is actually inplace, then add it to
           // inplace_read_write_users.
@@ -635,10 +634,9 @@ const std::string HloInstructionDescription::ToString() const {
   return str_stream.str();
 }
 
-bool HloInstructionDescription::IsInplace(
-    HloInstruction* inst, HloReachabilityMap* reachability_map,
-    InplaceWorkList& worklist,
-    const InplaceInstructions& inplace_instructions) {
+bool HloInstructionDescription::IsInplace(HloInstruction* inst,
+                                          HloReachabilityMap* reachability_map,
+                                          InplaceWorkList& worklist) {
   auto inst_description = HloInstructionDescription(inst);
   switch (inst_description.GetType()) {
     case HloInstructionType::kInplaceGetTupleElement: {
@@ -648,8 +646,7 @@ bool HloInstructionDescription::IsInplace(
       return IsInplaceReadWrite(inst, reachability_map);
     }
     case HloInstructionType::kInplaceReadOnly: {
-      return IsInplaceReadOnly(inst, reachability_map, worklist,
-                               inplace_instructions);
+      return IsInplaceReadOnly(inst, reachability_map, worklist);
     }
     default: { return false; }
   }
