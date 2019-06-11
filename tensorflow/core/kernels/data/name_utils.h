@@ -33,10 +33,13 @@ string OpName(const string& dataset_type);
 // Returns a human-readable debug string for this dataset in the format of
 // "FooDatasetOp(arg1, arg2, ...)::Dataset".
 //
-// e.g. DatasetDebugString("Map", {}) -> "MapDatasetOp::Dataset";
-// DatasetDebugString("Range", {"0", "10", "3"}) ->
-// "RangeDatasetOp(0, 10, 3)::Dataset".
+// e.g. DatasetDebugString("Map", "Dataset", {}) -> "MapDatasetOp::Dataset";
+// DatasetDebugString("Range", "Dataset", {"0", "10", "3"}) ->
+// "RangeDatasetOp(0, 10, 3)::Dataset";
+// DatasetDebugString("Shuffle", "FixedSeedDataset", {"10", "1", "2"}) ->
+// "ShuffleDatasetOp(10, 1, 2)::FixedSeedDataset";
 string DatasetDebugString(const string& dataset_type,
+                          const string& dataset_name,
                           std::initializer_list<StringPiece> args);
 
 // Returns a human-readable debug string for this dataset in the format of
@@ -47,7 +50,8 @@ string DatasetDebugString(const string& dataset_type,
 template <typename... Args>
 string DatasetDebugString(const string& dataset_type, const Args&... args) {
   return DatasetDebugString(
-      dataset_type, {static_cast<const strings::AlphaNum&>(args).Piece()...});
+      dataset_type, "Dataset",
+      {static_cast<const strings::AlphaNum&>(args).Piece()...});
 }
 
 // Returns a string that identifies the sequence of iterators leading up to

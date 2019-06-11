@@ -43,15 +43,21 @@ string OpName(const string& dataset_type) {
     return "RangeDataset";
   } else if (dataset_type == "Shard") {
     return "ShardDataset";
+  } else if (dataset_type == "Shuffle") {
+    return "ShuffleDataset";
+  } else if (dataset_type == "ShuffleAndRepeat") {
+    return "ShuffleAndRepeatDataset";
   }
   LOG(WARNING) << "Unknown dataset type " << dataset_type << std::endl;
   return "UnknownDataset";
 }
 
 string DatasetDebugString(const string& dataset_type,
+                          const string& dataset_name,
                           std::initializer_list<StringPiece> args) {
   if (args.size() == 0) {
-    return strings::StrCat(OpName(dataset_type), "Op", kDelimiter, "Dataset");
+    return strings::StrCat(OpName(dataset_type), "Op", kDelimiter,
+                           dataset_name);
   }
 
   string debug_str;
@@ -61,7 +67,7 @@ string DatasetDebugString(const string& dataset_type,
     strings::StrAppend(&debug_str, *iter, ", ");
     ++iter;
   }
-  strings::StrAppend(&debug_str, *iter, ")", kDelimiter, "Dataset");
+  strings::StrAppend(&debug_str, *iter, ")", kDelimiter, dataset_name);
   return debug_str;
 }
 
