@@ -11,21 +11,20 @@ convnets:
 
 <center>
 
-| convnet model       | receptive | effective | effective | FLOPs (Billion) |
-:                     : field     : stride    : padding   :                 :
-| :-----------------: | :-------: | :-------: | :-------: | :-------------: |
-| alexnet_v2          | 195       | 32        | 64        | 1.38            |
-| vgg_16              | 212       | 32        | 90        | 30.71           |
-| inception_v2        | 699       | 32        | 318       | 3.88            |
-| inception_v3        | 1311      | 32        | 618       | 5.69            |
-| inception_v4        | 2071      | 32        | 998       | 12.27           |
-| inception_resnet_v2 | 3039      | 32        | 1482      | 12.96           |
-| mobilenet_v1        | 315       | 32        | 126       | 1.14            |
-| mobilenet_v1_075    | 315       | 32        | 126       | 0.65            |
-| resnet_v1_50        | 483       | 32        | 239       | 6.97            |
-| resnet_v1_101       | 1027      | 32        | 511       | 14.40           |
-| resnet_v1_152       | 1507      | 32        | 751       | 21.82           |
-| resnet_v1_200       | 1763      | 32        | 879       | 28.82           |
+convnet&nbsp;model  | receptive&nbsp;field | effective&nbsp;stride | effective&nbsp;padding | FLOPs&nbsp;(Billion)
+:-----------------: | :------------------: | :-------------------: | :--------------------: | :------------------:
+alexnet_v2          | 195                  | 32                    | 64                     | 1.38
+vgg_16              | 212                  | 32                    | 90                     | 30.71
+inception_v2        | 699                  | 32                    | 318                    | 3.88
+inception_v3        | 1311                 | 32                    | 618                    | 5.69
+inception_v4        | 2071                 | 32                    | 998                    | 12.27
+inception_resnet_v2 | 3039                 | 32                    | 1482                   | 12.96
+mobilenet_v1        | 315                  | 32                    | 126                    | 1.14
+mobilenet_v1_075    | 315                  | 32                    | 126                    | 0.65
+resnet_v1_50        | 483                  | 32                    | 239                    | 6.97
+resnet_v1_101       | 1027                 | 32                    | 511                    | 14.40
+resnet_v1_152       | 1507                 | 32                    | 751                    | 21.82
+resnet_v1_200       | 1763                 | 32                    | 879                    | 28.82
 
 </center>
 
