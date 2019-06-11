@@ -330,6 +330,12 @@ static StatusOr<poplar::Tensor> PathTransform(
         in = in.reshape(dims);
         break;
       }
+      case HloOpcode::kConvert: {
+        TF_ASSIGN_OR_RETURN(auto poplar_type,
+                            PoplarDataType(inst->operand(0)->shape()));
+        in = graph.clone(poplar_type, in, GetDebugName(inst));
+        break;
+      }
       default: {
         // All other instructions in the path do not modify the shape
         break;
@@ -367,6 +373,11 @@ static StatusOr<poplar::Tensor> ReversePathTransform(
       case HloOpcode::kReshape: {
         std::vector<size_t> dims(PoplarShapeFromXlaShape(inst->shape()));
         in = in.reshape(dims);
+        break;
+      }
+      case HloOpcode::kConvert: {
+        TF_ASSIGN_OR_RETURN(auto poplar_type, PoplarDataType(inst->shape()));
+        in = graph.clone(poplar_type, in, GetDebugName(inst));
         break;
       }
       default: {

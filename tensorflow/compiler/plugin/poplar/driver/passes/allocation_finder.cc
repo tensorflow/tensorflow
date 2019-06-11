@@ -291,6 +291,10 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
           FindConsumers(src, user, index);
           break;
         }
+        case HloOpcode::kConvert: {
+          FindConsumers(src, user, index);
+          break;
+        }
         default: {
           auto shapes = FlattenedXlaShape(src.first->shape());
           if (ShapeUtil::Equal(shapes[src.second], user->shape())) {

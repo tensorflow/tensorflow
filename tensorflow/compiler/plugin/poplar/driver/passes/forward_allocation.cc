@@ -131,7 +131,11 @@ static bool IsPrefixPathOk(const std::vector<HloInstruction*>& path) {
                                      const unsigned) {
     // Element-wise ops are ok.
     if (IsPopOpsElementwise(inst)) {
-      return output_and_all_operands_same_type(inst);
+      if (inst->opcode() == HloOpcode::kConvert) {
+        return true;
+      } else {
+        return output_and_all_operands_same_type(inst);
+      }
     }
     switch (inst->opcode()) {
       case HloOpcode::kReshape:
@@ -156,7 +160,11 @@ static absl::optional<int64> IsSuffixPathOk(
                                      const unsigned path_size) {
     // Element-wise ops are ok.
     if (IsPopOpsElementwise(inst)) {
-      return output_and_all_operands_same_type(inst);
+      if (inst->opcode() == HloOpcode::kConvert) {
+        return true;
+      } else {
+        return output_and_all_operands_same_type(inst);
+      }
     }
     switch (inst->opcode()) {
       case HloOpcode::kGetTupleElement:
