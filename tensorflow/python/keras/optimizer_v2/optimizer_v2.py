@@ -259,9 +259,6 @@ class OptimizerV2(trackable.Trackable):
 
     self._use_locking = True
     self._init_set_name(name)
-    # in graph mode, name_scope performs uniquification, so keep scope_context.
-    with backend.name_scope(self._name) as name_scope:
-      self._scope_ctx = name_scope
     self._hyper = {}
     # dict: {variable name : {slot name : variable}}
     self._slots = {}
@@ -353,7 +350,7 @@ class OptimizerV2(trackable.Trackable):
     if callable(var_list):
       var_list = var_list()
     var_list = nest.flatten(var_list)
-    with backend.name_scope(self._scope_ctx):
+    with backend.name_scope(self._name + "/gradients"):
       grads = tape.gradient(loss_value, var_list, grad_loss)
 
       if hasattr(self, "clipnorm"):
@@ -387,7 +384,8 @@ class OptimizerV2(trackable.Trackable):
         function not implemented).
     """
     params = nest.flatten(params)
-    with backend.get_graph().as_default(), backend.name_scope(self._scope_ctx):
+    with backend.get_graph().as_default(), backend.name_scope(self._name +
+                                                              "/gradients"):
       grads = gradients.gradients(loss, params)
       for grad, param in zip(grads, params):
         if grad is None:
@@ -427,7 +425,7 @@ class OptimizerV2(trackable.Trackable):
     grads_and_vars = _filter_grads(grads_and_vars)
     var_list = [v for (_, v) in grads_and_vars]
 
-    with backend.name_scope(self._scope_ctx):
+    with backend.name_scope(self._name):
       # Create iteration if necessary.
       with ops.init_scope():
         _ = self.iterations
