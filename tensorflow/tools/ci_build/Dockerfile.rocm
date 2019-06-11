@@ -71,7 +71,10 @@ RUN apt-get update --allow-insecure-repositories && \
 #RUN ln -s /opt/rocm/hcc-1.0 /opt/rocm/hcc
 
 # Build HIP from source
-# RUN cd $HOME && git clone -b <> https://github.com/ROCm-Developer-Tools/HIP.git && cd $HOME/HIP && mkdir -p build && cd build && cmake .. && make package -j $(nproc) && dpkg -i ./hip*.deb
+# The switch to rocm2.5 introduces failures on the rocm-xla CI path,
+# Need the workaround for issue SWDEV-173477 to fix some of those failures
+RUN cd $HOME && git clone -b roc-2.5.x-with-swdev-173477-workaround https://github.com/deven-amd/HIP.git
+RUN cd $HOME/HIP && mkdir -p build && cd build && cmake .. && make package -j $(nproc) && dpkg -i ./hip*.deb
 
 # Roll back OpenCL toolset to ROCm2.2 base
 RUN cd $HOME && wget http://repo.radeon.com/rocm/apt/2.2/pool/main/r/rocm-opencl/rocm-opencl_1.2.0-2019030702_amd64.deb && \
