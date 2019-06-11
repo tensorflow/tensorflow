@@ -780,6 +780,8 @@ class ConstantAttr<Attr attribute, string val> : AttrConstraint<
 }
 
 class ConstF32Attr<string val> : ConstantAttr<F32Attr, val>;
+def ConstBoolAttrFalse : ConstantAttr<BoolAttr, "false">;
+def ConstBoolAttrTrue : ConstantAttr<BoolAttr, "true">;
 
 //===----------------------------------------------------------------------===//
 // Common attribute constraints
