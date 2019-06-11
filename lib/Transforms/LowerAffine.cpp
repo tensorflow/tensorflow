@@ -23,13 +23,16 @@
 #include "mlir/Transforms/LowerAffine.h"
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/IR/AffineExprVisitor.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/Functional.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
+
 using namespace mlir;
 
 namespace {
@@ -241,12 +244,6 @@ Optional<SmallVector<Value *, 8>> static expandAffineMap(
   return None;
 }
 
-namespace {
-struct LowerAffinePass : public FunctionPass<LowerAffinePass> {
-  void runOnFunction() override;
-};
-} // end anonymous namespace
-
 // Given a range of values, emit the code that reduces them with "min" or "max"
 // depending on the provided comparison predicate.  The predicate defines which
 // comparison to perform, "lt" for "min", "gt" for "max" and is used for the
@@ -273,18 +270,40 @@ static Value *buildMinMaxReductionSeq(Location loc, CmpIPredicate predicate,
   return value;
 }
 
-// Convert a "affine.for" loop to a flow of blocks.  Return `false` on success.
+namespace {
+// Affine terminators are removed.
+class AffineTerminatorLowering : public ConversionPattern {
+public:
+  AffineTerminatorLowering(MLIRContext *ctx)
+      : ConversionPattern(AffineTerminatorOp::getOperationName(), 1, ctx) {}
+
+  virtual PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  PatternRewriter &rewriter) const override {
+    rewriter.replaceOp(op, {});
+    return matchSuccess();
+  }
+};
+
+// Create a CFG subgraph for the loop around its body blocks (if the body
+// contained other loops, they have been already lowered to a flow of blocks).
+// Maintain the invariants that a CFG subgraph created for any loop has a single
+// entry and a single exit, and that the entry/exit blocks are respectively
+// first/last blocks in the parent region.  The original loop operation is
+// replaced by the initialization operations that set up the initial value of
+// the loop induction variable (%iv) and computes the loop bounds that are loop-
+// invariant for affine loops.  The operations following the original affine.for
+// are split out into a separate continuation (exit) block. A condition block is
+// created before the continuation block. It checks the exit condition of the
+// loop and branches either to the continuation block, or to the first block of
+// the body. Induction variable modification is appended to the last block of
+// the body (which is the exit block from the body subgraph thanks to the
+// invariant we maintain) along with a branch that loops back to the condition
+// block.
 //
-// Create an SESE region for the loop (including its body) and append it to the
-// end of the current region.  The loop region consists of the initialization
-// block that sets up the initial value of the loop induction variable (%iv) and
-// computes the loop bounds that are loop-invariant in functions; the condition
-// block that checks the exit condition of the loop; the body SESE region; and
-// the end block that post-dominates the loop.  The end block of the loop
-// becomes the new end of the current SESE region.  The body of the loop is
-// constructed recursively after starting a new region (it may be, for example,
-// a nested loop).  Induction variable modification is appended to the body SESE
-// region that always loops back to the condition block.
+// NOTE: this relies on the DialectConversion infrastructure knowing how to undo
+// the creation of operations if the conversion fails.  In particular, lowering
+// of the affine maps may insert operations and then fail on a semi-affine map.
 //
 //      +---------------------------------+
 //      |   <code before the AffineForOp> |
@@ -303,7 +322,14 @@ static Value *buildMinMaxReductionSeq(Location loc, CmpIPredicate predicate,
 //  |          |               -------------|
 //  |          v                            |
 //  |   +--------------------------------+  |
-//  |   | body:                          |  |
+//  |   | body-first:                    |  |
+//  |   |   <body contents>              |  |
+//  |   +--------------------------------+  |
+//  |                   |                   |
+//  |                  ...                  |
+//  |                   |                   |
+//  |   +--------------------------------+  |
+//  |   | body-last:                     |  |
 //  |   |   <body contents>              |  |
 //  |   |   %new_iv =<add step to %iv>   |  |
 //  |   |   br cond(%new_iv)             |  |
@@ -316,92 +342,96 @@ static Value *buildMinMaxReductionSeq(Location loc, CmpIPredicate predicate,
 //      |   <code after the AffineForOp> |
 //      +--------------------------------+
 //
-static LogicalResult lowerAffineFor(AffineForOp forOp) {
-  auto loc = forOp.getLoc();
-  auto *forInst = forOp.getOperation();
+class AffineForLowering : public ConversionPattern {
+public:
+  AffineForLowering(MLIRContext *ctx)
+      : ConversionPattern(AffineForOp::getOperationName(), 1, ctx) {}
 
-  // Start by splitting the block containing the 'affine.for' into two parts.
-  // The part before will get the init code, the part after will be the end
-  // point.
-  auto *initBlock = forInst->getBlock();
-  auto *endBlock = initBlock->splitBlock(forInst);
+  virtual PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  PatternRewriter &rewriter) const override {
+    auto forOp = cast<AffineForOp>(op);
+    Location loc = op->getLoc();
 
-  // Create the condition block, with its argument for the loop induction
-  // variable.  We set it up below.
-  auto *conditionBlock = new Block();
-  conditionBlock->insertBefore(endBlock);
-  auto *iv = conditionBlock->addArgument(IndexType::get(forInst->getContext()));
+    // Start by splitting the block containing the 'affine.for' into two parts.
+    // The part before will get the init code, the part after will be the end
+    // point.
+    auto *initBlock = rewriter.getInsertionBlock();
+    auto initPosition = rewriter.getInsertionPoint();
+    auto *endBlock = rewriter.splitBlock(initBlock, initPosition);
 
-  // Create the body block, moving the body of the forOp over to it and dropping
-  // the affine terminator.
-  auto *bodyBlock = new Block();
-  bodyBlock->insertBefore(endBlock);
+    // Use the first block of the loop body as the condition block since it is
+    // the block that has the induction variable as its argument.  Split out
+    // all operations from the first block into a new block.  Move all body
+    // blocks from the loop body region to the region containing the loop.
+    auto *conditionBlock = &forOp.getRegion().front();
+    auto *firstBodyBlock =
+        rewriter.splitBlock(conditionBlock, conditionBlock->begin());
+    auto *lastBodyBlock = &forOp.getRegion().back();
+    rewriter.inlineRegionBefore(forOp.getRegion(), Region::iterator(endBlock));
+    auto *iv = conditionBlock->getArgument(0);
 
-  auto *oldBody = forOp.getBody();
-  bodyBlock->getOperations().splice(bodyBlock->begin(),
-                                    oldBody->getOperations(), oldBody->begin(),
-                                    std::prev(oldBody->end()));
+    // Append the induction variable stepping logic to the last body block and
+    // branch back to the condition block.  Construct an affine expression f :
+    // (x -> x+step) and apply this expression to the induction variable.
+    rewriter.setInsertionPointToEnd(lastBodyBlock);
+    auto affStep = rewriter.getAffineConstantExpr(forOp.getStep());
+    auto affDim = rewriter.getAffineDimExpr(0);
+    auto stepped = expandAffineExpr(&rewriter, loc, affDim + affStep, iv, {});
+    if (!stepped)
+      return matchFailure();
+    rewriter.create<BranchOp>(loc, conditionBlock, stepped);
 
-  // The code in the body of the forOp now uses 'iv' as its indvar.
-  forOp.getInductionVar()->replaceAllUsesWith(iv);
+    // Compute loop bounds before branching to the condition.
+    rewriter.setInsertionPointToEnd(initBlock);
+    SmallVector<Value *, 8> boundOperands(forOp.getLowerBoundOperands());
+    auto lbValues = expandAffineMap(&rewriter, loc, forOp.getLowerBoundMap(),
+                                    boundOperands);
+    if (!lbValues)
+      return matchFailure();
+    Value *lowerBound =
+        buildMinMaxReductionSeq(loc, CmpIPredicate::SGT, *lbValues, rewriter);
 
-  // Append the induction variable stepping logic and branch back to the exit
-  // condition block.  Construct an affine expression f : (x -> x+step) and
-  // apply this expression to the induction variable.
-  OpBuilder builder(bodyBlock);
-  auto affStep = builder.getAffineConstantExpr(forOp.getStep());
-  auto affDim = builder.getAffineDimExpr(0);
-  auto stepped = expandAffineExpr(&builder, loc, affDim + affStep, iv, {});
-  if (!stepped)
-    return failure();
-  // We know we applied a one-dimensional map.
-  builder.create<BranchOp>(loc, conditionBlock, stepped);
+    boundOperands.assign(forOp.getUpperBoundOperands().begin(),
+                         forOp.getUpperBoundOperands().end());
+    auto ubValues = expandAffineMap(&rewriter, loc, forOp.getUpperBoundMap(),
+                                    boundOperands);
+    if (!ubValues)
+      return matchFailure();
+    Value *upperBound =
+        buildMinMaxReductionSeq(loc, CmpIPredicate::SLT, *ubValues, rewriter);
+    rewriter.create<BranchOp>(loc, conditionBlock, lowerBound);
 
-  // Now that the body block done, fill in the code to compute the bounds of the
-  // induction variable in the init block.
-  builder.setInsertionPointToEnd(initBlock);
+    // With the body block done, we can fill in the condition block.
+    rewriter.setInsertionPointToEnd(conditionBlock);
+    auto comparison =
+        rewriter.create<CmpIOp>(loc, CmpIPredicate::SLT, iv, upperBound);
+    rewriter.create<CondBranchOp>(loc, comparison, firstBodyBlock,
+                                  ArrayRef<Value *>(), endBlock,
+                                  ArrayRef<Value *>());
+    // Ok, we're done!
+    rewriter.replaceOp(op, {});
+    return matchSuccess();
+  }
+};
 
-  // Compute loop bounds.
-  SmallVector<Value *, 8> operands(forOp.getLowerBoundOperands());
-  auto lbValues = expandAffineMap(&builder, forInst->getLoc(),
-                                  forOp.getLowerBoundMap(), operands);
-  if (!lbValues)
-    return failure();
-  Value *lowerBound =
-      buildMinMaxReductionSeq(loc, CmpIPredicate::SGT, *lbValues, builder);
-
-  operands.assign(forOp.getUpperBoundOperands().begin(),
-                  forOp.getUpperBoundOperands().end());
-  auto ubValues = expandAffineMap(&builder, forInst->getLoc(),
-                                  forOp.getUpperBoundMap(), operands);
-  if (!ubValues)
-    return failure();
-  Value *upperBound =
-      buildMinMaxReductionSeq(loc, CmpIPredicate::SLT, *ubValues, builder);
-  builder.create<BranchOp>(loc, conditionBlock, lowerBound);
-
-  // With the body block done, we can fill in the condition block.
-  builder.setInsertionPointToEnd(conditionBlock);
-  auto comparison =
-      builder.create<CmpIOp>(loc, CmpIPredicate::SLT, iv, upperBound);
-  builder.create<CondBranchOp>(loc, comparison, bodyBlock, ArrayRef<Value *>(),
-                               endBlock, ArrayRef<Value *>());
-
-  // Ok, we're done!
-  forOp.erase();
-  return success();
-}
-
-// Convert an "if" operation into a flow of basic blocks.
+// Create a CFG subgraph for the affine.if operation (including its "then" and
+// optional "else" operation blocks).  We maintain the invariants that the
+// subgraph has a single entry and a single exit point, and that the entry/exit
+// blocks are respectively the first/last block of the enclosing region. The
+// operations following the affine.if are split into a continuation (subgraph
+// exit) block. The condition is lowered to a chain of blocks that implement the
+// short-circuit scheme.  Condition blocks are created by splitting out an empty
+// block from the block that contains the affine.if operation.  They
+// conditionally branch to either the first block of the "then" region, or to
+// the first block of the "else" region.  If the latter is absent, they branch
+// to the continuation block instead.  The last blocks of "then" and "else"
+// regions (which are known to be exit blocks thanks to the invariant we
+// maintain).
 //
-// Create an SESE region for the if operation (including its "then" and
-// optional "else" operation blocks) and append it to the end of the current
-// region.  The conditional region consists of a sequence of condition-checking
-// blocks that implement the short-circuit scheme, followed by a "then" SESE
-// region and an "else" SESE region, and the continuation block that
-// post-dominates all blocks of the "if" operation.  The flow of blocks that
-// correspond to the "then" and "else" clauses are constructed recursively,
-// enabling easy nesting of "if" operations and if-then-else-if chains.
+// NOTE: this relies on the DialectConversion infrastructure knowing how to undo
+// the creation of operations if the conversion fails.  In particular, lowering
+// of the affine maps may insert operations and then fail on a semi-affine map.
 //
 //      +--------------------------------+
 //      | <code before the AffineIfOp>   |
@@ -451,184 +481,131 @@ static LogicalResult lowerAffineFor(AffineForOp forOp) {
 //      |   <code after the AffineIfOp>  |
 //      +--------------------------------+
 //
-static LogicalResult lowerAffineIf(AffineIfOp ifOp) {
-  auto *ifInst = ifOp.getOperation();
-  auto loc = ifInst->getLoc();
+class AffineIfLowering : public ConversionPattern {
+public:
+  AffineIfLowering(MLIRContext *ctx)
+      : ConversionPattern(AffineIfOp::getOperationName(), 1, ctx) {}
 
-  // Start by splitting the block containing the 'affine.if' into two parts. The
-  // part before will contain the condition, the part after will be the
-  // continuation point.
-  auto *condBlock = ifInst->getBlock();
-  auto *continueBlock = condBlock->splitBlock(ifInst);
+  virtual PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  PatternRewriter &rewriter) const override {
+    auto ifOp = cast<AffineIfOp>(op);
+    auto loc = op->getLoc();
 
-  // Create a block for the 'then' code, inserting it between the cond and
-  // continue blocks.  Move the operations over from the AffineIfOp and add a
-  // branch to the continuation point.
-  Block *thenBlock = new Block();
-  thenBlock->insertBefore(continueBlock);
+    // Start by splitting the block containing the 'affine.if' into two parts.
+    // The part before will contain the condition, the part after will be the
+    // continuation point.
+    auto *condBlock = rewriter.getInsertionBlock();
+    auto opPosition = rewriter.getInsertionPoint();
+    auto *continueBlock = rewriter.splitBlock(condBlock, opPosition);
 
-  // If the 'then' block is not empty, then splice the operations except for
-  // the terminator.
-  auto &oldThenBlocks = ifOp.getThenBlocks();
-  if (!oldThenBlocks.empty()) {
-    // We currently only handle one 'then' block.
-    if (std::next(oldThenBlocks.begin()) != oldThenBlocks.end())
-      return failure();
+    // Move blocks from the "then" region to the region containing 'affine.if',
+    // place it before the continuation block, and branch to it.
+    auto *thenBlock = &ifOp.getThenBlocks().front();
+    rewriter.setInsertionPointToEnd(&ifOp.getThenBlocks().back());
+    rewriter.create<BranchOp>(loc, continueBlock);
+    rewriter.inlineRegionBefore(ifOp.getThenBlocks(),
+                                Region::iterator(continueBlock));
 
-    Block *oldThen = &oldThenBlocks.front();
+    // Move blocks from the "else" region (if present) to the region containing
+    // 'affine.if', place it before the continuation block and branch to it.  It
+    // will be placed after the "then" regions.
+    auto *elseBlock = continueBlock;
+    if (!ifOp.getElseBlocks().empty()) {
+      elseBlock = &ifOp.getElseBlocks().front();
+      rewriter.setInsertionPointToEnd(&ifOp.getElseBlocks().back());
+      rewriter.create<BranchOp>(loc, continueBlock);
+      rewriter.inlineRegionBefore(ifOp.getElseBlocks(),
+                                  Region::iterator(continueBlock));
+    }
 
-    thenBlock->getOperations().splice(
-        thenBlock->begin(), oldThen->getOperations(), oldThen->begin(),
-        std::prev(oldThen->end()));
+    // Now we just have to handle the condition logic.
+    auto integerSet = ifOp.getIntegerSet();
+
+    // Implement short-circuit logic.  For each affine expression in the
+    // 'affine.if' condition, convert it into an affine map and call
+    // `affine.apply` to obtain the resulting value.  Perform the equality or
+    // the greater-than-or-equality test between this value and zero depending
+    // on the equality flag of the condition.  If the test fails, jump
+    // immediately to the false branch, which may be the else block if it is
+    // present or the continuation block otherwise. If the test succeeds, jump
+    // to the next block testing the next conjunct of the condition in the
+    // similar way.  When all conjuncts have been handled, jump to the 'then'
+    // block instead.
+    rewriter.setInsertionPointToEnd(condBlock);
+    Value *zeroConstant = rewriter.create<ConstantIndexOp>(loc, 0);
+
+    for (unsigned i = 0, e = integerSet.getNumConstraints(); i < e; ++i) {
+      AffineExpr constraintExpr = integerSet.getConstraint(i);
+      bool isEquality = integerSet.isEq(i);
+
+      // Create the fall-through block for the next condition, if present, by
+      // splitting an empty block out of an existing block.  Otherwise treat the
+      // first "then" block as the block we should branch to if the (last)
+      // condition is true.
+      auto *nextBlock = (i == e - 1)
+                            ? thenBlock
+                            : rewriter.splitBlock(condBlock, condBlock->end());
+
+      // Build and apply an affine expression
+      auto numDims = integerSet.getNumDims();
+      Value *affResult = expandAffineExpr(&rewriter, loc, constraintExpr,
+                                          operands.take_front(numDims),
+                                          operands.drop_front(numDims));
+      if (!affResult)
+        return matchFailure();
+      auto comparisonOp = rewriter.create<CmpIOp>(
+          loc, isEquality ? CmpIPredicate::EQ : CmpIPredicate::SGE, affResult,
+          zeroConstant);
+      rewriter.create<CondBranchOp>(loc, comparisonOp.getResult(), nextBlock,
+                                    /*trueArgs=*/ArrayRef<Value *>(), elseBlock,
+                                    /*falseArgs=*/ArrayRef<Value *>());
+      rewriter.setInsertionPointToEnd(nextBlock);
+      condBlock = nextBlock;
+    }
+
+    // Ok, we're done!
+    rewriter.replaceOp(op, {});
+    return matchSuccess();
   }
-
-  OpBuilder builder(thenBlock);
-  builder.create<BranchOp>(loc, continueBlock);
-
-  // Handle the 'else' block the same way, but we skip it if we have no else
-  // code.
-  Block *elseBlock = continueBlock;
-  auto &oldElseBlocks = ifOp.getElseBlocks();
-  if (!oldElseBlocks.empty()) {
-    // We currently only handle one 'else' block.
-    if (std::next(oldElseBlocks.begin()) != oldElseBlocks.end())
-      return failure();
-
-    auto *oldElse = &oldElseBlocks.front();
-    elseBlock = new Block();
-    elseBlock->insertBefore(continueBlock);
-
-    elseBlock->getOperations().splice(
-        elseBlock->begin(), oldElse->getOperations(), oldElse->begin(),
-        std::prev(oldElse->end()));
-    builder.setInsertionPointToEnd(elseBlock);
-    builder.create<BranchOp>(loc, continueBlock);
-  }
-
-  // Ok, now we just have to handle the condition logic.
-  auto integerSet = ifOp.getIntegerSet();
-
-  // Implement short-circuit logic.  For each affine expression in the
-  // 'affine.if' condition, convert it into an affine map and call
-  // `affine.apply` to obtain the resulting value.  Perform the equality or the
-  // greater-than-or-equality test between this value and zero depending on the
-  // equality flag of the condition.  If the test fails, jump immediately to the
-  // false branch, which may be the else block if it is present or the
-  // continuation block otherwise. If the test succeeds, jump to the next block
-  // testing the next conjunct of the condition in the similar way.  When all
-  // conjuncts have been handled, jump to the 'then' block instead.
-  builder.setInsertionPointToEnd(condBlock);
-  Value *zeroConstant = builder.create<ConstantIndexOp>(loc, 0);
-
-  for (auto tuple :
-       llvm::zip(integerSet.getConstraints(), integerSet.getEqFlags())) {
-    AffineExpr constraintExpr = std::get<0>(tuple);
-    bool isEquality = std::get<1>(tuple);
-
-    // Create the fall-through block for the next condition right before the
-    // 'thenBlock'.
-    auto *nextBlock = new Block();
-    nextBlock->insertBefore(thenBlock);
-
-    // Build and apply an affine expression
-    SmallVector<Value *, 8> operands(ifInst->getOperands());
-    auto operandsRef = ArrayRef<Value *>(operands);
-    auto numDims = integerSet.getNumDims();
-    Value *affResult = expandAffineExpr(&builder, loc, constraintExpr,
-                                        operandsRef.take_front(numDims),
-                                        operandsRef.drop_front(numDims));
-    if (!affResult)
-      return failure();
-
-    // Compare the result of the apply and branch.
-    auto comparisonOp = builder.create<CmpIOp>(
-        loc, isEquality ? CmpIPredicate::EQ : CmpIPredicate::SGE, affResult,
-        zeroConstant);
-    builder.create<CondBranchOp>(loc, comparisonOp.getResult(), nextBlock,
-                                 /*trueArgs*/ ArrayRef<Value *>(), elseBlock,
-                                 /*falseArgs*/ ArrayRef<Value *>());
-    builder.setInsertionPointToEnd(nextBlock);
-  }
-
-  // We will have ended up with an empty block as our continuation block (or, in
-  // the degenerate case where there were zero conditions, we have the original
-  // condition block).  Redirect that to the thenBlock.
-  condBlock = builder.getInsertionBlock();
-  if (condBlock->empty()) {
-    condBlock->replaceAllUsesWith(thenBlock);
-    condBlock->erase();
-  } else {
-    builder.create<BranchOp>(loc, thenBlock);
-  }
-
-  // Ok, we're done!
-  ifInst->erase();
-  return success();
-}
+};
 
 // Convert an "affine.apply" operation into a sequence of arithmetic
-// operations using the StandardOps dialect.  Return true on error.
-static LogicalResult lowerAffineApply(AffineApplyOp op) {
-  OpBuilder builder(op.getOperation());
-  auto maybeExpandedMap =
-      expandAffineMap(&builder, op.getLoc(), op.getAffineMap(),
-                      llvm::to_vector<8>(op.getOperands()));
-  if (!maybeExpandedMap)
-    return failure();
+// operations using the StandardOps dialect.
+class AffineApplyLowering : public ConversionPattern {
+public:
+  AffineApplyLowering(MLIRContext *ctx)
+      : ConversionPattern(AffineApplyOp::getOperationName(), 1, ctx) {}
 
-  Value *original = op.getResult();
-  Value *expanded = (*maybeExpandedMap)[0];
-  if (!expanded)
-    return failure();
-  original->replaceAllUsesWith(expanded);
-  op.erase();
-  return success();
-}
-
-// Entry point of the function convertor.
-//
-// Conversion is performed by recursively visiting operations of a Function.
-// It reasons in terms of single-entry single-exit (SESE) regions that are not
-// materialized in the code.  Instead, the pointer to the last block of the
-// region is maintained throughout the conversion as the insertion point of the
-// IR builder since we never change the first block after its creation.  "Block"
-// operations such as loops and branches create new SESE regions for their
-// bodies, and surround them with additional basic blocks for the control flow.
-// Individual operations are simply appended to the end of the last basic block
-// of the current region.  The SESE invariant allows us to easily handle nested
-// structures of arbitrary complexity.
-LogicalResult mlir::lowerAffineConstructs(Function &function) {
-  SmallVector<Operation *, 8> instsToRewrite;
-
-  // Collect all the For operations as well as AffineIfOps and AffineApplyOps.
-  // We do this as a prepass to avoid invalidating the walker with our rewrite.
-  function.walk([&](Operation *op) {
-    if (isa<AffineApplyOp>(op) || isa<AffineForOp>(op) || isa<AffineIfOp>(op))
-      instsToRewrite.push_back(op);
-  });
-
-  // Rewrite all of the ifs and fors.  We walked the operations in postorder,
-  // so we know that we will rewrite them in the reverse order.
-  for (auto *op : llvm::reverse(instsToRewrite)) {
-    if (auto ifOp = dyn_cast<AffineIfOp>(op)) {
-      if (failed(lowerAffineIf(ifOp)))
-        return failure();
-    } else if (auto forOp = dyn_cast<AffineForOp>(op)) {
-      if (failed(lowerAffineFor(forOp)))
-        return failure();
-    } else if (failed(lowerAffineApply(cast<AffineApplyOp>(op)))) {
-      return failure();
-    }
+  virtual PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  PatternRewriter &rewriter) const override {
+    auto affineApplyOp = cast<AffineApplyOp>(op);
+    auto maybeExpandedMap = expandAffineMap(
+        &rewriter, op->getLoc(), affineApplyOp.getAffineMap(), operands);
+    if (!maybeExpandedMap)
+      return matchFailure();
+    rewriter.replaceOp(op, *maybeExpandedMap);
+    return matchSuccess();
   }
+};
+} // end namespace
 
-  return success();
+LogicalResult mlir::lowerAffineConstructs(Function &function) {
+  OwningRewritePatternList patterns;
+  RewriteListBuilder<AffineApplyLowering, AffineForLowering, AffineIfLowering,
+                     AffineTerminatorLowering>::build(patterns,
+                                                      function.getContext());
+  ConversionTarget target(*function.getContext());
+  target.addLegalDialects<StandardOpsDialect>();
+  return applyConversionPatterns(function, target, std::move(patterns));
 }
 
-// Run the affine lowering as a function pass.
-void LowerAffinePass::runOnFunction() {
-  if (failed(lowerAffineConstructs(getFunction())))
-    signalPassFailure();
-}
+namespace {
+class LowerAffinePass : public FunctionPass<LowerAffinePass> {
+  void runOnFunction() override { lowerAffineConstructs(getFunction()); }
+};
+} // namespace
 
 /// Lowers If and For operations within a function into their lower level CFG
 /// equivalent blocks.

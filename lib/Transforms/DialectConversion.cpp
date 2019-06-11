@@ -98,15 +98,19 @@ constexpr StringLiteral ArgConverter::kCastName;
 /// This class contains a snapshot of the current conversion rewriter state.
 /// This is useful when saving and undoing a set of rewrites.
 struct RewriterState {
-  RewriterState(unsigned numCreatedOperations, unsigned numReplacements)
+  RewriterState(unsigned numCreatedOperations, unsigned numReplacements,
+                unsigned numBlockActions)
       : numCreatedOperations(numCreatedOperations),
-        numReplacements(numReplacements) {}
+        numReplacements(numReplacements), numBlockActions(numBlockActions) {}
 
   /// The current number of created operations.
   unsigned numCreatedOperations;
 
   /// The current number of replacements queued.
   unsigned numReplacements;
+
+  /// The current number of block actions performed.
+  unsigned numBlockActions;
 };
 
 /// This class implements a pattern rewriter for ConversionPattern
@@ -122,13 +126,45 @@ struct DialectConversionRewriter final : public PatternRewriter {
     SmallVector<Value *, 2> newValues;
   };
 
+  /// The kind of the block action performed during the rewrite.  Actions can be
+  /// undone if the conversion fails.
+  enum class BlockActionKind { Split, Move };
+
+  /// Original position of the given block in its parent region.  We cannot use
+  /// a region iterator because it could have been invalidated by other region
+  /// operations since the position was stored.
+  struct BlockPosition {
+    Region *region;
+    Region::iterator::difference_type position;
+  };
+
+  /// The storage class for an undoable block action (one of BlockActionKind),
+  /// contains the information necessary to undo this action.
+  struct BlockAction {
+    // A pointer to the block that was created by the action.
+    Block *block;
+
+    union {
+      // In use if kind == BlockActionKind::Move and contains a pointer to the
+      // region that originally contained the block as well as the position of
+      // the block in that region.
+      BlockPosition originalPosition;
+      // In use if kind == BlockActionKind::Split and contains a pointer to the
+      // block that was split into two parts.
+      Block *originalBlock;
+    };
+
+    BlockActionKind kind;
+  };
+
   DialectConversionRewriter(Region &region)
       : PatternRewriter(region), argConverter(region.getContext()) {}
   ~DialectConversionRewriter() = default;
 
   /// Return the current state of the rewriter.
   RewriterState getCurrentState() {
-    return RewriterState(createdOps.size(), replacements.size());
+    return RewriterState(createdOps.size(), replacements.size(),
+                         blockActions.size());
   }
 
   /// Reset the state of the rewriter to a previously saved point.
@@ -142,16 +178,49 @@ struct DialectConversionRewriter final : public PatternRewriter {
     // Pop all of the newly created operations.
     while (createdOps.size() != state.numCreatedOperations)
       createdOps.pop_back_val()->erase();
+
+    // Undo any block operations.
+    undoBlockActions(state.numBlockActions);
+  }
+
+  /// Undo the block actions (motions, splits) one by one in reverse order until
+  /// "numActionsToKeep" actions remains.
+  void undoBlockActions(unsigned numActionsToKeep = 0) {
+    for (auto &action :
+         llvm::reverse(llvm::drop_begin(blockActions, numActionsToKeep))) {
+      switch (action.kind) {
+      // Merge back the block that was split out.
+      case BlockActionKind::Split: {
+        action.originalBlock->getOperations().splice(
+            action.originalBlock->end(), action.block->getOperations());
+        action.block->erase();
+        break;
+      }
+      // Move the block back to its original position.
+      case BlockActionKind::Move: {
+        Region *originalRegion = action.originalPosition.region;
+        originalRegion->getBlocks().splice(
+            std::next(originalRegion->begin(),
+                      action.originalPosition.position),
+            action.block->getParent()->getBlocks(), action.block);
+        break;
+      }
+      }
+    }
   }
 
   /// Cleanup and destroy any generated rewrite operations. This method is
   /// invoked when the conversion process fails.
   void discardRewrites() {
     argConverter.discardRewrites();
+
+    // Remove any newly created ops.
     for (auto *op : createdOps) {
       op->dropAllDefinedValueUses();
       op->erase();
     }
+
+    undoBlockActions();
   }
 
   /// Apply all requested operation rewrites. This method is invoked when the
@@ -182,6 +251,31 @@ struct DialectConversionRewriter final : public PatternRewriter {
 
     // Record the requested operation replacement.
     replacements.emplace_back(op, newValues);
+  }
+
+  /// PatternRewriter hook for splitting a block into two parts.
+  Block *splitBlock(Block *block, Block::iterator before) override {
+    auto *continuation = PatternRewriter::splitBlock(block, before);
+    BlockAction action;
+    action.kind = BlockActionKind::Split;
+    action.block = continuation;
+    action.originalBlock = block;
+    blockActions.push_back(action);
+    return continuation;
+  }
+
+  /// PatternRewriter hook for moving blocks out of a region.
+  void inlineRegionBefore(Region &region, Region::iterator before) override {
+    for (auto &pair : llvm::enumerate(region)) {
+      Block &block = pair.value();
+      unsigned position = pair.index();
+      BlockAction action;
+      action.kind = BlockActionKind::Move;
+      action.block = &block;
+      action.originalPosition = {&region, position};
+      blockActions.push_back(action);
+    }
+    PatternRewriter::inlineRegionBefore(region, before);
   }
 
   /// PatternRewriter hook for creating a new operation.
@@ -219,6 +313,9 @@ struct DialectConversionRewriter final : public PatternRewriter {
 
   /// Ordered vector of any requested operation replacements.
   SmallVector<OpReplacement, 4> replacements;
+
+  /// Ordered list of block operations (creations, splits, motions).
+  SmallVector<BlockAction, 4> blockActions;
 };
 } // end anonymous namespace
 
@@ -506,20 +603,35 @@ FunctionConverter::convertBlock(DialectConversionRewriter &rewriter,
   // First, add the current block to the list of visited blocks.
   visitedBlocks.insert(block);
 
+  if (block->empty())
+    return success();
+
   // Preserve the successors before rewriting the operations.
   SmallVector<Block *, 4> successors(block->getSuccessors());
 
-  // Iterate over ops and convert them.
-  for (Operation &op : llvm::make_early_inc_range(*block)) {
+  // Iterate over ops and convert them.  Since the conversion may split the
+  // block, we eagerly take the pointer to the next operation in it.  Splitting
+  // moves the operations from one block to another, so this will keep
+  // considering the original list of operations independently of the block
+  // within which they are currently located.  This relies on iplist node API
+  // to get the next node in the list witout knowing which list it is, iterators
+  // are unsuitable because block splitting invalidates all iterators following
+  // the current one. Any operation inserted by the conversion, independently of
+  // its parent block, will be recursively legalized independently of this
+  // function.
+  Operation *current = &block->front();
+  Operation *next = nullptr;
+  do {
+    next = current->getNextNode();
     // Traverse any held regions.
-    for (auto &region : op.getRegions())
+    for (auto &region : current->getRegions())
       if (!region.empty() &&
-          failed(convertRegion(rewriter, region, op.getLoc())))
+          failed(convertRegion(rewriter, region, current->getLoc())))
         return failure();
 
     // Legalize the current operation.
-    (void)opLegalizer.legalize(&op, rewriter);
-  }
+    (void)opLegalizer.legalize(current, rewriter);
+  } while ((current = next));
 
   // Recurse to children that haven't been visited.
   for (Block *succ : successors) {
@@ -546,6 +658,11 @@ FunctionConverter::convertRegion(DialectConversionRewriter &rewriter,
           return failure();
   }
 
+  // Store the number of blocks before conversion (new blocks may be added due
+  // to splits or moves, but the operations in them will be processed
+  // elsewhere).
+  unsigned numBlocks = std::distance(region.begin(), region.end());
+
   // Start a DFS-order traversal of the CFG to make sure defs are converted
   // before uses in dominated blocks.
   llvm::DenseSet<Block *> visitedBlocks;
@@ -554,7 +671,7 @@ FunctionConverter::convertRegion(DialectConversionRewriter &rewriter,
 
   // If some blocks are not reachable through successor chains, they should have
   // been removed by the DCE before this.
-  if (visitedBlocks.size() != std::distance(region.begin(), region.end()))
+  if (visitedBlocks.size() != numBlocks)
     return rewriter.getContext()->emitError(loc)
            << "unreachable blocks were not converted";
   return success();

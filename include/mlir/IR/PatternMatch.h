@@ -302,6 +302,12 @@ public:
     return OpTy();
   }
 
+  /// Move the blocks that belong to "region" before the given position in
+  /// another region.  The two regions must be different.  The caller is in
+  /// charge to update create the operation transferring the control flow to the
+  /// region and pass it the correct block arguments.
+  virtual void inlineRegionBefore(Region &region, Region::iterator before);
+
   /// This method performs the final replacement for a pattern, where the
   /// results of the operation are updated to use the specified list of SSA
   /// values.  In addition to replacing and removing the specified operation,
@@ -328,6 +334,12 @@ public:
     auto newOp = create<OpTy>(op->getLoc(), std::forward<Args>(args)...);
     replaceOpWithResultsOfAnotherOp(op, newOp.getOperation(),
                                     valuesToRemoveIfDead);
+  }
+
+  /// Split the operations starting at "before" (inclusive) out of the given
+  /// block into a new block, and return it.
+  virtual Block *splitBlock(Block *block, Block::iterator before) {
+    return block->splitBlock(before);
   }
 
   /// This method is used as the final notification hook for patterns that end

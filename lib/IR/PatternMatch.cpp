@@ -115,6 +115,15 @@ void PatternRewriter::replaceOpWithResultsOfAnotherOp(
   return replaceOp(op, newResults, valuesToRemoveIfDead);
 }
 
+/// Move the blocks that belong to "region" before the given position in
+/// another region.  The two regions must be different.  The caller is in
+/// charge to update create the operation transferring the control flow to the
+/// region and pass it the correct block arguments.
+void PatternRewriter::inlineRegionBefore(Region &region,
+                                         Region::iterator before) {
+  before->getParent()->getBlocks().splice(before, region.getBlocks());
+}
+
 /// This method is used as the final notification hook for patterns that end
 /// up modifying the pattern root in place, by changing its operands.  This is
 /// a minor efficiency win (it avoids creating a new operation and removing
