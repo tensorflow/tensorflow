@@ -1149,9 +1149,9 @@ class GbdtTest(test_util.TensorFlowTestCase):
       expected_leaf_1 = [-3.4480, -3.4429, 13.8490, -3.45, -3.4508]
       expected_leaf_2 = [-1.2547, -1.3145, 1.52, 2.3875, -1.3264]
       self.assertArrayNear(expected_leaf_1,
-                           output.trees[0].nodes[1].leaf.vector.value, 8e-3)
+                           output.trees[0].nodes[1].leaf.vector.value, 7e-3)
       self.assertArrayNear(expected_leaf_2,
-                           output.trees[0].nodes[2].leaf.vector.value, 8e-3)
+                           output.trees[0].nodes[2].leaf.vector.value, 7e-3)
 
   def testTrainFnMulticlassDiagonalHessian(self):
     """Tests the GBDT train for multiclass diagonal hessian."""
