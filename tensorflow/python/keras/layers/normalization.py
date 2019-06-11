@@ -413,13 +413,15 @@ class BatchNormalizationBase(Layer):
         # NOTE: below, the outer `with device` block causes the current device
         # stack to be cleared. The nested ones use a `lambda` to set the desired
         # device and ignore any devices that may be set by the custom getter.
-        def _renorm_variable(name, shape):
+        def _renorm_variable(name,
+                             shape,
+                             initializer=init_ops.zeros_initializer()):
           """Create a renorm variable."""
           var = self.add_weight(
               name=name,
               shape=shape,
               dtype=self._param_dtype,
-              initializer=init_ops.zeros_initializer(),
+              initializer=initializer,
               synchronization=tf_variables.VariableSynchronization.ON_READ,
               trainable=False,
               aggregation=tf_variables.VariableAggregation.MEAN,
@@ -428,7 +430,8 @@ class BatchNormalizationBase(Layer):
 
         with distribution_strategy_context.get_strategy(
         ).extended.colocate_vars_with(self.moving_mean):
-          self.renorm_mean = _renorm_variable('renorm_mean', param_shape)
+          self.renorm_mean = _renorm_variable('renorm_mean', param_shape,
+                                              self.moving_mean_initializer)
           self.renorm_mean_weight = _renorm_variable('renorm_mean_weight', ())
         # We initialize renorm_stddev to 0, and maintain the (0-initialized)
         # renorm_stddev_weight. This allows us to (1) mix the average
@@ -436,7 +439,8 @@ class BatchNormalizationBase(Layer):
         # the unbiased average stddev by dividing renorm_stddev by the weight.
         with distribution_strategy_context.get_strategy(
         ).extended.colocate_vars_with(self.moving_variance):
-          self.renorm_stddev = _renorm_variable('renorm_stddev', param_shape)
+          self.renorm_stddev = _renorm_variable(
+              'renorm_stddev', param_shape, self.moving_variance_initializer)
           self.renorm_stddev_weight = _renorm_variable('renorm_stddev_weight',
                                                        ())
     finally:
@@ -528,13 +532,12 @@ class BatchNormalizationBase(Layer):
     stddev = math_ops.sqrt(variance + self.epsilon)
     # Compute the average mean and standard deviation, as if they were
     # initialized with this batch's moments.
-    mixed_renorm_mean = (self.renorm_mean +
-                         (1. - self.renorm_mean_weight) * mean)
-    mixed_renorm_stddev = (self.renorm_stddev +
-                           (1. - self.renorm_stddev_weight) * stddev)
+    renorm_mean = self.renorm_mean
+    # Avoid divide by zero early on in training.
+    renorm_stddev = math_ops.maximum(self.renorm_stddev, self.epsilon)
     # Compute the corrections for batch renorm.
-    r = stddev / mixed_renorm_stddev
-    d = (mean - mixed_renorm_mean) / mixed_renorm_stddev
+    r = stddev / renorm_stddev
+    d = (mean - renorm_mean) / renorm_stddev
     # Ensure the corrections use pre-update moving averages.
     with ops.control_dependencies([r, d]):
       mean = array_ops.identity(mean)
@@ -582,16 +585,19 @@ class BatchNormalizationBase(Layer):
       return tf_utils.smart_cond(training, _do_update, _fake_update)
 
     # TODO(yuefengz): colocate the operations
-    new_mean = _update_renorm_variable(self.renorm_mean,
-                                       self.renorm_mean_weight, mean,
-                                       inputs_size)
-    new_stddev = _update_renorm_variable(self.renorm_stddev,
-                                         self.renorm_stddev_weight, stddev,
-                                         inputs_size)
-    # Make sqrt(moving_variance + epsilon) = new_stddev.
-    new_variance = math_ops.square(new_stddev) - self.epsilon
+    update_new_mean = _update_renorm_variable(self.renorm_mean,
+                                              self.renorm_mean_weight, mean,
+                                              inputs_size)
+    update_new_stddev = _update_renorm_variable(self.renorm_stddev,
+                                                self.renorm_stddev_weight,
+                                                stddev, inputs_size)
 
-    return (r, d, new_mean, new_variance)
+    # Update the inference mode moving averages with the batch value.
+    with ops.control_dependencies([update_new_mean, update_new_stddev]):
+      out_mean = array_ops.identity(mean)
+      out_variance = array_ops.identity(variance)
+
+    return (r, d, out_mean, out_variance)
 
   def _moments(self, inputs, reduction_axes, keep_dims):
     mean, variance = nn.moments(inputs, reduction_axes, keep_dims=keep_dims)
