@@ -63,6 +63,7 @@ const char* const kHeaderEntryKey = "";
 
 namespace {
 
+
 // Reads "num_elements" string elements from file[offset, offset+size) into the
 // length-N "destination".  Discards the original content of "destination".
 //
@@ -70,7 +71,7 @@ namespace {
 // bytes) and string bytes, and stores it into "actual_crc32c".
 Status ReadStringTensor(io::InputBuffer* buffered_file, size_t num_elements,
                         size_t offset, size_t size, string* destination,
-                        uint32* actual_crc32c) {
+                        uint32* actual_crc32c, bool need_to_swap_bytes) {
   if (size == 0) return Status::OK();
   CHECK_GT(size, 0);
 
@@ -83,16 +84,20 @@ Status ReadStringTensor(io::InputBuffer* buffered_file, size_t num_elements,
       // We need to do this because older checkpoints only used uint32s and we
       // should still support them.
       uint32 elem_size_uint32 = static_cast<uint32>(string_lengths[i]);
-      if (!port::kLittleEndian) {
-        // Checksum would have been computed on a little-endian value.
+      if (need_to_swap_bytes) {
+        // Checksum would have been computed on the source machine's byte order
         elem_size_uint32 = BYTE_SWAP_32(elem_size_uint32);
       }
       *actual_crc32c = crc32c::Extend(
           *actual_crc32c, reinterpret_cast<const char*>(&elem_size_uint32),
           sizeof(uint32));
     } else {
+      uint64 length = string_lengths[i];
+      if (need_to_swap_bytes) {
+        length = BYTE_SWAP_64(length);
+      }
       *actual_crc32c = crc32c::Extend(
-          *actual_crc32c, reinterpret_cast<const char*>(&string_lengths[i]),
+          *actual_crc32c, reinterpret_cast<const char*>(&length),
           sizeof(uint64));
     }
   }
@@ -102,11 +107,14 @@ Status ReadStringTensor(io::InputBuffer* buffered_file, size_t num_elements,
   }
 
   // Reads the length-checksum.
-  uint32 length_checksum = 0;
+  uint32 raw_length_checksum = 0;   // Bytes in file
+  uint32 length_checksum = 0;       // In-memory representation
   size_t unused_bytes_read = 0;
   TF_RETURN_IF_ERROR(buffered_file->ReadNBytes(
-      sizeof(uint32), reinterpret_cast<char*>(&length_checksum),
+      sizeof(uint32), reinterpret_cast<char*>(&raw_length_checksum),
       &unused_bytes_read));
+  length_checksum = need_to_swap_bytes ? BYTE_SWAP_32(raw_length_checksum) :
+    raw_length_checksum;
   if (crc32c::Unmask(length_checksum) != *actual_crc32c) {
     return errors::DataLoss(
         "The length checksum does not match: expected ",
@@ -114,7 +122,7 @@ Status ReadStringTensor(io::InputBuffer* buffered_file, size_t num_elements,
         " but actual is ", strings::Printf("%08u", *actual_crc32c));
   }
   *actual_crc32c =
-      crc32c::Extend(*actual_crc32c, reinterpret_cast<char*>(&length_checksum),
+      crc32c::Extend(*actual_crc32c, reinterpret_cast<char*>(&raw_length_checksum),
                      sizeof(uint32));
 
   // Reads the actual string bytes.
@@ -879,7 +887,7 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
     // reads for a single string tensor.
     TF_RETURN_IF_ERROR(ReadStringTensor(
         buffered_file, ret->NumElements(), entry.offset(), entry.size(),
-        GetStringBackingBuffer(*ret), &actual_crc32c));
+        GetStringBackingBuffer(*ret), &actual_crc32c, need_to_swap_bytes_));
   }
   if (crc32c::Unmask(entry.crc32c()) != actual_crc32c) {
     return errors::DataLoss(
