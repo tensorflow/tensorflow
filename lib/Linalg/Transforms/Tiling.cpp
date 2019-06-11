@@ -26,6 +26,7 @@
 #include "mlir/Linalg/IR/LinalgOps.h"
 #include "mlir/Linalg/IR/LinalgTypes.h"
 #include "mlir/Linalg/Passes.h"
+#include "mlir/Linalg/Utils/Intrinsics.h"
 #include "mlir/Linalg/Utils/Utils.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
@@ -38,8 +39,11 @@ using namespace mlir;
 using namespace mlir::edsc;
 using namespace mlir::edsc::intrinsics;
 using namespace mlir::linalg;
+using namespace mlir::linalg::intrinsics;
 
-static llvm::cl::OptionCategory clOptionsCategory("linalg options");
+#define DEBUG_TYPE "linalg-tiling"
+
+static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
 static llvm::cl::list<unsigned>
     clTileSizes("linalg-tile-sizes",
                 llvm::cl::desc("Tile sizes by which to tile linalg operations"),
@@ -92,12 +96,12 @@ makeTiledLoopRanges(OpBuilder *b, Location loc, AffineMap map,
 // and for `r` such that:
 //     `r == 1` (i.e. result `k`)
 // returns 2 (i.e. `k` on the map domain).
-static unsigned getPosInDomain(LinalgOp &op, unsigned viewIndex, unsigned dim) {
+static unsigned getPosInDomain(LinalgOp op, unsigned viewIndex, unsigned dim) {
   auto map = loopToOperandRangesMaps(op)[viewIndex];
   return map.getResult(dim).cast<AffineDimExpr>().getPosition();
 }
 
-static bool isTiledView(LinalgOp &linalgOp, unsigned viewIndex,
+static bool isTiledView(LinalgOp linalgOp, unsigned viewIndex,
                         ArrayRef<Value *> tileSizes) {
   auto viewIteratorBegin = linalgOp.getInputsAndOutputs().begin();
   Value *view = *(viewIteratorBegin + viewIndex);
@@ -130,7 +134,7 @@ static Value *foldRange(Value *view, unsigned dim) {
 }
 
 static SmallVector<Value *, 4> makeTiledViews(OpBuilder *b, Location loc,
-                                              LinalgOp &linalgOp,
+                                              LinalgOp linalgOp,
                                               ArrayRef<Value *> ivs,
                                               ArrayRef<Value *> tileSizes,
                                               OperationFolder &state) {
@@ -142,8 +146,6 @@ static SmallVector<Value *, 4> makeTiledViews(OpBuilder *b, Location loc,
   using edsc::intrinsics::select;
   using edsc::op::operator+;
   using edsc::op::operator<;
-  using dim = ValueBuilder<linalg::DimOp>;
-  using range = ValueBuilder<RangeOp>;
 
   auto *op = linalgOp.getOperation();
 
@@ -169,11 +171,11 @@ static SmallVector<Value *, 4> makeTiledViews(OpBuilder *b, Location loc,
       auto tileSize = tileSizes[pos];
       if (isZero(tileSize)) {
         auto *foldedRange = foldRange(view, r);
-        foldedRange
-            ? newRanges.push_back(foldedRange)
-            : newRanges.push_back(
-                  range(state.create<ConstantIndexOp>(*b, loc, 0), dim(view, r),
-                        state.create<ConstantIndexOp>(*b, loc, 1)));
+        foldedRange ? newRanges.push_back(foldedRange)
+                    : newRanges.push_back(
+                          range(state.create<ConstantIndexOp>(*b, loc, 0),
+                                linalg::intrinsics::dim(view, r),
+                                state.create<ConstantIndexOp>(*b, loc, 1)));
         continue;
       }
 
@@ -191,7 +193,7 @@ static SmallVector<Value *, 4> makeTiledViews(OpBuilder *b, Location loc,
       ValueHandle lb(iv);
       ValueHandle step(tileSize);
       ValueHandle steppedlb = lb + step;
-      ValueHandle viewSize = dim(view, r);
+      ValueHandle viewSize = linalg::intrinsics::dim(view, r);
       ValueHandle ub = select(viewSize < steppedlb, viewSize, steppedlb);
       // Tiling creates a new slice at the proper index, the slice step is 1
       // (i.e. the slice view does not subsample, stepping occurs in the loop).
@@ -204,8 +206,9 @@ static SmallVector<Value *, 4> makeTiledViews(OpBuilder *b, Location loc,
   return res;
 }
 
-static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<Value *> tileSizes,
-                                  OperationFolder &state) {
+llvm::Optional<TiledLinalgOp>
+mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
+                           OperationFolder &state) {
   // Enforce the convention that "tiling by zero" skips tiling a particular
   // dimension. This convention is significantly simpler to handle instead of
   // adjusting affine maps to account for missing dimensions.
@@ -223,9 +226,10 @@ static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<Value *> tileSizes,
       inversePermutation(concatAffineMaps(loopToOperandRangesMaps(op))),
       getViewSizes(op), tileSizes, state);
 
+  LinalgOp res = op;
   SmallVector<IndexHandle, 4> ivs(loopRanges.size());
   auto pivs = IndexHandle::makeIndexHandlePointers(ivs);
-  LoopNestRangeBuilder(pivs, loopRanges)([&op, &tileSizes, &ivs, &state] {
+  LoopNestRangeBuilder(pivs, loopRanges)([&op, &tileSizes, &ivs, &res, &state] {
     auto *b = ScopedContext::getBuilder();
     auto loc = ScopedContext::getLocation();
     SmallVector<Value *, 4> ivValues(ivs.begin(), ivs.end());
@@ -233,16 +237,21 @@ static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<Value *> tileSizes,
     // `makeTiledViews`.
     assert(op.getNumInputsAndOutputs() == op.getOperation()->getNumOperands());
     auto views = makeTiledViews(b, loc, op, ivValues, tileSizes, state);
-    op.create(*b, loc, views);
+    res = op.create(*b, loc, views);
   });
 
-  return success();
+  SmallVector<ForOp, 8> loops;
+  loops.reserve(ivs.size());
+  for (auto iv : ivs)
+    loops.push_back(linalg::getForInductionVarOwner(iv));
+  return TiledLinalgOp{res, loops};
 }
 
-static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<int64_t> tileSizes,
-                                  OperationFolder &state) {
+llvm::Optional<TiledLinalgOp>
+mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<int64_t> tileSizes,
+                           OperationFolder &state) {
   if (tileSizes.empty())
-    return failure();
+    return llvm::None;
 
   // The following uses the convention that "tiling by zero" skips tiling a
   // particular dimension. This convention is significantly simpler to handle
@@ -252,7 +261,7 @@ static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<int64_t> tileSizes,
   tileSizes = tileSizes.take_front(nLoops);
   // If only 0 tilings are left, then return.
   if (llvm::all_of(tileSizes, [](int64_t v) { return v == 0; }))
-    return failure();
+    return llvm::None;
 
   // Create a builder for tile size constants.
   OpBuilder builder(op);
@@ -272,19 +281,13 @@ static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<int64_t> tileSizes,
   return tileLinalgOp(op, tileSizeValues, state);
 }
 
-// TODO(ntv) expose as a primitive for other passes.
-static LogicalResult tileLinalgOp(Operation *op, ArrayRef<int64_t> tileSizes,
-                                  OperationFolder &state) {
-  if (auto linalgOp = dyn_cast<LinalgOp>(op))
-    return tileLinalgOp(linalgOp, tileSizes, state);
-  return failure();
-}
-
 static void tileLinalgOps(Function &f, ArrayRef<int64_t> tileSizes) {
   OperationFolder state(&f);
-  f.walk([tileSizes, &state](Operation *op) {
-    if (succeeded(tileLinalgOp(op, tileSizes, state)))
-      op->erase();
+  f.walk<LinalgOp>([tileSizes, &state](LinalgOp op) {
+    auto opLoopsPair = tileLinalgOp(op, tileSizes, state);
+    // If tiling occurred successfully, erase old op.
+    if (opLoopsPair)
+      op.erase();
   });
 }
 

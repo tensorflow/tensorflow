@@ -27,6 +27,7 @@
 #include "mlir/Linalg/IR/LinalgOps.h"
 #include "mlir/Linalg/IR/LinalgTypes.h"
 #include "mlir/Linalg/Passes.h"
+#include "mlir/Linalg/Utils/Intrinsics.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/STLExtras.h"
 #include "mlir/Transforms/FoldUtils.h"
@@ -35,6 +36,7 @@ using namespace mlir;
 using namespace mlir::edsc;
 using namespace mlir::edsc::intrinsics;
 using namespace mlir::linalg;
+using namespace mlir::linalg::intrinsics;
 
 mlir::edsc::LoopRangeBuilder::LoopRangeBuilder(ValueHandle *iv,
                                                ValueHandle range) {
@@ -85,11 +87,10 @@ ValueHandle LoopNestRangeBuilder::LoopNestRangeBuilder::operator()(
 
 SmallVector<Value *, 8> mlir::linalg::getViewSizes(LinalgOp &linalgOp) {
   SmallVector<Value *, 8> res;
-  using dim = ValueBuilder<linalg::DimOp>;
   for (auto v : linalgOp.getInputsAndOutputs()) {
     ViewType t = v->getType().cast<ViewType>();
     for (unsigned i = 0; i < t.getRank(); ++i)
-      res.push_back(dim(v, i));
+      res.push_back(linalg::intrinsics::dim(v, i));
   }
   return res;
 }

@@ -405,26 +405,60 @@ public:
   unsigned getNumWindowLoops() {
     return impl->getNumWindowLoops(getOperation());
   }
+  unsigned getNumInputs() { return impl->getNumInputs(getOperation()); }
+  unsigned getNumOutputs() { return impl->getNumOutputs(getOperation()); }
   unsigned getNumInputsAndOutputs() {
     return impl->getNumInputsAndOutputs(getOperation());
   }
-  Operation *create(OpBuilder &builder, Location loc,
-                    ArrayRef<Value *> operands) {
-    return impl->create(builder, loc, operands);
+  Value *getInput(unsigned i) { return impl->getInput(getOperation(), i); }
+  llvm::Optional<unsigned> getIndexOfInput(Value *view) {
+    return impl->getIndexOfInput(getOperation(), view);
+  }
+  ViewType getInputViewType(unsigned i) {
+    return impl->getInputViewType(getOperation(), i);
+  }
+  Operation::operand_range getInputs() {
+    return impl->getInputs(getOperation());
+  }
+  Value *getOutput(unsigned i) { return impl->getOutput(getOperation(), i); }
+  llvm::Optional<unsigned> getIndexOfOutput(Value *view) {
+    return impl->getIndexOfOutput(getOperation(), view);
+  }
+  ViewType getOutputViewType(unsigned i) {
+    return impl->getOutputViewType(getOperation(), i);
+  }
+  Operation::operand_range getOutputs() {
+    return impl->getOutputs(getOperation());
   }
   Operation::operand_range getInputsAndOutputs() {
-    auto range = this->getOperation()->getOperands();
-    return {range.begin(), range.begin() + getNumInputsAndOutputs()};
+    return impl->getInputsAndOutputs(getOperation());
+  }
+  LinalgOp create(OpBuilder &builder, Location loc,
+                  ArrayRef<Value *> operands) {
+    return LinalgOp(impl->create(builder, loc, operands));
   }
 
 private:
   struct Concept {
     virtual ~Concept() = default;
+    virtual unsigned getNumInputs(Operation *op) = 0;
+    virtual unsigned getNumOutputs(Operation *op) = 0;
     virtual unsigned getNumInputsAndOutputs(Operation *op) = 0;
     virtual unsigned getNumParallelLoops(Operation *op) = 0;
     virtual unsigned getNumReductionLoops(Operation *op) = 0;
     virtual unsigned getNumWindowLoops(Operation *op) = 0;
     virtual unsigned getNumLoops(Operation *op) = 0;
+    virtual Value *getInput(Operation *op, unsigned i) = 0;
+    virtual llvm::Optional<unsigned> getIndexOfInput(Operation *op,
+                                                     Value *view) = 0;
+    virtual ViewType getInputViewType(Operation *op, unsigned i) = 0;
+    virtual Operation::operand_range getInputs(Operation *op) = 0;
+    virtual Value *getOutput(Operation *op, unsigned i) = 0;
+    virtual llvm::Optional<unsigned> getIndexOfOutput(Operation *op,
+                                                      Value *view) = 0;
+    virtual ViewType getOutputViewType(Operation *op, unsigned i) = 0;
+    virtual Operation::operand_range getOutputs(Operation *op) = 0;
+    virtual Operation::operand_range getInputsAndOutputs(Operation *op) = 0;
     virtual Operation *create(OpBuilder &builder, Location loc,
                               ArrayRef<Value *> operands) = 0;
   };
@@ -443,6 +477,12 @@ private:
       static Model<ConcreteOp> singleton;
       return singleton;
     }
+    unsigned getNumInputs(Operation *op) override {
+      return cast<ConcreteOp>(op).getNumInputs();
+    }
+    unsigned getNumOutputs(Operation *op) override {
+      return cast<ConcreteOp>(op).getNumOutputs();
+    }
     unsigned getNumInputsAndOutputs(Operation *op) override {
       return cast<ConcreteOp>(op).getNumInputsAndOutputs();
     }
@@ -457,6 +497,33 @@ private:
     }
     unsigned getNumLoops(Operation *op) override {
       return cast<ConcreteOp>(op).getNumLoops();
+    }
+    Value *getInput(Operation *op, unsigned i) {
+      return cast<ConcreteOp>(op).getInput(i);
+    }
+    llvm::Optional<unsigned> getIndexOfInput(Operation *op, Value *view) {
+      return cast<ConcreteOp>(op).getIndexOfInput(view);
+    }
+    ViewType getInputViewType(Operation *op, unsigned i) {
+      return cast<ConcreteOp>(op).getInputViewType(i);
+    }
+    Operation::operand_range getInputs(Operation *op) {
+      return cast<ConcreteOp>(op).getInputs();
+    }
+    Value *getOutput(Operation *op, unsigned i) {
+      return cast<ConcreteOp>(op).getOutput(i);
+    }
+    llvm::Optional<unsigned> getIndexOfOutput(Operation *op, Value *view) {
+      return cast<ConcreteOp>(op).getIndexOfOutput(view);
+    }
+    ViewType getOutputViewType(Operation *op, unsigned i) {
+      return cast<ConcreteOp>(op).getOutputViewType(i);
+    }
+    Operation::operand_range getOutputs(Operation *op) {
+      return cast<ConcreteOp>(op).getOutputs();
+    }
+    Operation::operand_range getInputsAndOutputs(Operation *op) {
+      return cast<ConcreteOp>(op).getInputsAndOutputs();
     }
     Operation *create(OpBuilder &builder, Location loc,
                       ArrayRef<Value *> operands) override {

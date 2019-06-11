@@ -1,4 +1,4 @@
-//===- Passes.h - Linalg pass entry points ----------------------*- C++ -*-===//
+//===- Intrinsics.h - Linalg intrinsics definitions -----------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -14,30 +14,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-//
-// This header file defines prototypes that expose pass constructors.
-//
-//===----------------------------------------------------------------------===//
 
-#ifndef MLIR_LINALG_PASSES_H_
-#define MLIR_LINALG_PASSES_H_
+#ifndef MLIR_LINALG_INTRINSICS_H_
+#define MLIR_LINALG_INTRINSICS_H_
 
-#include "mlir/Support/LLVM.h"
-#include "llvm/ADT/ArrayRef.h"
+#include "mlir/EDSC/Intrinsics.h"
 
 namespace mlir {
-class FunctionPassBase;
-class ModulePassBase;
-
 namespace linalg {
-FunctionPassBase *createLinalgFusionPass(ArrayRef<int64_t> tileSizes = {});
-
-FunctionPassBase *createLinalgTilingPass(ArrayRef<int64_t> tileSizes = {});
-
-FunctionPassBase *createLowerLinalgToLoopsPass();
-
-ModulePassBase *createLowerLinalgToLLVMPass();
+class DimOp;
+class RangeOp;
+class SliceOp;
+class ViewOp;
+namespace intrinsics {
+using dim = mlir::edsc::intrinsics::ValueBuilder<linalg::DimOp>;
+using range = mlir::edsc::intrinsics::ValueBuilder<RangeOp>;
+using slice = mlir::edsc::intrinsics::ValueBuilder<SliceOp>;
+using view = mlir::edsc::intrinsics::ValueBuilder<ViewOp>;
+} // namespace intrinsics
 } // namespace linalg
 } // namespace mlir
 
-#endif // MLIR_LINALG_PASSES_H_
+#endif // MLIR_LINALG_INTRINSICS_H_

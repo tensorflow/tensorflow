@@ -19,11 +19,11 @@
 #define MLIR_LINALG_UTILS_H_
 
 #include "mlir/EDSC/Helpers.h"
+#include "mlir/Linalg/IR/LinalgOps.h"
 #include "mlir/Support/LLVM.h"
 
 namespace mlir {
 class OperationFolder;
-
 namespace edsc {
 
 /// A LoopRangeBuilder is a generic NestedBuilder for linalg.for operations.
@@ -68,7 +68,6 @@ private:
 } // namespace edsc
 
 namespace linalg {
-class LinalgOp;
 
 // Returns the linearized list of all view dimensions in a linalgOp. Applying
 // the inverse, concatenated loopToOperandRangeMaps to this list allows the
@@ -81,6 +80,17 @@ SmallVector<Value *, 4> applyMapToValues(OpBuilder *b, Location loc,
                                          AffineMap map,
                                          ArrayRef<Value *> values,
                                          OperationFolder &state);
+
+struct TiledLinalgOp {
+  LinalgOp op;
+  SmallVector<ForOp, 8> loops;
+};
+
+llvm::Optional<TiledLinalgOp>
+tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes, OperationFolder &state);
+
+llvm::Optional<TiledLinalgOp>
+tileLinalgOp(LinalgOp op, ArrayRef<int64_t> tileSizes, OperationFolder &state);
 
 } // namespace linalg
 } // namespace mlir

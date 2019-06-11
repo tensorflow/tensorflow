@@ -185,6 +185,10 @@ AffineMap inversePermutation(AffineMap map);
 /// ```
 AffineMap concatAffineMaps(llvm::ArrayRef<AffineMap> maps);
 
+inline raw_ostream &operator<<(raw_ostream &os, AffineMap map) {
+  map.print(os);
+  return os;
+}
 } // end namespace mlir
 
 namespace llvm {

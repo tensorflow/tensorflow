@@ -42,24 +42,46 @@ public:
     static unsigned getNumInputs() { return NInputs; }
     static unsigned getNumOutputs() { return NOutputs; }
     static unsigned getNumInputsAndOutputs() { return NInputs + NOutputs; }
-    Value *getInput(unsigned i) { return this->getOperand(i); }
-    Value *getOutput(unsigned i) {
-      return this->getOperand(getNumInputs() + i);
+    Value *getInput(unsigned i) { return this->getOperation()->getOperand(i); }
+    llvm::Optional<unsigned> getIndexOfInput(Value *view) {
+      auto it = llvm::find(getInputs(), view);
+      if (it != getInputs().end())
+        return it - getInputs().begin();
+      return llvm::None;
     }
     mlir::linalg::ViewType getInputViewType(unsigned i) {
-      return this->getOperand(i)
+      return this->getOperation()
+          ->getOperand(i)
           ->getType()
           .template cast<mlir::linalg::ViewType>();
+    }
+    Operation::operand_range getInputs() {
+      auto range = this->getOperation()->getOperands();
+      return {range.begin(), range.begin() + getNumInputs()};
+    }
+    Value *getOutput(unsigned i) {
+      return this->getOperation()->getOperand(getNumInputs() + i);
+    }
+    llvm::Optional<unsigned> getIndexOfOutput(Value *view) {
+      auto it = llvm::find(getOutputs(), view);
+      if (it != getOutputs().end())
+        return it - getOutputs().begin();
+      return llvm::None;
     }
     mlir::linalg::ViewType getOutputViewType(unsigned i) {
-      return this->getOperand(getNumInputs() + i)
+      return this->getOperation()
+          ->getOperand(getNumInputs() + i)
           ->getType()
           .template cast<mlir::linalg::ViewType>();
     }
-    mlir::linalg::ViewType getViewType(unsigned i) {
-      return this->getOperand(i)
-          ->getType()
-          .template cast<mlir::linalg::ViewType>();
+    Operation::operand_range getOutputs() {
+      auto range = this->getOperation()->getOperands();
+      return {range.begin() + getNumInputs(),
+              range.begin() + getNumInputsAndOutputs()};
+    }
+    Operation::operand_range getInputsAndOutputs() {
+      auto range = this->getOperation()->getOperands();
+      return {range.begin(), range.begin() + getNumInputsAndOutputs()};
     }
     static LogicalResult verifyTrait(Operation *op) {
       return OpTrait::impl::verifyAtLeastNOperands(op, NInputs + NOutputs);
