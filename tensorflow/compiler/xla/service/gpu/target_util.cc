@@ -171,27 +171,6 @@ unsigned GetSharedMemoryAddressSpace(const llvm::Module& module) {
   return 0;
 }
 
-void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
-                           llvm::IRBuilder<>* b) {
-  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
-  if (target_triple.getArch() == llvm::Triple::nvptx ||
-      target_triple.getArch() == llvm::Triple::nvptx64) {
-    // Add the declaration of this kernel to llvm.nvvm.annotations so that NVPTX
-    // treats it as a CUDA kernel.
-    llvm::LLVMContext& context = module->getContext();
-    llvm::NamedMDNode* nvvm_annotations_node =
-        module->getOrInsertNamedMetadata("nvvm.annotations");
-    nvvm_annotations_node->addOperand(llvm::MDNode::get(
-        context, {llvm::ConstantAsMetadata::get(func),
-                  llvm::MDString::get(context, "kernel"),
-                  llvm::ConstantAsMetadata::get(b->getInt32(1))}));
-
-  } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
-    func->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
-    func->addFnAttr("amdgpu-flat-work-group-size", "1, 1024");
-  }
-}
-
 llvm::CallInst* EmitCallToTargetIntrinsic(
     TargetIntrinsicID intrinsic_id, absl::Span<llvm::Value* const> operands,
     absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b) {
