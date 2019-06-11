@@ -29,6 +29,13 @@
 include "mlir/SPIRV/SPIRVBase.td"
 #endif // SPIRV_BASE
 
+#ifdef SPIRV_STRUCTURE_OPS
+#else
+// Pull in ops for defining the SPIR-V module structure
+include "mlir/SPIRV/SPIRVStructureOps.td"
+#endif // SPIRV_STRUCTURE_OPS
+
+
 def SPV_FMulOp : SPV_Op<"FMul", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Floating-point multiplication of Operand 1 and Operand 2";
 

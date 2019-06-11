@@ -151,8 +151,6 @@ namespace spirv {
 
 #define GET_OP_CLASSES
 #include "mlir/SPIRV/SPIRVOps.cpp.inc"
-#define GET_OP_CLASSES
-#include "mlir/SPIRV/SPIRVStructureOps.cpp.inc"
 
 } // namespace spirv
 } // namespace mlir

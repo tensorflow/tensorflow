@@ -29,8 +29,6 @@ namespace spirv {
 
 #define GET_OP_CLASSES
 #include "mlir/SPIRV/SPIRVOps.h.inc"
-#define GET_OP_CLASSES
-#include "mlir/SPIRV/SPIRVStructureOps.h.inc"
 
 } // end namespace spirv
 } // end namespace mlir

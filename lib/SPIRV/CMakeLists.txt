@@ -10,7 +10,6 @@ add_llvm_library(MLIRSPIRV
 
 add_dependencies(MLIRSPIRV
   MLIRSPIRVOpsIncGen
-  MLIRSPIRVStructureOpsIncGen
   MLIRSPIRVEnumsIncGen)
 
 target_link_libraries(MLIRSPIRV MLIRIR MLIRSupport)
