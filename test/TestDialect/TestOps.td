@@ -113,18 +113,25 @@ def SameOperandAndResultShapeOp : TEST_Op<"same_operand_and_result_shape",
 def ArgAndResHaveFixedElementTypesOp :
     TEST_Op<"arg_and_res_have_fixed_element_types",
       [PredOpTrait<"fixed type combination",
-         Or<[And<[ArgOrResultElementTypeIs<"x", I32>,
-                  ArgOrResultElementTypeIs<"y", F32>,
-                  ArgOrResultElementTypeIs<"res", I16>]>,
-             ArgOrResultElementTypeIs<"attr", I8>]>>]> {
-  let arguments = (ins AnyVectorOrTensor:$x, AnyVectorOrTensor:$y, AnyAttr:$attr);
+         Or<[And<[ElementTypeIsPred<"x", I32>,
+                  ElementTypeIsPred<"y", F32>]>,
+             ElementTypeIsPred<"attr", I8>]>>,
+      ElementTypeIs<"res", I16>]> {
+  let arguments = (ins
+    AnyVectorOrTensor:$x, AnyVectorOrTensor:$y, AnyAttr:$attr);
   let results = (outs AnyVectorOrTensor:$res);
 }
 
 def OperandsHaveSameElementType : TEST_Op<"operands_have_same_element_type", [
-    PredOpTrait<"first and second operand have same element type",
-                TCopVTEtIsSameAs<0, 1>>]> {
+    AllElementTypesMatch<["x", "y"]>]> {
   let arguments = (ins AnyTensor:$x, AnyTensor:$y);
+}
+
+def OperandOneAndResultHaveSameElementType : TEST_Op<
+    "operand_one_and_result_have_same_element_type",
+    [AllElementTypesMatch<["x", "res"]>]> {
+  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
+  let results = (outs AnyTensor:$res);
 }
 
 //===----------------------------------------------------------------------===//

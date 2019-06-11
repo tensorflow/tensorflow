@@ -89,16 +89,8 @@ func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
 
 // -----
 
-// CHECK-LABEL: @fixed_element_types
 func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
-  %0 = "test.arg_and_res_have_fixed_element_types"(%arg0, %arg1) {attr: splat<tensor<2xi8>, 1>}: (tensor<* x i32>, tensor<* x f32>) -> tensor<* x i32>
-  return
-}
-
-// -----
-
-func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
-  // expected-error@+1 {{fixed type combination}}
+  // expected-error@+1 {{'res' is 16-bit integer}}
   %0 = "test.arg_and_res_have_fixed_element_types"(%arg0, %arg1) {attr: ""}: (tensor<* x i32>, tensor<* x f32>) -> tensor<* x i32>
   return
 }
@@ -114,7 +106,23 @@ func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
 // -----
 
 func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
-  // expected-error@+1 {{failed to verify that first and second operand have same element type}}
+  // expected-error@+1 {{verify that all of {x, y} have same element type}}
   "test.operands_have_same_element_type"(%arg1, %arg0): (tensor<* x f32>, tensor<* x i32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: same_types
+func @same_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
+  %0 = "test.operand_one_and_result_have_same_element_type"(%arg1, %arg0) : (tensor<* x f32>, tensor<* x i32>) -> tensor<* x f32>
+  return
+}
+
+// -----
+
+func @same_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
+  // expected-error@+1 {{all of {x, res} have same element type}}
+  %0 = "test.operand_one_and_result_have_same_element_type"(%arg1, %arg0) : (tensor<* x f32>, tensor<* x i32>) -> tensor<* x i32>
   return
 }

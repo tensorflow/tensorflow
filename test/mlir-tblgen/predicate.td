@@ -27,28 +27,6 @@ def OpB : NS_Op<"op_for_And_PredOpTrait", [
 // CHECK-LABEL: OpB::verify
 // CHECK: if (!(((first)) && ((second))))
 
-def OpC : NS_Op<"op_for_TCopVTEtIs", [
-    PredOpTrait<"first operand has i32 element type",
-                TCopVTEtIs<0, I32>>]> {
-  let arguments = (ins AnyTensor:$x);
-}
-
-// CHECK-LABEL: OpC::verify
-// CHECK: if (!((((*this->getOperation()).getNumOperands() > 0)) && (((*this->getOperation()).getOperand(0)->getType().isa<ShapedType>())) && (((*this->getOperation()).getOperand(0)->getType().cast<ShapedType>().getElementType().isInteger(32)))))
-
-def OpE : NS_Op<"op_for_TCresVTEtIsSameAsOp", [
-    PredOpTrait<"first operand is a shaped type with the same "
-                "elemental type as first result",
-                TCresVTEtIsSameAsOp<0, 0>>]> {
-  let arguments = (ins AnyTensor:$x);
-  let results = (outs AnyTensor:$y);
-}
-
-// CHECK-LABEL: OpE::verify
-// CHECK: if (!((((*this->getOperation()).getNumResults() > 0)) && (((*this->getOperation()).getNumOperands() > 0)) && (((*this->getOperation()).getResult(0)->getType().isa<ShapedType>())) && (((*this->getOperation()).getOperand(0)->getType().isa<ShapedType>())) && (((*this->getOperation()).getResult(0)->getType().cast<ShapedType>().getElementType() == (*this->getOperation()).getOperand(0)->getType().cast<ShapedType>().getElementType()))))
-// CHECK-NEXT: return emitOpError("failed to verify that first operand is a shaped type with the same elemental type as first result");
-
-
 def OpF : NS_Op<"op_for_int_min_val", []> {
   let arguments = (ins Confined<I32Attr, [IntMinValue<10>]>:$attr);
 }
@@ -95,7 +73,7 @@ def OpJ: NS_Op<"op_for_TCopVTEtAreSameAt", [
 
 // CHECK-LABEL: OpJ::verify()
 // CHECK:      llvm::is_splat(mlir::functional::map(
-// CHECK-SAME:   [this](unsigned i) { return this->getOperand(i)->getType().cast<ShapedType>().getElementType(); },
+// CHECK-SAME:   [this](unsigned i) { return getElementTypeOrSelf(this->getOperand(i)); },
 // CHECK-SAME:   llvm::ArrayRef<unsigned>({0, 2, 3})))
 // CHECK:   return emitOpError("failed to verify that operands indexed at 0, 2, 3 should all have the same type");
 
