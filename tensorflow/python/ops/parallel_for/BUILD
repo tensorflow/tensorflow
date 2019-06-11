@@ -1,11 +1,11 @@
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
 package(
     default_visibility = [
         "//tensorflow:internal",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
     name = "parallel_for",

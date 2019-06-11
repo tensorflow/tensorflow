@@ -1,3 +1,49 @@
+load(
+    "//tensorflow:tensorflow.bzl",
+    "cc_header_only_library",
+    "if_android",
+    "if_cuda_or_rocm",
+    "if_not_windows",
+    "tf_cc_binary",
+    "tf_cc_shared_object",
+    "tf_cc_test",
+    "tf_cc_test_mkl",
+    "tf_cc_tests",
+    "tf_copts",
+    "tf_cuda_library",
+    "tf_kernel_library",
+    "tf_mkl_kernel_library",
+    "tf_opts_nortti_if_android",
+)
+load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
+load("//tensorflow:tensorflow.bzl", "if_nccl")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
+load(
+    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_kernel_tests_linkstatic",
+)
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "if_static",
+    "tf_cuda_tests_tags",
+)
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+    "if_mkl_ml",
+    "mkl_deps",
+)
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm",
+)
+
 # Description:
 # Op kernel implementations for TensorFlow.
 #
@@ -26,53 +72,6 @@ package_group(
         "//tensorflow_text/...",
         "//third_party/car/...",
     ],
-)
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "cc_header_only_library",
-    "if_android",
-    "if_cuda_or_rocm",
-    "if_not_windows",
-    "tf_cc_binary",
-    "tf_cc_shared_object",
-    "tf_cc_test",
-    "tf_cc_test_mkl",
-    "tf_cc_tests",
-    "tf_copts",
-    "tf_cuda_library",
-    "tf_kernel_library",
-    "tf_mkl_kernel_library",
-    "tf_opts_nortti_if_android",
-)
-load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
-load(
-    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_kernel_tests_linkstatic",
-)
-load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "if_static",
-    "tf_cuda_tests_tags",
-)
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
-    "if_mkl_ml",
-    "mkl_deps",
-)
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("//tensorflow:tensorflow.bzl", "if_nccl")
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
-    "if_rocm_is_configured",
 )
 
 config_setting(

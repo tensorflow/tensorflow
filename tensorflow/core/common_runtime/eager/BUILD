@@ -1,15 +1,15 @@
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+    "tf_cuda_library",
+)
+
 package(
     default_visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
-)
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
-    "tf_cuda_library",
 )
 
 tf_cuda_library(
