@@ -1803,8 +1803,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["fused_batch_norm_ex_op_test.cc"],
     tags = [
-        # TODO(b/134687024): Re-enable this test.
-        "notap",
+        "no_cuda_on_cpu_tap",
     ],
     deps = [
         ":cwise_op",
