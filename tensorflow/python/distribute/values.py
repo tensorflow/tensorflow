@@ -984,6 +984,13 @@ class TPUMirroredVariable(MirroredVariable):
     else:
       self._handle_id = self._common_name
 
+  def __getattr__(self, name):
+    if _enclosing_tpu_context() is None:
+      return super(TPUMirroredVariable, self).__getattr__(name)
+    else:
+      raise AttributeError(
+          "'{}' not accessible within a TPU context.".format(name))
+
   def get(self, device=None):
     if (_enclosing_tpu_context() is None) or (device is not None):
       return super(TPUMirroredVariable, self).get(device=device)
