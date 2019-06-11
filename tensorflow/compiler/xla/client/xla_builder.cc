@@ -704,7 +704,7 @@ XlaOp XlaBuilder::BroadcastInDim(
         ShapeUtil::MakeShape(operand_shape.element_type(), out_dim_size);
     for (int i = 0; i < broadcast_dimensions.size(); i++) {
       if (broadcast_dimensions[i] < 0 ||
-          broadcast_dimensions[i] > out_dim_size.size()) {
+          broadcast_dimensions[i] >= out_dim_size.size()) {
         return InvalidArgument("Broadcast dimension %lld is out of bound",
                                broadcast_dimensions[i]);
       }
