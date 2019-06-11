@@ -133,9 +133,10 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     tags = [
-        "no_mac",  # TODO(b/134929881)
         "no_rocm",
-        "no_windows",  # TODO(b/134929881)
+        # XLA is not enabled by default on Mac or Windows.
+        "no_mac",
+        "no_windows",
     ],
     xla_enable_strict_auto_jit = True,
     xla_enabled = True,
