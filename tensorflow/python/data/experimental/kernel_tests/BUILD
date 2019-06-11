@@ -497,9 +497,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/data/experimental/ops:batching",
-        "//tensorflow/python/data/experimental/ops:distribute",
-        "//tensorflow/python/data/experimental/ops:grouping",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
