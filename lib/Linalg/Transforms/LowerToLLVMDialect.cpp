@@ -561,22 +561,24 @@ public:
   }
 };
 
-// DotOp creates a new call to the `linalg_dot` function which is assumed to
-// have been declared in the current module.
-class DotOpConversion : public LLVMOpLowering {
+// LinalgOpConversion<LinalgOp> creates a new call to the
+// `LinalgOp::getLibraryCallName()` function, which is assumed to have been
+// declared in the current MLIR module.
+// The implementation of the function can be either in the same module or in an
+// externally linked library.
+template <typename LinalgOp> class LinalgOpConversion : public LLVMOpLowering {
 public:
-  explicit DotOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
-      : LLVMOpLowering(DotOp::getOperationName(), context, lowering_) {}
-
-  static StringRef libraryFunctionName() { return "linalg_dot"; }
+  explicit LinalgOpConversion(MLIRContext *context,
+                              LLVMTypeConverter &lowering_)
+      : LLVMOpLowering(LinalgOp::getOperationName(), context, lowering_) {}
 
   PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                                      PatternRewriter &rewriter) const override {
-    auto *f =
-        op->getFunction()->getModule()->getNamedFunction(libraryFunctionName());
+    auto *f = op->getFunction()->getModule()->getNamedFunction(
+        LinalgOp::getLibraryCallName());
     if (!f) {
-      op->emitError("Could not find function: " + libraryFunctionName() +
-                    "in lowering to LLVM ");
+      op->emitError("Could not find function: ")
+          << LinalgOp::getLibraryCallName() << "in lowering to LLVM ";
       return matchFailure();
     }
 
@@ -607,7 +609,8 @@ populateLinalgToLLVMConversionPatterns(LinalgTypeConverter &converter,
                                        OwningRewritePatternList &patterns,
                                        MLIRContext *ctx) {
   RewriteListBuilder<BufferAllocOpConversion, BufferDeallocOpConversion,
-                     BufferSizeOpConversion, DimOpConversion, DotOpConversion,
+                     BufferSizeOpConversion, DimOpConversion,
+                     LinalgOpConversion<DotOp>, LinalgOpConversion<MatmulOp>,
                      LoadOpConversion, RangeOpConversion,
                      RangeIntersectOpConversion, SliceOpConversion,
                      StoreOpConversion, ViewOpConversion>::build(patterns, ctx,

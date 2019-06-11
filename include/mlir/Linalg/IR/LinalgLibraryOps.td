@@ -66,23 +66,32 @@ LinalgParametricIntNativeOpTrait<"ViewRanks", ranks>
 {}
 
 // Base Tablegen class for Linalg ops.
-class LinalgLibrary_Op<string mnemonic, list<OpTrait> props> :
-Op<Linalg_Dialect, mnemonic, props> {
+class LinalgLibrary_Op<string mnemonic, list<OpTrait> props>
+  : Op<Linalg_Dialect, mnemonic, props> {
   let arguments = (ins Variadic<View>); // default variadic builder
   let parser = [{ return parseLinalgLibraryOp(parser, result); }];
   let printer = [{ printLinalgLibraryOp(p, *this); }];
+
+  let extraClassDeclaration = [{
+    static StringRef getLibraryCallName() {
+      return "linalg_}] # mnemonic # [{";
+    }
+  }];
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Concrete Linalg ops.
 ////////////////////////////////////////////////////////////////////////////////
-def DotOp : LinalgLibrary_Op<"dot", [NInputsAndOutputs<2, 1>,
+def DotOp : LinalgLibrary_Op<"dot",
+                            [NInputsAndOutputs<2, 1>,
                              NLoopTypes<0, 1, 0>,
                              ViewRanks<[1, 1, 0]>]> {}
-def MatvecOp : LinalgLibrary_Op<"matvec", [NInputsAndOutputs<2, 1>,
+def MatvecOp : LinalgLibrary_Op<"matvec",
+                                  [NInputsAndOutputs<2, 1>,
                                    NLoopTypes<1, 1, 0>,
                                    ViewRanks<[2, 1, 1]>]> {}
-def MatmulOp : LinalgLibrary_Op<"matmul", [NInputsAndOutputs<2, 1>,
+def MatmulOp : LinalgLibrary_Op<"matmul",
+                                  [NInputsAndOutputs<2, 1>,
                                    NLoopTypes<2, 1, 0>,
                                    ViewRanks<[2, 2, 2]>]> {}
 

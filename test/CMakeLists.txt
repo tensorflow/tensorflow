@@ -34,7 +34,8 @@ set(MLIR_TEST_DEPENDS
   mlir-tblgen
   mlir-test-opt
   mlir-translate
-  sdot
+  cblas
+  cblas_interface
   )
 
 if(LLVM_BUILD_EXAMPLES)
