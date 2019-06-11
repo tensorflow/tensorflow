@@ -58,6 +58,7 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
     *new std::unordered_map<string, Node::NodeClass>({
         // Keep in same order as NodeClass values
         REF_CLASS("Switch", NC_SWITCH),
+        REF_CLASS("_SwitchN", NC_SWITCH),
         REF_CLASS("Merge", NC_MERGE),
         REF_CLASS("Enter", NC_ENTER),
         REF_CLASS("Exit", NC_EXIT),
@@ -315,9 +316,15 @@ Status Node::input_tensor(int idx, OutputTensor* t) const {
 // NodeDebugInfo
 
 NodeDebugInfo::NodeDebugInfo(const Node& n) : NodeDebugInfo(n.def()) {}
-NodeDebugInfo::NodeDebugInfo(const NodeDef& ndef) : name(ndef.name()) {
-  if (ndef.has_experimental_debug_info()) {
-    const auto& names = ndef.experimental_debug_info().original_node_names();
+NodeDebugInfo::NodeDebugInfo(const NodeDef& ndef)
+    : NodeDebugInfo(ndef.name(), ndef.has_experimental_debug_info(),
+                    ndef.experimental_debug_info()) {}
+NodeDebugInfo::NodeDebugInfo(
+    StringPiece node_name, bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info)
+    : name(node_name) {
+  if (has_experimental_debug_info) {
+    const auto& names = experimental_debug_info.original_node_names();
     original_node_names.assign(names.begin(), names.end());
   }
 }

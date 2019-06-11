@@ -217,7 +217,6 @@ def _create_mirrored_variable(strategy, device_map, logical_device,  # pylint: d
   elif synchronization == variable_scope.VariableSynchronization.ON_READ:
     # Variables that are to be synced on read are replica local.
     is_sync_on_read = True
-    kwargs["trainable"] = False
   elif (synchronization == variable_scope.VariableSynchronization.ON_WRITE or
         synchronization == variable_scope.VariableSynchronization.AUTO):
     # `AUTO` synchronization for `MirroredStrategy` is `ON_WRITE`.
@@ -533,6 +532,30 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       # containing job names.
       self._inferred_cross_device_ops = cross_device_ops_lib.NcclAllReduce()
 
+  def _get_variable_creator_initial_value(self,
+                                          replica_id=0,
+                                          device=None,
+                                          primary_var=None,
+                                          **kwargs):
+    """Return the initial value for variables on a replica."""
+    if replica_id == 0:
+      return kwargs["initial_value"]
+    else:
+      assert primary_var is not None
+      assert device is not None
+      assert kwargs is not None
+
+      def initial_value_fn():
+        if context.executing_eagerly() or ops.inside_function():
+          init_value = primary_var.value()
+          return array_ops.identity(init_value)
+        else:
+          with ops.device(device):
+            init_value = primary_var.initial_value
+            return array_ops.identity(init_value)
+
+      return initial_value_fn
+
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a mirrored variable. See `DistributionStrategy.scope`."""
     colocate_with = kwargs.pop("colocate_with", None)
@@ -549,7 +572,12 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     def _real_mirrored_creator(devices, *args, **kwargs):  # pylint: disable=g-missing-docstring
       value_list = []
       for i, d in enumerate(devices):
-        with ops.init_scope(), ops.device(d):
+        with ops.device(d):
+          kwargs["initial_value"] = self._get_variable_creator_initial_value(
+              replica_id=i,
+              device=d,
+              primary_var=value_list[0] if value_list else None,
+              **kwargs)
           if i > 0:
             # Give replicas meaningful distinct names:
             var0name = value_list[0].name.split(":")[0]
@@ -557,16 +585,6 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
             # ensure that we ignore the name scope and instead use the given
             # name as the absolute name of the variable.
             kwargs["name"] = "%s/replica_%d/" % (var0name, i)
-            # Initialize replicas with the same value:
-            def initial_value_fn(device=d):
-              if context.executing_eagerly():
-                init_value = value_list[0].value()
-                return array_ops.identity(init_value)
-              else:
-                with ops.device(device):
-                  init_value = value_list[0].initial_value
-                  return array_ops.identity(init_value)
-            kwargs["initial_value"] = initial_value_fn
           with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
             # Don't record operations (e.g. other variable reads) during
             # variable creation.
@@ -585,7 +603,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def _make_dataset_iterator(self, dataset):
     return input_lib.DatasetIterator(
-        dataset, self._input_workers, self._num_replicas_in_sync)
+        dataset,
+        self._input_workers,
+        self._container_strategy(),
+        split_batch_by=self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
       self,
@@ -598,16 +619,35 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
           num_input_pipelines=num_workers,
           input_pipeline_id=i,
           num_replicas_in_sync=self._num_replicas_in_sync))
-    return input_lib.InputFunctionIterator(
-        input_fn, self._input_workers, input_contexts)
+    return input_lib.InputFunctionIterator(input_fn, self._input_workers,
+                                           input_contexts,
+                                           self._container_strategy())
 
   def _experimental_distribute_dataset(self, dataset):
-    return input_lib.get_distributed_dataset(dataset, self._input_workers,
-                                             self._num_replicas_in_sync)
+    return input_lib.get_distributed_dataset(
+        dataset,
+        self._input_workers,
+        self._container_strategy(),
+        split_batch_by=self._num_replicas_in_sync)
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
         numpy_input, self._host_input_device, session)
+
+  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+    input_contexts = []
+    num_workers = self._input_workers.num_workers
+    for i in range(num_workers):
+      input_contexts.append(distribute_lib.InputContext(
+          num_input_pipelines=num_workers,
+          input_pipeline_id=i,
+          num_replicas_in_sync=self._num_replicas_in_sync))
+
+    return input_lib.DistributedDatasetsFromFunction(
+        dataset_fn,
+        self._input_workers,
+        input_contexts,
+        self._container_strategy())
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
@@ -728,8 +768,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         reduce_op, value, destinations=destinations)
 
   def _batch_reduce_to(self, reduce_op, value_destination_pairs):
-    return self._get_cross_device_ops().batch_reduce(
-        reduce_op, value_destination_pairs)
+    return self._get_cross_device_ops().batch_reduce(reduce_op,
+                                                     value_destination_pairs)
 
   def _update(self, var, fn, args, kwargs, group):
     # TODO(josh11b): In eager mode, use one thread per device.

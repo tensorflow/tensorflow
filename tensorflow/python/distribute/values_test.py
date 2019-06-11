@@ -30,14 +30,18 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.tracking import util as trackable_utils
+from tensorflow.python.util import nest
 
 
 class DistributedValuesTest(test.TestCase):
@@ -863,47 +867,54 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
     self._restore_replica_local_sum(save_path, distribution)
 
 
-class PerReplicaTest(test.TestCase):
+class PerReplicaTest(test.TestCase, parameterized.TestCase):
 
-  def testToComponents(self):
+  def testTypeSpec(self):
     device_map = values.SingleDeviceMap("CPU")
     vals = (constant_op.constant(1.),)
     per_replica = values.PerReplica(device_map, vals)
-    logical_device = 0
-    self.assertEqual(per_replica._to_components(), vals)
-    self.assertEqual(per_replica._component_metadata(), (device_map,
-                                                         logical_device))
 
-  def testFromComponents(self):
+    spec = per_replica._type_spec
+    self.assertEqual(spec._value_specs,
+                     (tensor_spec.TensorSpec([], dtypes.float32),))
+    self.assertEqual(spec._device_map, per_replica.device_map)
+    self.assertEqual(spec._logical_device, per_replica.logical_device)
+
+  def testTypeSpecRoundTrip(self):
     device_map = values.SingleDeviceMap("CPU")
     vals = (constant_op.constant(1.),)
-    logical_device = 0
-    metadata = device_map, logical_device
-    per_replica = values.PerReplica._from_components(vals, metadata)
-    self.assertEqual(per_replica._device_map, device_map)
-    self.assertEqual(per_replica._values, vals)
+    per_replica = values.PerReplica(device_map, vals)
+
+    spec = per_replica._type_spec
+    tensor_list = spec._to_components(per_replica)
+    reconstructed = spec._from_components(tensor_list)
+
+    self.assertEqual(per_replica.device_map, reconstructed.device_map)
+    self.assertEqual(per_replica.logical_device, reconstructed.logical_device)
+    self.assertAllEqual(per_replica.values, reconstructed.values)
+
+  def testTypeSpecNest(self):
+    device_map = values.ReplicaDeviceMap(["CPU:0", "CPU:1"])
+    vals = (constant_op.constant(1.), constant_op.constant([5., 6.0]),)
+    per_replica = values.PerReplica(device_map, vals)
+
+    # Note: nest.map_structutre exercises nest.flatten and
+    # nest.pack_sequence_as.
+    result = nest.map_structure(lambda t: t + 10, per_replica,
+                                expand_composites=True)
+
+    self.assertEqual(per_replica.device_map, result.device_map)
+    self.assertEqual(per_replica.logical_device, result.logical_device)
+    self.assertLen(result.values, 2)
+    self.assertAllEqual(result.values[0], 11.)
+    self.assertAllEqual(result.values[1], [15., 16.0])
 
   @test_util.run_in_graph_and_eager_modes
   def testIsGraphTensor(self):
     per_replica = values.PerReplica(values.SingleDeviceMap("CPU"),
                                     (constant_op.constant(1.),))
-    self.assertEqual(per_replica._is_graph_tensor(),
+    self.assertEqual(per_replica._is_graph_tensor,
                      not context.executing_eagerly())
-
-  def testShapeInvariantToComponents(self):
-    v1 = constant_op.constant(1.)
-    v2 = constant_op.constant(2.)
-    per_replica = values.PerReplica(values.SingleDeviceMap("CPU"), (v1, v2))
-    self.assertEqual(per_replica._shape_invariant_to_components(),
-                     (v1.shape, v2.shape))
-
-  def testShapeInvariantToComponentsExplicitShape(self):
-    v1 = constant_op.constant([1., 1., 1.])
-    v2 = constant_op.constant([2., 2., 2.])
-    per_replica = values.PerReplica(values.SingleDeviceMap("CPU"), (v1, v2))
-    shape = [None]
-    self.assertEqual(per_replica._shape_invariant_to_components(shape=shape),
-                     (shape, shape))
 
   def testDoesNotTriggerFunctionTracing(self):
     traces = []
@@ -921,11 +932,11 @@ class PerReplicaTest(test.TestCase):
     self.assertNotEmpty(traces)
     del traces[:]
 
-    metadata = per_replica._component_metadata()
+    per_replica_spec = per_replica._type_spec
     for _ in range(5):
-      vals = per_replica._to_components()
+      vals = per_replica_spec._to_components(per_replica)
       vals = [v * 2 for v in vals]
-      per_replica = values.PerReplica._from_components(vals, metadata)
+      per_replica = per_replica_spec._from_components(vals)
 
       output = f(per_replica)
       self.assertIsInstance(output, values.PerReplica)
@@ -943,6 +954,107 @@ class PerReplicaTest(test.TestCase):
     for a, b in zip(x._to_components(), y._to_components()):
       self.assertAllEqual(a, b)
     self.assertEqual(x._component_metadata(), y._component_metadata())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCondWithTensorValues(self):
+    device_map = values.SingleDeviceMap("CPU")
+    per_replica_1 = values.PerReplica(device_map, (constant_op.constant("a"),))
+    per_replica_2 = values.PerReplica(device_map,
+                                      (constant_op.constant(["b", "c"]),))
+    condition = array_ops.placeholder_with_default(True, [])
+
+    result = control_flow_ops.cond(
+        condition, lambda: per_replica_1, lambda: per_replica_2)
+
+    self.assertEqual(per_replica_1.device_map, result.device_map)
+    self.assertEqual(per_replica_1.logical_device, result.logical_device)
+    self.assertLen(result.values, 1)
+    self.assertAllEqual(result.values[0], "a")
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCondWithValuesConvertibleToTensor(self):
+    device_map = values.SingleDeviceMap("CPU")
+    per_replica_1 = values.PerReplica(device_map, ("a",))
+    per_replica_2 = values.PerReplica(device_map, ("b",))
+    condition = array_ops.placeholder_with_default(True, [])
+
+    result = control_flow_ops.cond(
+        condition, lambda: per_replica_1, lambda: per_replica_2)
+
+    self.assertEqual(per_replica_1.device_map, result.device_map)
+    self.assertEqual(per_replica_1.logical_device, result.logical_device)
+    self.assertLen(result.values, 1)
+    self.assertAllEqual(result.values[0], "a")
+
+  @test_util.build_as_function_and_v1_graph
+  def testCondWithValuesNotConvertibleToTensor(self):
+    device_map = values.SingleDeviceMap("CPU")
+    per_replica_1 = values.PerReplica(device_map, (set(["a"]),))
+    per_replica_2 = values.PerReplica(device_map, (set(["b", "c"]),))
+    condition = array_ops.placeholder(dtypes.bool, [])
+
+    with self.assertRaisesRegex(TypeError, "Could not build a TypeSpec for"):
+      control_flow_ops.cond(
+          condition, lambda: per_replica_1, lambda: per_replica_2)
+
+
+class WorkerDeviceMapTest(test.TestCase):
+
+  class ReplicaContext(object):
+
+    def __init__(self, replica_id_in_sync_group):
+      self.replica_id_in_sync_group = replica_id_in_sync_group
+
+  def testBasic(self):
+    devices = [
+        "/job:worker/replica:0/task:0/device:CPU:0",
+        "/job:worker/replica:0/task:2/device:CPU:0"
+    ]
+    device_map = values.WorkerDeviceMap(devices, 1)
+    self.assertAllEqual(devices, device_map.all_devices)
+
+    # pylint:disable=pointless-statement
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, "`WorkerDeviceMap` is not indexed by replicas"):
+      device_map.devices_by_replica
+
+    self.assertEqual(1, device_map.num_logical_devices)
+
+    self.assertEqual(2, device_map.num_replicas_in_graph)
+
+    self.assertEqual(0, device_map.logical_device_from_values(["a", "b"]))
+
+    self.assertAllEqual(devices, device_map.logical_to_actual_devices(0))
+
+    replica_context = WorkerDeviceMapTest.ReplicaContext(1)
+    self.assertEqual(
+        "b", device_map.select_for_current_replica(["a", "b"], replica_context))
+
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, "`WorkerDeviceMap` not indexed by replicas"):
+      device_map.replica_for_device(devices[1])
+
+    self.assertEqual("b", device_map.select_for_device(["a", "b"], devices[1]))
+
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, "WorkerDeviceMap not indexed by replicas"):
+      device_map.is_device_in_replica(devices[1], 1)
+
+    self.assertEqual(
+        "WorkerDeviceMap(('/job:worker/replica:0/task:0/device:CPU:0', "
+        "'/job:worker/replica:0/task:2/device:CPU:0'), "
+        "num_replicas_per_worker=1)", repr(device_map))
+
+  def testMultipleReplicasPerWorker(self):
+    devices = [
+        "/job:worker/replica:0/task:0/device:CPU:0",
+        "/job:worker/replica:0/task:2/device:CPU:0"
+    ]
+    device_map = values.WorkerDeviceMap(devices, 2)
+
+    replica_context = WorkerDeviceMapTest.ReplicaContext(3)
+    self.assertEqual(
+        "b", device_map.select_for_current_replica(["a", "b"], replica_context))
 
 
 if __name__ == "__main__":

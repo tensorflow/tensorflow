@@ -605,6 +605,10 @@ tf_module {
     argspec: "args=[\'dims\', \'value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "fingerprint"
+    argspec: "args=[\'data\', \'method\', \'name\'], varargs=None, keywords=None, defaults=[\'farmhash64\', \'None\'], "
+  }
+  member_method {
     name: "floor"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -618,7 +622,7 @@ tf_module {
   }
   member_method {
     name: "function"
-    argspec: "args=[\'func\', \'input_signature\', \'autograph\', \'experimental_autograph_options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\'], "
+    argspec: "args=[\'func\', \'input_signature\', \'autograph\', \'experimental_autograph_options\', \'experimental_relax_shapes\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'False\'], "
   }
   member_method {
     name: "gather"
@@ -725,6 +729,10 @@ tf_module {
     argspec: "args=[\'tensor\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "make_tensor_proto"
+    argspec: "args=[\'values\', \'dtype\', \'shape\', \'verify_shape\', \'allow_broadcast\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\'], "
+  }
+  member_method {
     name: "map_fn"
     argspec: "args=[\'fn\', \'elems\', \'dtype\', \'parallel_iterations\', \'back_prop\', \'swap_memory\', \'infer_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'False\', \'True\', \'None\'], "
   }
@@ -825,6 +833,10 @@ tf_module {
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "recompute_grad"
+    argspec: "args=[\'f\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "reduce_all"
     argspec: "args=[\'input_tensor\', \'axis\', \'keepdims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
   }
@@ -878,7 +890,7 @@ tf_module {
   }
   member_method {
     name: "roll"
-    argspec: "args=[\'input\', \'shift\', \'axis\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'shift\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "round"
@@ -985,6 +997,10 @@ tf_module {
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "switch_case"
+    argspec: "args=[\'branch_index\', \'branch_fns\', \'default\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'switch_case\'], "
+  }
+  member_method {
     name: "tan"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1055,6 +1071,10 @@ tf_module {
   member_method {
     name: "variable_creator_scope"
     argspec: "args=[\'variable_creator\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "vectorized_map"
+    argspec: "args=[\'fn\', \'elems\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "where"

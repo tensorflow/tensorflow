@@ -1,12 +1,11 @@
 # Tests of TensorFlow kernels written using the Python API.
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 cuda_py_test(
     name = "linear_operator_test",
@@ -369,8 +368,6 @@ cuda_py_test(
     ],
     shard_count = 5,
     tags = [
-        "manual",  # TODO(b/131778888): Re-enable.
-        "no_oss",  # TODO(b/131778888): Re-enable.
         "noasan",  # times out, b/63678675
         "optonly",  # times out, b/79171797
     ],

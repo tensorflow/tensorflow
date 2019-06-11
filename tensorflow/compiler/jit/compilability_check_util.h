@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_COMPILABILITY_CHECK_UTIL_H_
 #define TENSORFLOW_COMPILER_JIT_COMPILABILITY_CHECK_UTIL_H_
 
+#include <string>
+
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/device_util.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -53,8 +56,23 @@ namespace tensorflow {
 // can be compiled.
 class RecursiveCompilabilityChecker {
  public:
+  // Contains information about uncompilable node inside a function body.
+  struct UncompilableNodeInfo {
+    std::string name;
+    // A list of node names that represents a stacktrace from the highest
+    // level node in increasing call depth to immediate node that fails
+    // the compilability checker.
+    std::vector<std::string> stack_trace;
+    std::string uncompilable_reason;
+  };
+  // Map of node function names to NodeInfo(s) of uncompilable node(s) within
+  // the function. If an uncompilable node is not inside a function, then the
+  // key is an empty string.
+  using CompilabilityCheckerSummary =
+      std::unordered_map<std::string, std::vector<UncompilableNodeInfo>>;
+
   // Aggregates information about what kinds of ops are allowed.
-  struct OperationFilter {
+  struct OperationFilter {  // TODO(lzr): Add AllowEverything() helper.
     // Whether resource variable ops are allowed are allowed in callees.  We do
     // not allow resource variable ops in called functions (either as direct TF
     // calls or as higher order control flow ops) because we do not yet model
@@ -97,35 +115,70 @@ class RecursiveCompilabilityChecker {
     // live-out DT_VARIANT values.
     bool allow_ops_producing_or_consuming_variant;
 
-    // Whether the "Svd" op should be auto-clustered.  The XLA implemenation of
-    // this op has some performance (b/128001705) and possibly correctness
-    // (b/127344411) issues so we avoid auto-clustering it.
-    bool allow_svd_op;
+    // Whether ops known to be slow on XLA-GPU should be considered compilable.
+    bool allow_slow_ops;
+
+    // Whether ops known to have numerical accuracy issues should be considered
+    // compilable..
+    bool allow_inaccurate_ops;
   };
 
   RecursiveCompilabilityChecker(const OperationFilter* op_filter,
                                 const DeviceType* jit_device_type)
       : op_filter_(*op_filter), jit_device_type_(*jit_device_type) {}
 
+  // Returns a summary of uncompilable nodes.
+  CompilabilityCheckerSummary FindUncompilableNodes(
+      const Node& node, FunctionLibraryRuntime* lib_runtime) {
+    std::vector<absl::string_view> stack_trace{node.name()};
+    CompilabilityCheckerSummary summary;
+    IsCompilableNode(node, lib_runtime, &stack_trace, &summary);
+    return summary;
+  }
+
+  // Returns a summary of uncompilable nodes in `call_def` that cannot be
+  // compiled by XLA. It is assumed that `call_def` is a call operation.
+  CompilabilityCheckerSummary FindUncompilableNodes(
+      const NodeDef& call_def, FunctionLibraryRuntime* lib_runtime) {
+    std::vector<absl::string_view> stack_trace{call_def.name()};
+    CompilabilityCheckerSummary summary;
+    IsCompilableCall(call_def, lib_runtime, &stack_trace, &summary);
+    return summary;
+  }
+
   // Returns true if `node` can be compiled by XLA.
   bool IsCompilableNode(const Node& node, FunctionLibraryRuntime* lib_runtime) {
-    return IsCompilableNode(node, /*depth=*/0, lib_runtime);
+    std::vector<absl::string_view> stack_trace{node.name()};
+    return IsCompilableNode(node, lib_runtime, &stack_trace);
   }
 
   // Returns true if `call_def` can be compiled by XLA.  It is assumed that
   // `call_def` is a call operation.
   bool IsCompilableCall(const NodeDef& call_def,
                         FunctionLibraryRuntime* lib_runtime) {
-    return IsCompilableCall(call_def, /*depth=*/0, lib_runtime);
+    std::vector<absl::string_view> stack_trace{call_def.name()};
+    return IsCompilableCall(call_def, lib_runtime, &stack_trace);
   }
 
+  // Returns true if XLA supports this Op, but we don't want to cluster it (ie:
+  // due to performance or correctness concerns).
+  bool OpIsInaccurate(const Node& node);
+  bool OpIsSlow(const Node& node);
+
  private:
-  bool IsCompilableNode(const Node& node, int depth,
-                        FunctionLibraryRuntime* lib_runtime);
-  bool IsCompilableCall(const NodeDef& call_def, int depth,
-                        FunctionLibraryRuntime* lib_runtime);
-  bool IsCompilableWhile(const Node& while_node, int depth,
-                         FunctionLibraryRuntime* lib_runtime);
+  bool IsCompilableNode(const Node& node, FunctionLibraryRuntime* lib_runtime,
+                        std::vector<absl::string_view>* stack_trace,
+                        CompilabilityCheckerSummary* summary = nullptr,
+                        const absl::optional<absl::string_view>
+                            containing_function_name = absl::nullopt);
+  bool IsCompilableCall(const NodeDef& call_def,
+                        FunctionLibraryRuntime* lib_runtime,
+                        std::vector<absl::string_view>* stack_trace,
+                        CompilabilityCheckerSummary* summary = nullptr);
+  bool IsCompilableWhile(const Node& while_node,
+                         FunctionLibraryRuntime* lib_runtime,
+                         std::vector<absl::string_view>* stack_trace,
+                         CompilabilityCheckerSummary* summary);
 
   bool IsStackOp(const Node& node) {
     const XlaResourceOpInfo* op_info =

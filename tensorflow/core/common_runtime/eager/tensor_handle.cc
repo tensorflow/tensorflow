@@ -83,6 +83,7 @@ Status GetResourceVariableDtypeAndShapeInternal(
         "ResourceHandle does not exist, or is not a resource variable: ",
         resource_handle.DebugString());
   }
+  core::ScopedUnref unref(resource_var);
 
   // Return the result.
   *result = std::make_pair(resource_var->tensor()->dtype(),
@@ -161,15 +162,16 @@ TensorHandle::TensorHandle(OutputGraphNode symbolic_tensor, DataType dtype)
       remote_shape_node_id_(-1),
       ctx_(nullptr),
       is_ready_(true),
-      symbolic_tensor(new OutputGraphNode(symbolic_tensor)) {}
+      symbolic_tensor_(new OutputGraphNode(symbolic_tensor)) {}
 
-bool TensorHandle::IsReady() {
+bool TensorHandle::IsReady() const {
   if (node_id_ == 0) return true;
+
   mutex_lock l(ctx_mutex_);
   return is_ready_;
 }
 
-bool TensorHandle::IsRemote() {
+bool TensorHandle::IsRemote() const {
   return remote_op_id_ >= 0 && remote_output_num_ >= 0;
 }
 
@@ -202,22 +204,6 @@ Status TensorHandle::TensorValue(tensorflow::TensorValue* t) {
   TF_RETURN_IF_ERROR(WaitReady());
   DCHECK(IsReady());
   *t = tensorflow::TensorValue(&tensor_);
-  return Status::OK();
-}
-
-Status TensorHandle::TensorAndDevice(const tensorflow::Tensor** tensor,
-                                     tensorflow::Device** device,
-                                     tensorflow::Device** op_device) {
-  if (IsRemote()) {
-    return errors::Unavailable(
-        "Unable to get a tensor for a remote device. Please copy the tensor "
-        "handle to a local device using TFE_TensorHandleCopyToDevice");
-  }
-  TF_RETURN_IF_ERROR(WaitReady());
-  DCHECK(IsReady());
-  *tensor = &tensor_;
-  *device = device_;
-  *op_device = op_device_;
   return Status::OK();
 }
 
@@ -301,17 +287,13 @@ void TensorHandle::SetTensor(const tensorflow::Tensor& tensor) {
 Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
                                   TensorHandle** output) {
   const tensorflow::Tensor* src = nullptr;
-  tensorflow::Device* srcd = nullptr;
-  // TODO(agarwal): src_opd is unused. Perhaps allow TensorAndDevice to accept
-  // nullptr.
-  tensorflow::Device* src_opd = nullptr;
-  TF_RETURN_IF_ERROR(TensorAndDevice(&src, &srcd, &src_opd));
-  if (srcd == nullptr) srcd = ctx->HostCPU();
+  TF_RETURN_IF_ERROR(Tensor(&src));
+  tensorflow::Device* srcd = (device_ == nullptr) ? ctx->HostCPU() : device_;
   bool is_same_device = (srcd == dstd) || (srcd->name() == dstd->name());
   const bool dst_cpu = dstd->tensorflow_gpu_device_info() == nullptr;
   const bool src_cpu = srcd->tensorflow_gpu_device_info() == nullptr;
   if (is_same_device) {
-    *output = new tensorflow::TensorHandle(*src, dstd, dstd, ctx);
+    *output = new tensorflow::TensorHandle(*src, dstd, ctx);
     return tensorflow::Status::OK();
   }
   if (!dst_cpu && (src->dtype() != tensorflow::DT_VARIANT &&
@@ -328,7 +310,7 @@ Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
   tensorflow::Tensor dst(dstd->GetAllocator(attr), src->dtype(), src->shape());
   if (src->shape().num_elements() == 0) {
     dstd = dst_cpu ? nullptr : dstd;
-    *output = new tensorflow::TensorHandle(dst, dstd, dstd, ctx);
+    *output = new tensorflow::TensorHandle(dst, dstd, ctx);
     return tensorflow::Status::OK();
   }
   tensorflow::DeviceContext* src_device_context = nullptr;
@@ -360,28 +342,32 @@ Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
   n.WaitForNotification();
   if (status.ok()) {
     dstd = dst_cpu ? nullptr : dstd;
-    *output = new tensorflow::TensorHandle(dst, dstd, dstd, ctx);
+    *output = new tensorflow::TensorHandle(dst, dstd, ctx);
   }
   return status;
 }
 
 Device* GetResourceDevice(const Tensor& t, EagerContext* ctx) {
-  if (t.dtype() != DT_RESOURCE) {
+  if (t.dtype() != DT_RESOURCE || ctx == nullptr) {
     return nullptr;
   }
   const ResourceHandle& resource_handle = t.flat<ResourceHandle>()(0);
   const auto& map = *ctx->device_map();
   auto it = map.find(resource_handle.device());
-  DCHECK(it != map.end());
+  if (it == map.end()) {
+    LOG(ERROR) << "Cannot find resouce device: " << resource_handle.device()
+               << ".";
+    return nullptr;
+  }
   return it->second;
 }
 
 string TensorHandle::DebugString() const {
   VLOG(1) << "Calling TensorHandle::DebugString() on " << this;
 
-  if (symbolic_tensor) {
-    return absl::Substitute("TF_Output($0, $1)", symbolic_tensor->oper,
-                            symbolic_tensor->index);
+  if (symbolic_tensor_) {
+    return absl::Substitute("TF_Output($0, $1)", symbolic_tensor_->oper,
+                            symbolic_tensor_->index);
   }
 
   string out;
@@ -415,8 +401,14 @@ Status TensorHandle::GetResourceVariableDtypeAndShape(
   mutex_lock l(ctx_mutex_);
   resource_dtype_and_shape_status_ = GetResourceVariableDtypeAndShapeInternal(
       tensor_, resource_device_, &resource_dtype_and_shape_);
-  resource_dtype_and_shape_initialized_ = true;
-  *result = resource_dtype_and_shape_;
+
+  // TODO(endlessroad): the resource variable shape may be partially known at
+  // creation time, and it can be changed later. We may not want the cache in
+  // this case.
+  if (resource_dtype_and_shape_status_.ok()) {
+    resource_dtype_and_shape_initialized_ = true;
+    *result = resource_dtype_and_shape_;
+  }
   return resource_dtype_and_shape_status_;
 }
 

@@ -42,14 +42,14 @@ class WorkerFreeListCache : public WorkerCacheInterface {
     wrapped_->ListWorkersInJob(job_name, workers);
   }
 
-  WorkerInterface* CreateWorker(const string& target) override {
+  WorkerInterface* GetOrCreateWorker(const string& target) override {
     mutex_lock l(mu_);
     auto p = workers_.find(target);
     if (p != workers_.end()) {
       return p->second.worker;
     }
     WorkerState state;
-    state.worker = wrapped_->CreateWorker(target);
+    state.worker = wrapped_->GetOrCreateWorker(target);
     if (state.worker != nullptr) {
       workers_.insert(std::make_pair(target, state));
     }
@@ -98,15 +98,18 @@ WorkerSession::WorkerSession(const string& session_name,
                              const string& worker_name,
                              std::unique_ptr<WorkerCacheInterface> worker_cache,
                              std::unique_ptr<DeviceMgr> device_mgr,
-                             std::unique_ptr<GraphMgr> graph_mgr)
+                             std::unique_ptr<GraphMgr> graph_mgr,
+                             std::unique_ptr<DeviceMgr> remote_device_mgr)
     : session_name(session_name),
       worker_name(worker_name),
       worker_cache(new WorkerFreeListCache(std::move(worker_cache))),
       graph_mgr(std::move(graph_mgr)),
-      cluster_flr(
-          new ClusterFunctionLibraryRuntime(this, !session_name.empty())),
+      cluster_flr(new ClusterFunctionLibraryRuntime(
+          this, !session_name.empty(),
+          remote_device_mgr ? remote_device_mgr.get() : nullptr)),
       device_mgr_(std::move(device_mgr)),
-      borrowed_device_mgr_(nullptr) {
+      borrowed_device_mgr_(nullptr),
+      remote_device_mgr_(std::move(remote_device_mgr)) {
   // Starts exporting metrics through a platform-specific monitoring API (if
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
@@ -117,25 +120,28 @@ WorkerSession::WorkerSession(const string& session_name,
 std::shared_ptr<WorkerSession> WorkerSession::CreateWithBorrowedDeviceMgr(
     const string& session_name, const string& worker_name,
     std::unique_ptr<WorkerCacheInterface> worker_cache,
-    DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr) {
-  return std::shared_ptr<WorkerSession>(
-      new WorkerSession(session_name, worker_name, std::move(worker_cache),
-                        borrowed_device_mgr, std::move(graph_mgr)));
+    DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
+    std::unique_ptr<DeviceMgr> remote_device_mgr) {
+  return std::shared_ptr<WorkerSession>(new WorkerSession(
+      session_name, worker_name, std::move(worker_cache), borrowed_device_mgr,
+      std::move(graph_mgr), std::move(remote_device_mgr)));
 }
 
 WorkerSession::WorkerSession(const string& session_name,
                              const string& worker_name,
                              std::unique_ptr<WorkerCacheInterface> worker_cache,
                              DeviceMgr* borrowed_device_mgr,
-                             std::unique_ptr<GraphMgr> graph_mgr)
+                             std::unique_ptr<GraphMgr> graph_mgr,
+                             std::unique_ptr<DeviceMgr> remote_device_mgr)
     : session_name(session_name),
       worker_name(worker_name),
       worker_cache(new WorkerFreeListCache(std::move(worker_cache))),
       graph_mgr(std::move(graph_mgr)),
-      cluster_flr(
-          new ClusterFunctionLibraryRuntime(this, !session_name.empty())),
+      cluster_flr(new ClusterFunctionLibraryRuntime(this, !session_name.empty(),
+                                                    remote_device_mgr.get())),
       device_mgr_(nullptr),
-      borrowed_device_mgr_(borrowed_device_mgr) {
+      borrowed_device_mgr_(borrowed_device_mgr),
+      remote_device_mgr_(std::move(remote_device_mgr)) {
   // Starts exporting metrics through a platform-specific monitoring API (if
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.

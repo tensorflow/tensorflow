@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
+
 #include <algorithm>
 #include <cstring>
 #include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
-
-#include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
@@ -37,14 +37,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
@@ -59,6 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/replica_id_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
@@ -236,17 +240,10 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
     }
   }
 
+  AnnotateFunctionAsGpuKernel(module, kernel, &b_);
+
   // TODO(b/65380986): Investigate if adding fast math flags for generated
   // kernels makes sense.
-
-  // Add the declaration of this kernel to llvm.nvvm.annotations so that NVPTX
-  // treats it as a CUDA kernel.
-  llvm::NamedMDNode* nvvm_annotations_node =
-      module->getOrInsertNamedMetadata("nvvm.annotations");
-  nvvm_annotations_node->addOperand(llvm::MDNode::get(
-      context, {llvm::ConstantAsMetadata::get(kernel),
-                llvm::MDString::get(context, "kernel"),
-                llvm::ConstantAsMetadata::get(b_.getInt32(1))}));
 
   // Update the insert point to the entry basic block.
   llvm::BasicBlock* entry_bb =
@@ -527,7 +524,35 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
     return Status::OK();
   }
 
-  return IrEmitter::HandleCustomCall(custom_call);
+  if (void* call_target = CustomCallTargetRegistry::Global()->Lookup(
+          custom_call->custom_call_target(),
+          ir_emitter_context_->platform()->Name())) {
+    const auto& assn = ir_emitter_context_->buffer_assignment();
+    auto get_slices_for_instr = [&](const HloInstruction* instr) {
+      ShapeTree<BufferAllocation::Slice> slices(instr->shape());
+      slices.ForEachMutableElement([&](const ShapeIndex& index,
+                                       BufferAllocation::Slice* slice) {
+        StatusOr<BufferAllocation::Slice> s = assn.GetUniqueSlice(instr, index);
+        if (s.ok()) {
+          *slice = s.ValueOrDie();
+        }
+      });
+      return slices;
+    };
+    std::vector<ShapeTree<BufferAllocation::Slice>> operand_slices;
+    for (const auto* operand : custom_call->operands()) {
+      operand_slices.push_back(get_slices_for_instr(operand));
+    }
+    ShapeTree<BufferAllocation::Slice> result_slices =
+        get_slices_for_instr(custom_call);
+    AddThunkToThunkSequence(absl::make_unique<CustomCallThunk>(
+        call_target, std::move(operand_slices), std::move(result_slices),
+        Cast<HloCustomCallInstruction>(custom_call)->opaque(), custom_call));
+    return Status::OK();
+  }
+
+  return Unimplemented("No registered implementation for custom call to \"%s\"",
+                       custom_call->custom_call_target());
 }
 
 Status IrEmitterUnnested::HandleFft(HloInstruction* fft) {
@@ -1375,6 +1400,18 @@ Status IrEmitterUnnested::HandleTupleSelect(HloInstruction* tuple_select) {
   AddThunkToThunkSequence(
       BuildKernelThunk(tuple_select, /*implements_whole_instruction=*/true));
   return IrEmitter::HandleTupleSelect(tuple_select);
+}
+
+Status IrEmitterUnnested::HandleReplicaId(HloInstruction* hlo) {
+  AddThunkToThunkSequence(
+      absl::make_unique<ReplicaIdThunk>(GetAllocationSlice(*hlo), hlo));
+  return Status::OK();
+}
+
+Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {
+  AddThunkToThunkSequence(absl::make_unique<CollectivePermuteThunk>(
+      GetAllocationSlice(*hlo->operand(0)), GetAllocationSlice(*hlo), hlo));
+  return Status::OK();
 }
 
 namespace {
@@ -3811,11 +3848,16 @@ Status IrEmitterUnnested::EmitConstantGlobals() {
     //
     // We may have to be more more clever here in the future if we notice that
     // we're keeping around too many globals because of their linkage.
+    unsigned global_address_space = llvm_ir::GetGlobalMemoryAddressSpace(
+        *ir_emitter_context_->llvm_module());
     llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
         global_type, /*isConstant=*/should_emit_initializer,
         llvm::GlobalValue::ExternalLinkage,
         /*Initializer=*/initializer,
-        llvm_ir::ConstantBufferAllocationToGlobalName(allocation));
+        llvm_ir::ConstantBufferAllocationToGlobalName(allocation),
+        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+        /*AddressSpace=*/global_address_space,
+        /*isExternallyInitialized=*/false);
     global_for_const->setAlignment(kConstantBufferAlignBytes);
     ir_emitter_context_->llvm_module()->getGlobalList().push_back(
         global_for_const);

@@ -34,6 +34,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 
@@ -51,6 +52,12 @@ class FromTensorsTest(test_base.DatasetTestBase):
         nest.flatten(dataset_ops.get_legacy_output_shapes(dataset)))
 
     self.assertDatasetProduces(dataset, expected_output=[components])
+
+  def testFromTensorsDataset(self):
+    """Test a dataset that represents a dataset."""
+    dataset = dataset_ops.Dataset.from_tensors(dataset_ops.Dataset.range(10))
+    dataset = dataset.flat_map(lambda x: x)
+    self.assertDatasetProduces(dataset, expected_output=range(10))
 
   def testFromTensorsTensorArray(self):
     """Test a dataset that represents a TensorArray."""
@@ -98,6 +105,32 @@ class FromTensorsTest(test_base.DatasetTestBase):
         tensor_shape.TensorShape(c.dense_shape)
         if sparse_tensor.is_sparse(c) else c.shape for c in components
     ], [shape for shape in dataset_ops.get_legacy_output_shapes(dataset)])
+
+    self.assertDatasetProduces(dataset, expected_output=[components])
+
+  def testFromTensorsRagged(self):
+    components = (
+        ragged_factory_ops.constant_value([[[0]], [[1]], [[2]]]),
+        ragged_factory_ops.constant_value([[[3]], [[4]], [[5]]]),
+    )
+
+    dataset = dataset_ops.Dataset.from_tensors(components)
+
+    self.assertDatasetProduces(dataset, expected_output=[components])
+
+  def testFromTensorsMixedRagged(self):
+    components = (np.array(1), np.array([1, 2, 3]), np.array(37.0),
+                  sparse_tensor.SparseTensorValue(
+                      indices=np.array([[0]]),
+                      values=np.array([0]),
+                      dense_shape=np.array([1])),
+                  sparse_tensor.SparseTensorValue(
+                      indices=np.array([[0, 0], [1, 1]]),
+                      values=np.array([-1, 1]),
+                      dense_shape=np.array([2, 2])),
+                  ragged_factory_ops.constant_value([[[0]], [[1]], [[2]]]))
+
+    dataset = dataset_ops.Dataset.from_tensors(components)
 
     self.assertDatasetProduces(dataset, expected_output=[components])
 

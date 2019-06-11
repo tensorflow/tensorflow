@@ -1,8 +1,7 @@
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
@@ -10,6 +9,21 @@ load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
+
+py_library(
+    name = "distribute_test_lib_pip",
+    deps = [
+        ":combinations",
+        ":model_combinations",
+        ":multi_worker_test_base",
+        ":saved_model_test_base",
+        ":single_loss_example",
+        ":strategy_combinations",
+        ":strategy_test_lib",
+        "//tensorflow/python/keras/distribute:keras_correctness_test_lib",
+        "//tensorflow/python/keras/distribute:keras_test_lib",
+    ],
+)
 
 py_library(
     name = "all_reduce",
@@ -57,6 +71,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:device_lib",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:kernels",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
@@ -154,6 +169,7 @@ py_test(
     name = "distribute_lib_test",
     size = "small",
     srcs = ["distribute_lib_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":distribute_lib",
@@ -198,7 +214,11 @@ py_library(
 py_test(
     name = "distribute_coordinator_test",
     srcs = ["distribute_coordinator_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",
+    ],
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -361,6 +381,7 @@ py_test(
     name = "numpy_dataset_test",
     size = "small",
     srcs = ["numpy_dataset_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":numpy_dataset",
@@ -415,6 +436,7 @@ cuda_py_test(
 py_test(
     name = "multi_worker_util_test",
     srcs = ["multi_worker_util_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":multi_worker_util",
@@ -490,6 +512,7 @@ py_library(
 py_test(
     name = "shared_variable_creator_test",
     srcs = ["shared_variable_creator_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":shared_variable_creator",
@@ -517,6 +540,7 @@ py_library(
         ":distribute_lib",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
@@ -539,6 +563,17 @@ py_library(
     ],
 )
 
+py_test(
+    name = "combinations_test",
+    srcs = ["combinations_test.py"],
+    python_version = "PY2",
+    deps = [
+        ":combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:backend",
+    ],
+)
+
 py_library(
     name = "strategy_combinations",
     srcs = ["strategy_combinations.py"],
@@ -550,12 +585,27 @@ py_library(
         ":mirrored_strategy",
         ":one_device_strategy",
         ":tpu_strategy",
+        "//tensorflow/python:config",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "strategy_combinations_test",
+    srcs = ["strategy_combinations_test.py"],
+    python_version = "PY2",
+    deps = [
+        ":combinations",
+        ":reduce_util",
+        ":strategy_combinations",
+        "//tensorflow/python:config",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -569,16 +619,6 @@ py_library(
     ],
 )
 
-py_test(
-    name = "combinations_test",
-    srcs = ["combinations_test.py"],
-    deps = [
-        ":combinations",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras:backend",
-    ],
-)
-
 py_library(
     name = "multi_worker_test_base",
     srcs = ["multi_worker_test_base.py"],
@@ -587,9 +627,9 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:distributed_framework_test_lib",
+        "//tensorflow/python:keras_lib",
         "//tensorflow/python:session",
         "//tensorflow/python:util",
-        "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
     ],
 )
@@ -610,6 +650,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_xla_py_test(
@@ -632,21 +673,26 @@ tf_xla_py_test(
     ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "input_lib_test",
     srcs = ["input_lib_test.py"],
-    additional_deps = [
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
+    main = "input_lib_test.py",
+    tags = [
+        "no_windows",
+    ],
+    deps = [
+        ":collective_all_reduce_strategy",
         ":mirrored_strategy",
-        "//tensorflow/python/distribute:multi_worker_test_base",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -664,6 +710,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -688,6 +735,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -700,6 +748,7 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
     ],
     grpc_enabled = True,
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -759,19 +808,20 @@ distribute_py_test(
     ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "moving_averages_test",
     srcs = ["moving_averages_test.py"],
-    additional_deps = [
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
-        "@absl_py//absl/testing:parameterized",
-        "//tensorflow/python/eager:test",
+    main = "moving_averages_test.py",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -881,6 +931,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -912,6 +963,33 @@ cuda_py_test(
         "multi_and_single_gpu",
         "no_windows_gpu",  # TODO(b/130551176)
     ],
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "mirrored_variable_test",
+    srcs = ["mirrored_variable_test.py"],
+    additional_deps = [
+        ":collective_all_reduce_strategy",
+        ":combinations",
+        ":strategy_combinations",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+    ],
+    tags = [
+        "guitar",
+        "multi_and_single_gpu",
+    ],
+    xla_enable_strict_auto_jit = True,
 )
 
 distribute_py_test(
@@ -962,17 +1040,69 @@ py_library(
     ],
 )
 
-distribute_py_test(
-    name = "saved_model_test",
-    size = "medium",
-    srcs = ["saved_model_test.py"],
-    main = "saved_model_test.py",
+py_library(
+    name = "saved_model_test_base",
+    srcs = ["saved_model_test_base.py"],
     deps = [
         ":combinations",
         ":model_combinations",
         ":strategy_combinations",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/saved_model",
         "//third_party/py/numpy",
+    ],
+)
+
+distribute_py_test(
+    name = "saved_model_save_load_test",
+    size = "medium",
+    srcs = ["saved_model_save_load_test.py"],
+    main = "saved_model_save_load_test.py",
+    deps = [
+        ":saved_model_test_base",
+        "//tensorflow/python/saved_model",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_experimental_saved_model_test",
+    size = "medium",
+    srcs = ["keras_experimental_saved_model_test.py"],
+    main = "keras_experimental_saved_model_test.py",
+    deps = [
+        ":saved_model_test_base",
+        "//tensorflow/python/keras:saving",
+    ],
+)
+
+distribute_py_test(
+    name = "saved_model_mixed_api_test",
+    size = "medium",
+    srcs = ["saved_model_mixed_api_test.py"],
+    main = "saved_model_mixed_api_test.py",
+    deps = [
+        ":saved_model_test_base",
+        "//tensorflow/python/keras:saving",
+        "//tensorflow/python/saved_model",
+    ],
+)
+
+distribute_py_test(
+    name = "ctl_correctness_test",
+    srcs = ["ctl_correctness_test.py"],
+    main = "ctl_correctness_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:keras_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:util",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
     ],
 )

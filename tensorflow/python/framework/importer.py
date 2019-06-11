@@ -22,6 +22,7 @@ import contextlib
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python import tf2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
@@ -446,6 +447,8 @@ def import_graph_def(graph_def,
     functions = function.from_library(graph_def.library)
     for f in functions:
       f.add_to_graph(graph)
+      if context.context_safe() is not None:
+        context.context().add_function_def(f.definition)
 
   # Treat input mappings that don't appear in the graph as an error, because
   # they are likely to be due to a typo.

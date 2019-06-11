@@ -32,6 +32,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@OptimizationOptions
 @@Optional
 @@OptionalStructure
+@@RaggedTensorStructure
 @@RandomDataset
 @@Reducer
 @@SparseTensorStructure
@@ -107,7 +108,6 @@ from tensorflow.python.data.experimental.ops.interleave_ops import parallel_inte
 from tensorflow.python.data.experimental.ops.interleave_ops import sample_from_datasets
 from tensorflow.python.data.experimental.ops.iterator_ops import CheckpointInputPipelineHook
 from tensorflow.python.data.experimental.ops.iterator_ops import make_saveable_from_iterator
-from tensorflow.python.data.experimental.ops.optimization import AUTOTUNE
 from tensorflow.python.data.experimental.ops.optimization_options import MapVectorizationOptions
 from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.experimental.ops.parsing_ops import parse_example_dataset
@@ -129,6 +129,7 @@ from tensorflow.python.data.experimental.ops.take_while_ops import take_while
 from tensorflow.python.data.experimental.ops.threading_options import ThreadingOptions
 from tensorflow.python.data.experimental.ops.unique import unique
 from tensorflow.python.data.experimental.ops.writers import TFRecordWriter
+from tensorflow.python.data.ops.dataset_ops import AUTOTUNE
 from tensorflow.python.data.ops.dataset_ops import DatasetStructure
 from tensorflow.python.data.ops.dataset_ops import from_variant
 from tensorflow.python.data.ops.dataset_ops import get_structure
@@ -137,6 +138,7 @@ from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
 from tensorflow.python.data.ops.optional_ops import Optional
 from tensorflow.python.data.ops.optional_ops import OptionalStructure
 from tensorflow.python.data.util.structure import NestedStructure
+from tensorflow.python.data.util.structure import RaggedTensorStructure
 from tensorflow.python.data.util.structure import SparseTensorStructure
 from tensorflow.python.data.util.structure import Structure
 from tensorflow.python.data.util.structure import TensorArrayStructure

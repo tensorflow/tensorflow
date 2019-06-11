@@ -55,7 +55,8 @@ def _ModelVariable(name,
       shape=shape,
       initializer=initializer,
       collections=collections,
-      trainable=trainable)
+      trainable=trainable,
+      aggregation=variable_scope.VariableAggregation.MEAN)
 
 
 def LastValueQuantize(inputs,

@@ -20,7 +20,10 @@ from __future__ import print_function
 
 import os
 import numpy as np
+from six import PY3
 
+from google.protobuf import text_format as _text_format
+from google.protobuf.message import DecodeError
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.lite.python import convert_saved_model as _convert_saved_model
 from tensorflow.lite.python import lite as _lite
@@ -28,6 +31,7 @@ from tensorflow.lite.python import util as _util
 from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
 from tensorflow.python.keras.preprocessing import image
 from tensorflow.python.lib.io import file_io as _file_io
@@ -81,12 +85,34 @@ def _convert(converter, **kwargs):
 
   Returns:
     The converted TFLite model in serialized format.
+
+  Raises:
+    ValueError: Invalid version number.
   """
   if "target_ops" in kwargs:
-    converter.target_ops = kwargs["target_ops"]
+    converter.target_spec.supported_ops = kwargs["target_ops"]
   if "post_training_quantize" in kwargs:
     converter.post_training_quantize = kwargs["post_training_quantize"]
   return converter.convert()
+
+
+def _get_input_data_map(tflite_model, input_data):
+  """Generates a map of input data based on the TFLite model.
+
+  Args:
+    tflite_model: Serialized TensorFlow Lite model.
+    input_data: List of np.ndarray.
+
+  Returns:
+    {str: [np.ndarray]}.
+  """
+  interpreter = _lite.Interpreter(model_content=tflite_model)
+  interpreter.allocate_tensors()
+  input_details = interpreter.get_input_details()
+  return {
+      input_tensor["name"]: data
+      for input_tensor, data in zip(input_details, input_data)
+  }
 
 
 def _generate_random_input_data(tflite_model, seed=None):
@@ -97,7 +123,7 @@ def _generate_random_input_data(tflite_model, seed=None):
     seed: Integer seed for the random generator. (default None)
 
   Returns:
-    List of np.ndarray.
+    ([np.ndarray], {str : [np.ndarray]}).
   """
   interpreter = _lite.Interpreter(model_content=tflite_model)
   interpreter.allocate_tensors()
@@ -105,11 +131,13 @@ def _generate_random_input_data(tflite_model, seed=None):
 
   if seed:
     np.random.seed(seed=seed)
-  return [
+  input_data = [
       np.array(
           np.random.random_sample(input_tensor["shape"]),
           dtype=input_tensor["dtype"]) for input_tensor in input_details
   ]
+  input_data_map = _get_input_data_map(tflite_model, input_data)
+  return input_data, input_data_map
 
 
 def _evaluate_tflite_model(tflite_model, input_data):
@@ -136,7 +164,8 @@ def _evaluate_tflite_model(tflite_model, input_data):
       interpreter.get_tensor(output_tensor["index"])
       for output_tensor in output_details
   ]
-  return output_data
+  output_labels = [output_tensor["name"] for output_tensor in output_details]
+  return output_data, output_labels
 
 
 def evaluate_frozen_graph(filename, input_arrays, output_arrays):
@@ -150,18 +179,31 @@ def evaluate_frozen_graph(filename, input_arrays, output_arrays):
   Returns:
     Lambda function ([np.ndarray data] : [np.ndarray result]).
   """
-  with _session.Session().as_default() as sess:
-    with _file_io.FileIO(filename, "rb") as f:
-      file_content = f.read()
+  with _file_io.FileIO(filename, "rb") as f:
+    file_content = f.read()
 
-    graph_def = _graph_pb2.GraphDef()
+  graph_def = _graph_pb2.GraphDef()
+  try:
     graph_def.ParseFromString(file_content)
+  except (_text_format.ParseError, DecodeError):
+    if not isinstance(file_content, str):
+      if PY3:
+        file_content = file_content.decode("utf-8")
+      else:
+        file_content = file_content.encode("utf-8")
+    _text_format.Merge(file_content, graph_def)
+
+  graph = ops.Graph()
+  with graph.as_default():
     _import_graph_def(graph_def, name="")
+  inputs = _util.get_tensors_from_tensor_names(graph, input_arrays)
+  outputs = _util.get_tensors_from_tensor_names(graph, output_arrays)
 
-    inputs = _util.get_tensors_from_tensor_names(sess.graph, input_arrays)
-    outputs = _util.get_tensors_from_tensor_names(sess.graph, output_arrays)
+  def run_session(input_data):
+    with _session.Session(graph=graph) as sess:
+      return sess.run(outputs, dict(zip(inputs, input_data)))
 
-    return lambda input_data: sess.run(outputs, dict(zip(inputs, input_data)))
+  return run_session
 
 
 def evaluate_saved_model(directory, tag_set, signature_key):
@@ -216,15 +258,14 @@ def compare_models(tflite_model, tf_eval_func, input_data=None, tolerance=5):
     tolerance: Decimal place to check accuracy to. (default 5)
   """
   if input_data is None:
-    input_data = _generate_random_input_data(tflite_model)
+    input_data, _ = _generate_random_input_data(tflite_model)
   tf_results = tf_eval_func(input_data)
-  tflite_results = _evaluate_tflite_model(tflite_model, input_data)
+  tflite_results, _ = _evaluate_tflite_model(tflite_model, input_data)
   for tf_result, tflite_result in zip(tf_results, tflite_results):
     np.testing.assert_almost_equal(tf_result, tflite_result, tolerance)
 
 
-def compare_models_v2(tflite_model, concrete_func, input_data=None,
-                      tolerance=5):
+def compare_models_v2(tflite_model, tf_eval_func, input_data=None, tolerance=5):
   """Compares TensorFlow and TFLite models for TensorFlow 2.0.
 
   Unless the input data is provided, the models are compared with random data.
@@ -232,20 +273,36 @@ def compare_models_v2(tflite_model, concrete_func, input_data=None,
 
   Args:
     tflite_model: Serialized TensorFlow Lite model.
-    concrete_func: TensorFlow ConcreteFunction.
+    tf_eval_func: Function to evaluate TensorFlow model. Either a lambda
+      function that takes in input data and outputs the results or a TensorFlow
+      ConcreteFunction.
     input_data: np.ndarray to pass into models during inference. (default None)
     tolerance: Decimal place to check accuracy to. (default 5)
   """
+  # Convert the input data into a map.
   if input_data is None:
-    input_data = _generate_random_input_data(tflite_model)
-  input_data_func = constant_op.constant(input_data[0])
+    input_data, input_data_map = _generate_random_input_data(tflite_model)
+  else:
+    input_data_map = _get_input_data_map(tflite_model, input_data)
+  input_data_func_map = {
+      input_name: constant_op.constant(input_data)
+      for input_name, input_data in input_data_map.items()
+  }
 
-  # Gets the TensorFlow results as a map from the output names to outputs.
-  # Converts the map into a list that is equivalent to the TFLite list.
-  tf_results = concrete_func(input_data_func)
+  if len(input_data) > 1:
+    tf_results = tf_eval_func(**input_data_func_map)
+  else:
+    tf_results = tf_eval_func(constant_op.constant(input_data[0]))
+  tflite_results, tflite_labels = _evaluate_tflite_model(
+      tflite_model, input_data)
+
+  # Convert the output TensorFlow results into an ordered list.
   if isinstance(tf_results, dict):
-    tf_results = [tf_results[tf_results.keys()[0]]]
-  tflite_results = _evaluate_tflite_model(tflite_model, input_data)
+    if len(tf_results) == 1:
+      tf_results = [tf_results[tf_results.keys()[0]]]
+    else:
+      tf_results = [tf_results[tflite_label] for tflite_label in tflite_labels]
+
   for tf_result, tflite_result in zip(tf_results, tflite_results):
     np.testing.assert_almost_equal(tf_result, tflite_result, tolerance)
 

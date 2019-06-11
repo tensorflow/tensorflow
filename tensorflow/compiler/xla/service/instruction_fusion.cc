@@ -88,6 +88,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kXor:
     case HloOpcode::kOutfeed:
     case HloOpcode::kPad:
+    case HloOpcode::kPartitionId:
     case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kReducePrecision:
@@ -148,6 +149,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
+    case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kRsqrt:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
@@ -276,7 +278,7 @@ InstructionFusion::ComputeGloballyUnfusible(
       return size;
     };
     int64 operands_size = 0;
-    for (const HloInstruction* op : producer->operands()) {
+    for (const HloInstruction* op : producer->unique_operands()) {
       operands_size += total_size(op->shape());
     }
     if (operands_size <= total_size(producer->shape())) {
@@ -441,9 +443,6 @@ std::unique_ptr<FusionQueue> InstructionFusion::GetFusionQueue(
 }
 
 StatusOr<bool> InstructionFusion::Run(HloModule* module) {
-  VLOG(2) << "Before instruction fusion:";
-  XLA_VLOG_LINES(2, module->ToString());
-
   bool changed = false;
   module_ = module;
   for (auto* computation : module->MakeNonfusionComputations()) {
@@ -520,9 +519,6 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
       }
     }
   }
-
-  VLOG(2) << "After instruction fusion:";
-  XLA_VLOG_LINES(2, module->ToString());
 
   return changed;
 }

@@ -28,7 +28,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-Worker::Worker(WorkerEnv* env) : env_(env), recent_request_ids_(100000) {}
+Worker::Worker(WorkerEnv* env) : env_(env), recent_request_ids_(100000) {
+  // Enable log history collection in StatusGroup so that recent warning and
+  // error log messages will be attached to the root error status to be
+  // forwarded to the master.
+  StatusGroup::ConfigureLogHistory();
+}
 
 void Worker::GetStatusAsync(const GetStatusRequest* request,
                             GetStatusResponse* response, StatusCallback done) {
@@ -45,9 +50,9 @@ void Worker::GetStatusAsync(const GetStatusRequest* request,
 void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
                                       CreateWorkerSessionResponse* response,
                                       StatusCallback done) {
-  Status s = env_->session_mgr->CreateSession(request->session_handle(),
-                                              request->server_def(),
-                                              request->isolate_session_state());
+  Status s = env_->session_mgr->CreateSession(
+      request->session_handle(), request->server_def(),
+      request->cluster_device_attributes(), request->isolate_session_state());
   done(s);
 }
 
@@ -72,7 +77,7 @@ void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
   }
   if (s.ok()) {
     s = session->graph_mgr->Register(
-        request->session_handle(), request->graph_def(),
+        request->session_handle(), request->graph_def(), session.get(),
         request->graph_options(), request->debug_options(),
         request->collective_graph_key(), session->cluster_flr.get(),
         response->mutable_graph_handle());

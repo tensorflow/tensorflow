@@ -1,7 +1,8 @@
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 tf_cuda_library(
     name = "capture_profile",
@@ -20,6 +21,7 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/profiler:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 

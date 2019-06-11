@@ -995,9 +995,9 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return true;
 }
 
-/* static */ port::Status GpuDriver::CreateEvent(GpuContext* context,
-                                                 GpuEventHandle* event,
-                                                 EventFlags flags) {
+/* static */ port::Status GpuDriver::InitEvent(GpuContext* context,
+                                               GpuEventHandle* event,
+                                               EventFlags flags) {
   int hipflags;
   switch (flags) {
     case EventFlags::kDefault:

@@ -293,29 +293,33 @@ class OptimizerTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testConfigWithLearningRateDecay(self):
     with self.cached_session():
-      decay_schedule = learning_rate_schedule.InverseTimeDecay(
-          0.5, decay_steps=1.0, decay_rate=0.1)
-      step = 10
-      opt = gradient_descent.SGD(decay_schedule)
-      config = opt.get_config()
-      opt2 = gradient_descent.SGD.from_config(config)
-      # assert both are equal float values.
-      self.assertAllEqual(
-          decay_schedule(step),
-          opt._get_hyper('learning_rate')(step))
-      self.assertAllEqual(
-          decay_schedule(step),
-          opt2._get_hyper('learning_rate')(step))
       var0 = variables.Variable([[1.0], [2.0]], dtype=dtypes.float32)
-      loss = lambda: 3 * var0
-      # learning rate variable created when calling minimize.
-      opt.minimize(loss, [var0])
-      self.evaluate(variables.global_variables_initializer())
-      config = opt.get_config()
-      opt3 = gradient_descent.SGD.from_config(config)
-      self.assertAllEqual(
-          self.evaluate(opt._get_hyper('learning_rate')(step)),
-          opt3._get_hyper('learning_rate')(step))
+      for decay_schedule in [
+          learning_rate_schedule.InverseTimeDecay(
+              0.5, decay_steps=1.0, decay_rate=0.1),
+          learning_rate_schedule.PiecewiseConstantDecay(
+              [5], [1., .5])
+      ]:
+        step = 10
+        opt = gradient_descent.SGD(decay_schedule)
+        config = opt.get_config()
+        opt2 = gradient_descent.SGD.from_config(config)
+        # assert both are equal float values.
+        self.assertAllEqual(
+            decay_schedule(step),
+            opt._get_hyper('learning_rate')(step))
+        self.assertAllEqual(
+            decay_schedule(step),
+            opt2._get_hyper('learning_rate')(step))
+        loss = lambda: 3 * var0
+        # learning rate variable is created when calling minimize.
+        opt.minimize(loss, [var0])
+        self.evaluate(variables.global_variables_initializer())
+        config = opt.get_config()
+        opt3 = gradient_descent.SGD.from_config(config)
+        self.assertAllEqual(
+            self.evaluate(opt._get_hyper('learning_rate')(step)),
+            opt3._get_hyper('learning_rate')(step))
 
   @test_util.run_in_graph_and_eager_modes
   def testGradClipValue(self):
@@ -581,6 +585,24 @@ class OptimizerTest(test.TestCase):
       self.assertEqual('var', var_key)
       var_key = optimizer_v2._var_key(b)
       self.assertEqual('var_1', var_key)
+
+  def testVarName(self):
+    with context.graph_mode():
+      var = variables.Variable([1., 2.], name='var')
+      loss = var + 1.
+      opt = adam.Adam()
+      opt.get_updates(loss, [var])
+      opt_vars = opt.variables()
+      self.assertLen(opt_vars, 3)
+      self.assertEqual('Adam/iter:0', opt_vars[0].name)
+      self.assertEqual('Adam/var/m:0', opt_vars[1].name)
+      var_2 = variables.Variable([1., 2.], name='var_2')
+      loss = var_2 + 1.
+      with backend.name_scope('outter'):
+        opt.get_updates(loss, [var_2])
+      opt_vars = opt.variables()
+      self.assertLen(opt_vars, 5)
+      self.assertEqual('outter/Adam/var_2/m:0', opt_vars[3].name)
 
 
 @keras_parameterized.run_with_all_model_types

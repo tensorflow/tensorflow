@@ -638,6 +638,10 @@ Status HloCostAnalysis::HandleCollectivePermute(const HloInstruction* /*hlo*/) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandlePartitionId(const HloInstruction* /*hlo*/) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleReplicaId(const HloInstruction* /*hlo*/) {
   return Status::OK();
 }
@@ -648,6 +652,11 @@ Status HloCostAnalysis::HandleRng(const HloInstruction* random) {
   // the cost of each RNG is same as a transcendental operation.
   current_properties_[kTranscendentalsKey] =
       ShapeUtil::ElementsIn(random->shape());
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleRngGetAndUpdateState(
+    const HloInstruction* random) {
   return Status::OK();
 }
 

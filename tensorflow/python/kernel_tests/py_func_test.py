@@ -323,6 +323,7 @@ class PyFuncTest(test.TestCase):
       self.assertEqual(self.evaluate(x), 1)
       self.assertEqual(self.evaluate(x), 2)
 
+  @test_util.enable_tf_xla_constant_folding("b/134376434")
   def testStateless(self):
     # Not using self.cached_session(), which disables optimization.
     with session_lib.Session() as sess:

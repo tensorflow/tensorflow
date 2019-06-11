@@ -12,7 +12,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -30,15 +30,15 @@ void AdjustHueGPU<T>::operator()(GPUDevice* device,
                                  const T* const input, const float* const delta,
                                  T* const output) {
   const auto stream = device->stream();
-  const CudaLaunchConfig config =
-      GetCudaLaunchConfig(number_of_elements, *device);
+  const GpuLaunchConfig config =
+      GetGpuLaunchConfig(number_of_elements, *device);
   const int threads_per_block = config.thread_per_block;
   const int block_count =
       (number_of_elements + threads_per_block - 1) / threads_per_block;
-  TF_CHECK_OK(CudaLaunchKernel(internal::adjust_hsv_nhwc<true, false, false, T>,
-                               block_count, threads_per_block, 0, stream,
-                               number_of_elements, input, output, delta,
-                               nullptr, nullptr));
+  TF_CHECK_OK(GpuLaunchKernel(internal::adjust_hsv_nhwc<true, false, false, T>,
+                              block_count, threads_per_block, 0, stream,
+                              number_of_elements, input, output, delta, nullptr,
+                              nullptr));
 }
 
 template struct AdjustHueGPU<float>;
@@ -46,4 +46,4 @@ template struct AdjustHueGPU<Eigen::half>;
 
 }  // namespace functor
 }  // namespace tensorflow
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

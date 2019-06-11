@@ -81,7 +81,7 @@ FunctionDef IsZero() {
       // Args
       {"x: T"},
       // Return values
-      {"equal: T"},
+      {"equal: bool"},
       // Attr def
       {"T:{float, double, int32, int64, string}"},
       {
@@ -256,6 +256,22 @@ FunctionDef XAddX() {
       // Nodes
       {
           {{"y"}, "Add", {"x", "x"}, {{"T", "$T"}}},
+      });
+}
+
+FunctionDef XAddY() {
+  return FDH::Define(
+      // Name
+      "XAddY",
+      // Args
+      {"x: T", "y: T"},
+      // Return values
+      {"z: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"z"}, "Add", {"x", "y"}, {{"T", "$T"}}},
       });
 }
 
@@ -551,14 +567,50 @@ FunctionDef RandomUniformLess() {
          {"shrink_axis_mask", 0}}}});
 }
 
+FunctionDef MakeRangeDataset() {
+  return FDH::Define(
+      // Name
+      "MakeRangeDataset",
+      // Args
+      {"start: int64", "stop: int64", "step: int64"},
+      // Return values
+      {"y:variant"},
+      // Attr def
+      {"output_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
+      // Nodes
+      {{{"y"},
+        "RangeDataset",
+        {"start", "stop", "step"},
+        {{"output_types", "$output_types"},
+         {"output_shapes", "$output_shapes"}}}});
+}
+
+FunctionDef MakeTakeDataset() {
+  return FDH::Define(
+      // Name
+      "TakeDataset",
+      // Args
+      {"input_dataset: variant", "count: int64"},
+      // Return values
+      {"y:variant"},
+      // Attr def
+      {"output_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
+      // Nodes
+      {{{"y"},
+        "TakeDataset",
+        {"input_dataset", "count"},
+        {{"output_types", "$output_types"},
+         {"output_shapes", "$output_shapes"}}}});
+}
+
 FunctionDef MakeTensorSliceDataset() {
   return FDH::Define(
       // Name
       "MakeTensorSliceDataset",
       // Args
-      {"x:Toutput_types"},
+      {"x: Toutput_types"},
       // Return values
-      {"y:variant"},
+      {"y: variant"},
       // Attr def
       {"Toutput_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
       // Nodes
@@ -567,6 +619,23 @@ FunctionDef MakeTensorSliceDataset() {
         {"x"},
         {{"Toutput_types", "$Toutput_types"},
          {"output_shapes", "$output_shapes"}}}});
+}
+
+FunctionDef Unique() {
+  return FDH::Create(
+      // Name
+      "GetUnique",
+      // Args
+      {"x:T"},
+      // Return values
+      {"y:T", "idx: out_idx"},
+      // Attr def
+      {"T: type", "out_idx: {int32, int64} = DT_INT32"},
+      // Nodes
+      {
+          {{"result"}, "Unique", {"x"}, {{"T", "$T"}, {"out_idx", "$out_idx"}}},
+      },
+      {{"y", "result:y:0"}, {"idx", "result:idx:0"}});
 }
 
 void FunctionTestSchedClosure(std::function<void()> fn) {

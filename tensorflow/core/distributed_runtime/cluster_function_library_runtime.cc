@@ -127,14 +127,14 @@ Status ClusterFunctionLibraryRuntime::Instantiate(
   VLOG(1) << "CFLR::Instantiate: " << function_name << " on " << options.target
           << " (this: " << this << ")";
   WorkerInterface* wi =
-      worker_session_->worker_cache->CreateWorker(options.target);
+      worker_session_->worker_cache->GetOrCreateWorker(options.target);
 
   if (wi == nullptr) {
     std::vector<string> workers;
     worker_session_->worker_cache->ListWorkers(&workers);
     return errors::InvalidArgument(
         "Could not find worker with target: ", options.target,
-        " Available workers: ", str_util::Join(workers, ", "));
+        " Available workers: ", absl::StrJoin(workers, ", "));
   }
 
   // Make RPC and obtain a graph handle.
@@ -196,9 +196,7 @@ void ClusterFunctionLibraryRuntime::Run(
   req->set_session_handle(worker_session_->session_name);
   req->set_create_worker_session_called(create_worker_session_called_);
   req->set_graph_handle(function_data->graph_handle);
-  // Borrowed from master_session.cc
-  const uint64 step_id = (random::New64() & ((1uLL << 56) - 1)) | (1uLL << 56);
-  req->set_step_id(step_id);
+  req->set_step_id(opts.step_id);
   int i = 0;
   for (const auto& send_key : function_data->send_keys) {
     NamedTensorProto* send = req->add_send();
@@ -211,33 +209,19 @@ void ClusterFunctionLibraryRuntime::Run(
     req->add_recv_key(recv_key);
   }
 
-  CleanupGraphRequest* cleanup_req = new CleanupGraphRequest;
-  cleanup_req->set_step_id(step_id);
-
   RunGraphResponse* resp = new RunGraphResponse();
-  CleanupGraphResponse* cleanup_resp = new CleanupGraphResponse;
   CallOptions* call_options = new CallOptions();
   wi->RunGraphAsync(
       call_options, req, resp,
-      [wi, call_options, req, resp, rets, recv_keys, cleanup_req, cleanup_resp,
-       done](const Status& status) {
+      [call_options, req, resp, rets, recv_keys, done](const Status& status) {
         Status* local_status = new Status(status);
         auto cleanup =
-            gtl::MakeCleanup([wi, call_options, req, resp, cleanup_req,
-                              cleanup_resp, local_status, done] {
-              wi->CleanupGraphAsync(
-                  cleanup_req, cleanup_resp,
-                  [call_options, req, resp, cleanup_req, cleanup_resp,
-                   local_status, done](const Status& cleanup_status) {
-                    local_status->Update(cleanup_status);
-                    done(*local_status);
-                    delete local_status;
-                    delete call_options;
-                    delete req;
-                    delete resp;
-                    delete cleanup_req;
-                    delete cleanup_resp;
-                  });
+            gtl::MakeCleanup([call_options, req, resp, local_status, done] {
+              done(*local_status);
+              delete call_options;
+              delete req;
+              delete resp;
+              delete local_status;
             });
         if (!local_status->ok()) {
           return;
@@ -263,6 +247,34 @@ void ClusterFunctionLibraryRuntime::Run(
             return;
           }
         }
+      });
+}
+
+void ClusterFunctionLibraryRuntime::CleanUp(
+    uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
+    FunctionLibraryRuntime::DoneCallback done) {
+  FunctionData* function_data = nullptr;
+  {
+    mutex_lock l(mu_);
+    DCHECK_LE(handle, function_data_.size());
+    function_data = &function_data_[handle];
+  }
+
+  WorkerInterface* wi = function_data->wi;
+
+  if (wi == nullptr) {
+    done(errors::Internal("Could not find worker"));
+    return;
+  }
+  CleanupGraphRequest* cleanup_req = new CleanupGraphRequest;
+  cleanup_req->set_step_id(step_id);
+  CleanupGraphResponse* cleanup_resp = new CleanupGraphResponse;
+  wi->CleanupGraphAsync(
+      cleanup_req, cleanup_resp,
+      [cleanup_req, cleanup_resp, done](const Status& cleanup_status) {
+        done(cleanup_status);
+        delete cleanup_req;
+        delete cleanup_resp;
       });
 }
 

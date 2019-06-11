@@ -30,6 +30,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/cpu_info.h"
 
 namespace tensorflow {
@@ -66,6 +68,9 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
     int64 cycle_length = 0;
     OP_REQUIRES_OK(ctx,
                    ParseScalarArgument(ctx, "cycle_length", &cycle_length));
+    if (cycle_length == model::kAutoTune) {
+      cycle_length = port::NumSchedulableCPUs();
+    }
     OP_REQUIRES(ctx, cycle_length > 0,
                 errors::InvalidArgument("`cycle_length` must be > 0"));
 
@@ -75,7 +80,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES(ctx, block_length > 0,
                 errors::InvalidArgument("`block_length` must be > 0"));
 
-    int64 num_parallel_calls;
+    int64 num_parallel_calls = 0;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                             &num_parallel_calls));
     OP_REQUIRES(
@@ -208,6 +213,13 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         while (current_num_calls_ > 0 || future_num_calls_ > 0) {
           cond_var_->wait(l);
         }
+      }
+
+      string BuildTraceMeName() override {
+        // NOTE: We do not synchronize the following access to
+        // num_parallel_calls_ to minimize the tracing overhead.
+        int64 parallelism = num_parallel_calls_->value;
+        return strings::StrCat(prefix(), "#parallelism=", parallelism, "#");
       }
 
       Status Initialize(IteratorContext* ctx) override {

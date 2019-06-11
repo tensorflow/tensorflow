@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/lower_case_op.h"
 #include "tensorflow/core/common_runtime/lower_functional_ops.h"
 #include "tensorflow/core/common_runtime/lower_if_op.h"
 #include "tensorflow/core/common_runtime/lower_while_op.h"
@@ -1157,6 +1158,8 @@ Status InlineFunctionCalls(const GrapplerItem& item,
 
       if (n->type_string() == "If") {
         TF_RETURN_IF_ERROR(RewriteIfNode(n, graph.get(), flib_def, false));
+      } else if (n->type_string() == "Case") {
+        TF_RETURN_IF_ERROR(RewriteCaseNode(n, graph.get(), flib_def, false));
       } else if (n->type_string() == "While") {
         TF_RETURN_IF_ERROR(RewriteWhileNode(n, graph.get(), flib_def, false));
       }
@@ -1402,8 +1405,7 @@ Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
                                    GraphDef* optimized_graph) {
   // Nothing to do here.
   if (item.graph.library().function_size() == 0) {
-    *optimized_graph = item.graph;
-    return Status::OK();
+    return errors::Aborted("Nothing to do.");
   }
 
   TF_RETURN_IF_ERROR(RunFunctionOptimizerPass(item, optimized_graph));

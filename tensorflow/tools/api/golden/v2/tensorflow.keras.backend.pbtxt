@@ -441,10 +441,6 @@ tf_module {
     argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "set_session"
-    argspec: "args=[\'session\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "set_value"
     argspec: "args=[\'x\', \'value\'], varargs=None, keywords=None, defaults=None"
   }

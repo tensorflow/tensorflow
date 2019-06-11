@@ -27,16 +27,20 @@ limitations under the License.
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
+#include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/platform.h"
 
 namespace tensorflow {
 
 namespace {
+constexpr char kHostPlatform[] = "Host";
+
 // Returns the index of the result in the temp buffers.
 xla::StatusOr<size_t> ComputeResultIndex(
     const xla::BufferAssignment& buffer_assignment) {
@@ -81,8 +85,10 @@ XlaJitCompiledCpuFunction::Compile(
     const GraphDef& graph_def, const tf2xla::Config& config,
     const xla::ExecutableBuildOptions& build_options) {
   // Convert the graph_def into an xla::XlaComputation.
+  TF_ASSIGN_OR_RETURN(se::Platform * platform,
+                      xla::PlatformUtil::GetPlatform(kHostPlatform));
   TF_ASSIGN_OR_RETURN(xla::LocalClient * client,
-                      xla::ClientLibrary::GetOrCreateLocalClient());
+                      xla::ClientLibrary::GetOrCreateLocalClient(platform));
   xla::XlaComputation computation;
   TF_RETURN_IF_ERROR(tensorflow::ConvertGraphDefToXla(graph_def, config, client,
                                                       &computation));

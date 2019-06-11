@@ -92,7 +92,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
           n->name(),
           NodeDetails(n->type_string(),
                       strings::StrCat(
-                          "(", str_util::Join(n->requested_inputs(), ", "))));
+                          "(", absl::StrJoin(n->requested_inputs(), ", "))));
     }
   }
 
@@ -444,7 +444,7 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     Part* part = &partitions_.back();
     part->name = name_def.first;
     TrackFeedsAndFetches(part, name_def.second, popts);
-    part->worker = worker_cache_->CreateWorker(part->name);
+    part->worker = worker_cache_->GetOrCreateWorker(part->name);
     if (part->worker == nullptr) {
       s = errors::NotFound("worker ", part->name);
       break;
@@ -548,19 +548,13 @@ class RunManyGraphs {
   bool cancel_issued_ GUARDED_BY(mu_) = false;
 
   void ReportBadStatus(const Status& s) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    // Start cancellation if we aren't already in an error state.
-    // TODO(jingdong): Change the following log to VLOG once the distributed
-    // error aggregation is stable.
-    LOG(INFO) << "Master received error status " << s;
+    VLOG(1) << "Master received error status " << s;
     if (!cancel_issued_ && !StatusGroup::IsDerived(s)) {
       // Only start cancelling other workers upon receiveing a non-derived
       // error
       cancel_issued_ = true;
 
-      // TODO(jingdong): Change the following log to VLOG once the distributed
-      // error aggregation feature is stable.
-      LOG(INFO)
-          << "Master received error report. Cancelling remaining workers.";
+      VLOG(1) << "Master received error report. Cancelling remaining workers.";
       for (Call& call : calls_) {
         call.opts.StartCancel();
       }
@@ -1285,8 +1279,15 @@ Status MasterSession::CreateWorkerSessions(
   // Create all the workers & kick off the computations.
   for (size_t i = 0; i < worker_names.size(); ++i) {
     workers[i].name = &worker_names[i];
-    workers[i].worker = worker_cache->CreateWorker(worker_names[i]);
+    workers[i].worker = worker_cache->GetOrCreateWorker(worker_names[i]);
     workers[i].request.set_session_handle(handle_);
+    if (session_opts_.config.experimental()
+            .share_cluster_devices_in_session()) {
+      for (const auto& remote_dev : devices_->devices()) {
+        *workers[i].request.add_cluster_device_attributes() =
+            remote_dev->attributes();
+      }
+    }
 
     DeviceNameUtils::ParsedName name;
     if (!DeviceNameUtils::ParseFullName(worker_names[i], &name)) {
@@ -1376,7 +1377,7 @@ Status MasterSession::DeleteWorkerSessions() {
   // Create all the workers & kick off the computations.
   for (size_t i = 0; i < worker_names.size(); ++i) {
     workers[i].name = &worker_names[i];
-    workers[i].worker = worker_cache->CreateWorker(worker_names[i]);
+    workers[i].worker = worker_cache->GetOrCreateWorker(worker_names[i]);
     workers[i].request.set_session_handle(handle_);
     // Since the worker may have gone away, set a timeout to avoid blocking the
     // session-close operation.

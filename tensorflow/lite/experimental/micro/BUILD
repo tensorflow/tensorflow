@@ -1,8 +1,7 @@
 package(
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow/lite/experimental/micro/testing:micro_test.bzl",

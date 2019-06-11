@@ -1083,25 +1083,17 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
     rt = RaggedTensor.from_row_splits(values, row_splits, validate=False)
     splits_type = 'int64'
     if context.executing_eagerly():
-      expected_str = '<tf.RaggedTensor {}>'.format([[b'a', b'b'],
-                                                    [b'c', b'd', b'e'], [b'f'],
-                                                    [], [b'g']])
-      expected_repr = (
-          'tf.RaggedTensor(values=tf.Tensor([{}], shape=(7,), dtype=string), '
-          'row_splits=tf.Tensor([{}], shape=(6,), dtype={}))'.format(
-              ' '.join(repr(x) for x in values),
-              ' '.join(repr(x) for x in row_splits),
-              splits_type))
-      self.assertEqual(str(rt), expected_str)
-      self.assertEqual(repr(rt), expected_repr)
+      expected_repr = '<tf.RaggedTensor {}>'.format([[b'a', b'b'],
+                                                     [b'c', b'd', b'e'], [b'f'],
+                                                     [], [b'g']])
     else:
       expected_repr = (
           'tf.RaggedTensor(values=Tensor("RaggedFromRowSplits/values:0", '
           'shape=(7,), dtype=string), row_splits='
           'Tensor("RaggedFromRowSplits/row_splits:0", '
           'shape=(6,), dtype={}))').format(splits_type)
-      self.assertEqual(repr(rt), expected_repr)
-      self.assertEqual(str(rt), expected_repr)
+    self.assertEqual(repr(rt), expected_repr)
+    self.assertEqual(str(rt), expected_repr)
 
   def testRaggedTensorValueStr(self):
     values = [b'a', b'b', b'c', b'd', b'e', b'f', b'g']
@@ -1501,10 +1493,10 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
         ragged_constant, ragged_rank=ragged_rank, dtype=dtype)
     et = rt._to_variant()
     round_trip_rt = RaggedTensor._from_variant(
-        et, dtype, input_ragged_rank=ragged_rank)
+        et, dtype, output_ragged_rank=ragged_rank)
     self.assertRaggedEqual(rt, round_trip_rt)
 
-  def testBatchedVariantRoundTrip(self):
+  def testBatchedVariantRoundTripInputRaggedRankInferred(self):
     ragged_rank = 1
     rt = ragged_factory_ops.constant(
         [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9]],
@@ -1514,8 +1506,24 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
     decoded_rt = RaggedTensor._from_variant(
         nested_batched_variant,
         dtype=dtypes.int32,
-        input_ragged_rank=ragged_rank - 1,
         output_ragged_rank=ragged_rank + 1)
+    expected_rt = ragged_factory_ops.constant([[[0], [1]], [[2], [3]], [[4],
+                                                                        [5]],
+                                               [[6], [7]], [[8], [9]]])
+    self.assertRaggedEqual(decoded_rt, expected_rt)
+
+  def testBatchedVariantRoundTripWithInputRaggedRank(self):
+    ragged_rank = 1
+    rt = ragged_factory_ops.constant(
+        [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9]],
+        ragged_rank=ragged_rank)
+    batched_variant = rt._to_variant(batched_input=True)
+    nested_batched_variant = array_ops.reshape(batched_variant, [5, 2])
+    decoded_rt = RaggedTensor._from_variant(
+        nested_batched_variant,
+        dtype=dtypes.int32,
+        output_ragged_rank=ragged_rank + 1,
+        input_ragged_rank=ragged_rank - 1)
     expected_rt = ragged_factory_ops.constant([[[0], [1]], [[2], [3]], [[4],
                                                                         [5]],
                                                [[6], [7]], [[8], [9]]])
@@ -1530,8 +1538,8 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
       RaggedTensor._from_variant(
           nested_batched_variant,
           dtype=dtypes.int32,
-          input_ragged_rank=1,
-          output_ragged_rank=1)
+          output_ragged_rank=1,
+          input_ragged_rank=1)
 
 if __name__ == '__main__':
   googletest.main()

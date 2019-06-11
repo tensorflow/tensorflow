@@ -17,14 +17,12 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import json
 import os
 import weakref
 
 from absl.testing import parameterized
 import six
 
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -319,19 +317,12 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
         "optimizer/learning_rate",
         "optimizer/beta_1",
         "optimizer/beta_2",
-        "optimizer/epsilon",
         "optimizer/iter",
         "optimizer/decay",
     ) + expected_slot_keys
     suffix = "/.ATTRIBUTES/VARIABLE_VALUE"
     expected_checkpoint_names = [
         name + suffix for name in expected_checkpoint_names]
-    expected_checkpoint_names.append(
-        "optimizer/.ATTRIBUTES/OBJECT_CONFIG_JSON")
-    # The Dense layers also save get_config() JSON
-    expected_checkpoint_names.extend(
-        ["model/_second/.ATTRIBUTES/OBJECT_CONFIG_JSON",
-         "model/_named_dense/.ATTRIBUTES/OBJECT_CONFIG_JSON"])
     named_variables = {v.name: v for v in named_variables}
     six.assertCountEqual(self, expected_checkpoint_names,
                          named_variables.keys())
@@ -345,12 +336,10 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     self.assertEqual(
         "my_model/dense/kernel",
         named_variables["model/_named_dense/kernel" + suffix].full_name)
-    self.assertEqual(
-        "beta_1",
-        named_variables["optimizer/beta_1" + suffix].full_name)
-    self.assertEqual(
-        "beta_2",
-        named_variables["optimizer/beta_2" + suffix].full_name)
+    self.assertEqual("Adam/beta_1",
+                     named_variables["optimizer/beta_1" + suffix].full_name)
+    self.assertEqual("Adam/beta_2",
+                     named_variables["optimizer/beta_2" + suffix].full_name)
     # Spot check the generated protocol buffers.
     self.assertEqual("optimizer",
                      serialized_graph.nodes[0].children[1].local_name)
@@ -359,8 +348,8 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     children = [node.local_name for node in optimizer_node.children]
     six.assertCountEqual(
         self,
-        # Non-slot dependencies
-        ["beta_1", "beta_2", "iter", "decay", "epsilon", "learning_rate"],
+        # hyper variable dependencies
+        ["beta_1", "beta_2", "iter", "decay", "learning_rate"],
         children)
     serialized_slot_keys = []
     for slot in optimizer_node.slot_variables:
@@ -1423,7 +1412,9 @@ class TemplateTests(parameterized.TestCase, test.TestCase):
     optimizer.minimize(v1_save.read_value,
                        var_list=[v1_save])
     self.evaluate([v.initializer for v in save_template.variables])
-    self.evaluate([v.initializer for v in optimizer.variables()])
+    optimizer_variables = optimizer.variables() + list(
+        optimizer._hyper.values())
+    self.evaluate([v.initializer for v in optimizer_variables])
     self.evaluate(v1_save.assign([12.]))
     self.evaluate(v2_save.assign([14.]))
     checkpoint_directory = self.get_temp_dir()
@@ -1618,48 +1609,6 @@ class CheckpointCompatibilityTests(test.TestCase):
         self._set_sentinels(root)
         root.restore(save_path).assert_consumed().run_restore_ops()
         self._check_sentinels(root)
-
-
-class PythonMetadataTests(test.TestCase):
-
-  @test_util.run_in_graph_and_eager_modes
-  def testSaveLoad(self):
-    checkpoint_directory = self.get_temp_dir()
-    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-    dense = core.Dense(1)
-    checkpoint = trackable_utils.Checkpoint(dense=dense)
-    dense(constant_op.constant([[1.]]))
-    checkpoint.restore(None).initialize_or_restore()
-    save_path = checkpoint.save(checkpoint_prefix)
-
-    def _get_dense_node_from_object_graph(object_graph_proto):
-      root_node = object_graph_proto.nodes[0]
-      for child in root_node.children:
-        if child.local_name == "dense":
-          break
-      else:
-        raise AssertionError(
-            "Expected a 'dense' dependency of root, didn't find one.")
-      dense_node = object_graph_proto.nodes[child.node_id]  # pylint: disable=undefined-loop-variable
-      self.assertEqual(1, len(dense_node.attributes))
-      reader = pywrap_tensorflow.NewCheckpointReader(save_path)
-      layer_json = reader.get_tensor(dense_node.attributes[0].checkpoint_key)
-      return json.loads(layer_json.decode("utf-8"))
-
-    layer_data = _get_dense_node_from_object_graph(
-        trackable_utils.object_metadata(save_path))
-    self.assertEqual("Dense", layer_data["class_name"])
-    self.assertEqual(1, layer_data["config"]["units"])
-
-    # Check that no new ops are added to the graph the second time we save.
-    ops.get_default_graph().finalize()
-
-    dense.units = 42
-    save_path = checkpoint.save(checkpoint_prefix)
-    layer_data = _get_dense_node_from_object_graph(
-        trackable_utils.object_metadata(save_path))
-    self.assertEqual("Dense", layer_data["class_name"])
-    self.assertEqual(42, layer_data["config"]["units"])
 
 
 if __name__ == "__main__":

@@ -70,7 +70,7 @@ def get_test_data(train_samples,
 @test_util.use_deterministic_cudnn
 def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
                input_data=None, expected_output=None,
-               expected_output_dtype=None):
+               expected_output_dtype=None, validate_training=True):
   """Test routine for a layer with a single input and single output.
 
   Arguments:
@@ -82,6 +82,9 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     input_data: Numpy array of input data.
     expected_output: Shape tuple for the expected shape of the output.
     expected_output_dtype: Data type expected for the output.
+    validate_training: Whether to attempt to validate training on this layer.
+      This might be set to False for non-differentiable layers that output
+      string or integer values.
 
   Returns:
     The output data (Numpy array) returned by the layer, for additional
@@ -169,16 +172,17 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   # Rebuild the model to avoid the graph being reused between predict() and
   # train(). This was causing some error for layer with Defun as it body.
   # See b/120160788 for more details. This should be mitigated after 2.0.
-  model = keras.models.Model(x, layer(x))
-  if _thread_local_data.run_eagerly is not None:
-    model.compile(
-        'rmsprop',
-        'mse',
-        weighted_metrics=['acc'],
-        run_eagerly=should_run_eagerly())
-  else:
-    model.compile('rmsprop', 'mse', weighted_metrics=['acc'])
-  model.train_on_batch(input_data, actual_output)
+  if validate_training:
+    model = keras.models.Model(x, layer(x))
+    if _thread_local_data.run_eagerly is not None:
+      model.compile(
+          'rmsprop',
+          'mse',
+          weighted_metrics=['acc'],
+          run_eagerly=should_run_eagerly())
+    else:
+      model.compile('rmsprop', 'mse', weighted_metrics=['acc'])
+    model.train_on_batch(input_data, actual_output)
 
   # test as first layer in Sequential API
   layer_config = layer.get_config()
@@ -406,7 +410,7 @@ class _SubclassModelCustomBuild(keras.Model):
     return x
 
 
-def get_model_from_layers(layers, input_shape=None):
+def get_model_from_layers(layers, input_shape=None, input_dtype=None):
   """Builds a model from a sequence of layers."""
   model_type = get_model_type()
   if model_type == 'subclass':
@@ -419,7 +423,8 @@ def get_model_from_layers(layers, input_shape=None):
   if model_type == 'sequential':
     model = keras.models.Sequential()
     if input_shape:
-      model.add(keras.layers.InputLayer(input_shape=input_shape))
+      model.add(keras.layers.InputLayer(input_shape=input_shape,
+                                        dtype=input_dtype))
     for layer in layers:
       model.add(layer)
     return model
@@ -428,7 +433,7 @@ def get_model_from_layers(layers, input_shape=None):
     if not input_shape:
       raise ValueError('Cannot create a functional model from layers with no '
                        'input shape.')
-    inputs = keras.Input(shape=input_shape)
+    inputs = keras.Input(shape=input_shape, dtype=input_dtype)
     outputs = inputs
     for layer in layers:
       outputs = layer(outputs)

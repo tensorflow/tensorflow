@@ -158,14 +158,14 @@ struct NodeItem {
   // The kernel for this node.
   OpKernel* kernel = nullptr;
 
-  bool kernel_is_async : 1;      // True iff kernel->AsAsync() != nullptr
-  bool is_merge : 1;             // True iff IsMerge(node)
-  bool is_enter : 1;             // True iff IsEnter(node)
-  bool is_constant_enter : 1;    // True iff IsEnter(node) and
-                                 // node->GetAttr("is_constant") == true.
-  bool is_exit : 1;              // True iff IsExit(node)
-  bool is_control_trigger : 1;   // True iff IsControlTrigger(node)
-  bool is_sink : 1;              // True iff IsSink(node)
+  bool kernel_is_async : 1;     // True iff kernel->AsAsync() != nullptr
+  bool is_merge : 1;            // True iff IsMerge(node)
+  bool is_enter : 1;            // True iff IsEnter(node)
+  bool is_constant_enter : 1;   // True iff IsEnter(node) and
+                                // node->GetAttr("is_constant") == true.
+  bool is_exit : 1;             // True iff IsExit(node)
+  bool is_control_trigger : 1;  // True iff IsControlTrigger(node)
+  bool is_sink : 1;             // True iff IsSink(node)
   // True iff IsEnter(node) || IsExit(node) || IsNextIteration(node)
   bool is_enter_exit_or_next_iter : 1;
 
@@ -1249,6 +1249,7 @@ class ExecutorState {
   int64 step_id_;
   // Not owned.
   Rendezvous* rendezvous_;
+  Executor::RendezvousFactory* create_rendezvous_ = nullptr;
   CollectiveExecutor* collective_executor_ = nullptr;
   SessionState* session_state_;
   string session_handle_;
@@ -1383,6 +1384,7 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       log_memory_(LogMemory::IsEnabled()),
       step_id_(args.step_id),
       rendezvous_(args.rendezvous),
+      create_rendezvous_(&impl->params_.rendezvous_factory),
       collective_executor_(args.collective_executor),
       session_state_(args.session_state),
       session_handle_(args.session_handle),
@@ -1601,8 +1603,8 @@ bool MightTrace(const NodeItem& item,
   }
   auto* trace_collector = tracing::GetTraceCollector();
   if (trace_collector) {
-    if (using_annotations) {
-      return trace_collector->IsEnabledForAnnotations();
+    if (using_annotations && trace_collector->IsEnabledForAnnotations()) {
+      return true;
     }
   }
   return profiler::TraceMeRecorder::Active(
@@ -1627,6 +1629,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.log_memory = log_memory_;
   params.record_tensor_accesses = impl_->device_record_tensor_accesses_;
   params.rendezvous = rendezvous_;
+  params.create_rendezvous = create_rendezvous_;
   params.collective_executor = collective_executor_;
   params.session_state = session_state_;
   params.session_handle = session_handle_;
@@ -2032,14 +2035,9 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       // Set the allocator attributes of the output entry.
       out->alloc_attr = ctx->output_alloc_attr(i);
 
-      // Sanity check of output tensor types.
-      DataType dtype;
-      if (val.is_ref()) {
-        tf_shared_lock ml(*val.mutex_if_ref);
-        dtype = MakeRefType(val->dtype());
-      } else {
-        dtype = val->dtype();
-      }
+      // Sanity check of output tensor types. We need to inspect this safely as
+      // we are in the tensor buffer.
+      DataType dtype = val.dtype_safe();
       if (dtype == item.output_type(i)) {
         if (stats && val.tensor->IsInitialized()) {
           nodestats::SetOutput(stats, i, val.tensor);
@@ -2231,14 +2229,10 @@ bool ExecutorState::NodeDone(const Status& s, const Node* node,
     if (cancellation_manager_) {
       // only log when the abort happens during the actual run time.
       auto device_name = impl_->params_.device->name();
-      // Do not log OutOfRange errors as warnings because they are expected when
+      // Use VLOG instead of LOG(warning) because error status is expected when
+      // the executor is run under the grappler optimization phase or when
       // iterating through a tf.data input pipeline.
-      if (!errors::IsOutOfRange(s)) {
-        LOG(WARNING) << "[" << device_name
-                     << "] Executor start aborting: " << s;
-      } else {
-        VLOG(1) << "[" << device_name << "] Executor start aborting: " << s;
-      }
+      VLOG(1) << "[" << device_name << "] Executor start aborting: " << s;
     }
 
     if (rendezvous_) {

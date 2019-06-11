@@ -100,8 +100,10 @@ class VectorSupportLibrary {
 
   llvm::Value* Floor(llvm::Value* a);
 
+  // Precondition: Neither `low` nor `high` is nan.
   llvm::Value* Clamp(llvm::Value* a, const llvm::APFloat& low,
                      const llvm::APFloat& high);
+
   llvm::Value* SplatFloat(const llvm::APFloat& d) {
     return GetConstantFloat(vector_type(), d);
   }

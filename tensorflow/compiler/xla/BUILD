@@ -1,6 +1,14 @@
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_proto_library_py",
+)
 
-package(default_visibility = ["//tensorflow:internal"])
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "friends",
@@ -16,13 +24,6 @@ package_group(
     packages = [
         "//tensorflow/compiler/xla/...",
     ],
-)
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
-load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_proto_library_py",
 )
 
 # Filegroup used to collect source files for dependency checking.
@@ -575,6 +576,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":types",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -879,6 +881,26 @@ tf_cc_test(
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/strings:str_format",
         ],
+)
+
+cc_library(
+    name = "refcounting_hash_map",
+    hdrs = ["refcounting_hash_map.h"],
+    deps = [
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cc_test(
+    name = "refcounting_hash_map_test",
+    srcs = ["refcounting_hash_map_test.cc"],
+    deps = [
+        ":refcounting_hash_map",
+        ":test",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 # -----------------------------------------------------------------------------

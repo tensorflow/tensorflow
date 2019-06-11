@@ -52,6 +52,58 @@ _PYTHON_BIN_PATH = "PYTHON_BIN_PATH"
 
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = ["3.5", "5.2"]
 
+def to_list_of_strings(elements):
+    """Convert the list of ["a", "b", "c"] into '"a", "b", "c"'.
+
+    This is to be used to put a list of strings into the bzl file templates
+    so it gets interpreted as list of strings in Starlark.
+
+    Args:
+      elements: list of string elements
+
+    Returns:
+      single string of elements wrapped in quotes separated by a comma."""
+    quoted_strings = ["\"" + element + "\"" for element in elements]
+    return ", ".join(quoted_strings)
+
+def verify_build_defines(params):
+    """Verify all variables that crosstool/BUILD.tpl expects are substituted.
+
+    Args:
+      params: dict of variables that will be passed to the BUILD.tpl template.
+    """
+    missing = []
+    for param in [
+        "cxx_builtin_include_directories",
+        "extra_no_canonical_prefixes_flags",
+        "host_compiler_path",
+        "host_compiler_prefix",
+        "host_compiler_warnings",
+        "linker_bin_path",
+        "linker_files",
+        "msvc_cl_path",
+        "msvc_env_include",
+        "msvc_env_lib",
+        "msvc_env_path",
+        "msvc_env_tmp",
+        "msvc_lib_path",
+        "msvc_link_path",
+        "msvc_ml_path",
+        "unfiltered_compile_flags",
+        "win_linker_files",
+    ]:
+        if ("%{" + param + "}") not in params:
+            missing.append(param)
+
+    if missing:
+        auto_configure_fail(
+            "BUILD.tpl template is missing these variables: " +
+            str(missing) +
+            ".\nWe only got: " +
+            str(params) +
+            ".",
+        )
+
 def _get_python_bin(repository_ctx):
     """Gets the python bin path."""
     python_bin = repository_ctx.os.environ.get(_PYTHON_BIN_PATH)
@@ -94,19 +146,18 @@ def _get_msvc_compiler(repository_ctx):
 def _get_win_cuda_defines(repository_ctx):
     """Return CROSSTOOL defines for Windows"""
 
-    # If we are not on Windows, return empty vaules for Windows specific fields.
+    # If we are not on Windows, return fake vaules for Windows specific fields.
     # This ensures the CROSSTOOL file parser is happy.
     if not _is_windows(repository_ctx):
         return {
-            "%{msvc_env_tmp}": "",
-            "%{msvc_env_path}": "",
-            "%{msvc_env_include}": "",
-            "%{msvc_env_lib}": "",
-            "%{msvc_cl_path}": "",
-            "%{msvc_ml_path}": "",
-            "%{msvc_link_path}": "",
-            "%{msvc_lib_path}": "",
-            "%{cxx_builtin_include_directory}": "",
+            "%{msvc_env_tmp}": "msvc_not_used",
+            "%{msvc_env_path}": "msvc_not_used",
+            "%{msvc_env_include}": "msvc_not_used",
+            "%{msvc_env_lib}": "msvc_not_used",
+            "%{msvc_cl_path}": "msvc_not_used",
+            "%{msvc_ml_path}": "msvc_not_used",
+            "%{msvc_link_path}": "msvc_not_used",
+            "%{msvc_lib_path}": "msvc_not_used",
         }
 
     vc_path = find_vc_path(repository_ctx)
@@ -143,16 +194,14 @@ def _get_win_cuda_defines(repository_ctx):
     )
 
     # nvcc will generate some temporary source files under %{nvcc_tmp_dir}
-    # The generated files are guranteed to have unique name, so they can share the same tmp directory
+    # The generated files are guaranteed to have unique name, so they can share
+    # the same tmp directory
     escaped_cxx_include_directories = [
-        "cxx_builtin_include_directory: \"%s\"" %
         _get_nvcc_tmp_dir_for_windows(repository_ctx),
     ]
     for path in escaped_include_paths.split(";"):
         if path:
-            escaped_cxx_include_directories.append(
-                "cxx_builtin_include_directory: \"%s\"" % path,
-            )
+            escaped_cxx_include_directories.append(path)
 
     return {
         "%{msvc_env_tmp}": escaped_tmp_dir,
@@ -163,7 +212,9 @@ def _get_win_cuda_defines(repository_ctx):
         "%{msvc_ml_path}": msvc_ml_path,
         "%{msvc_link_path}": msvc_link_path,
         "%{msvc_lib_path}": msvc_lib_path,
-        "%{cxx_builtin_include_directory}": "\n".join(escaped_cxx_include_directories),
+        "%{cxx_builtin_include_directories}": to_list_of_strings(
+            escaped_cxx_include_directories,
+        ),
     }
 
 # TODO(dzc): Once these functions have been factored out of Bazel's
@@ -275,35 +326,15 @@ def auto_configure_fail(msg):
 
 # END cc_configure common functions (see TODO above).
 
-def _host_compiler_includes(repository_ctx, cc):
-    """Generates the cxx_builtin_include_directory entries for gcc inc dirs.
-
-      Args:
-        repository_ctx: The repository context.
-        cc: The path to the gcc host compiler.
-
-      Returns:
-        A string containing the cxx_builtin_include_directory for each of the gcc
-        host compiler include directories, which can be added to the CROSSTOOL
-        file.
-      """
-    inc_dirs = get_cxx_inc_directories(repository_ctx, cc)
-    inc_entries = []
-    for inc_dir in inc_dirs:
-        inc_entries.append("  cxx_builtin_include_directory: \"%s\"" % inc_dir)
-    return "\n".join(inc_entries)
-
 def _cuda_include_path(repository_ctx, cuda_config):
-    """Generates the cxx_builtin_include_directory entries for cuda inc dirs.
+    """Generates the Starlark string with cuda include directories.
 
       Args:
         repository_ctx: The repository context.
         cc: The path to the gcc host compiler.
 
       Returns:
-        A string containing the cxx_builtin_include_directory for each of the gcc
-        host compiler include directories, which can be added to the CROSSTOOL
-        file.
+        A list of the gcc host compiler include directories.
       """
     nvcc_path = repository_ctx.path("%s/bin/nvcc%s" % (
         cuda_config.cuda_toolkit_path,
@@ -327,12 +358,9 @@ def _cuda_include_path(repository_ctx, cuda_config):
             )
     inc_entries = []
     if target_dir != "":
-        inc_entries.append("  cxx_builtin_include_directory: \"%s\"" % target_dir)
-    default_include = cuda_config.cuda_toolkit_path + "/include"
-    inc_entries.append(
-        "  cxx_builtin_include_directory: \"%s\"" % default_include,
-    )
-    return "\n".join(inc_entries)
+        inc_entries.append(target_dir)
+    inc_entries.append(cuda_config.cuda_toolkit_path + "/include")
+    return inc_entries
 
 def enable_cuda(repository_ctx):
     """Returns whether to build with CUDA support."""
@@ -784,8 +812,11 @@ def _create_dummy_repository(repository_ctx):
             "%{curand_lib}": lib_name("curand", cpu_value),
             "%{cupti_lib}": lib_name("cupti", cpu_value),
             "%{cusparse_lib}": lib_name("cusparse", cpu_value),
-            "%{copy_rules}": "",
-            "%{cuda_headers}": "",
+            "%{copy_rules}": """
+filegroup(name="cuda-include")
+filegroup(name="cublas-include")
+filegroup(name="cudnn-include")
+""",
         },
     )
 
@@ -876,7 +907,7 @@ def make_copy_files_rule(repository_ctx, name, srcs, outs):
 
     # Copy files.
     for src, out in zip(srcs, outs):
-        cmds.append('cp -f "%s" $(location %s)' % (src, out))
+        cmds.append('cp -f "%s" "$(location %s)"' % (src, out))
     outs = [('        "%s",' % out) for out in outs]
     return """genrule(
     name = "%s",
@@ -884,7 +915,7 @@ def make_copy_files_rule(repository_ctx, name, srcs, outs):
 %s
     ],
     cmd = \"""%s \""",
-)""" % (name, "\n".join(outs), " && ".join(cmds))
+)""" % (name, "\n".join(outs), " && \\\n".join(cmds))
 
 def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir):
     """Returns a rule to recursively copy a directory."""
@@ -983,25 +1014,21 @@ def _create_local_cuda_repository(repository_ctx):
             out_dir = "cuda/extras/CUPTI/include",
         ),
     ]
-    included_files = _read_dir(repository_ctx, cuda_include_path)
 
-    if not any([file.endswith("cublas.h") for file in included_files]):
-        copy_rules.append(make_copy_files_rule(
-            repository_ctx,
-            name = "cublas-include",
-            srcs = [
-                cublas_include_path + "/cublas.h",
-                cublas_include_path + "/cublas_v2.h",
-                cublas_include_path + "/cublas_api.h",
-            ],
-            outs = [
-                "cuda/include/cublas.h",
-                "cuda/include/cublas_v2.h",
-                "cuda/include/cublas_api.h",
-            ],
-        ))
-    else:
-        copy_rules.append("filegroup(name = 'cublas-include')\n")
+    copy_rules.append(make_copy_files_rule(
+        repository_ctx,
+        name = "cublas-include",
+        srcs = [
+            cublas_include_path + "/cublas.h",
+            cublas_include_path + "/cublas_v2.h",
+            cublas_include_path + "/cublas_api.h",
+        ],
+        outs = [
+            "cublas/include/cublas.h",
+            "cublas/include/cublas_v2.h",
+            "cublas/include/cublas_api.h",
+        ],
+    ))
 
     cuda_libs = _find_libs(repository_ctx, cuda_config)
     cuda_lib_srcs = []
@@ -1023,16 +1050,12 @@ def _create_local_cuda_repository(repository_ctx):
         out_dir = "cuda/bin",
     ))
 
-    # Copy cudnn.h if cuDNN was not installed to CUDA_TOOLKIT_PATH.
-    if not any([file.endswith("cudnn.h") for file in included_files]):
-        copy_rules.append(make_copy_files_rule(
-            repository_ctx,
-            name = "cudnn-include",
-            srcs = [cudnn_header_dir + "/cudnn.h"],
-            outs = ["cuda/include/cudnn.h"],
-        ))
-    else:
-        copy_rules.append("filegroup(name = 'cudnn-include')\n")
+    copy_rules.append(make_copy_files_rule(
+        repository_ctx,
+        name = "cudnn-include",
+        srcs = [cudnn_header_dir + "/cudnn.h"],
+        outs = ["cudnn/include/cudnn.h"],
+    ))
 
     # Set up BUILD file for cuda/
     _tpl(
@@ -1062,11 +1085,6 @@ def _create_local_cuda_repository(repository_ctx):
             "%{cupti_lib}": cuda_libs["cupti"].basename,
             "%{cusparse_lib}": cuda_libs["cusparse"].basename,
             "%{copy_rules}": "\n".join(copy_rules),
-            "%{cuda_headers}": (
-                '":cuda-include",\n' +
-                '        ":cublas-include",' +
-                '        ":cudnn-include",'
-            ),
         },
         "cuda/BUILD",
     )
@@ -1084,7 +1102,7 @@ def _create_local_cuda_repository(repository_ctx):
     cc = find_cc(repository_ctx)
     cc_fullpath = cc if not should_download_clang else "crosstool/" + cc
 
-    host_compiler_includes = _host_compiler_includes(repository_ctx, cc_fullpath)
+    host_compiler_includes = get_cxx_inc_directories(repository_ctx, cc_fullpath)
     cuda_defines = {}
 
     host_compiler_prefix = "/usr/bin"
@@ -1101,23 +1119,22 @@ def _create_local_cuda_repository(repository_ctx):
     #       flag from the CROSSTOOL completely (see
     #       https://github.com/bazelbuild/bazel/issues/5634)
     if should_download_clang:
-        cuda_defines["%{linker_bin_path_flag}"] = ""
+        cuda_defines["%{linker_bin_path}"] = ""
     else:
-        cuda_defines["%{linker_bin_path_flag}"] = 'flag: "-B%s"' % host_compiler_prefix
+        cuda_defines["%{linker_bin_path}"] = host_compiler_prefix
 
+    cuda_defines["%{extra_no_canonical_prefixes_flags}"] = ""
+    cuda_defines["%{unfiltered_compile_flags}"] = ""
     if is_cuda_clang:
         cuda_defines["%{host_compiler_path}"] = str(cc)
         cuda_defines["%{host_compiler_warnings}"] = """
         # Some parts of the codebase set -Werror and hit this warning, so
         # switch it off for now.
-        flag: "-Wno-invalid-partial-specialization"
+        "-Wno-invalid-partial-specialization"
     """
-        cuda_defines["%{host_compiler_includes}"] = host_compiler_includes
-        cuda_defines["%{extra_no_canonical_prefixes_flags}"] = ""
-        _tpl(repository_ctx, "crosstool:BUILD", {
-            "%{linker_files}": ":empty",
-            "%{win_linker_files}": ":empty",
-        })
+        cuda_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(host_compiler_includes)
+        cuda_defines["%{linker_files}"] = ":empty"
+        cuda_defines["%{win_linker_files}"] = ":empty"
         repository_ctx.file(
             "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
             "",
@@ -1130,13 +1147,11 @@ def _create_local_cuda_repository(repository_ctx):
         # nvcc has the system include paths built in and will automatically
         # search them; we cannot work around that, so we add the relevant cuda
         # system paths to the allowed compiler specific include paths.
-        cuda_defines["%{host_compiler_includes}"] = (
-            host_compiler_includes + "\n" + _cuda_include_path(
+        cuda_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(
+            host_compiler_includes + _cuda_include_path(
                 repository_ctx,
                 cuda_config,
-            ) +
-            "\n  cxx_builtin_include_directory: \"%s\"" % cupti_header_dir +
-            "\n  cxx_builtin_include_directory: \"%s\"" % cudnn_header_dir
+            ) + [cupti_header_dir, cudnn_header_dir],
         )
 
         # For gcc, do not canonicalize system header paths; some versions of gcc
@@ -1144,23 +1159,17 @@ def _create_local_cuda_repository(repository_ctx):
         # .d file - given that includes that are prefixed with "../" multiple
         # time quickly grow longer than the root of the tree, this can lead to
         # bazel's header check failing.
-        cuda_defines["%{extra_no_canonical_prefixes_flags}"] = (
-            "flag: \"-fno-canonical-system-headers\""
-        )
+        cuda_defines["%{extra_no_canonical_prefixes_flags}"] = "\"-fno-canonical-system-headers\""
+
         nvcc_path = str(
             repository_ctx.path("%s/nvcc%s" % (
                 cuda_config.config["cuda_binary_dir"],
                 ".exe" if _is_windows(repository_ctx) else "",
             )),
         )
-        _tpl(
-            repository_ctx,
-            "crosstool:BUILD",
-            {
-                "%{linker_files}": ":crosstool_wrapper_driver_is_not_gcc",
-                "%{win_linker_files}": ":windows_msvc_wrapper_files",
-            },
-        )
+        cuda_defines["%{linker_files}"] = ":crosstool_wrapper_driver_is_not_gcc"
+        cuda_defines["%{win_linker_files}"] = ":windows_msvc_wrapper_files"
+
         wrapper_defines = {
             "%{cpu_compiler}": str(cc),
             "%{cuda_version}": cuda_config.cuda_version,
@@ -1183,12 +1192,15 @@ def _create_local_cuda_repository(repository_ctx):
         )
 
     cuda_defines.update(_get_win_cuda_defines(repository_ctx))
-    _tpl(
-        repository_ctx,
-        "crosstool:CROSSTOOL",
-        cuda_defines,
-        out = "crosstool/CROSSTOOL",
-    )
+
+    verify_build_defines(cuda_defines)
+
+    # Only expand template variables in the BUILD file
+    _tpl(repository_ctx, "crosstool:BUILD", cuda_defines)
+
+    # No templating of cc_toolchain_config - use attributes and templatize the
+    # BUILD file.
+    _file(repository_ctx, "crosstool:cc_toolchain_config.bzl")
 
     # Set up cuda_config.h, which is used by
     # tensorflow/stream_executor/dso_loader.cc.
@@ -1199,7 +1211,7 @@ def _create_local_cuda_repository(repository_ctx):
             "%{cuda_version}": cuda_config.cuda_version,
             "%{cuda_lib_version}": cuda_config.cuda_lib_version,
             "%{cudnn_version}": cuda_config.cudnn_version,
-            "%{cuda_compute_capabilities}": ",".join([
+            "%{cuda_compute_capabilities}": ", ".join([
                 "CudaVersion(\"%s\")" % c
                 for c in cuda_config.compute_capabilities
             ]),

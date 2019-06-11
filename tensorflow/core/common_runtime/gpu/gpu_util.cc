@@ -100,7 +100,7 @@ Status PrepareCopy(Device* device, const DeviceContext* ctx, const Tensor& src,
   }
   if (!DMAHelper::CanUseDMA(&src)) {
     return errors::Internal("GPU copy from non-DMA ",
-                            DataTypeString(src.dtype()), "tensor");
+                            DataTypeString(src.dtype()), " tensor");
   }
   return Status::OK();
 }
@@ -151,7 +151,8 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
   if (total_bytes > 0) {
     tracing::ScopedAnnotation annotation("SetProtoFromGPU");
     alloc = GPUProcessState::singleton()->GetGpuHostAllocator(0);
-    buf = alloc->Allocate<char>(total_bytes);
+    buf = static_cast<char*>(
+        alloc->AllocateRaw(Allocator::kAllocatorAlignment, total_bytes));
     if (LogMemory::IsEnabled()) {
       LogMemory::RecordRawAllocation("SetProtoFromGPU",
                                      LogMemory::PROTO_BUFFER_STEP_ID,
@@ -178,7 +179,7 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
                                              LogMemory::PROTO_BUFFER_STEP_ID,
                                              buf, alloc, false);
           }
-          alloc->Deallocate<char>(buf, total_bytes);
+          alloc->DeallocateRaw(buf);
         }
         done(Status::OK());
       });

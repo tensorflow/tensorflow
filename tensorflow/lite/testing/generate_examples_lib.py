@@ -92,7 +92,7 @@ class Options(object):
     # If a particular model is affected by a known bug count it as a Toco
     # error.
     self.known_bugs_are_errors = False
-    # Raise an exception if any toco error is encountered.
+    # Raise an exception if any converter error is encountered.
     self.ignore_converter_errors = False
     # Include intermediate graphdefs in the output zip files.
     self.save_graphdefs = False
@@ -349,8 +349,7 @@ def make_control_dep_tests(options):
       expected_tf_failures=3)
 
 
-def toco_convert(
-    options, graph_def, input_tensors, output_tensors, **kwargs):
+def toco_convert(options, graph_def, input_tensors, output_tensors, **kwargs):
   """Convert a model's graph def into a tflite model.
 
   NOTE: this currently shells out to the toco binary, but we would like
@@ -373,35 +372,98 @@ def toco_convert(
   graph_def_str = graph_def.SerializeToString()
 
   extra_toco_options = kwargs.get("extra_toco_options", ExtraTocoOptions())
+  test_params = kwargs.get("test_params", {})
   input_arrays = [x[0] for x in input_tensors]
   data_types = [_TF_TYPE_INFO[x[2]][1] for x in input_tensors]
-  opts = toco_options(
-      data_types=data_types,
-      input_arrays=input_arrays,
-      shapes=[x[1] for x in input_tensors],
-      output_arrays=output_tensors,
-      extra_toco_options=extra_toco_options)
 
-  with tempfile.NamedTemporaryFile() as graphdef_file, \
-       tempfile.NamedTemporaryFile() as output_file, \
-       tempfile.NamedTemporaryFile("w+") as stdout_file:
-    graphdef_file.write(graph_def_str)
-    graphdef_file.flush()
+  if test_params.get("fully_quantize", False):
+    with tempfile.NamedTemporaryFile() as graphdef_file:
+      graphdef_file.write(graph_def_str)
+      graphdef_file.flush()
 
-    # TODO(aselle): Switch this to subprocess at some point.
-    if "pb2lite" in bin_path and options.run_with_flex:
-      opts = ("--input_arrays={0} --output_arrays={1}".format(
-          ",".join(input_arrays), ",".join(output_tensors)))
-    elif options.run_with_flex:
-      opts += " --enable_select_tf_ops --force_select_tf_ops"
-    cmd = ("%s --input_file=%s --output_file=%s %s > %s 2>&1" %
-           (bin_path, graphdef_file.name, output_file.name, opts,
-            stdout_file.name))
-    exit_code = os.system(cmd)
-    log = (
-        cmd + "exited with code %d" % exit_code + "\n------------------\n" +
-        stdout_file.read())
-    return (None if exit_code != 0 else output_file.read()), log
+      input_shapes = get_input_shapes_map(input_tensors)
+      converter = tf.lite.TocoConverter.from_frozen_graph(
+          graphdef_file.name, input_arrays, output_tensors, input_shapes)
+
+      def representative_dataset(input_tensors):
+        calibration_inputs = []
+        for _, shape, _ in input_tensors:
+          if shape:
+            dims = [dim.value for dim in shape.dims]
+            calibration_inputs.append(
+                np.random.uniform(-1, 1, tuple(dims)).astype(np.float32))
+        return calibration_inputs
+
+      def representative_dataset_gen():
+        for _ in range(100):
+          yield representative_dataset(input_tensors)
+
+      converter.target_spec.supported_ops = [
+          tf.lite.OpsSet.TFLITE_BUILTINS_INT8
+      ]
+      converter.representative_dataset = representative_dataset_gen
+
+      try:
+        tflite_model = converter.convert()
+        return tflite_model, ""
+      except Exception as e:
+        log = "{0}\n{1}".format(str(e), traceback.format_exc())
+        return None, log
+
+  else:
+    opts = toco_options(
+        data_types=data_types,
+        input_arrays=input_arrays,
+        shapes=[x[1] for x in input_tensors],
+        output_arrays=output_tensors,
+        extra_toco_options=extra_toco_options)
+
+    with tempfile.NamedTemporaryFile() as graphdef_file, \
+         tempfile.NamedTemporaryFile() as output_file, \
+         tempfile.NamedTemporaryFile("w+") as stdout_file:
+      graphdef_file.write(graph_def_str)
+      graphdef_file.flush()
+
+      # TODO(aselle): Switch this to subprocess at some point.
+      if "pb2lite" in bin_path and options.run_with_flex:
+        opts = ("--input_arrays={0} --output_arrays={1}".format(
+            ",".join(input_arrays), ",".join(output_tensors)))
+      elif options.run_with_flex:
+        opts += " --enable_select_tf_ops --force_select_tf_ops"
+      cmd = ("%s --input_file=%s --output_file=%s %s > %s 2>&1" %
+             (bin_path, graphdef_file.name, output_file.name, opts,
+              stdout_file.name))
+      exit_code = os.system(cmd)
+      log = (
+          cmd + "exited with code %d" % exit_code + "\n------------------\n" +
+          stdout_file.read())
+      return (None if exit_code != 0 else output_file.read()), log
+
+
+def get_input_shapes_map(input_tensors):
+  """Gets a map of input names to shapes.
+
+  Args:
+    input_tensors: List of input tensor tuples `(name, shape, type)`.
+
+  Returns:
+    {string : list of integers}.
+  """
+  input_arrays = [tensor[0] for tensor in input_tensors]
+  input_shapes_list = []
+
+  for _, shape, _ in input_tensors:
+    dims = None
+    if shape:
+      dims = [dim.value for dim in shape.dims]
+    input_shapes_list.append(dims)
+
+  input_shapes = {
+      name: shape
+      for name, shape in zip(input_arrays, input_shapes_list)
+      if shape
+  }
+  return input_shapes
 
 
 def normalize_output_name(output_name):
@@ -446,7 +508,7 @@ def make_zip_of_tests(options,
       fail because the one or more combination of parameters is invalid.
 
   Raises:
-    RuntimeError: if there are toco errors that can't be ignored.
+    RuntimeError: if there are converter errors that can't be ignored.
   """
   zip_path = os.path.join(options.output_path, options.zip_to_output)
   parameter_count = 0
@@ -539,8 +601,12 @@ def make_zip_of_tests(options,
               "split_tflite_lstm_inputs"]
 
         tflite_model_binary, toco_log = options.tflite_convert_function(
-            options, graph_def, input_tensors,
-            output_tensors, extra_toco_options=extra_toco_options)
+            options,
+            graph_def,
+            input_tensors,
+            output_tensors,
+            extra_toco_options=extra_toco_options,
+            test_params=param_dict_real)
         report["toco"] = (report_lib.SUCCESS if tflite_model_binary is not None
                           else report_lib.FAILED)
         report["toco_log"] = toco_log
@@ -576,11 +642,11 @@ def make_zip_of_tests(options,
         if not options.known_bugs_are_errors:
           for pattern, bug_number in options.known_bugs.items():
             if re.search(pattern, label):
-              print("Ignored TOCO error due to bug %s" % bug_number)
+              print("Ignored converter error due to bug %s" % bug_number)
               ignore_error = True
         if not ignore_error:
           toco_errors += 1
-          print("-----------------\ntoco error!\n%s\n-----------------\n" %
+          print("-----------------\nconverter error!\n%s\n-----------------\n" %
                 report["toco_log"])
 
       convert_report.append((param_dict, report))
@@ -1605,6 +1671,48 @@ def make_gather_with_constant_tests(options):
 
 
 @register_make_test_function()
+def make_embedding_lookup_tests(options):
+  """Make a set of tests to do gather."""
+
+  test_parameters = [
+      {
+          "params_dtype": [tf.float32],
+          "params_shape": [[10], [10, 10]],
+          "ids_dtype": [tf.int32],
+          "ids_shape": [[3], [5]],
+      },
+  ]
+
+  def build_graph(parameters):
+    """Build the gather op testing graph."""
+    params = tf.placeholder(
+        dtype=parameters["params_dtype"],
+        name="params",
+        shape=parameters["params_shape"])
+    ids = tf.placeholder(
+        dtype=parameters["ids_dtype"],
+        name="ids",
+        shape=parameters["ids_shape"])
+    out = tf.nn.embedding_lookup(params, ids)
+    return [params, ids], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    params = create_tensor_data(parameters["params_dtype"],
+                                parameters["params_shape"])
+    ids = create_tensor_data(parameters["ids_dtype"],
+                             parameters["ids_shape"], 0,
+                             parameters["params_shape"][0] - 1)
+    return [params, ids], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [params, ids])))
+
+  make_zip_of_tests(
+      options,
+      test_parameters,
+      build_graph,
+      build_inputs)
+
+
+@register_make_test_function()
 def make_global_batch_norm_tests(options):
   """Make a set of tests to do batch_norm_with_global_normalization."""
 
@@ -1687,16 +1795,33 @@ def make_fused_batch_norm_tests(options):
 def make_conv_tests(options):
   """Make a set of tests to do convolution."""
 
-  test_parameters = [{
-      "input_shape": [[1, 3, 4, 3], [4, 6, 6, 1]],
-      "filter_shape": [[1, 1], [2, 3], [3, 3]],
-      "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
-      "dilations": [[1, 1, 1, 1], [1, 3, 2, 1], [1, 2, 2, 1]],
-      "padding": ["SAME", "VALID"],
-      "data_format": ["NHWC"],  # TODO(aselle): NCHW  would be good
-      "constant_filter": [True, False],
-      "channel_multiplier": [1, 2],
-  }]
+  test_parameters = [
+      {
+          "input_shape": [[1, 3, 4, 3], [4, 6, 6, 1]],
+          "filter_shape": [[1, 1], [2, 3], [3, 3]],
+          "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
+          "dilations": [[1, 1, 1, 1], [1, 3, 2, 1], [1, 2, 2, 1]],
+          "padding": ["SAME", "VALID"],
+          "data_format": ["NHWC"],  # TODO(aselle): NCHW  would be good
+          "constant_filter": [True, False],
+          "channel_multiplier": [1, 2],
+          "fully_quantize": [False],
+      },
+      # TODO(b/134702301): The fully_quantize param is just ignored by the MLIR
+      # testing path now, resulting in duplicate tests. Either ignore these
+      # tests or handle it properly in the mlir_convert() function.
+      {
+          "input_shape": [[1, 3, 4, 3], [4, 6, 6, 1]],
+          "filter_shape": [[1, 1], [2, 3], [3, 3]],
+          "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
+          "dilations": [[1, 1, 1, 1], [1, 3, 2, 1], [1, 2, 2, 1]],
+          "padding": ["SAME", "VALID"],
+          "data_format": ["NHWC"],  # TODO(aselle): NCHW  would be good
+          "constant_filter": [True],
+          "channel_multiplier": [1, 2],
+          "fully_quantize": [True],
+      }
+  ]
 
   def get_tensor_shapes(parameters):
     input_shape = parameters["input_shape"]
@@ -1715,7 +1840,8 @@ def make_conv_tests(options):
     # Get filter input either as a placeholder or constants. Also get a list of
     # the input tensors that are represented as placeholders.
     if parameters["constant_filter"]:
-      filter_input = create_tensor_data(np.float32, filter_shape)
+      filter_input = create_tensor_data(
+          np.float32, filter_shape, min_value=-10, max_value=10)
       input_tensors = [input_tensor]
     else:
       filter_input = tf.placeholder(
@@ -1735,7 +1861,9 @@ def make_conv_tests(options):
     # Build list of input values either containing 1 tensor (input) or 2 tensors
     # (input, filter) based on whether filter is constant or variable input.
     input_shape, filter_shape = get_tensor_shapes(parameters)
-    values = [create_tensor_data(np.float32, input_shape)]
+    values = [
+        create_tensor_data(np.float32, input_shape, min_value=-1, max_value=1)
+    ]
     if not parameters["constant_filter"]:
       values.append(create_tensor_data(np.float32, filter_shape))
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
@@ -1745,7 +1873,7 @@ def make_conv_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=40)
+      expected_tf_failures=60)
 
 
 # Note: This is a regression test for a bug (b/122651451) that Toco incorrectly
@@ -2747,7 +2875,16 @@ def make_batch_to_space_nd_tests(options):
           "constant_block_shape": [True, False],
           "constant_crops": [True, False],
       },
-      # Non-4D use case: 1 bath dimension, 3 spatial dimensions, 2 others.
+      # Single batch (no-op)
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[1, 3, 3, 1]],
+          "block_shape": [[1, 1]],
+          "crops": [[[0, 0], [0, 0]], [[1, 1], [1, 1]]],
+          "constant_block_shape": [True],
+          "constant_crops": [True],
+      },
+      # Non-4D use case: 1 batch dimension, 3 spatial dimensions, 2 others.
       {
           "dtype": [tf.float32],
           "input_shape": [[8, 2, 2, 2, 1, 1]],
@@ -3585,12 +3722,38 @@ def make_ceil_tests(options):
 
 
 @register_make_test_function()
+def make_round_tests(options):
+  """Build the round op testing graph."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32],
+      "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+  }]
+
+  def build_graph(parameters):
+    """Build the round op testing graph."""
+    input_value = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input1",
+        shape=parameters["input_shape"])
+    out = tf.round(input_value)
+    return [input_value], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(parameters["input_dtype"],
+                                     parameters["input_shape"])
+    return [input_value], sess.run(outputs, feed_dict={inputs[0]: input_value})
+
+  make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
+
+
+@register_make_test_function()
 def make_neg_tests(options):
   """Make a set of tests to do neg."""
 
   test_parameters = [{
       "input_dtype": [tf.float32, tf.int32],
-      "input_shape": [[1, 3, 4, 3], [5]],
+      "input_shape": [[1, 3, 4, 3], [5], []],
   }]
 
   def build_graph(parameters):
@@ -3707,10 +3870,18 @@ def make_square_tests(options):
 def make_where_tests(options):
   """Make a set of tests to do where."""
 
-  test_parameters = [{
-      "input_dtype": [tf.float32, tf.int32],
-      "input_shape_set": [([1, 2, 3, 4], [1, 2, 3, 4]),],
-  }]
+  test_parameters = [
+      {
+          "input_dtype": [tf.float32, tf.int32],
+          "input_shape_set": [([1, 2, 3, 4], [1, 2, 3, 4]),],
+          "use_where_v2": [False, True],
+      },
+      {
+          "input_dtype": [tf.float32, tf.int32],
+          "input_shape_set": [([1, 2, 3, 4], [1, 2, 3, 1]),],
+          "use_where_v2": [True],
+      },
+  ]
 
   def build_graph(parameters):
     """Build the where op testing graph."""
@@ -3723,7 +3894,8 @@ def make_where_tests(options):
         name="input3",
         shape=parameters["input_shape_set"][1])
     less = tf.less(input_value1, input_value2)
-    out = tf.where(less, input_value1, input_value2)
+    where = tf.where_v2 if parameters["use_where_v2"] else tf.where
+    out = where(less, input_value1, input_value2)
     return [input_value1, input_value2], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

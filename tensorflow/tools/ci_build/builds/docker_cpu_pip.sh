@@ -16,16 +16,14 @@
 set -x
 
 cd bazel_pip
+virtualenv --system-site-packages --python=python .env
+source .env/bin/activate
 pip --version
 pip install portpicker
 pip install *.whl
 
 # Use default configuration
 yes "" | python configure.py
-
-# Run as non-root to aviod file permission related test failures.
-useradd -m normal_user
-su normal_user
 
 PIP_TEST_ROOT=pip_test_root
 mkdir -p ${PIP_TEST_ROOT}
@@ -38,4 +36,8 @@ bazel test --define=no_tensorflow_py_deps=true \
       --test_size_filters=small,medium \
       --test_timeout 300,450,1200,3600 \
       --test_output=errors \
-      -- //${PIP_TEST_ROOT}/tensorflow/python/...
+      -- //${PIP_TEST_ROOT}/tensorflow/python/... \
+      -//${PIP_TEST_ROOT}/tensorflow/python/keras:training_eager_test \
+      -//${PIP_TEST_ROOT}/tensorflow/python/keras:base_layer_test \
+      -//${PIP_TEST_ROOT}/tensorflow/python:virtual_gpu_test \
+      -//${PIP_TEST_ROOT}/tensorflow/python:virtual_gpu_test_gpu

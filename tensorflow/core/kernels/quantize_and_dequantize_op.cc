@@ -65,6 +65,7 @@ class QuantizeAndDequantizeV2Op : public OpKernel {
     } else if (round_mode_string == "HALF_TO_EVEN") {
       round_mode_ = ROUND_HALF_TO_EVEN;
     }
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -93,7 +94,7 @@ class QuantizeAndDequantizeV2Op : public OpKernel {
     functor::QuantizeAndDequantizeOneScaleFunctor<Device, T> f;
     f(ctx->eigen_device<Device>(), input.flat<T>(), signed_input_, num_bits_,
       range_given_, &input_min_tensor, &input_max_tensor, round_mode_,
-      output->flat<T>());
+      narrow_range_, output->flat<T>());
   }
 
  private:
@@ -101,6 +102,7 @@ class QuantizeAndDequantizeV2Op : public OpKernel {
   int num_bits_;
   bool range_given_;
   QuantizerRoundMode round_mode_;
+  bool narrow_range_;
 };
 
 // Simulate quantization precision loss in a float tensor by:
@@ -117,6 +119,7 @@ class QuantizeAndDequantizeV3Op : public OpKernel {
       : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("signed_input", &signed_input_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("range_given", &range_given_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -154,12 +157,13 @@ class QuantizeAndDequantizeV3Op : public OpKernel {
     functor::QuantizeAndDequantizeOneScaleFunctor<Device, T> f;
     f(ctx->eigen_device<Device>(), input.flat<T>(), signed_input_, num_bits_val,
       range_given_, &input_min_tensor, &input_max_tensor, ROUND_HALF_TO_EVEN,
-      output->flat<T>());
+      narrow_range_, output->flat<T>());
   }
 
  private:
   bool signed_input_;
   bool range_given_;
+  bool narrow_range_;
 };
 
 // DEPRECATED: Use QuantizeAndDequantizeV2Op.
@@ -199,7 +203,7 @@ class QuantizeAndDequantizeOp : public OpKernel {
     functor::QuantizeAndDequantizeOneScaleFunctor<Device, T> functor;
     functor(ctx->eigen_device<Device>(), input.flat<T>(), signed_input_,
             num_bits_, range_given_, &input_min_tensor, &input_max_tensor,
-            ROUND_HALF_TO_EVEN, output->flat<T>());
+            ROUND_HALF_TO_EVEN, /*narrow_range=*/false, output->flat<T>());
   }
 
  private:
@@ -218,10 +222,10 @@ struct QuantizeAndDequantizeOneScaleFunctor<CPUDevice, T> {
                   const bool signed_input, const int num_bits,
                   const bool range_given, Tensor* input_min_tensor,
                   Tensor* input_max_tensor, QuantizerRoundMode round_mode,
-                  typename TTypes<T>::Vec out) {
+                  bool narrow_range, typename TTypes<T>::Vec out) {
     QuantizeAndDequantizeOneScaleImpl<CPUDevice, T>::Compute(
         d, input, signed_input, num_bits, range_given, input_min_tensor,
-        input_max_tensor, round_mode, out);
+        input_max_tensor, round_mode, narrow_range, out);
   }
 };
 }  // namespace functor

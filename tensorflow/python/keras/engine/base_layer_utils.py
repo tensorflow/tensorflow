@@ -17,19 +17,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections as collections_lib
 import threading
+
 import enum
 
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
-from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
-from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
@@ -57,10 +56,8 @@ class CallConvention(enum.Enum):
 def create_mean_metric(value, name=None):
   # TODO(psv): Remove this import when b/110718070 is fixed.
   from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
-  from tensorflow.python.keras.distribute import distributed_training_utils  # pylint: disable=g-import-not-at-top
   metric_obj = metrics_module.Mean(name=name)
-  return (metric_obj,
-          distributed_training_utils.call_replica_local_fn(metric_obj, value))
+  return metric_obj, metric_obj(value)
 
 
 def make_variable(name,
@@ -141,7 +138,8 @@ def make_variable(name,
 
   # TODO(apassos,rohanj) figure out how to remove collections from here so we
   # can remove the V1.
-  v = tf_variables.VariableV1(
+  variable_shape = tensor_shape.TensorShape(shape)
+  return tf_variables.VariableV1(
       initial_value=init_val,
       name=name,
       trainable=trainable,
@@ -152,64 +150,8 @@ def make_variable(name,
       use_resource=use_resource,
       collections=collections,
       synchronization=synchronization,
-      aggregation=aggregation)
-  return v
-
-
-def get_default_graph_uid_map():
-  # TODO(fchollet): refactor this into backend.
-  graph = ops.get_default_graph()
-  name_uid_map = backend.PER_GRAPH_LAYER_NAME_UIDS.get(graph, None)
-  if name_uid_map is None:
-    name_uid_map = collections_lib.defaultdict(int)
-    backend.PER_GRAPH_LAYER_NAME_UIDS[graph] = name_uid_map
-  return name_uid_map
-
-
-def unique_layer_name(name, name_uid_map=None, avoid_names=None, namespace='',
-                      zero_based=False):
-  """Makes a layer name (or arbitrary string) unique within a TensorFlow graph.
-
-  Arguments:
-    name: String name to make unique.
-    name_uid_map: An optional defaultdict(int) to use when creating unique
-      names. If None (default), uses a per-Graph dictionary.
-    avoid_names: An optional set or dict with names which should not be used. If
-      None (default) does not avoid any names.
-    namespace: Gets a name which is unique within the (graph, namespace). Layers
-      which are not Networks use a blank namespace and so get graph-global
-      names.
-    zero_based: If True, name sequences start with no suffix (e.g. "dense",
-      "dense_1"). If False, naming is one-based ("dense_1", "dense_2").
-
-  Returns:
-    Unique string name.
-
-  Example:
-
-  ```python
-  _unique_layer_name('dense')  # dense_1
-  _unique_layer_name('dense')  # dense_2
-  ```
-  """
-  if name_uid_map is None:
-    name_uid_map = get_default_graph_uid_map()
-  if avoid_names is None:
-    avoid_names = set()
-  proposed_name = None
-  while proposed_name is None or proposed_name in avoid_names:
-    name_key = (namespace, name)
-    if zero_based:
-      number = name_uid_map[name_key]
-      if number:
-        proposed_name = name + '_' + str(number)
-      else:
-        proposed_name = name
-      name_uid_map[name_key] += 1
-    else:
-      name_uid_map[name_key] += 1
-      proposed_name = name + '_' + str(name_uid_map[name_key])
-  return proposed_name
+      aggregation=aggregation,
+      shape=variable_shape if variable_shape else None)
 
 
 def collect_previous_mask(input_tensors):
@@ -327,7 +269,7 @@ def needs_keras_history(tensors):
     Bool, whether at least one Tensor needs to be wrapped.
   """
   input_tensors = nest.flatten(tensors)
-  if is_in_call_context() or all(
+  if call_context().in_call or all(
       getattr(tensor, '_keras_history', None) is not None
       for tensor in input_tensors):
     # KerasHistory already set.
@@ -335,20 +277,32 @@ def needs_keras_history(tensors):
   return uses_keras_history(tensors)
 
 
-def is_in_call_context():
-  """Returns true if inside of a model/layer '__call__'."""
-  return getattr(_call_context, 'in_call', False)
+def is_in_keras_graph():
+  """Returns if currently executing inside of a Keras graph."""
+  return call_context().in_keras_graph
 
 
-def is_in_frozen_context():
-  """Returns if currently executing inside a `call` of a frozen Layer.
+def is_in_eager_or_tf_function():
+  """Returns if in eager mode or inside of a tf.function."""
+  return context.executing_eagerly() or is_in_tf_function()
 
-  A Layer is considered frozen if `layer.trainable=False`.
 
-  Returns:
-    Whether currently inside the `call` of a frozen Layer.
-  """
-  return getattr(_call_context, 'frozen', False)
+def is_in_tf_function():
+  """Returns if inside of a tf.function."""
+  # Check if running in V1 graph mode.
+  if not ops.executing_eagerly_outside_functions():
+    return False
+  if not ops.inside_function():
+    return False
+  # Check if inside Keras FuncGraph.
+  if is_in_keras_graph():
+    return False
+  # Check for a v1 `wrap_function` FuncGraph.
+  graph = ops.get_default_graph()
+  if (getattr(graph, 'name', False) and
+      graph.name.startswith('wrapped_function')):
+    return False
+  return True
 
 
 def uses_keras_history(tensors):
@@ -408,19 +362,72 @@ def mark_checked(tensors):
   nest.map_structure(_mark_checked, tensors)
 
 
-@tf_contextlib.contextmanager
-def call_context(layer):
-  """Scope that marks when we are currently inside a Layer/Model's `call`."""
-  was_in_call = is_in_call_context()
-  was_frozen = is_in_frozen_context()
-  _call_context.in_call = True
-  if not layer.trainable:
-    _call_context.frozen = True
-  try:
-    yield
-  finally:
-    _call_context.in_call = was_in_call
-    _call_context.frozen = was_frozen
+def call_context():
+  """Returns currently active `CallContext`."""
+  if getattr(_call_context, 'call_context', None) is None:
+    _call_context.call_context = CallContext()
+  return _call_context.call_context
+
+
+class CallContext(object):
+  """Keeps track of properties currently inside a Layer/Model's `call`.
+
+  Attributes:
+    layer: The `Layer` whose `call` is currently active.
+    inputs: The inputs to the currently active `Layer`.
+    frozen: Whether currently executing inside a `Layer` with `trainable` set to
+      `False`.
+    in_call: Whether currently inside the `call` of a Layer.
+    training: Whether currently executing in training or inference mode.
+    in_keras_graph: Whether executing inside the Keras Graph.
+  """
+
+  def __init__(self):
+    self.layer = None
+    self.inputs = None
+    self.frozen = False
+    self.in_call = False
+    self.training = None
+    self._in_keras_graph = False
+
+  @tf_contextlib.contextmanager
+  def enter(self, layer, inputs, build_graph, training):
+    """Push a Layer and its inputs and state onto the current call context."""
+    prev_layer = self.layer
+    prev_inputs = self.inputs
+    prev_frozen = self.frozen
+    prev_in_call = self.in_call
+    prev_training = self.training
+    prev_in_keras_graph = self._in_keras_graph
+
+    self.layer = layer
+    self.inputs = inputs
+    self.frozen = self.frozen or not layer.trainable
+    self.in_call = True
+    self.training = training
+    self._in_keras_graph = (
+        self._in_keras_graph or
+        (build_graph and
+         getattr(backend.get_graph(), 'name', None) == 'keras_graph'))
+
+    try:
+      yield
+    finally:
+      self.layer = prev_layer
+      self.inputs = prev_inputs
+      self.frozen = prev_frozen
+      self.in_call = prev_in_call
+      self.training = prev_training
+      self._in_keras_graph = prev_in_keras_graph
+
+  @property
+  def in_keras_graph(self):
+    # Returns True even if in a subgraph of the Keras graph, such as those
+    # created by control flow ops.
+    if context.executing_eagerly():
+      return False
+    return (self._in_keras_graph or
+            getattr(backend.get_graph(), 'name', None) == 'keras_graph')
 
 
 def training_arg_passed_to_call(argspec, args, kwargs):
@@ -428,122 +435,7 @@ def training_arg_passed_to_call(argspec, args, kwargs):
   # `argspec.args` starts with ['self', 'inputs']
   full_args = dict(zip(argspec.args[2:], args))
   full_args.update(kwargs)
-  return 'training' in full_args
-
-
-class AutoAddUpdates(object):
-  """Automatically track stateful ops with `add_update`.
-
-  This context manager is used to automatically add stateful ops to a Layer
-  or Model's `.updates`. This ensures that stateful ops are run in the Keras
-  training loop. It also allows for these stateful ops to be disabled by
-  setting `trainable=False`.
-
-  Example:
-
-  ```
-  with AutoAddUpdates(layer, inputs) as auto_updates:
-    outputs = layer.call(inputs)
-    auto_updates.set_outputs(outputs)
-  ```
-
-  Attributes:
-    layer: Layer or Model instance to add the updates to.
-    inputs: The inputs to this Layer or Model, to be used for input-conditional
-      updates.
-    outputs: The outputs of this Layer or Model.
-  """
-
-  def __init__(self, layer, inputs):
-    self.layer = layer
-    self.inputs = inputs
-    self.outputs = []
-
-  def set_outputs(self, outputs):
-    if self.outputs:
-      raise RuntimeError('`set_outputs` should only be called once on an'
-                         '`AutoAddUpdates` instance.')
-    self.outputs = outputs
-
-  def __enter__(self):
-    # Only run in V2 Function mode.
-    if (context.executing_eagerly() or
-        not ops.executing_eagerly_outside_functions()):
-      return self
-
-    self._graph = ops.get_default_graph()
-    self._num_operations = len(self._graph.get_operations())
-    return self
-
-  def __exit__(self, error_type, unused_value, unused_traceback):
-    if error_type:
-      # Allow errors that occurred inside this context manager to pass through
-      # normally.
-      return
-
-    # Only run in V2 Function mode.
-    if (context.executing_eagerly() or
-        not ops.executing_eagerly_outside_functions()):
-      return
-
-    if (self._graph is not ops.get_default_graph() or
-        self._graph.name != 'keras_graph'):
-      # Only auto-track updates when the Keras Graph is the only one used.
-      return
-
-    new_operations = self._graph.get_operations()[self._num_operations:]
-    new_stateful_ops = set()
-
-    # pylint: disable=protected-access
-    for op in new_operations:
-      # While loop is not supported in general for automatic control
-      # dependencies.
-      if control_flow_util.IsInWhileLoop(op):
-        continue
-
-      # Track stateful ops via `add_update`.
-      is_stateful_op = (
-          op.type not in self._graph._registered_ops or
-          auto_control_deps.op_is_stateful(
-              self._graph._registered_ops[op.type]))
-
-      # Ignore ReadVariableOps as they are not needed to be run separately.
-      # This ensures existing Layers don't get extra updates.
-      if is_stateful_op and op.type != 'ReadVariableOp':
-        new_stateful_ops.add(op)
-
-    explicit_updates = set(
-        [u for u in self.layer.updates if not isinstance(u, tuple)])
-    # pylint: enable=protected-access
-
-    # Don't add updates that will already be run by virtue of being consumed by
-    # other stateful ops or by the Layer's outputs. This ensures that existing
-    # Layers like `BatchNormalization` continue to return the same values for
-    # `.update` calls.
-    minimum_ops = set()
-    targets = new_stateful_ops.union(
-        set(nest.flatten(self.outputs)), explicit_updates)
-    for op in new_stateful_ops:
-      # Scrub any ops that are consumed by the outputs or other stateful ops.
-      reachable = tf_utils.get_reachable_from_inputs(op)
-      if not (targets - {op}).intersection(reachable):
-        minimum_ops.add(op)
-    new_stateful_ops = minimum_ops
-
-    # Don't double-track updates added via explicitly calling `add_update`.
-    # Also don't double-track updates already tracked in sublayers.
-    new_stateful_ops = new_stateful_ops - explicit_updates
-
-    # Decide whether to track as input-conditional or unconditional.
-    input_reachable_ops = tf_utils.get_reachable_from_inputs(
-        self.inputs, targets=new_stateful_ops)
-    unconditional_updates = new_stateful_ops - input_reachable_ops
-    conditional_updates = new_stateful_ops - unconditional_updates
-
-    if unconditional_updates:
-      self.layer.add_update(list(unconditional_updates))
-    if conditional_updates:
-      self.layer.add_update(list(conditional_updates), inputs=self.inputs)
+  return 'training' in full_args and full_args['training'] is not None
 
 
 def _get_var_read_dtype(input_list, should_cast):
@@ -575,11 +467,12 @@ def autocast_context_manager(input_list, should_cast):
 
 
 def is_subclassed(layer):
+  """Returns True if the object is a subclassed layer or subclassed model."""
   return (layer.__module__.find('keras.engine') == -1 and
           layer.__module__.find('keras.layers') == -1)
 
 
-def check_graph_consistency(tensor, method):
+def check_graph_consistency(tensor=None, method='add_loss', force_raise=False):
   """Checks that tensors passed to `add_*` method match the Keras graph.
 
   When one of the `add_*` method is called inside a V2 conditional branch,
@@ -587,81 +480,152 @@ def check_graph_consistency(tensor, method):
   We need to raise clear error messages in such cases.
 
   Arguments:
-    tensor: Tensor to check.
+    tensor: Tensor to check, or `False` if it is known that an error
+      should be raised.
     method: Caller method, one of {'add_metric', 'add_loss', 'add_update'}.
+    force_raise: If an error should be raised regardless of `tensor`.
 
   Raises:
     RuntimeError: In case of an out-of-graph tensor.
   """
-  if ops.executing_eagerly_outside_functions() and hasattr(tensor, 'graph'):
-    if isinstance(tensor.graph,
-                  (control_flow_util_v2.CondBranchFuncGraph,
-                   control_flow_util_v2.WhileCondFuncGraph,
-                   control_flow_util_v2.WhileBodyFuncGraph)):
-      if method == 'add_metric':
-        bad_example = """
-        def call(self, inputs, training=None):
+  if (force_raise or (ops.executing_eagerly_outside_functions() and
+                      hasattr(tensor, 'graph') and
+                      isinstance(tensor.graph,
+                                 (control_flow_util_v2.CondBranchFuncGraph,
+                                  control_flow_util_v2.WhileCondFuncGraph,
+                                  control_flow_util_v2.WhileBodyFuncGraph)))):
+    if method == 'activity_regularizer':
+      bad_example = """
+      class TestModel(tf.keras.Model):
+
+        def __init__(self):
+          super(TestModel, self).__init__(name='test_model')
+          self.dense = tf.keras.layers.Dense(2, activity_regularizer='l2')
+
+        def call(self, x, training=None):
           if training:
-            metric = compute_metric(inputs)
-            self.add_metric(metric, name='my_metric', aggregation='mean')
-          return inputs
-        """
-        correct_example = """
-        def call(self, inputs, training=None):
-          if training:
-            metric = compute_metric(inputs)
+            return self.dense(x)
           else:
-            metric = 0.
-          self.add_metric(metric, name='my_metric', aggregation='mean')
-          return inputs
-        """
-      elif method == 'add_loss':
-        bad_example = """
-        def call(self, inputs, training=None):
-          if training:
-            loss = compute_loss(inputs)
-            self.add_loss(loss)
-          return inputs
-        """
-        correct_example = """
-        def call(self, inputs, training=None):
-          if training:
-            loss = compute_loss(inputs)
-          else:
-            loss = 0.
-          self.add_loss(loss)
-          return inputs
-        """
-      else:
-        bad_example = """
-        def call(self, inputs, training=None):
-          if training:
-            self.add_update(self.w.assign_add(1))
-          return inputs
-        """
-        correct_example = """
-        def call(self, inputs, training=None):
-          if training:
-            increment = 1
-          else:
-            increment = 0
-          self.add_update(self.w.assign_add(increment))
-          return inputs
-        """
+            return self.dense(x)
+      """
+      correct_example = """
+      class TestModel(tf.keras.Model):
+
+        def __init__(self):
+          super(TestModel, self).__init__(name='test_model')
+          self.dense = tf.keras.layers.Dense(2, activity_regularizer='l2')
+
+        def call(self, x, training=None):
+          return self.dense(x)
+      """
       raise RuntimeError(
-          'You are using the method `{method}` in a control flow branch '
-          'in your layer, e.g.:\n{bad_example}\n'
-          'This is not currently supported. '
-          'You should either use static control flow (`tf.cond`) '
-          'or move your call to {method} out of the control flow branch, '
-          'e.g.:\n{correct_example}\n'
-          'You can also resolve this by marking your layer '
-          'as dynamic (eager-only) by passing '
-          '`dynamic=True` to the layer constructor. '
+          'You are using a layer with `activity_regularizer` in a control flow '
+          'branch, e.g.:\n{bad_example}\nThis is currently not supported. '
+          'Please move your call to the layer with `activity_regularizer` out '
+          'of the control flow branch, e.g.:\n{correct_example}\n'
+          'You can also resolve this by marking your outer model/layer dynamic'
+          ' (eager-only) by passing `dynamic=True` to the layer constructor. '
           'Any kind of control flow is supported with dynamic layers. '
-          'Note that using `dynamic=True` requires you '
-          'to implement static shape inference '
-          'in the `compute_output_shape(input_shape)` method.'.format(
-              method=method,
-              bad_example=bad_example,
-              correct_example=correct_example))
+          'Note that using `dynamic=True` requires you to implement static '
+          'shape inference in the `compute_output_shape(input_shape)` '
+          'method.'.format(
+              bad_example=bad_example, correct_example=correct_example))
+
+    if method == 'add_metric':
+      bad_example = """
+      def call(self, inputs, training=None):
+        if training:
+          metric = compute_metric(inputs)
+          self.add_metric(metric, name='my_metric', aggregation='mean')
+        return inputs
+      """
+      correct_example = """
+      def call(self, inputs, training=None):
+        if training:
+          metric = compute_metric(inputs)
+        else:
+          metric = 0.
+        self.add_metric(metric, name='my_metric', aggregation='mean')
+        return inputs
+      """
+    elif method == 'add_loss':
+      bad_example = """
+      def call(self, inputs, training=None):
+        if training:
+          loss = compute_loss(inputs)
+          self.add_loss(loss)
+        return inputs
+      """
+      correct_example = """
+      def call(self, inputs, training=None):
+        if training:
+          loss = compute_loss(inputs)
+        else:
+          loss = 0.
+        self.add_loss(loss)
+        return inputs
+      """
+    else:
+      bad_example = """
+      def call(self, inputs, training=None):
+        if training:
+          self.add_update(self.w.assign_add(1))
+        return inputs
+      """
+      correct_example = """
+      def call(self, inputs, training=None):
+        if training:
+          increment = 1
+        else:
+          increment = 0
+        self.add_update(self.w.assign_add(increment))
+        return inputs
+      """
+    raise RuntimeError(
+        'You are using the method `{method}` in a control flow branch '
+        'in your layer, e.g.:\n{bad_example}\n'
+        'This is not currently supported. '
+        'Please move your call to {method} out of the control flow branch, '
+        'e.g.:\n{correct_example}\n'
+        'You can also resolve this by marking your layer '
+        'as dynamic (eager-only) by passing '
+        '`dynamic=True` to the layer constructor. '
+        'Any kind of control flow is supported with dynamic layers. '
+        'Note that using `dynamic=True` requires you '
+        'to implement static shape inference '
+        'in the `compute_output_shape(input_shape)` method.'.format(
+            method=method,
+            bad_example=bad_example,
+            correct_example=correct_example))
+
+
+def mark_as_return(outputs, acd):
+  """Marks `outputs` as the return values for automatic control deps."""
+
+  def _mark_as_return(tensor):
+    """Marks `tensor` as the return value for automatic control deps."""
+    if not tensor_util.is_tensor(tensor):
+      return tensor
+
+    # pylint: disable=protected-access
+    return_tensor = acd.mark_as_return(tensor)
+    if getattr(tensor, '_keras_mask', None) is not None:
+      return_tensor._keras_mask = acd.mark_as_return(tensor._keras_mask)
+    else:
+      return_tensor._keras_mask = None
+
+    # Handle TensorFlow Probability attached metadata.
+    # TODO(b/132076537): Remove this once TFP uses `CompositeTensor`.
+    if getattr(tensor, '_tfp_distribution', None) is not None:
+      return_tensor._tfp_distribution = tensor._tfp_distribution
+
+    return return_tensor
+    # pylint: enable=protected-access
+
+  return nest.map_structure(_mark_as_return, outputs)
+
+
+def default(method):
+  """Decorates a method to detect overrides in subclasses."""
+  method._is_default = True  # pylint: disable=protected-access
+  return method

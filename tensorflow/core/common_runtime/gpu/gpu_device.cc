@@ -75,10 +75,11 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/stream_executor_util.h"
+#include "tensorflow/stream_executor/platform/dso_loader.h"
 
 #if !defined(PLATFORM_GOOGLE)
 #if GOOGLE_CUDA
-#include "cuda/cuda_config.h"
+#include "third_party/gpus/cuda/cuda_config.h"
 #endif
 #endif
 
@@ -375,7 +376,8 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
         streams_.back()->device_to_host, streams_.back()->device_to_device));
   }
 
-  em_.reset(new EventMgr(executor_, options.config.gpu_options()));
+  em_ = EventMgrFactory::Singleton()->GetEventMgr(executor_,
+                                                  options.config.gpu_options());
 
   GPUKernelTracker::Params tracker_params(
       options.config.gpu_options().experimental().kernel_tracker_max_interval(),
@@ -404,13 +406,13 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
     }
     kernel_tracker_.reset(new GPUKernelTracker(
         tracker_params, Env::Default(), streams_[0]->compute, timing_counter,
-        timestamped_allocator_ ? gpu_allocator_ : nullptr, em_.get()));
+        timestamped_allocator_ ? gpu_allocator_ : nullptr, em_));
   }
 
   gpu_device_info_ = new GpuDeviceInfo;
   gpu_device_info_->stream = streams_[0]->compute;
   gpu_device_info_->default_context = device_contexts_[0];
-  gpu_device_info_->event_mgr = em_.get();
+  gpu_device_info_->event_mgr = em_;
   PlatformGpuId platform_gpu_id;
   TF_RETURN_IF_ERROR(
       GpuIdManager::TfToPlatformGpuId(tf_gpu_id_, &platform_gpu_id));
@@ -429,7 +431,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   string gpu_thread_mode;
   TF_RETURN_IF_ERROR(
       ReadStringFromEnvVar("TF_GPU_THREAD_MODE", "global", &gpu_thread_mode));
-  gpu_thread_mode = str_util::Lowercase(gpu_thread_mode);
+  gpu_thread_mode = absl::AsciiStrToLower(gpu_thread_mode);
   if (gpu_thread_mode != "global") {
     int64 gpu_thread_count = -1;
     // Default to two threads. One for device compute and another for memory
@@ -508,24 +510,6 @@ Status BaseGPUDevice::FillContextMap(const Graph* graph,
   return Status::OK();
 }
 
-void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
-  // NOTE(tucker): We need to discriminate between Eigen GPU
-  // operations and all others.  If an operation is Eigen
-  // implemented (or otherwise tries to launch a GPU kernel
-  // directly), we need to establish a stacked-scoped environment
-  // that directs it to execute on the proper device.  Otherwise we
-  // expect the Op to use StreamExecutor directly and correctly.  The
-  // way we make this discrimination is quite hacky: At the moment
-  // the only non-Eigen GPU Op is the recv-op, which is known to be
-  // asynchronous.
-  if (op_kernel->is_internal() && op_kernel->type_string() == "_Recv") {
-    context->SetStatus(errors::Internal(
-        "Invalid synchronous 'Compute' on GPU for '_Recv' op"));
-  } else {
-    ComputeHelper(op_kernel, context);
-  }
-}
-
 string BaseGPUDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
                                                  const int& stream_id) {
   return strings::StrCat(op_kernel.name(), " op ", op_kernel.type_string(),
@@ -533,8 +517,25 @@ string BaseGPUDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
                          "]");
 }
 
-void BaseGPUDevice::ComputeHelper(OpKernel* op_kernel,
-                                  OpKernelContext* context) {
+void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
+  profiler::TraceMe activity(
+      [&] {
+        return strings::StrCat("BaseGPUDevice::Compute ", op_kernel->name(),
+                               ":", op_kernel->type_string(),
+                               "#step_id=", context->step_id(),
+                               ",step_container_name=",
+                               context->step_container() == nullptr
+                                   ? "n/a"
+                                   : context->step_container()->name(),
+                               "#");
+      },
+      profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
+  // NOTE(tucker): We need to discriminate between Eigen GPU
+  // operations and all others.  If an operation is Eigen
+  // implemented (or otherwise tries to launch a GPU kernel
+  // directly), we need to establish a stacked-scoped environment
+  // that directs it to execute on the proper device.  Otherwise we
+  // expect the Op to use StreamExecutor directly and correctly.
   GPUDeviceContext* gpu_device_context = device_contexts_[0];
   if (context->op_device_context() != nullptr) {
     gpu_device_context =
@@ -657,8 +658,14 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
   // activity is simple enough that its overhead is negligible.
   profiler::TraceMe activity(
       [&] {
-        return strings::StrCat(op_kernel->name(), ":",
-                               op_kernel->type_string());
+        return strings::StrCat("BaseGPUDevice::ComputeAsync ",
+                               op_kernel->name(), ":", op_kernel->type_string(),
+                               "#step_id=", context->step_id(),
+                               ",step_container_name=",
+                               context->step_container() == nullptr
+                                   ? "n/a"
+                                   : context->step_container()->name(),
+                               "#");
       },
       profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
   ScopedActivateExecutorContext scoped_activation{stream->parent()};
@@ -1654,6 +1661,21 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
 #endif
   }
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  // Try to dlopen GPU libraries if they are supposed to be dynamically loaded.
+  auto handle_or = se::internal::DsoLoader::MaybeTryDlopenGPULibraries();
+  if (!handle_or.ok()) {
+    LOG(WARNING) << "Cannot dlopen some GPU libraries. Please make sure the "
+                    "missing libraries mentioned above are installed properly "
+                    "if you would like to use GPU. Follow the guide at "
+                    "https://www.tensorflow.org/install/gpu for how to "
+                    "download and setup the required libraries for your "
+                    "platform.\nSkipping registering "
+                    "GPU devices...";
+    return Status::OK();
+  }
+#endif
+
 #if GOOGLE_CUDA
   auto cuda_supported_capabilities = GetSupportedCudaComputeCapabilities();
   if (cuda_supported_capabilities.empty()) {
@@ -1748,8 +1770,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     std::vector<int> raw_ids(ids->size());
     std::transform(ids->begin(), ids->end(), raw_ids.begin(),
                    [](PlatformGpuId id) -> int { return id.value(); });
-    LOG(INFO) << "Adding visible gpu devices: "
-              << str_util::Join(raw_ids, ", ");
+    LOG(INFO) << "Adding visible gpu devices: " << absl::StrJoin(raw_ids, ", ");
   }
 
   return Status::OK();

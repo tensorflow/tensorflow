@@ -1,11 +1,13 @@
 # Description:
 # Example TensorFlow models for MNIST used in tutorials
 
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "package",
@@ -50,6 +52,7 @@ py_binary(
     srcs = [
         "fully_connected_feed.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["optonly"],
     deps = [
@@ -64,6 +67,7 @@ py_binary(
     srcs = [
         "mnist_with_summaries.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":input_data",
@@ -82,6 +86,7 @@ py_binary(
     srcs = [
         "mnist_softmax_xla.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":input_data",
@@ -100,6 +105,7 @@ py_test(
         "--max_steps=10",
     ],
     main = "fully_connected_feed.py",
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":input_data",
@@ -120,6 +126,7 @@ py_test(
         "--learning_rate=0.00",
     ],
     main = "mnist_with_summaries.py",
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["notsan"],  # http://b/29184009
     deps = [

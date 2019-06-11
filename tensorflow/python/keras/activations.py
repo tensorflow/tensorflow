@@ -22,6 +22,7 @@ import six
 
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
+from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.util.tf_export import keras_export
@@ -283,9 +284,10 @@ def linear(x):
 
 @keras_export('keras.activations.serialize')
 def serialize(activation):
-  if activation.__name__ in _TF_ACTIVATIONS_V2:
+  if (hasattr(activation, '__name__')
+      and activation.__name__ in _TF_ACTIVATIONS_V2):
     return _TF_ACTIVATIONS_V2[activation.__name__]
-  return activation.__name__
+  return serialize_keras_object(activation)
 
 
 @keras_export('keras.activations.deserialize')
@@ -306,6 +308,11 @@ def get(identifier):
     return deserialize(identifier)
   elif callable(identifier):
     return identifier
+  elif isinstance(identifier, dict):
+    return deserialize_keras_object(
+        identifier,
+        printable_module_name='activation')
   else:
-    raise ValueError('Could not interpret '
-                     'activation function identifier:', identifier)
+    raise TypeError(
+        'Could not interpret activation function identifier: {}'.format(
+            repr(identifier)))

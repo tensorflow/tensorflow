@@ -1,5 +1,3 @@
-# Run `pod lib lint TensorFlowLiteObjC.podspec` to ensure this is a valid spec.
-
 Pod::Spec.new do |s|
   s.name             = 'TensorFlowLiteObjC'
   s.version          = '0.2.0'

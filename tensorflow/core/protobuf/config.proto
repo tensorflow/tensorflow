@@ -347,6 +347,7 @@ message ConfigProto {
   // inter_op_parallelism_threads available in each process.
   //
   // 0 means the system picks an appropriate number.
+  // Negative means all operations are performed in caller's thread.
   //
   // Note that the first Session created in the process sets the
   // number of threads for all future sessions unless use_per_session_threads is
@@ -491,6 +492,12 @@ message ConfigProto {
     // but in the case where there is a lot of spinning may result in lower
     // CPU usage.
     bool disable_thread_spinning = 9;
+
+    // When true, WorkerSessions are created with device attributes from the
+    // full cluster.
+    // This is helpful when a worker wants to partition a graph
+    // (for example during a PartitionedCallOp).
+    bool share_cluster_devices_in_session = 10;
   };
 
   Experimental experimental = 16;

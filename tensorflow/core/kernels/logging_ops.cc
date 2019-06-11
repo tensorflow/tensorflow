@@ -18,11 +18,10 @@ limitations under the License.
 #include <iostream>
 
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_split.h"
+#include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
@@ -51,51 +50,33 @@ Status AppendStringToFile(const std::string& fname, StringPiece data,
 
 }  // namespace
 
-namespace logging {
-
-typedef std::vector<void (*)(const char*)> Listeners;
-
-Listeners* GetListeners() {
-  static Listeners* listeners = new Listeners;
-  return listeners;
+AssertOp::AssertOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("summarize", &summarize_));
 }
 
-bool RegisterListener(void (*listener)(const char*)) {
-  GetListeners()->push_back(listener);
-  return true;
+void AssertOp::Compute(OpKernelContext* ctx) {
+  const Tensor& cond = ctx->input(0);
+  OP_REQUIRES(ctx, IsLegacyScalar(cond.shape()),
+              errors::InvalidArgument("In[0] should be a scalar: ",
+                                      cond.shape().DebugString()));
+
+  if (cond.scalar<bool>()()) {
+    return;
+  }
+  string msg = "assertion failed: ";
+  for (int i = 1; i < ctx->num_inputs(); ++i) {
+    strings::StrAppend(&msg, "[", ctx->input(i).SummarizeValue(summarize_),
+                       "]");
+    if (i < ctx->num_inputs() - 1) strings::StrAppend(&msg, " ");
+  }
+  ctx->SetStatus(errors::InvalidArgument(msg));
 }
 
-}  // end namespace logging
-
-class AssertOp : public OpKernel {
- public:
-  explicit AssertOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("summarize", &summarize_));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    const Tensor& cond = ctx->input(0);
-    OP_REQUIRES(ctx, IsLegacyScalar(cond.shape()),
-                errors::InvalidArgument("In[0] should be a scalar: ",
-                                        cond.shape().DebugString()));
-
-    if (cond.scalar<bool>()()) {
-      return;
-    }
-    string msg = "assertion failed: ";
-    for (int i = 1; i < ctx->num_inputs(); ++i) {
-      strings::StrAppend(&msg, "[", ctx->input(i).SummarizeValue(summarize_),
-                         "]");
-      if (i < ctx->num_inputs() - 1) strings::StrAppend(&msg, " ");
-    }
-    ctx->SetStatus(errors::InvalidArgument(msg));
-  }
-
- private:
-  int32 summarize_ = 0;
-};
-
-REGISTER_KERNEL_BUILDER(Name("Assert").Device(DEVICE_CPU), AssertOp);
+REGISTER_KERNEL_BUILDER(Name("Assert")
+                            .Device(DEVICE_CPU)
+                            .HostMemory("condition")
+                            .HostMemory("data"),
+                        AssertOp);
 
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(Name("Assert")
@@ -180,12 +161,12 @@ class PrintV2Op : public OpKernel {
                      AppendStringToFile(file_path_, ended_msg, ctx->env()));
       return;
     }
-    auto listeners = logging::GetListeners();
-    if (!listeners->empty()) {
-      for (auto& listener : *listeners) {
-        listener(ended_msg.c_str());
-      }
-    } else if (output_stream_ == "stdout") {
+
+    if (logging::LogToListeners(ended_msg, "")) {
+      return;
+    }
+
+    if (output_stream_ == "stdout") {
       std::cout << ended_msg << std::flush;
     } else if (output_stream_ == "stderr") {
       std::cerr << ended_msg << std::flush;

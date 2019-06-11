@@ -1802,7 +1802,13 @@ PyObject* GetPythonObjectFromInt(int num) {
 }
 
 bool CheckResourceVariable(PyObject* item) {
-  return PyObject_TypeCheck(item, resource_variable_type);
+  if (PyObject_TypeCheck(item, resource_variable_type)) {
+    tensorflow::Safe_PyObjectPtr handle(
+        PyObject_GetAttrString(item, "_handle"));
+    return EagerTensor_CheckExact(handle.get());
+  }
+
+  return false;
 }
 
 bool IsNumberType(PyObject* item) {
@@ -3038,25 +3044,14 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
   } else if (tensorflow::swig::IsCompositeTensor(arg)) {
     absl::StrAppend(&result->str, kCompositeTensor);
 
-    static char _to_components[] = "_to_components";
-    tensorflow::Safe_PyObjectPtr components(
-        PyObject_CallMethod(arg, _to_components, nullptr));
-    if (components == nullptr) {
+    // Add the typespec to the list of objects.  (Do *not* use a weakref,
+    // since the type spec is often a temporary object.)
+    PyObject* type_spec(PyObject_GetAttrString(arg, "_type_spec"));
+    if (type_spec == nullptr) {
       return tensorflow::errors::InvalidArgument(
-          "Error while calling CompositeTensor._to_components().");
+          "Error while reading CompositeTensor._type_spec.");
     }
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(
-        components.get(), include_tensor_ranks_only, result));
-
-    static char _component_metadata[] = "_component_metadata";
-    tensorflow::Safe_PyObjectPtr metadata(
-        PyObject_CallMethod(arg, _component_metadata, nullptr));
-    if (metadata == nullptr) {
-      return tensorflow::errors::InvalidArgument(
-          "Error while calling CompositeTensor._component_metadata().");
-    }
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(
-        metadata.get(), include_tensor_ranks_only, result));
+    result->objects.push_back(type_spec);
   } else {
     PyObject* object = PyWeakref_NewRef(arg, nullptr);
 

@@ -33,7 +33,7 @@ namespace tensorflow {
 namespace {
 
 static bool HasSubstr(absl::string_view base, absl::string_view substr) {
-  bool ok = str_util::StrContains(base, substr);
+  bool ok = absl::StrContains(base, substr);
   EXPECT_TRUE(ok) << base << ", expected substring " << substr;
   return ok;
 }
@@ -267,10 +267,10 @@ TEST(CAPI, MonitoringMultipleSampler) {
   TFE_MonitoringSamplerCellAdd(cell1, 2.0);
   TF_Buffer* result1 = TF_NewBuffer();
   TFE_MonitoringSamplerCellValue(cell1, result1);
-  tensorflow::HistogramProto hitogram1;
-  EXPECT_TRUE(hitogram1.ParseFromString(
+  tensorflow::HistogramProto histogram1;
+  EXPECT_TRUE(histogram1.ParseFromString(
       {reinterpret_cast<const char*>(result1->data), result1->length}));
-  EXPECT_EQ(hitogram1.sum(), 3.0);
+  EXPECT_EQ(histogram1.sum(), 3.0);
   delete result1;
 
   auto* sampler2 = TFE_MonitoringNewSampler2("test/sampler2", buckets, status,
@@ -281,10 +281,10 @@ TEST(CAPI, MonitoringMultipleSampler) {
   TFE_MonitoringSamplerCellAdd(cell2, 3.0);
   TF_Buffer* result2 = TF_NewBuffer();
   TFE_MonitoringSamplerCellValue(cell2, result2);
-  tensorflow::HistogramProto hitogram2;
-  EXPECT_TRUE(hitogram2.ParseFromString(
+  tensorflow::HistogramProto histogram2;
+  EXPECT_TRUE(histogram2.ParseFromString(
       {reinterpret_cast<const char*>(result2->data), result2->length}));
-  EXPECT_EQ(hitogram2.sum(), 5.0);
+  EXPECT_EQ(histogram2.sum(), 5.0);
   delete result2;
 
   TFE_MonitoringDeleteBuckets(buckets);

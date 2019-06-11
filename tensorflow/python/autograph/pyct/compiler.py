@@ -33,6 +33,7 @@ import astor
 import gast
 
 from tensorflow.python.autograph.pyct import origin_info
+from tensorflow.python.autograph.utils import ag_logging
 
 
 def ast_to_source(node, indentation='  '):
@@ -85,7 +86,7 @@ def source_to_entity(source, delete_on_exit):
     f.write(source)
 
   # TODO(mdan): Try flush() and delete=False instead.
-  if delete_on_exit:
+  if delete_on_exit and ag_logging.get_verbosity() < 3:
     atexit.register(lambda: os.remove(f.name))
   return imp.load_source(module_name, f.name), f.name
 
@@ -118,10 +119,10 @@ def ast_to_object(nodes,
     nodes = (nodes,)
 
   source = ast_to_source(nodes, indentation=indentation)
-  module, filename = source_to_entity(source, delete_on_exit)
+  module, _ = source_to_entity(source, delete_on_exit)
 
   if include_source_map:
-    source_map = origin_info.create_source_map(nodes, source, filename)
+    source_map = origin_info.create_source_map(nodes, source, module.__file__)
   else:
     source_map = None
 

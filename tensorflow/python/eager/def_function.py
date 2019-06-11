@@ -58,6 +58,7 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
                lifted_initializer_graph=None,
                synchronization=None,
                aggregation=None,
+               shape=None,
                **unused_kwargs):
     """Creates a variable.
 
@@ -96,11 +97,14 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
-        when to synchronize. If `synchronization` is set to `ON_READ`,
-        `trainable` must not be set to `True`.
+        when to synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
+      shape: (optional) The shape of this variable. If None, the shape of
+        `initial_value` will be used. When setting this argument to
+        `tf.TensorShape(None)` (representing an unspecified shape), the variable
+        can be assigned with values of different shapes.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -128,26 +132,33 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
       initial_value = initial_value.wrapped_value
 
     with ops.name_scope(name, "Variable", []
-                        if init_from_fn else [initial_value]) as name:
+                        if init_from_fn else [initial_value]) as scope_name:
       with ops.name_scope("Initializer"), ops.device(None):
         initial_value = ops.convert_to_tensor(
             initial_value() if init_from_fn else initial_value,
             name="initial_value", dtype=dtype)
       assert initial_value is not None
 
-      # Use the constructor for UninitializedVariable to start.
-      super(UnliftedInitializerVariable, self).__init__(
-          trainable=trainable,
-          caching_device=caching_device,
-          name=name,
-          shape=initial_value.shape,
-          dtype=initial_value.dtype,
-          constraint=constraint,
-          synchronization=synchronization,
-          aggregation=aggregation,
-          extra_handle_data=initial_value,
-          **unused_kwargs)
+      # Don't use `shape or initial_value.shape` since TensorShape has
+      # overridden `__bool__`.
+      if shape is None:
+        shape = initial_value.shape
 
+    # Use the constructor for UninitializedVariable to start. Outside the name
+    # scope so we don't double up the prefix.
+    super(UnliftedInitializerVariable, self).__init__(
+        trainable=trainable,
+        caching_device=caching_device,
+        name=name,
+        shape=shape,
+        dtype=initial_value.dtype,
+        constraint=constraint,
+        synchronization=synchronization,
+        aggregation=aggregation,
+        extra_handle_data=initial_value,
+        **unused_kwargs)
+
+    with ops.name_scope(scope_name):
       if self._in_graph_mode:
         with ops.init_scope():
           outer_graph = ops.get_default_graph()
@@ -238,7 +249,8 @@ class Function(object):
                name,
                input_signature=None,
                autograph=True,
-               experimental_autograph_options=None):
+               experimental_autograph_options=None,
+               experimental_relax_shapes=False):
     """Initializes a `Function`.
 
     Args:
@@ -252,6 +264,9 @@ class Function(object):
       experimental_autograph_options: optional tuple of
         tensorflow.autograph.Feature values. Allows enabling additional
         conversion options when autograph is set to True.
+      experimental_relax_shapes: When true, argument shapes may be relaxed to
+        avoid unecessary retracing.
+
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
@@ -262,6 +277,7 @@ class Function(object):
         python_function, input_signature)
     self._autograph = autograph
     self._experimental_autograph_options = experimental_autograph_options
+    self.experimental_relax_shapes = experimental_relax_shapes
     self._created_variables = None
     self._stateful_fn = None
     self._stateless_fn = None
@@ -298,12 +314,12 @@ class Function(object):
 
   def _defun(self, fn):
     """Returns a defun generated from the input function."""
-    # TODO(mdan): Pipe self._experimental_autograph_options through.
     return function_lib.defun(
         fn,
         input_signature=self.input_signature,
         autograph=self._autograph,
-        experimental_autograph_options=self._experimental_autograph_options)
+        experimental_autograph_options=self._experimental_autograph_options,
+        experimental_relax_shapes=self.experimental_relax_shapes)
 
   def _initialize(self, args, kwds, add_initializers_to=None):
     """Initializes, on the first call.
@@ -491,7 +507,6 @@ class Function(object):
     """Make and call a `ConcreteFunction` which initializes variables."""
 
     # Note: using defun here avoids an infinite recursion.
-    # Note: there is no reason not to autograph once the overhead is negligible.
     @function_lib.defun
     def initialize_variables():
       for v, init in initializer_map.items():
@@ -710,7 +725,8 @@ class Function(object):
 def function(func=None,
              input_signature=None,
              autograph=True,
-             experimental_autograph_options=None):
+             experimental_autograph_options=None,
+             experimental_relax_shapes=False):
   """Creates a callable TensorFlow graph from a Python function.
 
   `function` constructs a callable that executes a TensorFlow graph
@@ -965,6 +981,8 @@ def function(func=None,
     experimental_autograph_options: Experimental knobs (in the form of a tuple
       of tensorflow.autograph.Feature values) to control behavior when
       autograph=True.
+    experimental_relax_shapes: When true, argument shapes may be relaxed to
+      avoid unecessary retracing.
 
   Returns:
      If `func` is not None, returns a callable that will execute the compiled
@@ -991,7 +1009,8 @@ def function(func=None,
             name,
             input_signature=input_signature,
             autograph=autograph,
-            experimental_autograph_options=experimental_autograph_options))
+            experimental_autograph_options=experimental_autograph_options,
+            experimental_relax_shapes=experimental_relax_shapes))
 
   # This code path is for the `foo = tf.function(foo, ...)` use case
   if func is not None:

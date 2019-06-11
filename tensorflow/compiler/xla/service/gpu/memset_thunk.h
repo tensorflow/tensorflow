@@ -36,9 +36,7 @@ class MemzeroThunk : public Thunk {
                         const HloInstruction* hlo)
       : Thunk(Kind::kMemzero, hlo), dest_(dest) {}
 
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
-                         HloExecutionProfiler* profiler) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   const BufferAllocation::Slice dest_;
@@ -53,9 +51,7 @@ class Memset32BitValueThunk : public Thunk {
                                  const HloInstruction* hlo)
       : Thunk(Kind::kMemset32BitValue, hlo), value_(value), dest_(dest) {}
 
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
-                         HloExecutionProfiler* profiler) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   uint32 value_;

@@ -122,7 +122,11 @@ if _running_from_pip_package():
 # pylint: disable=undefined-variable
 try:
   del python
+  if '__all__' in vars():
+    vars()['__all__'].remove('python')
   del core
+  if '__all__' in vars():
+    vars()['__all__'].remove('core')
 except NameError:
   # Don't fail if these modules are not available.
   # For e.g. this file will be originally placed under tensorflow/_api/v1 which
@@ -133,6 +137,8 @@ except NameError:
 # others don't exist.
 try:
   del compiler
+  if '__all__' in vars():
+    vars()['__all__'].remove('compiler')
 except NameError:
   pass
 

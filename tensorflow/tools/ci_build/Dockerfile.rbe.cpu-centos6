@@ -13,19 +13,20 @@ RUN yum install -y centos-release-scl && \
       java-1.8.0-openjdk-devel \
       patch \
       python27 \
-      rh-python35 \
       wget && \
     yum clean all -y
 
-# Enable devtoolset-7, python27, and rh-python35 in the docker image.
-env PATH="/opt/rh/rh-python35/root/usr/bin:/opt/rh/python27/root/usr/bin:/opt/rh/devtoolset-7/root/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-    LD_LIBRARY_PATH="/opt/rh/rh-python35/root/usr/lib64:/opt/rh/python27/root/usr/lib64:/opt/rh/devtoolset-7/root/usr/lib64:/opt/rh/devtoolset-7/root/usr/lib:/opt/rh/devtoolset-7/root/usr/lib64/dyninst:/opt/rh/devtoolset-7/root/usr/lib/dyninst:/opt/rh/devtoolset-7/root/usr/lib64:/opt/rh/devtoolset-7/root/usr/lib" \
+# Enable devtoolset-7 and python27 in the docker image.
+env PATH="/opt/rh/python27/root/usr/bin:/opt/rh/devtoolset-7/root/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    LD_LIBRARY_PATH="/opt/rh/python27/root/usr/lib64:/opt/rh/devtoolset-7/root/usr/lib64:/opt/rh/devtoolset-7/root/usr/lib:/opt/rh/devtoolset-7/root/usr/lib64/dyninst:/opt/rh/devtoolset-7/root/usr/lib/dyninst:/opt/rh/devtoolset-7/root/usr/lib64:/opt/rh/devtoolset-7/root/usr/lib" \
     PCP_DIR="/opt/rh/devtoolset-7/root" \
     PERL5LIB="/opt/rh/devtoolset-7/root//usr/lib64/perl5/vendor_perl:/opt/rh/devtoolset-7/root/usr/lib/perl5:/opt/rh/devtoolset-7/root//usr/share/perl5/vendor_perl" \
-    PKG_CONFIG_PATH="/opt/rh/rh-python35/root/usr/lib64/pkgconfig/:/opt/rh/python27/root/usr/lib64/pkgconfig/"
+    PKG_CONFIG_PATH="/opt/rh/python27/root/usr/lib64/pkgconfig/"
 
 # Install pip packages needed to build tensorflow.
 COPY install/*.sh /install/
+RUN bash install/install_yum_packages.sh
+RUN bash install/install_centos_python36.sh
 RUN bash install/install_centos_pip_packages.sh
 
 # Install a /usr/bin/python3 link.
@@ -33,7 +34,8 @@ RUN bash install/install_centos_pip_packages.sh
 # /opt/ to switch to alternative configurations. For bazel remote builds,
 # the python path between the local machine running bazel and the remote setup
 # must be the same.
-RUN update-alternatives --install /usr/bin/python3 python3 /opt/rh/rh-python35/root/usr/bin/python3 0
+RUN update-alternatives --install /usr/bin/python2 python2 /opt/rh/python27/root/usr/bin/python2.7 0
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/local/bin/python3.6 0
 
 # Install a ubuntu-compatible openjdk link so that ubuntu JAVA_HOME works
 # for this image.

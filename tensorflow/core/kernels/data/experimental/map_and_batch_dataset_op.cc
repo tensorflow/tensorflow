@@ -61,13 +61,13 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 batch_size;
+    int64 batch_size = 0;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "batch_size", &batch_size));
     OP_REQUIRES(
         ctx, batch_size > 0,
         errors::InvalidArgument("batch_size must be greater than zero."));
 
-    int64 num_parallel_calls;
+    int64 num_parallel_calls = 0;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                             &num_parallel_calls));
     OP_REQUIRES(
@@ -205,6 +205,13 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         while (num_calls_ > 0) {
           cond_var_->wait(l);
         }
+      }
+
+      string BuildTraceMeName() override {
+        // NOTE: We do not synchronize the following access to
+        // num_parallel_calls_ to minimize the tracing overhead.
+        int64 parallelism = num_parallel_calls_->value;
+        return strings::StrCat(prefix(), "#parallelism=", parallelism, "#");
       }
 
       Status Initialize(IteratorContext* ctx) override {

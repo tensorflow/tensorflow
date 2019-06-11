@@ -13,36 +13,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Translates a user-facing Mul call into an implementation-facing TrMul
-
-// As a matrix multiplication library, Ruy offers a Mul entry point, performing
-// matrix multiplication. For implementation purposes, it is much nicer to
-// be dealing with the transpose-and-multiply operation, doing
-//   Destination = Transpose(LHS) * RHS
-// Indeed, the latter is performing dot-products between the *columns* of LHS
-// and the columns of RHS, whereas a plain matrix multiplication is performing
-// dot-products between the *rows* of LHS and the columns of RHS.
-// That is why TrMul is nicer to implement, allowing for a more symmetric
-// treatment of LHS and RHS.
+// This file implements the translation between Ruy's entry point (ruy::Mul) and
+// the internal implementation of matrix multiplication.
 //
-// In this file, we translate a Mul call into a TrMul call by transposing the
-// LHS, so that henceforth the deeper implementation layers only need to deal
-// with TrMul.
-
-// This file also selects between different TrMul versions specialized
-// on the Path.
-
+// The primary elements of this dispatch are:
+// - pick suitable gemm kernel and packing routines for the user-specified
+// CompiledPaths based on the current CPU.
+// - decide on the structure of the packed matrices needed by the internal
+// implementation (see pack.h for more information on packing).
+// - translate the Mul operation into TrMul (see trmul.h for why that is
+// useful). This is done by changing the matrix Layout -- no matrix data is
+// actually moved.
+//
+// This file is also factored to serve as a building block for the advanced API
+// as well.
+//
 // This file also performs some checking of invariants to catch user errors.
 
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_DISPATCH_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_DISPATCH_H_
 
+#include <limits>
+
 #include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
 #include "tensorflow/lite/experimental/ruy/context.h"
-#include "tensorflow/lite/experimental/ruy/impl.h"
 #include "tensorflow/lite/experimental/ruy/matrix.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
+#include "tensorflow/lite/experimental/ruy/trmul.h"
 
 namespace ruy {
 
@@ -95,6 +93,21 @@ void EnforceZeroPointSupport(LhsScalar lhs_zero_point, RhsScalar rhs_zero_point,
              rhs_zero_point != std::numeric_limits<RhsScalar>::lowest());
 }
 
+template <typename Spec, typename DstScalar>
+void EnforceDstSpecSupport(const Spec& spec, DstScalar dst_zero_point) {
+  if (!std::is_same<typename Spec::DstScalar, std::int32_t>::value) return;
+
+  // If user is looking for the raw accumulator, zero_point and all the other
+  // dequantize fields don't make sense and should not be set.
+  RUY_DCHECK(dst_zero_point == 0);
+  RUY_DCHECK(spec.clamp_max == std::numeric_limits<std::int32_t>::max());
+  RUY_DCHECK(spec.clamp_min == std::numeric_limits<std::int32_t>::min());
+  RUY_DCHECK(spec.multiplier_fixedpoint == 0);
+  RUY_DCHECK(spec.multiplier_exponent == 0);
+  RUY_DCHECK(spec.multiplier_fixedpoint_perchannel == nullptr);
+  RUY_DCHECK(spec.multiplier_exponent_perchannel == nullptr);
+}
+
 inline bool IsColMajorTrMul(const DMatrix& lhs, const DMatrix& rhs,
                             const DMatrix& dst) {
   return IsColMajor(lhs.layout) && IsColMajor(rhs.layout) &&
@@ -109,7 +122,7 @@ inline void CreatePackedLayout(const Layout& src, const Type& scalar,
   packed->cols = round_up_pot(src.cols, kernel_layout.cols);
   packed->kernel = kernel_layout;
   int inner_size = packed->rows;
-  if (RUY_OPT_SET & RUY_OPT_AVOID_ALIASING) {
+  if (RUY_OPT_ENABLED(RUY_OPT_AVOID_ALIASING)) {
     packed->stride =
         (inner_size * scalar.size) % 1024 ? inner_size : inner_size + 64;
   } else {
@@ -141,14 +154,21 @@ template <Path ThePath, typename LhsScalar, typename RhsScalar,
 void PopulateTrMulParams(TrMulParams* params) {
   static_assert((ThePath & Path::kReference) == Path::kNone,
                 "Path::kReference should not do TrMul");
-  // The optimized code paths only handle a very specific set of layouts.
-  // Fall back to Path::kStandardCpp if needed.
+  // The optimized code paths don't handle the full generality of Ruy's API.
+  // Fall back to Path::kStandardCpp if necessary.
+  bool fallback_to_standard_cpp = false;
   if (ThePath != Path::kStandardCpp) {
+    // The optimized code paths currently only handle the case of all matrices
+    // being column major.
     if (!IsColMajorTrMul(params->lhs, params->rhs, params->dst)) {
-      PopulateTrMulParams<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar,
-                          Spec>(params);
-      return;
+      fallback_to_standard_cpp = true;
     }
+  }
+
+  if (fallback_to_standard_cpp) {
+    PopulateTrMulParams<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar,
+                        Spec>(params);
+    return;
   }
 
   using PackedLhsScalar = PackedType<ThePath, LhsScalar>;
@@ -354,6 +374,7 @@ void DispatchMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
   EnforceLayoutSupport<Spec>(lhs.layout, rhs.layout, dst->layout);
   EnforceZeroPointSupport<Spec>(lhs.zero_point, rhs.zero_point,
                                 dst->zero_point);
+  EnforceDstSpecSupport<Spec>(spec, dst->zero_point);
 
   // This should be a constant, for a given machine and CompiledPaths.
   // There is a back door to override it for testing, but in production it will

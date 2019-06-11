@@ -1,15 +1,16 @@
-package(default_visibility = [
-    "//tensorflow:internal",
-])
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
+
+package(
+    default_visibility = [
+        "//tensorflow:internal",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 cc_library(
     name = "remote_tensor_handle",
@@ -36,8 +37,8 @@ cc_library(
         ":eager_client",
         "//tensorflow/core:eager_service_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:eager_executor",
-        "//tensorflow/core/common_runtime/eager:tensor_handle",
     ],
 )
 
@@ -69,6 +70,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
+        "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/memory",
     ],
 )

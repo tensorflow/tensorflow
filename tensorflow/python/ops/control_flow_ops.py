@@ -36,14 +36,14 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
-from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_logging_ops
-from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 # go/tf-wildcard-import
@@ -470,11 +470,7 @@ def _ShapeLessThanOrEqual(shape1, shape2):
 
 
 def _get_shape_invariant(var, shape=None):
-  """Returns a shape invariant for the given variable.
-
-  If `var` is a `CompositeTensor`, then this uses
-  `_shape_invariant_to_components()` to get shape invariants for the
-  component tensors.
+  """Returns shape invariant(s) for the given variable.
 
   Args:
     var: The tensor whose shape is described.
@@ -482,15 +478,57 @@ def _get_shape_invariant(var, shape=None):
       shape invariant for `var` is returned.
 
   Returns:
-    The shape invariant for `var` (if it is a `Tensor`), or the shape invariants
-    for the components that comprise `var` (if it is a `CompositeTensor`).
+    `TensorShape` or `list` of `TensorShape`: The shape invariant for `var` (if
+    it is a `Tensor`), or the shape invariants for the components that comprise
+    `var` (if it is a `CompositeTensor`).
   """
   if isinstance(var, composite_tensor.CompositeTensor):
-    return var._shape_invariant_to_components(shape)  # pylint: disable=protected-access
+    # Get a TypeSpec for `var`.
+    if shape is None:
+      spec = var._type_spec  # pylint: disable=protected-access
+    else:
+      spec = _shape_invariant_to_type_spec(var, shape)
+
+    tensor_specs = nest.flatten(spec, expand_composites=True)
+    return [tspec.shape for tspec in tensor_specs]
+
   elif shape is None:
     return var.shape
   else:
     return shape
+
+
+def _shape_invariant_to_type_spec(var, shape):
+  """Converts a shape invariant to a TypeSpec.
+
+  Args:
+    var: The tensor whose shape is described by the shape invariant.
+    shape: A `TypeSpec` or `TensorShape`.  If `shape` is already a `TypeSpec`,
+      then it is simply returned as-is.
+
+  Returns:
+    A `TypeSpec` for `var`, consistent with the given shape.
+  """
+  if isinstance(shape, type_spec.TypeSpec):
+    return shape
+  elif not isinstance(shape, tensor_shape.TensorShape):
+    raise TypeError("Expected shape to be a TypeSpec or TensorShape, got %r"
+                    % shape)
+
+  if isinstance(var, ops.Tensor):
+    return tensor_spec.TensorSpec(shape, var.dtype)
+
+  elif isinstance(var, composite_tensor.CompositeTensor):
+    try:
+      return var._shape_invariant_to_type_spec(shape)  # pylint: disable=protected-access
+    except NotImplementedError:
+      raise TypeError(
+          "To describe or constrain a %s, use a %s instead of a TensorShape." %
+          (type(var).__name__, type(var._type_spec).__name__))  # pylint: disable=protected-access
+
+  else:
+    raise TypeError("Expected var to be a Tensor or CompositeTensor, got %s"
+                    % var)
 
 
 def _SetShapeInvariants(input_vars, enter_vars, shapes):
@@ -579,784 +617,6 @@ def _AddNextAndBackEdge(m, v, enforce_shape_invariant=True):
   else:
     raise TypeError("Type %s not supported" % type(m))
   return v
-
-
-def GetMaxSizeFromNestedMaximumIterations(value, while_ctxt):
-  """Calculate a max_size for use by stack ops inside an XLA while_loop.
-
-  Args:
-    value: The value inside the while_loop forward context.  Used for printing
-      error messages.
-    while_ctxt: The forward context inside which value resides.  This does not
-      always match the value's immediate context, as `value` may be inside e.g.
-      a cond context inside the while_loop.
-
-  Returns:
-    A tensor containing the `max_size` to feed to a Stack initializer.
-
-  Raises:
-    ValueError: If `value` is nested inside a `while_loop` that either
-      lacks a `maximum_iterations` parameter, or the `maximum_iterations`
-      parameter:
-
-        - is inside a `while_loop` that is a parent of the calling context, and
-        - cannot be evaluated at graph build time to a constant.
-  """
-  value_name = value.name
-  # curr_ctxt is the context that tf.gradients was called in.
-  curr_ctxt = ops.get_default_graph()._get_control_flow_context()  # pylint: disable=protected-access
-
-  curr_ctxt_name = curr_ctxt.name if curr_ctxt is not None else ""
-  max_size = constant_op.constant(1)
-
-  # Loop through all containing while contexts between value and the
-  # current context, multiplying together each context's
-  # max_iterations to get the maximum stack size.
-  while while_ctxt not in (None, curr_ctxt):
-    max_iter = while_ctxt.maximum_iterations
-    if max_iter is None:
-      raise ValueError(
-          "Cannot create a gradient accumulator for tensor '%s' inside "
-          "XLA while_loop because maximum_iterations was not passed to "
-          "the tf.while_loop call ('%s')." % (value_name, while_ctxt.name))
-
-    # pylint: disable=protected-access
-    max_iter_ctxt = max_iter.op._get_control_flow_context()
-    # pylint: enable=protected-access
-
-    # If max_iter_ctxt (non-strictly) contains curr_ctxt, then it's OK to use.
-    if util.IsContainingContext(curr_ctxt, max_iter_ctxt):
-      max_size *= max_iter
-    else:
-      # We cannot use max_iter because it's defined in a nested while
-      # or cond context, so will fail if we try to use it as input to
-      # any ops in curr_ctxt (e.g. max_size or the final accumulator
-      # stack). Attempt to get a constant value out to use instead.
-      const_max_iter = tensor_util.constant_value(max_iter)
-      if const_max_iter is None:
-        raise ValueError(
-            "Cannot create a gradient accumulator for tensor '%s' inside XLA "
-            "while_loop. maximum_iterations tensor '%s' for while_loop context "
-            "'%s' must be statically known (e.g. a constant value or known "
-            "shape dimension), or be defined at or outside the while loop "
-            "context '%s' (currently defined in '%s')." %
-            (value_name, max_iter.name, while_ctxt.name, curr_ctxt_name,
-             max_iter_ctxt.name))
-      max_size *= const_max_iter
-
-    # Find the next outer WhileContext (or stop if we reach the
-    # tf.gradient's context).
-    while_ctxt = util.GetContainingWhileContext(
-        while_ctxt.outer_context, stop_ctxt=curr_ctxt)
-
-  return max_size
-
-
-class GradLoopState(object):
-  """The state used for constructing the gradient graph for a while loop.
-
-  We create a GradLoopState for each while loop in forward and its
-  corresponding while loop in backprop. This gives us access to both
-  the forward and the backprop WhileContexts.
-
-  During the construction of gradient graph, any time when we detect
-  a forward value that is needed for backprop, we create a history
-  accumulator and add it to `history_map`. Any time when we backprop
-  a loop switch op (in _SwitchGrad), we add the grad merge op in
-  `switch_map`.
-  """
-
-  def __init__(self, forward_ctxt, outer_grad_state):
-    # The grad loop state for the outer while loop.
-    self._outer_grad_state = None
-
-    # The while loop context for forward.
-    self._forward_context = None
-
-    # The loop counter added by AddForwardLoopCounter. It is the value
-    # of the loop counter for the next iteration.
-    self._forward_index = None
-
-    # A sync op for forward.
-    self._forward_sync = None
-
-    # The while loop context for backprop.
-    self._grad_context = None
-
-    # The loop counter added by AddBackpropLoopCounter. It is the value
-    # of the loop counter for the current iteration.
-    self._grad_index = None
-
-    # A sync op for backprop.
-    self._grad_sync = None
-
-    # Information needed by backprop.
-    self._history_map = {}
-    self._switch_map = {}
-    self._unused_exits = []
-    self._deferred_exits = []
-    self._forward_loop_exits = list(forward_ctxt.loop_exits)
-    self._pending_exits_count = len(forward_ctxt.loop_exits)
-
-    self._outer_grad_state = outer_grad_state
-    if outer_grad_state:
-      outer_forward_ctxt = outer_grad_state.forward_context
-    else:
-      if not hasattr(forward_ctxt, "outer_context"):
-        raise ValueError("Failed to call gradients on a while loop without"
-                         "properly serializing graph via MetaGraphDef")
-      outer_forward_ctxt = forward_ctxt.outer_context
-
-    # Add the forward loop counter.
-    with forward_ctxt._graph.as_default():  # pylint: disable=protected-access
-      if outer_forward_ctxt:
-        outer_forward_ctxt.Enter()
-      cnt, forward_index = forward_ctxt.AddForwardLoopCounter(outer_grad_state)
-      if outer_forward_ctxt:
-        outer_forward_ctxt.Exit()
-    self._forward_context = forward_ctxt
-    self._forward_index = forward_index
-
-    # Add the backprop WhileContext, and the backprop loop counter.
-    if outer_grad_state:
-      # This is a nested loop. Remember the iteration counts for each
-      # execution of this inner loop.
-      outer_forward_ctxt.AddName(cnt.name)
-      history_cnt = outer_grad_state.AddForwardAccumulator(cnt)
-
-      outer_grad_ctxt = outer_grad_state.grad_context
-      outer_grad_ctxt.Enter()
-      self._grad_context = WhileContext(
-          maximum_iterations=forward_ctxt.maximum_iterations,
-          parallel_iterations=forward_ctxt.parallel_iterations,
-          back_prop=forward_ctxt.back_prop,
-          swap_memory=forward_ctxt.swap_memory,
-          name=forward_ctxt.name,
-          grad_state=self)
-      real_cnt = outer_grad_state.AddBackpropAccumulatedValue(history_cnt, cnt)
-      self._grad_index = self._grad_context.AddBackpropLoopCounter(
-          real_cnt, outer_grad_state)
-      outer_grad_ctxt.Exit()
-    else:
-      if outer_forward_ctxt:
-        outer_forward_ctxt.Enter()
-      self._grad_context = WhileContext(
-          maximum_iterations=forward_ctxt.maximum_iterations,
-          parallel_iterations=forward_ctxt.parallel_iterations,
-          back_prop=forward_ctxt.back_prop,
-          swap_memory=forward_ctxt.swap_memory,
-          name=forward_ctxt.name,
-          grad_state=self)
-      self._grad_index = self._grad_context.AddBackpropLoopCounter(
-          cnt, outer_grad_state)
-      if outer_forward_ctxt:
-        outer_forward_ctxt.Exit()
-
-  @property
-  def outer_grad_state(self):
-    """The grad loop state for outer loop."""
-    return self._outer_grad_state
-
-  @property
-  def forward_context(self):
-    """The while loop context for forward."""
-    return self._forward_context
-
-  @property
-  def forward_index(self):
-    """The loop index of forward loop."""
-    return self._forward_index
-
-  @property
-  def forward_sync(self):
-    """A control trigger node for synchronization in the forward loop.
-
-    One main use is to keep the push ops of a stack executed in the
-    iteration order.
-    """
-    if self._forward_sync is None:
-      with ops.control_dependencies(None):
-        self._forward_sync = control_trigger(name="f_sync")
-      self._forward_sync._set_control_flow_context(self._forward_context)
-      self._forward_index.op._add_control_input(self._forward_sync)
-    return self._forward_sync
-
-  @property
-  def grad_context(self):
-    """The corresponding WhileContext for gradient."""
-    return self._grad_context
-
-  @property
-  def grad_index(self):
-    """The loop index of backprop loop."""
-    return self._grad_index
-
-  @property
-  def grad_sync(self):
-    """A control trigger node for synchronization in the grad loop.
-
-    One main use is to keep the pop ops of a stack executed in the
-    iteration order.
-    """
-    if self._grad_sync is None:
-      with ops.control_dependencies(None):
-        self._grad_sync = control_trigger(name="b_sync")
-      self._grad_sync._set_control_flow_context(self._grad_context)
-      self._grad_index.op._add_control_input(self._grad_sync)
-      if self._grad_context.outer_context:
-        self._grad_context.outer_context.AddInnerOp(self._grad_sync)
-    return self._grad_sync
-
-  @property
-  def history_map(self):
-    """The map that records all the tensors needed for backprop."""
-    return self._history_map
-
-  @property
-  def switch_map(self):
-    """The map that records all the Switch ops for the while loop."""
-    return self._switch_map
-
-  @property
-  def unused_exits(self):
-    """The list of "unused" exits."""
-    return self._unused_exits
-
-  @property
-  def deferred_exits(self):
-    """The list of "deferred" exits."""
-    return self._deferred_exits
-
-  @property
-  def forward_loop_exits(self):
-    """The list of exits of the forward loop."""
-    return self._forward_loop_exits
-
-  @property
-  def pending_exits_count(self):
-    """The number of exits we expect to see but haven't."""
-    return self._pending_exits_count
-
-  @pending_exits_count.setter
-  def pending_exits_count(self, cnt):
-    """Set the pending count to cnt."""
-    self._pending_exits_count = cnt
-
-  def AddForwardAccumulator(self, value, dead_branch=False):
-    """Add an accumulator for each forward tensor that is needed in backprop.
-
-    This is added to the forward loop at the first time when a tensor
-    in the forward loop is used by backprop gradient computation loop.
-    We create an accumulator that accumulates the value of tensor at each
-    iteration. Called in the control flow context where gradients() is called.
-
-    The pseudocode is:
-    ```
-      acc = stack();
-      while (_pivot) {
-        acc = stack_push(acc, value);
-      }
-    ```
-
-    We make sure that the stack push op in one iteration is executed before
-    next iteration. This is achieved by adding a control edge from
-    `forward_index.op.inputs[0].op` to the push op, and another control
-    edge from the push op to either `forward_index.op` or `forward_sync`.
-
-    Args:
-      value: The source tensor in forward that is to be accumulated.
-      dead_branch: True iff the tensor is on a dead branch of a cond.
-
-    Returns:
-      The stack that contains the accumulated history of the tensor.
-
-    Raises:
-      TypeError: For internal errors involving the value condition context.
-      ValueError: If `value` is inside a XLA scope and a valid max size
-        for the stack can't be found.
-    """
-    # curr_ctxt is the context that tf.gradients was called in.
-    with self._forward_index.graph.as_default():
-      curr_ctxt = ops.get_default_graph()._get_control_flow_context()  # pylint: disable=protected-access
-      with ops.control_dependencies(None):
-        if curr_ctxt:
-          curr_ctxt.Enter()
-        with ops.colocate_with(value):
-          # We only need to pass maximum_iterations to the stack if
-          # we're inside an XLA context.
-          if not util.IsInXLAContext(value.op):
-            max_size = constant_op.constant(-1, dtypes.int32)
-          else:
-            max_size = GetMaxSizeFromNestedMaximumIterations(
-                value, self.forward_context)
-          acc = gen_data_flow_ops.stack_v2(
-              max_size=max_size, elem_type=value.dtype.base_dtype, name="f_acc")
-        if curr_ctxt:
-          curr_ctxt.Exit()
-
-        # Make acc available in the forward context.
-        enter_acc = self.forward_context.AddValue(acc)
-
-        # Add the stack_push op in the context of value.op.
-        swap_enabled = self.forward_context.swap_memory
-        value_ctxt = util.GetOutputContext(value.op)
-        if value_ctxt == self.forward_context:
-          # value is not nested in the forward context.
-          self.forward_context.Enter()
-          push = gen_data_flow_ops.stack_push_v2(
-              enter_acc, value, swap_memory=swap_enabled)
-          self.forward_context.Exit()
-          # Protect stack push and order it before forward_index.
-          self.forward_index.op._add_control_input(push.op)
-        else:
-          # value is in a cond context within the forward context.
-          if not isinstance(value_ctxt, CondContext):
-            raise TypeError("value_ctxt is not a CondContext: %s" % value_ctxt)
-          if dead_branch:
-            # The special case for creating a zero tensor for a dead
-            # branch of a switch. See ControlFlowState.ZerosLike().
-            value_ctxt.outer_context.Enter()
-            push = gen_data_flow_ops.stack_push_v2(
-                enter_acc, value, swap_memory=swap_enabled)
-            value_ctxt.outer_context.Exit()
-            push.op._set_control_flow_context(value_ctxt)
-          else:
-            value_ctxt.Enter()
-            push = gen_data_flow_ops.stack_push_v2(
-                enter_acc, value, swap_memory=swap_enabled)
-            value_ctxt.Exit()
-          # Protect stack push and order it before forward_sync.
-          self.forward_sync._add_control_input(push.op)
-        # Order stack push after the successor of forward_index
-        add_op = self.forward_index.op.inputs[0].op
-        push.op._add_control_input(add_op)
-        return acc
-
-  def AddBackpropAccumulatedValue(self, history_value, value,
-                                  dead_branch=False):
-    """Add the getter for an accumulated value in the grad context.
-
-    This is added to the backprop loop. Called in the grad context to
-    get the value of an accumulated value. The stack pop op must be guarded
-    by the pred of the controlling cond.
-
-    Args:
-      history_value: The history (a stack) of a value.
-      value: The value that is pushed onto the stack.
-      dead_branch: True iff the tensor is on a dead branch of a cond.
-
-    Returns:
-      The current value (the top of the stack).
-    """
-    history_ctxt = history_value.op._get_control_flow_context()
-    # Find the cond context that controls history_value if any.
-    cond_ctxt = None
-    value_ctxt = value.op._get_control_flow_context()
-    while value_ctxt and value_ctxt != history_ctxt:
-      if isinstance(value_ctxt, CondContext):
-        cond_ctxt = value_ctxt
-        break
-      value_ctxt = value_ctxt.outer_context
-    with ops.control_dependencies(None):
-      self.grad_context.Enter()
-      if cond_ctxt:
-        # Guard stack pop with a switch if it is controlled by a cond.
-        grad_state = self
-        pred = None
-        while pred is None and grad_state:
-          pred = grad_state.history_map.get(cond_ctxt.pred.name)
-          grad_state = grad_state.outer_grad_state
-        if pred is None:
-          pred = cond_ctxt.pred
-        branch = (1 - cond_ctxt.branch) if dead_branch else cond_ctxt.branch
-        history_value = _SwitchRefOrTensor(history_value, pred)[branch]
-      pop = gen_data_flow_ops.stack_pop_v2(history_value,
-                                           value.dtype.base_dtype)
-      pop.set_shape(value.get_shape())
-      self.grad_context.Exit()
-    parallel_iterations = self.grad_context.parallel_iterations
-    if parallel_iterations > 1:
-      # All pops are ordered after pivot_for_body and before grad_sync.
-      self.grad_sync._add_control_input(pop.op)
-    return pop
-
-  def GetRealValue(self, value):
-    """Get the real value of `value`.
-
-    If backprop "uses" a value produced by forward inference, an accumulator
-    is added in the forward loop to accumulate its values.  We use the
-    accumulated value. This method must be called in the grad loop context.
-    `value` must be in forward and needed for backprop.
-
-    Args:
-      value: A tensor to be captured.
-
-    Returns:
-      The same tensor obtained from the saved history.
-    """
-    assert value.op.type not in ["Variable", "VariableV2"]
-    real_value = self._history_map.get(value.name)
-    if real_value is None:
-      cur_value = value
-      cur_grad_state = self
-      while True:
-        enter_op = util.GetLoopConstantEnter(cur_value)
-        if enter_op:
-          # Special case: cur_value comes from a constant Enter node.
-          cur_value = enter_op.inputs[0]
-          cur_grad_state = cur_grad_state.outer_grad_state
-          if cur_grad_state is None:
-            # We are now outside all nested loops for this gradient(),
-            # so `value` is a loop invariant and there is no need to
-            # save the history of value. Just make cur_value to enter
-            # the right control flow context.
-            real_value = self._grad_context.AddValue(cur_value)
-            break
-        elif constant_op.is_constant(cur_value):
-          # If the value to be forwarded is a constant, clone the constant in
-          # the gradient loop rather than using a stack.
-          # TODO(phawkins): consider hoisting the constant out of the loop
-          # instead.
-          real_value = constant_op.constant(
-              tensor_util.constant_value(cur_value), dtype=cur_value.dtype)
-          break
-        else:
-          # Record the history of this value in forward_ctxt.
-          self._grad_context.Exit()
-          history_value = cur_grad_state.AddForwardAccumulator(cur_value)
-          self._grad_context.Enter()
-          break
-
-      if real_value is None:
-        # Add the stack pop op in the grad context.
-        real_value = cur_grad_state.AddBackpropAccumulatedValue(
-            history_value, cur_value)
-        if cur_grad_state != self:
-          real_value = self._grad_context.AddValue(real_value)
-      self._history_map[value.name] = real_value
-    return real_value
-
-
-def _GetWhileContext(op):
-  """Get the WhileContext to which this op belongs."""
-  ctxt = op._get_control_flow_context()
-  if ctxt:
-    ctxt = ctxt.GetWhileContext()
-  return ctxt
-
-
-class ControlFlowState(object):
-  """Maintain the mapping from the loops to their grad states."""
-
-  def __init__(self):
-    self._map = {}  # maps forward loop context to GradLoopState
-
-  def GetGradState(self, op, before):
-    """Return the grad state for this op if it's in a forward loop context."""
-    if before and util.IsLoopExit(op):
-      forward_ctxt = op._get_control_flow_context()
-      forward_ctxt = forward_ctxt.outer_context
-      if forward_ctxt:
-        forward_ctxt = forward_ctxt.GetWhileContext()
-    else:
-      forward_ctxt = _GetWhileContext(op)
-    if forward_ctxt:
-      return self._map.get(forward_ctxt)
-    return None
-
-  def ProcessUnusedLoopExits(self, pending_count, to_ops_set):
-    """Process all the "unused" loop exits.
-
-    The "unused" exits of the loops are added to `unused_exits`. An exit is
-    unused if its pending_count is 0. If there is an exit with real gradient,
-    all these deferred exits will enter the backprop loop with zero gradient.
-    Otherwise, they will enter the backprop loop with None. As an example,
-    people often write:
-
-    ```python
-    v1, _ = tf.while_loop(p, b, [x1, x2])
-    result = gradients(v1, x1)
-    ```
-
-    The exit node for x2 is not included by the betweenness analysis. But we
-    need to backprop x2 if x2 is involved in computing v1.
-
-    Args:
-      pending_count: The number of backprop inputs for every op.
-      to_ops_set: The set of ops for ys in gradients(ys, xs)
-
-    Returns:
-      The set of unused loop exits that we know at this point we need
-      to backprop.
-    """
-    loop_exits = []
-    for grad_state in self._map.values():
-      for y in grad_state.forward_loop_exits:
-        if pending_count[y.op] == 0:
-          grad_state.pending_exits_count -= 1
-          if y.op not in to_ops_set:
-            grad_state.unused_exits.append(y)
-          if grad_state.pending_exits_count == 0:
-            loop_exits.extend(grad_state.unused_exits)
-      # Need to include Enters in backprop for higher-order gradients.
-      for y in grad_state.forward_context.loop_enters:
-        if pending_count[y.op] == 0:
-          pending_count[y.op] = 1
-    return loop_exits
-
-  def EnterGradWhileContext(self, op, before):
-    """Enter the WhileContext for gradient computation."""
-    grad_state = self.GetGradState(op, before)
-    if grad_state:
-      grad_state.grad_context.Enter()
-
-  def ExitGradWhileContext(self, op, before):
-    """Exit the WhileContext for gradient computation."""
-    grad_state = self.GetGradState(op, before)
-    if grad_state:
-      grad_state.grad_context.Exit()
-
-  def AddWhileContext(self, op, between_op_list, between_ops):
-    """Add the grad state for the while loop that op belongs to.
-
-    Note that op is an Exit, and this method must be called in
-    the control flow context where gradients() is called.
-
-    Note that this method modifies `between_op_list` and `between_ops`.
-    """
-    forward_ctxt = _GetWhileContext(op)
-    grad_state = self._map.get(forward_ctxt)
-    if grad_state is None:
-      # This is a new while loop so create a grad state for it.
-      outer_forward_ctxt = forward_ctxt.outer_context
-      if outer_forward_ctxt:
-        outer_forward_ctxt = outer_forward_ctxt.GetWhileContext()
-      outer_grad_state = None
-      if outer_forward_ctxt:
-        outer_grad_state = self._map.get(outer_forward_ctxt)
-      grad_state = GradLoopState(forward_ctxt, outer_grad_state)
-      self._map[forward_ctxt] = grad_state
-
-      # We need to include all exits of a loop for backprop.
-      for loop_exit in grad_state.forward_loop_exits:
-        if loop_exit.op not in between_ops:
-          between_ops.add(loop_exit.op)
-          between_op_list.append(loop_exit.op)
-
-  def ZerosLikeForExit(self, val):
-    """Create zeros_like gradient for a loop exit.
-
-    If the result of a loop variable is not used but is involved in
-    computing the result of some needed loop variable, we create a
-    zero-valued tensor that is fed as gradient for the Exit node of that
-    loop variable. Note that val.op is an Exit, and this method must be
-    called in the control flow context where gradients() is called.
-
-    Args:
-      val: The output tensor of an Exit op.
-
-    Returns:
-      A zero tensor of the same shape of val.
-    """
-    val_shape = val.get_shape()
-    forward_ctxt = val.op._get_control_flow_context()
-    outer_forward_ctxt = forward_ctxt.outer_context
-    if outer_forward_ctxt:
-      outer_forward_ctxt = outer_forward_ctxt.GetWhileContext()
-    outer_grad_state = None
-    if outer_forward_ctxt:
-      outer_grad_state = self._map.get(outer_forward_ctxt)
-    if outer_grad_state:
-      # This is a nested loop.
-      if val_shape.is_fully_defined():
-        # If the shape is known statically, just create a zero tensor
-        # with the right shape in the right context.
-        outer_grad_state.grad_context.Enter()
-        result = array_ops.zeros(val_shape.dims, val.dtype)
-        outer_grad_state.grad_context.Exit()
-      else:
-        # Only the shape of value is needed for backprop.
-        forward_ctxt.outer_context.Enter()
-        shape = array_ops.shape_internal(val, optimize=False)
-        forward_ctxt.outer_context.Exit()
-        # Save the shape to a stack.
-        history_shape = outer_grad_state.AddForwardAccumulator(shape)
-        # Get the shape back from the stack.
-        outer_grad_ctxt = outer_grad_state.grad_context
-        outer_grad_ctxt.Enter()
-        real_shape = outer_grad_state.AddBackpropAccumulatedValue(
-            history_shape, shape)
-        result = array_ops.zeros(real_shape, val.dtype)
-        outer_grad_ctxt.Exit()
-    else:
-      # This is not a nested loop.
-      if val_shape.is_fully_defined():
-        # If the shape is known statically, just create a zero tensor
-        # with the right shape.
-        result = array_ops.zeros(val_shape.dims, val.dtype)
-      else:
-        result = array_ops.zeros_like(val, optimize=False)
-    return result
-
-  def ZerosLike(self, op, index):
-    """Create zeros_like for the specified output of an op.
-
-    If op is in a while loop that is part of gradients(), this method
-    must be called in its grad loop context.
-
-    Args:
-      op: A tensorflow operation.
-      index: the index for a specific output of the op.
-
-    Returns:
-      A zero tensor of the same shape of op.outputs[index].
-    """
-    if util.IsLoopSwitch(op):
-      return None
-    if op.graph._building_function:  # pylint: disable=protected-access
-      # The optimization here is tricky to apply to functions
-      return array_ops.zeros_like(op.outputs[index])
-    dead_branch = util.IsSwitch(op)
-    forward_ctxt = _GetWhileContext(op)
-    grad_state = self._map.get(forward_ctxt)
-    if grad_state is None:
-      # op is not in a while loop that is part of gradients().
-      return ZerosLikeOutsideLoop(op, index)
-    op_ctxt = op._get_control_flow_context()
-    val = ops.convert_to_tensor(op.outputs[index], name="tensor")
-    shape = val.get_shape()
-    if shape.is_fully_defined():
-      # If the shape is known statically, just create a zero tensor with
-      # the right shape in the grad loop context.
-      result = constant_op.constant(0, shape=shape.dims, dtype=val.dtype)
-      if dead_branch:
-        # op is a cond switch. Guard the zero tensor with a switch.
-        pred = grad_state.history_map.get(op_ctxt.pred.name)
-        branch = op_ctxt.branch
-        result = _SwitchRefOrTensor(result, pred)[1 - branch]
-    else:
-      # Unknown shape so keep a history of the shape at runtime.
-      if dead_branch:
-        # Need to add a special switch to guard the value.
-        pred = op_ctxt.pred
-        branch = op_ctxt.branch
-        op_ctxt.outer_context.Enter()
-        val = _SwitchRefOrTensor(op.inputs[0], pred)[1 - branch]
-        zeros_shape = array_ops.shape_internal(val, optimize=False)
-        op_ctxt.outer_context.Exit()
-        val.op._set_control_flow_context(op_ctxt)
-        zeros_shape.op._set_control_flow_context(op_ctxt)
-      else:
-        op_ctxt.Enter()
-        zeros_shape = array_ops.shape_internal(val, optimize=False)
-        op_ctxt.Exit()
-
-      # Add forward accumulator for shape.
-      grad_state.grad_context.Exit()
-      history_zeros_shape = grad_state.AddForwardAccumulator(
-          zeros_shape, dead_branch=dead_branch)
-      grad_state.grad_context.Enter()
-
-      # Create a zero tensor with the right shape.
-      shape = grad_state.AddBackpropAccumulatedValue(history_zeros_shape,
-                                                     zeros_shape, dead_branch)
-      result = array_ops.zeros(shape, val.dtype)
-    return result
-
-  def PostProcessing(self):
-    """Perform postprocessing at the end of gradients().
-
-    We have created the gradient graph at this point. So this function
-    can be used to perform any postprocessing on the gradient graph.
-    We currently perform the following postprocessing:
-      1. Patch the gradient graph if the output of a loop variable
-         doesn't depend on its input.
-    """
-    for _, grad_state in self._map.items():
-      for _, b_merge in grad_state.switch_map.items():
-        if b_merge.op.inputs[0] == b_merge.op.inputs[1]:
-          # The value of this loop variable at iteration i+1 doesn't
-          # depend on its value at iteration i. So use zeros as the
-          # gradients for all iterations > 0.
-          dtype = b_merge.op.inputs[0].dtype
-          shape = b_merge.op.inputs[0].get_shape()
-          # pylint: disable=protected-access
-          if shape.is_fully_defined():
-            grad_state.grad_context.Enter()
-            # Create a zeros and use it for iterations > 0.
-            grad_val = constant_op.constant(0, dtype=dtype, shape=shape)
-            next_grad_val = _NextIteration(grad_val)
-            grad_state.grad_context.Exit()
-          else:
-            # Create a zeros in the outer grad context.
-            outer_grad_ctxt = grad_state.grad_context.outer_context
-            if outer_grad_ctxt:
-              outer_grad_ctxt.Enter()
-            enter_grad_op = b_merge.op.inputs[0].op
-            enter_grad = enter_grad_op.inputs[0]
-            grad_shape = array_ops.shape_internal(enter_grad, optimize=False)
-            grad_val = array_ops.zeros(grad_shape)
-            if outer_grad_ctxt:
-              outer_grad_ctxt.Exit()
-            # Use the zeros for iterations > 0.
-            grad_state.grad_context.Enter()
-            next_grad_val = _NextIteration(grad_val)
-            grad_state.grad_context.Exit()
-          b_merge.op._update_input(1, next_grad_val)
-          # pylint: enable=protected-access
-
-
-def MaybeCreateControlFlowState(between_op_list, between_ops,
-                                colocate_gradients_with_ops):
-  """Create the state for all the while loops involved in one gradients().
-
-  We create a ControlFlowState when there are while loops involved in
-  gradients(). In gradients(), control flow logic is only invoked when
-  the ControlFlowState is not None.
-
-  Note that this method modifies `between_op_list` and `between_ops`.
-  """
-  loop_state = None
-  for op in between_op_list:
-    if util.IsLoopExit(op):
-      if loop_state is None:
-        loop_state = ControlFlowState()
-      if colocate_gradients_with_ops:
-        with ops.colocate_with(op):
-          loop_state.AddWhileContext(op, between_op_list, between_ops)
-      else:
-        loop_state.AddWhileContext(op, between_op_list, between_ops)
-  return loop_state
-
-
-def ZerosLikeOutsideLoop(op, index):
-  """Create zeros_like for the specified output of an op."""
-  val = op.outputs[index]
-  if not util.IsSwitch(op):
-    if val.dtype == dtypes.resource:
-      return array_ops.zeros(gen_resource_variable_ops.variable_shape(val))
-    return array_ops.zeros_like(val, optimize=False)
-  else:
-    op_ctxt = op._get_control_flow_context()
-    if op_ctxt:
-      # We are in a cond context. Use a switch to create zeros only when needed.
-      pred = op_ctxt.pred
-      branch = op_ctxt.branch
-      switch_val = switch(op.inputs[0], pred)[1 - branch]
-      # A op is created along the branch taken as control dependencies are on
-      # the whole op and not on the tensor output.
-      pivot = array_ops.identity(switch_val)
-      if val.dtype == dtypes.resource:
-        with ops.control_dependencies([pivot]):
-          return array_ops.zeros(
-              gen_resource_variable_ops.variable_shape(switch_val))
-      zeros_shape = array_ops.shape_internal(switch_val, optimize=False)
-      # Ensure ops created within array_ops.zeros are dominated by switch in
-      # cond context.
-      with ops.control_dependencies([pivot]):
-        return array_ops.zeros(zeros_shape, dtype=val.dtype)
-    else:
-      return array_ops.zeros_like(val, optimize=False)
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -1999,12 +1259,18 @@ def cond(pred,
     # Check that the return values of the two branches have the same structure.
     try:
       nest.assert_same_structure(orig_res_t, orig_res_f, expand_composites=True)
-    except TypeError as e:
-      raise TypeError(
-          "Incompatible return types of true_fn and false_fn: {}".format(e))
-    except ValueError as e:
-      raise ValueError(
-          "Incompatible return values of true_fn and false_fn: {}".format(e))
+    except (TypeError, ValueError):
+      nest.map_structure(_cast_indexed_slice_indices, orig_res_t, orig_res_f)
+      nest.map_structure(_cast_indexed_slice_indices, res_t, res_f)
+      try:
+        nest.assert_same_structure(orig_res_t, orig_res_f,
+                                   expand_composites=True)
+      except TypeError as e:
+        raise TypeError(
+            "Incompatible return types of true_fn and false_fn: {}".format(e))
+      except ValueError as e:
+        raise ValueError(
+            "Incompatible return values of true_fn and false_fn: {}".format(e))
 
     # Add the final merge to the graph.
     if not res_t:
@@ -2013,14 +1279,12 @@ def cond(pred,
     res_t_flat = nest.flatten(res_t, expand_composites=True)
     res_f_flat = nest.flatten(res_f, expand_composites=True)
 
-    for i, (x, y) in enumerate(zip(res_t_flat, res_f_flat)):
+    for (x, y) in zip(res_t_flat, res_f_flat):
       assert isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor)
       if x.dtype.base_dtype != y.dtype.base_dtype:
-        _cast_indexed_slice_indices(res_t, res_t_flat, res_f_flat)
-        if res_t_flat[i].dtype.base_dtype != res_f_flat[i].dtype.base_dtype:
-          raise ValueError(
-              "Outputs of true_fn and false_fn must have the same type: "
-              "%s, %s" % (x.dtype.name, y.dtype.name))
+        raise ValueError(
+            "Outputs of true_fn and false_fn must have the same type: "
+            "%s, %s" % (x.dtype.name, y.dtype.name))
 
     merges = [merge(pair)[0] for pair in zip(res_f_flat, res_t_flat)]
     merges = _convert_flows_to_tensorarrays(
@@ -2042,46 +1306,22 @@ def cond(pred,
     return merges
 
 
-def _cast_indexed_slice_indices(structure, flat_a, flat_b):
+def _cast_indexed_slice_indices(a, b):
   """Cast IndexedSlice.indices from int32 to int64 where necessary.
 
-  For each `IndexedSlices` in the nested structure `structure`, find its
-  indices `Tensor` in the corresponding flattened lists `flat_a` and `flat_b`
-  (where composites have been expanded); and if those indices tensors have
-  different dtypes (i.e., if one is int64 but the other is int32), then cast
-  them to both be int64.
+  If `a` and `b` are both IndexedSlices, and their indices have different
+  dtypes, then cast both their dtypes to `int64` (modifies `a` and `b`
+  in-place).  Otherwise, does nothing.
 
   Args:
-    structure: The nested structure that was flattened.
-    flat_a: A flattened list of `Tensors` whose structure matches `structure`.
-      Will be modified in place to cast `IndexedSlices` indices tensors to
-      int64, where necessary.
-    flat_a: A flattened list of `Tensors` whose structure matches `structure`.
-      Will be modified in place to cast `IndexedSlices` indices tensors to
-      int64, where necessary.
+    a: A value, which may be an IndexedSlices.
+    b: A value, which may be an IndexedSlices.
   """
-  # Find the locations (in flat_a and flat_b) of the IndexedSlices'
-  # indices tensors.
-  indexed_slice_indices = []
-  current_index = 0
-  for item in nest.flatten(structure, expand_composites=False):
-    if isinstance(item, ops.IndexedSlices):
-      # indices is the second component of the composite tensor.
-      indexed_slice_indices.append(current_index + 1)
-    if nest.is_sequence_or_composite(item):
-      current_index += len(nest.flatten(item, expand_composites=True))
-    else:
-      current_index += 1
-  assert current_index == len(flat_a)
-
-  for index in indexed_slice_indices:
-    assert flat_a[index].dtype in (dtypes.int32, dtypes.int64)
-    assert flat_b[index].dtype in (dtypes.int32, dtypes.int64)
-    if flat_a[index].dtype != flat_b[index].dtype:
-      if flat_b[index].dtype == dtypes.int32:
-        flat_b[index] = math_ops.cast(flat_b[index], dtypes.int64)
-      else:
-        flat_a[index] = math_ops.cast(flat_a[index], dtypes.int64)
+  if (isinstance(a, ops.IndexedSlices) and isinstance(b, ops.IndexedSlices)
+      and a.indices.dtype != b.indices.dtype):
+    # pylint: disable=protected-access
+    a._indices = math_ops.cast(a.indices, dtypes.int64)
+    b._indices = math_ops.cast(b.indices, dtypes.int64)
 
 
 # pylint: enable=g-doc-args
@@ -2123,6 +1363,12 @@ def cond_for_tf_v2(pred, true_fn=None, false_fn=None, name=None):
   same (possibly nested) value structure of lists, tuples, and/or named tuples.
   Singleton lists and tuples form the only exceptions to this: when returned by
   `true_fn` and/or `false_fn`, they are implicitly unpacked to single values.
+
+  Note: It is illegal to "directly" use tensors created inside a cond branch
+  outside it, e.g. by storing a reference to a branch tensor in the python
+  state. If you need to use a tensor created in a branch function you should
+  return it as an output of the branch function and use the output from
+  `tf.cond` instead.
 
   Args:
     pred: A scalar determining whether to return the result of `true_fn` or
@@ -2422,7 +1668,7 @@ class WhileContext(ControlFlowContext):
       if grad_ctxt:
         grad_ctxt = grad_ctxt.GetWhileContext()
         if grad_ctxt.grad_state:
-          forward_ctxt = _GetWhileContext(val.op)
+          forward_ctxt = util.GetWhileContext(val.op)
           if util.IsLoopExit(val.op):
             forward_ctxt = forward_ctxt.outer_context
             if forward_ctxt:
@@ -2474,7 +1720,7 @@ class WhileContext(ControlFlowContext):
       if grad_ctxt:
         grad_ctxt = grad_ctxt.GetWhileContext()
         if grad_ctxt.grad_state:
-          op_input_forward_ctxt = _GetWhileContext(op.inputs[0].op)
+          op_input_forward_ctxt = util.GetWhileContext(op.inputs[0].op)
           if op_input_forward_ctxt == grad_ctxt.grad_state.forward_context:
             op_input_ctxt = op.inputs[0].op._get_control_flow_context()
             op._set_control_flow_context(op_input_ctxt)
@@ -3051,6 +2297,7 @@ class WhileContext(ControlFlowContext):
     return True
 
 
+# @TODO(b/133606651) Replace "shape_invariants" with "loop_vars_signature".
 # pylint: disable=redefined-outer-name
 @tf_export("while_loop", v1=[])
 def while_loop_v2(cond,
@@ -3931,6 +3178,101 @@ def _case_helper(cond_fn,
       return fn()
 
 
+def _indexed_case_verify_and_canonicalize_args(branch_fns, default,
+                                               branch_index):
+  """Verifies input arguments for the case function.
+
+  Args:
+    branch_fns: Dict or list of pairs of an `int` and a callable which
+      returns a list of tensors.
+    default: Optional callable that returns a list of tensors.
+    branch_index: Optional int `Tensor`, which selects for the corresponding
+      pred_fn_pair.
+
+  Raises:
+    TypeError: If `branch_fns` is not a list/dictionary.
+    TypeError: If `branch_fns` is a list but does not contain 2-tuples or
+               callables.
+    TypeError: If `fns[i]` is not callable for any i, or `default` is not
+               callable.
+
+  Returns:
+    branch_fns: validated list of callables for each branch (default last).
+  """
+  if not isinstance(branch_index, ops.Tensor):
+    raise TypeError("branch_index must a Tensor, got {}".format(
+        type(branch_index)))
+  if not branch_index.dtype.is_integer:
+    raise TypeError("branch_index must an integer Tensor, got {}".format(
+        branch_index.dtype))
+
+  if not branch_fns:
+    raise ValueError("Must provide at least one item in branch_fns")
+  if not isinstance(branch_fns, (list, _basetuple, dict)):
+    raise TypeError("branch_fns must be a list, tuple, or dict")
+
+  if isinstance(branch_fns, dict):
+    branch_fns = branch_fns.items()
+
+  if all(callable(fn) for fn in branch_fns):
+    branch_fns = list(enumerate(branch_fns))
+
+  for key_fn_pair in branch_fns:
+    if not isinstance(key_fn_pair, _basetuple) or len(key_fn_pair) != 2:
+      raise TypeError("Each entry in branch_fns must be a 2-tuple")
+    key, branch_fn = key_fn_pair
+
+    if not isinstance(key, int):
+      raise TypeError("key must be a Python `int`, got {}".format(type(key)))
+
+    if not callable(branch_fn):
+      raise TypeError("fn for key {} must be callable.".format(key))
+
+  keys = [p[0] for p in branch_fns]
+  if min(keys) < 0 or max(keys) >= len(keys) or len(set(keys)) != len(keys):
+    raise ValueError(
+        "branch indices (keys) must form contiguous range of [0 to {}) but "
+        "found {{{}}}".format(len(keys), ",".join(map(str, sorted(keys)))))
+  actions = [p[1] for p in sorted(branch_fns)]
+  if default is not None:
+    actions.append(default)
+  return actions
+
+
+def _indexed_case_helper(branch_fns, default, branch_index, name):
+  """Implementation of case that emits the n-way indexed Case op.
+
+  Args:
+    branch_fns: Dict or list of pairs of a boolean scalar tensor, and a
+      callable which returns a list of tensors.
+    default: Optional callable that returns a list of tensors.
+    branch_index: Optional int `Tensor`, which selects for the corresponding
+      pred_fn_pair.
+    name: A name for this operation (optional).
+
+  Returns:
+    The tensors returned by the pair whose key matched branch_index, or
+    those returned by `default` if none does.
+
+  Raises:
+    TypeError: If `branch_fns` is not a list/dictionary.
+    TypeError: If `branch_fns` is a list but does not contain 2-tuples or
+               callables.
+    TypeError: If `fns[i]` is not callable for any i, or `default` is not
+               callable.
+  """
+  branch_fns = _indexed_case_verify_and_canonicalize_args(
+      branch_fns, default, branch_index)
+  with ops.name_scope(name, "case", [branch_index]):
+    if context.executing_eagerly():
+      branch_index = array_ops.where(
+          math_ops.less(branch_index, 0)
+          | math_ops.greater_equal(branch_index, len(branch_fns)),
+          len(branch_fns) - 1, branch_index)
+      return branch_fns[int(branch_index)]()
+    return cond_v2.indexed_case(branch_index, branch_fns)
+
+
 @tf_export("case")
 def case(pred_fn_pairs,
          default=None,
@@ -3938,6 +3280,8 @@ def case(pred_fn_pairs,
          strict=False,
          name="case"):
   """Create a case operation.
+
+  See also `tf.switch_case`.
 
   The `pred_fn_pairs` parameter is a dict or list of pairs of size N.
   Each pair contains a boolean scalar tensor and a python callable that
@@ -4035,6 +3379,82 @@ def case(pred_fn_pairs,
       name,
       allow_python_preds=False,
       strict=strict)
+
+
+@tf_export("switch_case")
+def switch_case(branch_index,
+                branch_fns,
+                default=None,
+                name="switch_case"):
+  """Create a switch/case operation, i.e. an integer-indexed conditional.
+
+  See also `tf.case`.
+
+  This op can be substantially more efficient than `tf.case` when exactly one
+  branch will be selected. `tf.switch_case` is more like a C++ switch/case
+  statement than `tf.case`, which is more like an if/elif/elif/else chain.
+
+  The `branch_fns` parameter is either a dict from `int` to callables, or list
+  of (`int, callable) pairs, or simply a list of callables (in which case the
+  index is implicitly the key). The `branch_index` `Tensor` is used to select an
+  element in `branch_fns` with matching `int` key, falling back to `default`
+  if none match, or `max(keys)` if no `default` is provided. The keys must form
+  a contiguous set from `0` to `len(branch_fns) - 1`.
+
+  `tf.switch_case` supports nested structures as implemented in `tf.nest`. All
+  callables must return the same (possibly nested) value structure of lists,
+  tuples, and/or named tuples.
+
+  **Example:**
+
+  Pseudocode:
+
+  ```c++
+  switch (branch_index) {  // c-style switch
+    case 0: return 17;
+    case 1: return 31;
+    default: return -1;
+  }
+  ```
+  or
+  ```python
+  branches = {0: lambda: 17, 1: lambda: 31}
+  branches.get(branch_index, lambda: -1)()
+  ```
+
+  Expressions:
+
+  ```python
+  def f1(): return tf.constant(17)
+  def f2(): return tf.constant(31)
+  def f3(): return tf.constant(-1)
+  r = tf.switch_case(branch_index, branch_fns={0: f1, 1: f2}, default=f3)
+  # Equivalent: tf.switch_case(branch_index, branch_fns={0: f1, 1: f2, 2: f3})
+  ```
+
+  Args:
+    branch_index: An int Tensor specifying which of `branch_fns` should be
+      executed.
+    branch_fns: A `dict` mapping `int`s to callables, or a `list` of
+      (`int, callable) pairs, or simply a list of callables (in which case the
+      index serves as the key). Each callable must return a matching structure
+      of tensors.
+    default: Optional callable that returns a structure of tensors.
+    name: A name for this operation (optional).
+
+  Returns:
+    The tensors returned by the callable identified by `branch_index`, or those
+    returned by `default` if no key matches and `default` was provided, or those
+    returned by the max-keyed `branch_fn` if no `default` is provided.
+
+  Raises:
+    TypeError: If `branch_fns` is not a list/dictionary.
+    TypeError: If `branch_fns` is a list but does not contain 2-tuples or
+               callables.
+    TypeError: If `fns[i]` is not callable for any i, or `default` is not
+               callable.
+  """
+  return _indexed_case_helper(branch_fns, default, branch_index, name)
 
 
 class XLAControlFlowContext(ControlFlowContext):

@@ -65,7 +65,7 @@ def _call_concrete_function(function, inputs):
     if isinstance(expected, tensor_spec.TensorSpec):
       tensor_inputs.append(
           ops.convert_to_tensor(arg, dtype_hint=expected.dtype))
-  result = function._call_flat(tensor_inputs)  # pylint: disable=protected-access
+  result = function._call_flat(tensor_inputs, function._captured_inputs)  # pylint: disable=protected-access
   if isinstance(result, ops.Operation):
     return None
   return result
@@ -177,11 +177,11 @@ class RestoredFunction(def_function.Function):
     # TODO(mdan): We may enable autograph once exceptions are supported.
     super(RestoredFunction, self).__init__(
         python_function, name, autograph=False)
-    self._concrete_functions = concrete_functions
+    self.concrete_functions = concrete_functions
     self._function_spec = function_spec
 
   def _list_all_concrete_functions_for_serialization(self):
-    return self._concrete_functions
+    return self.concrete_functions
 
   def _defun_with_scope(self, scope):
     func = super(RestoredFunction, self)._defun_with_scope(scope)
@@ -234,14 +234,26 @@ def recreate_function(saved_function, concrete_functions):
         if _concrete_function_callable_with(function, inputs, allow_conversion):
           return _call_concrete_function(function, inputs)
 
-    available_signatures = [
-        concrete_functions[function_name].graph.structured_input_signature
-        for function_name in saved_function.concrete_functions
-    ]
+    signature_descriptions = []
+
+    def _pretty_format_positional(positional):
+      return "Positional arguments ({} total):\n    * {}".format(
+          len(positional),
+          "\n    * ".join([str(a) for a in positional]))
+
+    for index, function_name in enumerate(saved_function.concrete_functions):
+      concrete_function = concrete_functions[function_name]
+      positional, keyword = concrete_function.structured_input_signature
+      signature_descriptions.append(
+          "Option {}:\n  {}\n  Keyword arguments: {}"
+          .format(index + 1, _pretty_format_positional(positional), keyword))
     raise ValueError(
-        "Could not find matching function to call for inputs %r. "
-        "Only existing signatures are %r."
-        % (inputs, available_signatures))
+        "Could not find matching function to call loaded from the SavedModel. "
+        "Got:\n  {}\n  Keyword arguments: {}\n\nExpected "
+        "these arguments to match one of the following {} option(s):\n\n{}"
+        .format(_pretty_format_positional(args), kwargs,
+                len(saved_function.concrete_functions),
+                "\n\n".join(signature_descriptions)))
 
   concrete_function_objects = []
   for concrete_function_name in saved_function.concrete_functions:

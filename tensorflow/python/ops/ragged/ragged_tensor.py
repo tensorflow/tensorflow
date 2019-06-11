@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.client import session
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
@@ -27,6 +29,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -40,7 +43,6 @@ from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
 _eval_using_default_session = ops._eval_using_default_session
-
 # pylint: enable=protected-access
 
 #===============================================================================
@@ -242,28 +244,20 @@ class RaggedTensor(composite_tensor.CompositeTensor):
                        "of the factory methods instead (e.g., "
                        "RaggedTensor.from_row_lengths())")
 
-    is_tensor_spec = isinstance(row_splits, tensor_spec.TensorSpec)
-    if is_tensor_spec:
-      if not (isinstance(values, tensor_spec.TensorSpec) or
-              (isinstance(values, RaggedTensor) and
-               isinstance(values.row_splits, tensor_spec.TensorSpec))):
-        raise TypeError("Expected values to be a TensorSpec, got %r" % values)
-    else:
-      # Validate the arguments.
-      if not isinstance(row_splits, ops.Tensor):
-        raise TypeError("Row-partitioning argument must be a Tensor, got %r" %
-                        row_splits)
-      if not isinstance(values, (RaggedTensor, ops.Tensor)):
-        raise TypeError("values must be a Tensor or RaggedTensor, got %r" %
-                        values)
-      if row_splits.dtype not in (dtypes.int32, dtypes.int64):
-        raise ValueError("Row-partitioning argument must be int32 or int64")
+    # Validate the arguments.
+    if not isinstance(row_splits, ops.Tensor):
+      raise TypeError("Row-partitioning argument must be a Tensor, got %r" %
+                      row_splits)
+    if not isinstance(values, (RaggedTensor, ops.Tensor)):
+      raise TypeError("values must be a Tensor or RaggedTensor, got %r" %
+                      values)
+    if row_splits.dtype not in (dtypes.int32, dtypes.int64):
+      raise ValueError("Row-partitioning argument must be int32 or int64")
 
     # Validate shapes & dtypes.
     row_splits.shape.assert_has_rank(1)
     values.shape.with_rank_at_least(1)
-    if not is_tensor_spec:
-      row_splits.set_shape([None])
+    row_splits.set_shape([None])
     if isinstance(values, RaggedTensor):
       assert row_splits.dtype == values.row_splits.dtype
 
@@ -1646,18 +1640,20 @@ class RaggedTensor(composite_tensor.CompositeTensor):
   def _from_variant(cls,
                     variant,
                     dtype,
-                    input_ragged_rank,
-                    output_ragged_rank=None,
+                    output_ragged_rank,
+                    input_ragged_rank=None,
                     name=None):
     """Converts a `variant` Tensor into a `RaggedTensor`.
 
     The input `variant` could be a scalar, meaning it encodes a single
-    `RaggedTensor` with ragged_rank `input_ragged_rank`. Alternatively it could
+    `RaggedTensor` with ragged_rank `output_ragged_rank`. Alternatively it could
     have an arbitrary rank, in which case each element is decoded into a
     `RaggedTensor` with ragged_rank `input_ragged_rank` and these are then
     stacked according to the input shape to output a single `RaggedTensor`
-    with ragged_rank `output_ragged_rank`. Note that the following must be true:
-    `output_ragged_rank` = `input_ragged_rank` + `rank(variant)`.
+    with ragged_rank `output_ragged_rank`. If `input_ragged_rank` is not
+    provided, it is inferred dynamically as `output_ragged_rank` -
+    `rank(variant)`. If `input_ragged_rank` is provided, the following must be
+    true: `output_ragged_rank` = `input_ragged_rank` + `rank(variant)`.
 
     Example:
 
@@ -1666,12 +1662,10 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     >>> et = rt._to_variant()
     >>> stacked_et = ragged.stack([et, et])
     >>> ragged.RaggedTensor._from_variant(  # scalar input.
-          et, dtype=tf.int32, input_ragged_rank=1,
-          output_ragged_rank=1).eval().tolist()
+          et, dtype=tf.int32, output_ragged_rank=1).eval().tolist()
     [[0], [1, 2]]
     >>> ragged.RaggedTensor._from_variant(  # batched input.
-          stacked_et, dtype=tf.int32, input_ragged_rank=1,
-          output_ragged_rank=2).eval().tolist()
+          stacked_et, dtype=tf.int32, output_ragged_rank=2).eval().tolist()
     [[[0], [1, 2]], [[0], [1, 2]]]
     ```
 
@@ -1679,37 +1673,29 @@ class RaggedTensor(composite_tensor.CompositeTensor):
       variant: A `variant` Tensor representing an encoded (possibly
         nested-batched) `RaggedTensor`.
       dtype: The dtype of the encoded `RaggedTensor`.
-      input_ragged_rank: The ragged rank of each encoded `RaggedTensor`.
       output_ragged_rank: The expected ragged rank of the output `RaggedTensor`.
-        By default, this is set to `input_ragged_rank + variant.shape.ndims` if
-        rank of `variant` is known.
+      input_ragged_rank: The ragged rank of each encoded `RaggedTensor`. This
+        is optional and inferred dynamically if not provided.
       name: A name prefix for the returned tensors (optional).
 
     Returns:
       A `RaggedTensor` of dtype `dtype` and ragged rank `output_ragged_rank`.
 
     Raises:
-      ValueError: If the input rank is unknown and `output_ragged_rank` is not
-        provided; or if `output_ragged_rank` = `input_ragged_rank` +
-          `rank(variant)` does not hold.
+      ValueError: If the input rank is known, `input_ragged_rank` is provided
+          and `output_ragged_rank` = `input_ragged_rank` + `rank(variant)` does
+          not hold.
     """
     variant = ops.convert_to_tensor(
         variant, name="variant", dtype=dtypes.variant)
-    if output_ragged_rank is None:
-      if variant.shape.ndims is None:
-        raise ValueError(
-            "output_ragged_rank must be provided since the rank of the input"
-            "variant is statically unknown.")
-      output_ragged_rank = input_ragged_rank + variant.shape.ndims
-
-    if (variant.shape.ndims is not None and
+    if (variant.shape.ndims is not None and input_ragged_rank is not None and
         output_ragged_rank != input_ragged_rank + variant.shape.ndims):
       raise ValueError(
           "output_ragged_rank must be equal to input_ragged_rank +"
           "variant.shape.ndims, found variant.shape.ndims: %d, "
           "input_ragged_rank: %d, output_ragged_rank: %d" %
           (variant.shape.ndims, input_ragged_rank, output_ragged_rank))
-
+    input_ragged_rank = -1 if input_ragged_rank is None else input_ragged_rank
     with ops.name_scope(
         name, "RaggedFromVariant",
         [variant, dtype, input_ragged_rank, output_ragged_rank]):
@@ -1752,15 +1738,12 @@ class RaggedTensor(composite_tensor.CompositeTensor):
   #=============================================================================
   # String Encoding
   #=============================================================================
-  def __str__(self):
+  def __repr__(self):
     if self._is_eager():
       return "<tf.RaggedTensor %s>" % self.to_list()
     else:
-      return self.__repr__()
-
-  def __repr__(self):
-    return "tf.RaggedTensor(values=%s, row_splits=%s)" % (self._values,
-                                                          self._row_splits)
+      return "tf.RaggedTensor(values=%s, row_splits=%s)" % (self._values,
+                                                            self._row_splits)
 
   #=============================================================================
   # Eager Execution Mode
@@ -1827,49 +1810,20 @@ class RaggedTensor(composite_tensor.CompositeTensor):
   # Composite Tensor
   #=============================================================================
 
-  def _to_components(self):
-    return (self.flat_values,) + self.nested_row_splits
-
-  @classmethod
-  def _from_components(cls, components, metadata):
-    return cls.from_nested_row_splits(
-        components[0], components[1:], validate=False)
-
-  def _shape_invariant_to_components(self, shape=None):
-    ragged_rank = self.ragged_rank
-    flat_values = self.flat_values
-
-    if shape is None:
-      # Default shape invariant
-      value_shape = flat_values.shape[1:]
-      values_shape = tensor_shape.TensorShape([None]).concatenate(value_shape)
-      return ((values_shape, self._row_splits.shape) +
-              tuple(tensor_shape.TensorShape([None])
-                    for i in range(1, ragged_rank)))
-    else:
-      # Explicitly specified shape invariant
-      if shape.ndims is not None and shape.ndims <= ragged_rank:
-        raise ValueError("Shape invariant %s does not have sufficient rank "
-                         "for a RaggedTensor with %d ragged dimensions." %
-                         (shape, self.ragged_rank))
-      if any(tensor_shape.dimension_value(shape[dim]) is not None
-             for dim in range(1, self.ragged_rank + 1)):
-        raise ValueError("Shape invariant dimension size must be None for "
-                         "ragged dimenions.")
-      nrows = tensor_shape.dimension_value(shape[0])
-      value_shape = shape[self.ragged_rank + 1:]
-      values_shape = tensor_shape.TensorShape([None]).concatenate(value_shape)
-      if nrows is None:
-        outer_splits_shape = tensor_shape.TensorShape([None])
-      else:
-        outer_splits_shape = tensor_shape.TensorShape([nrows + 1])
-      return ((values_shape, outer_splits_shape) +
-              tuple(tensor_shape.TensorShape([None])
-                    for i in range(1, ragged_rank)))
-
   @property
-  def _is_graph_tensor(self):
-    return hasattr(self._values, "graph")
+  def _type_spec(self):
+    return RaggedTensorSpec(
+        shape=self.shape,
+        dtype=self.dtype,
+        ragged_rank=self.ragged_rank,
+        row_splits_dtype=self._row_splits.dtype)
+
+  def _shape_invariant_to_type_spec(self, shape):
+    return RaggedTensorSpec(shape, self.dtype, self.ragged_rank,
+                            self.row_splits.dtype)
+
+  def consumers(self):
+    return self._consumers()
 
 
 def is_ragged(value):
@@ -1920,6 +1874,156 @@ def match_row_splits_dtypes(*tensors, **kwargs):
     return (dtype, tensors)
   else:
     return tensors
+
+
+#===============================================================================
+# RaggedTensorSpec
+#===============================================================================
+# TODO(b/133606651) Export this as tf.RaggedTensorSpec.
+class RaggedTensorSpec(type_spec.BatchableTypeSpec):
+  """Type specification for a `tf.RaggedTensor`."""
+
+  __slots__ = ["_shape", "_dtype", "_ragged_rank", "_row_splits_dtype"]
+
+  value_type = property(lambda self: RaggedTensor)
+
+  def __init__(self, shape=None, dtype=dtypes.float32, ragged_rank=None,
+               row_splits_dtype=dtypes.int64):
+    """Constructs a type specification for a `tf.RaggedTensor`.
+
+    Args:
+      shape: The shape of the RaggedTensor, or `None` to allow any shape.  If
+        a shape is specified, then all ragged dimensions must have size `None`.
+      dtype: `tf.DType` of values in the RaggedTensor.
+      ragged_rank: Python integer, the ragged rank of the RaggedTensor
+        to be described.  Defaults to `shape.ndims - 1`.
+      row_splits_dtype: `dtype` for the RaggedTensor's `row_splits` tensor.
+        One of `tf.int32` or `tf.int64`.
+    """
+    self._shape = tensor_shape.as_shape(shape)
+    self._dtype = dtypes.as_dtype(dtype)
+    self._row_splits_dtype = dtypes.as_dtype(row_splits_dtype)
+
+    rank = self._shape.ndims
+    if ragged_rank is None:
+      if rank is None:
+        raise ValueError("Must specify ragged_rank or "
+                         "a shape with a known rank.")
+      ragged_rank = rank - 1
+    self._ragged_rank = ragged_rank
+    if not isinstance(self._ragged_rank, int):
+      raise TypeError("ragged_rank must be an int")
+
+    if rank is not None:
+      if ragged_rank >= rank:
+        raise ValueError("ragged_rank must be less than rank.")
+
+  def _serialize(self):
+    return (self._shape, self._dtype, self._ragged_rank, self._row_splits_dtype)
+
+  @property
+  def _component_specs(self):
+    if self._ragged_rank == 0:
+      return [tensor_spec.TensorSpec(self._shape, self._dtype)]
+
+    flat_values_shape = tensor_shape.TensorShape([None]).concatenate(
+        self._shape[self._ragged_rank + 1:])
+    outer_dim = tensor_shape.dimension_at_index(self._shape, 0)
+    outer_splits_shape = [None if outer_dim is None else outer_dim + 1]
+    inner_splits_spec = tensor_spec.TensorSpec([None], self._row_splits_dtype)
+
+    specs = (
+        [tensor_spec.TensorSpec(flat_values_shape, self._dtype),
+         tensor_spec.TensorSpec(outer_splits_shape, self._row_splits_dtype)] +
+        [inner_splits_spec for _ in range(self._ragged_rank - 1)])
+    return specs
+
+  def _to_components(self, value):
+    if is_ragged(value):
+      return [value.flat_values] + list(value.nested_row_splits)
+    else:
+      return [value]
+
+  def _from_components(self, tensor_list):
+    # Currently, Keras converts tensors to numpy and then calls from_components
+    # with those np.arrays.  So if we see np.ndarrays, convert them to tensors.
+    # TODO(b/133606651) Update Keras to do something different here.  Consider
+    # adding something like TypeSpec.from_numpy_components?
+    if isinstance(tensor_list[0], np.ndarray):
+      tensor_list = [ops.convert_to_tensor(t) for t in tensor_list]
+
+    result = tensor_list[0]
+    for row_splits in reversed(tensor_list[1:]):
+      result = RaggedTensor(result, row_splits, internal=True)
+    return result
+
+  # The RaggedTensorSpec tensor_list encoding uses to/from_variant ops
+  # to (un)box the component tensors in a way that allows for batching &
+  # unbatching.
+  @property
+  def _flat_tensor_specs(self):
+    # NOTE(mishragaurav): The default flat shape of a boxed `RaggedTensor` is
+    # `[]` (scalar), but a `RaggedTensorSpec` can also represent a batch of
+    # boxed `RaggedTensor` objects with shape `(...)` (and batches of batches,
+    # etc.), so the flat shape must be unknown.
+    return [tensor_spec.TensorSpec(None, dtypes.variant)]
+
+  def _to_tensor_list(self, value):
+    # pylint: disable=protected-access
+    return [value._to_variant(batched_input=False)]
+
+  def _to_batched_tensor_list(self, value):
+    # pylint: disable=protected-access
+    return [value._to_variant(batched_input=True)]
+
+  def _from_compatible_tensor_list(self, tensor_list):
+    if self._ragged_rank <= 0:
+      raise ValueError(
+          "ragged_rank must be non-negative; got %s." % self._ragged_rank)
+    result = RaggedTensor._from_variant(  # pylint: disable=protected-access
+        tensor_list[0], dtype=self._dtype,
+        output_ragged_rank=self._ragged_rank)
+    if self._shape.ndims is not None:
+      outer_dim = tensor_shape.dimension_value(self._shape[0])
+      if outer_dim is not None:
+        result.row_splits.set_shape([outer_dim + 1])
+      result.flat_values.set_shape(
+          tensor_shape.TensorShape([None]).concatenate(
+              self._shape[1 + self._ragged_rank:]))
+    return result
+
+  def _batch(self, batch_size):
+    return RaggedTensorSpec(
+        tensor_shape.TensorShape([batch_size]).concatenate(self._shape),
+        self._dtype,
+        self._ragged_rank + 1)
+
+  def _unbatch(self):
+    # Note: Negative ragged_rank is allowed here because the dataset could
+    # be subsequently batched again. Errors are handled in
+    # RaggedTensorSpec._from_compatible_tensor_list()
+    return RaggedTensorSpec(self._shape[1:], self._dtype,
+                            self._ragged_rank - 1)
+
+  def _to_legacy_output_types(self):
+    return self._dtype
+
+  def _to_legacy_output_shapes(self):
+    return self._shape
+
+  def _to_legacy_output_classes(self):
+    return self
+
+  @classmethod
+  def from_value(cls, value):
+    return cls(shape=value.shape,
+               dtype=value.values.dtype,
+               ragged_rank=value.ragged_rank,
+               row_splits_dtype=value.row_splits.dtype)
+
+
+type_spec.register_type_spec_from_value_converter(
+    ragged_tensor_value.RaggedTensorValue, RaggedTensorSpec.from_value)
 
 
 #===============================================================================

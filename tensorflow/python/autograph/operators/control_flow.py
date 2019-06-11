@@ -20,11 +20,12 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.operators import special_values
-from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.utils import ag_logging
+from tensorflow.python.autograph.utils import tensors
 from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.experimental.ops import take_while_ops
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -41,12 +42,21 @@ INEFFICIENT_UNROLL_MIN_OPS = 1
 
 
 def _disallow_undefs_into_loop(*values):
+  """Ensures that all values in the state are defined when entering a loop."""
   undefined = tuple(filter(special_values.is_undefined, values))
   if undefined:
     raise ValueError(
         'TensorFlow requires that the following symbols must be defined'
         ' before the loop: {}'.format(
             tuple(s.symbol_name for s in undefined)))
+
+  for value in values:
+    if special_values.is_undefined_return(value):
+      # Assumption: the loop will only capture the variable which tracks the
+      # return value if the loop contained a return statement.
+      # TODO(mdan): This should be checked at the place where return occurs.
+      raise ValueError(
+          'Return statements are not supported within a TensorFlow loop.')
 
 
 def for_stmt(iter_, extra_test, body, init_state):
@@ -87,6 +97,9 @@ def for_stmt(iter_, extra_test, body, init_state):
 
   if isinstance(iter_, dataset_ops.DatasetV2):
     return _tf_dataset_for_stmt(iter_, extra_test, body, init_state)
+
+  if isinstance(iter_, iterator_ops.IteratorV2):
+    return _tf_iterator_for_stmt(iter_, extra_test, body, init_state)
 
   # Note: This experimental interface is subject to change.
   custom_handler = getattr(iter_, '_autograph_for_loop', None)
@@ -153,6 +166,55 @@ def _known_len_tf_for_stmt(iter_, extra_test, body, init_state):
     results = ()
 
   return results
+
+
+def _tf_iterator_for_stmt(itr, extra_test, body, init_state):
+  """Overload of for_stmt that iterates over TF Iterators. See for_loop."""
+  _disallow_undefs_into_loop(*init_state)
+
+  def while_body_actual(opt_iterate, *state):
+    new_state = body(opt_iterate.get_value(), *state)
+    # TODO(mdan): Fix this inconsistency in the converter.
+    if new_state is None:
+      new_state = ()
+    return new_state
+
+  def while_body(has_next, state):
+    """Main loop body."""
+    opt_iterate = iterator_ops.get_next_as_optional(itr)
+    has_next = opt_iterate.has_value()
+
+    if not init_state:
+      # cond_v2 requires at least one state tensor in V1.
+      dummy_state = (constant_op.constant(()),)
+    else:
+      dummy_state = ()
+
+    # TODO(mdan): If tf.while_loop supported Optional, this could be avoided.
+    new_state = control_flow_ops.cond(
+        has_next,
+        lambda: dummy_state + while_body_actual(opt_iterate, *state),
+        lambda: dummy_state + state)
+
+    if dummy_state:
+      new_state = new_state[1:]
+
+    return has_next, new_state
+
+  def while_cond(has_next, state):
+    if extra_test is not None:
+      return control_flow_ops.cond(
+          has_next,
+          lambda: extra_test(*state),
+          lambda: False)
+    return has_next
+
+  _, final_state = _tf_while_stmt(
+      while_cond,
+      while_body,
+      init_state=(True, init_state),
+      opts=None)
+  return final_state
 
 
 def _tf_dataset_for_stmt(ds, extra_test, body, init_state):
@@ -239,7 +301,7 @@ def while_stmt(test, body, init_state, opts=None):
 
   # TensorFlow: Multiple evaluations are acceptable in this case, so we're fine
   # with the re-evaluation of `test` that `_tf_while_stmt` will make.
-  if tensor_util.is_tensor(init_test):
+  if tensors.is_dense_tensor(init_test):
     return _tf_while_stmt(test, body, init_state, opts)
 
   # Normal Python: We already consumed one evaluation of `test`; consistently,
@@ -282,7 +344,7 @@ class _PythonLoopChecker(object):
 
   def _check_unroll_limits(self):
     if LIMIT_PYTHON_ITERATIONS and self.iterations > PYTHON_MAX_ITERATIONS:
-      raise errors.ExecutionError('Python', 'iteration limit exceeded')
+      raise ValueError('iteration limit exceeded')
 
   def _stop_checking_inefficient_unroll(self):
     self.check_inefficient_unroll = False
@@ -374,7 +436,8 @@ def if_stmt(cond, body, orelse, get_state, set_state):
   Returns:
     Tuple containing the statement outputs.
   """
-  if tensor_util.is_tensor(cond):
+  # Note: tf.cond doesn't support SparseTensor.
+  if tensors.is_dense_tensor(cond):
     return tf_if_stmt(cond, body, orelse, get_state, set_state)
   else:
     return _py_if_stmt(cond, body, orelse)
@@ -382,8 +445,8 @@ def if_stmt(cond, body, orelse, get_state, set_state):
 
 def tf_if_stmt(cond, body, orelse, get_state, set_state):
   """Overload of if_stmt that stages a TF cond."""
-  body = _wrap_disallow_undefs_in_cond(body, branch_name='if')
-  orelse = _wrap_disallow_undefs_in_cond(orelse, branch_name='else')
+  body = _wrap_disallow_undefs_from_cond(body, branch_name='if')
+  orelse = _wrap_disallow_undefs_from_cond(orelse, branch_name='else')
   body = _isolate_state(body, get_state, set_state)
   orelse = _isolate_state(orelse, get_state, set_state)
 
@@ -431,7 +494,7 @@ def _isolate_state(func, get_state, set_state):
   return wrapper
 
 
-def _wrap_disallow_undefs_in_cond(func, branch_name):
+def _wrap_disallow_undefs_from_cond(func, branch_name):
   """Wraps conditional branch to disallow returning undefined symbols."""
 
   def wrapper():
@@ -449,6 +512,13 @@ def _wrap_disallow_undefs_in_cond(func, branch_name):
           ' Alternatively, you may initialize them before the if'
           ' statement.'.format(branch_name,
                                tuple(s.symbol_name for s in undefined)))
+
+    for result in results_tuple:
+      if special_values.is_undefined_return(result):
+        raise ValueError(
+            'A value must also be returned from the {} branch. If a value is '
+            'returned from one branch of a conditional a value must be '
+            'returned from all branches.'.format(branch_name))
 
     return results
 

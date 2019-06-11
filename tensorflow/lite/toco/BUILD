@@ -1,7 +1,3 @@
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library_cc",
@@ -12,6 +8,11 @@ load(
     "tf_cc_binary",
     "tf_cc_test",
     "tf_copts",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 tf_proto_library_cc(

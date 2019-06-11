@@ -853,21 +853,7 @@ def strided_slice(input_,
       """Closure that holds all the arguments to create an assignment."""
 
       if var is None:
-        if name is None:
-          name = parent_name + "_strided_slice_update"
-
-        return gen_array_ops.tensor_strided_slice_update(
-            input=var,
-            begin=begin,
-            end=end,
-            strides=strides,
-            value=val,
-            name=name,
-            begin_mask=begin_mask,
-            end_mask=end_mask,
-            ellipsis_mask=ellipsis_mask,
-            new_axis_mask=new_axis_mask,
-            shrink_axis_mask=shrink_axis_mask)
+        raise ValueError("Sliced assignment is only supported for variables")
       else:
         if name is None:
           name = parent_name + "_assign"
@@ -1320,6 +1306,10 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
   In that case, `axis + dim(mask) <= dim(tensor)` and `mask`'s shape must match
   the first `axis + dim(mask)` dimensions of `tensor`'s shape.
 
+  See also: `tf.ragged.boolean_mask`, which can be applied to both dense and
+  ragged tensors, and can be used if you need to preserve the masked dimensions
+  of `tensor` (rather than flattening them, as `tf.boolean_mask` does).
+
   Args:
     tensor:  N-D tensor.
     mask:  K-D boolean tensor, K <= N and K must be known statically.
@@ -1403,6 +1393,10 @@ def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
   The `axis` could be used with `mask` to indicate the axis to mask from.
   In that case, `axis + dim(mask) <= dim(tensor)` and `mask`'s shape must match
   the first `axis + dim(mask)` dimensions of `tensor`'s shape.
+
+  See also: `tf.ragged.boolean_mask`, which can be applied to both dense and
+  ragged tensors, and can be used if you need to preserve the masked dimensions
+  of `tensor` (rather than flattening them, as `tf.boolean_mask` does).
 
   Args:
     tensor:  N-D tensor.
@@ -3126,8 +3120,6 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
   tf.shape(tf.squeeze(t, [2, 4]))  # [1, 2, 3, 1]
   ```
 
-  Note: When it comes to squeezing ragged tensors, it has O(number of elements).
-
   Note: if `input` is a `tf.RaggedTensor`, then this operation takes `O(N)`
   time, where `N` is the number of elements in the squeezed dimensions.
 
@@ -3159,11 +3151,60 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
 @tf_export("squeeze", v1=[])
 @dispatch.add_dispatch_support
 def squeeze_v2(input, axis=None, name=None):
+  """Removes dimensions of size 1 from the shape of a tensor.
+
+  Given a tensor `input`, this operation returns a tensor of the same type with
+  all dimensions of size 1 removed. If you don't want to remove all size 1
+  dimensions, you can remove specific size 1 dimensions by specifying
+  `axis`.
+
+  For example:
+
+  ```python
+  # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+  tf.shape(tf.squeeze(t))  # [2, 3]
+  ```
+
+  Or, to remove specific size 1 dimensions:
+
+  ```python
+  # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+  tf.shape(tf.squeeze(t, [2, 4]))  # [1, 2, 3, 1]
+  ```
+
+  Unlike the older op `tf.compat.v1.squeeze`, this op does not accept a
+  deprecated `squeeze_dims` argument.
+
+  Note: if `input` is a `tf.RaggedTensor`, then this operation takes `O(N)`
+  time, where `N` is the number of elements in the squeezed dimensions.
+
+  Args:
+    input: A `Tensor`. The `input` to squeeze.
+    axis: An optional list of `ints`. Defaults to `[]`. If specified, only
+      squeezes the dimensions listed. The dimension index starts at 0. It is an
+      error to squeeze a dimension that is not 1. Must be in the range
+      `[-rank(input), rank(input))`. Must be specified if `input` is a
+      `RaggedTensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `input`.
+    Contains the same data as `input`, but has one or more dimensions of
+    size 1 removed.
+
+  Raises:
+    ValueError: The input cannot be converted to a tensor, or the specified
+      axis cannot be squeezed.
+  """
   # pylint: disable=redefined-builtin
   return squeeze(input, axis, name)
 
 
-@tf_export("where")
+@tf_export(v1=["where"])
+@deprecation.deprecated(
+    date=None,
+    instructions="Use tf.where in 2.0, "
+    "which has the same broadcast rule as np.where")
 @dispatch.add_dispatch_support
 def where(condition, x=None, y=None, name=None):
   """Return the elements, either from `x` or `y`, depending on the `condition`.
@@ -3213,6 +3254,48 @@ def where(condition, x=None, y=None, name=None):
       return gen_array_ops.where(condition=condition, name=name)
   elif x is not None and y is not None:
     return gen_math_ops.select(condition=condition, x=x, y=y, name=name)
+  else:
+    raise ValueError("x and y must both be non-None or both be None.")
+
+
+@tf_export("where", v1=["where_v2"])
+def where_v2(condition, x=None, y=None, name=None):
+  """Return the elements, either from `x` or `y`, depending on the `condition`.
+
+  If both `x` and `y` are None, then this operation returns the coordinates of
+  true elements of `condition`.  The coordinates are returned in a 2-D tensor
+  where the first dimension (rows) represents the number of true elements, and
+  the second dimension (columns) represents the coordinates of the true
+  elements. Keep in mind, the shape of the output tensor can vary depending on
+  how many true values there are in input. Indices are output in row-major
+  order.
+  If both non-None, `condition`, `x` and `y` must be broadcastable to the same
+  shape.
+  The `condition` tensor acts as a mask that chooses, based on the value at each
+  element, whether the corresponding element / row in the output should be taken
+  from `x` (if true) or `y` (if false).
+  Args:
+    condition: A `Tensor` of type `bool`
+    x: A Tensor which is of the same type as `y`, and may be broadcastable with
+      `condition` and `y`.
+    y: A Tensor which is of the same type as `x`, and may be broadcastable with
+      `condition` and `x`.
+    name: A name of the operation (optional).
+
+  Returns:
+    A `Tensor` with the same type as `x` and `y`, and shape that
+      is broadcasted from `condition`, `x`, and `y`, if `x`, `y` are non-None.
+    A `Tensor` with shape `(num_true, dim_size(condition))`.
+  Raises:
+    ValueError: When exactly one of `x` or `y` is non-None.
+  """
+  if x is None and y is None:
+    with ops.name_scope(name, "Where", [condition]) as name:
+      condition = ops.convert_to_tensor(
+          condition, preferred_dtype=dtypes.bool, name="condition")
+      return gen_array_ops.where(condition=condition, name=name)
+  elif x is not None and y is not None:
+    return gen_math_ops.select_v2(condition=condition, t=x, e=y, name=name)
   else:
     raise ValueError("x and y must both be non-None or both be None.")
 
@@ -3279,7 +3362,7 @@ def gather(params,
            validate_indices=None,
            name=None,
            axis=None,
-           batch_dims=0):
+           batch_dims=0):  # pylint: disable=g-doc-args
   r"""Gather slices from params axis axis according to indices.
 
   Gather slices from params axis `axis` according to `indices`.  `indices` must
@@ -3334,18 +3417,32 @@ def gather(params,
     indices: The index `Tensor`.  Must be one of the following types: `int32`,
       `int64`. Must be in range `[0, params.shape[axis])`.
     validate_indices: Deprecated, does nothing.
-    name: A name for the operation (optional).
     axis: A `Tensor`. Must be one of the following types: `int32`, `int64`. The
       `axis` in `params` to gather `indices` from. Must be greater than or equal
       to `batch_dims`.  Defaults to the first non-batch dimension. Supports
       negative indexes.
     batch_dims: An `integer`.  The number of batch dimensions.  Must be less
       than `rank(indices)`.
+    name: A name for the operation (optional).
 
   Returns:
     A `Tensor`. Has the same type as `params`.
   """
   del validate_indices
+  if compat.forward_compatible(2019, 7, 10):
+    if axis is None:
+      axis = batch_dims
+    if axis != 0:
+      return gen_array_ops.gather_v2(
+          params, indices, axis, batch_dims=batch_dims, name=name)
+    try:
+      # TODO(apassos) find a less bad way of detecting resource variables
+      # without introducing a circular dependency.
+      return params.sparse_read(indices, name=name)
+    except AttributeError:
+      return gen_array_ops.gather_v2(
+          params, indices, axis, name=name)
+
   if batch_dims != 0:
     with ops.name_scope(name, "Gather", [params, indices, axis]):
       return _batch_gather(params, indices, batch_dims, axis)
@@ -3381,14 +3478,14 @@ def gather_v2(params,
       batch_dims=batch_dims)
 
 
-gather.__doc__ = gather_v2.__doc__ = gen_array_ops.gather_v2.__doc__
+gather_v2.__doc__ = gather.__doc__
 
 
 @tf_export(v1=["batch_gather"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated(
     "2017-10-25", "`tf.batch_gather` is deprecated, please use `tf.gather` "
-    "with `batch_dims` instead.")  # pylint: disable=missing-docstring
+    "with `batch_dims=-1` instead.")  # pylint: disable=missing-docstring
 def batch_gather(params, indices, name=None):
   """Gather slices from params according to indices with leading batch dims."""
   with ops.name_scope(name, "BatchGather", [params, indices]):
@@ -3827,6 +3924,50 @@ def quantize(input,  # pylint: disable=redefined-builtin
       name=name)
 
 
+@tf_export("quantization.quantize_and_dequantize")
+def quantize_and_dequantize(input,  # pylint: disable=redefined-builtin
+                            input_min,
+                            input_max,
+                            signed_input=True,
+                            num_bits=8,
+                            range_given=False,
+                            round_mode="HALF_TO_EVEN",
+                            name=None,
+                            narrow_range=False):
+  """Quantizes then dequantizes a tensor.
+
+  Args:
+    input: A `Tensor` to quantize and dequantize.
+    input_min: If range_given=True, the minimum input value that needs to be
+      represented in the quantized representation.
+    input_max: If range_given=True, the maximum input value that needs to be
+      represented in the quantized representation.
+    signed_input: True if the quantization is signed or unsigned.
+    num_bits: The bitwidth of the quantization.
+    range_given: If true use `input_min` and `input_max` for the range of the
+      input, otherwise determine min and max from the input `Tensor`.
+    round_mode: Rounding mode when rounding from float values to quantized ones.
+    name: Optional name for the operation.
+    narrow_range: If true, then the absolute value of the quantized minimum
+      value is the same as the quantized maximum value, instead of 1 greater.
+      i.e. for 8 bit quantization, the minimum value is -127 instead of -128.
+
+  Returns:
+    A `Tensor`. Each element is the result of quantizing and dequantizing the
+    corresponding element of `input`.
+  """
+  return gen_array_ops.quantize_and_dequantize_v2(
+      input,
+      input_min=input_min,
+      input_max=input_max,
+      signed_input=signed_input,
+      num_bits=num_bits,
+      range_given=range_given,
+      round_mode=round_mode,
+      narrow_range=narrow_range,
+      name=name)
+
+
 @tf_export("searchsorted")
 def searchsorted(sorted_sequence,
                  values,
@@ -3943,3 +4084,52 @@ def extract_image_patches(  # pylint: disable=missing-docstring
 
 
 extract_image_patches.__doc__ = gen_array_ops.extract_image_patches.__doc__
+
+
+@tf_export("fingerprint")
+def fingerprint(data, method="farmhash64", name=None):
+  r"""Generates fingerprint values.
+
+  Generates fingerprint values of `data`.
+
+  Fingerprint op considers the first dimension of `data` as the batch dimension,
+  and `output[i]` contains the fingerprint value generated from contents in
+  `data[i, ...]` for all `i`.
+
+  Fingerprint op writes fingerprint values as byte arrays. For example, the
+  default method `farmhash64` generates a 64-bit fingerprint value at a time.
+  This 8-byte value is written out as an `tf.uint8` array of size 8, in
+  little-endian order.
+
+  For example, suppose that `data` has data type `tf.int32` and shape (2, 3, 4),
+  and that the fingerprint method is `farmhash64`. In this case, the output
+  shape is (2, 8), where 2 is the batch dimension size of `data`, and 8 is the
+  size of each fingerprint value in bytes. `output[0, :]` is generated from
+  12 integers in `data[0, :, :]` and similarly `output[1, :]` is generated from
+  other 12 integers in `data[1, :, :]`.
+
+  Note that this op fingerprints the raw underlying buffer, and it does not
+  fingerprint Tensor's metadata such as data type and/or shape. For example, the
+  fingerprint values are invariant under reshapes and bitcasts as long as the
+  batch dimension remain the same:
+
+  ```python
+  tf.fingerprint(data) == tf.fingerprint(tf.reshape(data, ...))
+  tf.fingerprint(data) == tf.fingerprint(tf.bitcast(data, ...))
+  ```
+
+  For string data, one should expect `tf.fingerprint(data) !=
+  tf.fingerprint(tf.string.reduce_join(data))` in general.
+
+  Args:
+    data: A `Tensor`. Must have rank 1 or higher.
+    method: A `Tensor` of type `tf.string`. Fingerprint method used by this op.
+      Currently available method is `farmhash64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A two-dimensional `Tensor` of type `tf.uint8`. The first dimension equals to
+    `data`'s first dimension, and the second dimension size depends on the
+    fingerprint algorithm.
+  """
+  return gen_array_ops.fingerprint(data, method, name)

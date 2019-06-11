@@ -14,8 +14,8 @@
 # ==============================================================================
 """XLA backend that runs XRT operators via TensorFlow remote eager.
 
-This module implements the Python XLA client's `Backend` abstraction using XRT
-, which embeds XLA's compiler/runtime operations as TensorFlow
+This module implements the Python XLA client's `Backend` abstraction using XRT,
+which embeds XLA's compiler/runtime operations as TensorFlow
 operations. The module uses TensorFlow's remote eager RPC API to invoke XRT
 operations.
 """
@@ -27,15 +27,7 @@ from __future__ import print_function
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.compiler.xla.python import xla_client
 from tensorflow.compiler.xla.python import xla_extension as _xla
-
 # pylint: enable=g-direct-tensorflow-import
-
-
-def _make_xla_shape(shape):
-  if shape.is_tuple():
-    return _xla.Shape.Tuple([_make_xla_shape(s) for s in shape.tuple_shapes()])
-  return _xla.Shape.Array(shape.xla_element_type(), shape.dimensions(),
-                          shape.minor_to_major())
 
 
 def get_tf_context(target, worker):
@@ -60,7 +52,8 @@ class XrtBackend(xla_client.Backend):
     tf_device_type: the type of TensorFlow device to use for XRT (e.g. `"TPU"`).
   """
 
-  def __init__(self, tf_context, tf_device_type):
+  def __init__(self, tf_context, tf_device_type, platform="tpu"):
+    super(XrtBackend, self).__init__(platform)
     self.tf_device_type = tf_device_type
 
     self.context = _xla.xrt.XrtContext.Create(tf_context, tf_device_type)
@@ -69,41 +62,23 @@ class XrtBackend(xla_client.Backend):
     return self.context.DeviceCount()
 
   def buffer_from_pyval(self, pyval, device=0):
-    return _xla.xrt.XrtBuffer.FromLiteral(self.context, device, pyval)
-
-  def delete_buffer(self, c_buffer):
-    c_buffer.Delete()
-
-  def destructure_tuple(self, c_buffer):
-    return c_buffer.DestructureTuple()
+    return _xla.xrt.XrtBuffer.from_literal(self.context, device, pyval)
 
   def make_tuple(self, buffers, device_ordinal):
-    return _xla.xrt.XrtBuffer.MakeTuple(self.context, buffers)
+    return _xla.xrt.XrtBuffer.make_tuple(self.context, buffers, device_ordinal)
 
   def compile(self, computation, compile_options):
     # pylint: disable=protected-access
-    program_shape = xla_client._wrap_program_shape(
-        computation.GetProgramShape())
+    program_shape = computation.GetProgramShape()
     # pylint: enable=protected-access
     proto = computation.GetSerializedProto()
     # TODO(phawkins): use the layouts in compile_options.
     arg_shapes = [
-        _make_xla_shape(shape.with_major_to_minor_layout_if_absent())
-        for shape in program_shape.parameter_shapes
+        shape.with_major_to_minor_layout_if_absent()
+        for shape in program_shape.parameter_shapes()
     ]
-    result_shape = _make_xla_shape(
-        program_shape.result_shape.with_major_to_minor_layout_if_absent())
+    result_shape = (
+        program_shape.result_shape().with_major_to_minor_layout_if_absent())
     device_assignment = _xla.xrt.AssignDevices(compile_options.num_replicas, 1)
     return _xla.xrt.XrtExecutable.Compile(self.context, proto, arg_shapes,
                                           result_shape, device_assignment)
-
-  def delete_executable(self, executable):
-    executable.Delete()
-
-  def execute(self, executable, args):
-    return executable.Execute(args)
-
-  def execute_replicated(self, executable, per_replica_args):
-    # The extra list packing and unpacking is to handle multiple
-    # computations per replica, which we don't support yet.
-    return executable.ExecuteReplicated([per_replica_args])[0]

@@ -17,7 +17,7 @@ limitations under the License.
 
 namespace ruy {
 
-#if (defined __aarch64__) && (RUY_OPT_SET & RUY_OPT_ASM)
+#if (defined __aarch64__) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 void Pack8bitNeonOutOfOrder(const void* src_ptr0, const void* src_ptr1,
                             const void* src_ptr2, const void* src_ptr3,
@@ -607,7 +607,7 @@ void Pack8bitNeonDotprodOutOfOrder(const void* src_ptr0, const void* src_ptr1,
           "dup v30.4s, wzr\n"
           "dup v31.4s, wzr\n"
 
-#if RUY_OPT_SET & RUY_OPT_MAX_STREAMING
+#if RUY_OPT_ENABLED(RUY_OPT_MAX_STREAMING)
           "and w2, %w[rows], #-64\n"
           "cmp w1, w2\n"
           "beq 9f\n"
@@ -871,7 +871,7 @@ void Pack8bitNeonDotprodOutOfOrder(const void* src_ptr0, const void* src_ptr1,
           "add %[packed_ptr], %[packed_ptr], #128\n"
 
           "9:\n"
-#endif  // #if RUY_OPT_SET & RUY_OPT_MAX_STREAMING
+#endif  // #if RUY_OPT_ENABLED(RUY_OPT_MAX_STREAMING)
           "and w2, %w[rows], #-16\n"
           "cmp w1, w2\n"
           "beq 3f\n"
@@ -1145,11 +1145,19 @@ void PackFloatNeonOutOfOrder(const float* src_ptr0, const float* src_ptr1,
           "trn1 v21.2d, v17.2d, v19.2d\n"
           "trn2 v23.2d, v17.2d, v19.2d\n"
 
-          "str q20, [%[packed_ptr], #0]\n"
-          "str q21, [%[packed_ptr], #32]\n"
-          "str q22, [%[packed_ptr], #64]\n"
-          "str q23, [%[packed_ptr], #96]\n"
-          "add %[packed_ptr], %[packed_ptr], #128\n"
+          "mov x1, #32\n"
+
+#define RUY_STORE_ONE_ROW(ROW, REGISTER)                  \
+          "cmp w2, #" #ROW "\n"                           \
+          "beq 4f\n"                                      \
+          "st1 {" #REGISTER ".4s}, [%[packed_ptr]], x1\n"
+
+          RUY_STORE_ONE_ROW(0, v20)
+          RUY_STORE_ONE_ROW(1, v21)
+          RUY_STORE_ONE_ROW(2, v22)
+          RUY_STORE_ONE_ROW(3, v23)
+
+#undef RUY_STORE_ONE_ROW
 
           "4:\n"
 
@@ -1295,11 +1303,19 @@ void PackFloatNeonInOrder(const float* src_ptr0, const float* src_ptr1,
           "trn1 v21.2d, v17.2d, v19.2d\n"
           "trn2 v23.2d, v17.2d, v19.2d\n"
 
-          "str q20, [%[packed_ptr], #0]\n"
-          "str q21, [%[packed_ptr], #32]\n"
-          "str q22, [%[packed_ptr], #64]\n"
-          "str q23, [%[packed_ptr], #96]\n"
-          "add %[packed_ptr], %[packed_ptr], #128\n"
+          "mov x1, #32\n"
+
+#define RUY_STORE_ONE_ROW(ROW, REGISTER)                  \
+          "cmp w2, #" #ROW "\n"                           \
+          "beq 4f\n"                                      \
+          "st1 {" #REGISTER ".4s}, [%[packed_ptr]], x1\n"
+
+          RUY_STORE_ONE_ROW(0, v20)
+          RUY_STORE_ONE_ROW(1, v21)
+          RUY_STORE_ONE_ROW(2, v22)
+          RUY_STORE_ONE_ROW(3, v23)
+
+#undef RUY_STORE_ONE_ROW
 
           "4:\n"
 
@@ -1313,6 +1329,6 @@ void PackFloatNeonInOrder(const float* src_ptr0, const float* src_ptr1,
             "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21",
             "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31");
 }
-#endif  // (defined __aarch64__) && (RUY_OPT_SET & RUY_OPT_ASM)
+#endif  // (defined __aarch64__) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 }  // namespace ruy

@@ -137,11 +137,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "com_google_absl",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
-        sha256 = "00d5ad2c5702be911239df287504f9da6985e8bc563ec6a8436552da1ac2938c",
-        strip_prefix = "abseil-cpp-d902eb869bcfacc1bad14933ed9af4bed006d481",
+        sha256 = "72c5399f3acb8777bb4931c42a4bead6748ce8ffd73da5eec3952e442e0e002f",
+        strip_prefix = "abseil-cpp-361cb8a9db2f2130442389fd80593255be26d681",
         urls = [
-            "http://mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/d902eb869bcfacc1bad14933ed9af4bed006d481.tar.gz",
-            "https://github.com/abseil/abseil-cpp/archive/d902eb869bcfacc1bad14933ed9af4bed006d481.tar.gz",
+            "http://mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/361cb8a9db2f2130442389fd80593255be26d681.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/361cb8a9db2f2130442389fd80593255be26d681.tar.gz",
         ],
     )
 
@@ -149,11 +149,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "39ddb7d05b5b49f7d2485cdfc8be4d4b528d40ae6524821a2b91d464f6e317b9",
-        strip_prefix = "eigen-eigen-8adbe5681ed1",
+        sha256 = "48322e45a15aeee5414e8908fa0c48178091de71dd4624ead58c68c66e6554bc",
+        strip_prefix = "eigen-eigen-0cd24954b8a5",
         urls = [
-            "http://mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/8adbe5681ed1.tar.gz",
-            "https://bitbucket.org/eigen/eigen/get/8adbe5681ed1.tar.gz",
+            "http://mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/0cd24954b8a5.tar.gz",
+            "https://bitbucket.org/eigen/eigen/get/0cd24954b8a5.tar.gz",
         ],
     )
 
@@ -181,26 +181,26 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "com_googlesource_code_re2",
-        sha256 = "a31397714a353587413d307337d0b58f8a2e20e2b9d02f2e24e3463fa4eeda81",
-        strip_prefix = "re2-2018-10-01",
+        sha256 = "d070e2ffc5476c496a6a872a6f246bfddce8e7797d6ba605a7c8d72866743bf9",
+        strip_prefix = "re2-506cfa4bffd060c06ec338ce50ea3468daa6c814",
         system_build_file = clean_dep("//third_party/systemlibs:re2.BUILD"),
         urls = [
-            "http://mirror.tensorflow.org/github.com/google/re2/archive/2018-10-01.tar.gz",
-            "https://github.com/google/re2/archive/2018-10-01.tar.gz",
+            "http://mirror.tensorflow.org/github.com/google/re2/archive/506cfa4bffd060c06ec338ce50ea3468daa6c814.tar.gz",
+            "https://github.com/google/re2/archive/506cfa4bffd060c06ec338ce50ea3468daa6c814.tar.gz",
         ],
     )
 
     tf_http_archive(
         name = "com_github_googlecloudplatform_google_cloud_cpp",
-        sha256 = "f5600fdf3efd28e3142a60c20574e349511104fc6f658faf7974f6ae2def245a",
-        strip_prefix = "google-cloud-cpp-0.8.1",
+        sha256 = "a072103546cfa041ad8bfc599fe5a20c58e005a1a0ee18e94b2554dc3d485604",
+        strip_prefix = "google-cloud-cpp-0.9.0",
         system_build_file = clean_dep("//third_party/systemlibs:google_cloud_cpp.BUILD"),
         system_link_files = {
             "//third_party/systemlibs:google_cloud_cpp.google.cloud.bigtable.BUILD": "google/cloud/bigtable/BUILD",
         },
         urls = [
-            "http://mirror.tensorflow.org/github.com/googleapis/google-cloud-cpp/archive/v0.8.1.tar.gz",
-            "https://github.com/googleapis/google-cloud-cpp/archive/v0.8.1.tar.gz",
+            "http://mirror.tensorflow.org/github.com/googleapis/google-cloud-cpp/archive/v0.9.0.tar.gz",
+            "https://github.com/googleapis/google-cloud-cpp/archive/v0.9.0.tar.gz",
         ],
     )
 
@@ -241,24 +241,24 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         name = "png_archive",
         build_file = clean_dep("//third_party:png.BUILD"),
         patch_file = clean_dep("//third_party:png_fix_rpi.patch"),
-        sha256 = "e45ce5f68b1d80e2cb9a2b601605b374bdf51e1798ef1c2c2bd62131dfcf9eef",
-        strip_prefix = "libpng-1.6.34",
+        sha256 = "ca74a0dace179a8422187671aee97dd3892b53e168627145271cad5b5ac81307",
+        strip_prefix = "libpng-1.6.37",
         system_build_file = clean_dep("//third_party/systemlibs:png.BUILD"),
         urls = [
-            "http://mirror.tensorflow.org/github.com/glennrp/libpng/archive/v1.6.34.tar.gz",
-            "https://github.com/glennrp/libpng/archive/v1.6.34.tar.gz",
+            "http://mirror.tensorflow.org/github.com/glennrp/libpng/archive/v1.6.37.tar.gz",
+            "https://github.com/glennrp/libpng/archive/v1.6.37.tar.gz",
         ],
     )
 
     tf_http_archive(
         name = "org_sqlite",
         build_file = clean_dep("//third_party:sqlite.BUILD"),
-        sha256 = "ad68c1216c3a474cf360c7581a4001e952515b3649342100f2d7ca7c8e313da6",
-        strip_prefix = "sqlite-amalgamation-3240000",
+        sha256 = "d02fc4e95cfef672b45052e221617a050b7f2e20103661cda88387349a9b1327",
+        strip_prefix = "sqlite-amalgamation-3280000",
         system_build_file = clean_dep("//third_party/systemlibs:sqlite.BUILD"),
         urls = [
-            "http://mirror.tensorflow.org/www.sqlite.org/2018/sqlite-amalgamation-3240000.zip",
-            "https://www.sqlite.org/2018/sqlite-amalgamation-3240000.zip",
+            "http://mirror.tensorflow.org/www.sqlite.org/2019/sqlite-amalgamation-3280000.zip",
+            "https://www.sqlite.org/2019/sqlite-amalgamation-3280000.zip",
         ],
     )
 
@@ -522,11 +522,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "llvm",
         build_file = clean_dep("//third_party/llvm:llvm.autogenerated.BUILD"),
-        sha256 = "613eca178a5c448a56f3031b2542fd4e7570c1102786262d8aaa6e08ba1f2abe",
-        strip_prefix = "llvm-cd248aacbf298f8a909256d959ca5ca25c97aa4c",
+        sha256 = "a0f29da4eeef5655f75dd758e04ae9f3016a3fb206cff0d8779ad331ca4a8f2e",
+        strip_prefix = "llvm-64267da8c68e9fa5d62eaa59b318755b20a213f9",
         urls = [
-            "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/cd248aacbf298f8a909256d959ca5ca25c97aa4c.tar.gz",
-            "https://github.com/llvm-mirror/llvm/archive/cd248aacbf298f8a909256d959ca5ca25c97aa4c.tar.gz",
+            "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/64267da8c68e9fa5d62eaa59b318755b20a213f9.tar.gz",
+            "https://github.com/llvm-mirror/llvm/archive/64267da8c68e9fa5d62eaa59b318755b20a213f9.tar.gz",
         ],
     )
 
@@ -602,11 +602,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "nccl_archive",
         build_file = clean_dep("//third_party:nccl/archive.BUILD"),
-        sha256 = "19132b5127fa8e02d95a09795866923f04064c8f1e0770b2b42ab551408882a4",
-        strip_prefix = "nccl-f93fe9bfd94884cec2ba711897222e0df5569a53",
+        patch_file = clean_dep("//third_party/nccl:archive.patch"),
+        sha256 = "9a7633e224982e2b60fa6b397d895d20d6b7498e3e02f46f98a5a4e187c5a44c",
+        strip_prefix = "nccl-0ceaec9cee96ae7658aa45686853286651f36384",
         urls = [
-            "http://mirror.tensorflow.org/github.com/nvidia/nccl/archive/f93fe9bfd94884cec2ba711897222e0df5569a53.tar.gz",
-            "https://github.com/nvidia/nccl/archive/f93fe9bfd94884cec2ba711897222e0df5569a53.tar.gz",
+            "http://mirror.tensorflow.org/github.com/nvidia/nccl/archive/0ceaec9cee96ae7658aa45686853286651f36384.tar.gz",
+            "https://github.com/nvidia/nccl/archive/0ceaec9cee96ae7658aa45686853286651f36384.tar.gz",
         ],
     )
 
@@ -716,11 +717,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "rocprim_archive",
         build_file = clean_dep("//third_party:rocprim.BUILD"),
-        sha256 = "12adf5bf3641d73c92915f102b17951f978704551fdcb9ed7f6311ed299b1d80",
-        strip_prefix = "rocPRIM-eff7d0687baf57db2507a31663a3dea72eed9093",
+        sha256 = "3c178461ead70ce6adb60c836a35a52564968af31dfa81f4157ab72b5f14d31f",
+        strip_prefix = "rocPRIM-4a33d328f8352df1654271939da66914f2334424",
         urls = [
-            "https://mirror.bazel.build/github.com/ROCmSoftwarePlatform/rocPRIM/archive/eff7d0687baf57db2507a31663a3dea72eed9093.tar.gz",
-            "https://github.com/ROCmSoftwarePlatform/rocPRIM/archive/eff7d0687baf57db2507a31663a3dea72eed9093.tar.gz",
+            "https://mirror.bazel.build/github.com/ROCmSoftwarePlatform/rocPRIM/archive/4a33d328f8352df1654271939da66914f2334424.tar.gz",
+            "https://github.com/ROCmSoftwarePlatform/rocPRIM/archive/4a33d328f8352df1654271939da66914f2334424.tar.gz",
         ],
     )
 
@@ -834,11 +835,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "tflite_ovic_testdata",
         build_file = clean_dep("//third_party:tflite_ovic_testdata.BUILD"),
-        sha256 = "21288dccc517acee47fa9648d4d3da28bf0fef5381911ed7b4d2ee36366ffa20",
+        sha256 = "033c941b7829b05ca55a124a26a6a0581b1ececc154a2153cafcfdb54f80dca2",
         strip_prefix = "ovic",
         urls = [
-            "http://mirror.tensorflow.org/storage.googleapis.com/download.tensorflow.org/data/ovic_2018_10_23.zip",
-            "https://storage.googleapis.com/download.tensorflow.org/data/ovic_2018_10_23.zip",
+            "http://mirror.tensorflow.org/storage.googleapis.com/download.tensorflow.org/data/ovic_2019_04_30.zip",
+            "https://storage.googleapis.com/download.tensorflow.org/data/ovic_2019_04_30.zip",
         ],
     )
 

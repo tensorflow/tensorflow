@@ -147,7 +147,7 @@ BaseRemoteRendezvous::~BaseRemoteRendezvous() {
 // and device name and does no lookups in the worker->device_mgr.
 static bool IsLocalDevice(const StringPiece worker_name,
                           const StringPiece device_name) {
-  return str_util::StartsWith(device_name, worker_name);
+  return absl::StartsWith(device_name, worker_name);
 }
 
 Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
@@ -246,9 +246,11 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
   // This copy must involve a GPU. Hence, "in" must support DMA
   // (e.g., string tensors do not work on GPU).  Variant copy DMA
   // checks happen inside CopyTensor::ViaDMA.
-  if (!DMAHelper::CanUseDMA(&in) && in.dtype() != DT_VARIANT) {
-    done(errors::InvalidArgument("Non-DMA-safe ", DataTypeString(in.dtype()),
-                                 " tensor may not be copied from/to a GPU."));
+  if (!DMAHelper::CanUseDMA(&in) && in.dtype() != DT_VARIANT &&
+      in.dtype() != DT_RESOURCE) {
+    done(errors::InvalidArgument(
+        "Non-DMA-safe ", DataTypeString(in.dtype()),
+        " tensor may not be copied from/to a device. Key: ", parsed.FullKey()));
     return;
   }
 
@@ -321,6 +323,8 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
         [this, parsed, done](
             const Status& status, const Rendezvous::Args& send_args,
             const Rendezvous::Args& recv_args, const Tensor& in, bool is_dead) {
+          VLOG(2) << "RemoteRendezvous Finished Recv " << this << " "
+                  << parsed.FullKey();
           Tensor* out = new Tensor;
           StatusCallback final_callback = [done, send_args, recv_args, out,
                                            is_dead](const Status& s) {

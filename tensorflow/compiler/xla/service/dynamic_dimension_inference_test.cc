@@ -295,7 +295,7 @@ TEST_F(DynamicDimensionInferenceTest, VariadicReduce) {
   SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(reduce, {0}, 1), size_param);
-  EXPECT_EQ(inference_->GetDynamicSize(reduce, {1}, 1), nullptr);
+  EXPECT_EQ(inference_->GetDynamicSize(reduce, {1}, 1), size_param);
   EXPECT_EQ(inference_->GetDynamicSize(reduce, {0}, 0), nullptr);
   EXPECT_EQ(inference_->GetDynamicSize(reduce, {1}, 0), nullptr);
 }
@@ -342,6 +342,45 @@ TEST_F(DynamicDimensionInferenceTest, DotTest) {
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 0), size_param);
   EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 1), nullptr);
+}
+
+TEST_F(DynamicDimensionInferenceTest, DotTestBatch) {
+  auto builder = HloComputation::Builder(TestName());
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {4, 128, 2, 8});
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {4, 128, 2, 8});
+  auto output_shape = ShapeUtil::MakeShape(F32, {4, 2, 128, 128});
+
+  auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, lhs_shape, "A"));
+  auto* b_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, rhs_shape, "B"));
+  auto* size_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/2, scalar_shape_, "size_param"));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(3);
+  dot_dnums.add_rhs_contracting_dimensions(3);
+  dot_dnums.add_lhs_batch_dimensions(0);
+  dot_dnums.add_lhs_batch_dimensions(2);
+  dot_dnums.add_rhs_batch_dimensions(0);
+  dot_dnums.add_rhs_batch_dimensions(2);
+  auto dot = builder.AddInstruction(
+      HloInstruction::CreateDot(output_shape, a_param, b_param, dot_dnums,
+                                HloTestBase::DefaultPrecisionConfig(2)));
+
+  module_->AddEntryComputation(builder.Build());
+
+  // Set up dynamic parameter binding for batch dimension.
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{2, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+
+  SCOPED_TRACE(module_->ToString());
+  TF_ASSERT_OK(RunInference());
+  EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 0), size_param);
+  EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 1), nullptr);
+  EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 2), nullptr);
+  EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 3), nullptr);
 }
 
 TEST_F(DynamicDimensionInferenceTest, ConvolutionTest) {

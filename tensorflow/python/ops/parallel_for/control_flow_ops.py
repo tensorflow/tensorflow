@@ -35,6 +35,7 @@ from tensorflow.python.ops.parallel_for.pfor import PForConfig
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 
 def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
@@ -158,7 +159,13 @@ def pfor(loop_fn, iters, parallel_iterations=None):
   """
   def f():
     return _pfor_impl(loop_fn, iters, parallel_iterations=parallel_iterations)
-  if context.executing_eagerly():
+  control_flow_context = ops.get_default_graph()._get_control_flow_context()  # pylint: disable=protected-access
+  # Note that we wrap into a tf.function if in eager execution mode or under
+  # XLA compilation. The latter is so that we don't compile operations like
+  # tf.placeholder that are created by the loop body.
+  if (context.executing_eagerly() or
+      (control_flow_context is not None and
+       control_flow_context.IsXLAContext())):
     f = function.defun(f)
   return f()
 
@@ -259,3 +266,79 @@ def _pfor_impl(loop_fn, iters, parallel_iterations=None, pfor_config=None):
       else:
         outputs = tiled_outputs
       return nest.pack_sequence_as(loop_fn_outputs, nest.flatten(outputs))
+
+
+@tf_export("vectorized_map")
+def vectorized_map(fn, elems):
+  """Parallel map on the list of tensors unpacked from `elems` on dimension 0.
+
+
+  This method works similar to tf.map_fn but is optimized to run much faster,
+  but possibly with a much larger memory footprint. The speedups are obtained by
+  vectorization (see https://arxiv.org/pdf/1903.04243.pdf). The idea behind
+  vectorization is to semantically launch all the invocations of `fn` in
+  parallel and fuse corresponding operations across all these invocations. This
+  fusion is done statically at graph generation time and the generated code is
+  often similar in performance to a manually fused version.
+
+
+  For example, let's look at a method that calculates the outer product of a
+  matrix.
+
+  ```python
+  def outer_product(a):
+    return tf.tensordot(a, a, 0)
+
+  # outer_product was designed to not support batching.
+  c = outer_product(tf.ones((2, 3)))
+  # The shape is consistent
+  assert c.shape == (2, 3, 2, 3)
+  ```
+
+  Now suppose we want an efficient batched version of outer_product. We can
+  simply write:
+
+  ```python
+  batch_size = 100
+  a = tf.ones((batch_size, 32, 32))
+  c = tf.vectorized_map(outer_product, a)
+  assert c.shape == (batch_size, 32, 32, 32, 32)
+   ```
+
+  Because `tf.vectorized_map` fully parallelizes the batch, this method will
+  generally be significantly faster than using `tf.map_fn`, especially in eager
+  mode.
+
+  This is an experimental feature and currently has a lot of limitations:
+    - There should be no data dependency between the different semantic
+      invocations of `fn`, i.e. it should be safe to map the elements of the
+      inputs in any order.
+    - Stateful kernels may mostly not be supported since these often imply a
+      data dependency. We do support a limited set of such stateful kernels
+      though (like RandomFoo, Variable operations like reads, etc).
+    - `fn` has limited support for control flow operations. `tf.cond` in
+      particular is not supported.
+    - `fn` should return nested structure of Tensors or Operations. However
+      if an Operation is returned, it should have zero outputs.
+    - The shape and dtype of `fn` outputs should not depend on the input
+      to `fn`.
+
+  Args:
+    fn: The callable to be performed. It accepts one argument, which will have
+      the same (possibly nested) structure as `elems`, and returns a possibly
+      nested structure of Tensors and Operations, which may be different than
+      the structure of `elems`.
+    elems: A tensor or (possibly nested) sequence of tensors, each of which will
+      be unpacked along their first dimension. The nested sequence of the
+      resulting slices will be mapped over by `fn`.
+
+  Returns:
+    A tensor or (possibly nested) sequence of tensors. Each tensor packs the
+    results of applying fn to tensors unpacked from elems along the first
+    dimension, from first to last.
+  """
+  def loop_fn(i):
+    gathered_elems = nest.map_structure(lambda x: array_ops.gather(x, i), elems)
+    return fn(gathered_elems)
+  batch_size = array_ops.shape(nest.flatten(elems)[0])[0]
+  return pfor(loop_fn, batch_size)

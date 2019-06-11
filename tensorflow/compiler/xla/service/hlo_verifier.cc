@@ -185,7 +185,45 @@ Status ShapeVerifier::HandleCholesky(HloInstruction* hlo) {
   return CheckShape(hlo, expected);
 }
 
+// Checks that `hlo`'s set of ReplicaGroups:
+//
+//  - names each replica 0 through n-1 exactly once, and
+//  - does not contain any empty ReplicaGroups.
+//
+// Note that although none of the groups may be empty, `hlo` is allowed to have
+// 0 groups.  That just means it has one big group.
+//
+// This is just a minimal set of checks; some instructions may have additional
+// requirements.  For example, all-to-all requires that all ReplicaGroups have
+// the same number of replicas, but that isn't checked here.
+static Status CheckReplicaGroups(HloInstruction* hlo) {
+  std::set<int64> replicas_seen;
+  for (const ReplicaGroup& g : hlo->replica_groups()) {
+    if (g.replica_ids().empty()) {
+      return InternalError("Instruction cannot have an empty replica group: %s",
+                           hlo->ToString());
+    }
+    for (int64 i : g.replica_ids()) {
+      if (!replicas_seen.insert(i).second) {
+        return InternalError(
+            "Replica %d is repeated in instruction's replica-groups: %s", i,
+            hlo->ToString());
+      }
+    }
+  }
+  for (int64 i = 0; i < replicas_seen.size(); ++i) {
+    if (!replicas_seen.count(i)) {
+      return InternalError(
+          "Replica %d is not named in instruction's replica-groups: %s", i,
+          hlo->ToString());
+    }
+  }
+  return Status::OK();
+}
+
 Status ShapeVerifier::HandleAllReduce(HloInstruction* crs) {
+  TF_RETURN_IF_ERROR(CheckReplicaGroups(crs));
+
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : crs->operands()) {
     operand_shapes.push_back(&operand->shape());
@@ -194,6 +232,19 @@ Status ShapeVerifier::HandleAllReduce(HloInstruction* crs) {
 }
 
 Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo));
+
+  // The size of each replica group must match the number of operands to the
+  // all-to-all.
+  for (const ReplicaGroup& g : hlo->replica_groups()) {
+    if (g.replica_ids_size() != hlo->operand_count()) {
+      return InternalError(
+          "Replica group has size %d, but all replica groups in an all-to-all "
+          "with N operands must have size N: %s",
+          g.replica_ids_size(), hlo->ToString());
+    }
+  }
+
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : hlo->operands()) {
     operand_shapes.push_back(&operand->shape());
@@ -202,11 +253,33 @@ Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
                     ShapeInference::InferAllToAllTupleShape(operand_shapes));
 }
 
+Status ShapeVerifier::HandlePartitionId(HloInstruction* hlo) {
+  return CheckShape(hlo, ShapeUtil::MakeShape(U32, {}));
+}
+
 Status ShapeVerifier::HandleReplicaId(HloInstruction* hlo) {
   return CheckShape(hlo, ShapeUtil::MakeShape(U32, {}));
 }
 
 Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
+  // A source or target cannot appear twice in the collective-permute's
+  // source-target pairs.
+  absl::flat_hash_set<int64> seen_sources;
+  absl::flat_hash_set<int64> seen_targets;
+  for (const auto& p : hlo->source_target_pairs()) {
+    if (!seen_sources.insert(p.first).second) {
+      return InternalError(
+          "Source %d appears more than once in instruction's source-target "
+          "pairs: %s",
+          p.first, hlo->ToString());
+    }
+    if (!seen_targets.insert(p.second).second) {
+      return InternalError(
+          "Target %d appears more than once in instruction's source-target "
+          "pairs: %s",
+          p.second, hlo->ToString());
+    }
+  }
   return CheckShape(hlo, ShapeInference::InferCollectivePermuteShape(
                              hlo->operand(0)->shape()));
 }
@@ -324,6 +397,19 @@ Status ShapeVerifier::HandleRng(HloInstruction* instruction) {
       return InternalError(
           "Invalid Rng distribution %s",
           RandomDistribution_Name(instruction->random_distribution()));
+  }
+
+  return Status::OK();
+}
+
+Status ShapeVerifier::HandleRngGetAndUpdateState(HloInstruction* instruction) {
+  TF_RETURN_IF_ERROR(CheckOperandCount(instruction, 0));
+  const Shape& result_shape = instruction->shape();
+  const Shape expected_shape = ShapeUtil::MakeShape(U64, {2});
+  if (!ShapeUtil::Compatible(result_shape, expected_shape)) {
+    return InternalError(
+        "Invalid RngGetAndUpdateState, expect result to have shape %s, got %s ",
+        StringifyShape(expected_shape), StringifyShape(result_shape));
   }
 
   return Status::OK();
@@ -983,7 +1069,7 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
   if (computation->num_parameters() != layout.parameter_count()) {
     return InternalError(
         "Number of parameters in entry computation layout (%d) must be same "
-        "as number of parameters of entry computation computation (%d)",
+        "as number of parameters of entry computation (%d)",
         layout.parameter_count(), computation->num_parameters());
   }
 

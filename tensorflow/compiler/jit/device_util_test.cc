@@ -22,12 +22,20 @@ namespace tensorflow {
 namespace {
 
 Status PickDeviceHelper(bool allow_mixing_unknown_and_cpu,
-                        absl::Span<const absl::string_view> inputs,
+                        absl::Span<const absl::string_view> device_names,
                         string* result) {
-  std::vector<string> inputs_string;
-  absl::c_transform(inputs, std::back_inserter(inputs_string),
-                    [](absl::string_view sv) { return string(sv); });
-  return PickDeviceForXla(inputs_string, allow_mixing_unknown_and_cpu, result);
+  jit::DeviceInfoCache cache;
+  jit::DeviceSet device_set;
+  for (absl::string_view name : device_names) {
+    TF_ASSIGN_OR_RETURN(jit::DeviceId device_id, cache.GetIdFor(name));
+    device_set.Insert(device_id);
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      jit::DeviceId result_id,
+      PickDeviceForXla(cache, device_set, allow_mixing_unknown_and_cpu));
+  *result = string(cache.GetNameFor(result_id));
+  return Status::OK();
 }
 
 void CheckPickDeviceResult(absl::string_view expected_result,
@@ -85,6 +93,39 @@ TEST(PickDeviceForXla, MultipleDevicesOfSameType) {
   CheckPickDeviceHasError(false, {kGPU0, kGPU1});
   CheckPickDeviceHasError(false, {kXPU0, kXPU1});
   CheckPickDeviceHasError(false, {kCPU0, kCPU1, kGPU0});
+}
+
+void SimpleRoundTripTestForDeviceSet(int num_devices) {
+  jit::DeviceSet device_set;
+  jit::DeviceInfoCache device_info_cache;
+
+  std::vector<string> expected_devices, actual_devices;
+
+  for (int i = 0; i < num_devices; i++) {
+    string device_name =
+        absl::StrCat("/job:localhost/replica:0/task:0/device:XPU:", i);
+    TF_ASSERT_OK_AND_ASSIGN(jit::DeviceId device_id,
+                            device_info_cache.GetIdFor(device_name));
+    device_set.Insert(device_id);
+    expected_devices.push_back(device_name);
+  }
+
+  device_set.ForEach([&](jit::DeviceId device_id) {
+    actual_devices.push_back(string(device_info_cache.GetNameFor(device_id)));
+    return true;
+  });
+
+  EXPECT_EQ(expected_devices, actual_devices);
+}
+
+TEST(DeviceSetTest, SimpleRoundTrip_One) { SimpleRoundTripTestForDeviceSet(1); }
+
+TEST(DeviceSetTest, SimpleRoundTrip_Small) {
+  SimpleRoundTripTestForDeviceSet(8);
+}
+
+TEST(DeviceSetTest, SimpleRoundTrip_Large) {
+  SimpleRoundTripTestForDeviceSet(800);
 }
 
 }  // namespace

@@ -191,6 +191,47 @@ TEST(FloatActivationsOpTest, Relu6) {
                              }));
 }
 
+TEST(FloatActivationsOpTest, HardSwish) {
+  FloatActivationsOpModel m(BuiltinOperator_HARD_SWISH,
+                            /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}});
+  m.SetInput({
+      0, -6, 2, 4,   //
+      3, -2, 10, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {0, 0, 1.66666667, 4, 3., -0.33333333, 10, 0.66666667})));
+}
+
+TEST(QuantizedActivationsOpTest, HardSwish) {
+  const float kMin = -10;
+  const float kMax = 15;
+  const float kOutMin = -3;
+  const float kOutMax = kMax;
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_HARD_SWISH,
+      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, kMin, kMax},
+      /*output=*/{TensorType_UINT8, {1, 2, 4, 1}, kOutMin, kOutMax});
+  m.SetInput<uint8_t>({
+      0, -10, 2, 4,   //
+      3, -2, 10, 15,  //
+  });
+  auto r =
+      Dequantize(m.ExtractVector<uint8_t>(0), m.GetScale(0), m.GetZeroPoint(0));
+  for (int i = 0; i < r.size(); i++) {
+    LOG(INFO) << r[i];
+  }
+
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(
+                  ArrayFloatNear({0, 0, 1.66666667, 4, 3., -0.33333333, 10, 15},
+                                 (kOutMax - kOutMin) / 1. / 256.)));
+  EXPECT_THAT(m.GetOutput<uint8_t>(),
+              ElementsAreArray({42, 42, 65, 99, 85, 37, 184, 255}));
+}
+
 TEST(FloatActivationsOpTest, Tanh) {
   FloatActivationsOpModel m(BuiltinOperator_TANH,
                             /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}});
@@ -1075,9 +1116,3 @@ TEST(FloatActivationsOpTest, LeakyRelu) {
 }
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

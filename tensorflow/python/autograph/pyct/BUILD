@@ -1,8 +1,10 @@
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 filegroup(
     name = "all_files",
@@ -36,12 +38,11 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/python/autograph/pyct/common_transformers",
         "@astor_archive//:astor",
         "@gast_archive//:gast",
         "@six_archive//:six",
         "@termcolor_archive//:termcolor",
-        # TODO(mdan): Remove this dependency.
-        "//tensorflow/python:util",
     ],
 )
 
@@ -93,6 +94,18 @@ py_test(
 )
 
 py_test(
+    name = "errors_test",
+    srcs = ["errors_test.py"],
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pyct",
+        "//tensorflow/python:client_testlib",
+        "@gast_archive//:gast",
+    ],
+)
+
+py_test(
     name = "inspect_utils_test",
     srcs = ["inspect_utils_test.py"],
     python_version = "PY2",
@@ -100,7 +113,7 @@ py_test(
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/pyct/testing:test_modules",
+        "//tensorflow/python/autograph/pyct/testing",
         "@gast_archive//:gast",
     ],
 )
@@ -108,9 +121,6 @@ py_test(
 sh_test(
     name = "inspect_utils_test_par",
     srcs = ["inspect_utils_test.sh"],
-    data = [
-        ":inspect_utils_test.par",
-    ],
     tags = ["no_oss"],
 )
 
@@ -122,6 +132,7 @@ py_test(
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/autograph/pyct/testing",
     ],
 )
 

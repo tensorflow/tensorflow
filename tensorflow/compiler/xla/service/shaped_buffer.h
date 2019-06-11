@@ -21,12 +21,12 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 
@@ -138,13 +138,13 @@ class ScopedShapedBuffer : public ShapedBuffer {
   // Creates a ScopedShapedBuffer with null DeviceMemoryBases at each index.
   explicit ScopedShapedBuffer(const Shape& on_host_shape,
                               const Shape& on_device_shape,
-                              DeviceMemoryAllocator* allocator,
+                              se::DeviceMemoryAllocator* allocator,
                               int device_ordinal);
 
   // Create a ScopedShapedBuffer by taking over the memory from the incoming
   // ShapedBuffer.
   explicit ScopedShapedBuffer(ShapedBuffer shaped_buffer,
-                              DeviceMemoryAllocator* allocator);
+                              se::DeviceMemoryAllocator* allocator);
 
   // Movable, but not copyable.
   ScopedShapedBuffer(ScopedShapedBuffer&& s);
@@ -157,17 +157,17 @@ class ScopedShapedBuffer : public ShapedBuffer {
 
   // Return the allocator used to allocate the device memory held in this
   // ScopedShapedBuffer.
-  DeviceMemoryAllocator* memory_allocator() const { return allocator_; }
+  se::DeviceMemoryAllocator* memory_allocator() const { return allocator_; }
 
   // Sets the device memory buffer at the given index.
   //
   // If the given buffer's device memory is non-null, its device_ordinal and
   // allocator must match those in `this`.
-  void set_buffer(OwningDeviceMemory buffer, const ShapeIndex& index) {
+  void set_buffer(se::OwningDeviceMemory buffer, const ShapeIndex& index) {
     if (!buffer.is_null()) {
       CHECK_EQ(buffer.device_ordinal(), device_ordinal());
       CHECK_EQ(buffer.allocator(), allocator_);
-      *buffers_.mutable_element(index) = buffer.Forget();
+      *buffers_.mutable_element(index) = buffer.Release();
     } else {
       *buffers_.mutable_element(index) = se::DeviceMemoryBase();
     }
@@ -187,7 +187,7 @@ class ScopedShapedBuffer : public ShapedBuffer {
  protected:
   void Deallocate();
 
-  DeviceMemoryAllocator* allocator_;
+  se::DeviceMemoryAllocator* allocator_;
 };
 
 }  // namespace xla

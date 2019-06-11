@@ -166,6 +166,8 @@ def _augment_with_special_arguments(test_method):
     for arg in requested_arguments:
       if arg == "self":
         kwargs_to_pass[arg] = self
+      elif arg == "mode":
+        kwargs_to_pass[arg] = mode
       else:
         kwargs_to_pass[arg] = kwargs[arg]
 

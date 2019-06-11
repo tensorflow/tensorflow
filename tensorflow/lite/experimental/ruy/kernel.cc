@@ -19,11 +19,12 @@ limitations under the License.
 
 namespace ruy {
 
-#if (defined __aarch64__) && (RUY_OPT_SET & RUY_OPT_ASM)
+#if (defined __aarch64__) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 #define RUY_ASM_LABEL_STORE_UINT8 91
 #define RUY_ASM_LABEL_STORE_INT8 92
 #define RUY_ASM_LABEL_STORE_INT16 93
+#define RUY_ASM_LABEL_STORE_INT32 94
 #define RUY_ASM_LABEL_AFTER_STORE 99
 
 #define RUY_OFFSET_BIAS 0
@@ -49,8 +50,8 @@ namespace ruy {
 #define RUY_OFFSET_DST_STRIDE 112
 #define RUY_OFFSET_DEPTH 116
 #define RUY_OFFSET_CLAMP_MIN 120
-#define RUY_OFFSET_CLAMP_MAX 122
-#define RUY_OFFSET_FLAGS 124
+#define RUY_OFFSET_CLAMP_MAX 124
+#define RUY_OFFSET_FLAGS 128
 
 template <typename Params>
 void CheckOffsetsInKernelParams8bit(const Params&) {
@@ -476,6 +477,12 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         "sub v17.4s, v17.4s, v11.4s\n"
         "sub v18.4s, v18.4s, v11.4s\n"
         "sub v19.4s, v19.4s, v11.4s\n"
+
+        // If the destination is int32, it means the user asks for the raw
+        // accumulators, no need for us to downquantize the value.
+        "cmp %w[dst_type_id], #" RUY_STR(RUY_ASM_TYPE_ID_INT32) "\n"
+        "beq " RUY_STR(RUY_ASM_LABEL_STORE_INT32) "f\n"
+
         "402:\n"
 
         // At this point we have computed the final int32 values. Now we
@@ -528,7 +535,7 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         // data centered at zero, which was likely the case in that model,
         // but is not always the case. If we wanted something more consistently
         // unbiased then we should try breaking ties toward-nearest-even.
-#if !(RUY_OPT_SET & RUY_OPT_NATIVE_ROUNDING)
+#if !RUY_OPT_ENABLED(RUY_OPT_NATIVE_ROUNDING)
         // Fix up values to be right-shifted, so that the (round to nearest,
         // break ties upward) behavior of srshl applied to these fixed-up
         // values, produces the same result as the desired (round to nearest,
@@ -923,6 +930,108 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
 
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
+
+        "b " RUY_STR(RUY_ASM_LABEL_AFTER_STORE) "f\n"
+
+        RUY_STR(RUY_ASM_LABEL_STORE_INT32) ":\n"
+
+        // Since the store type is the same as the accum type, no need for
+        // downcast. There's also no need for clamp by min/max.
+
+        // At this point, v20 -- v31 aren't used anymore for the current block,
+        // so we can start clearing these accumulators for the next block
+        // (next iteration of the main loop).
+        RUY_MAKE_ZERO(v20)
+        RUY_MAKE_ZERO(v21)
+        RUY_MAKE_ZERO(v22)
+        RUY_MAKE_ZERO(v23)
+        RUY_MAKE_ZERO(v24)
+        RUY_MAKE_ZERO(v25)
+        RUY_MAKE_ZERO(v26)
+        RUY_MAKE_ZERO(v27)
+        RUY_MAKE_ZERO(v28)
+        RUY_MAKE_ZERO(v29)
+        RUY_MAKE_ZERO(v30)
+        RUY_MAKE_ZERO(v31)
+
+        // Compute how much of the 4x4 block of destination 8bit values that
+        // we have computed, fit in the destination matrix. Typically, all of
+        // it fits, but when the destination matrix shape is not a multiple
+        // of 4x4, there are some 4x4 blocks along the boundaries that do
+        // not fit entirely.
+        "sub w1, %w[dst_rows], %w[row]\n"
+        "sub w2, %w[dst_cols], %w[col]\n"
+        "mov w3, #4\n"
+        "cmp w1, #4\n"
+        // Compute w1 = how many rows of the 4x4 block fit
+        "csel w1, w1, w3, le\n"
+        "cmp w2, #4\n"
+        // Compute w2 = how many cols of the 4x4 block fit
+        "csel w2, w2, w3, le\n"
+
+        // Test if w1==4 && w2 == 4, i.e. if all of the 8x8 block fits.
+        "cmp w1, w3\n"
+        "ccmp w2, w3, 0, eq\n"
+        "mov x4, %[dst_ptr]\n"
+        // Yes, all of the 4x4 block fits, go to fast path.
+        "beq 30f\n"
+        // Not all of the 4x4 block fits.
+        // Store to dst_tmp_buf
+        "str q16, [%[dst_tmp_buf], #0]\n"
+        "str q17, [%[dst_tmp_buf], #16]\n"
+        "str q18, [%[dst_tmp_buf], #32]\n"
+        "str q19, [%[dst_tmp_buf], #48]\n"
+        // Slow loop copying from dst_tmp_buf to dst.
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov w6, #0\n"
+        "50:\n"
+        "mov w5, #0\n"
+        "51:\n"
+        "ldr w7, [x3, x5, lsl #2]\n"
+        "str w7, [x4, x5, lsl #2]\n"
+        "add w5, w5, #1\n"
+        "cmp w5, w1\n"
+        "blt 51b\n"
+        "add w6, w6, #1\n"
+        "add x3, x3, #16\n"
+        "add x4, x4, x11\n"
+        "cmp w6, w2\n"
+        "blt 50b\n"
+        "b 31f\n"
+        "30:\n"
+        // Yes, all of the 4x4 block fits.
+        "mov x3, x4\n"
+        "st1 {v16.s}[0], [x3], #4\n"
+        "add x4, x4, x11\n"
+        "st1 {v16.s}[1], [x3], #4\n"
+        "st1 {v16.s}[2], [x3], #4\n"
+        "st1 {v16.s}[3], [x3], #4\n"
+        "mov x3, x4\n"
+        "st1 {v17.s}[0], [x3], #4\n"
+        "add x4, x4, x11\n"
+        "st1 {v17.s}[1], [x3], #4\n"
+        "st1 {v17.s}[2], [x3], #4\n"
+        "st1 {v17.s}[3], [x3], #4\n"
+        "mov x3, x4\n"
+        "st1 {v18.s}[0], [x3], #4\n"
+        "add x4, x4, x11\n"
+        "st1 {v18.s}[1], [x3], #4\n"
+        "st1 {v18.s}[2], [x3], #4\n"
+        "st1 {v18.s}[3], [x3], #4\n"
+        "mov x3, x4\n"
+        "st1 {v19.s}[0], [x3], #4\n"
+        "add x4, x4, x11\n"
+        "st1 {v19.s}[1], [x3], #4\n"
+        "st1 {v19.s}[2], [x3], #4\n"
+        "st1 {v19.s}[3], [x3], #4\n"
+        "31:\n"
+
+        "add %[dst_ptr], %[dst_ptr], #16\n"
+
+        RUY_MAKE_ZERO(v16)
+        RUY_MAKE_ZERO(v17)
+        RUY_MAKE_ZERO(v18)
+        RUY_MAKE_ZERO(v19)
 
         RUY_STR(RUY_ASM_LABEL_AFTER_STORE) ":\n"
 
@@ -1398,6 +1507,12 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         "sub v17.4s, v17.4s, v11.4s\n"
         "sub v18.4s, v18.4s, v11.4s\n"
         "sub v19.4s, v19.4s, v11.4s\n"
+
+        // If the destination is int32, it means the user asks for the raw
+        // accumulators, no need for us to downquantize the value.
+        "cmp %w[dst_type_id], #" RUY_STR(RUY_ASM_TYPE_ID_INT32) "\n"
+        "beq " RUY_STR(RUY_ASM_LABEL_STORE_INT32) "f\n"
+
         "402:\n"
 
         // At this point we have computed the final int32 values. Now we
@@ -1462,7 +1577,7 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         // data centered at zero, which was likely the case in that model,
         // but is not always the case. If we wanted something more consistently
         // unbiased then we should try breaking ties toward-nearest-even.
-#if !(RUY_OPT_SET & RUY_OPT_NATIVE_ROUNDING)
+#if !RUY_OPT_ENABLED(RUY_OPT_NATIVE_ROUNDING)
         // Fix up values to be right-shifted, so that the (round to nearest,
         // break ties upward) behavior of srshl applied to these fixed-up
         // values, produces the same result as the desired (round to nearest,
@@ -1876,6 +1991,130 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
 
+        "b " RUY_STR(RUY_ASM_LABEL_AFTER_STORE) "f\n"
+
+        RUY_STR(RUY_ASM_LABEL_STORE_INT32) ":\n"
+
+        "ldr x1, [%[lhs_ptr], #8]\n"
+        "ldr x2, [%[lhs_ptr], #24]\n"
+        "ldr x3, [%[lhs_ptr], #40]\n"
+        "ldr x4, [%[lhs_ptr], #56]\n"
+
+        "ins v0.d[1], x1\n"
+        "ldr x1, [%[rhs_ptr], #8]\n"
+        "ins v1.d[1], x2\n"
+        "ldr x2, [%[rhs_ptr], #24]\n"
+        "ins v2.d[1], x3\n"
+        "ldr x3, [%[rhs_ptr], #40]\n"
+        "ins v3.d[1], x4\n"
+        "ldr x4, [%[rhs_ptr], #56]\n"
+        "ins v4.d[1], x1\n"
+        "ins v5.d[1], x2\n"
+        "ins v6.d[1], x3\n"
+        "ins v7.d[1], x4\n"
+
+        // Since the store type is the same as the accum type, no need for
+        // downcast. There's also no need for clamp by min/max.
+
+        // At this point, v20 -- v31 aren't used anymore for the current block,
+        // so we can start clearing these accumulators for the next block
+        // (next iteration of the main loop).
+
+        RUY_MAKE_ZERO(v20)
+        "add %[lhs_ptr], %[lhs_ptr], #64\n"
+        RUY_MAKE_ZERO(v21)
+        "add %[rhs_ptr], %[rhs_ptr], #64\n"
+        RUY_MAKE_ZERO(v22)
+
+        RUY_MAKE_ZERO(v23)
+        RUY_MAKE_ZERO(v24)
+        RUY_MAKE_ZERO(v25)
+        RUY_MAKE_ZERO(v26)
+        RUY_MAKE_ZERO(v27)
+        RUY_MAKE_ZERO(v28)
+        RUY_MAKE_ZERO(v29)
+        RUY_MAKE_ZERO(v30)
+
+        // Compute how much of the 4x4 block of destination 8bit values that
+        // we have computed, fit in the destination matrix. Typically, all of
+        // it fits, but when the destination matrix shape is not a multiple
+        // of 4x4, there are some 4x4 blocks along the boundaries that do
+        // not fit entirely.
+        "sub w1, %w[dst_rows], %w[row]\n"
+        RUY_MAKE_ZERO(v31)
+        "sub w2, %w[dst_cols], %w[col]\n"
+        "mov w3, #4\n"
+        "cmp w1, #4\n"
+        // Compute w1 = how many rows of the 4x4 block fit
+        "csel w1, w1, w3, le\n"
+        "cmp w2, #4\n"
+        // Compute w2 = how many cols of the 4x4 block fit
+        "csel w2, w2, w3, le\n"
+
+        // Test if w1==4 && w2 == 4, i.e. if all of the 8x8 block fits.
+        "cmp w1, w3\n"
+        "ccmp w2, w3, 0, eq\n"
+        "mov x4, %[dst_ptr]\n"
+        // Yes, all of the 4x4 block fits, go to fast path.
+        "beq 30f\n"
+        // Not all of the 4x4 block fits.
+        // Store to dst_tmp_buf
+        "str q16, [%[dst_tmp_buf], #0]\n"
+        "str q17, [%[dst_tmp_buf], #16]\n"
+        "str q18, [%[dst_tmp_buf], #32]\n"
+        "str q19, [%[dst_tmp_buf], #48]\n"
+        // Slow loop copying from dst_tmp_buf to dst.
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov w6, #0\n"
+        "50:\n"
+        "mov w5, #0\n"
+        "51:\n"
+        "ldr w7, [x3, x5, lsl #2]\n"
+        "str w7, [x4, x5, lsl #2]\n"
+        "add w5, w5, #1\n"
+        "cmp w5, w1\n"
+        "blt 51b\n"
+        "add w6, w6, #1\n"
+        "add x3, x3, #16\n"
+        "add x4, x4, x11\n"
+        "cmp w6, w2\n"
+        "blt 50b\n"
+        "b 31f\n"
+        "30:\n"
+        // Yes, all of the 4x4 block fits.
+        "mov x3, x4\n"
+        "st1 {v16.s}[0], [x3], #4\n"
+        "add x4, x4, x11\n"
+        "st1 {v16.s}[1], [x3], #4\n"
+        "st1 {v16.s}[2], [x3], #4\n"
+        "st1 {v16.s}[3], [x3], #4\n"
+        "mov x3, x4\n"
+        "st1 {v17.s}[0], [x3], #4\n"
+        "add x4, x4, x11\n"
+        "st1 {v17.s}[1], [x3], #4\n"
+        "st1 {v17.s}[2], [x3], #4\n"
+        "st1 {v17.s}[3], [x3], #4\n"
+        "mov x3, x4\n"
+        "st1 {v18.s}[0], [x3], #4\n"
+        "add x4, x4, x11\n"
+        "st1 {v18.s}[1], [x3], #4\n"
+        "st1 {v18.s}[2], [x3], #4\n"
+        "st1 {v18.s}[3], [x3], #4\n"
+        "mov x3, x4\n"
+        "st1 {v19.s}[0], [x3], #4\n"
+        "add x4, x4, x11\n"
+        "st1 {v19.s}[1], [x3], #4\n"
+        "st1 {v19.s}[2], [x3], #4\n"
+        "st1 {v19.s}[3], [x3], #4\n"
+        "31:\n"
+
+        "add %[dst_ptr], %[dst_ptr], #16\n"
+
+        RUY_MAKE_ZERO(v16)
+        RUY_MAKE_ZERO(v17)
+        RUY_MAKE_ZERO(v18)
+        RUY_MAKE_ZERO(v19)
+
         RUY_STR(RUY_ASM_LABEL_AFTER_STORE) ":\n"
 
         // For the next block: perform the first few multiply-adds on the data
@@ -2062,7 +2301,7 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         // Optional, maximally-streaming, partial-unrolling (4x unrolled)
         // optimization of the kernel inner loop (over depth). For more
         // comments, see the non-unrolled loop below after the #endif.
-#if RUY_OPT_SET & RUY_OPT_MAX_STREAMING
+#if RUY_OPT_ENABLED(RUY_OPT_MAX_STREAMING)
         "cmp w12, #32\n"
         "blt 78f\n"
 
@@ -2227,7 +2466,7 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
 
         "78:\n"
 
-#endif  // #if RUY_OPT_SET & RUY_OPT_MAX_STREAMING
+#endif  // #if RUY_OPT_ENABLED(RUY_OPT_MAX_STREAMING)
 
         // Ordinary kernel inner loop (over depth), the simpler loop that the
         // above was an equivalent 4x-partially-unrolled version of.
@@ -2440,6 +2679,10 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         "sub v29.4s, v29.4s, v12.4s\n"
         "sub v30.4s, v30.4s, v11.4s\n"
         "sub v31.4s, v31.4s, v12.4s\n"
+
+        "cmp %w[dst_type_id], #" RUY_STR(RUY_ASM_TYPE_ID_INT32) "\n"
+        "beq " RUY_STR(RUY_ASM_LABEL_STORE_INT32) "f\n"
+
         "402:\n"
 
         // At this point we have computed the final int32 values. Now we
@@ -2458,9 +2701,10 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         "ldr q9, [x1]\n"
         "ldr q10, [x1, #16]\n"
 
+        "tst w6, #" RUY_STR(RUY_ASM_FLAG_NEEDS_LEFT_SHIFT) "\n"
+        "beq 403f\n"
         "smax v11.4s, v9.4s, v8.4s\n"
         "smax v12.4s, v10.4s, v8.4s\n"
-
         "sshl v16.4s, v16.4s, v11.4s\n"
         "sshl v17.4s, v17.4s, v12.4s\n"
         "sshl v18.4s, v18.4s, v11.4s\n"
@@ -2477,6 +2721,7 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         "sshl v29.4s, v29.4s, v12.4s\n"
         "sshl v30.4s, v30.4s, v11.4s\n"
         "sshl v31.4s, v31.4s, v12.4s\n"
+        "403:\n"
 
         "ldr q14, [x4]\n" // multiplier_fixedpoint
         "ldr q15, [x4, #16]\n" // multiplier_fixedpoint
@@ -2522,7 +2767,7 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         // data centered at zero, which was likely the case in that model,
         // but is not always the case. If we wanted something more consistently
         // unbiased then we should try breaking ties toward-nearest-even.
-#if !(RUY_OPT_SET & RUY_OPT_NATIVE_ROUNDING)
+#if !RUY_OPT_ENABLED(RUY_OPT_NATIVE_ROUNDING)
         // Fix up values to be right-shifted, so that the (round to nearest,
         // break ties upward) behavior of srshl applied to these fixed-up
         // values, produces the same result as the desired (round to nearest,
@@ -3041,7 +3286,7 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         "mov x4, x11\n"
         "231:\n"
 
-        // Write our 8bit values to the destination described by
+        // Write our 16bit values to the destination described by
         // (x3 address, x4 stride).
         "st1 {v16.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v16)
@@ -3091,6 +3336,159 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         "blt 250b\n"
         "241:\n"
         "add %[dst_ptr], %[dst_ptr], #16\n"
+        // At this point we have completely finished writing values to the
+        // destination matrix for the current block.
+
+        "b " RUY_STR(RUY_ASM_LABEL_AFTER_STORE) "f\n"
+
+        RUY_STR(RUY_ASM_LABEL_STORE_INT32) ":\n"
+
+        // Since the store type is the same as the accum type, no need for
+        // downcast. There's also no need for clamp by min/max.
+
+        // Compute how much of the 8x8 block of destination 32it values that
+        // we have computed, fit in the destination matrix. Typically, all of
+        // it fits, but when the destination matrix shape is not a multiple
+        // of 8x8, there are some 8x8 blocks along the boundaries that do
+        // not fit entirely.
+        "sub w1, %w[dst_rows], %w[row]\n"
+        "sub w2, %w[dst_cols], %w[col]\n"
+        "mov w3, #8\n"
+        "cmp w1, #8\n"
+        // Compute w1 = how many rows of the 8x8 block fit
+        "csel w1, w1, w3, le\n"
+        "cmp w2, #8\n"
+        // Compute w1 = how many rows of the 8x8 block fit
+        "csel w2, w2, w3, le\n"
+
+        // Test if w1==8 && w2 == 8, i.e. if all of the 8x8 block fits.
+        "cmp w1, w3\n"
+        "ccmp w2, w3, 0, eq\n"
+        // Yes, all of the 8x8 block fits, go to fast path.
+        "beq 330f\n"
+        // Not all of the 8x8 block fits.
+        // Set (x3 address, x4 stride) to write to dst_tmp_buf
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov x4, #16\n"
+
+        // Write our 32bit values to the destination described by
+        // (x3 address, x4 stride).
+        "st1 {v16.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v16)
+        "st1 {v17.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v17)
+        "st1 {v18.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v18)
+        "st1 {v19.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v19)
+        "st1 {v20.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v20)
+        "st1 {v21.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v21)
+        "st1 {v22.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v22)
+        "st1 {v23.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v23)
+        "st1 {v24.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v24)
+        "st1 {v25.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v25)
+        "st1 {v26.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v26)
+        "st1 {v27.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v27)
+        "st1 {v28.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v28)
+        "st1 {v29.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v29)
+        "st1 {v30.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v30)
+        "st1 {v31.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v31)
+
+        "b 331f\n"
+
+        "330:\n"
+        // Yes, all of the 8x8 block fits.
+        // Set (x3 address, x4 stride) to write directly to destination matrix.
+        "mov x4, %[dst_ptr]\n"
+        "mov x3, x4\n"
+
+        // Write our 32bit values to the destination described by
+        // (x3 address, x4 stride).
+        "st1 {v16.4s, v17.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v16)
+        RUY_MAKE_ZERO(v17)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v18.4s, v19.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v18)
+        RUY_MAKE_ZERO(v19)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v20.4s, v21.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v20)
+        RUY_MAKE_ZERO(v21)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v22.4s, v23.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v22)
+        RUY_MAKE_ZERO(v23)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v24.4s, v25.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v24)
+        RUY_MAKE_ZERO(v25)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v26.4s, v27.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v26)
+        RUY_MAKE_ZERO(v27)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v28.4s, v29.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v28)
+        RUY_MAKE_ZERO(v29)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v30.4s, v31.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v30)
+        RUY_MAKE_ZERO(v31)
+
+        "331:\n"
+
+        // For the next block: perform the first few multiply-adds on the data
+        // that we have already loaded.
+        ".word 0x4f82e010  // sdot v16.4s, v0.16b, v2.4b[0]\n"
+        ".word 0x4fa2e012  // sdot v18.4s, v0.16b, v2.4b[1]\n"
+        ".word 0x4f82e814  // sdot v20.4s, v0.16b, v2.4b[2]\n"
+        ".word 0x4fa2e816  // sdot v22.4s, v0.16b, v2.4b[3]\n"
+
+        // If all of the 8x8 block fits, we just finished writing it to the
+        // destination, so we skip the next part.
+        "beq 341f\n"
+
+        // Not all of the 8x8 block fits in the destination matrix.  We just
+        // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
+        // it to copy into the destination matrix the part that fits.
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov x4, %[dst_ptr]\n"
+        "mov w6, #0\n"
+        "350:\n"
+        "mov w5, #0\n"
+        "351:\n"
+        "ldr w7, [x3, x5, lsl #2]\n"
+        "str w7, [x4, x5, lsl #2]\n"
+        "add w5, w5, #1\n"
+        "cmp w5, w1\n"
+        "blt 351b\n"
+        "add w6, w6, #1\n"
+        "add x3, x3, #32\n"
+        "add x4, x4, x11\n"
+        "cmp w6, w2\n"
+        "blt 350b\n"
+        "341:\n"
+        "add %[dst_ptr], %[dst_ptr], #32\n"
         // At this point we have completely finished writing values to the
         // destination matrix for the current block.
 
@@ -3455,6 +3853,10 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         "sub v29.4s, v29.4s, v12.4s\n"
         "sub v30.4s, v30.4s, v11.4s\n"
         "sub v31.4s, v31.4s, v12.4s\n"
+
+        "cmp %w[dst_type_id], #" RUY_STR(RUY_ASM_TYPE_ID_INT32) "\n"
+        "beq " RUY_STR(RUY_ASM_LABEL_STORE_INT32) "f\n"
+
         "402:\n"
 
         // At this point we have computed the final int32 values. Now we
@@ -3474,30 +3876,19 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         "ldr q9, [x1]\n"
         "ldr q10, [x1, #16]\n"
 
+        "tst w6, #" RUY_STR(RUY_ASM_FLAG_NEEDS_LEFT_SHIFT) "\n"
+        "beq 403f\n"
         "smax v11.4s, v9.4s, v8.4s\n"
         "smax v12.4s, v10.4s, v8.4s\n"
-
-        // Now that we know what LHS and RHS data the next iteration of the
-        // main loop will need to load, we start loading the first 32 bytes of
-        // each of LHS and RHS, into v0 -- v3, as we don't need v0 -- v3 anymore
-        // in the rest of the work on the current block.
-        "ld1 {v0.8b}, [%[lhs_ptr]], #8\n"
         "sshl v16.4s, v16.4s, v11.4s\n"
-        "ldr x1, [%[lhs_ptr]], #8\n"
         "sshl v17.4s, v17.4s, v12.4s\n"
-        "ld1 {v1.8b}, [%[lhs_ptr]], #8\n"
         "sshl v18.4s, v18.4s, v11.4s\n"
         "sshl v19.4s, v19.4s, v12.4s\n"
-        "ldr x2, [%[lhs_ptr]], #8\n"
         "sshl v20.4s, v20.4s, v11.4s\n"
-        "ld1 {v2.8b}, [%[rhs_ptr]], #8\n"
         "sshl v21.4s, v21.4s, v12.4s\n"
         "sshl v22.4s, v22.4s, v11.4s\n"
-        "ldr x5, [%[rhs_ptr]], #8\n"
         "sshl v23.4s, v23.4s, v12.4s\n"
-        "ld1 {v3.8b}, [%[rhs_ptr]], #8\n"
         "sshl v24.4s, v24.4s, v11.4s\n"
-        "ldr x6, [%[rhs_ptr]], #8\n"
         "sshl v25.4s, v25.4s, v12.4s\n"
         "sshl v26.4s, v26.4s, v11.4s\n"
         "sshl v27.4s, v27.4s, v12.4s\n"
@@ -3505,6 +3896,7 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         "sshl v29.4s, v29.4s, v12.4s\n"
         "sshl v30.4s, v30.4s, v11.4s\n"
         "sshl v31.4s, v31.4s, v12.4s\n"
+        "403:\n"
 
         "ldr q14, [x4]\n" // multiplier_fixedpoint
         "ldr q15, [x4, #16]\n" // multiplier_fixedpoint
@@ -3513,13 +3905,27 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         "smin v12.4s, v10.4s, v8.4s\n"
 
         // Apply the fixed-point part of the multiplier.
+        //
+        // ... and, interleaved into that:
+        // Now that we know what LHS and RHS data the next iteration of the
+        // main loop will need to load, we start loading the first 32 bytes of
+        // each of LHS and RHS, into v0 -- v3, as we don't need v0 -- v3 anymore
+        // in the rest of the work on the current block.
+        "ld1 {v0.8b}, [%[lhs_ptr]], #8\n"
         "sqrdmulh v16.4s, v16.4s, v14.4s\n"
+        "ldr x1, [%[lhs_ptr]], #8\n"
         "sqrdmulh v17.4s, v17.4s, v15.4s\n"
+        "ld1 {v1.8b}, [%[lhs_ptr]], #8\n"
         "sqrdmulh v18.4s, v18.4s, v14.4s\n"
+        "ldr x2, [%[lhs_ptr]], #8\n"
         "sqrdmulh v19.4s, v19.4s, v15.4s\n"
+        "ld1 {v2.8b}, [%[rhs_ptr]], #8\n"
         "sqrdmulh v20.4s, v20.4s, v14.4s\n"
+        "ldr x5, [%[rhs_ptr]], #8\n"
         "sqrdmulh v21.4s, v21.4s, v15.4s\n"
+        "ld1 {v3.8b}, [%[rhs_ptr]], #8\n"
         "sqrdmulh v22.4s, v22.4s, v14.4s\n"
+        "ldr x6, [%[rhs_ptr]], #8\n"
         "sqrdmulh v23.4s, v23.4s, v15.4s\n"
         "sqrdmulh v24.4s, v24.4s, v14.4s\n"
         "sqrdmulh v25.4s, v25.4s, v15.4s\n"
@@ -3550,7 +3956,7 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         // data centered at zero, which was likely the case in that model,
         // but is not always the case. If we wanted something more consistently
         // unbiased then we should try breaking ties toward-nearest-even.
-#if !(RUY_OPT_SET & RUY_OPT_NATIVE_ROUNDING)
+#if !RUY_OPT_ENABLED(RUY_OPT_NATIVE_ROUNDING)
         // Fix up values to be right-shifted, so that the (round to nearest,
         // break ties upward) behavior of srshl applied to these fixed-up
         // values, produces the same result as the desired (round to nearest,
@@ -4124,6 +4530,172 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         // At this point we have completely finished writing values to the
         // destination matrix for the current block.
 
+        "b " RUY_STR(RUY_ASM_LABEL_AFTER_STORE) "f\n"
+
+        RUY_STR(RUY_ASM_LABEL_STORE_INT32) ":\n"
+
+        "ld1 {v0.8b}, [%[lhs_ptr]], #8\n"
+        "ldr x1, [%[lhs_ptr]], #8\n"
+        "ld1 {v1.8b}, [%[lhs_ptr]], #8\n"
+        "ldr x2, [%[lhs_ptr]], #8\n"
+        "ld1 {v2.8b}, [%[rhs_ptr]], #8\n"
+        "ldr x5, [%[rhs_ptr]], #8\n"
+        "ld1 {v3.8b}, [%[rhs_ptr]], #8\n"
+        "ldr x6, [%[rhs_ptr]], #8\n"
+        "ins v0.d[1], x1\n"
+        "ins v1.d[1], x2\n"
+        "ins v2.d[1], x5\n"
+        "ins v3.d[1], x6\n"
+
+        // Since the store type is the same as the accum type, no need for
+        // downcast. There's also no need for clamp by min/max.
+
+        // Compute how much of the 8x8 block of destination 32it values that
+        // we have computed, fit in the destination matrix. Typically, all of
+        // it fits, but when the destination matrix shape is not a multiple
+        // of 8x8, there are some 8x8 blocks along the boundaries that do
+        // not fit entirely.
+        "sub w1, %w[dst_rows], %w[row]\n"
+        "sub w2, %w[dst_cols], %w[col]\n"
+        "mov w3, #8\n"
+        "cmp w1, #8\n"
+        // Compute w1 = how many rows of the 8x8 block fit
+        "csel w1, w1, w3, le\n"
+        "cmp w2, #8\n"
+        // Compute w1 = how many rows of the 8x8 block fit
+        "csel w2, w2, w3, le\n"
+
+        // Test if w1==8 && w2 == 8, i.e. if all of the 8x8 block fits.
+        "cmp w1, w3\n"
+        "ccmp w2, w3, 0, eq\n"
+        // Yes, all of the 8x8 block fits, go to fast path.
+        "beq 330f\n"
+        // Not all of the 8x8 block fits.
+        // Set (x3 address, x4 stride) to write to dst_tmp_buf
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov x4, #16\n"
+
+        // Write our 32bit values to the destination described by
+        // (x3 address, x4 stride).
+        "st1 {v16.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v16)
+        "st1 {v17.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v17)
+        "st1 {v18.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v18)
+        "st1 {v19.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v19)
+        "st1 {v20.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v20)
+        "st1 {v21.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v21)
+        "st1 {v22.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v22)
+        "st1 {v23.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v23)
+        "st1 {v24.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v24)
+        "st1 {v25.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v25)
+        "st1 {v26.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v26)
+        "st1 {v27.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v27)
+        "st1 {v28.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v28)
+        "st1 {v29.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v29)
+        "st1 {v30.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v30)
+        "st1 {v31.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v31)
+
+        "b 331f\n"
+
+        "330:\n"
+        // Yes, all of the 8x8 block fits.
+        // Set (x3 address, x4 stride) to write directly to destination matrix.
+        "mov x4, %[dst_ptr]\n"
+        "mov x3, x4\n"
+
+        // Write our 32bit values to the destination described by
+        // (x3 address, x4 stride).
+        "st1 {v16.4s, v17.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v16)
+        RUY_MAKE_ZERO(v17)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v18.4s, v19.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v18)
+        RUY_MAKE_ZERO(v19)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v20.4s, v21.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v20)
+        RUY_MAKE_ZERO(v21)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v22.4s, v23.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v22)
+        RUY_MAKE_ZERO(v23)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v24.4s, v25.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v24)
+        RUY_MAKE_ZERO(v25)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v26.4s, v27.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v26)
+        RUY_MAKE_ZERO(v27)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v28.4s, v29.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v28)
+        RUY_MAKE_ZERO(v29)
+        "add x4, x4, x11\n"
+        "mov x3, x4\n"
+        "st1 {v30.4s, v31.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v30)
+        RUY_MAKE_ZERO(v31)
+
+        "331:\n"
+
+        // For the next block: perform the first few multiply-adds on the data
+        // that we have already loaded.
+        ".word 0x4f82e010  // sdot v16.4s, v0.16b, v2.4b[0]\n"
+        ".word 0x4fa2e012  // sdot v18.4s, v0.16b, v2.4b[1]\n"
+        ".word 0x4f82e814  // sdot v20.4s, v0.16b, v2.4b[2]\n"
+        ".word 0x4fa2e816  // sdot v22.4s, v0.16b, v2.4b[3]\n"
+
+        // If all of the 8x8 block fits, we just finished writing it to the
+        // destination, so we skip the next part.
+        "beq 341f\n"
+
+        // Not all of the 8x8 block fits in the destination matrix.  We just
+        // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
+        // it to copy into the destination matrix the part that fits.
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov x4, %[dst_ptr]\n"
+        "mov w6, #0\n"
+        "350:\n"
+        "mov w5, #0\n"
+        "351:\n"
+        "ldr w7, [x3, x5, lsl #2]\n"
+        "str w7, [x4, x5, lsl #2]\n"
+        "add w5, w5, #1\n"
+        "cmp w5, w1\n"
+        "blt 351b\n"
+        "add w6, w6, #1\n"
+        "add x3, x3, #32\n"
+        "add x4, x4, x11\n"
+        "cmp w6, w2\n"
+        "blt 350b\n"
+        "341:\n"
+        "add %[dst_ptr], %[dst_ptr], #32\n"
+        // At this point we have completely finished writing values to the
+        // destination matrix for the current block.
+
         RUY_STR(RUY_ASM_LABEL_AFTER_STORE) ":\n"
 
         // Reload some params --- we had used x5 -- x7 for a few other things
@@ -4332,7 +4904,7 @@ void KernelFloatNeonOutOfOrder(const KernelParamsFloat<8, 8>& params) {
         "fmla v20.4s, v0.4s, v2.s[2]\n"
         "fmla v22.4s, v0.4s, v2.s[3]\n"
 
-#if RUY_OPT_SET & RUY_OPT_MAX_STREAMING
+#if RUY_OPT_ENABLED(RUY_OPT_MAX_STREAMING)
         "cmp w12, #8\n"
         "blt 78f\n"
         "and w2, w12, #-4\n"
@@ -5730,6 +6302,6 @@ void KernelFloatNeonDotprodInOrder(const KernelParamsFloat<8, 8>& params) {
 #undef RUY_OFFSET_RHS_BASE_PTR
 #undef RUY_OFFSET_DST_BASE_PTR
 
-#endif  // (defined __aarch64__) && (RUY_OPT_SET & RUY_OPT_ASM)
+#endif  // (defined __aarch64__) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 }  // namespace ruy

@@ -2131,6 +2131,7 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
     case OperatorType::kL2Normalization:
     case OperatorType::kDequantize:
     case OperatorType::kElu:
+    case OperatorType::kHardSwish:
     case OperatorType::kRelu:
     case OperatorType::kRelu1:
     case OperatorType::kRelu6:
@@ -2153,6 +2154,7 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
     case OperatorType::kCast:
     case OperatorType::kFloor:
     case OperatorType::kCeil:
+    case OperatorType::kRound:
     case OperatorType::kExp:
     case OperatorType::kSin:
     case OperatorType::kCos:

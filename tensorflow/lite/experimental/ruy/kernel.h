@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_KERNEL_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_KERNEL_H_
 
+#include <cstddef>
 #include <cstdint>
 
 #include "fixedpoint/fixedpoint.h"
@@ -42,11 +43,25 @@ void RunKernelTyped(Tuning tuning, const PackedMatrix<LhsScalar>& lhs,
                     Matrix<DstScalar>* dst) {
   using Kernel = Kernel<ThePath, LhsScalar, RhsScalar, DstScalar, Spec>;
   Kernel kernel(tuning);
-#if RUY_OPT_SET & RUY_OPT_FAT_KERNEL
-  kernel.Run(lhs, rhs, spec, start_row, start_col, end_row, end_col, dst);
-#else
   using LhsLayout = typename Kernel::LhsLayout;
   using RhsLayout = typename Kernel::RhsLayout;
+  // end_row and end_col may be larger than dst dimensions.
+  // that is because kernels write directly to the destination matrix, whose
+  // dimensions may not be a multiple of the kernel dimensions, and we try to
+  // keep this annoyance localized as an implementation detail in kernels,
+  // by allowing to pass rounded-up values down as far as possible.
+  // These assertions encode the contract.
+  RUY_DCHECK_LE(0, start_row);
+  RUY_DCHECK_LE(start_row, end_row);
+  RUY_DCHECK_LT(end_row, dst->layout.rows + LhsLayout::kCols);
+  RUY_DCHECK_EQ((end_row - start_row) % LhsLayout::kCols, 0);
+  RUY_DCHECK_LE(0, start_col);
+  RUY_DCHECK_LE(start_col, end_col);
+  RUY_DCHECK_LT(end_col, dst->layout.cols + RhsLayout::kCols);
+  RUY_DCHECK_EQ((end_col - start_col) % RhsLayout::kCols, 0);
+#if RUY_OPT_ENABLED(RUY_OPT_FAT_KERNEL)
+  kernel.Run(lhs, rhs, spec, start_row, start_col, end_row, end_col, dst);
+#else
   for (int col = start_col; col < end_col; col += RhsLayout::kCols) {
     int block_end_col = std::min(col + RhsLayout::kCols, end_col);
     for (int row = start_row; row < end_row; row += LhsLayout::kCols) {
@@ -140,10 +155,26 @@ struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
            const PackedMatrix<RhsScalar>& rhs, const Spec& spec, int start_row,
            int start_col, int end_row, int end_col,
            Matrix<DstScalar>* dst) const {
+    // See the comment in RunKernelTyped. end_row may be larger than
+    // dst->layout.rows. It's the responsibility of the kernel to avoid
+    // overrunning dst boundaries, which we do here by computing
+    // clamped_end_row.
+    int clamped_end_row = std::min(end_row, dst->layout.rows);
+    int clamped_end_col = std::min(end_col, dst->layout.cols);
+    RUY_DCHECK_LE(0, start_row);
+    RUY_DCHECK_LE(start_row, clamped_end_row);
+    RUY_DCHECK_LE(clamped_end_row, dst->layout.rows);
+    RUY_DCHECK_LE(clamped_end_row, end_row);
+    RUY_DCHECK_LE(end_row - clamped_end_row, LhsLayout::kCols);
+    RUY_DCHECK_LE(0, start_col);
+    RUY_DCHECK_LE(start_col, clamped_end_col);
+    RUY_DCHECK_LE(clamped_end_col, dst->layout.cols);
+    RUY_DCHECK_LE(clamped_end_col, end_col);
+    RUY_DCHECK_LE(end_col - clamped_end_col, RhsLayout::kCols);
     gemmlowp::ScopedProfilingLabel label("Kernel (Standard Cpp)");
     const int depth = lhs.layout.rows;
-    for (int i = start_row; i < end_row; i++) {
-      for (int j = start_col; j < end_col; j++) {
+    for (int i = start_row; i < clamped_end_row; i++) {
+      for (int j = start_col; j < clamped_end_col; j++) {
         using AccumScalar = typename Spec::AccumScalar;
         AccumScalar accum = 0;
         for (int k = 0; k < depth; k++) {
@@ -167,8 +198,7 @@ struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
         accum += dst->zero_point;
         accum = std::min<AccumScalar>(accum, spec.clamp_max);
         accum = std::max<AccumScalar>(accum, spec.clamp_min);
-        relaxed_atomic_store(ElementPtr(dst, i, j),
-                             static_cast<DstScalar>(accum));
+        *ElementPtr(dst, i, j) = static_cast<DstScalar>(accum);
       }
     }
   }
@@ -186,16 +216,18 @@ struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
 RUY_INHERIT_KERNEL(Path::kStandardCpp, Path::kNeon)
 RUY_INHERIT_KERNEL(Path::kNeon, Path::kNeonDotprod)
 
-#if (defined __aarch64__) && (RUY_OPT_SET & RUY_OPT_ASM)
+#if (defined __aarch64__) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 #define RUY_ASM_FLAG_HAS_BIAS 0x1
 #define RUY_ASM_FLAG_HAS_LHS_SUMS 0x2
 #define RUY_ASM_FLAG_HAS_RHS_SUMS 0x4
 #define RUY_ASM_FLAG_HAS_PERCHANNEL 0x8
+#define RUY_ASM_FLAG_NEEDS_LEFT_SHIFT 0x10
 
 #define RUY_ASM_TYPE_ID_UINT8 1
 #define RUY_ASM_TYPE_ID_INT8 2
 #define RUY_ASM_TYPE_ID_INT16 3
+#define RUY_ASM_TYPE_ID_INT32 4
 
 template <typename DstScalar>
 struct DstTypeId {};
@@ -215,9 +247,14 @@ struct DstTypeId<std::int16_t> {
   static constexpr int kValue = RUY_ASM_TYPE_ID_INT16;
 };
 
+template <>
+struct DstTypeId<std::int32_t> {
+  static constexpr int kValue = RUY_ASM_TYPE_ID_INT32;
+};
+
 template <int LhsCols, int RhsCols>
 struct KernelParams8bit {
-  static constexpr int kMaxDstTypeSize = 2;
+  static constexpr int kMaxDstTypeSize = 4;
 
   const std::int32_t* bias;
   const std::int32_t* lhs_sums;
@@ -241,8 +278,8 @@ struct KernelParams8bit {
   std::int32_t rhs_stride;
   std::int32_t dst_stride;
   std::int32_t depth;
-  std::int16_t clamp_min;
-  std::int16_t clamp_max;
+  std::int32_t clamp_min;
+  std::int32_t clamp_max;
   std::uint8_t flags;
   std::uint8_t dst_type_id;
   const std::int32_t zero_data[LhsCols] = {0};
@@ -297,10 +334,14 @@ void MakeKernelParams8bit(const PackedMatrix<std::int8_t>& lhs,
   params->depth = depth;
   params->prod_zp_depth = lhs.zero_point * rhs.zero_point * depth;
   if (spec.multiplier_fixedpoint_perchannel) {
+    params->flags |= RUY_ASM_FLAG_NEEDS_LEFT_SHIFT;
     params->flags |= RUY_ASM_FLAG_HAS_PERCHANNEL;
     params->multiplier_fixedpoint = spec.multiplier_fixedpoint_perchannel;
     params->multiplier_exponent = spec.multiplier_exponent_perchannel;
   } else {
+    if (spec.multiplier_exponent > 0) {
+      params->flags |= RUY_ASM_FLAG_NEEDS_LEFT_SHIFT;
+    }
     params->multiplier_fixedpoint = params->multiplier_fixedpoint_buf;
     params->multiplier_exponent = params->multiplier_exponent_buf;
     for (int i = 0; i < LhsCols; i++) {
@@ -486,7 +527,7 @@ struct Kernel<Path::kNeonDotprod, float, float, float, BasicSpec<float, float>>
   }
 };
 
-#endif  // (defined __aarch64__) && (RUY_OPT_SET & RUY_OPT_ASM)
+#endif  // (defined __aarch64__) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 }  // namespace ruy
 

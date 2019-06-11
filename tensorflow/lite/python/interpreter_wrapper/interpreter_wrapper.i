@@ -25,6 +25,14 @@ limitations under the License.
 %}
 
 
+%typemap(in) TfLiteDelegate* {
+ auto pointer_as_long = PyLong_AsLong($input);
+ static_assert(sizeof(pointer_as_long)>=sizeof(TfLiteDelegate*),
+     "TFLiteDelegate must be representable as a long.");
+ $1 = reinterpret_cast<TfLiteDelegate*>(pointer_as_long);
+}
+
+
 %include "tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.h"
 
 namespace tflite {

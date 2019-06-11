@@ -24,7 +24,6 @@ import sys
 import six
 
 from tensorflow.python.autograph.operators import control_flow
-from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
@@ -107,6 +106,38 @@ class ForLoopTest(test.TestCase):
     test_fn()
     self.assertEqual(self.evaluate(v.read_value()), 1234)
 
+  def test_tf_iterator(self):
+    # graph-mode iterators are only supported inside tf.function.
+    @def_function.function(autograph=False)
+    def test_fn():
+      itr = iter(dataset_ops.Dataset.range(5))
+      return control_flow.for_stmt(
+          itr,
+          extra_test=None,
+          body=lambda i, s: (s * 10 + i,),
+          init_state=(constant_op.constant(0, dtype=dtypes.int64),))
+    s, = test_fn()
+    self.assertAllEqual(s, 1234)
+
+  @test_util.run_v2_only
+  def test_tf_iterator_no_state(self):
+    v = variables.Variable(0, dtype=dtypes.int64)
+
+    def stateless_with_side_effects(i):
+      v.assign(v.read_value() * 10 + i)
+
+    # graph-mode iterators are only supported inside tf.function.
+    @def_function.function(autograph=False)
+    def test_fn():
+      control_flow.for_stmt(
+          iter(dataset_ops.Dataset.range(5)),
+          extra_test=None,
+          body=stateless_with_side_effects,
+          init_state=())
+
+    test_fn()
+    self.assertEqual(self.evaluate(v.read_value()), 1234)
+
 
 class WhileLoopTest(test.TestCase):
 
@@ -164,7 +195,7 @@ class WhileLoopTest(test.TestCase):
   def test_python_infinite_loop(self):
     if __debug__:
       with test.mock.patch.object(control_flow, 'PYTHON_MAX_ITERATIONS', 100):
-        with self.assertRaisesRegexp(errors.ExecutionError, 'iteration limit'):
+        with self.assertRaisesRegexp(ValueError, 'iteration limit'):
           control_flow.while_stmt(
               test=lambda _: True,
               body=lambda i: (i + 1,),

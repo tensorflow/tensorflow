@@ -18,9 +18,10 @@ limitations under the License.
 #include <stdint.h>
 #include <sys/types.h>
 
+#include "public/gemmlowp.h"
 #include "tensorflow/lite/kernels/internal/common.h"
-#include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_float.h"
-#include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
+#include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_multithread.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/depthwise_conv.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -159,9 +160,14 @@ inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
   op_params.float_activation_min = output_activation_min;
   op_params.float_activation_max = output_activation_max;
 
-  DepthwiseConv(op_params, DimsToShape(input_dims), input_data,
-                DimsToShape(filter_dims), filter_data, DimsToShape(bias_dims),
-                bias_data, DimsToShape(output_dims), output_data);
+  const RuntimeShape output_shape = DimsToShape(output_dims);
+  const int output_height = output_shape.Dims(1);
+
+  DepthwiseConvImpl(op_params, DimsToShape(input_dims), input_data,
+                    DimsToShape(filter_dims), filter_data,
+                    DimsToShape(bias_dims), bias_data, output_shape,
+                    output_data, CpuFlags(), /*thread_start=*/0,
+                    /*thread_end=*/output_height, /*thread_dim=*/1);
 }
 
 inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
@@ -206,6 +212,75 @@ void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
                     depth_multiplier, output_data, output_dims);
 }
 
+template <DepthwiseConvOutputRounding kOutputRounding>
+inline void LegacyDepthwiseConvWithRounding(
+    const DepthwiseParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    uint8* output_data, int thread_start, int thread_end, int thread_dim) {
+  gemmlowp::ScopedProfilingLabel label("DepthwiseConv/8bit");
+  const int depth_multiplier = params.depth_multiplier;
+  const int32 output_activation_min = params.quantized_activation_min;
+  const int32 output_activation_max = params.quantized_activation_max;
+  const int dilation_width_factor = params.dilation_width_factor;
+  const int dilation_height_factor = params.dilation_height_factor;
+  TFLITE_DCHECK_GE(dilation_width_factor, 1);
+  TFLITE_DCHECK_GE(dilation_height_factor, 1);
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  const int output_depth = MatchingDim(filter_shape, 3, output_shape, 3);
+  const int input_depth = input_shape.Dims(3);
+  TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
+  TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
+
+// Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
+// Jetson TX-2. This compiler does not support the offsetof() macro.
+#if defined(__aarch64__) && !defined(GOOGLE_L4T)
+  const int stride_width = params.stride_width;
+  const int stride_height = params.stride_height;
+  const int pad_width = params.padding_values.width;
+  const int pad_height = params.padding_values.height;
+  const int output_shift = params.output_shift;
+
+  // Call kernel optimized for depthwise convolutions using 3x3 filters if
+  // parameters are supported.
+  if (depthwise_conv::Fast3x3FilterKernelSupported(
+          input_shape, filter_shape, stride_width, stride_height,
+          dilation_width_factor, dilation_height_factor, pad_width, pad_height,
+          depth_multiplier, output_shape, output_shift)) {
+    gemmlowp::ScopedProfilingLabel specialized_label("DepthwiseConv/8bit/3x3");
+    depthwise_conv::DepthwiseConv3x3Filter<kOutputRounding>(
+        params, input_shape, input_data, filter_shape, filter_data, bias_shape,
+        bias_data, output_shape, output_data, thread_start, thread_end,
+        thread_dim);
+    return;
+  }
+#endif
+
+  gemmlowp::ScopedProfilingLabel specialized_label(
+      "DepthwiseConv/8bit/General");
+  depthwise_conv::DepthwiseConvGeneral(params, input_shape, input_data,
+                                       filter_shape, filter_data, bias_shape,
+                                       bias_data, output_shape, output_data,
+                                       thread_start, thread_end, thread_dim);
+}
+
+inline void LegacyDepthwiseConvImpl(
+    const DepthwiseParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    uint8* output_data, int thread_start, int thread_end, int thread_dim) {
+  return LegacyDepthwiseConvWithRounding<
+      DepthwiseConvOutputRounding::kAwayFromZero>(
+      params, input_shape, input_data, filter_shape, filter_data, bias_shape,
+      bias_data, output_shape, output_data, thread_start, thread_end,
+      thread_dim);
+}
+
 inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
                           int32 input_offset, const uint8* filter_data,
                           const Dims<4>& filter_dims, int32 filter_offset,
@@ -239,11 +314,11 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
   const RuntimeShape output_shape = DimsToShape(output_dims);
   const int output_height = output_shape.Dims(1);
 
-  DepthwiseConvImpl(op_params, DimsToShape(input_dims), input_data,
-                    DimsToShape(filter_dims), filter_data,
-                    DimsToShape(bias_dims), bias_data, DimsToShape(output_dims),
-                    output_data, /*thread_start=*/0,
-                    /*thread_end=*/output_height, /*thread_dim=*/1);
+  LegacyDepthwiseConvImpl(
+      op_params, DimsToShape(input_dims), input_data, DimsToShape(filter_dims),
+      filter_data, DimsToShape(bias_dims), bias_data, DimsToShape(output_dims),
+      output_data, /*thread_start=*/0,
+      /*thread_end=*/output_height, /*thread_dim=*/1);
 }
 
 inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
@@ -328,9 +403,10 @@ struct LegacyDepthwiseConvWorkerTask : public gemmlowp::Task {
         thread_dim_(thread_dim) {}
 
   void Run() override {
-    DepthwiseConvImpl(params_, input_shape_, input_data_, filter_shape_,
-                      filter_data_, bias_shape_, bias_data_, output_shape_,
-                      output_data_, thread_start_, thread_end_, thread_dim_);
+    LegacyDepthwiseConvImpl(params_, input_shape_, input_data_, filter_shape_,
+                            filter_data_, bias_shape_, bias_data_,
+                            output_shape_, output_data_, thread_start_,
+                            thread_end_, thread_dim_);
   }
 
  private:
@@ -347,6 +423,20 @@ struct LegacyDepthwiseConvWorkerTask : public gemmlowp::Task {
   int thread_end_;
   int thread_dim_;
 };
+
+inline int HowManyConvThreads(const RuntimeShape& output_shape,
+                              const RuntimeShape& filter_shape,
+                              int thread_dim) {
+  constexpr int kMinMulPerThread = 8;
+  const int output_units = output_shape.Dims(thread_dim);
+  const int filter_height = filter_shape.Dims(1);
+  const int filter_width = filter_shape.Dims(2);
+  const int num_mul_per_unit =
+      FlatSizeSkipDim(output_shape, thread_dim) * filter_height * filter_width;
+  const int min_units_per_thread = kMinMulPerThread / num_mul_per_unit + 1;
+  int thread_count = output_units / min_units_per_thread;
+  return thread_count;
+}
 
 inline void DepthwiseConv(
     const DepthwiseParams& params, const RuntimeShape& input_shape,
@@ -380,10 +470,10 @@ inline void DepthwiseConv(
   thread_count = std::max(1, std::min(thread_count, max_threads));
 
   if (thread_count == 1) {
-    DepthwiseConvImpl(params, input_shape, input_data, filter_shape,
-                      filter_data, bias_shape, bias_data, output_shape,
-                      output_data, /*thread_start=*/0,
-                      /*thread_end=*/output_rows, /*thread_dim=*/1);
+    LegacyDepthwiseConvImpl(params, input_shape, input_data, filter_shape,
+                            filter_data, bias_shape, bias_data, output_shape,
+                            output_data, /*thread_start=*/0,
+                            /*thread_end=*/output_rows, /*thread_dim=*/1);
   } else {
     std::vector<gemmlowp::Task*> tasks(thread_count);
     int thread_start = 0;
@@ -502,6 +592,19 @@ inline void DepthwiseConvPerChannel(
   }
 }
 
+inline void DepthwiseConv(
+    const DepthwiseParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& filter_shape,
+    const float* filter_data, const RuntimeShape& bias_shape,
+    const float* bias_data, const RuntimeShape& output_shape,
+    float* output_data) {
+  DepthwiseConvImpl(params, input_shape, input_data, filter_shape, filter_data,
+                    bias_shape, bias_data, output_shape, output_data,
+                    CpuFlags(),
+                    /*thread_start=*/0,
+                    /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
+}
+
 inline void AddBiasAndEvalActivationFunction(const float* bias_data,
                                              const Dims<4>& bias_dims,
                                              float* array_data,
@@ -524,6 +627,18 @@ void AddBiasAndEvalActivationFunction(const float* bias_data,
   AddBiasAndEvalActivationFunction(bias_data, bias_dims, array_data, array_dims,
                                    output_activation_min,
                                    output_activation_max);
+}
+
+template <typename Lhs, typename Rhs, typename Result>
+void Gemm(const Eigen::MatrixBase<Lhs>& lhs, const Eigen::MatrixBase<Rhs>& rhs,
+          Eigen::MatrixBase<Result>* result) {
+  if (rhs.cols() == 1) {
+    gemmlowp::ScopedProfilingLabel label("GEMV");
+    result->col(0).noalias() = lhs * rhs.col(0);
+  } else {
+    gemmlowp::ScopedProfilingLabel label("GEMM");
+    result->noalias() = lhs * rhs;
+  }
 }
 
 inline void FullyConnected(
@@ -598,7 +713,280 @@ void FullyConnected(const float* input_data, const Dims<4>& input_dims,
                  output_data, output_dims);
 }
 
+struct GemmlowpOutputPipeline {
+  typedef gemmlowp::VectorMap<const int32, gemmlowp::VectorShape::Col>
+      ColVectorMap;
+  typedef std::tuple<gemmlowp::OutputStageBiasAddition<ColVectorMap>,
+                     gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent,
+                     gemmlowp::OutputStageClamp,
+                     gemmlowp::OutputStageSaturatingCastToUint8>
+      Pipeline;
+  static Pipeline MakeExp(const int32* bias_data, int output_rows,
+                          int32 output_offset, int32 output_multiplier,
+                          int output_left_shift, int32 output_activation_min,
+                          int32 output_activation_max) {
+    ColVectorMap bias_vector(bias_data, output_rows);
+    gemmlowp::OutputStageBiasAddition<ColVectorMap> bias_addition_stage;
+    bias_addition_stage.bias_vector = bias_vector;
+    gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent quantize_down_stage;
+    quantize_down_stage.result_offset_after_shift = output_offset;
+    quantize_down_stage.result_fixedpoint_multiplier = output_multiplier;
+    quantize_down_stage.result_exponent = output_left_shift;
+    gemmlowp::OutputStageClamp clamp_stage;
+    clamp_stage.min = output_activation_min;
+    clamp_stage.max = output_activation_max;
+    gemmlowp::OutputStageSaturatingCastToUint8 saturating_cast_stage;
+    return std::make_tuple(bias_addition_stage, quantize_down_stage,
+                           clamp_stage, saturating_cast_stage);
+  }
+};
+
+struct GemmlowpOutputPipelineInt8 {
+  typedef gemmlowp::VectorMap<const int32, gemmlowp::VectorShape::Col>
+      ColVectorMap;
+  typedef std::tuple<gemmlowp::OutputStageBiasAddition<ColVectorMap>,
+                     gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent,
+                     gemmlowp::OutputStageClamp,
+                     gemmlowp::OutputStageSaturatingCastToInt8>
+      Pipeline;
+  static Pipeline MakeExp(const int32* bias_data, int output_rows,
+                          int32 output_offset, int32 output_multiplier,
+                          int output_left_shift, int32 output_activation_min,
+                          int32 output_activation_max) {
+    ColVectorMap bias_vector(bias_data, output_rows);
+    gemmlowp::OutputStageBiasAddition<ColVectorMap> bias_addition_stage;
+    bias_addition_stage.bias_vector = bias_vector;
+    gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent quantize_down_stage;
+    quantize_down_stage.result_offset_after_shift = output_offset;
+    quantize_down_stage.result_fixedpoint_multiplier = output_multiplier;
+    quantize_down_stage.result_exponent = output_left_shift;
+    gemmlowp::OutputStageClamp clamp_stage;
+    clamp_stage.min = output_activation_min;
+    clamp_stage.max = output_activation_max;
+    gemmlowp::OutputStageSaturatingCastToInt8 saturating_cast_stage;
+    return std::make_tuple(bias_addition_stage, quantize_down_stage,
+                           clamp_stage, saturating_cast_stage);
+  }
+};
+
 #ifdef USE_NEON
+inline void LegacyFullyConnectedAsGEMVWorkerImpl(
+    const RuntimeShape& input_shape, const uint8* input_data,
+    int32 input_offset, const RuntimeShape& filter_shape,
+    const uint8* filter_data, int32 filter_offset,
+    const RuntimeShape& bias_shape, const int32* bias_data, int32 output_offset,
+    int32 output_multiplier, int output_shift, int32 output_activation_min,
+    int32 output_activation_max, const RuntimeShape& output_shape,
+    uint8* output_data, int row_start, int row_end) {
+  gemmlowp::ScopedProfilingLabel label("FullyConnectedAsGEMV/8bit");
+  TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
+  TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
+  const int output_dim_count = output_shape.DimensionsCount();
+  TFLITE_DCHECK_EQ(FlatSizeSkipDim(output_shape, output_dim_count - 1), 1);
+  const int input_size = FlatSizeSkipDim(input_shape, 0);
+  static constexpr int kPeel = 4;
+  const bool shift_left = (output_shift > 0);
+  for (int k = 0; k < input_size; k += 64) {
+    optimized_ops_preload_l1_stream(input_data + k);
+  }
+  for (int k = 0; k < kPeel * input_size; k += 64) {
+    optimized_ops_preload_l1_stream(filter_data + k);
+  }
+
+  TFLITE_DCHECK_GE(row_end - row_start, kPeel);
+
+  for (int out = row_start; out < row_end; out += kPeel) {
+    out = std::min(out, row_end - kPeel);
+    int32x4_t acc0 = vdupq_n_s32(0);
+    int32x4_t acc1 = acc0;
+    int32x4_t acc2 = acc0;
+    int32x4_t acc3 = acc0;
+    const int16x8_t input_offset_vec = vdupq_n_s16(input_offset);
+    const int16x8_t filter_offset_vec = vdupq_n_s16(filter_offset);
+    int in = 0;
+    for (; in <= input_size - 16; in += 16) {
+      const uint8x16_t input_val_u8 = vld1q_u8(input_data + in);
+      const uint8* filter_ptr = filter_data + in + out * input_size;
+      uint8x16_t filter_val_u8_0 = vld1q_u8(filter_ptr);
+      optimized_ops_preload_l1_stream(filter_ptr + 64);
+      filter_ptr += input_size;
+      uint8x16_t filter_val_u8_1 = vld1q_u8(filter_ptr);
+      optimized_ops_preload_l1_stream(filter_ptr + 64);
+      filter_ptr += input_size;
+      uint8x16_t filter_val_u8_2 = vld1q_u8(filter_ptr);
+      optimized_ops_preload_l1_stream(filter_ptr + 64);
+      filter_ptr += input_size;
+      uint8x16_t filter_val_u8_3 = vld1q_u8(filter_ptr);
+      optimized_ops_preload_l1_stream(filter_ptr + 64);
+      int16x8_t input_val_0, input_val_1;
+      uint8x8_t low = vget_low_u8(input_val_u8);
+      uint8x8_t high = vget_high_u8(input_val_u8);
+      input_val_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      input_val_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      input_val_0 = vaddq_s16(input_val_0, input_offset_vec);
+      input_val_1 = vaddq_s16(input_val_1, input_offset_vec);
+      low = vget_low_u8(filter_val_u8_0);
+      high = vget_high_u8(filter_val_u8_0);
+      int16x8_t filter_val_0_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      int16x8_t filter_val_0_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      filter_val_0_0 = vaddq_s16(filter_val_0_0, filter_offset_vec);
+      filter_val_0_1 = vaddq_s16(filter_val_0_1, filter_offset_vec);
+      low = vget_low_u8(filter_val_u8_1);
+      high = vget_high_u8(filter_val_u8_1);
+      int16x8_t filter_val_1_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      int16x8_t filter_val_1_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      filter_val_1_0 = vaddq_s16(filter_val_1_0, filter_offset_vec);
+      filter_val_1_1 = vaddq_s16(filter_val_1_1, filter_offset_vec);
+      low = vget_low_u8(filter_val_u8_2);
+      high = vget_high_u8(filter_val_u8_2);
+      int16x8_t filter_val_2_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      int16x8_t filter_val_2_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      filter_val_2_0 = vaddq_s16(filter_val_2_0, filter_offset_vec);
+      filter_val_2_1 = vaddq_s16(filter_val_2_1, filter_offset_vec);
+      low = vget_low_u8(filter_val_u8_3);
+      high = vget_high_u8(filter_val_u8_3);
+      int16x8_t filter_val_3_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      int16x8_t filter_val_3_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      filter_val_3_0 = vaddq_s16(filter_val_3_0, filter_offset_vec);
+      filter_val_3_1 = vaddq_s16(filter_val_3_1, filter_offset_vec);
+      acc0 = vmlal_s16(acc0, vget_low_s16(filter_val_0_0),
+                       vget_low_s16(input_val_0));
+      acc1 = vmlal_s16(acc1, vget_low_s16(filter_val_1_0),
+                       vget_low_s16(input_val_0));
+      acc2 = vmlal_s16(acc2, vget_low_s16(filter_val_2_0),
+                       vget_low_s16(input_val_0));
+      acc3 = vmlal_s16(acc3, vget_low_s16(filter_val_3_0),
+                       vget_low_s16(input_val_0));
+      acc0 = vmlal_s16(acc0, vget_low_s16(filter_val_0_1),
+                       vget_low_s16(input_val_1));
+      acc1 = vmlal_s16(acc1, vget_low_s16(filter_val_1_1),
+                       vget_low_s16(input_val_1));
+      acc2 = vmlal_s16(acc2, vget_low_s16(filter_val_2_1),
+                       vget_low_s16(input_val_1));
+      acc3 = vmlal_s16(acc3, vget_low_s16(filter_val_3_1),
+                       vget_low_s16(input_val_1));
+      acc0 = vmlal_s16(acc0, vget_high_s16(filter_val_0_0),
+                       vget_high_s16(input_val_0));
+      acc1 = vmlal_s16(acc1, vget_high_s16(filter_val_1_0),
+                       vget_high_s16(input_val_0));
+      acc2 = vmlal_s16(acc2, vget_high_s16(filter_val_2_0),
+                       vget_high_s16(input_val_0));
+      acc3 = vmlal_s16(acc3, vget_high_s16(filter_val_3_0),
+                       vget_high_s16(input_val_0));
+      acc0 = vmlal_s16(acc0, vget_high_s16(filter_val_0_1),
+                       vget_high_s16(input_val_1));
+      acc1 = vmlal_s16(acc1, vget_high_s16(filter_val_1_1),
+                       vget_high_s16(input_val_1));
+      acc2 = vmlal_s16(acc2, vget_high_s16(filter_val_2_1),
+                       vget_high_s16(input_val_1));
+      acc3 = vmlal_s16(acc3, vget_high_s16(filter_val_3_1),
+                       vget_high_s16(input_val_1));
+    }
+    for (; in <= input_size - 8; in += 8) {
+      const uint8x8_t input_val_u8 = vld1_u8(input_data + in);
+      const uint8* filter_ptr = filter_data + in + out * input_size;
+      uint8x8_t filter_val_u8_0 = vld1_u8(filter_ptr);
+      filter_ptr += input_size;
+      uint8x8_t filter_val_u8_1 = vld1_u8(filter_ptr);
+      filter_ptr += input_size;
+      uint8x8_t filter_val_u8_2 = vld1_u8(filter_ptr);
+      filter_ptr += input_size;
+      uint8x8_t filter_val_u8_3 = vld1_u8(filter_ptr);
+      int16x8_t input_val = vreinterpretq_s16_u16(vmovl_u8(input_val_u8));
+      input_val = vaddq_s16(input_val, input_offset_vec);
+      int16x8_t filter_val_0 = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8_0));
+      filter_val_0 = vaddq_s16(filter_val_0, filter_offset_vec);
+      int16x8_t filter_val_1 = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8_1));
+      filter_val_1 = vaddq_s16(filter_val_1, filter_offset_vec);
+      int16x8_t filter_val_2 = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8_2));
+      filter_val_2 = vaddq_s16(filter_val_2, filter_offset_vec);
+      int16x8_t filter_val_3 = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8_3));
+      filter_val_3 = vaddq_s16(filter_val_3, filter_offset_vec);
+      acc0 =
+          vmlal_s16(acc0, vget_low_s16(filter_val_0), vget_low_s16(input_val));
+      acc1 =
+          vmlal_s16(acc1, vget_low_s16(filter_val_1), vget_low_s16(input_val));
+      acc2 =
+          vmlal_s16(acc2, vget_low_s16(filter_val_2), vget_low_s16(input_val));
+      acc3 =
+          vmlal_s16(acc3, vget_low_s16(filter_val_3), vget_low_s16(input_val));
+      acc0 = vmlal_s16(acc0, vget_high_s16(filter_val_0),
+                       vget_high_s16(input_val));
+      acc1 = vmlal_s16(acc1, vget_high_s16(filter_val_1),
+                       vget_high_s16(input_val));
+      acc2 = vmlal_s16(acc2, vget_high_s16(filter_val_2),
+                       vget_high_s16(input_val));
+      acc3 = vmlal_s16(acc3, vget_high_s16(filter_val_3),
+                       vget_high_s16(input_val));
+    }
+    if (in < input_size) {
+      int32 buf[16];
+      vst1q_s32(buf + 0, acc0);
+      vst1q_s32(buf + 4, acc1);
+      vst1q_s32(buf + 8, acc2);
+      vst1q_s32(buf + 12, acc3);
+      for (; in < input_size; in++) {
+        int lane = (in + 8 - input_size) % 4;
+        const int32 input_val = input_data[in] + input_offset;
+        for (int k = 0; k < kPeel; k++) {
+          int32 filter_val =
+              filter_data[in + (out + k) * input_size] + filter_offset;
+          buf[lane + 4 * k] += filter_val * input_val;
+        }
+      }
+      acc0 = vld1q_s32(buf + 0);
+      acc1 = vld1q_s32(buf + 4);
+      acc2 = vld1q_s32(buf + 8);
+      acc3 = vld1q_s32(buf + 12);
+    }
+
+    // Horizontally reduce accumulators
+    int32x2_t pairwise_reduced_acc_0 =
+        vpadd_s32(vget_low_s32(acc0), vget_high_s32(acc0));
+    int32x2_t pairwise_reduced_acc_1 =
+        vpadd_s32(vget_low_s32(acc1), vget_high_s32(acc1));
+    int32x2_t pairwise_reduced_acc_2 =
+        vpadd_s32(vget_low_s32(acc2), vget_high_s32(acc2));
+    int32x2_t pairwise_reduced_acc_3 =
+        vpadd_s32(vget_low_s32(acc3), vget_high_s32(acc3));
+    const int32x2_t reduced_lo =
+        vpadd_s32(pairwise_reduced_acc_0, pairwise_reduced_acc_1);
+    const int32x2_t reduced_hi =
+        vpadd_s32(pairwise_reduced_acc_2, pairwise_reduced_acc_3);
+    int32x4_t reduced = vcombine_s32(reduced_lo, reduced_hi);
+    // Add bias values.
+    int32x4_t bias_vec = vld1q_s32(bias_data + out);
+    reduced = vaddq_s32(reduced, bias_vec);
+    if (shift_left) {
+      const int32 multiplier_power_of_two = 1 << output_shift;
+      reduced = vmulq_n_s32(reduced, multiplier_power_of_two);
+      reduced = vqrdmulhq_n_s32(reduced, output_multiplier);
+    } else {
+      // Multiply by the fixed-point multiplier.
+      reduced = vqrdmulhq_n_s32(reduced, output_multiplier);
+      // Rounding-shift-right.
+      using gemmlowp::RoundingDivideByPOT;
+      reduced = RoundingDivideByPOT(reduced, -output_shift);
+    }
+    // Add the output offset.
+    const int32x4_t output_offset_vec = vdupq_n_s32(output_offset);
+    reduced = vaddq_s32(reduced, output_offset_vec);
+    // Narrow values down to 16 bit signed.
+    const int16x4_t res16 = vqmovn_s32(reduced);
+    // Narrow values down to 8 bit unsigned, saturating.
+    uint8x8_t res8 = vqmovun_s16(vcombine_s16(res16, res16));
+    // Apply the clamping from the activation function
+    res8 = vmax_u8(res8, vdup_n_u8(output_activation_min));
+    res8 = vmin_u8(res8, vdup_n_u8(output_activation_max));
+    // Store results to destination.
+    vst1_lane_u8(output_data + out + 0, res8, 0);
+    vst1_lane_u8(output_data + out + 1, res8, 1);
+    vst1_lane_u8(output_data + out + 2, res8, 2);
+    vst1_lane_u8(output_data + out + 3, res8, 3);
+  }
+}
+
 struct LegacyFullyConnectedAsGEMVWorkerTask : public gemmlowp::Task {
   LegacyFullyConnectedAsGEMVWorkerTask(
       const RuntimeShape& input_shape, const uint8* input_data,
@@ -628,7 +1016,7 @@ struct LegacyFullyConnectedAsGEMVWorkerTask : public gemmlowp::Task {
         row_end_(row_end) {}
 
   void Run() override {
-    FullyConnectedAsGEMVWorkerImpl(
+    LegacyFullyConnectedAsGEMVWorkerImpl(
         input_shape_, input_data_, input_offset_, filter_shape_, filter_data_,
         filter_offset_, bias_shape_, bias_data_, output_offset_,
         output_multiplier_, output_shift_, output_activation_min_,
@@ -673,7 +1061,7 @@ inline void FullyConnectedAsGEMV(
   if (thread_count == 1) {
     // Single-thread case: do the computation on the current thread, don't
     // use a threadpool
-    FullyConnectedAsGEMVWorkerImpl(
+    LegacyFullyConnectedAsGEMVWorkerImpl(
         input_shape, input_data, input_offset, filter_shape, filter_data,
         filter_offset, bias_shape, bias_data, output_offset, output_multiplier,
         output_shift, output_activation_min, output_activation_max,
@@ -759,6 +1147,491 @@ inline void FullyConnected(
       gemmlowp_context, filter_matrix, input_matrix, &output_matrix,
       filter_offset, input_offset, output_pipeline);
 }
+
+#ifdef GEMMLOWP_NEON
+// In the common case of batch size 1, a fully-connected node degenerates
+// to a matrix*vector product. LSTM cells contain a fully-connected node;
+// when quantized, this becomes a special type of GEMV operation where
+// the output is 16bit-quantized, thus needs its own special path.
+inline void GEMVForLstmCell(const RuntimeShape& input_shape,
+                            const uint8* input_data,
+                            const RuntimeShape& weights_shape,
+                            const uint8* weights_data, uint8 weights_zero_point,
+                            const RuntimeShape& bias_shape,
+                            const int32* bias_data, int32 accum_multiplier,
+                            int accum_shift, const RuntimeShape& output_shape,
+                            int16* output_data) {
+  gemmlowp::ScopedProfilingLabel label("GEMVForLstmCell");
+  TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
+  TFLITE_DCHECK_GE(weights_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
+  const int output_dim_count = output_shape.DimensionsCount();
+  const int weights_dim_count = weights_shape.DimensionsCount();
+  TFLITE_DCHECK_EQ(FlatSizeSkipDim(output_shape, output_dim_count - 1), 1);
+  const int input_size = FlatSizeSkipDim(input_shape, 0);
+  const int output_size = MatchingDim(weights_shape, weights_dim_count - 2,
+                                      output_shape, output_dim_count - 1);
+  // This special fast path for quantized LSTM cells does not try to support
+  // odd sizes that we haven't encountered in any LSTM cell, that would
+  // require special code (that would go untested until any LSTM cell
+  // exercises it). We just guard our assumptions about size evenness with
+  // the following assertions.
+  TFLITE_DCHECK(!(output_size % 4));
+  TFLITE_DCHECK(!(input_size % 8));
+  const int32* bias_ptr = bias_data;
+  int16* output_ptr = output_data;
+  for (int out = 0; out < output_size; out += 4) {
+    int32x4_t acc_0 = vdupq_n_s32(0);
+    int32x4_t acc_1 = vdupq_n_s32(0);
+    int32x4_t acc_2 = vdupq_n_s32(0);
+    int32x4_t acc_3 = vdupq_n_s32(0);
+    const int16x8_t input_offset_vec = vdupq_n_s16(-128);
+    const int16x8_t weights_offset_vec = vdupq_n_s16(-weights_zero_point);
+    int in = 0;
+    // Handle 16 levels of depth at a time.
+    for (; in <= input_size - 16; in += 16) {
+      const uint8x16_t input_val_u8 = vld1q_u8(input_data + in);
+      const uint8* weights_ptr = weights_data + in + out * input_size;
+      uint8x16_t weights_val_u8_0 = vld1q_u8(weights_ptr + 0 * input_size);
+      uint8x16_t weights_val_u8_1 = vld1q_u8(weights_ptr + 1 * input_size);
+      uint8x16_t weights_val_u8_2 = vld1q_u8(weights_ptr + 2 * input_size);
+      uint8x16_t weights_val_u8_3 = vld1q_u8(weights_ptr + 3 * input_size);
+      int16x8_t input_val_0, input_val_1;
+      const uint8x8_t low = vget_low_u8(input_val_u8);
+      const uint8x8_t high = vget_high_u8(input_val_u8);
+      input_val_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      input_val_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      input_val_0 = vaddq_s16(input_val_0, input_offset_vec);
+      input_val_1 = vaddq_s16(input_val_1, input_offset_vec);
+      int16x8_t weights_val_0_0, weights_val_1_0, weights_val_2_0,
+          weights_val_3_0;
+      int16x8_t weights_val_0_1, weights_val_1_1, weights_val_2_1,
+          weights_val_3_1;
+      weights_val_0_0 = vaddq_s16(
+          vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(weights_val_u8_0))),
+          weights_offset_vec);
+      weights_val_0_1 = vaddq_s16(
+          vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(weights_val_u8_0))),
+          weights_offset_vec);
+      weights_val_1_0 = vaddq_s16(
+          vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(weights_val_u8_1))),
+          weights_offset_vec);
+      weights_val_1_1 = vaddq_s16(
+          vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(weights_val_u8_1))),
+          weights_offset_vec);
+      weights_val_2_0 = vaddq_s16(
+          vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(weights_val_u8_2))),
+          weights_offset_vec);
+      weights_val_2_1 = vaddq_s16(
+          vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(weights_val_u8_2))),
+          weights_offset_vec);
+      weights_val_3_0 = vaddq_s16(
+          vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(weights_val_u8_3))),
+          weights_offset_vec);
+      weights_val_3_1 = vaddq_s16(
+          vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(weights_val_u8_3))),
+          weights_offset_vec);
+      acc_0 = vmlal_s16(acc_0, vget_low_s16(weights_val_0_0),
+                        vget_low_s16(input_val_0));
+      acc_1 = vmlal_s16(acc_1, vget_low_s16(weights_val_1_0),
+                        vget_low_s16(input_val_0));
+      acc_2 = vmlal_s16(acc_2, vget_low_s16(weights_val_2_0),
+                        vget_low_s16(input_val_0));
+      acc_3 = vmlal_s16(acc_3, vget_low_s16(weights_val_3_0),
+                        vget_low_s16(input_val_0));
+      acc_0 = vmlal_s16(acc_0, vget_high_s16(weights_val_0_0),
+                        vget_high_s16(input_val_0));
+      acc_1 = vmlal_s16(acc_1, vget_high_s16(weights_val_1_0),
+                        vget_high_s16(input_val_0));
+      acc_2 = vmlal_s16(acc_2, vget_high_s16(weights_val_2_0),
+                        vget_high_s16(input_val_0));
+      acc_3 = vmlal_s16(acc_3, vget_high_s16(weights_val_3_0),
+                        vget_high_s16(input_val_0));
+      acc_0 = vmlal_s16(acc_0, vget_low_s16(weights_val_0_1),
+                        vget_low_s16(input_val_1));
+      acc_1 = vmlal_s16(acc_1, vget_low_s16(weights_val_1_1),
+                        vget_low_s16(input_val_1));
+      acc_2 = vmlal_s16(acc_2, vget_low_s16(weights_val_2_1),
+                        vget_low_s16(input_val_1));
+      acc_3 = vmlal_s16(acc_3, vget_low_s16(weights_val_3_1),
+                        vget_low_s16(input_val_1));
+      acc_0 = vmlal_s16(acc_0, vget_high_s16(weights_val_0_1),
+                        vget_high_s16(input_val_1));
+      acc_1 = vmlal_s16(acc_1, vget_high_s16(weights_val_1_1),
+                        vget_high_s16(input_val_1));
+      acc_2 = vmlal_s16(acc_2, vget_high_s16(weights_val_2_1),
+                        vget_high_s16(input_val_1));
+      acc_3 = vmlal_s16(acc_3, vget_high_s16(weights_val_3_1),
+                        vget_high_s16(input_val_1));
+    }
+    // Handle 8 levels of depth at a time.
+    for (; in < input_size; in += 8) {
+      const uint8x8_t input_val_u8 = vld1_u8(input_data + in);
+      const uint8* weights_ptr = weights_data + in + out * input_size;
+      uint8x8_t weights_val_u8_0 = vld1_u8(weights_ptr + 0 * input_size);
+      uint8x8_t weights_val_u8_1 = vld1_u8(weights_ptr + 1 * input_size);
+      uint8x8_t weights_val_u8_2 = vld1_u8(weights_ptr + 2 * input_size);
+      uint8x8_t weights_val_u8_3 = vld1_u8(weights_ptr + 3 * input_size);
+      int16x8_t input_val;
+      input_val = vreinterpretq_s16_u16(vmovl_u8(input_val_u8));
+      input_val = vaddq_s16(input_val, input_offset_vec);
+      int16x8_t weights_val_0, weights_val_1, weights_val_2, weights_val_3;
+      weights_val_0 =
+          vaddq_s16(vreinterpretq_s16_u16(vmovl_u8(weights_val_u8_0)),
+                    weights_offset_vec);
+      weights_val_1 =
+          vaddq_s16(vreinterpretq_s16_u16(vmovl_u8(weights_val_u8_1)),
+                    weights_offset_vec);
+      weights_val_2 =
+          vaddq_s16(vreinterpretq_s16_u16(vmovl_u8(weights_val_u8_2)),
+                    weights_offset_vec);
+      weights_val_3 =
+          vaddq_s16(vreinterpretq_s16_u16(vmovl_u8(weights_val_u8_3)),
+                    weights_offset_vec);
+      acc_0 = vmlal_s16(acc_0, vget_low_s16(weights_val_0),
+                        vget_low_s16(input_val));
+      acc_1 = vmlal_s16(acc_1, vget_low_s16(weights_val_1),
+                        vget_low_s16(input_val));
+      acc_2 = vmlal_s16(acc_2, vget_low_s16(weights_val_2),
+                        vget_low_s16(input_val));
+      acc_3 = vmlal_s16(acc_3, vget_low_s16(weights_val_3),
+                        vget_low_s16(input_val));
+      acc_0 = vmlal_s16(acc_0, vget_high_s16(weights_val_0),
+                        vget_high_s16(input_val));
+      acc_1 = vmlal_s16(acc_1, vget_high_s16(weights_val_1),
+                        vget_high_s16(input_val));
+      acc_2 = vmlal_s16(acc_2, vget_high_s16(weights_val_2),
+                        vget_high_s16(input_val));
+      acc_3 = vmlal_s16(acc_3, vget_high_s16(weights_val_3),
+                        vget_high_s16(input_val));
+    }
+    // Horizontally reduce accumulators
+    int32x2_t pairwise_reduced_acc_0, pairwise_reduced_acc_1,
+        pairwise_reduced_acc_2, pairwise_reduced_acc_3;
+    pairwise_reduced_acc_0 =
+        vpadd_s32(vget_low_s32(acc_0), vget_high_s32(acc_0));
+    pairwise_reduced_acc_1 =
+        vpadd_s32(vget_low_s32(acc_1), vget_high_s32(acc_1));
+    pairwise_reduced_acc_2 =
+        vpadd_s32(vget_low_s32(acc_2), vget_high_s32(acc_2));
+    pairwise_reduced_acc_3 =
+        vpadd_s32(vget_low_s32(acc_3), vget_high_s32(acc_3));
+    const int32x2_t reduced_lo =
+        vpadd_s32(pairwise_reduced_acc_0, pairwise_reduced_acc_1);
+    const int32x2_t reduced_hi =
+        vpadd_s32(pairwise_reduced_acc_2, pairwise_reduced_acc_3);
+    int32x4_t reduced = vcombine_s32(reduced_lo, reduced_hi);
+    // Add bias values.
+    int32x4_t bias_vec = vld1q_s32(bias_ptr);
+    bias_ptr += 4;
+    reduced = vaddq_s32(reduced, bias_vec);
+    int left_shift = accum_shift > 0 ? accum_shift : 0;
+    int right_shift = accum_shift > 0 ? 0 : -accum_shift;
+    reduced = vshlq_s32(reduced, vdupq_n_s32(left_shift));
+    // Multiply by the fixed-point multiplier.
+    reduced = vqrdmulhq_n_s32(reduced, accum_multiplier);
+    // Rounding-shift-right.
+    using gemmlowp::RoundingDivideByPOT;
+    reduced = RoundingDivideByPOT(reduced, right_shift);
+    // Narrow values down to 16 bit signed.
+    const int16x4_t res16 = vqmovn_s32(reduced);
+    vst1_s16(output_ptr, res16);
+    output_ptr += 4;
+  }
+}
+#endif
+
+#ifdef GEMMLOWP_NEON
+inline void GEMVForLstmCellWithSymmetricRange(
+    const RuntimeShape& input_shape, const uint8* input_data,
+    const RuntimeShape& weights_shape, const uint8* weights_data,
+    const RuntimeShape& bias_shape, const int32* bias_data,
+    int32 accum_multiplier, int accum_shift, const RuntimeShape& output_shape,
+    int16* output_data) {
+  gemmlowp::ScopedProfilingLabel label("GEMVForLstmCellWithSymmetricRange");
+  TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
+  TFLITE_DCHECK_GE(weights_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
+  const int output_dim_count = output_shape.DimensionsCount();
+  const int weights_dim_count = weights_shape.DimensionsCount();
+  TFLITE_DCHECK_EQ(FlatSizeSkipDim(output_shape, output_dim_count - 1), 1);
+  const int input_size = FlatSizeSkipDim(input_shape, 0);
+  const int output_size = MatchingDim(weights_shape, weights_dim_count - 2,
+                                      output_shape, output_dim_count - 1);
+  // This special fast path for quantized LSTM cells does not try to support
+  // odd sizes that we haven't encountered in any LSTM cell, that would
+  // require special code (that would go untested until any LSTM cell
+  // exercises it). We just guard our assumptions about size evenness with
+  // the following assertions.
+  TFLITE_DCHECK(!(output_size % 4));
+  TFLITE_DCHECK(!(input_size % 64));
+  const int32* bias_ptr = bias_data;
+  int16* output_ptr = output_data;
+  const uint8x16_t signbit = vdupq_n_u8(0x80);
+  for (int in = 0; in < input_size; in += 32) {
+    optimized_ops_preload_l1_keep(input_data + in);
+  }
+  const int left_shift = accum_shift > 0 ? accum_shift : 0;
+  const int right_shift = accum_shift > 0 ? 0 : -accum_shift;
+  for (int out = 0; out < output_size; out += 4) {
+    // Load the bias values
+    int32x4_t bias_vec = vld1q_s32(bias_ptr);
+    bias_ptr += 4;
+
+    // Clear accumulators. We use 2 accumulator registers per row,
+    // for 4 rows. row_accumRN is the N-th accumulator for row R.
+    int32x4_t row_accum00 = vdupq_n_s32(0);
+    int32x4_t row_accum01 = vdupq_n_s32(0);
+    int32x4_t row_accum10 = vdupq_n_s32(0);
+    int32x4_t row_accum11 = vdupq_n_s32(0);
+    int32x4_t row_accum20 = vdupq_n_s32(0);
+    int32x4_t row_accum21 = vdupq_n_s32(0);
+    int32x4_t row_accum30 = vdupq_n_s32(0);
+    int32x4_t row_accum31 = vdupq_n_s32(0);
+
+    // kReadAhead parametrizes how far ahead we prefetch weights into L1 cache.
+    const int kReadAhead = 512;
+    // Prefetch the first weights values.
+    for (int k = 0; k < kReadAhead; k += 64) {
+      optimized_ops_preload_l1_stream(weights_data + (out + 0) * input_size +
+                                      k);
+      optimized_ops_preload_l1_stream(weights_data + (out + 1) * input_size +
+                                      k);
+      optimized_ops_preload_l1_stream(weights_data + (out + 2) * input_size +
+                                      k);
+      optimized_ops_preload_l1_stream(weights_data + (out + 3) * input_size +
+                                      k);
+    }
+    // Loop along the rows, handling 64 bytes per iteration because that's
+    // cache line size on most current ARM-architecture CPUs.
+    for (int in = 0; in < input_size; in += 64) {
+      // Prefetch some future weights values.
+      optimized_ops_preload_l1_stream(weights_data + (out + 0) * input_size +
+                                      in + kReadAhead);
+      optimized_ops_preload_l1_stream(weights_data + (out + 1) * input_size +
+                                      in + kReadAhead);
+      optimized_ops_preload_l1_stream(weights_data + (out + 2) * input_size +
+                                      in + kReadAhead);
+      optimized_ops_preload_l1_stream(weights_data + (out + 3) * input_size +
+                                      in + kReadAhead);
+
+      // We will use 2 local 16-bit accumulators per row, for 2 rows.
+      // See below (*) for the rationale of processing only 2 rows at a time.
+      // local_accumRN is the N-th local accumulator for row R.
+      int16x8_t local_accum00;
+      int16x8_t local_accum01;
+      int16x8_t local_accum10;
+      int16x8_t local_accum11;
+
+      // Load 64 bytes of input activations values. Convert to signed int8
+      // by flipping the sign bit (i.e. subtracting 128, the required
+      // zero_point value).
+      int8x16_t input0 = vreinterpretq_s8_u8(
+          veorq_u8(signbit, vld1q_u8(input_data + in + 16 * 0)));
+      int8x16_t input1 = vreinterpretq_s8_u8(
+          veorq_u8(signbit, vld1q_u8(input_data + in + 16 * 1)));
+      int8x16_t input2 = vreinterpretq_s8_u8(
+          veorq_u8(signbit, vld1q_u8(input_data + in + 16 * 2)));
+      int8x16_t input3 = vreinterpretq_s8_u8(
+          veorq_u8(signbit, vld1q_u8(input_data + in + 16 * 3)));
+
+      // Beginning of the core accumulation. Notice how while we have 4
+      // rows to process, this code is taking care of only 2 rows at a time,
+      // thus being divided into two parts looking similar ("Rows 0 and 1" and
+      // "Rows 2 and 3").
+      //
+      // (*) The rationale for handling only 2 rows at a time is to avoid
+      // cache aliasing issues on 4-way set-associative L1-cache CPUs, such
+      // as Cortex-A53. With sufficiently large, power-of-two matrix dimensions,
+      // we may find ourselves in a situation where rows alias each other in
+      // the L1 cache, and moreover may also mutually alias with the input
+      // activations. If we try to load 4 rows at a time, together with the
+      // input activations, that may be 5 mutually-aliasing vectors, resulting
+      // in constant mutual eviction from L1 cache. Handling 2 rows at a time
+      // here largely mitigates these issues, and seems at least to be very
+      // effective on Cortex-A53:
+      //                          Before       After
+      // big (Cortex-A73)         2.85 ms      2.85 ms
+      // little (Cortex-A53)      11.0 ms      5.16 ms
+
+      // Rows 0 and 1:
+      // Load 64 bytes of weights values from each row. Convert to signed int8
+      // by flipping the sign bit (i.e. subtracting 128, the required
+      // zero_point value).
+      int8x16_t weights00 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 0) * input_size + in + 16 * 0)));
+      int8x16_t weights01 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 0) * input_size + in + 16 * 1)));
+      int8x16_t weights02 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 0) * input_size + in + 16 * 2)));
+      int8x16_t weights03 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 0) * input_size + in + 16 * 3)));
+      int8x16_t weights10 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 1) * input_size + in + 16 * 0)));
+      int8x16_t weights11 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 1) * input_size + in + 16 * 1)));
+      int8x16_t weights12 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 1) * input_size + in + 16 * 2)));
+      int8x16_t weights13 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 1) * input_size + in + 16 * 3)));
+      // Multiply-accumulate into local 16-bit accumulators.
+      // We can accumulate two products without overflow because weights are
+      // required to never be -128, so each product is at most 127^2 in absolute
+      // value.
+      local_accum00 = vmull_s8(vget_low_s8(weights00), vget_low_s8(input0));
+      local_accum01 = vmull_s8(vget_low_s8(weights01), vget_low_s8(input1));
+      local_accum10 = vmull_s8(vget_low_s8(weights10), vget_low_s8(input0));
+      local_accum11 = vmull_s8(vget_low_s8(weights11), vget_low_s8(input1));
+      local_accum00 = vmlal_s8(local_accum00, vget_high_s8(weights00),
+                               vget_high_s8(input0));
+      local_accum01 = vmlal_s8(local_accum01, vget_high_s8(weights01),
+                               vget_high_s8(input1));
+      local_accum10 = vmlal_s8(local_accum10, vget_high_s8(weights10),
+                               vget_high_s8(input0));
+      local_accum11 = vmlal_s8(local_accum11, vget_high_s8(weights11),
+                               vget_high_s8(input1));
+      // Pairwise add and accumulate into 32-bit accumulators
+      row_accum00 = vpadalq_s16(row_accum00, local_accum00);
+      row_accum01 = vpadalq_s16(row_accum01, local_accum01);
+      row_accum10 = vpadalq_s16(row_accum10, local_accum10);
+      row_accum11 = vpadalq_s16(row_accum11, local_accum11);
+      // Multiply-accumulate into local 16-bit accumulators.
+      // We can accumulate two products without overflow because weights are
+      // required to never be -128, so each product is at most 127^2 in absolute
+      // value.
+      local_accum00 = vmull_s8(vget_low_s8(weights02), vget_low_s8(input2));
+      local_accum01 = vmull_s8(vget_low_s8(weights03), vget_low_s8(input3));
+      local_accum10 = vmull_s8(vget_low_s8(weights12), vget_low_s8(input2));
+      local_accum11 = vmull_s8(vget_low_s8(weights13), vget_low_s8(input3));
+      local_accum00 = vmlal_s8(local_accum00, vget_high_s8(weights02),
+                               vget_high_s8(input2));
+      local_accum01 = vmlal_s8(local_accum01, vget_high_s8(weights03),
+                               vget_high_s8(input3));
+      local_accum10 = vmlal_s8(local_accum10, vget_high_s8(weights12),
+                               vget_high_s8(input2));
+      local_accum11 = vmlal_s8(local_accum11, vget_high_s8(weights13),
+                               vget_high_s8(input3));
+      // Pairwise add and accumulate into 32-bit accumulators
+      row_accum00 = vpadalq_s16(row_accum00, local_accum00);
+      row_accum01 = vpadalq_s16(row_accum01, local_accum01);
+      row_accum10 = vpadalq_s16(row_accum10, local_accum10);
+      row_accum11 = vpadalq_s16(row_accum11, local_accum11);
+
+      // Rows 2 and 3:
+      // Load 64 bytes of weights values from each row. Convert to signed int8
+      // by flipping the sign bit (i.e. subtracting 128, the required
+      // zero_point value).
+      weights00 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 2) * input_size + in + 16 * 0)));
+      weights01 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 2) * input_size + in + 16 * 1)));
+      weights02 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 2) * input_size + in + 16 * 2)));
+      weights03 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 2) * input_size + in + 16 * 3)));
+      weights10 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 3) * input_size + in + 16 * 0)));
+      weights11 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 3) * input_size + in + 16 * 1)));
+      weights12 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 3) * input_size + in + 16 * 2)));
+      weights13 = vreinterpretq_s8_u8(veorq_u8(
+          signbit,
+          vld1q_u8(weights_data + (out + 3) * input_size + in + 16 * 3)));
+      // Multiply-accumulate into local 16-bit accumulators.
+      // We can accumulate two products without overflow because weights are
+      // required to never be -128, so each product is at most 127^2 in absolute
+      // value.
+      local_accum00 = vmull_s8(vget_low_s8(weights00), vget_low_s8(input0));
+      local_accum01 = vmull_s8(vget_low_s8(weights01), vget_low_s8(input1));
+      local_accum10 = vmull_s8(vget_low_s8(weights10), vget_low_s8(input0));
+      local_accum11 = vmull_s8(vget_low_s8(weights11), vget_low_s8(input1));
+      local_accum00 = vmlal_s8(local_accum00, vget_high_s8(weights00),
+                               vget_high_s8(input0));
+      local_accum01 = vmlal_s8(local_accum01, vget_high_s8(weights01),
+                               vget_high_s8(input1));
+      local_accum10 = vmlal_s8(local_accum10, vget_high_s8(weights10),
+                               vget_high_s8(input0));
+      local_accum11 = vmlal_s8(local_accum11, vget_high_s8(weights11),
+                               vget_high_s8(input1));
+      // Pairwise add and accumulate into 32-bit accumulators
+      row_accum20 = vpadalq_s16(row_accum20, local_accum00);
+      row_accum21 = vpadalq_s16(row_accum21, local_accum01);
+      row_accum30 = vpadalq_s16(row_accum30, local_accum10);
+      row_accum31 = vpadalq_s16(row_accum31, local_accum11);
+      // Multiply-accumulate into local 16-bit accumulators.
+      // We can accumulate two products without overflow because weights are
+      // required to never be -128, so each product is at most 127^2 in absolute
+      // value.
+      local_accum00 = vmull_s8(vget_low_s8(weights02), vget_low_s8(input2));
+      local_accum01 = vmull_s8(vget_low_s8(weights03), vget_low_s8(input3));
+      local_accum10 = vmull_s8(vget_low_s8(weights12), vget_low_s8(input2));
+      local_accum11 = vmull_s8(vget_low_s8(weights13), vget_low_s8(input3));
+      local_accum00 = vmlal_s8(local_accum00, vget_high_s8(weights02),
+                               vget_high_s8(input2));
+      local_accum01 = vmlal_s8(local_accum01, vget_high_s8(weights03),
+                               vget_high_s8(input3));
+      local_accum10 = vmlal_s8(local_accum10, vget_high_s8(weights12),
+                               vget_high_s8(input2));
+      local_accum11 = vmlal_s8(local_accum11, vget_high_s8(weights13),
+                               vget_high_s8(input3));
+      // Pairwise add and accumulate into 32-bit accumulators
+      row_accum20 = vpadalq_s16(row_accum20, local_accum00);
+      row_accum21 = vpadalq_s16(row_accum21, local_accum01);
+      row_accum30 = vpadalq_s16(row_accum30, local_accum10);
+      row_accum31 = vpadalq_s16(row_accum31, local_accum11);
+    }
+
+    row_accum00 = vaddq_s32(row_accum00, row_accum01);
+    row_accum10 = vaddq_s32(row_accum10, row_accum11);
+    row_accum20 = vaddq_s32(row_accum20, row_accum21);
+    row_accum30 = vaddq_s32(row_accum30, row_accum31);
+    // Horizontally reduce accumulators
+    int32x2_t pairwise_reduced_acc_0, pairwise_reduced_acc_1,
+        pairwise_reduced_acc_2, pairwise_reduced_acc_3;
+    pairwise_reduced_acc_0 =
+        vpadd_s32(vget_low_s32(row_accum00), vget_high_s32(row_accum00));
+    pairwise_reduced_acc_1 =
+        vpadd_s32(vget_low_s32(row_accum10), vget_high_s32(row_accum10));
+    pairwise_reduced_acc_2 =
+        vpadd_s32(vget_low_s32(row_accum20), vget_high_s32(row_accum20));
+    pairwise_reduced_acc_3 =
+        vpadd_s32(vget_low_s32(row_accum30), vget_high_s32(row_accum30));
+    const int32x2_t reduced_lo =
+        vpadd_s32(pairwise_reduced_acc_0, pairwise_reduced_acc_1);
+    const int32x2_t reduced_hi =
+        vpadd_s32(pairwise_reduced_acc_2, pairwise_reduced_acc_3);
+    int32x4_t reduced = vcombine_s32(reduced_lo, reduced_hi);
+    // Add bias values.
+    reduced = vaddq_s32(reduced, bias_vec);
+    reduced = vshlq_s32(reduced, vdupq_n_s32(left_shift));
+    // Multiply by the fixed-point multiplier.
+    reduced = vqrdmulhq_n_s32(reduced, accum_multiplier);
+    // Rounding-shift-right.
+    using gemmlowp::RoundingDivideByPOT;
+    reduced = RoundingDivideByPOT(reduced, right_shift);
+    // Narrow values down to 16 bit signed.
+    const int16x4_t res16 = vqmovn_s32(reduced);
+    vst1_s16(output_ptr, res16);
+    output_ptr += 4;
+  }
+}
+#endif
 
 inline void FullyConnected(
     const FullyConnectedParams& params, const RuntimeShape& input_shape,
@@ -1283,10 +2156,9 @@ inline void FullyConnected(
       input_data, filter_cols, batches, filter_cols);
   gemmlowp::MatrixMap<int8, gemmlowp::MapOrder::ColMajor> output_matrix(
       output_data, output_rows, batches, output_rows);
-  const auto& output_pipeline =
-      optimized_integer_ops::GemmlowpOutputPipelineInt8::MakeExp(
-          bias_data, output_rows, output_offset, output_multiplier,
-          output_shift, output_activation_min, output_activation_max);
+  const auto& output_pipeline = GemmlowpOutputPipelineInt8::MakeExp(
+      bias_data, output_rows, output_offset, output_multiplier, output_shift,
+      output_activation_min, output_activation_max);
 
   gemmlowp::GemmWithOutputPipeline<
       int8, int8, gemmlowp::SignedL8R8WithLhsNonzeroBitDepthParams>(
@@ -2029,6 +2901,28 @@ void ConvAsGemm(const uint8* input_data, const Dims<4>& input_dims,
                                    gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
       gemmlowp_context, filter_matrix, input_matrix, &output_matrix,
       filter_offset, input_offset, output_pipeline);
+}
+
+inline void TransposeConv(
+    const ConvParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& filter_shape,
+    const float* filter_data, const RuntimeShape& output_shape,
+    float* output_data, const RuntimeShape& im2col_shape, float* im2col_data) {
+  gemmlowp::ScopedProfilingLabel label("TransposeConv");
+  // Note we could use transposed weights with forward conv for unstrided
+  // cases. But we are already getting good performance with this code as-is.
+  TFLITE_DCHECK(im2col_data);
+  TransposeIm2col(params, 0, input_shape, input_data, filter_shape,
+                  output_shape, im2col_data);
+
+  const auto im2col_matrix_map =
+      MapAsMatrixWithLastDimAsRows(im2col_data, im2col_shape);
+  const auto filter_matrix_map =
+      MapAsMatrixWithFirstDimAsCols(filter_data, filter_shape);
+  auto output_matrix_map =
+      MapAsMatrixWithLastDimAsRows(output_data, output_shape);
+
+  Gemm(filter_matrix_map.transpose(), im2col_matrix_map, &output_matrix_map);
 }
 
 inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,

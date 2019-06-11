@@ -30,6 +30,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -326,6 +328,33 @@ class FromSavedModelTest(TestModels):
     self.assertIn('This converter can only convert a single ConcreteFunction',
                   str(error.exception))
 
+  @test_util.run_v2_only
+  def testKerasSequentialModel(self):
+    """Test a simple sequential tf.Keras model."""
+    input_data = constant_op.constant(1., shape=[1, 1])
+
+    x = np.array([[1.], [2.]])
+    y = np.array([[2.], [4.]])
+
+    model = keras.models.Sequential([
+        keras.layers.Dropout(0.2),
+        keras.layers.Dense(1),
+    ])
+    model.compile(optimizer='sgd', loss='mean_squared_error')
+    model.fit(x, y, epochs=1)
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save(model, save_dir)
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = model.predict(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    self.assertEqual(expected_value, actual_value)
+
 
 class FromKerasModelTest(TestModels):
 
@@ -335,11 +364,13 @@ class FromKerasModelTest(TestModels):
     input_data = constant_op.constant(1., shape=[1, 1])
 
     # Create a simple Keras model.
-    x = [-1, 0, 1, 2, 3, 4]
-    y = [-3, -1, 1, 3, 5, 7]
+    x = np.array([[1.], [2.]])
+    y = np.array([[2.], [4.]])
 
-    model = keras.models.Sequential(
-        [keras.layers.Dense(units=1, input_shape=[1])])
+    model = keras.models.Sequential([
+        keras.layers.Dropout(0.2),
+        keras.layers.Dense(units=1, input_shape=[1])
+    ])
     model.compile(optimizer='sgd', loss='mean_squared_error')
     model.fit(x, y, epochs=1)
 
@@ -394,6 +425,35 @@ class FromKerasModelTest(TestModels):
     actual_value = self._evaluateTFLiteModel(tflite_model, input_data)
     for tf_result, tflite_result in zip(expected_value, actual_value):
       np.testing.assert_almost_equal(tf_result[0], tflite_result, 5)
+
+
+class GrapplerTest(TestModels):
+
+  @test_util.run_v2_only
+  def testConstantFolding(self):
+    # Constant folding handles the tf.broadcast_to operation which was not
+    # supported by the TFLite at the time this test was added.
+    input_data = constant_op.constant([1., 2., 3., 4., 5., 6., 7., 8., 9.],
+                                      shape=[3, 3])
+
+    @def_function.function
+    def func(x):
+      y_const = constant_op.constant([1., 2., 3.])
+      y_broadcast = gen_array_ops.broadcast_to(y_const, [3, 3])
+      return math_ops.matmul(x, y_broadcast)
+
+    root = tracking.AutoTrackable()
+    root.f = func
+    concrete_func = root.f.get_concrete_function(input_data)
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = root.f(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    np.testing.assert_array_equal(expected_value.numpy(), actual_value)
 
 
 if __name__ == '__main__':

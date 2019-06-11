@@ -42,6 +42,7 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
+ops.NotDifferentiable("TPUReplicatedInput")
 
 # Operations that indicate some error in the users graph, e.g. a placeholder
 # that's introduced outside of the infeed.
@@ -638,7 +639,7 @@ def _pad_all_input(inputs, padded_shapes):
         padded_inputs[core_idx].append(input_tensor)
       else:
         # Only pad the non static shape dimension.
-        for i, s in enumerate(input_shape):
+        for i, s in enumerate(input_shape.dims):
           if s.value is None:
             if core_idx == 0:
               real_shape_idx += 1
@@ -651,8 +652,8 @@ def _pad_all_input(inputs, padded_shapes):
                 math_ops.cast(input_shape_tensor[i], dtypes.uint32))
 
         paddings = []
-        for i, s in enumerate(padded_shape):
-          if input_shape[i].value:
+        for i, s in enumerate(padded_shape.dims):
+          if input_shape.dims[i].value:
             # Don't pad if input shape is already static.
             padding = [0, 0]
           else:

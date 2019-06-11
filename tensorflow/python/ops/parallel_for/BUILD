@@ -1,12 +1,11 @@
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
 package(
     default_visibility = [
         "//tensorflow:internal",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
-licenses(["notice"])  # Apache 2.0
 
 py_library(
     name = "parallel_for",
@@ -81,8 +80,12 @@ py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
     ],
 )
 
@@ -110,13 +113,32 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:random_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:tensor_array_grad",
-        "//tensorflow/python:random_ops",
         "//tensorflow/python:util",
     ],
     tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "xla_control_flow_ops_test",
+    srcs = ["xla_control_flow_ops_test.py"],
+    additional_deps = [
+        ":control_flow_ops",
+        ":test_util",
+        "//tensorflow/python/compiler/xla:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+    ],
+    tags = [
+        "no_mac",  # TODO(b/134929881)
+        "no_rocm",
+        "no_windows",  # TODO(b/134929881)
+    ],
+    xla_enable_strict_auto_jit = True,
+    xla_enabled = True,
 )
 
 cuda_py_test(

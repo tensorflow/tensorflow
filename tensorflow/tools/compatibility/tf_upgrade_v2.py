@@ -27,13 +27,42 @@ import pasta
 
 from tensorflow.tools.compatibility import all_renames_v2
 from tensorflow.tools.compatibility import ast_edits
+from tensorflow.tools.compatibility import module_deprecations_v2
 from tensorflow.tools.compatibility import reorders_v2
 
 # These pylint warnings are a mistake.
 # pylint: disable=g-explicit-bool-comparison,g-bool-id-comparison
 
 
-class TFAPIChangeSpec(ast_edits.APIChangeSpec):
+class UnaliasedTFImport(ast_edits.AnalysisResult):
+
+  def __init__(self):
+    self.log_level = ast_edits.ERROR
+    self.log_message = ("The tf_upgrade_v2 script detected an unaliased "
+                        "`import tensorflow`. The script can only run when "
+                        "importing with `import tensorflow as tf`.")
+
+
+class VersionedTFImport(ast_edits.AnalysisResult):
+
+  def __init__(self, version):
+    self.log_level = ast_edits.INFO
+    self.log_message = ("Not upgrading symbols because `tensorflow." + version
+                        + "` was directly imported as `tf`.")
+
+
+class TFAPIImportAnalysisSpec(ast_edits.APIAnalysisSpec):
+
+  def __init__(self):
+    self.symbols_to_detect = {}
+    self.imports_to_detect = {
+        ("tensorflow", None): UnaliasedTFImport(),
+        ("tensorflow.compat.v1", "tf"): VersionedTFImport("compat.v1"),
+        ("tensorflow.compat.v2", "tf"): VersionedTFImport("compat.v2"),
+    }
+
+
+class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
   """List of maps that describe what changed in the API."""
 
   def __init__(self):
@@ -49,6 +78,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         # },
         "tf.test.assert_equal_graph_def": {
             "checkpoint_v2": None,
+            "hash_table_shared_name": None,
         },
         "tf.autograph.to_code": {
             "arg_types": None,
@@ -480,6 +510,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Add additional renames not in renames_v2.py to all_renames_v2.py.
     self.symbol_renames = all_renames_v2.symbol_renames
 
+    self.import_renames = {}
+
     # Variables that should be changed to functions.
     self.change_to_function = {}
 
@@ -622,34 +654,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.function_reorders = dict(reorders_v2.reorders)
     self.function_reorders.update(self.manual_function_reorders)
 
-    contrib_warning = (
-        ast_edits.ERROR,
-        "<function name> cannot be converted automatically. tf.contrib will not"
-        " be distributed with TensorFlow 2.0, please consider an alternative in"
-        " non-contrib TensorFlow, a community-maintained repository, or fork "
-        "the required code."
-    )
-
-    flags_warning = (
-        ast_edits.ERROR,
-        "tf.flags has been removed, please use the argparse or absl"
-        " modules if you need command line parsing.")
-
-    contrib_cudnn_rnn_warning = (
-        ast_edits.WARNING,
-        "(Manual edit required) tf.contrib.cudnn_rnn.* has been deprecated, "
-        "and the CuDNN kernel has been integrated with "
-        "tf.keras.layers.LSTM/GRU in TensorFlow 2.0. Please check the new API "
-        "and use that instead."
-    )
-
-    contrib_rnn_warning = (
-        ast_edits.WARNING,
-        "(Manual edit required) tf.contrib.rnn.* has been deprecated, and "
-        "widely used cells/functions will be moved to tensorflow/addons "
-        "repository. Please check it there and file Github issues if necessary."
-    )
-
     decay_function_comment = (
         ast_edits.INFO,
         "To use learning rate decay schedules with TensorFlow 2.0, switch to "
@@ -683,10 +687,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     )
 
     initializers_no_dtype_comment = (
-        ast_edits.INFO,
-        "Initializers no longer have the "
+        ast_edits.INFO, "Initializers no longer have the "
         "dtype argument in the constructor or partition_info argument in the "
-        "__call__ method.\nThe calls have been converted to compat.v1 for"
+        "__call__ method.\nThe calls have been converted to compat.v1 for "
         "safety (even though they may already have been correct).")
 
     metrics_comment = (
@@ -791,11 +794,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "default, instead of HDF5. To continue saving to HDF5, add the "
         "argument save_format='h5' to the save() function.")
 
-    contrib_dist_strat_warning = (
-        ast_edits.WARNING,
-        "(Manual edit required) tf.contrib.distribute.* have been migrated to"
-        "tf.distribute.*. Please check out the new module for updates APIs.")
-
     distribute_strategy_api_changes = (
         "If you're using the strategy with a "
         "custom training loop, note the following changes in methods: "
@@ -804,7 +802,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "extended.call_for_each_replica->experimental_run_v2, "
         "reduce requires an axis argument, "
         "unwrap->experimental_local_results "
-        "experimental_initialize and experimenta_finalize no longer needed ")
+        "experimental_initialize and experimental_finalize no longer needed ")
 
     contrib_mirrored_strategy_warning = (
         ast_edits.ERROR,
@@ -976,6 +974,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             deprecate_partition_strategy_comment,
         "tf.nn.sampled_softmax_loss":
             deprecate_partition_strategy_comment,
+        "tf.keras.estimator.model_to_estimator":
+            (ast_edits.WARNING,
+             "Estimators from <function name> will save object-based "
+             "checkpoints (format used by `keras_model.save_weights` and "
+             "`keras_model.load_weights`) by default in 2.0. To continue "
+             "saving name-based checkpoints, set `checkpoint_format='saver'`."),
         "tf.keras.initializers.Zeros":
             initializers_no_dtype_comment,
         "tf.keras.initializers.zeros":
@@ -1330,6 +1334,16 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     #   may get messy)
     # - a replacement for node, if the whole call node was replaced. The caller
     #   will take care of changing parent.
+    canned_estimator_msg_optimizer = (
+        "tf.keras.optimizers.* only, so the call was converted to compat.v1. "
+        "Please note that tf.train.Optimizers have one-to-one correspondents "
+        "in tf.keras.optimizers, so you may be able to convert to the new "
+        "optimizers directly (See https://www.tensorflow.org/api_docs/python"
+        "/tf/keras/optimizers). Checkpoint compatibility is not guaranteed, "
+        "but there is a checkpoint converter tool that you can use.")
+    canned_estimator_msg = (
+        "no longer takes `input_layer_partitioner` arg, and it supports "
+        + canned_estimator_msg_optimizer)
     self.function_transformers = {
         "*.make_initializable_iterator": _iterator_transformer,
         "*.make_one_shot_iterator": _iterator_transformer,
@@ -1354,10 +1368,31 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         # TODO(b/129398290)
         # "tf.string_split": _string_split_transformer,
         "tf.strings.split": _string_split_rtype_transformer,
-        "tf.estimator.DNNEstimator":
+        "tf.estimator.BaselineEstimator":
             functools.partial(
                 _rename_if_arg_found_transformer,
-                arg_name="input_layer_partitioner",
+                arg_name="optimizer",
+                message=("tf.estimator.BaselineEstimator supports "
+                         + canned_estimator_msg_optimizer),
+            ),
+        "tf.estimator.BaselineClassifier":
+            functools.partial(
+                _rename_if_arg_found_and_add_loss_reduction_transformer,
+                arg_names=["optimizer"],
+                message=("tf.estimator.BaselineClassifier supports "
+                         + canned_estimator_msg_optimizer),
+            ),
+        "tf.estimator.BaselineRegressor":
+            functools.partial(
+                _rename_if_arg_found_and_add_loss_reduction_transformer,
+                arg_names=["input_layer_partitioner", "optimizer"],
+                message=("tf.estimator.BaselineRegressor supports "
+                         + canned_estimator_msg_optimizer),
+            ),
+        "tf.estimator.DNNEstimator":
+            functools.partial(
+                _rename_if_any_arg_found_transformer,
+                arg_names=["input_layer_partitioner", "optimizer"],
                 message="tf.estimator.DNNEstimator no longer takes "
                 "input_layer_partitioner, so the call was converted to "
                 "compat.v1."
@@ -1365,66 +1400,62 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.estimator.DNNClassifier":
             functools.partial(
                 _rename_if_arg_found_and_add_loss_reduction_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.DNNClassifier no longer takes "
-                "input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                arg_names=["input_layer_partitioner", "optimizer"],
+                message="tf.estimator.DNNClassifier " + canned_estimator_msg,
             ),
         "tf.estimator.DNNRegressor":
             functools.partial(
                 _rename_if_arg_found_and_add_loss_reduction_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.DNNRegressor no longer takes "
-                "input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                arg_names=["input_layer_partitioner", "optimizer"],
+                message="tf.estimator.DNNRegressor " + canned_estimator_msg,
             ),
         "tf.estimator.LinearEstimator":
             functools.partial(
-                _rename_if_arg_found_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.LinearEstimator no longer takes "
-                "input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                _rename_if_any_arg_found_transformer,
+                arg_names=["input_layer_partitioner", "optimizer"],
+                message="tf.estimator.LinearEstimator " + canned_estimator_msg,
             ),
         "tf.estimator.LinearClassifier":
             functools.partial(
                 _rename_if_arg_found_and_add_loss_reduction_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.LinearClassifier no longer takes "
-                "input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                arg_names=["input_layer_partitioner", "optimizer"],
+                message="tf.estimator.LinearClassifier " + canned_estimator_msg,
             ),
         "tf.estimator.LinearRegressor":
             functools.partial(
                 _rename_if_arg_found_and_add_loss_reduction_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.LinearRegressor no longer takes "
-                "input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                arg_names=["input_layer_partitioner", "optimizer"],
+                message="tf.estimator.LinearRegressor " + canned_estimator_msg,
             ),
         "tf.estimator.DNNLinearCombinedEstimator":
             functools.partial(
-                _rename_if_arg_found_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.DNNLinearCombinedEstimator no longer "
-                "takes input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                _rename_if_any_arg_found_transformer,
+                arg_names=[
+                    "input_layer_partitioner", "dnn_optimizer",
+                    "linear_optimizer"
+                ],
+                message=("tf.estimator.DNNLinearCombinedEstimator "
+                         + canned_estimator_msg),
             ),
         "tf.estimator.DNNLinearCombinedClassifier":
             functools.partial(
                 _rename_if_arg_found_and_add_loss_reduction_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.DNNLinearCombinedClassifier no longer "
-                "takes input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                arg_names=[
+                    "input_layer_partitioner", "dnn_optimizer",
+                    "linear_optimizer"
+                ],
+                message=("tf.estimator.DNNLinearCombinedClassifier "
+                         + canned_estimator_msg),
             ),
         "tf.estimator.DNNLinearCombinedRegressor":
             functools.partial(
                 _rename_if_arg_found_and_add_loss_reduction_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.DNNLinearCombinedRegressor no longer "
-                "takes input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                arg_names=[
+                    "input_layer_partitioner", "dnn_optimizer",
+                    "linear_optimizer"
+                ],
+                message=("tf.estimator.DNNLinearCombinedRegressor "
+                         + canned_estimator_msg),
             ),
         "tf.device": functools.partial(
             _rename_if_arg_found_transformer, arg_name="device_name",
@@ -1483,8 +1514,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             _contrib_layers_xavier_initializer_transformer,
         "tf.contrib.layers.variance_scaling_initializer":
             _contrib_layers_variance_scaling_initializer_transformer,
-        "tf.estimator.BaselineClassifier": _add_loss_reduction_transformer,
-        "tf.estimator.BaselineRegressor": _add_loss_reduction_transformer,
         "tf.initializers.uniform_unit_scaling":
             _add_uniform_scaling_initializer_transformer,
         "tf.uniform_unit_scaling_initializer":
@@ -1505,13 +1534,29 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             arg_value_ast=ast.Str("h5")),
     }
 
-    self.module_deprecations = {
-        "tf.contrib": contrib_warning,
-        "tf.contrib.cudnn_rnn": contrib_cudnn_rnn_warning,
-        "tf.contrib.rnn": contrib_rnn_warning,
-        "tf.flags": flags_warning,
-        "tf.contrib.distribute": contrib_dist_strat_warning
-    }
+    self.module_deprecations = module_deprecations_v2.MODULE_DEPRECATIONS
+
+  def preprocess(self, root_node):
+    visitor = ast_edits.PastaAnalyzeVisitor(TFAPIImportAnalysisSpec())
+    visitor.visit(root_node)
+    detections = set(visitor.results)
+    # If we have detected the presence of imports of specific TF versions,
+    # We want to modify the update spec to check only module deprecations
+    # and skip all other conversions.
+    if detections:
+      self.function_handle = {}
+      self.function_reorders = {}
+      self.function_keyword_renames = {}
+      self.symbol_renames = {}
+      self.function_warnings = {}
+      self.change_to_function = {}
+      self.module_deprecations = module_deprecations_v2.MODULE_DEPRECATIONS
+      self.function_transformers = {}
+      self.import_renames = {}
+    return visitor.log, visitor.warnings_and_errors
+
+  def clear_preprocessing(self):
+    self.__init__()
 
 
 def _is_ast_str(node):
@@ -1966,13 +2011,52 @@ def _add_loss_reduction_transformer(parent, node, full_name, name, logs):
   return node
 
 
+def _rename_if_any_arg_found_transformer(
+    parent,
+    node,
+    full_name,
+    name,
+    logs,
+    arg_names=None,
+    arg_ok_predicate=None,
+    remove_if_ok=False,
+    message=None):
+  """Replaces the given call with tf.compat.v1 if any of the arg_names is found.
+
+  Args:
+    parent: Parent of node.
+    node: ast.Call node to modify.
+    full_name: full name of function to modify.
+    name: name of function to modify.
+    logs: list of logs to append to.
+    arg_names: list of names of the argument to look for.
+    arg_ok_predicate: predicate callable with the ast of the argument value,
+      returns whether the argument value is allowed.
+    remove_if_ok: remove the argument if present and ok as determined by
+      arg_ok_predicate.
+    message: message to print if a non-ok arg is found (and hence, the function
+      is renamed to its compat.v1 version).
+
+  Returns:
+    node, if it was modified, else None.
+  """
+  for arg_name in arg_names:
+    rename_node = _rename_if_arg_found_transformer(parent, node,
+                                                   full_name, name, logs,
+                                                   arg_name, arg_ok_predicate,
+                                                   remove_if_ok, message)
+    node = rename_node if rename_node else node
+
+  return node
+
+
 def _rename_if_arg_found_and_add_loss_reduction_transformer(
     parent,
     node,
     full_name,
     name,
     logs,
-    arg_name=None,
+    arg_names=None,
     arg_ok_predicate=None,
     remove_if_ok=False,
     message=None):
@@ -1984,7 +2068,7 @@ def _rename_if_arg_found_and_add_loss_reduction_transformer(
     full_name: full name of function to modify
     name: name of function to modify
     logs: list of logs to append to
-    arg_name: name of the argument to look for
+    arg_names: list of names of the argument to look for
     arg_ok_predicate: predicate callable with the ast of the argument value,
       returns whether the argument value is allowed.
     remove_if_ok: remove the argument if present and ok as determined by
@@ -1996,13 +2080,15 @@ def _rename_if_arg_found_and_add_loss_reduction_transformer(
     node, if it was modified, else None.
   """
 
-  add_loss_node = _add_loss_reduction_transformer(parent, node, full_name, name,
-                                                  logs)
-  rename_node = _rename_if_arg_found_transformer(
-      parent, add_loss_node, full_name, name, logs, arg_name, arg_ok_predicate,
-      remove_if_ok, message)
+  node = _add_loss_reduction_transformer(parent, node, full_name, name, logs)
+  for arg_name in arg_names:
+    rename_node = _rename_if_arg_found_transformer(parent, node, full_name,
+                                                   name, logs, arg_name,
+                                                   arg_ok_predicate,
+                                                   remove_if_ok, message)
+    node = rename_node if rename_node else node
 
-  return rename_node
+  return node
 
 
 def _add_uniform_scaling_initializer_transformer(

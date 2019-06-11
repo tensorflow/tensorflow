@@ -27,9 +27,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils import losses_utils
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
-from tensorflow.python.keras.utils.tf_utils import is_tensor_or_variable
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -117,7 +117,9 @@ class Loss(object):
     # If we are wrapping a lambda function strip '<>' from the name as it is not
     # accepted in scope name.
     scope_name = 'lambda' if self.name == '<lambda>' else self.name
-    with K.name_scope(scope_name or self.__class__.__name__):
+    graph_ctx = tf_utils.graph_context_for_symbolic_tensors(
+        y_true, y_pred, sample_weight)
+    with K.name_scope(scope_name or self.__class__.__name__), graph_ctx:
       losses = self.call(y_true, y_pred)
       return losses_utils.compute_weighted_loss(
           losses, sample_weight, reduction=self._get_reduction())
@@ -215,7 +217,7 @@ class LossFunctionWrapper(Loss):
   def get_config(self):
     config = {}
     for k, v in six.iteritems(self._fn_kwargs):
-      config[k] = K.eval(v) if is_tensor_or_variable(v) else v
+      config[k] = K.eval(v) if tf_utils.is_tensor_or_variable(v) else v
     base_config = super(LossFunctionWrapper, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -983,6 +985,28 @@ def kullback_leibler_divergence(y_true, y_pred):  # pylint: disable=missing-docs
 
 @keras_export('keras.metrics.poisson', 'keras.losses.poisson')
 def poisson(y_true, y_pred):
+  """Computes the Poisson loss between y_true and y_pred.
+
+  The Poisson loss is the mean of the elements of the `Tensor`
+  `y_pred - y_true * log(y_pred)`.
+
+  Usage:
+
+  ```python
+  loss = tf.keras.losses.poisson([1.4, 9.3, 2.2], [4.3, 8.2, 12.2])
+  print('Loss: ', loss.numpy())  # Loss: -0.8045559
+  ```
+
+  Args:
+    y_true: Tensor of true targets.
+    y_pred: Tensor of predicted targets.
+
+  Returns:
+    A `Tensor` with the mean Poisson loss.
+
+  Raises:
+      InvalidArgumentError: If `y_true` and `y_pred` have incompatible shapes.
+  """
   y_pred = ops.convert_to_tensor(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   return K.mean(y_pred - y_true * math_ops.log(y_pred + K.epsilon()), axis=-1)

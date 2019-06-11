@@ -1105,6 +1105,10 @@ tf_module {
     argspec: "args=[\'dimension\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "disable_control_flow_v2"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "disable_eager_execution"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
@@ -1147,6 +1151,10 @@ tf_module {
   member_method {
     name: "einsum"
     argspec: "args=[\'equation\'], varargs=inputs, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "enable_control_flow_v2"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "enable_eager_execution"
@@ -1253,6 +1261,10 @@ tf_module {
     argspec: "args=[\'dims\', \'value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "fingerprint"
+    argspec: "args=[\'data\', \'method\', \'name\'], varargs=None, keywords=None, defaults=[\'farmhash64\', \'None\'], "
+  }
+  member_method {
     name: "fixed_size_partitioner"
     argspec: "args=[\'num_shards\', \'axis\'], varargs=None, keywords=None, defaults=[\'0\'], "
   }
@@ -1282,7 +1294,7 @@ tf_module {
   }
   member_method {
     name: "function"
-    argspec: "args=[\'func\', \'input_signature\', \'autograph\', \'experimental_autograph_options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\'], "
+    argspec: "args=[\'func\', \'input_signature\', \'autograph\', \'experimental_autograph_options\', \'experimental_relax_shapes\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'False\'], "
   }
   member_method {
     name: "gather"
@@ -1817,6 +1829,10 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "recompute_grad"
+    argspec: "args=[\'f\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "reduce_all"
     argspec: "args=[\'input_tensor\', \'axis\', \'keepdims\', \'name\', \'reduction_indices\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
@@ -1898,7 +1914,7 @@ tf_module {
   }
   member_method {
     name: "roll"
-    argspec: "args=[\'input\', \'shift\', \'axis\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'shift\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "round"
@@ -2253,6 +2269,10 @@ tf_module {
     argspec: "args=[\'tensor\', \'full_matrices\', \'compute_uv\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'None\'], "
   }
   member_method {
+    name: "switch_case"
+    argspec: "args=[\'branch_index\', \'branch_fns\', \'default\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'switch_case\'], "
+  }
+  member_method {
     name: "tables_initializer"
     argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'init_all_tables\'], "
   }
@@ -2417,11 +2437,19 @@ tf_module {
     argspec: "args=[\'var_list\', \'name\'], varargs=None, keywords=None, defaults=[\'init\'], "
   }
   member_method {
+    name: "vectorized_map"
+    argspec: "args=[\'fn\', \'elems\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "verify_tensor_all_finite"
     argspec: "args=[\'t\', \'msg\', \'name\', \'x\', \'message\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "where"
+    argspec: "args=[\'condition\', \'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "where_v2"
     argspec: "args=[\'condition\', \'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {

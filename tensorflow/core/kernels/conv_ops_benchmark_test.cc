@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -29,7 +30,7 @@ limitations under the License.
 namespace tensorflow {
 
 ////////////////////////////////////////////////////////////////////////////////
-// Performance benchmarks for the FusedConv2Op.                               //
+// Performance benchmarks for the Conv2DOp and FusedConv2Op.                  //
 ////////////////////////////////////////////////////////////////////////////////
 
 struct Conv2DGraph {
@@ -63,19 +64,27 @@ struct Conv2DWithBatchNormAndActivationGraph {
   Node* activation;
 };
 
+template <typename T>
 static Tensor MakeRandomTensor(const TensorShape& shape) {
-  Tensor tensor(DT_FLOAT, TensorShape(shape));
-  tensor.flat<float>() = tensor.flat<float>().setRandom();
+  Tensor tensor(DataTypeToEnum<T>::value, TensorShape(shape));
+  tensor.flat<T>() = tensor.flat<T>().setRandom();
   return tensor;
 }
 
 // Creates a simple Tensorflow graph with single Conv2D node.
+template <typename T>
 static Conv2DGraph Conv2D(int batch, int height, int width, int in_depth,
-                          int filter_w, int filter_h, int out_depth) {
+                          int filter_w, int filter_h, int out_depth,
+                          TensorFormat data_format = FORMAT_NHWC) {
   Graph* graph = new Graph(OpRegistry::Global());
 
-  Tensor images_t = MakeRandomTensor({batch, height, width, in_depth});
-  Tensor filter_t = MakeRandomTensor({filter_w, filter_h, in_depth, out_depth});
+  Tensor images_t = data_format == FORMAT_NHWC
+                        ? MakeRandomTensor<T>({batch, height, width, in_depth})
+                        : MakeRandomTensor<T>({batch, in_depth, height, width});
+
+  // Filter is always in HWIO.
+  Tensor filter_t =
+      MakeRandomTensor<T>({filter_w, filter_h, in_depth, out_depth});
 
   Node* images = test::graph::Constant(graph, images_t, "images");
   Node* filter = test::graph::Constant(graph, filter_t, "filter");
@@ -84,33 +93,35 @@ static Conv2DGraph Conv2D(int batch, int height, int width, int in_depth,
   TF_CHECK_OK(NodeBuilder(graph->NewName("conv"), "Conv2D")
                   .Input(images)
                   .Input(filter)
-                  .Attr("T", DT_FLOAT)
+                  .Attr("T", DataTypeToEnum<T>::value)
                   .Attr("strides", {1, 1, 1, 1})
                   .Attr("padding", "SAME")
+                  .Attr("data_format", ToString(data_format))
                   .Finalize(graph, &conv2d));
 
   return {graph, conv2d};
 }
 
 // Creates a Tensorflow graph with a Conv2D node followed by BiasAdd.
-static Conv2DWithBiasGraph Conv2DWithBias(int batch, int height, int width,
-                                          int in_depth, int filter_w,
-                                          int filter_h, int out_depth) {
-  Conv2DGraph conv_graph =
-      Conv2D(batch, height, width, in_depth, filter_w, filter_h, out_depth);
+template <typename T>
+static Conv2DWithBiasGraph Conv2DWithBias(
+    int batch, int height, int width, int in_depth, int filter_w, int filter_h,
+    int out_depth, TensorFormat data_format = FORMAT_NHWC) {
+  Conv2DGraph conv_graph = Conv2D<T>(batch, height, width, in_depth, filter_w,
+                                     filter_h, out_depth, data_format);
 
   Graph* graph = conv_graph.graph;
   Node* conv2d = conv_graph.conv2d;
 
-  Tensor bias_t = MakeRandomTensor({out_depth});
+  Tensor bias_t = MakeRandomTensor<T>({out_depth});
   Node* bias = test::graph::Constant(graph, bias_t, "bias");
 
   Node* out;
   TF_CHECK_OK(NodeBuilder(graph->NewName("bias"), "BiasAdd")
                   .Input(conv2d)
                   .Input(bias)
-                  .Attr("T", DT_FLOAT)
-                  .Attr("data_format", "NHWC")
+                  .Attr("T", DataTypeToEnum<T>::value)
+                  .Attr("data_format", ToString(data_format))
                   .Finalize(graph, &out));
 
   return {graph, conv2d, out};
@@ -118,11 +129,14 @@ static Conv2DWithBiasGraph Conv2DWithBias(int batch, int height, int width,
 
 // Creates a Tensorflow graph with a Conv2D node followed by BiasAdd and
 // activation (Relu, Relu6, etc...).
+template <typename T>
 static Conv2DWithBiasAndActivationGraph Conv2DWithBiasAndActivation(
     int batch, int height, int width, int in_depth, int filter_w, int filter_h,
-    int out_depth, const string& activation_type) {
-  Conv2DWithBiasGraph conv_graph = Conv2DWithBias(
-      batch, height, width, in_depth, filter_w, filter_h, out_depth);
+    int out_depth, const string& activation_type,
+    TensorFormat data_format = FORMAT_NHWC) {
+  Conv2DWithBiasGraph conv_graph =
+      Conv2DWithBias<T>(batch, height, width, in_depth, filter_w, filter_h,
+                        out_depth, data_format);
 
   Graph* graph = conv_graph.graph;
   Node* conv2d = conv_graph.conv2d;
@@ -131,27 +145,27 @@ static Conv2DWithBiasAndActivationGraph Conv2DWithBiasAndActivation(
   Node* activation;
   TF_CHECK_OK(NodeBuilder(graph->NewName("activation"), activation_type)
                   .Input(bias)
-                  .Attr("T", DT_FLOAT)
+                  .Attr("T", DataTypeToEnum<T>::value)
                   .Finalize(graph, &activation));
 
   return {graph, conv2d, bias, activation};
 }
 
 // Creates a Tensorflow graph with a Conv2D node followed by FusedBatchNorm.
-static Conv2DWithBatchNormGraph Conv2DWithBatchNorm(int batch, int height,
-                                                    int width, int in_depth,
-                                                    int filter_w, int filter_h,
-                                                    int out_depth) {
-  Conv2DGraph conv_graph =
-      Conv2D(batch, height, width, in_depth, filter_w, filter_h, out_depth);
+template <typename T>
+static Conv2DWithBatchNormGraph Conv2DWithBatchNorm(
+    int batch, int height, int width, int in_depth, int filter_w, int filter_h,
+    int out_depth, TensorFormat data_format = FORMAT_NHWC) {
+  Conv2DGraph conv_graph = Conv2D<T>(batch, height, width, in_depth, filter_w,
+                                     filter_h, out_depth, data_format);
 
   Graph* graph = conv_graph.graph;
   Node* conv2d = conv_graph.conv2d;
 
-  Tensor scale_t = MakeRandomTensor({out_depth});
-  Tensor offset_t = MakeRandomTensor({out_depth});
-  Tensor mean_t = MakeRandomTensor({out_depth});
-  Tensor variance_t = MakeRandomTensor({out_depth});
+  Tensor scale_t = MakeRandomTensor<T>({out_depth});
+  Tensor offset_t = MakeRandomTensor<T>({out_depth});
+  Tensor mean_t = MakeRandomTensor<T>({out_depth});
+  Tensor variance_t = MakeRandomTensor<T>({out_depth});
 
   Node* scale = test::graph::Constant(graph, scale_t, "scale");
   Node* offset = test::graph::Constant(graph, offset_t, "offset");
@@ -165,8 +179,9 @@ static Conv2DWithBatchNormGraph Conv2DWithBatchNorm(int batch, int height,
                   .Input(offset)
                   .Input(mean)
                   .Input(variance)
-                  .Attr("T", DT_FLOAT)
+                  .Attr("T", DataTypeToEnum<T>::value)
                   .Attr("is_training", false)
+                  .Attr("data_format", ToString(data_format))
                   .Finalize(graph, &out));
 
   return {graph, conv2d, out};
@@ -174,11 +189,14 @@ static Conv2DWithBatchNormGraph Conv2DWithBatchNorm(int batch, int height,
 
 // Creates a Tensorflow graph with a Conv2D node followed by FusedBatchNorm and
 // activation (Relu, Relu6, etc...).
+template <typename T>
 static Conv2DWithBatchNormAndActivationGraph Conv2DWithBatchNormAndActivation(
     int batch, int height, int width, int in_depth, int filter_w, int filter_h,
-    int out_depth, const string& activation_type) {
-  Conv2DWithBatchNormGraph conv_graph = Conv2DWithBatchNorm(
-      batch, height, width, in_depth, filter_w, filter_h, out_depth);
+    int out_depth, const string& activation_type,
+    TensorFormat data_format = FORMAT_NHWC) {
+  Conv2DWithBatchNormGraph conv_graph =
+      Conv2DWithBatchNorm<T>(batch, height, width, in_depth, filter_w, filter_h,
+                             out_depth, data_format);
 
   Graph* graph = conv_graph.graph;
   Node* conv2d = conv_graph.conv2d;
@@ -187,7 +205,7 @@ static Conv2DWithBatchNormAndActivationGraph Conv2DWithBatchNormAndActivation(
   Node* activation;
   TF_CHECK_OK(NodeBuilder(graph->NewName("activation"), activation_type)
                   .Input(batch_norm)
-                  .Attr("T", DT_FLOAT)
+                  .Attr("T", DataTypeToEnum<T>::value)
                   .Finalize(graph, &activation));
 
   return {graph, conv2d, batch_norm, activation};
@@ -195,15 +213,22 @@ static Conv2DWithBatchNormAndActivationGraph Conv2DWithBatchNormAndActivation(
 
 // Creates a tensorflow graph with a single FusedConv2D (with BiasAdd) node and
 // fuses into it additional computations (e.g. Relu).
+template <typename T>
 static Graph* FusedConv2DWithBias(int batch, int height, int width,
                                   int in_depth, int filter_w, int filter_h,
                                   int out_depth,
-                                  const std::vector<string>& fused_ops = {}) {
+                                  const std::vector<string>& fused_ops = {},
+                                  TensorFormat data_format = FORMAT_NHWC) {
   Graph* graph = new Graph(OpRegistry::Global());
 
-  Tensor images_t = MakeRandomTensor({batch, height, width, in_depth});
-  Tensor filter_t = MakeRandomTensor({filter_w, filter_h, in_depth, out_depth});
-  Tensor bias_t = MakeRandomTensor({out_depth});
+  Tensor images_t = data_format == FORMAT_NHWC
+                        ? MakeRandomTensor<T>({batch, height, width, in_depth})
+                        : MakeRandomTensor<T>({batch, in_depth, height, width});
+
+  // Filter is always in HWIO.
+  Tensor filter_t =
+      MakeRandomTensor<T>({filter_w, filter_h, in_depth, out_depth});
+  Tensor bias_t = MakeRandomTensor<T>({out_depth});
 
   Node* images = test::graph::Constant(graph, images_t, "images");
   Node* filter = test::graph::Constant(graph, filter_t, "filter");
@@ -217,7 +242,7 @@ static Graph* FusedConv2DWithBias(int batch, int height, int width,
                   .Input(filter)
                   .Attr("num_args", 1)
                   .Input(args)
-                  .Attr("T", DT_FLOAT)
+                  .Attr("T", DataTypeToEnum<T>::value)
                   .Attr("strides", {1, 1, 1, 1})
                   .Attr("padding", "SAME")
                   .Attr("fused_ops", fused_ops)
@@ -228,17 +253,24 @@ static Graph* FusedConv2DWithBias(int batch, int height, int width,
 
 // Creates a tensorflow graph with a single FusedConv2D (with FusedBatchNorm)
 // node and fuses into it additional computations (e.g. Relu).
+template <typename T>
 static Graph* FusedConv2DWithBatchNorm(
     int batch, int height, int width, int in_depth, int filter_w, int filter_h,
-    int out_depth, const std::vector<string>& fused_ops = {}) {
+    int out_depth, const std::vector<string>& fused_ops = {},
+    TensorFormat data_format = FORMAT_NHWC) {
   Graph* graph = new Graph(OpRegistry::Global());
 
-  Tensor images_t = MakeRandomTensor({batch, height, width, in_depth});
-  Tensor filter_t = MakeRandomTensor({filter_w, filter_h, in_depth, out_depth});
-  Tensor scale_t = MakeRandomTensor({out_depth});
-  Tensor offset_t = MakeRandomTensor({out_depth});
-  Tensor mean_t = MakeRandomTensor({out_depth});
-  Tensor variance_t = MakeRandomTensor({out_depth});
+  Tensor images_t = data_format == FORMAT_NHWC
+                        ? MakeRandomTensor<T>({batch, height, width, in_depth})
+                        : MakeRandomTensor<T>({batch, in_depth, height, width});
+
+  // Filter is always in HWIO.
+  Tensor filter_t =
+      MakeRandomTensor<T>({filter_w, filter_h, in_depth, out_depth});
+  Tensor scale_t = MakeRandomTensor<T>({out_depth});
+  Tensor offset_t = MakeRandomTensor<T>({out_depth});
+  Tensor mean_t = MakeRandomTensor<T>({out_depth});
+  Tensor variance_t = MakeRandomTensor<T>({out_depth});
 
   Node* images = test::graph::Constant(graph, images_t, "images");
   Node* filter = test::graph::Constant(graph, filter_t, "filter");
@@ -255,7 +287,7 @@ static Graph* FusedConv2DWithBatchNorm(
                   .Input(filter)
                   .Attr("num_args", 4)
                   .Input(args)
-                  .Attr("T", DT_FLOAT)
+                  .Attr("T", DataTypeToEnum<T>::value)
                   .Attr("strides", {1, 1, 1, 1})
                   .Attr("padding", "SAME")
                   .Attr("fused_ops", fused_ops)
@@ -273,6 +305,10 @@ static Graph* FusedConv2DWithBatchNorm(
 //   FH: filter height
 //   FW: filter width
 
+// -------------------------------------------------------------------------- //
+// The following benchmarks are always using 'float' data type with NHWC layout.
+// -------------------------------------------------------------------------- //
+
 #define BM_SETUP(N, H, W, C, type, LABEL, NAME)                               \
   testing::ItemsProcessed(static_cast<int64>(iters) * (N) * (H) * (W) * (C)); \
   testing::SetLabel(LABEL);
@@ -280,39 +316,41 @@ static Graph* FusedConv2DWithBatchNorm(
 #define BM_NAME(name, type, N, H, W, C, FW, FH, FC) \
   name##_##type##_##N##_##H##_##W##_##C##_##FW##_##FH##_##FC
 
-#define BM_Conv2D(N, H, W, C, FW, FH, FC, type, LABEL)                       \
-  static void BM_NAME(BM_Conv2D, type, N, H, W, C, FW, FH, FC)(int iters) {  \
-    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                               \
-    test::Benchmark(#type, Conv2D(N, H, W, C, FW, FH, FC).graph).Run(iters); \
-  }                                                                          \
+#define BM_Conv2D(N, H, W, C, FW, FH, FC, type, LABEL)                      \
+  static void BM_NAME(BM_Conv2D, type, N, H, W, C, FW, FH, FC)(int iters) { \
+    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                              \
+    test::Benchmark(#type, Conv2D<float>(N, H, W, C, FW, FH, FC).graph)     \
+        .Run(iters);                                                        \
+  }                                                                         \
   BENCHMARK(BM_NAME(BM_Conv2D, type, N, H, W, C, FW, FH, FC));
 
 #define BM_Conv2DWithBias(N, H, W, C, FW, FH, FC, type, LABEL)           \
   static void BM_NAME(BM_Conv2DWithBias, type, N, H, W, C, FW, FH,       \
                       FC)(int iters) {                                   \
     BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                           \
-    test::Benchmark(#type, Conv2DWithBias(N, H, W, C, FW, FH, FC).graph) \
+    test::Benchmark(#type,                                               \
+                    Conv2DWithBias<float>(N, H, W, C, FW, FH, FC).graph) \
         .Run(iters);                                                     \
   }                                                                      \
   BENCHMARK(BM_NAME(BM_Conv2DWithBias, type, N, H, W, C, FW, FH, FC));
 
-#define BM_Conv2DWithBiasAndRelu(N, H, W, C, FW, FH, FC, type, LABEL)      \
-  static void BM_NAME(BM_Conv2DWithBiasAndRelu, type, N, H, W, C, FW, FH,  \
-                      FC)(int iters) {                                     \
-    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                             \
-    test::Benchmark(                                                       \
-        #type,                                                             \
-        Conv2DWithBiasAndActivation(N, H, W, C, FW, FH, FC, "Relu").graph) \
-        .Run(iters);                                                       \
-  }                                                                        \
+#define BM_Conv2DWithBiasAndRelu(N, H, W, C, FW, FH, FC, type, LABEL)         \
+  static void BM_NAME(BM_Conv2DWithBiasAndRelu, type, N, H, W, C, FW, FH,     \
+                      FC)(int iters) {                                        \
+    BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                                \
+    test::Benchmark(#type, Conv2DWithBiasAndActivation<float>(N, H, W, C, FW, \
+                                                              FH, FC, "Relu") \
+                               .graph)                                        \
+        .Run(iters);                                                          \
+  }                                                                           \
   BENCHMARK(BM_NAME(BM_Conv2DWithBiasAndRelu, type, N, H, W, C, FW, FH, FC));
 
 #define BM_FusedConv2DWithBias(N, H, W, C, FW, FH, FC, type, LABEL)           \
   static void BM_NAME(BM_FusedConv2DWithBias, type, N, H, W, C, FW, FH,       \
                       FC)(int iters) {                                        \
     BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                                \
-    test::Benchmark(#type,                                                    \
-                    FusedConv2DWithBias(N, H, W, C, FW, FH, FC, {"BiasAdd"})) \
+    test::Benchmark(#type, FusedConv2DWithBias<float>(N, H, W, C, FW, FH, FC, \
+                                                      {"BiasAdd"}))           \
         .Run(iters);                                                          \
   }                                                                           \
   BENCHMARK(BM_NAME(BM_FusedConv2DWithBias, type, N, H, W, C, FW, FH, FC));
@@ -321,8 +359,8 @@ static Graph* FusedConv2DWithBatchNorm(
   static void BM_NAME(BM_FusedConv2DWithBiasAndRelu, type, N, H, W, C, FW, FH, \
                       FC)(int iters) {                                         \
     BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                                 \
-    test::Benchmark(#type, FusedConv2DWithBias(N, H, W, C, FW, FH, FC,         \
-                                               {"BiasAdd", "Relu"}))           \
+    test::Benchmark(#type, FusedConv2DWithBias<float>(N, H, W, C, FW, FH, FC,  \
+                                                      {"BiasAdd", "Relu"}))    \
         .Run(iters);                                                           \
   }                                                                            \
   BENCHMARK(                                                                   \
@@ -332,7 +370,8 @@ static Graph* FusedConv2DWithBatchNorm(
   static void BM_NAME(BM_Conv2DWithBatchNorm, type, N, H, W, C, FW, FH,       \
                       FC)(int iters) {                                        \
     BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                                \
-    test::Benchmark(#type, Conv2DWithBatchNorm(N, H, W, C, FW, FH, FC).graph) \
+    test::Benchmark(#type,                                                    \
+                    Conv2DWithBatchNorm<float>(N, H, W, C, FW, FH, FC).graph) \
         .Run(iters);                                                          \
   }                                                                           \
   BENCHMARK(BM_NAME(BM_Conv2DWithBatchNorm, type, N, H, W, C, FW, FH, FC));
@@ -341,8 +380,8 @@ static Graph* FusedConv2DWithBatchNorm(
   static void BM_NAME(BM_Conv2DWithBatchNormAndRelu, type, N, H, W, C, FW, FH, \
                       FC)(int iters) {                                         \
     BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                                 \
-    test::Benchmark(#type, Conv2DWithBatchNormAndActivation(N, H, W, C, FW,    \
-                                                            FH, FC, "Relu")    \
+    test::Benchmark(#type, Conv2DWithBatchNormAndActivation<float>(            \
+                               N, H, W, C, FW, FH, FC, "Relu")                 \
                                .graph)                                         \
         .Run(iters);                                                           \
   }                                                                            \
@@ -353,8 +392,8 @@ static Graph* FusedConv2DWithBatchNorm(
   static void BM_NAME(BM_FusedConv2DWithBatchNorm, type, N, H, W, C, FW, FH, \
                       FC)(int iters) {                                       \
     BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                               \
-    test::Benchmark(#type, FusedConv2DWithBatchNorm(N, H, W, C, FW, FH, FC,  \
-                                                    {"FusedBatchNorm"}))     \
+    test::Benchmark(#type, FusedConv2DWithBatchNorm<float>(                  \
+                               N, H, W, C, FW, FH, FC, {"FusedBatchNorm"}))  \
         .Run(iters);                                                         \
   }                                                                          \
   BENCHMARK(BM_NAME(BM_FusedConv2DWithBatchNorm, type, N, H, W, C, FW, FH, FC));
@@ -364,9 +403,9 @@ static Graph* FusedConv2DWithBatchNorm(
   static void BM_NAME(BM_FusedConv2DWithBatchNormAndRelu, type, N, H, W, C,   \
                       FW, FH, FC)(int iters) {                                \
     BM_SETUP(N, H, W, C, type, LABEL, Conv2D);                                \
-    test::Benchmark(#type,                                                    \
-                    FusedConv2DWithBatchNorm(N, H, W, C, FW, FH, FC,          \
-                                             {"FusedBatchNorm", "Relu"}))     \
+    test::Benchmark(                                                          \
+        #type, FusedConv2DWithBatchNorm<float>(N, H, W, C, FW, FH, FC,        \
+                                               {"FusedBatchNorm", "Relu"}))   \
         .Run(iters);                                                          \
   }                                                                           \
   BENCHMARK(BM_NAME(BM_FusedConv2DWithBatchNormAndRelu, type, N, H, W, C, FW, \
@@ -499,5 +538,70 @@ BM_FusedConv2DWithBiasAndRelu(8, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 8");
 BM_FusedConv2DWithBiasAndRelu(16, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 16");
 BM_FusedConv2DWithBiasAndRelu(32, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 32");
 #endif
+
+// Macro arguments names: --------------------------------------------------- //
+//      T: data type
+// FORMAT: data format (NHWC or NCHW)
+//      N: batch size
+//      H: height
+//      W: width
+//      C: channels
+//     FC: filter count
+//     FH: filter height
+//     FW: filter width
+
+// -------------------------------------------------------------------------- //
+// The following benchmarks are used to compare different data format
+// performance for different data types. They make sense only when CUDA enabled,
+// because on CPU we only support data in NHWC.
+// -------------------------------------------------------------------------- //
+
+#define BM_LONG_NAME(name, type, T, FORMAT, N, H, W, C, FW, FH, FC) \
+  name##_##T##_##FORMAT##_##type##_##N##_##H##_##W##_##C##_##FW##_##FH##_##FC
+
+#define BM_Conv2DFmt(T, FORMAT, N, H, W, C, FW, FH, FC, type)                 \
+  static void BM_LONG_NAME(BM_Conv2D, type, T, FORMAT, N, H, W, C, FW, FH,    \
+                           FC)(int iters) {                                   \
+    BM_SETUP(N, H, W, C, type, "", Conv2D);                                   \
+    test::Benchmark(#type,                                                    \
+                    Conv2D<T>(N, H, W, C, FW, FH, FC, FORMAT_##FORMAT).graph) \
+        .Run(iters);                                                          \
+  }                                                                           \
+  BENCHMARK(BM_LONG_NAME(BM_Conv2D, type, T, FORMAT, N, H, W, C, FW, FH, FC));
+
+#if GOOGLE_CUDA
+using fp32 = float;
+using fp16 = Eigen::half;
+
+// ResNet50-ish convolutions.
+#define BENCHMARK_DTYPE(DATA_FORMAT, BATCH, T)                       \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 56, 56, 64, 1, 1, 64, gpu);    \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 56, 56, 64, 1, 1, 256, gpu);   \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 56, 56, 256, 1, 1, 64, gpu);   \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 56, 56, 64, 3, 3, 64, gpu);    \
+                                                                     \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 28, 28, 128, 1, 1, 128, gpu);  \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 28, 28, 128, 1, 1, 512, gpu);  \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 28, 28, 512, 1, 1, 128, gpu);  \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 28, 28, 512, 3, 3, 128, gpu);  \
+                                                                     \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 14, 14, 256, 1, 1, 256, gpu);  \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 14, 14, 256, 1, 1, 1024, gpu); \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 14, 14, 1024, 1, 1, 256, gpu); \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 14, 14, 256, 3, 3, 256, gpu);
+
+BENCHMARK_DTYPE(NHWC, 32, fp32);
+BENCHMARK_DTYPE(NCHW, 32, fp32);
+
+BENCHMARK_DTYPE(NHWC, 32, fp16);
+BENCHMARK_DTYPE(NCHW, 32, fp16);
+
+BENCHMARK_DTYPE(NHWC, 64, fp32);
+BENCHMARK_DTYPE(NCHW, 64, fp32);
+
+BENCHMARK_DTYPE(NHWC, 64, fp16);
+BENCHMARK_DTYPE(NCHW, 64, fp16);
+
+#endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

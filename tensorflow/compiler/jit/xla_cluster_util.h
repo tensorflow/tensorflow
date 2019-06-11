@@ -83,6 +83,10 @@ bool IsSingleGpuGraph(const Graph& g);
 // Returns true if it is possible (but not guaranteed) that `n` calls a
 // function.
 bool MayCallFunction(const Node& n, const FunctionLibraryDefinition* flib_def);
+
+// Returns true if `node` an operator that consumes only the shape of its input,
+// not the data itself.
+bool IsShapeConsumerOp(const Node& node);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_XLA_CLUSTER_UTIL_H_

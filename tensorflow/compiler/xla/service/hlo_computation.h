@@ -115,7 +115,12 @@ class HloComputation {
   // Remove unused parameters from the computation.
   // Note this is only applicatable to the computation for the fusion
   // instruction.
-  Status RemoveUnusedParameters();
+  Status RemoveUnusedParametersFromFusedComputation();
+
+  // Remove unused parameters from the computation. Unlike
+  // RemoveUnusedParametersFromFusedComputation, this function can be used
+  // to remove parameters from non-fusion computations.
+  Status RemoveUnusedParametersFromAnyComputation();
 
   // Adds a new parameter instruction to a fusion computation.
   //
@@ -134,6 +139,11 @@ class HloComputation {
   // Remove an instruction from the computation. The instruction must have no
   // users. Instruction is deallocated with this call.
   Status RemoveInstruction(HloInstruction* instruction);
+
+  // Removes an instruction from the computation. The instruction must have no
+  // users. Instruction is deallocated with this call. The instruction will be
+  // removed even if it is marked as not removable.
+  Status ForceRemoveInstruction(HloInstruction* instruction);
 
   // Remove an instruction (including side effecting ones) from the computation
   // and also transitively any operand that has no side effect and no users post
@@ -198,6 +208,13 @@ class HloComputation {
       const HloComputationProto& proto,
       const absl::flat_hash_map<int64, HloComputation*>& computation_map);
 
+  using InstructionSequence = tensorflow::gtl::iterator_range<
+      UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>;
+
+  using ConstInstructionSequence =
+      tensorflow::gtl::iterator_range<UnwrappingIterator<
+          std::list<std::unique_ptr<HloInstruction>>::const_iterator>>;
+
   // Gets the instructions in this computation.
   //
   // The returned type is a range of HloInstruction*s, so you can iterate over
@@ -205,15 +222,11 @@ class HloComputation {
   //
   //   for (HloInstruction* instr : computation->instructions()) { ... }
   //
-  tensorflow::gtl::iterator_range<UnwrappingIterator<
-      std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
-  instructions() const {
+  ConstInstructionSequence instructions() const {
     return {MakeUnwrappingIterator(instructions_.begin()),
             MakeUnwrappingIterator(instructions_.end())};
   }
-  tensorflow::gtl::iterator_range<
-      UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
-  instructions() {
+  InstructionSequence instructions() {
     return {MakeUnwrappingIterator(instructions_.begin()),
             MakeUnwrappingIterator(instructions_.end())};
   }
@@ -375,13 +388,13 @@ class HloComputation {
   // the HLO computation with the exception of fusion computation. A parameter
   // instruction is removable for a fusion computation.
   //
-  // Note that IsRemovable() is a necessariy condition to remove an instruction
-  // rather than a sufficient condition. For example, instructions with
-  // side-effect (e.g., Send, Infeed) may be removed from a computation, but the
-  // transformation must guarantee the invariants relevant to the instructions
-  // still hold (e.g., Send and Recv must be removed together to make each
-  // channel complete).
-  bool IsRemovable(const HloInstruction* instruction);
+  // Note that IsSafelyRemovable() is a necassarily condition to remove an
+  // instruction rather than a sufficient condition. For example, instructions
+  // with side-effect (e.g., Send, Infeed) may be removed from a computation,
+  // but the transformation must guarantee the invariants relevant to the
+  // instructions still hold (e.g., Send and Recv must be removed together to
+  // make each channel complete).
+  bool IsSafelyRemovable(const HloInstruction* instruction);
 
   // Returns a map from channel-id to the group of instructions associated with
   // the channel. These instructions will be considered as a single node for
@@ -455,6 +468,11 @@ class HloComputation {
       const HloComputation::ChannelDependencyGroup& channel_dependency_map,
       std::vector<HloInstruction*>* post_order, HloInstruction* root,
       absl::flat_hash_map<HloInstruction*, VisitState>* visited) const;
+
+  Status RemoveUnusedParametersImpl(bool allow_non_fusion);
+
+  Status RemoveInstructionImpl(HloInstruction* instruction,
+                               bool ignore_safety_check);
 
   string name_;
   int64 unique_id_;

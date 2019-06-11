@@ -2,11 +2,12 @@ load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
-package(default_visibility = [
-    "//visibility:public",
-])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 tflite_deps_intel = [
     "@arm_neon_2_x86_sse",
@@ -168,18 +169,41 @@ config_setting(
 )
 
 cc_library(
+    name = "common",
+    srcs = [],
+    hdrs = ["common.h"],
+    copts = tflite_copts(),
+    deps = [
+        ":types",
+        "@gemmlowp//:fixedpoint",
+    ] + select({
+        ":haswell": tflite_deps_intel,
+        ":ios_x86_64": tflite_deps_intel,
+        ":k8": tflite_deps_intel,
+        ":x86": tflite_deps_intel,
+        ":x86_64": tflite_deps_intel,
+        ":darwin": tflite_deps_intel,
+        ":darwin_x86_64": tflite_deps_intel,
+        ":freebsd": tflite_deps_intel,
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
     name = "optimized_base",
     srcs = [],
     hdrs = [
         "common.h",
         "optimized/depthwiseconv_3x3_filter_common.h",
         "optimized/depthwiseconv_float.h",
+        "optimized/depthwiseconv_multithread.h",
         "optimized/depthwiseconv_uint8.h",
         "optimized/depthwiseconv_uint8_3x3_filter.h",
         "optimized/im2col_utils.h",
         "optimized/integer_ops/add.h",
         "optimized/integer_ops/conv.h",
         "optimized/integer_ops/depthwise_conv.h",
+        "optimized/integer_ops/depthwise_conv_3x3_filter.h",
         "optimized/integer_ops/fully_connected.h",
         "optimized/integer_ops/mul.h",
         "optimized/integer_ops/pooling.h",
@@ -188,6 +212,7 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
+        ":cpu_check",
         ":quantization_util",
         ":strided_slice_logic",
         ":types",
@@ -196,7 +221,8 @@ cc_library(
         ":tensor",
         ":tensor_utils",
         "//third_party/eigen3",
-        "@gemmlowp",
+        "@gemmlowp//:fixedpoint",
+        "@gemmlowp//:profiler",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
@@ -229,6 +255,7 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
+        ":cpu_check",
         ":optimized_base",
         ":quantization_util",
         ":strided_slice_logic",
@@ -359,7 +386,9 @@ cc_library(
         ":strided_slice_logic",
         ":tensor",
         ":types",
-        "@gemmlowp",
+        "@gemmlowp//:fixedpoint",
+        "@gemmlowp//:profiler",
+        "//third_party/eigen3",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:op_macros",
     ] + select({
@@ -396,6 +425,7 @@ cc_library(
         ":legacy_types",
         ":tensor",
         ":types",
+        "//third_party/eigen3",
         "@gemmlowp",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:op_macros",
@@ -477,9 +507,10 @@ cc_library(
         ":types",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:activation_functor",
+        "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:op_macros",
         "@arm_neon_2_x86_sse",
-        "@gemmlowp",
+        "@gemmlowp//:fixedpoint",
     ],
 )
 
@@ -531,11 +562,12 @@ cc_library(
     ],
     copts = NEON_FLAGS_IF_APPLICABLE,
     deps = [
-        "@com_google_absl//absl/base:core_headers",
+        ":cpu_check",
         "//tensorflow/lite/c:c_api_internal",
         "@arm_neon_2_x86_sse",
+        "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:op_macros",
-        "@gemmlowp",
+        "@gemmlowp//:fixedpoint",
     ] + select({
         ":aarch64": [
             ":neon_tensor_utils",
@@ -620,6 +652,7 @@ cc_test(
     name = "depthwiseconv_float_test",
     srcs = ["depthwiseconv_float_test.cc"],
     deps = [
+        ":cpu_check",
         ":optimized_base",
         ":reference_base",
         ":test_util",
@@ -640,9 +673,26 @@ cc_test(
         ":reference_base",
         ":test_util",
         ":types",
+        "//tensorflow/lite/experimental/ruy:context",
+        "//tensorflow/lite/kernels:cpu_backend_context",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@gemmlowp",
+    ],
+)
+
+cc_test(
+    name = "depthwiseconv_per_channel_quantized_test",
+    srcs = [
+        "depthwiseconv_per_channel_quantized_test.cc",
+    ],
+    shard_count = 2,
+    deps = [
+        ":optimized_base",
+        ":quantization_util",
+        ":reference_base",
+        ":test_util",
+        ":types",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -764,6 +814,7 @@ cc_library(
         "optimized/cpu_check.h",
     ],
     deps = [
+        "//tensorflow/lite/kernels:cpu_backend_context",
     ] + select(
         {
             "//tensorflow:android": [

@@ -31,7 +31,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
-from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
@@ -157,21 +156,21 @@ def _Check3DImage(image, require_static=True):
 def _Assert3DImage(image):
   """Assert that we are working with a properly shaped image.
 
-    Performs the check statically if possible (i.e. if the shape
-    is statically known). Otherwise adds a control dependency
-    to an assert op that checks the dynamic shape.
+  Performs the check statically if possible (i.e. if the shape
+  is statically known). Otherwise adds a control dependency
+  to an assert op that checks the dynamic shape.
 
-    Args:
-      image: 3-D Tensor of shape [height, width, channels]
+  Args:
+    image: 3-D Tensor of shape [height, width, channels]
 
-    Raises:
-      ValueError: if `image.shape` is not a 3-vector.
+  Raises:
+    ValueError: if `image.shape` is not a 3-vector.
 
-    Returns:
-      If the shape of `image` could be verified statically, `image` is
-      returned unchanged, otherwise there will be a control dependency
-      added that asserts the correct dynamic shape.
-    """
+  Returns:
+    If the shape of `image` could be verified statically, `image` is
+    returned unchanged, otherwise there will be a control dependency
+    added that asserts the correct dynamic shape.
+  """
   return control_flow_ops.with_dependencies(
       _Check3DImage(image, require_static=False), image)
 
@@ -179,20 +178,20 @@ def _Assert3DImage(image):
 def _AssertAtLeast3DImage(image):
   """Assert that we are working with a properly shaped image.
 
-    Performs the check statically if possible (i.e. if the shape
-    is statically known). Otherwise adds a control dependency
-    to an assert op that checks the dynamic shape.
+  Performs the check statically if possible (i.e. if the shape
+  is statically known). Otherwise adds a control dependency
+  to an assert op that checks the dynamic shape.
 
-    Args:
-      image: >= 3-D Tensor of size [*, height, width, depth]
+  Args:
+    image: >= 3-D Tensor of size [*, height, width, depth]
 
-    Raises:
-      ValueError: if image.shape is not a [>= 3] vector.
+  Raises:
+    ValueError: if image.shape is not a [>= 3] vector.
 
-    Returns:
-      If the shape of `image` could be verified statically, `image` is
-      returned unchanged, otherwise there will be a control dependency
-      added that asserts the correct dynamic shape.
+  Returns:
+    If the shape of `image` could be verified statically, `image` is
+    returned unchanged, otherwise there will be a control dependency
+    added that asserts the correct dynamic shape.
   """
   return control_flow_ops.with_dependencies(
       _CheckAtLeast3DImage(image, require_static=False), image)
@@ -241,40 +240,37 @@ def _CheckAtLeast3DImage(image, require_static=True):
 
 
 def _AssertGrayscaleImage(image):
-  """Assert that we are working with a properly shaped
+  """Assert that we are working with a properly shaped grayscale image.
 
-     grayscale image.
+  Performs the check statically if possible (i.e. if the shape
+  is statically known). Otherwise adds a control dependency
+  to an assert op that checks the dynamic shape.
 
-    Performs the check statically if possible (i.e. if the shape
-    is statically known). Otherwise adds a control dependency
-    to an assert op that checks the dynamic shape.
+  Args:
+    image: >= 2-D Tensor of size [*, 1]
 
-    Args:
-      image: >= 3-D Tensor of size [*, height, width, depth]
+  Raises:
+    ValueError: if image.shape is not a [>= 2] vector or if
+              last dimension is not size 1.
 
-    Raises:
-      ValueError: if image.shape is not a [>= 3] vector or if
-                last dimension is not size 1.
-
-    Returns:
-      If the shape of `image` could be verified statically, `image` is
-      returned unchanged, otherwise there will be a control dependency
-      added that asserts the correct dynamic shape.
+  Returns:
+    If the shape of `image` could be verified statically, `image` is
+    returned unchanged, otherwise there will be a control dependency
+    added that asserts the correct dynamic shape.
   """
   return control_flow_ops.with_dependencies(
       _CheckGrayscaleImage(image, require_static=False), image)
 
 
 def _CheckGrayscaleImage(image, require_static=True):
-  """Assert that we are working with properly shaped
-
-  grayscale image.
+  """Assert that we are working with properly shaped grayscale image.
 
   Args:
-    image: >= 3-D Tensor of size [*, height, width, depth]
+    image: >= 2-D Tensor of size [*, 1]
+    require_static: Boolean, whether static shape is required.
 
   Raises:
-    ValueError: if image.shape is not a [>= 3] vector or if
+    ValueError: if image.shape is not a [>= 2] vector or if
               last dimension is not size 1.
 
   Returns:
@@ -283,11 +279,11 @@ def _CheckGrayscaleImage(image, require_static=True):
   """
   try:
     if image.get_shape().ndims is None:
-      image_shape = image.get_shape().with_rank(3)
+      image_shape = image.get_shape().with_rank(2)
     else:
-      image_shape = image.get_shape().with_rank_at_least(3)
+      image_shape = image.get_shape().with_rank_at_least(2)
   except ValueError:
-    raise ValueError('A grayscale image must be at least three-dimensional.')
+    raise ValueError('A grayscale image must be at least two-dimensional.')
   if require_static and not image_shape.is_fully_defined():
     raise ValueError('\'image\' must be fully defined.')
   if image_shape.is_fully_defined():
@@ -302,7 +298,7 @@ def _CheckGrayscaleImage(image, require_static=True):
         check_ops.assert_greater_equal(
             array_ops.rank(image),
             3,
-            message='A grayscale image must be at least three-dimensional.')
+            message='A grayscale image must be at least two-dimensional.')
     ]
   else:
     return []
@@ -449,7 +445,7 @@ def flip_up_down(image):
       of shape `[height, width, channels]`.
 
   Returns:
-    A tensor of the same type and shape as `image`.
+    A `Tensor` of the same type and shape as `image`.
 
   Raises:
     ValueError: if the shape of `image` not supported.
@@ -468,9 +464,10 @@ def _flip(image, flip_index, scope_name):
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
     flip_index: 0 For vertical, 1 for horizontal.
+    scope_name: string, scope name.
 
   Returns:
-    A tensor of the same type and shape as `image`.
+    A `Tensor` of the same type and shape as `image`.
 
   Raises:
     ValueError: if the shape of `image` not supported.
@@ -560,8 +557,7 @@ def _rot90_4D(images, k, name_scope):
     name_scope: A valid TensorFlow name scope.
 
   Returns:
-    A 4-D tensor of the same type and shape as `images`.
-
+    A 4-D `Tensor` of the same type and shape as `images`.
   """
 
   def _rot90():
@@ -635,6 +631,13 @@ def central_crop(image, central_fraction):
     image: Either a 3-D float Tensor of shape [height, width, depth], or a 4-D
       Tensor of shape [batch_size, height, width, depth].
     central_fraction: float (0, 1], fraction of size to crop
+  
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.central_crop(x, 0.5)
+    ```
 
   Raises:
     ValueError: if central_crop_fraction is not within (0, 1].
@@ -1473,21 +1476,23 @@ def resize_image_with_pad_v2(image,
 
 @tf_export('image.per_image_standardization')
 def per_image_standardization(image):
-  """Linearly scales `image` to have zero mean and unit variance.
+  """Linearly scales each image in `image` to have mean 0 and variance 1.
 
-  This op computes `(x - mean) / adjusted_stddev`, where `mean` is the average
-  of all values in image, and
-  `adjusted_stddev = max(stddev, 1.0/sqrt(image.NumElements()))`.
+  For each 3-D image `x` in `image`, computes `(x - mean) / adjusted_stddev`,
+  where
 
-  `stddev` is the standard deviation of all values in `image`. It is capped
-  away from zero to protect against division by 0 when handling uniform images.
+  - `mean` is the average of all values in `x`
+  - `adjusted_stddev = max(stddev, 1.0/sqrt(N))` is capped away from 0 to
+    protect against division by 0 when handling uniform images
+    - `N` is the number of elements in `x`
+    - `stddev` is the standard deviation of all values in `x`
 
   Args:
-    image: An n-D Tensor where the last 3 dimensions are `[height, width,
-      channels]`.
+    image: An n-D Tensor with at least 3 dimensions, the last 3 of which are the
+      dimensions of each image.
 
   Returns:
-    The standardized image with same shape as `image`.
+    A `Tensor` with same shape and dtype as `image`.
 
   Raises:
     ValueError: if the shape of 'image' is incompatible with this function.
@@ -1495,26 +1500,23 @@ def per_image_standardization(image):
   with ops.name_scope(None, 'per_image_standardization', [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
-    num_pixels = math_ops.reduce_prod(array_ops.shape(image)[-3:])
 
-    image = math_ops.cast(image, dtype=dtypes.float32)
+    # Remember original dtype to so we can convert back if needed
+    orig_dtype = image.dtype
+    if orig_dtype not in [dtypes.float16, dtypes.float32]:
+      image = convert_image_dtype(image, dtypes.float32)
+
+    num_pixels = math_ops.reduce_prod(array_ops.shape(image)[-3:])
     image_mean = math_ops.reduce_mean(image, axis=[-1, -2, -3], keepdims=True)
 
-    variance = (
-        math_ops.reduce_mean(
-            math_ops.square(image), axis=[-1, -2, -3], keepdims=True) -
-        math_ops.square(image_mean))
-    variance = gen_nn_ops.relu(variance)
-    stddev = math_ops.sqrt(variance)
-
     # Apply a minimum normalization that protects us against uniform images.
-    min_stddev = math_ops.rsqrt(math_ops.cast(num_pixels, dtypes.float32))
-    pixel_value_scale = math_ops.maximum(stddev, min_stddev)
-    pixel_value_offset = image_mean
+    stddev = math_ops.reduce_std(image, axis=[-1, -2, -3], keepdims=True)
+    min_stddev = math_ops.rsqrt(math_ops.cast(num_pixels, image.dtype))
+    adjusted_stddev = math_ops.maximum(stddev, min_stddev)
 
-    image = math_ops.subtract(image, pixel_value_offset)
-    image = math_ops.div(image, pixel_value_scale, name=scope)
-    return image
+    image -= image_mean
+    image = math_ops.div(image, adjusted_stddev, name=scope)
+    return convert_image_dtype(image, orig_dtype, saturate=True)
 
 
 @tf_export('image.random_brightness')
@@ -1662,12 +1664,19 @@ def adjust_gamma(image, gamma=1, gain=1):
   input images at first to float representation, then transforms them
   pixelwise according to the equation `Out = gain * In**gamma`,
   and then converts the back to the original data type.
+
   Args:
     image : RGB image or images to adjust.
     gamma : A scalar or tensor. Non negative real number.
     gain  : A scalar or tensor. The constant multiplier.
   Returns:
     A Tensor. A Gamma-adjusted tensor of the same shape and type as `image`.
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.adjust_gamma(x, 0.2)
+    ```
   Raises:
     ValueError: If gamma is negative.
   Notes:
@@ -1760,8 +1769,8 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
         return math_ops.multiply(cast, scale, name=name)
     elif image.dtype.is_floating and dtype.is_floating:
       # Both float: Just cast, no possible overflows in the allowed ranges.
-      # Note: We're ignoreing float overflows. If your image dynamic range
-      # exceeds float range you're on your own.
+      # Note: We're ignoring float overflows. If your image dynamic range
+      # exceeds float range, you're on your own.
       return math_ops.cast(image, dtype, name=name)
     else:
       if image.dtype.is_integer:
@@ -1893,6 +1902,13 @@ def adjust_hue(image, delta, name=None):
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
+  
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.adjust_hue(x, 0.2)
+    ```
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
     image = ops.convert_to_tensor(image, name='image')
@@ -2073,7 +2089,7 @@ def is_jpeg(contents, name=None):
      is_jpeg is susceptible to false positives.
   """
   # Normal JPEGs start with \xff\xd8\xff\xe0
-  # JPEG with EXIF stats with \xff\xd8\xff\xe1
+  # JPEG with EXIF starts with \xff\xd8\xff\xe1
   # Use \xff\xd8\xff to cover both.
   with ops.name_scope(name, 'is_jpeg'):
     substr = string_ops.substr(contents, 0, 3)
@@ -2139,7 +2155,11 @@ tf_export(
     'io.decode_image',
     'image.decode_image',
     v1=['io.decode_image', 'image.decode_image'])
-def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
+def decode_image(contents,
+                 channels=None,
+                 dtype=dtypes.uint8,
+                 name=None,
+                 expand_animations=True):
   """Function for `decode_bmp`, `decode_gif`, `decode_jpeg`, and `decode_png`.
 
   Detects whether an image is a BMP, GIF, JPEG, or PNG, and performs the
@@ -2150,7 +2170,9 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
   opposed to `decode_bmp`, `decode_jpeg` and `decode_png`, which return 3-D
   arrays `[height, width, num_channels]`. Make sure to take this into account
   when constructing your graph if you are intermixing GIF files with BMP, JPEG,
-  and/or PNG files.
+  and/or PNG files. Alternately, set the `expand_animations` argument of this
+  function to `False`, in which case the op will return 3-dimensional tensors
+  and will truncate animated GIF files to the first frame.
 
   Args:
     contents: 0-D `string`. The encoded image bytes.
@@ -2158,11 +2180,15 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
       the decoded image.
     dtype: The desired DType of the returned `Tensor`.
     name: A name for the operation (optional)
+    expand_animations: Controls the shape of the returned op's output.
+      If `True`, the returned op will produce a 3-D tensor for PNG, JPEG, and
+      BMP files; and a 4-D tensor for all GIFs, whether animated or not.
+      If, `False`, the returned op will produce a 3-D tensor for all file
+      types and will truncate animated GIFs to the first frame.
 
   Returns:
-    `Tensor` with type `dtype` and shape `[height, width, num_channels]` for
-      BMP, JPEG, and PNG images and shape `[num_frames, height, width, 3]` for
-      GIF images.
+    `Tensor` with type `dtype` and a 3- or 4-dimensional shape, depending on
+    the file type and the value of the `expand_animations` parameter.
 
   Raises:
     ValueError: On incorrect number of channels.
@@ -2173,7 +2199,7 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
     substr = string_ops.substr(contents, 0, 3)
 
     def _bmp():
-      """Decodes a GIF image."""
+      """Decodes a BMP image."""
       signature = string_ops.substr(contents, 0, 2)
       # Create assert op to check that bytes are BMP decodable
       is_bmp = math_ops.equal(signature, 'BM', name='is_bmp')
@@ -2187,9 +2213,9 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
         return convert_image_dtype(gen_image_ops.decode_bmp(contents), dtype)
 
     def _gif():
+      """Decodes a GIF image."""
       # Create assert to make sure that channels is not set to 1
       # Already checked above that channels is in (None, 0, 1, 3)
-
       gif_channels = 0 if channels is None else channels
       good_channels = math_ops.logical_and(
           math_ops.not_equal(gif_channels, 1, name='check_gif_channels'),
@@ -2197,7 +2223,12 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
       channels_msg = 'Channels must be in (None, 0, 3) when decoding GIF images'
       assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
       with ops.control_dependencies([assert_channels]):
-        return convert_image_dtype(gen_image_ops.decode_gif(contents), dtype)
+        result = convert_image_dtype(gen_image_ops.decode_gif(contents), dtype)
+        if not expand_animations:
+          # For now we decode animated GIFs fully and toss out all but the
+          # first frame when expand_animations is False
+          result = array_ops.gather(result, 0)
+        return result
 
     def check_gif():
       # Create assert op to check that bytes are GIF decodable
@@ -2434,8 +2465,7 @@ def sample_distorted_bounding_box(image_size,
   original image. The output is returned as 3 tensors: `begin`, `size` and
   `bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the
   image. The latter may be supplied to `tf.image.draw_bounding_boxes` to
-  visualize
-  what the bounding box looks like.
+  visualize what the bounding box looks like.
 
   Bounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`.
   The
@@ -2461,7 +2491,7 @@ def sample_distorted_bounding_box(image_size,
   ```
 
   Note that if no bounding box information is available, setting
-  `use_image_if_no_bounding_boxes = true` will assume there is a single implicit
+  `use_image_if_no_bounding_boxes = True` will assume there is a single implicit
   bounding box covering the whole image. If `use_image_if_no_bounding_boxes` is
   false and no bounding boxes are supplied, an error is raised.
 
@@ -2569,8 +2599,91 @@ def non_max_suppression(boxes,
     iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
     score_threshold = ops.convert_to_tensor(
         score_threshold, name='score_threshold')
-    return gen_image_ops.non_max_suppression_v3(boxes, scores, max_output_size,
-                                                iou_threshold, score_threshold)
+    return gen_image_ops.non_max_suppression_v3(boxes, scores,
+                                                max_output_size,
+                                                iou_threshold,
+                                                score_threshold)
+
+
+@tf_export('image.non_max_suppression_with_scores')
+def non_max_suppression_with_scores(boxes,
+                                    scores,
+                                    max_output_size,
+                                    iou_threshold=0.5,
+                                    score_threshold=float('-inf'),
+                                    soft_nms_sigma=0.0,
+                                    name=None):
+  """Greedily selects a subset of bounding boxes in descending order of score.
+
+  Prunes away boxes that have high intersection-over-union (IOU) overlap
+  with previously selected boxes.  Bounding boxes are supplied as
+  `[y1, x1, y2, x2]`, where `(y1, x1)` and `(y2, x2)` are the coordinates of any
+  diagonal pair of box corners and the coordinates can be provided as normalized
+  (i.e., lying in the interval `[0, 1]`) or absolute.  Note that this algorithm
+  is agnostic to where the origin is in the coordinate system.  Note that this
+  algorithm is invariant to orthogonal transformations and translations
+  of the coordinate system; thus translating or reflections of the coordinate
+  system result in the same boxes being selected by the algorithm.
+  The output of this operation is a set of integers indexing into the input
+  collection of bounding boxes representing the selected boxes.  The bounding
+  box coordinates corresponding to the selected indices can then be obtained
+  using the `tf.gather` operation.  For example:
+    ```python
+    selected_indices, selected_scores = tf.image.non_max_suppression_v2(
+        boxes, scores, max_output_size, iou_threshold=1.0, score_threshold=0.1,
+        soft_nms_sigma=0.5)
+    selected_boxes = tf.gather(boxes, selected_indices)
+    ```
+
+  This function generalizes the `tf.image.non_max_suppression` op by also
+  supporting a Soft-NMS (with Gaussian weighting) mode (c.f.
+  Bodla et al, https://arxiv.org/abs/1704.04503) where boxes reduce the score
+  of other overlapping boxes instead of directly causing them to be pruned.
+  Consequently, in contrast to `tf.image.non_max_suppression`,
+  `tf.image.non_max_suppression_v2` returns the new scores of each input box in
+  the second output, `selected_scores`.
+
+  To enable this Soft-NMS mode, set the `soft_nms_sigma` parameter to be
+  larger than 0.  When `soft_nms_sigma` equals 0, the behavior of
+  `tf.image.non_max_suppression_v2` is identical to that of
+  `tf.image.non_max_suppression` (except for the extra output) both in function
+  and in running time.
+
+  Args:
+    boxes: A 2-D float `Tensor` of shape `[num_boxes, 4]`.
+    scores: A 1-D float `Tensor` of shape `[num_boxes]` representing a single
+      score corresponding to each box (each row of boxes).
+    max_output_size: A scalar integer `Tensor` representing the maximum number
+      of boxes to be selected by non max suppression.
+    iou_threshold: A float representing the threshold for deciding whether boxes
+      overlap too much with respect to IOU.
+    score_threshold: A float representing the threshold for deciding when to
+      remove boxes based on score.
+    soft_nms_sigma: A scalar float representing the Soft NMS sigma parameter;
+      See Bodla et al, https://arxiv.org/abs/1704.04503).  When
+      `soft_nms_sigma=0.0` (which is default), we fall back to standard (hard)
+      NMS.
+    name: A name for the operation (optional).
+
+  Returns:
+    selected_indices: A 1-D integer `Tensor` of shape `[M]` representing the
+      selected indices from the boxes tensor, where `M <= max_output_size`.
+    selected_scores: A 1-D float tensor of shape `[M]` representing the
+      corresponding scores for each selected box, where `M <= max_output_size`.
+      Scores only differ from corresponding input scores when using Soft NMS
+      (i.e. when `soft_nms_sigma>0`)
+  """
+  with ops.name_scope(name, 'non_max_suppression_with_scores'):
+    iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
+    score_threshold = ops.convert_to_tensor(
+        score_threshold, name='score_threshold')
+    soft_nms_sigma = ops.convert_to_tensor(
+        soft_nms_sigma, name='soft_nms_sigma')
+    (selected_indices, selected_scores, _
+    ) = gen_image_ops.non_max_suppression_v5(
+        boxes, scores, max_output_size, iou_threshold, score_threshold,
+        soft_nms_sigma, pad_to_max_output_size=False)
+    return selected_indices, selected_scores
 
 
 @tf_export('image.non_max_suppression_padded')
@@ -2909,7 +3022,7 @@ def _ssim_helper(x, y, reducer, max_val, compensation=1.0, k1=0.01, k2=0.03):
     x: First set of images.
     y: Second set of images.
     reducer: Function that computes 'local' averages from set of images. For
-      non-covolutional version, this is usually tf.reduce_mean(x, [1, 2]), and
+      non-convolutional version, this is usually tf.reduce_mean(x, [1, 2]), and
       for convolutional version, this is usually tf.nn.avg_pool2d or
       tf.nn.conv2d with weighted-sum kernel.
     max_val: The dynamic range (i.e., the difference between the maximum

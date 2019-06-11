@@ -1,9 +1,20 @@
-licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_protos_grappler",
+)
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_additional_all_protos",
+    "tf_proto_library",
+)
+load(
+    "@local_config_cuda//cuda:build_defs.bzl",
+    "if_cuda",
+)
+
+package(
+    licenses = ["notice"],  # Apache 2.0
 )
 
 filegroup(
@@ -13,16 +24,6 @@ filegroup(
         "graph_properties_testdata/*.pbtxt.html",
     ]),
     visibility = ["//visibility:public"],
-)
-
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_proto_library",
-    "tf_additional_all_protos",
-)
-load(
-    "@local_config_cuda//cuda:build_defs.bzl",
-    "if_cuda",
 )
 
 tf_proto_library(
