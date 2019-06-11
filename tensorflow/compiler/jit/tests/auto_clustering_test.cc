@@ -87,25 +87,6 @@ Status BenchmarkHelper(absl::string_view key, benchmark::State& state) {
       state);
 }
 
-TEST_F(AutoClusteringTestImpl, OpenSeq2SeqGNMT) {
-  // Model is from https://github.com/NVIDIA/OpenSeq2Seq.
-  // Generated from
-  //
-  // python run.py \
-  // --config_file=example_configs/text2text/en-de/en-de-gnmt-like-4GPUs.py \
-  // --use_xla_jit
-  TF_ASSERT_OK(
-      RunAutoClusteringTestWithGzippedPbtxt("opens2s_gnmt_mixed_precision"));
-}
-
-#if defined(PLATFORM_GOOGLE)
-Status BenchmarkHelper(absl::string_view key, benchmark::State& state) {
-  return BenchmarkMarkForCompilation(
-      absl::StrCat(testing::TensorFlowSrcRoot(), "/compiler/jit/tests/", key,
-                   ".pbtxt"),
-      state);
-}
-
 void BM_MarkForCompilationPass_KerasImagenetMain(benchmark::State& state) {
   TF_CHECK_OK(BenchmarkHelper("keras_imagenet_main", state));
 }
