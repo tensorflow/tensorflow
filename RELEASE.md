@@ -38,7 +38,7 @@ If you experience any snags when using TF 2.0, please let us know at the [TF 2.0
   * Add support for TensorArrays to `tf.data Dataset`.
 * `tf.keras`:
   * Saving a Keras Model using `tf.saved_model.save` now saves the list of variables, trainable variables, regularization losses, and the call function.
-  * `tf.keras.estimator.model_to_estimator` now supports exporting to `tf.train.Checkpoint format`, which allows the saved checkpoints to be compatible with `model.load_weights`.
+  * `tf.keras.estimator.model_to_estimator` now supports exporting to `tf.train.Checkpoint` format, which allows the saved checkpoints to be compatible with `model.load_weights`.
   * `tf.keras.model.save_model` and `model.save` now defaults to saving a TensorFlow SavedModel.
   * `OMP_NUM_THREADS` is no longer used by the default Keras config.  To configure the number of threads, use `tf.config.threading` APIs.
   * Mark Keras `set_session` as `compat.v1` only
@@ -58,7 +58,7 @@ If you experience any snags when using TF 2.0, please let us know at the [TF 2.0
   * ResourceVariable's gather op supports batch dimensions.
   * `image.resize` in 2.0 now supports gradients for the new resize kernels.
   * removed `tf.string_split` from v2 API.
-  * Variadic reduce is supported on CPU Variadic reduce is supported on CPU
+  * Variadic reduce is supported on CPU
   * Added GPU implementation of `tf.linalg.tridiagonal_solve`.
   * Delete unused lookup table code.
   * Going forward we operate in TF 2.0, this change is part of the effort to slowly converting XYZDataset to DatasetV2 type which is the official version going to be used in TF 2.0 and motivated by some compatibility issue found, `_BigtableXYZDataset` (of type `DatasetV2`) does not implement the `_as_variant_tensor()` of DatasetV1, when moving `contrib.bigtable` to `tensorflow_io`. Converting into `DatasetV2` removes the overheads to maintain V1 while we are moving into TF 2.0.
