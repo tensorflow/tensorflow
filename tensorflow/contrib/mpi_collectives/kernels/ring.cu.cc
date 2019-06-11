@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/mpi_collectives/kernels/ring.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 namespace contrib {
