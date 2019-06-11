@@ -1,6 +1,8 @@
 # Description:
 #   Contains TF Learn (aka Scikit Flow) sub-project with high level tensorflow API.
 
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
+
 package(
     default_visibility = [
         "//engedu/ml/tf_from_scratch:__pkg__",
@@ -10,9 +12,6 @@ package(
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 
 py_library(
     name = "learn",
