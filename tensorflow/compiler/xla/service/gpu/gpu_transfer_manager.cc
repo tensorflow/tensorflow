@@ -187,10 +187,11 @@ static std::unique_ptr<xla::TransferManager> CreateGpuTransferManager() {
   return absl::make_unique<xla::gpu::GpuTransferManager>(
 #if TENSORFLOW_USE_ROCM
       /*id=*/stream_executor::rocm::kROCmPlatformId,
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::AMDGPUCompiler::kDataLayout)
 #else
       /*id=*/stream_executor::cuda::kCudaPlatformId,
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::NVPTXCompiler::kDataLayout)
 #endif
-      /*pointer_size=*/llvm::DataLayout(xla::gpu::kDataLayout)
           .getPointerSize(0 /* default address space */));
 }
 
