@@ -83,6 +83,7 @@ Status GetResourceVariableDtypeAndShapeInternal(
         "ResourceHandle does not exist, or is not a resource variable: ",
         resource_handle.DebugString());
   }
+  core::ScopedUnref unref(resource_var);
 
   // Return the result.
   *result = std::make_pair(resource_var->tensor()->dtype(),
