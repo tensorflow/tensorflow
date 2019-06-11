@@ -23,6 +23,8 @@ from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import tpu_strategy
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -209,6 +211,44 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
       for val in actual_result:
         final_result.extend(val.numpy())
       self.assertAllEqual(expected_result, final_result)
+
+
+class GradientTapeTest(test.TestCase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.strategies_minus_tpu +
+          [strategy_combinations.tpu_strategy_one_step],
+          mode=["eager"],
+          model_in_tf_function=[True, False]
+      ))
+  def test1(self, distribution, model_in_tf_function):
+    # b/134975331
+    if model_in_tf_function and isinstance(
+        distribution, (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
+      self.skipTest("model inside tf.function doesn't work with TPUStrategy")
+
+    def model(x):
+      return x * x
+
+    if model_in_tf_function:
+      model = def_function.function(model)
+
+    with distribution.scope():
+      x = variables.Variable(1.0)
+
+      @def_function.function
+      def train_step():
+        def replica_step():
+          with backprop.GradientTape() as tape:
+            y = model(x)
+          return tape.gradient(y, x)
+        return distribution.experimental_run_v2(replica_step)
+
+      grads = distribution.experimental_local_results(train_step())
+      self.assertLen(grads, distribution.num_replicas_in_sync)
+      self.assertTrue(all(g is not None for g in grads))
+
 
 if __name__ == "__main__":
   test.main()
