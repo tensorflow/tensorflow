@@ -23,19 +23,19 @@ Status ByteSwapArray(char* array, size_t bytes_per_elem, int array_len) {
     // No-op
     return Status::OK();
   } else if (bytes_per_elem == 2) {
-    auto array_16 = (uint16_t*)array;
+    auto array_16 = reinterpret_cast<uint16_t*>(array);
     for (int i = 0; i < array_len; i++) {
       array_16[i] = BYTE_SWAP_16(array_16[i]);
     }
     return Status::OK();
   } else if (bytes_per_elem == 4) {
-    auto array_32 = (uint32_t*)array;
+    auto array_32 = reinterpret_cast<uint32_t*>(array);
     for (int i = 0; i < array_len; i++) {
       array_32[i] = BYTE_SWAP_32(array_32[i]);
     }
     return Status::OK();
   } else if (bytes_per_elem == 8) {
-    auto array_64 = (uint64_t*)array;
+    auto array_64 = reinterpret_cast<uint64_t*>(array);
     for (int i = 0; i < array_len; i++) {
       array_64[i] = BYTE_SWAP_64(array_64[i]);
     }

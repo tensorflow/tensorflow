@@ -63,7 +63,7 @@ Tensor Constant_2x3(T v) {
 
 Tensor ByteSwap(Tensor t) {
   Tensor ret = tensor::DeepCopy(t);
-  EXPECT_OK(ByteSwapTensor(&ret));
+  TF_EXPECT_OK(ByteSwapTensor(&ret));
   return ret;
 }
 
