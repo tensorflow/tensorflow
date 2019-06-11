@@ -378,6 +378,7 @@ class CallContext(object):
     frozen: Whether currently executing inside a `Layer` with `trainable` set to
       `False`.
     in_call: Whether currently inside the `call` of a Layer.
+    training: Whether currently executing in training or inference mode.
     in_keras_graph: Whether executing inside the Keras Graph.
   """
 
@@ -386,25 +387,29 @@ class CallContext(object):
     self.inputs = None
     self.frozen = False
     self.in_call = False
+    self.training = None
     self._in_keras_graph = False
 
   @tf_contextlib.contextmanager
-  def enter(self, layer, inputs, build_graph):
+  def enter(self, layer, inputs, build_graph, training):
     """Push a Layer and its inputs and state onto the current call context."""
     prev_layer = self.layer
     prev_inputs = self.inputs
     prev_frozen = self.frozen
     prev_in_call = self.in_call
+    prev_training = self.training
     prev_in_keras_graph = self._in_keras_graph
 
     self.layer = layer
     self.inputs = inputs
     self.frozen = self.frozen or not layer.trainable
     self.in_call = True
+    self.training = training
     self._in_keras_graph = (
         self._in_keras_graph or
         (build_graph and
          getattr(backend.get_graph(), 'name', None) == 'keras_graph'))
+
     try:
       yield
     finally:
@@ -412,6 +417,7 @@ class CallContext(object):
       self.inputs = prev_inputs
       self.frozen = prev_frozen
       self.in_call = prev_in_call
+      self.training = prev_training
       self._in_keras_graph = prev_in_keras_graph
 
   @property

@@ -574,6 +574,7 @@ def _add_self_references(namespace, autograph_module):
     ag_internal = imp.new_module('autograph')
     ag_internal.__dict__.update(autograph_module.__dict__)
     ag_internal.ConversionOptions = converter.ConversionOptions
+    ag_internal.STD = converter.STANDARD_OPTIONS
     ag_internal.Feature = converter.Feature
     ag_internal.utils = utils
     ag_internal.function_scope = function_wrapping.function_scope

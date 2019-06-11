@@ -161,6 +161,7 @@ py_library(
         "engine/base_layer.py",
         "engine/input_layer.py",
         "engine/network.py",
+        "engine/node.py",
         "engine/partial_batch_padding_handler.py",
         "engine/saving.py",
         "engine/sequential.py",
@@ -823,7 +824,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 3,
+    shard_count = 4,
     tags = ["notsan"],
 )
 

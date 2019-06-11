@@ -398,7 +398,8 @@ XlaOp ConvertRandomBitsToUniformFloatingPoint(XlaOp bits, XlaOp minval,
 
   // Form random mantissa bits for float/double, with a leading 1 bit.
   int float_bits = primitive_util::BitWidth(value_type);
-  int mantissa_bits = primitive_util::SignificandWidth(value_type);
+  // Subtract one as SignificandWidth includes the leading 1 bit.
+  int mantissa_bits = primitive_util::SignificandWidth(value_type) - 1;
 
   bits = ShiftRightLogical(bits, ScalarLike(bits, float_bits - mantissa_bits)) |
          BitcastConvertType(ScalarLike(minval, 1.0), bit_type);

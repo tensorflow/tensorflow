@@ -1,14 +1,14 @@
+load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load(
+    "//tensorflow/lite/experimental/micro/testing:micro_test.bzl",
+    "tflite_micro_cc_test",
+)
+
 package(
     default_visibility = [
         "//visibility:public",
     ],
     licenses = ["notice"],  # Apache 2.0
-)
-
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load(
-    "//tensorflow/lite/experimental/micro/testing:micro_test.bzl",
-    "tflite_micro_cc_test",
 )
 
 cc_library(

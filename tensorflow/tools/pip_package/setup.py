@@ -141,7 +141,7 @@ class InstallCommand(InstallCommandBase):
 
   def finalize_options(self):
     ret = InstallCommandBase.finalize_options(self)
-    self.install_headers = os.path.join(self.install_purelib, 'tensorflow_core',
+    self.install_headers = os.path.join(self.install_platlib, 'tensorflow_core',
                                         'include')
     self.install_lib = self.install_platlib
     return ret
@@ -241,14 +241,15 @@ else:
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.so'
 
 headers = (
-    list(find_files('*.h', 'tensorflow/core')) + list(
-        find_files('*.h', 'tensorflow/stream_executor')) +
+    list(find_files('*.h', 'tensorflow_core/core')) +
+    list(find_files('*.h', 'tensorflow_core/stream_executor')) +
     list(find_files('*.h', 'google/protobuf_archive/src')) +
-    list(find_files('*.inc', 'google/protobuf_archive/src')) + list(
-        find_files('*', 'third_party/eigen3')) + list(
-            find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
-    list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +
-    list(find_files('*', 'tensorflow/include/external/eigen_archive')))
+    list(find_files('*.inc', 'google/protobuf_archive/src')) +
+    list(find_files('*', 'third_party/eigen3')) + list(
+        find_files('*.h', 'tensorflow_core/include/external/com_google_absl')) +
+    list(
+        find_files('*.inc', 'tensorflow_core/include/external/com_google_absl'))
+    + list(find_files('*', 'tensorflow_core/include/external/eigen_archive')))
 
 setup(
     name=project_name,

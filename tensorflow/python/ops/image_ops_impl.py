@@ -1902,6 +1902,13 @@ def adjust_hue(image, delta, name=None):
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
+  
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.adjust_hue(x, 0.2)
+    ```
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
     image = ops.convert_to_tensor(image, name='image')

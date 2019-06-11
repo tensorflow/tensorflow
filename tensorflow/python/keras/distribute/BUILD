@@ -149,6 +149,8 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_windows_gpu",
+        # TODO(b/134764123): Re-enable this test.
+        "notap",
         "notsan",
     ],
     deps = [

@@ -1814,6 +1814,7 @@ tf_cuda_cc_test(
         ":ops_util",
         ":relu_op",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
@@ -1825,6 +1826,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/stream_executor/cuda:cudnn_plugin",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ],
 )
 

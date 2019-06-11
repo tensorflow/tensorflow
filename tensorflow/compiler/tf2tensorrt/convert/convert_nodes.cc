@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
@@ -1030,9 +1029,6 @@ Status TrtNodeValidator::ValidateNode(
     const TrtPrecisionMode precision_mode,
     const grappler::GraphProperties& graph_properties) {
   const string& op = node_def.op();
-  // It doesn't support validation of plugins.
-  if (PluginFactoryTensorRT::GetInstance()->IsPlugin(op)) return Status::OK();
-
   // In INT8 mode, we will always apply the quantization ranges provided by
   // these ops to the relevant tensors. This happens regardless of the value of
   // use_calibration.
@@ -1131,15 +1127,11 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
   OpConverterParams params(this, node_def, inputs, &outputs,
                            /*arg_validation_only=*/false, &weight_store_);
   const string& op = node_def.op();
-  if (PluginFactoryTensorRT::GetInstance()->IsPlugin(op)) {
-    TF_RETURN_IF_ERROR(plugin_converter_(&params));
-  } else {
-    if (!op_registry_.count(op)) {
-      return errors::Unimplemented("No converter registered for op: ", op);
-    }
-    OpConverter op_converter = op_registry_.at(op);
-    TF_RETURN_IF_ERROR(op_converter(&params));
+  if (!op_registry_.count(op)) {
+    return errors::Unimplemented("No converter registered for op: ", op);
   }
+  OpConverter op_converter = op_registry_.at(op);
+  TF_RETURN_IF_ERROR(op_converter(&params));
 
   for (size_t i = 0; i < outputs.size(); ++i) {
     TRT_TensorOrWeights& output = outputs[i];
@@ -1859,45 +1851,6 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
         output_tensor, {0, 2, 3, 1}, &output_tensor));
   }
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
-  return Status::OK();
-}
-
-Status ConvertPlugin(OpConverterParams* params) {
-  const auto& inputs = params->inputs;
-  const auto& node_def = params->node_def;
-  // prepare input
-  std::vector<nvinfer1::ITensor*> all_inputs;
-  all_inputs.reserve(inputs.size());
-  for (const auto& input : inputs) {
-    all_inputs.emplace_back(input.tensor());
-  }
-
-  // plugin is owned by PluginFactory
-  // TODO(jie): destroy plugins later (resource management)
-  PluginTensorRT* plugin =
-      PluginFactoryTensorRT::GetInstance()->CreatePlugin(node_def.op());
-
-  // passing attributes
-  // TODO(jie): support more general attribute
-  TFAttrs attrs(node_def);
-  auto attr_key_vector = attrs.GetAllAttrKeys();
-  for (auto attr_key : attr_key_vector) {
-    // TODO(jie): support only list of float for toy example here.
-    auto data = attrs.get<std::vector<float>>(attr_key);
-    size_t size_data = data.size() * sizeof(float);
-    if (!plugin->SetAttribute(attr_key, static_cast<void*>(data.data()),
-                              size_data)) {
-      return errors::InvalidArgument("plugin SetAttribute failed");
-    }
-  }
-
-  nvinfer1::IPluginLayer* layer = params->converter->network()->addPlugin(
-      &all_inputs[0], static_cast<int>(inputs.size()), *plugin);
-
-  for (int i = 0; i < layer->getNbOutputs(); i++) {
-    nvinfer1::ITensor* output_tensor = layer->getOutput(i);
-    params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
-  }
   return Status::OK();
 }
 
@@ -2965,11 +2918,38 @@ void GetTensorDimsWithProtoShape(const Tensor& tensor, nvinfer1::Dims* dims) {
   }
 }
 
+template <typename Input>
+inline bool IsIntegerInInt32Bounds(const Input& inp) {
+  static_assert(std::is_integral<Input>::value,
+                "This function is only implemented for integral types.");
+  // If Input is always within the range of int32, return true.
+  if (sizeof(Input) < sizeof(int32) || std::is_same<Input, int32>::value) {
+    return true;
+  }
+  // Otherwise, we need to check the value of the input. If the input is
+  // unsigned, we only check the upper bound.
+  if (!std::numeric_limits<Input>::is_signed) {
+    return inp <= static_cast<Input>(std::numeric_limits<int32>::max());
+  }
+  // We can safely cast lowest() here since we now know that Input is signed and
+  // sizeof(Input) >= sizeof(int32)
+  return (inp >= static_cast<Input>(std::numeric_limits<int32>::lowest()) &&
+          inp <= static_cast<Input>(std::numeric_limits<int32>::max()));
+}
+
 template <DataType dtype>
-void CopyToTrtInt32Array(const Tensor& tensor, int32* dst) {
+Status CopyToTrtInt32Array(const Tensor& tensor, int32* dst) {
   typedef typename EnumToDataType<dtype>::Type CType;
   const CType* src = tensor.flat<CType>().data();
-  std::copy(src, src + tensor.NumElements(), dst);
+  for (int i = 0; i < tensor.NumElements(); ++i) {
+    // This becomes a no-op if CType is within bounds of int32
+    if (!IsIntegerInInt32Bounds(src[i])) {
+      return errors::InvalidArgument("Value at index ", i,
+                                     " is outside the range of int32");
+    }
+    dst[i] = static_cast<int32>(src[i]);
+  }
+  return Status::OK();
 }
 
 Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
@@ -2981,11 +2961,7 @@ Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
   // TODO(aaroey): FP16 will remain in half format and is not converted to
   // FP32, but the converter currently uses all float weights as FP32. Fix
   // this.
-  DataType converted_dtype = dtype;
-  if (dtype == DataType::DT_INT8 || dtype == DataType::DT_UINT8 ||
-      dtype == DataType::DT_INT16 || dtype == DataType::DT_UINT16) {
-    converted_dtype = DT_INT32;
-  }
+  DataType converted_dtype = DataTypeIsInteger(dtype) ? DT_INT32 : dtype;
 
   // Verify that the dtype is supported by TensorRT. Otherwise, return an error.
   nvinfer1::DataType trt_dtype;
@@ -3009,25 +2985,35 @@ Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
     return Status::OK();
   }
 
+  Status status = Status::OK();
   // Copy tensor elements after casting them to the converted DataType.
   int32* dst = static_cast<int32*>(weights->GetValues());
   switch (dtype) {
     case DT_INT8:
-      CopyToTrtInt32Array<DT_INT8>(tensor, dst);
+      status = CopyToTrtInt32Array<DT_INT8>(tensor, dst);
       break;
     case DT_UINT8:
-      CopyToTrtInt32Array<DT_UINT8>(tensor, dst);
+      status = CopyToTrtInt32Array<DT_UINT8>(tensor, dst);
       break;
     case DT_INT16:
-      CopyToTrtInt32Array<DT_INT16>(tensor, dst);
+      status = CopyToTrtInt32Array<DT_INT16>(tensor, dst);
       break;
     case DT_UINT16:
-      CopyToTrtInt32Array<DT_UINT16>(tensor, dst);
+      status = CopyToTrtInt32Array<DT_UINT16>(tensor, dst);
+      break;
+    case DT_UINT32:
+      status = CopyToTrtInt32Array<DT_UINT32>(tensor, dst);
+      break;
+    case DT_INT64:
+      status = CopyToTrtInt32Array<DT_INT64>(tensor, dst);
+      break;
+    case DT_UINT64:
+      status = CopyToTrtInt32Array<DT_UINT64>(tensor, dst);
       break;
     default:
       return errors::Internal("Unexpected DataType: ", DataTypeString(dtype));
   }
-  return Status::OK();
+  return status;
 }
 
 // Convert a Const NodeDef to TRT_ShapedWeights. This is a special converter, it
@@ -4643,7 +4629,6 @@ void TrtNodeValidator::RegisterOpValidators() {
 
 void Converter::RegisterOpConverters() {
   RegisterValidatableOpConverters(&op_registry_);
-  plugin_converter_ = ConvertPlugin;
 }
 
 Status ConvertGraphDefToEngine(

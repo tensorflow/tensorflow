@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/match.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/nn_ops.h"
+#include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -29,6 +31,10 @@ limitations under the License.
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/public/session.h"
 
+#if GOOGLE_CUDA
+#include "third_party/gpus/cudnn/cudnn.h"
+#endif  // GOOGLE_CUDA
+
 namespace tensorflow {
 
 template <typename T, typename U>
@@ -39,25 +45,46 @@ class FusedBatchNormExOpTestBase : public OpsTestBase {
   }
 
  protected:
+  struct FusedBatchNormOutputs {
+    Tensor y;
+    Tensor batch_mean;
+    Tensor batch_variance;
+    Tensor reserve_space_1;
+    Tensor reserve_space_2;
+    Tensor reserve_space_3;
+  };
+
+  struct FusedBatchNormGradOutputs {
+    Tensor y_backprop;
+    Tensor x_backprop;
+    Tensor scale_backprop;
+    Tensor offset_backprop;
+    Tensor reserve_space_4;
+    Tensor reserve_space_5;
+  };
+
   using GraphRunner = std::function<void(
-      const Tensor& input_data, const Tensor& scale_data,
-      const Tensor& offset_data, const Tensor& mean_data,
-      const Tensor& var_data, const Tensor& side_input_data, Tensor* out)>;
+      const Tensor& y_backprop, const Tensor& input_data,
+      const Tensor& scale_data, const Tensor& offset_data,
+      const Tensor& mean_data, const Tensor& var_data,
+      const Tensor& side_input_data, FusedBatchNormOutputs* forward,
+      FusedBatchNormGradOutputs* backward)>;
 
   // Runs a Tensorflow graph defined by the root scope, and fetches the result
-  // of 'fetch' node into the output Tensor. Optional `fetch_node` parameter
-  // allows to define a fetch node directly using a NodeDef for the ops that are
+  // of 'fetch' node into the outputs. Optional `add_nodes` parameter
+  // allows to define nodes directly using a NodeDef for the ops that are
   // not supported by the C++ Api.
   // TODO(ezhulenev): RunAndFetch defined in FusedConv2D and FusedMatMul tests.
   // Add a base class for all FusedABC kernels and remove code duplication.
-  void RunAndFetch(const tensorflow::Scope& root, const string& fetch,
-                   Tensor* output, bool allow_gpu_device,
-                   const NodeDef* fetch_node = nullptr) {
+  void RunAndFetch(const tensorflow::Scope& root,
+                   const std::vector<string>& fetch,
+                   std::vector<Tensor>* outputs, bool allow_gpu_device,
+                   const std::vector<const NodeDef*> add_nodes = {}) {
     tensorflow::GraphDef graph;
     TF_ASSERT_OK(root.ToGraphDef(&graph));
 
-    if (fetch_node) {
-      *graph.add_node() = *fetch_node;
+    for (const NodeDef* add_node : add_nodes) {
+      *graph.add_node() = *add_node;
     }
 
     // We really want to make sure that graph executed exactly as we passed it
@@ -101,64 +128,22 @@ class FusedBatchNormExOpTestBase : public OpsTestBase {
     }
 
     TF_ASSERT_OK(session->Create(graph));
-
-    std::vector<Tensor> unfused_tensors;
-    TF_ASSERT_OK(session->Run({}, {fetch}, {}, &unfused_tensors));
-
-    *output = unfused_tensors[0];
+    TF_ASSERT_OK(session->Run({}, fetch, {}, outputs));
   }
 
-  void RunFusedBatchNorm(const Tensor& input_data, const Tensor& scale_data,
+  void RunFusedBatchNorm(const Tensor& y_backprop_data,
+                         const Tensor& input_data, const Tensor& scale_data,
                          const Tensor& offset_data, const Tensor& mean_data,
                          const Tensor& var_data, const Tensor& side_input_data,
                          const TensorFormat data_format, bool is_training,
                          bool has_side_input, const string& activation_mode,
-                         Tensor* output, float epsilon = 0.1f) {
+                         FusedBatchNormOutputs* forward,
+                         FusedBatchNormGradOutputs* backward,
+                         float epsilon = 0.1f) {
     Scope root = tensorflow::Scope::NewRootScope();
 
-    ops::FusedBatchNormV2 fbn = ops::FusedBatchNormV2(
-        root.WithOpName("fused_batch_norm"),
-        ops::Const(root.WithOpName("input"), Input::Initializer(input_data)),
-        ops::Const(root.WithOpName("scale"), Input::Initializer(scale_data)),
-        ops::Const(root.WithOpName("offset"), Input::Initializer(offset_data)),
-        ops::Const(root.WithOpName("mean"), Input::Initializer(mean_data)),
-        ops::Const(root.WithOpName("var"), Input::Initializer(var_data)),
-        ops::FusedBatchNormV2::IsTraining(is_training)
-            .Epsilon(epsilon)
-            .DataFormat(ToString(data_format)));
-
-    Output with_side_input;
-    if (has_side_input) {
-      with_side_input =
-          ops::Add(root.WithOpName("with_side_input"), fbn.y,
-                   ops::Const(root.WithOpName("side_input"),
-                              Input::Initializer(side_input_data)));
-    } else {
-      with_side_input =
-          ops::Identity(root.WithOpName("with_side_input"), fbn.y);
-    }
-
-    if (activation_mode == "Relu") {
-      ops::Relu(root.WithOpName("with_activation"), with_side_input);
-    } else {
-      ops::Identity(root.WithOpName("with_activation"), with_side_input);
-    }
-
-    RunAndFetch(root, "with_activation", output, /*allow_gpu_device=*/true);
-  }
-
-  void RunFusedBatchNormEx(const Tensor& input_data, const Tensor& scale_data,
-                           const Tensor& offset_data, const Tensor& mean_data,
-                           const Tensor& var_data,
-                           const Tensor& side_input_data,
-                           const TensorFormat data_format, bool is_training,
-                           bool has_side_input, const string& activation_mode,
-                           Tensor* output, float epsilon = 0.1f) {
-    Scope root = tensorflow::Scope::NewRootScope();
-
-    DataType t_dtype = DataTypeToEnum<T>::v();
-    DataType u_dtype = DataTypeToEnum<U>::v();
-
+    Output y_backprop = ops::Const(root.WithOpName("y_backprop"),
+                                   Input::Initializer(y_backprop_data));
     Output input =
         ops::Const(root.WithOpName("input"), Input::Initializer(input_data));
     Output scale =
@@ -171,6 +156,101 @@ class FusedBatchNormExOpTestBase : public OpsTestBase {
         ops::Const(root.WithOpName("var"), Input::Initializer(var_data));
     Output side_input = ops::Const(root.WithOpName("side_input"),
                                    Input::Initializer(side_input_data));
+
+    ops::FusedBatchNormV3 fwd = ops::FusedBatchNormV3(
+        root.WithOpName("fused_batch_norm"), input, scale, offset, mean, var,
+        ops::FusedBatchNormV3::IsTraining(is_training)
+            .Epsilon(epsilon)
+            .DataFormat(ToString(data_format)));
+
+    Output with_side_input;
+    if (has_side_input) {
+      with_side_input =
+          ops::Add(root.WithOpName("with_side_input"), fwd.y, side_input);
+    } else {
+      with_side_input =
+          ops::Identity(root.WithOpName("with_side_input"), fwd.y);
+    }
+
+    Output activation;
+    if (activation_mode == "Relu") {
+      activation =
+          ops::Relu(root.WithOpName("with_activation"), with_side_input);
+    } else {
+      activation =
+          ops::Identity(root.WithOpName("with_activation"), with_side_input);
+    }
+
+    Output activation_grad;
+    if (activation_mode == "Relu") {
+      activation_grad = ops::internal::ReluGrad(
+          root.WithOpName("activation_grad"), y_backprop, activation);
+    } else {
+      activation_grad =
+          ops::Identity(root.WithOpName("activation_grad"), y_backprop);
+    }
+
+    ops::FusedBatchNormGradV3 bwd = ops::FusedBatchNormGradV3(
+        root.WithOpName("fused_batch_norm_grad"), activation_grad, input, scale,
+        fwd.reserve_space_1, fwd.reserve_space_2, fwd.reserve_space_3,
+        ops::FusedBatchNormGradV3::IsTraining(is_training)
+            .Epsilon(epsilon)
+            .DataFormat(ToString(data_format)));
+
+    std::vector<Tensor> out_tensors;
+    RunAndFetch(
+        root,
+        {"with_activation:0", "fused_batch_norm:1", "fused_batch_norm:2",
+         "fused_batch_norm:3", "fused_batch_norm:4", "fused_batch_norm:5",
+         "activation_grad:0", "fused_batch_norm_grad:0",
+         "fused_batch_norm_grad:1", "fused_batch_norm_grad:2"},
+        &out_tensors, /*allow_gpu_device=*/true);
+
+    forward->y = out_tensors[0];
+    forward->batch_mean = out_tensors[1];
+    forward->batch_variance = out_tensors[2];
+    forward->reserve_space_1 = out_tensors[3];
+    forward->reserve_space_2 = out_tensors[4];
+    forward->reserve_space_3 = out_tensors[5];
+
+    backward->y_backprop = out_tensors[6];
+    backward->x_backprop = out_tensors[7];
+    backward->scale_backprop = out_tensors[8];
+    backward->offset_backprop = out_tensors[9];
+  }
+
+  void RunFusedBatchNormEx(const Tensor& y_backprop_data,
+                           const Tensor& input_data, const Tensor& scale_data,
+                           const Tensor& offset_data, const Tensor& mean_data,
+                           const Tensor& var_data,
+                           const Tensor& side_input_data,
+                           const TensorFormat data_format, bool is_training,
+                           bool has_side_input, const string& activation_mode,
+                           FusedBatchNormOutputs* forward,
+                           FusedBatchNormGradOutputs* backward,
+                           float epsilon = 0.1f) {
+    Scope root = tensorflow::Scope::NewRootScope();
+
+    DataType t_dtype = DataTypeToEnum<T>::v();
+    DataType u_dtype = DataTypeToEnum<U>::v();
+
+    Output y_backprop = ops::Const(root.WithOpName("y_backprop"),
+                                   Input::Initializer(y_backprop_data));
+    Output input =
+        ops::Const(root.WithOpName("input"), Input::Initializer(input_data));
+    Output scale =
+        ops::Const(root.WithOpName("scale"), Input::Initializer(scale_data));
+    Output offset =
+        ops::Const(root.WithOpName("offset"), Input::Initializer(offset_data));
+    Output mean =
+        ops::Const(root.WithOpName("mean"), Input::Initializer(mean_data));
+    Output var =
+        ops::Const(root.WithOpName("var"), Input::Initializer(var_data));
+    Output side_input = ops::Const(root.WithOpName("side_input"),
+                                   Input::Initializer(side_input_data));
+    Output empty =
+        ops::Const(root.WithOpName("empty"),
+                   Input::Initializer(Tensor(DataTypeToEnum<U>::value, {0})));
 
     int num_side_inputs = 0;
     std::vector<NodeDefBuilder::NodeOut> side_inputs;
@@ -197,8 +277,58 @@ class FusedBatchNormExOpTestBase : public OpsTestBase {
                      .Attr("is_training", is_training)
                      .Finalize(&fused_batch_norm_ex));
 
-    RunAndFetch(root, fused_batch_norm_ex.name(), output,
-                /*allow_gpu_device=*/true, &fused_batch_norm_ex);
+    NodeDef activation_grad;
+    if (activation_mode == "Relu") {
+      TF_EXPECT_OK(NodeDefBuilder("activation_grad", "ReluGrad")
+                       .Input({y_backprop.name(), 0, t_dtype})
+                       .Input({fused_batch_norm_ex.name(), 0, t_dtype})
+                       .Attr("T", t_dtype)
+                       .Finalize(&activation_grad));
+    } else {
+      TF_EXPECT_OK(NodeDefBuilder("activation_grad", "Identity")
+                       .Input({y_backprop.name(), 0, t_dtype})
+                       .Attr("T", t_dtype)
+                       .Finalize(&activation_grad));
+    }
+
+    NodeDef fused_batch_norm_grad;
+    TF_EXPECT_OK(NodeDefBuilder("fused_batch_norm_grad", "FusedBatchNormGradV3")
+                     .Input({activation_grad.name(), 0, t_dtype})
+                     .Input({input.name(), 0, t_dtype})
+                     .Input({scale.name(), 0, u_dtype})
+                     .Input({fused_batch_norm_ex.name(), 3, u_dtype})
+                     .Input({fused_batch_norm_ex.name(), 4, u_dtype})
+                     .Input({fused_batch_norm_ex.name(), 5, u_dtype})
+                     .Attr("T", t_dtype)
+                     .Attr("U", u_dtype)
+                     .Attr("data_format", ToString(data_format))
+                     .Attr("epsilon", epsilon)
+                     .Attr("is_training", is_training)
+                     .Finalize(&fused_batch_norm_grad));
+
+    std::vector<Tensor> out_tensors;
+    RunAndFetch(
+        root,
+        {"fused_batch_norm_ex:0", "fused_batch_norm_ex:1",
+         "fused_batch_norm_ex:2", "fused_batch_norm_ex:3",
+         "fused_batch_norm_ex:4", "fused_batch_norm_ex:5", "activation_grad:0",
+         "fused_batch_norm_grad:0", "fused_batch_norm_grad:1",
+         "fused_batch_norm_grad:2"},
+        &out_tensors,
+        /*allow_gpu_device=*/true,
+        {&fused_batch_norm_ex, &activation_grad, &fused_batch_norm_grad});
+
+    forward->y = out_tensors[0];
+    forward->batch_mean = out_tensors[1];
+    forward->batch_variance = out_tensors[2];
+    forward->reserve_space_1 = out_tensors[3];
+    forward->reserve_space_2 = out_tensors[4];
+    forward->reserve_space_3 = out_tensors[5];
+
+    backward->y_backprop = out_tensors[6];
+    backward->x_backprop = out_tensors[7];
+    backward->scale_backprop = out_tensors[8];
+    backward->offset_backprop = out_tensors[9];
   }
 
   void VerifyTensorsNear(int batch, int height, int width, int channels,
@@ -215,6 +345,7 @@ class FusedBatchNormExOpTestBase : public OpsTestBase {
 
     Tensor input(t_dtype, input_shape);
     input.flat<T>().setRandom();
+    input.flat<T>() -= input.flat<T>().constant(static_cast<T>(0.5));
 
     Tensor scale(u_dtype, {channels});
     scale.flat<U>().setRandom();
@@ -228,29 +359,60 @@ class FusedBatchNormExOpTestBase : public OpsTestBase {
     Tensor var(u_dtype, {channels});
     var.flat<U>().setRandom();
 
-    Tensor empty(u_dtype, {0});
-
-    Tensor fused_batch_norm;
-    Tensor fused_batch_norm_ex;
-
     Tensor side_input(t_dtype, input_shape);
     side_input.flat<T>().setRandom();
+    side_input.flat<T>() += side_input.flat<T>().constant(static_cast<T>(5.0));
 
-    run_default(input, scale, offset, is_training ? empty : mean,
-                is_training ? empty : var, side_input, &fused_batch_norm);
+    Tensor y_backprop(t_dtype, input_shape);
+    y_backprop.flat<T>().setRandom();
+    y_backprop.flat<T>() -= y_backprop.flat<T>().constant(static_cast<T>(0.5));
 
-    // Write some garbage to the `fused_batch_norm_ex` first to make sure
-    // that fused kernel actually writes correct results to memory.
-    run_default(side_input, scale, offset, is_training ? empty : mean,
-                is_training ? empty : var, input, &fused_batch_norm_ex);
+    Tensor empty(u_dtype, {0});
 
-    run_fused(input, scale, offset, is_training ? empty : mean,
-              is_training ? empty : var, side_input, &fused_batch_norm_ex);
+    FusedBatchNormOutputs fbn_forward;
+    FusedBatchNormOutputs fbn_ex_forward;
 
-    ASSERT_EQ(fused_batch_norm.dtype(), fused_batch_norm_ex.dtype());
-    ASSERT_EQ(fused_batch_norm.shape(), fused_batch_norm_ex.shape());
+    FusedBatchNormGradOutputs fbn_backward;
+    FusedBatchNormGradOutputs fbn_ex_backward;
 
-    test::ExpectClose(fused_batch_norm, fused_batch_norm_ex, 1e-2);
+    run_default(y_backprop, input, scale, offset, is_training ? empty : mean,
+                is_training ? empty : var, side_input, &fbn_forward,
+                &fbn_backward);
+
+    // Write some garbage to the `fbn_ex_forward` and `fbn_ex_backward` first to
+    // make sure that fused kernel actually writes correct results to memory.
+    run_default(y_backprop, side_input, scale, offset,
+                is_training ? empty : mean, is_training ? empty : var, input,
+                &fbn_ex_forward, &fbn_ex_backward);
+
+    run_fused(y_backprop, input, scale, offset, is_training ? empty : mean,
+              is_training ? empty : var, side_input, &fbn_ex_forward,
+              &fbn_ex_backward);
+
+    std::vector<std::pair<Tensor, Tensor>> tensor_pairs = {
+        {fbn_forward.y, fbn_ex_forward.y},
+        {fbn_forward.batch_mean, fbn_ex_forward.batch_mean},
+        {fbn_forward.batch_variance, fbn_ex_forward.batch_variance},
+        {fbn_forward.reserve_space_1, fbn_ex_forward.reserve_space_1},
+        {fbn_forward.reserve_space_2, fbn_ex_forward.reserve_space_2},
+        // NOTE(ezhulenev): We deliberately do not check `reserved_space_3`
+        // because BatchNormEx with fused side input has different data in it,
+        // but we make sure that final gradients are the same.
+        {fbn_backward.y_backprop, fbn_ex_backward.y_backprop},
+        {fbn_backward.x_backprop, fbn_ex_backward.x_backprop},
+        {fbn_backward.scale_backprop, fbn_ex_backward.scale_backprop},
+        {fbn_backward.offset_backprop, fbn_ex_backward.offset_backprop},
+    };
+
+    for (auto& pair : tensor_pairs) {
+      const Tensor& fbn = pair.first;
+      const Tensor& fbn_ex = pair.second;
+
+      ASSERT_EQ(fbn.dtype(), fbn_ex.dtype());
+      ASSERT_EQ(fbn.shape(), fbn_ex.shape());
+
+      test::ExpectClose(fbn, fbn_ex, 1e-2);
+    }
   }
 
   // Verifies that computing FusedBatchNormOp+{SideInput}+{Activation} is
@@ -260,25 +422,27 @@ class FusedBatchNormExOpTestBase : public OpsTestBase {
                               bool has_side_input,
                               const string& activation_mode) {
     const GraphRunner run_default =
-        [&](const Tensor& input_data, const Tensor& scale_data,
-            const Tensor& offset_data, const Tensor& mean_data,
-            const Tensor& var_data, const Tensor& side_input_data,
-            Tensor* out) {
-          this->RunFusedBatchNorm(input_data, scale_data, offset_data,
-                                  mean_data, var_data, side_input_data,
-                                  data_format, is_training, has_side_input,
-                                  activation_mode, out);
+        [&](const Tensor& y_backprop, const Tensor& input_data,
+            const Tensor& scale_data, const Tensor& offset_data,
+            const Tensor& mean_data, const Tensor& var_data,
+            const Tensor& side_input_data, FusedBatchNormOutputs* fwd,
+            FusedBatchNormGradOutputs* bwd) {
+          this->RunFusedBatchNorm(y_backprop, input_data, scale_data,
+                                  offset_data, mean_data, var_data,
+                                  side_input_data, data_format, is_training,
+                                  has_side_input, activation_mode, fwd, bwd);
         };
 
     const GraphRunner run_inference =
-        [&](const Tensor& input_data, const Tensor& scale_data,
-            const Tensor& offset_data, const Tensor& mean_data,
-            const Tensor& var_data, const Tensor& side_input_data,
-            Tensor* out) {
-          this->RunFusedBatchNormEx(input_data, scale_data, offset_data,
-                                    mean_data, var_data, side_input_data,
-                                    data_format, is_training, has_side_input,
-                                    activation_mode, out);
+        [&](const Tensor& y_backprop, const Tensor& input_data,
+            const Tensor& scale_data, const Tensor& offset_data,
+            const Tensor& mean_data, const Tensor& var_data,
+            const Tensor& side_input_data, FusedBatchNormOutputs* fwd,
+            FusedBatchNormGradOutputs* bwd) {
+          this->RunFusedBatchNormEx(y_backprop, input_data, scale_data,
+                                    offset_data, mean_data, var_data,
+                                    side_input_data, data_format, is_training,
+                                    has_side_input, activation_mode, fwd, bwd);
         };
 
     VerifyTensorsNear(batch, height, width, channels, data_format, is_training,
@@ -297,17 +461,17 @@ constexpr bool kWithSideInput = true;  // side_input == true
 TYPED_TEST_SUITE_P(FusedBatchNormExOpTest);
 
 TYPED_TEST_P(FusedBatchNormExOpTest, TrainingInNHWCTest) {
-  this->VerifyFusedBatchNormEx(2, 2, 2, 4, FORMAT_NHWC, kInTraining,
+  this->VerifyFusedBatchNormEx(4, 28, 28, 256, FORMAT_NHWC, kInTraining,
                                kNoSideInput, "Identity");
 }
 
 TYPED_TEST_P(FusedBatchNormExOpTest, TrainingWithReluInNHWCTest) {
-  this->VerifyFusedBatchNormEx(2, 2, 2, 4, FORMAT_NHWC, kInTraining,
+  this->VerifyFusedBatchNormEx(4, 28, 28, 256, FORMAT_NHWC, kInTraining,
                                kNoSideInput, "Relu");
 }
 
 TYPED_TEST_P(FusedBatchNormExOpTest, TrainingWithSideInputAndReluInNHWCTest) {
-  this->VerifyFusedBatchNormEx(2, 2, 2, 4, FORMAT_NHWC, kInTraining,
+  this->VerifyFusedBatchNormEx(4, 28, 28, 256, FORMAT_NHWC, kInTraining,
                                kWithSideInput, "Relu");
 }
 

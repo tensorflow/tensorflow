@@ -1,4 +1,5 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+#!/bin/bash -eu
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,14 +12,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# =============================================================================
-"""Import custom op for plugin and register it in plugin factory registry."""
+# ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from tensorflow.contrib.tensorrt.custom_plugin_examples import inc_op as import_inc_op_so
-from tensorflow.contrib.tensorrt.custom_plugin_examples.ops import gen_inc_op
-
-inc_op = gen_inc_op.inc_plugin_trt
+DIST="$(grep "DISTRIB_CODENAME" /etc/lsb-release |sed 's,.*=,,')"
+wget -O - "https://apt.llvm.org/llvm-snapshot.gpg.key"| apt-key add -
+add-apt-repository "deb http://apt.llvm.org/${DIST}/ llvm-toolchain-${DIST}-8 main"
+apt-get update && apt-get install -y clang-8 && \
+  rm -rf /var/lib/apt/lists/*

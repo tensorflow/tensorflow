@@ -4,6 +4,13 @@
 # TODO(jlebar): None of these tests actually use the GPU, so they should not
 # need to run on machines with GPUs present.
 
+load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
+
 package(
     default_visibility = [":friends"],
     licenses = ["notice"],  # Apache 2.0
@@ -23,13 +30,6 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-)
-
-load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
 )
 
 cc_library(

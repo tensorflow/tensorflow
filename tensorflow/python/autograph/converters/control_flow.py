@@ -275,8 +275,9 @@ class ControlFlowTransformer(converter.Base):
                                        orelse_name, state_getter_name,
                                        state_setter_name)
 
-    if_ast = (undefined_assigns + cond_assign + composite_defs + body_def +
-              orelse_def + cond_expr)
+    if_ast = (
+        undefined_assigns + composite_defs + body_def + orelse_def +
+        cond_assign + cond_expr)
     return if_ast
 
   def _get_loop_state(self, node, modified_symbols):

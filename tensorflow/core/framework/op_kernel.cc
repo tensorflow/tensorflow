@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 #include <mutex>  // NOLINT
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -1246,6 +1247,42 @@ Status FindKernelRegistration(
       *was_attr_mismatch = true;
     }
   }
+  // Check if no device specific registrations found. If not, try finding a
+  // default kernel.
+  if (*reg == nullptr &&
+      !IsSymbolicExecutionDevice(device_type.type_string())) {
+    const string default_key = Key(node_op, DEVICE_DEFAULT, label);
+    auto regs = typed_registry->registry.equal_range(default_key);
+    for (auto iter = regs.first; iter != regs.second; ++iter) {
+      // If there is a kernel registered for the op and device_type,
+      // check that the attrs match.
+      bool match;
+      TF_RETURN_IF_ERROR(
+          KernelAttrsMatch(iter->second.def, node_attrs, &match));
+      if (match) {
+        if (*reg != nullptr) {
+          return errors::InvalidArgument(
+              "Multiple Default OpKernel registrations match NodeDef '",
+              FormatNodeDefForError(node_name, has_experimental_debug_info,
+                                    experimental_debug_info),
+              "': '", ProtoShortDebugString((*reg)->def), "' and '",
+              ProtoShortDebugString(iter->second.def), "'");
+        }
+        *reg = &iter->second;
+      } else {
+        *was_attr_mismatch = true;
+      }
+    }
+
+    if (*reg != nullptr) {
+      LOG(INFO) << "No device-specific kernels found for NodeDef '"
+                << FormatNodeDefForError(node_name, has_experimental_debug_info,
+                                         experimental_debug_info)
+                << "'"
+                << "Will fall back to a default kernel." << std::endl;
+    }
+  }
+
   return Status::OK();
 }
 
