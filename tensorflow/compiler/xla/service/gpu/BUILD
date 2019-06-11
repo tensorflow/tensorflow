@@ -965,8 +965,6 @@ cc_library(
     + if_rocm_is_configured([
        ":nvptx_constants",
     ]),
-)
-      
     alwayslink = True,  # Contains per-platform transfer manager registration
 )
 
