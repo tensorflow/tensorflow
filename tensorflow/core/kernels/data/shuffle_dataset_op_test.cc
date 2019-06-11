@@ -9,6 +9,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/shuffle_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
@@ -17,9 +18,7 @@ namespace data {
 namespace {
 
 constexpr char kShuffleNodeName[] = "shuffle_dataset";
-constexpr char kShuffleOpName[] = "ShuffleDataset";
 constexpr char kShuffleAndRepeatNodeName[] = "shuffle_and_repeat_dataset";
-constexpr char kShuffleAndRepeatOpName[] = "ShuffleAndRepeatDataset";
 
 class ShuffleDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -32,16 +31,23 @@ class ShuffleDatasetOpTest : public DatasetOpsTestBase {
     NodeDef node_def;
     if (count == 1) {
       node_def = test::function::NDef(
-          kShuffleNodeName, kShuffleOpName,
-          {"input_dataset", "buffer_size", "seed", "seed2"},
-          {{"reshuffle_each_iteration", reshuffle_each_iteration},
-           {"output_types", output_types},
-           {"output_shapes", output_shapes}});
+          kShuffleNodeName, name_utils::OpName(ShuffleDatasetOp::kDatasetType),
+          {ShuffleDatasetOp::kInputDataset, ShuffleDatasetOp::kBufferSize,
+           ShuffleDatasetOp::kSeed, ShuffleDatasetOp::kSeed2},
+          {{ShuffleDatasetOp::kReshuffleEachIteration, reshuffle_each_iteration},
+           {ShuffleDatasetOp::kOutputTypes, output_types},
+           {ShuffleDatasetOp::kOutputShapes, output_shapes}});
     } else {
       node_def = test::function::NDef(
-          kShuffleAndRepeatNodeName, kShuffleAndRepeatOpName,
-          {"input_dataset", "buffer_size", "seed", "seed2", "count"},
-          {{"output_types", output_types}, {"output_shapes", output_shapes}});
+          kShuffleAndRepeatNodeName,
+          name_utils::OpName(ShuffleAndRepeatDatasetOp::kDatasetType),
+          {ShuffleAndRepeatDatasetOp::kInputDataset,
+           ShuffleAndRepeatDatasetOp::kBufferSize,
+           ShuffleAndRepeatDatasetOp::kSeed,
+           ShuffleAndRepeatDatasetOp::kSeed2,
+           ShuffleAndRepeatDatasetOp::kCount},
+          {{ShuffleAndRepeatDatasetOp::kOutputTypes, output_types},
+           {ShuffleAndRepeatDatasetOp::kOutputShapes, output_shapes}});
     }
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, shuffle_dataset_kernel));
     return Status::OK();
@@ -482,9 +488,11 @@ TEST_P(ParameterizedShuffleDatasetOpTest, DatasetTypeString) {
   core::ScopedUnref scoped_unref_dataset(dataset);
 
   if (count_value == 1) {
-    EXPECT_EQ(dataset->type_string(), kShuffleOpName);
+    EXPECT_EQ(dataset->type_string(),
+              name_utils::OpName(ShuffleDatasetOp::kDatasetType));
   } else {
-    EXPECT_EQ(dataset->type_string(), kShuffleAndRepeatOpName);
+    EXPECT_EQ(dataset->type_string(),
+              name_utils::OpName(ShuffleAndRepeatDatasetOp::kDatasetType));
   }
 }
 
@@ -793,9 +801,13 @@ TEST_P(ParameterizedShuffleDatasetOpTest, IteratorOutputPrefix) {
       dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
 
   if (count_value == 1) {
-    EXPECT_EQ(iterator->prefix(), "Iterator::Shuffle");
+    EXPECT_EQ(
+        iterator->prefix(),
+        name_utils::IteratorPrefix(ShuffleDatasetOp::kDatasetType, "Iterator"));
   } else {
-    EXPECT_EQ(iterator->prefix(), "Iterator::ShuffleAndRepeat");
+    EXPECT_EQ(iterator->prefix(),
+              name_utils::IteratorPrefix(
+                  ShuffleAndRepeatDatasetOp::kDatasetType, "Iterator"));
   }
 }
 
