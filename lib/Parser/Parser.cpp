@@ -1122,7 +1122,6 @@ Attribute Parser::parseFloatAttr(Type type, bool isNegative) {
   auto val = getToken().getFloatingPointValue();
   if (!val.hasValue())
     return (emitError("floating point value too large for attribute"), nullptr);
-  auto valTok = getToken().getLoc();
   consumeToken(Token::floatliteral);
   if (!type) {
     // Default to F64 when no type is specified.
@@ -1134,9 +1133,7 @@ Attribute Parser::parseFloatAttr(Type type, bool isNegative) {
   if (!type.isa<FloatType>())
     return (emitError("floating point value not valid for specified type"),
             nullptr);
-  return FloatAttr::getChecked(type,
-                               isNegative ? -val.getValue() : val.getValue(),
-                               getEncodedSourceLocation(valTok));
+  return FloatAttr::get(type, isNegative ? -val.getValue() : val.getValue());
 }
 
 /// Parse an integer attribute.
