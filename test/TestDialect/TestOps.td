@@ -182,4 +182,37 @@ def SizedRegionOp : TEST_Op<"sized_region_op", []> {
   let regions = (region SizedRegion<2>:$my_region, SizedRegion<1>);
 }
 
+//===----------------------------------------------------------------------===//
+// Test Legalization
+//===----------------------------------------------------------------------===//
+
+def Test_LegalizerEnum_Success : EnumAttrCase<"Success">;
+def Test_LegalizerEnum_Failure : EnumAttrCase<"Failure">;
+
+def Test_LegalizerEnum : EnumAttr<"Success", "Failure",
+  [Test_LegalizerEnum_Success, Test_LegalizerEnum_Failure]>;
+
+def ILLegalOpA : TEST_Op<"illegal_op_a">, Results<(outs I32:$res)>;
+def ILLegalOpB : TEST_Op<"illegal_op_b">, Results<(outs I32:$res)>;
+def ILLegalOpC : TEST_Op<"illegal_op_c">, Results<(outs I32:$res)>;
+def ILLegalOpD : TEST_Op<"illegal_op_d">, Results<(outs I32:$res)>;
+def ILLegalOpE : TEST_Op<"illegal_op_e">, Results<(outs I32:$res)>;
+def LegalOpA : TEST_Op<"legal_op_a">,
+  Arguments<(ins Test_LegalizerEnum:$status)>, Results<(outs I32:$res)>;
+
+// Check that smaller pattern depths are chosen, i.e. prioritize more direct
+// mappings.
+def : Pat<(ILLegalOpA), (LegalOpA Test_LegalizerEnum_Success)>;
+
+def : Pat<(ILLegalOpA), (ILLegalOpB)>;
+def : Pat<(ILLegalOpB), (LegalOpA Test_LegalizerEnum_Failure)>;
+
+// Check that the higher benefit pattern is taken for multiple legalizations
+// with the same depth.
+def : Pat<(ILLegalOpC), (ILLegalOpD)>;
+def : Pat<(ILLegalOpD), (LegalOpA Test_LegalizerEnum_Failure)>;
+
+def : Pat<(ILLegalOpC), (ILLegalOpE), [], (addBenefit 10)>;
+def : Pat<(ILLegalOpE), (LegalOpA Test_LegalizerEnum_Success)>;
+
 #endif // TEST_OPS

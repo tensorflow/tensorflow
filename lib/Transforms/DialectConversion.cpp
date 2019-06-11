@@ -374,6 +374,7 @@ public:
                      OwningRewritePatternList &patterns)
       : target(targetInfo) {
     buildLegalizationGraph(patterns);
+    computeLegalizationGraphBenefit();
   }
 
   /// Attempt to legalize the given operation. Returns success if the operation
@@ -391,6 +392,16 @@ private:
   /// directly legal, but may be transitively legal for the current target given
   /// the provided patterns.
   void buildLegalizationGraph(OwningRewritePatternList &patterns);
+
+  /// Compute the benefit of each node within the computed legalization graph.
+  /// This orders the patterns within 'legalizerPatterns' based upon two
+  /// criteria:
+  ///  1) Prefer patterns that have the lowest legalization depth, i.e.
+  ///     represent the more direct mapping to the target.
+  ///  2) When comparing patterns with the same legalization depth, prefer the
+  ///     pattern with the highest PatternBenefit. This allows for users to
+  ///     prefer specific legalizations over others.
+  void computeLegalizationGraphBenefit();
 
   /// The current set of patterns that have been applied.
   llvm::SmallPtrSet<RewritePattern *, 8> appliedPatterns;
@@ -535,6 +546,79 @@ void OperationLegalizer::buildLegalizationGraph(
     for (auto op : parentOps[pattern->getRootKind()])
       patternWorklist.set_union(invalidPatterns[op]);
   }
+}
+
+void OperationLegalizer::computeLegalizationGraphBenefit() {
+  // The smallest pattern depth, when legalizing an operation.
+  DenseMap<OperationName, unsigned> minPatternDepth;
+
+  // Compute the minimum legalization depth for a given operation.
+  std::function<unsigned(OperationName)> computeDepth = [&](OperationName op) {
+    // Check for existing depth.
+    auto depthIt = minPatternDepth.find(op);
+    if (depthIt != minPatternDepth.end())
+      return depthIt->second;
+
+    // If a mapping for this operation does not exist, then this operation
+    // is always legal. Return 0 as the depth for a directly legal operation.
+    auto opPatternsIt = legalizerPatterns.find(op);
+    if (opPatternsIt == legalizerPatterns.end())
+      return 0u;
+
+    auto &minDepth = minPatternDepth[op];
+    if (opPatternsIt->second.empty())
+      return minDepth;
+
+    // Initialize the depth to the maximum value.
+    minDepth = std::numeric_limits<unsigned>::max();
+
+    // Compute the depth for each pattern used to legalize this operation.
+    SmallVector<std::pair<RewritePattern *, unsigned>, 4> patternsByDepth;
+    patternsByDepth.reserve(opPatternsIt->second.size());
+    for (RewritePattern *pattern : opPatternsIt->second) {
+      unsigned depth = 0;
+      for (auto generatedOp : pattern->getGeneratedOps())
+        depth = std::max(depth, computeDepth(generatedOp) + 1);
+      patternsByDepth.emplace_back(pattern, depth);
+
+      // Update the min depth for this operation.
+      minDepth = std::min(minDepth, depth);
+    }
+
+    // If the operation only has one legalization pattern, there is no need to
+    // sort them.
+    if (patternsByDepth.size() == 1)
+      return minDepth;
+
+    // Sort the patterns by those likely to be the most beneficial.
+    llvm::array_pod_sort(
+        patternsByDepth.begin(), patternsByDepth.end(),
+        [](const std::pair<RewritePattern *, unsigned> *lhs,
+           const std::pair<RewritePattern *, unsigned> *rhs) {
+          // First sort by the smaller pattern legalization depth.
+          if (lhs->second != rhs->second)
+            return llvm::array_pod_sort_comparator<unsigned>(&lhs->second,
+                                                             &rhs->second);
+
+          // Then sort by the larger pattern benefit.
+          auto lhsBenefit = lhs->first->getBenefit();
+          auto rhsBenefit = rhs->first->getBenefit();
+          return llvm::array_pod_sort_comparator<PatternBenefit>(&rhsBenefit,
+                                                                 &lhsBenefit);
+        });
+
+    // Update the legalization pattern to use the new sorted list.
+    opPatternsIt->second.clear();
+    for (auto &patternIt : patternsByDepth)
+      opPatternsIt->second.push_back(patternIt.first);
+
+    return minDepth;
+  };
+
+  // For each operation that is transitively legal, compute a cost for it.
+  for (auto &opIt : legalizerPatterns)
+    if (!minPatternDepth.count(opIt.first))
+      computeDepth(opIt.first);
 }
 
 //===----------------------------------------------------------------------===//

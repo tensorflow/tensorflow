@@ -18,25 +18,52 @@
 #include "TestDialect.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/DialectConversion.h"
 using namespace mlir;
 
 namespace {
 #include "TestPatterns.inc"
+} // end anonymous namespace
 
+//===----------------------------------------------------------------------===//
+// Canonicalizer Driver.
+//===----------------------------------------------------------------------===//
+
+namespace {
 struct TestPatternDriver : public FunctionPass<TestPatternDriver> {
-  void runOnFunction() override;
+  void runOnFunction() override {
+    mlir::OwningRewritePatternList patterns;
+    populateWithGenerated(&getContext(), &patterns);
+
+    // Verify named pattern is generated with expected name.
+    RewriteListBuilder<TestNamedPatternRule>::build(patterns, &getContext());
+
+    applyPatternsGreedily(getFunction(), std::move(patterns));
+  }
 };
 } // end anonymous namespace
 
-void TestPatternDriver::runOnFunction() {
-  mlir::OwningRewritePatternList patterns;
-  populateWithGenerated(&getContext(), &patterns);
-
-  // Verify named pattern is generated with expected name.
-  RewriteListBuilder<TestNamedPatternRule>::build(patterns, &getContext());
-
-  applyPatternsGreedily(getFunction(), std::move(patterns));
-}
-
 static mlir::PassRegistration<TestPatternDriver>
     pass("test-patterns", "Run test dialect patterns");
+
+//===----------------------------------------------------------------------===//
+// Legalization Driver.
+//===----------------------------------------------------------------------===//
+
+namespace {
+struct TestLegalizePatternDriver
+    : public FunctionPass<TestLegalizePatternDriver> {
+  void runOnFunction() override {
+    mlir::OwningRewritePatternList patterns;
+    populateWithGenerated(&getContext(), &patterns);
+
+    ConversionTarget target(getContext());
+    target.addLegalOp<LegalOpA>();
+    (void)applyConversionPatterns(getFunction(), target, std::move(patterns));
+  }
+};
+} // end anonymous namespace
+
+static mlir::PassRegistration<TestLegalizePatternDriver>
+    legalizer_pass("test-legalize-patterns",
+                   "Run test dialect legalization patterns");
