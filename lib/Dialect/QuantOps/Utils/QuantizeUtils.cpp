@@ -49,7 +49,7 @@ convertDenseFPElementsAttr(DenseFPElementsAttr realFPElementsAttr,
                            const UniformQuantizedValueConverter &converter) {
   // Convert to corresponding quantized value attributes.
   SmallVector<APInt, 8> quantValues;
-  quantValues.reserve(realFPElementsAttr.size());
+  quantValues.reserve(realFPElementsAttr.rawSize());
   for (APFloat realVal : realFPElementsAttr) {
     quantValues.push_back(converter.quantizeFloatToInt(realVal));
   }

@@ -747,6 +747,11 @@ void ModulePrinter::printDenseElementsAttr(DenseElementsAttr attr) {
     return;
   }
 
+  // If this is a splat, make sure to print all of the elements.
+  // TODO: This should be removed when the parser supports dense splats.
+  if (attr.isSplat())
+    elements.resize(type.getNumElements(), elements.front());
+
   // We use a mixed-radix counter to iterate through the shape. When we bump a
   // non-least-significant digit, we emit a close bracket. When we next emit an
   // element we re-open all closed brackets.

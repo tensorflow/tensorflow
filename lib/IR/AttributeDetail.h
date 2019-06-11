@@ -359,24 +359,147 @@ struct SplatElementsAttributeStorage : public AttributeStorage {
 
 /// An attribute representing a reference to a dense vector or tensor object.
 struct DenseElementsAttributeStorage : public AttributeStorage {
-  using KeyTy = std::pair<Type, ArrayRef<char>>;
+  struct KeyTy {
+    KeyTy(ShapedType type, ArrayRef<char> data, llvm::hash_code hashCode,
+          bool isSplat = false)
+        : type(type), data(data), hashCode(hashCode), isSplat(isSplat) {}
 
-  DenseElementsAttributeStorage(Type ty, ArrayRef<char> data,
+    /// The type of the dense elements.
+    ShapedType type;
+
+    /// The raw buffer for the data storage.
+    ArrayRef<char> data;
+
+    /// The computed hash code for the storage data.
+    llvm::hash_code hashCode;
+
+    /// A boolean that indicates if this data is a splat or not.
+    bool isSplat;
+  };
+
+  DenseElementsAttributeStorage(ShapedType ty, ArrayRef<char> data,
                                 bool isSplat = false)
       : AttributeStorage(ty), data(data), isSplat(isSplat) {}
 
-  /// Key equality and hash functions.
+  /// Compare this storage instance with the provided key.
   bool operator==(const KeyTy &key) const {
-    return key == KeyTy(getType(), data);
+    if (key.type != getType())
+      return false;
+
+    // For boolean splats we need to explicitly check that the first bit is the
+    // same. Boolean values are packed at the bit level, and even though a splat
+    // is detected the rest of the bits in the first byte may differ from the
+    // splat value.
+    if (key.type.getElementTypeBitWidth() == 1) {
+      if (key.isSplat != isSplat)
+        return false;
+      if (isSplat)
+        return (key.data.front() & 1) == data.front();
+    }
+
+    // Otherwise, we can default to just checking the data.
+    return key.data == data;
+  }
+
+  /// Construct a key from a shaped type, raw data buffer, and a flag that
+  /// signals if the data is already known to be a splat. Callers to this
+  /// function are expected to tag preknown splat values when possible, e.g. one
+  /// element shapes.
+  static KeyTy getKey(ShapedType ty, ArrayRef<char> data, bool isKnownSplat) {
+    // Handle an empty storage instance.
+    if (data.empty())
+      return KeyTy(ty, data, 0);
+
+    // If the data is already known to be a splat, the key hash value is
+    // directly the data buffer.
+    if (isKnownSplat)
+      return KeyTy(ty, data, llvm::hash_value(data), isKnownSplat);
+
+    // Otherwise, we need to check if the data corresponds to a splat or not.
+
+    // Handle the simple case of only one element.
+    size_t numElements = ty.getNumElements();
+    assert(numElements != 1 && "splat of 1 element should already be detected");
+
+    // Handle boolean values directly as they are packed to 1-bit.
+    size_t elementWidth = ty.getElementTypeBitWidth();
+    if (elementWidth == 1)
+      return getKeyForBoolData(ty, data, numElements);
+
+    // FIXME(b/121118307): using 64 bits for BF16 because it is currently stored
+    // with double semantics.
+    if (ty.getElementType().isBF16())
+      elementWidth = 64;
+
+    // Non 1-bit dense elements are padded to 8-bits.
+    size_t storageSize = llvm::divideCeil(elementWidth, CHAR_BIT);
+    assert(((data.size() / storageSize) == numElements) &&
+           "data does not hold expected number of elements");
+
+    // Create the initial hash value with just the first element.
+    auto firstElt = data.take_front(storageSize);
+    auto hashVal = llvm::hash_value(firstElt);
+
+    // Check to see if this storage represents a splat. If it doesn't then
+    // combine the hash for the data starting with the first non splat element.
+    for (size_t i = storageSize, e = data.size(); i != e; i += storageSize)
+      if (memcmp(data.data(), &data[i], storageSize))
+        return KeyTy(ty, data, llvm::hash_combine(hashVal, data.drop_front(i)));
+
+    // Otherwise, this is a splat so just return the hash of the first element.
+    return KeyTy(ty, firstElt, hashVal, /*isSplat=*/true);
+  }
+
+  /// Construct a key with a set of boolean data.
+  static KeyTy getKeyForBoolData(ShapedType ty, ArrayRef<char> data,
+                                 size_t numElements) {
+    ArrayRef<char> splatData = data;
+    bool splatValue = splatData.front() & 1;
+
+    // Helper functor to generate a KeyTy for a boolean splat value.
+    auto generateSplatKey = [=] {
+      return KeyTy(ty, data.take_front(1),
+                   llvm::hash_value(ArrayRef<char>(splatValue ? 1 : 0)),
+                   /*isSplat=*/true);
+    };
+
+    // Handle the case where the potential splat value is 1 and the number of
+    // elements is non 8-bit aligned.
+    size_t numOddElements = numElements % CHAR_BIT;
+    if (splatValue && numOddElements != 0) {
+      // Check that all bits are set in the last value.
+      char lastElt = splatData.back();
+      if (lastElt != llvm::maskTrailingOnes<char>(numOddElements))
+        return KeyTy(ty, data, llvm::hash_value(data));
+
+      // If this is the only element, the data is known to be a splat.
+      if (splatData.size() == 1)
+        return generateSplatKey();
+      splatData = splatData.drop_back();
+    }
+
+    // Check that the data buffer corresponds to a splat.
+    return llvm::is_splat(splatData) ? generateSplatKey()
+                                     : KeyTy(ty, data, llvm::hash_value(data));
+  }
+
+  /// Hash the key for the storage.
+  static llvm::hash_code hashKey(const KeyTy &key) {
+    return llvm::hash_combine(key.type, key.hashCode);
   }
 
   /// Construct a new storage instance.
   static DenseElementsAttributeStorage *
   construct(AttributeStorageAllocator &allocator, KeyTy key) {
     // If the data buffer is non-empty, we copy it into the allocator.
-    ArrayRef<char> data = allocator.copyInto(key.second);
+    ArrayRef<char> data = allocator.copyInto(key.data);
+
+    // If this is a boolean splat, make sure only the first bit is used.
+    if (key.isSplat && key.type.getElementTypeBitWidth() == 1)
+      const_cast<char &>(data.front()) &= 1;
+
     return new (allocator.allocate<DenseElementsAttributeStorage>())
-        DenseElementsAttributeStorage(key.first, data);
+        DenseElementsAttributeStorage(key.type, data, key.isSplat);
   }
 
   ArrayRef<char> data;
