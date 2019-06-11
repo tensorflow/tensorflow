@@ -63,7 +63,6 @@ const char* const kHeaderEntryKey = "";
 
 namespace {
 
-
 // Reads "num_elements" string elements from file[offset, offset+size) into the
 // length-N "destination".  Discards the original content of "destination".
 //
@@ -96,9 +95,9 @@ Status ReadStringTensor(io::InputBuffer* buffered_file, size_t num_elements,
       if (need_to_swap_bytes) {
         length = BYTE_SWAP_64(length);
       }
-      *actual_crc32c = crc32c::Extend(
-          *actual_crc32c, reinterpret_cast<const char*>(&length),
-          sizeof(uint64));
+      *actual_crc32c =
+          crc32c::Extend(*actual_crc32c, reinterpret_cast<const char*>(&length),
+                         sizeof(uint64));
     }
   }
   if (offset + size < buffered_file->Tell()) {
@@ -107,23 +106,23 @@ Status ReadStringTensor(io::InputBuffer* buffered_file, size_t num_elements,
   }
 
   // Reads the length-checksum.
-  uint32 raw_length_checksum = 0;   // Bytes in file
-  uint32 length_checksum = 0;       // In-memory representation
+  uint32 raw_length_checksum = 0;  // Bytes in file
+  uint32 length_checksum = 0;      // In-memory representation
   size_t unused_bytes_read = 0;
   TF_RETURN_IF_ERROR(buffered_file->ReadNBytes(
       sizeof(uint32), reinterpret_cast<char*>(&raw_length_checksum),
       &unused_bytes_read));
-  length_checksum = need_to_swap_bytes ? BYTE_SWAP_32(raw_length_checksum) :
-    raw_length_checksum;
+  length_checksum = need_to_swap_bytes ? BYTE_SWAP_32(raw_length_checksum)
+                                       : raw_length_checksum;
   if (crc32c::Unmask(length_checksum) != *actual_crc32c) {
     return errors::DataLoss(
         "The length checksum does not match: expected ",
         strings::Printf("%08u", crc32c::Unmask(length_checksum)),
         " but actual is ", strings::Printf("%08u", *actual_crc32c));
   }
-  *actual_crc32c =
-      crc32c::Extend(*actual_crc32c, reinterpret_cast<char*>(&raw_length_checksum),
-                     sizeof(uint32));
+  *actual_crc32c = crc32c::Extend(*actual_crc32c,
+                                  reinterpret_cast<char*>(&raw_length_checksum),
+                                  sizeof(uint32));
 
   // Reads the actual string bytes.
   for (size_t i = 0; i < num_elements; ++i) {
