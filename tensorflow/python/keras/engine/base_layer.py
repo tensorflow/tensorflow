@@ -1383,10 +1383,6 @@ class Layer(module.Module):
         Input tensor or list of input tensors.
 
     Raises:
-        AttributeError: if the layer is connected to
-        more than one incoming layers.
-
-    Raises:
       RuntimeError: If called in Eager mode.
       AttributeError: If no inbound nodes are found.
     """
