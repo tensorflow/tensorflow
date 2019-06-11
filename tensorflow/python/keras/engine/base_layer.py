@@ -1514,8 +1514,11 @@ class Layer(module.Module):
   # Methods & attributes below are public aliases of other methods.            #
   ##############################################################################
 
+  @deprecation.deprecated(
+      date=None, instructions='Please use `layer.__call__` method instead.')
+  @doc_controls.do_not_doc_inheritable
   def apply(self, inputs, *args, **kwargs):
-    """Apply the layer on a input.
+    """Deprecated, do NOT use!
 
     This is an alias of `self.__call__`.
 
@@ -1529,9 +1532,11 @@ class Layer(module.Module):
     """
     return self.__call__(inputs, *args, **kwargs)
 
-  @doc_controls.for_subclass_implementers
+  @deprecation.deprecated(
+      date=None, instructions='Please use `layer.add_weight` method instead.')
+  @doc_controls.do_not_doc_inheritable
   def add_variable(self, *args, **kwargs):
-    """Alias for `add_weight`."""
+    """Deprecated, do NOT use! Alias for `add_weight`."""
     return self.add_weight(*args, **kwargs)
 
   @property
