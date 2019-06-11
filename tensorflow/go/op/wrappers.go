@@ -4509,6 +4509,116 @@ func CTCGreedyDecoder(scope *Scope, inputs tf.Output, sequence_length tf.Output,
 	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
 }
 
+// CudnnRNNCanonicalToParamsV2Attr is an optional argument to CudnnRNNCanonicalToParamsV2.
+type CudnnRNNCanonicalToParamsV2Attr func(optionalAttr)
+
+// CudnnRNNCanonicalToParamsV2RnnMode sets the optional rnn_mode attribute to value.
+// If not specified, defaults to "lstm"
+func CudnnRNNCanonicalToParamsV2RnnMode(value string) CudnnRNNCanonicalToParamsV2Attr {
+	return func(m optionalAttr) {
+		m["rnn_mode"] = value
+	}
+}
+
+// CudnnRNNCanonicalToParamsV2InputMode sets the optional input_mode attribute to value.
+// If not specified, defaults to "linear_input"
+func CudnnRNNCanonicalToParamsV2InputMode(value string) CudnnRNNCanonicalToParamsV2Attr {
+	return func(m optionalAttr) {
+		m["input_mode"] = value
+	}
+}
+
+// CudnnRNNCanonicalToParamsV2Direction sets the optional direction attribute to value.
+// If not specified, defaults to "unidirectional"
+func CudnnRNNCanonicalToParamsV2Direction(value string) CudnnRNNCanonicalToParamsV2Attr {
+	return func(m optionalAttr) {
+		m["direction"] = value
+	}
+}
+
+// CudnnRNNCanonicalToParamsV2Dropout sets the optional dropout attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNCanonicalToParamsV2Dropout(value float32) CudnnRNNCanonicalToParamsV2Attr {
+	return func(m optionalAttr) {
+		m["dropout"] = value
+	}
+}
+
+// CudnnRNNCanonicalToParamsV2Seed sets the optional seed attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNCanonicalToParamsV2Seed(value int64) CudnnRNNCanonicalToParamsV2Attr {
+	return func(m optionalAttr) {
+		m["seed"] = value
+	}
+}
+
+// CudnnRNNCanonicalToParamsV2Seed2 sets the optional seed2 attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNCanonicalToParamsV2Seed2(value int64) CudnnRNNCanonicalToParamsV2Attr {
+	return func(m optionalAttr) {
+		m["seed2"] = value
+	}
+}
+
+// CudnnRNNCanonicalToParamsV2NumProj sets the optional num_proj attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNCanonicalToParamsV2NumProj(value int64) CudnnRNNCanonicalToParamsV2Attr {
+	return func(m optionalAttr) {
+		m["num_proj"] = value
+	}
+}
+
+// Converts CudnnRNN params from canonical form to usable form. It supports the projection in LSTM.
+//
+// Writes a set of weights into the opaque params buffer so they can be used in
+// upcoming training or inferences.
+//
+// Note that the params buffer may not be compatible across different GPUs. So any
+// save and restoration should be converted to and from the canonical weights and
+// biases.
+//
+// num_layers: Specifies the number of layers in the RNN model.
+// num_units: Specifies the size of the hidden state.
+// input_size: Specifies the size of the input state.
+// weights: the canonical form of weights that can be used for saving
+//     and restoration. They are more likely to be compatible across different
+//     generations.
+// biases: the canonical form of biases that can be used for saving
+//     and restoration. They are more likely to be compatible across different
+//     generations.
+// num_params_weigths: number of weight parameter matrix for all layers.
+// num_params_biases: number of bias parameter vector for all layers.
+// rnn_mode: Indicates the type of the RNN model.
+// input_mode: Indicate whether there is a linear projection between the input and
+//     The actual computation before the first layer. 'skip_input' is only allowed
+//     when input_size == num_units; 'auto_select' implies 'skip_input' when
+//     input_size == num_units; otherwise, it implies 'linear_input'.
+// direction: Indicates whether a bidirectional model will be used.
+//     dir = (direction == bidirectional) ? 2 : 1
+// dropout: dropout probability. When set to 0., dropout is disabled.
+// seed: the 1st part of a seed to initialize dropout.
+// seed2: the 2nd part of a seed to initialize dropout.
+// num_proj: The output dimensionality for the projection matrices. If None or 0,
+//     no projection is performed.
+func CudnnRNNCanonicalToParamsV2(scope *Scope, num_layers tf.Output, num_units tf.Output, input_size tf.Output, weights []tf.Output, biases []tf.Output, optional ...CudnnRNNCanonicalToParamsV2Attr) (params tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CudnnRNNCanonicalToParamsV2",
+		Input: []tf.Input{
+			num_layers, num_units, input_size, tf.OutputList(weights), tf.OutputList(biases),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // CudnnRNNCanonicalToParamsAttr is an optional argument to CudnnRNNCanonicalToParams.
 type CudnnRNNCanonicalToParamsAttr func(optionalAttr)
 
@@ -4608,6 +4718,129 @@ func CudnnRNNCanonicalToParams(scope *Scope, num_layers tf.Output, num_units tf.
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// CudnnRNNParamsToCanonicalV2Attr is an optional argument to CudnnRNNParamsToCanonicalV2.
+type CudnnRNNParamsToCanonicalV2Attr func(optionalAttr)
+
+// CudnnRNNParamsToCanonicalV2RnnMode sets the optional rnn_mode attribute to value.
+// If not specified, defaults to "lstm"
+func CudnnRNNParamsToCanonicalV2RnnMode(value string) CudnnRNNParamsToCanonicalV2Attr {
+	return func(m optionalAttr) {
+		m["rnn_mode"] = value
+	}
+}
+
+// CudnnRNNParamsToCanonicalV2InputMode sets the optional input_mode attribute to value.
+// If not specified, defaults to "linear_input"
+func CudnnRNNParamsToCanonicalV2InputMode(value string) CudnnRNNParamsToCanonicalV2Attr {
+	return func(m optionalAttr) {
+		m["input_mode"] = value
+	}
+}
+
+// CudnnRNNParamsToCanonicalV2Direction sets the optional direction attribute to value.
+// If not specified, defaults to "unidirectional"
+func CudnnRNNParamsToCanonicalV2Direction(value string) CudnnRNNParamsToCanonicalV2Attr {
+	return func(m optionalAttr) {
+		m["direction"] = value
+	}
+}
+
+// CudnnRNNParamsToCanonicalV2Dropout sets the optional dropout attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNParamsToCanonicalV2Dropout(value float32) CudnnRNNParamsToCanonicalV2Attr {
+	return func(m optionalAttr) {
+		m["dropout"] = value
+	}
+}
+
+// CudnnRNNParamsToCanonicalV2Seed sets the optional seed attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNParamsToCanonicalV2Seed(value int64) CudnnRNNParamsToCanonicalV2Attr {
+	return func(m optionalAttr) {
+		m["seed"] = value
+	}
+}
+
+// CudnnRNNParamsToCanonicalV2Seed2 sets the optional seed2 attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNParamsToCanonicalV2Seed2(value int64) CudnnRNNParamsToCanonicalV2Attr {
+	return func(m optionalAttr) {
+		m["seed2"] = value
+	}
+}
+
+// CudnnRNNParamsToCanonicalV2NumProj sets the optional num_proj attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNParamsToCanonicalV2NumProj(value int64) CudnnRNNParamsToCanonicalV2Attr {
+	return func(m optionalAttr) {
+		m["num_proj"] = value
+	}
+}
+
+// Retrieves CudnnRNN params in canonical form. It supports the projection in LSTM.
+//
+// Retrieves a set of weights from the opaque params buffer that can be saved and
+// restored in a way compatible with future runs.
+//
+// Note that the params buffer may not be compatible across different GPUs. So any
+// save and restoration should be converted to and from the canonical weights and
+// biases.
+//
+// num_layers: Specifies the number of layers in the RNN model.
+// num_units: Specifies the size of the hidden state.
+// input_size: Specifies the size of the input state.
+// num_params_weigths: number of weight parameter matrix for all layers.
+// num_params_biases: number of bias parameter vector for all layers.
+// weights: the canonical form of weights that can be used for saving
+//     and restoration. They are more likely to be compatible across different
+//     generations.
+// biases: the canonical form of biases that can be used for saving
+//     and restoration. They are more likely to be compatible across different
+//     generations.
+// rnn_mode: Indicates the type of the RNN model.
+// input_mode: Indicate whether there is a linear projection between the input and
+//     The actual computation before the first layer. 'skip_input' is only allowed
+//     when input_size == num_units; 'auto_select' implies 'skip_input' when
+//     input_size == num_units; otherwise, it implies 'linear_input'.
+// direction: Indicates whether a bidirectional model will be used.
+//     dir = (direction == bidirectional) ? 2 : 1
+// dropout: dropout probability. When set to 0., dropout is disabled.
+// seed: the 1st part of a seed to initialize dropout.
+// seed2: the 2nd part of a seed to initialize dropout.
+// num_proj: The output dimensionality for the projection matrices. If None or 0,
+//     no projection is performed.
+func CudnnRNNParamsToCanonicalV2(scope *Scope, num_layers tf.Output, num_units tf.Output, input_size tf.Output, params tf.Output, num_params_weights int64, num_params_biases int64, optional ...CudnnRNNParamsToCanonicalV2Attr) (weights []tf.Output, biases []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_params_weights": num_params_weights, "num_params_biases": num_params_biases}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CudnnRNNParamsToCanonicalV2",
+		Input: []tf.Input{
+			num_layers, num_units, input_size, params,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if weights, idx, err = makeOutputList(op, idx, "weights"); err != nil {
+		scope.UpdateErr("CudnnRNNParamsToCanonicalV2", err)
+		return
+	}
+	if biases, idx, err = makeOutputList(op, idx, "biases"); err != nil {
+		scope.UpdateErr("CudnnRNNParamsToCanonicalV2", err)
+		return
+	}
+	return weights, biases
 }
 
 // CudnnRNNBackpropAttr is an optional argument to CudnnRNNBackprop.
@@ -14047,6 +14280,14 @@ func CudnnRNNBackpropV3Seed2(value int64) CudnnRNNBackpropV3Attr {
 	}
 }
 
+// CudnnRNNBackpropV3NumProj sets the optional num_proj attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNBackpropV3NumProj(value int64) CudnnRNNBackpropV3Attr {
+	return func(m optionalAttr) {
+		m["num_proj"] = value
+	}
+}
+
 // CudnnRNNBackpropV3TimeMajor sets the optional time_major attribute to value.
 // If not specified, defaults to true
 func CudnnRNNBackpropV3TimeMajor(value bool) CudnnRNNBackpropV3Attr {
@@ -20107,6 +20348,14 @@ func CudnnRNNParamsSizeSeed2(value int64) CudnnRNNParamsSizeAttr {
 	}
 }
 
+// CudnnRNNParamsSizeNumProj sets the optional num_proj attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNParamsSizeNumProj(value int64) CudnnRNNParamsSizeAttr {
+	return func(m optionalAttr) {
+		m["num_proj"] = value
+	}
+}
+
 // Computes size of weights that can be used by a Cudnn RNN model.
 //
 // Return the params size that can be used by the Cudnn RNN model. Subsequent
@@ -23348,6 +23597,14 @@ func CudnnRNNV3Seed(value int64) CudnnRNNV3Attr {
 func CudnnRNNV3Seed2(value int64) CudnnRNNV3Attr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
+	}
+}
+
+// CudnnRNNV3NumProj sets the optional num_proj attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNV3NumProj(value int64) CudnnRNNV3Attr {
+	return func(m optionalAttr) {
+		m["num_proj"] = value
 	}
 }
 
