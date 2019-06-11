@@ -174,6 +174,7 @@ public:
     MP_None = 0x0,
     MP_Static = 0x1,      // Static method
     MP_Constructor = 0x2, // Constructor
+    MP_Private = 0x4,     // Private method
   };
 
   OpMethod(StringRef retType, StringRef name, StringRef params,
@@ -183,6 +184,9 @@ public:
 
   // Returns true if this is a static method.
   bool isStatic() const;
+
+  // Returns true if this is a private method.
+  bool isPrivate() const;
 
   // Writes the method as a declaration to the given `os`.
   void writeDeclTo(raw_ostream &os) const;
@@ -319,6 +323,8 @@ OpMethodBody &OpMethod::body() { return methodBody; }
 
 bool OpMethod::isStatic() const { return properties & MP_Static; }
 
+bool OpMethod::isPrivate() const { return properties & MP_Private; }
+
 void OpMethod::writeDeclTo(raw_ostream &os) const {
   os.indent(2);
   if (isStatic())
@@ -359,14 +365,28 @@ void Class::newField(StringRef type, StringRef name, StringRef defaultValue) {
 }
 
 void Class::writeDeclTo(raw_ostream &os) const {
+  bool hasPrivateMethod = false;
   os << "class " << className << " {\n";
   os << "public:\n";
   for (const auto &method : methods) {
-    method.writeDeclTo(os);
-    os << '\n';
+    if (!method.isPrivate()) {
+      method.writeDeclTo(os);
+      os << '\n';
+    } else {
+      hasPrivateMethod = true;
+    }
   }
   os << '\n';
   os << "private:\n";
+  if (hasPrivateMethod) {
+    for (const auto &method : methods) {
+      if (method.isPrivate()) {
+        method.writeDeclTo(os);
+        os << '\n';
+      }
+    }
+    os << '\n';
+  }
   for (const auto &field : fields)
     os.indent(2) << field << ";\n";
   os << "};\n";
@@ -394,13 +414,32 @@ void OpClass::writeDeclTo(raw_ostream &os) const {
   os << "> {\npublic:\n";
   os << "  using Op::Op;\n";
   os << "  using OperandAdaptor = " << className << "OperandAdaptor;\n";
+
+  bool hasPrivateMethod = false;
   for (const auto &method : methods) {
-    method.writeDeclTo(os);
-    os << "\n";
+    if (!method.isPrivate()) {
+      method.writeDeclTo(os);
+      os << "\n";
+    } else {
+      hasPrivateMethod = true;
+    }
   }
+
   // TODO: Add line control markers to make errors easier to debug.
   if (!extraClassDeclaration.empty())
     os << extraClassDeclaration << "\n";
+
+  if (hasPrivateMethod) {
+    os << '\n';
+    os << "private:\n";
+    for (const auto &method : methods) {
+      if (method.isPrivate()) {
+        method.writeDeclTo(os);
+        os << "\n";
+      }
+    }
+  }
+
   os << "};\n";
 }
 
@@ -514,13 +553,9 @@ void OpEmitter::emitDef(const Operator &op, raw_ostream &os) {
   OpEmitter(op).emitDef(os);
 }
 
-void OpEmitter::emitDecl(raw_ostream &os) {
-  opClass.writeDeclTo(os);
-}
+void OpEmitter::emitDecl(raw_ostream &os) { opClass.writeDeclTo(os); }
 
-void OpEmitter::emitDef(raw_ostream &os) {
-  opClass.writeDefTo(os);
-}
+void OpEmitter::emitDef(raw_ostream &os) { opClass.writeDefTo(os); }
 
 void OpEmitter::genAttrGetters() {
   FmtContext fctx;
