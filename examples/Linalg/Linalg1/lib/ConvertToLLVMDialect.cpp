@@ -422,7 +422,7 @@ void linalg::convertToLLVM(mlir::Module &module) {
   populateLinalg1ToLLVMConversionPatterns(patterns, module.getContext());
 
   ConversionTarget target(*module.getContext());
-  target.addLegalDialects<LLVM::LLVMDialect>();
+  target.addLegalDialect<LLVM::LLVMDialect>();
   auto r =
       applyConversionPatterns(module, target, converter, std::move(patterns));
   (void)r;

@@ -994,7 +994,7 @@ struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
     populateStdToLLVMConversionPatterns(converter, patterns);
 
     ConversionTarget target(getContext());
-    target.addLegalDialects<LLVM::LLVMDialect>();
+    target.addLegalDialect<LLVM::LLVMDialect>();
     if (failed(
             applyConversionPatterns(m, target, converter, std::move(patterns))))
       signalPassFailure();

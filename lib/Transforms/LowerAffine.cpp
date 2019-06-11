@@ -597,7 +597,7 @@ LogicalResult mlir::lowerAffineConstructs(Function &function) {
                      AffineTerminatorLowering>::build(patterns,
                                                       function.getContext());
   ConversionTarget target(*function.getContext());
-  target.addLegalDialects<StandardOpsDialect>();
+  target.addLegalDialect<StandardOpsDialect>();
   return applyConversionPatterns(function, target, std::move(patterns));
 }
 

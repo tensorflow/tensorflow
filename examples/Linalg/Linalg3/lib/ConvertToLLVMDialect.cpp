@@ -163,7 +163,7 @@ void linalg::convertLinalg3ToLLVM(Module &module) {
   populateLinalg3ToLLVMConversionPatterns(patterns, module.getContext());
 
   ConversionTarget target(*module.getContext());
-  target.addLegalDialects<LLVM::LLVMDialect>();
+  target.addLegalDialect<LLVM::LLVMDialect>();
   auto r =
       applyConversionPatterns(module, target, converter, std::move(patterns));
   (void)r;

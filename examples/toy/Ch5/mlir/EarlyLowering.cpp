@@ -127,7 +127,7 @@ public:
 struct EarlyLoweringPass : public FunctionPass<EarlyLoweringPass> {
   void runOnFunction() override {
     ConversionTarget target(getContext());
-    target.addLegalDialects<linalg::LinalgDialect, StandardOpsDialect>();
+    target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect>();
     target.addLegalOp<toy::AllocOp, toy::TypeCastOp>();
 
     OwningRewritePatternList patterns;

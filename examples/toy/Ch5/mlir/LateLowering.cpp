@@ -345,8 +345,8 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
 
     // Perform Toy specific lowering.
     ConversionTarget target(getContext());
-    target.addLegalDialects<AffineOpsDialect, linalg::LinalgDialect,
-                            LLVM::LLVMDialect, StandardOpsDialect>();
+    target.addLegalDialect<AffineOpsDialect, linalg::LinalgDialect,
+                           LLVM::LLVMDialect, StandardOpsDialect>();
     target.addLegalOp<toy::AllocOp, toy::TypeCastOp>();
     if (failed(applyConversionPatterns(getModule(), target, typeConverter,
                                        std::move(toyPatterns)))) {

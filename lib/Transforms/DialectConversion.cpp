@@ -725,6 +725,37 @@ FunctionType TypeConverter::convertFunctionSignatureType(
 }
 
 //===----------------------------------------------------------------------===//
+// ConversionTarget
+//===----------------------------------------------------------------------===//
+
+/// Register a legality action for the given operation.
+void ConversionTarget::setOpAction(OperationName op,
+                                   LegalizationAction action) {
+  legalOperations[op] = action;
+}
+
+/// Register a legality action for the given dialects.
+void ConversionTarget::setDialectAction(ArrayRef<StringRef> dialectNames,
+                                        LegalizationAction action) {
+  for (StringRef dialect : dialectNames)
+    legalDialects[dialect] = action;
+}
+
+/// Get the legality action for the given operation.
+auto ConversionTarget::getOpAction(OperationName op) const
+    -> llvm::Optional<LegalizationAction> {
+  // Check for an action for this specific operation.
+  auto it = legalOperations.find(op);
+  if (it != legalOperations.end())
+    return it->second;
+  // Otherwise, default to checking for an action on the parent dialect.
+  auto dialectIt = legalDialects.find(op.getDialect());
+  if (dialectIt != legalDialects.end())
+    return dialectIt->second;
+  return llvm::None;
+}
+
+//===----------------------------------------------------------------------===//
 // applyConversionPatterns
 //===----------------------------------------------------------------------===//
 

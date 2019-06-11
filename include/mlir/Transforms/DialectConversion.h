@@ -180,9 +180,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Register a legality action for the given operation.
-  void setOpAction(OperationName op, LegalizationAction action) {
-    legalOperations[op] = action;
-  }
+  void setOpAction(OperationName op, LegalizationAction action);
   template <typename OpT> void setOpAction(LegalizationAction action) {
     setOpAction(OperationName(OpT::getOperationName(), &ctx), action);
   }
@@ -196,21 +194,6 @@ public:
     addLegalOp<OpT2, OpTs...>();
   }
 
-  /// Register the operations of the given dialects as legal.
-  void addLegalDialects(ArrayRef<StringRef> dialectNames) {
-    for (auto &dialect : dialectNames)
-      legalDialects[dialect] = LegalizationAction::Legal;
-  }
-  template <typename... Names>
-  void addLegalDialects(StringRef name, Names... names) {
-    SmallVector<StringRef, 2> dialectNames({name, names...});
-    addLegalDialects(dialectNames);
-  }
-  template <typename... Args> void addLegalDialects() {
-    SmallVector<StringRef, 2> dialectNames({Args::getDialectNamespace()...});
-    addLegalDialects(dialectNames);
-  }
-
   /// Register the given operation as dynamically legal, i.e. requiring custom
   /// handling by the target via 'isLegal'.
   template <typename OpT> void addDynamicallyLegalOp() {
@@ -222,22 +205,39 @@ public:
     addDynamicallyLegalOp<OpT2, OpTs...>();
   }
 
+  /// Register a legality action for the given dialects.
+  void setDialectAction(ArrayRef<StringRef> dialectNames,
+                        LegalizationAction action);
+
+  /// Register the operations of the given dialects as legal.
+  template <typename... Names>
+  void addLegalDialect(StringRef name, Names... names) {
+    SmallVector<StringRef, 2> dialectNames({name, names...});
+    setDialectAction(dialectNames, LegalizationAction::Legal);
+  }
+  template <typename... Args> void addLegalDialect() {
+    SmallVector<StringRef, 2> dialectNames({Args::getDialectNamespace()...});
+    setDialectAction(dialectNames, LegalizationAction::Legal);
+  }
+
+  /// Register the operations of the given dialects as dynamically legal, i.e.
+  /// requiring custom handling by the target via 'isLegal'.
+  template <typename... Names>
+  void addDynamicallyLegalDialect(StringRef name, Names... names) {
+    SmallVector<StringRef, 2> dialectNames({name, names...});
+    setDialectAction(dialectNames, LegalizationAction::Dynamic);
+  }
+  template <typename... Args> void addDynamicallyLegalDialect() {
+    SmallVector<StringRef, 2> dialectNames({Args::getDialectNamespace()...});
+    setDialectAction(dialectNames, LegalizationAction::Dynamic);
+  }
+
   //===--------------------------------------------------------------------===//
   // Legality Querying
   //===--------------------------------------------------------------------===//
 
   /// Get the legality action for the given operation.
-  llvm::Optional<LegalizationAction> getOpAction(OperationName op) const {
-    // Check for an action for this specific operation.
-    auto it = legalOperations.find(op);
-    if (it != legalOperations.end())
-      return it->second;
-    // Otherwise, default to checking for an action on the parent dialect.
-    auto dialectIt = legalDialects.find(op.getDialect());
-    if (dialectIt != legalDialects.end())
-      return dialectIt->second;
-    return llvm::None;
-  }
+  llvm::Optional<LegalizationAction> getOpAction(OperationName op) const;
 
 private:
   /// A deterministic mapping of operation name to the specific legality action
