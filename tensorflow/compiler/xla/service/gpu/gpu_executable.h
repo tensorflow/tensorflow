@@ -49,13 +49,10 @@ namespace gpu {
 // This is an immutable data type after initialization, and thus thread safe.
 class GpuExecutable : public Executable {
  public:
-  // cubin (i.e. the compiled ptx) may be empty, in which case we leave
-  // compilation up to the GPU driver.
   // We need to share ownership of hlo_module and assignment with profiler to
   // safely keep a reference to these objects during tracing period, thus they
   // are passed as shared pointers.
-  GpuExecutable(const string& ptx, const std::vector<uint8>& cubin,
-                std::pair<int, int> compute_capability,
+  GpuExecutable(const string& text, const std::vector<uint8>& binary,
                 std::unique_ptr<const ThunkSchedule> thunk_schedule,
                 std::shared_ptr<HloModule> hlo_module,
                 std::shared_ptr<const BufferAssignment> assignment,
