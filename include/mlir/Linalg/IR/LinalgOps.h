@@ -527,7 +527,8 @@ private:
     }
     Operation *create(OpBuilder &builder, Location loc,
                       ArrayRef<Value *> operands) override {
-      return builder.create<ConcreteOp>(loc, operands);
+      return builder.create<ConcreteOp>(loc, ArrayRef<Type>{}, operands,
+                                        ArrayRef<NamedAttribute>{});
     }
   };
   Concept *impl;

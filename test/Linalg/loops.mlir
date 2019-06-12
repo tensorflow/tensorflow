@@ -91,3 +91,21 @@ func @dot_view(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf32>, %arg2: !l
 //   CHECK-DAG:   %[[c:.*]] = linalg.load %arg2[] : !linalg.view<f32>
 //   CHECK-DAG:   %[[res:.*]] = addf %[[c]], %[[inc]] : f32
 //       CHECK:   linalg.store %[[res]], %arg2[] : !linalg.view<f32>
+
+func @fill_view(%arg0: !linalg.view<?xf32>, %arg1: f32) {
+  linalg.fill(%arg0, %arg1) : !linalg.view<?xf32>, f32
+  return
+}
+// CHECK-LABEL: func @fill_view(%arg0: !linalg.view<?xf32>, %arg1: f32) {
+//       CHECK:   linalg.for %i0 = %c0 to %0 step %c1 {
+//       CHECK:     linalg.store %arg1, %arg0[%i0] : !linalg.view<?xf32>
+
+func @fill_view3(%arg0: !linalg.view<?x?x?xf32>, %arg1: f32) {
+  linalg.fill(%arg0, %arg1) : !linalg.view<?x?x?xf32>, f32
+  return
+}
+// CHECK-LABEL: func @fill_view3(%arg0: !linalg.view<?x?x?xf32>, %arg1: f32) {
+//       CHECK:   linalg.for %i0 = %c0 to %{{.*}} step %c1 {
+//       CHECK:     linalg.for %i1 = %c0 to %{{.*}} step %c1 {
+//       CHECK:       linalg.for %i2 = %c0 to %{{.*}} step %c1 {
+//       CHECK:         linalg.store %arg1, %arg0[%i0, %i1, %i2] : !linalg.view<?x?x?xf32>

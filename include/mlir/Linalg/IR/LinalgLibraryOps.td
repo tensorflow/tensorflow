@@ -68,7 +68,6 @@ LinalgParametricIntNativeOpTrait<"ViewRanks", ranks>
 // Base Tablegen class for Linalg ops.
 class LinalgLibrary_Op<string mnemonic, list<OpTrait> props>
   : Op<Linalg_Dialect, mnemonic, props> {
-  let arguments = (ins Variadic<View>); // default variadic builder
   let parser = [{ return parseLinalgLibraryOp(parser, result); }];
   let printer = [{ printLinalgLibraryOp(p, *this); }];
 
@@ -82,17 +81,39 @@ class LinalgLibrary_Op<string mnemonic, list<OpTrait> props>
 ////////////////////////////////////////////////////////////////////////////////
 // Concrete Linalg ops.
 ////////////////////////////////////////////////////////////////////////////////
+def FillOp : LinalgLibrary_Op<"fill", [NInputsAndOutputs<0, 1>]> {
+  let arguments = (ins View, AnyTypeOf<[AnyFloat, AnyInteger, AnyVector]>);
+  let extraClassDeclaration = [{
+    unsigned getNumParallelLoops() {
+      auto *view = *(getOperands().begin());
+      return view->getType().cast<ViewType>().getRank();
+    }
+    unsigned getNumReductionLoops() { return 0; }
+    unsigned getNumWindowLoops() { return 0; }
+    unsigned getNumLoops() { return getNumParallelLoops(); }
+    Value *getValue() {
+      return *(getOperands().begin() + getNumInputsAndOutputs());
+    }
+  }];
+  let verifier = [{ return ::verify(*this); }];
+}
 def DotOp : LinalgLibrary_Op<"dot",
                             [NInputsAndOutputs<2, 1>,
                              NLoopTypes<0, 1, 0>,
-                             ViewRanks<[1, 1, 0]>]> {}
+                             ViewRanks<[1, 1, 0]>]> {
+  let arguments = (ins View, View, View);
+}
 def MatvecOp : LinalgLibrary_Op<"matvec",
                                   [NInputsAndOutputs<2, 1>,
                                    NLoopTypes<1, 1, 0>,
-                                   ViewRanks<[2, 1, 1]>]> {}
+                                   ViewRanks<[2, 1, 1]>]> {
+  let arguments = (ins View, View, View);
+}
 def MatmulOp : LinalgLibrary_Op<"matmul",
                                   [NInputsAndOutputs<2, 1>,
                                    NLoopTypes<2, 1, 0>,
-                                   ViewRanks<[2, 2, 2]>]> {}
+                                   ViewRanks<[2, 2, 2]>]> {
+  let arguments = (ins View, View, View);
+}
 
 #endif // LINALG_LIBRARY_OPS

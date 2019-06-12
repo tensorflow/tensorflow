@@ -713,6 +713,14 @@ static ParseResult parseLinalgLibraryOp(OpAsmParser *parser,
                                          result->operands));
 }
 
+static LogicalResult verify(FillOp op) {
+  auto viewType = op.getOutputViewType(0);
+  auto fillType = op.getValue()->getType();
+  if (viewType.getElementType() != fillType)
+    return op.emitOpError("expects fill type to match view elemental type");
+  return success();
+}
+
 namespace mlir {
 namespace linalg {
 
@@ -732,6 +740,12 @@ SmallVector<AffineMap, 4> mlir::linalg::loopToOperandRangesMaps(Operation *op) {
   auto i = getAffineDimExpr(0, context);
   auto j = getAffineDimExpr(1, context);
   auto k = getAffineDimExpr(2, context);
+  if (auto fillOp = dyn_cast<FillOp>(op)) {
+    // filling_value -> O(ivs)
+    unsigned rank = fillOp.getNumLoops();
+    return SmallVector<AffineMap, 4>{
+        AffineMap::getMultiDimIdentityMap(rank, op->getContext())};
+  }
   if (isa<DotOp>(op))
     // A(r_i) * B(r_i) -> C()
     return SmallVector<AffineMap, 4>{AffineMap::get(1, 0, {i}),
@@ -757,8 +771,9 @@ void mlir::linalg::emitScalarImplementation(
   using linalg_load = ValueBuilder<linalg::LoadOp>;
   using linalg_store = OperationBuilder<linalg::StoreOp>;
   using IndexedValue = TemplatedIndexedValue<linalg_load, linalg_store>;
-  assert(reductionIvs.size() == 1);
-  auto innermostLoop = linalg::getForInductionVarOwner(reductionIvs.back());
+  auto *innermostIv =
+      reductionIvs.empty() ? parallelIvs.back() : reductionIvs.back();
+  auto innermostLoop = linalg::getForInductionVarOwner(innermostIv);
   auto *body = innermostLoop.getBody();
   using edsc::op::operator+;
   using edsc::op::operator*;
@@ -769,26 +784,32 @@ void mlir::linalg::emitScalarImplementation(
   OpBuilder b(body, std::prev(body->end(), 1));
   ScopedContext scope(b, innermostLoop.getLoc());
   auto *op = linalgOp.getOperation();
-  if (isa<DotOp>(op)) {
+  if (auto fillOp = dyn_cast<FillOp>(op)) {
+    IndexedValue O(fillOp.getOutput(0));
+    SmallVector<IndexHandle, 8> ivs(parallelIvs.begin(), parallelIvs.end());
+    O(ivs) = ValueHandle(fillOp.getValue());
+    return;
+  }
+  if (auto dotOp = dyn_cast<DotOp>(op)) {
     IndexHandle r_i(reductionIvs[0]);
-    IndexedValue A(op->getOperand(0)), B(op->getOperand(1)),
-        C(op->getOperand(2));
+    IndexedValue A(dotOp.getInput(0)), B(dotOp.getInput(1)),
+        C(dotOp.getOutput(0));
     C() = C() + A(r_i) * B(r_i);
     return;
   }
-  if (isa<MatvecOp>(op)) {
+  if (auto matvecOp = dyn_cast<MatvecOp>(op)) {
     IndexHandle i(parallelIvs[0]), r_j(reductionIvs[0]);
-    IndexedValue A(op->getOperand(0)), B(op->getOperand(1)),
-        C(op->getOperand(2));
+    IndexedValue A(matvecOp.getInput(0)), B(matvecOp.getInput(1)),
+        C(matvecOp.getOutput(0));
     C(i) = C(i) + A(i, r_j) * B(r_j);
     return;
   }
-  if (isa<MatmulOp>(op)) {
+  if (auto matmulOp = dyn_cast<MatmulOp>(op)) {
     IndexHandle i(parallelIvs[0]), j(parallelIvs[1]), r_k(reductionIvs[0]);
-    IndexedValue A(op->getOperand(0)), B(op->getOperand(1)),
-        C(op->getOperand(2));
+    IndexedValue A(matmulOp.getInput(0)), B(matmulOp.getInput(1)),
+        C(matmulOp.getOutput(0));
     C(i, j) = C(i, j) + A(i, r_k) * B(r_k, j);
     return;
   }
-  llvm_unreachable("Missing loopToOperandRangesMaps for op");
+  llvm_unreachable("Missing emitScalarImplementation for op");
 }
