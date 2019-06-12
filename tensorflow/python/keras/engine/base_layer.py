@@ -38,6 +38,7 @@ from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
@@ -518,8 +519,32 @@ class Layer(module.Module):
     Returns:
       Single TensorSpec or nested structure of TensorSpec objects, describing
         how the layer would transform the provided input.
+
+    Raises:
+      TypeError: If input_signature contains a non-TensorSpec object.
     """
-    raise NotImplementedError
+    def check_type_return_shape(s):
+      if not isinstance(s, tensor_spec.TensorSpec):
+        raise TypeError(
+            'Only TensorSpec signature types are supported, '
+            'but saw signature signature entry: {}.'.format(s))
+      return s.shape
+    input_shape = nest.map_structure(check_type_return_shape, input_signature)
+    output_shape = self.compute_output_shape(input_shape)
+    if self._mixed_precision_policy.should_cast_variables:
+      # If using mixed precision, and weights are cast to input dtype, we should
+      # not infer the dtype from self.dtype
+      dtype = None
+    else:
+      dtype = self.dtype
+    if dtype is None:
+      input_dtypes = [s.dtype for s in nest.flatten(input_signature)]
+      # Default behavior when self.dtype is None, is to use the first input's
+      # dtype.
+      dtype = input_dtypes[0]
+    return nest.map_structure(
+        lambda s: tensor_spec.TensorSpec(dtype=dtype, shape=s),
+        output_shape)
 
   @base_layer_utils.default
   def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
