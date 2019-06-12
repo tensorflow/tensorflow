@@ -38,6 +38,7 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving import model_from_json
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import mode_keys
+from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import math_ops
@@ -1218,8 +1219,9 @@ class RevivedLayer(object):
       if metadata.get('config') is not None:
         revived_obj._config = metadata['config']
       if metadata.get('input_spec') is not None:
-        revived_obj.input_spec = input_spec.InputSpec.from_config(
-            metadata['input_spec'])
+        revived_obj.input_spec = recursively_deserialize_keras_object(
+            metadata['input_spec'],
+            module_objects={'InputSpec': input_spec.InputSpec})
       if metadata.get('activity_regularizer') is not None:
         revived_obj.activity_regularizer = regularizers.deserialize(
             metadata['activity_regularizer'])
@@ -1256,6 +1258,22 @@ class RevivedLayer(object):
     call_fn = _use_wrapped_call(
         self, self.keras_api.call_and_return_conditional_losses)
     return call_fn(inputs, *args, **kwargs)
+
+
+def recursively_deserialize_keras_object(config, module_objects=None):
+  """Deserialize Keras object from a nested structure."""
+  if isinstance(config, dict):
+    if 'class_name' in config:
+      return deserialize_keras_object(config, module_objects=module_objects)
+    else:
+      return {key: recursively_deserialize_keras_object(config[key],
+                                                        module_objects)
+              for key in config}
+  if isinstance(config, (tuple, list)):
+    return [recursively_deserialize_keras_object(x, module_objects)
+            for x in config]
+  else:
+    raise ValueError('Unable to decode config: {}'.format(config))
 
 
 class RevivedNetwork(RevivedLayer):

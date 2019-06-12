@@ -747,6 +747,24 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     model.load_weights(ckpt_path)
     self.assertAllClose(predict, model.predict(input_arr))
 
+  def test_metadata_input_spec(self):
+    class LayerWithNestedSpec(keras.layers.Layer):
+
+      def __init__(self):
+        super(LayerWithNestedSpec, self).__init__()
+        self.input_spec = {
+            'a': keras.layers.InputSpec(max_ndim=3, axes={-1: 2}),
+            'b': keras.layers.InputSpec(shape=(None, 2, 3), dtype='float16')}
+
+    layer = LayerWithNestedSpec()
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(layer, saved_model_dir)
+    loaded = keras_saved_model.load_from_saved_model_v2(saved_model_dir)
+    self.assertEqual(3, loaded.input_spec['a'].max_ndim)
+    self.assertEqual({-1: 2}, loaded.input_spec['a'].axes)
+    self.assertAllEqual([None, 2, 3], loaded.input_spec['b'].shape)
+    self.assertEqual('float16', loaded.input_spec['b'].dtype)
+
 
 if __name__ == '__main__':
   test.main()

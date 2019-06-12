@@ -792,6 +792,21 @@ class Layer(module.Module):
     self._activity_regularizer = regularizer
 
   @property
+  def input_spec(self):
+    return self._input_spec
+
+  @input_spec.setter
+  # Must be decorated to prevent tracking, since the input_spec can be nested
+  # InputSpec objects.
+  @trackable.no_automatic_dependency_tracking
+  def input_spec(self, value):
+    for v in nest.flatten(value):
+      if v is not None and not isinstance(v, InputSpec):
+        raise TypeError('Layer input_spec must be an instance of InputSpec. '
+                        'Got: {}'.format(v))
+    self._input_spec = value
+
+  @property
   def trainable_weights(self):
     if self.trainable:
       nested = self._gather_children_attribute('trainable_weights')
@@ -2255,8 +2270,10 @@ class Layer(module.Module):
       # a NotImplementedError.
       pass
     if self.input_spec is not None:
+      # Layer's input_spec has already been type-checked in the property setter.
       metadata['input_spec'] = nest.map_structure(
-          lambda x: x.get_config(), self.input_spec)
+          lambda x: None if x is None else serialize_keras_object(x),
+          self.input_spec)
     else:
       metadata['input_spec'] = None
     if (self.activity_regularizer is not None and
