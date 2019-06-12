@@ -9,6 +9,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/skip_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
@@ -17,7 +18,6 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "skip_dataset";
-constexpr char kOpName[] = "SkipDataset";
 
 class SkipDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -35,12 +35,14 @@ class SkipDatasetOpTest : public DatasetOpsTestBase {
 
   // Creates a new `SkipDataset` op kernel.
   Status CreateSkipDatasetKernel(
-      const DataTypeVector &output_types,
-      const std::vector<PartialTensorShape> &output_shapes,
-      std::unique_ptr<OpKernel> *op_kernel) {
+      const DataTypeVector& output_types,
+      const std::vector<PartialTensorShape>& output_shapes,
+      std::unique_ptr<OpKernel>* op_kernel) {
     NodeDef node_def = test::function::NDef(
-        kNodeName, kOpName, {"input_dataset", "count"},
-        {{"output_types", output_types}, {"output_shapes", output_shapes}});
+        kNodeName, name_utils::OpName(SkipDatasetOp::kDatasetType),
+        {SkipDatasetOp::kInputDataset, SkipDatasetOp::kCount},
+        {{SkipDatasetOp::kOutputTypes, output_types},
+         {SkipDatasetOp::kOutputShapes, output_shapes}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
     return Status::OK();
   }
@@ -258,7 +260,8 @@ TEST_F(SkipDatasetOpTest, DatasetTypeString) {
                              skip_dataset_context.get(), &skip_dataset));
   core::ScopedUnref scoped_unref(skip_dataset);
 
-  EXPECT_EQ(skip_dataset->type_string(), kOpName);
+  EXPECT_EQ(skip_dataset->type_string(),
+            name_utils::OpName(SkipDatasetOp::kDatasetType));
 }
 
 TEST_F(SkipDatasetOpTest, DatasetOutputDtypes) {
@@ -499,9 +502,11 @@ TEST_P(ParameterizedSkipDatasetOpTest, IteratorOutputPrefix) {
       skip_dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
 
   if (test_case.count < 0) {
-    EXPECT_EQ(iterator->prefix(), "Iterator::EmptySkip");
+    EXPECT_EQ(iterator->prefix(),
+              name_utils::IteratorPrefix("EmptySkip", "Iterator"));
   } else {
-    EXPECT_EQ(iterator->prefix(), "Iterator::FiniteSkip");
+    EXPECT_EQ(iterator->prefix(),
+              name_utils::IteratorPrefix("FiniteSkip", "Iterator"));
   }
 }
 
