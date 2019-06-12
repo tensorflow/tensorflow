@@ -2303,6 +2303,8 @@ tf_cuda_library(
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/lib:annotated_traceme",
+        "//tensorflow/core/kernels:dense_update_functor",
+        "//tensorflow/core/kernels:variable_ops",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/util:einsum_op_util",
         "//tensorflow/core/util:padding",
@@ -2448,6 +2450,19 @@ alias(
     name = "example_parser_configuration",
     actual = "//tensorflow/core/example:example_parser_configuration",
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "training_op_helpers",
+    srcs = ["framework/training_op_helpers.cc"],
+    hdrs = ["framework/training_op_helpers.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/kernels:dense_update_functor",
+        "//tensorflow/core/kernels:variable_ops",
+        ":framework",
+        ":lib",
+    ],
 )
 
 tf_proto_library_cc(
