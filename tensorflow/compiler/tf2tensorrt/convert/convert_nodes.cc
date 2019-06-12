@@ -3845,7 +3845,8 @@ Status ConvertGather(OpConverterParams* params) {
   }
   // Both input are tensors, and the TF gather result will have rank:
   // (params.nbDims + 1) + (indices.nbDims + 1) - 1,
-  // where "+ 1" adds the batch dim.
+  // where "+ 1" adds the batch dim. If params is a weight, the TRT rank matches
+  // the TF rank so we don't have to add + 1.
   const int params_tf_rank =
       params_input.GetTrtDims().nbDims + (params_input.is_tensor() ? 1 : 0);
   const int indices_tf_rank = indices_input.GetTrtDims().nbDims + 1;
@@ -3885,7 +3886,7 @@ Status ConvertGather(OpConverterParams* params) {
   if (trt_gather_output_dims.nbDims != expected_trt_output_rank) {
     return errors::Internal(
         "Get unexpected output dimensions of IGatherLayer. Expect nbDims: ",
-        tf_gather_output_rank - 2, ", actual nbDims: ",
+        expected_trt_output_rank, ", actual nbDims: ",
         trt_gather_output_dims.nbDims);
   }
   // Reshape the output so after adding the implicit batch dim it'll match the
