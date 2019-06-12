@@ -823,7 +823,7 @@ class ProfileResult {
 //  algorithm_no_scratch: a secondary algorithm that should be used, if the
 //    the allocation for the scratch memory fails.
 //  scrach_size: specify the size of scratch memory in bytes needed for the
-//    algorithm used
+//    algorithm used.
 //
 // On CUDA platform with CUDNN library, algorithm and algorithm_no_scratch
 // would be used. On ROCm platform with MIOpen library, algorithm and

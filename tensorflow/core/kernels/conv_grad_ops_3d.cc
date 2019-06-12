@@ -1355,8 +1355,6 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     using se::dnn::AlgorithmDesc;
     using se::dnn::ProfileResult;
     AlgorithmConfig algorithm_config;
-    ProfileResult best_result;
-    ProfileResult best_result_no_scratch;
     if (cudnn_use_autotune_ && !AutoTuneConv3dBwdData::GetInstance()->Find(
                                    conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
@@ -1365,6 +1363,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
           conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
               stream->parent()),
           &algorithms));
+      ProfileResult best_result;
+      ProfileResult best_result_no_scratch;
       for (auto profile_algorithm : algorithms) {
         // TODO(zhengxq): profile each algorithm multiple times to better
         // accuracy.
@@ -1405,6 +1405,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
 #elif TENSORFLOW_USE_ROCM
       DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                             context);
+      ProfileResult best_result;
       bool miopen_find_status =
           stream
               ->ThenConvolveBackwardDataWithAlgorithm(
@@ -1777,8 +1778,6 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     using se::dnn::AlgorithmDesc;
     using se::dnn::ProfileResult;
     AlgorithmConfig algorithm_config;
-    ProfileResult best_result;
-    ProfileResult best_result_no_scratch;
     if (cudnn_use_autotune_ && !AutoTuneConv3dBwdFilter::GetInstance()->Find(
                                    conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
@@ -1787,6 +1786,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
           conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
               stream->parent()),
           &algorithms));
+      ProfileResult best_result;
+      ProfileResult best_result_no_scratch;
       for (auto profile_algorithm : algorithms) {
         // TODO(zhengxq): profile each algorithm multiple times to better
         // accuracy.
@@ -1828,6 +1829,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
 #elif TENSORFLOW_USE_ROCM
       DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                             context);
+      ProfileResult best_result;
       bool miopen_find_status =
           stream
               ->ThenConvolveBackwardFilterWithAlgorithm(
