@@ -35,7 +35,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 66
+// Next ID: 67
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -222,6 +222,9 @@ message HloInstructionProto {
   // Whether the kCustomCall instruction has side-effects, only present for
   // kCustomCall.
   bool custom_call_has_side_effect = 65;
+
+  // The delta value for kRngGetAndUpdateState.
+  int64 delta = 66;
 }
 
 // Serialization of HloComputation.

@@ -3429,7 +3429,7 @@ def gather(params,
     A `Tensor`. Has the same type as `params`.
   """
   del validate_indices
-  if compat.forward_compatible(2019, 6, 10):
+  if compat.forward_compatible(2019, 7, 10):
     if axis is None:
       axis = batch_dims
     if axis != 0:

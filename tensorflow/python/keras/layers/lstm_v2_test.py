@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for UnifiedLSTM layer."""
+"""Tests for V2 LSTM layer."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -694,6 +694,29 @@ class LSTMV2Test(keras_parameterized.TestCase):
             'recurrent_dropout': 0.1
         },
         input_shape=(num_samples, timesteps, embedding_dim))
+
+  def test_bidirectional(self):
+    batch = 128
+    timestep = 20
+    vocab_size = 1000
+    model = keras.Sequential([
+        keras.layers.Embedding(vocab_size, 64),
+        keras.layers.Bidirectional(rnn.LSTM(
+            64, return_sequences=True)),
+        keras.layers.Bidirectional(rnn.LSTM(32)),
+        keras.layers.Dense(64, activation='relu'),
+        keras.layers.Dense(1, activation='sigmoid')
+    ])
+
+    model.compile(loss='binary_crossentropy',
+                  optimizer='adam',
+                  metrics=['accuracy'])
+
+    x = np.random.randint(0, vocab_size, size=(batch, timestep))
+    y = np.random.randint(0, 1, size=(batch))
+    model.fit(x, y, epochs=1, shuffle=False)
+    model.evaluate(x, y)
+    model.predict(x)
 
 
 class LSTMLayerGraphOnlyTest(test.TestCase):

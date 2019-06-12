@@ -111,15 +111,13 @@ TEST_F(CompilabilityCheckUtilTest, CheckNonFunctionalNodes) {
   // Uncompilable as we are only checking compilability in CPU device type.
   EXPECT_FALSE(checker_->IsCompilableNode(*uncompilable_op, flib_runtime));
 
-  const auto summary =
+  const auto uncompilable_nodes =
       checker_->FindUncompilableNodes(*uncompilable_op, flib_runtime);
-  ASSERT_EQ(1, summary.size());
-  const auto it = summary.find("");
-  ASSERT_NE(summary.end(), it);
-  const auto& uncompilable_node = it->second;
-  ASSERT_EQ(1, uncompilable_node.size());
-  const auto& node_info = uncompilable_node.at(0);
+  ASSERT_EQ(1, uncompilable_nodes.size());
+  const auto& node_info = uncompilable_nodes.at(0);
   EXPECT_EQ("unsupported op", node_info.uncompilable_reason);
+  ASSERT_EQ(1, node_info.stack_trace.size());
+  ASSERT_EQ("", node_info.stack_trace.at(0).function_name);
 }
 
 TEST_F(CompilabilityCheckUtilTest, CheckSimpleFunctionNode) {
@@ -142,20 +140,15 @@ TEST_F(CompilabilityCheckUtilTest, CheckSimpleFunctionNode) {
 
   auto* flib_runtime = GetFunctionLibraryRuntime();
   EXPECT_FALSE(checker_->IsCompilableNode(*functional_node, flib_runtime));
-  const auto summary =
+  const auto uncompilable_nodes =
       checker_->FindUncompilableNodes(*functional_node, flib_runtime);
 
-  EXPECT_EQ(1, summary.size());
-  const auto it = summary.find(kUncompilableFunctionName);
-  ASSERT_NE(summary.end(), it);
-  const auto& uncompilable_nodes = it->second;
-  ASSERT_EQ(1, uncompilable_nodes.size());
-
+  EXPECT_EQ(1, uncompilable_nodes.size());
   const auto& node_info = uncompilable_nodes.at(0);
   const auto& node_stack = node_info.stack_trace;
   ASSERT_EQ(2, node_stack.size());
-  EXPECT_EQ("D", node_stack.at(0));
-  EXPECT_EQ(kUncompilableFunctionNodeName, node_stack.at(1));
+  EXPECT_EQ("D", node_stack.at(0).name);
+  EXPECT_EQ(kUncompilableFunctionNodeName, node_stack.at(1).name);
 
   EXPECT_EQ(kUncompilableFunctionNodeName, node_info.name);
   EXPECT_EQ("unsupported op", node_info.uncompilable_reason);
@@ -212,20 +205,21 @@ TEST_F(CompilabilityCheckUtilTest, CheckFunctionalWhileNode) {
   auto* flib_runtime = GetFunctionLibraryRuntime();
 
   EXPECT_FALSE(checker_->IsCompilableNode(**while_node_it, flib_runtime));
-  const auto summary =
+  const auto uncompilable_nodes =
       checker_->FindUncompilableNodes(**while_node_it, flib_runtime);
-  ASSERT_FALSE(summary.empty());
-  const auto it = summary.find(kUncompilableFunctionName);
-
-  ASSERT_NE(summary.end(), it);
-  const auto& uncompilable_nodes = it->second;
   ASSERT_EQ(1, uncompilable_nodes.size());
 
   const auto& node_info = uncompilable_nodes.at(0);
   const auto& node_stack = node_info.stack_trace;
   ASSERT_EQ(2, node_stack.size());
-  EXPECT_EQ(kFunctionalWhileNodeName, node_stack.at(0));
-  EXPECT_EQ(kUncompilableFunctionNodeName, node_stack.at(1));
+  const auto& stacktrace_first_node_info = node_stack.at(0);
+  EXPECT_EQ(kFunctionalWhileNodeName, stacktrace_first_node_info.name);
+  EXPECT_EQ("", stacktrace_first_node_info.function_name);
+
+  const auto& stacktrace_second_node_info = node_stack.at(1);
+  EXPECT_EQ(kUncompilableFunctionNodeName, stacktrace_second_node_info.name);
+  EXPECT_EQ(kUncompilableFunctionName,
+            stacktrace_second_node_info.function_name);
 
   EXPECT_EQ(kUncompilableFunctionNodeName, node_info.name);
   EXPECT_EQ("unsupported op", node_info.uncompilable_reason);

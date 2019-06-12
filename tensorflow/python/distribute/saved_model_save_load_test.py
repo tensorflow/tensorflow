@@ -21,10 +21,7 @@ from __future__ import print_function
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import saved_model_test_base as test_base
 from tensorflow.python.eager import test
-from tensorflow.python.ops import array_ops
 from tensorflow.python.saved_model import saved_model
-
-_DEFAULT_FUNCTION_KEY = 'serving_default'
 
 
 class SavedModelSaveAndLoadTest(test_base.TestSavedModelBase):
@@ -38,24 +35,9 @@ class SavedModelSaveAndLoadTest(test_base.TestSavedModelBase):
 
   def _load_and_run_model(self, distribution, saved_dir, predict_dataset,
                           output_name):
-    func = saved_model.load(saved_dir)
-    if distribution:
-      dist_predict_dataset = distribution.experimental_distribute_dataset(
-          predict_dataset)
-      per_replica_predict_data = next(iter(dist_predict_dataset))
-      result = distribution.experimental_run_v2(
-          func.signatures[_DEFAULT_FUNCTION_KEY],
-          args=(per_replica_predict_data,))
-      result = result[output_name]
-
-      # Convert the per_replica value to a list, then concatenate them
-      reduced = distribution.experimental_local_results(result)
-      concat = array_ops.concat(reduced, 0)
-      return concat
-    else:
-      result = func.signatures[_DEFAULT_FUNCTION_KEY](
-          next(iter(predict_dataset)))
-      return result[output_name]
+    return test_base.load_and_run_with_saved_model_api(distribution, saved_dir,
+                                                       predict_dataset,
+                                                       output_name)
 
   @combinations.generate(test_base.simple_models_with_strategies())
   def test_save_no_strategy_restore_strategy(self, model_and_input,
@@ -63,21 +45,28 @@ class SavedModelSaveAndLoadTest(test_base.TestSavedModelBase):
     self.run_test_save_no_strategy_restore_strategy(model_and_input,
                                                     distribution)
 
-  @combinations.generate(test_base.simple_models_with_strategies())
+  @combinations.generate(
+      combinations.times(test_base.simple_models_with_strategies(),
+                         combinations.combine(save_in_scope=[True, False])))
   def test_save_strategy_restore_no_strategy(self, model_and_input,
-                                             distribution):
-    self.skipTest(('Saving/loading model with tf.distribute.Strategy is not ',
-                   'supported.'))
+                                             distribution, save_in_scope):
+    if save_in_scope:
+      self.skipTest(('Saving model within tf.distribute.Strategy scope is not ',
+                     'supported.'))
     self.run_test_save_strategy_restore_no_strategy(model_and_input,
-                                                    distribution)
+                                                    distribution, save_in_scope)
 
-  @combinations.generate(test_base.simple_models_with_strategy_pairs())
+  @combinations.generate(
+      combinations.times(test_base.simple_models_with_strategy_pairs(),
+                         combinations.combine(save_in_scope=[True, False])))
   def test_save_strategy_restore_strategy(self, model_and_input,
-                                          distribution_pair):
-    self.skipTest(('Saving/loading model with tf.distribute.Strategy is not ',
-                   'supported.'))
+                                          distribution_pair, save_in_scope):
+    if save_in_scope:
+      self.skipTest(('Saving model within tf.distribute.Strategy scope is not ',
+                     'supported.'))
     self.run_test_save_strategy_restore_strategy(model_and_input,
-                                                 distribution_pair)
+                                                 distribution_pair,
+                                                 save_in_scope)
 
 
 if __name__ == '__main__':

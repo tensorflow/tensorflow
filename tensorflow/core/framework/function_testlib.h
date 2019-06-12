@@ -135,6 +135,12 @@ FunctionDef XYXLessThanOrEqualToN(int64 N);
 // x: T -> bool
 FunctionDef RandomUniformLess();
 
+// start:int64, stop:int64, step:int64 -> y: RangeDatasetOp::Dataset
+FunctionDef MakeRangeDataset();
+
+// input_dataset:variant, count:int64 -> y: TakeDataset::Dataset
+FunctionDef MakeTakeDataset();
+
 // x:T -> y: TensorSliceDatasetOp::Dataset
 FunctionDef MakeTensorSliceDataset();
 

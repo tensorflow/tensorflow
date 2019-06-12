@@ -1,10 +1,10 @@
 MICRO_VISION_MODEL_SRCS := \
 tensorflow/lite/experimental/micro/examples/micro_vision/model_settings.cc \
-tensorflow/lite/experimental/micro/examples/micro_vision/person_detect_model_data.cc \
+tensorflow/lite/experimental/micro/examples/micro_vision/person_detect_model_data.cc
 
 MICRO_VISION_MODEL_HDRS := \
 tensorflow/lite/experimental/micro/examples/micro_vision/model_settings.h \
-tensorflow/lite/experimental/micro/examples/micro_vision/person_detect_model_data.h \
+tensorflow/lite/experimental/micro/examples/micro_vision/person_detect_model_data.h
 
 MICRO_VISION_TEST_SRCS := \
 tensorflow/lite/experimental/micro/examples/micro_vision/micro_vision_test.cc \
@@ -18,13 +18,13 @@ tensorflow/lite/experimental/micro/examples/micro_vision/person_image_data.h \
 $(MICRO_VISION_MODEL_HDRS)
 
 IMAGE_PROVIDER_TEST_SRCS := \
-tensorflow/lite/experimental/micro/examples/micro_vision/image_provider.cc
+tensorflow/lite/experimental/micro/examples/micro_vision/image_provider.cc \
 tensorflow/lite/experimental/micro/examples/micro_vision/image_provider_test.cc \
-tensorflow/lite/experimental/micro/examples/micro_vision/model_settings.cc \
+tensorflow/lite/experimental/micro/examples/micro_vision/model_settings.cc
 
 IMAGE_PROVIDER_TEST_HDRS := \
 tensorflow/lite/experimental/micro/examples/micro_vision/image_provider.h \
-tensorflow/lite/experimental/micro/examples/micro_vision/model_settings.h \
+tensorflow/lite/experimental/micro/examples/micro_vision/model_settings.h
 
 MICRO_VISION_SRCS := \
 tensorflow/lite/experimental/micro/examples/micro_vision/image_provider.cc \

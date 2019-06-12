@@ -22,6 +22,7 @@ limitations under the License.
 #include <limits>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -69,43 +70,6 @@ void LogNotCompilable(const Node& node, absl::string_view reason = "") {
           << reason;
 }
 
-void MarkInSummary(
-    const absl::string_view function_name, const absl::string_view reason,
-    const std::vector<absl::string_view>& stack_trace,
-    RecursiveCompilabilityChecker::CompilabilityCheckerSummary* summary) {
-  RecursiveCompilabilityChecker::UncompilableNodeInfo node_info;
-  node_info.uncompilable_reason = std::string(reason);
-  absl::c_transform(
-      stack_trace, std::back_inserter(node_info.stack_trace),
-      [](const absl::string_view node) { return std::string(node); });
-
-  node_info.name = std::string(stack_trace.back());
-  (*summary)[std::string(function_name)].emplace_back(std::move(node_info));
-}
-
-void MaybeMarkNodeInSummary(
-    const Node& node,
-    const absl::optional<absl::string_view> containing_function_name,
-    const absl::string_view reason,
-    const std::vector<absl::string_view>& stack_trace,
-    RecursiveCompilabilityChecker::CompilabilityCheckerSummary* summary) {
-  if (!summary) return;
-
-  const auto& node_function_name =
-      containing_function_name ? *containing_function_name : "";
-  MarkInSummary(node_function_name, reason, stack_trace, summary);
-}
-
-void MaybeMarkNodeDefToSummary(
-    const NodeDef& node_def, const std::string& reason,
-    const std::vector<absl::string_view>& stack_trace,
-    RecursiveCompilabilityChecker::CompilabilityCheckerSummary* summary) {
-  if (!summary) return;
-
-  const auto& call_op = node_def.op();
-  MarkInSummary(call_op, reason, stack_trace, summary);
-}
-
 }  // anonymous namespace
 
 bool RecursiveCompilabilityChecker::HasXLAKernel(const Node& node) {
@@ -139,8 +103,8 @@ bool RecursiveCompilabilityChecker::HasXLAKernel(const Node& node) {
 // while loop to be compilable.
 bool RecursiveCompilabilityChecker::IsCompilableWhile(
     const Node& while_node, FunctionLibraryRuntime* lib_runtime,
-    std::vector<absl::string_view>* stack_trace,
-    CompilabilityCheckerSummary* summary) {
+    std::vector<StackFrameView>* stack_trace,
+    std::vector<UncompilableNodeInfo>* uncompilable_nodes) {
   const NameAttrList* name_attr;
   NodeDef call;
   Status status;
@@ -148,9 +112,8 @@ bool RecursiveCompilabilityChecker::IsCompilableWhile(
   if (!status.ok()) {
     const std::string uncompilable_reason =
         "missing 'cond' attribute on While node";
-    MaybeMarkNodeInSummary(while_node,
-                           /*containing_function_name=*/absl::nullopt,
-                           uncompilable_reason, *stack_trace, summary);
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              uncompilable_nodes);
     VLOG(2) << "Rejecting While " << while_node.name() << ": "
             << uncompilable_reason << ".";
     return false;
@@ -159,7 +122,7 @@ bool RecursiveCompilabilityChecker::IsCompilableWhile(
   call.set_name("while_cond");
   call.set_op(cond_func);
   *call.mutable_attr() = name_attr->attr();
-  if (!IsCompilableCall(call, lib_runtime, stack_trace, summary)) {
+  if (!IsCompilableCall(call, lib_runtime, stack_trace, uncompilable_nodes)) {
     VLOG(2) << "Rejecting While " << while_node.name()
             << ": can't compile loop condition: " << cond_func;
     return false;
@@ -168,9 +131,8 @@ bool RecursiveCompilabilityChecker::IsCompilableWhile(
   if (!status.ok()) {
     const std::string uncompilable_reason =
         "missing 'body' attribute on While node";
-    MaybeMarkNodeInSummary(while_node,
-                           /*containing_function_name=*/absl::nullopt,
-                           uncompilable_reason, *stack_trace, summary);
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              uncompilable_nodes);
     VLOG(2) << "Rejecting While " << while_node.name() << ": "
             << uncompilable_reason << ".";
     return false;
@@ -179,7 +141,7 @@ bool RecursiveCompilabilityChecker::IsCompilableWhile(
   call.set_name("while_body");
   call.set_op(body_func);
   *call.mutable_attr() = name_attr->attr();
-  if (!IsCompilableCall(call, lib_runtime, stack_trace, summary)) {
+  if (!IsCompilableCall(call, lib_runtime, stack_trace, uncompilable_nodes)) {
     VLOG(2) << "Rejecting While " << while_node.name()
             << ": can't compile loop body: " << body_func;
     return false;
@@ -192,12 +154,12 @@ bool RecursiveCompilabilityChecker::IsCompilableWhile(
 // compilable.
 bool RecursiveCompilabilityChecker::IsCompilableCall(
     const NodeDef& call_def, FunctionLibraryRuntime* lib_runtime,
-    std::vector<absl::string_view>* stack_trace,
-    CompilabilityCheckerSummary* summary) {
+    std::vector<StackFrameView>* stack_trace,
+    std::vector<UncompilableNodeInfo>* uncompilable_nodes) {
   if (stack_trace->size() > kMaxRecursionDepth) {
     std::string uncompilable_reason = "function depth limit exceeded";
-    MaybeMarkNodeDefToSummary(call_def, uncompilable_reason, *stack_trace,
-                              summary);
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              uncompilable_nodes);
     VLOG(2) << "Rejecting " << call_def.op() << ": " << uncompilable_reason
             << ".";
     return false;
@@ -207,8 +169,8 @@ bool RecursiveCompilabilityChecker::IsCompilableCall(
   Status status = InstantiateFunctionCall(call_def, lib_runtime, &handle);
   if (!status.ok()) {
     std::string uncompilable_reason = "could not instantiate call";
-    MaybeMarkNodeDefToSummary(call_def, uncompilable_reason, *stack_trace,
-                              summary);
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              uncompilable_nodes);
     VLOG(2) << "Rejecting " << call_def.DebugString() << ": "
             << uncompilable_reason << " : " << status;
     return false;
@@ -219,11 +181,11 @@ bool RecursiveCompilabilityChecker::IsCompilableCall(
   const FunctionBody* fbody = lib_runtime->GetFunctionBody(handle);
   bool is_compilable = true;
   for (const Node* node : fbody->graph->op_nodes()) {
-    stack_trace->push_back(node->name());
-    is_compilable &= IsCompilableNode(*node, lib_runtime, stack_trace, summary,
-                                      call_def.op());
+    stack_trace->emplace_back(StackFrameView{node->name(), call_def.op()});
+    is_compilable &=
+        IsCompilableNode(*node, lib_runtime, stack_trace, uncompilable_nodes);
     if (is_compilable) stack_trace->pop_back();
-    if (!summary && !is_compilable) return is_compilable;
+    if (!uncompilable_nodes && !is_compilable) return is_compilable;
   }
 
   return is_compilable;
@@ -243,14 +205,13 @@ bool RecursiveCompilabilityChecker::OpIsSlow(const Node& node) {
 
 bool RecursiveCompilabilityChecker::IsCompilableNode(
     const Node& node, FunctionLibraryRuntime* lib_runtime,
-    std::vector<absl::string_view>* stack_trace,
-    CompilabilityCheckerSummary* summary,
-    const absl::optional<absl::string_view> containing_function_name) {
+    std::vector<StackFrameView>* stack_trace,
+    std::vector<UncompilableNodeInfo>* uncompilable_nodes) {
   auto stack_depth = stack_trace->size();
   if (node.IsSource() || node.IsSink()) {
     absl::string_view uncompilable_reason = "source or sink node";
-    MaybeMarkNodeInSummary(node, containing_function_name, uncompilable_reason,
-                           *stack_trace, summary);
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);
     return false;
   }
@@ -260,8 +221,8 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
   if (stack_depth == 1 &&
       (node.type_string() == "_Arg" || node.type_string() == "_Retval")) {
     absl::string_view uncompilable_reason = "top level _Arg or _Retval";
-    MaybeMarkNodeInSummary(node, containing_function_name, uncompilable_reason,
-                           *stack_trace, summary);
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);
     return false;
   }
@@ -272,27 +233,28 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
     // _forward_from.
     absl::string_view uncompilable_reason =
         "_scoped_allocator or _forward_from attribute";
-    MaybeMarkNodeInSummary(node, containing_function_name, uncompilable_reason,
-                           *stack_trace, summary);
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);
     return false;
   }
 
   if (IsFunctionCall(*lib_runtime->GetFunctionLibraryDefinition(), node)) {
-    if (!IsCompilableCall(node.def(), lib_runtime, stack_trace, summary)) {
+    if (!IsCompilableCall(node.def(), lib_runtime, stack_trace,
+                          uncompilable_nodes)) {
       LogNotCompilable(node, "unsupported function");
       return false;
     }
   } else if (!HasXLAKernel(node)) {
     absl::string_view uncompilable_reason = "unsupported op";
-    MaybeMarkNodeInSummary(node, containing_function_name, uncompilable_reason,
-                           *stack_trace, summary);
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);
     return false;
   }
 
   if (node.type_string() == "While" &&
-      !IsCompilableWhile(node, lib_runtime, stack_trace, summary)) {
+      !IsCompilableWhile(node, lib_runtime, stack_trace, uncompilable_nodes)) {
     LogNotCompilable(node, "unsupported while");
     return false;
   }
@@ -300,16 +262,16 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
   if (!op_filter_.allow_stateful_rng_ops &&
       IsStatefulRandomOp(node.type_string())) {
     absl::string_view uncompilable_reason = "stateful random op";
-    MaybeMarkNodeInSummary(node, containing_function_name, uncompilable_reason,
-                           *stack_trace, summary);
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);
     return false;
   }
 
   if (!op_filter_.allow_control_trigger && node.IsControlTrigger()) {
     absl::string_view uncompilable_reason = "not allowed control trigger";
-    MaybeMarkNodeInSummary(node, containing_function_name, uncompilable_reason,
-                           *stack_trace, summary);
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);
     return false;
   }
@@ -317,8 +279,8 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
   if (!op_filter_.allow_eliding_assert_and_checknumerics_ops &&
       IsAssertOrCheckNumerics(node.type_string())) {
     absl::string_view uncompilable_reason = "Assert or CheckNumerics";
-    MaybeMarkNodeInSummary(node, containing_function_name, uncompilable_reason,
-                           *stack_trace, summary);
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);
     return false;
   }
@@ -326,24 +288,24 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
   if (!op_filter_.allow_ops_producing_or_consuming_variant &&
       OpProducesOrConsumesVariant(node)) {
     absl::string_view uncompilable_reason = "DT_VARIANT producer/consumer";
-    MaybeMarkNodeInSummary(node, containing_function_name, uncompilable_reason,
-                           *stack_trace, summary);
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);
     return false;
   }
 
   if (!op_filter_.allow_stack_ops && IsStackOp(node)) {
     absl::string_view uncompilable_reason = "Stack op";
-    MaybeMarkNodeInSummary(node, containing_function_name, uncompilable_reason,
-                           *stack_trace, summary);
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);
     return false;
   }
 
   if (!op_filter_.allow_tensor_array_ops && IsTensorArrayOp(node)) {
     absl::string_view uncompilable_reason = "TensorArray op";
-    MaybeMarkNodeInSummary(node, containing_function_name, uncompilable_reason,
-                           *stack_trace, summary);
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);
     return false;
   }
@@ -352,8 +314,8 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
       HasResourceInput(node)) {
     absl::string_view uncompilable_reason =
         "resource variable op in called function";
-    MaybeMarkNodeInSummary(node, containing_function_name, uncompilable_reason,
-                           *stack_trace, summary);
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);
     return false;
   }
@@ -361,16 +323,16 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
   if (!op_filter_.allow_inaccurate_ops && OpIsInaccurate(node)) {
     absl::string_view uncompilable_reason =
         "operation with numerical accuracy issues";
-    MaybeMarkNodeInSummary(node, containing_function_name, uncompilable_reason,
-                           *stack_trace, summary);
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);
     return false;
   }
 
   if (!op_filter_.allow_slow_ops && OpIsSlow(node)) {
     absl::string_view uncompilable_reason = "slow operation";
-    MaybeMarkNodeInSummary(node, containing_function_name, uncompilable_reason,
-                           *stack_trace, summary);
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);
     return false;
   }
@@ -396,5 +358,23 @@ RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
   return op_filter;
 }
 
+void RecursiveCompilabilityChecker::MaybeMarkUncompilableNode(
+    const absl::string_view reason,
+    const std::vector<StackFrameView>& stack_trace,
+    std::vector<UncompilableNodeInfo>* uncompilable_node_list) {
+  if (!uncompilable_node_list) return;
+
+  UncompilableNodeInfo node_info;
+  node_info.uncompilable_reason = std::string(reason);
+  absl::c_transform(stack_trace, std::back_inserter(node_info.stack_trace),
+                    [](const StackFrameView& stack_element) {
+                      return StackFrame{
+                          std::string(stack_element.name),
+                          std::string(stack_element.function_name)};
+                    });
+
+  node_info.name = std::string(stack_trace.back().name);
+  (*uncompilable_node_list).push_back(std::move(node_info));
+}
 
 }  // namespace tensorflow

@@ -75,6 +75,7 @@ enum class OperatorType : uint8 {
   kRelu1,
   kRelu6,
   kPRelu,
+  kHardSwish,
   kSoftmax,
   kLogSoftmax,
   kSub,
@@ -691,9 +692,20 @@ struct MulOperator : Operator {
 // Inputs:
 //   inputs[0]: required: the input array
 //
-// TensorFlow equivalent: Relu
+// TensorFlow equivalent: abs
 struct AbsOperator : Operator {
   AbsOperator() : Operator(OperatorType::kAbs) {}
+};
+
+// Element-wise HardSwish operator:
+//   x -> x * relu6(x+3)/6
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: hard_swish
+struct HardSwishOperator : Operator {
+  HardSwishOperator() : Operator(OperatorType::kHardSwish) {}
 };
 
 // Elu

@@ -958,7 +958,7 @@ class MetaGraphWithVariableScopeTest(test.TestCase):
 class ExportImportAcrossScopesTest(test.TestCase):
 
   @test_util.run_deprecated_v1
-  def testPartionedVariables(self):
+  def testPartitionedVariables(self):
 
     def make_graph_with_partitioned_variables(use_resource):
       variable_scope.get_variable(

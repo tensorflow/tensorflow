@@ -4984,12 +4984,21 @@ def device(device_name_or_function):
     RuntimeError: If eager execution is enabled and a function is passed in.
   """
   if context.executing_eagerly():
-    # TODO(agarwal): support device functions in EAGER mode.
     if callable(device_name_or_function):
       raise RuntimeError(
           "tf.device does not support functions when eager execution "
           "is enabled.")
     return context.device(device_name_or_function)
+  elif inside_function():
+    @tf_contextlib.contextmanager
+    def combined(device_name_or_function):
+      with get_default_graph().device(device_name_or_function):
+        if not callable(device_name_or_function):
+          with context.device(device_name_or_function):
+            yield
+        else:
+          yield
+    return combined(device_name_or_function)
   else:
     return get_default_graph().device(device_name_or_function)
 
@@ -5024,10 +5033,7 @@ def device_v2(device_name):
   """
   if callable(device_name):
     raise RuntimeError("tf.device does not support functions.")
-  if context.executing_eagerly():
-    return context.device(device_name)
-  else:
-    return get_default_graph().device(device_name)
+  return device(device_name)
 
 
 @tf_export(v1=["container"])

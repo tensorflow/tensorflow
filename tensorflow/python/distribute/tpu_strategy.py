@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import contextlib
 import copy
 import weakref
 
@@ -69,6 +70,15 @@ def get_tpu_system_metadata(tpu_cluster_resolver):
           query_topology=False))
 
   return tpu_system_metadata
+
+
+@contextlib.contextmanager
+def maybe_init_scope():
+  if ops.executing_eagerly_outside_functions():
+    yield
+  else:
+    with ops.init_scope():
+      yield
 
 
 # TODO(jhseu): Deduplicate with MirroredStrategy?
@@ -440,10 +450,9 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         with ops.device(d):
           if i == 0:
             initial_value = kwargs["initial_value"]
-            # TODO(b/134779280): Remove initialization scope once the
-            # "Tensor-typed variable initializers must either be wrapped in an "
-            # "init_scope or callable" error is fixed.
-            with ops.init_scope():
+            # Note: some v1 code expects variable initializer creation to happen
+            # inside a init_scope.
+            with maybe_init_scope():
               initial_value = initial_value() if callable(
                   initial_value) else initial_value
 
@@ -485,23 +494,25 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, self._device_map, value, destinations)
 
-    devices = cross_device_ops_lib.get_devices_from(destinations)
-    if len(devices) != 1:
-      raise ValueError("Multiple devices are not supported for TPUStrategy")
-
+    # TODO(cjfj): Detect when it is possible to use `cross_replica_sum`.
     # Always performs the reduction on the TPU host.
     with ops.device(self._host_device):
       output = math_ops.add_n(value.values)
       if reduce_op == reduce_util.ReduceOp.MEAN:
         output *= (1. / len(value.values))
 
-    # If necessary, copy to requested destination.
-    dest_canonical = device_util.canonicalize(devices[0])
-    host_canonical = device_util.canonicalize(self._host_device)
+    devices = cross_device_ops_lib.get_devices_from(destinations)
 
-    if dest_canonical != host_canonical:
-      with ops.device(dest_canonical):
-        output = array_ops.identity(output)
+    if len(devices) == 1:
+      # If necessary, copy to requested destination.
+      dest_canonical = device_util.canonicalize(devices[0])
+      host_canonical = device_util.canonicalize(self._host_device)
+
+      if dest_canonical != host_canonical:
+        with ops.device(dest_canonical):
+          output = array_ops.identity(output)
+    else:
+      output = cross_device_ops_lib.simple_broadcast(output, destinations)
 
     return output
 

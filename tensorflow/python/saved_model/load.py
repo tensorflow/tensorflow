@@ -82,9 +82,6 @@ class _WrapperFunction(function.ConcreteFunction):
     self.__dict__.update(vars(concrete_function))
 
   def _call_flat(self, args, captured_inputs):
-    assert captured_inputs is self._captured_inputs
-    del captured_inputs
-
     def get_in_replica_handle(x):
       return x.handle if ds_values.is_distributed_variable(x) else x
 
@@ -92,10 +89,10 @@ class _WrapperFunction(function.ConcreteFunction):
       return _unused_handle() if ds_values.is_distributed_variable(x) else x
 
     if ds_context.get_replica_context() is not None:  # in-replica context
-      captured_inputs = list(map(get_in_replica_handle, self._captured_inputs))
+      captured_inputs = list(map(get_in_replica_handle, captured_inputs))
     else:  # cross-replica context
       captured_inputs = list(
-          map(get_cross_replica_handle, self._captured_inputs))
+          map(get_cross_replica_handle, captured_inputs))
     return super(_WrapperFunction, self)._call_flat(args, captured_inputs)
 
 

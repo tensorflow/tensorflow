@@ -67,13 +67,6 @@ limitations under the License.
                             " failed to add TRT layer, at: ", node); \
   } while (0)
 
-#define TFTRT_RETURN_ERROR_IF_FALSE(status, node) \
-  do {                                            \
-    if (status == false) {                        \
-      TFTRT_INTERNAL_ERROR_AT_NODE(node);         \
-    }                                             \
-  } while (0)
-
 #define TFTRT_RETURN_ERROR_IF_NULLPTR(ptr, node) \
   do {                                           \
     if (ptr == nullptr) {                        \
@@ -161,17 +154,8 @@ class TFAttrs {
     return attrs_.count(key) ? this->get<T>(key) : default_value;
   }
 
-  std::vector<string> GetAllAttrKeys() const {
-    std::vector<string> attr_list;
-    for (const auto& attr_item : attrs_) {
-      attr_list.emplace_back(attr_item.first);
-    }
-    return attr_list;
-  }
-
  private:
-  typedef std::map<string, AttrValue const*> AttrMap;
-  AttrMap attrs_;
+  std::map<string, AttrValue const*> attrs_;
 };
 
 template <>
@@ -1127,10 +1111,11 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
   OpConverterParams params(this, node_def, inputs, &outputs,
                            /*arg_validation_only=*/false, &weight_store_);
   const string& op = node_def.op();
-  if (!op_registry_.count(op)) {
+  auto itr = op_registry_.find(op);
+  if (itr == op_registry_.end()) {
     return errors::Unimplemented("No converter registered for op: ", op);
   }
-  OpConverter op_converter = op_registry_.at(op);
+  OpConverter op_converter = itr->second;
   TF_RETURN_IF_ERROR(op_converter(&params));
 
   for (size_t i = 0; i < outputs.size(); ++i) {
@@ -1228,6 +1213,7 @@ Status Converter::RenameAndMarkOutputTensors(
     // outputs and inputs (type is inferred otherwise).
     tensor->setType(output.trt_dtype);
     VLOG(1) << "Marking output TRT tensor " << output.source_tensor_name
+            << " with data type " << DebugString(output.trt_dtype)
             << ", which feeds TF node " << output.dest_node_name;
   }
   return Status::OK();
@@ -1981,7 +1967,10 @@ Status ConvertReshape(OpConverterParams* params) {
           << ", reshape_dims=" << DebugString(reshape_dims);
   if (reshape_may_change_batch_dim) {
     const string msg = StrCat(
-        "Reshape on batch dimension is not supported, at ", node_def.name());
+        "Reshape on batch dimension is not supported, at ", node_def.name(),
+        ". input_batch_dim=", input_batch_dim, ", ", DebugString(input_dims),
+        "; reshape_batch_dim=", reshape_batch_dim, ", ",
+        DebugString(reshape_dims));
     return errors::Unimplemented(msg);
   }
 
@@ -3065,6 +3054,27 @@ Status ConvertIdentity(OpConverterParams* params) {
   return Status::OK();
 }
 
+const std::unordered_map<string, nvinfer1::ElementWiseOperation>*
+BinaryOperationMap() {
+  static auto* const m =
+      new std::unordered_map<string, nvinfer1::ElementWiseOperation> {
+    {"Add", nvinfer1::ElementWiseOperation::kSUM},
+        {"AddV2", nvinfer1::ElementWiseOperation::kSUM},
+        {"Mul", nvinfer1::ElementWiseOperation::kPROD},
+        {"Sub", nvinfer1::ElementWiseOperation::kSUB},
+        {"Div", nvinfer1::ElementWiseOperation::kDIV},
+#if IS_TRT_VERSION_GE(5, 1, 0, 0)
+        // This op applies Floor after Div.
+        {"FloorDiv", nvinfer1::ElementWiseOperation::kDIV},
+#endif
+        {"RealDiv", nvinfer1::ElementWiseOperation::kDIV},
+        {"Minimum", nvinfer1::ElementWiseOperation::kMIN},
+        {"Maximum", nvinfer1::ElementWiseOperation::kMAX},
+        {"Pow", nvinfer1::ElementWiseOperation::kPOW},
+  };
+  return m;
+}
+
 Status ConvertBinary(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -3086,19 +3096,8 @@ Status ConvertBinary(OpConverterParams* params) {
   const TRT_TensorOrWeights& operand_l = inputs.at(0);
   const TRT_TensorOrWeights& operand_r = inputs.at(1);
 
-  static const std::unordered_map<string, nvinfer1::ElementWiseOperation> ops{
-      {"Add", nvinfer1::ElementWiseOperation::kSUM},
-      {"AddV2", nvinfer1::ElementWiseOperation::kSUM},
-      {"Mul", nvinfer1::ElementWiseOperation::kPROD},
-      {"Sub", nvinfer1::ElementWiseOperation::kSUB},
-      {"Div", nvinfer1::ElementWiseOperation::kDIV},
-      {"RealDiv", nvinfer1::ElementWiseOperation::kDIV},
-      {"Minimum", nvinfer1::ElementWiseOperation::kMIN},
-      {"Maximum", nvinfer1::ElementWiseOperation::kMAX},
-      {"Pow", nvinfer1::ElementWiseOperation::kPOW},
-  };
-  auto op_pair = ops.find(node_def.op());
-  if (op_pair == ops.end()) {
+  auto op_pair = BinaryOperationMap()->find(node_def.op());
+  if (op_pair == BinaryOperationMap()->end()) {
     return errors::Unimplemented("Binary op ", node_def.op(),
                                  " not supported at: ", node_def.name());
   }
@@ -3117,11 +3116,20 @@ Status ConvertBinary(OpConverterParams* params) {
   if (params->validation_only) return Status::OK();
 
   // Add ElementWise layer.
-  nvinfer1::IElementWiseLayer* layer =
-      params->converter->network()->addElementWise(*tensor_l, *tensor_r,
-                                                   op_pair->second);
+  nvinfer1::ILayer* layer = params->converter->network()->addElementWise(
+      *tensor_l, *tensor_r, op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
+  nvinfer1::ITensor* trt_tensor = layer->getOutput(0);
+
+#if IS_TRT_VERSION_GE(5, 1, 0, 0)
+  if (node_def.op() == "FloorDiv") {
+    layer = params->converter->network()->addUnary(
+        *trt_tensor, nvinfer1::UnaryOperation::kFLOOR);
+    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+    trt_tensor = layer->getOutput(0);
+  }
+#endif
+  params->outputs->push_back(TRT_TensorOrWeights(trt_tensor));
   return Status::OK();
 }
 
@@ -4070,8 +4078,8 @@ Status ConvertSoftmax(OpConverterParams* params) {
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   nvinfer1::ITensor* tensor = inputs.at(0).tensor();
 
-  int nbDims = tensor->getDimensions().nbDims;
-  if (nbDims == 0) {
+  const int num_trt_dims = tensor->getDimensions().nbDims;
+  if (num_trt_dims == 0) {
     return errors::InvalidArgument(
         "TensorRT Softmax cannot apply on batch dimension, at",
         node_def.name());
@@ -4082,7 +4090,7 @@ Status ConvertSoftmax(OpConverterParams* params) {
       params->converter->network()->addSoftMax(*tensor);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   // Tensorflow SoftMax assumes applying softmax on the last dimension.
-  layer->setAxes(1 << (nbDims - 1));
+  layer->setAxes(1 << (num_trt_dims - 1));
 
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   // Quantization range for SoftMax is always (0, 1)
@@ -4546,6 +4554,54 @@ Status ConvertResize(OpConverterParams* params) {
 }  // ConvertResize
 #endif  // IS_TRT_VERSION_GE(6, 0, 0, 0)
 
+Status ConvertAddN(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+  TFAttrs attrs(node_def);
+  const int num_inputs = attrs.get<int64>("N");
+  if (num_inputs < 2) {
+    return errors::InvalidArgument("AddN requires at least two inputs, at ",
+                                   node_def.name());
+  }
+  if (inputs.size() != num_inputs) {
+    return errors::InvalidArgument("Got ", inputs.size(),
+                                   " inputs but expected ", num_inputs, ", at ",
+                                   node_def.name());
+  }
+  for (const auto& input : inputs) {
+    if (!input.is_tensor() && input.weights().shape_.d[0] != 1) {
+      return errors::InvalidArgument(
+          "Weights input to AddN is required to have batch dimension 1.");
+    }
+  }
+  if (params->validation_only) return Status::OK();
+
+  // AddN doesn't support broadcast.
+  std::vector<nvinfer1::ITensor*> tensor_inputs;
+  for (const auto& input : inputs) {
+    if (input.is_tensor()) {
+      tensor_inputs.push_back(input.tensor());
+    } else {
+      auto dims = input.weights().shape_;
+      TF_RETURN_IF_ERROR(RemoveBatchDimension(&dims));
+      tensor_inputs.push_back(
+          params->converter->CreateConstantLayer(input.weights(), dims));
+    }
+  }
+  nvinfer1::ITensor* lhs = tensor_inputs[0];
+  for (int i = 1; i < num_inputs; ++i) {
+    nvinfer1::ITensor* rhs = tensor_inputs[i];
+    nvinfer1::ILayer* layer = params->converter->network()->addElementWise(
+        *lhs, *rhs, nvinfer1::ElementWiseOperation::kSUM);
+    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+    lhs = layer->getOutput(0);
+  }
+  params->outputs->push_back(TRT_TensorOrWeights(lhs));
+  return Status::OK();
+}
+
 static void RegisterValidatableOpConverters(
     std::unordered_map<string, OpConverter>* registration) {
   (*registration)["BatchMatMul"] = ConvertBatchMatMul;
@@ -4556,6 +4612,7 @@ static void RegisterValidatableOpConverters(
 #if IS_TRT_VERSION_GE(5, 1, 0, 0)
   (*registration)["CombinedNonMaxSuppression"] = ConvertCombinedNMS;
 #endif
+  (*registration)["AddN"] = ConvertAddN;
   (*registration)["ConcatV2"] = ConvertConcat;
   (*registration)["Const"] = ConvertConst;
   (*registration)["Conv2D"] = ConvertConv2D;
@@ -4593,11 +4650,10 @@ static void RegisterValidatableOpConverters(
         "FakeQuantWithMinMaxVars", "FakeQuantWithMinMaxArgs"}) {
     (*registration)[quantization_op_type] = ConvertQuantize;
   }
-  for (auto binary_op_type : {"Add", "AddV2", "Mul", "Sub", "Div", "RealDiv",
-                              "Maximum", "Minimum", "Pow"}) {
-    (*registration)[binary_op_type] = ConvertBinary;
+  for (const auto& binary_op_pair : *BinaryOperationMap()) {
+    (*registration)[binary_op_pair.first] = ConvertBinary;
   }
-  for (auto activation_op_pair : *ActivationTypeMap()) {
+  for (const auto& activation_op_pair : *ActivationTypeMap()) {
     (*registration)[activation_op_pair.first] = ConvertActivation;
   }
   for (auto pool_op_type : {"AvgPool", "MaxPool"}) {

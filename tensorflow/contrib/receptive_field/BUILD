@@ -52,6 +52,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":graph_compute_order_py",
+        "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
         "//third_party/py/numpy",
@@ -88,7 +89,11 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:graph_util",
         "//tensorflow/python:nn",
+        "//tensorflow/python:session",
+        "//tensorflow/python:variables",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

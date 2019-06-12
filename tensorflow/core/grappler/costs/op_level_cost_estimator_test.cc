@@ -1518,7 +1518,7 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(Costs::Duration(2020), cost.memory_time);
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_TRUE(cost.inaccurate);
-    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+    EXPECT_EQ(1, cost.num_ops_with_unknown_shapes);
   }
 }
 

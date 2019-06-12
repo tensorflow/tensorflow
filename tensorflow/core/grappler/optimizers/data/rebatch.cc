@@ -59,12 +59,23 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ZipDataset"
 };
 
-constexpr std::array<const char*, 16> kPassThroughOps = {
-    "CacheDataset",       "FilterDataset",   "Identity",
-    "MapDataset",         "ModelDataset",    "OptimizeDataset",
-    "ParallelMapDataset", "PrefetchDataset", "ReduceDataset",
-    "RepeatDataset",      "ShardDataset",    "ShuffleAndRepeatDataset",
-    "ShuffleDataset",     "SkipDataset",     "TakeDataset",
+constexpr std::array<const char*, 17> kPassThroughOps = {
+    "CacheDataset",
+    "ExperimentalScanDataset",
+    "FilterDataset",
+    "Identity",
+    "MapDataset",
+    "ModelDataset",
+    "OptimizeDataset",
+    "ParallelMapDataset",
+    "PrefetchDataset",
+    "ReduceDataset",
+    "RepeatDataset",
+    "ShardDataset",
+    "ShuffleAndRepeatDataset",
+    "ShuffleDataset",
+    "SkipDataset",
+    "TakeDataset",
     "WindowDataset"};
 
 constexpr std::array<const char*, 4> kFuncDatasetOps = {
@@ -120,7 +131,9 @@ Status UpdateOutputShapes(const string& node_name, int64 num_workers,
   }
   AttrValue output_shapes = node->attr().at("output_shapes");
   for (auto& shape : *output_shapes.mutable_list()->mutable_shape()) {
-    shape.mutable_dim(0)->set_size(shape.dim(0).size() / num_workers);
+    if (shape.dim(0).size() != -1) {
+      shape.mutable_dim(0)->set_size(shape.dim(0).size() / num_workers);
+    }
   }
   (*node->mutable_attr())["output_shapes"] = output_shapes;
   return Status::OK();

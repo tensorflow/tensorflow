@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# LINT.IfChange
 """TensorFlow root package"""
 
 from __future__ import absolute_import as _absolute_import
@@ -76,6 +77,8 @@ _top_level_modules = [
     "tensorflow.keras",
     "tensorflow.contrib",
     "tensorflow.compat",
+    "tensorflow.summary",  # tensorboard
+    "tensorflow.examples",
 ]
 # Estimator needs to be handled separatedly so we can still allow both
 # import tensorflow_estimator and import tensorflow.estimator work
@@ -89,7 +92,8 @@ else:
   _root_estimator = True
 
 # Lazy load all of the _top_level_modules, we don't need their names anymore
-_top_level_modules = [_forward_module(m) for m in _top_level_modules]
+for _m in _top_level_modules:
+  _forward_module(_m)
 
 # We still need all the names that are toplevel on tensorflow_core
 from tensorflow_core import *
@@ -110,8 +114,10 @@ if not _root_estimator:
   except ImportError as e:
     pass
 
-# And again for tensorboard
+# And again for tensorboard (comes as summary)
 try:
-  from tensorflow_core import tensorboard
+  from tensorflow_core import summary
 except ImportError as e:
   pass
+
+# LINT.ThenChange(//tensorflow/virtual_root_template_v2.__init__.py.oss)

@@ -629,6 +629,9 @@ def get_tensorrt_rewriter_config(
         conversion_params.rewriter_config_template)
 
   optimizer = rewriter_config_with_trt.custom_optimizers.add()
+  # Add a constfold optimizer to cleanup the unused Const nodes.
+  rewriter_config_with_trt.custom_optimizers.add().name = "constfold"
+
   optimizer.name = "TensorRTOptimizer"
   optimizer.parameter_map[
       "minimum_segment_size"].i = conversion_params.minimum_segment_size

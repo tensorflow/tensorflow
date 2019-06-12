@@ -186,6 +186,7 @@ tensorflow/third_party/nccl/LICENSE
 tensorflow/third_party/nccl/system.BUILD.tpl
 tensorflow/third_party/nccl/nccl_configure.bzl
 tensorflow/third_party/nccl/build_defs.bzl.tpl
+tensorflow/third_party/nccl/archive.patch
 tensorflow/third_party/nccl/BUILD
 tensorflow/third_party/fft2d/BUILD
 tensorflow/third_party/fft2d/fft.h
@@ -258,4 +259,5 @@ tensorflow/compat_template_v1.__init__.py
 tensorflow/compat_template.__init__.py
 tensorflow/api_template.__init__.py
 tensorflow/__init__.py
-tensorflow/virtual_root.__init__.py
+tensorflow/virtual_root_template_v2.__init__.py
+tensorflow/virtual_root_template_v1.__init__.py

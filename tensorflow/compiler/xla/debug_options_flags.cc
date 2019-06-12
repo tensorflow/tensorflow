@@ -95,13 +95,22 @@ static void AllocateFlags() {
 
   // Custom "sub-parser" lambda for xla_disable_hlo_passes.
   auto setter_for_xla_disable_hlo_passes = [](string comma_separated_values) {
-    std::vector<string> disabled_passes =
-        absl::StrSplit(comma_separated_values, ',');
-    for (const auto& passname : disabled_passes) {
+    for (const auto& passname :
+         std::vector<string>(absl::StrSplit(comma_separated_values, ','))) {
       flag_values->add_xla_disable_hlo_passes(passname);
     }
     return true;
   };
+
+  // Custom "sub-parser" lambda for xla_enable_hlo_passes_only.
+  auto setter_for_xla_enable_hlo_passes_only =
+      [](string comma_separated_values) {
+        for (const auto& passname :
+             std::vector<string>(absl::StrSplit(comma_separated_values, ','))) {
+          flag_values->add_xla_enable_hlo_passes_only(passname);
+        }
+        return true;
+      };
 
   // Custom "sub-parser" lambda for xla_backend_extra_options.
   auto setter_for_xla_backend_extra_options =
@@ -186,6 +195,12 @@ static void AllocateFlags() {
           "Comma-separated list of hlo passes to be disabled. These names "
           "must exactly match the passes' names; no whitespace around "
           "commas."),
+      tensorflow::Flag(
+          "xla_enable_hlo_passes_only", setter_for_xla_enable_hlo_passes_only,
+          "",
+          "Comma-separated list of hlo passes to be enabled. These names "
+          "must exactly match the passes' names; no whitespace around "
+          "commas. The unspecified passes are all disabled."),
       tensorflow::Flag(
           "xla_disable_all_hlo_passes",
           bool_setter_for(&DebugOptions::set_xla_disable_all_hlo_passes), false,
@@ -392,6 +407,11 @@ static void AllocateFlags() {
           bool_setter_for(&DebugOptions::set_xla_allow_excess_precision),
           flag_values->xla_allow_excess_precision(),
           "Allow xla to increase the output precision of an instruction."),
+      tensorflow::Flag(
+          "xla_gpu_force_conv_nchw",
+          bool_setter_for(&DebugOptions::set_xla_gpu_force_conv_nchw),
+          flag_values->xla_gpu_force_conv_nchw(),
+          "For cuDNN convolutions, always NCHW layouts."),
   });
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }

@@ -84,6 +84,10 @@ class MarkForCompilationPassImpl {
     // If true, do not respect the results of deadness analysis.
     bool ignore_deadness_checks;
 
+    // If true, do not do safety checks to preserve TensorFlow's resource
+    // variable concurrency semantics.
+    bool ignore_resource_variable_checks;
+
     // If true, do not respect the _XlaCompile=false attribute.
     bool ignore_xla_compile_attr;
 
@@ -1221,22 +1225,24 @@ StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(Cluster* from,
   // Check if contracting this edge will break the resource variable concurrency
   // semantics.  In theory this is quadratic in the number of nodes, but seems
   // to not be a problem in practice so far.
-  for (int resource_var_from : from->resource_var_operation_node_ids()) {
-    for (int resource_var_to : to->resource_var_operation_node_ids()) {
-      // If unsafe_resource_deps_ contains {A, B} then
-      //
-      //  a. A and B are resource operations.
-      //  b. A and B cannot be placed in the same cluster.
-      //  c. There is no path from B to A in the cycles graph (but there may be
-      //     a path from A to B).
-      //
-      // So check the legality of the edge contraction by checking if any of the
-      // n^2 pairs of resource variable operations are forbidden.
-      if (unsafe_resource_deps_.contains(
-              {resource_var_from, resource_var_to})) {
-        return LogNotContractableAndReturnFalse(
-            from, to,
-            "the new cluster would break resource variable semantics");
+  if (!debug_options_.ignore_resource_variable_checks) {
+    for (int resource_var_from : from->resource_var_operation_node_ids()) {
+      for (int resource_var_to : to->resource_var_operation_node_ids()) {
+        // If unsafe_resource_deps_ contains {A, B} then
+        //
+        //  a. A and B are resource operations.
+        //  b. A and B cannot be placed in the same cluster.
+        //  c. There is no path from B to A in the cycles graph (but there may
+        //     be a path from A to B).
+        //
+        // So check the legality of the edge contraction by checking if any of
+        // the n^2 pairs of resource variable operations are forbidden.
+        if (unsafe_resource_deps_.contains(
+                {resource_var_from, resource_var_to})) {
+          return LogNotContractableAndReturnFalse(
+              from, to,
+              "the new cluster would break resource variable semantics");
+        }
       }
     }
   }
@@ -1553,7 +1559,10 @@ std::atomic<int64>* GetPointerToFuel(int64 initial_value) {
 }
 }  // anonymous namespace
 
-bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
+bool IsCompilable(
+    FunctionLibraryRuntime* flr, const NodeDef& ndef,
+    std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>*
+        uncompilable_node_info) {
   Device* device = flr->device();
   const XlaOpRegistry::DeviceRegistration* registration;
   CHECK(XlaOpRegistry::GetCompilationDevice(device->device_type(),
@@ -1573,8 +1582,16 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
   op_filter.allow_slow_ops = true;
   op_filter.allow_inaccurate_ops = true;
 
-  return RecursiveCompilabilityChecker{&op_filter, &jit_device_type}
-      .IsCompilableCall(ndef, flr);
+  RecursiveCompilabilityChecker checker{&op_filter, &jit_device_type};
+  if (!uncompilable_node_info) {
+    // We do not need uncompilable node info. Just return the result.
+    return checker.IsCompilableCall(ndef, flr);
+  }
+
+  std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
+      uncompilable_node_result = checker.FindUncompilableNodes(ndef, flr);
+  uncompilable_node_info->swap(uncompilable_node_result);
+  return uncompilable_node_info->empty();
 }
 
 Status MarkForCompilationPass::Run(
@@ -1584,6 +1601,8 @@ Status MarkForCompilationPass::Run(
   MarkForCompilationPassImpl::DebugOptions debug_options;
   debug_options.ignore_deadness_checks =
       flags->tf_xla_disable_deadness_safety_checks_for_debugging;
+  debug_options.ignore_resource_variable_checks =
+      flags->tf_xla_disable_resource_variable_safety_checks_for_debugging;
   debug_options.ignore_xla_compile_attr = false;
   debug_options.max_cluster_size = flags->tf_xla_max_cluster_size;
   debug_options.min_cluster_size = flags->tf_xla_min_cluster_size;
@@ -1600,6 +1619,8 @@ Status MarkForCompilationPass::RunForTest(
 
   MarkForCompilationPassImpl::DebugOptions debug_options;
   debug_options.ignore_deadness_checks = disable_deadness_analysis;
+  debug_options.ignore_resource_variable_checks =
+      flags->tf_xla_disable_resource_variable_safety_checks_for_debugging;
   debug_options.ignore_xla_compile_attr = true;
   debug_options.max_cluster_size = flags->tf_xla_max_cluster_size;
   debug_options.min_cluster_size = flags->tf_xla_min_cluster_size;

@@ -506,6 +506,8 @@ class ConcreteFunction(object):
     self._num_positional_args = None
     self._func_graph = func_graph
     self._captured_inputs = list(self._func_graph.captures.keys())
+    self._captured_closures = [
+        x[0] for x in self._func_graph.deferred_captures.values()]
     self._num_outputs = len(self._func_graph.outputs)
     self._output_shapes = tuple(
         output.shape for output in self._func_graph.outputs)
@@ -766,7 +768,7 @@ class ConcreteFunction(object):
 
     self.__call__(*args) passes `args + self.captured_inputs` to the function.
     """
-    return self._captured_inputs
+    return self._captured_inputs + [x() for x in self._captured_closures]
 
   @property
   def function_def(self):
@@ -1380,15 +1382,8 @@ class Function(object):
 
   def __call__(self, *args, **kwargs):
     """Calls a graph function specialized to the inputs."""
-
-    # Note: This context may not be placed inside func_graph because it's called
-    # by internal TF APIs, and we only want it to track explicit user
-    # configuration.
-    ag_status = (
-        ag_ctx.Status.ENABLED if self._autograph else ag_ctx.Status.DISABLED)
-    with ag_ctx.ControlStatusCtx(status=ag_status):
-      graph_function, args, kwargs = self._maybe_define_function(args, kwargs)
-      return graph_function._filtered_call(args, kwargs)  # pylint: disable=protected-access
+    graph_function, args, kwargs = self._maybe_define_function(args, kwargs)
+    return graph_function._filtered_call(args, kwargs)  # pylint: disable=protected-access
 
   @property
   def python_function(self):
@@ -1689,21 +1684,27 @@ class Function(object):
                    kwargs)
 
       call_context_key = cache_key.replace(input_signature=None)
-      # Build a function with shape relaxation retracing if:
-      # 1. shape relaxation is explicitly enabled
-      # and 2. there's no provided input signature
-      # and 3. there's been a cache miss for this calling context
-      if (self._experimental_relax_shapes
-          and self.input_signature is None
-          and call_context_key in self._function_cache.missed):
-        return self._define_function_with_shape_relaxation(args, kwargs)
 
-      self._function_cache.missed.add(call_context_key)
-      graph_function = self._function_cache.primary.get(cache_key, None)
-      if graph_function is None:
-        graph_function = self._create_graph_function(args, kwargs)
-        self._function_cache.primary[cache_key] = graph_function
-      return graph_function, args, kwargs
+      ag_status = (
+          ag_ctx.Status.ENABLED if self._autograph else ag_ctx.Status.DISABLED)
+      with ag_ctx.ControlStatusCtx(
+          status=ag_status, options=self._autograph_options):
+
+        # Build a function with shape relaxation retracing if:
+        # 1. shape relaxation is explicitly enabled
+        # and 2. there's no provided input signature
+        # and 3. there's been a cache miss for this calling context
+        if (self._experimental_relax_shapes
+            and self.input_signature is None
+            and call_context_key in self._function_cache.missed):
+          return self._define_function_with_shape_relaxation(args, kwargs)
+
+        self._function_cache.missed.add(call_context_key)
+        graph_function = self._function_cache.primary.get(cache_key, None)
+        if graph_function is None:
+          graph_function = self._create_graph_function(args, kwargs)
+          self._function_cache.primary[cache_key] = graph_function
+        return graph_function, args, kwargs
 
 
 def register(func, *args, **kwargs):
