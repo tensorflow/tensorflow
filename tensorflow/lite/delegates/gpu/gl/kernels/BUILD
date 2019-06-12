@@ -404,6 +404,26 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "reshape_test",
+    srcs = ["reshape_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":reshape",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "slice",
     srcs = ["slice.cc"],
