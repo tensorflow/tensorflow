@@ -77,6 +77,8 @@ cc_library(
         # http://docs.bazel.build/versions/master/be/c-cpp.html#hdrs).
         # Files in src/ which #include "nccl.h" load it from there rather than
         # from the virtual includes directory.
+        "src/collectives.h",
+        "src/collectives/collectives.h",
         "src/nccl.h",
     ],
     hdrs = ["src/nccl.h"],
