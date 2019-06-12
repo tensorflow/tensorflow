@@ -33,12 +33,12 @@ using namespace mlir::linalg;
 using llvm::dbgs;
 
 Value *Aliases::find(Value *v) {
-  if (v->getKind() == Value::Kind::BlockArgument)
+  if (isa<BlockArgument>(v))
     return v;
 
   auto it = aliases.find(v);
   if (it != aliases.end()) {
-    assert(((it->getSecond()->getKind() == Value::Kind::BlockArgument &&
+    assert(((isa<BlockArgument>(it->getSecond()) &&
              it->getSecond()->getType().isa<ViewType>()) ||
             it->getSecond()->getType().isa<BufferType>()) &&
            "Buffer or block argument expected");
