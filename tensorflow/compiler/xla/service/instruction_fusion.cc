@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/fusion_queue.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -485,18 +486,34 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
           continue;
         }
 
-        HloInstruction* fusion_instruction;
+        // Consumes a unit of compiler fuel and returns true if we should
+        // continue with the transformation.
+        auto consume_fuel = [&] {
+          return ConsumeFuel(name(), /*ran_out_of_fuel_msg=*/[&] {
+            return absl::StrFormat("Not fusing operand %d of %s, namely, %s", i,
+                                   instruction->ToString(),
+                                   operand->ToString());
+          });
+        };
+
+        HloInstruction* fusion_instruction = nullptr;
         // Try "regular" fusion if the operand may be duplicated. Otherwise,
         // perform multi-output fusion, unless this creates a cycle.
         if (do_not_duplicate.count(operand) == 0 &&
             ShouldFuse(instruction, i)) {
-          fusion_queue->PreFusion(operand, instruction);
-          fusion_instruction = Fuse(operand, instruction);
+          if (consume_fuel()) {
+            fusion_queue->PreFusion(operand, instruction);
+            fusion_instruction = Fuse(operand, instruction);
+          }
         } else if (ShouldFuseIntoMultiOutput(instruction, i) &&
                    !MultiOutputFusionCreatesCycle(operand, instruction)) {
-          fusion_queue->PreFusion(operand, instruction);
-          fusion_instruction = FuseIntoMultiOutput(operand, instruction);
-        } else {
+          if (consume_fuel()) {
+            fusion_queue->PreFusion(operand, instruction);
+            fusion_instruction = FuseIntoMultiOutput(operand, instruction);
+          }
+        }
+
+        if (fusion_instruction == nullptr) {
           continue;
         }
 
