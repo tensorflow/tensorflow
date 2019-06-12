@@ -157,7 +157,9 @@ class BaseVisitor : public DfsHloVisitor {
 
   Status HandleCholesky(HloInstruction* hlo) override;
 
-  Status HandlePartitionId(HloInstruction*  hlo) override;
+  Status HandlePartitionId(HloInstruction* hlo) override;
+
+  Status HandleRngGetAndUpdateState(HloInstruction* hlo) override;
 
   virtual poplar::program::Sequence GetSequence() const { return sequence; }
 

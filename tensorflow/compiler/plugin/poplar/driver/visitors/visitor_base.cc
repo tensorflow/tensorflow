@@ -597,6 +597,10 @@ Status BaseVisitor::HandlePartitionId(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
+Status BaseVisitor::HandleRngGetAndUpdateState(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
 
 }  // namespace poplarplugin
 }  // namespace xla
