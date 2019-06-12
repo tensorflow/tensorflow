@@ -169,7 +169,7 @@ filegroup(
         "@eigen_archive//:COPYING.MPL2",
         "@enum34_archive//:LICENSE",
         "@farmhash_archive//:COPYING",
-        "@fft2d//:fft/readme.txt",
+        "@fft2d//:fft2d/readme2d.txt",
         "@flatbuffers//:LICENSE.txt",
         "@gast_archive//:PKG-INFO",
         "@gemmlowp//:LICENSE",

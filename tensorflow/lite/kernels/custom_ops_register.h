@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,25 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_LITE_KERNELS_CUSTOM_OPS_REGISTER_H_
+#define TENSORFLOW_LITE_KERNELS_CUSTOM_OPS_REGISTER_H_
 
-// Declarations for 1D FFT routines in third_party/fft2d/fft2d.
+#include "tensorflow/lite/context.h"
 
-#ifndef FFT2D_FFT_H__
-#define FFT2D_FFT_H__
+namespace tflite {
+namespace ops {
+namespace custom {
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+TfLiteRegistration* Register_RFFT2D();
 
-extern void cdft(int, int, double *, int *, double *);
-extern void rdft(int, int, double *, int *, double *);
-extern void ddct(int, int, double *, int *, double *);
-extern void ddst(int, int, double *, int *, double *);
-extern void dfct(int, double *, double *, int *, double *);
-extern void dfst(int, double *, double *, int *, double *);
-
-#ifdef __cplusplus
 }
-#endif
+}  // namespace ops
+}  // namespace tflite
 
-#endif  // FFT2D_FFT_H__
+#endif  // TENSORFLOW_LITE_KERNELS_CUSTOM_OPS_REGISTER_H_
