@@ -21,6 +21,9 @@ from tensorflow.contrib.framework import with_shape
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import structure
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import deprecation
 
 
@@ -219,7 +222,7 @@ def assert_element_shape(expected_shapes):
     output_shapes = _merge_output_shapes(
         dataset_ops.get_legacy_output_shapes(dataset), expected_shapes)
     # pylint: disable=protected-access
-    return dataset_ops._RestructuredDataset(
+    return _RestructuredDataset(
         dataset.map(_check_shape),
         dataset_ops.get_legacy_output_types(dataset),
         output_shapes=output_shapes,
@@ -271,3 +274,85 @@ def map_and_batch(map_func,
   """
   return batching.map_and_batch(map_func, batch_size, num_parallel_batches,
                                 drop_remainder, num_parallel_calls)
+
+
+class _RestructuredDataset(dataset_ops.UnaryDataset):
+  """An internal helper for changing the structure and shape of a dataset."""
+
+  def __init__(self,
+               dataset,
+               output_types,
+               output_shapes=None,
+               output_classes=None):
+    """Creates a new dataset with the given output types and shapes.
+
+    The given `dataset` must have a structure that is convertible:
+    * `dataset.output_types` must be the same as `output_types` module nesting.
+    * Each shape in `dataset.output_shapes` must be compatible with each shape
+      in `output_shapes` (if given).
+
+    Note: This helper permits "unsafe casts" for shapes, equivalent to using
+    `tf.Tensor.set_shape()` where domain-specific knowledge is available.
+
+    Args:
+      dataset: A `Dataset` object.
+      output_types: A nested structure of `tf.DType` objects.
+      output_shapes: (Optional.) A nested structure of `tf.TensorShape` objects.
+        If omitted, the shapes will be inherited from `dataset`.
+      output_classes: (Optional.) A nested structure of class types. If omitted,
+        the class types will be inherited from `dataset`.
+
+    Raises:
+      ValueError: If either `output_types` or `output_shapes` is not compatible
+        with the structure of `dataset`.
+    """
+    self._input_dataset = dataset
+
+    input_types = dataset_ops.get_legacy_output_types(dataset)
+    # Validate that the types are compatible.
+    output_types = nest.map_structure(dtypes.as_dtype, output_types)
+    flat_original_types = nest.flatten(input_types)
+    flat_new_types = nest.flatten(output_types)
+    if flat_original_types != flat_new_types:
+      raise ValueError(
+          "Dataset with output types %r cannot be restructured to have "
+          "output types %r" %
+          (dataset_ops.get_legacy_output_types(dataset), output_types))
+
+    input_shapes = dataset_ops.get_legacy_output_shapes(dataset)
+    if output_shapes is None:
+      # Inherit shapes from the original `dataset`.
+      output_shapes = nest.pack_sequence_as(
+          output_types, nest.flatten(input_shapes))
+    else:
+      # Validate that the shapes are compatible.
+      nest.assert_same_structure(output_types, output_shapes)
+      flat_original_shapes = nest.flatten(input_shapes)
+      flat_new_shapes = nest.flatten_up_to(output_types, output_shapes)
+
+      for original_shape, new_shape in zip(flat_original_shapes,
+                                           flat_new_shapes):
+        if not original_shape.is_compatible_with(new_shape):
+          raise ValueError(
+              "Dataset with output shapes %r cannot be restructured to have "
+              "incompatible output shapes %r" % (input_shapes,
+                                                 output_shapes))
+      output_shapes = nest.map_structure_up_to(
+          output_types, tensor_shape.as_shape, output_shapes)
+
+    input_classes = dataset_ops.get_legacy_output_classes(dataset)
+    if output_classes is None:
+      # Inherit class types from the original `dataset`.
+      output_classes = nest.pack_sequence_as(
+          output_types, nest.flatten(input_classes))
+
+    self._structure = structure.convert_legacy_structure(
+        output_types, output_shapes, output_classes)
+    variant_tensor = self._input_dataset._variant_tensor  # pylint: disable=protected-access
+    super(_RestructuredDataset, self).__init__(dataset, variant_tensor)
+
+  @property
+  def _element_structure(self):
+    return self._structure
+
+

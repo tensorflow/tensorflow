@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+ /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -60,6 +60,13 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   // Integer convolution must use NHWC.
   if (primitive_util::IsIntegralType(instr->operand(0)->shape().element_type())) {
     return kAllNHWC;
+  }
+  
+  const DebugOptions& debug_options =
+      instr->GetModule()->config().debug_options();
+
+  if (debug_options.xla_gpu_force_conv_nchw()) {
+    return kAllNCHW;
   }
 
   // If we're not Volta or not fp16, or not conv2D, the decision is easy: Use

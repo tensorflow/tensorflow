@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ctypes
 import io
 import numpy as np
 import six
@@ -158,7 +159,7 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
         model_path=resource_loader.get_path_to_datafile(
             'testdata/permute_float.tflite'))
     interpreter.allocate_tensors()
-    #Invalid tensor index passed.
+    # Invalid tensor index passed.
     with self.assertRaisesRegexp(ValueError, 'Tensor with no shape found.'):
       interpreter._get_tensor_details(4)
 
@@ -218,6 +219,105 @@ class InterpreterTensorAccessorTest(test_util.TensorFlowTestCase):
     in0safe = self.interpreter.tensor(self.input0)
     _ = self.interpreter.allocate_tensors()
     del in0safe  # make sure in0Safe is held but lint doesn't complain
+
+
+class InterpreterDelegateTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    self._delegate_file = resource_loader.get_path_to_datafile(
+        'testdata/test_delegate.so')
+    self._model_file = resource_loader.get_path_to_datafile(
+        'testdata/permute_float.tflite')
+
+    # Load the library to reset the counters.
+    library = ctypes.pydll.LoadLibrary(self._delegate_file)
+    library.initialize_counters()
+
+  def _TestInterpreter(self, model_path, options=None):
+    """Test wrapper function that creates an interpreter with the delegate."""
+    delegate = interpreter_wrapper.load_delegate(self._delegate_file, options)
+    return interpreter_wrapper.Interpreter(
+        model_path=model_path, experimental_delegates=[delegate])
+
+  def testDelegate(self):
+    """Tests the delegate creation and destruction."""
+    interpreter = self._TestInterpreter(model_path=self._model_file)
+    lib = interpreter._delegates[0]._library
+
+    self.assertEqual(lib.get_num_delegates_created(), 1)
+    self.assertEqual(lib.get_num_delegates_destroyed(), 0)
+    self.assertEqual(lib.get_num_delegates_invoked(), 1)
+
+    del interpreter
+
+    self.assertEqual(lib.get_num_delegates_created(), 1)
+    self.assertEqual(lib.get_num_delegates_destroyed(), 1)
+    self.assertEqual(lib.get_num_delegates_invoked(), 1)
+
+  def testMultipleInterpreters(self):
+    delegate = interpreter_wrapper.load_delegate(self._delegate_file)
+    lib = delegate._library
+
+    self.assertEqual(lib.get_num_delegates_created(), 1)
+    self.assertEqual(lib.get_num_delegates_destroyed(), 0)
+    self.assertEqual(lib.get_num_delegates_invoked(), 0)
+
+    interpreter_a = interpreter_wrapper.Interpreter(
+        model_path=self._model_file, experimental_delegates=[delegate])
+
+    self.assertEqual(lib.get_num_delegates_created(), 1)
+    self.assertEqual(lib.get_num_delegates_destroyed(), 0)
+    self.assertEqual(lib.get_num_delegates_invoked(), 1)
+
+    interpreter_b = interpreter_wrapper.Interpreter(
+        model_path=self._model_file, experimental_delegates=[delegate])
+
+    self.assertEqual(lib.get_num_delegates_created(), 1)
+    self.assertEqual(lib.get_num_delegates_destroyed(), 0)
+    self.assertEqual(lib.get_num_delegates_invoked(), 2)
+
+    del delegate
+    del interpreter_a
+
+    self.assertEqual(lib.get_num_delegates_created(), 1)
+    self.assertEqual(lib.get_num_delegates_destroyed(), 0)
+    self.assertEqual(lib.get_num_delegates_invoked(), 2)
+
+    del interpreter_b
+
+    self.assertEqual(lib.get_num_delegates_created(), 1)
+    self.assertEqual(lib.get_num_delegates_destroyed(), 1)
+    self.assertEqual(lib.get_num_delegates_invoked(), 2)
+
+  def testOptions(self):
+    delegate_a = interpreter_wrapper.load_delegate(self._delegate_file)
+    lib = delegate_a._library
+
+    self.assertEqual(lib.get_num_delegates_created(), 1)
+    self.assertEqual(lib.get_num_delegates_destroyed(), 0)
+    self.assertEqual(lib.get_num_delegates_invoked(), 0)
+    self.assertEqual(lib.get_options_counter(), 0)
+
+    delegate_b = interpreter_wrapper.load_delegate(
+        self._delegate_file, options={
+            'unused': False,
+            'options_counter': 2
+        })
+    lib = delegate_b._library
+
+    self.assertEqual(lib.get_num_delegates_created(), 2)
+    self.assertEqual(lib.get_num_delegates_destroyed(), 0)
+    self.assertEqual(lib.get_num_delegates_invoked(), 0)
+    self.assertEqual(lib.get_options_counter(), 2)
+
+    del delegate_a
+    del delegate_b
+
+    self.assertEqual(lib.get_num_delegates_created(), 2)
+    self.assertEqual(lib.get_num_delegates_destroyed(), 2)
+    self.assertEqual(lib.get_num_delegates_invoked(), 0)
+    self.assertEqual(lib.get_options_counter(), 2)
+
 
 if __name__ == '__main__':
   test.main()

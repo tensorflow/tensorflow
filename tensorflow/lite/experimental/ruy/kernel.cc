@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace ruy {
 
-#if (defined __aarch64__) && (RUY_OPT_SET & RUY_OPT_ASM)
+#if (defined __aarch64__) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 #define RUY_ASM_LABEL_STORE_UINT8 91
 #define RUY_ASM_LABEL_STORE_INT8 92
@@ -535,7 +535,7 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         // data centered at zero, which was likely the case in that model,
         // but is not always the case. If we wanted something more consistently
         // unbiased then we should try breaking ties toward-nearest-even.
-#if !(RUY_OPT_SET & RUY_OPT_NATIVE_ROUNDING)
+#if !RUY_OPT_ENABLED(RUY_OPT_NATIVE_ROUNDING)
         // Fix up values to be right-shifted, so that the (round to nearest,
         // break ties upward) behavior of srshl applied to these fixed-up
         // values, produces the same result as the desired (round to nearest,
@@ -1577,7 +1577,7 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         // data centered at zero, which was likely the case in that model,
         // but is not always the case. If we wanted something more consistently
         // unbiased then we should try breaking ties toward-nearest-even.
-#if !(RUY_OPT_SET & RUY_OPT_NATIVE_ROUNDING)
+#if !RUY_OPT_ENABLED(RUY_OPT_NATIVE_ROUNDING)
         // Fix up values to be right-shifted, so that the (round to nearest,
         // break ties upward) behavior of srshl applied to these fixed-up
         // values, produces the same result as the desired (round to nearest,
@@ -2301,7 +2301,7 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         // Optional, maximally-streaming, partial-unrolling (4x unrolled)
         // optimization of the kernel inner loop (over depth). For more
         // comments, see the non-unrolled loop below after the #endif.
-#if RUY_OPT_SET & RUY_OPT_MAX_STREAMING
+#if RUY_OPT_ENABLED(RUY_OPT_MAX_STREAMING)
         "cmp w12, #32\n"
         "blt 78f\n"
 
@@ -2466,7 +2466,7 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
 
         "78:\n"
 
-#endif  // #if RUY_OPT_SET & RUY_OPT_MAX_STREAMING
+#endif  // #if RUY_OPT_ENABLED(RUY_OPT_MAX_STREAMING)
 
         // Ordinary kernel inner loop (over depth), the simpler loop that the
         // above was an equivalent 4x-partially-unrolled version of.
@@ -2767,7 +2767,7 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         // data centered at zero, which was likely the case in that model,
         // but is not always the case. If we wanted something more consistently
         // unbiased then we should try breaking ties toward-nearest-even.
-#if !(RUY_OPT_SET & RUY_OPT_NATIVE_ROUNDING)
+#if !RUY_OPT_ENABLED(RUY_OPT_NATIVE_ROUNDING)
         // Fix up values to be right-shifted, so that the (round to nearest,
         // break ties upward) behavior of srshl applied to these fixed-up
         // values, produces the same result as the desired (round to nearest,
@@ -3956,7 +3956,7 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         // data centered at zero, which was likely the case in that model,
         // but is not always the case. If we wanted something more consistently
         // unbiased then we should try breaking ties toward-nearest-even.
-#if !(RUY_OPT_SET & RUY_OPT_NATIVE_ROUNDING)
+#if !RUY_OPT_ENABLED(RUY_OPT_NATIVE_ROUNDING)
         // Fix up values to be right-shifted, so that the (round to nearest,
         // break ties upward) behavior of srshl applied to these fixed-up
         // values, produces the same result as the desired (round to nearest,
@@ -4904,7 +4904,7 @@ void KernelFloatNeonOutOfOrder(const KernelParamsFloat<8, 8>& params) {
         "fmla v20.4s, v0.4s, v2.s[2]\n"
         "fmla v22.4s, v0.4s, v2.s[3]\n"
 
-#if RUY_OPT_SET & RUY_OPT_MAX_STREAMING
+#if RUY_OPT_ENABLED(RUY_OPT_MAX_STREAMING)
         "cmp w12, #8\n"
         "blt 78f\n"
         "and w2, w12, #-4\n"
@@ -6302,6 +6302,6 @@ void KernelFloatNeonDotprodInOrder(const KernelParamsFloat<8, 8>& params) {
 #undef RUY_OFFSET_RHS_BASE_PTR
 #undef RUY_OFFSET_DST_BASE_PTR
 
-#endif  // (defined __aarch64__) && (RUY_OPT_SET & RUY_OPT_ASM)
+#endif  // (defined __aarch64__) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 }  // namespace ruy

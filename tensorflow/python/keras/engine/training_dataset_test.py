@@ -237,9 +237,8 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
                                  'the `steps` argument'):
       model.predict(dataset, verbose=0)
 
-  # TODO(b/123531973): Include tests using dataset_v1.
   @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  @keras_parameterized.run_all_keras_modes
   def test_training_and_eval_methods_on_multi_input_output_dataset(self):
     input_a = keras.layers.Input(shape=(3,), name='input_1')
     input_b = keras.layers.Input(shape=(3,), name='input_2')

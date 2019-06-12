@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import json
 import numpy as np
 
 from tensorflow.python import tf2
@@ -26,6 +27,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
@@ -44,7 +46,6 @@ from tensorflow.python.keras.engine import training_distributed
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
@@ -52,10 +53,13 @@ from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
+from tensorflow.python.util import serialization
 from tensorflow.python.util.tf_export import keras_export
+
 
 _keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
                                         'keras api usage', 'method')
@@ -137,10 +141,6 @@ class Model(network.Network):
     self._compile_distribution = False
 
     self._run_eagerly = None
-
-    # The epoch at which the checkpoint is saved. Used for fault-tolerance.
-    # See `_maybe_load_initial_epoch_from_ckpt()` for more information.
-    self._ckpt_saved_epoch = None
 
   def get_weights(self):
     """Retrieves the weights of the model.
@@ -278,6 +278,9 @@ class Model(network.Network):
     # all the model output/target/loss and related metadata.
     self._training_endpoints = []
 
+    # Used to freeze the behavior of the Model once `compile` has been called.
+    self._compiled_trainable_state = self._get_trainable_state()
+
     # Set tf.distribute.Strategy specific parameters.
     self._distributed_model_cache = {}
     self._distributed_function_cache = {}
@@ -404,7 +407,9 @@ class Model(network.Network):
                        'is enabled.')
     if not self.dynamic:
       if self._run_eagerly is None:
-        return False
+        # Respect `tf.config.experimental_run_functions_eagerly` unless
+        # `run_eagerly` was explicitly passed to `compile`.
+        return def_function.RUN_FUNCTIONS_EAGERLY
       else:
         return self._run_eagerly
     else:
@@ -1399,11 +1404,6 @@ class Model(network.Network):
     return target_tensors
 
   def _compile_eagerly(self, metrics, weighted_metrics, sample_weight_mode):
-    if isinstance(self.optimizer, loss_scale_optimizer.LossScaleOptimizer):
-      # TODO(reedwm): Support this.
-      raise ValueError('We currently do not support enabling `run_eagerly` '
-                       'with a LossScaleOptimizer.')
-
     # Prepare sample weight modes. List with the same length as model outputs.
     training_utils.prepare_sample_weight_modes(
         self._training_endpoints, sample_weight_mode)
@@ -1552,7 +1552,7 @@ class Model(network.Network):
             else:
               # Update dimensions of weights to match with mask if possible.
               mask, _, sample_weight = (
-                  losses_utils.squeeze_or_expand_dimensions(
+                  tf_losses_utils.squeeze_or_expand_dimensions(
                       mask, sample_weight=sample_weight))
               sample_weight *= mask
 
@@ -1714,26 +1714,6 @@ class Model(network.Network):
       # Backwards compatibility
       batch_size = 32
     return batch_size
-
-  def _list_functions_for_serialization(self):
-    """If available, saves a trace of call using self.inputs."""
-    all_functions = super(Model, self)._list_functions_for_serialization()
-    try:
-      # pylint:disable=pointless-statement
-      self.inputs
-      self.input_names
-      # pylint:enable=pointless-statement
-    except AttributeError:
-      # If the model does not have inputs set, because it was not called or its
-      # input shapes were not recorded, we won't have a signature so can't trace
-      # a function. But the user may still save an object with this Model
-      # attached; we won't fail the whole tf.saved_model.save.
-      pass
-    else:
-      if '_default_save_signature' not in all_functions:
-        all_functions['_default_save_signature'] = (
-            saving_utils.trace_model_call(self))
-    return all_functions
 
   def _prepare_sample_weights(self, sample_weights=None):
     """Sets sample weight attribute on the model."""
@@ -1987,6 +1967,10 @@ class Model(network.Network):
     # train function even if one exists already. This is because
     # `_feed_sample_weights` list has been updated on re-copmpile.
     if getattr(self, 'train_function') is None or has_recompiled:
+      # Restore the compiled trainable state.
+      current_trainable_state = self._get_trainable_state()
+      self._set_trainable_state(self._compiled_trainable_state)
+
       inputs = (self._feed_inputs +
                 self._feed_targets +
                 self._feed_sample_weights)
@@ -1998,10 +1982,10 @@ class Model(network.Network):
           # Training updates
           updates = self.optimizer.get_updates(
               params=self._collected_trainable_weights, loss=self.total_loss)
-      # Unconditional updates
-      updates += self.get_updates_for(None)
-      # Conditional updates relevant to this model
-      updates += self.get_updates_for(self.inputs)
+          # Unconditional updates
+          updates += self.get_updates_for(None)
+          # Conditional updates relevant to this model
+          updates += self.get_updates_for(self.inputs)
 
       with K.name_scope('training'):
         # Gets loss and metrics. Updates weights at each call.
@@ -2011,6 +1995,9 @@ class Model(network.Network):
             name='train_function',
             **self._function_kwargs)
         setattr(self, 'train_function', fn)
+
+      # Restore the current trainable state
+      self._set_trainable_state(current_trainable_state)
 
   def _make_test_function(self):
     has_recompiled = self._recompile_weights_loss_and_weighted_metrics()
@@ -2340,10 +2327,13 @@ class Model(network.Network):
            ):
           # TODO(b/132691975): Document subclass-model CT input handling.
           raise ValueError(
-              'All implicitly derived inputs to subclassed Models must be '
-              'tf.Tensors (found %s). To add non-tf.Tensor inputs, please call '
-              'self._add_inputs(tf.keras.Input/SparseInput/RaggedInput (etc)) '
-              'in your subclassed Model object.' % (input_tensor,))
+              'All SparseTensor and RaggedTensor inputs must be explicitly '
+              'declared using a keras.Input() with sparse=True or ragged=True. '
+              'We found an undeclared input %s. For Sequential models, please '
+              'add a keras.Input() as your first Layer. For subclassed models, '
+              'please call self._add_inputs() on your input set, which you can '
+              'create using keras.Input() for each input to your model.' %
+              (input_tensor,))
 
       # Build the model using the retrieved inputs (value or symbolic).
       # If values or generated from a dataset, then in symbolic-mode
@@ -2574,7 +2564,17 @@ class Model(network.Network):
     inputs = self._set_input_attrs(inputs)
 
     if outputs is None:
-      kwargs = {'training': training} if self._expects_training_arg else {}
+      kwargs = {}
+      if self._expects_training_arg:
+        # In V2 mode, feeding `training=None` is not allowed because any value
+        # explicitly passed by the user is respected, even `None`, and in this
+        # case if the user has not passed a value in V2 we need to replace
+        # `None` with the `learning_phase()`. In V1, `training=None` is needed
+        # so that `Dropout` and `BatchNormalization` replace `None` values with
+        # the `learning_phase()` in their `call`.
+        if (training is not None or
+            not ops.executing_eagerly_outside_functions()):
+          kwargs['training'] = training
       try:
         outputs = self(inputs, **kwargs)
       except NotImplementedError:
@@ -2705,28 +2705,33 @@ class Model(network.Network):
   def _maybe_load_initial_epoch_from_ckpt(self, initial_epoch, mode):
     """Maybe load initial epoch from ckpt considering possible worker recovery.
 
-    When `_ckpt_saved_epoch` attribute is not None in a `Model` object at the
-    time the training starts, this is under multi-worker training setting and
-    indicates the worker is recovering from previous failure. In this case,
-    infer `initial_epoch` from `self._ckpt_saved_epoch` to continue previous
-    unfinished training from certain epoch.
+    Refer to tensorflow/python/keras/distribute/multi_worker_training_state.py
+    for more information.
 
     Arguments:
       initial_epoch: The original initial_epoch user passes in in `fit()`.
-      mode: The training mode.
+      mode: The mode for running `model.fit()`.
 
     Returns:
       If the training is recovering from previous failure under multi-worker
       training setting, return the epoch the training is supposed to continue
       at. Otherwise, return the `initial_epoch` the user passes in.
     """
-    # TODO(rchao): Add recovery for validation case
-    # (when mode == ModeKeys.TEST).
-    if mode == ModeKeys.TRAIN and self._ckpt_saved_epoch is not None:
-      # The most recently saved epoch is one epoch prior to the epoch it failed
-      # at, so return '_ckpt_saved_epoch' plus one.
-      return int(self._ckpt_saved_epoch) + 1
+    if hasattr(self, '_training_state'):
+      return self._training_state.maybe_load_initial_epoch_from_ckpt(
+          initial_epoch, mode)
     return initial_epoch
+
+  @property
+  def _object_identifier(self):
+    return '_tf_keras_model'
+
+  @property
+  def _tracking_metadata(self):
+    metadata = json.loads(super(Model, self)._tracking_metadata)
+    metadata.update(saving_utils.model_metadata(
+        self, include_optimizer=True, require_config=False))
+    return json.dumps(metadata, default=serialization.get_json_type)
 
   def _assert_compile_was_called(self):
     # Checks whether `compile` has been called. If it has been called,

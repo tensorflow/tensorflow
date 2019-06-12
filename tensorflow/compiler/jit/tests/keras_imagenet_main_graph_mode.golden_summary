@@ -1,39 +1,30 @@
-Clustered nodes: 1908
-Unclustered nodes: 452
-Number of clusters: 2
+Clustered nodes: 1904
+Unclustered nodes: 455
+Number of clusters: 1
 
-unclustered size 452
+unclustered size 455
+ AssignAddVariableOp 2
  Const 11
  DivNoNan 1
  Identity 1
+ NoOp 1
  ReadVariableOp 2
  VarHandleOp 435
  _Retval 2
-cluster 0 size 546
- Add 1
- AddN 1
- AssignAddVariableOp 2
- AssignSubVariableOp 106
- Const 4
- DivNoNan 1
- Mul 107
- NoOp 1
- ReadVariableOp 106
- Square 55
- Sub 106
- Sum 56
-cluster 1 size 1362
- Add 16
- AddN 71
+cluster 0 size 1904
+ Add 17
+ AddN 72
  ArgMax 1
  AssignAddVariableOp 1
+ AssignSubVariableOp 106
  BiasAdd 1
  BiasAddGrad 1
  Cast 3
- Const 80
+ Const 83
  Conv2D 53
  Conv2DBackpropFilter 53
  Conv2DBackpropInput 52
+ DivNoNan 1
  Equal 1
  FusedBatchNorm 53
  FusedBatchNormGrad 53
@@ -42,9 +33,9 @@ cluster 1 size 1362
  MaxPool 1
  MaxPoolGrad 1
  Mean 1
- Mul 57
+ Mul 164
  Pad 1
- ReadVariableOp 540
+ ReadVariableOp 646
  Relu 49
  ReluGrad 49
  Reshape 2
@@ -52,7 +43,9 @@ cluster 1 size 1362
  ShapeN 50
  Softmax 1
  SparseSoftmaxCrossEntropyWithLogits 1
+ Square 55
  Squeeze 1
- Sum 1
+ Sub 106
+ Sum 57
  Tile 1
  Transpose 1

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/iterator_ops.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
@@ -157,6 +158,12 @@ class DatasetOpsTestBase : public ::testing::Test {
 
   // Runs an operation producing outputs.
   Status RunOpKernel(OpKernel* op_kernel, OpKernelContext* context);
+
+  // Executes a function producing outputs.
+  Status RunFunction(const FunctionDef& fdef, test::function::Attrs attrs,
+                     const std::vector<Tensor>& args,
+                     const GraphConstructorOptions& graph_options,
+                     std::vector<Tensor*> rets);
 
   // Checks that the size of `inputs` matches the requirement of the op kernel.
   Status CheckOpKernelInput(const OpKernel& kernel,

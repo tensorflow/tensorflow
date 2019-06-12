@@ -133,8 +133,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       self._AssertInputOpsAre(conv_quant, expected_inputs)
 
       output_op_name = (
-          conv_scope + delim + 'conv_quant/delayed_quant/Switch_1'
-          if delay else scope + 'Add')
+          conv_scope + delim +
+          'conv_quant/delayed_quant/Switch_1' if delay else scope + 'AddV2')
       self._AssertOutputGoesToOps(conv_quant, graph, [output_op_name])
 
     act_quant = graph.get_operation_by_name(scope + 'act_quant/' +
@@ -197,7 +197,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           activation_fn=activation_fn,
           scope=conv_scope)
       if with_bypass:
-        node = math_ops.add(inputs, node, name=scope + delim + 'Add')
+        node = math_ops.add(inputs, node, name=scope + delim + 'AddV2')
         node = activation(node, name=scope + delim + activation_op_name)
       update_barrier = control_flow_ops.no_op(name='update_barrier')
       with ops.control_dependencies([update_barrier]):
@@ -247,7 +247,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           activation_fn=activation_fn,
           scope=fc_scope)
       if with_bypass:
-        node = math_ops.add(inputs, node, name=scope + delim + 'Add')
+        node = math_ops.add(inputs, node, name=scope + delim + 'AddV2')
         node = activation(node, name=scope + delim + activation_op_name)
       update_barrier = control_flow_ops.no_op(name='update_barrier')
       with ops.control_dependencies([update_barrier]):
@@ -298,7 +298,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           activation_fn=activation_fn,
           scope=conv_scope)
       if with_bypass:
-        node = math_ops.add(inputs, node, name=scope + delim + 'Add')
+        node = math_ops.add(inputs, node, name=scope + delim + 'AddV2')
         node = activation(node, name=scope + delim + activation_op_name)
       update_barrier = control_flow_ops.no_op(name='update_barrier')
       with ops.control_dependencies([update_barrier]):
@@ -349,7 +349,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           activation_fn=activation_fn,
           scope=conv_scope)
       if with_bypass:
-        node = math_ops.add(inputs, node, name=scope + delim + 'Add')
+        node = math_ops.add(inputs, node, name=scope + delim + 'AddV2')
         node = activation(node, name=scope + delim + activation_op_name)
       update_barrier = control_flow_ops.no_op(name='update_barrier')
       with ops.control_dependencies([update_barrier]):
@@ -457,8 +457,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
 
       self._AssertInputOpsAre(conv_quant, expected_inputs)
       output_op_name = (
-          conv_scope + delim + 'conv_quant/delayed_quant/Switch_1'
-          if delay else scope + 'Add')
+          conv_scope + delim +
+          'conv_quant/delayed_quant/Switch_1' if delay else scope + 'AddV2')
       self._AssertOutputGoesToOps(conv_quant, graph, [output_op_name])
 
     act_quant = graph.get_operation_by_name(scope + 'act_quant/' +
@@ -528,7 +528,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
 
       # Manually add a bypass (optional) and an activation.
       if with_bypass:
-        node = math_ops.add(inputs, node, name=scope + delim + 'Add')
+        node = math_ops.add(inputs, node, name=scope + delim + 'AddV2')
 
       node = activation(node, name=scope + delim + activation_op_name)
 
@@ -583,7 +583,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
 
       # Manually add a bypass (optional) and an activation.
       if with_bypass:
-        node = math_ops.add(inputs, node, name=scope + delim + 'Add')
+        node = math_ops.add(inputs, node, name=scope + delim + 'AddV2')
 
       node = activation(node, name=scope + delim + activation_op_name)
 
@@ -643,7 +643,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
 
       # Manually add a bypass (optional) and an activation.
       if with_bypass:
-        node = math_ops.add(inputs, node, name=scope + delim + 'Add')
+        node = math_ops.add(inputs, node, name=scope + delim + 'AddV2')
 
       node = activation(node, name=scope + delim + activation_op_name)
 
@@ -703,7 +703,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
 
       # Manually add a bypass (optional) and an activation.
       if with_bypass:
-        node = math_ops.add(inputs, node, name=scope + delim + 'Add')
+        node = math_ops.add(inputs, node, name=scope + delim + 'AddV2')
 
       node = activation(node, name=scope + delim + activation_op_name)
 

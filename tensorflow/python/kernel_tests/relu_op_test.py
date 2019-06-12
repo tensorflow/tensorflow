@@ -406,6 +406,20 @@ class LeakyReluTest(test.TestCase):
     self.evaluate(optimizer.minimize(loss))
     self.assertAllClose(x.read_value(), -99.9)
 
+  def testUnexpectedAlphaValue(self):
+    self.assertAllClose(
+        np.array([[-9.0, 0.7, -5.0, 0.3, -0.1], [0.1, -3.0, 0.5, -27.0, 0.9]]),
+        nn_ops.leaky_relu(
+            np.array([[-0.9, 0.7, -0.5, 0.3, -0.01],
+                      [0.1, -0.3, 0.5, -2.7, 0.9]]),
+            alpha=10))
+    self.assertAllClose(
+        np.array([[9.0, 0.7, 5.0, 0.3, 0.1], [0.1, 3.0, 0.5, 27.0, 0.9]]),
+        nn_ops.leaky_relu(
+            np.array([[-0.9, 0.7, -0.5, 0.3, -0.01],
+                      [0.1, -0.3, 0.5, -2.7, 0.9]]),
+            alpha=-10))
+
 
 class EluTest(test.TestCase):
 
@@ -423,7 +437,7 @@ class EluTest(test.TestCase):
   def _testElu(self, np_features):
     np_elu = self._npElu(np_features)
     tf_elu = nn_ops.elu(np_features)
-    self.assertAllClose(np_elu, tf_elu)
+    self.assertAllCloseAccordingToType(np_elu, tf_elu)
     self.assertShapeEqual(np_elu, tf_elu)
 
   def testNumbersCPU(self):
@@ -531,7 +545,7 @@ class SeluTest(test.TestCase):
   def _testSelu(self, np_features):
     np_selu = self._npSelu(np_features)
     tf_selu = nn_ops.selu(np_features)
-    self.assertAllClose(np_selu, tf_selu)
+    self.assertAllCloseAccordingToType(np_selu, tf_selu)
     self.assertShapeEqual(np_selu, tf_selu)
 
   def testNumbers(self):

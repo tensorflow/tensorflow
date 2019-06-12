@@ -144,7 +144,8 @@ class StackedRNNCells(Layer):
       input_shape = input_shape[0]
     for cell in self.cells:
       if isinstance(cell, Layer):
-        cell.build(input_shape)
+        if not cell.built:
+          cell.build(input_shape)
       if getattr(cell, 'output_size', None) is not None:
         output_dim = cell.output_size
       elif _is_multiple_state(cell.state_size):
@@ -537,7 +538,8 @@ class RNN(Layer):
 
     # allow cell (if layer) to build before we set or validate state_spec
     if isinstance(self.cell, Layer):
-      self.cell.build(step_input_shape)
+      if not self.cell.built:
+        self.cell.build(step_input_shape)
 
     # set or validate state_spec
     if _is_multiple_state(self.cell.state_size):
@@ -1210,7 +1212,7 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
       h = K.bias_add(h, self.bias)
 
     if rec_dp_mask is not None:
-      prev_output *= rec_dp_mask
+      prev_output = prev_output * rec_dp_mask
     output = h + K.dot(prev_output, self.recurrent_kernel)
     if self.activation is not None:
       output = self.activation(output)
@@ -1676,7 +1678,7 @@ class GRUCell(DropoutRNNCellMixin, Layer):
       hh = self.activation(x_h + recurrent_h)
     else:
       if 0. < self.dropout < 1.:
-        inputs *= dp_mask[0]
+        inputs = inputs * dp_mask[0]
 
       # inputs projected by all gate matrices at once
       matrix_x = K.dot(inputs, self.kernel)
@@ -1689,7 +1691,7 @@ class GRUCell(DropoutRNNCellMixin, Layer):
       x_h = matrix_x[:, 2 * self.units:]
 
       if 0. < self.recurrent_dropout < 1.:
-        h_tm1 *= rec_dp_mask[0]
+        h_tm1 = h_tm1 * rec_dp_mask[0]
 
       if self.reset_after:
         # hidden state projected by all gate matrices at once
@@ -2240,10 +2242,10 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
       c, o = self._compute_carry_and_output(x, h_tm1, c_tm1)
     else:
       if 0. < self.dropout < 1.:
-        inputs *= dp_mask[0]
+        inputs = inputs * dp_mask[0]
       z = K.dot(inputs, self.kernel)
       if 0. < self.recurrent_dropout < 1.:
-        h_tm1 *= rec_dp_mask[0]
+        h_tm1 = h_tm1 * rec_dp_mask[0]
       z += K.dot(h_tm1, self.recurrent_kernel)
       if self.use_bias:
         z = K.bias_add(z, self.bias)

@@ -29,6 +29,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import ResidualWrapper
 from tensorflow.python.ops.array_ops import concat
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import object_identity
@@ -610,7 +611,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       assert not layer.get_updates_for(None)
       assert not layer.get_updates_for(x)
       # TODO(b/128684069): Remove when Wrapper sublayers are __call__'d.
-      with base_layer_utils.call_context().enter(layer, x, True):
+      with base_layer_utils.call_context().enter(layer, x, True, None):
         layer.forward_layer.add_update(x_reachable_update, inputs=x)
         layer.forward_layer.add_update(1, inputs=None)
         layer.backward_layer.add_update(x_reachable_update, inputs=x)
@@ -968,6 +969,31 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
     bidirectional_rnn = keras.layers.Bidirectional(
         forward_layer, merge_mode=merge_mode)
     outputs = _to_list(bidirectional_rnn(inputs))
+
+    model = keras.Model(inputs, outputs)
+    model.compile(optimizer='rmsprop', loss='mse')
+    model.fit(
+        np.random.random((batch, timesteps, dim)),
+        np.random.random((batch, units)),
+        epochs=1,
+        batch_size=10)
+
+  @tf_test_util.run_v2_only
+  def test_wrapped_rnn_cell(self):
+    # See https://github.com/tensorflow/tensorflow/issues/26581.
+    batch = 20
+    dim = 5
+    timesteps = 3
+    units = 5
+    merge_mode = 'sum'
+
+    cell = keras.layers.LSTMCell(units)
+    cell = ResidualWrapper(cell)
+    rnn = keras.layers.RNN(cell)
+
+    inputs = keras.Input((timesteps, dim))
+    wrapped = keras.layers.Bidirectional(rnn, merge_mode=merge_mode)
+    outputs = _to_list(wrapped(inputs))
 
     model = keras.Model(inputs, outputs)
     model.compile(optimizer='rmsprop', loss='mse')

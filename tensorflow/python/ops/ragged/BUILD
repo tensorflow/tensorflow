@@ -40,7 +40,6 @@ py_library(
         ":ragged_string_ops",
         ":ragged_tensor",
         ":ragged_tensor_shape",
-        ":ragged_tensor_spec",
         ":ragged_tensor_value",
         ":ragged_util",
         ":ragged_where_op",
@@ -435,18 +434,6 @@ py_library(
     ],
 )
 
-py_library(
-    name = "ragged_tensor_spec",
-    srcs = ["ragged_tensor_spec.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":ragged_tensor",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:tensor_spec",
-    ],
-)
-
 #-------------------------------------------------------------------------------
 # RaggedTensor Tests
 #-------------------------------------------------------------------------------
@@ -469,6 +456,7 @@ py_test(
     size = "medium",
     srcs = ["ragged_tensor_test.py"],
     python_version = "PY2",
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",

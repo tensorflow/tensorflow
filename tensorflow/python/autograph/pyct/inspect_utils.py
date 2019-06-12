@@ -238,7 +238,9 @@ def istfmethodtarget(m):
   # See eager.function.TfMethodTarget for more details.
   return (hasattr(m, '__self__') and
           hasattr(m.__self__, 'weakrefself_target__') and
-          hasattr(m.__self__, 'weakrefself_func__'))
+          hasattr(m.__self__, 'weakrefself_func__') and
+          hasattr(m, '__module__') and
+          (m.__module__ != 'mock'))
 
 
 def getmethodself(m):

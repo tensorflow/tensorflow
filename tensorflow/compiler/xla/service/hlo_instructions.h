@@ -1217,8 +1217,16 @@ class HloCustomCallInstruction : public HloInstruction {
   void set_batch_group_count(int64 batch_group_count) {
     batch_group_count_ = batch_group_count;
   }
+  // Sets whether this custom call has a side-effect - by default a custom call
+  // has no side-effects.
+  void set_custom_call_has_side_effect(bool custom_call_has_side_effect) {
+    custom_call_has_side_effect_ = custom_call_has_side_effect;
+  }
   int64 feature_group_count() const { return feature_group_count_; }
   int64 batch_group_count() const { return batch_group_count_; }
+  bool custom_call_has_side_effect() const {
+    return custom_call_has_side_effect_;
+  }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1257,6 +1265,8 @@ class HloCustomCallInstruction : public HloInstruction {
   // For layout-constrained custom calls, this vector holds the shape with
   // layout for each operand.
   std::vector<Shape> operand_shapes_with_layout_;
+  // Whether this custom call has a side-effect.
+  bool custom_call_has_side_effect_;
 };
 
 class HloPadInstruction : public HloInstruction {
@@ -1576,6 +1586,31 @@ class HloGetDimensionSizeInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   int64 dimension_;
+};
+
+class HloRngGetAndUpdateStateInstruction : public HloInstruction {
+ public:
+  explicit HloRngGetAndUpdateStateInstruction(const Shape& shape, int64 delta);
+
+  // Returns the delta value.
+  int64 delta() const { return delta_; }
+  void set_delta(int64 delta) { delta_ = delta; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  int64 delta_;
 };
 
 }  // namespace xla

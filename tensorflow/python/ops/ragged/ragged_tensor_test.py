@@ -1083,25 +1083,17 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
     rt = RaggedTensor.from_row_splits(values, row_splits, validate=False)
     splits_type = 'int64'
     if context.executing_eagerly():
-      expected_str = '<tf.RaggedTensor {}>'.format([[b'a', b'b'],
-                                                    [b'c', b'd', b'e'], [b'f'],
-                                                    [], [b'g']])
-      expected_repr = (
-          'tf.RaggedTensor(values=tf.Tensor([{}], shape=(7,), dtype=string), '
-          'row_splits=tf.Tensor([{}], shape=(6,), dtype={}))'.format(
-              ' '.join(repr(x) for x in values),
-              ' '.join(repr(x) for x in row_splits),
-              splits_type))
-      self.assertEqual(str(rt), expected_str)
-      self.assertEqual(repr(rt), expected_repr)
+      expected_repr = '<tf.RaggedTensor {}>'.format([[b'a', b'b'],
+                                                     [b'c', b'd', b'e'], [b'f'],
+                                                     [], [b'g']])
     else:
       expected_repr = (
           'tf.RaggedTensor(values=Tensor("RaggedFromRowSplits/values:0", '
           'shape=(7,), dtype=string), row_splits='
           'Tensor("RaggedFromRowSplits/row_splits:0", '
           'shape=(6,), dtype={}))').format(splits_type)
-      self.assertEqual(repr(rt), expected_repr)
-      self.assertEqual(str(rt), expected_repr)
+    self.assertEqual(repr(rt), expected_repr)
+    self.assertEqual(str(rt), expected_repr)
 
   def testRaggedTensorValueStr(self):
     values = [b'a', b'b', b'c', b'd', b'e', b'f', b'g']

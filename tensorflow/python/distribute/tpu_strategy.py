@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import contextlib
 import copy
 import weakref
 
@@ -69,6 +70,15 @@ def get_tpu_system_metadata(tpu_cluster_resolver):
           query_topology=False))
 
   return tpu_system_metadata
+
+
+@contextlib.contextmanager
+def maybe_init_scope():
+  if ops.executing_eagerly_outside_functions():
+    yield
+  else:
+    with ops.init_scope():
+      yield
 
 
 # TODO(jhseu): Deduplicate with MirroredStrategy?
@@ -132,24 +142,18 @@ class TPUStrategy(distribute_lib.Strategy):
 
   def __init__(self,
                tpu_cluster_resolver=None,
-               steps_per_run=None,
                device_assignment=None):
     """Initializes the TPUStrategy object.
 
     Args:
       tpu_cluster_resolver: A tf.distribute.cluster_resolver.TPUClusterResolver,
           which provides information about the TPU cluster.
-      steps_per_run: Number of steps to run on device before returning to the
-          host. Note that this can have side-effects on performance, hooks,
-          metrics, summaries etc.
-          This parameter is only used when Distribution Strategy is used with
-          estimator or keras.
       device_assignment: Optional `tf.contrib.tpu.DeviceAssignment` to specify
           the placement of replicas on the TPU cluster. Currently only supports
           the usecase of using a single core within a TPU cluster.
     """
     super(TPUStrategy, self).__init__(TPUExtended(
-        self, tpu_cluster_resolver, steps_per_run, device_assignment))
+        self, tpu_cluster_resolver, device_assignment=device_assignment))
 
   # TODO(cjfj): Modify `_call_for_each_replica` in `TPUExtended` such that this
   # can use the default implementation.
@@ -444,6 +448,14 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       value_list = []
       for i, d in enumerate(devices):
         with ops.device(d):
+          if i == 0:
+            initial_value = kwargs["initial_value"]
+            # Note: some v1 code expects variable initializer creation to happen
+            # inside a init_scope.
+            with maybe_init_scope():
+              initial_value = initial_value() if callable(
+                  initial_value) else initial_value
+
           if i > 0:
             # Give replicas meaningful distinct names:
             var0name = value_list[0].name.split(":")[0]
@@ -451,22 +463,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             # ensure that we ignore the name scope and instead use the given
             # name as the absolute name of the variable.
             kwargs["name"] = "%s/replica_%d/" % (var0name, i)
-            # Initialize replicas with the same value:
-            def initial_value_fn():
-              return array_ops.identity(initial_value)
+          kwargs["initial_value"] = initial_value
 
-            kwargs["initial_value"] = initial_value_fn
           with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
             v = next_creator(*args, **kwargs)
-          if i == 0:
-            # To avoid incorrectly nested device scopes, we exit out of
-            # existing control flow scopes and function building graphs.
-            # TODO(b/132997073): Remove initialization scope once nested
-            # device scope issue has been fixed.
-            with ops.init_scope():
-              initial_value = (
-                  v.value() if ops.executing_eagerly_outside_functions() else
-                  v.initial_value)
+
           assert not isinstance(v, values.TPUMirroredVariable)
           value_list.append(v)
       return value_list
@@ -493,23 +494,25 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, self._device_map, value, destinations)
 
-    devices = cross_device_ops_lib.get_devices_from(destinations)
-    if len(devices) != 1:
-      raise ValueError("Multiple devices are not supported for TPUStrategy")
-
+    # TODO(cjfj): Detect when it is possible to use `cross_replica_sum`.
     # Always performs the reduction on the TPU host.
     with ops.device(self._host_device):
       output = math_ops.add_n(value.values)
       if reduce_op == reduce_util.ReduceOp.MEAN:
         output *= (1. / len(value.values))
 
-    # If necessary, copy to requested destination.
-    dest_canonical = device_util.canonicalize(devices[0])
-    host_canonical = device_util.canonicalize(self._host_device)
+    devices = cross_device_ops_lib.get_devices_from(destinations)
 
-    if dest_canonical != host_canonical:
-      with ops.device(dest_canonical):
-        output = array_ops.identity(output)
+    if len(devices) == 1:
+      # If necessary, copy to requested destination.
+      dest_canonical = device_util.canonicalize(devices[0])
+      host_canonical = device_util.canonicalize(self._host_device)
+
+      if dest_canonical != host_canonical:
+        with ops.device(dest_canonical):
+          output = array_ops.identity(output)
+    else:
+      output = cross_device_ops_lib.simple_broadcast(output, destinations)
 
     return output
 
@@ -673,6 +676,15 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       """TF Function used to replicate the user computation."""
       if kwargs is None:
         kwargs = {}
+
+      # Remove None at the end of args as they are not replicatable
+      # If there are None in the middle we can't do anything about it
+      # so let those cases fail.
+      # For example when Keras model predict is used they pass the targets as
+      # None. We want to handle it here so all client libraries don't have to
+      # do this as other strategies can handle None values better.
+      while args and args[-1] is None:
+        args = args[:-1]
 
       # Used to re-structure flattened output tensors from `tpu.replicate()`
       # into a structured format.

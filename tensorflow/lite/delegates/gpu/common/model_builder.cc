@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 
 #include <stddef.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -1966,7 +1969,9 @@ bool IsAllFloatTensors(const TfLiteContext* context,
                        const TfLiteIntArray* array) {
   for (int i = 0; i < array->size; ++i) {
     const TfLiteTensor* t = context->tensors + array->data[i];
-    if (t->allocation_type == kTfLiteArenaRw && t->type != kTfLiteFloat32) {
+    bool const type_supported =
+        (t->type == kTfLiteFloat32 || t->type == kTfLiteFloat16);
+    if (t->allocation_type == kTfLiteArenaRw && !type_supported) {
       return false;
     }
   }
@@ -2003,23 +2008,55 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
     return nullptr;
   }
   TfLiteIntArray* subgraph = TfLiteIntArrayCreate(execution_plan->size);
+  std::vector<int> pruned_graph;
   subgraph->size = 0;
+  // pruned_graph will not include dequantize operations.
   std::set<std::string> errors;
+
+  // Map the output tensor of a Dequantize nodes to its input tensor.
+  std::unordered_map<int, int> node_map;
   for (int i = 0; i < execution_plan->size; ++i) {
     TfLiteNode* node = nullptr;
     TfLiteRegistration* registration = nullptr;
     auto status = GetNodeAndRegistration(context, i, &node, &registration);
     if (!status.ok()) {
       context->ReportError(context, status.error_message().c_str());
+      TfLiteIntArrayFree(subgraph);
       return nullptr;
     }
-    status = IsSupported(context, node, registration);
+    if (registration->builtin_code == kTfLiteBuiltinDequantize) {
+      const bool supported_type =
+          context->tensors[node->inputs->data[0]].type ==
+          TfLiteType::kTfLiteFloat16;
+      if (supported_type) {
+        // Record the output->input mapping for the op.
+        node_map[node->outputs->data[0]] = node->inputs->data[0];
+      }
+    } else {
+      // Fix the node's inputs.
+      TfLiteIntArray* inputs = node->inputs;
+      for (int j = 0; j < inputs->size; ++j) {
+        if (node_map.find(inputs->data[j]) != node_map.end()) {
+          inputs->data[j] = node_map[inputs->data[j]];
+        }
+      }
+      // Add the op to the graph.
+      pruned_graph.push_back(i);
+    }
+  }
+
+  for (int i = 0; i < pruned_graph.size(); ++i) {
+    TfLiteNode* node = nullptr;
+    TfLiteRegistration* registration = nullptr;
+    GetNodeAndRegistration(context, pruned_graph[i], &node, &registration)
+        .IgnoreError();
+    const auto status = IsSupported(context, node, registration);
     if (status.ok() &&
         // TODO(eignasheva): resolve sub operation support for metal delegate
         // registration->builtin_code != kTfLiteBuiltinSub &&
         IsAllFloatTensors(context, node->inputs) &&
         IsAllFloatTensors(context, node->outputs)) {
-      if (errors.empty()) subgraph->data[subgraph->size++] = i;
+      if (errors.empty()) subgraph->data[subgraph->size++] = pruned_graph[i];
     } else {
       errors.insert(GetOpNameByRegistration(registration) + ": " +
                     status.error_message());

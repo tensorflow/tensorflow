@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
+
+#include <unordered_set>
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -1515,7 +1518,7 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(Costs::Duration(2020), cost.memory_time);
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_TRUE(cost.inaccurate);
-    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+    EXPECT_EQ(1, cost.num_ops_with_unknown_shapes);
   }
 }
 

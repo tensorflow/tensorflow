@@ -20,9 +20,10 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
+#include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/refcount.h"
 
 namespace tensorflow {
@@ -88,26 +89,25 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
   return Status::OK();
 }
 
-Status XlaCompileOnDemandOp::MustArgumentBeConstant(const OpKernel* op_kernel,
-                                                    int64 argument_idx,
-                                                    bool* result) {
+Status XlaCompileOnDemandOp::MustArgumentBeConstant(
+    const OpKernel* op_kernel, int64 argument_idx,
+    FunctionLibraryRuntime* flib_runtime, bool* result) {
   *result = false;
 
   // TODO(jmolloy): This could be expensive, so memoize.
   std::vector<int> constant_input_indices;
-  TF_RETURN_IF_ERROR(XlaOpRegistry::CompileTimeConstantInputs(
-      *op_kernel, &constant_input_indices));
+  TF_RETURN_IF_ERROR(GetCompileTimeConstInputs(
+      op_kernel, &constant_input_indices, flib_runtime));
   *result = absl::c_binary_search(constant_input_indices, argument_idx);
   return Status::OK();
 }
 
-Status XlaCompileOnDemandOp::ShouldArgumentBeConstant(const OpKernel* op_kernel,
-                                                      int64 argument_idx,
-                                                      bool* result) {
-  // Right now we only create kConstant arguments when absolutely required, but
-  // there may be benefit in eagerly constant-folding a larger subset of
-  // arguments in the future.
-  return MustArgumentBeConstant(op_kernel, argument_idx, result);
+// TODO(ycao): Remove the need to call ShouldArgumentBeConstant. Its benefit is
+// not clear yet and it causes heavy constant analysis to run twice.
+Status XlaCompileOnDemandOp::ShouldArgumentBeConstant(
+    const OpKernel* op_kernel, int64 argument_idx,
+    FunctionLibraryRuntime* flib_runtime, bool* result) {
+  return MustArgumentBeConstant(op_kernel, argument_idx, flib_runtime, result);
 }
 
 Status XlaCompileOnDemandOp::Compile(
@@ -121,6 +121,7 @@ Status XlaCompileOnDemandOp::Compile(
       if (xla_tensor->has_host_tensor()) {
         bool should_arg_be_const;
         TF_RETURN_IF_ERROR(ShouldArgumentBeConstant(&ctx->op_kernel(), i,
+                                                    ctx->function_library(),
                                                     &should_arg_be_const));
         if (should_arg_be_const) {
           constant_arguments[i] = xla_tensor->host_tensor();
@@ -131,6 +132,7 @@ Status XlaCompileOnDemandOp::Compile(
     if (constant_arguments.count(i) == 0) {
       bool must_argument_be_const;
       TF_RETURN_IF_ERROR(MustArgumentBeConstant(&ctx->op_kernel(), i,
+                                                ctx->function_library(),
                                                 &must_argument_be_const));
 
       if (must_argument_be_const) {

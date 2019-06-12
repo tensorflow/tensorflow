@@ -63,6 +63,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleInfeed(HloInstruction*) override;
   Status HandleOutfeed(HloInstruction*) override;
   Status HandleRng(HloInstruction*) override;
+  Status HandleRngGetAndUpdateState(HloInstruction*) override;
   Status HandleReverse(HloInstruction* reverse) override;
   Status HandleSort(HloInstruction* sort) override;
   Status HandleConstant(HloInstruction* constant) override;

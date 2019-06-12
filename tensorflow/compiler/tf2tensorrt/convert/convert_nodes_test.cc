@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/tensor.h"
@@ -1504,6 +1503,23 @@ TEST_F(OpConverterTest, ConvertConst) {
     RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                "Unsupported data type double");
   }
+  {
+    Reset();
+    Tensor tensor =
+        test::AsTensor<int64>({1, std::numeric_limits<int64>::max(), 1, 1, 1,
+                               std::numeric_limits<int64>::lowest()},
+                              TensorShape({2, 3}));
+    NodeDef node_def;
+    node_def.set_name("my_const");
+    node_def.set_op("Const");
+    (*node_def.mutable_attr())["dtype"].set_type(DT_INT64);
+    TensorProto* tensor_attr =
+        (*node_def.mutable_attr())["value"].mutable_tensor();
+    tensor_attr->Clear();
+    tensor.AsProtoTensorContent(tensor_attr);
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "outside the range of int32");
+  }
 
   TestConvertConst<DT_FLOAT, float, float>(this);
   TestConvertConst<DT_INT8, int8, int32>(this);
@@ -1511,6 +1527,9 @@ TEST_F(OpConverterTest, ConvertConst) {
   TestConvertConst<DT_INT16, int16, int32>(this);
   TestConvertConst<DT_UINT16, uint16, int32>(this);
   TestConvertConst<DT_INT32, int32, int32>(this);
+  TestConvertConst<DT_UINT32, uint32, int32>(this);
+  TestConvertConst<DT_INT64, int64, int32>(this);
+  TestConvertConst<DT_UINT64, uint64, int32>(this);
 }
 
 TEST_F(OpConverterTest, ConvertTranspose) {
@@ -2081,6 +2100,10 @@ void TestBinaryOp(OpConverterTest* test, bool operand_1_is_tensor,
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAreArray(CastTestVector<float, CType>(
                     {1.5, 3, 1, 2, 1.5, 3, 1, 2})));
+  } else if (node_def.op() == "FloorDiv") {
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                ElementsAreArray(
+                    CastTestVector<float, CType>({1, 3, 1, 2, 1, 3, 1, 2})));
   } else if (node_def.op() == "Minimum") {
     EXPECT_THAT(
         GetSpanForData<CType>(output_data[0]),
@@ -2167,6 +2190,88 @@ TEST_F(OpConverterTest, ConvertBinary) {
                                       operand_2_is_tensor);
     }
   }
+}
+
+NodeDef GetAddNNodeDef(const std::vector<string>& input_names, DataType dtype) {
+  Scope s = Scope::NewRootScope();
+  OutputList inputs;
+  for (const string& name : input_names) {
+    inputs.push_back(ops::Placeholder(s.WithOpName(name), dtype));
+  }
+  auto op = ops::AddN(s.WithOpName("my_addn"), inputs);
+  return op.operation.node()->def();
+}
+
+template <DataType dtype>
+void TestAddN(OpConverterTest* test) {
+  typedef typename EnumToDataType<dtype>::Type CType;
+  {
+    // All inputs are tensors.
+    test->Reset();
+    DataVec input_data;
+    for (const auto name : {"inp1", "inp2", "inp3"}) {
+      test->AddTestTensor(name, /*dims=*/{1, 2}, /*batch_size=*/2,
+                          TfDataTypeToTrt(dtype));
+      input_data.push_back({name, test::AsTensor<CType>({CType(1), CType(2),
+                                                         CType(3), CType(4)})});
+    }
+    const NodeDef node_def = GetAddNNodeDef({"inp1", "inp2", "inp3"}, dtype);
+    test->RunValidationAndConversion(node_def);
+
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_addn", &output));
+    ASSERT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray({1, 2}, output.tensor()->getDimensions());
+
+    DataVec output_data{{"my_addn", ConstructTensor<CType>(4)}};
+    test->BuildAndRun(
+        input_data, &output_data,
+        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32,
+        /*batch_size=*/2);
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                ElementsAreArray(CastTestVector<int, CType>({3, 6, 9, 12})));
+  }
+  {
+    // Input contains tensors and weights.
+    test->Reset();
+    DataVec input_data;
+    for (const auto name : {"inp1", "inp2"}) {
+      test->AddTestTensor(name, /*dims=*/{1, 2}, /*batch_size=*/1,
+                          TfDataTypeToTrt(dtype));
+      input_data.push_back({name, test::AsTensor<CType>({CType(1), CType(2)})});
+    }
+    test->AddTestWeights("inp3", /*dims=*/{1, 1, 2},
+                         /*values=*/std::vector<CType>{CType(3), CType(4)});
+    const NodeDef node_def = GetAddNNodeDef({"inp1", "inp2", "inp3"}, dtype);
+    test->RunValidationAndConversion(node_def);
+
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_addn", &output));
+    ASSERT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray({1, 2}, output.tensor()->getDimensions());
+
+    DataVec output_data{{"my_addn", ConstructTensor<CType>(2)}};
+    test->BuildAndRun(
+        input_data, &output_data,
+        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                ElementsAreArray(CastTestVector<int, CType>({5, 8})));
+  }
+}
+
+TEST_F(OpConverterTest, ConvertAddN) {
+  {
+    // Weights with batch dim that is not 1.
+    Reset();
+    const NodeDef node_def = GetAddNNodeDef({"tensor", "weights"}, DT_FLOAT);
+    AddTestTensor("tensor", /*dims=*/{1, 2}, /*batch_size=*/2);
+    AddTestWeights<float>("weights", {2, 1, 2}, {0, 1, 2, 3});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Weights input to AddN is required to have batch dimension 1.");
+  }
+  TestAddN<DT_FLOAT>(this);
+  TestAddN<DT_HALF>(this);
 }
 
 TEST_F(OpConverterTest, ConvertQuantize) {

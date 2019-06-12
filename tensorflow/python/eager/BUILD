@@ -1,7 +1,3 @@
-package(
-    licenses = ["notice"],  # Apache 2.0
-)
-
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load(
@@ -9,6 +5,10 @@ load(
     "tf_py_logged_benchmark",
 )
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "pywrap_tfe_lib",
@@ -88,6 +88,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":monitoring",
         "//tensorflow/python:device",
         "//tensorflow/python:device_spec",
         "//tensorflow/python:errors",
@@ -162,6 +163,18 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:pywrap_tensorflow",
+    ],
+)
+
+py_test(
+    name = "profiler_client_test",
+    srcs = ["profiler_client_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":profiler_client",
+        ":test",
     ],
 )
 
@@ -669,6 +682,7 @@ cuda_py_test(
         ":remote",
         "//tensorflow/python:resource_variable_ops",
     ],
+    grpc_enabled = True,
     tags = [
         "no_oss",  # This test launches local server.
         "optonly",  # times out

@@ -60,17 +60,6 @@ class CopyInsertion : public HloModulePass {
   // (copies were inserted).
   StatusOr<bool> Run(HloModule* module) override;
 
-  // The CPU and GPU backend need additional copies added due to deficiencies in
-  // buffer assignment. Specifically, copies are needed for constants live-out
-  // of computations, and for values which are live-in and live-out of the same
-  // computation. These copies are needed because buffer-assignment uses a
-  // computation-scoped analyis (TuplePointsToAnalysis) and has limited
-  // visibility across computation boundaries. This method adds these necessary
-  // copies. Returns whether the module was modified.
-  //
-  // TODO(b/62548313): Remove this when buffer assignment is module-scoped.
-  static StatusOr<bool> AddCopiesForBufferAssignment(HloModule* module);
-
   // Try to remove as many copies from the module as possible without
   // introducing live range interference. Only copy instructions that are
   // eligible for copy elision are considered for removal.

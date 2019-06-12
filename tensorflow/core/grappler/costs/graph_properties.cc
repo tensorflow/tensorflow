@@ -569,6 +569,9 @@ class SymbolicShapeRefiner {
     std::vector<const TensorProto*> input_tensor_protos;
     std::vector<const TensorProto*> output_tensor_protos;
     std::vector<ShapeHandle> output_tensors_as_shapes;
+
+    // Output shapes incompatible between annotation and shape inference.
+    bool shape_incompatible = false;
   };
 
   NodeContext* GetNodeContext(const NodeDef* node) {
@@ -712,7 +715,10 @@ class SymbolicShapeRefiner {
 
     // Perform inference on function body.
     GraphProperties gp(grappler_function_item);
-    TF_RETURN_IF_ERROR(gp.InferStatically(true, aggressive_shape_inference_));
+    TF_RETURN_IF_ERROR(gp.InferStatically(
+        /*assume_valid_feeds=*/true,
+        /*aggressive_shape_inference=*/aggressive_shape_inference_,
+        /*include_tensor_values=*/true));
 
     // Add return nodes for output shapes.
     int output = 0;
@@ -1028,6 +1034,28 @@ class SymbolicShapeRefiner {
         if (val1 >= 0 && val1 != val2) {
           return false;
         }
+      }
+    }
+    return true;
+  }
+
+  bool SameShapes(ShapeHandle inferred_shape,
+                  ShapeHandle annotated_shape) const {
+    if (inferred_shape.SameHandle(annotated_shape)) {
+      return true;
+    }
+    if (InferenceContext::Rank(inferred_shape) !=
+        InferenceContext::Rank(annotated_shape)) {
+      return false;
+    }
+    const int rank = InferenceContext::Rank(inferred_shape);
+    for (int i = 0; i < rank; ++i) {
+      int64 val1 = InferenceContext::Value(
+          InferenceContext::DimKnownRank(inferred_shape, i));
+      int64 val2 = InferenceContext::Value(
+          InferenceContext::DimKnownRank(annotated_shape, i));
+      if (val1 != val2) {
+        return false;
       }
     }
     return true;
@@ -1377,8 +1405,25 @@ class SymbolicShapeRefiner {
 
       const TensorShapeProto& shape =
           attr.at(kOutputShapes).list().shape(shape_index);
+      if (shape.dim().empty()) continue;
+
       ShapeHandle output_shape;
       TF_RETURN_IF_ERROR(ic->MakeShapeFromShapeProto(shape, &output_shape));
+
+      // Check if annotated shapes are incompatible with inferred shapes.
+      if ((ic->FullyDefined(ic->output(i)) &&
+           !SameShapes(ic->output(i), output_shape)) ||
+          (!ic->FullyDefined(ic->output(i)) &&
+           !CompatibleShapes(ic->output(i), output_shape))) {
+        LOG(WARNING)
+            << "UpdateOutputShapesUsingAnnotatedInformation() -- node: "
+            << node.name() << ", inferred output shape "
+            << "doesn't match for i=" << i << ": "
+            << "ic->output(k): " << ic->DebugString(ic->output(i))
+            << ", annotated output shape: " << ic->DebugString(output_shape)
+            << " -- " << node.DebugString();
+        c->shape_incompatible = true;
+      }
 
       // Only use annotated shapes if the inference shape is unknown and
       // compatible with annotated shapes.
@@ -2066,7 +2111,9 @@ Status GraphProperties::UpdateEnqueue(
 }
 
 Status GraphProperties::InferStatically(bool assume_valid_feeds,
-                                        bool aggressive_shape_inference) {
+                                        bool aggressive_shape_inference,
+                                        bool include_input_tensor_values,
+                                        bool include_output_tensor_values) {
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item_.graph.library());
   std::unordered_map<string, std::unordered_set<int>> fed_ports;
@@ -2225,20 +2272,23 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
                                           &input_properties[i]);
         input.port_id = i;
         GraphView::OutputPort fanin = graph_view.GetRegularFanin(input);
-        // Export tensor value to input_properties.value.
-        if (IsConstant(*fanin.node)) {
-          const TensorProto& raw_val = fanin.node->attr().at("value").tensor();
-          *input_properties[i].mutable_value() = raw_val;
-        } else if (ctx->input_tensor_protos.size() > i &&
-                   ctx->input_tensor_protos[i] != nullptr) {
-          *input_properties[i].mutable_value() = *ctx->input_tensor_protos[i];
-        } else if (ic->input_tensors_as_shapes().size() > i &&
-                   IsShapeFullyDefinedIntegerVectorOrScalar(
-                       ic, ic->input(i), ic->input_tensors_as_shapes()[i],
-                       ctx->input_types[i])) {
-          *input_properties[i].mutable_value() = MakeTensorProtoFromShape(
-              ic, ic->input(i), ic->input_tensors_as_shapes()[i],
-              ctx->input_types[i]);
+        if (include_input_tensor_values) {
+          // Export tensor value to input_properties.value.
+          if (IsConstant(*fanin.node)) {
+            const TensorProto& raw_val =
+                fanin.node->attr().at("value").tensor();
+            *input_properties[i].mutable_value() = raw_val;
+          } else if (ctx->input_tensor_protos.size() > i &&
+                     ctx->input_tensor_protos[i] != nullptr) {
+            *input_properties[i].mutable_value() = *ctx->input_tensor_protos[i];
+          } else if (ic->input_tensors_as_shapes().size() > i &&
+                     IsShapeFullyDefinedIntegerVectorOrScalar(
+                         ic, ic->input(i), ic->input_tensors_as_shapes()[i],
+                         ctx->input_types[i])) {
+            *input_properties[i].mutable_value() = MakeTensorProtoFromShape(
+                ic, ic->input(i), ic->input_tensors_as_shapes()[i],
+                ctx->input_types[i]);
+          }
         }
       }
     }
@@ -2254,24 +2304,35 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
       for (int i = 0; i < ic->num_outputs(); ++i) {
         shape_manager->AsTensorProperties(ic->output(i), ctx->output_types[i],
                                           &output_properties[i]);
-        // Export tensor value to output_properties.value.
-        if (IsConstant(node)) {
-          const TensorProto& raw_val = node.attr().at("value").tensor();
-          *output_properties[i].mutable_value() = raw_val;
-        } else if (ctx->output_tensor_protos.size() > i &&
-                   ctx->output_tensor_protos[i] != nullptr) {
-          *output_properties[i].mutable_value() = *ctx->output_tensor_protos[i];
-        } else if (ctx->output_tensors_as_shapes.size() > i &&
-                   IsShapeFullyDefinedIntegerVectorOrScalar(
-                       ic, ic->output(i), ctx->output_tensors_as_shapes[i],
-                       ctx->output_types[i])) {
-          *output_properties[i].mutable_value() = MakeTensorProtoFromShape(
-              ic, ic->output(i), ctx->output_tensors_as_shapes[i],
-              ctx->output_types[i]);
+        if (include_output_tensor_values) {
+          // Export tensor value to output_properties.value.
+          if (IsConstant(node)) {
+            // TODO(rmlarsen): Eliminate this copy.
+            const TensorProto& raw_val = node.attr().at("value").tensor();
+            *output_properties[i].mutable_value() = raw_val;
+          } else if (ctx->output_tensor_protos.size() > i &&
+                     ctx->output_tensor_protos[i] != nullptr) {
+            *output_properties[i].mutable_value() =
+                *ctx->output_tensor_protos[i];
+          } else if (ctx->output_tensors_as_shapes.size() > i &&
+                     IsShapeFullyDefinedIntegerVectorOrScalar(
+                         ic, ic->output(i), ctx->output_tensors_as_shapes[i],
+                         ctx->output_types[i])) {
+            *output_properties[i].mutable_value() = MakeTensorProtoFromShape(
+                ic, ic->output(i), ctx->output_tensors_as_shapes[i],
+                ctx->output_types[i]);
+          }
         }
       }
     }
+
+    if (aggressive_shape_inference && ctx->shape_incompatible)
+      incompatible_shape_nodes_.insert(node.name());
   }
+
+  if (aggressive_shape_inference && !incompatible_shape_nodes_.empty())
+    LOG(WARNING) << incompatible_shape_nodes_.size()
+                 << " nodes have incompatible output shapes.";
 
   // Help trace the unknown dimensions to their origins.
   VerboseLogUnknownDimensionSources(item_.graph, input_properties_,

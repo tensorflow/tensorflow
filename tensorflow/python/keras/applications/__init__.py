@@ -28,26 +28,6 @@ from tensorflow.python.keras import models
 from tensorflow.python.keras import utils
 from tensorflow.python.util import tf_inspect
 
-# `get_submodules_from_kwargs` has been introduced in 1.0.5, but we would
-# like to be able to handle prior versions. Note that prior to 1.0.5,
-# `keras_applications` did not expose a `__version__` attribute.
-if not hasattr(keras_applications, 'get_submodules_from_kwargs'):
-
-  if 'engine' in tf_inspect.getfullargspec(
-      keras_applications.set_keras_submodules)[0]:
-    keras_applications.set_keras_submodules(
-        backend=backend,
-        layers=layers,
-        models=models,
-        utils=utils,
-        engine=engine)
-  else:
-    keras_applications.set_keras_submodules(
-        backend=backend,
-        layers=layers,
-        models=models,
-        utils=utils)
-
 
 def keras_modules_injection(base_fun):
   """Decorator injecting tf.keras replacements for Keras modules.
@@ -61,12 +41,10 @@ def keras_modules_injection(base_fun):
   """
 
   def wrapper(*args, **kwargs):
-    if hasattr(keras_applications, 'get_submodules_from_kwargs'):
-      kwargs['backend'] = backend
-      if 'layers' not in kwargs:
-        kwargs['layers'] = layers
-      kwargs['models'] = models
-      kwargs['utils'] = utils
+    kwargs['backend'] = backend
+    kwargs['layers'] = layers
+    kwargs['models'] = models
+    kwargs['utils'] = utils
     return base_fun(*args, **kwargs)
   return wrapper
 
@@ -80,11 +58,12 @@ from tensorflow.python.keras.applications.mobilenet import MobileNet
 from tensorflow.python.keras.applications.mobilenet_v2 import MobileNetV2
 from tensorflow.python.keras.applications.nasnet import NASNetLarge
 from tensorflow.python.keras.applications.nasnet import NASNetMobile
-from tensorflow.python.keras.applications.resnet50 import ResNet50
+from tensorflow.python.keras.applications.resnet import ResNet50
+from tensorflow.python.keras.applications.resnet import ResNet101
+from tensorflow.python.keras.applications.resnet import ResNet152
+from tensorflow.python.keras.applications.resnet_v2 import ResNet50V2
+from tensorflow.python.keras.applications.resnet_v2 import ResNet101V2
+from tensorflow.python.keras.applications.resnet_v2 import ResNet152V2
 from tensorflow.python.keras.applications.vgg16 import VGG16
 from tensorflow.python.keras.applications.vgg19 import VGG19
 from tensorflow.python.keras.applications.xception import Xception
-
-del absolute_import
-del division
-del print_function

@@ -540,6 +540,7 @@ py_library(
         ":distribute_lib",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
@@ -562,6 +563,17 @@ py_library(
     ],
 )
 
+py_test(
+    name = "combinations_test",
+    srcs = ["combinations_test.py"],
+    python_version = "PY2",
+    deps = [
+        ":combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:backend",
+    ],
+)
+
 py_library(
     name = "strategy_combinations",
     srcs = ["strategy_combinations.py"],
@@ -573,12 +585,27 @@ py_library(
         ":mirrored_strategy",
         ":one_device_strategy",
         ":tpu_strategy",
+        "//tensorflow/python:config",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "strategy_combinations_test",
+    srcs = ["strategy_combinations_test.py"],
+    python_version = "PY2",
+    deps = [
+        ":combinations",
+        ":reduce_util",
+        ":strategy_combinations",
+        "//tensorflow/python:config",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -589,17 +616,6 @@ py_library(
     deps = [
         ":combinations",
         ":simple_models",
-    ],
-)
-
-py_test(
-    name = "combinations_test",
-    srcs = ["combinations_test.py"],
-    python_version = "PY2",
-    deps = [
-        ":combinations",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras:backend",
     ],
 )
 
@@ -787,7 +803,7 @@ distribute_py_test(
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/saved_model/model_utils:mode_keys",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -950,6 +966,32 @@ cuda_py_test(
     xla_enable_strict_auto_jit = True,
 )
 
+cuda_py_test(
+    name = "mirrored_variable_test",
+    srcs = ["mirrored_variable_test.py"],
+    additional_deps = [
+        ":collective_all_reduce_strategy",
+        ":combinations",
+        ":strategy_combinations",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+    ],
+    tags = [
+        "guitar",
+        "multi_and_single_gpu",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
 distribute_py_test(
     name = "metrics_v1_test",
     srcs = ["metrics_v1_test.py"],
@@ -1005,7 +1047,9 @@ py_library(
         ":combinations",
         ":model_combinations",
         ":strategy_combinations",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model",
         "//third_party/py/numpy",
     ],
 )
@@ -1022,13 +1066,25 @@ distribute_py_test(
 )
 
 distribute_py_test(
-    name = "keras_saved_model_test",
+    name = "keras_experimental_saved_model_test",
     size = "medium",
-    srcs = ["keras_saved_model_test.py"],
-    main = "keras_saved_model_test.py",
+    srcs = ["keras_experimental_saved_model_test.py"],
+    main = "keras_experimental_saved_model_test.py",
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras:saving",
+    ],
+)
+
+distribute_py_test(
+    name = "saved_model_mixed_api_test",
+    size = "medium",
+    srcs = ["saved_model_mixed_api_test.py"],
+    main = "saved_model_mixed_api_test.py",
+    deps = [
+        ":saved_model_test_base",
+        "//tensorflow/python/keras:saving",
+        "//tensorflow/python/saved_model",
     ],
 )
 
