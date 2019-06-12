@@ -174,6 +174,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, values->type == kTfLiteInt32 ||
                           values->type == kTfLiteInt64 ||
                           values->type == kTfLiteInt8 ||
+                          values->type == kTfLiteUInt8 ||
                           values->type == kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, values->type, default_value->type);
 
@@ -253,6 +254,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return EvalForIndexType<int64_t>(context, node, indices);
     case kTfLiteInt8:
       return EvalForIndexType<int8_t>(context, node, indices);
+    case kTfLiteUInt8:
+      return EvalForIndexType<uint8_t>(context, node, indices);
     default:
       context->ReportError(
           context,
