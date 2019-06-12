@@ -149,6 +149,14 @@ absl::optional<ConvWithRelu> FindConvWithRelu(HloInstruction* instr) {
     return absl::nullopt;
   }
 
+  // In order to map to cudnnConvolutionBiasAcitvationForward for integer
+  // convolution, we require the convolution output to have float output.
+  // TODO(yongfengg): handle int32 in addition to float
+  if (primitive_util::IsIntegralType(instr->shape().element_type()) &&
+      conv->shape().tuple_shapes(0).element_type() != xla::F32) {
+    return absl::nullopt;
+  }
+
   if (bias_broadcast) {
     // TODO(timshen): handle bias_broadcast_instr->dimensions() == {}.
     if (bias_broadcast_instr->dimensions().size() != 1) {
@@ -204,26 +212,19 @@ StatusOr<std::unique_ptr<HloInstruction>> TryRewriteToCudnnForwardRelu(
 
   auto bias = match.bias;
   if (!bias) {
+    PrimitiveType conv_output_type = conv->shape().tuple_shapes(0).element_type();
     auto zero = computation->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::Zero(element_type)));
+        HloInstruction::CreateConstant(LiteralUtil::Zero(conv_output_type)));
 
     int64 num_output_feature = conv->shape().tuple_shapes(0).dimensions(
         conv->convolution_dimension_numbers().output_feature_dimension());
     bias = computation->AddInstruction(HloInstruction::CreateBroadcast(
-        ShapeUtil::MakeShapeWithDescendingLayout(element_type,
+        ShapeUtil::MakeShapeWithDescendingLayout(conv_output_type,
                                                  {num_output_feature}),
         zero, {}));
   }
 
   CHECK(bias);
-
-  // Cast integer type bias to float to match 
-  // cudnnConvolutionBiasActivationForward.
-  if (primitive_util::IsIntegralType(bias->shape().element_type())) {
-    auto shape = bias->shape();
-    shape.set_element_type(xla::F32);
-    bias = computation->AddInstruction(HloInstruction::CreateConvert(shape, bias));
-  }
 
   std::vector<HloInstruction*> args = {conv->mutable_operand(0),
                                        conv->mutable_operand(1), bias};

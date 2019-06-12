@@ -44,11 +44,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_pad_for_tensor_cores.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_pad_for_integer_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
@@ -271,10 +270,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     pipeline.AddPass<CudnnConvRewriter>();
     pipeline.AddPass<CudnnFusedConvRewriter>();
     pipeline.AddPass<CudnnConvPaddingLegalization>();
-    pipeline.AddPass<CudnnConvPadForIntegerConvolutions>();
-    if (IsVoltaOrLater(*stream_exec)) {
-      pipeline.AddPass<CudnnConvPadForTensorCores>();
-    }
+    pipeline.AddPass<CudnnPadForConvolutions>(IsVoltaOrLater(*stream_exec));
     // CudnnConvPadForIntegerConvolutions and CudnnConvPadForTensorCores leaves
     // behind unnecessary tuple/get-tuple-element pairs that TupleSimplifier
     // fixes.

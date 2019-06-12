@@ -1008,7 +1008,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  Status HandleConvolution(HloInstruction* conv) override {
+  template <typename InputT, typename AccumulatorT>
+  Status HandleConvolution(HloInstruction* conv) {
     auto lhs = conv->operand(0);
     auto rhs = conv->operand(1);
     const auto& window = conv->window();
@@ -1021,7 +1022,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     CHECK(lhs_shape.IsArray());
     CHECK(rhs_shape.IsArray());
     CHECK(ShapeUtil::SameElementType(lhs_shape, rhs_shape));
-    CHECK(ShapeUtil::SameElementType(lhs_shape, result_shape));
 
     const auto& dnums = conv->convolution_dimension_numbers();
     const int64 num_spatial_dims = dnums.output_spatial_dimensions_size();
@@ -1040,7 +1040,11 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                         ShapeInference::InferConvolveShape(
                             lhs_shape, rhs_shape, conv->feature_group_count(),
                             conv->batch_group_count(), window, dnums));
-    CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
+    CHECK(ShapeUtil::CompatibleIgnoringElementType(result_shape,
+                                                   inferred_return_shape) &&
+          ShapeUtil::HigherPrecisionElementType(result_shape,
+                                                inferred_return_shape) ==
+              result_shape.element_type())
         << "return shape set to: " << ShapeUtil::HumanString(result_shape)
         << " but is inferred to be: "
         << ShapeUtil::HumanString(inferred_return_shape);
@@ -1059,8 +1063,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     DimensionVector lhs_dim_multipliers = MakeDimMultipliers(lhs_shape);
     DimensionVector rhs_dim_multipliers = MakeDimMultipliers(rhs_shape);
 
-    auto lhs_literal_data = lhs_literal.data<ReturnT>();
-    auto rhs_literal_data = rhs_literal.data<ReturnT>();
+    auto lhs_literal_data = lhs_literal.data<InputT>();
+    auto rhs_literal_data = rhs_literal.data<InputT>();
 
     const int64 feature_group_count = conv->feature_group_count();
     const int64 batch_group_count = conv->batch_group_count();
@@ -1104,7 +1108,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
       const int64 batch_group_index = out_index[output_z_dim];
 
-      ElementwiseT result_val = static_cast<ElementwiseT>(0);
+      AccumulatorT result_val = static_cast<AccumulatorT>(0);
       DimensionVector rhs_spatial_index(dnums.kernel_spatial_dimensions_size(),
                                         0);
 
@@ -1186,8 +1190,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           rhs_linear_index += rhs_iz * rhs_dim_multipliers[kernel_input_z_dim];
 
           result_val +=
-              static_cast<ElementwiseT>(lhs_literal_data[lhs_linear_index]) *
-              static_cast<ElementwiseT>(rhs_literal_data[rhs_linear_index]);
+              static_cast<AccumulatorT>(lhs_literal_data[lhs_linear_index]) *
+              static_cast<AccumulatorT>(rhs_literal_data[rhs_linear_index]);
         }
       cnt : {}
       } while (IndexUtil::BumpIndices(window_shape,
@@ -1202,6 +1206,17 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     parent_->evaluated_[conv] = std::move(result);
     return Status::OK();
   }
+
+  Status HandleConvolution(HloInstruction* conv) override {
+    if (primitive_util::IsIntegralType(conv->operand(0)->shape().element_type())) {
+      // For integer input convolution, we define the semantics to match
+      // CuDNN, i.e. input type int8, elementwise type float, and output type
+      // float.
+      return HandleConvolution<int8, int32>(conv);
+    } else {
+      return HandleConvolution<ReturnT, ElementwiseT>(conv);
+    }
+  };
 
   Status HandleDot(HloInstruction* dot) override {
     if (dot->dot_dimension_numbers().rhs_contracting_dimensions_size() == 1 &&

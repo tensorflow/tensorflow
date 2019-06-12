@@ -2731,39 +2731,9 @@ port::Status CudnnSupport::DoPrepareForConvolution(
   return port::Status::OK();
 }
 
-port::Status CudnnSupport::IntegerConvolutionSanityChecks(
-    const dnn::BatchDescriptor& input_descriptor,
-    const dnn::FilterDescriptor& filter_descriptor,
-    const dnn::BatchDescriptor& output_descriptor,
-    const absl::optional<dnn::AlgorithmDesc>& algo_desc) {
-  // Check algorithm.  Only _IMPLICIT_PRECOMP_GEMM is supported.
-  if (algo_desc.has_value() &&
-      algo_desc->algo_id() !=
-          CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM) {
-    return port::InternalError(
-        "cudnnConvolutionBiasActivationForward() for int8 is only supported "
-        "with the CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM algorithm.");
-  }
-  // Check the number of input/output feature maps.  Must be multiple of 4.
-  if (input_descriptor.feature_map_count() % 4 != 0 ||
-      output_descriptor.feature_map_count() % 4 != 0) {
-    return port::InternalError(
-        "cudnnConvolutionBiasActivationForward() for int8 is only supported "
-        "with the input and output feature maps being multiple of 4.");
-  }
- // Check layout.  Only NHWC is supported.
-  if (input_descriptor.layout() != stream_executor::dnn::kBatchYXDepth ||
-      output_descriptor.layout() != stream_executor::dnn::kBatchYXDepth ||
-      filter_descriptor.layout() != stream_executor::dnn::kOutputYXInput) {
-    return port::InternalError(
-        "cudnnConvolutionBiasActivationForward() for int8 is only supported "
-        "with tensor format NHWC.");
-  }
-  return port::Status::OK();
-}
-
 port::Status CudnnSupport::DoConvolve(
-    dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
+    dnn::ConvolutionKind kind, dnn::DataType element_type,
+    dnn::DataType output_type, Stream* stream,
     const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
     const dnn::FilterDescriptor& filter_descriptor,
     DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
@@ -2773,7 +2743,7 @@ port::Status CudnnSupport::DoConvolve(
     dnn::ProfileResult* output_profile_result) {
   cudnnDataType_t cudnn_type = ToCudnnDataType(element_type);
   CudnnTensorDescriptor input_nd(input_descriptor, cudnn_type);
-  CudnnTensorDescriptor output_nd(output_descriptor, cudnn_type);
+  CudnnTensorDescriptor output_nd(output_descriptor, ToCudnnDataType(output_type));
   CudnnFilterDescriptor filter_nd(filter_descriptor, cudnn_type);
   auto accumulator_type = GetConvAccumulatorType(element_type);
   CudnnConvolutionDescriptor conv(convolution_descriptor,
@@ -2935,11 +2905,6 @@ port::Status CudnnSupport::DoConvolve(
   switch (kind) {
     case dnn::ConvolutionKind::FORWARD: {
       SE_RETURN_IF_ERROR(get_fwd_bugs());
-      if (element_type == stream_executor::dnn::kInt8) {
-        SE_RETURN_IF_ERROR(
-            IntegerConvolutionSanityChecks(input_descriptor, filter_descriptor,
-                                           output_descriptor, algorithm_desc));
-      }
       RETURN_IF_CUDNN_ERROR(cudnnConvolutionForward(
           cudnn.handle(),
           /*alpha=*/alpha, /*srcDesc=*/input_nd.handle(),
@@ -3005,18 +2970,18 @@ port::Status CudnnSupport::DoConvolve(
   return port::Status::OK();
 }
 
-template <typename ElementType, typename BiasType, typename ScaleType>
+template <typename ElementType, typename BiasType, typename ScaleType, typename OutputType>
 port::Status CudnnSupport::DoFusedConvolveImpl(
     Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
     const DeviceMemory<ElementType>& conv_input_data,
     ScaleType conv_input_scale, const dnn::FilterDescriptor& filter_descriptor,
     const DeviceMemory<ElementType>& filter_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const DeviceMemory<ElementType>& side_input_data,
+    const DeviceMemory<OutputType>& side_input_data,
     ScaleType side_input_scale, const dnn::BatchDescriptor& bias_descriptor,
     const DeviceMemory<BiasType>& biases, dnn::ActivationMode activation_mode,
     const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<ElementType>* output_data, dnn::DataType accumulator_type,
+    DeviceMemory<OutputType>* output_data, dnn::DataType accumulator_type,
     ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
@@ -3032,7 +2997,7 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
       GetCudnnDataType<ElementType>(conv_input_descriptor.layout()));
   CudnnTensorDescriptor output_nd(
       output_descriptor,
-      GetCudnnDataType<ElementType>(conv_input_descriptor.layout()));
+      GetCudnnDataType<OutputType>(conv_input_descriptor.layout()));
   CudnnFilterDescriptor filter(
       filter_descriptor,
       GetCudnnDataType<ElementType>(conv_input_descriptor.layout()));
@@ -3639,9 +3604,36 @@ bool CudnnSupport::DoFusedConvolve(
     return false;
   }
 
-  if (!IsStatusOk(IntegerConvolutionSanityChecks(
-          conv_input_descriptor, filter_descriptor, output_descriptor,
-          algorithm_config.algorithm()), /*report_error=*/true)) {
+  return IsStatusOk(
+      DoFusedConvolveImpl(
+          stream, conv_input_descriptor, conv_input_data, conv_input_scale,
+          filter_descriptor, filter_data, convolution_descriptor,
+          side_input_data, side_input_scale, bias_descriptor, biases,
+          activation_mode, output_descriptor, output_data,
+          GetConvAccumulatorType(dnn::DataType::kInt8), scratch_allocator,
+          algorithm_config, output_profile_result),
+      /*report_error=*/!output_profile_result);
+}
+
+bool CudnnSupport::DoFusedConvolve(
+    Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
+    const DeviceMemory<int8>& conv_input_data, float conv_input_scale,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const DeviceMemory<int8>& filter_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const DeviceMemory<float>& side_input_data, float side_input_scale,
+    const dnn::BatchDescriptor& bias_descriptor,
+    const DeviceMemory<float>& biases, dnn::ActivationMode activation_mode,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::ProfileResult* output_profile_result) {
+  int cc_major, cc_minor;
+  stream->parent()->GetDeviceDescription().cuda_compute_capability(&cc_major,
+                                                                   &cc_minor);
+  if (cc_major < 6 || (cc_major == 6 && cc_minor < 1)) {
+    LOG(WARNING) << "cudnnConvolutionBiasActivationForward() for int8 is only "
+                    "supported on GPUs with compute capability 6.1 or later.";
     return false;
   }
 

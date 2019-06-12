@@ -273,10 +273,10 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     allocator = &*se_allocator;
   }
 
-  const auto initialize_buffer = [&stream,
-                                  &result_shape](DeviceMemoryBase buffer) {
+  const auto initialize_buffer = [&stream](DeviceMemoryBase buffer,
+                                           const Shape& buffer_shape) {
     constexpr float kBroadcastedConstant = 0.1f;
-    switch (result_shape.element_type()) {
+    switch (buffer_shape.element_type()) {
       case xla::F16: {
         // Broadcast a constant to the buffer, instead of zeroing the buffer. A
         // non-zero constant is useful for the cross checking, because
@@ -322,13 +322,13 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     TF_ASSIGN_OR_RETURN(auto buffer,
                         input_output_allocator.AllocateBytes(
                             &stream, ShapeUtil::ByteSizeOf(operand->shape())));
-    initialize_buffer(buffer);
+    initialize_buffer(buffer, operand->shape());
     operand_buffers.push_back(buffer);
   }
   TF_ASSIGN_OR_RETURN(auto result_buffer,
                       input_output_allocator.AllocateBytes(
                           &stream, ShapeUtil::ByteSizeOf(result_shape)));
-  initialize_buffer(result_buffer);
+  initialize_buffer(result_buffer, result_shape);
 
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       instr->backend_config<CudnnConvBackendConfig>());
@@ -440,7 +440,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
       TF_ASSIGN_OR_RETURN(result_buffer,
                           input_output_allocator.AllocateBytes(
                               &stream, reference_result_buffer.size()));
-      initialize_buffer(result_buffer);
+      initialize_buffer(result_buffer, result_shape);
       first_algorithm = alg;
     }
   }

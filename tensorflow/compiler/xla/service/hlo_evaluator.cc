@@ -187,7 +187,7 @@ HloEvaluator::HloEvaluator(int64 max_loop_iterations)
       absl::make_unique<HloEvaluatorTypedVisitor<uint32>>(this);
   typed_visitors_[U64] =
       absl::make_unique<HloEvaluatorTypedVisitor<uint64>>(this);
-  typed_visitors_[S8] = absl::make_unique<HloEvaluatorTypedVisitor<int8>>(this);
+  typed_visitors_[S8] = absl::make_unique<HloEvaluatorTypedVisitor<int8, int32>>(this);
   typed_visitors_[S16] =
       absl::make_unique<HloEvaluatorTypedVisitor<int16>>(this);
   typed_visitors_[S32] =
