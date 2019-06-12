@@ -224,7 +224,7 @@ def print_v2(*inputs, **kwargs):
       tf.compat.v1.logging.warning, and tf.compat.v1.logging.error are also
       supported. To print to
       a file, pass a string started with "file://" followed by the file path,
-      e.g., "file:///tmp/foo.out".
+      e.g., "file://tmp/foo.out".
     summarize: The first and last `summarize` elements within each dimension are
       recursively printed per Tensor. If None, then the first 3 and last 3
       elements of each dimension are printed for each tensor. If set to -1, it
