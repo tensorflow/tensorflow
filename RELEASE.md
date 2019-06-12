@@ -5,13 +5,13 @@
 * This is the first 1.x release containing the compat.v2 module. This module is required to allow libraries to publish code which works in both 1.x and 2.x. After this release, no backwards incompatible changes are allowed in the 2.0 Python API.
 * Turn on MKL-DNN contraction kernels by default. MKL-DNN dynamically dispatches the best kernel implementation based on CPU vector architecture. To disable them, build with --define=tensorflow_mkldnn_contraction_kernel=0.
 * Non-Windows system libraries are now versioned. This should be a no-op for most users as it affects only system package maintainers or those building extensions to TensorFlow:
- * Python wheels (Pip packages) contain one library file.
-   * Linux: `libtensorflow_framework.so.1`
-   * MacOS: `libtensorflow_framework.1.dylib`
- * Our `libtensorflow` tarball archives contain the `libtensorflow` library and two symlinks. MacOS `.dylib` libraries are the same, but match MacOS library naming requirements (i.e. `libtensorflow.1.dylib`):
-   * `libtensorflow.so.1.14.0`, the main library
-   * `libtensorflow.so.1`, symlinked to the main library
-   * `libtensorflow.so`, symlinked to `.so.1`
+  * Python wheels (Pip packages) contain one library file.
+    * Linux: `libtensorflow_framework.so.1`
+    * MacOS: `libtensorflow_framework.1.dylib`
+  * Our `libtensorflow` tarball archives contain the `libtensorflow` library and two symlinks. MacOS `.dylib` libraries are the same, but match MacOS library naming requirements (i.e. `libtensorflow.1.dylib`):
+    * `libtensorflow.so.1.14.0`, the main library
+    * `libtensorflow.so.1`, symlinked to the main library
+    * `libtensorflow.so`, symlinked to `.so.1`
 
 ## Behavioral changes
 
@@ -32,6 +32,7 @@
 ## Bug Fixes and Other Changes
 * Documentation
 * Deprecations and Symbol renames.
+  * The GPU configuration env parameter `TF_CUDA_HOST_MEM_LIMIT_IN_MB` has been changed to `TF_GPU_HOST_MEM_LIMIT_IN_MB`.
   * Remove unused StringViewVariantWrapper
   * Delete unused Fingerprint64Map op registration
   * SignatureDef util functions have been deprecated.
