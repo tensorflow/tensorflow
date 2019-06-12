@@ -705,14 +705,8 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     expected_layers = len(model.layers)
     self.assertEqual(expected_layers, len(loaded.keras_api.layers))
     input_arr = array_ops.ones((4, 3))
-    training_bool = constant_op.constant(False)
-
-    if model._expects_training_arg:
-      call_args = [input_arr, training_bool]
-    else:
-      call_args = [input_arr]
     self.assertAllClose(self.evaluate(model(input_arr)),
-                        self.evaluate(loaded(*call_args)))
+                        self.evaluate(loaded(input_arr)))
 
   @keras_parameterized.run_with_all_model_types
   def test_compiled_model(self):
@@ -765,6 +759,20 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.assertAllEqual([None, 2, 3], loaded.input_spec['b'].shape)
     self.assertEqual('float16', loaded.input_spec['b'].dtype)
 
+  def test_multi_input_model(self):
+    input_1 = keras.layers.Input(shape=(3,))
+    input_2 = keras.layers.Input(shape=(5,))
+    model = keras.Model([input_1, input_2], [input_1, input_2])
+    saved_model_dir = self._save_model_dir()
+
+    model.save(saved_model_dir, save_format='tf')
+    loaded = keras_saved_model.load_from_saved_model_v2(saved_model_dir)
+    input_arr_1 = np.random.random((1, 3)).astype('float32')
+    input_arr_2 = np.random.random((1, 5)).astype('float32')
+
+    outputs = loaded([input_arr_1, input_arr_2])
+    self.assertAllEqual(input_arr_1, outputs[0])
+    self.assertAllEqual(input_arr_2, outputs[1])
 
 if __name__ == '__main__':
   test.main()

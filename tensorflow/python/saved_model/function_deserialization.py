@@ -177,11 +177,11 @@ class RestoredFunction(def_function.Function):
     # TODO(mdan): We may enable autograph once exceptions are supported.
     super(RestoredFunction, self).__init__(
         python_function, name, autograph=False)
-    self._concrete_functions = concrete_functions
+    self.concrete_functions = concrete_functions
     self._function_spec = function_spec
 
   def _list_all_concrete_functions_for_serialization(self):
-    return self._concrete_functions
+    return self.concrete_functions
 
   def _defun_with_scope(self, scope):
     func = super(RestoredFunction, self)._defun_with_scope(scope)
