@@ -38,10 +38,10 @@ Value *Aliases::find(Value *v) {
 
   auto it = aliases.find(v);
   if (it != aliases.end()) {
-    assert((it->getSecond()->getKind() == Value::Kind::BlockArgument &&
-            it->getSecond()->getType().isa<ViewType>()) ||
-           it->getSecond()->getType().isa<BufferType>() &&
-               "Buffer or block argument expected");
+    assert(((it->getSecond()->getKind() == Value::Kind::BlockArgument &&
+             it->getSecond()->getType().isa<ViewType>()) ||
+            it->getSecond()->getType().isa<BufferType>()) &&
+           "Buffer or block argument expected");
     return it->getSecond();
   }
   if (auto slice = dyn_cast_or_null<SliceOp>(v->getDefiningOp())) {
@@ -60,7 +60,7 @@ LinalgDependenceGraph::LinalgDependenceGraph(Aliases &aliases,
     : aliases(aliases), linalgOps(ops.begin(), ops.end()) {
   for (auto en : llvm::enumerate(linalgOps)) {
     assert(isa<LinalgOp>(en.value()) && "Expected value for LinalgOp");
-    linalgOpPositions.insert(make_pair(en.value(), en.index()));
+    linalgOpPositions.insert(std::make_pair(en.value(), en.index()));
   }
   for (unsigned i = 0, e = ops.size(); i < e; ++i) {
     for (unsigned j = i + 1; j < e; ++j) {
