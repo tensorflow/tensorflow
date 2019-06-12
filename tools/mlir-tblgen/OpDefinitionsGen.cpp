@@ -1087,31 +1087,36 @@ void OpEmitter::genOperandResultVerifier(OpMethodBody &body,
                                          Operator::value_range values,
                                          StringRef valueKind) {
   FmtContext fctx;
-  unsigned i = 0;
-  for (auto &staticValue : values) {
-    if (!staticValue.hasPredicate())
+
+  body << "  {\n";
+  body << "    unsigned index = 0; (void)index;\n";
+
+  for (auto staticValue : llvm::enumerate(values)) {
+    if (!staticValue.value().hasPredicate())
       continue;
 
     // Emit a loop to check all the dynamic values in the pack.
-    body << formatv("  for (Value *v : getODS{0}{1}s({2})) {{\n",
+    body << formatv("    for (Value *v : getODS{0}{1}s({2})) {{\n",
                     // Capitalize the first letter to match the function name
-                    valueKind.substr(0, 1).upper(), valueKind.substr(1), i);
+                    valueKind.substr(0, 1).upper(), valueKind.substr(1),
+                    staticValue.index());
 
-    auto description = staticValue.constraint.getDescription();
-    body << "    (void)v;\n";
-    body << "    if (!("
-         << tgfmt(staticValue.constraint.getConditionTemplate(),
+    auto constraint = staticValue.value().constraint;
+
+    body << "      (void)v;\n"
+         << "      if (!("
+         << tgfmt(constraint.getConditionTemplate(),
                   &fctx.withSelf("v->getType()"))
-         << "))\n";
-    body << "      return emitOpError(\""
-         // TODO(b/129706806): Use the name of the operand/result here
-         << valueKind << " #" << i
-         << (description.empty() ? " type precondition failed"
-                                 : " must be " + Twine(description))
-         << "\");\n";
-    body << "  }\n";
-    ++i;
+         << ")) {\n"
+         << formatv("        return emitOpError(\"{0} #\") << index "
+                    "<< \" must be {1}\";\n",
+                    valueKind, constraint.getDescription())
+         << "      }\n" // if
+         << "      ++index;\n"
+         << "    }\n"; // for
   }
+
+  body << "  }\n";
 }
 
 void OpEmitter::genRegionVerifier(OpMethodBody &body) {

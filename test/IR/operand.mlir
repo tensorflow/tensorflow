@@ -13,7 +13,7 @@ func @correct_variadic_operand(%arg0: tensor<f32>, %arg1: f32) {
 // -----
 
 func @error_in_first_variadic_operand(%arg0: tensor<f32>, %arg1: f32) {
-  // expected-error @+1 {{operand #0 must be tensor of any type}}
+  // expected-error @+1 {{operand #1 must be tensor of any type}}
   "test.mixed_normal_variadic_operand"(%arg0, %arg1, %arg0, %arg0, %arg0) : (tensor<f32>, f32, tensor<f32>, tensor<f32>, tensor<f32>) -> ()
   return
 }
@@ -21,7 +21,7 @@ func @error_in_first_variadic_operand(%arg0: tensor<f32>, %arg1: f32) {
 // -----
 
 func @error_in_normal_operand(%arg0: tensor<f32>, %arg1: f32) {
-  // expected-error @+1 {{operand #1 must be tensor of any type}}
+  // expected-error @+1 {{operand #2 must be tensor of any type}}
   "test.mixed_normal_variadic_operand"(%arg0, %arg0, %arg1, %arg0, %arg0) : (tensor<f32>, tensor<f32>, f32, tensor<f32>, tensor<f32>) -> ()
   return
 }
@@ -29,7 +29,7 @@ func @error_in_normal_operand(%arg0: tensor<f32>, %arg1: f32) {
 // -----
 
 func @error_in_second_variadic_operand(%arg0: tensor<f32>, %arg1: f32) {
-  // expected-error @+1 {{operand #2 must be tensor of any type}}
+  // expected-error @+1 {{operand #3 must be tensor of any type}}
   "test.mixed_normal_variadic_operand"(%arg0, %arg0, %arg0, %arg1, %arg0) : (tensor<f32>, tensor<f32>, tensor<f32>, f32, tensor<f32>) -> ()
   return
 }
