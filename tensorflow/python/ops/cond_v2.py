@@ -646,7 +646,15 @@ def _check_same_outputs(op_type, graphs):
     except (ValueError, TypeError) as e:
       error(b, str(e))
 
-    assert len(graphs[0].outputs) == len(graphs[b].outputs)
+    op_type_str = "cond" if op_type == _COND else "case"
+    if len(graphs[0].outputs) != len(graphs[b].outputs):
+      raise ValueError("Lengths of branch outputs of {op_type} must match.\n"
+                       "len(graphs[0].outputs): {len_0}\n"
+                       "len(graphs[{b}].outputs): {len_b}\n".format(
+                           op_type=op_type_str,
+                           len_0=len(graphs[0].outputs),
+                           b=b,
+                           len_b=len(graphs[b].outputs)))
     for b0_out, bn_out in zip(graphs[0].outputs, graphs[b].outputs):
       if b0_out.dtype != bn_out.dtype:
         error(b, "%s and %s have different types" % (b0_out, bn_out))

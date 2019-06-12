@@ -55,6 +55,7 @@ from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 
 
+@test_util.with_control_flow_v2
 class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                               parameterized.TestCase):
 
@@ -972,7 +973,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       v = resource_variable_ops.ResourceVariable(initial_value=zero)
       return (i + 1, v.read_value())
 
-    with self.assertRaisesRegexp(ValueError, "inside a control-flow"):
+    with self.assertRaisesRegexp(ValueError, "initializer"):
       control_flow_ops.while_loop(cond, body, [0, 0])
 
   def testVariableEager(self):
