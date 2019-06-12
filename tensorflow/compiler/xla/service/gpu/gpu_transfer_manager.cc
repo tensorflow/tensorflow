@@ -190,7 +190,7 @@ static std::unique_ptr<xla::TransferManager> CreateGpuTransferManager() {
       /*pointer_size=*/llvm::DataLayout(xla::gpu::AMDGPUCompiler::kDataLayout)
 #else
       /*id=*/stream_executor::cuda::kCudaPlatformId,
-      /*pointer_size=*/llvm::DataLayout(xla::gpu::NVPTXCompiler::kDataLayout)
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::kDataLayout)
 #endif
           .getPointerSize(0 /* default address space */));
 }
