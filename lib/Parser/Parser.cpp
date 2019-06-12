@@ -231,16 +231,15 @@ public:
   /// Parse an opaque elements attribute.
   Attribute parseOpaqueElementsAttr();
 
-  /// Parse a sparse elements attribute.
-  Attribute parseSparseElementsAttr();
-
   /// Parse a splat elements attribute.
   Attribute parseSplatElementsAttr();
 
   /// Parse a dense elements attribute.
   Attribute parseDenseElementsAttr();
-  DenseElementsAttr parseDenseElementsAttrAsTensor(Type eltType);
   ShapedType parseElementsLiteralType();
+
+  /// Parse a sparse elements attribute.
+  Attribute parseSparseElementsAttr();
 
   //===--------------------------------------------------------------------===//
   // Location Parsing
@@ -1205,62 +1204,6 @@ Attribute Parser::parseOpaqueElementsAttr() {
   return builder.getOpaqueElementsAttr(dialect, type, llvm::fromHex(val));
 }
 
-/// Parse a sparse elements attribute.
-Attribute Parser::parseSparseElementsAttr() {
-  consumeToken(Token::kw_sparse);
-  if (parseToken(Token::less, "Expected '<' after 'sparse'"))
-    return nullptr;
-
-  auto type = parseElementsLiteralType();
-  if (!type)
-    return nullptr;
-
-  if (parseToken(Token::comma, "expected ',' after elements literal type"))
-    return nullptr;
-  if (getToken().isNot(Token::l_square))
-    return emitError("expected '[' to start sparse tensor literal"), nullptr;
-
-  /// Parse indices
-  auto indicesEltType = builder.getIntegerType(64);
-  auto indices = parseDenseElementsAttrAsTensor(indicesEltType);
-  if (!indices)
-    return nullptr;
-
-  if (parseToken(Token::comma, "expected ','"))
-    return nullptr;
-
-  /// Parse values.
-  auto valuesEltType = type.getElementType();
-  auto values = parseDenseElementsAttrAsTensor(valuesEltType);
-  if (!values)
-    return nullptr;
-
-  /// Sanity check.
-  auto valuesType = values.getType();
-  if (valuesType.getRank() != 1)
-    return (emitError("expected 1-d tensor for values"), nullptr);
-
-  auto indicesType = indices.getType();
-  auto sameShape = (indicesType.getRank() == 1) ||
-                   (type.getRank() == indicesType.getDimSize(1));
-  auto sameElementNum = indicesType.getDimSize(0) == valuesType.getDimSize(0);
-  if (!sameShape || !sameElementNum) {
-    emitError() << "expected shape ([" << type.getShape()
-                << "]); inferred shape of indices literal (["
-                << indicesType.getShape()
-                << "]); inferred shape of values literal (["
-                << valuesType.getShape() << "])";
-    return nullptr;
-  }
-
-  if (parseToken(Token::greater, "expected '>'"))
-    return nullptr;
-
-  // Build the sparse elements attribute by the indices and values.
-  return builder.getSparseElementsAttr(
-      type, indices.cast<DenseIntElementsAttr>(), values);
-}
-
 /// Parse a splat elements attribute.
 Attribute Parser::parseSplatElementsAttr() {
   consumeToken(Token::kw_splat);
@@ -1451,7 +1394,8 @@ Attribute Parser::parseDenseElementsAttr() {
   if (literalParser.parse())
     return nullptr;
 
-  if (literalParser.getShape() != type.getShape()) {
+  if (!literalParser.getShape().empty() &&
+      literalParser.getShape() != type.getShape()) {
     emitError() << "inferred shape of elements literal (["
                 << literalParser.getShape() << "]) does not match type (["
                 << type.getShape() << "])";
@@ -1461,25 +1405,6 @@ Attribute Parser::parseDenseElementsAttr() {
   if (parseToken(Token::greater, "expected '>'"))
     return nullptr;
 
-  return builder.getDenseElementsAttr(type, literalParser.getValues())
-      .cast<DenseElementsAttr>();
-}
-
-/// Parse a dense elements attribute.
-///
-///   dense-attr-list ::= `[` attribute-value `]`
-///   attribute-value ::= integer-literal
-///                     | float-literal
-///                     | `[` (attribute-value (`,` attribute-value)*)? `]`
-///
-/// This method returns a constructed dense elements attribute of tensor type
-/// with the shape from the parsing result.
-DenseElementsAttr Parser::parseDenseElementsAttrAsTensor(Type eltType) {
-  TensorLiteralParser literalParser(*this, eltType);
-  if (literalParser.parse())
-    return nullptr;
-
-  auto type = builder.getTensorType(literalParser.getShape(), eltType);
   return builder.getDenseElementsAttr(type, literalParser.getValues())
       .cast<DenseElementsAttr>();
 }
@@ -1504,6 +1429,80 @@ ShapedType Parser::parseElementsLiteralType() {
     return (emitError("elements literal type must have static shape"), nullptr);
 
   return sType;
+}
+
+/// Parse a sparse elements attribute.
+Attribute Parser::parseSparseElementsAttr() {
+  consumeToken(Token::kw_sparse);
+  if (parseToken(Token::less, "Expected '<' after 'sparse'"))
+    return nullptr;
+
+  auto type = parseElementsLiteralType();
+  if (!type)
+    return nullptr;
+
+  if (parseToken(Token::comma, "expected ',' after elements literal type"))
+    return nullptr;
+
+  /// Parse indices
+  auto indiceEltType = builder.getIntegerType(64);
+  TensorLiteralParser indiceParser(*this, indiceEltType);
+  if (indiceParser.parse())
+    return nullptr;
+
+  // If the indices are a splat, i.e. the literal parser parsed an element and
+  // not a list, we set the shape explicitly. The indices are represented by a
+  // 2-dimensional shape where the second dimension is the rank of the type.
+  // Given that the parsed indices is a splat, we know that we only have one
+  // indice and thus one for the first dimension.
+  ShapedType indicesType;
+  if (indiceParser.getShape().empty()) {
+    indicesType = RankedTensorType::get({1, type.getRank()}, indiceEltType);
+  } else {
+    // Otherwise, set the shape to the one parsed by the literal parser.
+    indicesType = RankedTensorType::get(indiceParser.getShape(), indiceEltType);
+  }
+  auto indices = DenseElementsAttr::get(indicesType, indiceParser.getValues());
+
+  if (parseToken(Token::comma, "expected ','"))
+    return nullptr;
+
+  /// Parse values.
+  auto valuesEltType = type.getElementType();
+  TensorLiteralParser valuesParser(*this, valuesEltType);
+  if (valuesParser.parse())
+    return nullptr;
+
+  // If the values are a splat, set the shape explicitly based on the number of
+  // indices. The number of indices is encoded in the first dimension of the
+  // indice shape type.
+  ShapedType valuesType =
+      valuesParser.getShape().empty()
+          ? RankedTensorType::get({indicesType.getDimSize(0)}, valuesEltType)
+          : RankedTensorType::get(valuesParser.getShape(), valuesEltType);
+  auto values = DenseElementsAttr::get(valuesType, valuesParser.getValues());
+
+  /// Sanity check.
+  if (valuesType.getRank() != 1)
+    return (emitError("expected 1-d tensor for values"), nullptr);
+
+  auto sameShape = (indicesType.getRank() == 1) ||
+                   (type.getRank() == indicesType.getDimSize(1));
+  auto sameElementNum = indicesType.getDimSize(0) == valuesType.getDimSize(0);
+  if (!sameShape || !sameElementNum) {
+    emitError() << "expected shape ([" << type.getShape()
+                << "]); inferred shape of indices literal (["
+                << indicesType.getShape()
+                << "]); inferred shape of values literal (["
+                << valuesType.getShape() << "])";
+    return nullptr;
+  }
+
+  if (parseToken(Token::greater, "expected '>'"))
+    return nullptr;
+
+  // Build the sparse elements attribute by the indices and values.
+  return SparseElementsAttr::get(type, indices, values);
 }
 
 //===----------------------------------------------------------------------===//

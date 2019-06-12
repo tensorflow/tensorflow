@@ -732,8 +732,8 @@ void ModulePrinter::printDenseElementsAttr(DenseElementsAttr attr) {
   SmallVector<Attribute, 16> elements;
   attr.getValues(elements);
 
-  // Special case for 0-d tensors;
-  if (rank == 0) {
+  // Special case for 0-d and splat tensors.
+  if (attr.isSplat()) {
     printAttribute(elements[0]);
     return;
   }
@@ -746,11 +746,6 @@ void ModulePrinter::printDenseElementsAttr(DenseElementsAttr attr) {
       os << ']';
     return;
   }
-
-  // If this is a splat, make sure to print all of the elements.
-  // TODO: This should be removed when the parser supports dense splats.
-  if (attr.isSplat())
-    elements.resize(type.getNumElements(), elements.front());
 
   // We use a mixed-radix counter to iterate through the shape. When we bump a
   // non-least-significant digit, we emit a close bracket. When we next emit an

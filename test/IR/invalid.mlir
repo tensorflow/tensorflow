@@ -791,7 +791,7 @@ func @mi() {
 
 func @invalid_tensor_literal() {
   // expected-error @+1 {{expected 1-d tensor for values}}
-  "foof16"(){bar: sparse<vector<1x1x1xf16>, [[0, 0, 0]],  -2.0]>} : () -> ()
+  "foof16"(){bar: sparse<vector<1x1x1xf16>, [[0, 0, 0]],  [[-2.0]]]>} : () -> ()
 
 // -----
 

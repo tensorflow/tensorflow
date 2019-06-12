@@ -621,15 +621,15 @@ func @densetensorattr() -> () {
   "fooi3"(){bar: dense<tensor<2x1x4xi3>, [[[1, -2, 1, 2]], [[0, 2, -1, 2]]]>} : () -> ()
 // CHECK: "fooi6"() {bar: dense<tensor<2x1x4xi6>, {{\[\[\[}}5, -6, 1, 2]], {{\[\[}}7, 8, 3, 4]]]>} : () -> ()
   "fooi6"(){bar: dense<tensor<2x1x4xi6>, [[[5, -6, 1, 2]], [[7, 8, 3, 4]]]>} : () -> ()
-// CHECK: "fooi8"() {bar: dense<tensor<1x1x1xi8>, {{\[\[\[}}5]]]>} : () -> ()
+// CHECK: "fooi8"() {bar: dense<tensor<1x1x1xi8>, 5>} : () -> ()
   "fooi8"(){bar: dense<tensor<1x1x1xi8>, [[[5]]]>} : () -> ()
 // CHECK: "fooi13"() {bar: dense<tensor<2x1x4xi13>, {{\[\[\[}}1, -2, 1, 2]], {{\[\[}}0, 2, -1, 2]]]>} : () -> ()
   "fooi13"(){bar: dense<tensor<2x1x4xi13>, [[[1, -2, 1, 2]], [[0, 2, -1, 2]]]>} : () -> ()
-// CHECK: "fooi16"() {bar: dense<tensor<1x1x1xi16>, {{\[\[\[}}-5]]]>} : () -> ()
+// CHECK: "fooi16"() {bar: dense<tensor<1x1x1xi16>, -5>} : () -> ()
   "fooi16"(){bar: dense<tensor<1x1x1xi16>, [[[-5]]]>} : () -> ()
 // CHECK: "fooi23"() {bar: dense<tensor<2x1x4xi23>, {{\[\[\[}}1, -2, 1, 2]], {{\[\[}}0, 2, -1, 2]]]>} : () -> ()
   "fooi23"(){bar: dense<tensor<2x1x4xi23>, [[[1, -2, 1, 2]], [[0, 2, -1, 2]]]>} : () -> ()
-// CHECK: "fooi32"() {bar: dense<tensor<1x1x1xi32>, {{\[\[\[}}5]]]>} : () -> ()
+// CHECK: "fooi32"() {bar: dense<tensor<1x1x1xi32>, 5>} : () -> ()
   "fooi32"(){bar: dense<tensor<1x1x1xi32>, [[[5]]]>} : () -> ()
 // CHECK: "fooi33"() {bar: dense<tensor<2x1x4xi33>, {{\[\[\[}}1, -2, 1, 2]], {{\[\[}}0, 2, -1, 2]]]>} : () -> ()
   "fooi33"(){bar: dense<tensor<2x1x4xi33>, [[[1, -2, 1, 2]], [[0, 2, -1, 2]]]>} : () -> ()
@@ -639,7 +639,7 @@ func @densetensorattr() -> () {
   "fooi53"(){bar: dense<tensor<2x1x4xi53>, [[[1, -2, 1, 2]], [[0, 2, -1, 2]]]>} : () -> ()
 // CHECK: "fooi64"() {bar: dense<tensor<2x1x4xi64>, {{\[\[\[}}1, -2, 1, 2]], {{\[\[}}0, 3, -1, 2]]]>} : () -> ()
   "fooi64"(){bar: dense<tensor<2x1x4xi64>, [[[1, -2, 1, 2]], [[0, 3, -1, 2]]]>} : () -> ()
-// CHECK: "fooi64"() {bar: dense<tensor<1x1x1xi64>, {{\[\[\[}}-5]]]>} : () -> ()
+// CHECK: "fooi64"() {bar: dense<tensor<1x1x1xi64>, -5>} : () -> ()
   "fooi64"(){bar: dense<tensor<1x1x1xi64>, [[[-5]]]>} : () -> ()
 // CHECK: "fooi67"() {bar: dense<vector<1x1x4xi67>, {{\[\[\[}}-5, 4, 6, 2]]]>} : () -> ()
   "fooi67"(){bar: dense<vector<1x1x4xi67>, [[[-5, 4, 6, 2]]]>} : () -> ()
@@ -651,7 +651,7 @@ func @densetensorattr() -> () {
 // CHECK: "foo3"() {bar: dense<tensor<2x1x4xi32>, {{\[\[\[}}5, -6, 1, 2]], {{\[\[}}7, 8, 3, 4]]]>} : () -> ()
   "foo3"(){bar: dense<tensor<2x1x4xi32>, [[[5, -6, 1, 2]], [[7, 8, 3, 4]]]>} : () -> ()
 
-// CHECK: "float1"() {bar: dense<tensor<1x1x1xf32>, {{\[\[\[}}5.000000e+00]]]>} : () -> ()
+// CHECK: "float1"() {bar: dense<tensor<1x1x1xf32>, 5.000000e+00>} : () -> ()
   "float1"(){bar: dense<tensor<1x1x1xf32>, [[[5.0]]]>} : () -> ()
 // CHECK: "float2"() {bar: dense<tensor<0xf32>, []>} : () -> ()
   "float2"(){bar: dense<tensor<0xf32>, []>} : () -> ()
@@ -678,19 +678,19 @@ func @densetensorattr() -> () {
 func @densevectorattr() -> () {
 ^bb0:
 // NOTE: The {{\[\[}} syntax is because "[[" confuses FileCheck.
-// CHECK: "fooi8"() {bar: dense<vector<1x1x1xi8>, {{\[\[\[}}5]]]>} : () -> ()
+// CHECK: "fooi8"() {bar: dense<vector<1x1x1xi8>, 5>} : () -> ()
   "fooi8"(){bar: dense<vector<1x1x1xi8>, [[[5]]]>} : () -> ()
-// CHECK: "fooi16"() {bar: dense<vector<1x1x1xi16>, {{\[\[\[}}-5]]]>} : () -> ()
+// CHECK: "fooi16"() {bar: dense<vector<1x1x1xi16>, -5>} : () -> ()
   "fooi16"(){bar: dense<vector<1x1x1xi16>, [[[-5]]]>} : () -> ()
-// CHECK: "foo32"() {bar: dense<vector<1x1x1xi32>, {{\[\[\[}}5]]]>} : () -> ()
+// CHECK: "foo32"() {bar: dense<vector<1x1x1xi32>, 5>} : () -> ()
   "foo32"(){bar: dense<vector<1x1x1xi32>, [[[5]]]>} : () -> ()
-// CHECK: "fooi64"() {bar: dense<vector<1x1x1xi64>, {{\[\[\[}}-5]]]>} : () -> ()
+// CHECK: "fooi64"() {bar: dense<vector<1x1x1xi64>, -5>} : () -> ()
   "fooi64"(){bar: dense<vector<1x1x1xi64>, [[[-5]]]>} : () -> ()
 
 // CHECK: "foo3"() {bar: dense<vector<2x1x4xi32>, {{\[\[\[}}5, -6, 1, 2]], {{\[\[}}7, 8, 3, 4]]]>} : () -> ()
   "foo3"(){bar: dense<vector<2x1x4xi32>, [[[5, -6, 1, 2]], [[7, 8, 3, 4]]]>} : () -> ()
 
-// CHECK: "float1"() {bar: dense<vector<1x1x1xf32>, {{\[\[\[}}5.000000e+00]]]>} : () -> ()
+// CHECK: "float1"() {bar: dense<vector<1x1x1xf32>, 5.000000e+00>} : () -> ()
   "float1"(){bar: dense<vector<1x1x1xf32>, [[[5.0]]]>} : () -> ()
 
 // CHECK: "bfloat16"() {bar: dense<vector<2x1x4xbf16>, {{\[\[\[}}-5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00]], {{\[\[}}7.000000e+00, -8.000000e+00, 3.000000e+00, 4.000000e+00]]]>} : () -> ()
@@ -708,26 +708,26 @@ func @densevectorattr() -> () {
 func @sparsetensorattr() -> () {
 ^bb0:
 // NOTE: The {{\[\[}} syntax is because "[[" confuses FileCheck.
-// CHECK: "fooi8"() {bar: sparse<tensor<1x1x1xi8>, {{\[\[}}0, 0, 0]], {{\[}}-2]>} : () -> ()
-  "fooi8"(){bar: sparse<tensor<1x1x1xi8>, [[0, 0, 0]], [-2]>} : () -> ()
+// CHECK: "fooi8"() {bar: sparse<tensor<1x1x1xi8>, 0, -2>} : () -> ()
+  "fooi8"(){bar: sparse<tensor<1x1x1xi8>, 0, -2>} : () -> ()
 // CHECK: "fooi16"() {bar: sparse<tensor<2x2x2xi16>, {{\[\[}}1, 1, 0], {{\[}}0, 1, 0], {{\[}}0, 0, 1]], {{\[}}2, -1, 5]>} : () -> ()
   "fooi16"(){bar: sparse<tensor<2x2x2xi16>, [[1, 1, 0], [0, 1, 0], [0, 0, 1]], [2, -1, 5]>} : () -> ()
 // CHECK: "fooi32"() {bar: sparse<tensor<1x1xi32>, {{\[}}], {{\[}}]>} : () -> ()
   "fooi32"(){bar: sparse<tensor<1x1xi32>, [], []>} : () -> ()
-// CHECK: "fooi64"() {bar: sparse<tensor<1xi64>, {{\[\[}}0]], {{\[}}-1]>} : () -> ()
+// CHECK: "fooi64"() {bar: sparse<tensor<1xi64>, 0, -1>} : () -> ()
   "fooi64"(){bar: sparse<tensor<1xi64>, [[0]], [-1]>} : () -> ()
 // CHECK: "foo2"() {bar: sparse<tensor<0xi32>, {{\[}}], {{\[}}]>} : () -> ()
   "foo2"(){bar: sparse<tensor<0xi32>, [], []>} : () -> ()
 // CHECK: "foo3"() {bar: sparse<tensor<i32>, {{\[}}], {{\[}}]>} : () -> ()
   "foo3"(){bar: sparse<tensor<i32>, [], []>} : () -> ()
 
-// CHECK: "foof16"() {bar: sparse<tensor<1x1x1xf16>, {{\[\[}}0, 0, 0]], {{\[}}-2.000000e+00]>} : () -> ()
-  "foof16"(){bar: sparse<tensor<1x1x1xf16>, [[0, 0, 0]], [-2.0]>} : () -> ()
+// CHECK: "foof16"() {bar: sparse<tensor<1x1x1xf16>, 0, -2.000000e+00>} : () -> ()
+  "foof16"(){bar: sparse<tensor<1x1x1xf16>, 0, -2.0>} : () -> ()
 // CHECK: "foobf16"() {bar: sparse<tensor<2x2x2xbf16>, {{\[\[}}1, 1, 0], {{\[}}0, 1, 0], {{\[}}0, 0, 1]], {{\[}}2.000000e+00, -1.000000e+00, 5.000000e+00]>} : () -> ()
   "foobf16"(){bar: sparse<tensor<2x2x2xbf16>, [[1, 1, 0], [0, 1, 0], [0, 0, 1]], [2.0, -1.0, 5.0]>} : () -> ()
 // CHECK: "foof32"() {bar: sparse<tensor<1x0x1xf32>, {{\[}}], {{\[}}]>} : () -> ()
   "foof32"(){bar: sparse<tensor<1x0x1xf32>, [], []>} : () -> ()
-// CHECK:  "foof64"() {bar: sparse<tensor<1xf64>, {{\[\[}}0]], {{\[}}-1.000000e+00]>} : () -> ()
+// CHECK:  "foof64"() {bar: sparse<tensor<1xf64>, 0, -1.000000e+00>} : () -> ()
   "foof64"(){bar: sparse<tensor<1xf64>, [[0]], [-1.0]>} : () -> ()
 // CHECK: "foof320"() {bar: sparse<tensor<0xf32>, {{\[}}], {{\[}}]>} : () -> ()
   "foof320"(){bar: sparse<tensor<0xf32>, [], []>} : () -> ()
@@ -740,21 +740,21 @@ func @sparsetensorattr() -> () {
 func @sparsevectorattr() -> () {
 ^bb0:
 // NOTE: The {{\[\[}} syntax is because "[[" confuses FileCheck.
-// CHECK: "fooi8"() {bar: sparse<vector<1x1x1xi8>, {{\[\[}}0, 0, 0]], {{\[}}-2]>} : () -> ()
-  "fooi8"(){bar: sparse<vector<1x1x1xi8>, [[0, 0, 0]], [-2]>} : () -> ()
+// CHECK: "fooi8"() {bar: sparse<vector<1x1x1xi8>, 0, -2>} : () -> ()
+  "fooi8"(){bar: sparse<vector<1x1x1xi8>, 0, -2>} : () -> ()
 // CHECK: "fooi16"() {bar: sparse<vector<2x2x2xi16>, {{\[\[}}1, 1, 0], {{\[}}0, 1, 0], {{\[}}0, 0, 1]], {{\[}}2, -1, 5]>} : () -> ()
   "fooi16"(){bar: sparse<vector<2x2x2xi16>, [[1, 1, 0], [0, 1, 0], [0, 0, 1]], [2, -1, 5]>} : () -> ()
 // CHECK: "fooi32"() {bar: sparse<vector<1x1xi32>, {{\[}}], {{\[}}]>} : () -> ()
   "fooi32"(){bar: sparse<vector<1x1xi32>, [], []>} : () -> ()
-// CHECK: "fooi64"() {bar: sparse<vector<1xi64>, {{\[\[}}0]], {{\[}}-1]>} : () -> ()
+// CHECK: "fooi64"() {bar: sparse<vector<1xi64>, 0, -1>} : () -> ()
   "fooi64"(){bar: sparse<vector<1xi64>, [[0]], [-1]>} : () -> ()
 
-// CHECK: "foof16"() {bar: sparse<vector<1x1x1xf16>, {{\[\[}}0, 0, 0]], {{\[}}-2.000000e+00]>} : () -> ()
-  "foof16"(){bar: sparse<vector<1x1x1xf16>, [[0, 0, 0]], [-2.0]>} : () -> ()
+// CHECK: "foof16"() {bar: sparse<vector<1x1x1xf16>, 0, -2.000000e+00>} : () -> ()
+  "foof16"(){bar: sparse<vector<1x1x1xf16>, 0, -2.0>} : () -> ()
 // CHECK: "foobf16"() {bar: sparse<vector<2x2x2xbf16>, {{\[\[}}1, 1, 0], {{\[}}0, 1, 0], {{\[}}0, 0, 1]], {{\[}}2.000000e+00, -1.000000e+00, 5.000000e+00]>} : () -> ()
   "foobf16"(){bar: sparse<vector<2x2x2xbf16>, [[1, 1, 0], [0, 1, 0], [0, 0, 1]], [2.0, -1.0, 5.0]>} : () -> ()
-// CHECK:  "foof64"() {bar: sparse<vector<1xf64>, {{\[\[}}0]], {{\[}}-1.000000e+00]>} : () -> ()
-  "foof64"(){bar: sparse<vector<1xf64>, [[0]], [-1.0]>} : () -> ()
+// CHECK:  "foof64"() {bar: sparse<vector<1xf64>, 0, -1.000000e+00>} : () -> ()
+  "foof64"(){bar: sparse<vector<1xf64>, 0, [-1.0]>} : () -> ()
   return
 }
 
