@@ -447,8 +447,13 @@ def import_graph_def(graph_def,
     functions = function.from_library(graph_def.library)
     for f in functions:
       f.add_to_graph(graph)
-      if context.context_safe() is not None:
-        context.context().add_function_def(f.definition)
+
+    with ops.init_scope():
+      # Make sure any functions from the imported graph are added to the outer
+      # eager context, if any.
+      if context.executing_eagerly():
+        for f in functions:
+          f.add_to_graph(None)
 
   # Treat input mappings that don't appear in the graph as an error, because
   # they are likely to be due to a typo.
