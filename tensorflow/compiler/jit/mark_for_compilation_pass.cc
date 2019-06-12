@@ -1014,6 +1014,39 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
   return Status::OK();
 }
 
+StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
+  if (!node->IsIdentity()) {
+    return false;
+  }
+
+  // Check if the Identity is driven by a Switch on its true path.
+  auto it = absl::c_find_if(node->in_edges(), [](const Edge* e) {
+    return e->src()->IsSwitch() && e->src_output() == 1;
+  });
+  if (it == node->in_edges().end()) {
+    return false;
+  }
+  const Node* switch_node = (*it)->src();
+
+  // Check if the Switch is driven by LoopCond.
+  const Node* maybe_loop_cond;
+  TF_RETURN_IF_ERROR(switch_node->input_node(1, &maybe_loop_cond));
+  if (!maybe_loop_cond->IsLoopCond()) {
+    return false;
+  }
+
+  // Check if the Identity is driving any const nodes through a control edge.
+  bool driving_any_consts =
+      absl::c_any_of(node->out_edges(), [](const Edge* e) {
+        return e->dst()->IsConstant() && e->IsControlEdge();
+      });
+  if (!driving_any_consts) {
+    return false;
+  }
+
+  return true;
+}
+
 Status MarkForCompilationPassImpl::FindCompilationCandidates() {
   OptimizerOptions opts;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
@@ -1133,6 +1166,35 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
           continue;
         }
       }
+    }
+
+    // This is a heuristic to avoid creating dependency between while loop
+    // condition and body computations.  Dependency between them can be created
+    // if a special Identity node in the following pattern is clustered in.
+    // That is, an Identity node in the loop cond computation is used to drive
+    // const nodes consumed by the loop body.  If this Identity node goes into
+    // the same cluster with nodes from the loop body, extra dependency is
+    // created between the loop cond and body computations and it hinders the
+    // progression of the loop cond computation at runtime with significant
+    // overhead.  Specifically, we look for the below pattern and do not cluster
+    // in this Identity to avoid the described issue.  Since Identity has low
+    // execution cost in native TF, the fact that this heuristic gives up these
+    // special Identity nodes as candidates should not harm any performance.  If
+    // other considerations emerge in the future, we can revisit the heuristic
+    // and only disallow these Identities to go into the cluster with nodes from
+    // the loop body but still consider them candidates.
+    //
+    // LoopCond ->
+    // Merge    -> Switch -> Identity -> i++ -> ... -> NextIteration
+    //                               ..> Const -> LoopBody
+    //                            (control edge)
+    TF_ASSIGN_OR_RETURN(bool is_identity_driving_consts_in_loop,
+                        IsIdentityDrivingConstsInLoop(node));
+    if (is_identity_driving_consts_in_loop) {
+      VLOG(2) << "Rejecting " << node->name()
+              << ": including it can create dependencies between while loop "
+                 "condition and body computations with runtime overhead.";
+      continue;
     }
 
     compilation_candidates_.insert(node);
