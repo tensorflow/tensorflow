@@ -488,6 +488,14 @@ def _flip(image, flip_index, scope_name):
 def rot90(image, k=1, name=None):
   """Rotate image(s) counter-clockwise by 90 degrees.
 
+
+  For example:
+  ```python
+  a=tf.constant([[[1],[2]],[[3],[4]]])
+  # rotating `a` counter clockwise by 90 degrees
+  a_rot=tf.image.rot90(a,k=1) #rotated `a`
+  print(a_rot) # [[[2],[4]],[[1],[3]]]
+  ```
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
