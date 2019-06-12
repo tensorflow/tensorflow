@@ -127,9 +127,9 @@ class ThreadPool {
   // pointer points to, and should not attempt to delete.
   Eigen::ThreadPoolInterface* AsEigenThreadPool();
 
+ private:
   struct Impl;
 
- private:
   std::unique_ptr<Impl> impl_;
   TF_DISALLOW_COPY_AND_ASSIGN(ThreadPool);
 };
