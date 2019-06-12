@@ -129,6 +129,29 @@ class ForwardAllocationTest(test_util.TensorFlowTestCase):
                     [[65., 67.], [73., 75.], [81., 83.], [89., 91.]],
                     [[97., 99.], [105., 107.], [113., 115.], [121., 123.]]]])
 
+  def testPrefixPathWithCast(self):
+    with ops.device("/device:IPU:0"):
+      data = array_ops.placeholder(np.float32, shape=[1, 7, 1])
+      kernel2 = array_ops.placeholder(np.float16, shape=[3, 1, 1])
+      kernel = math_ops.cast(kernel2, np.float32)
+
+      with variable_scope.variable_scope("vs", use_resource=True):
+        res = nn.conv1d(data, kernel, stride=1, padding="VALID")
+
+    tu.configure_ipu_system(True, True, True)
+
+    with tu.ipu_session() as sess:
+      sess.run(variables.global_variables_initializer())
+
+      result = sess.run(
+          res, {
+              data: np.reshape(np.array([1, 0, 2, 3, 0, 1, 1]), [1, 7, 1]),
+              kernel2: np.reshape(np.array([2, 1, 3]), [3, 1, 1])
+          })
+      # Confirmed with values on the CPU.
+      self.assertAllClose(result,
+                          [np.reshape(np.array([8, 11, 7, 9, 4]), [5, 1])])
+
 
 if __name__ == "__main__":
   googletest.main()

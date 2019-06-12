@@ -168,8 +168,9 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
 
     with session_lib.Session() as sess:
       fd = {
-          x: np.array([[7, 3, 5, 9], [1, 2, 3, 4], [5, 6, 7, 8]],
-                      dtype=np.float32),
+          x:
+          np.array([[7, 3, 5, 9], [1, 2, 3, 4], [5, 6, 7, 8]],
+                   dtype=np.float32),
           expected: [[1, 2], [3, 4], [5, 6]]
       }
 

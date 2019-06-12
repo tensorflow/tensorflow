@@ -27,8 +27,9 @@ from tensorflow.python.training import gradient_descent
 
 
 def count_compile_end_events(events):
-  fn = (lambda x: 1 if x.type == IpuTraceEvent.COMPILE_END and len(
-      x.compile_end.compilation_report) > 10 else 0)
+  fn = (
+      lambda x: 1 if x.type == IpuTraceEvent.COMPILE_END and len(x.compile_end.compilation_report) > 10 else 0
+  )
   return sum(map(fn, events))
 
 

@@ -150,8 +150,9 @@ void AttributeMap::AddAttribute(const std::string& field_name,
   } else if (tinfo == typeid(Window)) {
     auto casted_val = absl::any_cast<Window>(attr);
     std::string window_proto_str;
-    if (!tensorflow::ProtoToHumanReadableJson(
-        casted_val, &window_proto_str, true).ok()) {
+    if (!tensorflow::ProtoToHumanReadableJson(casted_val, &window_proto_str,
+                                              true)
+             .ok()) {
       LOG(FATAL) << "Could not parse the window.";
     }
     attributes_[field_name] = GetAsJsonValue(window_proto_str);

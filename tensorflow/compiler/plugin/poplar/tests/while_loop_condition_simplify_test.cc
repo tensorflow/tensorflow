@@ -45,10 +45,12 @@ TEST_F(WhileLoopConditionSimplifyTest, SimplifyDoubleConditionalTie) {
   auto c1_cond =
       builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
           ShapeUtil::MakeShape(S32, {}), tuple_cond, 1));
-  auto lt0_cond = builder_cond.AddInstruction(HloInstruction::CreateCompare(
-      ShapeUtil::MakeShape(PRED, {}), c0_cond, limit0_cond, ComparisonDirection::kLt));
-  auto lt1_cond = builder_cond.AddInstruction(HloInstruction::CreateCompare(
-      ShapeUtil::MakeShape(PRED, {}), c1_cond, limit1_cond, ComparisonDirection::kLt));
+  auto lt0_cond = builder_cond.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), c0_cond,
+                                    limit0_cond, ComparisonDirection::kLt));
+  auto lt1_cond = builder_cond.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), c1_cond,
+                                    limit1_cond, ComparisonDirection::kLt));
   auto and_cond = builder_cond.AddInstruction(HloInstruction::CreateBinary(
       ShapeUtil::MakeShape(PRED, {}), HloOpcode::kAnd, lt0_cond, lt1_cond));
   HloComputation* comp_cond =
@@ -141,10 +143,12 @@ TEST_F(WhileLoopConditionSimplifyTest, SimplifyDoubleConditionalUneven) {
   auto c1_cond =
       builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
           ShapeUtil::MakeShape(S32, {}), tuple_cond, 1));
-  auto lt0_cond = builder_cond.AddInstruction(HloInstruction::CreateCompare(
-      ShapeUtil::MakeShape(PRED, {}), c0_cond, limit0_cond, ComparisonDirection::kLt));
-  auto lt1_cond = builder_cond.AddInstruction(HloInstruction::CreateCompare(
-      ShapeUtil::MakeShape(PRED, {}), c1_cond, limit1_cond, ComparisonDirection::kLt));
+  auto lt0_cond = builder_cond.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), c0_cond,
+                                    limit0_cond, ComparisonDirection::kLt));
+  auto lt1_cond = builder_cond.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), c1_cond,
+                                    limit1_cond, ComparisonDirection::kLt));
   auto and_cond = builder_cond.AddInstruction(HloInstruction::CreateBinary(
       ShapeUtil::MakeShape(PRED, {}), HloOpcode::kAnd, lt0_cond, lt1_cond));
   HloComputation* comp_cond =
