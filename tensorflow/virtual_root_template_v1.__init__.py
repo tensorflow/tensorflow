@@ -77,6 +77,7 @@ _top_level_modules = [
     "tensorflow.keras",
     "tensorflow.contrib",
     "tensorflow.compat",
+    "tensorflow.summary",  # tensorboard
     "tensorflow.examples",
 ]
 # Estimator needs to be handled separatedly so we can still allow both
@@ -113,9 +114,9 @@ if not _root_estimator:
   except ImportError as e:
     pass
 
-# And again for tensorboard
+# And again for tensorboard (comes as summary)
 try:
-  from tensorflow_core import tensorboard
+  from tensorflow_core import summary
 except ImportError as e:
   pass
 
