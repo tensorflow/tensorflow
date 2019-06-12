@@ -37,6 +37,11 @@ string StrJoin(const string& separator, const Args&... args) {
   return absl::StrJoin(args_list, separator);
 }
 
+// Merge the given args in the format of "(arg1, arg2, ..., argn)".
+//
+// e.g. ArgsToString({"1", "2", "3"}) -> "(1, 2, 3)".
+string ArgsToString(std::initializer_list<StringPiece> args);
+
 // Returns the dataset op name.
 //
 // e.g. OpName("Map") -> "MapDataset".

@@ -23,6 +23,12 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+TEST(DeviceNameUtils, ArgsToString) {
+  EXPECT_EQ(name_utils::ArgsToString({}), "()");
+  EXPECT_EQ(name_utils::ArgsToString({"a"}), "(a)");
+  EXPECT_EQ(name_utils::ArgsToString({"1", "2", "3"}), "(1, 2, 3)");
+}
+
 TEST(NameUtilsTest, DatasetDebugString) {
   EXPECT_EQ(name_utils::DatasetDebugString(ConcatenateDatasetOp::kDatasetType),
             "ConcatenateDatasetOp::Dataset");

@@ -23,25 +23,28 @@ namespace name_utils {
 ABSL_CONST_INIT const char kDelimiter[] = "::";
 ABSL_CONST_INIT const char kDefaultDatasetDebugStringPrefix[] = "";
 
-constexpr char kDefaultDatasetName[] = "Dataset";
+constexpr char kDataset[] = "Dataset";
+constexpr char kOp[] = "Op";
 
 string OpName(const string& dataset_type) {
-  return strings::StrCat(dataset_type, kDefaultDatasetName);
+  return strings::StrCat(dataset_type, kDataset);
+}
+
+string ArgsToString(std::initializer_list<StringPiece> args) {
+  return strings::StrCat("(", absl::StrJoin(args, ", "), ")");
 }
 
 string DatasetDebugString(const string& dataset_type,
                           const string& dataset_name_prefix,
                           std::initializer_list<StringPiece> args) {
   if (args.size() == 0) {
-    return strings::StrCat(OpName(dataset_type), "Op", kDelimiter,
-                           dataset_name_prefix, kDefaultDatasetName);
+    return strings::StrCat(OpName(dataset_type), kOp, kDelimiter,
+                           dataset_name_prefix, kDataset);
   }
 
   string debug_str;
-  strings::StrAppend(&debug_str, OpName(dataset_type), "Op(",
-                     absl::StrJoin(args, ", "), ")");
-  strings::StrAppend(&debug_str, kDelimiter, dataset_name_prefix,
-                     kDefaultDatasetName);
+  strings::StrAppend(&debug_str, OpName(dataset_type), kOp, ArgsToString(args));
+  strings::StrAppend(&debug_str, kDelimiter, dataset_name_prefix, kDataset);
   return debug_str;
 }
 
