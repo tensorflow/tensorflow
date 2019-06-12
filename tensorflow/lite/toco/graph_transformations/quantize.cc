@@ -67,11 +67,14 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kUnpack || type == OperatorType::kTopK_V2 ||
          type == OperatorType::kRandomUniform ||
          type == OperatorType::kResizeNearestNeighbor ||
-         type == OperatorType::kPRelu || type == OperatorType::kReduceMax ||
+         type == OperatorType::kPRelu ||
+         type == OperatorType::kReduceMax ||
          type == OperatorType::kReduceMin ||
          type == OperatorType::kTransposeConv ||
          type == OperatorType::kMatrixSetDiag ||
-         type == OperatorType::kMatrixDiag || type == OperatorType::kHardSwish;
+         type == OperatorType::kMatrixDiag ||
+         type == OperatorType::kSparseToDense ||
+         type == OperatorType::kHardSwish;
 }
 
 // The quantized op allows output arrays of type float using
