@@ -14,4 +14,7 @@ add_dependencies(MLIRSPIRV
   MLIRSPIRVEnumsIncGen
   MLIRStdOpsToSPIRVConversionIncGen)
 
-target_link_libraries(MLIRSPIRV MLIRIR MLIRSupport)
+target_link_libraries(MLIRSPIRV
+  MLIRIR
+  MLIRParser
+  MLIRSupport)
