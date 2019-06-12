@@ -661,49 +661,6 @@ Status EagerLocalExecute(EagerOperation* op,
   return status;
 }
 
-#if !defined(IS_MOBILE_PLATFORM)
-std::function<void()> GetRemoteTensorDestructor(
-    EagerContext* ctx, eager::EagerClient* eager_client, uint64 context_id,
-    uint64 op_id, int output_num) {
-  ctx->Ref();
-  return [ctx, eager_client, context_id, op_id, output_num]() {
-    auto cleanup = gtl::MakeCleanup([ctx]() { ctx->Unref(); });
-
-    if (!ctx->HasActiveRemoteContext(context_id)) {
-      // This means that this tensor was pointing to a remote device, which
-      // has been changed out from under us. Simply return since there is
-      // nothing we can do.
-      return tensorflow::Status::OK();
-    }
-
-    std::unique_ptr<eager::EnqueueRequest> request(new eager::EnqueueRequest);
-    request->set_context_id(context_id);
-
-    auto* handle_to_decref = request->add_queue()->mutable_handle_to_decref();
-    handle_to_decref->set_op_id(op_id);
-    handle_to_decref->set_output_num(output_num);
-
-    if (ctx->Async()) {
-      tensorflow::uint64 id = ctx->NextId();
-      auto* node =
-          new eager::RemoteExecuteNode(id, std::move(request), eager_client);
-      ctx->ExecutorAdd(node);
-    } else {
-      eager::EnqueueRequest* actual_request = request.release();
-      eager::EnqueueResponse* response = new eager::EnqueueResponse;
-      eager_client->EnqueueAsync(
-          actual_request, response,
-          [actual_request, response](const tensorflow::Status& s) {
-            delete actual_request;
-            delete response;
-          });
-    }
-
-    return tensorflow::Status::OK();
-  };
-}
-#endif  // !IS_MOBILE_PLATFORM
-
 // When !ctx->UseSendTensorRPC(), then tensors are shipped between remote
 // devices by the receiver invoking the WorkerService.RecvTensor RPC *on the
 // sender* (Rendezvous::RecvAsync() invoked by the _Recv kernel).
@@ -762,14 +719,8 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
   n.WaitForNotification();
   if (!status.ok()) return status;
 
-  std::function<void()> destructor =
-      GetRemoteTensorDestructor(ctx, eager_client, context_id, id, 0);
-
-  *result = new TensorHandle(id, /*output_num=*/0, /*remote_shape_node_id=*/0,
-                             tensor->dtype(), std::move(destructor),
-                             /*d=*/recv_device, /*op_device=*/recv_device,
-                             /*resource_device=*/nullptr, ctx);
-  (*result)->SetRemoteShape(MakeUnique<TensorShape>(tensor->shape()));
+  *result = new TensorHandle(id, 0, tensor->shape(), eager_client, context_id,
+                             tensor->dtype(), recv_device, nullptr, ctx);
 
   actual_handle->Unref();
 
@@ -847,36 +798,30 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   bool is_async = op->EagerContext()->Async();
   uint64 remote_node_id = 0;
 
-  if (is_async) {
-    remote_node_id = op->EagerContext()->NextId();
-  }
   VLOG(4) << "Execute remote eager op: " << op->Name()
           << " (is async?: " << is_async << ").";
 
   const tensorflow::uint64 id = remote_op->id();
-  for (int i = 0; i < *num_retvals; i++) {
-    // TODO(nareshmodi): Change the callback to instead add the decref to a
-    // list of pending decrefs that we can send as a batch with the next
-    // execute.
-    std::function<void()> destructor =
-        GetRemoteTensorDestructor(ctx, eager_client, context_id, id, i);
-
-    // The device_ and resource_device_ of this TensorHandle might be incorrect.
-    // It is pretty hard to make it correct because for multi-device functions,
-    // we don't know the output device until the function is instantiated.
-    // Luckily, we don't need to know the correct remote device here. We just
-    // need to know that it is remote. If we need to copy this tensor to this
-    // process, the remote end will know the correct device of this handle.
-    retvals[i] = new TensorHandle(
-        remote_op->id(), i, remote_node_id, output_dtypes[i],
-        std::move(destructor),
-        /*d=*/op_device, /*op_device=*/op_device,
-        /*resource_device=*/output_dtypes[i] == DT_RESOURCE ? op_device
-                                                            : nullptr,
-        op->EagerContext());
-  }
-
   if (is_async) {
+    remote_node_id = op->EagerContext()->NextId();
+    for (int i = 0; i < *num_retvals; i++) {
+      // TODO(nareshmodi): Change the callback to instead add the decref to a
+      // list of pending decrefs that we can send as a batch with the next
+      // execute.
+
+      // The device_ and resource_device_ of this TensorHandle might be
+      // incorrect. It is pretty hard to make it correct because for
+      // multi-device functions, we don't know the output device until the
+      // function is instantiated. Luckily, we don't need to know the correct
+      // remote device here. We just need to know that it is remote. If we need
+      // to copy this tensor to this process, the remote end will know the
+      // correct device of this handle.
+      retvals[i] = new TensorHandle(
+          id, i, remote_node_id, eager_client, context_id, output_dtypes[i],
+          op_device, output_dtypes[i] == DT_RESOURCE ? op_device : nullptr,
+          ctx);
+    }
+
     // Copy the output handles, since the container for them might get
     // destroyed.
     gtl::InlinedVector<TensorHandle*, 2> retvals_copy;
@@ -901,8 +846,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
                      const eager::EnqueueResponse& response) {
               if (!status.ok()) return;
               for (int i = 0; i < retvals.size(); i++) {
-                retvals[i]->SetRemoteShape(MakeUnique<TensorShape>(
-                    response.queue_response(0).shape(i)));
+                retvals[i]->SetRemoteShape(response.queue_response(0).shape(i));
                 retvals[i]->Unref();
               }
               for (auto* handle : inputs) {
@@ -925,8 +869,10 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     if (!status.ok()) return status;
 
     for (int i = 0; i < *num_retvals; i++) {
-      retvals[i]->SetRemoteShape(
-          MakeUnique<TensorShape>(response.queue_response(0).shape(i)));
+      retvals[i] = new TensorHandle(
+          id, i, response.queue_response(0).shape(i), eager_client, context_id,
+          output_dtypes[i], op_device,
+          output_dtypes[i] == DT_RESOURCE ? op_device : nullptr, ctx);
     }
   }
 
