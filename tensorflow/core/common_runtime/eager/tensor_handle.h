@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
+#include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle_data.h"
 #endif  // IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -65,30 +66,51 @@ struct OutputGraphNode {
 // of the TFE_TensorHandle struct and the python EagerTensor class
 // (unrelated to python TensorHandle).
 class TensorHandle : public core::RefCounted {
- public:
-  // TensorHandle with no assigned context
-  explicit TensorHandle(const class Tensor& t)
-      : TensorHandle(t, nullptr, nullptr, nullptr) {}
-  // TensorHandle with device == op_device
-  TensorHandle(const class Tensor& t, Device* d, EagerContext* ctx)
-      : TensorHandle(t, d, d, ctx) {}
-  TensorHandle(const class Tensor& t, Device* d, Device* op_device,
+  // TensorHandle for dtype != DT_RESOURCE
+  TensorHandle(std::unique_ptr<LocalTensorHandleData> t, DataType dtype,
+               Device* d, Device* op_device, EagerContext* ctx);
+  // TensorHandle for dtype == DT_RESOURCE
+  TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
+               const ResourceHandle& resource_handle, Device* d,
+               Device* op_device, EagerContext* ctx);
+  TensorHandle(std::unique_ptr<AsyncLocalTensorHandleData> t, Device* d,
+               Device* op_device, Device* resource_device, DataType dtype,
                EagerContext* ctx);
-  // TensorHandle for async Tensors
-  TensorHandle(uint64 node_id, Device* d, Device* op_device,
-               Device* resource_device, DataType dtype, EagerContext* ctx);
 
 #if !defined(IS_MOBILE_PLATFORM)
-  // Remote tensor handle constructor.
-  TensorHandle(int64 op_id, int output_num, const TensorShape& shape,
-               eager::EagerClient* eager_client, uint64 context_id,
+  TensorHandle(std::unique_ptr<RemoteTensorHandleData> t, DataType dtype,
+               Device* d, Device* resource_device, EagerContext* ctx);
+  TensorHandle(std::unique_ptr<UnshapedRemoteTensorHandleData> t,
                DataType dtype, Device* d, Device* resource_device,
                EagerContext* ctx);
-  // Unshaped remote tensor handle constructor.
-  TensorHandle(int64 op_id, int32 output_num, uint64 shape_node_id,
-               eager::EagerClient* eager_client, uint64 context_id,
-               DataType dtype, Device* d, Device* resource_device,
-               EagerContext* ctx);
+#endif  // IS_MOBILE_PLATFORM
+
+ public:
+  // TensorHandle with no assigned device
+  static Status CreateLocalHandle(const class Tensor& t, TensorHandle** h);
+  // TensorHandle with device == op_device
+  static Status CreateLocalHandle(const class Tensor& t, Device* d,
+                                  EagerContext* ctx, TensorHandle** h);
+  static Status CreateLocalHandle(const class Tensor& t, Device* d,
+                                  Device* op_device, EagerContext* ctx,
+                                  TensorHandle** h);
+  static Status CreateAsyncLocalHandle(uint64 node_id, Device* d,
+                                       Device* op_device,
+                                       Device* resource_device, DataType dtype,
+                                       EagerContext* ctx, TensorHandle** h);
+#if !defined(IS_MOBILE_PLATFORM)
+  static Status CreateRemoteHandle(int64 op_id, int output_num,
+                                   const TensorShape& shape,
+                                   eager::EagerClient* eager_client,
+                                   uint64 context_id, DataType dtype, Device* d,
+                                   Device* resource_device, EagerContext* ctx,
+                                   TensorHandle** h);
+  static Status CreateUnshapedRemoteHandle(int64 op_id, int32 output_num,
+                                           uint64 shape_node_id,
+                                           eager::EagerClient* eager_client,
+                                           uint64 context_id, DataType dtype,
+                                           Device* d, Device* resource_device,
+                                           EagerContext* ctx, TensorHandle** h);
 #endif  // IS_MOBILE_PLATFORM
 
   // Symbolic tensor constructor.
@@ -161,12 +183,6 @@ class TensorHandle : public core::RefCounted {
   // done and the handle is "ready".
   Status WaitReady();
 
-  // The TensorHandleData can either represent a local or remote tensor handle.
-  // Further, it can be in a non-ready state. It would become ready with a call
-  // to either SetTensor or SetRemoteShape which replaces the underlying data
-  // with a ready version of the tensor handle data.
-  std::unique_ptr<TensorHandleData> tensor_handle_data_;
-
   // TODO(ashankar): device_ == nullptr iff local CPU
   // This was expedient, but perhaps worth revisiting ('device_' should always
   // be a valid pointer?)
@@ -219,11 +235,16 @@ class TensorHandle : public core::RefCounted {
   // in a call to GetResourceVariableDtypeAndShape.
   string resource_handle_container_;
   string resource_handle_name_;
+
+  // The TensorHandleData can either represent a local or remote tensor handle.
+  // Further, it can be in a non-ready state. It would become ready with a call
+  // to either SetTensor or SetRemoteShape which replaces the underlying data
+  // with a ready version of the tensor handle data.
+  std::unique_ptr<TensorHandleData> tensor_handle_data_;
 };
 
-// If tensor's dtype is DT_RESOURCE, returns the device backing the resource.
-// Else, returns nullptr.
-Device* GetResourceDevice(const Tensor& t, EagerContext* ctx);
+// Returns the device backing the resource. Else, returns nullptr.
+Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx);
 
 }  // namespace tensorflow
 
