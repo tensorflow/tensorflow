@@ -209,7 +209,7 @@ static void BM_Sequential(int iters) {
   };
   work();
   mutex_lock l(done_lock);
-  if (!done_flag) {
+  while (!done_flag) {
     done.wait(l);
   }
 }
@@ -232,7 +232,7 @@ static void BM_Parallel(int iters) {
     });
   }
   mutex_lock l(done_lock);
-  if (!done_flag) {
+  while (!done_flag) {
     done.wait(l);
   }
 }
@@ -259,7 +259,7 @@ static void BM_ParallelFor(int iters, int total, int cost_per_unit) {
         });
   }
   mutex_lock l(done_lock);
-  if (!done_flag) {
+  while (!done_flag) {
     done.wait(l);
   }
 }
