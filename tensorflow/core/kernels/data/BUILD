@@ -81,6 +81,21 @@ cc_library(
     hdrs = ["name_utils.h"],
     deps = [
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "name_utils_test",
+    srcs = ["name_utils_test.cc"],
+    deps = [
+        ":concatenate_dataset_op",
+        ":name_utils",
+        ":range_dataset_op",
+        ":shuffle_dataset_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 

@@ -54,15 +54,15 @@ constexpr char kEndOfInputSequence[] = "end_of_input_sequence";
 constexpr char kEpoch[] = "epoch";
 constexpr char kNumElements[] = "num_elements";
 constexpr char kSlicesSize[] = "slices_size";
-constexpr char kSlicesStart[] = "slices_start_";
-constexpr char kSlicesEnd[] = "slices_end_";
-constexpr char kBuffer[] = "buffer_";
-constexpr char kSize[] = "_size";
+constexpr char kSlicesStart[] = "slices_start";
+constexpr char kSlicesEnd[] = "slices_end";
+constexpr char kBuffer[] = "buffer";
+constexpr char kSize[] = "size";
 constexpr char kRandomSeedGenerator[] = "RandomSeedGenerator";
 constexpr char kTFData[] = "tf_data";
 constexpr char kDSNumRandomSamples[] = "ds_num_random_samples";
-constexpr char kFixedSeedDataset[] = "FixedSeedDataset";
-constexpr char kReshufflingDataset[] = "ReshufflingDataset";
+constexpr char kFixedSeedDatasetPrefix[] = "FixedSeed";
+constexpr char kReshufflingDatasetPrefix[] = "Reshuffling";
 
 ShuffleDatasetOpBase::ShuffleDatasetOpBase(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {}
@@ -255,18 +255,19 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           writer->WriteScalar(this->full_name(kSlicesSize), slices_.size()));
       for (size_t i = 0; i < slices_.size(); ++i) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            this->full_name(strings::StrCat(kSlicesStart, i)),
+            this->full_name(name_utils::StrJoin("_", kSlicesStart, i)),
             slices_[i]->start));
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            this->full_name(strings::StrCat(kSlicesEnd, i)), slices_[i]->end));
+            this->full_name(name_utils::StrJoin("_", kSlicesEnd, i)),
+            slices_[i]->end));
         for (size_t j = slices_[i]->start; j < slices_[i]->end; ++j) {
           size_t index = j % this->dataset()->buffer_size_;
           TF_RETURN_IF_ERROR(writer->WriteScalar(
-              this->full_name(strings::StrCat(kBuffer, index, kSize)),
+              this->full_name(name_utils::StrJoin("_", kBuffer, index, kSize)),
               buffer_[index].size()));
           for (size_t k = 0; k < buffer_[index].size(); ++k) {
             TF_RETURN_IF_ERROR(writer->WriteTensor(
-                this->full_name(strings::StrCat(kBuffer, index, "_", k)),
+                this->full_name(name_utils::StrJoin("_", kBuffer, index, k)),
                 buffer_[index][k]));
           }
         }
@@ -310,21 +311,22 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       for (size_t i = 0; i < slices_size; ++i) {
         int64 start;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
-            this->full_name(strings::StrCat(kSlicesStart, i)), &start));
+            this->full_name(name_utils::StrJoin("_", kSlicesStart, i)),
+            &start));
         int64 end;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
-            this->full_name(strings::StrCat(kSlicesEnd, i)), &end));
+            this->full_name(name_utils::StrJoin("_", kSlicesEnd, i)), &end));
         slices_.push_back(absl::make_unique<Slice>(start, end));
         for (size_t j = start; j < end; ++j) {
           size_t index = j % this->dataset()->buffer_size_;
           int64 list_size;
           TF_RETURN_IF_ERROR(reader->ReadScalar(
-              this->full_name(strings::StrCat(kBuffer, index, kSize)),
+              this->full_name(name_utils::StrJoin("_", kBuffer, index, kSize)),
               &list_size));
           buffer_[index] = std::vector<Tensor>(list_size);
           for (int k = 0; k < list_size; ++k) {
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                this->full_name(strings::StrCat(kBuffer, index, "_", k)),
+                this->full_name(name_utils::StrJoin("_", kBuffer, index, k)),
                 &buffer_[index][k]));
           }
         }
@@ -391,7 +393,7 @@ class ShuffleDatasetOp::ReshufflingDataset : public ShuffleDatasetBase {
 
   string DebugString() const override {
     return name_utils::DatasetDebugString(
-        kDatasetType, kReshufflingDataset,
+        kDatasetType, kReshufflingDatasetPrefix,
         {std::to_string(buffer_size_), std::to_string(seed_),
          std::to_string(seed2_)});
   }
@@ -414,7 +416,7 @@ class ShuffleDatasetOp::ReshufflingDataset : public ShuffleDatasetBase {
           generator_(&parent_generator_) {}
 
     string DebugString() const override {
-      return strings::StrCat(kReshufflingDataset, name_utils::kDelimiter,
+      return strings::StrCat(kReshufflingDatasetPrefix, name_utils::kDelimiter,
                              kRandomSeedGenerator);
     }
 
@@ -575,7 +577,7 @@ class ShuffleDatasetOp::FixedSeedDataset : public ShuffleDatasetBase {
 
   string DebugString() const override {
     return name_utils::DatasetDebugString(
-        kDatasetType, kFixedSeedDataset,
+        kDatasetType, kFixedSeedDatasetPrefix,
         {std::to_string(buffer_size_), std::to_string(seed_),
          std::to_string(seed2_)});
   }
