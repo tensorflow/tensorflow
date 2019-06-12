@@ -285,7 +285,6 @@ tensorflow/core/kernels/tile_ops_cpu_impl_5.cc
 tensorflow/core/kernels/tile_ops_cpu_impl_6.cc
 tensorflow/core/kernels/tile_ops_cpu_impl_7.cc
 tensorflow/core/kernels/topk_op.cc
-tensorflow/core/kernels/training_op_helpers.cc
 tensorflow/core/kernels/training_ops.cc
 tensorflow/core/kernels/transpose_functor_cpu.cc
 tensorflow/core/kernels/transpose_op.cc

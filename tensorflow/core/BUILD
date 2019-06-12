@@ -2956,6 +2956,8 @@ tf_cuda_library(
         "@com_google_absl//absl/time",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/kernels:dense_update_functor",
+        "//tensorflow/core/kernels:variable_ops",
         "//tensorflow/core/profiler/lib:traceme",
         "//third_party/eigen3",
     ] + if_static(
@@ -3429,6 +3431,19 @@ cc_library(
         ":protos_all_cc",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "training_op_helpers",
+    srcs = ["framework/training_op_helpers.cc"],
+    hdrs = ["framework/training_op_helpers.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/kernels:dense_update_functor",
+        "//tensorflow/core/kernels:variable_ops",
+        ":framework",
+        ":lib",
+    ],
 )
 
 tf_cuda_library(

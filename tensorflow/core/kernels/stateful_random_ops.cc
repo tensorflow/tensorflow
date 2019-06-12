@@ -15,9 +15,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/framework/training_op_helpers.h"
 #include "tensorflow/core/kernels/random_op_cpu.h"
 #include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
-#include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
