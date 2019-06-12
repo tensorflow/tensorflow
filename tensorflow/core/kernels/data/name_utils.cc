@@ -21,45 +21,30 @@ namespace data {
 namespace name_utils {
 
 ABSL_CONST_INIT const char kDelimiter[] = "::";
+ABSL_CONST_INIT const char kDefaultDatasetDebugStringPrefix[] = "";
+
+constexpr char kDataset[] = "Dataset";
+constexpr char kOp[] = "Op";
 
 string OpName(const string& dataset_type) {
-  if (dataset_type == "Concatenate") {
-    return "ConcatenateDataset";
-  } else if (dataset_type == "Filter") {
-    return "FilterDataset";
-  } else if (dataset_type == "FlatMap") {
-    return "FlatMapDataset";
-  } else if (dataset_type == "Generator") {
-    return "GeneratorDataset";
-  } else if (dataset_type == "Interleave") {
-    return "InterleaveDataset";
-  } else if (dataset_type == "Map") {
-    return "MapDataset";
-  } else if (dataset_type == "PaddedBatch") {
-    return "PaddedBatchDataset";
-  } else if (dataset_type == "Prefetch") {
-    return "PrefetchDataset";
-  } else if (dataset_type == "Range") {
-    return "RangeDataset";
-  }
-  LOG(WARNING) << "Unknown dataset type " << dataset_type << std::endl;
-  return "UnknownDataset";
+  return strings::StrCat(dataset_type, kDataset);
+}
+
+string ArgsToString(std::initializer_list<StringPiece> args) {
+  return strings::StrCat("(", absl::StrJoin(args, ", "), ")");
 }
 
 string DatasetDebugString(const string& dataset_type,
+                          const string& dataset_name_prefix,
                           std::initializer_list<StringPiece> args) {
   if (args.size() == 0) {
-    return strings::StrCat(OpName(dataset_type), "Op", kDelimiter, "Dataset");
+    return strings::StrCat(OpName(dataset_type), kOp, kDelimiter,
+                           dataset_name_prefix, kDataset);
   }
 
   string debug_str;
-  strings::StrAppend(&debug_str, OpName(dataset_type), "Op(");
-  auto iter = args.begin();
-  while (iter != args.end() - 1) {
-    strings::StrAppend(&debug_str, *iter, ", ");
-    ++iter;
-  }
-  strings::StrAppend(&debug_str, *iter, ")", kDelimiter, "Dataset");
+  strings::StrAppend(&debug_str, OpName(dataset_type), kOp, ArgsToString(args));
+  strings::StrAppend(&debug_str, kDelimiter, dataset_name_prefix, kDataset);
   return debug_str;
 }
 
