@@ -794,6 +794,30 @@ class OptimizerWithFunctionTest(test.TestCase):
 
       var_key_test()
 
+  def testLearningRateDecayUsedInTwoFunctions(self):
+    with context.eager_mode():
+      a = variables.Variable([1., 2.], name='var')
+      b = variables.Variable([1.], name='var')
+
+      learning_rate_decay = learning_rate_schedule.InverseTimeDecay(
+          0.5, decay_steps=1.0, decay_rate=0.5)
+      opt = adam.Adam(learning_rate=learning_rate_decay)
+      loss_a = lambda: 3 * a
+      loss_b = lambda: 2 * b
+
+      @def_function.function
+      def fn_a():
+        opt.minimize(loss_a, [a])
+        return a
+
+      @def_function.function
+      def fn_b():
+        opt.minimize(loss_b, [b])
+        return b
+
+      fn_a()
+      fn_b()
+
 
 if __name__ == '__main__':
   test.main()
