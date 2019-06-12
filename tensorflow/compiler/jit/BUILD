@@ -336,6 +336,7 @@ cc_library(
     ],
     deps = [
         ":common",
+        ":compilability_check_util",
         ":compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -344,6 +345,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
     alwayslink = 1,
 )

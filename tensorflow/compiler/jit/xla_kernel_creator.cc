@@ -15,6 +15,9 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_kernel_creator.h"
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "tensorflow/compiler/jit/compilability_check_util.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
@@ -156,13 +159,26 @@ Status XlaKernelCreator::CreateKernel(FunctionLibraryRuntime* flr,
 
   // Make sure that kernels have been registered on the JIT device.
   XlaOpRegistry::RegisterCompilationKernels();
-  if (!IsCompilable(flr, node_def)) {
-    VLOG(1) << "Not creating XlaLaunchOp because function invoked by the "
-               "following node is not compilable: "
-            << node_def.DebugString();
+  std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
+      uncompilable_node_info;
+  if (!IsCompilable(flr, node_def, &uncompilable_node_info)) {
+    string message = absl::StrCat(
+        "Function invoked by the following node is not compilable: ",
+        node_def.ShortDebugString(), ".\n");
+    absl::StrAppend(&message, "Uncompilable nodes:\n");
+    for (const auto& node_info : uncompilable_node_info) {
+      string node_message =
+          absl::StrCat("\t", node_info.name, ": ",
+                       node_info.uncompilable_reason, "\n", "\tStacktrace:\n");
+      for (const auto& stack_frame : node_info.stack_trace) {
+        absl::StrAppendFormat(&node_message, "\t\tNode: %s, function: %s\n",
+                              stack_frame.name, stack_frame.function_name);
+      }
+      absl::StrAppend(&message, node_message);
+    }
+    VLOG(1) << message;
     // node_def is calling a function that XLA can't compile.
-    return errors::InvalidArgument("Not compilable: ",
-                                   node_def.ShortDebugString());
+    return errors::InvalidArgument(message);
   }
 
   // Get function body, constant args, and resource args.

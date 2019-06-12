@@ -1559,7 +1559,10 @@ std::atomic<int64>* GetPointerToFuel(int64 initial_value) {
 }
 }  // anonymous namespace
 
-bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
+bool IsCompilable(
+    FunctionLibraryRuntime* flr, const NodeDef& ndef,
+    std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>*
+        uncompilable_node_info) {
   Device* device = flr->device();
   const XlaOpRegistry::DeviceRegistration* registration;
   CHECK(XlaOpRegistry::GetCompilationDevice(device->device_type(),
@@ -1579,8 +1582,16 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
   op_filter.allow_slow_ops = true;
   op_filter.allow_inaccurate_ops = true;
 
-  return RecursiveCompilabilityChecker{&op_filter, &jit_device_type}
-      .IsCompilableCall(ndef, flr);
+  RecursiveCompilabilityChecker checker{&op_filter, &jit_device_type};
+  if (!uncompilable_node_info) {
+    // We do not need uncompilable node info. Just return the result.
+    return checker.IsCompilableCall(ndef, flr);
+  }
+
+  std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
+      uncompilable_node_result = checker.FindUncompilableNodes(ndef, flr);
+  uncompilable_node_info->swap(uncompilable_node_result);
+  return uncompilable_node_info->empty();
 }
 
 Status MarkForCompilationPass::Run(
