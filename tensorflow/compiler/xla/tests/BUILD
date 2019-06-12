@@ -745,6 +745,7 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
+	"no_rocm",
     ],
     deps = [
         ":test_macros_header",
@@ -777,6 +778,7 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
+	"no_rocm",
     ],
     deps = [
         ":test_macros_header",
@@ -839,7 +841,10 @@ xla_test(
         ],
     },
     shard_count = 20,
-    tags = ["optonly"],
+    tags = [
+	"optonly",
+	"no_rocm",
+    ],
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:array2d",
@@ -1163,6 +1168,7 @@ xla_test(
 
 xla_test(
     name = "dynamic_ops_test",
+    tags = ["no_rocm"],
     timeout = "moderate",
     srcs = ["dynamic_ops_test.cc"],
     deps = [
