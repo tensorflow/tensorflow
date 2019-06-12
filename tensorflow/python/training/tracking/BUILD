@@ -1,6 +1,13 @@
 # Description:
 #   Utilities for reading and writing object-based checkpoints.
 
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "tf_py_logged_benchmark",
+)
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
+
 package(
     default_visibility = [
         "//tensorflow:internal",
@@ -9,13 +16,6 @@ package(
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load(
-    "//tensorflow/tools/test:performance.bzl",
-    "tf_py_logged_benchmark",
-)
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 py_library(
     name = "base",
