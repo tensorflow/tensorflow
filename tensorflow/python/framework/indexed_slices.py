@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_like
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import type_spec
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
@@ -173,6 +174,66 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
 
 IndexedSlicesValue = collections.namedtuple(
     "IndexedSlicesValue", ["values", "indices", "dense_shape"])
+
+
+# TODO(b/133606651) Export this as tf.IndexedSlicesSpec.
+class IndexedSlicesSpec(type_spec.TypeSpec):
+  """Type specification for a `tf.IndexedSlices`."""
+
+  __slots__ = ["_shape", "_values_dtype", "_indices_dtype",
+               "_dense_shape_dtype", "_indices_shape"]
+
+  value_type = property(lambda self: IndexedSlices)
+
+  def __init__(self, shape=None, dtype=dtypes.float32,
+               indices_dtype=dtypes.int64, dense_shape_dtype=True,
+               indices_shape=None):
+    """Constructs a type specification for a `tf.IndexedSlices`.
+
+    Args:
+      shape: The dense shape of the `IndexedSlices`, or `None` to allow any
+        dense shape.
+      dtype: `tf.DType` of values in the `IndexedSlices`.
+      indices_dtype: `tf.DType` of the `indices` in the `IndexedSlices`.  One
+        of `tf.int32` or `tf.int64`.
+      dense_shape_dtype: `tf.DType` of the `dense_shape` in the `IndexedSlices`.
+        One of `tf.int32`, `tf.int64`, or `None` (if the `IndexedSlices` has
+        no `dense_shape` tensor).
+      indices_shape: The shape of the `indices` component, which indicates
+        how many slices are in the `IndexedSlices`.
+    """
+    self._shape = tensor_shape.as_shape(shape)
+    self._values_dtype = dtypes.as_dtype(dtype)
+    self._indices_dtype = dtypes.as_dtype(indices_dtype)
+    if dense_shape_dtype is None:
+      self._dense_shape_dtype = None
+    else:
+      self._dense_shape_dtype = dtypes.as_dtype(dense_shape_dtype)
+    self._indices_shape = tensor_shape.as_shape(indices_shape)
+
+  def _serialize(self):
+    return (self._shape, self._values_dtype, self._indices_dtype,
+            self._dense_shape_dtype, self._indices_shape)
+
+  @property
+  def _component_specs(self):
+    value_shape = self._indices_shape.concatenate(self._shape[1:])
+    specs = [
+        tensor_spec.TensorSpec(value_shape, self._values_dtype),
+        tensor_spec.TensorSpec(self._indices_shape, self._indices_dtype)]
+    if self._dense_shape_dtype is not None:
+      specs.append(
+          tensor_spec.TensorSpec([self._shape.ndims], self._dense_shape_dtype))
+    return specs
+
+  def _to_components(self, value):
+    if value.dense_shape is None:
+      return (value.values, value.indices)
+    else:
+      return (value.values, value.indices, value.dense_shape)
+
+  def _from_components(self, tensor_list):
+    return IndexedSlices(*tensor_list)
 
 
 @tf_export(v1=["convert_to_tensor_or_indexed_slices"])

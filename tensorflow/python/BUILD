@@ -958,6 +958,7 @@ py_library(
         ":tensor_shape",
         ":tf2",
         ":traceable_stack",
+        ":type_spec",
         ":util",
         ":versions",
         "//tensorflow/core:protos_all_py",
@@ -1138,6 +1139,7 @@ py_library(
         ":framework_ops",
         ":tensor_like",
         ":tensor_util",
+        ":type_spec",
     ],
 )
 
@@ -1244,6 +1246,7 @@ py_library(
         ":common_shapes",
         ":dtypes",
         ":tensor_shape",
+        ":type_spec",
         ":util",
         "//third_party/py/numpy",
     ],
