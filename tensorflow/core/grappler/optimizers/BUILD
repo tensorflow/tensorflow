@@ -564,6 +564,7 @@ tf_cuda_cc_test(
     deps = [
         ":auto_mixed_precision",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
