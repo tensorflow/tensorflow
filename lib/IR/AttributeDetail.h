@@ -469,7 +469,7 @@ struct DenseElementsAttributeStorage : public AttributeStorage {
     if (splatValue && numOddElements != 0) {
       // Check that all bits are set in the last value.
       char lastElt = splatData.back();
-      if (lastElt != llvm::maskTrailingOnes<char>(numOddElements))
+      if (lastElt != llvm::maskTrailingOnes<unsigned char>(numOddElements))
         return KeyTy(ty, data, llvm::hash_value(data));
 
       // If this is the only element, the data is known to be a splat.
