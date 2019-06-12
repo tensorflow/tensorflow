@@ -1,4 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
+
 
 package(
     default_visibility = [":friends"],
@@ -12,19 +15,7 @@ package_group(
     ],
 )
 
-cc_library(
-    name = "llvm_gpu_backend",
-    srcs = [
-        "dump_ir_pass.cc",
-        "nvptx_backend_lib.cc",
-        "utils.cc",
-    ],
-    hdrs = [
-        "dump_ir_pass.h",
-        "nvptx_backend_lib.h",
-        "utils.h",
-    ],
-    deps = [
+LLVM_DEPS =  [
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -51,7 +42,36 @@ cc_library(
         "@llvm//:scalar",
         "@llvm//:support",
         "@llvm//:target",
+]
+
+cc_library(
+    name = "nvptx_llvm_backend",
+    srcs = [
+        "dump_ir_pass.cc",
+        "utils.cc",
+        "nvptx_backend_lib.cc",
     ],
+    hdrs = [
+        "dump_ir_pass.h",
+        "utils.h",
+        "nvptx_backend_lib.h",
+    ],
+    deps = LLVM_DEPS,
+)
+
+cc_library(
+    name = "amdgpu_llvm_backend",
+    srcs = [
+        "dump_ir_pass.cc",
+        "utils.cc",
+        "amdgpu_backend_lib.cc",
+    ],
+    hdrs = [
+        "dump_ir_pass.h",
+        "utils.h",
+        "amdgpu_backend_lib.h",
+    ],
+    deps = LLVM_DEPS,
 )
 
 tf_cc_test(
