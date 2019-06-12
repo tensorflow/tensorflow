@@ -133,6 +133,7 @@ bool IsWhitelistedFlexOp(const std::string& tensorflow_op_name) {
           "FusedBatchNormGrad",
           "FusedBatchNormGradV2",
           "FusedBatchNormV2",
+          "FusedBatchNormV3",
           "FusedPadConv2D",
           "FusedResizeAndPadConv2D",
           "Gather",
