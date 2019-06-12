@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
 from absl.testing import parameterized
 from tensorflow.core.protobuf import config_pb2
@@ -28,7 +29,6 @@ from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
-from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -39,6 +39,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.saved_model.model_utils import mode_keys
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
@@ -322,14 +323,29 @@ class RegroupAndSelectDeviceTest(test.TestCase):
     result = values.regroup(device_map, (v,))
     self.assertIs(mirrored, result)
 
-  def testNamedTupleEstimatorSpec(self):
+  def testNamedTuple(self):
+
+    # We include toy implementations of Scaffold and EstimatorSpec to
+    # avoid a dependency on Estimator here.
+
+    class Scaffold(object):
+      pass
+
+    class EstimatorSpec(collections.namedtuple(
+        "EstimatorSpec", ["mode", "loss", "train_op", "scaffold"])):
+
+      def __new__(cls, mode, loss, train_op, scaffold=None):
+        return super(EstimatorSpec, cls).__new__(
+            cls, mode=mode, loss=loss, train_op=train_op,
+            scaffold=scaffold or Scaffold())
+
     with context.graph_mode(), ops.Graph().as_default():
       devices = []
       created_estimator_specs = []
 
       for device_id in range(3):
-        spec = model_fn_lib.EstimatorSpec(
-            mode=model_fn_lib.ModeKeys.TRAIN,
+        spec = EstimatorSpec(
+            mode=mode_keys.EstimatorModeKeys.TRAIN,
             loss=constant_op.constant(device_id / 2),
             train_op=array_ops.identity(constant_op.constant(device_id)))
         devices.append(_device_str(device_id))
@@ -339,9 +355,9 @@ class RegroupAndSelectDeviceTest(test.TestCase):
       merged_estimator_spec = values.regroup(
           device_map, created_estimator_specs)
 
-      self.assertTrue(
-          isinstance(merged_estimator_spec, model_fn_lib.EstimatorSpec))
-      self.assertEqual(model_fn_lib.ModeKeys.TRAIN, merged_estimator_spec.mode)
+      self.assertIsInstance(merged_estimator_spec, EstimatorSpec)
+      self.assertEqual(mode_keys.EstimatorModeKeys.TRAIN,
+                       merged_estimator_spec.mode)
       for device_id in range(3):
         d = _device_str(device_id)
         self.assertEqual(created_estimator_specs[device_id].loss,
@@ -351,6 +367,8 @@ class RegroupAndSelectDeviceTest(test.TestCase):
         # Scaffold is populated by `EstimatorSpec.__new__`.
         self.assertEqual(created_estimator_specs[device_id].scaffold,
                          merged_estimator_spec.scaffold.get(d))
+        self.assertIsInstance(created_estimator_specs[device_id].scaffold,
+                              Scaffold)
         # Also test that we can undo the merge using select_replica()
         self.assertEqual(created_estimator_specs[device_id],
                          values.select_replica(device_id,

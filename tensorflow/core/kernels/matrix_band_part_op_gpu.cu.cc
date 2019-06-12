@@ -42,7 +42,7 @@ __global__ void MatrixBandPartKernel(const int num_threads,
     const int band_start = (num_lower_diags < 0 ? 0 : row - num_lower_diags);
     const int band_end = (num_upper_diags < 0 ? n : row + num_upper_diags + 1);
     if (col < band_start || col >= band_end) {
-      output_ptr[index] = Scalar();
+      output_ptr[index] = Scalar(0);
     } else {
       output_ptr[index] = input_ptr[index];
     }

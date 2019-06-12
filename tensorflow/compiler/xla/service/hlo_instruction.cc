@@ -343,6 +343,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kRng:
       instruction = CreateRng(shape, proto.distribution(), all_operands());
       break;
+    case HloOpcode::kRngGetAndUpdateState:
+      instruction = CreateRngGetAndUpdateState(shape, proto.delta());
+      break;
     case HloOpcode::kParameter:
       instruction =
           CreateParameter(proto.parameter_number(), shape, proto.name());
@@ -683,6 +686,11 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     const Shape& shape, RandomDistribution distribution,
     absl::Span<HloInstruction* const> parameters) {
   return absl::make_unique<HloRngInstruction>(shape, distribution, parameters);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateRngGetAndUpdateState(const Shape& shape, int64 delta) {
+  return absl::make_unique<HloRngGetAndUpdateStateInstruction>(shape, delta);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateNary(
@@ -1265,6 +1273,7 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kRng:
+    case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
@@ -1393,6 +1402,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kTrace:
     case HloOpcode::kFusion:
     case HloOpcode::kRng:
+    case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kParameter:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kReducePrecision:
@@ -1853,6 +1863,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kTrace:
     case HloOpcode::kFusion:
     case HloOpcode::kRng:
+    case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kParameter:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kReducePrecision:
@@ -2705,6 +2716,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleOutfeed(this);
     case HloOpcode::kRng:
       return visitor->HandleRng(this);
+    case HloOpcode::kRngGetAndUpdateState:
+      return visitor->HandleRngGetAndUpdateState(this);
     case HloOpcode::kWhile:
       return visitor->HandleWhile(this);
     case HloOpcode::kFusion:

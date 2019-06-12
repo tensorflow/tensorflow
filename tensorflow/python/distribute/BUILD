@@ -803,7 +803,7 @@ distribute_py_test(
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/saved_model/model_utils:mode_keys",
         "@absl_py//absl/testing:parameterized",
     ],
 )

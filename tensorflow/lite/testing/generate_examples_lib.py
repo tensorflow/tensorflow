@@ -2875,7 +2875,16 @@ def make_batch_to_space_nd_tests(options):
           "constant_block_shape": [True, False],
           "constant_crops": [True, False],
       },
-      # Non-4D use case: 1 bath dimension, 3 spatial dimensions, 2 others.
+      # Single batch (no-op)
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[1, 3, 3, 1]],
+          "block_shape": [[1, 1]],
+          "crops": [[[0, 0], [0, 0]], [[1, 1], [1, 1]]],
+          "constant_block_shape": [True],
+          "constant_crops": [True],
+      },
+      # Non-4D use case: 1 batch dimension, 3 spatial dimensions, 2 others.
       {
           "dtype": [tf.float32],
           "input_shape": [[8, 2, 2, 2, 1, 1]],

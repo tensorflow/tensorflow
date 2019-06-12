@@ -979,10 +979,17 @@ class TPUMirroredVariable(MirroredVariable):
 
     # Handle id is needed for get_replicated_var_handle to cache the variables
     # correctly since in eager mode different variables can have the same name.
-    if context.executing_eagerly():
+    if ops.executing_eagerly_outside_functions():
       self._handle_id = self._common_name + "_" + str(id(self.primary))
     else:
       self._handle_id = self._common_name
+
+  def __getattr__(self, name):
+    if _enclosing_tpu_context() is None:
+      return super(TPUMirroredVariable, self).__getattr__(name)
+    else:
+      raise AttributeError(
+          "'{}' not accessible within a TPU context.".format(name))
 
   def get(self, device=None):
     if (_enclosing_tpu_context() is None) or (device is not None):

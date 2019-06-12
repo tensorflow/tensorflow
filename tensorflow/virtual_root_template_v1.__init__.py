@@ -77,6 +77,7 @@ _top_level_modules = [
     "tensorflow.keras",
     "tensorflow.contrib",
     "tensorflow.compat",
+    "tensorflow.examples",
 ]
 # Estimator needs to be handled separatedly so we can still allow both
 # import tensorflow_estimator and import tensorflow.estimator work
@@ -118,4 +119,4 @@ try:
 except ImportError as e:
   pass
 
-# LINT.ThenChange(//tensorflow/virtual_root_template.__init__.py.oss)
+# LINT.ThenChange(//tensorflow/virtual_root_template_v2.__init__.py.oss)

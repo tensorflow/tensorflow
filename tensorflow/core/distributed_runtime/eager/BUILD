@@ -95,3 +95,15 @@ tf_cc_test(
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
     ],
 )
+
+cc_library(
+    name = "remote_tensor_handle_data",
+    srcs = ["remote_tensor_handle_data.cc"],
+    hdrs = ["remote_tensor_handle_data.h"],
+    deps = [
+        ":eager_client",
+        ":remote_execute_node",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/eager:tensor_handle_data",
+    ],
+)

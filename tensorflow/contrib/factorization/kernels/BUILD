@@ -7,8 +7,6 @@ package(
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-
 cc_library(
     name = "all_kernels",
     deps = [

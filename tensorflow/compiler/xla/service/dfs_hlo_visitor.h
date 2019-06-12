@@ -224,6 +224,7 @@ class DfsHloVisitorBase {
   virtual Status HandleInfeed(HloInstructionPtr hlo) = 0;
   virtual Status HandleOutfeed(HloInstructionPtr hlo) = 0;
   virtual Status HandleRng(HloInstructionPtr hlo) = 0;
+  virtual Status HandleRngGetAndUpdateState(HloInstructionPtr hlo) = 0;
   virtual Status HandleReverse(HloInstructionPtr hlo) = 0;
   virtual Status HandleSort(HloInstructionPtr hlo) = 0;
   virtual Status HandleConstant(HloInstructionPtr hlo) = 0;

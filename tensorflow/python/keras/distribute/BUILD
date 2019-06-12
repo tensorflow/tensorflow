@@ -87,7 +87,6 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
         "no_windows_gpu",
         "notsan",
     ],

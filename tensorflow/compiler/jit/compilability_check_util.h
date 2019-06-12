@@ -56,20 +56,22 @@ namespace tensorflow {
 // can be compiled.
 class RecursiveCompilabilityChecker {
  public:
+  // Contains node name and function name. If the node is not inside a function
+  // body, function name is an empty string.
+  struct StackFrame {
+    std::string name;
+    std::string function_name;
+  };
+
   // Contains information about uncompilable node inside a function body.
   struct UncompilableNodeInfo {
     std::string name;
-    // A list of node names that represents a stacktrace from the highest
-    // level node in increasing call depth to immediate node that fails
-    // the compilability checker.
-    std::vector<std::string> stack_trace;
+    // A list representing a stacktrace from the highest level node in
+    // increasing call depth to immediate node that fails the
+    // compilability checker.
+    std::vector<StackFrame> stack_trace;
     std::string uncompilable_reason;
   };
-  // Map of node function names to NodeInfo(s) of uncompilable node(s) within
-  // the function. If an uncompilable node is not inside a function, then the
-  // key is an empty string.
-  using CompilabilityCheckerSummary =
-      std::unordered_map<std::string, std::vector<UncompilableNodeInfo>>;
 
   // Aggregates information about what kinds of ops are allowed.
   struct OperationFilter {  // TODO(lzr): Add AllowEverything() helper.
@@ -127,28 +129,31 @@ class RecursiveCompilabilityChecker {
                                 const DeviceType* jit_device_type)
       : op_filter_(*op_filter), jit_device_type_(*jit_device_type) {}
 
-  // Returns a summary of uncompilable nodes.
-  CompilabilityCheckerSummary FindUncompilableNodes(
+  // Returns a list of uncompilable nodes.
+  std::vector<UncompilableNodeInfo> FindUncompilableNodes(
       const Node& node, FunctionLibraryRuntime* lib_runtime) {
-    std::vector<absl::string_view> stack_trace{node.name()};
-    CompilabilityCheckerSummary summary;
-    IsCompilableNode(node, lib_runtime, &stack_trace, &summary);
-    return summary;
+    std::vector<StackFrameView> stack_trace;
+    stack_trace.emplace_back(StackFrameView{node.name(), ""});
+    std::vector<UncompilableNodeInfo> uncompilable_nodes;
+    IsCompilableNode(node, lib_runtime, &stack_trace, &uncompilable_nodes);
+    return uncompilable_nodes;
   }
 
-  // Returns a summary of uncompilable nodes in `call_def` that cannot be
+  // Returns a list of uncompilable nodes in `call_def` that cannot be
   // compiled by XLA. It is assumed that `call_def` is a call operation.
-  CompilabilityCheckerSummary FindUncompilableNodes(
+  std::vector<UncompilableNodeInfo> FindUncompilableNodes(
       const NodeDef& call_def, FunctionLibraryRuntime* lib_runtime) {
-    std::vector<absl::string_view> stack_trace{call_def.name()};
-    CompilabilityCheckerSummary summary;
-    IsCompilableCall(call_def, lib_runtime, &stack_trace, &summary);
-    return summary;
+    std::vector<StackFrameView> stack_trace;
+    stack_trace.emplace_back(StackFrameView{call_def.name(), ""});
+    std::vector<UncompilableNodeInfo> uncompilable_nodes;
+    IsCompilableCall(call_def, lib_runtime, &stack_trace, &uncompilable_nodes);
+    return uncompilable_nodes;
   }
 
   // Returns true if `node` can be compiled by XLA.
   bool IsCompilableNode(const Node& node, FunctionLibraryRuntime* lib_runtime) {
-    std::vector<absl::string_view> stack_trace{node.name()};
+    std::vector<StackFrameView> stack_trace;
+    stack_trace.emplace_back(StackFrameView{node.name(), ""});
     return IsCompilableNode(node, lib_runtime, &stack_trace);
   }
 
@@ -156,7 +161,8 @@ class RecursiveCompilabilityChecker {
   // `call_def` is a call operation.
   bool IsCompilableCall(const NodeDef& call_def,
                         FunctionLibraryRuntime* lib_runtime) {
-    std::vector<absl::string_view> stack_trace{call_def.name()};
+    std::vector<StackFrameView> stack_trace;
+    stack_trace.emplace_back(StackFrameView{call_def.name(), ""});
     return IsCompilableCall(call_def, lib_runtime, &stack_trace);
   }
 
@@ -166,19 +172,23 @@ class RecursiveCompilabilityChecker {
   bool OpIsSlow(const Node& node);
 
  private:
-  bool IsCompilableNode(const Node& node, FunctionLibraryRuntime* lib_runtime,
-                        std::vector<absl::string_view>* stack_trace,
-                        CompilabilityCheckerSummary* summary = nullptr,
-                        const absl::optional<absl::string_view>
-                            containing_function_name = absl::nullopt);
-  bool IsCompilableCall(const NodeDef& call_def,
-                        FunctionLibraryRuntime* lib_runtime,
-                        std::vector<absl::string_view>* stack_trace,
-                        CompilabilityCheckerSummary* summary = nullptr);
+  struct StackFrameView {
+    absl::string_view name;
+    absl::string_view function_name;
+  };
+
+  bool IsCompilableNode(
+      const Node& node, FunctionLibraryRuntime* lib_runtime,
+      std::vector<StackFrameView>* stack_trace,
+      std::vector<UncompilableNodeInfo>* uncompilable_nodes = nullptr);
+  bool IsCompilableCall(
+      const NodeDef& call_def, FunctionLibraryRuntime* lib_runtime,
+      std::vector<StackFrameView>* stack_trace,
+      std::vector<UncompilableNodeInfo>* uncompilable_nodes = nullptr);
   bool IsCompilableWhile(const Node& while_node,
                          FunctionLibraryRuntime* lib_runtime,
-                         std::vector<absl::string_view>* stack_trace,
-                         CompilabilityCheckerSummary* summary);
+                         std::vector<StackFrameView>* stack_trace,
+                         std::vector<UncompilableNodeInfo>* uncompilable_nodes);
 
   bool IsStackOp(const Node& node) {
     const XlaResourceOpInfo* op_info =
@@ -209,6 +219,11 @@ class RecursiveCompilabilityChecker {
   }
 
   bool HasXLAKernel(const Node& node);
+
+  void MaybeMarkUncompilableNode(
+      const absl::string_view reason,
+      const std::vector<StackFrameView>& stack_trace,
+      std::vector<UncompilableNodeInfo>* uncompilable_node_list);
 
   // Make sure we don't recurse infinitely on recursive functions.
   const int kMaxRecursionDepth = 10;

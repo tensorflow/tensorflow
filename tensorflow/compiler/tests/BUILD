@@ -1146,7 +1146,8 @@ cuda_py_test(
     shard_count = 5,
     tags = [
         # TODO(b/134780716): Re-enable this test.
-        "notap",
+        "nogpu",
+        "no_cuda_on_cpu_tap",
     ],
 )
 
