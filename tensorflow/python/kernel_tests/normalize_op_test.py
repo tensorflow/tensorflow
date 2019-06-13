@@ -40,15 +40,15 @@ def _Normalize(x, ord, axis):
       # This prevents axis to be inserted in-between
       # e.g. when (-2, -1)
       for d in reversed(axis):
-          norm = np.expand_dims(norm, d)
+        norm = np.expand_dims(norm, d)
     else:
       for d in axis:
-          norm = np.expand_dims(norm, d)
+        norm = np.expand_dims(norm, d)
     return x / norm
   elif axis is None:
-      # Tensorflow handles None differently
-      norm = np.linalg.norm(x.flatten(), ord, axis)
-      return x / norm
+    # Tensorflow handles None differently
+    norm = np.linalg.norm(x.flatten(), ord, axis)
+    return x / norm
   else:
     norm = np.apply_along_axis(np.linalg.norm, axis, x, ord)
     return x / np.expand_dims(norm, axis)
@@ -93,6 +93,6 @@ if __name__ == "__main__":
               name = "%s_%s_ord_%s_axis_%s" % (
                   dtype.__name__, "_".join(map(str, shape)), ord, axis)
               _AddTest(NormalizeOpTest, "Normalize_" + name,
-                        _GetNormalizeOpTest(dtype, shape, ord, axis))
+                       _GetNormalizeOpTest(dtype, shape, ord, axis))
 
   test_lib.main()
