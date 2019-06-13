@@ -78,10 +78,6 @@ func @slice(%arg0: !linalg.buffer<f32>, %arg1: !linalg.range) {
 //  CHECK-NEXT:   %27 = llvm.mul %16, %26 : !llvm.i64
 //  CHECK-NEXT:   %28 = llvm.insertvalue %27, %25[3, 0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
 
-func @linalg_dot(!llvm<"{ float*, i64, [1 x i64], [1 x i64] }">,
-                 !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">,
-                 !llvm<"{ float*, i64, [0 x i64], [0 x i64] }">)
-
 func @dot(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf32>, %arg2: !linalg.view<f32>) {
   linalg.dot(%arg0, %arg1, %arg2) : !linalg.view<?xf32>, !linalg.view<?xf32>, !linalg.view<f32>
   return

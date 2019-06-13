@@ -3,42 +3,6 @@
 // RUN: mlir-opt %s -linalg-lower-to-llvm-dialect | mlir-cpu-runner -e matmul -entry-point-result=f32 -shared-libs=%linalg_test_lib_dir/libcblas%shlibext,%linalg_test_lib_dir/libcblas_interface%shlibext | FileCheck %s
 // RUN: mlir-opt %s -linalg-lower-to-loops -linalg-lower-to-llvm-dialect | mlir-cpu-runner -e matmul -entry-point-result=f32 -shared-libs=%linalg_test_lib_dir/libcblas%shlibext,%linalg_test_lib_dir/libcblas_interface%shlibext | FileCheck %s
 
-func @linalg_dot_impl(%arg0 : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }*">,
-                      %arg1 : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }*">,
-                      %arg2 : !llvm<"{ float*, i64, [0 x i64], [0 x i64] }*">)
-
-func @linalg_dot(%arg0 : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">,
-                 %arg1 : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">,
-                 %arg2 : !llvm<"{ float*, i64, [0 x i64], [0 x i64] }">) {
-  %c1 = llvm.constant(1) : !llvm.i64
-  %0 = llvm.alloca %c1 x !llvm<"{ float*, i64, [1 x i64], [1 x i64] }"> : (!llvm.i64) -> !llvm<"{ float*, i64, [1 x i64], [1 x i64] }*">
-  %1 = llvm.alloca %c1 x !llvm<"{ float*, i64, [1 x i64], [1 x i64] }"> : (!llvm.i64) -> !llvm<"{ float*, i64, [1 x i64], [1 x i64] }*">
-  %2 = llvm.alloca %c1 x !llvm<"{ float*, i64, [0 x i64], [0 x i64] }"> : (!llvm.i64) -> !llvm<"{ float*, i64, [0 x i64], [0 x i64] }*">
-  llvm.store %arg0, %0 : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }*">
-  llvm.store %arg1, %1 : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }*">
-  llvm.store %arg2, %2 : !llvm<"{ float*, i64, [0 x i64], [0 x i64] }*">
-  call @linalg_dot_impl(%0, %1, %2) : (!llvm<"{ float*, i64, [1 x i64], [1 x i64] }*">, !llvm<"{ float*, i64, [1 x i64], [1 x i64] }*">, !llvm<"{ float*, i64, [0 x i64], [0 x i64] }*">) -> ()
-  return
-}
-
-func @linalg_matmul_impl(%arg0 : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">,
-                         %arg1 : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">,
-                         %arg2 : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">)
-
-func @linalg_matmul(%arg0 : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">,
-                    %arg1 : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">,
-                    %arg2 : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">) {
-  %c1 = llvm.constant(1) : !llvm.i64
-  %0 = llvm.alloca %c1 x !llvm<"{ float*, i64, [2 x i64], [2 x i64] }"> : (!llvm.i64) -> !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
-  %1 = llvm.alloca %c1 x !llvm<"{ float*, i64, [2 x i64], [2 x i64] }"> : (!llvm.i64) -> !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
-  %2 = llvm.alloca %c1 x !llvm<"{ float*, i64, [2 x i64], [2 x i64] }"> : (!llvm.i64) -> !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
-  llvm.store %arg0, %0 : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
-  llvm.store %arg1, %1 : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
-  llvm.store %arg2, %2 : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
-  call @linalg_matmul_impl(%0, %1, %2) : (!llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">, !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">, !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">) -> ()
-  return
-}
-
 func @fill_f32(%arg0 : !linalg.buffer<f32>, %f : f32) {
   %c0 = constant 0 : index
   %c1 = constant 1 : index
