@@ -154,11 +154,10 @@ class EnqueueData(
         If it is None, we assume each embedding_indices belongs to a different
         sample. Both int32 and int64 are allowed and will be converted to int32
         internally.
-      aggregation_weights: A rank 1 Tensors containing per training example
-        aggregation weights. It corresponds to sp_weights.values in
-        embedding_lookup_sparse(). If it is None, we assume all weights are 1.
-        Both float32 and float64 are allowed and will be converted to float32
-        internally.
+      aggregation_weights: A rank 1 Tensors containing aggregation weights.
+        It corresponds to sp_weights.values in embedding_lookup_sparse(). If it
+        is None, we assume all weights are 1. Both float32 and float64 are
+        allowed and will be converted to float32 internally.
 
     Returns:
       An EnqueueData tuple.
