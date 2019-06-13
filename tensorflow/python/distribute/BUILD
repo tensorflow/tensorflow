@@ -1,14 +1,14 @@
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
+load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
-load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
 
 py_library(
     name = "distribute_test_lib_pip",
@@ -803,7 +803,7 @@ distribute_py_test(
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/saved_model/model_utils:mode_keys",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -1047,7 +1047,9 @@ py_library(
         ":combinations",
         ":model_combinations",
         ":strategy_combinations",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model",
         "//third_party/py/numpy",
     ],
 )
@@ -1059,19 +1061,30 @@ distribute_py_test(
     main = "saved_model_save_load_test.py",
     deps = [
         ":saved_model_test_base",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python/saved_model",
     ],
 )
 
 distribute_py_test(
-    name = "keras_saved_model_test",
+    name = "keras_experimental_saved_model_test",
     size = "medium",
-    srcs = ["keras_saved_model_test.py"],
-    main = "keras_saved_model_test.py",
+    srcs = ["keras_experimental_saved_model_test.py"],
+    main = "keras_experimental_saved_model_test.py",
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras:saving",
+    ],
+)
+
+distribute_py_test(
+    name = "saved_model_mixed_api_test",
+    size = "medium",
+    srcs = ["saved_model_mixed_api_test.py"],
+    main = "saved_model_mixed_api_test.py",
+    deps = [
+        ":saved_model_test_base",
+        "//tensorflow/python/keras:saving",
+        "//tensorflow/python/saved_model",
     ],
 )
 

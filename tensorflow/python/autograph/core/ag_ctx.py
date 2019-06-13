@@ -46,12 +46,17 @@ class Status(enum.Enum):
 class ControlStatusCtx(object):
   """A context that tracks whether autograph is enabled by the user."""
 
-  def __init__(self, status):
+  def __init__(self, status, options=None):
     self.status = status
+    self.options = options
 
   def __enter__(self):
     _control_ctx().append(self)
     return self
+
+  def __repr__(self):
+    return '{}[status={}, options={}]'.format(
+        self.__class__.__name__, self.status, self.options)
 
   def __exit__(self, unused_type, unused_value, unused_traceback):
     assert _control_ctx()[-1] is self

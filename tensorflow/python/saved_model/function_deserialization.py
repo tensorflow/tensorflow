@@ -177,11 +177,11 @@ class RestoredFunction(def_function.Function):
     # TODO(mdan): We may enable autograph once exceptions are supported.
     super(RestoredFunction, self).__init__(
         python_function, name, autograph=False)
-    self._concrete_functions = concrete_functions
+    self.concrete_functions = concrete_functions
     self._function_spec = function_spec
 
   def _list_all_concrete_functions_for_serialization(self):
-    return self._concrete_functions
+    return self.concrete_functions
 
   def _defun_with_scope(self, scope):
     func = super(RestoredFunction, self)._defun_with_scope(scope)
@@ -293,7 +293,13 @@ def load_function_def_library(library):
   for fdef in _sort_function_defs(library):
     copy = _fix_fdef(fdef, functions, load_shared_name_suffix)
 
-    func_graph = function_def_lib.function_def_to_graph(copy)
+    # There is no need to copy functions into the function def graph.
+    # It leads to a O(n^2) increase of memory when importing functions
+    # and the extra function definitions are a no-op since they already
+    # imported as a function before (due to the topologic sort import).
+    func_graph = function_def_lib.function_def_to_graph(
+        copy, copy_functions=False)
+
     for dep in _list_function_deps(fdef):
       functions[dep].add_to_graph(func_graph)
     func = function_lib.ConcreteFunction(func_graph)

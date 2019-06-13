@@ -1,10 +1,10 @@
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 cc_library(
     name = "api",

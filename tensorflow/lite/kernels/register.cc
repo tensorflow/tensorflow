@@ -142,6 +142,7 @@ TfLiteRegistration* Register_REVERSE_SEQUENCE();
 TfLiteRegistration* Register_MATRIX_DIAG();
 TfLiteRegistration* Register_QUANTIZE();
 TfLiteRegistration* Register_MATRIX_SET_DIAG();
+TfLiteRegistration* Register_HARD_SWISH();
 
 const TfLiteRegistration* BuiltinOpResolver::FindOp(tflite::BuiltinOperator op,
                                                     int version) const {
@@ -155,6 +156,7 @@ const TfLiteRegistration* BuiltinOpResolver::FindOp(const char* op,
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_ABS, Register_ABS());
+  AddBuiltin(BuiltinOperator_HARD_SWISH, Register_HARD_SWISH());
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
   AddBuiltin(BuiltinOperator_RELU_N1_TO_1, Register_RELU_N1_TO_1());
   AddBuiltin(BuiltinOperator_RELU6, Register_RELU6(), /* min_version */ 1,

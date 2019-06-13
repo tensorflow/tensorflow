@@ -241,10 +241,6 @@ class TestDistributionStrategyDnnCorrectness(test.TestCase,
       ))
   def test_dnn_correctness_tpus(self, distribution, optimizer_fn,
                                 iteration_type, inside_func):
-    # TODO(b/130734563): Enable this test combination once we figure out a way
-    # to iterate over a DistributedDataset inside a tf.function.
-    if iteration_type == 'dataset' and inside_func:
-      self.skipTest('Unsupported test combination.')
     self.dnn_correctness(distribution, optimizer_fn, iteration_type,
                          inside_func)
 

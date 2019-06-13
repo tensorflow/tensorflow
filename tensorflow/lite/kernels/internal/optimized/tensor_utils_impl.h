@@ -54,6 +54,8 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, int result_stride);
 
+// Multiply a matrix by a batch vector, and store results in a batch-size
+// vector. Sparse version.
 void PortableSparseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,
@@ -64,6 +66,7 @@ void NeonSparseMatrixBatchVectorMultiplyAccumulate(
     float* __restrict__ result, int result_stride);
 
 // Matrix multiplication for quantized values using symmetric quantization.
+// Sparse version.
 void PortableSparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
     const int m_cols, const int8_t* __restrict__ vectors,

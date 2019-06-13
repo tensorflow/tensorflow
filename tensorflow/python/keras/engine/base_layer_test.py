@@ -33,6 +33,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -122,6 +123,11 @@ class BaseLayerTest(keras_parameterized.TestCase):
       output_shape = layer.compute_output_shape((None, 10))
       self.assertEqual(layer.build_counter, 1)
       self.assertEqual(output_shape.as_list(), [None, 10])
+      output_signature = layer.compute_output_signature(
+          tensor_spec.TensorSpec(dtype=dtypes.float64, shape=[None, 10]))
+      self.assertEqual(layer.build_counter, 1)
+      self.assertEqual(output_signature.dtype, dtypes.float64)
+      self.assertEqual(output_signature.shape.as_list(), [None, 10])
       layer(np.ones((5, 10)))
       self.assertEqual(layer.build_counter, 1)
 
@@ -893,7 +899,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
     class MyLayer(keras.layers.Layer):
 
       def __init__(self):
-        super(MyLayer, self).__init__(self, dynamic=eager)
+        super(MyLayer, self).__init__(dynamic=eager)
 
       def build(self, input_shape):
         self.counter = self.add_weight(
@@ -931,7 +937,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
     class MyLayer(keras.layers.Layer):
 
       def __init__(self):
-        super(MyLayer, self).__init__(self, dynamic=eager)
+        super(MyLayer, self).__init__(dynamic=eager)
 
       def call(self, inputs, training=None):
         if training:
@@ -982,7 +988,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
     class MyLayer(keras.layers.Layer):
 
       def __init__(self):
-        super(MyLayer, self).__init__(self, dynamic=eager)
+        super(MyLayer, self).__init__(dynamic=eager)
 
       def call(self, inputs, training=None):
         if training:

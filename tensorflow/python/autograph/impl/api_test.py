@@ -36,6 +36,7 @@ from tensorflow.python.autograph.impl import api
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.utils import py_func
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
@@ -45,6 +46,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.util import function_utils
+from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
 tf = utils.fake_tf()
@@ -787,8 +789,7 @@ class ApiTest(test.TestCase):
 
     self.assertNotEqual(converted_recursive.ag_module,
                         converted_non_recursive.ag_module)
-    self.assertIn('internal_convert_user_code=True',
-                  tf_inspect.getsource(converted_recursive))
+    self.assertIn('ag__.STD', tf_inspect.getsource(converted_recursive))
     self.assertNotIn('internal_convert_user_code=False',
                      tf_inspect.getsource(converted_recursive))
     self.assertIn('internal_convert_user_code=False',
@@ -826,6 +827,56 @@ class ApiTest(test.TestCase):
 
     # Just check that the output is parseable Python code.
     self.assertIsNotNone(parser.parse_str(api.to_code(test_fn)))
+
+  def test_tf_convert_direct(self):
+
+    def f():
+      if tf.reduce_sum([1, 2]) > 0:
+        return -1
+      return 1
+
+    # Note: the autograph setting of tf.function has nothing to do with the
+    # test case. We just disable it to avoid confusion.
+    @def_function.function(autograph=False)
+    def test_fn(ctx):
+      return api.tf_convert(f, ctx)()
+
+    self.assertEqual(
+        self.evaluate(
+            test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED))), -1)
+    with self.assertRaisesRegex(TypeError, 'tf.Tensor.*bool'):
+      # The code in `f` is only valid with AutoGraph.
+      test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED))
+
+  def test_tf_convert_wrapped(self):
+
+    def f():
+      if tf.reduce_sum([1, 2]) > 0:
+        return -1
+      return 1
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+      return wrapper.__wrapped__(*args, **kwargs)
+
+    decorated_f = tf_decorator.make_decorator(f, wrapper)
+
+    # Note: the autograph setting of tf.function has nothing to do with the
+    # test case. We just disable it to avoid confusion.
+    @def_function.function(autograph=False)
+    def test_fn(ctx):
+      return api.tf_convert(decorated_f, ctx)()
+
+    self.assertEqual(
+        self.evaluate(
+            test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED))), -1)
+
+    # tf_convert mutates the decorator, so we need to create a new one for
+    # another test.
+    decorated_f = tf_decorator.make_decorator(f, wrapper)
+    with self.assertRaisesRegex(TypeError, 'tf.Tensor.*bool'):
+      # The code in `f` is only valid with AutoGraph.
+      test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED))
 
 
 if __name__ == '__main__':

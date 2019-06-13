@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import itertools
 import os
 from absl.testing import parameterized
 from tensorflow.core.protobuf import config_pb2
@@ -28,7 +30,6 @@ from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
-from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -39,6 +40,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.saved_model.model_utils import mode_keys
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
@@ -322,14 +324,29 @@ class RegroupAndSelectDeviceTest(test.TestCase):
     result = values.regroup(device_map, (v,))
     self.assertIs(mirrored, result)
 
-  def testNamedTupleEstimatorSpec(self):
+  def testNamedTuple(self):
+
+    # We include toy implementations of Scaffold and EstimatorSpec to
+    # avoid a dependency on Estimator here.
+
+    class Scaffold(object):
+      pass
+
+    class EstimatorSpec(collections.namedtuple(
+        "EstimatorSpec", ["mode", "loss", "train_op", "scaffold"])):
+
+      def __new__(cls, mode, loss, train_op, scaffold=None):
+        return super(EstimatorSpec, cls).__new__(
+            cls, mode=mode, loss=loss, train_op=train_op,
+            scaffold=scaffold or Scaffold())
+
     with context.graph_mode(), ops.Graph().as_default():
       devices = []
       created_estimator_specs = []
 
       for device_id in range(3):
-        spec = model_fn_lib.EstimatorSpec(
-            mode=model_fn_lib.ModeKeys.TRAIN,
+        spec = EstimatorSpec(
+            mode=mode_keys.EstimatorModeKeys.TRAIN,
             loss=constant_op.constant(device_id / 2),
             train_op=array_ops.identity(constant_op.constant(device_id)))
         devices.append(_device_str(device_id))
@@ -339,9 +356,9 @@ class RegroupAndSelectDeviceTest(test.TestCase):
       merged_estimator_spec = values.regroup(
           device_map, created_estimator_specs)
 
-      self.assertTrue(
-          isinstance(merged_estimator_spec, model_fn_lib.EstimatorSpec))
-      self.assertEqual(model_fn_lib.ModeKeys.TRAIN, merged_estimator_spec.mode)
+      self.assertIsInstance(merged_estimator_spec, EstimatorSpec)
+      self.assertEqual(mode_keys.EstimatorModeKeys.TRAIN,
+                       merged_estimator_spec.mode)
       for device_id in range(3):
         d = _device_str(device_id)
         self.assertEqual(created_estimator_specs[device_id].loss,
@@ -351,6 +368,8 @@ class RegroupAndSelectDeviceTest(test.TestCase):
         # Scaffold is populated by `EstimatorSpec.__new__`.
         self.assertEqual(created_estimator_specs[device_id].scaffold,
                          merged_estimator_spec.scaffold.get(d))
+        self.assertIsInstance(created_estimator_specs[device_id].scaffold,
+                              Scaffold)
         # Also test that we can undo the merge using select_replica()
         self.assertEqual(created_estimator_specs[device_id],
                          values.select_replica(device_id,
@@ -865,6 +884,63 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
   def testSaveNormalRestoreReplicaLocalSum(self, distribution):
     save_path = self._save_normal()
     self._restore_replica_local_sum(save_path, distribution)
+
+  def testAssign(self, distribution):
+    def assign(fn, v, update_value, cross_replica):
+      update_fn = lambda: getattr(v, fn)(update_value)
+      if cross_replica:
+        return update_fn()
+      else:
+        return distribution.experimental_local_results(
+            distribution.experimental_run_v2(update_fn))
+    updates = [("assign", 1.), ("assign_add", 1.), ("assign_sub", -1.)]
+    aggregations = [
+        variables_lib.VariableAggregation.NONE,
+        variables_lib.VariableAggregation.SUM,
+        variables_lib.VariableAggregation.MEAN,
+        variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
+    ]
+    options = (  # VariableAggregation.SUM in cross-replica mode is tested below
+        [x for x in itertools.product(updates, aggregations, [True, False])
+         if not(x[1] == variables_lib.VariableAggregation.SUM and x[2])])
+    for update, aggregation, cross_replica in options:
+      with distribution.scope():
+        v = variable_scope.variable(
+            0.,
+            synchronization=variables_lib.VariableSynchronization.ON_READ,
+            aggregation=aggregation)
+      self.evaluate(variables_lib.global_variables_initializer())
+      fn, update_value = update
+      self.evaluate(assign(fn, v, update_value, cross_replica))
+      for component in v._values:
+        self.assertAllEqual(self.evaluate(component.read_value()),
+                            self.evaluate(array_ops.ones_like(component)))
+
+  def testAssignWithAggregationSum(self, distribution):
+    with distribution.scope():
+      v = variable_scope.variable(
+          0.,
+          synchronization=variables_lib.VariableSynchronization.ON_READ,
+          aggregation=variables_lib.VariableAggregation.SUM)
+    self.evaluate(variables_lib.global_variables_initializer())
+    self.evaluate(v.assign(1. * distribution.num_replicas_in_sync))
+    for component in v._values:
+      self.assertAllEqual(self.evaluate(component.read_value()),
+                          self.evaluate(array_ops.ones_like(component)))
+
+  def testAssignAddSubWithAggregationSum(self, distribution):
+    with distribution.scope():
+      v = variable_scope.variable(
+          0.,
+          synchronization=variables_lib.VariableSynchronization.ON_READ,
+          aggregation=variables_lib.VariableAggregation.SUM)
+    self.evaluate(variables_lib.global_variables_initializer())
+    with self.assertRaisesRegex(
+        ValueError, "SyncOnReadVariable does not support "):
+      self.evaluate(v.assign_add(1.))
+    with self.assertRaisesRegex(
+        ValueError, "SyncOnReadVariable does not support "):
+      self.evaluate(v.assign_sub(1.))
 
 
 class PerReplicaTest(test.TestCase, parameterized.TestCase):

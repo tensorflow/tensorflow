@@ -169,6 +169,7 @@ class Delegate {
     // Note that graph.inputs() cannot be used directly, as the notion of
     // graph input has a different meaning in public API and GPU-internal API.
     {
+      inputs_.clear();
       inputs_.reserve(delegate_params->input_tensors->size);
       for (int i = 0; i < delegate_params->input_tensors->size; ++i) {
         const int tensor_index = delegate_params->input_tensors->data[i];
@@ -210,6 +211,7 @@ class Delegate {
     // Note that graph.outputs() cannot be used directly, as the notion of
     // graph output has a different meaning in public API and GPU-internal API.
     {
+      outputs_.clear();
       outputs_.reserve(delegate_params->output_tensors->size);
       for (int i = 0; i < delegate_params->output_tensors->size; ++i) {
         const int tensor_index = delegate_params->output_tensors->data[i];

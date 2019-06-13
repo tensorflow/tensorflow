@@ -118,8 +118,7 @@ def main(argv):
         FLAGS.input_saved_model_dir,
         FLAGS.retrain,
         FLAGS.regularization_loss_multiplier)
-    model = make_classifier(feature_extractor,
-                            dropout_rate=0.0)  # TODO(b/134660903): Remove.
+    model = make_classifier(feature_extractor)
 
     model.compile(loss=tf.keras.losses.categorical_crossentropy,
                   optimizer=tf.keras.optimizers.SGD(),

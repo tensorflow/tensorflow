@@ -27,6 +27,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
@@ -218,6 +219,11 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
       time.sleep(0.2)
       sess.close()
       thread.join()
+
+  def testInvalidFunction(self):
+    ds = dataset_ops.Dataset.range(5)
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(ds.reduce(0, lambda _, __: ()))
 
 
 if __name__ == "__main__":

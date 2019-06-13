@@ -1,3 +1,7 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+
 package(
     default_visibility = [
         ":internal",
@@ -21,10 +25,6 @@ package_group(
         "//tensorflow/compiler/tf2xla:friends",
     ],
 )
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 # Target that bundles up the XLA CPU and GPU JIT devices.
 cc_library(
@@ -336,6 +336,7 @@ cc_library(
     ],
     deps = [
         ":common",
+        ":compilability_check_util",
         ":compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -344,6 +345,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
     alwayslink = 1,
 )
@@ -452,6 +455,7 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:ops",
+        "//tensorflow/cc:resource_variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:ops",
         "//tensorflow/core:test",

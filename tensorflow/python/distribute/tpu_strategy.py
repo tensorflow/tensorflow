@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import contextlib
 import copy
 import weakref
 
@@ -69,6 +70,15 @@ def get_tpu_system_metadata(tpu_cluster_resolver):
           query_topology=False))
 
   return tpu_system_metadata
+
+
+@contextlib.contextmanager
+def maybe_init_scope():
+  if ops.executing_eagerly_outside_functions():
+    yield
+  else:
+    with ops.init_scope():
+      yield
 
 
 # TODO(jhseu): Deduplicate with MirroredStrategy?
@@ -138,9 +148,9 @@ class TPUStrategy(distribute_lib.Strategy):
     Args:
       tpu_cluster_resolver: A tf.distribute.cluster_resolver.TPUClusterResolver,
           which provides information about the TPU cluster.
-      device_assignment: Optional `tf.contrib.tpu.DeviceAssignment` to specify
-          the placement of replicas on the TPU cluster. Currently only supports
-          the usecase of using a single core within a TPU cluster.
+      device_assignment: Optional `tf.tpu.experimental.DeviceAssignment` to
+          specify the placement of replicas on the TPU cluster. Currently only
+          supports the usecase of using a single core within a TPU cluster.
     """
     super(TPUStrategy, self).__init__(TPUExtended(
         self, tpu_cluster_resolver, device_assignment=device_assignment))
@@ -172,9 +182,9 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
           metrics, summaries etc.
           This parameter is only used when Distribution Strategy is used with
           estimator or keras.
-      device_assignment: Optional `tf.contrib.tpu.DeviceAssignment` to specify
-          the placement of replicas on the TPU cluster. Currently only supports
-          the usecase of using a single core within a TPU cluster.
+      device_assignment: Optional `tf.tpu.experimental.DeviceAssignment` to
+          specify the placement of replicas on the TPU cluster. Currently only
+          supports the usecase of using a single core within a TPU cluster.
     """
     super(TPUStrategyV1, self).__init__(TPUExtended(
         self, tpu_cluster_resolver, steps_per_run, device_assignment))
@@ -353,7 +363,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         replicate_inputs.append((nest.map_structure(
             select_replica, per_replica_inputs),))
 
-      replicate_outputs = tpu.replicate(run_fn, replicate_inputs)
+      replicate_outputs = tpu.replicate(
+          run_fn, replicate_inputs, device_assignment=self._device_assignment)
 
       # If run_fn has tensor outputs, tpu.replicate returns a list of list. We
       # will flatten it in this case. If run_fn has no tensor outputs,
@@ -416,7 +427,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     """Experimental method added to be used by Estimator.
 
     This is a private method only to be used by Estimator. Other frameworks
-    should directly be calling `tf.contrib.distribute.initialize_tpu_system`
+    should directly be calling `tf.tpu.experimental.initialize_tpu_system`
     """
     tpu_strategy_util.initialize_tpu_system(self._tpu_cluster_resolver)
 
@@ -440,10 +451,9 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         with ops.device(d):
           if i == 0:
             initial_value = kwargs["initial_value"]
-            # TODO(b/134779280): Remove initialization scope once the
-            # "Tensor-typed variable initializers must either be wrapped in an "
-            # "init_scope or callable" error is fixed.
-            with ops.init_scope():
+            # Note: some v1 code expects variable initializer creation to happen
+            # inside a init_scope.
+            with maybe_init_scope():
               initial_value = initial_value() if callable(
                   initial_value) else initial_value
 
@@ -485,23 +495,25 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, self._device_map, value, destinations)
 
-    devices = cross_device_ops_lib.get_devices_from(destinations)
-    if len(devices) != 1:
-      raise ValueError("Multiple devices are not supported for TPUStrategy")
-
+    # TODO(cjfj): Detect when it is possible to use `cross_replica_sum`.
     # Always performs the reduction on the TPU host.
     with ops.device(self._host_device):
       output = math_ops.add_n(value.values)
       if reduce_op == reduce_util.ReduceOp.MEAN:
         output *= (1. / len(value.values))
 
-    # If necessary, copy to requested destination.
-    dest_canonical = device_util.canonicalize(devices[0])
-    host_canonical = device_util.canonicalize(self._host_device)
+    devices = cross_device_ops_lib.get_devices_from(destinations)
 
-    if dest_canonical != host_canonical:
-      with ops.device(dest_canonical):
-        output = array_ops.identity(output)
+    if len(devices) == 1:
+      # If necessary, copy to requested destination.
+      dest_canonical = device_util.canonicalize(devices[0])
+      host_canonical = device_util.canonicalize(self._host_device)
+
+      if dest_canonical != host_canonical:
+        with ops.device(dest_canonical):
+          output = array_ops.identity(output)
+    else:
+      output = cross_device_ops_lib.simple_broadcast(output, destinations)
 
     return output
 
@@ -709,8 +721,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         maximum_shapes = None
 
       with strategy.scope():
-        replicate_outputs = tpu.replicate(replicated_fn, replicate_inputs,
-                                          maximum_shapes=maximum_shapes)
+        replicate_outputs = tpu.replicate(
+            replicated_fn,
+            replicate_inputs,
+            device_assignment=self._device_assignment,
+            maximum_shapes=maximum_shapes)
 
       # Remove all no ops that may have been added during 'tpu.replicate()'
       if isinstance(result[0], list):

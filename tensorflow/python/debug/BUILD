@@ -8,18 +8,15 @@
 #   For a user interface walkthrough, see https://www.tensorflow.org/guide/debugger
 # ":grpc_debug_server": Server interface for grpc:// debug URLs.
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "if_not_v2", "if_not_windows", "py_binary", "py_test")
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "py_binary")
-load("//tensorflow:tensorflow.bzl", "if_not_v2")
-load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 py_library(
     name = "debug_py",

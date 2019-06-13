@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/testing/tflite_driver.h"
 
+#include <complex>
+
 #include "absl/strings/escaping.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/delegates/flex/delegate.h"
+#include "tensorflow/lite/kernels/custom_ops_register.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/string_util.h"
@@ -56,6 +59,11 @@ int8_t Value(const TfLitePtrUnion& data, int index) {
 template <>
 bool Value(const TfLitePtrUnion& data, int index) {
   return data.b[index];
+}
+
+template <>
+std::complex<float> Value(const TfLitePtrUnion& data, int index) {
+  return std::complex<float>(data.c64[index].re, data.c64[index].im);
 }
 
 template <typename T>
@@ -123,7 +131,29 @@ class TfLiteDriver::Expectation {
   }
 
  private:
-  template <typename T>
+  bool CompareTwoValuesHelper(float v1, float v2) {
+    float diff = std::abs(v1 - v2);
+    bool error_is_large = false;
+    // For very small numbers, try absolute error, otherwise go with
+    // relative.
+    if (std::abs(v2) < relative_threshold_) {
+      error_is_large = (diff > absolute_threshold_);
+    } else {
+      error_is_large = (diff > relative_threshold_ * std::abs(v2));
+    }
+    return error_is_large;
+  }
+
+  bool CompareTwoValues(std::complex<float> v1, std::complex<float> v2) {
+    return CompareTwoValues(v1.real(), v2.real()) ||
+           CompareTwoValues(v1.imag(), v2.imag());
+  }
+
+  bool CompareTwoValues(float v1, float v2) {
+    return CompareTwoValuesHelper(v1, v2);
+  }
+
+  template <typename T, typename TS>
   bool TypedCheck(bool verbose, const TfLiteTensor& tensor) {
     size_t tensor_size = tensor.bytes / sizeof(T);
 
@@ -136,18 +166,9 @@ class TfLiteDriver::Expectation {
 
     bool good_output = true;
     for (int i = 0; i < tensor_size; ++i) {
-      float computed = Value<T>(tensor.data, i);
-      float reference = Value<T>(data_, i);
-      float diff = std::abs(computed - reference);
-      bool error_is_large = false;
-      // For very small numbers, try absolute error, otherwise go with
-      // relative.
-      if (std::abs(reference) < relative_threshold_) {
-        error_is_large = (diff > absolute_threshold_);
-      } else {
-        error_is_large = (diff > relative_threshold_ * std::abs(reference));
-      }
-      if (error_is_large) {
+      TS computed = Value<T>(tensor.data, i);
+      TS reference = Value<T>(data_, i);
+      if (CompareTwoValues(computed, reference)) {
         good_output = false;
         if (verbose) {
           std::cerr << "  index " << i << ": got " << computed
@@ -157,6 +178,8 @@ class TfLiteDriver::Expectation {
     }
     return good_output;
   }
+
+  bool TypedCheckString(bool verbose, const TfLiteTensor& tensor);
 
   TfLitePtrUnion data_;
   size_t num_elements_;
@@ -171,9 +194,8 @@ void TfLiteDriver::Expectation::SetData<string>(const string& csv_values) {
   memcpy(data_.raw, s.data(), s.size());
 }
 
-template <>
-bool TfLiteDriver::Expectation::TypedCheck<string>(bool verbose,
-                                                   const TfLiteTensor& tensor) {
+bool TfLiteDriver::Expectation::TypedCheckString(bool verbose,
+                                                 const TfLiteTensor& tensor) {
   if (tensor.data.raw == nullptr) {
     if (verbose) {
       std::cerr << "  got empty string" << std::endl;
@@ -215,19 +237,22 @@ bool TfLiteDriver::Expectation::Check(bool verbose,
                                       const TfLiteTensor& tensor) {
   switch (tensor.type) {
     case kTfLiteFloat32:
-      return TypedCheck<float>(verbose, tensor);
+      return TypedCheck<float, float>(verbose, tensor);
     case kTfLiteInt32:
-      return TypedCheck<int32_t>(verbose, tensor);
+      return TypedCheck<int32_t, float>(verbose, tensor);
     case kTfLiteInt64:
-      return TypedCheck<int64_t>(verbose, tensor);
+      return TypedCheck<int64_t, float>(verbose, tensor);
     case kTfLiteUInt8:
-      return TypedCheck<uint8_t>(verbose, tensor);
+      return TypedCheck<uint8_t, float>(verbose, tensor);
     case kTfLiteInt8:
-      return TypedCheck<int8_t>(verbose, tensor);
+      return TypedCheck<int8_t, float>(verbose, tensor);
     case kTfLiteBool:
-      return TypedCheck<bool>(verbose, tensor);
+      return TypedCheck<bool, float>(verbose, tensor);
     case kTfLiteString:
-      return TypedCheck<string>(verbose, tensor);
+      return TypedCheckString(verbose, tensor);
+    case kTfLiteComplex64:
+      return TypedCheck<std::complex<float>, std::complex<float>>(verbose,
+                                                                  tensor);
     default:
       fprintf(stderr, "Unsupported type %d in Check\n", tensor.type);
       return false;
@@ -243,6 +268,10 @@ TfLiteDriver::TfLiteDriver(bool use_nnapi, const string& delegate_name,
     resolver_.reset(new ops::builtin::BuiltinRefOpResolver);
   } else {
     resolver_.reset(new ops::builtin::BuiltinOpResolver);
+    ops::builtin::BuiltinOpResolver* buildinop_resolver_ =
+        reinterpret_cast<ops::builtin::BuiltinOpResolver*>(resolver_.get());
+    buildinop_resolver_->AddCustom("RFFT2D",
+                                   tflite::ops::custom::Register_RFFT2D());
   }
 
   if (delegate_name == "FLEX") {
@@ -401,6 +430,9 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
       break;
     case kTfLiteString:
       expected_output_[id]->SetData<string>(csv_values);
+      break;
+    case kTfLiteComplex64:
+      expected_output_[id]->SetData<std::complex<float>>(csv_values);
       break;
     default:
       Invalidate(absl::StrCat("Unsupported tensor type ",

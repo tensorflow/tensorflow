@@ -737,13 +737,14 @@ int TF_PickUnusedPortOrDie() {
 }
 
 TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType data_type,
-                                                void* data, size_t len) {
+                                                void* data, size_t len,
+                                                TF_Status* status) {
   auto dtype = static_cast<tensorflow::DataType>(data_type);
   DCHECK(tensorflow::DataTypeCanUseMemcpy(dtype));
 
   tensorflow::Tensor tensor(dtype, tensorflow::TensorShape({}));
   std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
-  return new TFE_TensorHandle(tensor);
+  return TFE_TensorHandle::CreateLocalHandle(tensor, status);
 }
 
 namespace {

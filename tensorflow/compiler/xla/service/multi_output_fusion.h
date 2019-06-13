@@ -48,7 +48,7 @@ namespace xla {
 //  instruction fusion.
 class MultiOutputFusion : public HloModulePass {
  public:
-  MultiOutputFusion(int64 fuel) : fuel_(fuel) {}
+  MultiOutputFusion() = default;
 
   absl::string_view name() const override { return "multi_output_fusion"; }
 
@@ -103,12 +103,6 @@ class MultiOutputFusion : public HloModulePass {
   // TODO(b/80420762): Perform producer-consumer multi-output fusion in
   // InstructionFusion instead.
   virtual bool DoProducerConsumerMultiOutputFusion();
-
-  // Optimization fuel is a compiler debugging technique that makes an
-  // optimization pass stop what it is doing after having made N changes to the
-  // program, where N is the fuel. By varying N, this can be used to find the
-  // first single change that makes a test fail.
-  int64 fuel_;
 
  private:
   // Update the internal data structures after instr1 and instr2 are fused into

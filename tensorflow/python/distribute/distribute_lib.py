@@ -1943,20 +1943,47 @@ class _DefaultDistributionStrategy(StrategyV1):
         _DefaultDistributionExtended(self))
 
 
-class _DefaultDistributionExtended(StrategyExtendedV1):
-  """Implementation of _DefaultDistributionStrategy."""
+class _DefaultDistributionContext(object):
+  """Context manager setting the default `tf.distribute.Strategy`."""
 
-  def _scope(self, strategy):
-    """Context manager setting a variable creator and `self` as current."""
-    if distribution_strategy_context.has_strategy():
-      raise RuntimeError("Must not nest tf.distribute.Strategy scopes.")
+  def __init__(self, strategy):
 
     def creator(next_creator, *args, **kwargs):
       _require_strategy_scope_strategy(strategy)
       return next_creator(*args, **kwargs)
 
-    return _CurrentDistributionContext(
-        strategy, variable_scope.variable_creator_scope(creator))
+    self._var_creator_scope = variable_scope.variable_creator_scope(creator)
+    self._strategy = strategy
+    self._nested_count = 0
+
+  def __enter__(self):
+    # Allow this scope to be entered if this strategy is already in scope.
+    if distribution_strategy_context.has_strategy():
+      raise RuntimeError("Must not nest tf.distribute.Strategy scopes.")
+    if self._nested_count == 0:
+      self._var_creator_scope.__enter__()
+    self._nested_count += 1
+    return self._strategy
+
+  def __exit__(self, exception_type, exception_value, traceback):
+    self._nested_count -= 1
+    if self._nested_count == 0:
+      try:
+        self._var_creator_scope.__exit__(
+            exception_type, exception_value, traceback)
+      except RuntimeError as e:
+        six.raise_from(
+            RuntimeError("Variable creator scope nesting error: move call to "
+                         "tf.distribute.set_strategy() out of `with` scope."),
+            e)
+
+
+class _DefaultDistributionExtended(StrategyExtendedV1):
+  """Implementation of _DefaultDistributionStrategy."""
+
+  def _scope(self, strategy):
+    """Context manager setting a variable creator and `self` as current."""
+    return _DefaultDistributionContext(strategy)
 
   def colocate_vars_with(self, colocate_with_variable):
     """Does not require `self.scope`."""

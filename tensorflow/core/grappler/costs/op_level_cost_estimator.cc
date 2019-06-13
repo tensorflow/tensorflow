@@ -60,6 +60,13 @@ constexpr char kStopGradient[] = "StopGradient";
 constexpr char kPreventGradient[] = "PreventGradient";
 constexpr char kGather[] = "Gather";
 constexpr char kGatherV2[] = "GatherV2";
+constexpr char kScatterAdd[] = "ScatterAdd";
+constexpr char kScatterDiv[] = "ScatterDiv";
+constexpr char kScatterMax[] = "ScatterMax";
+constexpr char kScatterMin[] = "ScatterMin";
+constexpr char kScatterMul[] = "ScatterMul";
+constexpr char kScatterSub[] = "ScatterSub";
+constexpr char kScatterUpdate[] = "ScatterUpdate";
 constexpr char kSlice[] = "Slice";
 constexpr char kMaxPool[] = "MaxPool";
 constexpr char kMaxPoolGrad[] = "MaxPoolGrad";
@@ -275,6 +282,14 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
 
       {kGather, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
       {kGatherV2, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
+      {kScatterAdd, wrap(&OpLevelCostEstimator::PredictScatter)},
+      {kScatterDiv, wrap(&OpLevelCostEstimator::PredictScatter)},
+      {kScatterMax, wrap(&OpLevelCostEstimator::PredictScatter)},
+      {kScatterMin, wrap(&OpLevelCostEstimator::PredictScatter)},
+      {kScatterMul, wrap(&OpLevelCostEstimator::PredictScatter)},
+      {kScatterSub, wrap(&OpLevelCostEstimator::PredictScatter)},
+      {kScatterUpdate, wrap(&OpLevelCostEstimator::PredictScatter)},
+
       {kSlice, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
 
       {kPlaceholder, wrap(&OpLevelCostEstimator::PredictIdentity)},
@@ -1407,7 +1422,7 @@ Costs OpLevelCostEstimator::PredictEinsum(const OpContext& op_context) const {
   batch_matmul_op_context.op_info = batch_matmul_op_info;
   Costs costs = PredictCosts(batch_matmul_op_context);
   costs.inaccurate = costs.inaccurate || found_unknown_shapes;
-
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 
@@ -1547,6 +1562,53 @@ Costs OpLevelCostEstimator::PredictGatherOrSlice(
   costs.inaccurate = unknown_shapes;
   costs.num_ops_with_unknown_shapes = unknown_shapes;
   costs.max_memory = output_size;
+
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictScatter(const OpContext& op_context) const {
+  // Scatter ops sparsely access a reference input and output tensor.
+  const auto& op_info = op_context.op_info;
+  bool found_unknown_shapes = false;
+
+  // input[0]: ref tensor that will be sparsely accessed
+  // input[1]: indices - A tensor of indices into the first dimension of ref.
+  // input[2]: updates where updates.shape = indices.shape + ref.shape[1:]
+  // See
+  // https://www.tensorflow.org/api_docs/python/tf/scatter_add and
+  // https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/ops/state_ops.cc#L146
+
+  const int64 num_indices =
+      CalculateTensorElementCount(op_info.inputs(1), &found_unknown_shapes);
+
+  int64 num_elems_in_ref_per_index = 1;
+  auto ref_tensor_shape = MaybeGetMinimumShape(
+      op_info.inputs(0).shape(), op_info.inputs(0).shape().dim_size(),
+      &found_unknown_shapes);
+  for (int i = 1; i < ref_tensor_shape.dim().size(); ++i) {
+    num_elems_in_ref_per_index *= ref_tensor_shape.dim(i).size();
+  }
+  const int64 op_count = num_indices * num_elems_in_ref_per_index;
+
+  // Sparsely access ref so input size depends on the number of operations
+  int64 ref_input_size =
+      op_count * DataTypeSize(BaseType(op_info.inputs(0).dtype()));
+  int64 indices_input_size =
+      CalculateTensorSize(op_info.inputs(1), &found_unknown_shapes);
+  int64 updates_input_size =
+      CalculateTensorSize(op_info.inputs(2), &found_unknown_shapes);
+
+  double total_input_size =
+      ref_input_size + indices_input_size + updates_input_size;
+
+  // Sparsely access ref so output size depends on the number of operations
+  double total_output_size =
+      op_count * DataTypeSize(BaseType(op_info.outputs(0).dtype()));
+
+  auto costs = PredictOpCountBasedCost(op_count, total_input_size,
+                                       total_output_size, op_info);
+  costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
 
   return costs;
 }

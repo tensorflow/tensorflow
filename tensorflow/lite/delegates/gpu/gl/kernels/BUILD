@@ -1,9 +1,9 @@
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 cc_library(
     name = "add",
@@ -338,6 +338,26 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "prelu_test",
+    srcs = ["prelu_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":prelu",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "relu",
     srcs = ["relu.cc"],
@@ -384,6 +404,26 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "reshape_test",
+    srcs = ["reshape_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":reshape",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "slice",
     srcs = ["slice.cc"],
@@ -394,6 +434,26 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_test(
+    name = "slice_test",
+    srcs = ["slice_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":slice",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -409,6 +469,26 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_test(
+    name = "softmax_test",
+    srcs = ["softmax_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":softmax",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -450,6 +530,26 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "transpose_conv_test",
+    srcs = ["transpose_conv_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":test_util",
+        ":transpose_conv",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "upsampling_bilinear",
     srcs = ["upsampling_bilinear.cc"],
@@ -460,6 +560,26 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_test(
+    name = "upsampling_bilinear_test",
+    srcs = ["upsampling_bilinear_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":test_util",
+        ":upsampling_bilinear",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -557,6 +557,7 @@ tf_xla_py_test(
     name = "image_ops_test",
     size = "small",
     srcs = ["image_ops_test.py"],
+    shard_count = 10,
     tags = [
         "optonly",  # Times out frequently in fastbuild mode.
     ],
@@ -1146,7 +1147,8 @@ cuda_py_test(
     shard_count = 5,
     tags = [
         # TODO(b/134780716): Re-enable this test.
-        "notap",
+        "nogpu",
+        "no_cuda_on_cpu_tap",
     ],
 )
 

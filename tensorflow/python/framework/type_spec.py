@@ -86,7 +86,7 @@ class TypeSpec(object):
     # consider two `TypeSpec`s compatible if they have the same type, and
     # the values returned by `_serialize` are compatible (where
     # `tf.TensorShape`, `tf.TensorSpec`, and `tf.DType` are checked for
-    # compatibility using their `is_comptaible_with` method; and all other
+    # compatibility using their `is_compatible_with` method; and all other
     # types are considered compatible if they are equal).
     if not isinstance(spec_or_value, TypeSpec):
       spec_or_value = type_spec_from_value(spec_or_value)
@@ -362,7 +362,7 @@ class TypeSpec(object):
 
   @staticmethod
   def __most_specific_compatible_type_serialization(a, b):
-    """Helper for most_specific_comptaible_type.
+    """Helper for most_specific_compatible_type.
 
     Combines two type serializations as follows:
 
@@ -491,6 +491,21 @@ def _type_spec_from_value(value):
 
   if isinstance(value, composite_tensor.CompositeTensor):
     return value._type_spec  # pylint: disable=protected-access
+
+  # If `value` is a list and all of its elements can be represented by the same
+  # batchable type spec, then we can represent the entire list using a single
+  # type spec that captures the type accurately (unlike the `convert_to_tensor`
+  # fallback).
+  if isinstance(value, list) and value:
+    subspecs = [_type_spec_from_value(v) for v in value]
+    if isinstance(subspecs[0], BatchableTypeSpec):
+      merged_subspec = subspecs[0]
+      try:
+        for subspec in subspecs[1:]:
+          merged_subspec = merged_subspec.most_specific_compatible_type(subspec)
+        return merged_subspec._batch(len(subspecs))  # pylint: disable=protected-access
+      except (ValueError, TypeError):
+        pass  # incompatible subspecs
 
   for entry in reversed(_TYPE_CONVERSION_FUNCTION_REGISTRY):
     type_object, converter_fn, allow_subclass = entry

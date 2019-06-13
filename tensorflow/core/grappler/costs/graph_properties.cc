@@ -750,14 +750,10 @@ class SymbolicShapeRefiner {
       ic->set_output(output, out);
       if (outprop.has_value()) {
         // Forward tensor value to output_tensors_as_shape.
-        Tensor tensor;
-        if (tensor.FromProto(outprop.value())) {
-          MaybeTensorValueToShape(ic, tensor,
-                                  &ctx->output_tensors_as_shapes[output]);
-          const_tensors_to_propagate_.push_back(outprop.value());
-          ctx->output_tensor_protos[output] =
-              &const_tensors_to_propagate_.back();
-        }
+        MaybeTensorProtoToShape(ic, outprop.value(),
+                                &ctx->output_tensors_as_shapes[output]);
+        const_tensors_to_propagate_.push_back(outprop.value());
+        ctx->output_tensor_protos[output] = &const_tensors_to_propagate_.back();
       }
       output++;
     }
@@ -778,8 +774,6 @@ class SymbolicShapeRefiner {
     // Check if the shapes of the nodes in the fan-in of this node have changed,
     // and if they have, update the node input shapes.
     InferenceContext* ic = ctx->inference_context.get();
-    std::vector<Tensor> const_values(ic->num_inputs());
-    std::vector<const Tensor*> input_tensors(ic->num_inputs(), nullptr);
     std::vector<ShapeHandle> input_tensors_as_shapes(ic->num_inputs());
     ctx->input_tensor_protos.resize(ic->num_inputs(), nullptr);
 
@@ -806,17 +800,14 @@ class SymbolicShapeRefiner {
       // NodeContext:
       // output_tensor_protos to input_tensor_protos and input_tensors, and
       // output_tensors_as_shapes to input_tensors_as_shapes.
-
       if (src_ctx->output_tensors_as_shapes.size() > src_output) {
         input_tensors_as_shapes[dst_input] =
             src_ctx->output_tensors_as_shapes[src_output];
       }
 
       if (src_ctx->output_tensor_protos.size() > src_output) {
-        auto* tensor_proto = src_ctx->output_tensor_protos[src_output];
-        if (tensor_proto != nullptr &&
-            const_values[dst_input].FromProto(*tensor_proto)) {
-          input_tensors[dst_input] = &const_values[dst_input];
+        const auto* tensor_proto = src_ctx->output_tensor_protos[src_output];
+        if (tensor_proto != nullptr) {
           ctx->input_tensor_protos[dst_input] = tensor_proto;
 
           if (!ic->FullyDefined(input_tensors_as_shapes[dst_input])) {
@@ -844,7 +835,7 @@ class SymbolicShapeRefiner {
             // but different Shape objects -- SymbolicShapeManager assigns
             // different symbol id to each fanout shape).
             // TODO(dyoon): clean up the way values are propagated.
-            MaybeTensorValueToShape(ic, const_values[dst_input],
+            MaybeTensorProtoToShape(ic, *tensor_proto,
                                     &input_tensors_as_shapes[dst_input]);
           }
         }
@@ -886,7 +877,9 @@ class SymbolicShapeRefiner {
       return Status::OK();
     }
 
-    ic->set_input_tensors(input_tensors);
+    // Notice: UpdateFunction only uses input_tensors_as_shapes, so for function
+    // nodes, we dont' perform the conversion from TensorProtos to Tensors for
+    // constant inputs here.
     ic->set_input_tensors_as_shapes(input_tensors_as_shapes);
 
     // Properly handle function nodes.
@@ -905,6 +898,18 @@ class SymbolicShapeRefiner {
                 << s.ToString();
       }
     }
+
+    //  Construct Tensors for constant inputs used by shape functions.
+    std::vector<Tensor> const_values(ic->num_inputs());
+    std::vector<const Tensor*> input_tensors(ic->num_inputs(), nullptr);
+    for (int dst_input = 0; dst_input < ic->num_inputs(); ++dst_input) {
+      const TensorProto* tensor_proto = ctx->input_tensor_protos[dst_input];
+      if (tensor_proto != nullptr &&
+          const_values[dst_input].FromProto(*tensor_proto)) {
+        input_tensors[dst_input] = &const_values[dst_input];
+      }
+    }
+    ic->set_input_tensors(input_tensors);
 
     // Update the shapes of the outputs.
     return InferShapes(*node, ctx);
@@ -1733,6 +1738,7 @@ class SymbolicShapeRefiner {
                                ShapeHandle* tensors_as_shapes) {
     // Integer tensors of rank one can also be interpreted as a shape
     // provided all their values are >= -1.
+
     if (IsIntegerVector(tensor)) {
       bool has_values_smaller_than_minus_1 = false;
       std::vector<DimensionHandle> dims;

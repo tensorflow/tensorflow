@@ -34,9 +34,7 @@ class _ScanDataset(dataset_ops.UnaryDataset):
   def __init__(self, input_dataset, initial_state, scan_func):
     """See `scan()` for details."""
     self._input_dataset = input_dataset
-
-    with ops.name_scope("initial_state"):
-      self._initial_state = structure.normalize_tensors(initial_state)
+    self._initial_state = structure.normalize_tensors(initial_state)
 
     # Compute initial values for the state classes, shapes and types based on
     # the initial state. The shapes may be refined by running `tf_scan_func` one

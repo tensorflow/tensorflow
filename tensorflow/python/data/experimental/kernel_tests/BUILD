@@ -497,9 +497,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/data/experimental/ops:batching",
-        "//tensorflow/python/data/experimental/ops:distribute",
-        "//tensorflow/python/data/experimental/ops:grouping",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
@@ -532,23 +529,6 @@ py_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
-    ],
-)
-
-py_test(
-    name = "restructured_dataset_test",
-    size = "medium",
-    srcs = ["restructured_dataset_test.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python/data/experimental/ops:batching",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/util:nest",
     ],
 )
 

@@ -122,7 +122,9 @@ class Metric(object):
 
   def __del__(self):
     if hasattr(self, '_metric'):
-      self._metric_methods[self._label_length].delete(self._metric)
+      deleter = self._metric_methods[self._label_length].delete
+      if deleter is not None:
+        deleter(self._metric)
 
   def get_cell(self, *labels):
     """Retrieves the cell."""

@@ -198,6 +198,8 @@ class ErrorMetadataBase(object):
     return '\n'.join(lines)
 
   def create_exception(self, preferred_type):
+    if preferred_type.__init__ is Exception.__init__:
+      return preferred_type(self.get_message())
     if preferred_type in KNOWN_STRING_CONSTRUCTOR_ERRORS:
       return preferred_type(self.get_message())
     elif preferred_type is KeyError:

@@ -52,6 +52,7 @@ limitations under the License.
 %rename("%s") TFE_DeleteProfilerContext;
 %rename("%s") TFE_StartProfilerServer;
 %rename("%s") TFE_ProfilerClientStartTracing;
+%rename("%s") TFE_ProfilerClientMonitor;
 %rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_SetEagerTensorProfiler;

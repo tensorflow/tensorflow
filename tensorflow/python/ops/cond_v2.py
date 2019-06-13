@@ -646,7 +646,15 @@ def _check_same_outputs(op_type, graphs):
     except (ValueError, TypeError) as e:
       error(b, str(e))
 
-    assert len(graphs[0].outputs) == len(graphs[b].outputs)
+    op_type_str = "cond" if op_type == _COND else "case"
+    if len(graphs[0].outputs) != len(graphs[b].outputs):
+      raise ValueError("Lengths of branch outputs of {op_type} must match.\n"
+                       "len(graphs[0].outputs): {len_0}\n"
+                       "len(graphs[{b}].outputs): {len_b}\n".format(
+                           op_type=op_type_str,
+                           len_0=len(graphs[0].outputs),
+                           b=b,
+                           len_b=len(graphs[b].outputs)))
     for b0_out, bn_out in zip(graphs[0].outputs, graphs[b].outputs):
       if b0_out.dtype != bn_out.dtype:
         error(b, "%s and %s have different types" % (b0_out, bn_out))
@@ -864,7 +872,6 @@ def _CaseGrad(op, *grads):  # pylint: disable=invalid-name
 
     for branch_graph, extra_outputs in zip(branch_graphs, extra_branch_outputs):
       branch_graph.outputs.extend(extra_outputs)
-    _make_indexed_slices_indices_types_match(_CASE, branch_graphs)
     # TODO(bjp): indicate it's an internal bug if this fails.
     _check_same_outputs(_CASE, branch_graphs)
 
@@ -919,6 +926,7 @@ def _build_case(branch_index, branch_graphs, branch_inputs, name=None):
     A list of Tensors which are the outputs of the Case op. Does not include
     added intermediate outputs.
   """
+  _make_indexed_slices_indices_types_match(_CASE, branch_graphs)
   _check_same_outputs(_CASE, branch_graphs)
 
   # Add inputs to branch_graphs to make them match. Note that this modifies the

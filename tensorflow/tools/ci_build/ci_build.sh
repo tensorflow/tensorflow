@@ -73,8 +73,8 @@ CI_TENSORFLOW_SUBMODULE_PATH="${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
 CI_COMMAND_PREFIX=("${CI_COMMAND_PREFIX[@]:-${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/with_the_same_user "\
 "${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/configured ${CONTAINER_TYPE}}")
 
-# cmake (CPU) builds do not require configuration.
-if [[ "${CONTAINER_TYPE}" == "cmake" ]]; then
+# cmake (CPU) and micro builds do not require configuration.
+if [[ "${CONTAINER_TYPE}" == "cmake" ]] || [[ "${CONTAINER_TYPE}" == "micro" ]]; then
   CI_COMMAND_PREFIX=("")
 fi
 

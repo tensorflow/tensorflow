@@ -1,3 +1,49 @@
+load(
+    "//tensorflow:tensorflow.bzl",
+    "cc_header_only_library",
+    "if_android",
+    "if_cuda_or_rocm",
+    "if_not_windows",
+    "tf_cc_binary",
+    "tf_cc_shared_object",
+    "tf_cc_test",
+    "tf_cc_test_mkl",
+    "tf_cc_tests",
+    "tf_copts",
+    "tf_cuda_library",
+    "tf_kernel_library",
+    "tf_mkl_kernel_library",
+    "tf_opts_nortti_if_android",
+)
+load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
+load("//tensorflow:tensorflow.bzl", "if_nccl")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
+load(
+    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_kernel_tests_linkstatic",
+)
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "if_static",
+    "tf_cuda_tests_tags",
+)
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+    "if_mkl_ml",
+    "mkl_deps",
+)
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm",
+)
+
 # Description:
 # Op kernel implementations for TensorFlow.
 #
@@ -26,53 +72,6 @@ package_group(
         "//tensorflow_text/...",
         "//third_party/car/...",
     ],
-)
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "cc_header_only_library",
-    "if_android",
-    "if_cuda_or_rocm",
-    "if_not_windows",
-    "tf_cc_binary",
-    "tf_cc_shared_object",
-    "tf_cc_test",
-    "tf_cc_test_mkl",
-    "tf_cc_tests",
-    "tf_copts",
-    "tf_cuda_library",
-    "tf_kernel_library",
-    "tf_mkl_kernel_library",
-    "tf_opts_nortti_if_android",
-)
-load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
-load(
-    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_kernel_tests_linkstatic",
-)
-load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "if_static",
-    "tf_cuda_tests_tags",
-)
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
-    "if_mkl_ml",
-    "mkl_deps",
-)
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("//tensorflow:tensorflow.bzl", "if_nccl")
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
-    "if_rocm_is_configured",
 )
 
 config_setting(
@@ -1804,8 +1803,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["fused_batch_norm_ex_op_test.cc"],
     tags = [
-        # TODO(b/134687024): Re-enable this test.
-        "notap",
+        "no_cuda_on_cpu_tap",
     ],
     deps = [
         ":cwise_op",
@@ -2830,7 +2828,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "non_max_suppression_op",
     prefix = "non_max_suppression_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + if_cuda(["@cub_archive//:cub"]),
 )
 
 tf_kernel_library(
@@ -3034,6 +3032,23 @@ tf_cuda_cc_test(
 tf_cuda_cc_test(
     name = "crop_and_resize_op_benchmark_test",
     srcs = ["crop_and_resize_op_benchmark_test.cc"],
+    deps = [
+        ":image",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "non_max_suppression_op_gpu_test",
+    srcs = ["non_max_suppression_op_gpu_test.cc"],
+    tags = tf_cuda_tests_tags() + ["no_cuda_on_cpu_tap"],
     deps = [
         ":image",
         ":ops_testutil",
@@ -6111,6 +6126,7 @@ filegroup(
         "cwise_op_equal_to_2.cc",
         "cwise_op_not_equal_to_1.cc",
         "cwise_op_not_equal_to_2.cc",
+        "cwise_op_erf.cc",
         "cwise_op_exp.cc",
         "cwise_op_floor.cc",
         "cwise_op_floor_div.cc",

@@ -402,6 +402,19 @@ Status ShapeVerifier::HandleRng(HloInstruction* instruction) {
   return Status::OK();
 }
 
+Status ShapeVerifier::HandleRngGetAndUpdateState(HloInstruction* instruction) {
+  TF_RETURN_IF_ERROR(CheckOperandCount(instruction, 0));
+  const Shape& result_shape = instruction->shape();
+  const Shape expected_shape = ShapeUtil::MakeShape(U64, {2});
+  if (!ShapeUtil::Compatible(result_shape, expected_shape)) {
+    return InternalError(
+        "Invalid RngGetAndUpdateState, expect result to have shape %s, got %s ",
+        StringifyShape(expected_shape), StringifyShape(result_shape));
+  }
+
+  return Status::OK();
+}
+
 Status ShapeVerifier::HandleReverse(HloInstruction* reverse) {
   return CheckShape(
       reverse, ShapeInference::InferReverseShape(reverse->operand(0)->shape(),

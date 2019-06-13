@@ -17920,6 +17920,166 @@ op {
   is_stateful: true
 }
 op {
+  name: "CudnnRNNBackpropV3"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_h"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_c"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "params"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sequence_lengths"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "output_h"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "output_c"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "output_backprop"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "output_h_backprop"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "output_c_backprop"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "reserve_space"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "host_reserved"
+    type: DT_INT8
+  }
+  output_arg {
+    name: "input_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "input_h_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "input_c_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "params_backprop"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "rnn_mode"
+    type: "string"
+    default_value {
+      s: "lstm"
+    }
+    allowed_values {
+      list {
+        s: "rnn_relu"
+        s: "rnn_tanh"
+        s: "lstm"
+        s: "gru"
+      }
+    }
+  }
+  attr {
+    name: "input_mode"
+    type: "string"
+    default_value {
+      s: "linear_input"
+    }
+    allowed_values {
+      list {
+        s: "linear_input"
+        s: "skip_input"
+        s: "auto_select"
+      }
+    }
+  }
+  attr {
+    name: "direction"
+    type: "string"
+    default_value {
+      s: "unidirectional"
+    }
+    allowed_values {
+      list {
+        s: "unidirectional"
+        s: "bidirectional"
+      }
+    }
+  }
+  attr {
+    name: "dropout"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "num_proj"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "time_major"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "CudnnRNNCanonicalToParams"
   input_arg {
     name: "num_layers"
@@ -17963,6 +18123,231 @@ op {
     type: "int"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "rnn_mode"
+    type: "string"
+    default_value {
+      s: "lstm"
+    }
+    allowed_values {
+      list {
+        s: "rnn_relu"
+        s: "rnn_tanh"
+        s: "lstm"
+        s: "gru"
+      }
+    }
+  }
+  attr {
+    name: "input_mode"
+    type: "string"
+    default_value {
+      s: "linear_input"
+    }
+    allowed_values {
+      list {
+        s: "linear_input"
+        s: "skip_input"
+        s: "auto_select"
+      }
+    }
+  }
+  attr {
+    name: "direction"
+    type: "string"
+    default_value {
+      s: "unidirectional"
+    }
+    allowed_values {
+      list {
+        s: "unidirectional"
+        s: "bidirectional"
+      }
+    }
+  }
+  attr {
+    name: "dropout"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+}
+op {
+  name: "CudnnRNNCanonicalToParamsV2"
+  input_arg {
+    name: "num_layers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "num_units"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "input_size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "weights"
+    type_attr: "T"
+    number_attr: "num_params_weights"
+  }
+  input_arg {
+    name: "biases"
+    type_attr: "T"
+    number_attr: "num_params_biases"
+  }
+  output_arg {
+    name: "params"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "num_params_weights"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_params_biases"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "rnn_mode"
+    type: "string"
+    default_value {
+      s: "lstm"
+    }
+    allowed_values {
+      list {
+        s: "rnn_relu"
+        s: "rnn_tanh"
+        s: "lstm"
+        s: "gru"
+      }
+    }
+  }
+  attr {
+    name: "input_mode"
+    type: "string"
+    default_value {
+      s: "linear_input"
+    }
+    allowed_values {
+      list {
+        s: "linear_input"
+        s: "skip_input"
+        s: "auto_select"
+      }
+    }
+  }
+  attr {
+    name: "direction"
+    type: "string"
+    default_value {
+      s: "unidirectional"
+    }
+    allowed_values {
+      list {
+        s: "unidirectional"
+        s: "bidirectional"
+      }
+    }
+  }
+  attr {
+    name: "dropout"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "num_proj"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+}
+op {
+  name: "CudnnRNNParamsSize"
+  input_arg {
+    name: "num_layers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "num_units"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "input_size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "params_size"
+    type_attr: "S"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "S"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   attr {
     name: "rnn_mode"
@@ -18130,6 +18515,13 @@ op {
       i: 0
     }
   }
+  attr {
+    name: "num_proj"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
 }
 op {
   name: "CudnnRNNParamsToCanonical"
@@ -18234,6 +18626,128 @@ op {
   }
   attr {
     name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+}
+op {
+  name: "CudnnRNNParamsToCanonicalV2"
+  input_arg {
+    name: "num_layers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "num_units"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "input_size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "params"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "weights"
+    type_attr: "T"
+    number_attr: "num_params_weights"
+  }
+  output_arg {
+    name: "biases"
+    type_attr: "T"
+    number_attr: "num_params_biases"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "num_params_weights"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_params_biases"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "rnn_mode"
+    type: "string"
+    default_value {
+      s: "lstm"
+    }
+    allowed_values {
+      list {
+        s: "rnn_relu"
+        s: "rnn_tanh"
+        s: "lstm"
+        s: "gru"
+      }
+    }
+  }
+  attr {
+    name: "input_mode"
+    type: "string"
+    default_value {
+      s: "linear_input"
+    }
+    allowed_values {
+      list {
+        s: "linear_input"
+        s: "skip_input"
+        s: "auto_select"
+      }
+    }
+  }
+  attr {
+    name: "direction"
+    type: "string"
+    default_value {
+      s: "unidirectional"
+    }
+    allowed_values {
+      list {
+        s: "unidirectional"
+        s: "bidirectional"
+      }
+    }
+  }
+  attr {
+    name: "dropout"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "num_proj"
     type: "int"
     default_value {
       i: 0
@@ -18597,6 +19111,145 @@ op {
   }
   attr {
     name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "is_training"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "time_major"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "CudnnRNNV3"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_h"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_c"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "params"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sequence_lengths"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_h"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_c"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "reserve_space"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "host_reserved"
+    type: DT_INT8
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "rnn_mode"
+    type: "string"
+    default_value {
+      s: "lstm"
+    }
+    allowed_values {
+      list {
+        s: "rnn_relu"
+        s: "rnn_tanh"
+        s: "lstm"
+        s: "gru"
+      }
+    }
+  }
+  attr {
+    name: "input_mode"
+    type: "string"
+    default_value {
+      s: "linear_input"
+    }
+    allowed_values {
+      list {
+        s: "linear_input"
+        s: "skip_input"
+        s: "auto_select"
+      }
+    }
+  }
+  attr {
+    name: "direction"
+    type: "string"
+    default_value {
+      s: "unidirectional"
+    }
+    allowed_values {
+      list {
+        s: "unidirectional"
+        s: "bidirectional"
+      }
+    }
+  }
+  attr {
+    name: "dropout"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "num_proj"
     type: "int"
     default_value {
       i: 0
@@ -36759,6 +37412,60 @@ op {
   }
 }
 op {
+  name: "MatrixDiagPartV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "k"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "padding_value"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "diagonal"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
+  name: "MatrixDiagV2"
+  input_arg {
+    name: "diagonal"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "k"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "num_rows"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "num_cols"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "padding_value"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
   name: "MatrixExponential"
   input_arg {
     name: "input"
@@ -36953,6 +37660,29 @@ op {
   input_arg {
     name: "diagonal"
     type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
+  name: "MatrixSetDiagV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "diagonal"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "k"
+    type: DT_INT32
   }
   output_arg {
     name: "output"
@@ -74028,6 +74758,68 @@ op {
     type: "string"
     default_value {
       s: ""
+    }
+  }
+}
+op {
+  name: "SnapshotDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "path"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "compression"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "reader_path_prefix"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "writer_path_prefix"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shard_size_bytes"
+    type: "int"
+    default_value {
+      i: 10737418240
+    }
+  }
+  attr {
+    name: "pending_snapshot_expiry_seconds"
+    type: "int"
+    default_value {
+      i: 86400
     }
   }
 }

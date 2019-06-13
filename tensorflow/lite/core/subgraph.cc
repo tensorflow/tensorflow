@@ -155,6 +155,7 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
     : context_(&owned_context_),
       error_reporter_(error_reporter),
       next_execution_plan_index_to_prepare_(0),
+      next_execution_plan_index_to_plan_allocation_(0),
       external_contexts_(external_contexts),
       subgraphs_(subgraphs) {
   context_->impl_ = static_cast<void*>(this);
@@ -477,6 +478,7 @@ TfLiteStatus Subgraph::AllocateTensors() {
   }
 
   next_execution_plan_index_to_prepare_ = 0;
+  next_execution_plan_index_to_plan_allocation_ = 0;
   if (memory_planner_) {
     TF_LITE_ENSURE_STATUS(memory_planner_->ResetAllocations());
   }
@@ -666,10 +668,14 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
 
   TF_LITE_ENSURE_STATUS(PrepareOpsStartingAt(
       next_execution_plan_index_to_prepare_, &last_exec_plan_index_prepared));
-  TF_LITE_ENSURE_STATUS(memory_planner_->ExecuteAllocations(
-      next_execution_plan_index_to_prepare_, last_exec_plan_index_prepared));
-
   next_execution_plan_index_to_prepare_ = last_exec_plan_index_prepared + 1;
+
+  TF_LITE_ENSURE_STATUS(memory_planner_->ExecuteAllocations(
+      next_execution_plan_index_to_plan_allocation_,
+      last_exec_plan_index_prepared));
+  next_execution_plan_index_to_plan_allocation_ =
+      last_exec_plan_index_prepared + 1;
+
   return kTfLiteOk;
 }
 
@@ -743,6 +749,22 @@ TfLiteStatus Subgraph::Invoke() {
     if (tensor_resized_since_op_invoke_ &&
         HasDynamicTensor(*context_, node.outputs)) {
       next_execution_plan_index_to_prepare_ = execution_plan_index + 1;
+
+      // This happens when an intermediate dynamic tensor is resized.
+      // We don't have to prepare all the ops, but we need to recompute
+      // the allocation plan.
+      //
+      // This is a workaround for b/127354079. It relies on the property that
+      // ArenaPlanner's behavior is deterministic. A better solution is being
+      // able to "Rewind" to a specific index in ArenaPlanner.
+      // TODO(b/127354079): Improve ArenaPlanner and remove this mechanism.
+      if (next_execution_plan_index_to_plan_allocation_ >
+          next_execution_plan_index_to_prepare_) {
+        next_execution_plan_index_to_plan_allocation_ = 0;
+        if (memory_planner_) {
+          TF_LITE_ENSURE_STATUS(memory_planner_->ResetAllocations());
+        }
+      }
     }
   }
 

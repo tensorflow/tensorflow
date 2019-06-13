@@ -130,7 +130,50 @@ class StackTraceMapper(tf_stack.StackTraceMapper):
     return origin.loc.filename, origin.loc.lineno, origin.function_name
 
 
-# TODO(mdan): This should behave like to_graph (e.g. convert statically).
+def tf_convert(f, ctx, convert_by_default=True):
+  """Decorator that applies AutoGraph to a function.
+
+  Use in internal APIs.
+
+  This API is suitable for high order functions internal to the TensorFlow API,
+  and more generally any function to which Autograph is not applied.
+
+  Guidance: convert was a decorator meant for use directly by developers, and
+  will be soon deprecated in favor of tf.function. tf_convert is to be called
+  from high order functions internal to TF.
+
+  Args:
+    f: Callable.
+    ctx: ag_ctx.ControlStatusCtx, the Autograph context in which `f` is used.
+    convert_by_default: bool, whether to use AutoGraph when the context doesn't
+      specify.
+
+  Returns:
+    Either `f or the converted version of `f`.
+  """
+
+  if hasattr(f, '__ag_compiled'):
+    return f
+  f_wrapper = f
+  decorators, f = tf_decorator.unwrap(f)
+
+  apply_autograph = ((ctx.status == ag_ctx.Status.ENABLED) or
+                     (convert_by_default and
+                      ctx.status == ag_ctx.Status.UNSPECIFIED))
+  if apply_autograph:
+    # TODO(mdan): Grab features from context.
+    wrapper = convert(recursive=True)(f)
+  else:
+    wrapper = do_not_convert(f)
+
+  if decorators:
+    wrapper = tf_decorator.rewrap(f_wrapper, f, wrapper)
+
+  setattr(wrapper, '__ag_compiled', True)
+  return wrapper
+
+
+# TODO(mdan): Make private.
 def convert(recursive=False, optional_features=None):
   """Decorator that compiles a function to use TensorFlow ops.
 
@@ -157,7 +200,8 @@ def convert(recursive=False, optional_features=None):
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
       """Wrapper that calls the converted version of f."""
-      with ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED):
+      with ag_ctx.ControlStatusCtx(
+          status=ag_ctx.Status.ENABLED, options=optional_features):
         try:
           return converted_call(
               f, None,
@@ -422,6 +466,11 @@ def converted_call(f, owner, options, args, kwargs):
       else:
         effective_args = args
 
+    elif hasattr(f, '__call__') and hasattr(f, '__class__'):
+      # Callable objects
+      target_entity = f.__call__
+      effective_args = (f,) + args
+
     elif tf_inspect.isclass(f):
       # Constructors
       # Note: Until we support class constructurs, and enable whole-class
@@ -429,11 +478,6 @@ def converted_call(f, owner, options, args, kwargs):
       # TODO(mdan): Consider removing unless there is a compelling use case.
       target_entity = f
       effective_args = args
-
-    elif hasattr(f, '__call__') and hasattr(f, '__class__'):
-      # Callable objects
-      target_entity = f.__call__
-      effective_args = (f,) + args
 
     else:
       target_entity = f

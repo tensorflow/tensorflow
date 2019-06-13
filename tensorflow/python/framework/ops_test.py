@@ -2048,6 +2048,21 @@ class OpScopeTest(test_util.TensorFlowTestCase):
       with ops.name_scope(None, "default2") as scope2:
         self.assertEqual(scope2, "default/default2/")
 
+  @test_util.run_in_graph_and_eager_modes
+  def testNameScopeV2IsReEntrant(self):
+    foo = ops.name_scope_v2("foo")
+    bar = ops.name_scope_v2("bar")
+    with foo as scope_name:
+      self.assertEqual("foo/", scope_name)
+      with foo as scope_name:
+        self.assertEqual("foo/foo/", scope_name)
+      with bar as scope_name:
+        self.assertEqual("foo/bar/", scope_name)
+        with foo as scope_name:
+          self.assertEqual("foo/bar/foo/", scope_name)
+    with bar as scope_name:
+      self.assertEqual("bar/", scope_name)
+
   @test_util.run_deprecated_v1
   def testNoScopeName(self):
     g0 = ops.Graph()

@@ -117,6 +117,14 @@ void EnqueueCopy(se::DeviceMemoryBase src, se::Stream* src_stream,
                  se::DeviceMemoryBase dest, se::Stream* dest_stream) {
   CHECK_EQ(src.size(), dest.size());
 
+  // If src_stream == dest_stream, we're doing a plain memcpy from one GPU back
+  // to the same GPU.  x->ThenWaitFor(x) is illegal, so this has to be a special
+  // case.
+  if (src_stream == dest_stream) {
+    dest_stream->ThenMemcpyD2D(&dest, src, src.size());
+    return;
+  }
+
   // We (arbitrarily) choose to use the dest stream do perform the copy.  This
   // means we need to make the dest stream wait until the src stream is ready
   // before it performs the copy, and then we need to make the src stream wait

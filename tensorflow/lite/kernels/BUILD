@@ -437,6 +437,23 @@ cc_library(
 )
 
 cc_library(
+    name = "custom_ops",
+    srcs = ["rfft2d.cc"],
+    hdrs = ["custom_ops_register.h"],
+    deps = [
+        ":kernel_util",
+        ":op_macros",
+        "//tensorflow/lite:context",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels/internal:kernel_utils",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//third_party/fft2d:fft2d_headers",
+        "@fft2d",
+        "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
     name = "lstm_eval",
     srcs = ["lstm_eval.cc"],
     hdrs = ["lstm_eval.h"],
@@ -979,6 +996,7 @@ cc_test(
     name = "topk_v2_test",
     size = "small",
     srcs = ["topk_v2_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1614,6 +1632,19 @@ cc_test(
         ":builtin_ops",
         ":test_main",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "rfft2d_test",
+    size = "small",
+    srcs = ["rfft2d_test.cc"],
+    deps = [
+        ":custom_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],

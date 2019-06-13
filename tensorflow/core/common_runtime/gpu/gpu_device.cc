@@ -1665,7 +1665,12 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
   // Try to dlopen GPU libraries if they are supposed to be dynamically loaded.
   auto handle_or = se::internal::DsoLoader::MaybeTryDlopenGPULibraries();
   if (!handle_or.ok()) {
-    LOG(WARNING) << "Cannot dlopen some GPU libraries. Skipping registering "
+    LOG(WARNING) << "Cannot dlopen some GPU libraries. Please make sure the "
+                    "missing libraries mentioned above are installed properly "
+                    "if you would like to use GPU. Follow the guide at "
+                    "https://www.tensorflow.org/install/gpu for how to "
+                    "download and setup the required libraries for your "
+                    "platform.\nSkipping registering "
                     "GPU devices...";
     return Status::OK();
   }

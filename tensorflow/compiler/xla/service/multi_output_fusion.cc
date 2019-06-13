@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/multi_output_fusion.h"
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
@@ -287,10 +288,6 @@ bool MultiOutputFusion::Perform() {
   int changed = false;
   // Pick the top candidate from queue and try to merge.
   while (!worklist_.empty()) {
-    if (fuel_ <= 0) {
-      VLOG(2) << "No fusing: run out of fuel.";
-      break;
-    }
     ToBeFused candidate = worklist_.top();
     worklist_.pop();
 
@@ -306,6 +303,12 @@ bool MultiOutputFusion::Perform() {
             << "\n\t\tinstr2 = " << instr2->ToString();
 
     if (LegalToFuse(instr1, instr2)) {
+      if (!ConsumeFuel(name(), [&] {
+            return absl::StrFormat("Not fusing %s and %s.", instr1->ToString(),
+                                   instr2->ToString());
+          })) {
+        break;
+      }
       VLOG(1) << "Fuse!";
       VLOG(2) << "Before multi_output_fusion:";
       VLOG(2) << "instr1: " << instr1->ToString();
@@ -325,8 +328,6 @@ bool MultiOutputFusion::Perform() {
       VLOG(2) << "After fusion, \t this: " << ret->name() << "\n"
               << ret->fused_instructions_computation()->ToString(
                      HloPrintOptions().set_indent_amount(1));
-      auto users = ret->users();
-      --fuel_;
     }
   }
   if (DoProducerConsumerMultiOutputFusion()) {

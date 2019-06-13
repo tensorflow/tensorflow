@@ -34,6 +34,7 @@ from tensorflow.python.platform import tf_logging as logging
 # from tensorflow.python.training import saver as saver_lib
 
 
+@test_util.with_control_flow_v2
 class CriticalSectionTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
@@ -55,6 +56,8 @@ class CriticalSectionTest(test.TestCase):
     self.assertAllClose([2.0 * i for i in range(num_concurrent)],
                         sorted(r_value))
 
+  @test_util.disable_control_flow_v2("b/135070612")
+  @test_util.run_v1_only("b/135070612")
   @test_util.run_in_graph_and_eager_modes
   @test_util.xla_allow_fallback("b/128495870")
   def testCriticalSectionWithControlFlow(self):

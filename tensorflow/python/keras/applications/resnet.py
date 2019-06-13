@@ -13,32 +13,49 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=invalid-name
-"""ResNet50 model for Keras.
+"""ResNet models for Keras.
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from keras_applications import resnet50
+from keras_applications import resnet
 
 from tensorflow.python.keras.applications import keras_modules_injection
 from tensorflow.python.util.tf_export import keras_export
 
 
 @keras_export('keras.applications.resnet50.ResNet50',
+              'keras.applications.resnet.ResNet50',
               'keras.applications.ResNet50')
 @keras_modules_injection
 def ResNet50(*args, **kwargs):
-  return resnet50.ResNet50(*args, **kwargs)
+  return resnet.ResNet50(*args, **kwargs)
 
 
-@keras_export('keras.applications.resnet50.decode_predictions')
+@keras_export('keras.applications.resnet.ResNet101',
+              'keras.applications.ResNet101')
+@keras_modules_injection
+def ResNet101(*args, **kwargs):
+  return resnet.ResNet101(*args, **kwargs)
+
+
+@keras_export('keras.applications.resnet.ResNet152',
+              'keras.applications.ResNet152')
+@keras_modules_injection
+def ResNet152(*args, **kwargs):
+  return resnet.ResNet152(*args, **kwargs)
+
+
+@keras_export('keras.applications.resnet50.decode_predictions',
+              'keras.applications.resnet.decode_predictions')
 @keras_modules_injection
 def decode_predictions(*args, **kwargs):
-  return resnet50.decode_predictions(*args, **kwargs)
+  return resnet.decode_predictions(*args, **kwargs)
 
 
-@keras_export('keras.applications.resnet50.preprocess_input')
+@keras_export('keras.applications.resnet50.preprocess_input',
+              'keras.applications.resnet.preprocess_input')
 @keras_modules_injection
 def preprocess_input(*args, **kwargs):
-  return resnet50.preprocess_input(*args, **kwargs)
+  return resnet.preprocess_input(*args, **kwargs)
