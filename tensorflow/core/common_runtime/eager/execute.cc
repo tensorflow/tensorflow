@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
 
 namespace tensorflow {
 
@@ -885,11 +886,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
 // device directly.
 bool IsPinnableOp(const string& op_type) {
   static const gtl::FlatSet<string>* unpinnable_ops = new gtl::FlatSet<string>({
-      "RandomUniform",
-      "RandomUniformInt",
-      "RandomStandardNormal",
-      "StatelessRandomUniform",
-      "StatelessRandomUniformInt",
+      "RandomUniform", "RandomUniformInt", "RandomStandardNormal",
+      "StatelessRandomUniform", "StatelessRandomUniformInt",
       "StatelessRandomNormal",
   });
 
@@ -999,7 +997,14 @@ Status EagerExecute(EagerOperation* op,
   bool op_is_local = op->EagerContext()->IsLocal(op->Device());
 
   if (op_is_local) {
-    return EagerLocalExecute(op, retvals, num_retvals);
+    std::unique_ptr<tensorflow::EagerOperation> out_op;
+    TF_RETURN_IF_ERROR(EagerOpRewriteRegistry::Global()->RunRewrite(
+        EagerOpRewriteRegistry::PRE_EXECUTION, op, out_op));
+    if (out_op) {
+      return EagerLocalExecute(out_op.get(), retvals, num_retvals);
+    } else {
+      return EagerLocalExecute(op, retvals, num_retvals);
+    }
   }
 
   if (op->EagerContext()->LogDevicePlacement() || VLOG_IS_ON(1)) {
