@@ -836,7 +836,7 @@ def hinge(y_true, y_pred):
 
   Args:
     y_true: The ground truth values. `y_true` values are expected to be -1 or 1.
-      If binary (0 or 1) labels are provided we will convert them to -1 or 1.
+      If binary (0 or 1) labels are provided they will converted to -1 or 1.
     y_pred: The predicted values.
 
   Returns:
@@ -850,6 +850,16 @@ def hinge(y_true, y_pred):
 
 @keras_export('keras.losses.categorical_hinge')
 def categorical_hinge(y_true, y_pred):
+  """Computes the categorical hinge loss between `y_true` and `y_pred`.
+
+      Args:
+        y_true: The ground truth values. `y_true` values are expected to be -1 or 1.
+          If binary (0 or 1) labels are provided they will be convert to -1 or 1.
+        y_pred: The predicted values.
+
+      Returns:
+        A tensor.
+      """
   y_pred = ops.convert_to_tensor(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   pos = math_ops.reduce_sum(y_true * y_pred, axis=-1)
