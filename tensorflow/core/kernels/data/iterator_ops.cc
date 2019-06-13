@@ -787,6 +787,13 @@ class ReduceDatasetOp : public AsyncOpKernel {
         if (!status.ok()) {
           break;
         }
+        OP_REQUIRES_ASYNC(
+            ctx, reduce_func_output.size() == state.size(),
+            errors::InvalidArgument(
+                "The number of components of the initial state and the reduce "
+                "function output does not match. (initial_state=",
+                state.size(), ", output=", reduce_func_output.size(), ")."),
+            done);
         std::swap(reduce_func_output, state);
       }
 
