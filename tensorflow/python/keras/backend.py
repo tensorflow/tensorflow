@@ -2245,7 +2245,7 @@ def maximum(x, y):
       y: Tensor or variable.
 
   Returns:
-      A tensor with the element wise maximum value(s) of `x` and `y.
+      A tensor with the maximum value(s) of `x` and `y.
 
   Examples:
   ```python
