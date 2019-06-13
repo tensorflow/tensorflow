@@ -951,10 +951,12 @@ class _EagerTensorBase(Tensor):
     """
     return self._copy_nograd(context.context(), "CPU:0")
 
+  @deprecation.deprecated(None, "Use tf.identity instead.")
   def cpu(self):
     """A copy of this Tensor with contents backed by host memory."""
     return self._copy(context.context(), "CPU:0")
 
+  @deprecation.deprecated(None, "Use tf.identity instead.")
   def gpu(self, gpu_index=0):
     """A copy of this Tensor with contents backed by memory on the GPU.
 
