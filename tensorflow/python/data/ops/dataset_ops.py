@@ -2371,7 +2371,7 @@ def to_variant(dataset):
 
 
 # TODO(b/133606651) Rename this class to DatasetSpec
-@tf_export("data.experimental.DatasetStructure")
+@tf_export("data.DatasetSpec", "data.experimental.DatasetStructure")
 class DatasetStructure(type_spec.BatchableTypeSpec):
   """Type specification for `tf.data.Dataset`."""
 

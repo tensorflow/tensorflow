@@ -256,31 +256,31 @@ tf_export(v1=["SparseTensorValue"])(SparseTensorValue)
 pywrap_tensorflow.RegisterType("SparseTensorValue", SparseTensorValue)
 
 
-# TODO(b/133606651) Export this as tf.SparseTensorSpec.
+@tf_export("SparseTensorSpec")
 class SparseTensorSpec(type_spec.BatchableTypeSpec):
   """Type specification for a `tf.SparseTensor`."""
 
-  __slots__ = ["_dense_shape", "_dtype"]
+  __slots__ = ["_shape", "_dtype"]
 
   value_type = property(lambda self: SparseTensor)
 
-  def __init__(self, dense_shape=None, dtype=dtypes.float32):
+  def __init__(self, shape=None, dtype=dtypes.float32):
     """Constructs a type specification for a `tf.SparseTensor`.
 
     Args:
-      dense_shape: The dense shape of the `SparseTensor`, or `None` to allow
+      shape: The dense shape of the `SparseTensor`, or `None` to allow
         any dense shape.
       dtype: `tf.DType` of values in the `SparseTensor`.
     """
-    self._dense_shape = tensor_shape.as_shape(dense_shape)
+    self._shape = tensor_shape.as_shape(shape)
     self._dtype = dtypes.as_dtype(dtype)
 
   def _serialize(self):
-    return (self._dense_shape, self._dtype)
+    return (self._shape, self._dtype)
 
   @property
   def _component_specs(self):
-    rank = self._dense_shape.ndims
+    rank = self._shape.ndims
     num_values = None
     return [
         tensor_spec.TensorSpec([num_values, rank], dtypes.int64),
@@ -314,7 +314,7 @@ class SparseTensorSpec(type_spec.BatchableTypeSpec):
 
   def _to_batched_tensor_list(self, value):
     dense_shape = tensor_util.constant_value_as_shape(value.dense_shape)
-    if self._dense_shape.merge_with(dense_shape).ndims == 0:
+    if self._shape.merge_with(dense_shape).ndims == 0:
       raise ValueError(
           "Unbatching a sparse tensor is only supported for rank >= 1")
     return [gen_sparse_ops.serialize_many_sparse(
@@ -324,26 +324,26 @@ class SparseTensorSpec(type_spec.BatchableTypeSpec):
   def _from_compatible_tensor_list(self, tensor_list):
     tensor_list = gen_sparse_ops.deserialize_sparse(tensor_list[0], self._dtype)
     result = SparseTensor(*tensor_list)
-    rank = self._dense_shape.ndims
+    rank = self._shape.ndims
     result.indices.set_shape([None, rank])
     result.dense_shape.set_shape([rank])
     return result
 
   def _batch(self, batch_size):
     return SparseTensorSpec(
-        tensor_shape.TensorShape([batch_size]).concatenate(self._dense_shape),
+        tensor_shape.TensorShape([batch_size]).concatenate(self._shape),
         self._dtype)
 
   def _unbatch(self):
-    if self._dense_shape.ndims == 0:
+    if self._shape.ndims == 0:
       raise ValueError("Unbatching a tensor is only supported for rank >= 1")
-    return SparseTensorSpec(self._dense_shape[1:], self._dtype)
+    return SparseTensorSpec(self._shape[1:], self._dtype)
 
   def _to_legacy_output_types(self):
     return self._dtype
 
   def _to_legacy_output_shapes(self):
-    return self._dense_shape
+    return self._shape
 
   def _to_legacy_output_classes(self):
     return SparseTensor
