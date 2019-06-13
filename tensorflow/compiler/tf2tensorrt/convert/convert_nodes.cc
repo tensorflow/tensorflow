@@ -2819,7 +2819,7 @@ Status ConvertBiasAdd(OpConverterParams* params) {
   if (data_format == "NCHW") {
     bias_shape.nbDims = input_tensor->getDimensions().nbDims;
     ;
-    std::fill(bias_shape.d + (bias_shape.nbDims - 3),
+    std::fill(bias_shape.d + (bias_shape.nbDims - 2),
               bias_shape.d + bias_shape.nbDims, 1);
   } else {
     // Next, broadcast the bias across the input.
