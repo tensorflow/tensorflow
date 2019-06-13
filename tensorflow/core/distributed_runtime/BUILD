@@ -3,7 +3,7 @@
 # to be distributed and performed in parallel across multiple
 # processes.
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_copts", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # For platform specific build config
