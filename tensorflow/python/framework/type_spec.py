@@ -86,7 +86,7 @@ class TypeSpec(object):
     # consider two `TypeSpec`s compatible if they have the same type, and
     # the values returned by `_serialize` are compatible (where
     # `tf.TensorShape`, `tf.TensorSpec`, and `tf.DType` are checked for
-    # compatibility using their `is_comptaible_with` method; and all other
+    # compatibility using their `is_compatible_with` method; and all other
     # types are considered compatible if they are equal).
     if not isinstance(spec_or_value, TypeSpec):
       spec_or_value = type_spec_from_value(spec_or_value)
@@ -362,7 +362,7 @@ class TypeSpec(object):
 
   @staticmethod
   def __most_specific_compatible_type_serialization(a, b):
-    """Helper for most_specific_comptaible_type.
+    """Helper for most_specific_compatible_type.
 
     Combines two type serializations as follows:
 
