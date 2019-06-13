@@ -228,6 +228,26 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "lstm_test",
+    srcs = ["lstm_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":lstm",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "max_unpooling",
     srcs = ["max_unpooling.cc"],
