@@ -254,6 +254,10 @@ class EagerResourceDeleter(object):
            "Tensor." % (handle,)))
     self._handle = handle
     self._handle_device = handle_device
+    # This is held since the __del__ function runs an op, and if the context()
+    # is collected before this object, there will be a segfault when running the
+    # op.
+    self._context = context.context()
 
   def __del__(self):
     # Resources follow object-identity when executing eagerly, so it is safe to
