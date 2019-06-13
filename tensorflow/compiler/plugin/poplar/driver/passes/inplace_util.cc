@@ -29,8 +29,9 @@ namespace poplarplugin {
 namespace {
 // Map from name to the number of the first x operands which are inplace
 static std::map<std::string, uint64> fused_inplace_info_map = {
-    {"conv_biasadd", 1},        {"matmul_biasadd", 1}, {"bias_apply", 1},
-    {"conv_scaled_inplace", 1}, {"scaled_inplace", 1},
+    {"conv_biasadd", 1},   {"matmul_biasadd", 1},
+    {"bias_apply", 1},     {"conv_scaled_inplace", 1},
+    {"scaled_inplace", 1}, {"implicit_binary_inplace", 1},
 };
 
 // Only add a dependency iff `to` was not already reachable from `from`.

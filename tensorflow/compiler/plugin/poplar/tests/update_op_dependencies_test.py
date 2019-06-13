@@ -165,7 +165,7 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
 
       ok = [
           '__seed*', 'Copy_XLA_Args/arg*_to_Slice*/slice*.clone',
-          'add/add.*/AddTo', 'truediv/divide.*/Op/Divide', 'add_1/add.*/AddTo'
+          'add/add.*/AddTo', 'truediv/fusion*/Op/Divide', 'add_1/add.*/AddTo'
       ]
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 

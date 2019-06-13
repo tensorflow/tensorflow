@@ -83,6 +83,7 @@ cc_library(
         "driver/passes/convolution_classifier.cc",
         "driver/passes/custom_op_replacer.cc",
         "driver/passes/dependency_replacer.cc",
+        "driver/passes/elementwise_broadcast_converter.cc",
         "driver/passes/expression_outliner.cc",
         "driver/passes/forward_allocation.cc",
         "driver/passes/fuse_ops_early.cc",
@@ -151,6 +152,7 @@ cc_library(
         "driver/passes/convolution_classifier.h",
         "driver/passes/custom_op_replacer.h",
         "driver/passes/dependency_replacer.h",
+        "driver/passes/elementwise_broadcast_converter.h",
         "driver/passes/expression_outliner.h",
         "driver/passes/forward_allocation.h",
         "driver/passes/fuse_ops_early.h",
@@ -1020,6 +1022,18 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "elementwise_broadcast_converter_test",
+    srcs = ["tests/elementwise_broadcast_converter_test.cc"],
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_query",
+        "//tensorflow/compiler/xla/service:shape_inference",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
 py_library(
     name = "test_utils_py",
     srcs = ["tests/test_utils.py"],
@@ -1605,6 +1619,7 @@ test_suite(
         "dependency_replacer_test",
         "device_test",
         "dynamic_slice_layout_test",
+        "elementwise_broadcast_converter_test",
         "estimator_test",
         "expression_outliner_test",
         "f16_test",

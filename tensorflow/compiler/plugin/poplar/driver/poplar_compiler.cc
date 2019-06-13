@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/passes/constant_slice_folding.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/custom_op_replacer.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/dependency_replacer.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/elementwise_broadcast_converter.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/expression_outliner.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/forward_allocation.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/fuse_ops_early.h"
@@ -525,6 +526,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       pass.AddPass<ReshapeMover>();
       pass.AddPass<SortSimplifier>();
       pass.AddPass<HloPassFix<FuseOpsLate>>(resources.annotations);
+      pass.AddPass<ElementwiseBroadcastConverter>();
       pass.AddPass<HloDCE>();
       pass.AddPass<WhileLoopConditionSimplify>();
       pass.AddPass<HloPassFix<WhileLoopToRepeatSimplify>>();

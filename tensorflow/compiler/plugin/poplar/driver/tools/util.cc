@@ -176,7 +176,7 @@ std::vector<xla::Shape> FlattenedXlaShape(const xla::Shape& shape) {
 template <typename NativeT>
 StatusOr<NativeT> LiteralScalarToNativeType(const xla::Literal& lit) {
   auto primitive_type = primitive_util::NativeToPrimitiveType<NativeT>();
-  if (!ShapeUtil::IsScalar(lit.shape())) {
+  if (ShapeUtil::ElementsIn(lit.shape()) != 1) {
     return xla::FailedPrecondition("Literal is not scalar");
   }
 
