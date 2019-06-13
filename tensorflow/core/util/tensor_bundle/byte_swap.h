@@ -16,17 +16,17 @@ limitations under the License.
 #ifndef BYTE_SWAP_H
 #define BYTE_SWAP_H
 
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/byte_order.h"
 
 
 // Define basic byte swapping operations.
 // These operations must be macros to use compiler intrinsics.
-// Note that the code here is written for portability, not speed. Byte swapping 
-// only happens when importing a checkpoint from one hardware architecture onto 
-// a different architecture. If these operations become part of a fast path, 
-// then the function ByteSwapArray() below should be rewritten to use 
+// Note that the code here is written for portability, not speed. Byte swapping
+// only happens when importing a checkpoint from one hardware architecture onto
+// a different architecture. If these operations become part of a fast path,
+// then the function ByteSwapArray() below should be rewritten to use
 // architecture-appropriate SIMD instructions that swap multiple words at once.
 
 #if defined(__linux__)
@@ -37,11 +37,20 @@ limitations under the License.
 #define BYTE_SWAP_32(x) bswap_32 (x)
 #define BYTE_SWAP_64(x) bswap_64 (x)
 
+#elif defined(PLATFORM_WINDOWS)
+
+// On windows, byte-swapping is in winsock.h, and there is a version of htonl
+// that can byte-swap 64-bit values
+#include <winsock.h>
+#define BYTE_SWAP_16(x) htons (x)
+#define BYTE_SWAP_32(x) htonl (x)
+#define BYTE_SWAP_64(x) htonll (x)
+
 #elif __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 
-// On non-Linux, but little-endian, environments, use htonl/s, which byte-swap 
-// when the host byte order is little-endian. POSIX doesn't define a 64-bit 
-// version of these library functions, so we roll our own.
+// On non-Linux, non-Windows, but little-endian, environments, use htonl/s,
+// which byte-swap when the host byte order is little-endian. POSIX doesn't
+// define a 64-bit version of these library functions, so we roll our own.
 #include <arpa/inet.h>
 #define BYTE_SWAP_16(x) htons (x)
 #define BYTE_SWAP_32(x) htonl (x)
@@ -50,7 +59,8 @@ limitations under the License.
     | (htonl(((x) & 0xffffffff00000000UL) >> 32)) \
 )
 
-#else // not defined(__linux__) and (__BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__)
+#else  // not defined(__linux__) and not defined(PLATFORM_WINDOWS)
+       // and (__BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__)
 
 // Fall back on a non-optimized implementation on other big-endian targets.
 // This code swaps one byte at a time and is probably an order of magnitude
@@ -79,7 +89,7 @@ limitations under the License.
     | (((x) & 0xff00000000000000UL) >> 56) \
 )
 
-#endif // defined(__linux__)
+#endif  // defined(__linux__)
 
 namespace tensorflow {
 
@@ -106,6 +116,6 @@ Status ByteSwapArray(char *array, size_t bytes_per_elem, int array_len);
 // TODO(frreiss): Should this be a member of the Tensor class?
 Status ByteSwapTensor(Tensor *t);
 
-} // namespace tensorflow
+}  // namespace tensorflow
 
-#endif // BYTE_SWAP_H
+#endif  // BYTE_SWAP_H
