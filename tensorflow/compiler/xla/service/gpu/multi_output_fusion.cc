@@ -37,7 +37,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-GpuMultiOutputFusion::GpuMultiOutputFusion() : MultiOutputFusion(INT64_MAX) {}
+GpuMultiOutputFusion::GpuMultiOutputFusion() {}
 
 bool GpuMultiOutputFusion::ShapesCompatibleForFusion(HloInstruction* instr1,
                                                      HloInstruction* instr2) {

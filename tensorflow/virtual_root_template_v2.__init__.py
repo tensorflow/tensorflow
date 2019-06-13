@@ -76,6 +76,7 @@ _top_level_modules = [
     "tensorflow.lite",
     "tensorflow.keras",
     "tensorflow.compat",
+    "tensorflow.summary",  # tensorboard
     "tensorflow.examples",
 ]
 # Estimator needs to be handled separatedly so we can still allow both
@@ -112,10 +113,16 @@ if not _root_estimator:
   except ImportError as e:
     pass
 
-# And again for tensorboard
+# And again for tensorboard (comes as summary)
 try:
-  from tensorflow_core import tensorboard
+  from tensorflow_core import summary
 except ImportError as e:
+  pass
+
+# Also import module aliases
+try:
+  from tensorflow_core import losses, metrics, initializers, optimizers
+except ImportError:
   pass
 
 # LINT.ThenChange(//tensorflow/virtual_root_template_v1.__init__.py.oss)

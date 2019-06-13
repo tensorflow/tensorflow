@@ -225,6 +225,7 @@ def while_loop(cond,
     flattened_loop_vars = nest.flatten(loop_vars, expand_composites=True)
     _check_num_inputs_outputs(cond_graph, body_graph,
                               len(flattened_loop_vars))
+    _check_inputs_outputs_types_match(body_graph, flattened_loop_vars)
 
     with ops.control_dependencies(
         list(cond_graph.control_captures) + list(body_graph.control_captures)):
@@ -893,6 +894,15 @@ def _check_num_inputs_outputs(cond_graph, body_graph, num_flattened_loop_vars):
   assert len(body_graph.outputs) == num_flattened_loop_vars, (
       "body_graph has %d outputs; Expected: %d" % (len(body_graph.outputs),
                                                    num_flattened_loop_vars))
+
+
+def _check_inputs_outputs_types_match(body_graph, flattened_loop_vars):
+  for inp, out, loop_var in zip(body_graph.inputs, body_graph.outputs,
+                                flattened_loop_vars):
+    if inp.dtype != out.dtype:
+      raise TypeError("Loop var {} enters the loop with type {} "
+                      "but has type {} after 1 iteration.".format(
+                          loop_var.name, inp.dtype, out.dtype))
 
 
 def _copy_handle_data(src_tensors, tgt_tensors):

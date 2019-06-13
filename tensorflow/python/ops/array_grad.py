@@ -28,6 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
@@ -331,6 +332,12 @@ def _MatrixDiagGrad(_, grad):
   return array_ops.matrix_diag_part(grad)
 
 
+@ops.RegisterGradient("MatrixDiagV2")
+def _MatrixDiagV2Grad(op, grad):
+  return array_ops.matrix_diag_part(
+      grad, k=op.inputs[1]), None, None, None, None
+
+
 @ops.RegisterGradient("MatrixDiagPart")
 def _MatrixDiagPartGrad(op, grad):
   matrix_shape = op.inputs[0].get_shape()[-2:]
@@ -338,6 +345,22 @@ def _MatrixDiagPartGrad(op, grad):
     return array_ops.matrix_diag(grad)
   else:
     return array_ops.matrix_set_diag(array_ops.zeros_like(op.inputs[0]), grad)
+
+
+@ops.RegisterGradient("MatrixDiagPartV2")
+def _MatrixDiagPartV2Grad(op, grad):
+  """Gradient for MatrixDiagPartV2."""
+  matrix_shape = op.inputs[0].get_shape()[-2:]
+  if matrix_shape.is_fully_defined():
+    return array_ops.matrix_diag(
+        grad,
+        k=op.inputs[1],
+        num_rows=matrix_shape[0],
+        num_cols=matrix_shape[1]), None, None
+  else:
+    return array_ops.matrix_set_diag(
+        array_ops.zeros_like(op.inputs[0]), grad,
+        k=op.inputs[1]), None, None
 
 
 @ops.RegisterGradient("MatrixSetDiag")
@@ -362,6 +385,42 @@ def _MatrixSetDiagGrad(op, grad):
                                              diag_shape, dtype=grad.dtype))
   grad_diag = array_ops.matrix_diag_part(grad)
   return (grad_input, grad_diag)
+
+
+@ops.RegisterGradient("MatrixSetDiagV2")
+def _MatrixSetDiagGradV2(op, grad):
+  """Gradient for MatrixSetDiag."""
+  diag_shape = op.inputs[1].get_shape()
+  if not diag_shape.is_fully_defined():
+    # Need to know the values of `d_lower` and `d_upper` to infer diag_shape.
+    grad_shape = array_ops.shape(grad)
+    batch_shape = grad_shape[:-2]
+    matrix_shape = grad_shape[-2:]
+    diag_index = array_ops.reshape(op.inputs[2], [-1])  # Converts to vector.
+    d_lower = diag_index[0]
+    d_upper = diag_index[-1]  # Works both when len(diag_index) is 1 and 2.
+    y_offset = control_flow_ops.cond(
+        math_ops.less(d_upper, 0), lambda: d_upper, lambda: 0)
+    x_offset = control_flow_ops.cond(
+        math_ops.greater(d_lower, 0), lambda: -d_lower, lambda: 0)
+
+    max_diag_len = math_ops.minimum(matrix_shape[0] + y_offset,
+                                    matrix_shape[1] + x_offset)
+    # pylint: disable=g-long-lambda
+    # pyformat: disable
+    postfix = control_flow_ops.cond(
+        math_ops.equal(d_lower, d_upper),
+        lambda: ops.convert_to_tensor([max_diag_len]),
+        lambda: ops.convert_to_tensor([d_upper - d_lower + 1,
+                                       max_diag_len]))
+    # pyformat: enable
+    # pylint: enable=g-long-lambda
+    diag_shape = array_ops.concat([batch_shape, postfix], 0)
+
+  grad_input = array_ops.matrix_set_diag(
+      grad, array_ops.zeros(diag_shape, dtype=grad.dtype), k=op.inputs[2])
+  grad_diag = array_ops.matrix_diag_part(grad, k=op.inputs[2])
+  return (grad_input, grad_diag, None)
 
 
 @ops.RegisterGradient("MatrixBandPart")

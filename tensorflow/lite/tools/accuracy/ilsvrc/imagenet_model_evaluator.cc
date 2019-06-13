@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/tools/accuracy/ilsvrc/default/custom_delegates.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
@@ -186,6 +187,9 @@ TfLiteStatus EvaluateModelForShard(const uint64_t shard_id,
   tflite::evaluation::ImageClassificationStage eval(eval_config);
   eval.SetAllLabels(model_labels);
   TF_LITE_ENSURE_STATUS(eval.Init());
+
+  TF_LITE_ENSURE_STATUS(tflite::evaluation::ApplyCustomDelegates(
+      params.delegate, params.num_interpreter_threads, &eval));
 
   for (const auto& image_label : image_labels) {
     eval.SetInputs(image_label.image, image_label.label);

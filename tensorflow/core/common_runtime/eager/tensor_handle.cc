@@ -101,33 +101,84 @@ Status TensorHandle::GetResourceVariableDtypeAndShape(
   return Status::OK();
 }
 
-TensorHandle::TensorHandle(const class Tensor& t, Device* d, Device* op_device,
+Status TensorHandle::CreateLocalHandle(const class Tensor& t,
+                                       TensorHandle** h) {
+  return CreateLocalHandle(t, nullptr, nullptr, nullptr, h);
+}
+
+Status TensorHandle::CreateLocalHandle(const class Tensor& t, Device* d,
+                                       EagerContext* ctx, TensorHandle** h) {
+  return CreateLocalHandle(t, d, d, ctx, h);
+}
+
+Status TensorHandle::CreateLocalHandle(const class Tensor& t, Device* d,
+                                       Device* op_device, EagerContext* ctx,
+                                       TensorHandle** h) {
+  if (t.dtype() != DT_RESOURCE) {
+    *h = new TensorHandle(absl::make_unique<LocalTensorHandleData>(t),
+                          t.dtype(), d, op_device, ctx);
+  } else {
+    const ResourceHandle& resource_handle = t.flat<class ResourceHandle>()(0);
+    *h = new TensorHandle(absl::make_unique<LocalTensorHandleData>(t),
+                          resource_handle, d, op_device, ctx);
+  }
+
+  return Status::OK();
+}
+
+TensorHandle::TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
+                           DataType dtype, Device* d, Device* op_device,
                            EagerContext* ctx)
-    : dtype(t.dtype()),
-      tensor_handle_data_(absl::make_unique<LocalTensorHandleData>(t)),
+    : dtype(dtype),
       device_(d),
       op_device_(op_device),
-      resource_device_(GetResourceDevice(t, ctx)),
+      resource_device_(nullptr),
 #if !defined(IS_MOBILE_PLATFORM)
       remote_op_id_(-1),
       remote_output_num_(-1),
 #endif
       ctx_(ctx),
       is_ready_(true),
-      is_remote_(false) {
-  if (dtype == DT_RESOURCE) {
-    const ResourceHandle& resource_handle = t.flat<ResourceHandle>()(0);
-    resource_handle_container_ = resource_handle.container();
-    resource_handle_name_ = resource_handle.name();
-  }
+      is_remote_(false),
+      tensor_handle_data_(std::move(t)) {
 }
 
-TensorHandle::TensorHandle(uint64 node_id, Device* d, Device* op_device,
+TensorHandle::TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
+                           const ResourceHandle& resource_handle, Device* d,
+                           Device* op_device, EagerContext* ctx)
+    : dtype(DT_RESOURCE),
+      device_(d),
+      op_device_(op_device),
+      resource_device_(GetResourceDevice(resource_handle, ctx)),
+#if !defined(IS_MOBILE_PLATFORM)
+      remote_op_id_(-1),
+      remote_output_num_(-1),
+#endif
+      ctx_(ctx),
+      is_ready_(true),
+      is_remote_(false),
+      resource_handle_container_(resource_handle.container()),
+      resource_handle_name_(resource_handle.name()),
+      tensor_handle_data_(std::move(t)) {
+}
+
+Status TensorHandle::CreateAsyncLocalHandle(uint64 node_id, Device* d,
+                                            Device* op_device,
+                                            Device* resource_device,
+                                            DataType dtype, EagerContext* ctx,
+                                            TensorHandle** h) {
+  *h = new TensorHandle(
+      absl::make_unique<AsyncLocalTensorHandleData>(node_id, ctx), d, op_device,
+      resource_device, dtype, ctx);
+
+  return Status::OK();
+}
+
+TensorHandle::TensorHandle(std::unique_ptr<AsyncLocalTensorHandleData> t,
+                           Device* d, Device* op_device,
                            Device* resource_device, DataType dtype,
                            EagerContext* ctx)
     : dtype(dtype),
-      tensor_handle_data_(
-          absl::make_unique<AsyncLocalTensorHandleData>(node_id, ctx)),
       device_(d),
       op_device_(op_device),
       resource_device_(resource_device),
@@ -137,51 +188,69 @@ TensorHandle::TensorHandle(uint64 node_id, Device* d, Device* op_device,
 #endif
       ctx_(ctx),
       is_ready_(false),
-      is_remote_(false) {
-  DCHECK(dtype == DT_RESOURCE ? resource_device_ != nullptr
-                              : resource_device_ == nullptr);
+      is_remote_(false),
+      tensor_handle_data_(std::move(t)) {
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
-TensorHandle::TensorHandle(int64 op_id, int output_num,
-                           const TensorShape& shape,
-                           eager::EagerClient* eager_client, uint64 context_id,
+Status TensorHandle::CreateRemoteHandle(int64 op_id, int output_num,
+                                        const TensorShape& shape,
+                                        eager::EagerClient* eager_client,
+                                        uint64 context_id, DataType dtype,
+                                        Device* d, Device* resource_device,
+                                        EagerContext* ctx, TensorHandle** h) {
+  *h = new TensorHandle(
+      absl::make_unique<RemoteTensorHandleData>(op_id, output_num, shape,
+                                                eager_client, context_id, ctx),
+      dtype, d, resource_device, ctx);
+
+  return Status::OK();
+}
+
+TensorHandle::TensorHandle(std::unique_ptr<RemoteTensorHandleData> t,
                            DataType dtype, Device* d, Device* resource_device,
                            EagerContext* ctx)
     : dtype(dtype),
-      tensor_handle_data_(absl::make_unique<RemoteTensorHandleData>(
-          op_id, output_num, shape, eager_client, context_id, ctx)),
       device_(d),
       op_device_(d),
       resource_device_(resource_device),
-      remote_op_id_(op_id),
-      remote_output_num_(output_num),
-      remote_eager_client_(eager_client),
-      remote_context_id_(context_id),
+      remote_op_id_(t->op_id()),
+      remote_output_num_(t->output_num()),
       ctx_(ctx),
       is_ready_(true),
-      is_remote_(true) {}
+      is_remote_(true),
+      tensor_handle_data_(std::move(t)) {}
 
-TensorHandle::TensorHandle(int64 op_id, int32 output_num, uint64 shape_node_id,
-                           eager::EagerClient* eager_client, uint64 context_id,
+Status TensorHandle::CreateUnshapedRemoteHandle(
+    int64 op_id, int32 output_num, uint64 shape_node_id,
+    eager::EagerClient* eager_client, uint64 context_id, DataType dtype,
+    Device* d, Device* resource_device, EagerContext* ctx, TensorHandle** h) {
+  DCHECK(dtype == DT_RESOURCE ? resource_device != nullptr
+                              : resource_device == nullptr);
+
+  *h = new TensorHandle(
+      absl::make_unique<UnshapedRemoteTensorHandleData>(
+          op_id, output_num, shape_node_id, eager_client, context_id, ctx),
+      dtype, d, resource_device, ctx);
+
+  return Status::OK();
+}
+
+TensorHandle::TensorHandle(std::unique_ptr<UnshapedRemoteTensorHandleData> t,
                            DataType dtype, Device* d, Device* resource_device,
                            EagerContext* ctx)
     : dtype(dtype),
-      tensor_handle_data_(absl::make_unique<UnshapedRemoteTensorHandleData>(
-          op_id, output_num, shape_node_id, eager_client, context_id, ctx)),
       device_(d),
       op_device_(d),
       resource_device_(resource_device),
-      remote_op_id_(op_id),
-      remote_output_num_(output_num),
-      remote_eager_client_(eager_client),
-      remote_context_id_(context_id),
+      remote_op_id_(t->op_id()),
+      remote_output_num_(t->output_num()),
+      remote_eager_client_(t->eager_client()),
+      remote_context_id_(t->context_id()),
       ctx_(ctx),
       is_ready_(false),
-      is_remote_(true) {
-  DCHECK(dtype == DT_RESOURCE ? resource_device_ != nullptr
-                              : resource_device_ == nullptr);
-}
+      is_remote_(true),
+      tensor_handle_data_(std::move(t)) {}
 #endif
 
 TensorHandle::TensorHandle(OutputGraphNode symbolic_tensor, DataType dtype)
@@ -294,8 +363,7 @@ Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
   const bool dst_cpu = dstd->tensorflow_gpu_device_info() == nullptr;
   const bool src_cpu = srcd->tensorflow_gpu_device_info() == nullptr;
   if (is_same_device) {
-    *output = new tensorflow::TensorHandle(*src, dstd, ctx);
-    return tensorflow::Status::OK();
+    return CreateLocalHandle(*src, dstd, ctx, output);
   }
   if (!dst_cpu && (src->dtype() != tensorflow::DT_VARIANT &&
                    !tensorflow::DataTypeCanUseMemcpy(src->dtype()))) {
@@ -311,8 +379,7 @@ Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
   tensorflow::Tensor dst(dstd->GetAllocator(attr), src->dtype(), src->shape());
   if (src->shape().num_elements() == 0) {
     dstd = dst_cpu ? nullptr : dstd;
-    *output = new tensorflow::TensorHandle(dst, dstd, ctx);
-    return tensorflow::Status::OK();
+    return CreateLocalHandle(dst, dstd, ctx, output);
   }
   tensorflow::DeviceContext* src_device_context = nullptr;
   if (!src_cpu) {
@@ -343,21 +410,19 @@ Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
   n.WaitForNotification();
   if (status.ok()) {
     dstd = dst_cpu ? nullptr : dstd;
-    *output = new tensorflow::TensorHandle(dst, dstd, ctx);
+    return TensorHandle::CreateLocalHandle(dst, dstd, ctx, output);
   }
   return status;
 }
 
-Device* GetResourceDevice(const Tensor& t, EagerContext* ctx) {
-  if (t.dtype() != DT_RESOURCE || ctx == nullptr) {
+Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx) {
+  if (ctx == nullptr) {
     return nullptr;
   }
-  const ResourceHandle& resource_handle = t.flat<ResourceHandle>()(0);
   const auto& map = *ctx->device_map();
-  auto it = map.find(resource_handle.device());
+  auto it = map.find(handle.device());
   if (it == map.end()) {
-    LOG(ERROR) << "Cannot find resource device: " << resource_handle.device()
-               << ".";
+    LOG(ERROR) << "Cannot find resource device: " << handle.device() << ".";
     return nullptr;
   }
   return it->second;

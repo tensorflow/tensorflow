@@ -25,6 +25,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools/accuracy:android_required_build_flags",
+        "//tensorflow/lite/tools/accuracy/ilsvrc/default:custom_delegates",
         "//tensorflow/lite/tools/evaluation:utils",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",

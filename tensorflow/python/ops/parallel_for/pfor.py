@@ -1734,7 +1734,14 @@ def _convert_matrix_band_part(pfor_input):
       t, num_lower=num_lower, num_upper=num_upper), True)
 
 
+@RegisterPFor("MatrixDiagPartV2")
+def _convert_matrix_diag_part_v2(pfor_input):
+  t = pfor_input.stacked_input(0)
+  return wrap(array_ops.matrix_diag_part(t), True)
+
+
 @RegisterPFor("MatrixSetDiag")
+@RegisterPFor("MatrixSetDiagV2")
 def _convert_matrix_set_diag(pfor_input):
   pfor_input.stack_inputs()
   t = pfor_input.stacked_input(0)

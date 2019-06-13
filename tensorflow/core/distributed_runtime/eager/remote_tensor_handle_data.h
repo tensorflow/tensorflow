@@ -83,6 +83,8 @@ class UnshapedRemoteTensorHandleData : public TensorHandleData {
 
   int64 op_id() const { return op_id_; }
   int32 output_num() const { return output_num_; }
+  eager::EagerClient* eager_client() const { return eager_client_; }
+  uint64 context_id() const { return context_id_; }
 
  private:
   // IDs required when this class is representing a remote tensor handle.

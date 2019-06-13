@@ -22,7 +22,9 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.mixed_precision.experimental import policy
@@ -145,6 +147,11 @@ class LambdaLayerTest(keras_parameterized.TestCase):
     l = keras.layers.Lambda(lambda_fn)
     output_shape = l.compute_output_shape([(10, 10), (10, 20)])
     self.assertAllEqual((10, 20), output_shape)
+    output_signature = l.compute_output_signature([
+        tensor_spec.TensorSpec(dtype=dtypes.float64, shape=(10, 10)),
+        tensor_spec.TensorSpec(dtype=dtypes.float64, shape=(10, 20))])
+    self.assertAllEqual((10, 20), output_signature.shape)
+    self.assertAllEqual(dtypes.float64, output_signature.dtype)
 
   def test_lambda_output_shape_list_multiple_outputs(self):
 
@@ -417,6 +424,10 @@ class CoreLayersTest(keras_parameterized.TestCase):
         np.random.randint(low=0, high=7, size=(2, 2)), dtype='float16')
     layer = keras.layers.Dense(5, dtype=policy.Policy('infer_float32_vars'))
     outputs = layer(inputs)
+    output_signature = layer.compute_output_signature(
+        tensor_spec.TensorSpec(dtype='float16', shape=(2, 2)))
+    self.assertEqual(output_signature.dtype, dtypes.float16)
+    self.assertEqual(output_signature.shape, (2, 5))
     self.assertEqual(outputs.dtype, 'float16')
     self.assertEqual(layer.kernel.dtype, 'float32')
 

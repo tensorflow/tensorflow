@@ -1,9 +1,9 @@
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 cc_library(
     name = "add",
@@ -401,6 +401,26 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_test(
+    name = "reshape_test",
+    srcs = ["reshape_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":reshape",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

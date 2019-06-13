@@ -172,7 +172,7 @@ def _compatible_shapes(flat_relaxed, flat_to_check):
              for relaxed, to_check in zip(flat_relaxed, flat_to_check))
 
 
-def _common_shape(x, y):
+def common_shape(x, y):
   """Find a `TensorShape` that is compatible with both `x` and `y`."""
   if x is None != y is None:
     raise RuntimeError(
@@ -1628,7 +1628,7 @@ class Function(object):
                            "relaxed_arg_shapes len: %d vs. %d"
                            % (len(arg_shapes), len(relaxed_arg_shapes)))
       relaxed_arg_shapes = [
-          _common_shape(x, y) for (x, y) in zip(
+          common_shape(x, y) for (x, y) in zip(
               arg_shapes, relaxed_arg_shapes)]
     self._function_cache.arg_relaxed_shapes[rank_only_cache_key] = (
         relaxed_arg_shapes)
@@ -1736,8 +1736,9 @@ def register(func, *args, **kwargs):
 def validate_signature(signature):
   if any(not isinstance(arg, tensor_spec.TensorSpec)
          for arg in nest.flatten(signature, expand_composites=True)):
-    raise TypeError("Invalid input_signature %s; input_signature must be "
-                    "a possibly nested sequence of TensorSpec objects.")
+    raise TypeError("Invalid input_signature {}; input_signature must be "
+                    "a possibly nested sequence of TensorSpec objects."
+                    .format(signature))
 
 
 def defun(func=None,

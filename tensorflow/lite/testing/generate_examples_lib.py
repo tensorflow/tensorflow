@@ -56,6 +56,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework import graph_util as tf_graph_util
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import spectral_ops_test_util
 
 
 RANDOM_SEED = 342
@@ -5069,6 +5070,39 @@ def make_unfused_gru_tests(options):
       build_graph,
       build_inputs,
       use_frozen_graph=True)
+
+
+@register_make_test_function()
+def make_rfft2d_tests(options):
+  """Make a set of tests to do rfft2d."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32],
+      "input_shape": [[8, 8], [3, 8, 8]],
+      "fft_length": [
+          None, [4, 4], [4, 8], [8, 4], [8, 8], [8, 16], [16, 8], [16, 16]
+      ]
+  }]
+
+  def build_graph(parameters):
+    input_value = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    with spectral_ops_test_util.fft_kernel_label_map():
+      outs = tf.signal.rfft2d(input_value, fft_length=parameters["fft_length"])
+    return [input_value], [outs]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(parameters["input_dtype"],
+                                     parameters["input_shape"])
+    return [input_value], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value])))
+
+  extra_toco_options = ExtraTocoOptions()
+  extra_toco_options.allow_custom_ops = True
+  make_zip_of_tests(options, test_parameters, build_graph, build_inputs,
+                    extra_toco_options)
 
 # Toco binary path provided by the generate rule.
 bin_path = None

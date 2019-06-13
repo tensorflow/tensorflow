@@ -68,6 +68,23 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertEqual(16., eval_result[0])
       self.assertSequenceEqual(sess.run(grad), [32.])
 
+  def testVerifyInputOutputTypesMatch(self):
+
+    @def_function.function
+    def BuildWhile():
+      x = constant_op.constant(1., dtypes.float32)
+
+      def Body(x):
+        return math_ops.cast(x, dtypes.float16) + 1
+
+      while_loop_v2(lambda x: x < 10, Body, [x])
+
+    with self.assertRaisesRegexp(
+        TypeError,
+        r"Loop var Const:0 enters the loop with type <dtype: 'float32'> "
+        r"but has type <dtype: 'float16'> after 1 iteration."):
+      BuildWhile()
+
   def testGradientTapeResourceVariable(self):
     with context.eager_mode():
       v = variables.Variable(1.)

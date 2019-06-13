@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_NAME_UTILS_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_NAME_UTILS_H_
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/types.h"
@@ -24,6 +25,22 @@ namespace data {
 namespace name_utils {
 
 extern const char kDelimiter[];
+extern const char kDefaultDatasetDebugStringPrefix[];
+
+// Merges the given strings or numbers with the specified delimiter.
+//
+// e.g. StrJoin("_", "A", 1, "B") -> "A_1_B".
+template <typename... Args>
+string StrJoin(const string& separator, const Args&... args) {
+  auto args_list = std::vector<StringPiece>{
+      static_cast<const strings::AlphaNum&>(args).Piece()...};
+  return absl::StrJoin(args_list, separator);
+}
+
+// Merge the given args in the format of "(arg1, arg2, ..., argn)".
+//
+// e.g. ArgsToString({"1", "2", "3"}) -> "(1, 2, 3)".
+string ArgsToString(std::initializer_list<StringPiece> args);
 
 // Returns the dataset op name.
 //
@@ -33,10 +50,13 @@ string OpName(const string& dataset_type);
 // Returns a human-readable debug string for this dataset in the format of
 // "FooDatasetOp(arg1, arg2, ...)::Dataset".
 //
-// e.g. DatasetDebugString("Map", {}) -> "MapDatasetOp::Dataset";
-// DatasetDebugString("Range", {"0", "10", "3"}) ->
-// "RangeDatasetOp(0, 10, 3)::Dataset".
+// e.g. DatasetDebugString("Map", "", {}) -> "MapDatasetOp::Dataset";
+// DatasetDebugString("Range", "", {"0", "10", "3"}) ->
+// "RangeDatasetOp(0, 10, 3)::Dataset";
+// DatasetDebugString("Shuffle", "FixedSeed", {"10", "1", "2"}) ->
+// "ShuffleDatasetOp(10, 1, 2)::FixedSeedDataset";
 string DatasetDebugString(const string& dataset_type,
+                          const string& dataset_name_prefix,
                           std::initializer_list<StringPiece> args);
 
 // Returns a human-readable debug string for this dataset in the format of
@@ -47,7 +67,8 @@ string DatasetDebugString(const string& dataset_type,
 template <typename... Args>
 string DatasetDebugString(const string& dataset_type, const Args&... args) {
   return DatasetDebugString(
-      dataset_type, {static_cast<const strings::AlphaNum&>(args).Piece()...});
+      dataset_type, kDefaultDatasetDebugStringPrefix,
+      {static_cast<const strings::AlphaNum&>(args).Piece()...});
 }
 
 // Returns a string that identifies the sequence of iterators leading up to

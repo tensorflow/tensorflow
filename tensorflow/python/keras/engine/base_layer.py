@@ -38,6 +38,7 @@ from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
@@ -318,7 +319,7 @@ class Layer(module.Module):
       instance is returned.
 
     Raises:
-      RuntimeError: If called with partioned variable regularization and
+      RuntimeError: If called with partitioned variable regularization and
         eager execution is enabled.
       ValueError: When giving unsupported dtype and no initializer or when
         trainable has been set to True with synchronization set as `ON_READ`.
@@ -518,8 +519,32 @@ class Layer(module.Module):
     Returns:
       Single TensorSpec or nested structure of TensorSpec objects, describing
         how the layer would transform the provided input.
+
+    Raises:
+      TypeError: If input_signature contains a non-TensorSpec object.
     """
-    raise NotImplementedError
+    def check_type_return_shape(s):
+      if not isinstance(s, tensor_spec.TensorSpec):
+        raise TypeError(
+            'Only TensorSpec signature types are supported, '
+            'but saw signature signature entry: {}.'.format(s))
+      return s.shape
+    input_shape = nest.map_structure(check_type_return_shape, input_signature)
+    output_shape = self.compute_output_shape(input_shape)
+    if self._mixed_precision_policy.should_cast_variables:
+      # If using mixed precision, and weights are cast to input dtype, we should
+      # not infer the dtype from self.dtype
+      dtype = None
+    else:
+      dtype = self.dtype
+    if dtype is None:
+      input_dtypes = [s.dtype for s in nest.flatten(input_signature)]
+      # Default behavior when self.dtype is None, is to use the first input's
+      # dtype.
+      dtype = input_dtypes[0]
+    return nest.map_structure(
+        lambda s: tensor_spec.TensorSpec(dtype=dtype, shape=s),
+        output_shape)
 
   @base_layer_utils.default
   def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
@@ -765,6 +790,21 @@ class Layer(module.Module):
   def activity_regularizer(self, regularizer):
     """Optional regularizer function for the output of this layer."""
     self._activity_regularizer = regularizer
+
+  @property
+  def input_spec(self):
+    return self._input_spec
+
+  @input_spec.setter
+  # Must be decorated to prevent tracking, since the input_spec can be nested
+  # InputSpec objects.
+  @trackable.no_automatic_dependency_tracking
+  def input_spec(self, value):
+    for v in nest.flatten(value):
+      if v is not None and not isinstance(v, InputSpec):
+        raise TypeError('Layer input_spec must be an instance of InputSpec. '
+                        'Got: {}'.format(v))
+    self._input_spec = value
 
   @property
   def trainable_weights(self):
@@ -2230,8 +2270,10 @@ class Layer(module.Module):
       # a NotImplementedError.
       pass
     if self.input_spec is not None:
+      # Layer's input_spec has already been type-checked in the property setter.
       metadata['input_spec'] = nest.map_structure(
-          lambda x: x.get_config(), self.input_spec)
+          lambda x: None if x is None else serialize_keras_object(x),
+          self.input_spec)
     else:
       metadata['input_spec'] = None
     if (self.activity_regularizer is not None and

@@ -26,6 +26,7 @@ from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_v2
 from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_v2
@@ -142,20 +143,25 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   expected_output_shape = tuple(
       layer.compute_output_shape(
           tensor_shape.TensorShape(input_shape)).as_list())
+  expected_output_signature = layer.compute_output_signature(
+      tensor_spec.TensorSpec(shape=input_shape, dtype=input_dtype))
   actual_output = model.predict(input_data)
   actual_output_shape = actual_output.shape
-  for expected_dim, actual_dim in zip(expected_output_shape,
-                                      actual_output_shape):
-    if expected_dim is not None:
-      if expected_dim != actual_dim:
+  def compare_shapes(expected, actual):
+    for expected_dim, actual_dim in zip(expected, actual):
+      if expected_dim is not None and expected_dim != actual_dim:
         raise AssertionError(
             'When testing layer %s, for input %s, found output_shape='
             '%s but expected to find %s.\nFull kwargs: %s' %
-            (layer_cls.__name__,
-             x,
-             actual_output_shape,
-             expected_output_shape,
-             kwargs))
+            (layer_cls.__name__, x, actual, expected, kwargs))
+  compare_shapes(expected_output_shape, actual_output_shape)
+  compare_shapes(expected_output_signature.shape, actual_output_shape)
+  if expected_output_signature.dtype != actual_output.dtype:
+    raise AssertionError(
+        'When testing layer %s, for input %s, found output_dtype='
+        '%s but expected to find %s.\nFull kwargs: %s' %
+        (layer_cls.__name__, x, actual_output.dtype,
+         expected_output_signature.dtype, kwargs))
   if expected_output is not None:
     np.testing.assert_allclose(actual_output, expected_output, rtol=1e-3)
 

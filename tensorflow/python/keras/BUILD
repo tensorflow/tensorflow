@@ -1383,7 +1383,10 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    tags = ["notsan"],
+    tags = [
+        "no_oss",  # TODO(b/135021748) reenable
+        "notsan",
+    ],
 )
 
 tf_py_test(

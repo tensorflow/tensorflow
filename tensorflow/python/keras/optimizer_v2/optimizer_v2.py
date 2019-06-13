@@ -588,7 +588,12 @@ class OptimizerV2(trackable.Trackable):
     return slot_dict[slot_name]
 
   def _prepare(self, var_list):
-    pass
+    # pre-build the decayed learning rate only if learning rate exists.
+    if var_list and "learning_rate" in self._hyper:
+      var_dtypes = set([var.dtype.base_dtype for var in var_list])
+      self._decayed_lr_t = {}
+      for var_dtype in var_dtypes:
+        self._decayed_lr_t[var_dtype] = self._decayed_lr(var_dtype)
 
   def _create_hypers(self):
     if self._hypers_created:

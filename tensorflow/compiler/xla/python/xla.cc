@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -131,6 +132,9 @@ PYBIND11_MODULE(xla_extension, m) {
   // Shapes
   py::class_<Shape> shape_class(m, "Shape");
   shape_class
+      .def(py::init([](const string& s) {
+        return absl::make_unique<Shape>(ValueOrThrow(ParseShape(s)));
+      }))
       .def_static(
           "tuple_shape",
           [](std::vector<Shape> shapes) -> Shape {

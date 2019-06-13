@@ -26,21 +26,26 @@ namespace tensorflow {
 class CopyToDeviceNode : public EagerNode {
  public:
   CopyToDeviceNode(TensorHandle* src, Device* dstd, EagerContext* ctx)
-      : EagerNode(ctx->NextId()),
-        src_(src),
-        dstd_(dstd),
-        ctx_(ctx),
-        dst_(new TensorHandle(id, dstd_, dstd_, nullptr, src->dtype, ctx)) {
+      : EagerNode(ctx->NextId()), src_(src), dstd_(dstd), ctx_(ctx) {
     src_->Ref();
-    dst_->Ref();
+    status_ = TensorHandle::CreateAsyncLocalHandle(id, dstd_, dstd_, nullptr,
+                                                   src_->dtype, ctx, &dst_);
+    if (status_.ok()) {
+      dst_->Ref();
+    }
   }
 
   ~CopyToDeviceNode() override {
     src_->Unref();
-    dst_->Unref();
+    if (dst_) {
+      dst_->Unref();
+    }
   }
 
   Status Run() override {
+    if (!status_.ok()) {
+      return status_;
+    }
     TensorHandle* temp = nullptr;
     TF_RETURN_IF_ERROR(src_->CopyToDevice(ctx_, dstd_, &temp));
     const Tensor* tensor = nullptr;
@@ -60,6 +65,7 @@ class CopyToDeviceNode : public EagerNode {
   Device* dstd_;
   EagerContext* ctx_;
   TensorHandle* dst_;
+  Status status_;
 };
 
 }  // namespace tensorflow

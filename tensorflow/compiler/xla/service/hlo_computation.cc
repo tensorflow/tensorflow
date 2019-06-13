@@ -1080,4 +1080,7 @@ HloInstruction* HloComputation::GetInstructionWithName(absl::string_view name) {
   return it == instructions_in_computation.end() ? nullptr : *it;
 }
 
+bool HloComputation::IsEntryComputation() const {
+  return parent()->entry_computation() == this;
+}
 }  // namespace xla

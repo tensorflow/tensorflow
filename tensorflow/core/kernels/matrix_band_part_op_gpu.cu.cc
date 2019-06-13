@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/kernels/matrix_band_part_op.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
@@ -36,7 +35,7 @@ __global__ void MatrixBandPartKernel(const int num_threads,
                                      const int num_upper_diags,
                                      const Scalar* input_ptr,
                                      Scalar* output_ptr) {
-  CUDA_1D_KERNEL_LOOP(index, num_threads) {
+  GPU_1D_KERNEL_LOOP(index, num_threads) {
     const int col = index % n;
     const int row = (index / n) % m;
     const int band_start = (num_lower_diags < 0 ? 0 : row - num_lower_diags);
@@ -58,12 +57,12 @@ struct MatrixBandPartFunctor<GPUDevice, Scalar> {
     const int batch_size = input.dimension(0);
     const int m = input.dimension(1);
     const int n = input.dimension(2);
-    GpuLaunchConfig config = GetCudaLaunchConfig(batch_size * m * n, device);
-    TF_CHECK_OK(CudaLaunchKernel(MatrixBandPartKernel<Scalar>,
-                                 config.block_count, config.thread_per_block, 0,
-                                 device.stream(), config.virtual_thread_count,
-                                 batch_size, m, n, num_lower_diags,
-                                 num_upper_diags, input.data(), output.data()));
+    GpuLaunchConfig config = GetGpuLaunchConfig(batch_size * m * n, device);
+    TF_CHECK_OK(GpuLaunchKernel(MatrixBandPartKernel<Scalar>,
+                                config.block_count, config.thread_per_block, 0,
+                                device.stream(), config.virtual_thread_count,
+                                batch_size, m, n, num_lower_diags,
+                                num_upper_diags, input.data(), output.data()));
   }
 };
 
@@ -78,4 +77,4 @@ TF_CALL_complex128(DEFINE_GPU_SPEC);
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
