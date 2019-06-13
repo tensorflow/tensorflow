@@ -325,7 +325,8 @@ class PyLocalExecutable {
 
  private:
   StatusOr<std::unique_ptr<PyLocalBuffer>> ExecuteHelper(
-      absl::Span<PyLocalBuffer* const> argument_handles, int replica);
+      absl::Span<PyLocalBuffer* const> argument_handles, int replica,
+      const RunId& run_id);
 
   std::shared_ptr<PyLocalClient> const client_;
   std::shared_ptr<LocalExecutable> executable_;
