@@ -954,42 +954,6 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
         dw = sess.run(math_ops.reduce_sum(grads[1]))
         self.assertEqual(12., dw)
 
-  def testCustomGradientWithVariablesNoFalsePositives(self):
-
-    @custom_gradient.custom_gradient
-    def F(x):
-      out = core_layers.dense(x, 3, use_bias=False)
-
-      def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
-        self.assertEqual(1, len(variables))
-        grads = gradients.gradients(out, [x, variables[0]], grad_ys=out_grad)
-        return grads[0], [array_ops.ones((3, 3))]
-
-      return out, Grad
-
-    with ops.Graph().as_default():
-      with variable_scope.variable_scope("f", use_resource=True) as vs:
-        a = array_ops.ones((2, 4))
-
-        # Variabes in these layers shouldn't be picked up by the decorator.
-        b = core_layers.dense(a, 3, use_bias=False)
-        c = core_layers.dense(b, 3, use_bias=False)
-        x = core_layers.dense(b, 3, use_bias=False) + c
-
-        # Only the variables used in F.
-        y = F(x)
-
-        all_vars = vs.global_variables()
-        assert len(all_vars) == 4
-      grads = gradients.gradients(y, [x] + all_vars)
-      _, var_grads = grads[0], grads[1:]
-      for g in grads:
-        self.assertIsNotNone(g)
-      with session.Session() as sess:
-        self.evaluate(variables.global_variables_initializer())
-        dw = sess.run(math_ops.reduce_sum(var_grads[-1]))
-        self.assertEqual(9., dw)
-
   def testCustomGradientWithVariablesEager(self):
     with context.eager_mode():
       layer = core_layers.Dense(4, use_bias=False)
