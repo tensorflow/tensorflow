@@ -174,6 +174,15 @@ LogicalResult AffineApplyOp::verify() {
     return emitOpError(
         "operand count and affine map dimension and symbol count must match");
 
+  // Verify that all operands are of `index` type.
+  for (Type t : getOperandTypes()) {
+    if (!t.isIndex())
+      return emitOpError("operands must be of type 'index'");
+  }
+
+  if (!getResult()->getType().isIndex())
+    return emitOpError("result must be of type 'index'");
+
   // Verify that the operands are valid dimension and symbol identifiers.
   if (failed(verifyDimAndSymbolIdentifiers(*this, getOperands(),
                                            map.getNumDims())))
