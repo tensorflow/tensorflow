@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/filter_dataset_op.h"
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
@@ -230,8 +231,10 @@ class FilterDatasetOp::Dataset : public DatasetBase {
 
 FilterDatasetOp::FilterDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kPredicate, /*params=*/{},
-                                               &func_metadata_));
+  FunctionMetadata::Params params;
+  params.is_multi_device_function = true;
+  OP_REQUIRES_OK(
+      ctx, FunctionMetadata::Create(ctx, kPredicate, params, &func_metadata_));
   OP_REQUIRES(ctx, func_metadata_->short_circuit_info().indices.size() <= 1,
               errors::InvalidArgument(
                   "predicate function has more than one return value."));
@@ -248,8 +251,11 @@ void FilterDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 }
 
 namespace {
+
 REGISTER_KERNEL_BUILDER(Name("FilterDataset").Device(DEVICE_CPU),
                         FilterDatasetOp);
+REGISTER_INPUT_COLOCATION_EXEMPTION("FilterDataset");
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow
