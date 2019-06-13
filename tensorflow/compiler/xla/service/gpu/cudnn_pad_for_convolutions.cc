@@ -141,10 +141,10 @@ static std::vector<HloCustomCallInstruction*> GetRelevantConvs(
 //
 // resolve_pad_shapes points to a function.  It takes conv, a custom call
 // instruction to cuDNN convolution that may need padding to figure out the
-// desired input and output tensor shapes after padding and store the desired
+// desired padded input and output tensor shapes and store the desired
 // shapes in new_input_shapes and new_input_shapes.  Notice that
 // new_input_shapes is a vector for multiple input tesnsors. This function
-// shall return true, if padding is necessary or false otherwise in addition
+// shall return true, if padding is necessary or false otherwise in addition to
 // status.
 static StatusOr<bool> ResolveAndPad(
     HloCustomCallInstruction* conv, StatusOr<bool> (*resolve_pad_shapes)(HloCustomCallInstruction* conv,

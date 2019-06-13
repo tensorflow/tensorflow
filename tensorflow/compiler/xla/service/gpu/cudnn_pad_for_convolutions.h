@@ -26,9 +26,9 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Zero-pad input/output feature the desired shapes
-// before the HloCustomCallInstruction calling cuDNN convolution and remove the
-// unecessary output after it
+// Two zero-paddings for CuDNN thunking are done in this transform: padding for
+// tensor cores and padding for integer convolutions.  This transform also
+// add slice instruction to remove unnecessary output features.
 class CudnnPadForConvolutions : public HloModulePass {
  public:
   explicit CudnnPadForConvolutions(bool is_volta_or_later)

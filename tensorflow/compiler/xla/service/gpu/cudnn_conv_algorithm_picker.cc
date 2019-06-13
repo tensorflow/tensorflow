@@ -333,7 +333,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
 
   int64 rng_state = 0;
 
-  const auto initialize_buffer = [&stream](DeviceMemoryBase buffer,
+  const auto initialize_buffer = [&stream, &rng_state](DeviceMemoryBase buffer,
                                            const Shape& buffer_shape) {
     switch (buffer_shape.element_type()) {
       case xla::F16:
@@ -481,7 +481,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
       TF_ASSIGN_OR_RETURN(result_buffer,
                           input_output_allocator.AllocateBytes(
                               &stream, reference_result_buffer.size()));
-      initialize_buffer(result_buffer);
+      initialize_buffer(result_buffer, result_shape);
       first_algorithm = alg;
     }
   }

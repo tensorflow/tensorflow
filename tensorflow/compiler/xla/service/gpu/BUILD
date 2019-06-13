@@ -845,20 +845,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cudnn_conv_pad_features",
-    srcs = ["cudnn_conv_pad_features.cc"],
-    hdrs = ["cudnn_conv_pad_features.h"],
-    deps = [
-        ":ir_emission_utils",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:window_util",
-        "//tensorflow/compiler/xla/service:hlo_casting_utils",
-        "//tensorflow/compiler/xla/service:hlo_pass",
-    ],
-)
-
-cc_library(
     name = "cudnn_pad_for_convolutions",
     srcs = ["cudnn_pad_for_convolutions.cc"],
     hdrs = ["cudnn_pad_for_convolutions.h"],
