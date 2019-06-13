@@ -42,10 +42,8 @@ bool TFE_ProfilerIsOk(TFE_Profiler* profiler) {
 
 void TFE_DeleteProfiler(TFE_Profiler* profiler) { delete profiler; }
 
-void TFE_ProfilerSerializeToString(TFE_Context* ctx, TFE_Profiler* profiler,
-                                   TF_Buffer* buf, TF_Status* status) {
-  TFE_ContextAsyncWait(ctx, status);
-  if (TF_GetCode(status) != TF_OK) return;
+void TFE_ProfilerSerializeToString(TFE_Profiler* profiler, TF_Buffer* buf,
+                                   TF_Status* status) {
   string content;
   status->status = profiler->profiler->SerializeToString(&content);
   void* data = tensorflow::port::Malloc(content.length());

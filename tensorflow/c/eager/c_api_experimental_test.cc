@@ -72,7 +72,11 @@ void ExecuteWithProfiling(bool async) {
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   ASSERT_EQ(1, num_retvals);
   TF_Buffer* profiler_result = TF_NewBuffer();
-  TFE_ProfilerSerializeToString(ctx, profiler, profiler_result, status);
+  if (async) {
+    TFE_ContextAsyncWait(ctx, status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  }
+  TFE_ProfilerSerializeToString(profiler, profiler_result, status);
   TFE_DeleteProfiler(profiler);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   profiler::Trace profile_proto;

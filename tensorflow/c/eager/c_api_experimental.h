@@ -40,8 +40,7 @@ TF_CAPI_EXPORT extern void TFE_DeleteProfiler(TFE_Profiler* profiler);
 
 // The output string is a binary string of tensorflow.tpu.Trace. User can write
 // the string to file for offline analysis by tensorboard.
-TF_CAPI_EXPORT extern void TFE_ProfilerSerializeToString(TFE_Context* ctx,
-                                                         TFE_Profiler* profiler,
+TF_CAPI_EXPORT extern void TFE_ProfilerSerializeToString(TFE_Profiler* profiler,
                                                          TF_Buffer* buf,
                                                          TF_Status* status);
 
