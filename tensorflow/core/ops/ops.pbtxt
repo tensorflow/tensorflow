@@ -37568,6 +37568,20 @@ op {
       s: ""
     }
   }
+  attr {
+    name: "shard_size_bytes"
+    type: "int"
+    default_value {
+      i: 10737418240
+    }
+  }
+  attr {
+    name: "pending_snapshot_expiry_seconds"
+    type: "int"
+    default_value {
+      i: 86400
+    }
+  }
 }
 op {
   name: "Softmax"
