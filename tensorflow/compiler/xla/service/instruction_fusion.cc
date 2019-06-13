@@ -431,9 +431,14 @@ class ReversePostOrderFusionQueue : public FusionQueue {
     post_order_index_.erase(instruction);
   }
 
+  const std::vector<bool>* FusionConfiguration() override {
+    return &fusion_config_;
+  }
+
  private:
   std::vector<HloInstruction*> post_order_;
   absl::flat_hash_map<HloInstruction*, int> post_order_index_;
+  std::vector<bool> fusion_config_;
 };
 
 }  // namespace
@@ -446,6 +451,12 @@ std::unique_ptr<FusionQueue> InstructionFusion::GetFusionQueue(
 StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   bool changed = false;
   module_ = module;
+  int64 fuse_count = 0;
+  std::vector<std::vector<bool>>* fusion_config = nullptr;
+  if (is_main_fusion_) {
+    fusion_config = module->mutable_fusion_config();
+    fusion_config->clear();
+  }
   for (auto* computation : module->MakeNonfusionComputations()) {
     CHECK(!computation->IsFusionComputation());
     computation_ = computation;
@@ -520,6 +531,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         fusion_queue->OnFusingInstruction(fusion_instruction, operand,
                                           instruction);
         changed = true;
+        ++fuse_count;
 
         if (operand->user_count() == 0) {
           do_not_duplicate.erase(operand);
@@ -535,6 +547,26 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         break;
       }
     }
+
+    if (is_main_fusion_) {
+      const std::vector<bool>* comp_fusion_config =
+          fusion_queue->FusionConfiguration();
+      if (comp_fusion_config && comp_fusion_config->size() > 0) {
+        fusion_config->push_back(*comp_fusion_config);
+      }
+    }
+  }
+
+  if (is_main_fusion_) {
+    int64 fused_edge_count = 0;
+    for (auto& config_per_computation : *fusion_config) {
+      for (auto edge : config_per_computation) {
+        if (edge) ++fused_edge_count;
+      }
+    }
+    VLOG(4) << "There are " << fused_edge_count << " fused edges that cause "
+            << fuse_count << " fusion actions.";
+    VLOG(4) << FusionConfigToString(*fusion_config);
   }
 
   return changed;
