@@ -541,9 +541,9 @@ static APInt readBits(const char *rawData, size_t bitPos, size_t bitWidth) {
   // Otherwise, the bit position must be 8-bit aligned.
   assert((bitPos % CHAR_BIT) == 0 && "expected bitPos to be 8-bit aligned");
   APInt result(bitWidth, 0);
-  std::copy_n(rawData + (bitPos / CHAR_BIT),
-              llvm::divideCeil(bitWidth, CHAR_BIT),
-              (char *)(result.getRawData()));
+  std::copy_n(
+      rawData + (bitPos / CHAR_BIT), llvm::divideCeil(bitWidth, CHAR_BIT),
+      const_cast<char *>(reinterpret_cast<const char *>(result.getRawData())));
   return result;
 }
 
