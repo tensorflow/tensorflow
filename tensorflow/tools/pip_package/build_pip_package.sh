@@ -41,29 +41,22 @@ function cp_external() {
   cp "${src_dir}/local_config_cuda/cuda/cuda/cuda_config.h" "${dest_dir}/local_config_cuda/cuda/cuda/"
 }
 
-function move_to_root_if_exists () {
-  arg_to_move="$1"
-  if [ -e "${arg_to_move}" ]; then
-    mv ${arg_to_move} ./
-  fi
-}
-
 function reorganize_includes() {
-  TMPDIR="${1%/}"
-  pushd "${TMPDIR}/tensorflow/include/"
+    TMPDIR="${1%/}"
+    pushd "${TMPDIR}/tensorflow/include/"
 
-  move_to_root_if_exists external/com_google_absl/absl
+    mv external/com_google_absl/absl ./
 
-  move_to_root_if_exists external/eigen_archive/Eigen
-  move_to_root_if_exists external/eigen_archive/unsupported
+    mv external/eigen_archive/Eigen ./
+    mv external/eigen_archive/unsupported ./
 
-  move_to_root_if_exists external/jsoncpp_git/include
-  rm -rf external/jsoncpp_git
+    mv external/jsoncpp_git/include ./
+    rm -rf external/jsoncpp_git
 
-  move_to_root_if_exists external/protobuf_archive/src/google
-  rm -rf external/protobuf_archive/python
+    mv external/protobuf_archive/src/google ./
+    rm -rf external/protobuf_archive/python
 
-  popd
+    popd
 }
 
 PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
