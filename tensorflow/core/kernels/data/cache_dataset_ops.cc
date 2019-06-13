@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
@@ -211,8 +212,9 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
                                std::vector<Tensor>* out_tensors,
                                bool* end_of_sequence) override {
           mutex_lock l(mu_);
-          TF_RETURN_IF_ERROR(EnsureLockFileExists());
-          TF_RETURN_IF_ERROR(writer_->status());
+          TF_RETURN_IF_ERROR(
+              HandleEOF(EnsureLockFileExists(), end_of_sequence));
+          TF_RETURN_IF_ERROR(HandleEOF(writer_->status(), end_of_sequence));
           if (cur_index_ >= kMaxItems) {
             // As a courtesy, close the [truncated] cache file.
             Status s = Finish();
@@ -415,6 +417,13 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
                 strings::StrCat(dataset()->filename_, "_", i, ".lockfile")));
           }
           return Status::OK();
+        }
+
+        Status HandleEOF(Status s, bool* end_of_sequence) {
+          if (errors::IsOutOfRange(s)) {
+            *end_of_sequence = true;
+          }
+          return s;
         }
 
         mutex mu_;

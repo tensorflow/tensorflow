@@ -27,16 +27,6 @@ namespace name_utils {
 extern const char kDelimiter[];
 extern const char kDefaultDatasetDebugStringPrefix[];
 
-// Merges the given strings or numbers with the specified delimiter.
-//
-// e.g. StrJoin("_", "A", 1, "B") -> "A_1_B".
-template <typename... Args>
-string StrJoin(const string& separator, const Args&... args) {
-  auto args_list = std::vector<StringPiece>{
-      static_cast<const strings::AlphaNum&>(args).Piece()...};
-  return absl::StrJoin(args_list, separator);
-}
-
 // Merge the given args in the format of "(arg1, arg2, ..., argn)".
 //
 // e.g. ArgsToString({"1", "2", "3"}) -> "(1, 2, 3)".
