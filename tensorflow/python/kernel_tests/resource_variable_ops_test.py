@@ -27,6 +27,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import tensor_pb2
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -261,6 +262,32 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
             handle, [0], constant_op.constant([[2]], dtype=dtypes.int32)))
     read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
     self.assertEqual(self.evaluate(read), [[3]])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGradientGatherNd(self):
+    v = resource_variable_ops.ResourceVariable(
+        np.random.uniform(size=[2, 2]), dtype=dtypes.float32)
+
+    with backprop.GradientTape() as tape:
+      l = array_ops.gather_nd(v, [[1, 1]])
+      l = math_ops.reduce_sum(l)
+
+    grads = tape.gradient(l, v)
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(self.evaluate(grads), [[0., 0.], [0., 1.]])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGradientGatherNdIndexedSlices(self):
+    v = resource_variable_ops.ResourceVariable(
+        np.random.uniform(size=[2, 2]), dtype=dtypes.float32)
+
+    with backprop.GradientTape() as tape:
+      l = array_ops.gather_nd(v, [[1], [1]])
+      l = math_ops.reduce_sum(l)
+
+    grads = tape.gradient(l, v)
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(self.evaluate(grads.values), [[1., 1.], [1., 1.]])
 
   @test_util.run_in_graph_and_eager_modes
   def testScatterSub(self):
