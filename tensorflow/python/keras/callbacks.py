@@ -26,7 +26,6 @@ import io
 import json
 import os
 import re
-import shutil
 import tempfile
 import time
 
@@ -38,10 +37,11 @@ from tensorflow.python.distribute import distribute_coordinator_context as dc_co
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.distribute import multi_worker_training_state
+from tensorflow.python.keras.distribute import multi_worker_training_state as training_state
 from tensorflow.python.keras.utils.data_utils import Sequence
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import tf_logging as logging
@@ -903,8 +903,7 @@ class ModelCheckpoint(Callback):
       # MultiWorkerTrainingState is used to manage the training state needed
       # for preemption-recovery of a worker in multi-worker training.
       self.model._training_state = (
-          multi_worker_training_state.MultiWorkerTrainingState(
-              self.model, self.filepath))
+          training_state.MultiWorkerTrainingState(self.model, self.filepath))
       self._training_state = self.model._training_state
       if self._training_state.restore():
         # If the training state needs to be and is successfully restored,
@@ -915,16 +914,16 @@ class ModelCheckpoint(Callback):
     # If this is not multi worker training, restoring is not needed, or
     # restoring failed, check if it should load weights on restart.
     if self.load_weights_on_restart:
-      # In multi worker training, it only should if `experimental_should_init`
-      # is True.
+      # In multi worker training, it only should load weights on restart if
+      # `experimental_should_init` is True.
       # TODO(rchao): Reference `experimental_should_init` api from a util file.
-      if not K.in_multi_worker_mode() or dc_context.get_current_worker_context(
-      ).experimental_should_init:
+      if (not K.in_multi_worker_mode() or
+          dc_context.get_current_worker_context().experimental_should_init):
         filepath_to_load = (
             self._get_most_recently_modified_file_matching_pattern(
                 self.filepath))
         if (filepath_to_load is not None and
-            multi_worker_training_state.checkpoint_exists(filepath_to_load)):
+            training_state.checkpoint_exists(filepath_to_load)):
           try:
             # `filepath` may contain placeholders such as `{epoch:02d}`, and
             # thus it attempts to load the most recently modified file with file
@@ -1040,7 +1039,7 @@ class ModelCheckpoint(Callback):
     # distributed training.
     if K.in_multi_worker_mode(
     ) and not dc_context.get_current_worker_context().should_checkpoint:
-      shutil.rmtree(self._temp_file_dir)
+      file_io.delete_recursively(self._temp_file_dir)
       del self._temp_file_dir
 
   def _get_most_recently_modified_file_matching_pattern(self, pattern):
@@ -1105,7 +1104,7 @@ class ModelCheckpoint(Callback):
     n_file_with_latest_mod_time = 0
     file_path_with_largest_file_name = None
 
-    if os.path.exists(dir_name):
+    if file_io.file_exists(dir_name):
       for file_name in os.listdir(dir_name):
         # Only consider if `file_name` matches the pattern.
         if re.match(base_name_regex, file_name):
@@ -1892,7 +1891,7 @@ class CSVLogger(Callback):
 
   def on_train_begin(self, logs=None):
     if self.append:
-      if os.path.exists(self.filename):
+      if file_io.file_exists(self.filename):
         with open(self.filename, 'r' + self.file_flags) as f:
           self.append_header = not bool(len(f.readline()))
       mode = 'a'
