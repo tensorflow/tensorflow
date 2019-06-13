@@ -548,11 +548,62 @@ public:
   static DenseElementsAttr get(ShapedType type, ArrayRef<APFloat> values);
 
   //===--------------------------------------------------------------------===//
-  // Value Querying
+  // Iterators
   //===--------------------------------------------------------------------===//
 
-  /// Return the raw storage data held by this attribute.
-  ArrayRef<char> getRawData() const;
+  /// A utility iterator that allows walking over the internal raw APInt values.
+  class IntElementIterator
+      : public llvm::iterator_facade_base<IntElementIterator,
+                                          std::bidirectional_iterator_tag,
+                                          APInt, std::ptrdiff_t, APInt, APInt> {
+  public:
+    /// Iterator movement.
+    IntElementIterator &operator++() {
+      ++index;
+      return *this;
+    }
+    IntElementIterator &operator--() {
+      --index;
+      return *this;
+    }
+
+    /// Accesses the raw APInt value at this iterator position.
+    APInt operator*() const;
+
+    /// Iterator equality.
+    bool operator==(const IntElementIterator &rhs) const {
+      return rawData == rhs.rawData && index == rhs.index;
+    }
+
+  private:
+    friend DenseElementsAttr;
+
+    /// Constructs a new iterator.
+    IntElementIterator(DenseElementsAttr attr, size_t index);
+
+    /// The base address of the raw data buffer.
+    const char *rawData;
+
+    /// The current element index.
+    size_t index;
+
+    /// The bitwidth of the element type.
+    size_t bitWidth;
+  };
+
+  /// Iterator for walking over APFloat values.
+  class FloatElementIterator final
+      : public llvm::mapped_iterator<IntElementIterator,
+                                     std::function<APFloat(const APInt &)>> {
+    friend DenseElementsAttr;
+
+    /// Initializes the float element iterator to the specified iterator.
+    FloatElementIterator(const llvm::fltSemantics &smt, IntElementIterator it);
+  };
+
+  //===--------------------------------------------------------------------===//
+  // Value Querying
+  //===--------------------------------------------------------------------===//
 
   /// Returns the number of raw elements held by this attribute.
   size_t rawSize() const;
@@ -571,6 +622,37 @@ public:
 
   /// Return the held element values as Attributes in 'values'.
   void getValues(SmallVectorImpl<Attribute> &values) const;
+
+  /// Return the held element values as an array of integer or floating-point
+  /// values.
+  template <typename T, typename = typename std::enable_if<
+                            (!std::is_same<T, bool>::value &&
+                             std::numeric_limits<T>::is_integer) ||
+                            llvm::is_one_of<T, float, double>::value>::type>
+  ArrayRef<T> getValues() const {
+    assert(isValidIntOrFloat(sizeof(T), std::numeric_limits<T>::is_integer));
+    auto rawData = getRawData();
+    return ArrayRef<T>(reinterpret_cast<const T *>(rawData.data()),
+                       rawData.size() / sizeof(T));
+  }
+
+  /// Return the held element values as a range of APInts. The element type of
+  /// this attribute must be of integer type.
+  llvm::iterator_range<IntElementIterator> getIntValues() const;
+  template <typename T, typename = typename std::enable_if<
+                            std::is_same<T, APInt>::value>::type>
+  llvm::iterator_range<IntElementIterator> getValues() const {
+    return getIntValues();
+  }
+
+  /// Return the held element values as a range of APFloat. The element type of
+  /// this attribute must be of float type.
+  llvm::iterator_range<FloatElementIterator> getFloatValues() const;
+  template <typename T, typename = typename std::enable_if<
+                            std::is_same<T, APFloat>::value>::type>
+  llvm::iterator_range<FloatElementIterator> getValues() const {
+    return getFloatValues();
+  }
 
   //===--------------------------------------------------------------------===//
   // Mutation Utilities
@@ -596,53 +678,15 @@ public:
             llvm::function_ref<APInt(const APFloat &)> mapping) const;
 
 protected:
-  /// A utility iterator that allows walking over the internal raw APInt values.
-  class RawElementIterator
-      : public llvm::iterator_facade_base<RawElementIterator,
-                                          std::bidirectional_iterator_tag,
-                                          APInt, std::ptrdiff_t, APInt, APInt> {
-  public:
-    /// Iterator movement.
-    RawElementIterator &operator++() {
-      ++index;
-      return *this;
-    }
-    RawElementIterator &operator--() {
-      --index;
-      return *this;
-    }
+  /// Return the raw storage data held by this attribute.
+  ArrayRef<char> getRawData() const;
 
-    /// Accesses the raw APInt value at this iterator position.
-    APInt operator*() const;
-
-    /// Iterator equality.
-    bool operator==(const RawElementIterator &rhs) const {
-      return rawData == rhs.rawData && index == rhs.index;
-    }
-    bool operator!=(const RawElementIterator &rhs) const {
-      return !(*this == rhs);
-    }
-
-  private:
-    friend DenseElementsAttr;
-
-    /// Constructs a new iterator.
-    RawElementIterator(DenseElementsAttr attr, size_t index);
-
-    /// The base address of the raw data buffer.
-    const char *rawData;
-
-    /// The current element index.
-    size_t index;
-
-    /// The bitwidth of the element type.
-    size_t bitWidth;
-  };
-
-  /// Raw element iterators for this attribute.
-  RawElementIterator raw_begin() const { return RawElementIterator(*this, 0); }
-  RawElementIterator raw_end() const {
-    return RawElementIterator(*this, rawSize());
+  /// Get iterators to the raw APInt values for each element in this attribute.
+  IntElementIterator raw_int_begin() const {
+    return IntElementIterator(*this, 0);
+  }
+  IntElementIterator raw_int_end() const {
+    return IntElementIterator(*this, rawSize());
   }
 
   /// Constructs a dense elements attribute from an array of raw APInt values.
@@ -661,6 +705,11 @@ protected:
   static DenseElementsAttr getRawIntOrFloat(ShapedType type,
                                             ArrayRef<char> data,
                                             int64_t dataEltSize, bool isInt);
+
+  /// Check the information for a c++ data type, check if this type is valid for
+  /// the current attribute. This method is used to verify specific type
+  /// invariants that the templatized 'getValues' method cannot.
+  bool isValidIntOrFloat(int64_t dataEltSize, bool isInt) const;
 };
 
 /// An attribute that represents a reference to a dense integer vector or tensor
@@ -669,11 +718,9 @@ class DenseIntElementsAttr : public DenseElementsAttr {
 public:
   /// DenseIntElementsAttr iterates on APInt, so we can use the raw element
   /// iterator directly.
-  using iterator = DenseElementsAttr::RawElementIterator;
+  using iterator = DenseElementsAttr::IntElementIterator;
 
   using DenseElementsAttr::DenseElementsAttr;
-  using DenseElementsAttr::get;
-  using DenseElementsAttr::getValues;
 
   /// Generates a new DenseElementsAttr by mapping each value attribute, and
   /// constructing the DenseElementsAttr given the new element type.
@@ -681,12 +728,9 @@ public:
   mapValues(Type newElementType,
             llvm::function_ref<APInt(const APInt &)> mapping) const;
 
-  /// Gets the integer value of each of the dense elements.
-  void getValues(SmallVectorImpl<APInt> &values) const;
-
   /// Iterator access to the integer element values.
-  iterator begin() const { return raw_begin(); }
-  iterator end() const { return raw_end(); }
+  iterator begin() const { return raw_int_begin(); }
+  iterator end() const { return raw_int_end(); }
 
   /// Method for supporting type inquiry through isa, cast and dyn_cast.
   static bool classof(Attribute attr);
@@ -696,24 +740,9 @@ public:
 /// object. Each element is stored as a double.
 class DenseFPElementsAttr : public DenseElementsAttr {
 public:
-  /// DenseFPElementsAttr iterates on APFloat, so we need to wrap the raw
-  /// element iterator.
-  class ElementIterator final
-      : public llvm::mapped_iterator<RawElementIterator,
-                                     std::function<APFloat(const APInt &)>> {
-    friend DenseFPElementsAttr;
-
-    /// Initializes the float element iterator to the specified iterator.
-    ElementIterator(const llvm::fltSemantics &smt, RawElementIterator it);
-  };
-  using iterator = ElementIterator;
+  using iterator = DenseElementsAttr::FloatElementIterator;
 
   using DenseElementsAttr::DenseElementsAttr;
-  using DenseElementsAttr::get;
-  using DenseElementsAttr::getValues;
-
-  /// Gets the float value of each of the dense elements.
-  void getValues(SmallVectorImpl<APFloat> &values) const;
 
   /// Generates a new DenseElementsAttr by mapping each value attribute, and
   /// constructing the DenseElementsAttr given the new element type.
@@ -722,8 +751,8 @@ public:
             llvm::function_ref<APInt(const APFloat &)> mapping) const;
 
   /// Iterator access to the float element values.
-  iterator begin() const;
-  iterator end() const;
+  iterator begin() const { return getFloatValues().begin(); }
+  iterator end() const { return getFloatValues().end(); }
 
   /// Method for supporting type inquiry through isa, cast and dyn_cast.
   static bool classof(Attribute attr);
