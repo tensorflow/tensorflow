@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 
-#include "grpcpp/grpcpp.h"
-
 #include <cstdio>
 #include <ctime>
 #include <vector>
 
+#include "grpcpp/grpcpp.h"
+#include "absl/strings/escaping.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -64,7 +65,7 @@ ProfileRequest PopulateProfileRequest(int duration_ms,
   ProfileRequest request;
   request.set_duration_ms(duration_ms);
   request.set_max_events(kMaxEvents);
-  if (tensorflow::str_util::StartsWith(repository_root, "gs://")) {
+  if (absl::StartsWith(repository_root, "gs://")) {
     // For backward compatibilities, only generate tracetable etc when the
     // user provide a GCS path for model directory.
     request.set_repository_root(repository_root);
@@ -74,6 +75,7 @@ ProfileRequest PopulateProfileRequest(int duration_ms,
   request.add_tools("input_pipeline");
   request.add_tools("memory_viewer");
   request.add_tools("overview_page");
+  request.add_tools("pod_viewer");
   *request.mutable_opts() = opts;
   return request;
 }
@@ -155,7 +157,7 @@ Status NewSession(const string& service_addr,
       stub->NewSession(&context, new_session_request, &new_session_response)));
 
   std::cout << "Profile session succeed for host(s):"
-            << str_util::Join(hostnames, ",") << std::endl;
+            << absl::StrJoin(hostnames, ",") << std::endl;
   if (new_session_response.empty_trace()) {
     return Status(tensorflow::error::Code::UNAVAILABLE,
                   "No trace event is collected");
@@ -204,7 +206,7 @@ Status StartTracing(const tensorflow::string& service_addr,
   opts.set_include_dataset_ops(include_dataset_ops);
   while (true) {
     std::cout << "Starting to profile TPU traces for " << duration_ms << " ms. "
-              << "Remaining attempt(s): " << remaining_attempts-- << std::endl;
+              << "Remaining attempt(s): " << --remaining_attempts << std::endl;
     if (hostnames.empty()) {
       status = Profile(service_addr, logdir, duration_ms, repository_root,
                        session_id, opts);
@@ -214,7 +216,8 @@ Status StartTracing(const tensorflow::string& service_addr,
                           session_id, opts);
     }
     if (remaining_attempts <= 0 || status.ok() ||
-        status.code() != tensorflow::error::Code::UNAVAILABLE)
+        status.code() != tensorflow::error::Code::UNAVAILABLE ||
+        status.code() != tensorflow::error::Code::ALREADY_EXISTS)
       break;
     std::cout << "No trace event is collected. Automatically retrying."
               << std::endl
@@ -232,36 +235,33 @@ Status StartTracing(const tensorflow::string& service_addr,
   return status;
 }
 
-MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level) {
+MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level,
+                                      bool timestamp) {
   MonitorRequest request;
   request.set_duration_ms(duration_ms);
   request.set_monitoring_level(monitoring_level);
+  request.set_timestamp(timestamp);
   return request;
 }
 
-// Repeatedly collects profiles and shows user-friendly metrics for
-// 'num_queries' time(s).
-void StartMonitoring(const tensorflow::string& service_addr, int duration_ms,
-                     int monitoring_level, int num_queries) {
-  for (int query = 0; query < num_queries; ++query) {
-    MonitorRequest request =
-        PopulateMonitorRequest(duration_ms, monitoring_level);
+Status StartMonitoring(const tensorflow::string& service_addr, int duration_ms,
+                       int monitoring_level, bool timestamp, string* result) {
+  MonitorRequest request =
+      PopulateMonitorRequest(duration_ms, monitoring_level, timestamp);
 
-    ::grpc::ClientContext context;
-    ::grpc::ChannelArguments channel_args;
-    channel_args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH,
-                        std::numeric_limits<int32>::max());
-    std::unique_ptr<grpc::ProfilerService::Stub> stub =
-        grpc::ProfilerService::NewStub(::grpc::CreateCustomChannel(
-            "dns:///" + service_addr, ::grpc::InsecureChannelCredentials(),
-            channel_args));
-    MonitorResponse response;
-    TF_QCHECK_OK(FromGrpcStatus(stub->Monitor(&context, request, &response)));
-
-    std::cout << "Cloud TPU Monitoring Results (Sample " << query + 1
-              << "):\n\n"
-              << response.data() << std::flush;
-  }
+  ::grpc::ClientContext context;
+  ::grpc::ChannelArguments channel_args;
+  channel_args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH,
+                      std::numeric_limits<int32>::max());
+  std::unique_ptr<grpc::ProfilerService::Stub> stub =
+      grpc::ProfilerService::NewStub(::grpc::CreateCustomChannel(
+          "dns:///" + service_addr, ::grpc::InsecureChannelCredentials(),
+          channel_args));
+  MonitorResponse response;
+  TF_RETURN_IF_ERROR(
+      FromGrpcStatus(stub->Monitor(&context, request, &response)));
+  *result = response.data();
+  return Status::OK();
 }
 
 }  // namespace client

@@ -37,8 +37,6 @@ flags.DEFINE_integer("batch_size", 64,
 flags.DEFINE_integer("num_epochs", 10, "How many epochs to run?")
 flags.DEFINE_float("learning_rate", 0.01, "Learning Rate")
 flags.DEFINE_float("momentum", 0.5, "SGD momentum")
-flags.DEFINE_boolean("use_function", False,
-                     "Should we wrap the step in a tf.function.")
 
 FLAGS = flags.FLAGS
 NUM_TRAIN_IMAGES = 60000
@@ -70,15 +68,13 @@ def compute_loss(logits, labels):
   return loss * (1. / FLAGS.batch_size)
 
 
-def mnist_datasets():
+def mnist_datasets(strategy):
   (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
   # Numpy defaults to dtype=float64; TF defaults to float32. Stick with float32.
   x_train, x_test = x_train / np.float32(255), x_test / np.float32(255)
   y_train, y_test = y_train.astype(np.int64), y_test.astype(np.int64)
-  # TODO(priyag): `strategy.make_numpy_iterator` can be used directly instead of
-  # converting to datasets.
-  train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
-  test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test))
+  train_dataset = strategy.experimental_make_numpy_dataset((x_train, y_train))
+  test_dataset = strategy.experimental_make_numpy_dataset((x_test, y_test))
   return train_dataset, test_dataset
 
 
@@ -97,7 +93,7 @@ def main(unused_argv):
   strategy = tf.distribute.MirroredStrategy(devices)
 
   with strategy.scope():
-    train_ds, test_ds = mnist_datasets()
+    train_ds, test_ds = mnist_datasets(strategy)
     train_ds = train_ds.shuffle(NUM_TRAIN_IMAGES).batch(FLAGS.batch_size)
     test_ds = test_ds.batch(FLAGS.batch_size)
 
@@ -110,55 +106,47 @@ def main(unused_argv):
     test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(
         "test_accuracy", dtype=tf.float32)
 
-    def train_step(inputs):
-      images, labels = inputs
-      with tf.GradientTape() as tape:
-        logits = model(images, training=True)
+    @tf.function
+    def train_epoch(train_dist_dataset):
+      """Training Step."""
+      def step_fn(images, labels):
+        with tf.GradientTape() as tape:
+          logits = model(images, training=True)
+          loss = compute_loss(logits, labels)
+        grads = tape.gradient(loss, model.variables)
+        optimizer.apply_gradients(zip(grads, model.variables))
+        training_loss.update_state(loss)
+        training_accuracy.update_state(labels, logits)
+
+      for images, labels in train_dist_dataset:
+        strategy.experimental_run_v2(step_fn, args=(images, labels))
+
+    @tf.function
+    def test_epoch(test_dist_dataset):
+      """Testing Step."""
+      def step_fn(images, labels):
+        logits = model(images, training=False)
         loss = compute_loss(logits, labels)
-      grads = tape.gradient(loss, model.variables)
-      optimizer.apply_gradients(zip(grads, model.variables))
-      training_loss.update_state(loss)
-      training_accuracy.update_state(labels, logits)
+        test_loss.update_state(loss)
+        test_accuracy.update_state(labels, logits)
 
-    def test_step(inputs):
-      images, labels = inputs
-      logits = model(images, training=False)
-      loss = compute_loss(logits, labels)
-      test_loss.update_state(loss)
-      test_accuracy.update_state(labels, logits)
+      for images, labels in test_dist_dataset:
+        strategy.experimental_run_v2(step_fn, args=(images, labels))
 
-    train_iterator = strategy.make_dataset_iterator(train_ds)
-    test_iterator = strategy.make_dataset_iterator(test_ds)
+    train_dist_dataset = strategy.experimental_distribute_dataset(train_ds)
+    test_dist_dataset = strategy.experimental_distribute_dataset(test_ds)
 
-    for epoch in range(0, FLAGS.num_epochs):
-      # TODO(b/123315763): Create the tf.function outside this loop once we are
-      # able to initialize iterator in eager mode.
-      dist_train = lambda it: strategy.experimental_run(train_step, it)
-      dist_test = lambda it: strategy.experimental_run(test_step, it)
-      if FLAGS.use_function:
-        dist_train = tf.function(dist_train)
-        dist_test = tf.function(dist_test)
-
+    for epoch in range(FLAGS.num_epochs):
       # Train
       print("Starting epoch {}".format(epoch))
-      train_iterator.initialize()
-      while True:
-        try:
-          dist_train(train_iterator)
-        except tf.errors.OutOfRangeError:
-          break
+      train_epoch(train_dist_dataset)
       print("Training loss: {:0.4f}, accuracy: {:0.2f}%".format(
           training_loss.result(), training_accuracy.result() * 100))
       training_loss.reset_states()
       training_accuracy.reset_states()
 
       # Test
-      test_iterator.initialize()
-      while True:
-        try:
-          dist_test(test_iterator)
-        except tf.errors.OutOfRangeError:
-          break
+      test_epoch(test_dist_dataset)
       print("Test loss: {:0.4f}, accuracy: {:0.2f}%".format(
           test_loss.result(), test_accuracy.result() * 100))
       test_loss.reset_states()

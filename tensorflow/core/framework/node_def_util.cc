@@ -19,9 +19,10 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
-#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -50,7 +51,7 @@ AttrSlice::AttrSlice(const NodeDef& node_def)
 
 AttrSlice::AttrSlice(const AttrValueMap* a) : ndef_(nullptr), attrs_(a) {}
 
-static string SummarizeAttrsHelper(AttrSlice attrs, StringPiece device) {
+string SummarizeAttrsHelper(AttrSlice attrs, StringPiece device) {
   string ret;
 
   // We sort the attrs so the output is deterministic.
@@ -81,6 +82,18 @@ string AttrSlice::SummarizeNode() const {
   return ndef_ ? SummarizeNodeDef(*ndef_)
                : strings::StrCat(
                      "[", SummarizeAttrsHelper(*this, StringPiece()), "]");
+}
+
+string AttrSlice::DebugString() const {
+  std::vector<string> attr_key_vals;
+  attr_key_vals.reserve(attrs_->size());
+  for (const auto& it : *this) {
+    const string& name = it.first;
+    const AttrValue& attr_value = it.second;
+    attr_key_vals.push_back(
+        absl::StrCat(name, "=", SummarizeAttrValue(attr_value)));
+  }
+  return absl::StrJoin(attr_key_vals, ", ");
 }
 
 string SummarizeNode(const Node& node) { return SummarizeNodeDef(node.def()); }
@@ -118,6 +131,13 @@ string FormatNodeForError(const Node& node) {
 
 string FormatNodeDefForError(const NodeDef& node_def) {
   return FormatNodeForError(NodeDebugInfo(node_def));
+}
+
+string FormatNodeDefForError(
+    StringPiece node_name, bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info) {
+  return FormatNodeForError(NodeDebugInfo(
+      node_name, has_experimental_debug_info, experimental_debug_info));
 }
 
 void GetMergedOriginalNodeNames(const NodeDebugInfo& from,
@@ -183,7 +203,7 @@ Status AttrSlice::Find(StringPiece attr_name,
   // Skip AttachDef for internal attrs since it is a little bit
   // expensive and it is common for them to correctly not be included
   // in a NodeDef.
-  if (!str_util::StartsWith(attr_name, "_") && ndef_ != nullptr) {
+  if (!absl::StartsWith(attr_name, "_") && ndef_ != nullptr) {
     s = AttachDef(s, *ndef_);
   }
   return s;
@@ -266,12 +286,12 @@ bool AttrSlice::EqualAttrs(AttrSlice other, Scratch* scratch) const {
 DEFINE_GET_ATTR(string, s, "string", emplace_back, v, ;)
 DEFINE_GET_ATTR_SIMPLE(string, s, "string", emplace_back, v, ;)
 DEFINE_GET_ATTR(int64, i, "int", emplace_back, v, ;)
-DEFINE_GET_ATTR(int32, i, "int", emplace_back, static_cast<int32>(v),
-                if (static_cast<int64>(static_cast<int32>(v)) != v) {
-                  return errors::InvalidArgument("Attr ", attr_name,
-                                                 " has value ", v,
-                                                 " out of range for an int32");
-                })
+DEFINE_GET_ATTR(
+    int32, i, "int", emplace_back, static_cast<int32>(v),
+    if (static_cast<int64>(static_cast<int32>(v)) != v) {
+      return errors::InvalidArgument("Attr ", attr_name, " has value ", v,
+                                     " out of range for an int32");
+    })
 DEFINE_GET_ATTR(float, f, "float", emplace_back, v, ;)
 // std::vector<bool> specialization does not have emplace_back until
 // c++14, so we have to use push_back (see
@@ -285,13 +305,12 @@ DEFINE_GET_ATTR(TensorShape, shape, "shape", emplace_back, TensorShape(v),
 DEFINE_GET_ATTR(PartialTensorShape, shape, "shape", emplace_back,
                 PartialTensorShape(v),
                 TF_RETURN_IF_ERROR(PartialTensorShape::IsValidShape(v));)
-DEFINE_GET_ATTR(Tensor, tensor, "tensor", emplace_back, t, Tensor t;
-                if (!t.FromProto(v)) {
-                  return errors::InvalidArgument(
-                      "Attr ", attr_name, " has value ",
-                      ProtoShortDebugString(v),
-                      " that can't be converted to a Tensor");
-                })
+DEFINE_GET_ATTR(
+    Tensor, tensor, "tensor", emplace_back, t, Tensor t; if (!t.FromProto(v)) {
+      return errors::InvalidArgument("Attr ", attr_name, " has value ",
+                                     ProtoShortDebugString(v),
+                                     " that can't be converted to a Tensor");
+    })
 DEFINE_GET_ATTR(NameAttrList, func, "func", emplace_back, v, ;);
 #undef DEFINE_GET_ATTR
 
@@ -344,13 +363,15 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 
 namespace {  // Helper for InOutTypesForNode().
 
-Status AddArgToSig(const NodeDef& node_def, const OpDef::ArgDef& arg_def,
-                   DataTypeVector* sig) {
+template <class NodeDefOrAttrSlice>
+Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
+                   const OpDef::ArgDef& arg_def, DataTypeVector* sig) {
   const int original_size = sig->size();
   if (!arg_def.number_attr().empty()) {
     // Same type repeated "repeats" times.
     int32 repeats = -1;
-    TF_RETURN_IF_ERROR(GetNodeAttr(node_def, arg_def.number_attr(), &repeats));
+    TF_RETURN_IF_ERROR(
+        GetNodeAttr(node_or_attrs, arg_def.number_attr(), &repeats));
     if (repeats < 0) {
       return errors::InvalidArgument("Value for number_attr() ", repeats,
                                      " < 0");
@@ -358,7 +379,8 @@ Status AddArgToSig(const NodeDef& node_def, const OpDef::ArgDef& arg_def,
 
     if (!arg_def.type_attr().empty()) {
       DataType dtype;
-      TF_RETURN_IF_ERROR(GetNodeAttr(node_def, arg_def.type_attr(), &dtype));
+      TF_RETURN_IF_ERROR(
+          GetNodeAttr(node_or_attrs, arg_def.type_attr(), &dtype));
       for (int i = 0; i < repeats; ++i) {
         sig->push_back(dtype);
       }
@@ -373,12 +395,12 @@ Status AddArgToSig(const NodeDef& node_def, const OpDef::ArgDef& arg_def,
   } else if (!arg_def.type_attr().empty()) {
     const AttrValue* attr_value;
     TF_RETURN_IF_ERROR(
-        AttrSlice(node_def).Find(arg_def.type_attr(), &attr_value));
+        AttrSlice(node_or_attrs).Find(arg_def.type_attr(), &attr_value));
     sig->push_back(attr_value->type());
   } else if (!arg_def.type_list_attr().empty()) {
     const AttrValue* attr_value;
     TF_RETURN_IF_ERROR(
-        AttrSlice(node_def).Find(arg_def.type_list_attr(), &attr_value));
+        AttrSlice(node_or_attrs).Find(arg_def.type_list_attr(), &attr_value));
     for (int dtype : attr_value->list().type()) {
       sig->push_back(static_cast<DataType>(dtype));
     }
@@ -445,6 +467,14 @@ Status OutputTypesForNode(const NodeDef& node_def, const OpDef& op_def,
   return Status::OK();
 }
 
+Status OutputTypesForNode(const AttrSlice& attrs, const OpDef& op_def,
+                          DataTypeVector* outputs) {
+  for (const auto& arg : op_def.output_arg()) {
+    TF_RETURN_IF_ERROR(AddArgToSig(attrs, arg, outputs));
+  }
+  return Status::OK();
+}
+
 Status InOutTypesForNode(const NodeDef& node_def, const OpDef& op_def,
                          DataTypeVector* inputs, DataTypeVector* outputs) {
   TF_RETURN_IF_ERROR(InputTypesForNode(node_def, op_def, inputs));
@@ -470,7 +500,7 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
   size_t num_inputs = 0;
   // TODO(josh11b): Unify the input field validation.
   for (const string& input : node_def.input()) {
-    if (str_util::StartsWith(input, "^")) {
+    if (absl::StartsWith(input, "^")) {
       seen_control = true;
       if (input.find(':') != string::npos) {
         return errors::InvalidArgument("Control input '", input,
@@ -496,7 +526,7 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
   }
   for (const auto& attr : node_def.attr()) {
     // Allow internal optional attributes with names starting with "_".
-    if (str_util::StartsWith(attr.first, "_")) {
+    if (absl::StartsWith(attr.first, "_")) {
       continue;
     }
     auto iter = op_attrs.find(attr.first);
@@ -773,6 +803,8 @@ ADD_ATTR(bool)
 Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
                                 NodeDef* node_def) {
   node_def->set_name(strings::StrCat(prefix, node_def->name(), suffix));
+
+  // Update frame name to avoid multiple LoopCond nodes in one frame.
   if (node_def->op() == "Enter" || node_def->op() == "RefEnter") {
     string frame_name;
     TF_RETURN_IF_ERROR(GetNodeAttr(*node_def, "frame_name", &frame_name));
@@ -780,6 +812,13 @@ Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
     frame_name = strings::StrCat(prefix, frame_name, suffix);
     attr.set_s(frame_name);
   }
+
+  // Update colocation constraints.
+  auto class_attr = node_def->mutable_attr()->find("_class");
+  if (class_attr != node_def->mutable_attr()->end()) {
+    class_attr->second.set_s(strings::StrCat(prefix, class_attr->second.s()));
+  }
+
   return Status::OK();
 }
 

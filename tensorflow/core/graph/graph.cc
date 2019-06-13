@@ -58,6 +58,7 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
     *new std::unordered_map<string, Node::NodeClass>({
         // Keep in same order as NodeClass values
         REF_CLASS("Switch", NC_SWITCH),
+        REF_CLASS("_SwitchN", NC_SWITCH),
         REF_CLASS("Merge", NC_MERGE),
         REF_CLASS("Enter", NC_ENTER),
         REF_CLASS("Exit", NC_EXIT),
@@ -315,9 +316,15 @@ Status Node::input_tensor(int idx, OutputTensor* t) const {
 // NodeDebugInfo
 
 NodeDebugInfo::NodeDebugInfo(const Node& n) : NodeDebugInfo(n.def()) {}
-NodeDebugInfo::NodeDebugInfo(const NodeDef& ndef) : name(ndef.name()) {
-  if (ndef.has_experimental_debug_info()) {
-    const auto& names = ndef.experimental_debug_info().original_node_names();
+NodeDebugInfo::NodeDebugInfo(const NodeDef& ndef)
+    : NodeDebugInfo(ndef.name(), ndef.has_experimental_debug_info(),
+                    ndef.experimental_debug_info()) {}
+NodeDebugInfo::NodeDebugInfo(
+    StringPiece node_name, bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info)
+    : name(node_name) {
+  if (has_experimental_debug_info) {
+    const auto& names = experimental_debug_info.original_node_names();
     original_node_names.assign(names.begin(), names.end());
   }
 }
@@ -447,8 +454,6 @@ void Graph::RemoveNode(Node* node) {
   DCHECK(!node->IsSink());
 
   // Remove any edges involving this node.
-  free_edges_.reserve(free_edges_.size() + node->in_edges_.size() +
-                      node->out_edges_.size());
   for (const Edge* e : node->in_edges_) {
     CHECK_EQ(e->src_->out_edges_.erase(e), size_t{1});
     edges_[e->id_] = nullptr;
@@ -511,13 +516,7 @@ void Graph::RemoveEdge(const Edge* e) {
 }
 
 void Graph::RecycleEdge(const Edge* e) {
-  Edge* del = const_cast<Edge*>(e);
-  del->src_ = nullptr;
-  del->dst_ = nullptr;
-  del->id_ = -1;
-  del->src_output_ = kControlSlot - 1;
-  del->dst_input_ = kControlSlot - 1;
-  free_edges_.push_back(del);
+  free_edges_.push_back(const_cast<Edge*>(e));
 }
 
 const Edge* Graph::AddControlEdge(Node* source, Node* dest,

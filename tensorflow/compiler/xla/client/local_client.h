@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 
@@ -40,6 +40,12 @@ class LocalExecutable {
   // Run the compiled computation with the given arguments and options and
   // return the result.
   StatusOr<ScopedShapedBuffer> Run(
+      const absl::Span<const ShapedBuffer* const> arguments,
+      ExecutableRunOptions run_options);
+
+  // Similar to Run(), but need not block the host waiting for the computation
+  // to complete before returning.
+  StatusOr<ScopedShapedBuffer> RunAsync(
       const absl::Span<const ShapedBuffer* const> arguments,
       ExecutableRunOptions run_options);
 
@@ -86,6 +92,10 @@ class LocalExecutable {
   // Returns a literal containing the contents of the given ShapedBuffer.
   StatusOr<Literal> LiteralFromShapedBuffer(const ShapedBuffer& shaped_buffer);
 
+  StatusOr<std::pair<ServiceExecutableRunOptions, StreamPool::Ptr>> RunHelper(
+      const absl::Span<const ShapedBuffer* const> arguments,
+      ExecutableRunOptions run_options);
+
   // The ordinal of the device which this executable was compiled for. The
   // executable can run on all equivalent devices (as determined by
   // Backend::devices_equivalent).
@@ -127,7 +137,7 @@ class LocalClient : public Client {
   // device is used.
   StatusOr<ScopedShapedBuffer> LiteralToShapedBuffer(
       const LiteralSlice& literal, int device_ordinal,
-      DeviceMemoryAllocator* allocator = nullptr);
+      se::DeviceMemoryAllocator* allocator = nullptr);
 
   // Transfer the BorrowingLiteral to the device with the given ordinal.
   StatusOr<TransferToServerResponse> TransferToLocalServer(

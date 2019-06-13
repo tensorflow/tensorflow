@@ -20,8 +20,10 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -87,6 +89,41 @@ TEST_F(HloDceTest, InstructionsWithSideEffect) {
   EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
 
   EXPECT_EQ(4, computation->instruction_count());
+}
+
+TEST_F(HloDceTest, CustomCallInstructionsWithSideEffect) {
+  // Verify that custom call instruction with side-effect is not removed.
+  auto builder = HloComputation::Builder(TestName());
+  auto instr = Cast<HloCustomCallInstruction>(builder.AddInstruction(
+      HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                       /*operands=*/{},
+                                       /*custom_call_target=*/"foo")));
+  instr->set_custom_call_has_side_effect(true);
+  builder.AddInstruction(HloInstruction::CreateTuple({}));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  HloDCE dce;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
+  EXPECT_FALSE(result);
+}
+
+TEST_F(HloDceTest, CustomCallInstructionsWithoutSideEffect) {
+  // Verify that custom call instruction without side-effect is removed.
+  auto builder = HloComputation::Builder(TestName());
+  builder.AddInstruction(
+      HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                       /*operands=*/{},
+                                       /*custom_call_target=*/"foo"));
+  builder.AddInstruction(HloInstruction::CreateTuple({}));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  HloDCE dce;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
+  EXPECT_TRUE(result);
 }
 
 TEST_F(HloDceTest, DeadParameters) {

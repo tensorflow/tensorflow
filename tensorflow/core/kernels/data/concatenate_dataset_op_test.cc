@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/concatenate_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
@@ -20,7 +21,6 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "concatenate_dataset";
-constexpr char kOpName[] = "ConcatenateDataset";
 
 class ConcatenateDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -49,8 +49,11 @@ class ConcatenateDatasetOpTest : public DatasetOpsTestBase {
       const std::vector<PartialTensorShape> &output_shapes,
       std::unique_ptr<OpKernel> *op_kernel) {
     NodeDef node_def = test::function::NDef(
-        kNodeName, kOpName, {"input_dataset", "another_dataset"},
-        {{"output_types", output_types}, {"output_shapes", output_shapes}});
+        kNodeName, name_utils::OpName(ConcatenateDatasetOp::kDatasetType),
+        {ConcatenateDatasetOp::kInputDataset,
+         ConcatenateDatasetOp::kAnotherDataset},
+        {{ConcatenateDatasetOp::kOutputTypes, output_types},
+         {ConcatenateDatasetOp::kOutputShapes, output_shapes}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
     return Status::OK();
   }
@@ -273,7 +276,8 @@ TEST_F(ConcatenateDatasetOpTest, DatasetTypeString) {
                              &concatenate_dataset));
   core::ScopedUnref scoped_unref(concatenate_dataset);
 
-  EXPECT_EQ(concatenate_dataset->type_string(), kOpName);
+  EXPECT_EQ(concatenate_dataset->type_string(),
+            name_utils::OpName(ConcatenateDatasetOp::kDatasetType));
 }
 
 TEST_P(ParameterizedConcatenateDatasetOpTest, DatasetOutputDtypes) {
@@ -490,7 +494,9 @@ TEST_F(ConcatenateDatasetOpTest, IteratorOutputPrefix) {
   std::unique_ptr<IteratorBase> iterator;
   TF_ASSERT_OK(concatenate_dataset->MakeIterator(iterator_ctx.get(), "Iterator",
                                                  &iterator));
-  EXPECT_EQ(iterator->prefix(), "Iterator::Concatenate");
+  EXPECT_EQ(iterator->prefix(),
+            name_utils::IteratorPrefix(ConcatenateDatasetOp::kDatasetType,
+                                       "Iterator"));
 }
 
 TEST_P(ParameterizedConcatenateDatasetOpTest, Roundtrip) {
@@ -536,7 +542,8 @@ TEST_P(ParameterizedConcatenateDatasetOpTest, Roundtrip) {
     TF_EXPECT_OK(iterator->Save(serialization_ctx.get(), &writer));
     TF_EXPECT_OK(writer.Flush());
     VariantTensorDataReader reader(&data);
-    TF_EXPECT_OK(iterator->Restore(iterator_ctx.get(), &reader));
+    TF_EXPECT_OK(RestoreIterator(iterator_ctx.get(), &reader, "Iterator",
+                                 *concatenate_dataset, &iterator));
 
     while (cur_iteration < breakpoint) {
       TF_EXPECT_OK(iterator->GetNext(iterator_ctx.get(), &out_tensors,

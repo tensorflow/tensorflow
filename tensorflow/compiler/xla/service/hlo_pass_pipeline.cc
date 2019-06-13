@@ -58,14 +58,21 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
   TF_RETURN_IF_ERROR(RunInvariantCheckers(hlo, last_pass_name));
   bool changed = false;
   for (HloPassInterface* pass : passes) {
-    VLOG(1) << "  HLO pass " << pass->name();
+    absl::string_view pass_name = pass->name();
+    VLOG(1) << "  HLO pass " << pass_name;
     MaybeDumpHlo(*hlo,
                  /*after_pass_name=*/last_pass_name,
-                 /*before_pass_name=*/pass->name());
+                 /*before_pass_name=*/pass_name);
+    if (!pass->IsPassPipeline()) {
+      compilation_stats_->StartPass(pass_name);
+    }
     TF_ASSIGN_OR_RETURN(bool pass_changed, RunHelper(pass, hlo));
     changed |= pass_changed;
-    TF_RETURN_IF_ERROR(RunInvariantCheckers(hlo, pass->name()));
-    last_pass_name = string(pass->name());
+    TF_RETURN_IF_ERROR(RunInvariantCheckers(hlo, pass_name));
+    last_pass_name = string(pass_name);
+    if (!pass->IsPassPipeline()) {
+      compilation_stats_->EndPass(pass_name);
+    }
   }
   MaybeDumpHlo(*hlo,
                /*after_pass_name=*/last_pass_name,
@@ -75,23 +82,43 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
 
 std::vector<HloPassInterface*> HloPassPipeline::GetEnabledPasses(
     const DebugOptions& debug_options) {
-  auto repeated_field = debug_options.xla_disable_hlo_passes();
-  absl::flat_hash_set<string> disabled_pass_names(repeated_field.begin(),
-                                                  repeated_field.end());
   if (debug_options.xla_disable_all_hlo_passes()) {
     VLOG(1) << "*All* passes disabled by --xla_disable_all_hlo_passes.";
     return {};
   }
+
+  absl::flat_hash_set<string> disabled_pass_names(
+      debug_options.xla_disable_hlo_passes().begin(),
+      debug_options.xla_disable_hlo_passes().end());
+
+  absl::flat_hash_set<string> enabled_pass_names(
+      debug_options.xla_enable_hlo_passes_only().begin(),
+      debug_options.xla_enable_hlo_passes_only().end());
 
   if (!disabled_pass_names.empty()) {
     VLOG(1) << "Passes disabled by --xla_disable_hlo_passes: "
             << absl::StrJoin(disabled_pass_names, ", ");
   }
 
+  if (!enabled_pass_names.empty()) {
+    VLOG(1) << "Passes enabled by --xla_enable_hlo_passes_only: "
+            << absl::StrJoin(enabled_pass_names, ", ");
+  }
+
+  CHECK(disabled_pass_names.empty() || enabled_pass_names.empty());
+
   std::vector<HloPassInterface*> enabled_passes;
-  for (auto& pass : passes_) {
-    if (!disabled_pass_names.contains(pass->name())) {
-      enabled_passes.push_back(pass.get());
+  if (!enabled_pass_names.empty()) {
+    for (auto& pass : passes_) {
+      if (enabled_pass_names.contains(pass->name())) {
+        enabled_passes.push_back(pass.get());
+      }
+    }
+  } else {
+    for (auto& pass : passes_) {
+      if (!disabled_pass_names.contains(pass->name())) {
+        enabled_passes.push_back(pass.get());
+      }
     }
   }
   return enabled_passes;

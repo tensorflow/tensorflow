@@ -60,6 +60,19 @@ extern const char* kConstInputAddModel;
 // 10] as output.
 extern const char* kFloatConcatMax5Max10Max10;
 
+// Test model with a custom op.
+extern const char* kModelWithCustomOp;
+
+// Test model with a argmax op.
+extern const char* kModelWithArgMaxOp;
+
+// Test model with a argmax op.
+extern const char* kModelWithFCOp;
+
+// Test model with mixed quantizable and un-quantizable ops.
+// reshape->custom->custom->squeeze.
+extern const char* kModelMixed;
+
 // An error reporter that fails on testing.
 class FailOnErrorReporter : public ErrorReporter {
  public:

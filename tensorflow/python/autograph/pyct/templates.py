@@ -87,8 +87,9 @@ class ContextAdjuster(gast.NodeTransformer):
     return self.generic_visit(node)
 
   def visit_Subscript(self, node):
+    self._apply_override(node)
+    self._ctx_override = gast.Load
     node.value = self.visit(node.value)
-    self._ctx_override = None
     return self.generic_visit(node)
 
   def visit_comprehension(self, node):
@@ -214,9 +215,10 @@ class ReplaceTransformer(gast.NodeTransformer):
 
 def _convert_to_ast(n):
   """Converts from a known data type to AST."""
+  # Note: When generating AST nodes from strings/QNs in isolation, ctx is
+  # unknown. ctx must be filled in according to the template being used.
+  # See ReplaceTransformer.visit_Name.
   if isinstance(n, str):
-    # Note: the node will receive the ctx value from the template, see
-    # ReplaceTransformer.visit_Name.
     return gast.Name(id=n, ctx=None, annotation=None)
   if isinstance(n, qual_names.QN):
     return n.ast()

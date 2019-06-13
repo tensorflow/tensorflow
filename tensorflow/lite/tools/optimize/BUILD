@@ -1,11 +1,12 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
-package(default_visibility = [
-    "//visibility:public",
-])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(glob([
     "testdata/*.bin",
@@ -18,10 +19,12 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:round",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
+        "//third_party/eigen3",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -31,6 +34,7 @@ cc_library(
     srcs = ["model_utils.cc"],
     hdrs = ["model_utils.h"],
     deps = [
+        ":operator_property",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal:types",
@@ -58,6 +62,17 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "operator_property",
+    srcs = ["operator_property.cc"],
+    hdrs = ["operator_property.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
 tf_cc_test(
     name = "quantization_utils_test",
     srcs = ["quantization_utils_test.cc"],
@@ -78,6 +93,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
@@ -91,6 +107,7 @@ cc_library(
         ":quantization_utils",
         ":model_utils",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@flatbuffers",
         "//tensorflow/lite:framework",
         # TODO(suharshs): Move the relevant quantization utils to a non-internal location.
@@ -107,6 +124,7 @@ tf_cc_test(
         "--test_model_file=$(location //tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin)",
     ],
     data = [
+        "//tensorflow/lite/tools/optimize:testdata/custom_op.bin",
         "//tensorflow/lite/tools/optimize:testdata/quantized_with_gather.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin",
         "//tensorflow/lite/tools/optimize:testdata/weight_shared_between_convs.bin",
@@ -128,22 +146,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "subgraph_quantizer",
-    srcs = ["subgraph_quantizer.cc"],
-    hdrs = ["subgraph_quantizer.h"],
-    deps = [
-        ":quantization_utils",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/kernels/internal:round",
-        "//tensorflow/lite/kernels/internal:tensor_utils",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/memory",
-        "@flatbuffers",
-    ],
-)
-
-cc_library(
     name = "test_util",
     testonly = 1,
     srcs = ["test_util.cc"],
@@ -156,47 +158,17 @@ cc_library(
     ],
 )
 
-tf_cc_test(
-    name = "subgraph_quantizer_test",
-    srcs = ["subgraph_quantizer_test.cc"],
-    args = [
-        "--test_model_file=$(location //tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin)",
-    ],
-    data = [
-        "//tensorflow/lite/tools/optimize:testdata/add_with_const_input.bin",
-        "//tensorflow/lite/tools/optimize:testdata/multi_input_add_reshape.bin",
-        "//tensorflow/lite/tools/optimize:testdata/single_avg_pool_min_minus_5_max_plus_5.bin",
-        "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin",
-        "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_minus_127_max_plus_127.bin",
-        "//tensorflow/lite/tools/optimize:testdata/single_softmax_min_minus_5_max_plus_5.bin",
-    ],
-    tags = [
-        "tflite_not_portable_android",
-        "tflite_not_portable_ios",
-    ],
-    deps = [
-        ":subgraph_quantizer",
-        ":test_util",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_googletest//:gtest",
-        "@flatbuffers",
-    ],
-)
-
 cc_library(
     name = "quantize_model",
     srcs = ["quantize_model.cc"],
     hdrs = ["quantize_model.h"],
     deps = [
         ":model_utils",
-        ":subgraph_quantizer",
+        ":operator_property",
+        ":quantization_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/memory",
         "@flatbuffers",
     ],
 )
@@ -208,8 +180,16 @@ tf_cc_test(
         "--test_model_file=$(location //tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin)",
     ],
     data = [
+        "//tensorflow/lite/tools/optimize:testdata/add_with_const_input.bin",
+        "//tensorflow/lite/tools/optimize:testdata/argmax.bin",
         "//tensorflow/lite/tools/optimize:testdata/concat.bin",
+        "//tensorflow/lite/tools/optimize:testdata/fc.bin",
+        "//tensorflow/lite/tools/optimize:testdata/mixed.bin",
+        "//tensorflow/lite/tools/optimize:testdata/multi_input_add_reshape.bin",
+        "//tensorflow/lite/tools/optimize:testdata/single_avg_pool_min_minus_5_max_plus_5.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin",
+        "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_minus_127_max_plus_127.bin",
+        "//tensorflow/lite/tools/optimize:testdata/single_softmax_min_minus_5_max_plus_5.bin",
     ],
     tags = [
         "tflite_not_portable_android",

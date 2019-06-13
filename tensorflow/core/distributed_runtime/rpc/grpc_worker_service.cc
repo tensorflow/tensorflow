@@ -22,9 +22,9 @@ limitations under the License.
 
 #include "grpcpp/alarm.h"
 #include "grpcpp/server_builder.h"
-
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/common_runtime/buf_rendezvous.h"
+#include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -186,27 +186,35 @@ class GrpcWorkerServiceThread {
            RequestMessage, ResponseMessage>;
 
   // Handle all non-cancellable simple methods with a standard wrapper.
-#define HANDLE_CALL(method)                                                   \
+  // The boolean `may_block_on_compute_pool` indicates whether or not the
+  // operation may block on activities (such as op execution) that run on the
+  // compute pool.
+#define HANDLE_CALL(method, may_block_on_compute_pool)                        \
   void method##Handler(WorkerCall<method##Request, method##Response>* call) { \
-    Schedule([this, call]() {                                                 \
+    auto closure = [this, call]() {                                           \
       Status s = worker_->method(&call->request, &call->response);            \
       if (!s.ok()) {                                                          \
         VLOG(1) << "Bad response from " << #method << ": " << s;              \
       }                                                                       \
       call->SendResponse(ToGrpcStatus(s));                                    \
-    });                                                                       \
+    };                                                                        \
+    if ((may_block_on_compute_pool)) {                                        \
+      worker_->env()->env->SchedClosure(std::move(closure));                  \
+    } else {                                                                  \
+      worker_->env()->compute_pool->Schedule(std::move(closure));             \
+    }                                                                         \
     ENQUEUE_REQUEST(method, false);                                           \
   }
 
-  HANDLE_CALL(GetStatus);
-  HANDLE_CALL(CreateWorkerSession);
-  HANDLE_CALL(DeleteWorkerSession);
-  HANDLE_CALL(CleanupAll);
-  HANDLE_CALL(RegisterGraph);
-  HANDLE_CALL(DeregisterGraph);
-  HANDLE_CALL(CleanupGraph);
-  HANDLE_CALL(Logging);
-  HANDLE_CALL(Tracing);
+  HANDLE_CALL(GetStatus, false);
+  HANDLE_CALL(CreateWorkerSession, false);
+  HANDLE_CALL(DeleteWorkerSession, true);
+  HANDLE_CALL(CleanupAll, false);
+  HANDLE_CALL(RegisterGraph, false);
+  HANDLE_CALL(DeregisterGraph, false);
+  HANDLE_CALL(CleanupGraph, false);
+  HANDLE_CALL(Logging, false);
+  HANDLE_CALL(Tracing, false);
 
 #undef HANDLE_CALL
 
@@ -434,6 +442,7 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
                                      const RecvTensorRequest* request,
                                      ::grpc::ByteBuffer* response,
                                      StatusCallback done) {
+  VLOG(1) << "GrpcRecvTensorAsync req: " << request->DebugString();
   const int64 request_id = request->request_id();
   const int64 step_id = request->step_id();
 
@@ -536,8 +545,8 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
                 delete copy;
               };
 
-              send_dev_context->CopyDeviceTensorToCPU(
-                  &val, request->rendezvous_key(), src_dev, copy, copy_ready);
+              CopyDeviceToHost(&val, alloc, alloc, request->rendezvous_key(),
+                               src_dev, copy, send_dev_context, copy_ready);
               return;
             }
           }

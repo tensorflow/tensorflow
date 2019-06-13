@@ -28,7 +28,6 @@ import os
 import numpy as np
 
 import six
-from six.moves import xrange
 
 # Note this module does *not* depend on any Python protocol buffers. The XLA
 # Python bindings are currently packaged both as part of jaxlib and as part
@@ -64,81 +63,95 @@ class Backend(object):
   def buffer_from_pyval(self, pyval, device=0):
     """Allocates a fresh buffer and populates it with `pyval`."""
 
-  @abc.abstractmethod
-  def delete_buffer(self, c_buffer):
-    """Deletes buffer `c_buffer`."""
+  def buffers_from_pyvals(self, pyvals_and_devices):
+    """Allocates buffers and populates them with `pyvals`."""
+    return [
+        self.buffer_from_pyval(pyval, device)
+        for pyval, device in pyvals_and_devices
+    ]
 
   @abc.abstractmethod
-  def destructure_tuple(self, c_buffer):
-    """Destructures a tuple buffer into a sequence of buffers."""
+  def make_tuple(self, c_buffers, device_ordinal):
+    """Makes a tuple from a sequence of backend buffer objects."""
 
   @abc.abstractmethod
-  def compile(self, computation, argument_shapes, result_shape,
-              compile_options):
+  def compile(self, computation, compile_options):
     """Compiles a computation. Returns an executable."""
-
-  @abc.abstractmethod
-  def delete_executable(self, executable):
-    """Deletes an executable."""
-
-  @abc.abstractmethod
-  def execute(self, executable, args):
-    """Runs an executable without replication."""
-
-  @abc.abstractmethod
-  def execute_replicated(self, executable, per_replica_args):
-    """Runs an executable in a replicated manner."""
 
 
 class LocalBackend(Backend):
   """XLA backend implemented using the in-process xla::LocalClient API."""
 
-  def __init__(self, platform=None, xla_platform_id=None):
+  def __init__(self, platform, client):
     """Creates a new LocalBackend.
 
     Args:
       platform: A string; the user-visible platform name, e.g. 'gpu'.
-      xla_platform_id: A string; XLA's name for the platform, e.g., 'CUDA'.
+      client: An _xla.PyLocalClient object.
     """
     super(LocalBackend, self).__init__(platform)
-    self.client = _xla.LocalClient.Get(xla_platform_id)
+    self.client = client
 
   def device_count(self):
     return self.client.DeviceCount()
 
   def buffer_from_pyval(self, pyval, device=0):
-    return _xla.LocalShapedBuffer.FromPython(pyval, self.client, device)
+    return _xla.PyLocalBuffer.from_python(pyval, self.client, device)
 
-  def delete_buffer(self, c_buffer):
-    c_buffer.Delete()
+  def buffers_from_pyvals(self, pyvals_and_devices):
+    return _xla.PyLocalBuffer.from_python_values(pyvals_and_devices,
+                                                 self.client)
 
-  def destructure_tuple(self, c_buffer):
-    return c_buffer.DestructureTuple()
+  def make_tuple(self, c_buffers, device_ordinal):
+    return _xla.PyLocalBuffer.make_tuple(c_buffers, self.client, device_ordinal)
 
-  def compile(self, c_computation, argument_shapes, result_shape,
-              compile_options):
+  def compile(self, c_computation, compile_options):
     options = _xla.ExecutableBuildOptions()
     options.num_replicas = compile_options.num_replicas
     if compile_options.result_layout:
-      options.result_layout = compile_options.result_layout.as_xla_shape()
-    argument_shapes = [s.as_xla_shape() for s in argument_shapes]
-    return _xla.LocalExecutable.Compile(c_computation, argument_shapes, options,
-                                        self.client)
+      options.result_layout = compile_options.result_layout
+    options.debug_options.xla_cpu_fast_math_honor_infs = True
+    options.debug_options.xla_cpu_fast_math_honor_nans = True
+    return _xla.LocalExecutable.Compile(c_computation,
+                                        compile_options.argument_layouts,
+                                        options, self.client,
+                                        compile_options.device_assignment)
 
-  def delete_executable(self, executable):
-    executable.Delete()
 
-  def execute(self, executable, args):
-    return executable.Execute(args)
+def _cpu_backend_factory():
+  client = _xla.LocalClient.Get(
+      platform='cpu', xla_platform_id='Host', asynchronous=True)
+  return LocalBackend(platform='cpu', client=client)
 
-  def execute_replicated(self, executable, per_replica_args):
-    return executable.ExecutePerReplica(per_replica_args)
+
+def _gpu_backend_factory():
+  """Returns a GPU backend. BFC allocator is used by default."""
+  allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
+  memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
+  if allocator not in ('default', 'platform', 'bfc'):
+    raise ValueError(
+        'XLA_PYTHON_CLIENT_ALLOCATOR env var must be "default", "platform", or '
+        '"bfc", got "%s"' % allocator)
+  config = _xla.AllocatorConfig()
+  if allocator == 'default':
+    config.kind = _xla.AllocatorConfig.Kind.DEFAULT
+  if allocator == 'platform':
+    config.kind = _xla.AllocatorConfig.Kind.PLATFORM
+  if allocator == 'bfc':
+    config.kind = _xla.AllocatorConfig.Kind.BFC
+  if memory_fraction:
+    config.memory_fraction = float(memory_fraction)
+
+  client = _xla.LocalClient.Get(
+      platform='gpu', xla_platform_id='CUDA', asynchronous=True,
+      allocator_config=config)
+  return LocalBackend(platform='gpu', client=client)
 
 
 # Backend factories, keyed by user-visible name, in increasing priority order.
 _local_backend_factories = collections.OrderedDict([
-    ('cpu', lambda: LocalBackend(platform='cpu', xla_platform_id='Host')),
-    ('gpu', lambda: LocalBackend(platform='gpu', xla_platform_id='CUDA')),
+    ('cpu', _cpu_backend_factory),
+    ('gpu', _gpu_backend_factory),
 ])
 
 
@@ -188,30 +201,6 @@ def get_local_backend(name=None):
   return list(backends.values())[-1]
 
 
-# Compatibility shims to support older clients.
-
-_default_platform_name = None
-
-
-def XlaLocalBackend():
-  # Deprecated. Use get_local_backend(platform_name).
-  return get_local_backend(_default_platform_name)
-
-
-def initialize_platform_name(platform_name):
-  """Deprecated. Use get_local_backend(platform_name)."""
-  if platform_name == 'Host':
-    platform_name = 'cpu'
-  elif platform_name == 'CUDA':
-    platform_name = 'gpu'
-
-  # Make sure the platform is valid by trying to instantiate it.
-  get_local_backend(platform_name)
-
-  global _default_platform_name
-  _default_platform_name = platform_name
-
-
 class OpMetadata(object):
   """Python representation of a xla.OpMetadata protobuf."""
   __slots__ = ('op_type', 'op_name', 'source_file', 'source_line')
@@ -232,42 +221,6 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
       op_name=op_name,
       source_file=filename,
       source_line=lineno)
-
-
-class PaddingType(enum.Enum):
-  VALID = 1
-  SAME = 2
-
-
-def _convert_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
-                                        window_strides):
-  """Maps PaddingType or string to pad values (list of pairs of ints)."""
-  if not isinstance(padding_type, (str, PaddingType)):
-    msg = 'padding_type must be str or PaddingType, got {}.'
-    raise TypeError(msg.format(type(padding_type)))
-
-  if isinstance(padding_type, str):
-    if padding_type.upper() == 'VALID':
-      padding_type = PaddingType.VALID
-    elif padding_type.upper() == 'SAME':
-      padding_type = PaddingType.SAME
-    else:
-      msg = 'Unknown padding type string: expected "VALID" or "SAME", got {}.'
-      raise ValueError(msg.format(padding_type))
-
-  if padding_type == PaddingType.VALID:
-    return [(0, 0)] * len(window_strides)
-  elif padding_type == PaddingType.SAME:
-    out_shape = np.ceil(np.true_divide(lhs_dims, window_strides)).astype(int)
-    pad_sizes = [
-        max((out_size - 1) * stride + filter_size - in_size, 0)
-        for out_size, stride, filter_size, in_size in zip(
-            out_shape, window_strides, rhs_dims, lhs_dims)
-    ]
-    return [(pad_size // 2, pad_size - pad_size // 2) for pad_size in pad_sizes]
-  else:
-    msg = 'Unexpected PaddingType value: {}'
-    raise ValueError(msg.format(padding_type))
 
 
 PrimitiveType = _xla.PrimitiveType
@@ -303,66 +256,12 @@ def dtype_to_etype(dtype):
   return DTYPE_TO_XLA_ELEMENT_TYPE[str(np.dtype(dtype))]
 
 
-class LocalBuffer(object):
-  """Represents a handle to data owned by XLA.
-
-  The referent is ready for use in executing a local, compiled
-  Computation. On XLA platforms involving a device (e.g. GPU), this
-  means the referent is in device memory.
-  """
-
-  def __init__(self, c_buffer, backend, device):
-    self.c_buffer = c_buffer
-    self._backend = backend
-    self._device = device
-
-  @staticmethod
-  def from_pyval(pyval, device=0, backend=None):
-    """Allocate and copy to XLA the given python value."""
-    backend = backend or get_local_backend()
-    pyval = require_numpy_array_layout(pyval)
-    cbuf = backend.buffer_from_pyval(pyval, device)
-    return LocalBuffer(cbuf, backend, device)
-
-  def to_py(self):
-    return self.c_buffer.ToPython()
-
-  def shape(self):
-    return _wrap_shape(self.c_buffer.shape())
-
-  def device(self):
-    return self._device
-
-  def delete(self):
-    if self.c_buffer is not None:
-      self._backend.delete_buffer(self.c_buffer)
-      self.c_buffer = None
-
-  def destructure(self):
-    """Assuming a tuple buffer, unpack it into constituent tuple elements."""
-    assert self.c_buffer is not None
-    result = self._backend.destructure_tuple(self.c_buffer)
-    self.delete()
-    return tuple(
-        LocalBuffer(sub_buffer, device=self._device, backend=self._backend)
-        for sub_buffer in result)
-
-  def is_deleted(self):
-    return self.c_buffer is None
-
-  def __del__(self):
-    self.delete()
-
-
-class Format(enum.IntEnum):
-  """Python copy of the Format protocol buffer enum."""
-  INVALID_FORMAT = 0
-  DENSE = 1
-  SPARSE = 2
-
+Shape = _xla.Shape
+Shape.__doc__ = """
+A Shape is an object defined in C++ that duck types like the following class:
 
 class Shape(object):
-  """Represents an XLA shape.
+  '''Represents an XLA shape.
 
   A shape is either an array shape, having rank-many integer
   dimensions and an element type (represented by a Numpy dtype), or it
@@ -371,212 +270,128 @@ class Shape(object):
     type shape =
         TupleShape of shape list
       | ArrayShape of { dimensions: int list; element_type: dtype }
+  '''
 
-  Callers are expected to instantiate this class only via the static
-  constructors: tuple_shape, array_shape, and from_pyval.
+  @staticmethod
+  def tuple_shape(tuple_shapes) -> Shape:
+    "Construct a tuple shape."
+
+  @staticmethod
+  def array_shape(element_type, dimensions, minor_to_major=None) -> Shape:
+
+  @staticmethod
+  def from_pyval(pyval) -> Shape:
+    "Returns a Shape that describes a tuple-tree of Numpy arrays."
+
+  def __init__(self, str) -> Shape:
+    "Parses a shape string."
+  def __eq__(self, other: Shape) -> bool:
+  def __ne__(self, other: Shape) -> bool:
+  def __hash__(self):
+  def __repr__(self):
+  def is_tuple(self) -> bool:
+  def is_array(self) -> bool:
+  def tuple_shapes(self) -> [Shape]:
+  def numpy_dtype(self) -> np.dtype:
+    "Like element_type(), but returns dtype('O') for a tuple shape."
+  def xla_element_type(self) -> PrimitiveType:
+  def element_type(self) -> np.dtype:
+  def dimensions(self) -> (int, int, ...):
+  def rank(self) -> int:
+  def with_major_to_minor_layout_if_absent(self) -> Shape:
+    "Returns a copy with missing layouts set to major-to-minor."
+
+  def to_serialized_proto(self) -> bytes:
+    "Returns 'shape' as a serialized proto."
+"""
+
+ProgramShape = _xla.ProgramShape
+ProgramShape.__doc__ = """
+A ProgramShape is a C++ object that duck types like the following class.
+
+class ProgramShape(object):
+  def __init__(self, parameter_shapes, result_shape):
+  def parameter_shapes(self) -> [Shape]:
+  def result_shape(self) -> Shape:
+  def __repr__(self):
+"""
+
+
+class Buffer(object):
+  """Represents a handle to data owned by XLA.
+
+  The referent is ready for use in executing a local, compiled
+  Computation. On XLA platforms involving a device (e.g. GPU), this
+  means the referent is in device memory.
   """
 
   @staticmethod
-  def tuple_shape(tuple_shapes):
-    """Construct a tuple shape."""
-    if (not isinstance(tuple_shapes, (tuple, list)) or
-        not all(isinstance(t, Shape) for t in tuple_shapes)):
-      raise TypeError('tuple_shapes must be a tuple of Shapes')
-    return Shape(tuple_shapes, tuple)
+  def from_pyval(pyval, device=0, backend=None):
+    """Copies the `pyval` to a freshly allocated on-device buffer."""
+    backend = backend or get_local_backend()
+    return backend.buffer_from_pyval(pyval, device)
 
   @staticmethod
-  def array_shape(element_type, dimensions, minor_to_major=None):
-    """Construct an array shape."""
-    if (not isinstance(dimensions, tuple) or
-        not all(isinstance(i, int) for i in dimensions)):
-      dimensions = tuple(int(i) for i in dimensions)
-    return Shape(
-        dimensions, np.dtype(element_type), minor_to_major=minor_to_major)
+  def from_pyvals(pyvals_and_devices, backend=None):
+    """Copies multiple Python values to freshly allocated on-device buffers.
 
-  @staticmethod
-  def from_pyval(pyval):
-    """Returns a Shape that describes a tuple-tree of Numpy arrays."""
-    def convert(pyval):
-      if isinstance(pyval, tuple):
-        return Shape.tuple_shape(tuple(convert(elt) for elt in pyval))
-      else:
-        pyval = require_numpy_array_layout(pyval)
-        return Shape.array_shape(pyval.dtype, np.shape(pyval))
-
-    return convert(pyval)
-
-  def __init__(self, dimensions, dtype, minor_to_major=None):
-    assert isinstance(dimensions, tuple)
-    self._dimensions = dimensions
-    self._dtype = dtype
-    self._is_tuple = dtype == tuple
-    self._minor_to_major = minor_to_major
-    self._check_minor_to_major()
-
-  def __eq__(self, other):
-    # pylint: disable=protected-access
-    return (self._dtype == other._dtype and
-            self._dimensions == other._dimensions and
-            self._minor_to_major == other._minor_to_major)
-
-  def __ne__(self, other):
-    return not self == other
-
-  def __hash__(self):
-    return hash((self._dtype, self._dimensions, self._minor_to_major))
-
-  def __repr__(self):
-    return ('xla_client.Shape(_dtype={!r}, _dimensions={!r}, '
-            '_is_tuple={!r}, _minor_to_major={!r})').format(
-                self._dtype, self._dimensions, self._is_tuple,
-                self._minor_to_major)
-
-  def is_tuple(self):
-    return self._is_tuple
-
-  def is_array(self):
-    return not self._is_tuple
-
-  def tuple_shapes(self):
-    if not self.is_tuple():
-      raise ValueError('not a tuple shape')
-    return self._dimensions
-
-  def numpy_dtype(self):
-    """Like element_type(), but returns dtype('O') in case of a tuple shape."""
-    if self.is_tuple():
-      return np.dtype(np.object)
-    else:
-      return self.element_type()
-
-  def xla_element_type(self):
-    return DTYPE_TO_XLA_ELEMENT_TYPE[str(self.numpy_dtype())]
-
-  def element_type(self):
-    if not self.is_array():
-      raise ValueError('not an array shape')
-    return self._dtype
-
-  def dimensions(self):
-    if not self.is_array():
-      raise ValueError('not an array shape')
-    return self._dimensions
-
-  def rank(self):
-    return len(self.dimensions())
-
-  def minor_to_major(self):
-    return self._minor_to_major
-
-  def map_leaves(self, f):
-    """Map f over each leaf-level array subshape.
-
-    Args:
-      f: The function to apply. Whenever f returns None, the identity is applied
-        instead.
+    Arguments:
+      pyvals_and_devices: a list of `(pyval, device)` pairs, where `pyval` is a
+        Python value to copy (e.g., a NumPy array), and `device` is an integer
+        device ordinal.
+      backend: a Backend object, or `None` to use the default local backend.
 
     Returns:
-      A new Shape with the mapped leaves.
+      A list of `Buffer` objects corresponding to `pyvals_and_devices`.
     """
-    if self.is_tuple():
-      children = tuple(child.map_leaves(f) for child in self.tuple_shapes())
-      return Shape.tuple_shape(children)
+    backend = backend or get_local_backend()
+    return backend.buffers_from_pyvals(pyvals_and_devices)
+
+  @staticmethod
+  def make_tuple(buffers, backend=None, device=0):
+    backend = backend or get_local_backend()
+    return backend.make_tuple(buffers, device_ordinal=device)
+
+  # Buffer is not an instantiable type and exists only for its static methods.
+  # The underlying buffer objects are C++ object with the following
+  # API:
+  # def shape(self) -> Shape:
+  # def device(self) -> int:
+  # def delete(self):
+  # def destructure(self) -> [Buffer]
+  # def is_deleted(self) -> bool:
+  # def block_host_until_ready(self):
+  #    """Blocks the calling thread until the buffer is ready on device."""
+  # def copy_to_host_async(self):
+  #    """Requests a copy of the buffer to the host.
+  #
+  #       Does not block waiting for the copy. Values fetched are available via
+  #       `to_py()`; the purpose of `copy_to_host_async` is to prefetch values
+  #       for subsequent `to_py()` calls, especially when requesting many values
+  #       at once.
+  #    """
+  # def to_py(self):
+  #    """Returns the value of the buffer as a Python tuple tree of ndarrays."""
+  #
+  # TODO(phawkins): remove Buffer and its static methods completely, have
+  # clients call methods on Backend to create buffers.
+
+
+# TODO(phawkins): Alias for backward compatibility. Remove after JAX drops
+# compatibility with Jaxlib versions older than 0.1.13.
+LocalBuffer = Buffer
+
+
+def shape_from_pyval(pyval):
+  """Returns a Shape that describes a tuple-tree of Numpy arrays."""
+
+  def convert(pyval):
+    if isinstance(pyval, tuple):
+      return Shape.tuple_shape(tuple(convert(elt) for elt in pyval))
     else:
-      mapped = f(self)
-      return self if mapped is None else mapped
+      return Shape.array_shape(pyval.dtype, np.shape(pyval))
 
-  def _check_minor_to_major(self):
-    mtm = self._minor_to_major
-    if self.is_tuple():
-      assert mtm is None, self
-    if mtm is not None:
-      assert self.rank() == len(mtm), self
-      assert sorted(mtm) == list(range(len(mtm))), self
-
-  def update_minor_to_major(self, minor_to_major):
-    if not self.is_array():
-      raise ValueError('not an array shape')
-    if not isinstance(minor_to_major, tuple):
-      raise TypeError('minor_to_major must be a tuple')
-    updated = Shape.array_shape(self.element_type(), self.dimensions(),
-                                minor_to_major)
-    updated._check_minor_to_major()  # pylint: disable=protected-access
-    return updated
-
-  def with_major_to_minor_layout_if_absent(self):
-    """Returns a copy of a shape with missing layouts set to major-to-minor."""
-
-    def f(a):
-      if a.minor_to_major():
-        return None
-      return a.update_minor_to_major(tuple(xrange(a.rank() - 1, -1, -1)))
-
-    return self.map_leaves(f)
-
-  def serialize(self, proto):
-    """Serializes 'shape' into proto."""
-    if self.is_tuple():
-      proto.element_type = int(PrimitiveType.TUPLE)
-      for shape in self.tuple_shapes():
-        shape.serialize(proto.tuple_shapes.add())
-    else:
-      proto.element_type = int(self.xla_element_type())
-      proto.dimensions.extend(self.dimensions())
-      proto.is_dynamic_dimension.extend([False for _ in self.dimensions()])
-      if self.minor_to_major():
-        proto.layout.format = Format.DENSE
-        proto.layout.minor_to_major.extend(self.minor_to_major())
-
-  def as_xla_shape(self):
-    if self.is_tuple():
-      return _xla.Shape.Tuple([x.as_xla_shape() for x in self.tuple_shapes()])
-
-    return _xla.Shape.Array(self.xla_element_type(), self.dimensions(),
-                            self.minor_to_major())
-
-
-ProgramShape = collections.namedtuple('ProgramShape',
-                                      ('parameter_shapes', 'result_shape'))
-
-
-def _wrap_shape(xla_shape):
-  element_type = xla_shape.element_type()
-  if element_type == PrimitiveType.TUPLE:
-    shapes = tuple(_wrap_shape(sub) for sub in xla_shape.tuple_shapes())
-    return Shape.tuple_shape(shapes)
-  else:
-    dtype = XLA_ELEMENT_TYPE_TO_DTYPE[element_type]
-    return Shape.array_shape(dtype, xla_shape.dimensions())
-
-
-def _wrap_program_shape(program_shape):
-  return ProgramShape([_wrap_shape(arg) for arg in program_shape.Parameters()],
-                      _wrap_shape(program_shape.Result()))
-
-
-def require_numpy_array_layout(value):
-  if isinstance(value, tuple):
-    return tuple(require_numpy_array_layout(x) for x in value)
-  else:
-    return np.require(value, requirements=['C', 'A'])
-
-
-class CompileOptions(object):
-  """Python object for XLA compile options.
-
-  These options can be passed to the 'compile' step when using a local XLA
-  client.
-  """
-
-  def __init__(self):
-    self.xla_dump_to = None
-    self.dump_hlo_pass_re = None
-    self.dump_hlo_module_re = None
-    self.dump_hlo_as_text = None
-    self.dump_hlo_as_proto = None
-    self.hlo_profile = None
-    self.num_replicas = 1
-    self.result_layout = None
+  return convert(pyval)
 
 
 def transfer_to_infeed(value, device_ordinal=0):
@@ -594,8 +409,7 @@ def transfer_to_infeed(value, device_ordinal=0):
   """
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
-  backend.client.TransferToInfeed(
-      require_numpy_array_layout(value), device_ordinal)
+  backend.client.TransferToInfeed(value, device_ordinal)
 
 
 def transfer_from_outfeed(shape, device_ordinal=0):
@@ -611,8 +425,49 @@ def transfer_from_outfeed(shape, device_ordinal=0):
   """
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
-  return backend.client.TransferFromOutfeed(shape.as_xla_shape(),
-                                            device_ordinal)
+  return backend.client.TransferFromOutfeed(
+      shape.with_major_to_minor_layout_if_absent(), device_ordinal)
+
+
+DeviceAssignment = _xla.DeviceAssignment
+DeviceAssignment.__doc__ = """
+A DeviceAssignment is a C++ object with the following signature.
+
+def create(assignment):
+  '''Builds a device assignment.
+
+   Args:
+     assignment: a 2D numpy array of device ordinal integers, indexed by
+       [replica][computation_in_replica].
+   Returns:
+     A device assignment.
+  '''
+
+def replica_count():
+  '''Returns the number of replicas.'''
+def computation_count():
+  '''Returns the number of computations per replica.'''
+"""
+
+
+class CompileOptions(object):
+  """Python object for XLA compile options.
+
+  These options can be passed to the 'compile' step when using a local XLA
+  client.
+  """
+
+  def __init__(self):
+    self.xla_dump_to = None
+    self.dump_hlo_pass_re = None
+    self.dump_hlo_module_re = None
+    self.dump_hlo_as_text = None
+    self.dump_hlo_as_proto = None
+    self.hlo_profile = None
+    self.num_replicas = 1
+    self.argument_layouts = None
+    self.result_layout = None
+    self.device_assignment = None
 
 
 class Computation(object):
@@ -656,152 +511,130 @@ class Computation(object):
     """
     return self.computation.GetHloDotGraph()
 
-  def Compile(self,
-              argument_shapes=(),
-              compile_options=None,
-              layout_fn=None,
-              backend=None):
+  def Compile(self, argument_shapes=None, compile_options=None, backend=None):
     """Compiles a computation.
 
     Computations are the result of a "ComputationBuild'ing" process.
 
     Arguments:
-      argument_shapes: parameter shapes -- they are first laid out by layout_fn
-        if layout_fn is provided. Otherwise, the default layout for those shapes
-        will be used.
+      argument_shapes: Deprecated. Use compile_options.argument_layouts instead.
       compile_options: options to use for compilation, includes an optional laid
         out result shape for the computation.
-      layout_fn: lambda that is used to lay out the argument/result shapes.
       backend: a `Backend` for which an executable should be generated.
 
     Returns:
       A Executable instance.
     """
     backend = backend or self._backend or get_local_backend()
-    result_shape = _wrap_shape(self.computation.GetProgramShape().Result())
-
-    if layout_fn:
-      argument_shapes = [
-          shape.map_leaves(layout_fn) for shape in argument_shapes
-      ]
-      result_shape = result_shape.map_leaves(layout_fn)
-
-    argument_shapes = list(argument_shapes)
 
     compile_options = compile_options or CompileOptions()
-    compile_options.result_layout = result_shape
-    c = backend.compile(self.computation, argument_shapes, result_shape,
-                        compile_options)
-    return Executable(c, backend=backend)
-
-  def CompileWithExampleArguments(self,
-                                  arguments=(),
-                                  compile_options=None,
-                                  layout_fn=None,
-                                  backend=None):
-    return self.Compile(
-        argument_shapes=[Shape.from_pyval(arg) for arg in arguments],
-        compile_options=compile_options,
-        layout_fn=layout_fn,
-        backend=backend)
+    if argument_shapes:
+      compile_options.argument_layouts = argument_shapes
+    return backend.compile(self.computation, compile_options)
 
   def GetProgramShape(self):
-    return _wrap_program_shape(self._c_computation.GetProgramShape())
+    return self._c_computation.GetProgramShape()
 
   def GetReturnValueShape(self):
-    return _wrap_shape(self._c_computation.GetProgramShape().Result())
+    return self._c_computation.GetProgramShape().result_shape()
 
 
-class Executable(object):
-  """Python wrapper for an XLA Executable."""
+# An Executable is a C++ class that duck types with the following API:
+# class Executable(object):
+#   def DeviceOrdinals(self) -> [int]:
+#   def Execute(self, arguments : [Buffer]) -> Buffer:
+#     """Execute on one replica with Buffer arguments and return value."""
+#
+#   def ExecutePerReplica(self, arguments: [[Buffer]]) -> [Buffer]:
+#     """Execute on many replicas with Buffer arguments and return value.
+#
+#     Args:
+#       arguments: A sequence of sequences of Buffers. The i'th inner sequence
+#         comprises the arguments for execution on the i'th replica.
+#
+#     Returns:
+#       A list of the computation's outputs for each replica, as a Buffer. If
+#       a shallow sequence of arguments was passed in for `arguments`, then the
+#       sole, zero'th replica's output is returned instead, as a Buffer.
+#     """
+#
+# There are different implementations of Executable for the Local and XRT
+# backends.
 
-  def __init__(self, c_executable, backend=None):
-    self._c_executable = c_executable
-    self._device_ordinals = c_executable.DeviceOrdinals()
-    self._backend = backend
 
-  def DeviceOrdinals(self):
-    """Returns a list containing the device ordinals for each replica."""
-    return self._device_ordinals
+def execute_with_python_values(executable, arguments=(), backend=None):
+  """Execute on one replica with Python values as arguments and output."""
 
-  def Execute(self, arguments=(), check_for_deleted_args=True):
-    """Execute on one replica with LocalBuffer arguments and return value."""
-    if check_for_deleted_args and any(arg.is_deleted() for arg in arguments):
-      raise ValueError('Executing with deleted local buffer argument')
-    raw_args = [arg.c_buffer for arg in arguments]
-    output_buffer = self._backend.execute(self._c_executable, raw_args)
-    return LocalBuffer(
-        output_buffer, backend=self._backend, device=self._device_ordinals[0])
+  backend = backend or get_local_backend()
 
-  def ExecutePerReplica(self, arguments=None):
-    """Execute on many replicas with LocalBuffer arguments and return value.
+  def put(arg):
+    return Buffer.from_pyval(
+        arg, device=executable.DeviceOrdinals()[0], backend=backend)
 
-    Args:
-      arguments: A sequence of sequences of LocalBuffers. The i'th inner
-        sequence comprises the arguments for execution on the i'th replica.
+  arguments = [put(arg) for arg in arguments]
+  return executable.Execute(arguments).to_py()
 
-    Returns:
-      A list of the computation's outputs for each replica, as a LocalBuffer. If
-      a shallow sequence of arguments was passed in for `arguments`, then the
-      sole, zero'th replica's output is returned instead, as a LocalBuffer.
-    """
-    if arguments is None:
-      arguments = ((),) * len(self._device_ordinals)
+
+def execute_with_python_values_replicated(executable, arguments, backend=None):
+  """Execute on many replicas with Python values as arguments and output.
+
+  Arguments:
+    executable: the program to run.
+    arguments: a list of lists of Python values indexed by
+      `[replica][arg_num]` to pass as inputs.
+    backend: the backend we are targeting.
+
+  Returns:
+    A list of python values, one per replica.
+  """
+  backend = backend or get_local_backend()
+  device_ordinals = executable.DeviceOrdinals()
+  # pylint: disable=g-complex-comprehension
+  flat_args = [(arg, device_ordinals[replica])
+               for replica, replica_args in enumerate(arguments)
+               for arg in replica_args]
+  flat_arg_buffers = Buffer.from_pyvals(flat_args, backend=backend)
+  arg_buffers = []
+  for replica_args in arguments:
+    arg_buffers.append(flat_arg_buffers[:len(replica_args)])
+    flat_arg_buffers = flat_arg_buffers[len(replica_args):]
+  return [out.to_py() for out in executable.ExecutePerReplica(arg_buffers)]
+
+
+class PaddingType(enum.Enum):
+  VALID = 1
+  SAME = 2
+
+
+def _convert_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
+                                        window_strides):
+  """Maps PaddingType or string to pad values (list of pairs of ints)."""
+  if not isinstance(padding_type, (str, PaddingType)):
+    msg = 'padding_type must be str or PaddingType, got {}.'
+    raise TypeError(msg.format(type(padding_type)))
+
+  if isinstance(padding_type, str):
+    if padding_type.upper() == 'VALID':
+      padding_type = PaddingType.VALID
+    elif padding_type.upper() == 'SAME':
+      padding_type = PaddingType.SAME
     else:
-      arguments = [list(replica_args) for replica_args in arguments]
+      msg = 'Unknown padding type string: expected "VALID" or "SAME", got {}.'
+      raise ValueError(msg.format(padding_type))
 
-    # Check arguments
-    for replica, replica_args in enumerate(arguments):
-      for arg in replica_args:
-        if arg.is_deleted():
-          raise ValueError('Executing with deleted local buffer argument')
-        if arg.device() != self._device_ordinals[replica]:
-          raise ValueError(
-              'Executing on device {} with argument from device {}'.format(
-                  self._device_ordinals[replica], arg.device()))
-
-    # Pull out argument buffer handles
-    # pylint: disable=g-complex-comprehension
-    stripped_args = [
-        [arg.c_buffer for arg in replica_args] for replica_args in arguments
+  if padding_type == PaddingType.VALID:
+    return [(0, 0)] * len(window_strides)
+  elif padding_type == PaddingType.SAME:
+    out_shape = np.ceil(np.true_divide(lhs_dims, window_strides)).astype(int)
+    pad_sizes = [
+        max((out_size - 1) * stride + filter_size - in_size, 0)
+        for out_size, stride, filter_size, in_size in zip(
+            out_shape, window_strides, rhs_dims, lhs_dims)
     ]
-
-    # Execute
-    output_buffers = self._backend.execute_replicated(self._c_executable,
-                                                      stripped_args)
-
-    # Wrap output handles in LocalBuffer instances
-    return tuple(
-        LocalBuffer(
-            output_buffer,
-            backend=self._backend,
-            device=self._device_ordinals[replica])
-        for replica, output_buffer in enumerate(output_buffers))
-
-  def ExecuteWithPythonValues(self, arguments=()):
-    """Execute on one replica with Python values as arguments and output."""
-
-    def put(arg):
-      return LocalBuffer.from_pyval(
-          arg, device=self._device_ordinals[0], backend=self._backend)
-
-    arguments = [put(arg) for arg in arguments]
-    return self.Execute(arguments).to_py()
-
-  def ExecuteWithPythonValuesPerReplica(self, arguments):
-    """Execute on many replicas with Python values as arguments and output."""
-
-    def put(arg, device):
-      return LocalBuffer.from_pyval(arg, device, backend=self._backend)
-
-    # pylint: disable=g-complex-comprehension
-    arguments = [[
-        put(arg, self._device_ordinals[replica]) for arg in replica_args
-    ] for replica, replica_args in enumerate(arguments)]
-    return [out.to_py() for out in self.ExecutePerReplica(arguments)]
-
-  def __del__(self):
-    self._backend.delete_executable(self._c_executable)
+    return [(pad_size // 2, pad_size - pad_size // 2) for pad_size in pad_sizes]
+  else:
+    msg = 'Unexpected PaddingType value: {}'
+    raise ValueError(msg.format(padding_type))
 
 
 class ComputationBuilder(object):
@@ -839,7 +672,7 @@ class ComputationBuilder(object):
       return Computation(self._builder.Build(), backend=backend)
 
   def GetShape(self, operand):
-    return _wrap_shape(self._builder.GetShape(operand))
+    return self._builder.GetShape(operand)
 
   def SetOpMetadata(self, op_metadata):
     """Set metadata for operations that are about to be enqueued."""
@@ -858,7 +691,8 @@ class ComputationBuilder(object):
     Returns:
       An XlaOp.
     """
-    return ops.Infeed(self._builder, shape.as_xla_shape())
+    return ops.Infeed(self._builder,
+                      shape.with_major_to_minor_layout_if_absent())
 
   def Outfeed(self, operand):
     """Enqueues an outfeed op onto the computation.
@@ -878,7 +712,6 @@ class ComputationBuilder(object):
     Returns:
       An XlaOp.
     """
-    value = require_numpy_array_layout(value)
     return ops.ConstantLiteral(self._builder, value)
 
   def ConstantF32Scalar(self, value):
@@ -955,7 +788,8 @@ class ComputationBuilder(object):
     if parameter_num is None:
       parameter_num = next(self._parameter_numbering)
 
-    return ops.Parameter(self._builder, parameter_num, shape.as_xla_shape(),
+    return ops.Parameter(self._builder, parameter_num,
+                         shape.with_major_to_minor_layout_if_absent(),
                          name.encode('utf8'))
 
   def ParameterFromNumpy(self, value, name=None, parameter_num=None):
@@ -971,7 +805,7 @@ class ComputationBuilder(object):
       An XlaOp.
     """
     return self.ParameterWithShape(
-        Shape.from_pyval(value), name=name, parameter_num=parameter_num)
+        shape_from_pyval(value), name=name, parameter_num=parameter_num)
 
   def Iota(self, dtype, size):
     """Enqueues an iota constant onto the computation.
@@ -998,7 +832,7 @@ class ComputationBuilder(object):
       An XlaOp representing the added broadcasted iota constant.
     """
     element_type = DTYPE_TO_XLA_ELEMENT_TYPE[str(np.dtype(dtype))]
-    xla_shape = _xla.Shape.Array(element_type, shape, None)
+    xla_shape = _xla.Shape.array_shape(element_type, shape, None)
     return ops.Iota(self._builder, xla_shape, dimension)
 
   def Concatenate(self, operands, dimension):
@@ -1055,6 +889,24 @@ class ComputationBuilder(object):
       dimensions = tuple(range(ndim))
     return ops.Reshape(operand, dimensions, new_sizes)
 
+  def AllReduce(self, operand, computation, replica_groups=None):
+    """AllReduce op.
+
+    Args:
+      operand: XlaOp representing the input array
+      computation: a Computation object - binary reduction function.
+      replica_groups: optional, list of lists of ints encoding a partition of
+        the set {0, 1, ..., num_replicas} into equally-sized replica groups
+        within which the all-to-all is performed. If not supplied or None (the
+        default), all replicas belong to the same group.
+
+    Returns:
+      An XlaOp that represents the all-reduced result.
+    """
+    replica_groups_protos = _get_replica_groups_protos(replica_groups)
+    return ops.AllReduce(operand, computation.computation,
+                         replica_groups_protos, None)
+
   def AllToAll(self,
                operand,
                split_dimension,
@@ -1075,13 +927,7 @@ class ComputationBuilder(object):
     Returns:
       An XlaOp that represents the all-to-all concatenation.
     """
-    if replica_groups is None:
-      replica_groups_protos = []  # special value for XLA API
-    else:
-      replica_groups = list(replica_groups)
-      replica_groups_protos = [
-          _make_replica_group_proto(group) for group in replica_groups
-      ]
+    replica_groups_protos = _get_replica_groups_protos(replica_groups)
     if not replica_groups:
       split_count = 1
     else:
@@ -1104,13 +950,8 @@ class ComputationBuilder(object):
     Returns:
       An XlaOp that represents on each replica the sum of its group's values.
     """
-    if replica_groups is None:
-      replica_groups = []  # special value for XLA API
-    else:
-      replica_groups = [
-          _make_replica_group_proto(group) for group in replica_groups
-      ]
-    return ops.CrossReplicaSum(operand, replica_groups)
+    replica_groups_protos = _get_replica_groups_protos(replica_groups)
+    return ops.CrossReplicaSum(operand, replica_groups_protos)
 
   def Trans(self, operand):
     """Specialized matrix transpose op."""
@@ -1143,9 +984,11 @@ class ComputationBuilder(object):
     pads = _convert_padding_type_to_pad_values(
         padding,
         self.GetShape(operand).dimensions(), window_dimensions, window_strides)
-    return ops.SelectAndScatterWithGeneralPadding(
-        operand, select.computation, window_dimensions, window_strides, pads,
-        source, init_value, scatter.computation)
+    return ops.SelectAndScatterWithGeneralPadding(operand, select.computation,
+                                                  window_dimensions,
+                                                  window_strides, pads, source,
+                                                  init_value,
+                                                  scatter.computation)
 
   def Slice(self, operand, start_indices, limit_indices, strides=None):
     """Enqueues a slice operation onto the computation.
@@ -1254,10 +1097,9 @@ class ComputationBuilder(object):
       An XlaOp representing the added custom call op.
     """
     opaque = opaque or b''
-    return ops.CustomCall(
-        self._builder, call_target_name, list(operands),
-        shape_with_layout.as_xla_shape(),
-        [s.as_xla_shape() for s in operand_shapes_with_layout], opaque)
+    return ops.CustomCall(self._builder, call_target_name,
+                          list(operands), shape_with_layout,
+                          list(operand_shapes_with_layout), opaque)
 
   def Map(self, operands, computation_to_apply, dimensions):
     """Enqueues a map operation onto the computation.
@@ -1306,13 +1148,15 @@ class ComputationBuilder(object):
     pads = _convert_padding_type_to_pad_values(
         padding,
         self.GetShape(operand).dimensions(), window_dimensions, window_strides)
-    return ops.ReduceWindowWithGeneralPadding(
-        operand, init_value, computation_to_apply.computation,
-        window_dimensions, window_strides, (), (), pads)
+    return ops.ReduceWindowWithGeneralPadding(operand, init_value,
+                                              computation_to_apply.computation,
+                                              window_dimensions, window_strides,
+                                              (), (), pads)
 
-  def ReduceWindowWithGeneralPadding(
-      self, operand, init_value, computation_to_apply, window_dimensions,
-      window_strides, base_dilations, window_dilations, padding):
+  def ReduceWindowWithGeneralPadding(self, operand, init_value,
+                                     computation_to_apply, window_dimensions,
+                                     window_strides, base_dilations,
+                                     window_dilations, padding):
     """Enqueues a windowed reduction operation onto the computation.
 
     Args:
@@ -1328,10 +1172,11 @@ class ComputationBuilder(object):
     Returns:
       An XlaOp representing the added ReduceWindow op.
     """
-    return ops.ReduceWindowWithGeneralPadding(
-        operand, init_value, computation_to_apply.computation,
-        window_dimensions, window_strides, base_dilations, window_dilations,
-        padding)
+    return ops.ReduceWindowWithGeneralPadding(operand, init_value,
+                                              computation_to_apply.computation,
+                                              window_dimensions, window_strides,
+                                              base_dilations, window_dilations,
+                                              padding)
 
   def RngNormal(self, mu, sigma, dims):
     """Enqueues an RngNormal operation onto the computation.
@@ -1342,7 +1187,7 @@ class ComputationBuilder(object):
       dims: A 1D array-like of nonnegative integers specifying the dimensions.
     Returns: a XlaOp to the generated array of F32 values.
     """
-    shape = _xla.Shape.Array(self.GetShape(mu).xla_element_type(), dims)
+    shape = _xla.Shape.array_shape(self.GetShape(mu).xla_element_type(), dims)
     return ops.RngNormal(mu, sigma, shape)
 
   def RngUniform(self, a, b, dims):
@@ -1359,7 +1204,7 @@ class ComputationBuilder(object):
     Returns: a XlaOp to the generated array of values with the same numeric type
       (F32, S32, or U32) as the arguments a and b.
     """
-    shape = _xla.Shape.Array(self.GetShape(a).xla_element_type(), dims)
+    shape = _xla.Shape.array_shape(self.GetShape(a).xla_element_type(), dims)
     return ops.RngUniform(a, b, shape)
 
   def While(self, cond, body, init):
@@ -1425,7 +1270,8 @@ class ComputationBuilder(object):
       dimension_numbers = GetDotDimensionsFromLists(dimension_numbers)
     return ops.DotGeneral(lhs, rhs, dimension_numbers)
 
-  def Conv(self, lhs, rhs, window_strides, padding, feature_group_count=1):
+  def Conv(self, lhs, rhs, window_strides, padding,
+           feature_group_count=1, batch_group_count=1):
     """Enqueues a Conv operation onto the computation.
 
     Args:
@@ -1434,6 +1280,7 @@ class ComputationBuilder(object):
       window_strides: length-N array-like of integer kernel strides.
       padding: PaddingType representing either 'SAME' or 'VALID' padding.
       feature_group_count: number of feature groups for grouped convolution.
+      batch_group_count: number of batch groups for grouped convolution.
     Returns: a XlaOp representing the Conv operation.
     """
     pads = _convert_padding_type_to_pad_values(
@@ -1446,7 +1293,8 @@ class ComputationBuilder(object):
         window_strides,
         pads, [], [],
         dimension_numbers=None,
-        feature_group_count=feature_group_count)
+        feature_group_count=feature_group_count,
+        batch_group_count=batch_group_count)
 
   def ConvWithGeneralPadding(self,
                              lhs,
@@ -1455,7 +1303,8 @@ class ComputationBuilder(object):
                              padding,
                              lhs_dilation,
                              rhs_dilation,
-                             feature_group_count=1):
+                             feature_group_count=1,
+                             batch_group_count=1):
     """Enqueues a ConvWithGeneralPadding operation onto the computation.
 
     Args:
@@ -1466,6 +1315,7 @@ class ComputationBuilder(object):
       lhs_dilation: length-N array-like of dilation factors.
       rhs_dilation: length-N array-like of dilation factors.
       feature_group_count: number of feature groups for grouped convolution.
+      batch_group_count: number of batch groups for grouped convolution.
 
     Returns:
       A ComputationdataHandle representing the added ConvWithGeneralPadding op.
@@ -1478,7 +1328,8 @@ class ComputationBuilder(object):
         list(lhs_dilation),
         list(rhs_dilation),
         dimension_numbers=None,
-        feature_group_count=feature_group_count)
+        feature_group_count=feature_group_count,
+        batch_group_count=batch_group_count)
 
   def _GetConvDimensionNumbers(self, num_spatial_dims):
     """Create ConvolutionDimensionNumbers proto for convolutions."""
@@ -1503,7 +1354,8 @@ class ComputationBuilder(object):
                          lhs_dilation,
                          rhs_dilation,
                          dimension_numbers=None,
-                         feature_group_count=1):
+                         feature_group_count=1,
+                         batch_group_count=1):
     """Enqueues a ConvGeneralDilated operation onto the computation.
 
     Args:
@@ -1533,6 +1385,7 @@ class ComputationBuilder(object):
           default, use the same dimension numbering as Conv and
           ConvWithGeneralPadding.
       feature_group_count: number of feature groups for grouped convolution.
+      batch_group_count: number of batch groups for grouped convolution.
     Returns: a XlaOp representing the ConvGenralDilated operation.
     """
     if dimension_numbers is None:
@@ -1558,15 +1411,15 @@ class ComputationBuilder(object):
                  key=lambda i: rhs_spec.index(out_spec[i])))
     return ops.ConvGeneralDilated(lhs, rhs, window_strides, padding,
                                   lhs_dilation, rhs_dilation, dimension_numbers,
-                                  feature_group_count)
+                                  feature_group_count, batch_group_count)
 
   def Sort(self, operand, dimension=-1):
     """Enqueues a sort operation onto the computation."""
-    return ops.Sort(operand, [], dimension)
+    return ops.Sort(self._builder, [operand], dimension)
 
   def SortKeyVal(self, keys, values, dimension=-1):
     """Enqueues a key-value sort operation onto the computation."""
-    return ops.Sort(keys, [values], dimension)
+    return ops.Sort(self._builder, [keys, values], dimension)
 
   def QR(self, a, full_matrices=True):
     """Enqueues a QR decomposition onto the computation."""
@@ -1605,6 +1458,12 @@ class ComputationBuilder(object):
     return ops.Scatter(a, scatter_indices, updates,
                        update_computation.computation, dimension_numbers)
 
+  def Fft(self, operand, fft_type, fft_lengths):
+    """Enqueues a FFT operation onto the computation."""
+    return ops.Fft(operand, fft_type, fft_lengths)
+
+
+FftType = _xla.FftType
 
 _UNARY_OPS = [
     'Not',
@@ -1678,6 +1537,7 @@ _OTHER_OPS = [
     'Cholesky',
     'Clamp',
     'Collapse',
+    'CollectivePermute',
     'ConvertElementType',
     'Dot',
     'Gather',
@@ -1708,6 +1568,7 @@ def _forward_methods_to_local_builder():
     forward = forward_op(getattr(ops, method_name))
     forward.__name__ = method_name
     setattr(ComputationBuilder, method_name, forward)
+
 
 _forward_methods_to_local_builder()
 
@@ -1830,3 +1691,14 @@ def _make_replica_group_proto(replica_group):
   replica_group_proto = ReplicaGroup()
   replica_group_proto.replica_ids.extend(replica_group)
   return replica_group_proto
+
+
+def _get_replica_groups_protos(replica_groups):
+  if replica_groups is None:
+    replica_groups_protos = []  # special value for XLA API
+  else:
+    replica_groups = list(replica_groups)
+    replica_groups_protos = [
+        _make_replica_group_proto(group) for group in replica_groups
+    ]
+  return replica_groups_protos

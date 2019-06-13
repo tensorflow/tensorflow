@@ -37,6 +37,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LinearOperatorHouseholder"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LinearOperatorIdentity"
     mtype: "<type \'type\'>"
   }
@@ -58,6 +62,10 @@ tf_module {
   }
   member {
     name: "LinearOperatorScaledIdentity"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LinearOperatorToeplitz"
     mtype: "<type \'type\'>"
   }
   member {
@@ -90,11 +98,11 @@ tf_module {
   }
   member_method {
     name: "diag"
-    argspec: "args=[\'diagonal\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'diagonal\', \'name\', \'k\', \'num_rows\', \'num_cols\', \'padding_value\'], varargs=None, keywords=None, defaults=[\'diag\', \'0\', \'-1\', \'-1\', \'0\'], "
   }
   member_method {
     name: "diag_part"
-    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'name\', \'k\', \'padding_value\'], varargs=None, keywords=None, defaults=[\'diag_part\', \'0\', \'0\'], "
   }
   member_method {
     name: "eigh"
@@ -149,6 +157,10 @@ tf_module {
     argspec: "args=[\'a\', \'b\', \'transpose_a\', \'transpose_b\', \'adjoint_a\', \'adjoint_b\', \'a_is_sparse\', \'b_is_sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'False\', \'False\', \'None\'], "
   }
   member_method {
+    name: "matrix_transpose"
+    argspec: "args=[\'a\', \'name\', \'conjugate\'], varargs=None, keywords=None, defaults=[\'matrix_transpose\', \'False\'], "
+  }
+  member_method {
     name: "matvec"
     argspec: "args=[\'a\', \'b\', \'transpose_a\', \'adjoint_a\', \'a_is_sparse\', \'b_is_sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'None\'], "
   }
@@ -162,7 +174,7 @@ tf_module {
   }
   member_method {
     name: "set_diag"
-    argspec: "args=[\'input\', \'diagonal\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'diagonal\', \'name\', \'k\'], varargs=None, keywords=None, defaults=[\'set_diag\', \'0\'], "
   }
   member_method {
     name: "slogdet"
@@ -205,7 +217,11 @@ tf_module {
     argspec: "args=[\'matrix\', \'rhs\', \'lower\', \'adjoint\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'None\'], "
   }
   member_method {
+    name: "tridiagonal_matmul"
+    argspec: "args=[\'diagonals\', \'rhs\', \'diagonals_format\', \'name\'], varargs=None, keywords=None, defaults=[\'compact\', \'None\'], "
+  }
+  member_method {
     name: "tridiagonal_solve"
-    argspec: "args=[\'diagonals\', \'rhs\', \'diagonals_format\', \'transpose_rhs\', \'conjugate_rhs\', \'name\'], varargs=None, keywords=None, defaults=[\'compact\', \'False\', \'False\', \'None\'], "
+    argspec: "args=[\'diagonals\', \'rhs\', \'diagonals_format\', \'transpose_rhs\', \'conjugate_rhs\', \'name\', \'partial_pivoting\'], varargs=None, keywords=None, defaults=[\'compact\', \'False\', \'False\', \'None\', \'True\'], "
   }
 }

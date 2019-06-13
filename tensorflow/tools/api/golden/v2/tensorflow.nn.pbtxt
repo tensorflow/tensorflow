@@ -65,6 +65,10 @@ tf_module {
     argspec: "args=[\'true_classes\', \'sampled_candidates\', \'num_true\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
+    name: "compute_average_loss"
+    argspec: "args=[\'per_example_loss\', \'sample_weight\', \'global_batch_size\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "conv1d"
     argspec: "args=[\'input\', \'filters\', \'stride\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NWC\', \'None\', \'None\'], "
   }
@@ -257,6 +261,10 @@ tf_module {
     argspec: "args=[\'weights\', \'biases\', \'labels\', \'inputs\', \'num_sampled\', \'num_classes\', \'num_true\', \'sampled_values\', \'remove_accidental_hits\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'None\', \'True\', \'None\', \'sampled_softmax_loss\'], "
   }
   member_method {
+    name: "scale_regularization_loss"
+    argspec: "args=[\'regularization_loss\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "selu"
     argspec: "args=[\'features\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -299,10 +307,6 @@ tf_module {
   member_method {
     name: "sparse_softmax_cross_entropy_with_logits"
     argspec: "args=[\'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "static_state_saving_rnn"
-    argspec: "args=[\'cell\', \'inputs\', \'state_saver\', \'state_name\', \'sequence_length\', \'scope\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "sufficient_statistics"

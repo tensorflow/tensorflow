@@ -20,12 +20,17 @@ from __future__ import print_function
 
 import copy
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import ResidualWrapper
+from tensorflow.python.ops.array_ops import concat
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import object_identity
 from tensorflow.python.training.tracking import util as trackable_util
@@ -33,14 +38,13 @@ from tensorflow.python.training.tracking import util as trackable_util
 
 class _RNNCellWithConstants(keras.layers.Layer):
 
-  def __init__(self, units, **kwargs):
+  def __init__(self, units, constant_size, **kwargs):
     self.units = units
     self.state_size = units
+    self.constant_size = constant_size
     super(_RNNCellWithConstants, self).__init__(**kwargs)
 
   def build(self, input_shape):
-    [input_shape, constant_shape] = input_shape
-
     self.input_kernel = self.add_weight(
         shape=(input_shape[-1], self.units),
         initializer='uniform',
@@ -50,7 +54,7 @@ class _RNNCellWithConstants(keras.layers.Layer):
         initializer='uniform',
         name='recurrent_kernel')
     self.constant_kernel = self.add_weight(
-        shape=(constant_shape[-1], self.units),
+        shape=(self.constant_size, self.units),
         initializer='uniform',
         name='constant_kernel')
     self.built = True
@@ -65,7 +69,7 @@ class _RNNCellWithConstants(keras.layers.Layer):
     return output, [output]
 
   def get_config(self):
-    config = {'units': self.units}
+    config = {'units': self.units, 'constant_size': self.constant_size}
     base_config = super(_RNNCellWithConstants, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -291,8 +295,46 @@ class TimeDistributedTest(test.TestCase):
     td3 = keras.layers.TimeDistributed(NoReshapeLayer())
     self.assertFalse(td3._always_use_reshape)
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_TimeDistributed_output_shape_return_types(self):
 
-class BidirectionalTest(test.TestCase):
+    class TestLayer(keras.layers.Layer):
+
+      def call(self, inputs):
+        return concat([inputs, inputs], axis=-1)
+
+      def compute_output_shape(self, input_shape):
+        output_shape = tensor_shape.TensorShape(input_shape).as_list()
+        output_shape[-1] = output_shape[-1] * 2
+        output_shape = tensor_shape.TensorShape(output_shape)
+        return output_shape
+
+    class TestListLayer(TestLayer):
+
+      def compute_output_shape(self, input_shape):
+        shape = super(TestListLayer, self).compute_output_shape(input_shape)
+        return shape.as_list()
+
+    class TestTupleLayer(TestLayer):
+
+      def compute_output_shape(self, input_shape):
+        shape = super(TestTupleLayer, self).compute_output_shape(input_shape)
+        return tuple(shape.as_list())
+
+    # Layers can specify output shape as list/tuple/TensorShape
+    test_layers = [TestLayer, TestListLayer, TestTupleLayer]
+    for layer in test_layers:
+      input_layer = keras.layers.TimeDistributed(layer())
+      inputs = keras.backend.placeholder(shape=(None, 2, 4))
+      output = input_layer(inputs)
+      self.assertEqual(output.shape.as_list(), [None, 2, 8])
+      self.assertEqual(
+          input_layer.compute_output_shape([None, 2, 4]).as_list(),
+          [None, 2, 8])
+
+
+@tf_test_util.run_all_in_graph_and_eager_modes
+class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
   def test_bidirectional(self):
     rnn = keras.layers.SimpleRNN
@@ -515,8 +557,7 @@ class BidirectionalTest(test.TestCase):
       # test passing invalid initial_state: passing a tensor
       input2 = keras.layers.Input((timesteps, dim))
       with self.assertRaises(ValueError):
-        output = keras.layers.Bidirectional(
-            rnn(units))(input2, initial_state=state[0])
+        keras.layers.Bidirectional(rnn(units))(input2, initial_state=state[0])
 
       # test valid usage: passing a list
       output = keras.layers.Bidirectional(rnn(units))(input2,
@@ -527,6 +568,23 @@ class BidirectionalTest(test.TestCase):
       inputs = [np.random.rand(samples, timesteps, dim),
                 np.random.rand(samples, timesteps, dim)]
       model.predict(inputs)
+
+  def test_Bidirectional_state_reuse_with_np_input(self):
+    # See https://github.com/tensorflow/tensorflow/issues/28761 for more detail.
+    rnn = keras.layers.LSTM
+    samples = 2
+    dim = 5
+    timesteps = 3
+    units = 3
+
+    with self.cached_session():
+      input1 = np.random.rand(samples, timesteps, dim).astype(np.float32)
+      layer = keras.layers.Bidirectional(
+          rnn(units, return_state=True, return_sequences=True))
+      state = layer(input1)[1:]
+
+      input2 = np.random.rand(samples, timesteps, dim).astype(np.float32)
+      keras.layers.Bidirectional(rnn(units))(input2, initial_state=state)
 
   def test_Bidirectional_trainable(self):
     # test layers that need learning_phase to be set
@@ -552,10 +610,12 @@ class BidirectionalTest(test.TestCase):
       assert not layer.updates
       assert not layer.get_updates_for(None)
       assert not layer.get_updates_for(x)
-      layer.forward_layer.add_update(x_reachable_update, inputs=x)
-      layer.forward_layer.add_update(1, inputs=None)
-      layer.backward_layer.add_update(x_reachable_update, inputs=x)
-      layer.backward_layer.add_update(1, inputs=None)
+      # TODO(b/128684069): Remove when Wrapper sublayers are __call__'d.
+      with base_layer_utils.call_context().enter(layer, x, True, None):
+        layer.forward_layer.add_update(x_reachable_update, inputs=x)
+        layer.forward_layer.add_update(1, inputs=None)
+        layer.backward_layer.add_update(x_reachable_update, inputs=x)
+        layer.backward_layer.add_update(1, inputs=None)
       assert len(layer.updates) == 4
       assert len(layer.get_updates_for(None)) == 2
       assert len(layer.get_updates_for(x)) == 2
@@ -589,7 +649,7 @@ class BidirectionalTest(test.TestCase):
       # Test basic case.
       x = keras.Input((5, 5))
       c = keras.Input((3,))
-      cell = _RNNCellWithConstants(32)
+      cell = _RNNCellWithConstants(32, 3)
       custom_objects = {'_RNNCellWithConstants': _RNNCellWithConstants}
       with keras.utils.CustomObjectScope(custom_objects):
         layer = keras.layers.Bidirectional(keras.layers.RNN(cell))
@@ -632,7 +692,7 @@ class BidirectionalTest(test.TestCase):
       c = keras.Input((3,))
       s_for = keras.Input((32,))
       s_bac = keras.Input((32,))
-      cell = _RNNCellWithConstants(32)
+      cell = _RNNCellWithConstants(32, 3)
       custom_objects = {'_RNNCellWithConstants': _RNNCellWithConstants}
       with keras.utils.CustomObjectScope(custom_objects):
         layer = keras.layers.Bidirectional(keras.layers.RNN(cell))
@@ -678,6 +738,42 @@ class BidirectionalTest(test.TestCase):
       y_np_3 = model.predict([x_np, s_fw_np, s_bk_np, c_np])
       self.assertAllClose(y_np, y_np_3, atol=1e-4)
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_Bidirectional_output_shape_return_types(self):
+
+    class TestLayer(keras.layers.SimpleRNN):
+
+      def call(self, inputs):
+        return concat([inputs, inputs], axis=-1)
+
+      def compute_output_shape(self, input_shape):
+        output_shape = tensor_shape.TensorShape(input_shape).as_list()
+        output_shape[-1] = output_shape[-1] * 2
+        return tensor_shape.TensorShape(output_shape)
+
+    class TestListLayer(TestLayer):
+
+      def compute_output_shape(self, input_shape):
+        shape = super(TestListLayer, self).compute_output_shape(input_shape)
+        return shape.as_list()
+
+    class TestTupleLayer(TestLayer):
+
+      def compute_output_shape(self, input_shape):
+        shape = super(TestTupleLayer, self).compute_output_shape(input_shape)
+        return tuple(shape.as_list())
+
+    # Layers can specify output shape as list/tuple/TensorShape
+    test_layers = [TestLayer, TestListLayer, TestTupleLayer]
+    for layer in test_layers:
+      input_layer = keras.layers.Bidirectional(layer(1))
+      inputs = keras.backend.placeholder(shape=(None, 2, 4))
+      output = input_layer(inputs)
+      self.assertEqual(output.shape.as_list(), [None, 2, 16])
+      self.assertEqual(
+          input_layer.compute_output_shape([None, 2, 4]).as_list(),
+          [None, 2, 16])
+
   def test_Bidirectional_last_output_with_masking(self):
     rnn = keras.layers.LSTM
     samples = 2
@@ -696,12 +792,12 @@ class BidirectionalTest(test.TestCase):
       wrapped = keras.layers.Bidirectional(
           rnn(units, return_state=True), merge_mode=merge_mode)
       outputs = _to_list(wrapped(masked_inputs, training=True))
-      self.assertEqual(len(outputs), 5)
+      self.assertLen(outputs, 5)
       self.assertEqual(outputs[0].shape.as_list(), [None, units * 2])
 
       model = keras.Model(inputs, outputs)
       y = _to_list(model.predict(x))
-      self.assertEqual(len(y), 5)
+      self.assertLen(y, 5)
       self.assertAllClose(y[0], np.concatenate([y[1], y[3]], axis=1))
 
   def test_Bidirectional_sequence_output_with_masking(self):
@@ -723,13 +819,189 @@ class BidirectionalTest(test.TestCase):
           rnn(units, return_sequences=True),
           merge_mode=merge_mode)
       outputs = _to_list(wrapped(masked_inputs, training=True))
-      self.assertEqual(len(outputs), 1)
+      self.assertLen(outputs, 1)
       self.assertEqual(outputs[0].shape.as_list(), [None, timesteps, units * 2])
 
       model = keras.Model(inputs, outputs)
       y = _to_list(model.predict(x))
-      self.assertEqual(len(y), 1)
+      self.assertLen(y, 1)
       self.assertAllClose(y[0][0, 2], np.zeros(units * 2))
+
+  @parameterized.parameters(['sum', 'concat'])
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_custom_backward_layer(self, mode):
+    rnn = keras.layers.SimpleRNN
+    samples = 2
+    dim = 2
+    timesteps = 2
+    output_dim = 2
+
+    x = np.random.random((samples, timesteps, dim))
+    target_dim = 2 * output_dim if mode == 'concat' else output_dim
+    y = np.random.random((samples, target_dim))
+    forward_layer = rnn(output_dim)
+    backward_layer = rnn(output_dim, go_backwards=True)
+
+    # test with Sequential model
+    model = keras.models.Sequential()
+    model.add(
+        keras.layers.Bidirectional(
+            forward_layer,
+            merge_mode=mode,
+            backward_layer=backward_layer,
+            input_shape=(timesteps, dim)))
+    model.compile(optimizer='rmsprop', loss='mse')
+    model.fit(x, y, epochs=1, batch_size=1)
+
+    # check whether the model variables are present in the
+    # trackable list of objects
+    checkpointed_objects = object_identity.ObjectIdentitySet(
+        trackable_util.list_objects(model))
+    for v in model.variables:
+      self.assertIn(v, checkpointed_objects)
+
+    # test compute output shape
+    ref_shape = model.layers[-1].output.shape
+    shape = model.layers[-1].compute_output_shape((None, timesteps, dim))
+    self.assertListEqual(shape.as_list(), ref_shape.as_list())
+
+    # test config
+    model.get_config()
+    model = keras.models.model_from_json(model.to_json())
+    model.summary()
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_custom_backward_layer_error_check(self):
+    rnn = keras.layers.LSTM
+    units = 2
+
+    forward_layer = rnn(units)
+    backward_layer = rnn(units)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 'should have different `go_backwards` value.'):
+      keras.layers.Bidirectional(
+          forward_layer, merge_mode='concat', backward_layer=backward_layer)
+
+    for attr in ('stateful', 'return_sequences', 'return_state'):
+      kwargs = {attr: True}
+      backward_layer = rnn(units, go_backwards=True, **kwargs)
+      with self.assertRaisesRegexp(
+          ValueError, 'expected to have the same value for attribute ' + attr):
+        keras.layers.Bidirectional(
+            forward_layer, merge_mode='concat', backward_layer=backward_layer)
+
+  def test_custom_backward_layer_serialization(self):
+    rnn = keras.layers.LSTM
+    units = 2
+
+    forward_layer = rnn(units)
+    backward_layer = rnn(units, go_backwards=True)
+    layer = keras.layers.Bidirectional(
+        forward_layer, merge_mode='concat', backward_layer=backward_layer)
+    config = layer.get_config()
+    layer_from_config = keras.layers.Bidirectional.from_config(config)
+    new_config = layer_from_config.get_config()
+    self.assertDictEqual(config, new_config)
+
+  def test_rnn_layer_name(self):
+    rnn = keras.layers.LSTM
+    units = 2
+
+    layer = keras.layers.Bidirectional(rnn(units, name='rnn'))
+    config = layer.get_config()
+
+    self.assertEqual(config['layer']['config']['name'], 'rnn')
+
+    layer_from_config = keras.layers.Bidirectional.from_config(config)
+    self.assertEqual(layer_from_config.forward_layer.name, 'forward_rnn')
+    self.assertEqual(layer_from_config.backward_layer.name, 'backward_rnn')
+
+  def test_custom_backward_rnn_layer_name(self):
+    rnn = keras.layers.LSTM
+    units = 2
+
+    forward_layer = rnn(units)
+    backward_layer = rnn(units, go_backwards=True)
+    layer = keras.layers.Bidirectional(
+        forward_layer, merge_mode='concat', backward_layer=backward_layer)
+    config = layer.get_config()
+
+    self.assertEqual(config['layer']['config']['name'], 'lstm')
+    self.assertEqual(config['backward_layer']['config']['name'], 'lstm_1')
+
+    layer_from_config = keras.layers.Bidirectional.from_config(config)
+    self.assertEqual(layer_from_config.forward_layer.name, 'forward_lstm')
+    self.assertEqual(layer_from_config.backward_layer.name, 'backward_lstm_1')
+
+  def test_rnn_with_customized_cell(self):
+    batch = 20
+    dim = 5
+    timesteps = 3
+    units = 5
+    merge_mode = 'sum'
+
+    class ResidualLSTMCell(keras.layers.LSTMCell):
+
+      def call(self, inputs, states, training=None):
+        output, states = super(ResidualLSTMCell, self).call(inputs, states)
+        return output + inputs, states
+
+    cell = ResidualLSTMCell(units)
+    forward_layer = keras.layers.RNN(cell)
+    inputs = keras.Input((timesteps, dim))
+    bidirectional_rnn = keras.layers.Bidirectional(
+        forward_layer, merge_mode=merge_mode)
+    outputs = _to_list(bidirectional_rnn(inputs))
+
+    model = keras.Model(inputs, outputs)
+    model.compile(optimizer='rmsprop', loss='mse')
+    model.fit(
+        np.random.random((batch, timesteps, dim)),
+        np.random.random((batch, units)),
+        epochs=1,
+        batch_size=10)
+
+    # Test stacking
+    cell = [ResidualLSTMCell(units), ResidualLSTMCell(units)]
+    forward_layer = keras.layers.RNN(cell)
+    inputs = keras.Input((timesteps, dim))
+    bidirectional_rnn = keras.layers.Bidirectional(
+        forward_layer, merge_mode=merge_mode)
+    outputs = _to_list(bidirectional_rnn(inputs))
+
+    model = keras.Model(inputs, outputs)
+    model.compile(optimizer='rmsprop', loss='mse')
+    model.fit(
+        np.random.random((batch, timesteps, dim)),
+        np.random.random((batch, units)),
+        epochs=1,
+        batch_size=10)
+
+  @tf_test_util.run_v2_only
+  def test_wrapped_rnn_cell(self):
+    # See https://github.com/tensorflow/tensorflow/issues/26581.
+    batch = 20
+    dim = 5
+    timesteps = 3
+    units = 5
+    merge_mode = 'sum'
+
+    cell = keras.layers.LSTMCell(units)
+    cell = ResidualWrapper(cell)
+    rnn = keras.layers.RNN(cell)
+
+    inputs = keras.Input((timesteps, dim))
+    wrapped = keras.layers.Bidirectional(rnn, merge_mode=merge_mode)
+    outputs = _to_list(wrapped(inputs))
+
+    model = keras.Model(inputs, outputs)
+    model.compile(optimizer='rmsprop', loss='mse')
+    model.fit(
+        np.random.random((batch, timesteps, dim)),
+        np.random.random((batch, units)),
+        epochs=1,
+        batch_size=10)
 
 
 def _to_list(ls):

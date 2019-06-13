@@ -32,6 +32,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -80,10 +82,19 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
   """
 
   def __init__(self, root):
-    super(_AugmentedGraphView, self).__init__(root)
+    if (not context.executing_eagerly()
+        and not ops.inside_function()):
+      saveables_cache = object_identity.ObjectIdentityWeakKeyDictionary()
+    else:
+      saveables_cache = None
+    super(_AugmentedGraphView, self).__init__(root, saveables_cache)
     # Object -> (name -> dep)
     self._extra_dependencies = object_identity.ObjectIdentityDictionary()
     self._functions = object_identity.ObjectIdentityDictionary()
+    # Cache shared between objects in the same object graph. This is passed to
+    # each trackable object's `_list_extra_dependencies_for_serialization` and
+    # `_list_functions_for_serialization` function.
+    self._serialization_cache = object_identity.ObjectIdentityDictionary()
 
   def add_object(self, parent_node, name_in_parent, subgraph_root):
     """Attach an object to `parent_node`, overriding any existing dependency."""
@@ -92,11 +103,23 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
 
   def list_dependencies(self, obj):
     """Overrides a parent method to include `add_object` objects."""
-    extra_dependencies = self._extra_dependencies.get(obj, {})
+    extra_dependencies = self.list_extra_dependencies(obj)
+    extra_dependencies.update(self._extra_dependencies.get(obj, {}))
+
     used_names = set()
     for name, dep in super(_AugmentedGraphView, self).list_dependencies(obj):
       used_names.add(name)
       if name in extra_dependencies:
+        # Extra dependencies (except for `.signatures`, which is always added
+        # when saving) should not have naming conflicts with dependencies
+        # defined by the user.
+        if name != signature_serialization.SIGNATURE_ATTRIBUTE_NAME:
+          raise ValueError(
+              "Error when exporting object {} of with identifier={}. The object"
+              " has an attribute named {}, which is reserved. List of all "
+              "reserved attributes: {}".format(
+                  obj, obj._object_identifier,  # pylint: disable=protected-access
+                  name, extra_dependencies.keys()))
         yield base.TrackableReference(name, extra_dependencies[name])
       else:
         yield base.TrackableReference(name, dep)
@@ -105,10 +128,15 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
         continue
       yield base.TrackableReference(name, dep)
 
+  def list_extra_dependencies(self, obj):
+    return obj._list_extra_dependencies_for_serialization(  # pylint: disable=protected-access
+        self._serialization_cache)
+
   def list_functions(self, obj):
     obj_functions = self._functions.get(obj, None)
     if obj_functions is None:
-      obj_functions = obj._list_functions_for_serialization()  # pylint: disable=protected-access
+      obj_functions = obj._list_functions_for_serialization(  # pylint: disable=protected-access
+          self._serialization_cache)
       self._functions[obj] = obj_functions
     return obj_functions
 
@@ -213,8 +241,11 @@ class _SaveableView(object):
         asset_filename_map={},
         asset_index={})
     for node_id, obj in enumerate(self.nodes):
-      if isinstance(obj, tracking.TrackableResource):
-        new_resource = obj._create_resource()  # pylint: disable=protected-access
+      if isinstance(obj, tracking.CapturableResource):
+        # pylint: disable=protected-access
+        with ops.device(obj._resource_device):
+          new_resource = obj._create_resource()
+        # pylint: enable=protected-access
         resource_map[obj.resource_handle] = new_resource
         self.captured_tensor_node_ids[obj.resource_handle] = node_id
       elif resource_variable_ops.is_resource_variable(obj):
@@ -228,10 +259,11 @@ class _SaveableView(object):
 
     for concrete_function in self.concrete_functions:
       for capture in concrete_function.captured_inputs:
-        if (isinstance(capture, ops.EagerTensor)
+        if (tensor_util.is_tensor(capture)
             and capture.dtype not in _UNCOPIABLE_DTYPES
             and capture not in self.captured_tensor_node_ids):
-          copied_tensor = constant_op.constant(capture.numpy())
+          copied_tensor = constant_op.constant(
+              tensor_util.constant_value(capture))
           node_id = len(self.nodes)
           node = _CapturedConstant(
               eager_tensor=capture, graph_tensor=copied_tensor)
@@ -413,7 +445,7 @@ def _generate_signatures(signature_functions, resource_map):
 
 
 def _trace_resource_initializers(accessible_objects):
-  """Create concrete functions from `TrackableResource` objects."""
+  """Create concrete functions from `CapturableResource` objects."""
   resource_initializers = []
 
   def _wrap_initializer(obj):
@@ -424,7 +456,7 @@ def _trace_resource_initializers(accessible_objects):
     return lambda: _wrap_initializer(obj)
 
   for obj in accessible_objects:
-    if isinstance(obj, tracking.TrackableResource):
+    if isinstance(obj, tracking.CapturableResource):
       resource_initializers.append(def_function.function(
           _wrap_obj_initializer(obj),
           # All inputs are captures.
@@ -446,9 +478,13 @@ _AssetInfo = collections.namedtuple(
 
 def _process_asset(trackable_asset, asset_info, resource_map):
   """Add `trackable_asset` to `asset_info` and `resource_map`."""
-  original_variable = trackable_asset.asset_path
-  with context.eager_mode():
-    original_path = original_variable.numpy()
+  original_path_tensor = trackable_asset.asset_path
+  original_path = tensor_util.constant_value(original_path_tensor)
+  try:
+    original_path = str(original_path.astype(str))
+  except AttributeError:
+    # Already a string rather than a numpy array
+    pass
   path = builder_impl.get_asset_filename_to_add(
       asset_filepath=original_path,
       asset_filename_map=asset_info.asset_filename_map)
@@ -456,7 +492,7 @@ def _process_asset(trackable_asset, asset_info, resource_map):
   # and asset in the graph def consider deduping the assets that
   # point to the same file.
   asset_path_initializer = array_ops.placeholder(
-      shape=original_variable.shape,
+      shape=original_path_tensor.shape,
       dtype=dtypes.string,
       name="asset_path_initializer")
   asset_variable = resource_variable_ops.ResourceVariable(
@@ -466,10 +502,10 @@ def _process_asset(trackable_asset, asset_info, resource_map):
   asset_def.filename = path
   asset_def.tensor_info.name = asset_path_initializer.name
   asset_info.asset_defs.append(asset_def)
-  asset_info.asset_initializers_by_resource[original_variable] = (
+  asset_info.asset_initializers_by_resource[original_path_tensor] = (
       asset_variable.initializer)
   asset_info.asset_index[trackable_asset] = len(asset_info.asset_defs) - 1
-  resource_map[original_variable] = asset_variable
+  resource_map[original_path_tensor] = asset_variable
 
 
 def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions):
@@ -535,6 +571,13 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions):
 
   meta_graph_def.graph_def.CopyFrom(graph_def)
   meta_graph_def.meta_info_def.tags.append(tag_constants.SERVING)
+  meta_graph_def.meta_info_def.tensorflow_version = versions.__version__
+  meta_graph_def.meta_info_def.tensorflow_git_version = (
+      versions.__git_version__)
+  # We currently always strip default attributes.
+  meta_graph_def.meta_info_def.stripped_default_attrs = True
+  meta_graph_def.meta_info_def.stripped_op_list.MergeFrom(
+      meta_graph.stripped_op_list_for_graph(meta_graph_def.graph_def))
   meta_graph_def.asset_file_def.extend(asset_info.asset_defs)
   for signature_key, signature in signatures.items():
     meta_graph_def.signature_def[signature_key].CopyFrom(signature)
@@ -569,8 +612,14 @@ def _write_object_proto(obj, proto, asset_file_def_index):
     proto.asset.asset_file_def_index = asset_file_def_index[obj]
   elif resource_variable_ops.is_resource_variable(obj):
     proto.variable.SetInParent()
+    if not obj.name.endswith(":0"):
+      raise ValueError("Cowardly refusing to save variable %s because of"
+                       " unexpected suffix which won't be restored.")
+    proto.variable.name = meta_graph._op_name(obj.name)  # pylint: disable=protected-access
     proto.variable.trainable = obj.trainable
     proto.variable.dtype = obj.dtype.as_datatype_enum
+    proto.variable.synchronization = obj.synchronization.value
+    proto.variable.aggregation = obj.aggregation.value
     proto.variable.shape.CopyFrom(obj.shape.as_proto())
   elif isinstance(obj, def_function.Function):
     proto.function.CopyFrom(
@@ -580,16 +629,19 @@ def _write_object_proto(obj, proto, asset_file_def_index):
         function_serialization.serialize_bare_concrete_function(obj))
   elif isinstance(obj, _CapturedConstant):
     proto.constant.operation = obj.graph_tensor.op.name
-  elif isinstance(obj, tracking.TrackableResource):
-    proto.resource.SetInParent()
+  elif isinstance(obj, tracking.CapturableResource):
+    proto.resource.device = obj._resource_device  # pylint: disable=protected-access
   else:
     registered_type_proto = revived_types.serialize(obj)
     if registered_type_proto is None:
       # Fallback for types with no matching registration
+      # pylint:disable=protected-access
       registered_type_proto = saved_object_graph_pb2.SavedUserObject(
-          identifier="_generic_user_object",
+          identifier=obj._object_identifier,
           version=versions_pb2.VersionDef(
-              producer=1, min_consumer=1, bad_consumers=[]))
+              producer=1, min_consumer=1, bad_consumers=[]),
+          metadata=obj._tracking_metadata)
+      # pylint:enable=protected-access
     proto.user_object.CopyFrom(registered_type_proto)
 
 
@@ -602,7 +654,7 @@ def save(obj, export_dir, signatures=None):
   Example usage:
 
   ```python
-  class Adder(tf.train.Checkpoint):
+  class Adder(tf.Module):
 
     @tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32)])
     def add(self, x):
@@ -719,17 +771,6 @@ def save(obj, export_dir, signatures=None):
   handled automatically, such as when the exported model contains operations
   which the consumer does not have definitions for.
 
-  The current implementation of `tf.saved_model.save` targets serving use-cases,
-  but omits information which will be necessary for the planned future
-  implementation of `tf.saved_model.load`. Exported models using the current
-  `save` implementation, and other existing SavedModels, will not be compatible
-  with `tf.saved_model.load` when it is implemented. Further, `save` will in the
-  future attempt to export `@tf.function`-decorated methods which it does not
-  currently inspect, so some objects which are exportable today will raise
-  exceptions on export in the future (e.g. due to complex/non-serializable
-  default arguments). Such backwards-incompatible API changes are expected only
-  prior to the TensorFlow 2.0 release.
-
   Args:
     obj: A trackable object to export.
     export_dir: A directory in which to write the SavedModel.
@@ -747,23 +788,19 @@ def save(obj, export_dir, signatures=None):
     ValueError: If `obj` is not trackable.
 
   @compatibility(eager)
-  Not supported when graph building. From TensorFlow 1.x,
-  `tf.enable_eager_execution()` must run first. May not be called from within a
-  function body.
+  Not well supported when graph building. From TensorFlow 1.x,
+  `tf.compat.v1.enable_eager_execution()` should run first. Calling
+  tf.saved_model.save in a loop when graph building from TensorFlow 1.x will
+  add new save operations to the default graph each iteration.
+
+  May not be called from within a function body.
   @end_compatibility
   """
-  if not context.executing_eagerly():
-    with ops.init_scope():
-      if context.executing_eagerly():
-        raise AssertionError(
-            "tf.saved_model.save is not supported inside a traced "
-            "@tf.function. Move the call to the outer eagerly-executed "
-            "context.")
-      else:
-        raise AssertionError(
-            "tf.saved_model.save is not supported when graph building. "
-            "tf.enable_eager_execution() must run first when calling it from "
-            "TensorFlow 1.x.")
+  if ops.inside_function():
+    raise AssertionError(
+        "tf.saved_model.save is not supported inside a traced "
+        "@tf.function. Move the call to the outer eagerly-executed "
+        "context.")
   # pylint: enable=line-too-long
   if not isinstance(obj, base.Trackable):
     raise ValueError(

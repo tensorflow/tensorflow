@@ -4,6 +4,8 @@ tf_class {
   is_instance: "<class \'tensorflow.python.keras.engine.training.Model\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.network.Network\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
+  is_instance: "<class \'tensorflow.python.module.module.Module\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -59,6 +61,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "name_scope"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "non_trainable_variables"
     mtype: "<type \'property\'>"
   }
@@ -87,11 +93,23 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "sample_weights"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "state_updates"
     mtype: "<type \'property\'>"
   }
   member {
     name: "stateful"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "submodules"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "trainable"
     mtype: "<type \'property\'>"
   }
   member {
@@ -165,6 +183,10 @@ tf_class {
   member_method {
     name: "compute_output_shape"
     argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "compute_output_signature"
+    argspec: "args=[\'self\', \'input_signature\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "count_params"
@@ -272,7 +294,7 @@ tf_class {
   }
   member_method {
     name: "save"
-    argspec: "args=[\'self\', \'filepath\', \'overwrite\', \'include_optimizer\'], varargs=None, keywords=None, defaults=[\'True\', \'True\'], "
+    argspec: "args=[\'self\', \'filepath\', \'overwrite\', \'include_optimizer\', \'save_format\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'None\'], "
   }
   member_method {
     name: "save_weights"
@@ -301,5 +323,9 @@ tf_class {
   member_method {
     name: "train_on_batch"
     argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'class_weight\', \'reset_metrics\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\'], "
+  }
+  member_method {
+    name: "with_name_scope"
+    argspec: "args=[\'cls\', \'method\'], varargs=None, keywords=None, defaults=None"
   }
 }

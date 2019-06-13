@@ -78,6 +78,10 @@ from tensorflow.python.keras.layers.core import Lambda
 from tensorflow.python.keras.layers.core import Dense
 from tensorflow.python.keras.layers.core import ActivityRegularization
 
+# Dense Attention layers.
+from tensorflow.python.keras.layers.dense_attention import AdditiveAttention
+from tensorflow.python.keras.layers.dense_attention import Attention
+
 # Embedding layers.
 from tensorflow.python.keras.layers.embeddings import Embedding
 
@@ -172,6 +176,11 @@ from tensorflow.python.keras.layers.cudnn_recurrent import CuDNNGRU
 from tensorflow.python.keras.layers.wrappers import Wrapper
 from tensorflow.python.keras.layers.wrappers import Bidirectional
 from tensorflow.python.keras.layers.wrappers import TimeDistributed
+
+# # RNN Cell wrappers.
+from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import DeviceWrapper
+from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import DropoutWrapper
+from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import ResidualWrapper
 
 # Serialization functions
 from tensorflow.python.keras.layers.serialization import deserialize

@@ -67,9 +67,13 @@ message DebugOptions {
   // Instrument the computation to collect per-HLO cycle counts.
   bool xla_hlo_profile = 9;
 
-  // List of HLO passes to disable. These names must exactly match the pass
-  // names as specified by the HloPassInterface::name() method.
+  // List of HLO passes to disable/enable. These names must exactly match the
+  // pass names as specified by the HloPassInterface::name() method.
+  //
+  // At least one of xla_disable_hlo_passes and xla_enable_hlo_passes_only must
+  // be empty.
   repeated string xla_disable_hlo_passes = 30;
+  repeated string xla_enable_hlo_passes_only = 124;
 
   // Disables all HLO passes.  Notes that some passes are necessary for
   // correctness and the invariants that must be satisfied by "fully optimized"
@@ -184,6 +188,9 @@ message DebugOptions {
   // among different algorithms.
   bool xla_gpu_crash_on_verification_failures = 101;
 
+  // Disable GEMM and Convolution auto-tuning.
+  bool xla_gpu_disable_autotune = 123;
+
   // Force the host platform to pretend that there are these many host
   // "devices".  All these devices are backed by the same threadpool.  Defaults
   // to 1.
@@ -212,6 +219,9 @@ message DebugOptions {
     // Generate a step marker at each iteration of the top level while loop,
     // which is assumed to be a training loop.
     STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP = 1;
+    // Generate a step marker at each iteration of the second level while loops,
+    // which is assumed to be a training or eval loop.
+    STEP_MARK_AT_SECOND_LEVEL_WHILE_LOOP = 3;
     // No step marker generated.
     STEP_MARK_NONE = 2;
   }
@@ -265,7 +275,9 @@ message DebugOptions {
   // END flags controlling dumping HLO modules.
   //
 
-  // Next id: 123
+  bool xla_gpu_force_conv_nchw = 125;
+
+  // Next id: 126
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

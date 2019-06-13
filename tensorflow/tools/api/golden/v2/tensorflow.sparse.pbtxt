@@ -1,10 +1,6 @@
 path: "tensorflow.sparse"
 tf_module {
   member {
-    name: "SparseConditionalAccumulator"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "SparseTensor"
     mtype: "<type \'type\'>"
   }

@@ -32,9 +32,6 @@ from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.autograph.pyct.static_analysis.annos import NodeAnno
 
-# TODO(mdan): Add support for PY3 (e.g. Param vs arg).
-# TODO(alexbw): Ignore named literals (e.g. None)
-
 
 class Scope(object):
   """Encloses local symbol definition and usage information.
@@ -208,27 +205,27 @@ class ActivityAnalyzer(transformer.Base):
       if qn.owner_set & set(l.args):
         return
 
-    # When inside a comprehension, ignore any of the comprehensions's targets.
-    # This includes attributes or slices of those arguments.
-    # This is not true in Python2, which leaks symbols.
-    if six.PY3:
-      for l in self.state[_Comprehension]:
-        if qn in l.targets:
-          return
-        if qn.owner_set & set(l.targets):
-          return
+    # When inside a comprehension, ignore reads to any of the comprehensions's
+    # targets. This includes attributes or slices of those arguments.
+    for l in self.state[_Comprehension]:
+      if qn in l.targets:
+        return
+      if qn.owner_set & set(l.targets):
+        return
 
     if isinstance(node.ctx, gast.Store):
       # In comprehensions, modified symbols are the comprehension targets.
-      if six.PY3 and self.state[_Comprehension].level > 0:
-        # Like a lambda's args, they are tracked separately in Python3.
+      if self.state[_Comprehension].level > 0:
         self.state[_Comprehension].targets.add(qn)
-      else:
+
+      # Comprehension targets are completely isolated in Python 3.
+      if six.PY2 or self.state[_Comprehension].level == 0:
         self.scope.mark_modified(qn)
         if qn.is_composite and composite_writes_alter_parent:
           self.scope.mark_modified(qn.parent)
         if self._in_aug_assign:
           self.scope.mark_read(qn)
+
     elif isinstance(node.ctx, gast.Load):
       self.scope.mark_read(qn)
     elif isinstance(node.ctx, gast.Param):
@@ -265,12 +262,6 @@ class ActivityAnalyzer(transformer.Base):
     self._exit_scope()
     return node
 
-  def visit_Nonlocal(self, node):
-    raise NotImplementedError()
-
-  def visit_Global(self, node):
-    raise NotImplementedError()
-
   def visit_Expr(self, node):
     return self._process_statement(node)
 
@@ -281,11 +272,18 @@ class ActivityAnalyzer(transformer.Base):
     return self._process_statement(node)
 
   def visit_AugAssign(self, node):
-    # Special rules for AugAssign. In Assign, the target is only written,
-    # but in AugAssig (e.g. a += b), the target is both read and written.
+    # Special rules for AugAssign. Here, the AST only shows the target as
+    # written, when it is in fact also read.
+    self._enter_scope(False)
+
     self._in_aug_assign = True
-    node = self._process_statement(node)
+    node.target = self.visit(node.target)
     self._in_aug_assign = False
+
+    node.op = self.visit(node.op)
+    node.value = self.visit(node.value)
+    anno.setanno(node, anno.Static.SCOPE, self.scope)
+    self._exit_scope()
     return node
 
   def visit_Delete(self, node):
@@ -368,10 +366,18 @@ class ActivityAnalyzer(transformer.Base):
     # Note: it's important to visit the generators first to properly account
     # for the variables local to these generators. Example: `x` is local to the
     # expression `x for x in y`.
-    node.generators = self.visit_block(node.generators)
+    # It is important to visit the generators in reverse order when targets of
+    # outer comprehensions are accessed by inner generators.
+    node.generators = self.visit_block(reversed(node.generators))
     node.elt = self.visit(node.elt)
     self.state[_Comprehension].exit()
     return node
+
+  def visit_comprehension(self, node):
+    # It is important to visit the target first so that it's properly tracked as
+    # comprehension target.
+    node.target = self.visit(node.target)
+    return self.generic_visit(node)
 
   def visit_DictComp(self, node):
     # Identical to _process_iterable_comprehension, different node names.

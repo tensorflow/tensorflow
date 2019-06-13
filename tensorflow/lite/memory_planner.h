@@ -21,6 +21,11 @@ namespace tflite {
 
 // A MemoryPlanner is responsible for planning and executing a number of
 // memory-related operations that are necessary in TF Lite.
+//
+// TODO(b/127354079): Remove the constrain below when the issue is fixed.
+// WARNING: MemoryPlanner's behavior must be deterministic. If the first N
+// nodes are unchanged, it must produce exactly the same allocation plan for
+// the first N nodes.
 class MemoryPlanner {
  public:
   virtual ~MemoryPlanner() {}

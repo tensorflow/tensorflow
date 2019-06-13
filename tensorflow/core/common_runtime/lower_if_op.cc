@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/lower_if_op.h"
-#include "tensorflow/core/common_runtime/lower_functional_ops.h"
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/lower_functional_ops.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -89,9 +89,9 @@ class CondBuilder {
   Node* then_call_node_;
   Node* else_call_node_;
   // Merge node that has inputs from [pivot_t, pivot_f] and control edges from
-  // [^then_call_node_, ^else_call_node_]. This node will guarantee that if
-  // then/else branch functions do not have outputs, they still will be executed
-  // for the side effects.
+  // [^then_call_node_, ^else_call_node_]. This node will guarantee that even
+  // when then/else branch functions do not have outputs, they still will be
+  // executed for the side effects.
   Node* branch_executed_node_;
   Graph* graph_;
   const FunctionLibraryDefinition& flib_;
@@ -206,7 +206,7 @@ Status CondBuilder::AddOutputs() {
   outputs_.resize(merges.size());
   for (int i = 0; i < then_call_node_->num_outputs(); ++i) {
     TF_RETURN_IF_ERROR(
-        NodeBuilder(graph_->NewName("output"), "Merge", graph_->op_registry(),
+        NodeBuilder(NewName("output"), "Merge", graph_->op_registry(),
                     &debug_info_)
             .Input({NodeOut(then_call_node_, i), NodeOut(else_call_node_, i)})
             .Device(if_op_->requested_device())
@@ -224,7 +224,7 @@ Status CondBuilder::AddOutputs() {
   //
   // We will use this node to rewrite outgoing control edges from lowered 'If'
   // node. All data edges will read tensors directly from Merge nodes.
-  TF_RETURN_IF_ERROR(NodeBuilder(graph_->NewName("branch_executed"), "Merge",
+  TF_RETURN_IF_ERROR(NodeBuilder(NewName("branch_executed"), "Merge",
                                  graph_->op_registry(), &debug_info_)
                          .Input({pivot_t_, pivot_f_})
                          .ControlInputs({then_call_node_, else_call_node_})

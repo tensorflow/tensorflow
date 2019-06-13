@@ -117,12 +117,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       const int32_t size =
           MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
       if (output->type == kTfLiteInt8) {
-        reference_ops::Requantize<int8_t, int8_t>(
+        optimized_ops::Requantize<int8_t, int8_t>(
             GetTensorData<int8_t>(input), size, data->output_multiplier,
             data->output_shift, input->params.zero_point,
             output->params.zero_point, GetTensorData<int8_t>(output));
       } else if (output->type == kTfLiteUInt8) {
-        reference_ops::Requantize<int8_t, uint8_t>(
+        optimized_ops::Requantize<int8_t, uint8_t>(
             GetTensorData<int8_t>(input), size, data->output_multiplier,
             data->output_shift, input->params.zero_point,
             output->params.zero_point, GetTensorData<uint8_t>(output));
@@ -139,12 +139,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       const int32_t size =
           MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
       if (output->type == kTfLiteInt8) {
-        reference_ops::Requantize<uint8_t, int8_t>(
+        optimized_ops::Requantize<uint8_t, int8_t>(
             GetTensorData<uint8_t>(input), size, data->output_multiplier,
             data->output_shift, input->params.zero_point,
             output->params.zero_point, GetTensorData<int8_t>(output));
       } else if (output->type == kTfLiteUInt8) {
-        reference_ops::Requantize<uint8_t, uint8_t>(
+        optimized_ops::Requantize<uint8_t, uint8_t>(
             GetTensorData<uint8_t>(input), size, data->output_multiplier,
             data->output_shift, input->params.zero_point,
             output->params.zero_point, GetTensorData<uint8_t>(output));

@@ -39,32 +39,46 @@ build:mkl_open_source_only --define=tensorflow_mkldnn_contraction_kernel=0
 
 build:download_clang --crosstool_top=@local_config_download_clang//:toolchain
 build:download_clang --define=using_clang=true
+build:download_clang --action_env TF_DOWNLOAD_CLANG=1
 # Instruct clang to use LLD for linking.
 # This only works with GPU builds currently, since Bazel sets -B/usr/bin in
 # auto-generated CPU crosstool, forcing /usr/bin/ld.lld to be preferred over
 # the downloaded one.
 build:download_clang_use_lld --linkopt='-fuse-ld=lld'
 
-build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
-build:cuda --define=using_cuda=true --define=using_cuda_nvcc=true
+# This config refers to building with CUDA available. It does not necessarily
+# mean that we build CUDA op kernels.
+build:using_cuda --define=using_cuda=true
+build:using_cuda --action_env TF_NEED_CUDA=1
+build:using_cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
+
+# This config refers to building CUDA op kernels with nvcc.
+build:cuda --config=using_cuda
+build:cuda --define=using_cuda_nvcc=true
+
+# This config refers to building CUDA op kernels with clang.
+build:cuda_clang --config=using_cuda
+build:cuda_clang --define=using_cuda_clang=true
+build:cuda_clang --define=using_clang=true
+
+build:tensorrt --action_env TF_NEED_TENSORRT=1
 
 build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm --define=using_rocm=true --define=using_rocm_hipcc=true
-
-build:cuda_clang --crosstool_top=@local_config_cuda//crosstool:toolchain
-build:cuda_clang --define=using_cuda=true --define=using_cuda_clang=true --define=using_clang=true
+build:rocm --action_env TF_NEED_ROCM=1
 
 build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
-build:sycl --define=using_sycl=true --define=using_trisycl=false
+build:sycl --define=using_sycl=true
+build:sycl --action_env TF_NEED_OPENCL_SYCL=1
 
-build:sycl_nodouble --crosstool_top=@local_config_sycl//crosstool:toolchain
-build:sycl_nodouble --define=using_sycl=true --cxxopt -DTENSORFLOW_SYCL_NO_DOUBLE
+build:sycl_nodouble --config=sycl
+build:sycl_nodouble --cxxopt -DTENSORFLOW_SYCL_NO_DOUBLE
 
-build:sycl_asan --crosstool_top=@local_config_sycl//crosstool:toolchain
-build:sycl_asan --define=using_sycl=true --define=using_trisycl=false --copt -fno-omit-frame-pointer --copt -fsanitize-coverage=3 --copt -DGPR_NO_DIRECT_SYSCALLS --linkopt -fPIC --linkopt -fsanitize=address
+build:sycl_nodouble --config=sycl
+build:sycl_asan --copt -fno-omit-frame-pointer --copt -fsanitize-coverage=3 --copt -DGPR_NO_DIRECT_SYSCALLS --linkopt -fPIC --linkopt -fsanitize=address
 
-build:sycl_trisycl --crosstool_top=@local_config_sycl//crosstool:toolchain
-build:sycl_trisycl --define=using_sycl=true --define=using_trisycl=true
+build:sycl_nodouble --config=sycl
+build:sycl_trisycl --define=using_trisycl=true
 
 # Options extracted from configure script
 build:gdr --define=with_gdr_support=true
@@ -87,6 +101,9 @@ build --spawn_strategy=standalone
 build --strategy=Genrule=standalone
 build -c opt
 
+# Make Bazel print out all options from rc files.
+build --announce_rc
+
 # Other build flags.
 build --define=grpc_no_ares=true
 
@@ -97,13 +114,35 @@ build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
 # Build TF with C++ 17 features.
 build:c++17 --cxxopt=-std=c++1z
 build:c++17 --cxxopt=-stdlib=libc++
-build:c++1z --cxxopt=-std=c++1z
-build:c++1z --cxxopt=-stdlib=libc++
+build:c++1z --config=c++17
 
 # Default paths for TF_SYSTEM_LIBS
 build --define=PREFIX=/usr
 build --define=LIBDIR=$(PREFIX)/lib
 build --define=INCLUDEDIR=$(PREFIX)/include
+
+# Suppress all warning messages.
+build:short_logs --output_filter=DONT_MATCH_ANYTHING
+
+# Options when using remote execution
+build:rbe --action_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
+build:rbe --auth_enabled=true
+build:rbe --auth_scope=https://www.googleapis.com/auth/cloud-source-tools
+build:rbe --define=EXECUTOR=remote
+build:rbe --flaky_test_attempts=3
+build:rbe --jobs=200
+build:rbe --remote_accept_cached=true
+build:rbe --remote_cache=remotebuildexecution.googleapis.com
+build:rbe --remote_executor=remotebuildexecution.googleapis.com
+build:rbe --remote_local_fallback=false
+build:rbe --remote_timeout=600
+build:rbe --spawn_strategy=remote
+build:rbe --strategy=Genrule=remote
+build:rbe --strategy=Closure=remote
+build:rbe --strategy=Javac=remote
+build:rbe --strategy=TestRunner=remote
+build:rbe --tls_enabled
+test:rbe --test_env=USER=anon
 
 # Default options should come above this line
 

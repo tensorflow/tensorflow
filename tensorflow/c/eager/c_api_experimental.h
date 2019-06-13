@@ -85,7 +85,231 @@ TF_CAPI_EXPORT extern void TFE_ContextDisableGraphCollection(TFE_Context* ctx);
 // https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
 TF_CAPI_EXPORT extern bool TFE_ProfilerClientStartTracing(
     const char* service_addr, const char* logdir, const char* worker_list,
-    bool include_dataset_ops, int duration_ms, int num_tracing_attempts);
+    bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
+    TF_Status* status);
+
+// TODO(fishx): Move these monitoring APIs into a separate file.
+// -----------------------------------------------------------------------------
+// Monitoring Counter APIs.
+// These APIs de-templated monitoring Counter for swig.
+
+typedef struct TFE_MonitoringCounterCell TFE_MonitoringCounterCell;
+
+// Atomically increments the value of the cell. The value must be non-negative.
+TF_CAPI_EXPORT extern void TFE_MonitoringCounterCellIncrementBy(
+    TFE_MonitoringCounterCell* cell, int64_t value);
+
+// Retrieves the current value of the cell.
+TF_CAPI_EXPORT extern int64_t TFE_MonitoringCounterCellValue(
+    TFE_MonitoringCounterCell* cell);
+
+// APIs for Counter without label.
+typedef struct TFE_MonitoringCounter0 TFE_MonitoringCounter0;
+// Returns a new Counter metric object. The caller should manage lifetime of
+// the object. Using duplicate metric name will crash the program with fatal
+// error.
+TF_CAPI_EXPORT extern TFE_MonitoringCounter0* TFE_MonitoringNewCounter0(
+    const char* name, TF_Status* status, const char* description);
+// Deletes the Counter object.
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteCounter0(
+    TFE_MonitoringCounter0* counter);
+// Retrieves the cell from the Counter object. The Counter object will manage
+// lifetime of the cell.
+TF_CAPI_EXPORT extern TFE_MonitoringCounterCell* TFE_MonitoringGetCellCounter0(
+    TFE_MonitoringCounter0* counter);
+
+// APIs for Counter with 1 label.
+typedef struct TFE_MonitoringCounter1 TFE_MonitoringCounter1;
+TF_CAPI_EXPORT extern TFE_MonitoringCounter1* TFE_MonitoringNewCounter1(
+    const char* name, TF_Status* status, const char* description,
+    const char* label1);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteCounter1(
+    TFE_MonitoringCounter1* counter);
+TF_CAPI_EXPORT extern TFE_MonitoringCounterCell* TFE_MonitoringGetCellCounter1(
+    TFE_MonitoringCounter1* counter, const char* label1);
+
+// APIs for Counter with 2 labels.
+typedef struct TFE_MonitoringCounter2 TFE_MonitoringCounter2;
+TF_CAPI_EXPORT extern TFE_MonitoringCounter2* TFE_MonitoringNewCounter2(
+    const char* name, TF_Status* status, const char* description,
+    const char* label1, const char* label2);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteCounter2(
+    TFE_MonitoringCounter2* counter);
+TF_CAPI_EXPORT extern TFE_MonitoringCounterCell* TFE_MonitoringGetCellCounter2(
+    TFE_MonitoringCounter2* counter, const char* label1, const char* label2);
+
+// -----------------------------------------------------------------------------
+// Monitoring Gauge APIs.
+// These APIs de-templated monitoring Gauge for swig.
+
+typedef struct TFE_MonitoringIntGaugeCell TFE_MonitoringIntGaugeCell;
+
+// Atomically set the value of the cell.
+TF_CAPI_EXPORT extern void TFE_MonitoringIntGaugeCellSet(
+    TFE_MonitoringIntGaugeCell* cell, int64_t value);
+
+// Retrieves the current value of the cell.
+TF_CAPI_EXPORT extern int64_t TFE_MonitoringIntGaugeCellValue(
+    TFE_MonitoringIntGaugeCell* cell);
+
+// APIs for Int Gauge without label.
+typedef struct TFE_MonitoringIntGauge0 TFE_MonitoringIntGauge0;
+TF_CAPI_EXPORT extern TFE_MonitoringIntGauge0* TFE_MonitoringNewIntGauge0(
+    const char* name, TF_Status* out_status, const char* description);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteIntGauge0(
+    TFE_MonitoringIntGauge0* gauge);
+TF_CAPI_EXPORT extern TFE_MonitoringIntGaugeCell*
+TFE_MonitoringGetCellIntGauge0(TFE_MonitoringIntGauge0* gauge);
+
+// APIs for Int Gauge with 1 label.
+typedef struct TFE_MonitoringIntGauge1 TFE_MonitoringIntGauge1;
+TF_CAPI_EXPORT extern TFE_MonitoringIntGauge1* TFE_MonitoringNewIntGauge1(
+    const char* name, TF_Status* out_status, const char* description,
+    const char* label1);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteIntGauge1(
+    TFE_MonitoringIntGauge1* gauge);
+TF_CAPI_EXPORT extern TFE_MonitoringIntGaugeCell*
+TFE_MonitoringGetCellIntGauge1(TFE_MonitoringIntGauge1* gauge,
+                               const char* label1);
+
+// APIs for Int Gauge with 2 label.
+typedef struct TFE_MonitoringIntGauge2 TFE_MonitoringIntGauge2;
+TF_CAPI_EXPORT extern TFE_MonitoringIntGauge2* TFE_MonitoringNewIntGauge2(
+    const char* name, TF_Status* out_status, const char* description,
+    const char* label1, const char* label2);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteIntGauge2(
+    TFE_MonitoringIntGauge2* gauge);
+TF_CAPI_EXPORT extern TFE_MonitoringIntGaugeCell*
+TFE_MonitoringGetCellIntGauge2(TFE_MonitoringIntGauge2* gauge,
+                               const char* label1, const char* label2);
+
+typedef struct TFE_MonitoringStringGaugeCell TFE_MonitoringStringGaugeCell;
+TF_CAPI_EXPORT extern void TFE_MonitoringStringGaugeCellSet(
+    TFE_MonitoringStringGaugeCell* cell, const char* value);
+// Retrieves the string value and saves it in buffer.
+TF_CAPI_EXPORT extern const void TFE_MonitoringStringGaugeCellValue(
+    TFE_MonitoringStringGaugeCell* cell, TF_Buffer* buf);
+
+// APIs for String Gauge without label.
+typedef struct TFE_MonitoringStringGauge0 TFE_MonitoringStringGauge0;
+TF_CAPI_EXPORT extern TFE_MonitoringStringGauge0* TFE_MonitoringNewStringGauge0(
+    const char* name, TF_Status* out_status, const char* description);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteStringGauge0(
+    TFE_MonitoringStringGauge0* gauge);
+TF_CAPI_EXPORT extern TFE_MonitoringStringGaugeCell*
+TFE_MonitoringGetCellStringGauge0(TFE_MonitoringStringGauge0* gauge);
+
+// APIs for String Gauge with 1 label.
+typedef struct TFE_MonitoringStringGauge1 TFE_MonitoringStringGauge1;
+TF_CAPI_EXPORT extern TFE_MonitoringStringGauge1* TFE_MonitoringNewStringGauge1(
+    const char* name, TF_Status* out_status, const char* description,
+    const char* label1);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteStringGauge1(
+    TFE_MonitoringStringGauge1* gauge);
+TF_CAPI_EXPORT extern TFE_MonitoringStringGaugeCell*
+TFE_MonitoringGetCellStringGauge1(TFE_MonitoringStringGauge1* gauge,
+                                  const char* label1);
+
+// APIs for String Gauge with 2 label.
+typedef struct TFE_MonitoringStringGauge2 TFE_MonitoringStringGauge2;
+TF_CAPI_EXPORT extern TFE_MonitoringStringGauge2* TFE_MonitoringNewStringGauge2(
+    const char* name, TF_Status* out_status, const char* description,
+    const char* label1, const char* label2);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteStringGauge2(
+    TFE_MonitoringStringGauge2* gauge);
+TF_CAPI_EXPORT extern TFE_MonitoringStringGaugeCell*
+TFE_MonitoringGetCellStringGauge2(TFE_MonitoringStringGauge2* gauge,
+                                  const char* label1, const char* label2);
+
+typedef struct TFE_MonitoringBoolGaugeCell TFE_MonitoringBoolGaugeCell;
+TF_CAPI_EXPORT extern void TFE_MonitoringBoolGaugeCellSet(
+    TFE_MonitoringBoolGaugeCell* cell, bool value);
+TF_CAPI_EXPORT extern bool TFE_MonitoringBoolGaugeCellValue(
+    TFE_MonitoringBoolGaugeCell* cell);
+
+// APIs for Bool Gauge without label.
+typedef struct TFE_MonitoringBoolGauge0 TFE_MonitoringBoolGauge0;
+TF_CAPI_EXPORT extern TFE_MonitoringBoolGauge0* TFE_MonitoringNewBoolGauge0(
+    const char* name, TF_Status* out_status, const char* description);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteBoolGauge0(
+    TFE_MonitoringBoolGauge0* gauge);
+TF_CAPI_EXPORT extern TFE_MonitoringBoolGaugeCell*
+TFE_MonitoringGetCellBoolGauge0(TFE_MonitoringBoolGauge0* gauge);
+
+// APIs for Bool Gauge with 1 label.
+typedef struct TFE_MonitoringBoolGauge1 TFE_MonitoringBoolGauge1;
+TF_CAPI_EXPORT extern TFE_MonitoringBoolGauge1* TFE_MonitoringNewBoolGauge1(
+    const char* name, TF_Status* out_status, const char* description,
+    const char* label1);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteBoolGauge1(
+    TFE_MonitoringBoolGauge1* gauge);
+TF_CAPI_EXPORT extern TFE_MonitoringBoolGaugeCell*
+TFE_MonitoringGetCellBoolGauge1(TFE_MonitoringBoolGauge1* gauge,
+                                const char* label1);
+
+// APIs for Bool Gauge with 2 label.
+typedef struct TFE_MonitoringBoolGauge2 TFE_MonitoringBoolGauge2;
+TF_CAPI_EXPORT extern TFE_MonitoringBoolGauge2* TFE_MonitoringNewBoolGauge2(
+    const char* name, TF_Status* out_status, const char* description,
+    const char* label1, const char* label2);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteBoolGauge2(
+    TFE_MonitoringBoolGauge2* gauge);
+TF_CAPI_EXPORT extern TFE_MonitoringBoolGaugeCell*
+TFE_MonitoringGetCellBoolGauge2(TFE_MonitoringBoolGauge2* gauge,
+                                const char* label1, const char* label2);
+
+// -----------------------------------------------------------------------------
+// Monitoring Sampler APIs.
+// These APIs de-templated monitoring Sampler for swig.
+
+typedef struct TFE_MonitoringSamplerCell TFE_MonitoringSamplerCell;
+
+// Atomically add the value of the cell.
+TF_CAPI_EXPORT extern void TFE_MonitoringSamplerCellAdd(
+    TFE_MonitoringSamplerCell* cell, double value);
+
+// Retrieves the current value of the cell. The return value is a HistogramProto
+// saved in buffer.
+TF_CAPI_EXPORT extern void TFE_MonitoringSamplerCellValue(
+    TFE_MonitoringSamplerCell* cell, TF_Buffer* buf);
+
+// APIs for sampler buckets
+typedef struct TFE_MonitoringBuckets TFE_MonitoringBuckets;
+TF_CAPI_EXPORT extern TFE_MonitoringBuckets*
+TFE_MonitoringNewExponentialBuckets(double scale, double growth_factor,
+                                    int bucket_count);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteBuckets(
+    TFE_MonitoringBuckets* buckets);
+
+// APIs for Sampler without label.
+typedef struct TFE_MonitoringSampler0 TFE_MonitoringSampler0;
+TF_CAPI_EXPORT extern TFE_MonitoringSampler0* TFE_MonitoringNewSampler0(
+    const char* name, TFE_MonitoringBuckets* buckets, TF_Status* out_status,
+    const char* description);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteSampler0(
+    TFE_MonitoringSampler0* sampler);
+TF_CAPI_EXPORT extern TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler0(
+    TFE_MonitoringSampler0* sampler);
+
+// APIs for Sampler with 1 label.
+typedef struct TFE_MonitoringSampler1 TFE_MonitoringSampler1;
+TF_CAPI_EXPORT extern TFE_MonitoringSampler1* TFE_MonitoringNewSampler1(
+    const char* name, TFE_MonitoringBuckets* buckets, TF_Status* out_status,
+    const char* description, const char* label1);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteSampler1(
+    TFE_MonitoringSampler1* sampler);
+TF_CAPI_EXPORT extern TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler1(
+    TFE_MonitoringSampler1* sampler, const char* label1);
+
+// APIs for Sampler with 2 label.
+typedef struct TFE_MonitoringSampler2 TFE_MonitoringSampler2;
+TF_CAPI_EXPORT extern TFE_MonitoringSampler2* TFE_MonitoringNewSampler2(
+    const char* name, TFE_MonitoringBuckets* buckets, TF_Status* out_status,
+    const char* description, const char* label1, const char* label2);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteSampler2(
+    TFE_MonitoringSampler2* sampler);
+TF_CAPI_EXPORT extern TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
+    TFE_MonitoringSampler2* sampler, const char* label1, const char* label2);
 
 #ifdef __cplusplus
 } /* end extern "C" */

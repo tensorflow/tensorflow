@@ -32,6 +32,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.util import nest
 
 _RANDOM_SEED = 1337
 _EVAL_STEPS = 20
@@ -39,7 +40,6 @@ _GLOBAL_BATCH_SIZE = 64
 
 # Note: Please make sure the tests in this file are also covered in
 # keras_backward_compat_test for features that are supported with both APIs.
-
 
 all_strategies = [
     strategy_combinations.default_strategy,
@@ -63,36 +63,47 @@ def graph_mode_test_configuration():
 
 
 def all_strategy_and_input_config_combinations():
-  return (
-      combinations.times(
-          combinations.combine(distribution=all_strategies),
-          eager_mode_test_configuration() + graph_mode_test_configuration()))
+  return (combinations.times(
+      combinations.combine(
+          distribution=all_strategies, cloning=[True, False]),
+      eager_mode_test_configuration() + graph_mode_test_configuration()))
 
 
-def all_strategies_excluding_tpu_and_input_config_combinations():
+def strategy_minus_tpu_and_input_config_combinations_eager():
   return (combinations.times(
       combinations.combine(
           distribution=strategy_combinations.strategies_minus_tpu),
-      eager_mode_test_configuration() + graph_mode_test_configuration()))
+      eager_mode_test_configuration()))
 
 
 def strategies_for_embedding_models():
   """Returns distribution strategies to test for embedding models.
 
-  Since embedding models take longer to train, we disregard OneDeviceStrategy
-  and DefaultStrategy in order to prevent testing timeouts.
+  Since embedding models take longer to train, we disregard DefaultStrategy
+  in order to prevent testing timeouts.
   """
 
-  return [s for s in all_strategies if s.required_tpu or s.required_gpus]
+  return [
+      s for s in all_strategies if s.required_tpu or s.required_gpus or
+      s is strategy_combinations.one_device_strategy
+  ]
 
 
 def test_combinations_for_embedding_model():
-  return (
-      combinations.times(
-          combinations.combine(distribution=
-                               strategies_for_embedding_models()),
-          (graph_mode_test_configuration() +
-           eager_mode_test_configuration())))
+  # TODO(sourabhbajaj): Enable tests for eager mode
+  eager_mode_strategies = [s for s in strategies_for_embedding_models()
+                           if not s.required_tpu]
+
+  return (combinations.times(
+      combinations.combine(
+          distribution=strategies_for_embedding_models(),
+          cloning=[True, False]),
+      (graph_mode_test_configuration())) +
+          combinations.times(
+              combinations.combine(
+                  distribution=eager_mode_strategies,
+                  cloning=[False]),
+              (eager_mode_test_configuration())))
 
 
 def test_combinations_with_tpu_strategies():
@@ -125,15 +136,10 @@ class MaybeDistributionScope(object):
       self._scope = None
 
 
-def batch_wrapper(dataset, batch_size, distribution, repeat=None):
+def batch_wrapper(dataset, batch_size, repeat=None):
   if repeat:
     dataset = dataset.repeat(repeat)
-  # TPUs currently require fully defined input shapes, drop_remainder ensures
-  # the input will have fully defined shapes.
-  if isinstance(distribution, tpu_strategy.TPUStrategy):
-    return dataset.batch(batch_size, drop_remainder=True)
-  else:
-    return dataset.batch(batch_size)
+  return dataset.batch(batch_size)
 
 
 def get_batch_size(global_batch_size, distribution):
@@ -160,10 +166,23 @@ def get_data_size(data):
   return len(six.next(six.itervalues(data)))
 
 
-def get_correctness_test_inputs(use_numpy, use_validation_data,
-                                with_distribution, x_train, y_train, x_predict):
+def get_shapes(data):
+  shapes = None
+  if all(hasattr(x, 'shape') for x in nest.flatten(data)):
+    shapes = nest.map_structure(lambda x: x.shape, data)
+  return shapes
+
+
+def get_correctness_test_inputs(use_numpy,
+                                use_validation_data,
+                                with_distribution,
+                                x_train,
+                                y_train,
+                                x_eval,
+                                y_eval,
+                                x_predict,
+                                training_epochs):
   """Generates the inputs for correctness check when enable Keras with DS."""
-  training_epochs = 2
   global_batch_size = _GLOBAL_BATCH_SIZE
   batch_size = get_batch_size(global_batch_size, with_distribution)
 
@@ -178,56 +197,53 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
 
     if use_validation_data:
       eval_inputs = None
-      training_inputs['validation_data'] = (x_train, y_train)
+      training_inputs['validation_data'] = (x_eval, y_eval)
     else:
       eval_inputs = {
           'batch_size': batch_size,
-          'x': x_train,
-          'y': y_train,
+          'x': x_eval,
+          'y': y_eval,
       }
     predict_inputs = {
         'x': x_predict
     }
   else:
     training_data_size = get_data_size(x_train)
-    if training_data_size < _GLOBAL_BATCH_SIZE * _EVAL_STEPS:
-      # Currently, we cannot detect the size of a dataset. So, the eval steps is
-      # hard coded.
-      raise ValueError('x_train must have at least '
-                       '_GLOBAL_BATCH_SIZE * _EVAL_STEPS samples')
     # For dataset inputs, we do not pass batch_size to
     # keras.fit/evaluate/predict. The batch size is part of the dataset.
     train_dataset = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
-    x = batch_wrapper(train_dataset, batch_size, with_distribution,
-                      repeat=training_epochs)
+    x = batch_wrapper(train_dataset, batch_size, repeat=training_epochs)
 
+    steps_per_epoch = int(np.ceil(1.0 * training_data_size / global_batch_size))
     training_inputs = {
         'batch_size': None,
         'x': x,
         'y': None,
         'epochs': training_epochs,
         'shuffle': False,
-        'steps_per_epoch': training_data_size // global_batch_size,
+        'steps_per_epoch': steps_per_epoch
     }
     if use_validation_data:
       eval_inputs = None  # Remove the eval_inputs
-      eval_dataset = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
-      x = batch_wrapper(eval_dataset, batch_size, with_distribution)
+      eval_dataset = dataset_ops.Dataset.from_tensor_slices((x_eval, y_eval))
+      x = batch_wrapper(eval_dataset, batch_size)
       training_inputs['validation_data'] = x
       training_inputs['validation_steps'] = 5
     else:
+      eval_dataset = dataset_ops.Dataset.from_tensor_slices((x_eval, y_eval))
+      x = batch_wrapper(eval_dataset, batch_size)
+      eval_steps = int(np.ceil(1.0 * get_data_size(x_eval) / global_batch_size))
       eval_inputs = {
           'batch_size': None,
           'x': x,
           'y': None,
-          'steps': _EVAL_STEPS,
+          'steps': eval_steps,
       }
 
     predict_batch_size = get_batch_size(get_data_size(x_predict),
                                         with_distribution)
     predict_dataset = dataset_ops.Dataset.from_tensor_slices(x_predict)
-    predict_dataset = batch_wrapper(predict_dataset, predict_batch_size,
-                                    with_distribution)
+    predict_dataset = batch_wrapper(predict_dataset, predict_batch_size)
     predict_inputs = {
         'steps': 1,
         'x': predict_dataset,
@@ -236,11 +252,19 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
   return training_inputs, eval_inputs, predict_inputs
 
 
-def fit_eval_and_predict(initial_weights, input_fn, model_fn,
-                         distribution=None, is_stateful_model=False):
+def fit_eval_and_predict(initial_weights,
+                         input_fn,
+                         model_fn,
+                         cloning=None,
+                         distribution=None,
+                         is_stateful_model=False):
   """Generates results for fit/predict/evaluate for given model."""
-  model = model_fn(initial_weights=initial_weights, distribution=distribution)
   training_inputs, eval_inputs, predict_inputs = input_fn()
+  model = model_fn(
+      cloning=cloning,
+      initial_weights=initial_weights,
+      distribution=distribution,
+      input_shapes=get_shapes(training_inputs['x']))
 
   result = {}
   result['training_history_1'] = model.fit(**training_inputs).history
@@ -273,12 +297,27 @@ def fit_eval_and_predict(initial_weights, input_fn, model_fn,
   return result
 
 
-def compare_results(results_with_ds, results_without_ds, distribution,
-                    testcase):
+def compare_results(results_with_ds,
+                    results_without_ds,
+                    distribution,
+                    testcase,
+                    partial_last_batch=None):
   """Compares results of model compiled with/without distribution strategy."""
-
-  default_tolerance = 1e-5
-  relaxed_tolerance = 1e-4
+  if partial_last_batch == 'train_and_eval':
+    # We relax the tolerence a lot in the partial last batch case as
+    #   1. the examples in uneven batches may have different weights when
+    #      applying the gradients in the distributed case.
+    #   2. TF Keras and TF Keras DS have different ways to handle the case when
+    #      training with epochs > 1 with numpy inputs. In TF Keras, every epoch
+    #      may have a partial batch. While in TF Keras DS, as we convert
+    #      numpy inputs into dataset, it will do a repeat() first and calculate
+    #      steps_per_epoch, so it will at most have one partial batch. This
+    #      makes the 1-CPU result even different.
+    default_tolerance = 1e-3
+    relaxed_tolerance = 1e-3
+  else:
+    default_tolerance = 1e-5
+    relaxed_tolerance = 1e-4
 
   def _get_compare_result_tolerance(key):
     """Returns tolerance to compare results."""
@@ -292,15 +331,28 @@ def compare_results(results_with_ds, results_without_ds, distribution,
 
     return default_tolerance
 
-  for key in results_with_ds:
+  for key in sorted(results_with_ds.keys()):
     if (key.startswith('training_history') and
-        isinstance(distribution, tpu_strategy.TPUStrategy) and
+        isinstance(distribution, (tpu_strategy.TPUStrategy,
+                                  tpu_strategy.TPUStrategyV1)) and
         distribution.extended.steps_per_run > 1):
       # TODO(b/119894254): Enable this test for all cases once the
       # underlying bug is fixed.
       continue
 
     tolerance = _get_compare_result_tolerance(key)
+
+    # We don't compare the loss as loss is currently not computed as metric
+    # in Keras, the loss value is inaccurate for last partial batch due to
+    # more weights for the last batch samples.
+    if partial_last_batch is not None:
+      if key.startswith('eval_result'):
+        results_with_ds[key] = results_with_ds[key][1:]
+        results_without_ds[key] = results_without_ds[key][1:]
+      if key.startswith('training_history'):
+        results_with_ds[key]['val_loss'] = 0
+        results_without_ds[key]['val_loss'] = 0
+
     testcase.assertAllClose(
         results_with_ds[key],
         results_without_ds[key],
@@ -311,7 +363,8 @@ def compare_results(results_with_ds, results_without_ds, distribution,
 
 def should_skip_tpu_with_eager(distribution):
   return (context.executing_eagerly() and
-          isinstance(distribution, tpu_strategy.TPUStrategy))
+          isinstance(distribution, (tpu_strategy.TPUStrategy,
+                                    tpu_strategy.TPUStrategyV1)))
 
 
 class LearningRateBatchScheduler(keras.callbacks.Callback):
@@ -351,6 +404,12 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
     y_train = x_train
     return (x_train.astype('float32'), y_train.astype('float32'), None)
 
+  def get_data_with_partial_last_batch(self):
+    raise NotImplementedError
+
+  def get_data_with_partial_last_batch_eval(self):
+    raise NotImplementedError
+
   def get_input_for_correctness_test(self, **kwargs):
     """Generates inputs that are dictionaries.
 
@@ -367,38 +426,42 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
 
     return get_correctness_test_inputs(**kwargs)
 
-  def get_model(self, distribution=None):
+  def get_model(self, distribution=None, cloning=None, input_shapes=None):
     raise NotImplementedError
 
-  def skip_unsupported_test_configuration(self, distribution):
-    if should_skip_tpu_with_eager(distribution):
-      self.skipTest('TPUStrategy does not support eager mode now.')
-
-    if context.executing_eagerly() and self.use_numpy:
-      self.skipTest('Numpy as inputs is not supported with strategy in eager.')
-
-    if context.executing_eagerly() and self.use_validation_data:
-      self.skipTest('TODO(hongjunchoi): Add test logic for using validation '
-                    'data for eager execution.')
+  def skip_unsupported_test_configuration(self, distribution, cloning):
+    if should_skip_tpu_with_eager(distribution) and cloning:
+      self.skipTest('TPUStrategy does not support eager mode with cloning.')
     return
 
   def run_correctness_test(self,
                            distribution,
                            use_numpy,
                            use_validation_data,
+                           cloning=None,
                            with_batch_norm=False,
-                           is_stateful_model=False):
+                           is_stateful_model=False,
+                           partial_last_batch=None,
+                           training_epochs=2):
     with self.cached_session():
       self.set_up_test_config(use_numpy, use_validation_data, with_batch_norm)
-      self.skip_unsupported_test_configuration(distribution)
+      self.skip_unsupported_test_configuration(distribution, cloning)
 
-      # Train, eval, and predict datasets are created with the same input numpy
-      # arrays.
-      x_train, y_train, x_predict = self.get_data()
+      if partial_last_batch == 'eval':
+        x_train, y_train, x_eval, y_eval, x_predict = (
+            self.get_data_with_partial_last_batch_eval())
+      elif partial_last_batch == 'train_and_eval':
+        x_train, y_train, x_eval, y_eval, x_predict = (
+            self.get_data_with_partial_last_batch())
+      else:
+        x_train, y_train, x_predict = self.get_data()
+        x_eval = x_train
+        y_eval = y_train
+
       # The model is built once and the initial weights are saved.
       # This is used to initialize the model for both the distribution and
       # non-distribution run.
-      model = self.get_model()
+      model = self.get_model(cloning=cloning, input_shapes=get_shapes(x_train))
       initial_weights = model.get_weights()
 
       ds_input_fn = functools.partial(
@@ -408,7 +471,10 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
           with_distribution=distribution,
           x_train=x_train,
           y_train=y_train,
-          x_predict=x_predict)
+          x_eval=x_eval,
+          y_eval=y_eval,
+          x_predict=x_predict,
+          training_epochs=training_epochs)
 
       nods_input_fn = functools.partial(
           self.get_input_for_correctness_test,
@@ -417,31 +483,44 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
           with_distribution=None,
           x_train=x_train,
           y_train=y_train,
-          x_predict=x_predict)
+          x_eval=x_eval,
+          y_eval=y_eval,
+          x_predict=x_predict,
+          training_epochs=training_epochs)
 
       results_with_ds = fit_eval_and_predict(
           initial_weights,
           input_fn=ds_input_fn,
           model_fn=self.get_model,
+          cloning=cloning,
           distribution=distribution,
           is_stateful_model=is_stateful_model)
       results_without_ds = fit_eval_and_predict(
           initial_weights,
           input_fn=nods_input_fn,
           model_fn=self.get_model,
+          cloning=cloning,
           distribution=None,
           is_stateful_model=is_stateful_model)
 
-      # First, special case, for multi-replica distributed training, batch norm
-      # is not aggregated globally. So it is expected to have different weights.
-      if (self.with_batch_norm and
-          distribution.num_replicas_in_sync > 1):
+      # First, special case, for multi-replica distributed training, batch
+      # norm is not aggregated globally. So it is expected to have different
+      # weights.
+      if (self.with_batch_norm and distribution.num_replicas_in_sync > 1):
         with self.assertRaises(AssertionError):
-          compare_results(results_with_ds, results_without_ds, distribution,
-                          testcase=self)
+          compare_results(
+              results_with_ds,
+              results_without_ds,
+              distribution,
+              testcase=self,
+              partial_last_batch=partial_last_batch)
       else:
-        compare_results(results_with_ds, results_without_ds, distribution,
-                        testcase=self)
+        compare_results(
+            results_with_ds,
+            results_without_ds,
+            distribution,
+            testcase=self,
+            partial_last_batch=partial_last_batch)
 
   def get_input_for_dynamic_lr_test(self, **kwargs):
     """Generates inputs that are dictionaries.
@@ -460,17 +539,17 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
     training_input = kwargs
     return training_input, None, None
 
-  def run_dynamic_lr_test(self, distribution):
+  def run_dynamic_lr_test(self, distribution, cloning=None):
     with self.cached_session():
       self.set_up_test_config()
-      self.skip_unsupported_test_configuration(distribution)
+      self.skip_unsupported_test_configuration(distribution, cloning)
 
       x_train, y_train, _ = self.get_data()
-      model = self.get_model()
+      model = self.get_model(cloning=cloning, input_shapes=get_shapes(x_train))
       initial_weights = model.get_weights()
       update_freq = None
 
-      if (isinstance(distribution, tpu_strategy.TPUStrategy) and
+      if (isinstance(distribution, tpu_strategy.TPUStrategyV1) and
           distribution.extended.steps_per_run > 1):
         # For TPUStrategy with steps_per_run > 1, the callback is not invoked
         # every step. So, to compare the CPU/TPU, we let the CPU to behave the
@@ -507,11 +586,13 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
           initial_weights,
           input_fn=ds_input_fn,
           model_fn=self.get_model,
+          cloning=cloning,
           distribution=distribution)
       results_without_ds = fit_eval_and_predict(
           initial_weights,
           input_fn=nods_input_fn,
           model_fn=self.get_model,
+          cloning=cloning,
           distribution=None)
       compare_results(results_with_ds, results_without_ds, distribution,
                       testcase=self)

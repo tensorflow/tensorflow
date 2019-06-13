@@ -140,8 +140,7 @@ def serialize_keras_object(instance):
                                             instance.get_config())
   if hasattr(instance, '__name__'):
     return instance.__name__
-  else:
-    raise ValueError('Cannot serialize', instance)
+  raise ValueError('Cannot serialize', instance)
 
 
 def class_and_config_for_serialized_keras_object(
@@ -200,17 +199,20 @@ def deserialize_keras_object(identifier,
       with CustomObjectScope(custom_objects):
         return cls(**cls_config)
   elif isinstance(identifier, six.string_types):
-    function_name = identifier
-    if custom_objects and function_name in custom_objects:
-      fn = custom_objects.get(function_name)
-    elif function_name in _GLOBAL_CUSTOM_OBJECTS:
-      fn = _GLOBAL_CUSTOM_OBJECTS[function_name]
+    object_name = identifier
+    if custom_objects and object_name in custom_objects:
+      obj = custom_objects.get(object_name)
+    elif object_name in _GLOBAL_CUSTOM_OBJECTS:
+      obj = _GLOBAL_CUSTOM_OBJECTS[object_name]
     else:
-      fn = module_objects.get(function_name)
-      if fn is None:
-        raise ValueError('Unknown ' + printable_module_name + ':' +
-                         function_name)
-    return fn
+      obj = module_objects.get(object_name)
+      if obj is None:
+        raise ValueError('Unknown ' + printable_module_name + ':' + object_name)
+    # Classes passed by name are instantiated with no args, functions are
+    # returned as-is.
+    if tf_inspect.isclass(obj):
+      return obj()
+    return obj
   else:
     raise ValueError('Could not interpret serialized ' + printable_module_name +
                      ': ' + identifier)
@@ -272,8 +274,7 @@ def func_load(code, defaults=None, closure=None, globs=None):
     cell_value = dummy_fn.__closure__[0]
     if not isinstance(value, type(cell_value)):
       return cell_value
-    else:
-      return value
+    return value
 
   if closure is not None:
     closure = tuple(ensure_value_to_cell(_) for _ in closure)
@@ -526,17 +527,18 @@ def slice_arrays(arrays, start=None, stop=None):
       if hasattr(start, 'shape'):
         start = start.tolist()
       return [None if x is None else x[start] for x in arrays]
-    else:
-      return [None if x is None else x[start:stop] for x in arrays]
+    return [
+        None if x is None else
+        None if not hasattr(x, '__getitem__') else x[start:stop] for x in arrays
+    ]
   else:
     if hasattr(start, '__len__'):
       if hasattr(start, 'shape'):
         start = start.tolist()
       return arrays[start]
-    elif hasattr(start, '__getitem__'):
+    if hasattr(start, '__getitem__'):
       return arrays[start:stop]
-    else:
-      return [None]
+    return [None]
 
 
 def to_list(x):
@@ -587,3 +589,11 @@ def check_for_unexpected_keys(name, input_dict, expected_values):
     raise ValueError('Unknown entries in {} dictionary: {}. Only expected '
                      'following keys: {}'.format(name, list(unknown),
                                                  expected_values))
+
+
+def validate_kwargs(kwargs, allowed_kwargs,
+                    error_message='Keyword argument not understood:'):
+  """Checks that all keyword arguments are in the set of allowed keys."""
+  for kwarg in kwargs:
+    if kwarg not in allowed_kwargs:
+      raise TypeError(error_message, kwarg)

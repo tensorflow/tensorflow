@@ -9,8 +9,6 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
-licenses(["notice"])  # Apache 2.0
-
 package(
     default_visibility = [
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
@@ -22,6 +20,7 @@ package(
         "//tensorflow:__subpackages__",
         "//vr/perception:__subpackages__",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 py_library(
@@ -56,6 +55,18 @@ py_library(
 )
 
 py_library(
+    name = "preempted_hook_py",
+    srcs = ["preempted_hook.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:errors",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:session_run_hook",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+    ],
+)
+
+py_library(
     name = "tpu_estimator",
     srcs = [
         "_tpu_estimator_embedding.py",
@@ -70,6 +81,7 @@ py_library(
         ":async_checkpoint",
         ":feature_column",
         ":functional",
+        ":preempted_hook_py",
         ":tpu_embedding",
         ":tpu_lib",
         "//tensorflow/core:protos_all_py",
@@ -120,14 +132,29 @@ py_library(
 )
 
 py_library(
+    name = "tpu_noestimator",
+    srcs = [
+        "__init__.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":feature_column",
+        ":preempted_hook_py",
+        ":tpu_embedding",
+        ":tpu_lib",
+    ],
+)
+
+py_library(
     name = "tpu_lib",
     srcs = [
         "__init__.py",
         "bfloat16.py",
         "device_assignment.py",
-        "profile_logger.py",
         "session_support.py",
         "tensor_tracer.py",
+        "tensor_tracer_flags.py",
+        "tensor_tracer_report.py",
         "topology.py",
         "tpu.py",
         "tpu_feed.py",
@@ -153,6 +180,7 @@ py_library(
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_output_layout_proto_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:batch_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
         "//tensorflow/python:dtypes",
@@ -209,7 +237,10 @@ tf_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:layers",
     ],
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
+    tags = [
+        "no_oss",  # TODO(b/131157871): Reenable in OSS when fixed
+        "no_windows",  # TODO: needs investigation on Windows
+    ],
 )
 
 tf_py_test(
@@ -243,30 +274,6 @@ tf_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
-)
-
-tf_py_test(
-    name = "tpu_config_test",
-    size = "small",
-    srcs = ["tpu_config_test.py"],
-    additional_deps = [
-        ":tpu_estimator",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-tf_py_test(
-    name = "tpu_estimator_signals_test",
-    size = "small",
-    srcs = ["tpu_estimator_signals_test.py"],
-    additional_deps = [
-        ":tpu_estimator",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
-    ],
-    # TODO(jhseu): Remove. Fails in OSS on Python 3.
-    tags = ["no_oss"],
 )
 
 tf_py_test(

@@ -49,7 +49,6 @@ from tensorflow.python.keras.utils import metrics_utils
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import to_list
-from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_variable
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import confusion_matrix
@@ -58,6 +57,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import weights_broadcast_ops
+from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -84,7 +84,7 @@ class Metric(Layer):
   model.add(tf.keras.layers.Dense(64, activation='relu'))
   model.add(tf.keras.layers.Dense(10, activation='softmax'))
 
-  model.compile(optimizer=tf.train.RMSPropOptimizer(0.01),
+  model.compile(optimizer=tf.compat.v1.train.RMSPropOptimizer(0.01),
                 loss=tf.keras.losses.categorical_crossentropy,
                 metrics=[tf.keras.metrics.CategoricalAccuracy()])
 
@@ -167,21 +167,27 @@ class Metric(Layer):
     Returns:
       The metric value tensor.
     """
-    update_op = self.update_state(*args, **kwargs)  # pylint: disable=not-callable
-    with ops.control_dependencies([update_op]):
-      result_t = self.result()  # pylint: disable=not-callable
 
-      # We are adding the metric object as metadata on the result tensor.
-      # This is required when we want to use a metric with `add_metric` API on
-      # a Model/Layer in graph mode. This metric instance will later be used
-      # to reset variable state after each epoch of training.
-      # Example:
-      #   model = Model()
-      #   mean = Mean()
-      #   model.add_metric(mean(values), name='mean')
-      if not context.executing_eagerly():
+    def replica_local_fn(*args, **kwargs):
+      """Updates the state of the metric in a replica-local context."""
+      update_op = self.update_state(*args, **kwargs)  # pylint: disable=not-callable
+      with ops.control_dependencies([update_op]):
+        result_t = self.result()  # pylint: disable=not-callable
+
+        # We are adding the metric object as metadata on the result tensor.
+        # This is required when we want to use a metric with `add_metric` API on
+        # a Model/Layer in graph mode. This metric instance will later be used
+        # to reset variable state after each epoch of training.
+        # Example:
+        #   model = Model()
+        #   mean = Mean()
+        #   model.add_metric(mean(values), name='mean')
         result_t._metric_obj = self  # pylint: disable=protected-access
-      return result_t
+        return result_t
+
+    from tensorflow.python.keras.distribute import distributed_training_utils  # pylint:disable=g-import-not-at-top
+    return distributed_training_utils.call_replica_local_fn(
+        replica_local_fn, *args, **kwargs)
 
   @property
   def dtype(self):
@@ -220,7 +226,7 @@ class Metric(Layer):
       *args:
       **kwargs: A mini-batch of inputs to the Metric.
     """
-    NotImplementedError('Must be implemented in subclasses.')
+    raise NotImplementedError('Must be implemented in subclasses.')
 
   @abc.abstractmethod
   def result(self):
@@ -229,7 +235,7 @@ class Metric(Layer):
     Result computation is an idempotent operation that simply calculates the
     metric value using the state variables.
     """
-    NotImplementedError('Must be implemented in subclasses.')
+    raise NotImplementedError('Must be implemented in subclasses.')
 
   ### For use by subclasses ###
   @doc_controls.for_subclass_implementers
@@ -267,12 +273,13 @@ class Reduce(Metric):
     """
     super(Reduce, self).__init__(name=name, dtype=dtype)
     self.reduction = reduction
-    self.total = self.add_weight(
-        'total', initializer=init_ops.zeros_initializer)
-    if reduction in [metrics_utils.Reduction.SUM_OVER_BATCH_SIZE,
-                     metrics_utils.Reduction.WEIGHTED_MEAN]:
-      self.count = self.add_weight(
-          'count', initializer=init_ops.zeros_initializer)
+    with ops.init_scope():
+      self.total = self.add_weight(
+          'total', initializer=init_ops.zeros_initializer)
+      if reduction in [metrics_utils.Reduction.SUM_OVER_BATCH_SIZE,
+                       metrics_utils.Reduction.WEIGHTED_MEAN]:
+        self.count = self.add_weight(
+            'count', initializer=init_ops.zeros_initializer)
 
   def update_state(self, values, sample_weight=None):
     """Accumulates statistics for computing the reduction metric.
@@ -288,12 +295,15 @@ class Reduce(Metric):
     Returns:
       Update op.
     """
+    [values], sample_weight = \
+        metrics_utils.ragged_assert_compatible_and_get_flat_values(
+            [values], sample_weight)
     values = math_ops.cast(values, self._dtype)
     if sample_weight is not None:
       sample_weight = math_ops.cast(sample_weight, self._dtype)
       # Update dimensions of weights to match with values if possible.
-      values, _, sample_weight = squeeze_or_expand_dimensions(
-          values, None, sample_weight)
+      values, _, sample_weight = tf_losses_utils.squeeze_or_expand_dimensions(
+          values, sample_weight=sample_weight)
       try:
         # Broadcast weights if possible.
         sample_weight = weights_broadcast_ops.broadcast_weights(
@@ -491,8 +501,11 @@ class MeanRelativeError(Mean):
     """
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
-    y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
-        y_pred, y_true, sample_weight)
+    [y_pred, y_true], sample_weight = \
+        metrics_utils.ragged_assert_compatible_and_get_flat_values(
+            [y_pred, y_true], sample_weight)
+    y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
+        y_pred, y_true)
 
     y_pred, self.normalizer = confusion_matrix.remove_squeezable_dimensions(
         y_pred, self.normalizer)
@@ -544,8 +557,11 @@ class MeanMetricWrapper(Mean):
     """
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
-    y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
-        y_pred, y_true, sample_weight)
+    [y_true, y_pred], sample_weight = \
+        metrics_utils.ragged_assert_compatible_and_get_flat_values(
+            [y_true, y_pred], sample_weight)
+    y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
+        y_pred, y_true)
 
     matches = self._fn(y_true, y_pred, **self._fn_kwargs)
     return super(MeanMetricWrapper, self).update_state(
@@ -1842,7 +1858,7 @@ class CosineSimilarity(MeanMetricWrapper):
   """Computes the cosine similarity between the labels and predictions.
 
   cosine similarity = (a . b) / ||a|| ||b||
-  (https://en.wikipedia.org/wiki/Cosine_similarity)
+  [Cosine Similarity](https://en.wikipedia.org/wiki/Cosine_similarity)
 
   For example, if `y_true` is [0, 1, 1], and `y_pred` is [1, 0, 1], the cosine
   similarity is 0.5.
@@ -2129,8 +2145,8 @@ class RootMeanSquaredError(Mean):
     """
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
-    y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
-        y_pred, y_true, sample_weight)
+    y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
+        y_pred, y_true)
     error_sq = math_ops.squared_difference(y_pred, y_true)
     return super(RootMeanSquaredError, self).update_state(
         error_sq, sample_weight=sample_weight)
@@ -2193,7 +2209,7 @@ class Poisson(MeanMetricWrapper):
 
 @keras_export('keras.metrics.KLDivergence')
 class KLDivergence(MeanMetricWrapper):
-  """Computes Kullback Leibler divergence metric between `y_true` and `y_pred`.
+  """Computes Kullback-Leibler divergence metric between `y_true` and `y_pred`.
 
   `metric = y_true * log(y_true / y_pred)`
 
@@ -2291,6 +2307,10 @@ class MeanIoU(Metric):
     Returns:
       Update op.
     """
+
+    y_true = math_ops.cast(y_true, self._dtype)
+    y_pred = math_ops.cast(y_pred, self._dtype)
+
     # Flatten the input if its rank > 1.
     if y_pred.shape.ndims > 1:
       y_pred = array_ops.reshape(y_pred, [-1])
@@ -2420,8 +2440,8 @@ class MeanTensor(Metric):
       sample_weight = math_ops.cast(sample_weight, self._dtype)
 
       # Update dimensions of weights to match with values if possible.
-      values, _, sample_weight = squeeze_or_expand_dimensions(
-          values, None, sample_weight)
+      values, _, sample_weight = tf_losses_utils.squeeze_or_expand_dimensions(
+          values, sample_weight=sample_weight)
       try:
         # Broadcast weights if possible.
         sample_weight = weights_broadcast_ops.broadcast_weights(
@@ -2693,8 +2713,8 @@ class SumOverBatchSizeMetricWrapper(SumOverBatchSize):
   def update_state(self, y_true, y_pred, sample_weight=None):
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
-    y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
-        y_pred, y_true, sample_weight)
+    y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
+        y_pred, y_true)
 
     matches = self._fn(y_true, y_pred, **self._fn_kwargs)
     return super(SumOverBatchSizeMetricWrapper, self).update_state(
@@ -2709,6 +2729,9 @@ class SumOverBatchSizeMetricWrapper(SumOverBatchSize):
 
 
 def accuracy(y_true, y_pred):
+  [y_pred, y_true], _ = \
+      metrics_utils.ragged_assert_compatible_and_get_flat_values(
+          [y_pred, y_true])
   y_pred.shape.assert_is_compatible_with(y_true.shape)
   if y_true.dtype != y_pred.dtype:
     y_pred = math_ops.cast(y_pred, y_true.dtype)
@@ -2750,8 +2773,8 @@ def sparse_categorical_accuracy(y_true, y_pred):
 
 @keras_export('keras.metrics.top_k_categorical_accuracy')
 def top_k_categorical_accuracy(y_true, y_pred, k=5):
-  return K.mean(
-      nn.in_top_k(y_pred, math_ops.argmax(y_true, axis=-1), k), axis=-1)
+  return math_ops.cast(
+      nn.in_top_k(y_pred, math_ops.argmax(y_true, axis=-1), k), K.floatx())
 
 
 @keras_export('keras.metrics.sparse_top_k_categorical_accuracy')
@@ -2763,7 +2786,8 @@ def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
       K.int_shape(y_true)) == len(K.int_shape(y_pred))):
     y_true = array_ops.squeeze(y_true, [-1])
 
-  return K.mean(nn.in_top_k(y_pred, math_ops.cast(y_true, 'int32'), k), axis=-1)
+  return math_ops.cast(
+      nn.in_top_k(y_pred, math_ops.cast(y_true, 'int32'), k), K.floatx())
 
 # Aliases
 
@@ -2777,7 +2801,8 @@ cosine_proximity = cosine_similarity
 def clone_metric(metric):
   """Returns a clone of the metric if stateful, otherwise returns it as is."""
   if isinstance(metric, Metric):
-    return metric.__class__.from_config(metric.get_config())
+    with ops.init_scope():
+      return metric.__class__.from_config(metric.get_config())
   return metric
 
 

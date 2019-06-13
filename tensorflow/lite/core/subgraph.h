@@ -20,8 +20,9 @@ limitations under the License.
 
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/memory_planner.h"
-#include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -275,12 +276,12 @@ class Subgraph {
   // WARNING: This is an experimental API and subject to change.
   TfLiteStatus ResetVariableTensors();
 
-  void SetProfiler(profiling::Profiler* profiler) {
+  void SetProfiler(Profiler* profiler) {
     profiler_ = profiler;
     context_->profiler = profiler;
   }
 
-  profiling::Profiler* GetProfiler() { return profiler_; }
+  Profiler* GetProfiler() { return profiler_; }
 
   // Returns a pointer to vector of subgraphs.
   // WARNING: This is an experimental API and subject to change.
@@ -316,10 +317,7 @@ class Subgraph {
   }
 
   // Prepare the given 'node' for execution.
-  TfLiteStatus OpPrepare(const TfLiteRegistration& op_reg, TfLiteNode* node) {
-    if (op_reg.prepare == nullptr) return kTfLiteOk;
-    return op_reg.prepare(context_, node);
-  }
+  TfLiteStatus OpPrepare(const TfLiteRegistration& op_reg, TfLiteNode* node);
 
   // Invoke the operator represented by 'node'.
   TfLiteStatus OpInvoke(const TfLiteRegistration& op_reg, TfLiteNode* node) {
@@ -500,6 +498,14 @@ class Subgraph {
   // NOTE: this relies on the order of nodes that is in topological order.
   int next_execution_plan_index_to_prepare_;
 
+  // This is similar to `next_execution_plan_index_to_prepare_`, but it tracks
+  // which nodes' allocation is planned with the arena planner.
+  //
+  // This is a workaround for b/127354079. It shouldn't be necessary if
+  // ArenaPlanner can "rewind" to a specific point.
+  // TODO(b/127354079): Improve ArenaPlanner and remove this mechanism.
+  int next_execution_plan_index_to_plan_allocation_;
+
   // WARNING: This is an experimental interface that is subject to change.
   // This is a list of node indices (to index into nodes_and_registration).
   // This represents a valid topological sort (dependency ordered) execution
@@ -511,8 +517,9 @@ class Subgraph {
   // TODO(aselle): replace execution_plan_ with this.
   std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> plan_cache_;
 
-  // Whether to delegate to NN API
-  std::unique_ptr<NNAPIDelegate> nnapi_delegate_;
+  // Whether to use delegate to modify the graph.
+  bool should_apply_nnapi_delegate_ = false;
+  bool applied_nnapi_delegate_ = false;
 
   std::unique_ptr<MemoryPlanner> memory_planner_;
 
@@ -525,7 +532,7 @@ class Subgraph {
   TfLiteExternalContext** external_contexts_;
 
   // Profiler for this interpreter instance.
-  profiling::Profiler* profiler_ = nullptr;
+  Profiler* profiler_ = nullptr;
 
   // A pointer to vector of subgraphs. The vector is owned by the interpreter.
   std::vector<std::unique_ptr<Subgraph>>* subgraphs_ = nullptr;

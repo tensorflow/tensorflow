@@ -146,8 +146,8 @@ class DistributionTestBase(test.TestCase):
           with ops.control_dependencies([fetched]):
             g = d.extended.reduce_to(
                 reduce_util.ReduceOp.SUM, g, destinations=v)
-            with ops.control_dependencies(d.extended.update(
-                v, update, args=(g,), group=False)):
+            with ops.control_dependencies(
+                d.extended.update(v, update, args=(g,), group=False)):
               after_list.append(d.extended.read_var(v))
         return before_list, after_list
 
@@ -162,7 +162,9 @@ class DistributionTestBase(test.TestCase):
       # Error should go down
       self.assertLess(error_after, error_before)
 
-  def _test_minimize_loss_graph(self, d, soft_placement=False,
+  def _test_minimize_loss_graph(self,
+                                d,
+                                soft_placement=False,
                                 learning_rate=0.2):
     config = config_pb2.ConfigProto()
     config.allow_soft_placement = soft_placement
@@ -198,8 +200,8 @@ class DistributionTestBase(test.TestCase):
           with ops.control_dependencies([fetched]):
             g = d.extended.reduce_to(
                 reduce_util.ReduceOp.SUM, g, destinations=v)
-            with ops.control_dependencies(d.extended.update(
-                v, update, args=(g,), group=False)):
+            with ops.control_dependencies(
+                d.extended.update(v, update, args=(g,), group=False)):
               after_list.append(d.extended.read_var(v))
         return before_list, after_list
 
@@ -276,8 +278,7 @@ class DistributionTestBase(test.TestCase):
       with self.assertRaises(_TestException):
         dist.extended.call_for_each_replica(_merge_call_merge_raises_fn)
 
-  def _input_fn_to_test_input_context(self,
-                                      dataset_or_callable_fn,
+  def _input_fn_to_test_input_context(self, dataset_or_callable_fn,
                                       expected_num_replicas_in_sync,
                                       expected_num_input_pipelines,
                                       expected_input_pipeline_id):
@@ -305,8 +306,39 @@ class DistributionTestBase(test.TestCase):
 
     return _input_fn
 
-  def _test_input_fn_iterator(self, iterator, devices, expected_values,
-                              sess=None, test_reinitialize=True):
+  def _test_input_fn_iterable(
+      self, strategy, input_fn, expected_values, ignore_order=False):
+    if not context.executing_eagerly():
+      self.skipTest("Only supported with eager execution.")
+
+    assert_same = self.assertCountEqual if ignore_order else self.assertEqual
+
+    iterable = strategy.experimental_distribute_datasets_from_function(input_fn)
+    iterator = iter(iterable)
+
+    for expected_value in expected_values:
+      computed_value = self.evaluate(
+          list(strategy.experimental_local_results(next(iterator))))
+      assert_same(expected_value, computed_value)
+
+    with self.assertRaises(StopIteration):
+      self.evaluate(strategy.experimental_local_results(next(iterator)))
+
+    # After re-initializing the iterator, should be able to iterate again.
+    iterator = iter(iterable)
+
+    for expected_value in expected_values:
+      computed_value = self.evaluate(
+          list(strategy.experimental_local_results(next(iterator))))
+      assert_same(expected_value, computed_value)
+
+  def _test_input_fn_iterator(self,
+                              iterator,
+                              devices,
+                              expected_values,
+                              sess=None,
+                              test_reinitialize=True,
+                              ignore_order=False):
     evaluate = lambda x: sess.run(x) if sess else self.evaluate(x)
     evaluate(iterator.initialize())
 
@@ -314,7 +346,10 @@ class DistributionTestBase(test.TestCase):
       next_element = iterator.get_next()
       computed_value = evaluate(
           [values.select_replica(r, next_element) for r in range(len(devices))])
-      self.assertEqual(expected_value, computed_value)
+      if ignore_order:
+        self.assertCountEqual(expected_value, computed_value)
+      else:
+        self.assertEqual(expected_value, computed_value)
 
     with self.assertRaises(errors.OutOfRangeError):
       next_element = iterator.get_next()
@@ -327,9 +362,13 @@ class DistributionTestBase(test.TestCase):
 
       for expected_value in expected_values:
         next_element = iterator.get_next()
-        computed_value = evaluate([values.select_replica(r, next_element)
-                                   for r in range(len(devices))])
-        self.assertEqual(expected_value, computed_value)
+        computed_value = evaluate([
+            values.select_replica(r, next_element) for r in range(len(devices))
+        ])
+        if ignore_order:
+          self.assertCountEqual(expected_value, computed_value)
+        else:
+          self.assertEqual(expected_value, computed_value)
 
   def _test_global_step_update(self, strategy):
     with strategy.scope():
@@ -353,17 +392,23 @@ class DistributionTestBase(test.TestCase):
       global_step_values = self.evaluate(global_step_tensors)
       self.assertEqual((1,) * len(global_step_tensors), global_step_values)
 
-  def _test_numpy_iterator(self, strategy):
+  def _test_numpy_dataset(self, strategy):
     with strategy.scope(), self.cached_session() as sess:
-      x = np.asarray([[1, 2], [6, 12], [2, 4],
-                      [5, 10], [3, 6], [4, 8]])
+      x = np.asarray([[1, 2], [6, 12], [2, 4], [5, 10], [3, 6], [4, 8]])
       y = np.asarray([5, 4, 3, 2, 1, 0])
       batch_size = 6
       if not strategy.extended._global_batch_size:  # pylint: disable=protected-access
         batch_size = batch_size // strategy.num_replicas_in_sync
-      i = strategy.experimental_make_numpy_iterator(
-          (x, y), batch_size=batch_size, num_epochs=2, shuffle=None,
-          session=sess)
+
+      ds = strategy.extended.experimental_make_numpy_dataset((x, y),
+                                                             session=sess)
+      ds = ds.repeat(2)  # 2 epochs
+      # We need to use the drop_remainder argument to get a known static
+      # input shape which is required for TPUs.
+      drop_remainder = strategy.extended.experimental_require_static_shapes
+      ds = ds.batch(batch_size, drop_remainder=drop_remainder)
+      i = strategy.make_dataset_iterator(ds)
+
       self.evaluate(i.initialize())
 
       def run_and_concatenate(strategy, i):
@@ -380,6 +425,20 @@ class DistributionTestBase(test.TestCase):
       self.assertAllEqual(y, y_2)
       with self.assertRaises(errors.OutOfRangeError):
         run_and_concatenate(strategy, i)
+
+  def _test_trainable_variable(self, strategy):
+    with strategy.scope():
+      v1 = variables.Variable(1.0)
+      self.assertEqual(True, v1.trainable)
+
+      v2 = variables.Variable(
+          1.0, synchronization=variables.VariableSynchronization.ON_READ)
+      self.assertEqual(False, v2.trainable)
+
+      v3 = variables.Variable(
+          1.0, synchronization=variables.VariableSynchronization.ON_READ,
+          trainable=True)
+      self.assertEqual(True, v3.trainable)
 
 
 class OneDeviceDistributionTestBase(test.TestCase):
@@ -428,13 +487,14 @@ class OneDeviceDistributionTestBase(test.TestCase):
 
     self.evaluate(inputs.initialize())
     outputs = self.evaluate(
-        list(map(strategy.experimental_local_results,
-                 strategy.experimental_run(comm_fn, inputs))))
+        list(
+            map(strategy.experimental_local_results,
+                strategy.experimental_run(comm_fn, inputs))))
     self.assertAllEqual([expected[0]], outputs[0])
     self.assertAllEqual([expected[1]], outputs[1])
 
-  def _test_collective_comms_gradients(
-      self, strategy, comm_fn, inputs, expected_grads):
+  def _test_collective_comms_gradients(self, strategy, comm_fn, inputs,
+                                       expected_grads):
     if context.executing_eagerly():
       self.skipTest("`tf.gradients` is not supported with eager execution.")
 
@@ -449,11 +509,13 @@ class OneDeviceDistributionTestBase(test.TestCase):
     self.evaluate(inputs.initialize())
     self.assertAllEqual(
         expected_grads,
-        self.evaluate(strategy.experimental_local_results(
-            strategy.experimental_run(step, inputs))))
+        self.evaluate(
+            strategy.experimental_local_results(
+                strategy.experimental_run(step, inputs))))
 
-  def _test_collective_comms_gradient_tape(
-      self, strategy, comm_fn, inputs, expected_grads):
+  def _test_collective_comms_gradient_tape(self, strategy, comm_fn, inputs,
+                                           expected_grads):
+
     def step(c):
       x = constant_op.constant(42.)
       with backprop.GradientTape() as tape:
@@ -467,8 +529,9 @@ class OneDeviceDistributionTestBase(test.TestCase):
     self.evaluate(inputs.initialize())
     self.assertAllEqual(
         expected_grads,
-        self.evaluate(strategy.experimental_local_results(
-            strategy.experimental_run(step, inputs))))
+        self.evaluate(
+            strategy.experimental_local_results(
+                strategy.experimental_run(step, inputs))))
 
   def _test_device_and_input_device_are_colocated(self, strategy):
     if context.executing_eagerly():
@@ -519,7 +582,8 @@ class TwoDeviceDistributionTestBase(test.TestCase):
 
   def _test_all_reduce_sum(self, strategy):
     self._test_collective_comms(
-        strategy, _all_sum,
+        strategy,
+        _all_sum,
         inputs=([1., 3.], [[39., 2.], [3., 41.]]),
         expected=(4., [42., 43.]))
 
@@ -533,7 +597,8 @@ class TwoDeviceDistributionTestBase(test.TestCase):
 
   def _test_all_reduce_mean(self, strategy):
     self._test_collective_comms(
-        strategy, _all_mean,
+        strategy,
+        _all_mean,
         inputs=([1., 3.], [[39., 2.], [3., 41.]]),
         expected=(2., [21., 21.5]))
 
@@ -551,13 +616,14 @@ class TwoDeviceDistributionTestBase(test.TestCase):
 
     self.evaluate(inputs.initialize())
     outputs = self.evaluate(
-        list(map(strategy.experimental_local_results,
-                 strategy.experimental_run(comm_fn, inputs))))
+        list(
+            map(strategy.experimental_local_results,
+                strategy.experimental_run(comm_fn, inputs))))
     self.assertAllEqual([expected[0], expected[0]], outputs[0])
     self.assertAllEqual([expected[1], expected[1]], outputs[1])
 
-  def _test_collective_comms_gradients(
-      self, strategy, comm_fn, inputs, expected_grads):
+  def _test_collective_comms_gradients(self, strategy, comm_fn, inputs,
+                                       expected_grads):
     if context.executing_eagerly():
       self.skipTest("`tf.gradients` is not supported with eager execution.")
 
@@ -572,11 +638,13 @@ class TwoDeviceDistributionTestBase(test.TestCase):
     self.evaluate(inputs.initialize())
     self.assertAllEqual(
         expected_grads,
-        self.evaluate(strategy.experimental_local_results(
-            strategy.experimental_run(step, inputs))))
+        self.evaluate(
+            strategy.experimental_local_results(
+                strategy.experimental_run(step, inputs))))
 
-  def _test_collective_comms_gradient_tape(
-      self, strategy, comm_fn, inputs, expected_grads):
+  def _test_collective_comms_gradient_tape(self, strategy, comm_fn, inputs,
+                                           expected_grads):
+
     def step(c):
       x = constant_op.constant(42.)
       with backprop.GradientTape() as tape:
@@ -590,8 +658,9 @@ class TwoDeviceDistributionTestBase(test.TestCase):
     self.evaluate(inputs.initialize())
     self.assertAllEqual(
         expected_grads,
-        self.evaluate(strategy.experimental_local_results(
-            strategy.experimental_run(step, inputs))))
+        self.evaluate(
+            strategy.experimental_local_results(
+                strategy.experimental_run(step, inputs))))
 
 
 def _all_sum(value):

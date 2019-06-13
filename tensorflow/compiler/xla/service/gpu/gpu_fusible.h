@@ -69,6 +69,10 @@ bool IsInputFusibleScatter(const HloInstruction& instr);
 bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
                                           const HloInstruction& instr2);
 
+// Whether `instr` is a candidate for sibling fusion or as a consumer in
+// a producer-consumer multi-output fusion.
+bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr);
+
 }  // namespace gpu
 }  // namespace xla
 

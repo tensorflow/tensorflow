@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_RANDOM_OP_GPU_H_
 #define TENSORFLOW_CORE_KERNELS_RANDOM_OP_GPU_H_
 
-#if defined(__CUDACC__)
+#if defined(__CUDACC__) || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/random_op.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -222,14 +222,14 @@ void FillPhiloxRandom<GPUDevice, Distribution>::operator()(
       (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
       block_size;
 
-  TF_CHECK_OK(CudaLaunchKernel(FillPhiloxRandomKernelLaunch<Distribution>,
-                               num_blocks, block_size, 0, d.stream(), gen, data,
-                               size, dist));
+  TF_CHECK_OK(GpuLaunchKernel(FillPhiloxRandomKernelLaunch<Distribution>,
+                              num_blocks, block_size, 0, d.stream(), gen, data,
+                              size, dist));
 }
 
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // defined(__CUDACC__)
+#endif  // defined(__CUDACC__) || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_RANDOM_OP_GPU_H_

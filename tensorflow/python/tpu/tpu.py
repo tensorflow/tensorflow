@@ -40,7 +40,9 @@ from tensorflow.python.tpu import tpu_function
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
+ops.NotDifferentiable("TPUReplicatedInput")
 
 # Operations that indicate some error in the users graph, e.g. a placeholder
 # that's introduced outside of the infeed.
@@ -81,6 +83,7 @@ def _tpu_system_device_name(job):
     return "/job:%s/device:TPU_SYSTEM:0" % job
 
 
+@tf_export(v1=["tpu.initialize_system"])
 def initialize_system(embedding_config=None, job=None):
   """Initializes a distributed TPU system for use with TensorFlow.
 
@@ -102,13 +105,22 @@ def initialize_system(embedding_config=None, job=None):
     return tpu_ops.configure_distributed_tpu(embedding_config=config_string)
 
 
+@tf_export(v1=["tpu.shutdown_system"])
 def shutdown_system(job=None):
-  """Shuts down a running a distributed TPU system."""
+  """Shuts down a running a distributed TPU system.
+
+  Args:
+    job: The job (the XXX in TensorFlow device specification /job:XXX) that
+      contains the TPU devices that will be shutdown. If job=None it is
+      assumed there is only one job in the TensorFlow flock, and an error will
+      be returned if this assumption does not hold.
+  """
   with ops.device(_tpu_system_device_name(job)):
     shutdown_distributed_tpu = tpu_ops.shutdown_distributed_tpu()
   return shutdown_distributed_tpu
 
 
+@tf_export(v1=["tpu.core"])
 def core(num):
   """Returns the device name for a core in a replicated TPU computation.
 
@@ -291,6 +303,9 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
         else:
           self._device = device
 
+      def _set_device_from_string(self, device_str):
+        self._device = device_str
+
     if self._outside_compilation_cluster:
       raise NotImplementedError("Cannot nest outside_compilation clusters")
     if cluster:
@@ -469,6 +484,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     return self._pivot
 
 
+@tf_export(v1=["tpu.outside_compilation"])
 def outside_compilation(computation, *args, **kwargs):
   """Builds part of a computation outside any current TPU replicate scope.
 
@@ -511,6 +527,7 @@ def outside_compilation(computation, *args, **kwargs):
   return retval
 
 
+@tf_export(v1=["tpu.replicate"])
 def replicate(computation,
               inputs=None,
               infeed_queue=None,
@@ -539,12 +556,13 @@ def replicate(computation,
     name: (Deprecated) Does nothing.
     maximum_shapes: A nested structure of tf.TensorShape representing the shape
       to which the respective component of each input element in each replica
-      should be padded. Any unknown dimensions (e.g. tf.Dimension(None) in a
-      tf.TensorShape or -1 in a tensor-like object) will be padded to the
-      maximum size of that dimension over all replicas. Note that if the input
-      dimension is already static, we won't do padding on it and we require the
-      maximum_shapes to have the same value or None on that dimension. The
-      structure of `maximum_shapes` needs to be the same as `inputs[0]`.
+      should be padded. Any unknown dimensions (e.g.
+      tf.compat.v1.Dimension(None) in a tf.TensorShape or -1 in a tensor-like
+      object) will be padded to the maximum size of that dimension over all
+      replicas. Note that if the input dimension is already static, we won't do
+      padding on it and we require the maximum_shapes to have the same value or
+      None on that dimension. The structure of `maximum_shapes` needs to be the
+      same as `inputs[0]`.
   Returns:
     A list of outputs, indexed by `[replica_num]` each output can be a nested
     structure same as what computation() returns with a few exceptions.
@@ -621,7 +639,7 @@ def _pad_all_input(inputs, padded_shapes):
         padded_inputs[core_idx].append(input_tensor)
       else:
         # Only pad the non static shape dimension.
-        for i, s in enumerate(input_shape):
+        for i, s in enumerate(input_shape.dims):
           if s.value is None:
             if core_idx == 0:
               real_shape_idx += 1
@@ -634,8 +652,8 @@ def _pad_all_input(inputs, padded_shapes):
                 math_ops.cast(input_shape_tensor[i], dtypes.uint32))
 
         paddings = []
-        for i, s in enumerate(padded_shape):
-          if input_shape[i].value:
+        for i, s in enumerate(padded_shape.dims):
+          if input_shape.dims[i].value:
             # Don't pad if input shape is already static.
             padding = [0, 0]
           else:
@@ -696,12 +714,13 @@ def split_compile_and_replicate(computation,
       placed on GPU if one is available, and on CPU if not).
     maximum_shapes: A nested structure of tf.TensorShape representing the shape
       to which the respective component of each input element in each replica
-      should be padded. Any unknown dimensions (e.g. tf.Dimension(None) in a
-      tf.TensorShape or -1 in a tensor-like object) will be padded to the
-      maximum size of that dimension over all replicas. Note that if the input
-      dimension is already static, we won't do padding on it and we require the
-      maximum_shapes to have the same value or None on that dimension. The
-      structure of `maximum_shapes` needs to be the same as `inputs[0]`.
+      should be padded. Any unknown dimensions (e.g.
+      tf.compat.v1.Dimension(None) in a tf.TensorShape or -1 in a tensor-like
+      object) will be padded to the maximum size of that dimension over all
+      replicas. Note that if the input dimension is already static, we won't do
+      padding on it and we require the maximum_shapes to have the same value or
+      None on that dimension. The structure of `maximum_shapes` needs to be the
+      same as `inputs[0]`.
 
   Returns:
     A list of lists with the first list corresponding to the compile op and the
@@ -1232,6 +1251,7 @@ def split_compile_and_shard(computation,
   return compile_op, results
 
 
+@tf_export(v1=["tpu.shard"])
 def shard(computation,
           inputs=None,
           num_shards=1,
@@ -1312,6 +1332,7 @@ def shard(computation,
       name=name)[1]
 
 
+@tf_export(v1=["tpu.batch_parallel"])
 def batch_parallel(computation,
                    inputs=None,
                    num_shards=1,
@@ -1368,6 +1389,7 @@ def batch_parallel(computation,
       name=name)
 
 
+@tf_export(v1=["tpu.rewrite"])
 def rewrite(computation,
             inputs=None,
             infeed_queue=None,
@@ -1488,13 +1510,14 @@ def validate_inference_rewrite_for_variables(graph):
 
      The rewrite_for_inference() method is supposed to append GuaranteeConstOps
      after ReadVariableOps, but this mechanism works only if you are using
-     tf.get_variable() to create and access variables in your tpu computation.
-     This validation method can be called immediately after calling
+     tf.compat.v1.get_variable() to create and access variables in your tpu
+     computation. This validation method can be called immediately after calling
      tpu.rewrite_for_inference() to check whether GuaranteeConstOps where added
      to the graph.
 
      Typical usages:
-       tpu.validate_inference_rewrite_for_variables(tf.get_default_graph())
+       tpu.validate_inference_rewrite_for_variables(
+           tf.compat.v1.get_default_graph())
 
        tpu.validate_inference_rewrite_for_variables(sess.graph)
 
@@ -1521,11 +1544,11 @@ def rewrite_for_inference(computation,
      Other than 'rewriting' the computation to run on a TPU, if using variables
      in your computation, it moves the ReadVariableOps outside the TPU
      computation, and adds GuaranteeConst ops just after the ReadVariableOps.
-     This mechanism works only if you are using tf.get_variable() to create and
-     access variables in your tpu computation. You can validate whether this
-     worked, by calling validate_inference_rewrite_for_variables() method
-     immediately after this method to check whether GuaranteeConstOps where
-     added to the graph.
+     This mechanism works only if you are using tf.compat.v1.get_variable() to
+     create and access variables in your tpu computation. You can validate
+     whether this worked, by calling validate_inference_rewrite_for_variables()
+     method immediately after this method to check whether GuaranteeConstOps
+     where added to the graph.
 
   Args:
     computation: A Python function that builds a computation to apply to the

@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,14 +17,21 @@ limitations under the License.
 
 #include <memory>
 #include <set>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/common_runtime/inspecting_placer.h"
+#include "tensorflow/core/common_runtime/partitioning_utils.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -58,7 +65,12 @@ std::vector<Device*> FilterSupportedDevices(
     for (Device* device : devices) {
       if (DeviceType(device->attributes().device_type()) ==
           supported_device_type.first) {
-        if (device == default_device) {
+        if (default_device &&
+            (device == default_device ||
+             // TODO(nareshmodi, fishx): At times the device pointer in the
+             // device set is different to the one passed in as the default
+             // device. Figure out why this might be.
+             device->name() == default_device->name())) {
           filtered_default_device = device;
         } else {
           prioritized_filtered_devices.emplace_back(
@@ -119,14 +131,18 @@ std::vector<string> DeviceTypeAndPriorityToString(
   return v;
 }
 
+bool IsRefOrResource(DataType data_type) {
+  return IsRefType(data_type) || data_type == DT_RESOURCE;
+}
+
 // While Placer can override requested device on ops processing
 // resources, i.e. node that take (and potentially return) a resource,
 // it must not override requested device on ops generating a resource,
 // e.g. VarHandleOp, _Arg. Such ops are currently no-input, single resource/ref
 // output nodes.
-bool IsResourceGeneratorNode(const Node& node) {
+bool IsRefOrResourceGeneratorNode(const Node& node) {
   return node.num_inputs() == 0 && node.num_outputs() == 1 &&
-         (IsRefType(node.output_type(0)) || node.output_type(0) == DT_RESOURCE);
+         IsRefOrResource(node.output_type(0));
 }
 
 bool IsExemptFromResourceInputColocation(const Node* node) {
@@ -135,8 +151,8 @@ bool IsExemptFromResourceInputColocation(const Node* node) {
   // ref inputs to operations that are appropriately placed, instead of
   // dereferencing them.
   const string& op_type = node->op_def().name();
-  return op_type == "PartitionedCall" || op_type == "StatefulPartitionedCall" ||
-         op_type == "ReduceDataset";
+  auto exempt_ops = InputColocationExemptionRegistry::Global()->Get();
+  return exempt_ops.find(op_type) != exempt_ops.end();
 }
 
 bool HasPriorities(const PrioritizedDeviceTypeVector& device_types) {
@@ -225,6 +241,20 @@ Status Member::SetRequestedDeviceName(const Node& node) {
                                    node.requested_device(),
                                    "' in node: ", node.DebugString());
   }
+  return Status::OK();
+}
+
+Status Member::FillPossibleDevices(PossibleDevices* possible_device) const {
+  if (DeviceNameUtils::HasSomeDetails(assigned_device_name_)) {
+    return errors::Internal(
+        "Cannot fill PossibleDevices from a member that has non-empty assigned "
+        "device. Did we start assigning devices to functions called by deep "
+        "ops? ",
+        DebugString());
+  }
+  possible_device->requested_device_name = requested_device_name_;
+  possible_device->resource_device_name = resource_device_name_;
+  possible_device->device_types = supported_device_types_;
   return Status::OK();
 }
 
@@ -329,16 +359,24 @@ void Member::Merge(std::vector<Member>* tree, int x_root, int y_root,
 // tree is non-const because we can change some `parent` pointers in some
 // members for more efficient future lookups. The vector itself is not
 // changed.
-int Member::FindRoot(std::vector<Member>* tree, int node_id) {
+int Member::FindAndUpdateRoot(std::vector<Member>* tree, int node_id) {
   Member& member = (*tree)[node_id];
   if (member.parent_ == node_id) {
     // member.parent is the root of this disjoint tree.  Do nothing.
   } else {
-    member.parent_ = FindRoot(tree, member.parent_);
+    member.parent_ = FindAndUpdateRoot(tree, member.parent_);
   }
   // Now it is guaranteed that member.parent is the root of this disjoint
   // tree.
   return member.parent_;
+}
+
+int Member::FindRoot(const std::vector<Member>& tree, int node_id) {
+  const Member& member = tree[node_id];
+  if (member.parent_ == node_id) {
+    return member.parent_;
+  }
+  return FindRoot(tree, member.parent_);
 }
 
 Status Member::MergeDeviceNames(const Member& other,
@@ -375,6 +413,11 @@ Status Member::MergeDeviceNames(const Member& other,
 // Updates this to contain the intersection of the device types in
 // this and "other".
 bool Member::MergeSupportedDevices(const Member& other) {
+  return MergeSupportedDevices(other.supported_device_types_);
+}
+
+bool Member::MergeSupportedDevices(
+    const PrioritizedDeviceTypeVector& other_devices) {
   // Generate intersection with priorities.
   // Each vector contains the same device types but with different priorities.
   // The priorities are taken from the corresponding source vector.
@@ -382,8 +425,7 @@ bool Member::MergeSupportedDevices(const Member& other) {
   PrioritizedDeviceTypeVector other_intersection;
   for (const auto& prioritized_device_type : supported_device_types_) {
     bool found = false;
-    for (const auto& other_prioritized_device_type :
-         other.supported_device_types_) {
+    for (const auto& other_prioritized_device_type : other_devices) {
       if (prioritized_device_type.first ==
           other_prioritized_device_type.first) {
         found = true;
@@ -494,16 +536,27 @@ Status Member::AssignDevice(const Node& node, bool allow_soft_placement) {
   return Status::OK();
 }
 
+Status Member::LimitToPossibleDevices(const PossibleDevices& devices,
+                                      bool allow_soft_placement) {
+  TF_RETURN_IF_ERROR(DeviceNameUtils::MergeDevNames(
+      &requested_device_name_, devices.requested_device_name,
+      allow_soft_placement));
+  TF_RETURN_IF_ERROR(DeviceNameUtils::MergeDevNames(
+      &resource_device_name_, devices.resource_device_name));
+  MergeSupportedDevices(devices.device_types);
+  return Status::OK();
+}
+
 string Member::DebugString() const {
   return absl::StrCat(
       "Member(assigned_device_name_index_=", assigned_device_name_index_,
-      " requested_device_name_=",
+      " requested_device_name_='",
       DeviceNameUtils::ParsedNameToString(requested_device_name_),
-      " assigned_device_name_=",
+      "' assigned_device_name_='",
       DeviceNameUtils::ParsedNameToString(assigned_device_name_),
-      " resource_device_name_=",
+      "' resource_device_name_='",
       DeviceNameUtils::ParsedNameToString(resource_device_name_),
-      " supported_device_types_=[",
+      "' supported_device_types_=[",
       absl::StrJoin(DeviceTypeAndPriorityToString(supported_device_types_),
                     ", "),
       "] possible_devices_=[",
@@ -534,18 +587,24 @@ DeviceNameUtils::ParsedName Member::GetPreferredSoftDeviceName() const {
   return soft_device_name;
 }
 
-ColocationGraph::ColocationGraph(const Graph* graph,
+ColocationGraph::ColocationGraph(const Graph* graph, const FunctionStack& stack,
+                                 const FunctionLibraryDefinition* flib_def,
                                  const DeviceSet* device_set,
                                  const Device* default_device,
                                  bool allow_soft_placement,
                                  bool log_device_placement)
-    : graph_(graph),
-      device_set_(device_set),
+    : graph_(*graph),
+      stack_(stack),
+      flib_def_(*flib_def),
+      inspecting_placer_(graph, stack, flib_def, device_set, default_device,
+                         allow_soft_placement, log_device_placement),
+      inspection_required_checker_(graph, flib_def),
+      device_set_(*device_set),
       device_types_(device_set->PrioritizedDeviceTypeList()),
       default_device_(default_device),
       allow_soft_placement_(allow_soft_placement),
       log_device_placement_(log_device_placement) {
-  members_.resize(graph->num_node_ids());
+  members_.resize(graph_.num_node_ids());
 }
 
 // Adds each node of the Graph to this ColocationGraph as a singleton.
@@ -572,7 +631,7 @@ Status ColocationGraph::ColocateAllNodes() {
   std::unordered_map<StringPiece, const Node*, StringPieceHasher>
       colocation_group_root;
 
-  for (const Node* node : graph_->op_nodes()) {
+  for (const Node* node : graph_.op_nodes()) {
     // When adding the node, identify whether it is part of a colocation
     // group.
 
@@ -587,7 +646,7 @@ Status ColocationGraph::ColocateAllNodes() {
     if (attr_value != nullptr && attr_value->has_list()) {
       for (const string& class_spec : attr_value->list().s()) {
         StringPiece spec(class_spec);
-        if (str_util::ConsumePrefix(&spec, kColocationGroupPrefixStringPiece)) {
+        if (absl::ConsumePrefix(&spec, kColocationGroupPrefixStringPiece)) {
           found_spec = true;
           TF_RETURN_IF_ERROR(
               ColocateNodeToGroup(&colocation_group_root, node, spec));
@@ -609,11 +668,12 @@ Status ColocationGraph::ColocateAllNodes() {
   return Status::OK();
 }
 
-Status ColocationGraph::ColocateResourceOrRefEdge(Node* src, Node* dst) {
+Status ColocationGraph::ColocateResourceOrRefEdge(const Node* src,
+                                                  const Node* dst) {
   // Colocate `src` and `dst` to maintain the invariant that nodes
   // connected by reference edges are colocated.
-  int src_root_id = FindRoot(src->id());
-  int dst_root_id = FindRoot(dst->id());
+  int src_root_id = FindAndUpdateRoot(src->id());
+  int dst_root_id = FindAndUpdateRoot(dst->id());
   auto& src_root = members_[src_root_id];
   auto& dst_root = members_[dst_root_id];
 
@@ -632,30 +692,182 @@ Status ColocationGraph::ColocateResourceOrRefEdge(Node* src, Node* dst) {
   return Status::OK();
 }
 
-Status ColocationGraph::ColocateResourceAndRefEdges() {
-  // Enumerate the constraint edges, and use them to update the disjoint
-  // node set.
+Status ColocationGraph::ColocateResourceAndRefEdges(
+    std::unordered_set<Node*>* inspection_required) {
   // If `node` has an input edge with reference type, add an edge from the
   // source of that edge to `node`.
-  for (const Edge* edge : graph_->edges()) {
+  for (const Edge* edge : graph_.edges()) {
     if (edge->IsControlEdge()) {
       continue;
     }
     Node* src = edge->src();
     Node* dst = edge->dst();
+    bool needs_inspection;
+    TF_RETURN_IF_ERROR(inspection_required_checker_.IsPlacerInspectionRequired(
+        *src, &needs_inspection));
+    if (needs_inspection) {
+      inspection_required->insert(src);
+      continue;
+    }
+    TF_RETURN_IF_ERROR(inspection_required_checker_.IsPlacerInspectionRequired(
+        *dst, &needs_inspection));
+    if (needs_inspection) {
+      inspection_required->insert(dst);
+      continue;
+    }
+
     DataType input_type = dst->input_type(edge->dst_input());
+    // Even though we can look inside function calling ops, we make an exception
+    // here mostly for performance reasons. Looking inside function calling ops
+    // is extra overhead. It is only necessary when they return resources. When
+    // they don't, we don't look inside them and make this exception here.
+    // Looking inside, could potentially enable us to make better placement
+    // decisions. It might be worth doing at some point.
     if ((input_type == DT_RESOURCE || IsRefType(input_type)) &&
         !IsExemptFromResourceInputColocation(dst)) {
       TF_RETURN_IF_ERROR(ColocateResourceOrRefEdge(src, dst));
     }
+  }
+
+  return Status::OK();
+}
+
+Status ColocationGraph::AddInspectionConstraints(
+    const std::unordered_set<Node*>& inspection_required) {
+  for (Node* node : inspection_required) {
+    IOColocationGroups groups;
+    TF_RETURN_IF_ERROR(
+        inspecting_placer_.ComputeIOColocationGroups(*node, &groups));
+    VLOG(2) << "Computed IOColocationGroups for node " << node->name()
+            << ":\n\t" << groups.DebugString();
+    TF_RETURN_IF_ERROR(ApplyIOColocationGroups(groups, *node));
   }
   return Status::OK();
 }
 
 Status ColocationGraph::Initialize() {
   TF_RETURN_IF_ERROR(InitializeMembers());
-  TF_RETURN_IF_ERROR(ColocateResourceAndRefEdges());
-  TF_RETURN_IF_ERROR(ColocateAllNodes());
+
+  std::unordered_set<Node*> inspection_required;
+  TF_RETURN_IF_ERROR(ColocateResourceAndRefEdges(&inspection_required));
+  TF_RETURN_IF_ERROR(AddInspectionConstraints(inspection_required));
+
+  return ColocateAllNodes();
+}
+
+// pair containing a node and whether this node has a resource input
+// from the node requiring placer inspection.
+using NodeAndBool = std::pair<const Node*, bool>;
+
+namespace {
+
+// Returns a vector of node names from `nodes`.
+std::vector<string> NodeAndBoolToString(const std::vector<NodeAndBool>& nodes) {
+  std::vector<string> v;
+  v.reserve(nodes.size());
+  for (const NodeAndBool& node_and_bool : nodes) {
+    v.push_back(node_and_bool.first->name());
+  }
+  return v;
+}
+
+// Given a node requiring placer inspection and its IOColocationGroups,
+// computes `group_nodes`.
+// group_nodes[i] contains the nodes that are members of colocation
+// group i. These nodes are inputs or outputs of `node`.
+// group_nodes[i][j] is a pair containing a node and whether this node
+// has a resource input from `node`.
+// Note:
+// The same node can be added multiple times to the same group.
+// The same node can be added to multiple groups.
+Status GetGroupNodes(const IOColocationGroups& groups, const Node& node,
+                     std::vector<std::vector<NodeAndBool>>* group_nodes) {
+  group_nodes->reserve(groups.group_devices.size());
+  for (int arg_idx = 0; arg_idx < groups.input_groups.size(); ++arg_idx) {
+    const Node* src;
+    TF_RETURN_IF_ERROR(node.input_node(arg_idx, &src));
+    int group_id = groups.input_groups[arg_idx];
+    (*group_nodes)[group_id].emplace_back(src, false);
+  }
+
+  for (const Edge* edge : node.out_edges()) {
+    if (edge->IsControlEdge()) {
+      continue;
+    }
+
+    int group_id = groups.output_groups[edge->src_output()];
+    (*group_nodes)[group_id].emplace_back(
+        edge->dst(), edge->dst()->input_type(edge->dst_input()) == DT_RESOURCE);
+  }
+
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "Colocated inputs/outputs of node: " << node.DebugString();
+    for (const std::vector<NodeAndBool>& nodes : *group_nodes) {
+      VLOG(2) << "\t[" << absl::StrJoin(NodeAndBoolToString(nodes), "\t\n")
+              << "]";
+    }
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
+Status ColocationGraph::ApplyIOColocationGroups(
+    const IOColocationGroups& groups, const Node& node) {
+  if (groups.input_groups.size() != node.num_inputs()) {
+    return errors::Internal(
+        "Cannot apply input/output device constraints to node ",
+        node.DebugString(), " because input_groups.size() (",
+        groups.input_groups.size(),
+        ") is different from number of inputs into the op node (",
+        node.num_inputs(), ")");
+  }
+  if (groups.output_groups.size() != node.num_outputs()) {
+    return errors::Internal(
+        "Cannot apply input/output device constraints to node ",
+        node.DebugString(), " because output_groups.size() (",
+        groups.output_groups.size(),
+        ") is different from number of outputs into the op node (",
+        node.num_outputs(), ")");
+  }
+
+  // group_nodes[i] contains the nodes that are members of colocation
+  // group i. These nodes are inputs or outputs of `node`.
+  // group_nodes[i][j] is a pair containing the node and whether this node
+  // has a resource input from `node`.
+  // The same node can be added multiple times to the same group.
+  // The same node can be added to multiple groups.
+  // NOTE: group ids are guarantees to be [0, 1, ..., num_groups].
+  std::vector<std::vector<NodeAndBool>> group_nodes(
+      groups.group_devices.size());
+  TF_RETURN_IF_ERROR(GetGroupNodes(groups, node, &group_nodes));
+
+  // Colocate nodes in each group
+  for (const std::vector<NodeAndBool>& nodes : group_nodes) {
+    for (int i = 1; i < nodes.size(); ++i) {
+      VLOG(2) << "Colocating \"" << nodes[0].first->name() << "\" and \""
+              << nodes[i].first->name() << "\"";
+      if (nodes[i].second) {
+        TF_RETURN_IF_ERROR(
+            ColocateResourceOrRefEdge(nodes[0].first, nodes[i].first));
+      } else {
+        TF_RETURN_IF_ERROR(ColocateNodes(*nodes[0].first, *nodes[i].first));
+      }
+    }
+  }
+
+  // Limit devices in each group
+  for (int group_id = 0; group_id < groups.group_devices.size(); ++group_id) {
+    // Nothing to do for empty groups. Groups can be empty if some output
+    // of an op is not used.
+    if (group_nodes[group_id].empty()) {
+      continue;
+    }
+    const Node* group_node = group_nodes[group_id][0].first;
+    const PossibleDevices& possible_devices = groups.group_devices[group_id];
+    TF_RETURN_IF_ERROR(LimitToPossibleDevices(*group_node, possible_devices));
+  }
+
   return Status::OK();
 }
 
@@ -695,8 +907,8 @@ Status ColocationGraph::ColocateNodeToGroup(
 // NOTE: If this method returns an error, *this is left in an undefined
 // state.
 Status ColocationGraph::ColocateNodes(const Node& x, const Node& y) {
-  int x_root = FindRoot(x.id());
-  int y_root = FindRoot(y.id());
+  int x_root = FindAndUpdateRoot(x.id());
+  int y_root = FindAndUpdateRoot(y.id());
   return ColocateNodes(x, x_root, y, y_root);
 }
 
@@ -750,11 +962,6 @@ Status ColocationGraph::ColocateNodes(const Node& x, int x_root, const Node& y,
   return Status::OK();
 }
 
-// Limits the possible devices of `node`'s colocation group to the device
-// to which `node` is assigned. This makes sure that all nodes in this
-// colocation group will be assigned to the same device. Without this
-// explicit restriction, heuristics can choose a different possible device
-// for other nodes in the group.
 Status ColocationGraph::LimitToAssignedDevice(const Node& node) {
   if (node.assigned_device_name_index() < 0) {
     return errors::Internal(
@@ -762,7 +969,7 @@ Status ColocationGraph::LimitToAssignedDevice(const Node& node) {
         "got: ",
         node.DebugString());
   }
-  int root = FindRoot(node.id());
+  int root = FindAndUpdateRoot(node.id());
   Member& root_member = members_[root];
   return root_member.AssignDevice(node, allow_soft_placement_);
 }
@@ -776,7 +983,7 @@ void ColocationGraph::GetSoftDeviceCandidates(
   // devices does not specify them).
   DeviceNameUtils::ParsedName soft_device_name =
       root_member.GetPreferredSoftDeviceName();
-  device_set_->FindMatchingDevices(soft_device_name, possible_devices);
+  device_set_.FindMatchingDevices(soft_device_name, possible_devices);
   if (!possible_devices->empty()) {
     *possible_devices = FilterSupportedDevices(
         *possible_devices, root_member.supported_device_types(),
@@ -787,11 +994,19 @@ void ColocationGraph::GetSoftDeviceCandidates(
     return;
   }
 
+  // TODO(iga): Disallow changing resource devices when this ColocationGraph
+  // is for :
+  // - a function called by an op requiring deep inspection, or
+  // - a graph containing ops requiring inspection.
+  // It is fairly tricky to make changing resource devices in presence of
+  // ops requiring inspection work correctly. One thing it would require is to
+  // communicate these "resource movement" decisions across Placer instances.
+
   // Failed to find supported devices that don't violate resource devices.
   // Try finding some devices that violated resource devices.
   // If we succceed, we will log a warning below.
   soft_device_name = root_member.GetSoftDeviceName();
-  device_set_->FindMatchingDevices(soft_device_name, possible_devices);
+  device_set_.FindMatchingDevices(soft_device_name, possible_devices);
   if (!possible_devices->empty()) {
     *possible_devices = FilterSupportedDevices(
         *possible_devices, root_member.supported_device_types(),
@@ -810,17 +1025,17 @@ void ColocationGraph::GetSoftDeviceCandidates(
   }
 }
 
-// For the given node, subject to the constraints previously given
-// to this ColocationGraph, set its assigned_device_name. Returns OK
-// if a satisfying device can be found, otherwise an error.
-//
-// Note: This method returns a pointer to a field within members_.
-// The caller must not use the returned pointer after there is any possibility
-// that the members_[i].possible_devices field has been modified.
+Status ColocationGraph::LimitToPossibleDevices(const Node& node,
+                                               const PossibleDevices& devices) {
+  int root = FindAndUpdateRoot(node.id());
+  Member& root_member = members_[root];
+  return root_member.LimitToPossibleDevices(devices, allow_soft_placement_);
+}
+
 Status ColocationGraph::GetDevicesForNode(
     Node* node, const std::vector<Device*>** possible_devices) {
   *possible_devices = nullptr;
-  const int node_root = FindRoot(node->id());
+  const int node_root = FindAndUpdateRoot(node->id());
   if (!members_[node_root].possible_devices().empty()) {
     *possible_devices = &members_[node_root].possible_devices();
     return Status::OK();
@@ -842,8 +1057,8 @@ Status ColocationGraph::GetDevicesForNode(
     // The root node has a (possibly partial) device
     // specification, so enumerate the physical devices that
     // conform to it.
-    device_set_->FindMatchingDevices(root_member.requested_device_name(),
-                                     &devices);
+    device_set_.FindMatchingDevices(root_member.requested_device_name(),
+                                    &devices);
 
     if (!devices.empty()) {
       // Filter devices into those that are compatible with the root
@@ -871,20 +1086,20 @@ Status ColocationGraph::GetDevicesForNode(
         // will appear in the GraphDef (for debugging), so just
         // print the specified device.
         std::vector<Device*> devices_matching_nodedef;
-        device_set_->FindMatchingDevices(specified_device_name,
-                                         &devices_matching_nodedef);
+        device_set_.FindMatchingDevices(specified_device_name,
+                                        &devices_matching_nodedef);
         if (devices_matching_nodedef.empty()) {
           // Sometimes it is almost impossible to understand the problem
           // without a list of available devices.
           std::vector<string> device_names;
-          for (const Device* device : device_set_->devices()) {
+          for (const Device* device : device_set_.devices()) {
             device_names.push_back(device->name());
           }
           std::sort(device_names.begin(), device_names.end());
 
           string gpu_msg = "";
           if (!IsGoogleCudaEnabled() &&
-              str_util::Lowercase(specified_device_name.type) == "gpu") {
+              absl::AsciiStrToLower(specified_device_name.type) == "gpu") {
             gpu_msg =
                 " The requested device appears to be a GPU, but CUDA is not "
                 "enabled.";
@@ -894,13 +1109,15 @@ Status ColocationGraph::GetDevicesForNode(
               errors::FormatNodeNameForError(node->name()),
               "was explicitly assigned to ", node->requested_device(),
               " but available devices are [ ",
-              str_util::Join(device_names, ", "), " ]. Make sure ",
+              absl::StrJoin(device_names, ", "), " ]. Make sure ",
               "the device specification refers to a valid device.", gpu_msg);
         } else if (specified_device_name.has_type) {
           return errors::InvalidArgument(
               "Could not satisfy explicit device specification '",
               node->requested_device(), "' because no supported kernel for ",
               specified_device_name.type, " devices is available.", debug_info,
+              "\nOp: ", node->type_string(),
+              "\nNode attrs: ", node->attrs().DebugString(),
               "\nRegistered kernels:\n",
               KernelsRegisteredForOp(node->type_string()));
         } else {
@@ -911,6 +1128,8 @@ Status ColocationGraph::GetDevicesForNode(
       } else {
         // The specified device may be a valid device but the
         // merged set device is different, so print both.
+        // TODO(b/129057603): There are many possibilities at this point.
+        // Provide good error messages.
         return errors::InvalidArgument(
             "Could not satisfy explicit device specification '",
             node->requested_device(), "' because the node ",
@@ -920,25 +1139,26 @@ Status ColocationGraph::GetDevicesForNode(
             DeviceNameUtils::ParsedNameToString(
                 root_member.requested_device_name()),
             "'. All available devices [",
-            absl::StrJoin(DevicesToString(device_set_->devices()), ", "), "]. ",
+            absl::StrJoin(DevicesToString(device_set_.devices()), ", "), "]. ",
             debug_info);
       }
     }
   } else {
     // The device is completely unspecified, so enumerate the devices that
     // support all of the nodes in the set.
-    if (device_set_->devices().empty()) {
+    if (device_set_.devices().empty()) {
       return errors::Internal("No devices are registered");
     }
-    devices = FilterSupportedDevices(device_set_->devices(),
+    devices = FilterSupportedDevices(device_set_.devices(),
                                      root_member.supported_device_types(),
                                      default_device_);
 
     if (devices.empty()) {
       return errors::InvalidArgument(
           "Node had no OpKernel registered to support this operation: ",
-          "Operation was ", node->type_string(), " and inputs were ",
-          DataTypeVectorString(node->input_types()), DebugInfo(node_root));
+          "Operation was ", node->type_string(), " and inputs were [",
+          DataTypeVectorString(node->input_types()), "].\n",
+          DebugInfo(node_root));
     }
   }
 
@@ -949,7 +1169,7 @@ Status ColocationGraph::GetDevicesForNode(
 }
 
 Status ColocationGraph::InitializeMembers() {
-  for (Node* node : graph_->op_nodes()) {
+  for (Node* node : graph_.op_nodes()) {
     Status status = InitializeMember(*node, &members_[node->id()]);
     if (!status.ok()) {
       return AttachDef(status, *node);
@@ -958,10 +1178,10 @@ Status ColocationGraph::InitializeMembers() {
   return Status::OK();
 }
 
-string ColocationGraph::DebugString() {
+string ColocationGraph::DebugString() const {
   std::unordered_set<int> roots;
   std::vector<string> root_strings;
-  for (const Node* node : graph_->nodes()) {
+  for (const Node* node : graph_.nodes()) {
     if (!node->IsOp()) {
       continue;
     }
@@ -975,7 +1195,7 @@ string ColocationGraph::DebugString() {
 }
 
 // Returns debugging info for the node referred to by 'node_root'.
-string ColocationGraph::DebugInfo(const int node_root) {
+string ColocationGraph::DebugInfo(const int node_root) const {
   string text(
       "\nColocation Debug Info:\n"
       "Colocation group had the following types and supported devices: ");
@@ -988,7 +1208,7 @@ string ColocationGraph::DebugInfo(const int node_root) {
   std::vector<const Node*> colocation_nodes;
   int num_nodes_found = 0;
 
-  for (const Node* node : graph_->nodes()) {
+  for (const Node* node : graph_.nodes()) {
     if (!node->IsOp()) {
       continue;
     }
@@ -1011,6 +1231,7 @@ string ColocationGraph::DebugInfo(const int node_root) {
     const string& op_type = node->type_string();
     type_to_devices[op_type] = std::move(devices_registered);
   }
+  strings::StrAppend(&text, "\nRoot ", members_[node_root].DebugString());
 
   for (const auto& td : type_to_devices) {
     strings::StrAppend(&text, "\n", td.first, ": ", td.second);
@@ -1046,7 +1267,7 @@ Status ColocationGraph::InitializeMemberWithAssignedDevice(
 
   // Since assigned device must be a full specification, do extra checks.
   const Device* assigned_device =
-      device_set_->FindDeviceByName(assigned_device_name);
+      device_set_.FindDeviceByName(assigned_device_name);
   if (assigned_device == nullptr) {
     // TODO(b/129295848, b/122851476): Remove the bit about cross-host function
     // calls when they are supported.
@@ -1056,7 +1277,7 @@ Status ColocationGraph::InitializeMemberWithAssignedDevice(
         "to run a tf.function with resource inputs residing on remote devices. "
         "This use case is currently not supported. Here are the devices "
         "available on this machine: [",
-        absl::StrJoin(DevicesToString(device_set_->devices()), ", "), "]");
+        absl::StrJoin(DevicesToString(device_set_.devices()), ", "), "]");
   }
 
   for (const auto& d : member->supported_device_types()) {
@@ -1086,30 +1307,23 @@ Status ColocationGraph::InitializeMember(const Node& node, Member* member) {
     // If no kernels are registered for this op type, fail with an error.
     if (member->supported_device_types().empty()) {
       std::set<string> registered_device_types;
-      for (Device* d : device_set_->devices()) {
+      for (Device* d : device_set_.devices()) {
         registered_device_types.insert(d->device_type());
-      }
-      std::vector<string> attr_key_vals;
-      for (const auto& it : node.attrs()) {
-        const string& name = it.first;
-        const AttrValue& attr_value = it.second;
-        attr_key_vals.push_back(
-            strings::StrCat(name, "=", SummarizeAttrValue(attr_value)));
       }
       return errors::InvalidArgument(
           "No OpKernel was registered to support Op '", node.type_string(),
           "' used by ", errors::FormatNodeNameForError(node.name()),
-          "with these attrs: [", str_util::Join(attr_key_vals, ", "),
+          "with these attrs: [", node.attrs().DebugString(),
           "]\n"
           "Registered devices: [",
-          str_util::Join(registered_device_types, ", "), "]\n",
+          absl::StrJoin(registered_device_types, ", "), "]\n",
           "Registered kernels:\n", KernelsRegisteredForOp(node.type_string()));
     }
 
     // If the NodeDef contains a device, then we interpret it as a
     // (partial) device specification.
     if (!node.requested_device().empty()) {
-      if (IsResourceGeneratorNode(node)) {
+      if (IsRefOrResourceGeneratorNode(node)) {
         // Treat requested device on resource generating nodes as assigned
         // device so that we don't override it.
         TF_RETURN_IF_ERROR(member->SetResourceDeviceName(node));

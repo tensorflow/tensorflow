@@ -24,6 +24,9 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+FOUNDATION_EXPORT NSString *const TFLVersion =
+    TFL_Version() == NULL ? @"" : [NSString stringWithUTF8String:TFL_Version()];
+
 /**
  * Error reporter for TFLInterpreter.
  *
@@ -213,7 +216,7 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
   if (data.length != byteSize) {
     NSString *errorDescription = [NSString
         stringWithFormat:@"Input tensor at index (%lu) expects data size (%lu), but got (%lu).",
-                         (unsigned long)index, byteSize, (unsigned long)data.length];
+                         (unsigned long)index, (unsigned long)byteSize, (unsigned long)data.length];
     [TFLErrorUtil saveInterpreterErrorWithCode:TFLInterpreterErrorCodeInvalidInputByteSize
                                    description:errorDescription
                                          error:error];
@@ -366,6 +369,8 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
   switch (cTensorType) {
     case kTfLiteFloat32:
       return TFLTensorDataTypeFloat32;
+    case kTfLiteFloat16:
+      return TFLTensorDataTypeFloat16;
     case kTfLiteInt32:
       return TFLTensorDataTypeInt32;
     case kTfLiteUInt8:

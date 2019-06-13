@@ -100,21 +100,35 @@ class Status {
 // Helper class to manage multiple child status values.
 class StatusGroup {
  public:
-  // Return a merged status with combined child status messages.
-  //
-  // The status code returned is OK if all children were successful, otherwise
-  // the first non-OK child status code is reported.
-  Status as_status() const;
+  // Utility function to mark a Status as derived. By marking derived status,
+  // Derived status messages are ignored when reporting errors to end users.
+  static Status MakeDerived(const Status& s);
+  static bool IsDerived(const Status& s);
+
+  // Enable warning and error log collection for appending to the aggregated
+  // status. This function may be called more than once.
+  static void ConfigureLogHistory();
+
+  // Return a merged status with combined child status messages with a summary.
+  Status as_summary_status() const;
+  // Return a merged status with combined child status messages with
+  // concatenation.
+  Status as_concatenated_status() const;
 
   bool ok() const { return ok_; }
 
   // Augment this group with the child status `status`.
   void Update(const Status& status);
 
+  // Attach recent warning and error log messages
+  void AttachLogMessages();
+  bool HasLogMessages() const { return !recent_logs_.empty(); }
+
  private:
   bool ok_ = true;
   size_t num_ok_ = 0;
   std::vector<Status> children_;
+  std::vector<std::string> recent_logs_;  // recent warning and error logs
 };
 
 inline Status::Status(const Status& s)

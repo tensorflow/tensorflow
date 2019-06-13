@@ -201,6 +201,51 @@ REGISTER_OP("FusedBatchNormV2")
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormShape);
 
+REGISTER_OP("FusedBatchNormV3")
+    .Input("x: T")
+    .Input("scale: U")
+    .Input("offset: U")
+    .Input("mean: U")
+    .Input("variance: U")
+    .Output("y: T")
+    .Output("batch_mean: U")
+    .Output("batch_variance: U")
+    .Output("reserve_space_1: U")
+    .Output("reserve_space_2: U")
+    .Output("reserve_space_3: U")
+    .Attr("T: {half, bfloat16, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormV3Shape);
+
+REGISTER_OP("_FusedBatchNormEx")
+    .Input("x: T")
+    .Input("scale: U")
+    .Input("offset: U")
+    .Input("mean: U")
+    .Input("variance: U")
+    .Input("side_input: num_side_inputs * T")
+    .Output("y: T")
+    .Output("batch_mean: U")
+    .Output("batch_variance: U")
+    .Output("reserve_space_1: U")
+    .Output("reserve_space_2: U")
+    .Output("reserve_space_3: U")
+    .Attr("T: {half, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("num_side_inputs: int >= 0 = 0")
+    .Attr("activation_mode: string = \"Identity\"")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormExShape)
+    .Doc(R"doc(
+*NOTE*: Do not invoke this operator directly in Python. Grappler is
+expected to create these operators.
+)doc");
+
 REGISTER_OP("FusedBatchNormGrad")
     .Input("y_backprop: T")
     .Input("x: T")
@@ -236,6 +281,24 @@ REGISTER_OP("FusedBatchNormGradV2")
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormGradShape);
 
+REGISTER_OP("FusedBatchNormGradV3")
+    .Input("y_backprop: T")
+    .Input("x: T")
+    .Input("scale: float")
+    .Input("reserve_space_1: U")
+    .Input("reserve_space_2: U")
+    .Input("reserve_space_3: U")
+    .Output("x_backprop: T")
+    .Output("scale_backprop: U")
+    .Output("offset_backprop: U")
+    .Output("reserve_space_4: U")
+    .Output("reserve_space_5: U")
+    .Attr("T: {half, bfloat16, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormGradShape);
 // --------------------------------------------------------------------------
 
 REGISTER_OP("BiasAdd")
@@ -327,7 +390,8 @@ REGISTER_OP("_FusedConv2D")
     .Attr("T: {float, double}")
     .Attr("num_args: int >= 0")
     .Attr("strides: list(int)")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("use_cudnn_on_gpu: bool = true")
@@ -335,7 +399,7 @@ REGISTER_OP("_FusedConv2D")
     // Attributes for the FusedBatchNorm ------------------------------------ //
     .Attr("epsilon: float = 0.0001")
     // ---------------------------------------------------------------------- //
-    .SetShapeFn(shape_inference::Conv2DShape)
+    .SetShapeFn(shape_inference::Conv2DShapeWithExplicitPadding)
     .Doc(R"doc(
 *NOTE*: Do not invoke this operator directly in Python. Grappler is
 expected to create these operators.
@@ -1573,7 +1637,7 @@ REGISTER_OP("_MklConv2D")
     .Output("filter_output: T")
     .Output("mkl_output: uint8")
     .Output("mkl_filter_output: uint8")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {bfloat16, float}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("is_filter_const: bool = false")
@@ -1593,7 +1657,7 @@ REGISTER_OP("__MklDummyConv2DWithBias")
     .Input("filter: T")
     .Input("bias: T")
     .Output("output: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {bfloat16, float}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("is_filter_const: bool = false")
@@ -1621,7 +1685,7 @@ REGISTER_OP("_MklConv2DWithBias")
     .Output("filter_output: T")
     .Output("mkl_output: uint8")
     .Output("mkl_filter_output: uint8")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {bfloat16, float}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("is_filter_const: bool = false")
@@ -1642,7 +1706,7 @@ REGISTER_OP("__MklDummyPadWithConv2D")
     .Input("filter: T")
     .Input("paddings: Tpaddings")
     .Output("output: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {bfloat16, float}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("is_filter_const: bool = false")
@@ -1671,7 +1735,7 @@ REGISTER_OP("_MklPadWithConv2D")
     .Output("filter_output: T")
     .Output("mkl_output: uint8")
     .Output("mkl_filter_output: uint8")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {bfloat16, float}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
@@ -1697,7 +1761,7 @@ REGISTER_OP("_MklConv2DBackpropFilter")
     .Input("mkl_out_backprop: uint8")
     .Output("output: T")
     .Output("mkl_output: uint8")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {bfloat16, float}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
@@ -1724,7 +1788,7 @@ REGISTER_OP("__MklDummyConv2DBackpropFilterWithBias")
     .Input("out_backprop: T")
     .Output("output: T")
     .Output("bias_grad: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {bfloat16, float}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
@@ -1769,7 +1833,7 @@ REGISTER_OP("_MklConv2DBackpropFilterWithBias")
     .Output("bias_grad: T")
     .Output("mkl_output: uint8")
     .Output("mkl_bias_grad: uint8")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {bfloat16, float}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
@@ -1830,7 +1894,7 @@ REGISTER_OP("_MklConv2DBackpropInput")
     .Input("mkl_out_backprop: uint8")
     .Output("output: T")
     .Output("mkl_output: uint8")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {bfloat16, float}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
@@ -1860,7 +1924,7 @@ REGISTER_OP("_MklConv3D")
     .Output("filter_output: T")
     .Output("mkl_output: uint8")
     .Output("mkl_filter_output: uint8")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {bfloat16, float}")
     .Attr("strides: list(int) >= 5")
     .Attr("is_filter_const: bool = false")
     .Attr(GetPaddingAttrString())
@@ -1883,7 +1947,7 @@ REGISTER_OP("_MklConv3DBackpropInputV2")
     .Input("mkl_out_backprop: uint8")
     .Output("output: T")
     .Output("mkl_output: uint8")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {bfloat16, float}")
     .Attr("strides: list(int) >= 5")
     .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
     .Attr("Tshape: {int32, int64} = DT_INT32")
@@ -1913,7 +1977,7 @@ REGISTER_OP("_MklConv3DBackpropFilterV2")
     .Input("mkl_out_backprop: uint8")
     .Output("output: T")
     .Output("mkl_output: uint8")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {bfloat16, float}")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
@@ -1938,7 +2002,7 @@ REGISTER_OP("_MklRelu")
     .Input("mkl_features: uint8")
     .Output("activations: T")
     .Output("mkl_activations: uint8")
-    .Attr("T: realnumbertype")
+    .Attr("T: {float, bfloat16} = DT_FLOAT")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 MKL version of Relu operator. Uses MKL DNN APIs to implement Relu operator.
@@ -1954,7 +2018,7 @@ REGISTER_OP("_MklReluGrad")
     .Input("mkl_features: uint8")
     .Output("backprops: T")
     .Output("mkl_backprops: uint8")
-    .Attr("T: realnumbertype")
+    .Attr("T: {float, bfloat16} = DT_FLOAT")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
     .Doc(R"doc(
 MKL version of ReluGrad operator. Uses MKL DNN APIs to compute rectified
@@ -1969,7 +2033,7 @@ REGISTER_OP("_MklRelu6")
     .Input("mkl_features: uint8")
     .Output("activations: T")
     .Output("mkl_activations: uint8")
-    .Attr("T: realnumbertype")
+    .Attr("T: {float, bfloat16} = DT_FLOAT")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 MKL version of Relu6 operator. Uses MKL DNN APIs to implement Relu6 operator.
@@ -1985,7 +2049,7 @@ REGISTER_OP("_MklRelu6Grad")
     .Input("mkl_features: uint8")
     .Output("backprops: T")
     .Output("mkl_backprops: uint8")
-    .Attr("T: realnumbertype")
+    .Attr("T: {float, bfloat16} = DT_FLOAT")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
     .Doc(R"doc(
 MKL version of Relu6Grad operator. Uses MKL DNN APIs to compute rectified
@@ -2000,7 +2064,7 @@ REGISTER_OP("_MklLeakyRelu")
     .Input("mkl_features: uint8")
     .Output("activations: T")
     .Output("mkl_activations: uint8")
-    .Attr("T: {half, float, double} = DT_FLOAT")
+    .Attr("T: {float, bfloat16} = DT_FLOAT")
     .Attr("alpha: float = 0.2")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
@@ -2018,7 +2082,7 @@ REGISTER_OP("_MklLeakyReluGrad")
     .Input("mkl_features: uint8")
     .Output("backprops: T")
     .Output("mkl_backprops: uint8")
-    .Attr("T: {half, float, double} = DT_FLOAT")
+    .Attr("T: {float, bfloat16} = DT_FLOAT")
     .Attr("alpha: float = 0.2")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
     .Doc(R"doc(
@@ -2034,7 +2098,7 @@ REGISTER_OP("_MklElu")
     .Input("mkl_features: uint8")
     .Output("activations: T")
     .Output("mkl_activations: uint8")
-    .Attr("T: realnumbertype")
+    .Attr("T: {float, bfloat16} = DT_FLOAT")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 MKL version of Elu operator. Uses MKL DNN APIs to implement Elu operator.
@@ -2049,7 +2113,7 @@ REGISTER_OP("_MklEluGrad")
     .Input("mkl_features: uint8")
     .Output("backprops: T")
     .Output("mkl_backprops: uint8")
-    .Attr("T: realnumbertype")
+    .Attr("T: {float, bfloat16} = DT_FLOAT")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
     .Doc(R"doc(
 MKL version of EluGrad operator. Uses MKL DNN APIs to compute Elu
@@ -2102,7 +2166,7 @@ expected to invoke these operators.
 )doc");
 
 REGISTER_OP("_MklMaxPool")
-    .Attr("T: {float, half} = DT_FLOAT")
+    .Attr("T: {float, half, bfloat16} = DT_FLOAT")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
@@ -2128,7 +2192,7 @@ expected to invoke these operators.
 )doc");
 
 REGISTER_OP("_MklMaxPoolGrad")
-    .Attr("T: {float, half} = DT_FLOAT")
+    .Attr("T: {float, half, bfloat16} = DT_FLOAT")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr("workspace_enabled: bool = false")
@@ -2168,7 +2232,7 @@ REGISTER_OP("_MklAvgPool")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("T: {float, half, double}")
+    .Attr("T: {float, half, double, bfloat16}")
     .SetShapeFn(shape_inference::AvgPoolShape)
     .Doc(R"doc(
 MKL version of AvgPool operator. Uses MKL DNN APIs to perform average pooling
@@ -2189,7 +2253,7 @@ REGISTER_OP("_MklAvgPoolGrad")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("T: {float, half, double}")
+    .Attr("T: {float, half, double, bfloat16}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
@@ -2214,7 +2278,7 @@ REGISTER_OP("_MklAvgPool3D")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
-    .Attr("T: {float, half, double}")
+    .Attr("T: {float, half, double, bfloat16}")
     .SetShapeFn(shape_inference::Pool3DShape)
     .Doc(R"doc(
 MKL version of AvgPool3D operator. Uses MKL DNN APIs to perform average pooling
@@ -2235,7 +2299,7 @@ REGISTER_OP("_MklAvgPool3DGrad")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
-    .Attr("T: {float, half, double}")
+    .Attr("T: {float, half, double, bfloat16}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
@@ -2507,11 +2571,67 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
+REGISTER_OP("_MklFusedBatchNormV2")
+    .Input("x: T")
+    .Input("scale: U")
+    .Input("offset: U")
+    .Input("mean: U")
+    .Input("variance: U")
+    .Input("mkl_x: uint8")
+    .Input("mkl_scale: uint8")
+    .Input("mkl_offset: uint8")
+    .Input("mkl_mean: uint8")
+    .Input("mkl_variance: uint8")
+    .Output("y: T")
+    .Output("batch_mean: U")
+    .Output("batch_variance: U")
+    .Output("reserve_space_1: U")
+    .Output("reserve_space_2: U")
+    .Output("mkl_y: uint8")
+    .Output("mkl_batch_mean: uint8")
+    .Output("mkl_batch_variance: uint8")
+    .Output("mkl_reserve_space_1: uint8")
+    .Output("mkl_reserve_space_2: uint8")
+    .Attr("T: {bfloat16, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormShape);
+
+REGISTER_OP("_MklFusedBatchNormGradV2")
+    .Input("y_backprop: T")
+    .Input("x: T")
+    .Input("scale: float")
+    .Input("reserve_space_1: U")
+    .Input("reserve_space_2: U")
+    .Input("mkl_y_backprop: uint8")
+    .Input("mkl_x: uint8")
+    .Input("mkl_scale: uint8")
+    .Input("mkl_reserve_space_1: uint8")
+    .Input("mkl_reserve_space_2: uint8")
+    .Output("x_backprop: T")
+    .Output("scale_backprop: U")
+    .Output("offset_backprop: U")
+    .Output("reserve_space_3: U")
+    .Output("reserve_space_4: U")
+    .Output("mkl_x_backprop: uint8")
+    .Output("mkl_scale_backprop: uint8")
+    .Output("mkl_offset_backprop: uint8")
+    .Output("mkl_reserve_space_3: uint8")
+    .Output("mkl_reserve_space_4: uint8")
+    .Attr("T: {bfloat16, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormGradShape);
+
 REGISTER_OP("_MklToTf")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
-    .Attr("T: {half, float, double, qint8, quint8, qint32}")
+    .Attr("T: {half, float, double, bfloat16, qint8, quint8, qint32}")
     .Attr(GetConvnetDataFormat2D3DAttrString())
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
@@ -2532,8 +2652,8 @@ REGISTER_OP("_MklInputConversion")
     .Output("mkl_output_1: uint8")
     // All datatypes supported by element-wise ops
     .Attr(
-        "T: {half, float, double, uint8, int8, uint16, int16, int32, int64, "
-        "complex64, complex128}")
+        "T: {half, float, bfloat16, double, uint8, int8, uint16, int16, int32, "
+        "int64, complex64, complex128}")
     .Attr(GetConvnetDataFormat2D3DAttrString())
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
@@ -2887,6 +3007,105 @@ REGISTER_OP("QuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
+      // Since activations are not requantized per channel, `min_output`
+      // and `max_output` are scalars.
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    });
+
+// Fusion of Quantized MatMul and BiasAdd.
+REGISTER_OP("QuantizedMatMulWithBias")
+    .Input("a: T1")
+    .Input("b: T2")
+    .Input("bias: Tbias")
+    .Input("min_a: float")
+    .Input("max_a: float")
+    .Input("min_b: float")
+    .Input("max_b: float")
+    .Output("out: Toutput")
+    .Output("min_out: float")
+    .Output("max_out: float")
+    .Attr("T1: quantizedtype")
+    .Attr("T2: quantizedtype")
+    .Attr("Tbias: {float, qint32}")
+    .Attr("Toutput: quantizedtype = DT_QINT32")
+    .Attr("transpose_a: bool = false")
+    .Attr("transpose_b: bool = false")
+    .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'MIN_FIRST'")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    });
+
+REGISTER_OP("QuantizedMatMulWithBiasAndRelu")
+    .Input("a: T1")
+    .Input("b: T2")
+    .Input("bias: float")
+    .Input("min_a: float")
+    .Input("max_a: float")
+    .Input("min_b: float")
+    .Input("max_b: float")
+    .Output("out: Toutput")
+    .Output("min_out: float")
+    .Output("max_out: float")
+    .Attr("T1: quantizedtype")
+    .Attr("T2: quantizedtype")
+    .Attr("Toutput: quantizedtype = DT_QINT32")
+    .Attr("transpose_a: bool = false")
+    .Attr("transpose_b: bool = false")
+    .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'MIN_FIRST'")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    });
+
+REGISTER_OP("QuantizedMatMulWithBiasAndReluAndRequantize")
+    .Input("a: T1")
+    .Input("b: T2")
+    .Input("bias: Tbias")
+    .Input("min_a: float")
+    .Input("max_a: float")
+    .Input("min_b: float")
+    .Input("max_b: float")
+    .Input("min_freezed_output: float")
+    .Input("max_freezed_output: float")
+    .Output("out: Toutput")
+    .Output("min_out: float")
+    .Output("max_out: float")
+    .Attr("T1: quantizedtype")
+    .Attr("T2: quantizedtype")
+    .Attr("Tbias: {float, qint32}")
+    .Attr("Toutput: quantizedtype = DT_QUINT8")
+    .Attr("transpose_a: bool = false")
+    .Attr("transpose_b: bool = false")
+    .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'MIN_FIRST'")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
       return Status::OK();
@@ -2919,4 +3138,83 @@ REGISTER_OP("QuantizedConv2DPerChannel")
       c->set_output(2, channel);
       return Status::OK();
     });
+
+REGISTER_OP("QuantizedDepthwiseConv2D")
+    .Input("input: Tinput")
+    .Input("filter: Tfilter")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Input("min_filter: float")
+    .Input("max_filter: float")
+    .Output("output: out_type")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Attr("Tinput: quantizedtype")
+    .Attr("Tfilter: quantizedtype")
+    .Attr("out_type: quantizedtype = DT_QINT32")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
+
+REGISTER_OP("QuantizedDepthwiseConv2DWithBias")
+    .Input("input: Tinput")
+    .Input("filter: Tfilter")
+    .Input("bias: float")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Input("min_filter: float")
+    .Input("max_filter: float")
+    .Output("output: out_type")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Attr("Tinput: quantizedtype")
+    .Attr("Tfilter: quantizedtype")
+    .Attr("out_type: quantizedtype = DT_QINT32")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
+
+REGISTER_OP("QuantizedDepthwiseConv2DWithBiasAndRelu")
+    .Input("input: Tinput")
+    .Input("filter: Tfilter")
+    .Input("bias: float")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Input("min_filter: float")
+    .Input("max_filter: float")
+    .Output("output: out_type")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Attr("Tinput: quantizedtype")
+    .Attr("Tfilter: quantizedtype")
+    .Attr("out_type: quantizedtype = DT_QINT32")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
+
+REGISTER_OP("QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize")
+    .Input("input: Tinput")
+    .Input("filter: Tfilter")
+    .Input("bias: Tbias")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Input("min_filter: float")
+    .Input("max_filter: float")
+    .Input("min_freezed_output: float")
+    .Input("max_freezed_output: float")
+    .Output("output: out_type")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Attr("Tinput: quantizedtype")
+    .Attr("Tfilter: quantizedtype")
+    .Attr("Tbias: {float, qint32}")
+    .Attr("out_type: quantizedtype = DT_QUINT8")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
+
 }  // namespace tensorflow

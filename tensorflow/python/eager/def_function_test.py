@@ -18,10 +18,12 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import re
 import weakref
 
+from six.moves import range
+
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import constant_op
@@ -32,6 +34,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -68,22 +71,6 @@ class _HasDecoratedMethod(object):
   def f(self, x):
     return x * 3.
 
-# pylint: disable=bad-continuation,anomalous-backslash-in-string
-MIXING_GRAPH_EAGER_TENSORS_ERROR = (
-"""An op outside of the function building code is being passed
-a "Graph" tensor. It is possible to have Graph tensors
-leak out of the function building context by including a
-tf.init_scope in your function building code.
-For example, the following function will fail:
-  @tf.function
-  def has_init_scope\(\):
-    my_constant = tf.constant\(1.\)
-    with tf.init_scope\(\):
-      added = my_constant \* 2
-The graph tensor has name: Const:0""")
-# pylint: enable=bad-continuation,anomalous-backslash-in-string
-
-
 class DefFunctionTest(test.TestCase):
 
   def testNoVariables(self):
@@ -113,6 +100,14 @@ class DefFunctionTest(test.TestCase):
 
     with self.assertRaises(ValueError):
       fn(1.0)
+
+  def testRange(self):
+
+    @def_function.function
+    def f(unused_x):
+      return 1.0
+
+    self.assertAllEqual(f(range(5)), 1.0)
 
   def testCorrectVariableCreation(self):
 
@@ -246,18 +241,13 @@ class DefFunctionTest(test.TestCase):
         def_function.function(functools.partial(lambda x, y: x + y, 1.))(
             constant_op.constant(2.)))
 
-  def test_functools_partial_single_keyword(self):
-    def f(x, y):
+  def test_functools_partial_new_default(self):
+    def f(x=3, y=7):
       return x + y
 
-    func = def_function.function(
-        functools.partial(f, x=constant_op.constant(1)))
-
-    # This is a limitation of functools.partial. It is not unexpected behavior,
-    # but still testing for it for completeness.
-    with self.assertRaisesRegexp(
-        TypeError, 'got multiple values for'):
-      func(5)
+    func = def_function.function(functools.partial(f, y=6))
+    self.assertEqual(func().numpy(), 9)
+    self.assertEqual(func(y=8).numpy(), 11)
 
   def test_functools_partial_keywords(self):
     def f(x, y):
@@ -274,6 +264,30 @@ class DefFunctionTest(test.TestCase):
     func = def_function.function(
         functools.partial(f, constant_op.constant(1)))
     self.assertAllEqual(func(5), 6)
+
+  def test_complicated_partial_with_defaults(self):
+
+    def identity(*args):
+      return args
+
+    def dynamic_unroll(core_fn,
+                       input_sequence,
+                       initial_state,
+                       sequence_length=None,
+                       parallel_iterations=1,
+                       swap_memory=False):
+      del core_fn
+      self.assertIs(None, sequence_length)
+      self.assertEqual(1, parallel_iterations)
+      self.assertTrue(swap_memory)
+      return input_sequence, initial_state
+
+    input_sequence = random_ops.random_uniform([1, 1, 1])
+    initial_state = random_ops.random_uniform([1, 1])
+
+    func = def_function.function(
+        functools.partial(dynamic_unroll, identity, swap_memory=True))
+    func(input_sequence, initial_state)
 
   def test_unspecified_default_argument(self):
     wrapped = def_function.function(
@@ -303,6 +317,36 @@ class DefFunctionTest(test.TestCase):
     self.assertEqual(signature_args,
                      (tensor_spec.TensorSpec(
                          None, dtypes.float32, name='x'),))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_variable_naming(self):
+    class HasVars(module.Module):
+
+      def __init__(self):
+        self.x = None
+        self.y = None
+        self.z = None
+
+      @def_function.function
+      def make_x(self):
+        if self.x is None:
+          self.x = variables.Variable(1., name='v')
+
+      def make_y(self):
+        if self.y is None:
+          self.y = variables.Variable(1., name='v')
+
+      def make_z(self):
+        if self.z is None:
+          with ops.name_scope('z_scope'):
+            self.z = variables.Variable(1., name='z')
+
+    root = HasVars()
+    root.make_x()
+    root.make_y()
+    root.make_z()
+    self.assertEqual('v:0', root.x.name)
+    self.assertEqual('z_scope/z:0', root.z.name)
 
   def test_concrete_function_keyword_arguments(self):
     @def_function.function
@@ -423,8 +467,35 @@ class DefFunctionTest(test.TestCase):
       with ops.init_scope():
         _ = a + a
 
-    with self.assertRaisesRegexp(TypeError, MIXING_GRAPH_EAGER_TENSORS_ERROR):
+    with self.assertRaisesRegexp(
+        TypeError,
+        re.compile('An op outside of the function.*passed.*Const', re.DOTALL)):
       failing_function()
+
+  def testNonUniqueNamesGetConcreteFunction(self):
+    @def_function.function
+    def non_unique_arg_names(x, **kwargs):
+      a, b, c = x
+      d = kwargs['d']
+      return a + b + c + d
+
+    concrete = non_unique_arg_names.get_concrete_function(
+        (tensor_spec.TensorSpec(None, dtypes.float32),
+         tensor_spec.TensorSpec(None, dtypes.float32),
+         tensor_spec.TensorSpec(None, dtypes.float32)),
+        d=tensor_spec.TensorSpec(None, dtypes.float32))
+    self.assertAllClose(
+        10.,
+        concrete(x=constant_op.constant(1.),
+                 x_1=constant_op.constant(2.),
+                 x_2=constant_op.constant(3.),
+                 d=constant_op.constant(4.)))
+    self.assertAllClose(
+        10.,
+        concrete(constant_op.constant(1.),
+                 constant_op.constant(2.),
+                 constant_op.constant(3.),
+                 constant_op.constant(4.)))
 
   def testVariableCreatorScope(self):
     created_variables = []
@@ -506,10 +577,8 @@ class DefFunctionTest(test.TestCase):
     v_holder[1].assign(11.)
     self.assertAllClose([14., 15.], wrapper(constant_op.constant(2.)))
 
+  @test_util.run_gpu_only
   def testDeviceAnnotationRespected(self):
-    if not context.num_gpus():
-      self.skipTest("Needs multiple devices")
-
     a = []
 
     @def_function.function()

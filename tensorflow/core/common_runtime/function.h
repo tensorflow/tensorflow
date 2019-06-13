@@ -72,7 +72,11 @@ struct FunctionBody {
   Graph* graph = nullptr;  // owned.
   DataTypeVector arg_types;
   DataTypeVector ret_types;
+  // arg_nodes[i] contains the i'th function input. In other words,
+  // GetNodeAttr(arg_nodes[i]->attrs(), "index") == i.
   gtl::InlinedVector<Node*, 4> arg_nodes;
+  // ret_nodes[i] contains the i'th function output. In other words,
+  // GetNodeAttr(ret_nodes[i]->attrs(), "index") == i.
   gtl::InlinedVector<Node*, 4> ret_nodes;
   gtl::InlinedVector<Node*, 4> control_ret_nodes;
 
@@ -163,6 +167,31 @@ struct InlineFunctionBodyOptions {
   //   b) data returns               (`ret` field in FunctionDef)
   enum class OutputControlSource { kDataOutputs, kControlOutputs };
 
+  // Keep a node in a graph with the same name as the function call node:
+  //
+  // a) DoNotKeep: Function call node is fully inlined, and there is no node in
+  //    a graph with the same name.
+  //
+  // b) Fetchable: Add an IdentityN node to the graph in place of the inlined
+  //    function call node. It will have a control edge from inlined
+  //    'output_control_node' and data edges from function output nodes.
+  //    The IdentityN node will be placed on the same device as the caller node.
+  //
+  //    This is mostly for compatibility with Tensorflow v1 and sessions.
+  //    When we prepare a graph for execution in
+  //    GraphExecutionState::MakeForBaseGraph we don't know what nodes will be
+  //    fetched, so we can't safely remove any of them. When graph executed as a
+  //    function it has 'Retval' nodes for all fetched tensors, and we can
+  //    safely inline function calls.
+  //
+  // c) Targetable: Add a NoOp node to the graph in place of the inlined
+  //    function call node. It will have a control edge from inline
+  //    'output_control_node' and no data edges. NoOp node will be placed on the
+  //    same device as the caller node. This will keep the inlined function call
+  //    node a valid 'session.run' target, and also will keep it a valid control
+  //    output node.
+  enum class KeepCallerNode { kDoNotKeep, kFetchable, kTargetable };
+
   // If 'true' function inlining is completely disabled. This allows to control
   // function inlining for different types of function calls (see
   // 'ExpandInlineFunctionsOptions' below).
@@ -172,16 +201,16 @@ struct InlineFunctionBodyOptions {
   // If 'true' function inlining will override explicitly specified devices
   // inside function body with the caller node device.
   bool override_device = false;
-  // If 'true' function inlining will add an IdentityN node to the graph with
-  // the same name as the caller node. It will have a control edge from inlined
-  // 'output_control_node' and data edges from function output nodes. IdentityN
-  // node will be placed on the same device as the caller node.
-  // This is mostly for compatibility with Tensorflow v1 and sessions. When we
-  // prepare a graph for execution in GraphExecutionState::MakeForBaseGraph we
-  // don't know what nodes will be fetched, so we can't safely remove any of
-  // them. When graph executed as a function it has 'Retval' nodes for all
-  // fetched tensors, and we can safely inline function calls.
-  bool keep_caller_fetchable = false;
+  // If 'true' function inlining will fill an empty device annotation inside
+  // function body with the caller node device.
+  // TODO(ezhulenev): Remove this flag. This is mostly legacy-compatibility
+  // mode. We should never explicitly define devices when we inline multi-device
+  // functions. However we do that in 'lower_function_call_op.cc' and
+  // 'function_optimizer' for now.
+  bool initialize_empty_device = false;
+  // Controls if we want to keep a node with the name as the function call node
+  // in a graph after function inlining.
+  KeepCallerNode keep_caller_node = KeepCallerNode::kDoNotKeep;
   // For compatibility with Tensorflow v1 by default we will use data outputs.
   // Control returns were added to Tensorflow v2 with automatic control
   // dependencies tracking in Eager mode.

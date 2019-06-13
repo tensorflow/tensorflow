@@ -65,9 +65,22 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
 // mapping.
 // But this convolution, due to some hardware limitations, doesn't work better
 // always. In general it works good on A12.
+// Each thread process 2 pixels in XY dimension and variable amount of pixels
+// in Z dimension(depends on dst_channels).
 std::vector<ComputeTaskDescriptorPtr> ConvolutionPrecise(
     int id, ValueId input_id, ValueId output_id,
     const Convolution2DAttributes& params, const RuntimeOptions& options);
+
+// As previous, but specific for 1x1 and each thread process 1 pixel in XY
+// dimension.
+// This convolution for PowerVR in FP16 mode with FP32 accumulator
+// It will work in other modes also, but not with good performance
+std::vector<ComputeTaskDescriptorPtr> ConvolutionPrecise1x1PowerVR(
+    int id, ValueId input_id, ValueId output_id,
+    const Convolution2DAttributes& params, const RuntimeOptions& options);
+
+// TODO(impjdi): Move it inside module.
+bool CheckConvolutionPrecise1x1Support(const Convolution2DAttributes& attr);
 
 // This function calculates amount of threads that should be launched for
 // ConvolutionGeneric or Convolution1x1 (threads_count1) and amount of threads

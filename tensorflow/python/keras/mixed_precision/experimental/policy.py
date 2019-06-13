@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import contextlib
 
+from tensorflow.python.training.experimental import mixed_precision_global_state
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -125,8 +126,14 @@ class Policy(object):
   # TODO(reedwm): Implement get_config/from_config.
 
 
+# The policy in effect when TensorFlow starts. This is constant and never
+# changes.
+_default_policy = Policy('infer')
+
+# The current global policy in effect. This starts as the default policy, but
+# can be changed with `set_policy`.
 # TODO(reedwm): Make this thread local?
-_global_policy = Policy('infer')
+_global_policy = _default_policy
 
 
 @keras_export('keras.mixed_precision.experimental.global_policy')
@@ -143,13 +150,34 @@ def global_policy():
   return _global_policy
 
 
+def _check_if_mixed_precision_graph_rewrite_is_enabled():
+  # TODO(reedwm): Update this comment once the Keras API is complete.
+  if mixed_precision_global_state.mixed_precision_graph_rewrite_is_enabled:
+    raise ValueError(
+        'The mixed precision policy cannot be set, because the mixed '
+        'precision graph rewrite has already been enabled.\n'
+        'At most, one of the following functions can be called:\n\n'
+        '  1. tf.train.experimental.enable_mixed_precision_graph_rewrite() '
+        '(You called this first)\n'
+        '  2. tf.keras.mixed_precision.experimental.set_policy() (You called '
+        'this second)\n\n'
+        'You called both functions, which is an error, because both functions '
+        'enable you to use mixed precision. The first function enables mixed '
+        'precision in the graph with a graph rewrite. However it is currently '
+        'not very customizable, and does not support eager. The second '
+        'function is for Keras layers, but is not yet fully complete.')
+
+
 @keras_export('keras.mixed_precision.experimental.set_policy')
 def set_policy(policy):
   """Sets the global Policy."""
   global _global_policy
+  _check_if_mixed_precision_graph_rewrite_is_enabled()
   if not isinstance(policy, Policy):
     policy = Policy(policy)
   _global_policy = policy
+  mixed_precision_global_state.using_default_mixed_precision_policy = (
+      _global_policy is _default_policy)
 
 
 # TODO(reedwm): Make this thread local

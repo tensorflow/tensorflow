@@ -23,6 +23,9 @@ import contextlib
 import copy
 import json
 import os
+import six
+import subprocess
+import sys
 import threading
 import numpy as np
 
@@ -39,12 +42,13 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.eager import context
-from tensorflow.python.estimator import run_config
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import server_lib
+from tensorflow.python.util import nest
 
 
 original_run_std_server = dc._run_std_server  # pylint: disable=protected-access
@@ -209,7 +213,7 @@ class MultiWorkerTestBase(test.TestCase):
   @classmethod
   def setUpClass(cls):
     """Create a local cluster with 2 workers."""
-    cls._cluster_spec = create_in_process_cluster(num_workers=2, num_ps=0)
+    cls._cluster_spec = create_in_process_cluster(num_workers=2, num_ps=1)
     cls._default_target = 'grpc://' + cls._cluster_spec['worker'][0]
 
   def setUp(self):
@@ -286,9 +290,14 @@ class MultiWorkerTestBase(test.TestCase):
 
     return config
 
-  def _run_client(self, client_fn, task_type, task_id, num_gpus, *args,
-                  **kwargs):
-    result = client_fn(task_type, task_id, num_gpus, *args, **kwargs)
+  def _run_client(self, client_fn, task_type, task_id, num_gpus, eager_mode,
+                  *args, **kwargs):
+    if eager_mode:
+      with context.eager_mode():
+        result = client_fn(task_type, task_id, num_gpus, *args, **kwargs)
+    else:
+      with context.graph_mode():
+        result = client_fn(task_type, task_id, num_gpus, *args, **kwargs)
     if np.all(result):
       with self._lock:
         self._result += 1
@@ -306,11 +315,12 @@ class MultiWorkerTestBase(test.TestCase):
       **kwargs: will be passed to `client_fn`.
     """
     threads = []
-    for task_type in [run_config.TaskType.CHIEF, run_config.TaskType.WORKER]:
+    for task_type in ['chief', 'worker']:
       for task_id in range(len(cluster_spec.get(task_type, []))):
         t = threading.Thread(
             target=self._run_client,
-            args=(client_fn, task_type, task_id, num_gpus) + args,
+            args=(client_fn, task_type, task_id, num_gpus,
+                  context.executing_eagerly()) + args,
             kwargs=kwargs)
         t.start()
         threads.append(t)
@@ -369,7 +379,6 @@ class IndependentWorkerTestBase(test.TestCase):
   """Testing infra for independent workers."""
 
   def _make_mock_run_std_server(self):
-    thread_local = threading.local()
 
     def _mock_run_std_server(*args, **kwargs):
       ret = original_run_std_server(*args, **kwargs)
@@ -377,9 +386,9 @@ class IndependentWorkerTestBase(test.TestCase):
       # of remote sessions taking local ports that have been assigned to std
       # servers. Only call this barrier the first time this function is run for
       # each thread.
-      if not getattr(thread_local, 'server_started', False):
+      if not getattr(self._thread_local, 'server_started', False):
         self._barrier.wait()
-      thread_local.server_started = True
+      self._thread_local.server_started = True
       return ret
 
     return _mock_run_std_server
@@ -391,6 +400,8 @@ class IndependentWorkerTestBase(test.TestCase):
     self._coord = coordinator.Coordinator()
     super(IndependentWorkerTestBase, self).setUp()
     self._mock_context.__enter__()
+    # threading local object to be shared by all threads
+    self._thread_local = threading.local()
 
   def tearDown(self):
     self._mock_context.__exit__(None, None, None)
@@ -411,18 +422,39 @@ class IndependentWorkerTestBase(test.TestCase):
 
   def _run_task_in_thread(self, task_fn, cluster_spec, task_type, task_id,
                           *args, **kwargs):
-    if task_type:
-      tf_config = {
-          'cluster': cluster_spec,
-          'task': {
-              'type': task_type,
-              'index': task_id
-          }
-      }
-    else:
-      tf_config = {
-          'cluster': cluster_spec,
-      }
+    """Run tasks in a thread.
+
+    If `tf_config` is provided, use it for the new thread; if not, construct one
+    from `cluster_spec`, `task_type`, and `task_id`, and provide it to the new
+    thread to be set as `TF_CONFIG` environment.
+
+    Arguments:
+      task_fn: The function to run in the new thread.
+      cluster_spec: The cluster spec.
+      task_type: The task type.
+      task_id: The task id.
+      *args: Additional positional arguments to provide to the thread's task_fn.
+      **kwargs: Additional keyword arguments to provide to the thread's task_fn.
+        If `tf_config` is provided, that dict will be used for the TF_CONFIG for
+        the new thread.
+
+    Returns:
+      The thread that has started.
+    """
+    tf_config = kwargs.pop('tf_config', None)
+    if tf_config is None:
+      if task_type:
+        tf_config = {
+            'cluster': cluster_spec,
+            'task': {
+                'type': task_type,
+                'index': task_id
+            }
+        }
+      else:
+        tf_config = {
+            'cluster': cluster_spec,
+        }
     t = threading.Thread(
         target=self._task_thread,
         args=(task_fn, tf_config, context.executing_eagerly()) + args,
@@ -443,7 +475,91 @@ class IndependentWorkerTestBase(test.TestCase):
     return threads
 
   def join_independent_workers(self, worker_threads):
-    self._coord.join(worker_threads)
+    try:
+      self._coord.join(worker_threads)
+    except errors.UnknownError as e:
+      if 'Could not start gRPC server' in e.message:
+        self.skipTest('Cannot start std servers.')
+      else:
+        raise
+
+
+class MultiWorkerMultiProcessTest(test.TestCase):
+  """Testing infra for independent workers using multiple processes."""
+
+  def _run_task_in_process(self, cmd_args, cluster_spec, task_type, task_id):
+    env = os.environ.copy()
+    env['TF_CONFIG'] = json.dumps({
+        'cluster': cluster_spec,
+        'task': {
+            'type': task_type,
+            'index': task_id
+        }
+    })
+    return subprocess.Popen(
+        cmd_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+
+  def run_multiple_tasks_in_processes(self, cmd_args, cluster_spec):
+    """Run `cmd_args` in a process for each task in `cluster_spec`."""
+    processes = {}
+    for task_type in cluster_spec.keys():
+      processes[task_type] = []
+      for task_id in range(len(cluster_spec[task_type])):
+        p = self._run_task_in_process(cmd_args, cluster_spec, task_type,
+                                      task_id)
+        processes[task_type].append(p)
+    return processes
+
+  def join_independent_workers(self, worker_processes):
+    return_codes = []
+    for p in nest.flatten(worker_processes):
+      try:
+        # Calling p.wait() will hang if we don't consume its output.
+        p.communicate()
+      except ValueError:
+        # The output of the process may have been consumed, in which case
+        # calling `p.communicate()` will raise a ValueError.
+        pass
+      finally:
+        return_codes.append(p.returncode)
+    for return_code in return_codes:
+      self.assertEqual(return_code, 0)
+
+  def stream_stderr(self, processes, print_only_first=False):
+    """Consume stderr of all processes and print to stdout.
+
+    To reduce the amount of logging, caller can set print_only_first to True.
+    In that case, this function only prints stderr from the first process of
+    each type.
+
+    Arguments:
+      processes: A dictionary from process type string -> list of processes.
+      print_only_first: If true, only print output from first process of each
+        type.
+    """
+
+    def _stream_stderr_single_process(process, type_string, index,
+                                      print_to_stdout):
+      """Consume a single process's stderr and optionally print to stdout."""
+      while True:
+        output = process.stderr.readline()
+        if not output and process.poll() is not None:
+          break
+        if output and print_to_stdout:
+          print('{}{} {}'.format(type_string, index, output.strip()))
+          sys.stdout.flush()
+
+    stream_threads = []
+    for process_type, process_list in six.iteritems(processes):
+      for i in range(len(process_list)):
+        print_to_stdout = (not print_only_first) or (i == 0)
+        thread = threading.Thread(
+            target=_stream_stderr_single_process,
+            args=(process_list[i], process_type, i, print_to_stdout))
+        thread.start()
+        stream_threads.append(thread)
+    for thread in stream_threads:
+      thread.join()
 
 
 def get_tf_config_task():

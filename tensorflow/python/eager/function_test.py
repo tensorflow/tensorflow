@@ -30,6 +30,7 @@ import numpy
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
+from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -40,6 +41,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import function as tf_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
@@ -64,6 +66,8 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
@@ -100,11 +104,21 @@ class DefunnedMiniModel(MiniModel):
     return super(DefunnedMiniModel, self).call(inputs, training=training)
 
 
+def _example_indexed_slices_with_dense_shape():
+  return ops.IndexedSlices(
+      constant_op.constant([1, 2]), constant_op.constant([0, 1]),
+      constant_op.constant([2]))
+
+
+def _example_indexed_slices_without_dense_shape():
+  return ops.IndexedSlices(
+      constant_op.constant([1, 2]), constant_op.constant([0, 1]))
+
+
 class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testBasic(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
     t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
     sq = matmul(t, t, transpose_a=True)
     sq2 = matmul(sq, t, transpose_a=True)
@@ -137,7 +151,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
 
-    @function.defun
+    @function.defun(experimental_relax_shapes=True)
     def func(a):
       if a._shape_tuple()[0] is None:
         unknown_dim[0] = True
@@ -169,7 +183,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testNestedInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
 
-    @function.defun
+    @function.defun(experimental_relax_shapes=True)
     def func(a_, b_=None):
       del a_  # Only used to check which cache is used.
       self.assertEqual(b_[0]._shape_tuple(), ())
@@ -208,7 +222,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testFunctionRelaxationLosesInnerDimWithKerasLayer(self):
     layer = keras.layers.Dense(1)
-    fn = def_function.function()(layer)
+    fn = def_function.function(experimental_relax_shapes=True)(layer)
 
     with self.captureWritesToStream(sys.stderr) as printed:
       fn(array_ops.ones((3, 2)))
@@ -222,7 +236,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # matmul to fail, due to incompatible dims.  What would have been a graph
     # build time error (layer would complain about the inner dim being 4).
     with self.captureWritesToStream(sys.stderr) as printed:
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, r'MatMul'):
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   r'Matrix size-incompatible'):
         fn(array_ops.ones((3, 4)))
 
   def testNestedShapeFunctionRelaxation(self):
@@ -231,14 +246,14 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     # The inner function will go through shape relaxation because the shapes it
     # receives will be [1], [2], [3], ...
-    @def_function.function
+    @def_function.function(experimental_relax_shapes=True)
     def bar(x_shape):
       got_shape[0] = x_shape._shape_tuple()
       return x_shape
 
     # The outer function will not go through shape relaxation because the shapes
     # it receives will be [1], [[1]], [[[1]]], ...
-    @def_function.function
+    @def_function.function(experimental_relax_shapes=True)
     def foo(ones):
       return bar(array_ops.shape(ones))
 
@@ -275,8 +290,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(add_2._name, 'add_2')
 
   def testBasicGraphMode(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     @def_function.function
     def sq(a):
@@ -287,8 +301,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testNestedInputsGraphMode(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
@@ -302,8 +315,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testNestedOutputsGraphMode(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
@@ -332,8 +344,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(f().shape, ())
 
   def testBasicGraphFunction(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     @def_function.function
     def sq(a):
@@ -347,8 +358,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testInputSpecGraphFunction(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     @def_function.function
     def sq(a):
@@ -367,18 +377,18 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out2, math_ops.matmul(t2, t2).numpy())
 
   def testNestedInputSpecGraphFunction(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     @def_function.function
     def sq(mats):
       ((a, b),) = mats
       return matmul(a, b)
 
-    with self.assertRaisesRegexp(ValueError, "two arguments named 'mats'"):
-      sq.get_concrete_function(
-          [(tensor_spec.TensorSpec((None, None), dtypes.float32),
-            tensor_spec.TensorSpec((None, None), dtypes.float32))])
+    sq_op_autonamed = sq.get_concrete_function(
+        [(tensor_spec.TensorSpec((None, None), dtypes.float32),
+          tensor_spec.TensorSpec((None, None), dtypes.float32))])
+    self.assertEqual([None, None], sq_op_autonamed.output_shapes.as_list())
+
     sq_op = sq.get_concrete_function(
         [(tensor_spec.TensorSpec((None, None), dtypes.float32,
                                  name='first_mat'),
@@ -388,11 +398,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     t1 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
     t2 = constant_op.constant([[1.4, 2.4], [3.4, 4.4]])
-    with self.assertRaisesRegexp(
-        TypeError, 'bound to Tensors within nested structures'):
-      sq_op(t1, t2)
     out = sq_op(first_mat=t1, second_mat=t2)
     self.assertAllEqual(out, math_ops.matmul(t1, t2).numpy())
+    self.assertAllEqual(sq_op_autonamed(t1, t2),
+                        math_ops.matmul(t1, t2).numpy())
 
   def testExecutingStatelessDefunConcurrently(self):
 
@@ -462,8 +471,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(f(), x)
 
   def testNestedInputsGraphFunction(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
@@ -480,8 +488,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testNestedOutputGraphFunction(self):
-    # TODO(b/121134877): Remove the autograph override.
-    matmul = def_function.function(math_ops.matmul, autograph=False)
+    matmul = def_function.function(math_ops.matmul)
 
     @def_function.function
     def sq(a):
@@ -912,76 +919,95 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined = def_function.function(sum_gather)
     self.assertAllEqual(sum_gather(), defined())
 
-  def testReturningIndexedSlicesWithDefun(self):
+  @parameterized.named_parameters([
+      ('IndexedSlicesWithDenseShape',
+       _example_indexed_slices_with_dense_shape,),
+      ('IndexedSlicesWithoutDenseShape',
+       _example_indexed_slices_without_dense_shape,),
+      ('RaggedTensorRaggedRank1', ragged_tensor.RaggedTensor.from_row_lengths,
+       {'values': [1, 2, 3], 'row_lengths': [2, 0, 1]}),
+      ('RaggedTensorRaggedRank2',
+       ragged_tensor.RaggedTensor.from_nested_row_lengths,
+       {'flat_values': [1, 2, 3], 'nested_row_lengths': [[1, 2], [2, 0, 1]]}),
+      ('SparseTensor', sparse_tensor.SparseTensor,
+       {'values': [1, 2, 3], 'indices': [[0], [8], [10]], 'dense_shape': [20]}),
+  ])  # pyformat: disable
+  def testReturnCompositeTensorWithDefun(self,
+                                         factory_fn,
+                                         factory_kwargs={},
+                                         input_signature=None):
+    input_ct = factory_fn(**factory_kwargs)
 
-    def validate(indexed_slice):
-      @def_function.function
-      def f():
-        return indexed_slice
+    @def_function.function(input_signature=input_signature)
+    def f():
+      return input_ct
 
-      output = f()
-      self.assertIsInstance(output, ops.IndexedSlices)
-      self.assertAllEqual(indexed_slice.values, output.values)
-      self.assertAllEqual(indexed_slice.indices, output.indices)
-      self.assertAllEqual(indexed_slice.dense_shape, output.dense_shape)
+    output_ct = f()
+    self.assertIsInstance(output_ct, type(input_ct))
+    nest.assert_same_structure(input_ct, output_ct, expand_composites=True)
 
-      self.assertEqual(
-          f.get_concrete_function().output_shapes,
-          indexed_slice.values.shape)
+    input_flat = nest.flatten(input_ct, expand_composites=True)
+    output_flat = nest.flatten(output_ct, expand_composites=True)
+    for (input_component, output_component) in zip(input_flat, output_flat):
+      self.assertAllEqual(input_component, output_component)
 
-    arg = ops.IndexedSlices(
-        values=constant_op.constant([1, 2]),
-        indices=constant_op.constant([0, 1]),
-        dense_shape=constant_op.constant([2]))
-    validate(arg)
+  @parameterized.named_parameters([
+      ('IndexedSlicesWithDenseShape',
+       _example_indexed_slices_with_dense_shape,),
+      ('IndexedSlicesWithoutDenseShape',
+       _example_indexed_slices_without_dense_shape,),
+      ('RaggedTensorRaggedRank1',
+       ragged_tensor.RaggedTensor.from_row_lengths,
+       {'values': [1, 2, 3], 'row_lengths': [2, 0, 1]}),
+      ('RaggedTensorRaggedRank2',
+       ragged_tensor.RaggedTensor.from_nested_row_lengths,
+       {'flat_values': [1, 2, 3], 'nested_row_lengths': [[1, 2], [2, 0, 1]]}),
+      ('SparseTensor',
+       sparse_tensor.SparseTensor,
+       {'values': [1, 2, 3], 'indices': [[0], [8], [10]], 'dense_shape': [20]}),
+      ('RaggedTensorRaggedRank1WithSignature',
+       ragged_tensor.RaggedTensor.from_row_lengths,
+       {'values': [1, 2, 3], 'row_lengths': [2, 0, 1]},
+       [ragged_tensor.RaggedTensorSpec([None, None], dtypes.int32)]),
+      ('RaggedTensorRaggedRank2WithSignature',
+       ragged_tensor.RaggedTensor.from_nested_row_lengths,
+       {'flat_values': [1, 2, 3], 'nested_row_lengths': [[1, 2], [2, 0, 1]]},
+       [ragged_tensor.RaggedTensorSpec([None, None, None], dtypes.int32)]),
+      ('SparseTensorWithSignature',
+       sparse_tensor.SparseTensor,
+       {'values': [1, 2, 3], 'indices': [[0], [8], [10]], 'dense_shape': [20]},
+       [sparse_tensor.SparseTensorSpec([None], dtypes.int32)]),
+  ])  # pyformat: disable
+  def testCompositeAsArgumentTensorWithDefun(self,
+                                             factory_fn,
+                                             factory_kwargs={},
+                                             input_signature=None):
+    input_ct = factory_fn(**factory_kwargs)
 
-    arg = ops.IndexedSlices(
-        values=constant_op.constant([1, 2]),
-        indices=constant_op.constant([0, 1]),
-        dense_shape=None)
-    validate(arg)
+    @def_function.function(input_signature=input_signature)
+    def f(x):
+      return x
 
-  def testIndexedSliceAsArgumentWithDefun(self):
+    output_ct = f(input_ct)
+    self.assertIsInstance(output_ct, type(input_ct))
+    nest.assert_same_structure(input_ct, output_ct, expand_composites=True)
 
-    @def_function.function
-    def f(indexed_slice):
-      return indexed_slice
+    input_flat = nest.flatten(input_ct, expand_composites=True)
+    output_flat = nest.flatten(output_ct, expand_composites=True)
+    for (input_component, output_component) in zip(input_flat, output_flat):
+      self.assertAllEqual(input_component, output_component)
 
-    def validate(arg):
-      output = f(arg)
-      self.assertIsInstance(output, ops.IndexedSlices)
-      self.assertAllEqual(arg.values, output.values)
-      self.assertAllEqual(arg.indices, output.indices)
-      self.assertAllEqual(arg.dense_shape, output.dense_shape)
 
-    indexed_slice = ops.IndexedSlices(
-        values=constant_op.constant([1]),
-        indices=constant_op.constant([0]),
-        dense_shape=constant_op.constant([1]))
-    validate(indexed_slice)
-
-    # Test that `f` works even when `dense_shape` is None.
-    indexed_slice = ops.IndexedSlices(
-        values=constant_op.constant([1]),
-        indices=constant_op.constant([0]),
-        dense_shape=None)
-    validate(indexed_slice)
-
+  @test_util.run_gpu_only
   def testFunctionOnDevice(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     x = constant_op.constant([1.]).gpu()
-    # TODO(b/121134877): Remove the autograph override.
-    f = def_function.function(math_ops.add, autograph=False)
+    f = def_function.function(math_ops.add)
     y = f(x, x).cpu()
     self.assertAllEqual(y, [2.])
 
+  @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   def testFunctionWithResourcesOnDifferentDevices(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     with ops.device('/cpu:0'):
       v_cpu = resource_variable_ops.ResourceVariable([0.0, 1.0, 2.0])
 
@@ -999,11 +1025,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     expected = self.evaluate(sum_gather())
     self.assertAllEqual(expected, self.evaluate(defined()))
 
+  @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   def testOpInFunctionWithConflictingResourceInputs(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     with ops.device('/cpu:0'):
       v_cpu = resource_variable_ops.ResourceVariable(
           [0.0, 1.0, 2.0], name='cpu')
@@ -1038,25 +1062,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         self.evaluate(variables.global_variables_initializer())
       self.evaluate(resource_apply_adam())
 
+  @test_util.run_gpu_only
   def testFunctionHandlesInputsOnDifferentDevices(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     # The Reshape op requires the shape tensor to be placed in host memory.
-    # TODO(b/121134877): Remove the autograph override.
-    reshape = def_function.function(array_ops.reshape, autograph=False)
+    reshape = def_function.function(array_ops.reshape)
     value = constant_op.constant([1., 2.]).gpu()
     shape = constant_op.constant([2, 1])
     reshaped = reshape(value, shape).cpu()
     self.assertAllEqual(reshaped, [[1], [2]])
 
+  @test_util.run_gpu_only
   def testFunctionHandlesInputsPlacedOnTheWrongDeviceGracefully(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     # The Reshape op requires the shape tensor to be placed in host memory.
-    # TODO(b/121134877): Remove the autograph override.
-    reshape = def_function.function(array_ops.reshape, autograph=False)
+    reshape = def_function.function(array_ops.reshape)
     value = constant_op.constant([1., 2.])
     shape = constant_op.constant([2, 1]).gpu()
     reshape(value, shape)  # No error is raised
@@ -1115,9 +1133,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(1, int(self.evaluate(read())))
 
   def testSequenceInputs(self):
-    # TODO(b/121134877): Remove the autograph override.
-    clip_by_global_norm = def_function.function(
-        clip_ops.clip_by_global_norm, autograph=False)
+    clip_by_global_norm = def_function.function(clip_ops.clip_by_global_norm)
     t_list = [constant_op.constant(1.0), constant_op.constant(2.0)]
     clipped_list, global_norm = clip_by_global_norm(t_list,
                                                     constant_op.constant(.2))
@@ -1303,12 +1319,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with ops.device('cpu:1'):
       self.assertEqual(0., self.evaluate(default_graph_function()))
 
+  @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   def testColocateWithRespected(self):
     # TODO(b/113291792): Use multiple CPUs instead of a GPU.
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     with ops.device('cpu:0'):
       x = constant_op.constant(1.0)
 
@@ -1400,13 +1414,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined(t)
     self.assertLen(total_function_cache(defined), 2)
 
-  def testCacheTensorUnknownShapesCollision(self):
+  def testCacheTensorUnknownShapesCollisionRelaxedShapes(self):
 
     def func(t):
       return t + t
 
     with context.graph_mode(), self.cached_session():
-      defined = function.defun(func)
+      defined = function.defun(func, experimental_relax_shapes=True)
 
       p = array_ops.placeholder(dtype=dtypes.float32, shape=[])
       defined(p)
@@ -1707,7 +1721,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(x.numpy(), foo(x).numpy())
 
   def testInputSignatureWithPartialFunction(self):
-    self.skipTest('b/124441704')
     def full_function(a, b, c=3.0):
       return a, b, c
 
@@ -1771,21 +1784,56 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
-  def testInputSignatureWithKeywordArgsFails(self):
-
-    def foo(a, **kwargs):
-      del a
+  def testInputSignatureWithKeywordArgs(self):
+    def foo(a, b, **kwargs):
       del kwargs
+      return a, b
 
-    with self.assertRaisesRegexp(
-        ValueError, 'Cannot define a TensorFlow function from a Python '
-        'function with keyword arguments when input_signature.*'):
-      function.defun(
-          foo,
-          input_signature=[
-              tensor_spec.TensorSpec([], dtypes.float32),
-              tensor_spec.TensorSpec([], dtypes.int64)
-          ])
+    x = function.defun(
+        foo,
+        input_signature=[
+            tensor_spec.TensorSpec([], dtypes.float32),
+            tensor_spec.TensorSpec([], dtypes.int32)
+        ]).get_concrete_function()
+    result = x(constant_op.constant(5.0), constant_op.constant(5))
+    self.assertAllEqual(result, [5.0, 5])
+
+  def testInputSignatureWithCompositeTensors(self):
+    def f(rt):
+      self.assertEqual(rt.values.shape.as_list(), [None])
+      self.assertEqual(rt.row_splits.shape.as_list(), [4])
+      return rt
+
+    signature = [ragged_tensor.RaggedTensorSpec(
+        shape=[3, None], dtype=dtypes.int32)]
+    defined = function.defun(f, input_signature=signature)
+    rt1 = ragged_factory_ops.constant([[1], [], [2, 3, 4]])
+    out1 = defined(rt1)
+    self.assertLen(total_function_cache(defined), 1)
+    self.assertAllEqual(out1.values, rt1.values)
+    self.assertAllEqual(out1.row_splits, rt1.row_splits)
+
+    # Changing the row lengths shouldn't create a new function.
+    rt2 = ragged_factory_ops.constant([[1, 2], [3, 4], [5]])
+    out2 = defined(rt2)
+    self.assertLen(total_function_cache(defined), 1)
+    self.assertAllEqual(out2.values, rt2.values)
+    self.assertAllEqual(out2.row_splits, rt2.row_splits)
+
+    # Different number of rows
+    rt3 = ragged_factory_ops.constant([[1, 2], [3, 4], [5], [6]])
+    with self.assertRaisesRegexp(ValueError, 'incompatible'):
+      defined(rt3)
+
+    # Different dtype
+    rt4 = ragged_factory_ops.constant([[1.0, 2.0], [], [3.0]])
+    with self.assertRaisesRegexp(ValueError, 'Structure .* does not match'):
+      defined(rt4)
+
+    # Different rank
+    rt5 = ragged_factory_ops.constant([[[1]], [[2]], [[3]]])
+    with self.assertRaisesRegexp(ValueError, 'does not match'):
+      defined(rt5)
 
   def testTensorKeywordArguments(self):
 
@@ -2187,6 +2235,40 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         # Grappler fallback to use the CPU impl even called with GPU function.
         self.assertEqual(y_value, 3.0)
 
+  def testSwapImplementationInEager(self):
+    if not context.executing_eagerly():
+      self.skipTest('eager only')
+
+    context.context().set_optimizer_experimental_options(
+        {'min_graph_nodes': -1, 'implementation_selector': True})
+
+    # TODO(b/133178886): Remove _noinline=True once the function is not default
+    # inlined in eager mode with api_implements attribute.
+    @function.defun_with_attributes(
+        attributes={'api_implements': 'foo',
+                    'api_preferred_device': 'CPU',
+                    '_noinline': True})
+    def on_cpu(x):
+      return x + 2
+
+    # TODO(b/133178886): Remove _noinline=True once the function is not default
+    # inlined in eager mode with api_implements attribute.
+    @function.defun_with_attributes(
+        attributes={'api_implements': 'foo',
+                    'api_preferred_device': 'GPU',
+                    '_noinline': True})
+    def on_gpu(x):
+      return x + 4
+
+    @function.defun
+    def run_on_cpu(t):
+      function.register(on_cpu, t)
+      with ops.device('CPU:0'):
+        return on_gpu(t)
+
+    # Expect to run the on_cpu branch, regardless whether gpu is available.
+    self.assertEqual(run_on_cpu(constant_op.constant(1)).numpy(), 3)
+
   def testDefunFunctionSeparateGraphs(self):
     with context.graph_mode():
 
@@ -2524,10 +2606,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertIn('node assert_equal/Assert/Assert (defined at', e.message)
     self.assertNotIn('fn3', e.message)
 
+  @test_util.run_gpu_only
   def testFunctionIsNotPinned(self):
     """Tests that functions aren't pinned to the CPU by the eager runtime."""
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
     seed1, seed2 = 79, 25
     shape = constant_op.constant([4, 7])
     dtype = dtypes.float32
@@ -2576,6 +2657,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       func(constant_op.constant([[3., 4.], [5., 6.], [7., 8.]]))
     # Tracing more than twice per input doesn't make sense.
     self.assertLess(trace_count[0], 13)
+
+  def testLimitedRetracingWithCompositeTensors(self):
+    trace_count = [0]
+
+    @def_function.function
+    def f(x):
+      trace_count[0] += 1
+      return x
+
+    for i in range(10):
+      f(ragged_factory_ops.constant([[1, 2], [i]]))
+      f(ragged_factory_ops.constant([[1, 2], [], [3, 4, 5]]))
+      f(ragged_factory_ops.constant([[[1, 2], [3]], [[4, 5, 6]]]))
+      self.assertEqual(trace_count[0], 3)
 
   def test_concrete_function_shape_mismatch(self):
 
@@ -2634,14 +2729,23 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual((5, 4, 2), self.evaluate(output1).shape)
     self.assertEqual((10, 4, 3), self.evaluate(output2).shape)
 
+  def testAutoGraphContext(self):
+
+    @def_function.function
+    def test_fn():
+      self.assertEqual(
+          ag_ctx.control_status_ctx().status, ag_ctx.Status.ENABLED)
+
+    prev_status = ag_ctx.control_status_ctx().status
+    test_fn()
+    self.assertEqual(ag_ctx.control_status_ctx().status, prev_status)
+
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
+  @test_util.run_gpu_only
   def testMultiDeviceOutput(self):
     """Tests that functions can produce outputs on multiple devices."""
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     @function.defun
     def func(a, b, transpose_a):
       with ops.device('/device:CPU:0'):
@@ -2657,10 +2761,8 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(m2.numpy(), [[10, 14], [14, 20]])
     self.assertRegexpMatches(m2.backing_device, 'GPU')
 
+  @test_util.run_gpu_only
   def testEmptyBody(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     @function.defun
     def func(a, b):
       return b, a
@@ -2676,6 +2778,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(m2.numpy(), 3.0)
     self.assertRegexpMatches(m2.backing_device, 'CPU')
 
+  @test_util.run_gpu_only
   def testMultiDeviceInt32(self):
     """Tests that multi-device functions can take and output INT32s.
 
@@ -2690,9 +2793,6 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     FunctionLibraryRuntime now. We can try that.
 
     """
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     with ops.device('/device:CPU:0'):
       int_cpu = constant_op.constant(3, dtype=dtypes.int32)
       resource = resource_variable_ops.ResourceVariable(5, dtype=dtypes.int32)
@@ -2721,11 +2821,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(m2.numpy(), 23)
     self.assertRegexpMatches(m2.backing_device, 'CPU')
 
+  @test_util.run_gpu_only
   def testMultiDeviceColocateWith(self):
     """Tests that function's outputs respect colocation constraints."""
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     @function.defun
     def func(a, b):
       with ops.colocate_with(a):
@@ -2747,10 +2845,8 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(rb.numpy(), 30.0)
       self.assertRegexpMatches(rb.backing_device, dev2)
 
+  @test_util.run_gpu_only
   def testMultiDeviceResources(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     with ops.device('/device:CPU:0'):
       c1 = resource_variable_ops.ResourceVariable(2.0)
       c2 = resource_variable_ops.ResourceVariable(7.0)
@@ -2780,10 +2876,8 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(r2.numpy(), 14.0)
     self.assertRegexpMatches(r2.backing_device, 'GPU')
 
+  @test_util.run_gpu_only
   def testOutputResources(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     with ops.device('/device:CPU:0'):
       c1 = resource_variable_ops.ResourceVariable(2.0)
     with ops.device('/device:GPU:0'):
@@ -2826,11 +2920,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     check_handle(res1, 3.0)
     check_handle(res2, 2.0)
 
+  @test_util.run_gpu_only
   def testComplexInputOutputDevicePattern(self):
     """Tests input/output mapping logic in partitioning."""
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     with ops.device('/device:CPU:0'):
       rc0 = resource_variable_ops.ResourceVariable(2.0)
       rc1 = resource_variable_ops.ResourceVariable(3.0)
@@ -2872,11 +2964,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(m2.numpy(), 55.0)
     self.assertEqual(r2.numpy(), 34000.0 + 13.0 * 7.0)
 
+  @test_util.run_gpu_only
   def testArgumentPrunning(self):
     """Tests functions taking unnecessary arguments."""
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found.')
-
     with ops.device('/device:CPU:0'):
       c1 = constant_op.constant(5.0)
       c2 = constant_op.constant(7.0)
@@ -2953,6 +3043,67 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     train()
 
+  def testEarlyStoppingTrainingLoopInFunction(self):
+    layer = core.Dense(2)
+    dataset = (
+        dataset_ops.DatasetV2.from_tensors(
+            (array_ops.ones([784]), array_ops.ones([], dtypes.int32)))
+        .map(lambda x, y: (x, y))
+        .repeat(10)
+        .batch(32))
+    optimizer = adam.Adam()
+
+    @def_function.function
+    def train():
+      for x, y in dataset:
+        with backprop.GradientTape() as tape:
+          out = layer(x)
+          loss = math_ops.reduce_mean(
+              nn_ops.sparse_softmax_cross_entropy_with_logits(
+                  logits=out, labels=y))
+        layer_variables = layer.trainable_variables
+        gradients = tape.gradient(loss, layer_variables)
+        optimizer.apply_gradients(zip(gradients, layer_variables))
+        if optimizer.iterations > 3:
+          break
+
+    train()
+
+  def testDeferredCapture(self):
+    value = 1.0
+
+    @def_function.function
+    def lazy_capture(x):
+      y = ops.get_default_graph().capture_call_time_value(
+          lambda: value, tensor_spec.TensorSpec(None))
+      return x + y
+
+    self.assertAllEqual(lazy_capture(2.0), 3.0)
+    # After changing the value of `value` the function call should return a
+    # different result.
+    value = 2.0
+    self.assertAllEqual(lazy_capture(2.0), 4.0)
+
+  def testDeferredCaptureWithKey(self):
+    value0 = 1.0
+    value1 = 2.0
+
+    @def_function.function
+    def lazy_capture(x):
+      w = ops.get_default_graph().capture_call_time_value(
+          lambda: value0, tensor_spec.TensorSpec(None), key=0)
+      y = ops.get_default_graph().capture_call_time_value(
+          lambda: value1, tensor_spec.TensorSpec(None), key=1)
+      def bad_closure():
+        raise ValueError('Should not run')
+      z = ops.get_default_graph().capture_call_time_value(
+          bad_closure, tensor_spec.TensorSpec(None), key=1)
+      return x + y + w + z
+
+    self.assertAllEqual(lazy_capture(2.0), 7.0)
+    value0 = 2.0
+    value1 = 3.0
+    self.assertAllEqual(lazy_capture(2.0), 10.0)
 
 if __name__ == '__main__':
   ops.enable_eager_execution(

@@ -1,12 +1,13 @@
 # `Predictor` classes provide an interface for efficient, repeated inference.
 
-package(default_visibility = ["//tensorflow/contrib/predictor:__subpackages__"])
+load("//tensorflow:tensorflow.bzl", "py_test")
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow/contrib/predictor:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "predictor",
@@ -110,6 +111,7 @@ py_test(
     name = "saved_model_predictor_test",
     srcs = ["saved_model_predictor_test.py"],
     data = [":test_export_dir"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -126,6 +128,7 @@ py_test(
     name = "predictor_factories_test",
     srcs = ["predictor_factories_test.py"],
     data = [":test_export_dir"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -137,6 +140,7 @@ py_test(
 py_test(
     name = "core_estimator_predictor_test",
     srcs = ["core_estimator_predictor_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -150,6 +154,7 @@ py_test(
 py_test(
     name = "contrib_estimator_predictor_test",
     srcs = ["contrib_estimator_predictor_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [

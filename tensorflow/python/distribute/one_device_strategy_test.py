@@ -48,6 +48,16 @@ class OneDeviceStrategyTest(
   def testCallAndMergeExceptions(self, distribution):
     self._test_call_and_merge_exceptions(distribution)
 
+  def testReplicateDataset(self, distribution):
+    dataset_fn = lambda: dataset_ops.Dataset.range(10)
+    expected_values = [[i] for i in range(10)]
+    input_fn = self._input_fn_to_test_input_context(
+        dataset_fn,
+        expected_num_replicas_in_sync=1,
+        expected_num_input_pipelines=1,
+        expected_input_pipeline_id=0)
+    self._test_input_fn_iterable(distribution, input_fn, expected_values)
+
   def testMakeInputFnIteratorWithDataset(self, distribution):
     dataset_fn = lambda: dataset_ops.Dataset.range(10)
     expected_values = [[i] for i in range(10)]
@@ -74,10 +84,10 @@ class OneDeviceStrategyTest(
     iterator = distribution.make_input_fn_iterator(input_fn)
     self._test_input_fn_iterator(
         iterator, distribution.extended.worker_devices, expected_values,
-        test_reinitialize=False)
+        test_reinitialize=False, ignore_order=True)
 
-  def testNumpyIterator(self, distribution):
-    self._test_numpy_iterator(distribution)
+  def testNumpyDataset(self, distribution):
+    self._test_numpy_dataset(distribution)
 
   def testRun(self, distribution):
     self._test_run(distribution)
@@ -99,6 +109,9 @@ class OneDeviceStrategyTest(
 
   def testAllReduceMeanGradientTape(self, distribution):
     self._test_all_reduce_mean_gradient_tape(distribution)
+
+  def testTrainableVariables(self, distribution):
+    self._test_trainable_variable(distribution)
 
 
 @combinations.generate(

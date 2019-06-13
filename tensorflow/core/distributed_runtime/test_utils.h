@@ -152,7 +152,7 @@ class TestWorkerCache : public WorkerCacheInterface {
     }
   }
 
-  WorkerInterface* CreateWorker(const string& target) override {
+  WorkerInterface* GetOrCreateWorker(const string& target) override {
     auto it = workers_.find(target);
     if (it != workers_.end()) {
       return it->second;

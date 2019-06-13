@@ -26,7 +26,7 @@ namespace tensorflow {
 
 using errors::InvalidArgument;
 
-template <typename T>
+template <typename T, typename SPLITS_TYPE>
 class RaggedRangeOp : public OpKernel {
  public:
   using OpKernel::OpKernel;
@@ -60,7 +60,7 @@ class RaggedRangeOp : public OpKernel {
                   InvalidArgument("starts, limits, and deltas must have the "
                                   "same shape"));
     }
-    int64 nrows = in_sizes.empty() ? 1 : in_sizes[0];
+    SPLITS_TYPE nrows = in_sizes.empty() ? 1 : in_sizes[0];
 
     const auto& starts = starts_in.flat<T>();
     const auto& limits = limits_in.flat<T>();
@@ -71,7 +71,7 @@ class RaggedRangeOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({nrows + 1}),
                                             &rt_nested_splits_out));
-    auto rt_nested_splits = rt_nested_splits_out->flat<int64>();
+    auto rt_nested_splits = rt_nested_splits_out->flat<SPLITS_TYPE>();
     rt_nested_splits(0) = 0;
     for (int row = 0; row < nrows; ++row) {
       T start = broadcast_starts ? starts(0) : starts(row);
@@ -81,7 +81,7 @@ class RaggedRangeOp : public OpKernel {
       rt_nested_splits(row + 1) =
           rt_nested_splits(row) + RangeSize(start, limit, delta);
     }
-    int64 nvals = rt_nested_splits(nrows);
+    SPLITS_TYPE nvals = rt_nested_splits(nrows);
 
     // Construct the rt_dense_values tensor.
     Tensor* rt_dense_values_out = nullptr;
@@ -90,10 +90,10 @@ class RaggedRangeOp : public OpKernel {
     auto rt_dense_values = rt_dense_values_out->flat<T>();
     int value_index = 0;
     for (int row = 0; row < nrows; ++row) {
-      int64 row_size = rt_nested_splits(row + 1) - rt_nested_splits(row);
+      SPLITS_TYPE row_size = rt_nested_splits(row + 1) - rt_nested_splits(row);
       T value = broadcast_starts ? starts(0) : starts(row);
       T delta = broadcast_deltas ? deltas(0) : deltas(row);
-      for (int64 i = 0; i < row_size; ++i) {
+      for (SPLITS_TYPE i = 0; i < row_size; ++i) {
         rt_dense_values(value_index++) = T(value);
         value += delta;
       }
@@ -102,7 +102,7 @@ class RaggedRangeOp : public OpKernel {
 
  private:
   // Returns the number of elements in the specified range.
-  int64 RangeSize(T start, T limit, T delta) {
+  SPLITS_TYPE RangeSize(T start, T limit, T delta) {
     if (((delta > 0) && (limit < start)) || ((delta < 0) && (limit > start))) {
       return 0;
     }
@@ -114,10 +114,17 @@ class RaggedRangeOp : public OpKernel {
   }
 };
 
-#define REGISTER_CPU_KERNEL(TYPE)                                       \
-  REGISTER_KERNEL_BUILDER(                                              \
-      Name("RaggedRange").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"), \
-      RaggedRangeOp<TYPE>);
+#define REGISTER_CPU_KERNEL(TYPE)                                \
+  REGISTER_KERNEL_BUILDER(Name("RaggedRange")                    \
+                              .Device(DEVICE_CPU)                \
+                              .TypeConstraint<TYPE>("T")         \
+                              .TypeConstraint<int32>("Tsplits"), \
+                          RaggedRangeOp<TYPE, int32>);           \
+  REGISTER_KERNEL_BUILDER(Name("RaggedRange")                    \
+                              .Device(DEVICE_CPU)                \
+                              .TypeConstraint<TYPE>("T")         \
+                              .TypeConstraint<int64>("Tsplits"), \
+                          RaggedRangeOp<TYPE, int64>);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 TF_CALL_int32(REGISTER_CPU_KERNEL);

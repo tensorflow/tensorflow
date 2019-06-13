@@ -1,9 +1,5 @@
 path: "tensorflow.keras.backend"
 tf_module {
-  member {
-    name: "name_scope"
-    mtype: "<type \'type\'>"
-  }
   member_method {
     name: "abs"
     argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
@@ -309,6 +305,10 @@ tf_module {
     argspec: "args=[\'x\', \'value\', \'momentum\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "name_scope"
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "ndim"
     argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
   }
@@ -439,10 +439,6 @@ tf_module {
   member_method {
     name: "set_learning_phase"
     argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "set_session"
-    argspec: "args=[\'session\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "set_value"

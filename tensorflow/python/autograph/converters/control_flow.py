@@ -27,22 +27,6 @@ from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct.static_analysis import annos
 
 
-class SymbolNamer(object):
-  """Describes the interface for ControlFlowTransformer's namer."""
-
-  def new_symbol(self, name_root, reserved_locals):
-    """Generate a new unique symbol.
-
-    Args:
-      name_root: String, used as stem in the new name.
-      reserved_locals: Set(string), additional local symbols that are reserved
-          and which should not be used.
-    Returns:
-      String.
-    """
-    raise NotImplementedError()
-
-
 class ControlFlowTransformer(converter.Base):
   """Transforms control flow structures like loops an conditionals."""
 
@@ -177,7 +161,6 @@ class ControlFlowTransformer(converter.Base):
     orelse_scope = anno.getanno(node, annos.NodeAnno.ORELSE_SCOPE)
     defined_in = anno.getanno(node, anno.Static.DEFINED_VARS_IN)
     live_out = anno.getanno(node, anno.Static.LIVE_VARS_OUT)
-    origin_info = anno.getanno(node, anno.Basic.ORIGIN, default=None)
 
     # Note: this information needs to be extracted before the body conversion
     # that happens in the call to generic_visit below, because the conversion
@@ -292,12 +275,9 @@ class ControlFlowTransformer(converter.Base):
                                        orelse_name, state_getter_name,
                                        state_setter_name)
 
-    # TODO(b/129493607): investigate how to generalize copying origin
-    # information to all cases where we make new nodes.
-    if_ast = (undefined_assigns + cond_assign + composite_defs + body_def +
-              orelse_def + cond_expr)
-    for node in if_ast:
-      anno.setanno(node, anno.Basic.ORIGIN, origin_info)
+    if_ast = (
+        undefined_assigns + composite_defs + body_def + orelse_def +
+        cond_assign + cond_expr)
     return if_ast
 
   def _get_loop_state(self, node, modified_symbols):
@@ -306,8 +286,12 @@ class ControlFlowTransformer(converter.Base):
     live_in = anno.getanno(node, anno.Static.LIVE_VARS_IN)
     live_out = anno.getanno(node, anno.Static.LIVE_VARS_OUT)
     reserved_symbols = body_scope.referenced
+
     loop_state = []
     for s in modified_symbols:
+      if s.is_composite():
+        # TODO(mdan): Raise an error when this happens for a TF loop.
+        continue
 
       # Variables not live into or out of the loop are considered local to the
       # loop.
@@ -499,7 +483,7 @@ class ControlFlowTransformer(converter.Base):
             ssf_map)
     else:
       # Loop with no loop-carried state and no early stopping
-      assert not has_extra_test, ('Early stoppiong (e.g. break and/or return) '
+      assert not has_extra_test, ('Early stopping (e.g. break and/or return) '
                                   'should create state variables.')
       loop_nodes = self._for_loop_without_state(node, body_name, node_body)
 

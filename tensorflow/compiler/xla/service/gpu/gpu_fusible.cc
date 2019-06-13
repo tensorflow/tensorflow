@@ -84,6 +84,11 @@ bool IsReduceInputFusion(const HloInstruction& instr) {
 }
 
 bool IsInputFusibleReduction(const HloInstruction& instr) {
+  // TODO(b/129089333): Don't fuse variadic reduce.
+  if (instr.opcode() == HloOpcode::kReduce && instr.shape().IsTuple()) {
+    return false;
+  }
+
   return IsReduceInputFusion(instr) ||
          IsReductionFromOrToContiguousDimensions(instr);
 }
@@ -153,7 +158,8 @@ bool IsInputFusibleScatter(const HloInstruction& instr) {
 
 bool IsInputFusible(const HloInstruction& instr) {
   // Input fusion only handles non-elemental reduction and scatter operations.
-  return IsInputFusibleReduction(instr) || IsInputFusibleScatter(instr);
+  return instr.IsFusible() &&
+         (IsInputFusibleReduction(instr) || IsInputFusibleScatter(instr));
 }
 
 bool IsLoopFusible(const HloInstruction& instr) {
@@ -163,28 +169,41 @@ bool IsLoopFusible(const HloInstruction& instr) {
   // compute the address of the GTE at the top of the kernel.  Often we know the
   // address of the GTE result statically, so we can do this without chasing any
   // pointers.
-  return (instr.IsElementwise() && instr.operand_count() > 0) ||
-         instr.opcode() == HloOpcode::kBitcast ||
-         instr.opcode() == HloOpcode::kBroadcast ||
-         instr.opcode() == HloOpcode::kConcatenate ||
-         instr.opcode() == HloOpcode::kDynamicSlice ||
-         instr.opcode() == HloOpcode::kDynamicUpdateSlice ||
-         (instr.opcode() == HloOpcode::kFusion &&
-          instr.fusion_kind() == HloInstruction::FusionKind::kLoop) ||
-         instr.opcode() == HloOpcode::kGather ||
-         instr.opcode() == HloOpcode::kIota ||
-         instr.opcode() == HloOpcode::kPad ||
-         (instr.opcode() == HloOpcode::kReduce &&
-          !IsReductionFromOrToContiguousDimensions(instr)) ||
-         instr.opcode() == HloOpcode::kReduceWindow ||
-         instr.opcode() == HloOpcode::kReshape ||
-         instr.opcode() == HloOpcode::kReverse ||
-         instr.opcode() == HloOpcode::kSlice ||
-         instr.opcode() == HloOpcode::kTranspose;
+  return instr.IsFusible() &&
+         ((instr.IsElementwise() && instr.operand_count() > 0) ||
+          instr.opcode() == HloOpcode::kBitcast ||
+          instr.opcode() == HloOpcode::kBroadcast ||
+          instr.opcode() == HloOpcode::kConcatenate ||
+          instr.opcode() == HloOpcode::kDynamicSlice ||
+          instr.opcode() == HloOpcode::kDynamicUpdateSlice ||
+          (instr.opcode() == HloOpcode::kFusion &&
+           instr.fusion_kind() == HloInstruction::FusionKind::kLoop) ||
+          instr.opcode() == HloOpcode::kGather ||
+          instr.opcode() == HloOpcode::kIota ||
+          instr.opcode() == HloOpcode::kPad ||
+          (instr.opcode() == HloOpcode::kReduce &&
+           !IsReductionFromOrToContiguousDimensions(instr)) ||
+          instr.opcode() == HloOpcode::kReduceWindow ||
+          instr.opcode() == HloOpcode::kReshape ||
+          instr.opcode() == HloOpcode::kReverse ||
+          instr.opcode() == HloOpcode::kSlice ||
+          instr.opcode() == HloOpcode::kTranspose);
 }
 
 bool IsFusible(const HloInstruction& instr) {
   return IsInputFusible(instr) || IsLoopFusible(instr);
+}
+
+bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr) {
+  // We can fuse reduces and loop fusions. Elementwise instructions can be fused
+  // with any other instruction.
+  // Note that scatter cannot be the root of a multi-output fusion because
+  // its emitter doesn't support it.
+
+  return instr.IsFusible() &&
+         (IsInputFusibleReduction(instr) ||
+          instr.IsLoopFusion() ||  // TODO(b/130013493): Use IsLoopFusible here.
+          instr.IsElementwise());
 }
 
 }  // namespace gpu

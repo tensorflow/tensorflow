@@ -38,6 +38,10 @@ namespace tensor {
 //           'other' is not appropriately memory-aligned.
 Tensor DeepCopy(const Tensor& other);
 
+// Deep copies input to output.  This function is similar to above, but assumes
+// that the memory for the output has already been allocated.
+void DeepCopy(const Tensor& input, Tensor* output);
+
 // Concatenates 'tensors' into a single tensor, along their 0th dimension.
 //
 // REQUIRES: All members of 'tensors' must have the same data type parameter.

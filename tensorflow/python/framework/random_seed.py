@@ -45,7 +45,7 @@ def get_seed(op_seed):
   graph, or for only specific operations.
 
   For details on how the graph-level seed interacts with op seeds, see
-  `tf.random.set_random_seed`.
+  `tf.compat.v1.random.set_random_seed`.
 
   Args:
     op_seed: integer.
@@ -110,18 +110,18 @@ def set_random_seed(seed):
   graph-level nor op-level seeds:
 
   ```python
-  a = tf.random_uniform([1])
-  b = tf.random_normal([1])
+  a = tf.random.uniform([1])
+  b = tf.random.normal([1])
 
   print("Session 1")
-  with tf.Session() as sess1:
+  with tf.compat.v1.Session() as sess1:
     print(sess1.run(a))  # generates 'A1'
     print(sess1.run(a))  # generates 'A2'
     print(sess1.run(b))  # generates 'B1'
     print(sess1.run(b))  # generates 'B2'
 
   print("Session 2")
-  with tf.Session() as sess2:
+  with tf.compat.v1.Session() as sess2:
     print(sess2.run(a))  # generates 'A3'
     print(sess2.run(a))  # generates 'A4'
     print(sess2.run(b))  # generates 'B3'
@@ -132,20 +132,20 @@ def set_random_seed(seed):
   seed for the op:
 
   ```python
-  a = tf.random_uniform([1], seed=1)
-  b = tf.random_normal([1])
+  a = tf.random.uniform([1], seed=1)
+  b = tf.random.normal([1])
 
   # Repeatedly running this block with the same graph will generate the same
   # sequence of values for 'a', but different sequences of values for 'b'.
   print("Session 1")
-  with tf.Session() as sess1:
+  with tf.compat.v1.Session() as sess1:
     print(sess1.run(a))  # generates 'A1'
     print(sess1.run(a))  # generates 'A2'
     print(sess1.run(b))  # generates 'B1'
     print(sess1.run(b))  # generates 'B2'
 
   print("Session 2")
-  with tf.Session() as sess2:
+  with tf.compat.v1.Session() as sess2:
     print(sess2.run(a))  # generates 'A1'
     print(sess2.run(a))  # generates 'A2'
     print(sess2.run(b))  # generates 'B3'
@@ -156,21 +156,21 @@ def set_random_seed(seed):
   sessions, set a graph-level seed:
 
   ```python
-  tf.random.set_random_seed(1234)
-  a = tf.random_uniform([1])
-  b = tf.random_normal([1])
+  tf.compat.v1.random.set_random_seed(1234)
+  a = tf.random.uniform([1])
+  b = tf.random.normal([1])
 
   # Repeatedly running this block with the same graph will generate the same
   # sequences of 'a' and 'b'.
   print("Session 1")
-  with tf.Session() as sess1:
+  with tf.compat.v1.Session() as sess1:
     print(sess1.run(a))  # generates 'A1'
     print(sess1.run(a))  # generates 'A2'
     print(sess1.run(b))  # generates 'B1'
     print(sess1.run(b))  # generates 'B2'
 
   print("Session 2")
-  with tf.Session() as sess2:
+  with tf.compat.v1.Session() as sess2:
     print(sess2.run(a))  # generates 'A1'
     print(sess2.run(a))  # generates 'A2'
     print(sess2.run(b))  # generates 'B1'
@@ -212,18 +212,18 @@ def set_seed(seed):
   graph-level nor op-level seeds:
 
   ```python
-  a = tf.random_uniform([1])
-  b = tf.random_normal([1])
+  a = tf.random.uniform([1])
+  b = tf.random.normal([1])
 
   print("Session 1")
-  with tf.Session() as sess1:
+  with tf.compat.v1.Session() as sess1:
     print(sess1.run(a))  # generates 'A1'
     print(sess1.run(a))  # generates 'A2'
     print(sess1.run(b))  # generates 'B1'
     print(sess1.run(b))  # generates 'B2'
 
   print("Session 2")
-  with tf.Session() as sess2:
+  with tf.compat.v1.Session() as sess2:
     print(sess2.run(a))  # generates 'A3'
     print(sess2.run(a))  # generates 'A4'
     print(sess2.run(b))  # generates 'B3'
@@ -234,20 +234,20 @@ def set_seed(seed):
   seed for the op:
 
   ```python
-  a = tf.random_uniform([1], seed=1)
-  b = tf.random_normal([1])
+  a = tf.random.uniform([1], seed=1)
+  b = tf.random.normal([1])
 
   # Repeatedly running this block with the same graph will generate the same
   # sequence of values for 'a', but different sequences of values for 'b'.
   print("Session 1")
-  with tf.Session() as sess1:
+  with tf.compat.v1.Session() as sess1:
     print(sess1.run(a))  # generates 'A1'
     print(sess1.run(a))  # generates 'A2'
     print(sess1.run(b))  # generates 'B1'
     print(sess1.run(b))  # generates 'B2'
 
   print("Session 2")
-  with tf.Session() as sess2:
+  with tf.compat.v1.Session() as sess2:
     print(sess2.run(a))  # generates 'A1'
     print(sess2.run(a))  # generates 'A2'
     print(sess2.run(b))  # generates 'B3'
@@ -259,20 +259,20 @@ def set_seed(seed):
 
   ```python
   tf.random.set_seed(1234)
-  a = tf.random_uniform([1])
-  b = tf.random_normal([1])
+  a = tf.random.uniform([1])
+  b = tf.random.normal([1])
 
   # Repeatedly running this block with the same graph will generate the same
   # sequences of 'a' and 'b'.
   print("Session 1")
-  with tf.Session() as sess1:
+  with tf.compat.v1.Session() as sess1:
     print(sess1.run(a))  # generates 'A1'
     print(sess1.run(a))  # generates 'A2'
     print(sess1.run(b))  # generates 'B1'
     print(sess1.run(b))  # generates 'B2'
 
   print("Session 2")
-  with tf.Session() as sess2:
+  with tf.compat.v1.Session() as sess2:
     print(sess2.run(a))  # generates 'A1'
     print(sess2.run(a))  # generates 'A2'
     print(sess2.run(b))  # generates 'B1'

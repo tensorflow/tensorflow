@@ -150,20 +150,7 @@ def _augment_with_special_arguments(test_method):
       required_gpus = distribution.required_gpus
       required_tpu = distribution.required_tpu
 
-    if required_tpu and not TPU_TEST:
-      self.skipTest("Test requires a TPU, but it's not available.")
-    if not required_tpu and TPU_TEST:
-      self.skipTest("Test that doesn't require a TPU.")
-
-    if not required_gpus:
-      if GPU_TEST:
-        self.skipTest("Test that doesn't require GPUs.")
-    elif context.num_gpus() < required_gpus:
-      # TODO(priyag): Consider allowing tests in graph mode using soft
-      # placement.
-      self.skipTest(
-          "{} GPUs are not available for this test. {} GPUs are available".
-          format(required_gpus, context.num_gpus()))
+    maybe_skip_test(self, required_tpu, required_gpus)
 
     # At this point, `kwargs` doesn't have `required_gpus` or `required_tpu`
     # that the user might have specified.  `kwargs` still has `mode`, which
@@ -179,6 +166,8 @@ def _augment_with_special_arguments(test_method):
     for arg in requested_arguments:
       if arg == "self":
         kwargs_to_pass[arg] = self
+      elif arg == "mode":
+        kwargs_to_pass[arg] = mode
       else:
         kwargs_to_pass[arg] = kwargs[arg]
 
@@ -197,6 +186,23 @@ def _augment_with_special_arguments(test_method):
           "'mode' has to be either 'eager' or 'graph' and not {}".format(
               mode))
   return decorated
+
+
+def maybe_skip_test(test_case, is_tpu_required, num_gpus_required):
+  if is_tpu_required and not TPU_TEST:
+    test_case.skipTest("Test requires a TPU, but it's not available.")
+  if not is_tpu_required and TPU_TEST:
+    test_case.skipTest("Test that doesn't require a TPU.")
+
+  if not num_gpus_required:
+    if GPU_TEST:
+      test_case.skipTest("Test that doesn't require GPUs.")
+  elif context.num_gpus() < num_gpus_required:
+    # TODO(priyag): Consider allowing tests in graph mode using soft
+    # placement.
+    test_case.skipTest(
+        "{} GPUs are not available for this test. {} GPUs are available".format(
+            num_gpus_required, context.num_gpus()))
 
 
 def combine(**kwargs):
@@ -309,4 +315,44 @@ class NamedDistribution(object):
 
   @property
   def required_tpu(self):
+    return self._required_tpu
+
+
+class NamedDistributionPair(object):
+  """NamedDistribution but for a pair of strategies."""
+
+  def __init__(self, named_distribution_1, named_distribution_2):
+    self._named_distribution_1 = named_distribution_1
+    self._named_distribution_2 = named_distribution_2
+    self._name = str(named_distribution_1) + "_" + str(named_distribution_2)
+
+    if not named_distribution_1.required_gpus:
+      self._required_gpus = named_distribution_2.required_gpus
+    elif not named_distribution_2.required_gpus:
+      self._required_gpus = named_distribution_1.required_gpus
+    else:
+      self._required_gpus = max(self._named_distribution_1.required_gpus,
+                                self._named_distribution_2.required_gpus)
+
+    self._required_tpu = (
+        self._named_distribution_1.required_tpu or
+        self._named_distribution_2.required_tpu)
+
+  def __repr__(self):
+    return self._name
+
+  @property
+  def strategy_1(self):
+    return self._named_distribution_1._distribution_fn()
+
+  @property
+  def strategy_2(self):
+    return self._named_distribution_2._distribution_fn()
+
+  @property
+  def num_gpus_required(self):
+    return self._required_gpus
+
+  @property
+  def is_tpu_required(self):
     return self._required_tpu

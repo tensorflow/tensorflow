@@ -3,21 +3,8 @@
 # to be distributed and performed in parallel across multiple
 # processes.
 
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
-filegroup(
-    name = "c_srcs",
-    data = glob([
-        "**/*.cc",
-        "**/*.h",
-    ]),
-)
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 # For platform specific build config
 load(
@@ -29,9 +16,22 @@ load(
     "tf_cuda_tests_tags",
 )
 
-package(default_visibility = [
-    "//tensorflow:internal",
-])
+package(
+    default_visibility = [
+        "//tensorflow:internal",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
+
+filegroup(
+    name = "c_srcs",
+    data = glob([
+        "**/*.cc",
+        "**/*.h",
+    ]),
+)
 
 cc_library(
     name = "partial_run_mgr",
@@ -98,8 +98,10 @@ cc_library(
         ":worker_interface",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:worker_proto_cc",
     ],
 )
 
@@ -127,6 +129,7 @@ cc_library(
     hdrs = ["session_mgr.h"],
     deps = [
         ":graph_mgr",
+        ":remote_device",
         ":worker_cache_wrapper",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
@@ -197,15 +200,15 @@ tf_cuda_library(
     deps = [
         ":graph_mgr",
         ":partial_run_mgr",
+        ":recent_request_ids",
         ":rendezvous_mgr_interface",
         ":session_mgr",
         ":tensor_coding",
         ":worker_interface",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:device_tracer",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/distributed_runtime:recent_request_ids",
+        "//tensorflow/core/profiler/lib:profiler_session",
     ],
 )
 
@@ -431,6 +434,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/debug",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
 )
 
@@ -567,6 +571,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 

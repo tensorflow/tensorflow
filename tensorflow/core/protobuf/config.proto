@@ -165,9 +165,26 @@ message GPUOptions {
     // is really not subject to pending use.
     bool timestamped_allocator = 5;
 
-    // If > 0 limit the number of pending kernels on any compute
-    // stream to this number.
-    int32 pending_cap = 6;
+    // reserved id: 6
+
+    // Parameters for GPUKernelTracker.  By default no kernel tracking is done.
+    // Note that timestamped_allocator is only effective if some tracking is
+    // specified.
+    //
+    // If kernel_tracker_max_interval = n > 0, then a tracking event
+    // is inserted after every n kernels without an event.
+    int32 kernel_tracker_max_interval = 7;
+    // If kernel_tracker_max_bytes = n > 0, then a tracking event is
+    // inserted after every series of kernels allocating a sum of
+    // memory >= n.  If one kernel allocates b * n bytes, then one
+    // event will be inserted after it, but it will count as b against
+    // the pending limit.
+    int32 kernel_tracker_max_bytes = 8;
+    // If kernel_tracker_max_pending > 0 then no more than this many
+    // tracking events can be outstanding at a time.  An attempt to
+    // launch an additional kernel will stall until an event
+    // completes.
+    int32 kernel_tracker_max_pending = 9;
   }
 
   // Everything inside experimental is subject to change and is not subject
@@ -330,6 +347,7 @@ message ConfigProto {
   // inter_op_parallelism_threads available in each process.
   //
   // 0 means the system picks an appropriate number.
+  // Negative means all operations are performed in caller's thread.
   //
   // Note that the first Session created in the process sets the
   // number of threads for all future sessions unless use_per_session_threads is
@@ -468,6 +486,18 @@ message ConfigProto {
     // TODO(b/129330037): Add a single API that consistently treats
     // isolate_session_state and ClusterSpec propagation.
     bool share_session_state_in_clusterspec_propagation = 8;
+
+    // If using a direct session, disable spinning while waiting for work in
+    // the thread pool. This may result in higher latency for completing ops,
+    // but in the case where there is a lot of spinning may result in lower
+    // CPU usage.
+    bool disable_thread_spinning = 9;
+
+    // When true, WorkerSessions are created with device attributes from the
+    // full cluster.
+    // This is helpful when a worker wants to partition a graph
+    // (for example during a PartitionedCallOp).
+    bool share_cluster_devices_in_session = 10;
   };
 
   Experimental experimental = 16;

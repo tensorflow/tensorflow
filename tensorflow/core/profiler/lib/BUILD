@@ -3,13 +3,16 @@ package(
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cuda_library",
+)
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_additional_profiler_lib_deps",
 )
 
 tf_cuda_library(
@@ -22,15 +25,10 @@ tf_cuda_library(
     ],
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/core/common_runtime/eager:context",
-        "//tensorflow/core/profiler/internal/gpu:tracer",
-        "//tensorflow/core/profiler/internal/runtime:eager_profiler",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler:protos_all_cc",
     ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
-        ],
+        "//tensorflow:android": [],
         "//conditions:default": [
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
@@ -39,9 +37,24 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:session_options",
-            "//tensorflow/core:device_tracer",
         ],
     }),
+)
+
+tf_cuda_library(
+    name = "profiler_graph_lib",
+    visibility = ["//tensorflow:internal"],
+    deps = tf_additional_profiler_lib_deps(),
+    alwayslink = 1,
+)
+
+tf_cuda_library(
+    name = "profiler_eager_lib",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core/profiler/internal/runtime:eager_profiler",
+    ] + tf_additional_profiler_lib_deps(),
+    alwayslink = 1,
 )
 
 tf_cuda_library(
@@ -53,6 +66,11 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/internal:traceme_recorder",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
     ],
+)
+
+filegroup(
+    name = "mobile_srcs",
+    srcs = glob(["*"]),
+    visibility = ["//visibility:public"],
 )

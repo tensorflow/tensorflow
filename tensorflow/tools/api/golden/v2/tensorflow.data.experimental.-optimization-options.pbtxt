@@ -20,6 +20,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "filter_with_random_uniform_fusion"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "hoist_random_uniform"
     mtype: "<type \'property\'>"
   }
@@ -45,6 +49,10 @@ tf_class {
   }
   member {
     name: "noop_elimination"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "parallel_batch"
     mtype: "<type \'property\'>"
   }
   member {

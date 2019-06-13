@@ -81,7 +81,10 @@ Status MakeArgTuple(const PyCall* call, PyObject** tuple) {
     PyObject* arg = nullptr;
     const Tensor& t = call->ins[i];
     if (call->eager) {
-      arg = EagerTensorFromHandle(new TFE_TensorHandle(t, device, device));
+      TFE_TensorHandle* handle;
+      TF_RETURN_IF_ERROR(
+          TFE_TensorHandle::CreateLocalHandle(t, device, &handle));
+      arg = EagerTensorFromHandle(handle);
       if (arg == nullptr) {
         Py_DECREF(lst);
         return errors::Internal("Unable to procure EagerTensor from Tensor.");
@@ -92,6 +95,7 @@ Status MakeArgTuple(const PyCall* call, PyObject** tuple) {
         Py_DECREF(lst);
         return s;
       }
+      arg = PyArray_Return(reinterpret_cast<PyArrayObject*>(arg));
     }
     PyList_SetItem(lst, i, arg);
   }
@@ -467,7 +471,7 @@ Status ConvertTensorToNdarray(const Tensor& t, PyObject** ret) {
     StringPiece p = t.tensor_data();
     memcpy(PyArray_DATA(np_array), p.data(), p.size());
   }
-  *ret = PyArray_Return(np_array);
+  *ret = reinterpret_cast<PyObject*>(np_array);
   return Status::OK();
 }
 

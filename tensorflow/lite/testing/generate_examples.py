@@ -56,11 +56,11 @@ parser.add_argument(
     "--known_bugs_are_errors",
     action="store_true",
     help=("If a particular model is affected by a known bug,"
-          " count it as a toco error."))
+          " count it as a converter error."))
 parser.add_argument(
     "--ignore_converter_errors",
     action="store_true",
-    help="Raise an exception if any toco error is encountered.")
+    help="Raise an exception if any converter error is encountered.")
 parser.add_argument(
     "--save_graphdefs",
     action="store_true",

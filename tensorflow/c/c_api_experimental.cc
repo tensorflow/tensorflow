@@ -18,10 +18,12 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/checkpoint_reader.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -36,6 +38,7 @@ using tensorflow::FunctionDef;
 using tensorflow::Node;
 using tensorflow::NodeBuilder;
 using tensorflow::Status;
+using tensorflow::errors::InvalidArgument;
 
 namespace {
 typedef std::unique_ptr<TF_Function, decltype(&TF_DeleteFunction)>
@@ -64,6 +67,34 @@ void TF_EnableXLACompilation(TF_SessionOptions* options, unsigned char enable) {
   } else {
     optimizer_options->set_global_jit_level(tensorflow::OptimizerOptions::OFF);
   }
+}
+
+unsigned char TF_SetXlaEnableLazyCompilation(unsigned char enable) {
+  tensorflow::BuildXlaOpsPassFlags* flags =
+      tensorflow::GetBuildXlaOpsPassFlags();
+  bool original = flags->tf_xla_enable_lazy_compilation;
+  flags->tf_xla_enable_lazy_compilation = enable;
+  return original;
+}
+
+void TF_SetXlaAutoJitMode(const char* mode) {
+  tensorflow::SetXlaAutoJitFlagFromFlagString(mode);
+}
+
+unsigned char TF_GetXlaConstantFoldingDisabled() {
+  return static_cast<unsigned char>(
+      tensorflow::GetBuildXlaOpsPassFlags()->tf_xla_disable_constant_folding);
+}
+
+void TF_SetXlaConstantFoldingDisabled(unsigned char should_enable) {
+  tensorflow::GetBuildXlaOpsPassFlags()->tf_xla_disable_constant_folding =
+      static_cast<bool>(should_enable);
+}
+
+void TF_SetXlaMinClusterSize(int size) {
+  tensorflow::MarkForCompilationPassFlags* flags =
+      tensorflow::GetMarkForCompilationPassFlags();
+  flags->tf_xla_min_cluster_size = size;
 }
 
 TF_Buffer* TF_CreateConfig(unsigned char enable_xla_compilation,
@@ -130,7 +161,7 @@ const char* TF_GraphDebugString(TF_Graph* graph, size_t* len) {
 }
 
 char* TF_FunctionDebugString(TF_Function* func, size_t* len) {
-  const auto& debug_str = func->fdef.DebugString();
+  const auto& debug_str = DebugString(func->fdef);
   *len = debug_str.size();
   char* ret = static_cast<char*>(malloc(*len + 1));
   memcpy(ret, debug_str.c_str(), *len + 1);
@@ -557,6 +588,73 @@ void TF_MakeInternalErrorStatus(TF_Status* status, const char* errMsg) {
   status->status = tensorflow::errors::Internal(errMsg);
 }
 
+struct TF_CheckpointReader : public tensorflow::checkpoint::CheckpointReader {
+  using tensorflow::checkpoint::CheckpointReader::CheckpointReader;
+  std::vector<std::string> variable_list;
+};
+
+TF_CheckpointReader* TF_NewCheckpointReader(const char* filename,
+                                            TF_Status* status) {
+  TF_CheckpointReader* reader = new TF_CheckpointReader(filename, status);
+  if (!status->status.ok()) return nullptr;
+  const auto& m = reader->GetVariableToDataTypeMap();
+  for (auto it = m.begin(); it != m.end(); ++it)
+    reader->variable_list.push_back(it->first);
+  std::sort(reader->variable_list.begin(), reader->variable_list.end());
+  return reader;
+}
+
+void TF_DeleteCheckpointReader(TF_CheckpointReader* reader) { delete reader; }
+
+int TF_CheckpointReaderHasTensor(TF_CheckpointReader* reader,
+                                 const char* name) {
+  return reader->HasTensor(name);
+}
+
+const char* TF_CheckpointReaderGetVariable(TF_CheckpointReader* reader,
+                                           int index) {
+  return reader->variable_list[index].c_str();
+}
+
+int TF_CheckpointReaderSize(TF_CheckpointReader* reader) {
+  return reader->variable_list.size();
+}
+
+TF_DataType TF_CheckpointReaderGetVariableDataType(TF_CheckpointReader* reader,
+                                                   const char* name) {
+  const auto& m = reader->GetVariableToDataTypeMap();
+  return static_cast<TF_DataType>(m.at(name));
+}
+
+TF_Tensor* TF_CheckpointReaderGetTensor(TF_CheckpointReader* reader,
+                                        const char* name, TF_Status* status) {
+  std::unique_ptr<tensorflow::Tensor> tensor;
+  reader->GetTensor(name, &tensor, status);
+  if (!status->status.ok()) return nullptr;
+  return tensorflow::TF_TensorFromTensor(*tensor.get(), status);
+}
+
+void TF_CheckpointReaderGetVariableShape(TF_CheckpointReader* reader,
+                                         const char* name, int64_t* dims,
+                                         int num_dims, TF_Status* status) {
+  const auto& shape = reader->GetVariableToShapeMap().at(name);
+  int rank = shape.dims();
+  if (num_dims != rank) {
+    status->status = InvalidArgument("Expected rank is ", num_dims,
+                                     " but actual rank is ", rank);
+    return;
+  }
+  for (int i = 0; i < num_dims; i++) {
+    dims[i] = shape.dim_size(i);
+  }
+}
+
+int TF_CheckpointReaderGetVariableNumDims(TF_CheckpointReader* reader,
+                                          const char* name) {
+  const auto& m = reader->GetVariableToShapeMap();
+  return m.at(name).dims();
+}
+
 // This builder is used in the eager API to build a NodeDef.
 struct TF_AttrBuilder : public tensorflow::AttrBuilder {
   using tensorflow::AttrBuilder::AttrBuilder;
@@ -638,14 +736,15 @@ int TF_PickUnusedPortOrDie() {
   return tensorflow::internal::PickUnusedPortOrDie();
 }
 
-TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType dtype_arg,
-                                                void* data, size_t len) {
-  auto dtype = static_cast<tensorflow::DataType>(dtype_arg);
+TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType data_type,
+                                                void* data, size_t len,
+                                                TF_Status* status) {
+  auto dtype = static_cast<tensorflow::DataType>(data_type);
   DCHECK(tensorflow::DataTypeCanUseMemcpy(dtype));
 
   tensorflow::Tensor tensor(dtype, tensorflow::TensorShape({}));
   std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
-  return new TFE_TensorHandle(tensor, nullptr, nullptr);
+  return TFE_TensorHandle::CreateLocalHandle(tensor, status);
 }
 
 namespace {
@@ -676,7 +775,7 @@ tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
 
   LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
 
-  LOG_AND_RETURN_IF_ERROR(ctx->context.StoreCollectiveOpsServer(
+  LOG_AND_RETURN_IF_ERROR(ctx->context->StoreCollectiveOpsServer(
       std::move(server), grpc_server->worker_env()->device_mgr,
       grpc_server->worker_env()->collective_executor_mgr));
 
@@ -799,8 +898,8 @@ TF_Operation* TFE_AddEagerOpToGraph(TFE_Op* op, TFE_TraceContext* trace_ctx,
   const auto& op_type = op->operation.Name();
   auto op_name =
       tensorflow::strings::StrCat(op_type, "_", trace_ctx->node_counter++);
-  auto* desc =
-      TF_NewOperation(trace_ctx->graph, op_type.c_str(), op_name.c_str());
+  std::unique_ptr<TF_OperationDescription> desc(
+      TF_NewOperation(trace_ctx->graph, op_type.c_str(), op_name.c_str()));
 
   VLOG(1) << "Adding attrs.";
   tensorflow::AttrValueMap attrs;
@@ -814,30 +913,42 @@ TF_Operation* TFE_AddEagerOpToGraph(TFE_Op* op, TFE_TraceContext* trace_ctx,
   size_t inputIndex = 0;
   const tensorflow::OpDef& op_def = desc->node_builder.op_def();
   for (const tensorflow::OpDef::ArgDef& input_arg : op_def.input_arg()) {
-    // TODO(bgogul): Add support for number attributes.
-    DCHECK(input_arg.number_attr().empty())
-        << "Number attributes is not implemented yet.";
-    if (input_arg.type_list_attr().empty()) {
+    if (input_arg.type_list_attr().empty() && input_arg.number_attr().empty()) {
       auto symbolic_input =
           getOrCreateSymbolicTensor(trace_ctx, inputs[inputIndex++], status);
       if (!status->status.ok()) return nullptr;
-      TF_AddInput(desc, symbolic_input);
+      TF_AddInput(desc.get(), symbolic_input);
       continue;
     }
-    const std::string& type_list_attr = input_arg.type_list_attr();
-    const auto& attr_value = attrs[type_list_attr];
-    DCHECK(attr_value.value_case() == tensorflow::AttrValue::kList)
-        << "Type list attribute should be a list!";
-    std::vector<TF_Output> list_inputs(attr_value.list().type_size());
+    size_t list_size = 0;
+    if (!input_arg.type_list_attr().empty()) {
+      const std::string& type_list_attr = input_arg.type_list_attr();
+      const auto& attr_value = attrs[type_list_attr];
+      CHECK(attr_value.value_case() == tensorflow::AttrValue::kList)
+          << "Type list attribute should be a list!";
+      list_size = attr_value.list().type_size();
+    } else {
+      CHECK(!input_arg.number_attr().empty());
+      const auto& attr_value = attrs[input_arg.number_attr()];
+      CHECK(attr_value.value_case() == tensorflow::AttrValue::kI)
+          << "Number attribute should be int!";
+      if (attr_value.i() < 0) {
+        status->status = tensorflow::errors::Internal(
+            "Number attribute for length should be >=0!");
+        return nullptr;
+      }
+      list_size = attr_value.i();
+    }
+    std::vector<TF_Output> list_inputs(list_size);
     for (TF_Output& list_input : list_inputs) {
       list_input =
           getOrCreateSymbolicTensor(trace_ctx, inputs[inputIndex++], status);
       if (!status->status.ok()) return nullptr;
     }
-    TF_AddInputList(desc, list_inputs.data(), list_inputs.size());
+    TF_AddInputList(desc.get(), list_inputs.data(), list_inputs.size());
   }
 
-  auto* graph_op = TF_FinishOperation(desc, status);
+  auto* graph_op = TF_FinishOperation(desc.release(), status);
   if (!status->status.ok()) return nullptr;
 
   VLOG(1) << "Op finalized; setting return tensors.";

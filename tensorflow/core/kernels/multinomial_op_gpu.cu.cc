@@ -17,18 +17,17 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/multinomial_op.h"
-
 #include <assert.h>
 #include <stdio.h>
 
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/multinomial_op.h"
 #include "tensorflow/core/kernels/random_op.h"
 #include "tensorflow/core/kernels/reduction_gpu_kernels.cu.h"
 #include "tensorflow/core/kernels/reduction_ops_common.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -110,7 +109,7 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
     output.device(d) = output.constant(0LL);
 
     const int32 work_items = batch_size * num_samples * num_classes;
-    CudaLaunchConfig config = GetCudaLaunchConfig(work_items, d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(work_items, d);
     TF_CHECK_OK(CudaLaunchKernel(
         MultinomialKernel<OutputType>, config.block_count,
         config.thread_per_block, 0, d.stream(), config.virtual_thread_count,

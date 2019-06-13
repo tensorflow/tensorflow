@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers import dense_attention
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -412,6 +413,254 @@ class AttentionTest(test.TestCase):
     with self.assertRaisesRegexp(
         ValueError, 'Attention layer mask must be a list of length 2'):
       attention_layer([q, q], mask=[mask, mask, mask])
+
+  def test_override_mask(self):
+    attention_layer = dense_attention.Attention()
+    q = core.Masking()(np.array([[[1.1]]], dtype=np.float32))
+    mask = np.array([[False]], dtype=np.bool_)
+    actual = attention_layer([q, q], mask=[mask, mask])
+    self.assertAllClose([[[0]]], actual)
+
+  def test_implicit_mask(self):
+    attention_layer = dense_attention.Attention()
+    q = core.Masking(1.1)(np.array([[[1.1], [1]]], dtype=np.float32))
+    v = core.Masking(1.2)(np.array([[[1.2], [1]]], dtype=np.float32))
+    actual = attention_layer([q, v])
+    self.assertAllClose([[[0], [1]]], actual)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class AdditiveAttentionTest(test.TestCase):
+
+  def test_calculate_scores_one_dim(self):
+    # Query tensor of shape [1, 1, 1]
+    q = np.array([[[1.1]]], dtype=np.float32)
+    # Key tensor of shape [1, 1, 1]
+    k = np.array([[[1.6]]], dtype=np.float32)
+    attention_layer = dense_attention.AdditiveAttention()
+    attention_layer.build(input_shape=([1, 1, 1], [1, 1, 1]))
+    # Scale tensor of shape [1]
+    attention_layer.scale = np.array([[[0.5]]], dtype=np.float32)
+    actual = attention_layer._calculate_scores(query=q, key=k)
+
+    # Expected tensor of shape [1, 1, 1].
+    # expected000 = 0.5 * tanh(1.1 + 1.6) = 0.49550372683
+    expected = np.array([[[0.49550372683]]], dtype=np.float32)
+    self.assertAllClose(expected, actual)
+
+  def test_calculate_scores_multi_dim(self):
+    # Query tensor of shape [1, 2, 4]
+    q = np.array(
+        [[[1., 1.1, 1.2, 1.3], [2., 2.1, 2.2, 2.3]]], dtype=np.float32)
+    # Key tensor of shape [1, 3, 4]
+    k = np.array(
+        [[[1.5, 1.6, 1.7, 1.8], [2.5, 2.6, 2.7, 2.8], [3.5, 3.6, 3.7, 3.8]]],
+        dtype=np.float32)
+    attention_layer = dense_attention.AdditiveAttention()
+    attention_layer.build(input_shape=([1, 2, 4], [1, 3, 4]))
+    # Scale tensor of shape [4]
+    attention_layer.scale = np.array([[[0.5, 0.6, 0.7, 0.8]]], dtype=np.float32)
+    actual = attention_layer._calculate_scores(query=q, key=k)
+
+    # pylint:disable=line-too-long
+    # expected000 = 0.5*tanh(1.+1.5) + 0.6*tanh(1.1+1.6) + 0.7*tanh(1.2+1.7) + 0.8*tanh(1.3+1.8) = 2.58044532581
+    # expected001 = 0.5*tanh(1.+2.5) + 0.6*tanh(1.1+2.6) + 0.7*tanh(1.2+2.7) + 0.8*tanh(1.3+2.8) = 2.59734317449
+    # expected002 = 0.5*tanh(1.+3.5) + 0.6*tanh(1.1+3.6) + 0.7*tanh(1.2+3.7) + 0.8*tanh(1.3+3.8) = 2.59964024652
+    # expected010 = 0.5*tanh(2.+1.5) + 0.6*tanh(2.1+1.6) + 0.7*tanh(2.2+1.7) + 0.8*tanh(2.3+1.8) = 2.59734317449
+    # expected011 = 0.5*tanh(2.+2.5) + 0.6*tanh(2.1+2.6) + 0.7*tanh(2.2+2.7) + 0.8*tanh(2.3+2.8) = 2.59964024652
+    # expected012 = 0.5*tanh(2.+3.5) + 0.6*tanh(2.1+3.6) + 0.7*tanh(2.2+3.7) + 0.8*tanh(2.3+3.8) = 2.59995130916
+    # pylint:enable=line-too-long
+    expected = np.array(
+        [[[2.58044532581, 2.59734317449, 2.59964024652],
+          [2.59734317449, 2.59964024652, 2.59995130916]]],
+        dtype=np.float32)
+    self.assertAllClose(expected, actual)
+
+  def test_calculate_scores_one_dim_batch_size_two(self):
+    # Query tensor of shape [2, 1, 1]
+    q = np.array([[[1.1]], [[2.1]]], dtype=np.float32)
+    # Key tensor of shape [2, 1, 1]
+    k = np.array([[[1.6]], [[2.6]]], dtype=np.float32)
+    attention_layer = dense_attention.AdditiveAttention()
+    attention_layer.build(input_shape=([2, 1, 1], [2, 1, 1]))
+    # Scale tensor of shape [1]
+    attention_layer.scale = np.array([[[0.5]]], dtype=np.float32)
+    actual = attention_layer._calculate_scores(query=q, key=k)
+
+    # Expected tensor of shape [2, 1, 1].
+    # expected000 = 0.5 * tanh(1.1 + 1.6) = 0.49550372683
+    # expected100 = 0.5 * tanh(2.1 + 2.6) = 0.49991728277
+    expected = np.array(
+        [[[0.49550372683]], [[0.49991728277]]], dtype=np.float32)
+    self.assertAllClose(expected, actual)
+
+  def test_shape(self):
+    # Query tensor of shape [1, 2, 4]
+    q = np.array(
+        [[[1., 1.1, 1.2, 1.3], [2., 2.1, 2.2, 2.3]]], dtype=np.float32)
+    # Value tensor of shape [1, 3, 4]
+    v = np.array(
+        [[[1.5, 1.6, 1.7, 1.8], [2.5, 2.6, 2.7, 2.8], [3.5, 3.6, 3.7, 3.8]]],
+        dtype=np.float32)
+    # Value mask tensor of shape [1, 3]
+    v_mask = np.array([[True, True, False]], dtype=np.bool_)
+    attention_layer = dense_attention.AdditiveAttention()
+    actual = attention_layer([q, v], mask=[None, v_mask])
+
+    expected_shape = [1, 2, 4]
+    self.assertAllEqual(expected_shape, array_ops.shape(actual))
+
+  def test_shape_no_scale(self):
+    # Query tensor of shape [1, 2, 4]
+    q = np.array(
+        [[[1., 1.1, 1.2, 1.3], [2., 2.1, 2.2, 2.3]]], dtype=np.float32)
+    # Value tensor of shape [1, 3, 4]
+    v = np.array(
+        [[[1.5, 1.6, 1.7, 1.8], [2.5, 2.6, 2.7, 2.8], [3.5, 3.6, 3.7, 3.8]]],
+        dtype=np.float32)
+    # Value mask tensor of shape [1, 3]
+    v_mask = np.array([[True, True, False]], dtype=np.bool_)
+    attention_layer = dense_attention.AdditiveAttention(use_scale=False)
+    actual = attention_layer([q, v], mask=[None, v_mask])
+
+    expected_shape = [1, 2, 4]
+    self.assertAllEqual(expected_shape, array_ops.shape(actual))
+
+  def test_shape_with_key(self):
+    # Query tensor of shape [1, 2, 4]
+    q = np.array(
+        [[[1., 1.1, 1.2, 1.3], [2., 2.1, 2.2, 2.3]]], dtype=np.float32)
+    # Value tensor of shape [1, 3, 4]
+    v = np.array(
+        [[[1.5, 1.6, 1.7, 1.8], [2.5, 2.6, 2.7, 2.8], [3.5, 3.6, 3.7, 3.8]]],
+        dtype=np.float32)
+    # Key tensor of shape [1, 3, 4]
+    k = np.array(
+        [[[1.5, 1.6, 1.7, 1.8], [2.5, 2.6, 2.7, 2.8], [3.5, 3.6, 3.7, 3.8]]],
+        dtype=np.float32)
+    # Value mask tensor of shape [1, 3]
+    v_mask = np.array([[True, True, False]], dtype=np.bool_)
+    attention_layer = dense_attention.AdditiveAttention()
+    actual = attention_layer([q, v, k], mask=[None, v_mask])
+
+    expected_shape = [1, 2, 4]
+    self.assertAllEqual(expected_shape, array_ops.shape(actual))
+
+  def test_multi_dim(self):
+    # Query tensor of shape [1, 1, 1]
+    q = np.array([[[1.1]]], dtype=np.float32)
+    # Value tensor of shape [1, 3, 1]
+    v = np.array([[[1.6], [0.7], [-0.8]]], dtype=np.float32)
+    # Value mask tensor of shape [1, 3]
+    v_mask = np.array([[True, True, False]], dtype=np.bool_)
+    attention_layer = dense_attention.AdditiveAttention()
+    attention_layer.build(input_shape=([1, 1, 1], [1, 3, 1]))
+    # Scale tensor of shape [1]
+    attention_layer.scale = np.array([[[0.5]]], dtype=np.float32)
+    actual = attention_layer([q, v], mask=[None, v_mask])
+
+    # pylint:disable=line-too-long
+    # Expected scores of shape [1, 1, 3]
+    # scores = [[[0.5 * tanh(1.1 + 1.6), 0.5 * tanh(1.1 + 0.7), 0.5 * tanh(1.1 - 0.8)]]]
+    #        = [[[0.49550372683, 0.47340300642, 0.14565630622]]]
+    # Expected attention distribution = softmax(scores) with zeros in
+    # positions where v_mask == False.
+    # => attention_distribution000
+    #      = exp(0.49550372683)/(exp(0.49550372683) + exp(0.47340300642))
+    #      = 0.50552495521
+    #    attention_distribution001
+    #      = exp(0.47340300642)/(exp(0.49550372683) + exp(0.47340300642))
+    #      = 0.49447504478
+    #    attention_distribution002 = 0
+    #
+    # Expected tensor of shape [1, 1, 1].
+    # expected000 = 0.50552495521 * 1.6 + 0.49447504478 * 0.7 - 0 * 0.8
+    #             = 1.15497245968
+    # pylint:enable=line-too-long
+    expected = np.array([[[1.15497245968]]], dtype=np.float32)
+    self.assertAllClose(expected, actual)
+
+  def test_multi_dim_with_key(self):
+    # Query tensor of shape [1, 1, 1]
+    q = np.array([[[1.1]]], dtype=np.float32)
+    # Value tensor of shape [1, 3, 1]
+    v = np.array([[[0.5], [0.8], [-0.3]]], dtype=np.float32)
+    # Key tensor of shape [1, 3, 1]
+    k = np.array([[[1.6], [0.7], [-0.8]]], dtype=np.float32)
+    # Value mask tensor of shape [1, 3]
+    v_mask = np.array([[True, True, False]], dtype=np.bool_)
+    attention_layer = dense_attention.AdditiveAttention()
+    attention_layer.build(input_shape=([1, 1, 1], [1, 3, 1]))
+    # Scale tensor of shape [1]
+    attention_layer.scale = np.array([[[0.5]]], dtype=np.float32)
+    actual = attention_layer([q, v, k], mask=[None, v_mask])
+
+    # pylint:disable=line-too-long
+    # Expected scores of shape [1, 1, 3]
+    # scores = [[[0.5 * tanh(1.1 + 1.6), 0.5 * tanh(1.1 + 0.7), 0.5 * tanh(1.1 - 0.8)]]]
+    #        = [[[0.49550372683, 0.47340300642, 0.14565630622]]]
+    # Expected attention distribution = softmax(scores) with zeros in
+    # positions where v_mask == False.
+    # => attention_distribution000
+    #        = exp(0.49550372683)/(exp(0.49550372683) + exp(0.47340300642))
+    #        = 0.50552495521
+    #    attention_distribution001
+    #        = exp(0.47340300642)/(exp(0.49550372683) + exp(0.47340300642))
+    #        = 0.49447504478
+    #    attention_distribution002 = 0
+    #
+    # Expected tensor of shape [1, 1, 1].
+    # expected000 = 0.50552495521 * 0.5 + 0.49447504478 * 0.8 - 0 * 0.3
+    #             = 0.64834251342
+    # pylint:enable=line-too-long
+    expected = np.array([[[0.64834251342]]], dtype=np.float32)
+    self.assertAllClose(expected, actual)
+
+  def test_multi_dim_with_query_mask(self):
+    # Query tensor of shape [1, 2, 1]
+    q = np.array([[[1.1], [-0.5]]], dtype=np.float32)
+    # Value tensor of shape [1, 3, 1]
+    v = np.array([[[1.6], [0.7], [-0.8]]], dtype=np.float32)
+    # Query mask tensor of shape [1, 2]
+    q_mask = np.array([[True, False]], dtype=np.bool_)
+    # Value mask tensor of shape [1, 3]
+    v_mask = np.array([[True, True, False]], dtype=np.bool_)
+    attention_layer = dense_attention.AdditiveAttention()
+    attention_layer.build(input_shape=([1, 1, 1], [1, 3, 1]))
+    # Scale tensor of shape [1]
+    attention_layer.scale = np.array([[[0.5]]], dtype=np.float32)
+    actual = attention_layer([q, v], mask=[q_mask, v_mask])
+
+    # pylint:disable=line-too-long
+    # Expected scores of shape [1, 2, 3]
+    # scores = [[[0.5 * tanh(1.1 + 1.6), 0.5 * tanh(1.1 + 0.7), 0.5 * tanh(1.1 - 0.8)],
+    #            [0.5 * tanh(-0.5 + 1.6), 0.5 * tanh(-0.5 + 0.7), 0.5 * tanh(-0.5 - 0.8)]]]
+    #        = [[[0.49550372683, 0.47340300642, 0.14565630622],
+    #            [0.40024951088, 0.09868766011, -0.43086157965]]]
+    # Expected attention distribution = softmax(scores) with zeros in
+    # positions where v_mask == False.
+    # => attention_distribution000
+    #        = exp(0.49550372683)/(exp(0.49550372683) + exp(0.47340300642))
+    #        = 0.50552495521
+    #    attention_distribution001
+    #        = exp(0.47340300642)/(exp(0.49550372683) + exp(0.47340300642))
+    #        = 0.49447504478
+    #    attention_distribution002 = 0
+    # => attention_distribution010
+    #        = exp(0.40024951088)/(exp(0.40024951088) + exp(0.09868766011))
+    #        = 0.57482427975
+    #    attention_distribution011
+    #        = exp(0.09868766011)/(exp(0.40024951088) + exp(0.09868766011))
+    #        = 0.42517572025
+    #    attention_distribution012 = 0
+    #
+    # Expected tensor of shape [1, 2, 1] with zeros where  q_mask == False.
+    # expected000 = 0.50552495521 * 1.6 + 0.49447504478 * 0.7 - 0 * 0.8
+    #             = 1.15497245968
+    # expected000 = 0
+    # pylint:enable=line-too-long
+    expected = np.array([[[1.15497245968], [0.]]], dtype=np.float32)
+    self.assertAllClose(expected, actual)
 
 
 @test_util.run_all_in_graph_and_eager_modes

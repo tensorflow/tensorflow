@@ -27,7 +27,7 @@ import datetime
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
-_FORWARD_COMPATIBILITY_HORIZON = datetime.date(2019, 4, 4)
+_FORWARD_COMPATIBILITY_HORIZON = datetime.date(2019, 6, 13)
 
 
 @tf_export("compat.forward_compatible")
@@ -76,9 +76,10 @@ def forward_compatible(year, month, day):
   the code that adds the new operation is committed.
 
   Args:
-    year:  A year (e.g., 2018).
-    month: A month (1 <= month <= 12) in year.
-    day:   A day (1 <= day <= 31, or 30, or 29, or 28) in month.
+    year:  A year (e.g., 2018). Must be an `int`.
+    month: A month (1 <= month <= 12) in year. Must be an `int`.
+    day:   A day (1 <= day <= 31, or 30, or 29, or 28) in month. Must be an
+           `int`.
 
   Returns:
     True if the caller can expect that serialized TensorFlow graphs produced
@@ -118,10 +119,11 @@ def forward_compatibility_horizon(year, month, day):
        # Test that generate_graph_with_new_features() has an effect
   ```
 
-  Args :
-    year:  A year (e.g. 2018).
-    month: A month (1 <= month <= 12) in year.
-    day:   A day (1 <= day <= 31, or 30, or 29, or 28) in month.
+  Args:
+    year:  A year (e.g., 2018). Must be an `int`.
+    month: A month (1 <= month <= 12) in year. Must be an `int`.
+    day:   A day (1 <= day <= 31, or 30, or 29, or 28) in month. Must be an
+           `int`.
 
   Yields:
     Nothing.

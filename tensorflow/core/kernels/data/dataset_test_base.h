@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_DATASET_TEST_BASE_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_DATASET_TEST_BASE_H_
 
+#include <memory>
 #include <vector>
 
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
@@ -26,8 +28,11 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/iterator_ops.h"
+#include "tensorflow/core/kernels/data/name_utils.h"
+#include "tensorflow/core/kernels/data/range_dataset_op.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -52,11 +57,11 @@ class DatasetOpsTestBase : public ::testing::Test {
   static Status ExpectEqual(const Tensor& a, const Tensor& b);
 
   // The method validates whether the two tensor vectors have the same tensors.
-  // If `expect_items_equal` is true, the method will only evaluate the two
+  // If `compare_order` is false, the method will only evaluate whether the two
   // vectors have the same elements regardless of order.
   static Status ExpectEqual(std::vector<Tensor> produced_tensors,
                             std::vector<Tensor> expected_tensors,
-                            bool expect_items_equal);
+                            bool compare_order);
 
   // Creates a tensor with the specified dtype, shape, and value.
   template <typename T>
@@ -75,6 +80,15 @@ class DatasetOpsTestBase : public ::testing::Test {
   Status CreateDataset(OpKernel* kernel, OpKernelContext* context,
                        DatasetBase** const dataset);
 
+  // Restores the state of the input iterator. It resets the iterator before
+  // restoring it to make sure the input iterator does not hold any
+  // resources or tasks. Otherwise, restoring an existing iterator may cause
+  // the timeout issue or duplicated elements.
+  Status RestoreIterator(IteratorContext* ctx, IteratorStateReader* reader,
+                         const string& output_prefix,
+                         const DatasetBase& dataset,
+                         std::unique_ptr<IteratorBase>* iterator);
+
   // Creates a new RangeDataset op kernel. `T` specifies the output dtype of the
   // op kernel.
   template <typename T>
@@ -83,8 +97,10 @@ class DatasetOpsTestBase : public ::testing::Test {
     DataTypeVector dtypes({tensorflow::DataTypeToEnum<T>::value});
     std::vector<PartialTensorShape> shapes({{}});
     NodeDef node_def = test::function::NDef(
-        node_name, "RangeDataset", {"start", "stop", "step"},
-        {{"output_types", dtypes}, {"output_shapes", shapes}});
+        node_name, name_utils::OpName(RangeDatasetOp::kDatasetType),
+        {RangeDatasetOp::kStart, RangeDatasetOp::kStop, RangeDatasetOp::kStep},
+        {{RangeDatasetOp::kOutputTypes, dtypes},
+         {RangeDatasetOp::kOutputShapes, shapes}});
 
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, range_op_kernel));
     return Status::OK();
@@ -143,6 +159,12 @@ class DatasetOpsTestBase : public ::testing::Test {
   // Runs an operation producing outputs.
   Status RunOpKernel(OpKernel* op_kernel, OpKernelContext* context);
 
+  // Executes a function producing outputs.
+  Status RunFunction(const FunctionDef& fdef, test::function::Attrs attrs,
+                     const std::vector<Tensor>& args,
+                     const GraphConstructorOptions& graph_options,
+                     std::vector<Tensor*> rets);
+
   // Checks that the size of `inputs` matches the requirement of the op kernel.
   Status CheckOpKernelInput(const OpKernel& kernel,
                             const gtl::InlinedVector<TensorValue, 4>& inputs);
@@ -197,12 +219,14 @@ class DatasetOpsTestBase : public ::testing::Test {
   std::function<void(std::function<void()>)> runner_;
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<FunctionLibraryDefinition> lib_def_;
+  std::unique_ptr<ResourceMgr> resource_mgr_;
   std::unique_ptr<OpKernelContext::Params> params_;
   std::unique_ptr<checkpoint::TensorSliceReaderCacheWrapper>
       slice_reader_cache_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
   std::vector<std::unique_ptr<Tensor>> tensors_;  // Owns tensors.
   mutex lock_for_refs_;  // Used as the Mutex for inputs added as refs.
+  std::unique_ptr<CancellationManager> cancellation_manager_;
 };
 
 }  // namespace data
