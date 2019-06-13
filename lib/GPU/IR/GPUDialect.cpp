@@ -125,6 +125,23 @@ LogicalResult LaunchOp::verify() {
       return emitError("unexpected number of region arguments");
   }
 
+  // Block terminators without successors are expected to exit the kernel region
+  // and must be `gpu.launch`.
+  for (Block &block : getBody()) {
+    if (block.empty())
+      continue;
+    if (block.back().getNumSuccessors() != 0)
+      continue;
+    if (!isa<gpu::Return>(&block.back())) {
+      block.back()
+              .emitError("expected 'gpu.terminator' or a terminator with "
+                         "successors")
+              .attachNote(getLoc())
+          << "in '" << getOperationName() << "' body region";
+      return failure();
+    }
+  }
+
   return success();
 }
 

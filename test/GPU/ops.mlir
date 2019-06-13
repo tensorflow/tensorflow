@@ -5,7 +5,8 @@ func @no_args(%sz : index) {
   // CHECK: gpu.launch blocks(%i0, %i1, %i2) in (%i6 = %arg0, %i7 = %arg0, %i8 = %arg0) threads(%i3, %i4, %i5) in (%i9 = %arg0, %i10 = %arg0, %i11 = %arg0)
   gpu.launch blocks(%bx, %by, %bz) in (%grid_x = %sz, %grid_y = %sz, %grid_z = %sz)
              threads(%tx, %ty, %tz) in (%block_x = %sz, %block_y = %sz, %block_z = %sz) {
-    return
+    // CHECK: gpu.return
+    gpu.return
   }
   return
 }
@@ -16,7 +17,8 @@ func @args(%blk : index, %thrd : index, %float : f32, %data : memref<?xf32,1>) {
   gpu.launch blocks(%bx, %by, %bz) in (%grid_x = %blk, %grid_y = %blk, %grid_z = %blk)
              threads(%tx, %ty, %tz) in (%block_x = %thrd, %block_y = %thrd, %block_z = %thrd)
 	     args(%kernel_arg0 = %float, %kernel_arg1 = %data) : f32, memref<?xf32, 1> {
-    return
+    // CHECK: gpu.return
+    gpu.return
   }
   return
 }
@@ -30,7 +32,8 @@ func @passing_values(%blk : index, %thrd : index, %float : f32, %data : memref<?
 	     args(%kernel_arg0 = %float, %kernel_arg1 = %data) : f32, memref<?xf32, 1> {
     // CHECK: "use"(%i12)
     "use"(%kernel_arg0): (f32) -> ()
-    return
+    // CHECK: gpu.return
+    gpu.return
   }
   return
 }
@@ -49,6 +52,8 @@ func @nested_isolation(%sz : index) {
         "use"(%val) : (index) -> ()
       }) : () -> ()
     }) : () -> ()
+    // CHECK: gpu.return
+    gpu.return
   }
   return
 }

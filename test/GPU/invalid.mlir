@@ -3,7 +3,7 @@
 func @not_enough_sizes(%sz : index) {
   // expected-error@+1 {{expected 6 or more operands}}
   "gpu.launch"(%sz, %sz, %sz, %sz, %sz) ({
-    return
+    gpu.return
   }) : (index, index, index, index, index) -> ()
   return
 }
@@ -15,7 +15,7 @@ func @no_region_attrs(%sz : index) {
  "gpu.launch"(%sz, %sz, %sz, %sz, %sz, %sz) ({
   ^bb1(%bx: index, %by: index, %bz: index,
        %tx: index, %ty: index, %tz: index):
-    return
+    gpu.return
   }) : (index, index, index, index, index, index) -> ()
   return
 }
@@ -31,7 +31,7 @@ func @isolation_arg(%sz : index) {
        %sztx: index, %szty: index, %sztz: index):
     // expected-error@+1 {{using value defined outside the region}}
     "use"(%sz) : (index) -> ()
-    return
+    gpu.return
   }) : (index, index, index, index, index, index) -> ()
   return
 }
@@ -48,7 +48,7 @@ func @isolation_op(%sz : index) {
        %sztx: index, %szty: index, %sztz: index):
     // expected-error@+1 {{using value defined outside the region}}
     "use"(%val) : (index) -> ()
-    return
+    gpu.return
   }) : (index, index, index, index, index, index) -> ()
   return
 }
@@ -68,7 +68,20 @@ func @nested_isolation(%sz : index) {
         "use"(%sz) : (index) -> ()
       }) : () -> ()
     }) : () -> ()
+    gpu.return
   }) : (index, index, index, index, index, index) -> ()
+  return
+}
+
+// -----
+
+func @launch_requires_gpu_return(%sz : index) {
+  // @expected-note@+1 {{in 'gpu.launch' body region}}
+  gpu.launch blocks(%bx, %by, %bz) in (%sbx = %sz, %sby = %sz, %sbz = %sz)
+             threads(%tx, %ty, %tz) in (%stx = %sz, %sty = %sz, %stz = %sz) {
+    // @expected-error@+1 {{expected 'gpu.terminator' or a terminator with successors}}
+    return
+  }
   return
 }
 

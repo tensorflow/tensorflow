@@ -20,7 +20,7 @@ func @launch() {
     "use"(%arg0): (f32) -> ()
     "some_op"(%bx, %block_x) : (index, index) -> ()
     %42 = load %arg1[%tx] : memref<?xf32, 1>
-    return
+    gpu.return
   }
   return
 }
@@ -52,14 +52,14 @@ func @multiple_launches() {
                                        %grid_z = %cst)
              threads(%tx, %ty, %tz) in (%block_x = %cst, %block_y = %cst,
                                         %block_z = %cst) {
-    return
+    gpu.return
   }
   // CHECK: "gpu.launch_func"(%c8, %c8, %c8, %c8, %c8, %c8) {kernel: @multiple_launches_kernel_0} : (index, index, index, index, index, index) -> ()
   gpu.launch blocks(%bx2, %by2, %bz2) in (%grid_x2 = %cst, %grid_y2 = %cst,
                                           %grid_z2 = %cst)
              threads(%tx2, %ty2, %tz2) in (%block_x2 = %cst, %block_y2 = %cst,
                                            %block_z2 = %cst) {
-    return
+    gpu.return
   }
   return
 }

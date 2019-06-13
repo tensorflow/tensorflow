@@ -44,4 +44,17 @@ def gpu_BlockId : GPU_IndexOp<"block_id">;
 def gpu_GridDim : GPU_IndexOp<"grid_dim">;
 def gpu_ThreadId : GPU_IndexOp<"thread_id">;
 
+def gpu_Return : GPU_Op<"return", [Terminator]>, Arguments<(ins)>,
+    Results<(outs)> {
+  let summary = "Terminator for GPU launch regions.";
+  let description = [{
+    A terminator operation for regions that appear in the body of `gpu.launch`
+    operation.  These regions are not expected to return any value so the
+    terminator takes no operands.
+  }];
+
+  let parser = [{ return success(); }];
+  let printer = [{ *p << getOperationName(); }];
+}
+
 #endif // GPU_OPS

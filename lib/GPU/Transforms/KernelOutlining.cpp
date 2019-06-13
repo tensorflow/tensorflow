@@ -57,7 +57,8 @@ void injectGpuIndexOperations(Location loc, Function &kernelFunc) {
   }
 }
 
-// Outline the `gpu.launch` operation body into a kernel function.
+// Outline the `gpu.launch` operation body into a kernel function. Replace
+// `gpu.return` operations by `std.return` in the generated functions.
 Function *outlineKernelFunc(Module &module, gpu::LaunchOp &launchOp) {
   Location loc = launchOp.getLoc();
   SmallVector<Type, 4> kernelOperandTypes(launchOp.getKernelOperandTypes());
@@ -71,6 +72,11 @@ Function *outlineKernelFunc(Module &module, gpu::LaunchOp &launchOp) {
   outlinedFunc->setAttr(gpu::GPUDialect::getKernelFuncAttrName(),
                         builder.getUnitAttr());
   injectGpuIndexOperations(loc, *outlinedFunc);
+  outlinedFunc->walk<mlir::gpu::Return>([](mlir::gpu::Return op) {
+    OpBuilder replacer(op);
+    replacer.create<ReturnOp>(op.getLoc());
+    op.erase();
+  });
   module.getFunctions().push_back(outlinedFunc);
   return outlinedFunc;
 }
@@ -78,10 +84,10 @@ Function *outlineKernelFunc(Module &module, gpu::LaunchOp &launchOp) {
 // Replace `gpu.launch` operations with an `gpu.launch_func` operation launching
 // `kernelFunc`.
 void convertToLaunchFuncOp(gpu::LaunchOp &launchOp, Function &kernelFunc) {
-  OpBuilder OpBuilder(launchOp);
+  OpBuilder builder(launchOp);
   SmallVector<Value *, 4> kernelOperandValues(
       launchOp.getKernelOperandValues());
-  OpBuilder.create<gpu::LaunchFuncOp>(
+  builder.create<gpu::LaunchFuncOp>(
       launchOp.getLoc(), &kernelFunc, launchOp.getGridSizeOperandValues(),
       launchOp.getBlockSizeOperandValues(), kernelOperandValues);
   launchOp.erase();
