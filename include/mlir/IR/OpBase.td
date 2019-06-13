@@ -1075,16 +1075,23 @@ class ElementTypeIsPred<string name, Type type> : And<[
 class ElementTypeIs<string name, Type type> : PredOpTrait<
   "'" # name # "' is " # type.description, ElementTypeIsPred<name, type>>;
 
-// Predicate to verify that all the arguments and results have the same element
-// type.
 // TODO(b/135032064): Only works for non-variadic.
-class AllElementTypesMatchPred<list<string> names> :
-  CPred<"llvm::is_splat(ArrayRef<Type>{" # !if(!empty(names), "",
-          !foldl("getElementTypeOrSelf($" # !head(names) # ")", !tail(names),
-            prev, cur, prev # ", getElementTypeOrSelf($" # cur # ")")) # "})">;
-class AllElementTypesMatch<list<string> names> : PredOpTrait<
-  "all of {" # StrJoin<names>.result # "} have same element type",
-  AllElementTypesMatchPred<names>>;
+class AllMatchPred<list<string> names, string operator> :
+    CPred<"llvm::is_splat(llvm::makeArrayRef({" #
+          StrJoin<!foreach(n, names,
+                           !subst("$_self", "$" # n, operator))>.result
+          # "}))">;
+
+class AllMatchTrait<list<string> names, string operator, string description> :
+    PredOpTrait<
+        "all of {" # StrJoin<names>.result # "} have same " # description,
+        AllMatchPred<names, operator>>;
+
+class AllElementTypesMatch<list<string> names> :
+    AllMatchTrait<names, "getElementTypeOrSelf($_self)", "element type">;
+
+class AllTypesMatch<list<string> names> :
+    AllMatchTrait<names, "$_self.getType()", "type">;
 
 // Predicate to verify that the i'th operand and the j'th operand have the same
 // elemental type.

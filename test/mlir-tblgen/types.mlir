@@ -105,7 +105,7 @@ func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
 
 // -----
 
-func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
+func @same_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
   // expected-error@+1 {{verify that all of {x, y} have same element type}}
   "test.operands_have_same_element_type"(%arg1, %arg0): (tensor<* x f32>, tensor<* x i32>) -> ()
   return
@@ -113,16 +113,64 @@ func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
 
 // -----
 
-// CHECK-LABEL: same_types
-func @same_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
+// CHECK-LABEL: same_element_types
+func @same_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
   %0 = "test.operand_one_and_result_have_same_element_type"(%arg1, %arg0) : (tensor<* x f32>, tensor<* x i32>) -> tensor<* x f32>
   return
 }
 
 // -----
 
-func @same_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
+func @same_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
   // expected-error@+1 {{all of {x, res} have same element type}}
   %0 = "test.operand_one_and_result_have_same_element_type"(%arg1, %arg0) : (tensor<* x f32>, tensor<* x i32>) -> tensor<* x i32>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: same_types
+func @same_types(%arg0: tensor<* x i32>, %arg1: tensor<* x i32>) {
+  "test.operands_have_same_type"(%arg0, %arg1) : (tensor<* x i32>, tensor<* x i32>) -> ()
+  return
+}
+
+// -----
+
+func @same_types_element_mismatch(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
+  // expected-error@+1 {{all of {x, y} have same type}}
+  "test.operands_have_same_type"(%arg0, %arg1) : (tensor<* x i32>, tensor<* x f32>) -> ()
+  return
+}
+
+// -----
+
+func @same_types_shape_mismatch(%arg0: tensor<1x2xi32>, %arg1: tensor<2x1xi32>) {
+  // expected-error@+1 {{all of {x, y} have same type}}
+  "test.operands_have_same_type"(%arg0, %arg1) : (tensor<1x2xi32>, tensor<2x1xi32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: same_types
+func @same_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
+  %0 = "test.operand_one_and_result_have_same_type"(%arg0, %arg1) : (tensor<* x i32>, tensor<* x f32>) -> tensor<* x i32>
+  return
+}
+
+// -----
+
+func @same_types_element_mismatch(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
+  // expected-error@+1 {{all of {x, res} have same type}}
+  %0 = "test.operand_one_and_result_have_same_type"(%arg0, %arg1) : (tensor<* x i32>, tensor<* x f32>) -> tensor<* x f32>
+  return
+}
+
+// -----
+
+func @same_types_shape_mismatch(%arg0: tensor<1x2xi32>, %arg1: tensor<2x1xi32>) {
+  // expected-error@+1 {{all of {x, res} have same type}}
+  %0 = "test.operand_one_and_result_have_same_type"(%arg0, %arg1) : (tensor<1x2xi32>, tensor<2x1xi32>) -> tensor<2x1xi32>
   return
 }

@@ -134,6 +134,18 @@ def OperandOneAndResultHaveSameElementType : TEST_Op<
   let results = (outs AnyTensor:$res);
 }
 
+def OperandsHaveSameType :
+    TEST_Op<"operands_have_same_type", [AllTypesMatch<["x", "y"]>]> {
+  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
+}
+
+def OperandOneAndResultHaveSameType :
+    TEST_Op<"operand_one_and_result_have_same_type",
+            [AllTypesMatch<["x", "res"]>]> {
+  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
+  let results = (outs AnyTensor:$res);
+}
+
 //===----------------------------------------------------------------------===//
 // Test Patterns
 //===----------------------------------------------------------------------===//
