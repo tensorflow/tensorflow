@@ -274,6 +274,10 @@ class _StateManagerImpl(StateManager):
     self._trainable = trainable
     self._layer = layer
     self._cols_to_vars_map = collections.defaultdict(lambda: {})
+    # TODO(vbardiovsky): Make sure the resources are tracked by moving them to
+    # the layer (inheriting from AutoTrackable), e.g.:
+    # self._layer._resources_map = data_structures.Mapping()
+    self._cols_to_resources_map = collections.defaultdict(lambda: {})
 
   def create_variable(self,
                       feature_column,
@@ -304,6 +308,14 @@ class _StateManagerImpl(StateManager):
     if name in self._cols_to_vars_map[feature_column]:
       return self._cols_to_vars_map[feature_column][name]
     raise ValueError('Variable does not exist.')
+
+  def add_resource(self, feature_column, name, resource):
+    self._cols_to_resources_map[feature_column][name] = resource
+
+  def get_resource(self, feature_column, name):
+    if name in self._cols_to_resources_map[feature_column]:
+      return self._cols_to_resources_map[feature_column][name]
+    raise ValueError('Resource does not exist.')
 
 
 class _BaseFeaturesLayer(Layer):
