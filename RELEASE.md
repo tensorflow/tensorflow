@@ -1,3 +1,16 @@
+# Release 2.0.0-beta1
+
+Tensorflow 2.0.0-beta1 is a minor update to 2.0.0-beta0 with a few important bug
+fixes. Please refer to [2.0.0-beta0 release
+notes](https://github.com/tensorflow/tensorflow/releases/tag/v2.0.0-beta0) for a
+complete list of changes in 2.0.0-beta0.
+
+## Bug Fixes and Other Changes
+* Partially fix the function inlining and performance regression for LSTM/GRU.
+* Replace training tensor argument with python boolean. Required for TFLite, which does not yet support control flow ops.
+* Allow SavedModel serialization to accept `None` InputSpec values.
+
+
 # Release 2.0.0-beta0
 
 ## Major Features and Improvements
