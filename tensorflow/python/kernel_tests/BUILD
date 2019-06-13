@@ -3517,6 +3517,11 @@ cuda_py_test(
         "//tensorflow/python:nn",
     ],
     shard_count = 20,
+    # TODO(b/117236102): Re-enable in msan build.
+    tags = [
+        "no_windows_gpu",
+        "nomsan",
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
