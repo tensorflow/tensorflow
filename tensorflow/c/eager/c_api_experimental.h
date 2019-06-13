@@ -88,6 +88,16 @@ TF_CAPI_EXPORT extern bool TFE_ProfilerClientStartTracing(
     bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
     TF_Status* status);
 
+// Send a grpc request to profiler server (service_addr) to perform on-demand
+// monitoring and return the result in a string. It will block the
+// caller thread until receiving the monitoring result.
+// This API is designed for TensorBoard, for end user, please use
+// tensorflow/contrib/tpu/profiler/capture_tpu_profile instead following
+// https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
+TF_CAPI_EXPORT extern void TFE_ProfilerClientMonitor(
+    const char* service_addr, int duration_ms, int monitoring_level,
+    bool display_timestamp, TF_Buffer* result, TF_Status* status);
+
 // TODO(fishx): Move these monitoring APIs into a separate file.
 // -----------------------------------------------------------------------------
 // Monitoring Counter APIs.

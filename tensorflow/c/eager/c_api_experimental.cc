@@ -102,6 +102,28 @@ bool TFE_ProfilerClientStartTracing(const char* service_addr,
   return s.ok();
 }
 
+void TFE_ProfilerClientMonitor(const char* service_addr, int duration_ms,
+                               int monitoring_level, bool display_timestamp,
+                               TF_Buffer* result, TF_Status* status) {
+  tensorflow::Status s =
+      tensorflow::profiler::client::ValidateHostPortPair(service_addr);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
+    return;
+  }
+  string content;
+  s = tensorflow::profiler::client::Monitor(
+      service_addr, duration_ms, monitoring_level, display_timestamp, &content);
+  void* data = tensorflow::port::Malloc(content.length());
+  content.copy(static_cast<char*>(data), content.length(), 0);
+  result->data = data;
+  result->length = content.length();
+  result->data_deallocator = [](void* data, size_t length) {
+    tensorflow::port::Free(data);
+  };
+  tensorflow::Set_TF_Status_from_Status(status, s);
+}
+
 void TFE_MonitoringCounterCellIncrementBy(TFE_MonitoringCounterCell* cell,
                                           int64_t value) {
   cell->cell.IncrementBy(value);

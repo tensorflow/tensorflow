@@ -29,11 +29,13 @@ namespace tensorflow {
 namespace {
 
 Status MonitoringHelper(const string& service_addr, int duration_ms,
-                        int monitoring_level, bool timestamp, int num_queries) {
+                        int monitoring_level, bool display_timestamp,
+                        int num_queries) {
   for (int query = 0; query < num_queries; ++query) {
     string result;
-    TF_RETURN_IF_ERROR(tensorflow::profiler::client::StartMonitoring(
-        service_addr, duration_ms, monitoring_level, timestamp, &result));
+    TF_RETURN_IF_ERROR(tensorflow::profiler::client::Monitor(
+        service_addr, duration_ms, monitoring_level, display_timestamp,
+        &result));
     std::cout << "Cloud TPU Monitoring Results (Sample " << query + 1
               << "):\n\n"
               << result << std::flush;
@@ -52,7 +54,7 @@ int main(int argc, char** argv) {
   int FLAGS_num_tracing_attempts = 3;
   bool FLAGS_include_dataset_ops = true;
   int FLAGS_monitoring_level = 0;
-  bool FLAGS_timestamp = false;
+  bool FLAGS_display_timestamp = false;
   int FLAGS_num_queries = 100;
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("service_addr", &FLAGS_service_addr,
@@ -76,7 +78,7 @@ int main(int argc, char** argv) {
                        "Choose a monitoring level between 1 and 2 to monitor "
                        "your TPU job continuously. Level 2 is more verbose "
                        "than level 1 and shows more metrics."),
-      tensorflow::Flag("timestamp", &FLAGS_timestamp,
+      tensorflow::Flag("display_timestamp", &FLAGS_display_timestamp,
                        "Set to true to display timestamp in monitoring "
                        "results."),
       tensorflow::Flag("num_queries", &FLAGS_num_queries,
@@ -128,7 +130,7 @@ int main(int argc, char** argv) {
               << std::endl;
     status = tensorflow::MonitoringHelper(FLAGS_service_addr, duration_ms,
                                           FLAGS_monitoring_level,
-                                          FLAGS_timestamp, num_queries);
+                                          FLAGS_display_timestamp, num_queries);
   } else {
     status = tensorflow::profiler::client::StartTracing(
         FLAGS_service_addr, FLAGS_logdir, FLAGS_workers_list,
