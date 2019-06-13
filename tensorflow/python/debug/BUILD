@@ -9,7 +9,7 @@
 # ":grpc_debug_server": Server interface for grpc:// debug URLs.
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "py_test", "py_binary", "if_not_v2", "if_not_windows")
+load("//tensorflow:tensorflow.bzl", "if_not_v2", "if_not_windows", "py_binary", "py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
