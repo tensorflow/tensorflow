@@ -691,6 +691,7 @@ tf_cc_test(
     name = "instruction_fusion_test",
     srcs = ["instruction_fusion_test.cc"],
     deps = [
+        ":gpu_fusible",
         ":instruction_fusion",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -724,6 +725,7 @@ tf_cc_test(
     name = "multi_output_fusion_test",
     srcs = ["multi_output_fusion_test.cc"],
     deps = [
+        ":gpu_fusible",
         ":instruction_fusion",
         ":multi_output_fusion",
         "//tensorflow/compiler/xla:status_macros",
