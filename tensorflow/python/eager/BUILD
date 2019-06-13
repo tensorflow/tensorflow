@@ -585,8 +585,8 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":context",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:op_selector",
         "@six_archive//:six",
     ],
 )
