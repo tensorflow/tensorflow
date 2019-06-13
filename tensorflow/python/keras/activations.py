@@ -277,9 +277,6 @@ def linear(x):
 
   Returns:
       The linear activation: `x`.
-        
-  Note:
-      Often used as last layer of regression networks.
   """
   return x
 
