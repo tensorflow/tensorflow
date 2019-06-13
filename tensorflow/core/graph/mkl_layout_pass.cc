@@ -1915,9 +1915,9 @@ void MklLayoutRewritePass::GetDummyMklTensorNode(std::unique_ptr<Graph>* g,
     Node* orig_input0 = nullptr;
     TF_CHECK_OK(
         orig_node->input_node(0, const_cast<const Node**>(&orig_input0)));
-    // Allow duplicate while adding control edge as it would fail (return
-    // NULL) if we try to add duplicate edge.
-    CHECK_NOTNULL((*g)->AddControlEdge(orig_input0, *out, true));
+    if (!DoesControlEdgeExist(orig_input0, *out)) {
+      (*g)->AddControlEdge(orig_input0, *out, false);
+    }
   }
 
   (*out)->set_assigned_device_name(orig_node->assigned_device_name());
@@ -3195,16 +3195,16 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
   // node are already copied in BuildNode. We handle control edges now.
   for (const Edge* e : pred->in_edges()) {
     if (e->IsControlEdge()) {
-      // Allow duplicate while adding control edge as it would fail (return
-      // NULL) if we try to add duplicate edge.
-      CHECK_NOTNULL((*g)->AddControlEdge(e->src(), new_node, true));
+      if (!DoesControlEdgeExist(e->src(), new_node)) {
+        (*g)->AddControlEdge(e->src(), new_node, false);
+      }
     }
   }
   for (const Edge* e : succ->in_edges()) {
     if (e->IsControlEdge()) {
-      // Allow duplicate while adding control edge as it would fail (return
-      // NULL) if we try to add duplicate edge.
-      CHECK_NOTNULL((*g)->AddControlEdge(e->src(), new_node, true));
+      if (!DoesControlEdgeExist(e->src(), new_node)) {
+        (*g)->AddControlEdge(e->src(), new_node, false);
+      }
     }
   }
 
@@ -3212,18 +3212,18 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
   // First, we will fix outgoing control edges from 'pred' node.
   for (const Edge* e : pred->out_edges()) {
     if (e->IsControlEdge()) {
-      // Allow duplicate while adding control edge as it would fail (return
-      // NULL) if we try to add duplicate edge.
-      CHECK_NOTNULL((*g)->AddControlEdge(new_node, e->dst(), true));
+      if (!DoesControlEdgeExist(new_node, e->dst())) {
+        (*g)->AddControlEdge(new_node, e->dst(), false);
+      }
     }
   }
 
   // Second, we will fix outgoing control and data edges from 'succ' node.
   for (const Edge* e : succ->out_edges()) {
     if (e->IsControlEdge()) {
-      // Allow duplicate while adding control edge as it would fail (return
-      // NULL) if we try to add duplicate edge.
-      CHECK_NOTNULL((*g)->AddControlEdge(new_node, e->dst(), true));
+      if (!DoesControlEdgeExist(new_node, e->dst())) {
+        (*g)->AddControlEdge(new_node, e->dst(), false);
+      }
     } else {
       // BiasAdd has only 1 output (at slot 0) and merged node also has only 1
       // output (at slot 0).
@@ -3482,16 +3482,16 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
   // edges now.
   for (const Edge* e : badd->in_edges()) {
     if (e->IsControlEdge()) {
-      // Allow duplicate while adding control edge as it would fail (return
-      // NULL) if we try to add duplicate edge.
-      CHECK_NOTNULL((*g)->AddControlEdge(e->src(), new_node, true));
+      if (!DoesControlEdgeExist(e->src(), new_node)) {
+        (*g)->AddControlEdge(e->src(), new_node, false);
+      }
     }
   }
   for (const Edge* e : fltr->in_edges()) {
     if (e->IsControlEdge()) {
-      // Allow duplicate while adding control edge as it would fail (return
-      // NULL) if we try to add duplicate edge.
-      CHECK_NOTNULL((*g)->AddControlEdge(e->src(), new_node, true));
+      if (!DoesControlEdgeExist(e->src(), new_node)) {
+        (*g)->AddControlEdge(e->src(), new_node, false);
+      }
     }
   }
 
@@ -3507,9 +3507,9 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
 
   for (const Edge* e : badd->out_edges()) {
     if (e->IsControlEdge()) {
-      // Allow duplicate while adding control edge as it would fail (return
-      // NULL) if we try to add duplicate edge.
-      CHECK_NOTNULL((*g)->AddControlEdge(new_node, e->dst(), true));
+      if (!DoesControlEdgeExist(new_node, e->dst())) {
+        (*g)->AddControlEdge(new_node, e->dst(), false);
+      }
     } else {
       CHECK_NOTNULL((*g)->AddEdge(new_node, kMergedNodeBiasGradOutputIdx,
                                   e->dst(), e->dst_input()));
@@ -3519,11 +3519,9 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
   // Second, we will fix outgoing control and data edges from 'fltr' node.
   for (const Edge* e : fltr->out_edges()) {
     if (e->IsControlEdge()) {
-      // We allow duplicate edge for this case since we already add control
-      // edge from new_node in line 3990. Line below could be adding same
-      // edge to same destination again. In such case, if we do not allow
-      // duplicate edge, then this call will fail.
-      CHECK_NOTNULL((*g)->AddControlEdge(new_node, e->dst(), true));
+      if (!DoesControlEdgeExist(new_node, e->dst())) {
+        (*g)->AddControlEdge(new_node, e->dst(), false);
+      }
     } else {
       CHECK_NOTNULL((*g)->AddEdge(new_node, kMergedNodeFilterGradOutputIdx,
                                   e->dst(), e->dst_input()));
@@ -3627,9 +3625,9 @@ Status MklLayoutRewritePass::RewriteNodeForLayoutPropagation(
   // already copied in BuildNode. We need to handle control edges now.
   for (const Edge* e : orig_node->in_edges()) {
     if (e->IsControlEdge()) {
-      // Allow duplicate while adding control edge as it would fail (return
-      // NULL) if we try to add duplicate edge.
-      CHECK_NOTNULL((*g)->AddControlEdge(e->src(), *new_node, true));
+      if (!DoesControlEdgeExist(e->src(), *new_node)) {
+        (*g)->AddControlEdge(e->src(), *new_node, false);
+      }
     }
   }
 
@@ -3642,9 +3640,9 @@ Status MklLayoutRewritePass::RewriteNodeForLayoutPropagation(
   // GetTensorDataIndex provides this mapping function.
   for (const Edge* e : orig_node->out_edges()) {
     if (e->IsControlEdge()) {
-      // This Allows duplicate control edges be added in the new node if
-      // the original node has duplicate edges.
-      CHECK_NOTNULL((*g)->AddControlEdge(*new_node, e->dst(), true));
+      if (!DoesControlEdgeExist(*new_node, e->dst())) {
+        (*g)->AddControlEdge(*new_node, e->dst(), false);
+      }
     } else {
       CHECK_NOTNULL((*g)->AddEdge(
           *new_node,
@@ -3694,18 +3692,18 @@ Status MklLayoutRewritePass::RewriteNodeForJustOpNameChange(
   // already copied in BuildNode. We need to handle control edges now.
   for (const Edge* e : orig_node->in_edges()) {
     if (e->IsControlEdge()) {
-      // Allow duplicate while adding control edge as it would fail (return
-      // NULL) if we try to add duplicate edge.
-      CHECK_NOTNULL((*g)->AddControlEdge(e->src(), *new_node, true));
+      if (!DoesControlEdgeExist(e->src(), *new_node)) {
+        (*g)->AddControlEdge(e->src(), *new_node, false);
+      }
     }
   }
 
   // Transfer outgoing edges from 'orig_node' node to new 'new_node' node.
   for (const Edge* e : orig_node->out_edges()) {
     if (e->IsControlEdge()) {
-      // Allow duplicate while adding control edge as it would fail (return
-      // NULL) if we try to add duplicate edge.
-      CHECK_NOTNULL((*g)->AddControlEdge(*new_node, e->dst(), true));
+      if (!DoesControlEdgeExist(*new_node, e->dst())) {
+        (*g)->AddControlEdge(*new_node, e->dst(), false);
+      }
     } else {
       CHECK_NOTNULL((*g)->AddEdge(*new_node, e->src_output(),
           e->dst(), e->dst_input()));

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.pb_text.h"
+#include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {
 // Since our ops are going to produce and also consume N addition tensors
@@ -71,6 +72,16 @@ int inline GetTensorMetaDataIndex(int n, int total_tensors) {
   // to get TensorMetaData index from TensorData index.
   int tidx = GetTensorDataIndex(n, total_tensors);
   return DataIndexToMetaDataIndex(tidx, total_tensors);
+}
+
+// check if the control between src and dst nodes alreay exists
+bool inline DoesControlEdgeExist(const Node* src, const Node* dst) {
+  for (const Edge* edge : src->out_edges()) {
+    if (edge->IsControlEdge() && edge->dst() == dst) {
+      return true;
+    }
+  }
+  return false;
 }
 
 namespace mkl_op_registry {
