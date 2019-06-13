@@ -32,12 +32,14 @@ namespace spirv {
 
 namespace detail {
 struct ArrayTypeStorage;
+struct PointerTypeStorage;
 struct RuntimeArrayTypeStorage;
 } // namespace detail
 
 namespace TypeKind {
 enum Kind {
   Array = Type::FIRST_SPIRV_TYPE,
+  Pointer,
   RuntimeArray,
 };
 }
@@ -55,6 +57,21 @@ public:
   Type getElementType();
 
   int64_t getElementCount();
+};
+
+// SPIR-V pointer type
+class PointerType
+    : public Type::TypeBase<PointerType, Type, detail::PointerTypeStorage> {
+public:
+  using Base::Base;
+
+  static bool kindof(unsigned kind) { return kind == TypeKind::Pointer; }
+
+  static PointerType get(Type pointeeType, StorageClass storageClass);
+
+  Type getPointeeType();
+
+  StorageClass getStorageClass();
 };
 
 // SPIR-V run-time array type

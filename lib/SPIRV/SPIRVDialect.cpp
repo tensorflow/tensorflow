@@ -39,7 +39,7 @@ using namespace mlir::spirv;
 
 SPIRVDialect::SPIRVDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
-  addTypes<ArrayType, RuntimeArrayType>();
+  addTypes<ArrayType, PointerType, RuntimeArrayType>();
 
   addOperations<
 #define GET_OP_LIST
@@ -129,6 +129,11 @@ Type SPIRVDialect::parseArrayType(StringRef spec, Location loc) const {
     return Type();
   }
 
+  if (spec.trim().empty()) {
+    context->emitError(loc, "expected element type");
+    return Type();
+  }
+
   Type elementType = parseAndVerifyType(spec, loc);
   if (!elementType)
     return Type();
@@ -136,10 +141,51 @@ Type SPIRVDialect::parseArrayType(StringRef spec, Location loc) const {
   return ArrayType::get(elementType, count);
 }
 
+Type SPIRVDialect::parsePointerType(StringRef spec, Location loc) const {
+  auto *context = getContext();
+  if (!spec.consume_front("ptr<") || !spec.consume_back(">")) {
+    context->emitError(loc, "spv.ptr delimiter <...> mismatch");
+    return Type();
+  }
+
+  // Split into pointee type and storage class
+  StringRef scSpec, ptSpec;
+  std::tie(ptSpec, scSpec) = spec.rsplit(',');
+  if (scSpec.empty()) {
+    context->emitError(
+        loc, "expected comma to separate pointee type and storage class in '")
+        << spec << "'";
+    return Type();
+  }
+
+  scSpec = scSpec.trim();
+  auto storageClass = symbolizeStorageClass(scSpec);
+  if (!storageClass) {
+    context->emitError(loc, "unknown storage class: ") << scSpec;
+    return Type();
+  }
+
+  if (ptSpec.trim().empty()) {
+    context->emitError(loc, "expected pointee type");
+    return Type();
+  }
+
+  auto pointeeType = parseAndVerifyType(ptSpec, loc);
+  if (!pointeeType)
+    return Type();
+
+  return PointerType::get(pointeeType, *storageClass);
+}
+
 Type SPIRVDialect::parseRuntimeArrayType(StringRef spec, Location loc) const {
   auto *context = getContext();
   if (!spec.consume_front("rtarray<") || !spec.consume_back(">")) {
     context->emitError(loc, "spv.rtarray delimiter <...> mismatch");
+    return Type();
+  }
+
+  if (spec.trim().empty()) {
+    context->emitError(loc, "expected element type");
     return Type();
   }
 
@@ -152,12 +198,12 @@ Type SPIRVDialect::parseRuntimeArrayType(StringRef spec, Location loc) const {
 
 Type SPIRVDialect::parseType(StringRef spec, Location loc) const {
 
-  if (spec.startswith("array")) {
+  if (spec.startswith("array"))
     return parseArrayType(spec, loc);
-  }
-  if (spec.startswith("rtarray")) {
+  if (spec.startswith("ptr"))
+    return parsePointerType(spec, loc);
+  if (spec.startswith("rtarray"))
     return parseRuntimeArrayType(spec, loc);
-  }
 
   getContext()->emitError(loc, "unknown SPIR-V type: ") << spec;
   return Type();
@@ -176,12 +222,23 @@ static void print(RuntimeArrayType type, llvm::raw_ostream &os) {
   os << "rtarray<" << type.getElementType() << ">";
 }
 
+static void print(PointerType type, llvm::raw_ostream &os) {
+  os << "ptr<" << type.getPointeeType() << ", "
+     << stringifyStorageClass(type.getStorageClass()) << ">";
+}
+
 void SPIRVDialect::printType(Type type, llvm::raw_ostream &os) const {
-  if (auto t = type.dyn_cast<ArrayType>()) {
-    print(t, os);
-  } else if (auto t = type.dyn_cast<RuntimeArrayType>()) {
-    print(t, os);
-  } else {
+  switch (type.getKind()) {
+  case TypeKind::Array:
+    print(type.cast<ArrayType>(), os);
+    return;
+  case TypeKind::Pointer:
+    print(type.cast<PointerType>(), os);
+    return;
+  case TypeKind::RuntimeArray:
+    print(type.cast<RuntimeArrayType>(), os);
+    return;
+  default:
     llvm_unreachable("unhandled SPIR-V type");
   }
 }

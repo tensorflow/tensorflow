@@ -29,6 +29,11 @@ func @missing_x(!spv.array<4 f32>) -> ()
 
 // -----
 
+// expected-error @+1 {{expected element type}}
+func @missing_element_type(!spv.array<4x>) -> ()
+
+// -----
+
 // expected-error @+1 {{cannot parse type: blabla}}
 func @cannot_parse_type(!spv.array<4xblabla>) -> ()
 
@@ -70,6 +75,38 @@ func @llvm_type(!spv.array<4x!llvm.i32>) -> ()
 // -----
 
 //===----------------------------------------------------------------------===//
+// PointerType
+//===----------------------------------------------------------------------===//
+
+// CHECK: func @scalar_ptr_type(!spv.ptr<f32, Uniform>)
+func @scalar_ptr_type(!spv.ptr<f32, Uniform>) -> ()
+
+// CHECK: func @vector_ptr_type(!spv.ptr<vector<4xi32>, PushConstant>)
+func @vector_ptr_type(!spv.ptr<vector<4xi32>,PushConstant>) -> ()
+
+// -----
+
+// expected-error @+1 {{spv.ptr delimiter <...> mismatch}}
+func @missing_left_angle_bracket(!spv.ptr f32, Uniform>) -> ()
+
+// -----
+
+// expected-error @+1 {{expected comma to separate pointee type and storage class in 'f32 Uniform'}}
+func @missing_comma(!spv.ptr<f32 Uniform>) -> ()
+
+// -----
+
+// expected-error @+1 {{expected pointee type}}
+func @missing_pointee_type(!spv.ptr<, Uniform>) -> ()
+
+// -----
+
+// expected-error @+1 {{unknown storage class: SomeStorageClass}}
+func @unknown_storage_class(!spv.ptr<f32, SomeStorageClass>) -> ()
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // RuntimeArrayType
 //===----------------------------------------------------------------------===//
 
@@ -83,6 +120,11 @@ func @vector_runtime_array_type(!spv.rtarray< vector<4xf32> >) -> ()
 
 // expected-error @+1 {{spv.rtarray delimiter <...> mismatch}}
 func @missing_left_angle_bracket(!spv.rtarray f32>) -> ()
+
+// -----
+
+// expected-error @+1 {{expected element type}}
+func @missing_element_type(!spv.rtarray<>) -> ()
 
 // -----
 

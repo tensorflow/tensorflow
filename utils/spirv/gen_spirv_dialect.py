@@ -124,7 +124,7 @@ def gen_operand_kind_enum_attr(operand_kind):
       '  let cppNamespace = "::mlir::spirv";\n'\
       '  let underlyingType = "uint32_t";\n}}'.format(
           name=kind_name, cases=case_names)
-  return kind_name, case_defs + '\n' + enum_attr
+  return kind_name, case_defs + '\n\n' + enum_attr
 
 
 def update_td_enum_attrs(path, operand_kinds, filter_list):

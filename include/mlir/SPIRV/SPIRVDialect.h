@@ -46,6 +46,9 @@ private:
   /// Parses `spec` as a SPIR-V array type.
   Type parseArrayType(StringRef spec, Location loc) const;
 
+  /// Parses `spec` as a SPIR-V pointer type.
+  Type parsePointerType(StringRef spec, Location loc) const;
+
   /// Parses `spec` as a SPIR-V run-time array type.
   Type parseRuntimeArrayType(StringRef spec, Location loc) const;
 };

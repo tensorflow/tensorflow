@@ -72,6 +72,7 @@ def SPV_AM_Logical                    : EnumAttrCase<"Logical", 0>;
 def SPV_AM_Physical32                 : EnumAttrCase<"Physical32", 1>;
 def SPV_AM_Physical64                 : EnumAttrCase<"Physical64", 2>;
 def SPV_AM_PhysicalStorageBuffer64EXT : EnumAttrCase<"PhysicalStorageBuffer64EXT", 5348>;
+
 def SPV_AddressingModelAttr :
     EnumAttr<"AddressingModel", "valid SPIR-V AddressingModel", [
       SPV_AM_Logical, SPV_AM_Physical32, SPV_AM_Physical64,
@@ -85,9 +86,44 @@ def SPV_MM_Simple    : EnumAttrCase<"Simple", 0>;
 def SPV_MM_GLSL450   : EnumAttrCase<"GLSL450", 1>;
 def SPV_MM_OpenCL    : EnumAttrCase<"OpenCL", 2>;
 def SPV_MM_VulkanKHR : EnumAttrCase<"VulkanKHR", 3>;
+
 def SPV_MemoryModelAttr :
     EnumAttr<"MemoryModel", "valid SPIR-V MemoryModel", [
       SPV_MM_Simple, SPV_MM_GLSL450, SPV_MM_OpenCL, SPV_MM_VulkanKHR
+    ]> {
+  let cppNamespace = "::mlir::spirv";
+  let underlyingType = "uint32_t";
+}
+
+def SPV_SC_UniformConstant          : EnumAttrCase<"UniformConstant", 0>;
+def SPV_SC_Input                    : EnumAttrCase<"Input", 1>;
+def SPV_SC_Uniform                  : EnumAttrCase<"Uniform", 2>;
+def SPV_SC_Output                   : EnumAttrCase<"Output", 3>;
+def SPV_SC_Workgroup                : EnumAttrCase<"Workgroup", 4>;
+def SPV_SC_CrossWorkgroup           : EnumAttrCase<"CrossWorkgroup", 5>;
+def SPV_SC_Private                  : EnumAttrCase<"Private", 6>;
+def SPV_SC_Function                 : EnumAttrCase<"Function", 7>;
+def SPV_SC_Generic                  : EnumAttrCase<"Generic", 8>;
+def SPV_SC_PushConstant             : EnumAttrCase<"PushConstant", 9>;
+def SPV_SC_AtomicCounter            : EnumAttrCase<"AtomicCounter", 10>;
+def SPV_SC_Image                    : EnumAttrCase<"Image", 11>;
+def SPV_SC_StorageBuffer            : EnumAttrCase<"StorageBuffer", 12>;
+def SPV_SC_CallableDataNV           : EnumAttrCase<"CallableDataNV", 5328>;
+def SPV_SC_IncomingCallableDataNV   : EnumAttrCase<"IncomingCallableDataNV", 5329>;
+def SPV_SC_RayPayloadNV             : EnumAttrCase<"RayPayloadNV", 5338>;
+def SPV_SC_HitAttributeNV           : EnumAttrCase<"HitAttributeNV", 5339>;
+def SPV_SC_IncomingRayPayloadNV     : EnumAttrCase<"IncomingRayPayloadNV", 5342>;
+def SPV_SC_ShaderRecordBufferNV     : EnumAttrCase<"ShaderRecordBufferNV", 5343>;
+def SPV_SC_PhysicalStorageBufferEXT : EnumAttrCase<"PhysicalStorageBufferEXT", 5349>;
+
+def SPV_StorageClassAttr :
+    EnumAttr<"StorageClass", "valid SPIR-V StorageClass", [
+      SPV_SC_UniformConstant, SPV_SC_Input, SPV_SC_Uniform, SPV_SC_Output,
+      SPV_SC_Workgroup, SPV_SC_CrossWorkgroup, SPV_SC_Private, SPV_SC_Function,
+      SPV_SC_Generic, SPV_SC_PushConstant, SPV_SC_AtomicCounter, SPV_SC_Image,
+      SPV_SC_StorageBuffer, SPV_SC_CallableDataNV, SPV_SC_IncomingCallableDataNV,
+      SPV_SC_RayPayloadNV, SPV_SC_HitAttributeNV, SPV_SC_IncomingRayPayloadNV,
+      SPV_SC_ShaderRecordBufferNV, SPV_SC_PhysicalStorageBufferEXT
     ]> {
   let cppNamespace = "::mlir::spirv";
   let underlyingType = "uint32_t";

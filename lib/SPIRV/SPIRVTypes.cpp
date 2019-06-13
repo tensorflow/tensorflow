@@ -61,6 +61,47 @@ Type ArrayType::getElementType() { return getImpl()->elementType; }
 int64_t ArrayType::getElementCount() { return getImpl()->elementCount; }
 
 //===----------------------------------------------------------------------===//
+// PointerType
+//===----------------------------------------------------------------------===//
+
+struct spirv::detail::PointerTypeStorage : public TypeStorage {
+  // (Type, StorageClass) as the key: Type stored in this struct, and
+  // StorageClass stored as TypeStorage's subclass data.
+  using KeyTy = std::pair<Type, StorageClass>;
+
+  static PointerTypeStorage *construct(TypeStorageAllocator &allocator,
+                                       const KeyTy &key) {
+    return new (allocator.allocate<PointerTypeStorage>())
+        PointerTypeStorage(key);
+  }
+
+  bool operator==(const KeyTy &key) const {
+    return key == KeyTy(pointeeType, getStorageClass());
+  }
+
+  PointerTypeStorage(const KeyTy &key)
+      : TypeStorage(static_cast<unsigned>(key.second)), pointeeType(key.first) {
+  }
+
+  StorageClass getStorageClass() const {
+    return static_cast<StorageClass>(getSubclassData());
+  }
+
+  Type pointeeType;
+};
+
+PointerType PointerType::get(Type pointeeType, StorageClass storageClass) {
+  return Base::get(pointeeType.getContext(), TypeKind::Pointer, pointeeType,
+                   storageClass);
+}
+
+Type PointerType::getPointeeType() { return getImpl()->pointeeType; }
+
+StorageClass PointerType::getStorageClass() {
+  return getImpl()->getStorageClass();
+}
+
+//===----------------------------------------------------------------------===//
 // RuntimeArrayType
 //===----------------------------------------------------------------------===//
 
