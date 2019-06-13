@@ -2818,12 +2818,11 @@ Status ConvertBiasAdd(OpConverterParams* params) {
   // 3 dimensions are (C, 1, 1)
   if (data_format == "NCHW") {
     bias_shape.nbDims = input_tensor->getDimensions().nbDims;
-    ;
     std::fill(bias_shape.d + (bias_shape.nbDims - 2),
               bias_shape.d + bias_shape.nbDims, 1);
   } else {
     // Next, broadcast the bias across the input.
-    TF_RETURN_IF_ERROR(params->converter->GetTrtBroadcastShape(
+    TF_RETURN_IF_ERROR(GetTrtBroadcastShape(
         inputs.at(0), inputs.at(1), &input_shape, &bias_shape));
   }
 
