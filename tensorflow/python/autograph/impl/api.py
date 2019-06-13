@@ -466,6 +466,11 @@ def converted_call(f, owner, options, args, kwargs):
       else:
         effective_args = args
 
+    elif hasattr(f, '__call__') and hasattr(f, '__class__'):
+      # Callable objects
+      target_entity = f.__call__
+      effective_args = (f,) + args
+
     elif tf_inspect.isclass(f):
       # Constructors
       # Note: Until we support class constructurs, and enable whole-class
@@ -473,11 +478,6 @@ def converted_call(f, owner, options, args, kwargs):
       # TODO(mdan): Consider removing unless there is a compelling use case.
       target_entity = f
       effective_args = args
-
-    elif hasattr(f, '__call__') and hasattr(f, '__class__'):
-      # Callable objects
-      target_entity = f.__call__
-      effective_args = (f,) + args
 
     else:
       target_entity = f
