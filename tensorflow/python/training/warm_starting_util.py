@@ -256,7 +256,6 @@ def _warm_start_var_with_vocab(var,
     # Assume tensor name remains the same.
     prev_tensor_name = _infer_var_name(var)
 
-  # TODO(eddz): Fix functionality for rank-1 Variables (like FC biases).
   total_v_first_axis = sum(v.get_shape().as_list()[0] for v in var)
   for v in var:
     v_shape = v.get_shape().as_list()
