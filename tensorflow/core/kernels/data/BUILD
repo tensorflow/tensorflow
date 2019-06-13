@@ -82,6 +82,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@com_googlesource_code_re2//:re2",
     ],
 )
 
@@ -91,6 +92,7 @@ tf_cc_test(
     deps = [
         ":concatenate_dataset_op",
         ":name_utils",
+        ":parallel_interleave_dataset_op",
         ":range_dataset_op",
         ":shuffle_dataset_op",
         "//tensorflow/core:framework",
