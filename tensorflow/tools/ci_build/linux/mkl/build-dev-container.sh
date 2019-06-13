@@ -80,7 +80,8 @@ function build_container()
   shift
   TF_DOCKER_BUILD_ARGS=("${@}")
 
-  # Add the proxy info build args
+  # Add the proxy info build args. This will be later on passed to docker as
+  # --build-arg so that users behind corporate proxy can build the images
   TF_DOCKER_BUILD_ARGS+=("--build-arg http_proxy=${http_proxy}")
   TF_DOCKER_BUILD_ARGS+=("--build-arg https_proxy=${https_proxy}")
   TF_DOCKER_BUILD_ARGS+=("--build-arg socks_proxy=${socks_proxy}")
