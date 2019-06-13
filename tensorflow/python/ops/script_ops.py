@@ -97,7 +97,7 @@ class EagerFunc(object):
       #
       # TODO(akshayka): Make it possible to return a list of both Tensors and
       # Nones from an EagerPyFunc.
-      return constant_op.constant(0.0, dtype=dtype)
+      return constant_op.constant(0 if dtype.is_integer else 0.0, dtype=dtype)
     return ops.convert_to_tensor(value, dtype=dtype)
 
   def __call__(self, device, token, args):
