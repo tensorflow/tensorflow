@@ -60,7 +60,7 @@ TEST(DenseSplatTest, BoolSplat) {
 }
 
 TEST(DenseSplatTest, LargeBoolSplat) {
-  constexpr size_t boolCount = 56;
+  constexpr int64_t boolCount = 56;
 
   MLIRContext context;
   IntegerType boolTy = IntegerType::get(1, &context);
