@@ -59,8 +59,19 @@ _BaseSlice = slice
 @tf_export("identity")
 @dispatch.add_dispatch_support
 def identity(input, name=None):  # pylint: disable=redefined-builtin
-  r"""Return a tensor with the same shape and contents as input.
+  r"""Identity returns the value of the input tensor at the time of evaluation.
 
+  For example:
+
+  ```python
+  import tensorflow as tf
+  val0 = tf.ones((1,), dtype=tf.float32)
+  a = tf.atan2(val0, val0)
+  a_identity = tf.identity(a)
+  print(a.numpy())          #[0.7853982]
+  print(a_identity.numpy()) #[0.7853982]
+  ```
+  
   Args:
     input: A `Tensor`.
     name: A name for the operation (optional).
