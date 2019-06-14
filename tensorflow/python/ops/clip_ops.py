@@ -48,6 +48,17 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   Note: `clip_value_min` needs to be smaller or equal to `clip_value_max` for
   correct results.
 
+  For example:
+  
+  ```python
+  A=tf.constant([[1,20,13],[3,21,13]])
+  B=tf.clip_by_value(A, clip_value_min=0, clip_value_max=3) #[[1, 3, 3],[3, 3, 3]]
+  C=tf.clip_by_value(A, clip_value_min=0., clip_value_max=3.)
+  # throws `TypeError` as input and clip_values are of different dtype
+  D=tf.constant([2.0,3.1,5.3])
+  E=tf.clip_by_value(D, clip_value_min=1., clip_value_max=3.) #[2.,3.,3.]
+  ```
+  
   Args:
     t: A `Tensor` or `IndexedSlices`.
     clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
