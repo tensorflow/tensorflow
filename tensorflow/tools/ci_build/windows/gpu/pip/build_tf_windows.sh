@@ -177,4 +177,5 @@ bazel test --announce_rc --config=opt -k --test_output=errors \
   --test_size_filters=small,medium \
   --local_test_jobs=$TF_GPU_COUNT --test_timeout="300,450,1200,3600" \
   --flaky_test_attempts=3 \
+  --output_filter=^$ \
   ${TEST_TARGET}
