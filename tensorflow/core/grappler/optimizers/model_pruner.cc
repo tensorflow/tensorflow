@@ -149,340 +149,63 @@ bool CanRemoveNode(const utils::MutableNodeView& node_view,
   return true;
 }
 
-// Helper class for representing index of node in utils::MutableGraphView and
-// output port index.
-struct NodeIndexAndPortIndex {
-  NodeIndexAndPortIndex() : node_index(-1), port_index(-2) {}
-  NodeIndexAndPortIndex(int node_index, int port_index)
-      : node_index(node_index), port_index(port_index) {}
-
-  int node_index;
-  int port_index;
-};
-
-// Helper class for determining fanins to forward, from nodes to be removed.
-// This caches results and lazily traverses the graph. If there are a series of
-// nodes connected that will be removed, the top most parent's fanins will be
-// used. If a regular fanin is to be forwarded and a node is to be removed, the
-// control dependencies of the node to be removed will also be forwarded.
-class FaninsToForwardByNodeIndex {
- public:
-  explicit FaninsToForwardByNodeIndex(const utils::MutableGraphView& graph_view,
-                                      const std::vector<bool>& nodes_to_delete)
-      : graph_view_(graph_view), nodes_to_delete_(nodes_to_delete) {
-    fanins_to_forward_.resize(graph_view.NumNodes());
-  }
-
-  const std::pair<NodeIndexAndPortIndex, std::vector<int>>&
-  GetRegularFaninToForward(const utils::MutableNodeView& node_view, int port) {
-    int index = GetFaninToForwardInternal(node_view.node_index(), port);
-    return fanins_to_forward_[index].regular_to_forward[port];
-  }
-
-  const std::vector<int>& GetControllingFaninsToForward(
-      const utils::MutableNodeView& node_view) {
-    int index =
-        GetFaninToForwardInternal(node_view.node_index(), Graph::kControlSlot);
-    return fanins_to_forward_[index].control_and_regular;
-  }
-
- private:
-  // RecursionStackState is an enum representing the recursion stack state when
-  // using recursion iteratively. `ENTER` is the state representing entering
-  // into a recursive call, while `EXIT` is the state representing exiting a
-  // recursive call.
-  enum RecursionStackState : bool { ENTER, EXIT };
-
-  // RecursionStackEntry is a helper struct representing an instance of a
-  // recursive call iteratively, simulating a recursive ordering.
-  struct RecursionStackEntry {
-    RecursionStackEntry(int node_index, int port,
-                        RecursionStackState recursion_state)
-        : node_index(node_index),
-          port(port),
-          recursion_state(recursion_state) {}
-
-    const int node_index;
-    const int port;
-    const RecursionStackState recursion_state;
-  };
-
-  template <typename T>
-  inline void SortAndRemoveDuplicates(std::vector<T>* v) {
-    std::sort(v->begin(), v->end());
-    v->erase(std::unique(v->begin(), v->end()), v->end());
-  }
-
-  void ProcessEnteringRecursion(
-      std::vector<RecursionStackEntry>* recursion_stack,
-      const RecursionStackEntry& entry,
-      const utils::MutableGraphView& graph_view, bool delete_node) {
-    // Add exit state to stack.
-    (*recursion_stack).push_back({entry.node_index, entry.port, EXIT});
-
-    // If node is not one where it's fanins should be forwarded, they can be
-    // ignored.
-    if (!delete_node) {
-      return;
-    }
-
-    const auto* curr_node_view = graph_view.GetNode(entry.node_index);
-    if (entry.port == Graph::kControlSlot) {
-      // If entry is a control dependency, add all regular fanins as control
-      // dependencies.
-      for (const auto& regular_fanin : curr_node_view->GetRegularFanins()) {
-        (*recursion_stack)
-            .push_back(
-                {regular_fanin.node_index(), Graph::kControlSlot, ENTER});
-      }
-    } else {
-      // If entry is not a control dependency, simply add regular fanin.
-      const auto& regular_fanin_at_port =
-          curr_node_view->GetRegularFanin(entry.port);
-      (*recursion_stack)
-          .push_back({regular_fanin_at_port.node_index(),
-                      regular_fanin_at_port.index(), ENTER});
-    }
-
-    // Add all control dependencies of node.
-    for (const auto& controlling_fanin :
-         curr_node_view->GetControllingFanins()) {
-      (*recursion_stack)
-          .push_back(
-              {controlling_fanin.node_index(), Graph::kControlSlot, ENTER});
-    }
-  }
-
-  template <typename T>
-  void ResizeIfSmaller(std::vector<bool>* indicator,
-                       std::vector<T>* fanins_to_forward, int min_size) {
-    if (indicator->size() < min_size) {
-      indicator->resize(min_size);
-      fanins_to_forward->resize(min_size);
-    }
-  }
-
-  void ProcessExitingRecursion(const RecursionStackEntry& entry,
-                               const utils::MutableGraphView& graph_view,
-                               bool delete_node) {
-    auto& fanin_to_forward = fanins_to_forward_[entry.node_index];
-    if (!delete_node) {
-      // If node is not one that should have it's fanins forwarded, simply set
-      // its fanins to forward to itself.
-      if (entry.port == Graph::kControlSlot) {
-        if (!fanin_to_forward.control_and_regular_is_set) {
-          fanin_to_forward.control_and_regular_is_set = true;
-          fanin_to_forward.control_and_regular.push_back(entry.node_index);
-        }
-      } else {
-        ResizeIfSmaller(&fanin_to_forward.regular_is_set,
-                        &fanin_to_forward.regular_to_forward, entry.port + 1);
-        if (!fanin_to_forward.regular_is_set[entry.port]) {
-          fanin_to_forward.regular_is_set[entry.port] = true;
-          fanin_to_forward.regular_to_forward[entry.port].first = {
-              entry.node_index, entry.port};
-        }
-      }
-      fanin_to_forward.control_only_is_set = true;
-      return;
-    }
-
-    const auto* curr_node_view = graph_view_.GetNode(entry.node_index);
-    // Set control dependencies to forward once. This is shared for both if the
-    // node should have itself forwarded as a control dependency or one of its
-    // regular fanins should be forwarded.
-    if (!fanin_to_forward.control_only_is_set) {
-      fanin_to_forward.control_only_is_set = true;
-      auto& control_only = fanin_to_forward.control_only;
-      for (const auto& controlling_fanin :
-           curr_node_view->GetControllingFanins()) {
-        const int fanin_index = controlling_fanin.node_index();
-        auto& fanin_control_and_regular =
-            fanins_to_forward_[fanin_index].control_and_regular;
-        control_only.insert(control_only.end(),
-                            fanin_control_and_regular.begin(),
-                            fanin_control_and_regular.end());
-      }
-      SortAndRemoveDuplicates(&control_only);
-    }
-
-    if (entry.port == Graph::kControlSlot) {
-      // Forward node as a control dependency.
-      if (!fanin_to_forward.control_and_regular_is_set) {
-        fanin_to_forward.control_and_regular_is_set = true;
-        auto& control_and_regular = fanin_to_forward.control_and_regular;
-        for (const auto& regular_fanin : curr_node_view->GetRegularFanins()) {
-          const int fanin_index = regular_fanin.node_index();
-          auto& fanin_control_and_regular =
-              fanins_to_forward_[fanin_index].control_and_regular;
-          control_and_regular.insert(control_and_regular.end(),
-                                     fanin_control_and_regular.begin(),
-                                     fanin_control_and_regular.end());
-        }
-        auto& control_only = fanin_to_forward.control_only;
-        control_and_regular.insert(control_and_regular.end(),
-                                   control_only.begin(), control_only.end());
-        SortAndRemoveDuplicates(&control_and_regular);
-      }
-    } else {
-      // Forward regular fanin at entry.port.
-      ResizeIfSmaller(&fanin_to_forward.regular_is_set,
-                      &fanin_to_forward.regular_to_forward, entry.port + 1);
-      if (!fanin_to_forward.regular_is_set[entry.port]) {
-        fanin_to_forward.regular_is_set[entry.port] = true;
-        const auto& regular_fanin_at_port =
-            curr_node_view->GetRegularFanin(entry.port);
-        auto& fanin_regular =
-            fanins_to_forward_[regular_fanin_at_port.node_index()]
-                .regular_to_forward[regular_fanin_at_port.index()];
-        auto& regular_to_forward =
-            fanin_to_forward.regular_to_forward[entry.port];
-        regular_to_forward.first = fanin_regular.first;
-        regular_to_forward.second.insert(regular_to_forward.second.end(),
-                                         fanin_regular.second.begin(),
-                                         fanin_regular.second.end());
-        regular_to_forward.second.insert(regular_to_forward.second.end(),
-                                         fanin_to_forward.control_only.begin(),
-                                         fanin_to_forward.control_only.end());
-        SortAndRemoveDuplicates(&regular_to_forward.second);
-      }
-    }
-  }
-
-  int GetFaninToForwardInternal(int node_index, int port) {
-    auto& fanin_to_forward = fanins_to_forward_[node_index];
-    if (fanin_to_forward.regular_is_set.size() > port &&
-        fanin_to_forward.regular_is_set[port]) {
-      // Fanins to forward was already determined prior.
-      return node_index;
-    }
-
-    std::vector<RecursionStackEntry> recursion_stack;
-    recursion_stack.push_back({node_index, port, ENTER});
-    while (!recursion_stack.empty()) {
-      auto curr_entry = recursion_stack.back();
-      recursion_stack.pop_back();
-
-      bool delete_node = nodes_to_delete_[curr_entry.node_index];
-
-      if (curr_entry.recursion_state == ENTER) {
-        ProcessEnteringRecursion(&recursion_stack, curr_entry, graph_view_,
-                                 delete_node);
-
-      } else {
-        ProcessExitingRecursion(curr_entry, graph_view_, delete_node);
-      }
-    }
-
-    return node_index;
-  }
-
-  // FaninsToForwardForNode is a helper struct holding fanins to forward,
-  // separated by fanin (regular, controlling).
-  struct FaninsToForwardForNode {
-    // Boolean indicates if control dependencies to forward of only the control
-    // dependencies in a given node have been determined.
-    bool control_only_is_set = false;
-
-    // Fanins (node indices) to forward pertaining to existing control
-    // dependencies. This is shared set of control dependencies used by
-    // control_and_regular and regular_to_forward, and is simply based off of
-    // the node's control dependencies and ancestor control dependencies if a
-    // control dependency is to be forwarded.
-    std::vector<int> control_only;
-
-    // Boolean indicates if all fanins of a node to be forwarded as a control
-    // dependency have been determined.
-    bool control_and_regular_is_set = false;
-
-    // Fanins (node indices) to forward pertaining to existing control
-    // dependencies and regular fanins as control dependencies. Ancestor control
-    // dependencies are used if a fanin is to be forwarded. This is used for if
-    // a node as a control dependency is being forwarded.
-    std::vector<int> control_and_regular;
-
-    // Boolean by regular fanin index indicates if the associated regular fanin
-    // and associated control dependencies to forward at a given index have been
-    // determined.
-    std::vector<bool> regular_is_set;
-
-    // Fanins (NodeIndexAndPortIndex) to forward pertaining to regular fanins at
-    // a specific port index indexed in regular_to_forward. Control dependencies
-    // may exist if a regular fanin is to be removed, and such control
-    // dependencies are based on the regular fanin node.
-    std::vector<std::pair<NodeIndexAndPortIndex, std::vector<int>>>
-        regular_to_forward;
-  };
-
-  const utils::MutableGraphView& graph_view_;
-  const std::vector<bool>& nodes_to_delete_;
-  std::vector<FaninsToForwardForNode> fanins_to_forward_;
-};
-
-// ForwardFanins forward fanins of nodes (in nodes_to_delete) to their children.
-Status ForwardFanins(utils::MutableGraphView* graph_view,
-                     const std::vector<bool>& nodes_to_delete,
-                     FaninsToForwardByNodeIndex* fanins_to_forward,
-                     std::vector<bool>* mutated_nodes) {
+// ForwardFanins forwards fanins of a node to be removed to its fanouts. This
+// currently is specific to nodes defined in `IsTrivialOp` under the assumption
+// they can have at most one regular fanin (at index 0) and one regular fanout
+// index (at 0).
+//
+// The forwarding is as follows:
+// * If the node to be removed has a regular fanin (at index 0), that fanin will
+//   be forwarded by replacing the fanin (consisting of the node being removed)
+//   in each regular fanout (at index 0) of the node being removed with the
+//   node being removed's regular fanin (at index 0). If the node being removed
+//   also has controlling fanins, those controlling fanins are added to each
+//   regular fanout (at index 0) as a controlling fanin.
+// * If the node to be removed has controlled fanouts, each controlling fanin of
+//   the node is added and the node to be removed (as a control dependency) is
+//   removed from each controlled fanout. If the node also has a regular fanin
+//   (at index 0), that fanin as a control dependency is added to each
+//   controlled fanout.
+// TODO(lyandy): Move this to a shared util for GraphView.
+Status ForwardFanins(utils::MutableGraphView* graph_view, int node_to_delete,
+                     absl::flat_hash_set<int>* mutated_fanouts) {
   utils::Mutation* mutation = graph_view->GetMutationBuilder();
-  const int num_nodes = graph_view->NumNodes();
-  for (int i = 0; i < num_nodes; ++i) {
-    if (!nodes_to_delete[i]) {
-      continue;
-    }
-    auto* node_view = graph_view->GetNode(i);
-    const int num_regular_fanins = node_view->NumRegularFanins();
-    for (int i = 0; i < num_regular_fanins; ++i) {
-      // Get regular fanin to forward at port i.
-      auto& forward =
-          fanins_to_forward->GetRegularFaninToForward(*node_view, i);
-      auto& regular_fanin_to_forward = forward.first;
+  auto* node_view = graph_view->GetNode(node_to_delete);
+  std::vector<absl::string_view> controlling_fanin_names;
+  controlling_fanin_names.reserve(node_view->NumControllingFanins());
+  for (const auto& controlling_fanin : node_view->GetControllingFanins()) {
+    controlling_fanin_names.push_back(controlling_fanin.node_view()->GetName());
+  }
+  const auto& node_regular_fanin_0 = node_view->GetRegularFanin(0);
+  const bool has_regular_fanin_0 = node_view->NumRegularFanins() >= 1;
+  const string regular_fanin_0_name =
+      has_regular_fanin_0 ? node_regular_fanin_0.node_view()->GetName() : "";
 
-      // Extract out regular fanin and associated control dependencies.
-      const string& regular_fanin_name =
-          graph_view->GetNode(regular_fanin_to_forward.node_index)->GetName();
-      std::vector<absl::string_view> controlling_fanin_names;
-      controlling_fanin_names.reserve(forward.second.size());
-      for (const auto& control_node_index : forward.second) {
-        controlling_fanin_names.emplace_back(
-            graph_view->GetNode(control_node_index)->GetName());
-      }
-
-      // Replace regular fanin at port i for every fanout consuming port i and
-      // add control dependencies associated to regular fanin.
-      auto& fanouts_i = node_view->GetRegularFanout(i);
-      for (auto& fanout : fanouts_i) {
-        auto* fanout_node_view = fanout.node_view();
-        (*mutated_nodes)[fanout_node_view->node_index()] = true;
-        mutation->AddOrUpdateRegularFanin(
-            fanout_node_view, fanout.index(),
-            {regular_fanin_name, regular_fanin_to_forward.port_index});
-        for (const auto& controlling_fanin_name : controlling_fanin_names) {
-          mutation->AddControllingFanin(fanout_node_view,
-                                        controlling_fanin_name);
-        }
-      }
-    }
-
-    // Forward fanin control dependencies to controlled fanouts.
-    auto& forward =
-        fanins_to_forward->GetControllingFaninsToForward(*node_view);
-    std::vector<absl::string_view> controlling_fanin_names;
-    controlling_fanin_names.reserve(forward.size());
-    for (const auto& control_node_index : forward) {
-      controlling_fanin_names.emplace_back(
-          graph_view->GetNode(control_node_index)->GetName());
-    }
-
-    const string& node_name = node_view->GetName();
-    for (auto& fanout : node_view->GetControlledFanouts()) {
+  // Forward to regular fanouts.
+  if (has_regular_fanin_0) {
+    TensorId tensor_id(regular_fanin_0_name, node_regular_fanin_0.index());
+    for (const auto& fanout : node_view->GetRegularFanout(0)) {
       auto* fanout_node_view = fanout.node_view();
-      (*mutated_nodes)[fanout_node_view->node_index()] = true;
-      mutation->RemoveControllingFanin(fanout_node_view, node_name);
-      for (const auto& controlling_fanin_name : controlling_fanin_names) {
-        mutation->AddControllingFanin(fanout_node_view, controlling_fanin_name);
+      mutation->AddOrUpdateRegularFanin(fanout_node_view, fanout.index(),
+                                        tensor_id);
+      for (const auto& controlling_fanin : controlling_fanin_names) {
+        mutation->AddControllingFanin(fanout_node_view, controlling_fanin);
       }
+      mutated_fanouts->emplace(fanout.node_index());
     }
+  }
+
+  // Forward to controlled fanouts.
+  for (const auto& controlled_fanout : node_view->GetControlledFanouts()) {
+    auto* fanout_node_view = controlled_fanout.node_view();
+    mutation->RemoveControllingFanin(fanout_node_view, node_view->GetName());
+    if (has_regular_fanin_0) {
+      mutation->AddControllingFanin(fanout_node_view, regular_fanin_0_name);
+    }
+    for (const auto& controlling_fanin : controlling_fanin_names) {
+      mutation->AddControllingFanin(fanout_node_view, controlling_fanin);
+    }
+    mutated_fanouts->emplace(controlled_fanout.node_index());
   }
 
   return mutation->Apply();
@@ -760,6 +483,7 @@ std::vector<bool> ComputeTransitiveFanin(
   return result;
 }
 
+// TODO(lyandy): Move this to a shared util for GraphView.
 Status PruneUnreachableNodes(
     utils::MutableGraphView* graph_view,
     const absl::flat_hash_set<absl::string_view>& nodes_to_preserve) {
@@ -780,6 +504,7 @@ Status PruneUnreachableNodes(
   return mutation->Apply();
 }
 
+// TODO(lyandy): Move this to a shared util for GraphView.
 Status DedupNodeControlDependencies(utils::MutableGraphView* graph_view,
                                     int node_index) {
   auto* node_view = graph_view->GetNode(node_index);
@@ -838,8 +563,8 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // Check if we can further prune the graph, by removing the trivial ops.
   const int num_nodes = graph_view.NumNodes();
-  std::vector<bool> nodes_to_delete(num_nodes);
-  bool has_nodes_to_delete = false;
+  std::vector<int> nodes_to_delete;
+  nodes_to_delete.reserve(num_nodes);
   for (auto& node : graph_view.GetNodes()) {
     if (!IsTrivialOp(node)) {
       continue;
@@ -865,30 +590,26 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
     //   these non-references since the partitioner will avoid sending
     //   non-references across partitions more than once.
     if (CanRemoveNode(node, function_names, *op_registry)) {
-      nodes_to_delete[node.node_index()] = true;
-      has_nodes_to_delete = true;
+      nodes_to_delete.push_back(node.node_index());
     }
   }
 
-  if (has_nodes_to_delete) {
-    FaninsToForwardByNodeIndex fanins_to_forward(graph_view, nodes_to_delete);
-    std::vector<bool> mutated_nodes;
-    mutated_nodes.resize(num_nodes);
-    TF_RETURN_IF_ERROR(ForwardFanins(&graph_view, nodes_to_delete,
-                                     &fanins_to_forward, &mutated_nodes));
+  if (!nodes_to_delete.empty()) {
+    absl::flat_hash_set<int> mutated_fanouts;
+    for (const int node_to_delete : nodes_to_delete) {
+      TF_RETURN_IF_ERROR(
+          ForwardFanins(&graph_view, node_to_delete, &mutated_fanouts));
+    }
 
-    for (int i = 0; i < num_nodes; ++i) {
-      if (mutated_nodes[i]) {
-        TF_RETURN_IF_ERROR(DedupNodeControlDependencies(&graph_view, i));
-      }
+    for (const int mutated_fanout : mutated_fanouts) {
+      TF_RETURN_IF_ERROR(
+          DedupNodeControlDependencies(&graph_view, mutated_fanout));
     }
 
     if (!item.fetch.empty()) {
       utils::Mutation* mutation = graph_view.GetMutationBuilder();
-      for (int i = 0; i < num_nodes; ++i) {
-        if (nodes_to_delete[i]) {
-          mutation->RemoveNode(graph_view.GetNode(i));
-        }
+      for (const int node_to_delete : nodes_to_delete) {
+        mutation->RemoveNode(graph_view.GetNode(node_to_delete));
       }
       TF_RETURN_IF_ERROR(mutation->Apply());
       VLOG(1) << "Pruned " << num_nodes - graph.node_size()
