@@ -1768,8 +1768,8 @@ class HloInstruction {
   // Removes a user for this instruction.
   void RemoveUser(HloInstruction* user);
 
-  // Returns how this instruction uses elements of its operand at operand_num.
-  UseKind OperandElementUse(int64 operand_num) const;
+  // Returns how this instruction uses elements of its `i`th operand.
+  UseKind OperandElementUse(int64 i) const;
 
   // Helper for implementing backend_config().  Parses backend_config_ into the
   // given proto.

@@ -3019,8 +3019,7 @@ class HloInstruction::FusionReusesParamElements {
   }
 };
 
-HloInstruction::UseKind HloInstruction::OperandElementUse(
-    int64 operand_num) const {
+HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
   switch (opcode_) {
     case HloOpcode::kBitcast:
     case HloOpcode::kConcatenate:
@@ -3031,28 +3030,30 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(
       return UseKind::kUsePermutingElements;
     case HloOpcode::kPad:
       // Pad reuses the padding value but not the padded array elements.
-      return operand_num > 0 ? UseKind::kReuse : UseKind::kUsePermutingElements;
+      return i > 0 ? UseKind::kReuse : UseKind::kUsePermutingElements;
     case HloOpcode::kReduce:
       // Reduce reuses the init values but not the operand array elements.
-      return operand_num >= Cast<HloReduceInstruction>(this)->input_count()
+      return i >= Cast<HloReduceInstruction>(this)->input_count()
                  ? UseKind::kReuse
                  : UseKind::kUsePermutingElements;
     case HloOpcode::kFusion:
       // Uses the memoizing, recursive computation defined above.
-      return FusionReusesParamElements::Compute(operand_num,
-                                                *fused_expression_root());
+      return FusionReusesParamElements::Compute(i, *fused_expression_root());
     case HloOpcode::kDot:
-      // Matrix-vector dots do not reuse the matrix operand.
-      if (shape().dimensions_size() <= 1) {
-        if ((operand_num == 0 && operand(1)->shape().rank() <= 1) ||
-            (operand_num == 1 && operand(0)->shape().rank() <= 1)) {
+      // Dot operations with inputs [A,B] * [B,1] do not re-use
+      // elements on their left operand.
+      // Dot operations with inputs [1,A] * [A,B] do not re-use
+      // elements on their right operand.
+      if (shape().dimensions_size() == 2) {
+        if ((i == 0 && shape().dimensions(1) == 1) ||
+            (i == 1 && shape().dimensions(0) == 1)) {
           return UseKind::kUse;
         }
       }
       return UseKind::kReuse;
     case HloOpcode::kDynamicUpdateSlice:
       // Dynamic-update-slice reuses only start_indices.
-      if (operand_num == 0 || operand_num == 1) {
+      if (i == 0 || i == 1) {
         return UseKind::kUse;
       }
       return UseKind::kReuse;
