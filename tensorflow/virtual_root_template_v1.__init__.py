@@ -120,4 +120,10 @@ try:
 except ImportError as e:
   pass
 
+# In V1 API we need to print deprecation messages
+from tensorflow.python.util import deprecation_wrapper as _deprecation
+if not isinstance(_sys.modules[__name__], _deprecation.DeprecationWrapper):
+  _sys.modules[__name__] = _deprecation.DeprecationWrapper(
+      _sys.modules[__name__], "")
+
 # LINT.ThenChange(//tensorflow/virtual_root_template_v2.__init__.py.oss)
