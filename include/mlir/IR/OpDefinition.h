@@ -394,6 +394,8 @@ public:
 ///
 template <unsigned N> class NOperands {
 public:
+  static_assert(N > 1, "use ZeroOperands/OneOperand for N < 2");
+
   template <typename ConcreteType>
   class Impl
       : public detail::MultiOperandTraitBase<ConcreteType, NOperands<N>::Impl> {
@@ -402,18 +404,6 @@ public:
       return impl::verifyNOperands(op, N);
     }
   };
-};
-
-/// Specialization of NOperands with N = 0.
-template <> class NOperands<0> {
-public:
-  template <typename ConcreteType> using Impl = ZeroOperands<ConcreteType>;
-};
-
-/// Specialization of NOperands with N = 1.
-template <> class NOperands<1> {
-public:
-  template <typename ConcreteType> using Impl = OneOperand<ConcreteType>;
 };
 
 /// This class provides the API for ops that are known to have a at least a
@@ -520,6 +510,8 @@ public:
 ///
 template <unsigned N> class NResults {
 public:
+  static_assert(N > 1, "use ZeroResult/OneResult for N < 2");
+
   template <typename ConcreteType>
   class Impl
       : public detail::MultiResultTraitBase<ConcreteType, NResults<N>::Impl> {

@@ -81,14 +81,14 @@ def NS_BOp : NS_Op<"op_with_no_operand", []> {
 }
 
 // CHECK-LABEL: NS::BOp declarations
-// CHECK: OpTrait::NOperands<0>::Impl
+// CHECK: OpTrait::ZeroOperands
 
 def NS_COp : NS_Op<"op_with_one_operand", []> {
   let arguments = (ins I32:$operand);
 }
 
 // CHECK-LABEL: NS::COp declarations
-// CHECK: OpTrait::NOperands<1>::Impl
+// CHECK: OpTrait::OneOperand
 
 def NS_DOp : NS_Op<"op_with_two_operands", []> {
   let arguments = (ins I32:$input1, I32:$input2);

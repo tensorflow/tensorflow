@@ -1190,7 +1190,17 @@ void OpEmitter::genTraits() {
       opClass.addTrait("AtLeastNOperands<" + Twine(numOperands - 1) +
                        ">::Impl");
   } else {
-    opClass.addTrait("NOperands<" + Twine(numOperands) + ">::Impl");
+    switch (numOperands) {
+    case 0:
+      opClass.addTrait("ZeroOperands");
+      break;
+    case 1:
+      opClass.addTrait("OneOperand");
+      break;
+    default:
+      opClass.addTrait("NOperands<" + Twine(numOperands) + ">::Impl");
+      break;
+    }
   }
 }
 
