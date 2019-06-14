@@ -500,6 +500,17 @@ class Strategy(object):
     # when using v1 optimizer with estimator.
     self._scale_loss_for_estimator = False
 
+    if not hasattr(extended, "_retrace_functions_for_each_device"):
+      # pylint: disable=protected-access
+      try:
+        extended._retrace_functions_for_each_device = (
+            len(extended.worker_devices) > 1)
+      except:  # pylint: disable=bare-except
+        # Default for the case where extended.worker_devices can't return
+        # a sensible value.
+        extended._retrace_functions_for_each_device = True
+      # pylint: enable=protected-access
+
   @property
   def extended(self):
     """`tf.distribute.StrategyExtended` with additional methods."""
@@ -1991,6 +2002,10 @@ class _DefaultDistributionContext(object):
 
 class _DefaultDistributionExtended(StrategyExtendedV1):
   """Implementation of _DefaultDistributionStrategy."""
+
+  def __init__(self, container_strategy):
+    super(_DefaultDistributionExtended, self).__init__(container_strategy)
+    self._retrace_functions_for_each_device = False
 
   def _scope(self, strategy):
     """Context manager setting a variable creator and `self` as current."""
