@@ -1336,6 +1336,13 @@ void TFE_Py_TapeSetStopOnThread() { *ThreadTapeIsStopped() = true; }
 
 void TFE_Py_TapeSetRestartOnThread() { *ThreadTapeIsStopped() = false; }
 
+PyObject* TFE_Py_TapeSetIsStopped() {
+  if (*ThreadTapeIsStopped()) {
+    Py_RETURN_TRUE;
+  }
+  Py_RETURN_FALSE;
+}
+
 PyObject* TFE_Py_TapeSetNew(PyObject* persistent,
                             PyObject* watch_accessed_variables) {
   TFE_Py_Tape_Type.tp_new = PyType_GenericNew;
