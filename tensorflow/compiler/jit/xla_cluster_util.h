@@ -18,10 +18,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_CLUSTER_UTIL_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_CLUSTER_UTIL_H_
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
-#include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -89,11 +87,6 @@ bool MayCallFunction(const Node& n, const FunctionLibraryDefinition* flib_def);
 // Returns true if `node` an operator that consumes only the shape of its input,
 // not the data itself.
 bool IsShapeConsumerOp(const Node& node);
-
-// Computes a clustering summary for `graph`.  See documentation on
-// `XlaAutoClusteringSummary` for details.
-XlaAutoClusteringSummary GetXlaAutoClusteringSummary(const Graph& graph);
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_XLA_CLUSTER_UTIL_H_
