@@ -111,17 +111,20 @@ def variables_accessed(variables):
 
 
 def pop_tape(tape):
-  """Pops the top tape in the stack, if any."""
+  """Pops the given tape in the stack."""
   pywrap_tensorflow.TFE_Py_TapeSetRemove(tape._tape)  # pylint: disable=protected-access
 
 
 @contextlib.contextmanager
 def stop_recording():
+  is_stopped = pywrap_tensorflow.TFE_Py_TapeSetIsStopped()
   try:
-    pywrap_tensorflow.TFE_Py_TapeSetStopOnThread()
+    if not is_stopped:
+      pywrap_tensorflow.TFE_Py_TapeSetStopOnThread()
     yield
   finally:
-    pywrap_tensorflow.TFE_Py_TapeSetRestartOnThread()
+    if not is_stopped:
+      pywrap_tensorflow.TFE_Py_TapeSetRestartOnThread()
 
 
 def should_record(tensors):

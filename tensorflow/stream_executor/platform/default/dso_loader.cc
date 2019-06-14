@@ -43,14 +43,14 @@ port::StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
     return dso_handle;
   }
 
-  auto message = absl::StrCat("Could not dlopen library '", filename,
+  auto message = absl::StrCat("Could not load dynamic library '", filename,
                               "'; dlerror: ", status.error_message());
 #if !defined(PLATFORM_WINDOWS)
   if (const char* ld_library_path = getenv("LD_LIBRARY_PATH")) {
     message += absl::StrCat("; LD_LIBRARY_PATH: ", ld_library_path);
   }
 #endif
-  LOG(INFO) << message;
+  LOG(WARNING) << message;
   return port::Status(port::error::FAILED_PRECONDITION, message);
 }
 }  // namespace

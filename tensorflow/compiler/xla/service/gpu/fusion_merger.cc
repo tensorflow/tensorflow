@@ -195,20 +195,12 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
     return Status::OK();
   }
 
-  // Skip multiple output fusion. It's not yet supported.
-  if (fusion->IsMultiOutputFusion()) {
-    VLOG(3) << "Not merging " << fusion->name() << ": Is multi-output fusion.";
-    ++num_fail_not_loop_fusion_;
-    return Status::OK();
-  }
   // Skip 'fusion' instruction if we cannot merge into all of its users.
   // Merging into all users enables the removal of 'fusion' from the
   // computation.
   if (!absl::c_all_of(fusion->users(), [&](const HloInstruction* user) {
         return user->opcode() == HloOpcode::kFusion &&
-               (user->IsLoopFusion() ||
-                (IsReduceInputFusion(*user) &&
-                 LayoutsAreReduceInputFusionFriendly(*fusion, *user)));
+               IsProducerConsumerFusible(*fusion, *user);
       })) {
     VLOG(3) << "Not merging " << fusion->name()
             << ": Some of its users are not loop/input fusion kernels.";

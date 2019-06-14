@@ -606,7 +606,8 @@ std::vector<int> PyLocalExecutable::DeviceOrdinals() const {
 }
 
 StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
-    absl::Span<PyLocalBuffer* const> argument_handles, int replica) {
+    absl::Span<PyLocalBuffer* const> argument_handles, int replica,
+    const RunId& run_id) {
   const int device_ordinal = device_assignment_(replica, 0);
   tensorflow::profiler::TraceMe traceme("LocalExecutable::Execute");
   VLOG(3) << "Replica " << replica
@@ -663,6 +664,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
   options.set_intra_op_thread_pool(
       client_->client()->backend().eigen_intra_op_thread_pool_device());
   options.set_device_assignment(&device_assignment_);
+  options.set_run_id(run_id);
 
   StatusOr<ScopedShapedBuffer> result_buffer =
       executable_->RunAsync(argument_buffer_ptrs, options);
@@ -703,7 +705,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::Execute(
         "Attempted to execute computation with %d replicas using Execute()",
         num_replicas());
   }
-  return ExecuteHelper(argument_handles, /*replica=*/0);
+  return ExecuteHelper(argument_handles, /*replica=*/0, RunId());
 }
 
 StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>
@@ -729,8 +731,9 @@ PyLocalExecutable::ExecutePerReplica(
   if (num_replicas() == 1) {
     // Fast-path if there is only one replica — run the computation on the
     // current thread.
-    results[0] = ExecuteHelper(argument_handles[0], /*replica=*/0);
+    results[0] = ExecuteHelper(argument_handles[0], /*replica=*/0, RunId());
   } else {
+    RunId run_id;
     absl::Mutex mu;
     int running GUARDED_BY(mu) = num_replicas();
     int failed GUARDED_BY(mu) = 0;
@@ -740,7 +743,8 @@ PyLocalExecutable::ExecutePerReplica(
       const int device_ordinal = device_assignment_(replica, 0);
       const Device& device = client_->device(device_ordinal);
       device.worker_thread()->Schedule([&, replica] {
-        results[replica] = ExecuteHelper(argument_handles[replica], replica);
+        results[replica] =
+            ExecuteHelper(argument_handles[replica], replica, run_id);
 
         absl::MutexLock lock(&mu);
         --running;

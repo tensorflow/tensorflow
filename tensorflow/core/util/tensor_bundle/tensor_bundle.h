@@ -300,10 +300,6 @@ class BundleReader {
   // the header entry in the metadata table.
   int num_shards_;
 
-  // Flag that this class sets to true when the endianness of the target bundle
-  // differs from that of the current system's processor architecture.
-  bool need_to_swap_bytes_;
-
   friend class TensorBundleAlignmentTest;  // For testing data alignment.
 
   TF_DISALLOW_COPY_AND_ASSIGN(BundleReader);

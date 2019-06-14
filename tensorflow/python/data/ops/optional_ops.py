@@ -154,7 +154,7 @@ class _OptionalImpl(Optional):
 
 
 # TODO(b/133606651) Rename this class to OptionalSpec
-@tf_export("data.experimental.OptionalStructure")
+@tf_export("OptionalSpec", "data.experimental.OptionalStructure")
 class OptionalStructure(type_spec.TypeSpec):
   """Represents an optional potentially containing a structured value."""
 

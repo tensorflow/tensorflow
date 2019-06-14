@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/shuffle_dataset_op.h"
 
 #include <deque>
+#include <tuple>
 #include <vector>
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -254,20 +255,23 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(this->full_name(kSlicesSize), slices_.size()));
       for (size_t i = 0; i < slices_.size(); ++i) {
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(this->full_name(absl::StrJoin(
+                                    std::make_tuple(kSlicesStart, i), "_")),
+                                slices_[i]->start));
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            this->full_name(name_utils::StrJoin("_", kSlicesStart, i)),
-            slices_[i]->start));
-        TF_RETURN_IF_ERROR(writer->WriteScalar(
-            this->full_name(name_utils::StrJoin("_", kSlicesEnd, i)),
+            this->full_name(absl::StrJoin(std::make_tuple(kSlicesEnd, i), "_")),
             slices_[i]->end));
         for (size_t j = slices_[i]->start; j < slices_[i]->end; ++j) {
           size_t index = j % this->dataset()->buffer_size_;
           TF_RETURN_IF_ERROR(writer->WriteScalar(
-              this->full_name(name_utils::StrJoin("_", kBuffer, index, kSize)),
+              this->full_name(
+                  absl::StrJoin(std::make_tuple(kBuffer, index, kSize), "_")),
               buffer_[index].size()));
           for (size_t k = 0; k < buffer_[index].size(); ++k) {
             TF_RETURN_IF_ERROR(writer->WriteTensor(
-                this->full_name(name_utils::StrJoin("_", kBuffer, index, k)),
+                this->full_name(
+                    absl::StrJoin(std::make_tuple(kBuffer, index, k), "_")),
                 buffer_[index][k]));
           }
         }
@@ -310,23 +314,27 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           this->dataset()->buffer_size_);
       for (size_t i = 0; i < slices_size; ++i) {
         int64 start;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(
-            this->full_name(name_utils::StrJoin("_", kSlicesStart, i)),
-            &start));
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(this->full_name(absl::StrJoin(
+                                   std::make_tuple(kSlicesStart, i), "_")),
+                               &start));
         int64 end;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
-            this->full_name(name_utils::StrJoin("_", kSlicesEnd, i)), &end));
+            this->full_name(absl::StrJoin(std::make_tuple(kSlicesEnd, i), "_")),
+            &end));
         slices_.push_back(absl::make_unique<Slice>(start, end));
         for (size_t j = start; j < end; ++j) {
           size_t index = j % this->dataset()->buffer_size_;
           int64 list_size;
           TF_RETURN_IF_ERROR(reader->ReadScalar(
-              this->full_name(name_utils::StrJoin("_", kBuffer, index, kSize)),
+              this->full_name(
+                  absl::StrJoin(std::make_tuple(kBuffer, index, kSize), "_")),
               &list_size));
           buffer_[index] = std::vector<Tensor>(list_size);
           for (int k = 0; k < list_size; ++k) {
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                this->full_name(name_utils::StrJoin("_", kBuffer, index, k)),
+                this->full_name(
+                    absl::StrJoin(std::make_tuple(kBuffer, index, k), "_")),
                 &buffer_[index][k]));
           }
         }

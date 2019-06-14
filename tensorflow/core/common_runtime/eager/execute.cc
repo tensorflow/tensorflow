@@ -125,12 +125,11 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op,
             expected_input_device->name(), " but is actually on ",
             actual_device->name(), " (operation running on ", op_device_name,
             ")",
-            " Tensors can be copied explicitly using .gpu() or .cpu() "
-            "methods,"
-            " or transparently copied by using tf.enable_eager_execution("
-            "device_policy=tfe.DEVICE_PLACEMENT_SILENT). Copying tensors "
-            "between devices"
-            " may slow down your model");
+            " Tensors can be copied explicitly using:"
+            " `with tf.device(device_name): x = tf.identity(x)`"
+            " or transparently copied by using"
+            " tf.config.experimental.set_device_policy('silent')."
+            " Copying tensors between devices may slow down your model");
       case DEVICE_PLACEMENT_WARN:
         LOG(WARNING) << "before computing " << op->Name() << " input #" << i
                      << " was expected to be on "

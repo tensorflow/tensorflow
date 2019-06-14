@@ -12,6 +12,7 @@ py_library(
     srcs = ["module.py"],
     deps = [
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tf2",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/training/tracking",

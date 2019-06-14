@@ -29,7 +29,7 @@ from tensorflow.python.platform import tf_logging as logging
 class DeprecationTest(test.TestCase):
 
   @test.mock.patch.object(logging, "warning", autospec=True)
-  def testDeprecatedFunction(self, mock_warning):
+  def DISABLED_testDeprecatedFunction(self, mock_warning):
     self.assertEqual(0, mock_warning.call_count)
     tf.compat.v1.initializers.tables_initializer()
     self.assertEqual(0, mock_warning.call_count)
@@ -70,7 +70,7 @@ class DeprecationTest(test.TestCase):
     self.assertEqual(1, mock_warning.call_count)
 
   @test.mock.patch.object(logging, "warning", autospec=True)
-  def testDeprecatedFunctionEndpoint(self, mock_warning):
+  def DISABLED_testDeprecatedFunctionEndpoint(self, mock_warning):
     array = tf.IndexedSlices(
         tf.compat.v1.convert_to_tensor(np.array([1, 2])),
         tf.compat.v1.convert_to_tensor(np.array([0, 2])))
@@ -94,7 +94,7 @@ class DeprecationTest(test.TestCase):
     self.assertEqual(1, mock_warning.call_count)
 
   @test.mock.patch.object(logging, "warning", autospec=True)
-  def testDeprecatedClassEndpoint(self, mock_warning):
+  def DISABLED_testDeprecatedClassEndpoint(self, mock_warning):
     self.assertEqual(0, mock_warning.call_count)
     tf.io.VarLenFeature(tf.dtypes.int32)
     self.assertEqual(0, mock_warning.call_count)
