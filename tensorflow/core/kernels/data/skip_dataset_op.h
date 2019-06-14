@@ -12,62 +12,33 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_KERNELS_DATA_TAKE_DATASET_OP_H_
-#define TENSORFLOW_CORE_KERNELS_DATA_TAKE_DATASET_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_DATA_SKIP_DATASET_OP_H_
+#define TENSORFLOW_CORE_KERNELS_DATA_SKIP_DATASET_OP_H_
 
 #include "tensorflow/core/framework/dataset.h"
 
 namespace tensorflow {
 namespace data {
 
-class TakeDataset : public DatasetBase {
+class SkipDatasetOp : public UnaryDatasetOpKernel {
  public:
-  TakeDataset(OpKernelContext* ctx, int64 count, const DatasetBase* input);
-
-  TakeDataset(DatasetContext::Params params, int64 count,
-              const DatasetBase* input);
-
-  ~TakeDataset() override;
-
-  std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override;
-
-  const DataTypeVector& output_dtypes() const;
-
-  const std::vector<PartialTensorShape>& output_shapes() const;
-
-  string DebugString() const;
-
-  int64 Cardinality() const;
-
- protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override;
-
- private:
-  class EmptyIterator;
-  class FiniteIterator;
-  const int64 count_;
-  const DatasetBase* const input_;
-};
-
-class TakeDatasetOp : public UnaryDatasetOpKernel {
- public:
-  static constexpr const char* const kDatasetType = "Take";
+  static constexpr const char* const kDatasetType = "Skip";
   static constexpr const char* const kInputDataset = "input_dataset";
   static constexpr const char* const kCount = "count";
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
 
-  explicit TakeDatasetOp(OpKernelConstruction* ctx);
+  explicit SkipDatasetOp(OpKernelConstruction* ctx);
 
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override;
+
+ private:
+  class Dataset;
 };
 
 }  // namespace data
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_DATA_TAKE_DATASET_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_DATA_SKIP_DATASET_OP_H_
