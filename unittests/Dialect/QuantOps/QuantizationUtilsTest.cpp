@@ -140,7 +140,7 @@ TEST(QuantizationUtilsTest, convertRankedSplatAttrUniform) {
   auto expectedTensorType = realValue.getType().cast<TensorType>();
   EXPECT_EQ(tensorType.getShape(), expectedTensorType.getShape());
   EXPECT_EQ(tensorType.getElementType(), convertedType);
-  EXPECT_EQ(returnedValue.getKind(), StandardAttributes::SplatElements);
+  EXPECT_TRUE(returnedValue.isa<SplatElementsAttr>());
 
   // Check Elements attribute element value is expected.
   auto firstValue = returnedValue.cast<ElementsAttr>().getValue({0, 0});

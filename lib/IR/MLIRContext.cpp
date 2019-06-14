@@ -138,8 +138,7 @@ struct BuiltinDialect : public Dialect {
     addAttributes<AffineMapAttr, ArrayAttr, BoolAttr, DenseElementsAttr,
                   DictionaryAttr, FloatAttr, FunctionAttr, IntegerAttr,
                   IntegerSetAttr, OpaqueAttr, OpaqueElementsAttr,
-                  SparseElementsAttr, SplatElementsAttr, StringAttr, TypeAttr,
-                  UnitAttr>();
+                  SparseElementsAttr, StringAttr, TypeAttr, UnitAttr>();
     addTypes<ComplexType, FloatType, FunctionType, IndexType, IntegerType,
              MemRefType, NoneType, OpaqueType, RankedTensorType, TupleType,
              UnrankedTensorType, VectorType>();

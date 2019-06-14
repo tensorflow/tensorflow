@@ -590,25 +590,25 @@ func @funcsimplemap(%arg0: index, %arg1: index) -> () {
 // CHECK-LABEL: func @splattensorattr
 func @splattensorattr() -> () {
 ^bb0:
-  // CHECK: "splatBoolTensor"() {bar: splat<tensor<i1>, false>} : () -> ()
-  "splatBoolTensor"(){bar: splat<tensor<i1>, false>} : () -> ()
+  // CHECK: "splatBoolTensor"() {bar: dense<tensor<i1>, 0>} : () -> ()
+  "splatBoolTensor"(){bar: dense<tensor<i1>, false>} : () -> ()
 
-  // CHECK: "splatIntTensor"() {bar: splat<tensor<2x1x4xi32>, 5>} : () -> ()
-  "splatIntTensor"(){bar: splat<tensor<2x1x4xi32>, 5>} : () -> ()
+  // CHECK: "splatIntTensor"() {bar: dense<tensor<2x1x4xi32>, 5>} : () -> ()
+  "splatIntTensor"(){bar: dense<tensor<2x1x4xi32>, 5>} : () -> ()
 
-  // CHECK: "splatFloatTensor"() {bar: splat<tensor<2x1x4xf32>, -5.000000e+00>} : () -> ()
-  "splatFloatTensor"(){bar: splat<tensor<2x1x4xf32>, -5.0>} : () -> ()
+  // CHECK: "splatFloatTensor"() {bar: dense<tensor<2x1x4xf32>, -5.000000e+00>} : () -> ()
+  "splatFloatTensor"(){bar: dense<tensor<2x1x4xf32>, -5.0>} : () -> ()
 
-  // CHECK: "splatIntVector"() {bar: splat<vector<2x1x4xi64>, 5>} : () -> ()
-  "splatIntVector"(){bar: splat<vector<2x1x4xi64>, 5>} : () -> ()
+  // CHECK: "splatIntVector"() {bar: dense<vector<2x1x4xi64>, 5>} : () -> ()
+  "splatIntVector"(){bar: dense<vector<2x1x4xi64>, 5>} : () -> ()
 
-  // CHECK: "splatFloatVector"() {bar: splat<vector<2x1x4xf16>, -5.000000e+00>} : () -> ()
-  "splatFloatVector"(){bar: splat<vector<2x1x4xf16>, -5.0>} : () -> ()
+  // CHECK: "splatFloatVector"() {bar: dense<vector<2x1x4xf16>, -5.000000e+00>} : () -> ()
+  "splatFloatVector"(){bar: dense<vector<2x1x4xf16>, -5.0>} : () -> ()
 
-  // CHECK: "splatIntScalar"() {bar: splat<tensor<i9>, 5>} : () -> ()
-  "splatIntScalar"() {bar: splat<tensor<i9>, 5>} : () -> ()
-  // CHECK: "splatFloatScalar"() {bar: splat<tensor<f16>, -5.000000e+00>} : () -> ()
-  "splatFloatScalar"() {bar: splat<tensor<f16>, -5.0>} : () -> ()
+  // CHECK: "splatIntScalar"() {bar: dense<tensor<i9>, 5>} : () -> ()
+  "splatIntScalar"() {bar: dense<tensor<i9>, 5>} : () -> ()
+  // CHECK: "splatFloatScalar"() {bar: dense<tensor<f16>, -5.000000e+00>} : () -> ()
+  "splatFloatScalar"() {bar: dense<tensor<f16>, -5.0>} : () -> ()
   return
 }
 

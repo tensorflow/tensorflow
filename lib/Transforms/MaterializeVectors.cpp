@@ -99,7 +99,7 @@
 /// ```mlir
 ///    mlfunc @materialize(%M : index, %N : index, %O : index, %P : index) {
 ///      %A = alloc (%M, %N, %O, %P) : memref<?x?x?x?xf32>
-///      %f1 = constant splat<vector<4x4x4xf32>, 1.000000e+00> :
+///      %f1 = constant dense<vector<4x4x4xf32>, 1.000000e+00> :
 ///      vector<4x4x4xf32> affine.for %i0 = 0 to %M step 4 {
 ///        affine.for %i1 = 0 to %N step 4 {
 ///          affine.for %i2 = 0 to %O {
@@ -117,7 +117,7 @@
 /// ```mlir
 ///    mlfunc @materialize(%M : index, %N : index, %O : index, %P : index) {
 ///      %A = alloc (%M, %N, %O, %P) : memref<?x?x?x?xf32, 0>
-///      %f1 = constant splat<vector<4x4xf32>, 1.000000e+00> : vector<4x4x4xf32>
+///      %f1 = constant dense<vector<4x4xf32>, 1.000000e+00> : vector<4x4x4xf32>
 ///       affine.for %i0 = 0 to %arg0 step 4 {
 ///         affine.for %i1 = 0 to %arg1 step 4 {
 ///           affine.for %i2 = 0 to %arg2 {

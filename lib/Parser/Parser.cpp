@@ -231,9 +231,6 @@ public:
   /// Parse an opaque elements attribute.
   Attribute parseOpaqueElementsAttr();
 
-  /// Parse a splat elements attribute.
-  Attribute parseSplatElementsAttr();
-
   /// Parse a dense elements attribute.
   Attribute parseDenseElementsAttr();
   ShapedType parseElementsLiteralType();
@@ -928,7 +925,7 @@ ParseResult Parser::parseXInDimensionList() {
 ///                    | `[` (attribute-value (`,` attribute-value)*)? `]`
 ///                    | `{` (attribute-entry (`,` attribute-entry)*)? `}`
 ///                    | function-id `:` function-type
-///                    | (`splat` | `dense`) `<` (tensor-type | vector-type) `,`
+///                    | `dense` `<` (tensor-type | vector-type) `,`
 ///                      attribute-value `>`
 ///                    | `sparse` `<` (tensor-type | vector-type)`,`
 ///                          attribute-value `,` attribute-value `>`
@@ -1020,10 +1017,6 @@ Attribute Parser::parseAttribute(Type type) {
   // Parse a sparse elements attribute.
   case Token::kw_sparse:
     return parseSparseElementsAttr();
-
-  // Parse a splat elements attribute.
-  case Token::kw_splat:
-    return parseSplatElementsAttr();
 
   // Parse a string attribute.
   case Token::string: {
@@ -1204,36 +1197,6 @@ Attribute Parser::parseOpaqueElementsAttr() {
   return builder.getOpaqueElementsAttr(dialect, type, llvm::fromHex(val));
 }
 
-/// Parse a splat elements attribute.
-Attribute Parser::parseSplatElementsAttr() {
-  consumeToken(Token::kw_splat);
-  if (parseToken(Token::less, "expected '<' after 'splat'"))
-    return nullptr;
-
-  auto type = parseElementsLiteralType();
-  if (!type)
-    return nullptr;
-  if (parseToken(Token::comma, "expected ',' after elements literal type"))
-    return nullptr;
-
-  switch (getToken().getKind()) {
-  case Token::floatliteral:
-  case Token::integer:
-  case Token::kw_false:
-  case Token::kw_true:
-  case Token::minus: {
-    auto scalar = parseAttribute(type.getElementType());
-    if (!scalar)
-      return nullptr;
-    if (parseToken(Token::greater, "expected '>'"))
-      return nullptr;
-    return builder.getSplatElementsAttr(type, scalar);
-  }
-  default:
-    return emitError("expected scalar constant inside tensor literal"), nullptr;
-  }
-}
-
 namespace {
 class TensorLiteralParser {
 public:
@@ -1275,7 +1238,9 @@ ParseResult TensorLiteralParser::parseElement() {
   switch (p.getToken().getKind()) {
   case Token::floatliteral:
   case Token::integer:
-  case Token::minus: {
+  case Token::minus:
+  case Token::kw_true:
+  case Token::kw_false: {
     auto result = p.parseAttribute(eltTy);
     if (!result)
       return failure();
@@ -1285,32 +1250,14 @@ ParseResult TensorLiteralParser::parseElement() {
     case StandardTypes::F16:
     case StandardTypes::F32:
     case StandardTypes::F64: {
-      // Bitcast the APFloat value to APInt and store the bit representation.
-      auto fpAttrResult = result.dyn_cast<FloatAttr>();
-      if (!fpAttrResult)
-        return p.emitError(
-            "expected tensor literal element with floating point type");
-      auto apInt = fpAttrResult.getValue().bitcastToAPInt();
-
-      // FIXME: using 64 bits and double semantics for BF16 because APFloat does
-      // not support BF16 directly.
-      size_t bitWidth = eltTy.isBF16() ? 64 : eltTy.getIntOrFloatBitWidth();
-      assert(apInt.getBitWidth() == bitWidth);
-      (void)bitWidth;
-      (void)apInt;
+      assert(result.isa<FloatAttr>());
       break;
     }
-    case StandardTypes::Integer: {
-      if (!result.isa<IntegerAttr>())
-        return p.emitError("expected tensor literal element has integer type");
-      auto value = result.cast<IntegerAttr>().getValue();
-      if (value.getMinSignedBits() > eltTy.getIntOrFloatBitWidth())
-        return p.emitError("tensor literal element has more bits than that "
-                           "specified in the type");
+    case StandardTypes::Integer:
+      assert(result.isa<BoolAttr>() || result.isa<IntegerAttr>());
       break;
-    }
     default:
-      return p.emitError("expected integer or float tensor element");
+      llvm_unreachable("expected integer or float tensor element");
     }
     storage.push_back(result);
     break;

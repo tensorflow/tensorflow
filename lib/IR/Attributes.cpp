@@ -365,8 +365,6 @@ ShapedType ElementsAttr::getType() const {
 /// element, then a null attribute is returned.
 Attribute ElementsAttr::getValue(ArrayRef<uint64_t> index) const {
   switch (getKind()) {
-  case StandardAttributes::SplatElements:
-    return cast<SplatElementsAttr>().getValue();
   case StandardAttributes::DenseElements:
     return cast<DenseElementsAttr>().getValue(index);
   case StandardAttributes::OpaqueElements:
@@ -384,8 +382,6 @@ ElementsAttr ElementsAttr::mapValues(
   switch (getKind()) {
   case StandardAttributes::DenseElements:
     return cast<DenseElementsAttr>().mapValues(newElementType, mapping);
-  case StandardAttributes::SplatElements:
-    return cast<SplatElementsAttr>().mapValues(newElementType, mapping);
   default:
     llvm_unreachable("unsupported ElementsAttr subtype");
   }
@@ -397,8 +393,6 @@ ElementsAttr ElementsAttr::mapValues(
   switch (getKind()) {
   case StandardAttributes::DenseElements:
     return cast<DenseElementsAttr>().mapValues(newElementType, mapping);
-  case StandardAttributes::SplatElements:
-    return cast<SplatElementsAttr>().mapValues(newElementType, mapping);
   default:
     llvm_unreachable("unsupported ElementsAttr subtype");
   }
@@ -409,82 +403,21 @@ ElementsAttr ElementsAttr::mapValues(
 //===----------------------------------------------------------------------===//
 
 SplatElementsAttr SplatElementsAttr::get(ShapedType type, Attribute elt) {
-  assert(elt.getType() == type.getElementType() &&
-         "value should be of the given element type");
-  assert((type.isa<RankedTensorType>() || type.isa<VectorType>()) &&
-         "type must be ranked tensor or vector");
-  assert(type.hasStaticShape() && "type must have static shape");
-  return Base::get(type.getContext(), StandardAttributes::SplatElements, type,
-                   elt);
+  return DenseElementsAttr::get(type, elt).cast<SplatElementsAttr>();
 }
-
-Attribute SplatElementsAttr::getValue() const { return getImpl()->elt; }
 
 SplatElementsAttr SplatElementsAttr::mapValues(
     Type newElementType,
     llvm::function_ref<APInt(const APInt &)> mapping) const {
-  ShapedType inType = getType();
-
-  ShapedType newArrayType;
-  if (inType.isa<RankedTensorType>())
-    newArrayType = RankedTensorType::get(inType.getShape(), newElementType);
-  else if (inType.isa<UnrankedTensorType>())
-    newArrayType = RankedTensorType::get(inType.getShape(), newElementType);
-  else if (inType.isa<VectorType>())
-    newArrayType = VectorType::get(inType.getShape(), newElementType);
-  else
-    assert(false && "Unhandled tensor type");
-
-  assert(getType().getElementType().isa<IntegerType>() &&
-         "Attempting to map non-integer array as integers");
-
-  if (newElementType.isa<IntegerType>()) {
-    APInt newValue = mapping(getValue().cast<IntegerAttr>().getValue());
-    auto newAttr = IntegerAttr::get(newElementType, newValue);
-    return get(newArrayType, newAttr);
-  }
-
-  if (newElementType.isa<FloatType>()) {
-    APFloat newValue(newElementType.cast<FloatType>().getFloatSemantics(),
-                     mapping(getValue().cast<IntegerAttr>().getValue()));
-    auto newAttr = FloatAttr::get(newElementType, newValue);
-    return get(newArrayType, newAttr);
-  }
-
-  llvm_unreachable("unknown output splat type");
+  return DenseElementsAttr::mapValues(newElementType, mapping)
+      .cast<SplatElementsAttr>();
 }
 
 SplatElementsAttr SplatElementsAttr::mapValues(
     Type newElementType,
     llvm::function_ref<APInt(const APFloat &)> mapping) const {
-  Type inType = getType();
-
-  ShapedType newArrayType;
-  if (inType.isa<RankedTensorType>()) {
-    newArrayType = RankedTensorType::get(getType().getShape(), newElementType);
-  } else if (inType.isa<UnrankedTensorType>()) {
-    newArrayType = RankedTensorType::get(getType().getShape(), newElementType);
-  }
-
-  assert(newArrayType && "Unhandled tensor type");
-  assert(getType().getElementType().isa<FloatType>() &&
-         "mapping function expects float tensor");
-
-  Attribute newAttr;
-  if (newElementType.isa<IntegerType>()) {
-    APInt newValue = mapping(getValue().cast<FloatAttr>().getValue());
-    newAttr = IntegerAttr::get(newElementType, newValue);
-    return get(newArrayType, newAttr);
-  }
-
-  if (newElementType.isa<FloatType>()) {
-    APFloat newValue(newElementType.cast<FloatType>().getFloatSemantics(),
-                     mapping(getValue().cast<FloatAttr>().getValue()));
-    newAttr = FloatAttr::get(newElementType, newValue);
-    return get(newArrayType, newAttr);
-  }
-
-  llvm_unreachable("unknown output splat type");
+  return DenseElementsAttr::mapValues(newElementType, mapping)
+      .cast<SplatElementsAttr>();
 }
 
 //===----------------------------------------------------------------------===//

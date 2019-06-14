@@ -701,15 +701,6 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
     os << '>';
     break;
   }
-  case StandardAttributes::SplatElements: {
-    auto elementsAttr = attr.cast<SplatElementsAttr>();
-    os << "splat<";
-    printType(elementsAttr.getType());
-    os << ", ";
-    printAttribute(elementsAttr.getValue());
-    os << '>';
-    break;
-  }
   case StandardAttributes::SparseElements: {
     auto elementsAttr = attr.cast<SparseElementsAttr>();
     os << "sparse<";

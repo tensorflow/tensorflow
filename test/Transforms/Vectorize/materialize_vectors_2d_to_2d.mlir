@@ -15,8 +15,8 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   // 2x unroll (jammed by construction).
   // CHECK: affine.for %i0 = 0 to %arg0 step 3 {
   // CHECK-NEXT:   affine.for %i1 = 0 to %arg1 step 32 {
-  // CHECK-NEXT:     {{.*}} = constant splat<vector<3x16xf32>, 1.000000e+00>
-  // CHECK-NEXT:     {{.*}} = constant splat<vector<3x16xf32>, 1.000000e+00>
+  // CHECK-NEXT:     {{.*}} = constant dense<vector<3x16xf32>, 1.000000e+00>
+  // CHECK-NEXT:     {{.*}} = constant dense<vector<3x16xf32>, 1.000000e+00>
   // CHECK-NEXT:     %[[VAL00:.*]] = affine.apply [[ID1]](%i0)
   // CHECK-NEXT:     %[[VAL01:.*]] = affine.apply [[ID1]](%i1)
   // CHECK-NEXT:     vector.transfer_write {{.*}}, {{.*}}[%[[VAL00]], %[[VAL01]]] {permutation_map: [[ID2]]} : vector<3x16xf32>, memref<?x?xf32>
@@ -33,8 +33,8 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   // 2x unroll (jammed by construction).
   // CHECK: affine.for %i2 = 0 to %arg0 step 3 {
   // CHECK-NEXT:   affine.for %i3 = 0 to %arg1 step 32 {
-  // CHECK-NEXT:     {{.*}} = constant splat<vector<3x16xf32>, 2.000000e+00>
-  // CHECK-NEXT:     {{.*}} = constant splat<vector<3x16xf32>, 2.000000e+00>
+  // CHECK-NEXT:     {{.*}} = constant dense<vector<3x16xf32>, 2.000000e+00>
+  // CHECK-NEXT:     {{.*}} = constant dense<vector<3x16xf32>, 2.000000e+00>
   // CHECK-NEXT:     %[[VAL00:.*]] = affine.apply [[ID1]](%i2)
   // CHECK-NEXT:     %[[VAL01:.*]] = affine.apply [[ID1]](%i3)
   // CHECK-NEXT:     vector.transfer_write {{.*}}, {{.*}}[%[[VAL00]], %[[VAL01]]] {permutation_map: [[ID2]]} : vector<3x16xf32>, memref<?x?xf32>

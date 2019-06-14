@@ -11,9 +11,9 @@
 // (-64 signed == 192 unsigned).
 // CHECK-LABEL: constant_splat_tensor_u8_affine
 func @constant_splat_tensor_u8_affine() -> tensor<4xf32> {
-  // CHECK: %cst = constant splat<tensor<4xi8>, -64>
+  // CHECK: %cst = constant dense<tensor<4xi8>, -64>
   // CHECK-NEXT: %0 = "quant.scast"(%cst) : (tensor<4xi8>) -> tensor<4x!quant.uniform<u8:f32, 7.812500e-03:128>>
-  %cst = constant splat<tensor<4xf32>, 0.5>
+  %cst = constant dense<tensor<4xf32>, 0.5>
   %1 = "quant.qcast"(%cst) : (tensor<4xf32>) -> tensor<4x!quant.uniform<u8:f32, 7.812500e-03:128>>
   %2 = "quant.dcast"(%1) : (tensor<4x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> (tensor<4xf32>)
   return %2 : tensor<4xf32>
@@ -23,9 +23,9 @@ func @constant_splat_tensor_u8_affine() -> tensor<4xf32> {
 // Verifies i8 affine quantization on a splat tensor.
 // CHECK-LABEL: constant_splat_tensor_i8_affine
 func @constant_splat_tensor_i8_affine() -> tensor<4xf32> {
-  // CHECK: %cst = constant splat<tensor<4xi8>, 63>
+  // CHECK: %cst = constant dense<tensor<4xi8>, 63>
   // CHECK-NEXT: %0 = "quant.scast"(%cst) : (tensor<4xi8>) -> tensor<4x!quant.uniform<i8:f32, 7.812500e-03:-1>>
-  %cst = constant splat<tensor<4xf32>, 0.5>
+  %cst = constant dense<tensor<4xf32>, 0.5>
   %1 = "quant.qcast"(%cst) : (tensor<4xf32>) -> tensor<4x!quant.uniform<i8:f32, 7.812500e-03:-1>>
   %2 = "quant.dcast"(%1) : (tensor<4x!quant.uniform<i8:f32, 7.812500e-03:-1>>) -> (tensor<4xf32>)
   return %2 : tensor<4xf32>
@@ -35,9 +35,9 @@ func @constant_splat_tensor_i8_affine() -> tensor<4xf32> {
 // Verifies i8 fixedpoint quantization on a splat tensor.
 // CHECK-LABEL: const_splat_tensor_i8_fixedpoint
 func @const_splat_tensor_i8_fixedpoint() -> tensor<4xf32> {
-  // CHECK: %cst = constant splat<tensor<4xi8>, 64>
+  // CHECK: %cst = constant dense<tensor<4xi8>, 64>
   // CHECK-NEXT: %0 = "quant.scast"(%cst) : (tensor<4xi8>) -> tensor<4x!quant.uniform<i8:f32, 7.812500e-03>>
-  %cst = constant splat<tensor<4xf32>, 0.5>
+  %cst = constant dense<tensor<4xf32>, 0.5>
   %1 = "quant.qcast"(%cst) : (tensor<4xf32>) -> tensor<4x!quant.uniform<i8:f32, 7.812500e-03>>
   %2 = "quant.dcast"(%1) : (tensor<4x!quant.uniform<i8:f32, 7.812500e-03>>) -> (tensor<4xf32>)
   return %2 : tensor<4xf32>
@@ -47,8 +47,8 @@ func @const_splat_tensor_i8_fixedpoint() -> tensor<4xf32> {
 // Verifies i8 fixedpoint quantization on a splat tensor resulting in a negative storage value.
 // CHECK-LABEL: const_splat_tensor_i8_fixedpoint_neg
 func @const_splat_tensor_i8_fixedpoint_neg() -> tensor<4xf32> {
-  // CHECK: %cst = constant splat<tensor<4xi8>, -64>
-  %cst = constant splat<tensor<4xf32>, -0.5>
+  // CHECK: %cst = constant dense<tensor<4xi8>, -64>
+  %cst = constant dense<tensor<4xf32>, -0.5>
   %1 = "quant.qcast"(%cst) : (tensor<4xf32>) -> tensor<4x!quant.uniform<i8:f32, 7.812500e-03>>
   %2 = "quant.dcast"(%1) : (tensor<4x!quant.uniform<i8:f32, 7.812500e-03>>) -> (tensor<4xf32>)
   return %2 : tensor<4xf32>

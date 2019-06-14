@@ -694,7 +694,7 @@ func @multireturn_caller() {
 
 // CHECK-LABEL: define <4 x float> @vector_ops(<4 x float>, <4 x i1>, <4 x i64>) {
 func @vector_ops(%arg0: !llvm<"<4 x float>">, %arg1: !llvm<"<4 x i1>">, %arg2: !llvm<"<4 x i64>">) -> !llvm<"<4 x float>"> {
-  %0 = llvm.constant(splat<vector<4xf32>, 4.200000e+01>) : !llvm<"<4 x float>">
+  %0 = llvm.constant(dense<vector<4xf32>, 4.200000e+01>) : !llvm<"<4 x float>">
 // CHECK-NEXT: %4 = fadd <4 x float> %0, <float 4.200000e+01, float 4.200000e+01, float 4.200000e+01, float 4.200000e+01>
   %1 = llvm.fadd %arg0, %0 : !llvm<"<4 x float>">
 // CHECK-NEXT: %5 = select <4 x i1> %1, <4 x float> %4, <4 x float> %0

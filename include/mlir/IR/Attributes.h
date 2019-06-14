@@ -45,7 +45,6 @@ struct ArrayAttributeStorage;
 struct AffineMapAttributeStorage;
 struct IntegerSetAttributeStorage;
 struct TypeAttributeStorage;
-struct SplatElementsAttributeStorage;
 struct DenseElementsAttributeStorage;
 struct OpaqueElementsAttributeStorage;
 struct SparseElementsAttributeStorage;
@@ -151,11 +150,10 @@ enum Kind {
   IntegerSet,
   Function,
 
-  SplatElements,
   DenseElements,
   OpaqueElements,
   SparseElements,
-  FIRST_ELEMENTS_ATTR = SplatElements,
+  FIRST_ELEMENTS_ATTR = DenseElements,
   LAST_ELEMENTS_ATTR = SparseElements,
 };
 } // namespace StandardAttributes
@@ -459,39 +457,6 @@ public:
   }
 };
 
-/// An attribute that represents a reference to a splat vector or tensor
-/// constant, meaning all of the elements have the same value.
-class SplatElementsAttr
-    : public Attribute::AttrBase<SplatElementsAttr, ElementsAttr,
-                                 detail::SplatElementsAttributeStorage> {
-public:
-  using Base::Base;
-  using ValueType = Attribute;
-
-  /// 'type' must be a vector or tensor with static shape.
-  static SplatElementsAttr get(ShapedType type, Attribute elt);
-  Attribute getValue() const;
-
-  /// Generates a new SplatElementsAttr by mapping each int value to a new
-  /// underlying APInt. The new values can represent either a integer or float.
-  /// This ElementsAttr should contain integers.
-  SplatElementsAttr
-  mapValues(Type newElementType,
-            llvm::function_ref<APInt(const APInt &)> mapping) const;
-
-  /// Generates a new SplatElementsAttr by mapping each float value to a new
-  /// underlying APInt. The new values can represent either a integer or float.
-  /// This ElementsAttr should contain floats.
-  SplatElementsAttr
-  mapValues(Type newElementType,
-            llvm::function_ref<APInt(const APFloat &)> mapping) const;
-
-  /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool kindof(unsigned kind) {
-    return kind == StandardAttributes::SplatElements;
-  }
-};
-
 /// An attribute that represents a reference to a dense vector or tensor object.
 ///
 class DenseElementsAttr
@@ -756,6 +721,38 @@ public:
 
   /// Method for supporting type inquiry through isa, cast and dyn_cast.
   static bool classof(Attribute attr);
+};
+
+/// An attribute that represents a reference to a splat vector or tensor
+/// constant, meaning all of the elements have the same value.
+class SplatElementsAttr : public DenseElementsAttr {
+public:
+  using DenseElementsAttr::DenseElementsAttr;
+  using ValueType = Attribute;
+
+  /// 'type' must be a vector or tensor with static shape.
+  static SplatElementsAttr get(ShapedType type, Attribute elt);
+  Attribute getValue() const { return getSplatValue(); }
+
+  /// Generates a new SplatElementsAttr by mapping each int value to a new
+  /// underlying APInt. The new values can represent either a integer or float.
+  /// This ElementsAttr should contain integers.
+  SplatElementsAttr
+  mapValues(Type newElementType,
+            llvm::function_ref<APInt(const APInt &)> mapping) const;
+
+  /// Generates a new SplatElementsAttr by mapping each float value to a new
+  /// underlying APInt. The new values can represent either a integer or float.
+  /// This ElementsAttr should contain floats.
+  SplatElementsAttr
+  mapValues(Type newElementType,
+            llvm::function_ref<APInt(const APFloat &)> mapping) const;
+
+  /// Method for support type inquiry through isa, cast and dyn_cast.
+  static bool classof(Attribute attr) {
+    auto denseAttr = attr.dyn_cast<DenseElementsAttr>();
+    return denseAttr && denseAttr.isSplat();
+  }
 };
 
 /// An opaque attribute that represents a reference to a vector or tensor

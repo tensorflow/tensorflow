@@ -249,7 +249,7 @@ func @func_with_ops(i32, i32) {
 
 func @func_with_ops() {
 ^bb0:
-  %c = constant splat<vector<42 x i32>, 0>
+  %c = constant dense<vector<42 x i32>, 0>
   // expected-error@+1 {{op requires the same shape for all operands and results}}
   %r = "std.cmpi"(%c, %c) {predicate: 0} : (vector<42 x i32>, vector<42 x i32>) -> vector<41 x i1>
 }
@@ -398,7 +398,7 @@ func @test_vector.transfer_read(memref<?x?x?xf32>) {
 func @test_vector.transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
-  %cst = constant splat<vector<128 x f32>, 3.0>
+  %cst = constant dense<vector<128 x f32>, 3.0>
   // expected-error@+1 {{expected 5 operand types but had 4}}
   %0 = "vector.transfer_write"(%cst, %arg0, %c3, %c3, %c3) : (vector<128xf32>, memref<?x?xf32>, index, index) -> ()
 }
@@ -408,7 +408,7 @@ func @test_vector.transfer_write(memref<?x?xf32>) {
 func @test_vector.transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
-  %cst = constant splat<vector<128 x f32>, 3.0>
+  %cst = constant dense<vector<128 x f32>, 3.0>
   // expected-error@+1 {{expects 4 operands (of which 2 indices)}}
   vector.transfer_write %cst, %arg0[%c3, %c3, %c3] : vector<128xf32>, memref<?x?xf32>
 }
@@ -418,7 +418,7 @@ func @test_vector.transfer_write(memref<?x?xf32>) {
 func @test_vector.transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
-  %cst = constant splat<vector<128 x f32>, 3.0>
+  %cst = constant dense<vector<128 x f32>, 3.0>
   // expected-error@+1 {{requires an AffineMapAttr named 'permutation_map'}}
   vector.transfer_write %cst, %arg0[%c3, %c3] : vector<128xf32>, memref<?x?xf32>
 }
@@ -428,7 +428,7 @@ func @test_vector.transfer_write(memref<?x?xf32>) {
 func @test_vector.transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
-  %cst = constant splat<vector<128 x f32>, 3.0>
+  %cst = constant dense<vector<128 x f32>, 3.0>
   // expected-error@+1 {{requires an AffineMapAttr named 'permutation_map'}}
   vector.transfer_write %cst, %arg0[%c3, %c3] {perm: (d0)->(d0)} : vector<128xf32>, memref<?x?xf32>
 }
@@ -438,7 +438,7 @@ func @test_vector.transfer_write(memref<?x?xf32>) {
 func @test_vector.transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
-  %cst = constant splat<vector<128 x f32>, 3.0>
+  %cst = constant dense<vector<128 x f32>, 3.0>
   // expected-error@+1 {{requires a permutation_map with input dims of the same rank as the memref type}}
   vector.transfer_write %cst, %arg0[%c3, %c3] {permutation_map: (d0)->(d0)} : vector<128xf32>, memref<?x?xf32>
 }
@@ -448,7 +448,7 @@ func @test_vector.transfer_write(memref<?x?xf32>) {
 func @test_vector.transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
-  %cst = constant splat<vector<128 x f32>, 3.0>
+  %cst = constant dense<vector<128 x f32>, 3.0>
   // expected-error@+1 {{requires a permutation_map with result dims of the same rank as the vector type}}
   vector.transfer_write %cst, %arg0[%c3, %c3] {permutation_map: (d0, d1)->(d0, d1)} : vector<128xf32>, memref<?x?xf32>
 }
@@ -458,7 +458,7 @@ func @test_vector.transfer_write(memref<?x?xf32>) {
 func @test_vector.transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
-  %cst = constant splat<vector<128 x f32>, 3.0>
+  %cst = constant dense<vector<128 x f32>, 3.0>
   // expected-error@+1 {{requires a projected permutation_map (at most one dim or the zero constant can appear in each result)}}
   vector.transfer_write %cst, %arg0[%c3, %c3] {permutation_map: (d0, d1)->(d0 + d1)} : vector<128xf32>, memref<?x?xf32>
 }
@@ -468,7 +468,7 @@ func @test_vector.transfer_write(memref<?x?xf32>) {
 func @test_vector.transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
-  %cst = constant splat<vector<128 x f32>, 3.0>
+  %cst = constant dense<vector<128 x f32>, 3.0>
   // expected-error@+1 {{requires a projected permutation_map (at most one dim or the zero constant can appear in each result)}}
   vector.transfer_write %cst, %arg0[%c3, %c3] {permutation_map: (d0, d1)->(d0 + 1)} : vector<128xf32>, memref<?x?xf32>
 }
@@ -477,7 +477,7 @@ func @test_vector.transfer_write(memref<?x?xf32>) {
 func @test_vector.transfer_write(memref<?x?x?xf32>) {
 ^bb0(%arg0: memref<?x?x?xf32>):
   %c3 = constant 3 : index
-  %cst = constant splat<vector<3 x 7 x f32>, 3.0>
+  %cst = constant dense<vector<3 x 7 x f32>, 3.0>
   // expected-error@+1 {{requires a permutation_map that is a permutation (found one dim used more than once)}}
   vector.transfer_write %cst, %arg0[%c3, %c3, %c3] {permutation_map: (d0, d1, d2)->(d0, d0)} : vector<3x7xf32>, memref<?x?x?xf32>
 }

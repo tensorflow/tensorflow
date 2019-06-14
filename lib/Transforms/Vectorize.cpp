@@ -437,7 +437,7 @@ using namespace mlir;
 ///   %cst_0 = constant 2.0 : f32
 ///   affine.for %i0 = 0 to %arg0 {
 ///     affine.for %i1 = 0 to %arg1 step 256 {
-///       %cst_1 = constant splat<vector<256xf32>, 1.0> :
+///       %cst_1 = constant dense<vector<256xf32>, 1.0> :
 ///                vector<256xf32>
 ///       vector.transfer_write %cst_1, %0[%i0, %i1] :
 ///                vector<256xf32>, memref<?x?xf32>
@@ -445,7 +445,7 @@ using namespace mlir;
 ///   }
 ///   affine.for %i2 = 0 to %arg0 {
 ///     affine.for %i3 = 0 to %arg1 step 256 {
-///       %cst_2 = constant splat<vector<256xf32>, 2.0> :
+///       %cst_2 = constant dense<vector<256xf32>, 2.0> :
 ///                vector<256xf32>
 ///       vector.transfer_write %cst_2, %1[%i2, %i3] :
 ///                vector<256xf32>, memref<?x?xf32>
@@ -458,10 +458,10 @@ using namespace mlir;
 ///       %4 = vector.transfer_read %1[%i4, %i5] :
 ///            memref<?x?xf32>, vector<256xf32>
 ///       %5 = addf %3, %4 : vector<256xf32>
-///       %cst_3 = constant splat<vector<256xf32>, 1.0> :
+///       %cst_3 = constant dense<vector<256xf32>, 1.0> :
 ///                vector<256xf32>
 ///       %6 = addf %5, %cst_3 : vector<256xf32>
-///       %cst_4 = constant splat<vector<256xf32>, 2.0> :
+///       %cst_4 = constant dense<vector<256xf32>, 2.0> :
 ///                vector<256xf32>
 ///       %7 = addf %5, %cst_4 : vector<256xf32>
 ///       %8 = addf %7, %6 : vector<256xf32>
@@ -493,7 +493,7 @@ using namespace mlir;
 ///   %cst_0 = constant 2.0 : f32
 ///   affine.for %i0 = 0 to %arg0 step 32 {
 ///     affine.for %i1 = 0 to %arg1 step 256 {
-///       %cst_1 = constant splat<vector<32x256xf32>, 1.0> :
+///       %cst_1 = constant dense<vector<32x256xf32>, 1.0> :
 ///                vector<32x256xf32>
 ///       vector.transfer_write %cst_1, %0[%i0, %i1] :
 ///                vector<32x256xf32>, memref<?x?xf32>
@@ -501,7 +501,7 @@ using namespace mlir;
 ///   }
 ///   affine.for %i2 = 0 to %arg0 step 32 {
 ///     affine.for %i3 = 0 to %arg1 step 256 {
-///       %cst_2 = constant splat<vector<32x256xf32>, 2.0> :
+///       %cst_2 = constant dense<vector<32x256xf32>, 2.0> :
 ///                vector<32x256xf32>
 ///       vector.transfer_write %cst_2, %1[%i2, %i3] :
 ///                vector<32x256xf32>, memref<?x?xf32>
@@ -514,10 +514,10 @@ using namespace mlir;
 ///       %4 = vector.transfer_read %1[%i4, %i5] :
 ///                memref<?x?xf32>, vector<32x256xf32>
 ///       %5 = addf %3, %4 : vector<32x256xf32>
-///       %cst_3 = constant splat<vector<32x256xf32>, 1.0> :
+///       %cst_3 = constant dense<vector<32x256xf32>, 1.0> :
 ///                vector<32x256xf32>
 ///       %6 = addf %5, %cst_3 : vector<32x256xf32>
-///       %cst_4 = constant splat<vector<32x256xf32>, 2.0> :
+///       %cst_4 = constant dense<vector<32x256xf32>, 2.0> :
 ///                vector<32x256xf32>
 ///       %7 = addf %5, %cst_4 : vector<32x256xf32>
 ///       %8 = addf %7, %6 : vector<32x256xf32>
@@ -923,7 +923,7 @@ static Value *vectorizeConstant(Operation *op, ConstantOp constant, Type type) {
   OpBuilder b(op);
   Location loc = op->getLoc();
   auto vectorType = type.cast<VectorType>();
-  auto attr = SplatElementsAttr::get(vectorType, constant.getValue());
+  auto attr = DenseElementsAttr::get(vectorType, constant.getValue());
   auto *constantOpInst = constant.getOperation();
 
   OperationState state(b.getContext(), loc,

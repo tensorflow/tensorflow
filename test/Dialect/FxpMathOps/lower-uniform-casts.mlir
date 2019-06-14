@@ -5,7 +5,7 @@
 !type_input = type tensor<4x!quant.uniform<i8:f32, 6.25e-2>>
 !type_result = type tensor<4xf32>
 func @dequantize_per_layer_fixedpoint(%arg0 : !type_input) -> !type_result {
-  // CHECK: %cst = constant splat<tensor<4xf32>, 6.250000e-02>
+  // CHECK: %cst = constant dense<tensor<4xf32>, 6.250000e-02>
   // CHECK-NEXT: %0 = "quant.scast"(%arg0) : (tensor<4x!quant.uniform<i8:f32, 6.250000e-02>>) -> tensor<4xi8>
   // CHECK-NEXT: %1 = "fxpmath.convertis"(%0) : (tensor<4xi8>) -> tensor<4xi32>
   // CHECK-NEXT: %2 = "fxpmath.convertistof"(%1) : (tensor<4xi32>) -> tensor<4xf32>
@@ -20,8 +20,8 @@ func @dequantize_per_layer_fixedpoint(%arg0 : !type_input) -> !type_result {
 !type_input = type tensor<4x!quant.uniform<i8:f32, 6.25e-2:-36>>
 !type_result = type tensor<4xf32>
 func @dequantize_per_layer_affine(%arg0 : !type_input) -> !type_result {
-  // CHECK: %cst = constant splat<tensor<4xi32>, 36>
-  // CHECK-NEXT: %cst_0 = constant splat<tensor<4xf32>, 6.250000e-02>
+  // CHECK: %cst = constant dense<tensor<4xi32>, 36>
+  // CHECK-NEXT: %cst_0 = constant dense<tensor<4xf32>, 6.250000e-02>
   // CHECK-NEXT: %0 = "quant.scast"(%arg0) : (tensor<4x!quant.uniform<i8:f32, 6.250000e-02:-36>>) -> tensor<4xi8>
   // CHECK-NEXT: %1 = "fxpmath.convertis"(%0) : (tensor<4xi8>) -> tensor<4xi32>
   // CHECK-NEXT: %2 = addi %1, %cst : tensor<4xi32>

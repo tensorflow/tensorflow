@@ -190,7 +190,7 @@ inline Type castElementType(Type t, Type newElementType) {
 inline Attribute broadcastScalarConstIntValue(Type t, int64_t value) {
   if (auto st = t.dyn_cast<ShapedType>()) {
     assert(st.getElementType().isa<IntegerType>());
-    return SplatElementsAttr::get(st,
+    return DenseElementsAttr::get(st,
                                   IntegerAttr::get(st.getElementType(), value));
   }
 
@@ -219,7 +219,7 @@ inline Attribute broadcastScalarConstFloatValue(Type t, APFloat value) {
     assert(floatElementType &&
            "float broadcast element type must be float like");
     APFloat apValue = convertFloatToType(floatElementType, value);
-    return SplatElementsAttr::get(st,
+    return DenseElementsAttr::get(st,
                                   FloatAttr::get(st.getElementType(), apValue));
   } else {
     auto floatType = t.dyn_cast<FloatType>();

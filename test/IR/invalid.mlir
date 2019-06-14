@@ -8,7 +8,7 @@ func @illegaltype(i) // expected-error {{expected non-function type}}
 // -----
 
 func @illegaltype() {
-  %0 = constant splat<<vector 4 x f32>, 0> : vector<4 x f32> // expected-error {{expected non-function type}}
+  %0 = constant dense<<vector 4 x f32>, 0> : vector<4 x f32> // expected-error {{expected non-function type}}
 }
 
 // -----
@@ -629,7 +629,7 @@ func @elementsattr_floattype1() -> () {
 func @elementsattr_floattype1() -> () {
 ^bb0:
   // expected-error@+1 {{floating point value not valid for specified type}}
-  "foo"(){bar: splat<tensor<i32>, 4.0>} : () -> ()
+  "foo"(){bar: dense<tensor<i32>, 4.0>} : () -> ()
 }
 
 // -----

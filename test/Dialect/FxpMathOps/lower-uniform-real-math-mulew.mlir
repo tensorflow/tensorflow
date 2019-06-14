@@ -31,9 +31,9 @@ func @real_mulew_fixedpoint(%arg0 : !type_lhs, %arg1: !type_rhs) -> !type_result
 !type_result = type tensor<4x!quant.uniform<i8:f32, 6.25e-2:-9>>
 func @real_mulew_affine_clamp(%arg0 : !type_lhs, %arg1: !type_rhs) -> !type_result {
   // Just verify that the affine adds/constants and clamps are present.
-  // CHECK: %cst = constant splat<tensor<4xi32>, 3>
-  // CHECK: %cst_0 = constant splat<tensor<4xi32>, 5>
-  // CHECK: %cst_1 = constant splat<tensor<4xi32>, -9>
+  // CHECK: %cst = constant dense<tensor<4xi32>, 3>
+  // CHECK: %cst_0 = constant dense<tensor<4xi32>, 5>
+  // CHECK: %cst_1 = constant dense<tensor<4xi32>, -9>
   // CHECK: addi %2, %cst : tensor<4xi32>
   // CHECK: addi %3, %cst_0 : tensor<4xi32>
   // CHECK: muli %4, %5 : tensor<4xi32>

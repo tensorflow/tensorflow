@@ -756,7 +756,6 @@ Syntax:
 elements-attribute ::= dense-elements-attribute
                      | opaque-elements-attribute
                      | sparse-elements-attribute
-                     | splat-elements-attribute
 ```
 
 An elements attribute is a literal attribute that represents a constant
@@ -822,18 +821,6 @@ Example:
 ///   [0, 0, 5, 0],
 ///   [0, 0, 0, 0]]
 ```
-
-##### Splat Elements Attribute
-
-Syntax:
-
-``` {.ebnf}
-splat-elements-attribute ::= `splat` `<` ( tensor-type | vector-type ) `,`
-                              attribute-value `>`
-```
-
-A splat elements attribute is an elements attribute that represents a tensor or
-vector constant where all elements have the same value.
 
 #### Integer Attribute
 
