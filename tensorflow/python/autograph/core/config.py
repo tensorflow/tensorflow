@@ -33,7 +33,19 @@ CONVERSION_RULES = (
     # TODO(b/133417201): Remove.
     DoNotConvert('tensorflow_probability'),
 
-    # TODO(b/130313089): Remove.
+    # TODO(b/133842282): Remove.
+    DoNotConvert('tensorflow_datasets.core'),
+
+    DoNotConvert('collections'),
+    DoNotConvert('copy'),
+    DoNotConvert('inspect'),
+    DoNotConvert('ipdb'),
+    DoNotConvert('linecache'),
+    DoNotConvert('mock'),
     DoNotConvert('numpy'),
+    DoNotConvert('pathlib'),
+    DoNotConvert('pdb'),
+    DoNotConvert('posixpath'),
+    DoNotConvert('re'),
     DoNotConvert('threading'),
 )

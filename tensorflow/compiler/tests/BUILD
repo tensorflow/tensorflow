@@ -557,6 +557,7 @@ tf_xla_py_test(
     name = "image_ops_test",
     size = "small",
     srcs = ["image_ops_test.py"],
+    shard_count = 10,
     tags = [
         "optonly",  # Times out frequently in fastbuild mode.
     ],

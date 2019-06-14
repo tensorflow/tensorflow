@@ -293,7 +293,13 @@ def load_function_def_library(library):
   for fdef in _sort_function_defs(library):
     copy = _fix_fdef(fdef, functions, load_shared_name_suffix)
 
-    func_graph = function_def_lib.function_def_to_graph(copy)
+    # There is no need to copy functions into the function def graph.
+    # It leads to a O(n^2) increase of memory when importing functions
+    # and the extra function definitions are a no-op since they already
+    # imported as a function before (due to the topologic sort import).
+    func_graph = function_def_lib.function_def_to_graph(
+        copy, copy_functions=False)
+
     for dep in _list_function_deps(fdef):
       functions[dep].add_to_graph(func_graph)
     func = function_lib.ConcreteFunction(func_graph)

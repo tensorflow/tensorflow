@@ -170,9 +170,10 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
-        ":tflite_with_ruy",
-        "//tensorflow/lite/kernels/internal:types",
         ":cpu_backend_context",
+        ":tflite_with_ruy",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/kernels/internal:types",
         # For now this unconditionally depends on both ruy and gemmlowp.
         # We only need to depend on gemmlowp when tflite_with_ruy
         # is false, but putting these dependencies in a select() seems to
@@ -209,8 +210,9 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":tflite_with_ruy",
-        "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/kernels/internal:common",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/kernels/internal:types",
         ":cpu_backend_context",
         ":cpu_backend_threadpool",
         # Depend on ruy regardless of `tflite_with_ruy`. See the comment in
@@ -423,6 +425,8 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels/internal:audio_utils",
+        "//tensorflow/lite/kernels/internal:common",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:optimized",
         "//tensorflow/lite/kernels/internal:optimized_base",
@@ -848,6 +852,7 @@ cc_test(
     name = "unidirectional_sequence_rnn_test",
     size = "small",
     srcs = ["unidirectional_sequence_rnn_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",

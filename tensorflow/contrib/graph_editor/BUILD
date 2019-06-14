@@ -26,7 +26,6 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:op_selector",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
         "@six_archive//:six",

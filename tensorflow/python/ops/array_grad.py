@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 
@@ -554,6 +555,19 @@ def _GatherNdGrad(op, grad):
   ref = op.inputs[0]
   indices = op.inputs[1]
   ref_shape = array_ops.shape(ref, out_type=indices.dtype)
+  if indices.shape.ndims == 2 and indices.shape.dims[-1].value == 1:
+    ref_grad = ops.IndexedSlices(grad, array_ops.squeeze(indices, axis=-1),
+                                 ref_shape)
+  else:
+    ref_grad = array_ops.scatter_nd(indices, grad, ref_shape)
+  return [ref_grad, None]
+
+
+@ops.RegisterGradient("ResourceGatherNd")
+def _ResourceGatherNdGrad(op, grad):  # pylint: disable=missing-docstring
+  ref = op.inputs[0]
+  indices = op.inputs[1]
+  ref_shape = gen_resource_variable_ops.variable_shape(ref, indices.dtype)
   if indices.shape.ndims == 2 and indices.shape.dims[-1].value == 1:
     ref_grad = ops.IndexedSlices(grad, array_ops.squeeze(indices, axis=-1),
                                  ref_shape)

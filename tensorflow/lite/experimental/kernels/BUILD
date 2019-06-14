@@ -19,7 +19,7 @@ cc_library(
     ],
     deps = [
         ":top_n",
-        "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//third_party/eigen3",
     ],
 )
@@ -31,7 +31,7 @@ cc_library(
         "top_n.h",
     ],
     deps = [
-        "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/kernels/internal:compatibility",
     ],
 )
 

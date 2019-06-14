@@ -68,15 +68,23 @@ from tensorflow.python.training.tracking import base as tracking_base
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest as tf_nest
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
 # Loaded lazily due to a circular dependency (roughly
 # tf.function->wrap_function->dataset->autograph->tf.function).
-wrap_function = LazyLoader(
+# TODO(b/133251390): Use a regular import.
+wrap_function = lazy_loader.LazyLoader(
     "wrap_function", globals(),
     "tensorflow.python.eager.wrap_function")
+# TODO(mdan): Create a public API for this.
+autograph_ctx = lazy_loader.LazyLoader(
+    "autograph_ctx", globals(),
+    "tensorflow.python.autograph.core.ag_ctx")
+autograph = lazy_loader.LazyLoader(
+    "autograph", globals(),
+    "tensorflow.python.autograph")
 
 ops.NotDifferentiable("ReduceDataset")
 
@@ -2371,7 +2379,7 @@ def to_variant(dataset):
 
 
 # TODO(b/133606651) Rename this class to DatasetSpec
-@tf_export("data.experimental.DatasetStructure")
+@tf_export("data.DatasetSpec", "data.experimental.DatasetStructure")
 class DatasetStructure(type_spec.BatchableTypeSpec):
   """Type specification for `tf.data.Dataset`."""
 
@@ -2520,6 +2528,13 @@ class StructuredFunctionWrapper(object):
         [readable_transformation_name,
          function_utils.get_func_name(func)])
 
+    ctx = autograph_ctx.control_status_ctx()
+    if ctx.status in (
+        autograph_ctx.Status.ENABLED, autograph_ctx.Status.UNSPECIFIED):
+      apply_autograph = True
+    else:
+      apply_autograph = False
+
     def _warn_if_collections(transformation_name):
       """Prints a warning if the given graph uses common graph collections.
 
@@ -2542,7 +2557,23 @@ class StructuredFunctionWrapper(object):
       if not _should_unpack_args(nested_args):
         nested_args = (nested_args,)
 
-      ret = func(*nested_args)
+      if apply_autograph:
+        try:
+          ret = autograph.converted_call(
+              func, None,
+              autograph.ConversionOptions(
+                  recursive=True,
+                  # TODO(mdan): Grab features from context.
+                  optional_features=None,
+                  force_conversion=False,
+              ), nested_args, {})
+        except Exception as e:  # pylint:disable=broad-except
+          if hasattr(e, "ag_error_metadata"):
+            raise e.ag_error_metadata.to_exception(type(e))
+          else:
+            raise
+      else:
+        ret = func(*nested_args)
       # If `func` returns a list of tensors, `nest.flatten()` and
       # `ops.convert_to_tensor()` would conspire to attempt to stack
       # those tensors into a single tensor, because the customized
@@ -2590,8 +2621,7 @@ class StructuredFunctionWrapper(object):
     else:
       defun_kwargs.update({"func_name": func_name})
 
-      # TODO(b/124254153): Enable autograph once the overhead is low enough.
-      # TODO(mdan): Make sure autograph recurses into _wrapper_helper when on.
+      # Note: _wrapper_helper will apply autograph based on context.
       @eager_function.defun_with_attributes(
           input_signature=self._input_structure._flat_tensor_specs,
           autograph=False,

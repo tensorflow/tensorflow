@@ -25,11 +25,11 @@ import six
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import op_selector
 from tensorflow.python.ops import resource_variable_ops
 
 
-UnliftableError = op_selector.UnliftableError
+def _graph_inputs(op):
+  return [x.op for x in op.inputs] + list(op.control_inputs)
 
 
 def _as_operation(op_or_tensor):
@@ -38,10 +38,106 @@ def _as_operation(op_or_tensor):
   return op_or_tensor
 
 
+class UnliftableError(Exception):
+  """Raised if a Tensor cannot be lifted from the graph."""
+
+  # Prevent autograph from rewriting this error.
+  ag_pass_through = True
+
+
 def _constant_inputs(op_or_tensor):
   return all(_as_operation(i).type == u"Const"
              and not _as_operation(i).control_inputs
-             for i in op_selector.graph_inputs(_as_operation(op_or_tensor)))
+             for i in _graph_inputs(_as_operation(op_or_tensor)))
+
+
+def _path_from(from_op, tensor, sources):
+  """Find one path from `from_op` to `tensor`, ignoring `sources`.
+
+  Args:
+    from_op: A `tf.Operation`.
+    tensor: A `tf.Operation` or `tf.Tensor`.
+    sources: A list of `tf.Tensor`.
+
+  Returns:
+    A python string containing the path, or "??" if none is found.
+  """
+  visited_ops = set([x.op for x in sources])
+  ops_to_visit = [_as_operation(tensor)]
+  some_op_output = {}
+  while ops_to_visit:
+    op = ops_to_visit.pop()
+    if op in visited_ops:
+      continue
+    visited_ops.add(op)
+    if op == from_op:
+      path_op = op
+      path = [path_op]
+      final_op = _as_operation(tensor)
+      while path_op != final_op:
+        path_op = some_op_output[path_op]
+        path.append(path_op)
+      return " <- ".join(["%s (%s)" % (x.name, x.type) for x in reversed(path)])
+    else:
+      for inp in _graph_inputs(op):
+        if inp not in visited_ops and inp not in sources:
+          some_op_output[inp] = op
+          ops_to_visit.append(inp)
+  return "??"
+
+
+def _map_subgraph(init_tensor, sources, disallowed_placeholders, visited_ops,
+                  op_outputs, add_sources):
+  """Walk a Graph and capture the subgraph between init_tensor and sources.
+
+  Note: This function mutates visited_ops and op_outputs.
+
+  Arguments:
+    init_tensor:  A Tensor or Operation where the subgraph terminates.
+    sources:  A set of Tensors where subgraph extraction should stop.
+    disallowed_placeholders: An optional set of ops which may not appear in the
+      lifted graph. Defaults to all placeholders.
+    visited_ops: A set of operations which were visited in a prior pass.
+    op_outputs: A defaultdict containing the outputs of an op which are to be
+      copied into the new subgraph.
+    add_sources: A boolean indicating whether placeholders which are not in
+      sources should be allowed.
+
+  Returns:
+    The set of placeholders upon which init_tensor depends and are not in
+    sources.
+
+  Raises:
+    UnliftableError: if init_tensor depends on a placeholder which is not in
+      sources and add_sources is False.
+  """
+  ops_to_visit = [_as_operation(init_tensor)]
+  extra_sources = set()
+  while ops_to_visit:
+    op = ops_to_visit.pop()
+    if op in visited_ops:
+      continue
+    visited_ops.add(op)
+
+    should_raise = False
+    if disallowed_placeholders is not None and op in disallowed_placeholders:
+      should_raise = True
+    elif op.type == "Placeholder":
+      if disallowed_placeholders is None and not add_sources:
+        should_raise = True
+      extra_sources.update(op.outputs)
+
+    if should_raise:
+      raise UnliftableError(
+          "Unable to lift tensor %s because it depends transitively on "
+          "placeholder %s via at least one path, e.g.: %s"
+          % (repr(init_tensor), repr(op), _path_from(op, init_tensor, sources)))
+    for inp in _graph_inputs(op):
+      op_outputs[inp].add(op)
+      if inp not in visited_ops and inp not in (sources or extra_sources):
+        ops_to_visit.append(inp)
+
+  return extra_sources
 
 
 # Represents an input to `copied_op` which must be updated once
@@ -227,7 +323,7 @@ def lift_to_graph(init_tensors, graph, sources=None,
 
   # First we extract the subgraph between init_tensors and sources.
   for init_tensor in init_tensors:
-    sources.update(op_selector.map_subgraph(
+    sources.update(_map_subgraph(
         init_tensor=init_tensor,
         sources=sources,
         disallowed_placeholders=disallowed_placeholders,
@@ -249,7 +345,7 @@ def lift_to_graph(init_tensors, graph, sources=None,
         continue
       marked_ops.add(op)
       ops_to_copy.append(op)
-      for inp in op_selector.graph_inputs(op):
+      for inp in _graph_inputs(op):
         # Don't lift the TPUReplicateMetadata nodes out of the function, because
         # it has no registered kernels.
         if inp.name == "TPUReplicateMetadata":
@@ -326,4 +422,3 @@ def lift_to_graph(init_tensors, graph, sources=None,
     # pylint: enable=protected-access
 
     return op_map
-

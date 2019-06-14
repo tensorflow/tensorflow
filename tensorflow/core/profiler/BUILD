@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library", "tf_additional_all_protos", "tf_profiler_all_protos")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos", "tf_profiler_all_protos", "tf_proto_library")
 
 package(
     default_visibility = ["//visibility:public"],

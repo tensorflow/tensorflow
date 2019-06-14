@@ -1879,13 +1879,15 @@ def match_row_splits_dtypes(*tensors, **kwargs):
 #===============================================================================
 # RaggedTensorSpec
 #===============================================================================
-# TODO(b/133606651) Export this as tf.RaggedTensorSpec.
+@tf_export("RaggedTensorSpec")
 class RaggedTensorSpec(type_spec.BatchableTypeSpec):
   """Type specification for a `tf.RaggedTensor`."""
 
   __slots__ = ["_shape", "_dtype", "_ragged_rank", "_row_splits_dtype"]
 
-  value_type = property(lambda self: RaggedTensor)
+  @property
+  def value_type(self):
+    return RaggedTensor if self._ragged_rank > 0 else ops.Tensor
 
   def __init__(self, shape=None, dtype=dtypes.float32, ragged_rank=None,
                row_splits_dtype=dtypes.int64):
