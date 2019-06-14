@@ -1149,8 +1149,8 @@ TEST_F(XlaCompilerTest, ReturnResourceHandle) {
       scope.WithControlDependencies(std::vector<Operation>{write}), var,
       DT_INT32);
   auto read_plus_one = ops::Add(scope, read, ops::Const<int32>(scope, 1));
-  auto r = ops::_Retval(scope.WithOpName("R"), var, 0);
-  auto d = ops::_Retval(scope.WithOpName("D"), read_plus_one, 1);
+  auto d = ops::_Retval(scope.WithOpName("D"), read_plus_one, 0);
+  auto r = ops::_Retval(scope.WithOpName("R"), var, 1);
 
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   TF_ASSERT_OK(scope.ToGraph(graph.get()));
