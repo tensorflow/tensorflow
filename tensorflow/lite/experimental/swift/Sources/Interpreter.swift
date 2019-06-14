@@ -54,7 +54,7 @@ public final class Interpreter {
       TFL_InterpreterOptionsSetErrorReporter(
         cOptions,
         { (_, format, args) -> Void in
-          // Workaround for Swift optionality bug: https://bugs.swift.org/browse/SR-3429.
+          // Workaround for optionality differences for x86_64 (non-optional) and arm64 (optional).
           let optionalArgs: CVaListPointer? = args
           guard let cFormat = format,
             let arguments = optionalArgs,

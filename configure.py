@@ -403,7 +403,8 @@ def set_action_env_var(environ_cp,
                        enabled_by_default,
                        question=None,
                        yes_reply=None,
-                       no_reply=None):
+                       no_reply=None,
+                       bazel_config_name=None):
   """Set boolean action_env variable.
 
   Ask user if query_item will be enabled. Default is used if no input is given.
@@ -418,12 +419,16 @@ def set_action_env_var(environ_cp,
     question: optional string for how to ask for user input.
     yes_reply: optional string for reply when feature is enabled.
     no_reply: optional string for reply when feature is disabled.
+    bazel_config_name: adding config to .bazelrc instead of action_env.
   """
   var = int(
       get_var(environ_cp, var_name, query_item, enabled_by_default, question,
               yes_reply, no_reply))
 
-  write_action_env_to_bazelrc(var_name, var)
+  if not bazel_config_name:
+    write_action_env_to_bazelrc(var_name, var)
+  elif var:
+    write_to_bazelrc('build --config=%s' % bazel_config_name)
   environ_cp[var_name] = str(var)
 
 
@@ -543,7 +548,8 @@ def set_tf_cuda_clang(environ_cp):
       False,
       question=question,
       yes_reply=yes_reply,
-      no_reply=no_reply)
+      no_reply=no_reply,
+      bazel_config_name='cuda_clang')
 
 
 def set_tf_download_clang(environ_cp):
@@ -558,7 +564,8 @@ def set_tf_download_clang(environ_cp):
       False,
       question=question,
       yes_reply=yes_reply,
-      no_reply=no_reply)
+      no_reply=no_reply,
+      bazel_config_name='download_clang')
 
 
 def get_from_env_or_user_or_default(environ_cp, var_name, ask_for_var,
@@ -782,8 +789,8 @@ def get_ndk_api_level(environ_cp, android_ndk_home_path):
     print('WARNING: The NDK version in %s is %s, which is not '
           'supported by Bazel (officially supported versions: %s). Please use '
           'another version. Compiling Android targets may result in confusing '
-          'errors.\n' % (android_ndk_home_path, ndk_version,
-                         _SUPPORTED_ANDROID_NDK_VERSIONS))
+          'errors.\n' %
+          (android_ndk_home_path, ndk_version, _SUPPORTED_ANDROID_NDK_VERSIONS))
 
   # Now grab the NDK API level to use. Note that this is different from the
   # SDK API level, as the NDK API level is effectively the *min* target SDK
@@ -951,6 +958,7 @@ def set_tf_nccl_version(environ_cp):
                                                     'TF_NCCL_VERSION',
                                                     ask_nccl_version, '')
   environ_cp['TF_NCCL_VERSION'] = tf_nccl_version
+
 
 def get_native_cuda_compute_capabilities(environ_cp):
   """Get native cuda compute capabilities.
@@ -1383,7 +1391,7 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  current_bazel_version = check_bazel_version('0.24.1', '0.25.2')
+  current_bazel_version = check_bazel_version('0.24.1', '0.26.1')
   _TF_CURRENT_BAZEL_VERSION = convert_version_to_int(current_bazel_version)
 
   reset_tf_configure_bazelrc()
@@ -1419,7 +1427,12 @@ def main():
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
                 xla_enabled_by_default, 'xla')
 
-  set_action_env_var(environ_cp, 'TF_NEED_OPENCL_SYCL', 'OpenCL SYCL', False)
+  set_action_env_var(
+      environ_cp,
+      'TF_NEED_OPENCL_SYCL',
+      'OpenCL SYCL',
+      False,
+      bazel_config_name='sycl')
   if environ_cp.get('TF_NEED_OPENCL_SYCL') == '1':
     set_host_cxx_compiler(environ_cp)
     set_host_c_compiler(environ_cp)
@@ -1429,30 +1442,44 @@ def main():
     else:
       set_trisycl_include_dir(environ_cp)
 
-  set_action_env_var(environ_cp, 'TF_NEED_ROCM', 'ROCm', False)
+  set_action_env_var(
+      environ_cp, 'TF_NEED_ROCM', 'ROCm', False, bazel_config_name='rocm')
   if (environ_cp.get('TF_NEED_ROCM') == '1' and
       'LD_LIBRARY_PATH' in environ_cp and
       environ_cp.get('LD_LIBRARY_PATH') != '1'):
     write_action_env_to_bazelrc('LD_LIBRARY_PATH',
                                 environ_cp.get('LD_LIBRARY_PATH'))
 
-  set_action_env_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)
+  environ_cp['TF_NEED_CUDA'] = str(
+      int(get_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)))
   if (environ_cp.get('TF_NEED_CUDA') == '1' and
       'TF_CUDA_CONFIG_REPO' not in environ_cp):
 
-    set_action_env_var(environ_cp, 'TF_NEED_TENSORRT', 'TensorRT', False)
+    set_action_env_var(
+        environ_cp,
+        'TF_NEED_TENSORRT',
+        'TensorRT',
+        False,
+        bazel_config_name='tensorrt')
 
     environ_save = dict(environ_cp)
     for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
 
       if validate_cuda_config(environ_cp):
         cuda_env_names = [
-            'TF_CUDA_VERSION', 'TF_CUBLAS_VERSION', 'TF_CUDNN_VERSION',
-            'TF_TENSORRT_VERSION', 'TF_NCCL_VERSION', 'TF_CUDA_PATHS',
+            'TF_CUDA_VERSION',
+            'TF_CUBLAS_VERSION',
+            'TF_CUDNN_VERSION',
+            'TF_TENSORRT_VERSION',
+            'TF_NCCL_VERSION',
+            'TF_CUDA_PATHS',
             # Items below are for backwards compatibility when not using
             # TF_CUDA_PATHS.
-            'CUDA_TOOLKIT_PATH', 'CUDNN_INSTALL_PATH', 'NCCL_INSTALL_PATH',
-            'NCCL_HDR_PATH', 'TENSORRT_INSTALL_PATH'
+            'CUDA_TOOLKIT_PATH',
+            'CUDNN_INSTALL_PATH',
+            'NCCL_INSTALL_PATH',
+            'NCCL_HDR_PATH',
+            'TENSORRT_INSTALL_PATH'
         ]
         # Note: set_action_env_var above already writes to bazelrc.
         for name in cuda_env_names:
@@ -1503,8 +1530,6 @@ def main():
     # CUDA not required. Ask whether we should download the clang toolchain and
     # use it for the CPU build.
     set_tf_download_clang(environ_cp)
-    if environ_cp.get('TF_DOWNLOAD_CLANG') == '1':
-      write_to_bazelrc('build --config=download_clang')
 
   # SYCL / ROCm / CUDA are mutually exclusive.
   # At most 1 GPU platform can be configured.
@@ -1557,6 +1582,7 @@ def main():
   config_info_line(
       'dynamic_kernels',
       '(Experimental) Build kernels into separate shared objects.')
+  config_info_line('v2', 'Build TensorFlow 2.x instead of 1.x.')
 
   print('Preconfigured Bazel build configs to DISABLE default on features:')
   config_info_line('noaws', 'Disable AWS S3 filesystem support.')

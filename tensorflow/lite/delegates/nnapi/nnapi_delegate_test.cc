@@ -14,10 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 
+#include <sys/mman.h>
+
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
+#include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
 namespace tflite {
 namespace {
@@ -58,6 +63,12 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims) {
     return interpreter_->ResizeInputTensor(tensor_index, dims);
+  }
+
+  StatefulNnApiDelegate* GetDelegate() { return stateful_delegate_.get(); }
+
+  void SetBufferHandle(int index, TfLiteBufferHandle handle) {
+    interpreter_->SetBufferHandle(index, handle, stateful_delegate_.get());
   }
 
  protected:
@@ -232,6 +243,95 @@ TEST(NNAPIDelegate, StatefulDelegateWithAcceleratorName) {
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
+}
+
+// Sanity check for the state-ful NNAPI delegate with compilation caching
+// enabled.
+TEST(NNAPIDelegate, StatefulDelegateWithCompilationCaching) {
+  StatefulNnApiDelegate::Options options;
+  options.execution_preference =
+      StatefulNnApiDelegate::Options::ExecutionPreference::kLowPower;
+  options.cache_dir = "/data/local/tmp";
+  options.model_token = "NNAPIDelegate.StatefulDelegateWithCompilationCaching";
+
+  FloatAddOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
+}
+
+// Sanity check for the state-ful NNAPI delegate using TfLiteBufferHandle.
+TEST(NNAPIDelegate, StatefulDelegateWithBufferHandles) {
+  // Skip the test if Android specific functions could not be found.
+  if (!NnApiImplementation()->ASharedMemory_create ||
+      !NnApiImplementation()->ANeuralNetworksMemory_createFromFd) {
+    GTEST_SKIP();
+  }
+  StatefulNnApiDelegate::Options options;
+  FloatAddOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  auto* delegate = m.GetDelegate();
+  // Create ASharedMemory and copy data into it.
+  constexpr auto kInput1ByteSize = 4 * sizeof(float);
+  ANeuralNetworksMemory* input1_memory = nullptr;
+  int fd =
+      NnApiImplementation()->ASharedMemory_create("input1", kInput1ByteSize);
+  EXPECT_GE(fd, 0);
+  void* input1_memory_data =
+      mmap(nullptr, kInput1ByteSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  EXPECT_TRUE(input1_memory_data != nullptr);
+  float input1_data[] = {-2.0, 0.2, 0.7, 0.8};
+  memcpy(input1_memory_data, input1_data, kInput1ByteSize);
+  int result = NnApiImplementation()->ANeuralNetworksMemory_createFromFd(
+      kInput1ByteSize, PROT_READ, fd, 0, &input1_memory);
+  EXPECT_EQ(result, ANEURALNETWORKS_NO_ERROR);
+  ASSERT_NE(input1_memory, nullptr);
+
+  struct DummyMemoryContext {
+    ANeuralNetworksMemory* memory_handle;
+    void* memory_data;
+    size_t byte_size;
+  };
+  DummyMemoryContext memory_context = {input1_memory, input1_memory_data,
+                                       kInput1ByteSize};
+  static StatefulNnApiDelegate::CopyToHostTensorFnPtr memory_callback =
+      [](TfLiteTensor* tensor, ANeuralNetworksMemory* memory,
+         size_t memory_offset, size_t byte_size,
+         void* callback_context) -> TfLiteStatus {
+    auto memory_context =
+        reinterpret_cast<DummyMemoryContext*>(callback_context);
+    if (memory != memory_context->memory_handle ||
+        memory_offset + byte_size > memory_context->byte_size) {
+      return kTfLiteError;
+    }
+    memcpy(
+        tensor->data.raw,
+        reinterpret_cast<uint8_t*>(memory_context->memory_data) + memory_offset,
+        byte_size);
+    return kTfLiteOk;
+  };
+  auto input1_handle = delegate->RegisterNnapiMemory(
+      input1_memory, memory_callback, &memory_context);
+  m.SetBufferHandle(m.input1(), input1_handle);
+  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
+  // Run the inference multiple times and each time register a buffer.
+  for (int i = 0; i < 10; i++) {
+    // Change the value a little bit.
+    input1_data[0] = -2.0 + i;
+    memcpy(input1_memory_data, input1_data, kInput1ByteSize);
+    auto input1_handle = delegate->RegisterNnapiMemory(
+        input1_memory, memory_callback, &memory_context);
+    m.SetBufferHandle(m.input1(), input1_handle);
+    m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+    m.Invoke();
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9 + i, 0.4, 1.0, 1.3}));
+  }
 }
 
 class FloatMulOpModel : public SingleOpModelWithNNAPI {

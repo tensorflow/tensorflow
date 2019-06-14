@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <atomic>
 
+#include "absl/strings/match.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"

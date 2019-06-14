@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "public/gemmlowp.h"
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_multithread.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/depthwise_conv.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/fully_connected.h"
@@ -165,7 +166,7 @@ inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
   DepthwiseConvImpl(op_params, DimsToShape(input_dims), input_data,
                     DimsToShape(filter_dims), filter_data,
                     DimsToShape(bias_dims), bias_data, output_shape,
-                    output_data, nullptr, /*thread_start=*/0,
+                    output_data, CpuFlags(), /*thread_start=*/0,
                     /*thread_end=*/output_height, /*thread_dim=*/1);
 }
 
@@ -598,7 +599,8 @@ inline void DepthwiseConv(
     const float* bias_data, const RuntimeShape& output_shape,
     float* output_data) {
   DepthwiseConvImpl(params, input_shape, input_data, filter_shape, filter_data,
-                    bias_shape, bias_data, output_shape, output_data, nullptr,
+                    bias_shape, bias_data, output_shape, output_data,
+                    CpuFlags(),
                     /*thread_start=*/0,
                     /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
 }

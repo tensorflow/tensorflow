@@ -269,6 +269,8 @@ renames = {
         'tf.compat.dimension_at_index',
     'tf.dimension_value':
         'tf.compat.dimension_value',
+    'tf.disable_control_flow_v2':
+        'tf.compat.v1.disable_control_flow_v2',
     'tf.disable_eager_execution':
         'tf.compat.v1.disable_eager_execution',
     'tf.disable_resource_variables':
@@ -321,6 +323,8 @@ renames = {
         'tf.math.divide_no_nan',
     'tf.dtypes.as_string':
         'tf.strings.as_string',
+    'tf.enable_control_flow_v2':
+        'tf.compat.v1.enable_control_flow_v2',
     'tf.enable_eager_execution':
         'tf.compat.v1.enable_eager_execution',
     'tf.enable_resource_variables':
@@ -384,11 +388,11 @@ renames = {
     'tf.fixed_size_partitioner':
         'tf.compat.v1.fixed_size_partitioner',
     'tf.floor_div':
+        'tf.compat.v1.floor_div',
+    'tf.floordiv':
         'tf.math.floordiv',
     'tf.floormod':
         'tf.math.floormod',
-    'tf.floordiv':
-        'tf.math.floordiv',
     'tf.get_collection':
         'tf.compat.v1.get_collection',
     'tf.get_collection_ref':
@@ -501,6 +505,8 @@ renames = {
         'tf.compat.v1.is_variable_initialized',
     'tf.keras.backend.get_session':
         'tf.compat.v1.keras.backend.get_session',
+    'tf.keras.backend.set_session':
+        'tf.compat.v1.keras.backend.set_session',
     'tf.keras.layers.CuDNNGRU':
         'tf.compat.v1.keras.layers.CuDNNGRU',
     'tf.keras.layers.CuDNNLSTM':
@@ -1439,6 +1445,10 @@ renames = {
         'tf.compat.v1.train.do_quantize_training_on_graphdef',
     'tf.train.experimental.MixedPrecisionLossScaleOptimizer':
         'tf.compat.v1.train.experimental.MixedPrecisionLossScaleOptimizer',
+    'tf.train.experimental.disable_mixed_precision_graph_rewrite':
+        'tf.compat.v1.train.experimental.disable_mixed_precision_graph_rewrite',
+    'tf.train.experimental.enable_mixed_precision_graph_rewrite':
+        'tf.compat.v1.train.experimental.enable_mixed_precision_graph_rewrite',
     'tf.train.exponential_decay':
         'tf.compat.v1.train.exponential_decay',
     'tf.train.export_meta_graph':
@@ -1543,10 +1553,8 @@ renames = {
         'tf.compat.v1.variables_initializer',
     'tf.verify_tensor_all_finite':
         'tf.compat.v1.verify_tensor_all_finite',
-    'tf.where':
-        'tf.compat.v1.where',
     'tf.where_v2':
-        'tf.compat.v2.where',
+        'tf.where',
     'tf.wrap_function':
         'tf.compat.v1.wrap_function',
     'tf.write_file':

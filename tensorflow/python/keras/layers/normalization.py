@@ -413,13 +413,15 @@ class BatchNormalizationBase(Layer):
         # NOTE: below, the outer `with device` block causes the current device
         # stack to be cleared. The nested ones use a `lambda` to set the desired
         # device and ignore any devices that may be set by the custom getter.
-        def _renorm_variable(name, shape):
+        def _renorm_variable(name,
+                             shape,
+                             initializer=init_ops.zeros_initializer()):
           """Create a renorm variable."""
           var = self.add_weight(
               name=name,
               shape=shape,
               dtype=self._param_dtype,
-              initializer=init_ops.zeros_initializer(),
+              initializer=initializer,
               synchronization=tf_variables.VariableSynchronization.ON_READ,
               trainable=False,
               aggregation=tf_variables.VariableAggregation.MEAN,
@@ -428,7 +430,8 @@ class BatchNormalizationBase(Layer):
 
         with distribution_strategy_context.get_strategy(
         ).extended.colocate_vars_with(self.moving_mean):
-          self.renorm_mean = _renorm_variable('renorm_mean', param_shape)
+          self.renorm_mean = _renorm_variable('renorm_mean', param_shape,
+                                              self.moving_mean_initializer)
           self.renorm_mean_weight = _renorm_variable('renorm_mean_weight', ())
         # We initialize renorm_stddev to 0, and maintain the (0-initialized)
         # renorm_stddev_weight. This allows us to (1) mix the average
@@ -436,7 +439,8 @@ class BatchNormalizationBase(Layer):
         # the unbiased average stddev by dividing renorm_stddev by the weight.
         with distribution_strategy_context.get_strategy(
         ).extended.colocate_vars_with(self.moving_variance):
-          self.renorm_stddev = _renorm_variable('renorm_stddev', param_shape)
+          self.renorm_stddev = _renorm_variable(
+              'renorm_stddev', param_shape, self.moving_variance_initializer)
           self.renorm_stddev_weight = _renorm_variable('renorm_stddev_weight',
                                                        ())
     finally:
@@ -509,29 +513,16 @@ class BatchNormalizationBase(Layer):
     else:
       momentum = ops.convert_to_tensor(self.momentum)
     if training_value or training_value is None:
-      if distribution_strategy_context.in_cross_replica_context():
-        strategy = distribution_strategy_context.get_strategy()
-        def mean_update():
-          return strategy.extended.update(self.moving_mean,
-                                          self._assign_moving_average,
-                                          (mean, self.momentum, inputs_size))
+      def mean_update():
+        return self._assign_moving_average(self.moving_mean, mean, momentum,
+                                           inputs_size)
 
-        def variance_update():
-          return strategy.extended.update(
-              self.moving_variance, self._assign_moving_average,
-              (variance, self.momentum, inputs_size))
-      else:
+      def variance_update():
+        return self._assign_moving_average(self.moving_variance, variance,
+                                           momentum, inputs_size)
 
-        def mean_update():
-          return self._assign_moving_average(self.moving_mean, mean, momentum,
-                                             inputs_size)
-
-        def variance_update():
-          return self._assign_moving_average(self.moving_variance, variance,
-                                             momentum, inputs_size)
-
-      self.add_update(mean_update, inputs=True)
-      self.add_update(variance_update, inputs=True)
+      self.add_update(mean_update)
+      self.add_update(variance_update)
 
     return output
 
@@ -541,13 +532,12 @@ class BatchNormalizationBase(Layer):
     stddev = math_ops.sqrt(variance + self.epsilon)
     # Compute the average mean and standard deviation, as if they were
     # initialized with this batch's moments.
-    mixed_renorm_mean = (self.renorm_mean +
-                         (1. - self.renorm_mean_weight) * mean)
-    mixed_renorm_stddev = (self.renorm_stddev +
-                           (1. - self.renorm_stddev_weight) * stddev)
+    renorm_mean = self.renorm_mean
+    # Avoid divide by zero early on in training.
+    renorm_stddev = math_ops.maximum(self.renorm_stddev, self.epsilon)
     # Compute the corrections for batch renorm.
-    r = stddev / mixed_renorm_stddev
-    d = (mean - mixed_renorm_mean) / mixed_renorm_stddev
+    r = stddev / renorm_stddev
+    d = (mean - renorm_mean) / renorm_stddev
     # Ensure the corrections use pre-update moving averages.
     with ops.control_dependencies([r, d]):
       mean = array_ops.identity(mean)
@@ -595,16 +585,19 @@ class BatchNormalizationBase(Layer):
       return tf_utils.smart_cond(training, _do_update, _fake_update)
 
     # TODO(yuefengz): colocate the operations
-    new_mean = _update_renorm_variable(self.renorm_mean,
-                                       self.renorm_mean_weight, mean,
-                                       inputs_size)
-    new_stddev = _update_renorm_variable(self.renorm_stddev,
-                                         self.renorm_stddev_weight, stddev,
-                                         inputs_size)
-    # Make sqrt(moving_variance + epsilon) = new_stddev.
-    new_variance = math_ops.square(new_stddev) - self.epsilon
+    update_new_mean = _update_renorm_variable(self.renorm_mean,
+                                              self.renorm_mean_weight, mean,
+                                              inputs_size)
+    update_new_stddev = _update_renorm_variable(self.renorm_stddev,
+                                                self.renorm_stddev_weight,
+                                                stddev, inputs_size)
 
-    return (r, d, new_mean, new_variance)
+    # Update the inference mode moving averages with the batch value.
+    with ops.control_dependencies([update_new_mean, update_new_stddev]):
+      out_mean = array_ops.identity(mean)
+      out_variance = array_ops.identity(variance)
+
+    return (r, d, out_mean, out_variance)
 
   def _moments(self, inputs, reduction_axes, keep_dims):
     mean, variance = nn.moments(inputs, reduction_axes, keep_dims=keep_dims)
@@ -684,7 +677,9 @@ class BatchNormalizationBase(Layer):
 
     # Determine a boolean value for `training`: could be True, False, or None.
     training_value = tf_utils.constant_value(training)
-    if training_value is not False:
+    if training_value == False:  # pylint: disable=singleton-comparison,g-explicit-bool-comparison
+      mean, variance = self.moving_mean, self.moving_variance
+    else:
       if self.adjustment:
         adj_scale, adj_bias = self.adjustment(array_ops.shape(inputs))
         # Adjust only during training.
@@ -741,49 +736,23 @@ class BatchNormalizationBase(Layer):
         d = _broadcast(array_ops.stop_gradient(d, name='renorm_d'))
         scale, offset = _compose_transforms(r, d, scale, offset)
 
-      if distribution_strategy_context.in_cross_replica_context():
-        strategy = distribution_strategy_context.get_strategy()
+      def _do_update(var, value):
+        """Compute the updates for mean and variance."""
+        return self._assign_moving_average(var, value, self.momentum,
+                                           inputs_size)
 
-        def _do_update(var, value):
-          """Compute the updates for mean and variance."""
-          return strategy.extended.update(
-              var,
-              self._assign_moving_average, (value, self.momentum, inputs_size),
-              group=False)
-        # We need to unwrap the moving_mean or moving_variance in the case of
-        # training being false to match the output of true_fn and false_fn
-        # in the smart cond.
-        def mean_update():
-          true_branch = lambda: _do_update(self.moving_mean, new_mean)
-          false_branch = lambda: strategy.unwrap(self.moving_mean)
-          return tf_utils.smart_cond(training, true_branch, false_branch)
+      def mean_update():
+        true_branch = lambda: _do_update(self.moving_mean, new_mean)
+        false_branch = lambda: self.moving_mean
+        return tf_utils.smart_cond(training, true_branch, false_branch)
 
-        def variance_update():
-          return tf_utils.smart_cond(
-              training, lambda: _do_update(self.moving_variance, new_variance),
-              lambda: strategy.unwrap(self.moving_variance))
-      else:
-        def _do_update(var, value):
-          """Compute the updates for mean and variance."""
-          return self._assign_moving_average(var, value, self.momentum,
-                                             inputs_size)
+      def variance_update():
+        true_branch = lambda: _do_update(self.moving_variance, new_variance)
+        false_branch = lambda: self.moving_variance
+        return tf_utils.smart_cond(training, true_branch, false_branch)
 
-
-        def mean_update():
-          true_branch = lambda: _do_update(self.moving_mean, new_mean)
-          false_branch = lambda: self.moving_mean
-          return tf_utils.smart_cond(training, true_branch, false_branch)
-
-        def variance_update():
-          true_branch = lambda: _do_update(self.moving_variance, new_variance)
-          false_branch = lambda: self.moving_variance
-          return tf_utils.smart_cond(training, true_branch, false_branch)
-
-      self.add_update(mean_update, inputs=True)
-      self.add_update(variance_update, inputs=True)
-
-    else:
-      mean, variance = self.moving_mean, self.moving_variance
+      self.add_update(mean_update)
+      self.add_update(variance_update)
 
     mean = math_ops.cast(mean, inputs.dtype)
     variance = math_ops.cast(variance, inputs.dtype)

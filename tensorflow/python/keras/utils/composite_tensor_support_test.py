@@ -638,10 +638,10 @@ class SparseTensorInputValidationTest(keras_parameterized.TestCase,
 
 
 @keras_parameterized.run_with_all_model_types(
-    exclude_models=["functional", "sequential"])
+    exclude_models=["functional"])
 @keras_parameterized.run_all_keras_modes
-class SubclassCompositeTensorInputsTest(keras_parameterized.TestCase,
-                                        ragged_test_util.RaggedTensorTestCase):
+class UndefinedCompositeTensorInputsTest(keras_parameterized.TestCase,
+                                         ragged_test_util.RaggedTensorTestCase):
 
   def test_subclass_implicit_sparse_inputs_fails(self):
     # Create a model that accepts a sparse input and converts the sparse tensor
@@ -652,7 +652,8 @@ class SubclassCompositeTensorInputsTest(keras_parameterized.TestCase,
     # Define some input data.
     input_data = sparse_tensor.SparseTensor([[0, 0], [1, 0], [1, 1]], [1, 2, 3],
                                             [2, 3])
-    with self.assertRaisesRegex(ValueError, ".*implicitly derived inputs.*"):
+    with self.assertRaisesRegex(
+        ValueError, ".*All SparseTensor and RaggedTensor inputs .*"):
       _ = model.predict(input_data, steps=1)
 
   def test_subclass_implicit_sparse_scipy_inputs_fails(self):

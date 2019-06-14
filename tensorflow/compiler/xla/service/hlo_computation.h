@@ -411,6 +411,9 @@ class HloComputation {
   // Returns if this computation is a fusion computation.
   bool IsFusionComputation() const { return fusion_instruction_ != nullptr; }
 
+  // Returns if this computation is the entry computation of the module.
+  bool IsEntryComputation() const;
+
   // Returns the owning fusion instruction, or nullptr if this is not a fusion
   // computation.
   HloInstruction* FusionInstruction() const { return fusion_instruction_; }

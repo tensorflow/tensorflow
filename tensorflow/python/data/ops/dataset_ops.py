@@ -54,6 +54,7 @@ from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_dataset_ops
@@ -67,16 +68,30 @@ from tensorflow.python.training.tracking import base as tracking_base
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
-from tensorflow.python.util.lazy_loader import LazyLoader
+from tensorflow.python.util import lazy_loader
+from tensorflow.python.util import nest as tf_nest
 from tensorflow.python.util.tf_export import tf_export
 
 # Loaded lazily due to a circular dependency (roughly
 # tf.function->wrap_function->dataset->autograph->tf.function).
-wrap_function = LazyLoader(
+# TODO(b/133251390): Use a regular import.
+wrap_function = lazy_loader.LazyLoader(
     "wrap_function", globals(),
     "tensorflow.python.eager.wrap_function")
+# TODO(mdan): Create a public API for this.
+autograph_ctx = lazy_loader.LazyLoader(
+    "autograph_ctx", globals(),
+    "tensorflow.python.autograph.core.ag_ctx")
+autograph = lazy_loader.LazyLoader(
+    "autograph", globals(),
+    "tensorflow.python.autograph")
 
 ops.NotDifferentiable("ReduceDataset")
+
+
+# A constant that can be used to enable auto-tuning.
+AUTOTUNE = -1
+tf_export("data.experimental.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
 
 
 @tf_export("data.Dataset", v1=[])
@@ -282,9 +297,14 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       An `Iterator` over the elements of this dataset.
 
     Raises:
-      RuntimeError: If eager execution is not enabled.
+      RuntimeError: If not inside of tf.function and not executing eagerly.
     """
-    return iterator_ops.IteratorV2(self)
+    if (context.executing_eagerly()
+        or ops.get_default_graph()._building_function):  # pylint: disable=protected-access
+      return iterator_ops.IteratorV2(self)
+    else:
+      raise RuntimeError("__iter__() is only supported inside of tf.function "
+                         "or when eager execution is enabled.")
 
   @abc.abstractproperty
   def _element_structure(self):
@@ -304,23 +324,9 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     return ("<%s shapes: %s, types: %s>" % (type(self).__name__, output_shapes,
                                             output_types))
 
-  def _to_components(self):
-    return [self._variant_tensor]
-
-  def _component_metadata(self):
-    return self._element_structure
-
-  @classmethod
-  def _from_components(cls, components, metadata):
-    return _VariantDataset(components[0], metadata)
-
-  def _shape_invariant_to_components(self, shape=None):
-    del shape  # not used
-    return tensor_shape.TensorShape([])  # dataset component is always a scalar.
-
   @property
-  def _is_graph_tensor(self):
-    return hasattr(self._variant_tensor, "graph")
+  def _type_spec(self):
+    return DatasetStructure(self._element_structure)
 
   @staticmethod
   def from_tensors(tensors):
@@ -699,8 +705,11 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def prefetch(self, buffer_size):
     """Creates a `Dataset` that prefetches elements from this dataset.
 
-    Note that if the dataset was batched using `Dataset.batch`, each element is
-    a batch and this operation will prefetch `buffer_size` batches.
+    Note: Like other `Dataset` methods, prefetch operates on the
+    elements of the input dataset. It has no concept of examples vs. batches.
+    `examples.prefetch(2)` will prefetch two elements (2 examples),
+    while `examples.batch(20).prefetch(2)` will prefetch 2 elements
+    (2 batches, of 20 examples each).
 
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the maximum
@@ -1161,7 +1170,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
   def interleave(self,
                  map_func,
-                 cycle_length,
+                 cycle_length=AUTOTUNE,
                  block_length=1,
                  num_parallel_calls=None):
     """Maps `map_func` across this dataset, and interleaves the results.
@@ -1218,10 +1227,13 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       map_func: A function mapping a nested structure of tensors (having shapes
         and types defined by `self.output_shapes` and `self.output_types`) to a
         `Dataset`.
-      cycle_length: The number of elements from this dataset that will be
-        processed concurrently.
-      block_length: The number of consecutive elements to produce from each
-        input element before cycling to another input element.
+      cycle_length: (Optional.) The number of input elements that will be
+        processed concurrently. If not specified, the value will be derived from
+        the number of available CPU cores. If the `num_parallel_calls` argument
+        is set to `tf.data.experimental.AUTOTUNE`, the `cycle_length` argument
+        also identifies the maximum degree of parallelism.
+      block_length: (Optional.) The number of consecutive elements to produce
+        from each input element before cycling to another input element.
       num_parallel_calls: (Optional.) If specified, the implementation creates a
         threadpool, which is used to fetch inputs from cycle elements
         asynchronously and in parallel. The default behavior is to fetch inputs
@@ -1375,7 +1387,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     with ops.name_scope("initial_state"):
       initial_state = structure_lib.normalize_tensors(initial_state)
-    state_structure = structure_lib.Structure.from_value(initial_state)
+    state_structure = type_spec.type_spec_from_value(initial_state)
 
     # Iteratively rerun the reduce function until reaching a fixed point on
     # `state_structure`.
@@ -1473,13 +1485,13 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       `tf.data.Dataset.apply`.
     """
 
-    # NOTE(mrry): We must ensure that any SparseTensors in `dataset`
-    # are normalized to the rank-1 dense representation, so that the
-    # sparse-oblivious unbatching logic will slice them
-    # appropriately. This leads to a somewhat inefficient re-encoding step
-    # for all SparseTensor components.
-    # TODO(mrry): Consider optimizing this in future if it turns out to be
-    # a bottleneck.
+    # NOTE(mrry): We must ensure that any non-tensor components in `dataset`
+    # are normalized to their dense tensor representation, so that the
+    # non-tensor oblivious unbatching logic will slice them appropriately.
+    # This leads to a somewhat inefficient re-encoding step for all non-tensor
+    # components.
+    #
+    # TODO(mrry): Consider optimizing this if it turns out to be a bottleneck.
     def normalize(arg, *rest):
       # pylint: disable=protected-access
       if rest:
@@ -1489,15 +1501,10 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     normalized_dataset = self.map(normalize)
 
-    # NOTE(mrry): Our `map()` has lost information about the sparseness
-    # of any SparseTensor components, so re-apply the structure of the
-    # original dataset.
-    restructured_dataset = _RestructuredDataset(
-        normalized_dataset,
-        get_legacy_output_types(self),
-        get_legacy_output_shapes(self),
-        get_legacy_output_classes(self),
-        allow_unsafe_cast=True)
+    # NOTE(mrry): Our `map()` has lost information about the structure of
+    # non-tensor components, so re-apply the structure of the original dataset.
+    restructured_dataset = _RestructuredDataset(normalized_dataset,
+                                                self._element_structure)
     return _UnbatchDataset(restructured_dataset)
 
   def with_options(self, options):
@@ -1867,7 +1874,7 @@ class DatasetV1(DatasetV2):
   @functools.wraps(DatasetV2.interleave)
   def interleave(self,
                  map_func,
-                 cycle_length,
+                 cycle_length=AUTOTUNE,
                  block_length=1,
                  num_parallel_calls=None):
     return DatasetV1Adapter(super(DatasetV1, self).interleave(
@@ -2248,7 +2255,7 @@ class TensorDataset(DatasetSource):
   def __init__(self, tensors):
     """See `Dataset.from_tensors()` for details."""
     tensors = structure_lib.normalize_tensors(tensors)
-    self._structure = structure_lib.Structure.from_value(tensors)
+    self._structure = type_spec.type_spec_from_value(tensors)
     self._tensors = self._structure._to_tensor_list(tensors)  # pylint: disable=protected-access
 
     variant_tensor = gen_dataset_ops.tensor_dataset(
@@ -2265,10 +2272,8 @@ class TensorSliceDataset(DatasetSource):
 
   def __init__(self, tensors):
     """See `Dataset.from_tensor_slices()` for details."""
-    with ops.name_scope("tensors"):
-      tensors = structure_lib.normalize_tensors(tensors)
-
-    batched_structure = structure_lib.Structure.from_value(tensors)
+    tensors = structure_lib.normalize_tensors(tensors)
+    batched_structure = type_spec.type_spec_from_value(tensors)
     # pylint: disable=protected-access
     self._tensors = batched_structure._to_batched_tensor_list(tensors)
     self._structure = batched_structure._unbatch()
@@ -2333,6 +2338,18 @@ class _VariantDataset(DatasetV2):
     return self._structure
 
 
+class _NestedVariant(composite_tensor.CompositeTensor):
+
+  def __init__(self, variant_tensor, element_structure, dataset_shape):
+    self._variant_tensor = variant_tensor
+    self._element_structure = element_structure
+    self._dataset_shape = dataset_shape
+
+  @property
+  def _type_spec(self):
+    return DatasetStructure(self._element_structure, self._dataset_shape)
+
+
 @tf_export("data.experimental.from_variant")
 def from_variant(variant, structure):
   """Constructs a dataset from the given variant and structure.
@@ -2361,55 +2378,66 @@ def to_variant(dataset):
   return dataset._variant_tensor  # pylint: disable=protected-access
 
 
-@tf_export("data.experimental.DatasetStructure")
-class DatasetStructure(structure_lib.Structure):
-  """Represents a `Dataset` of structured values."""
+# TODO(b/133606651) Rename this class to DatasetSpec
+@tf_export("data.DatasetSpec", "data.experimental.DatasetStructure")
+class DatasetStructure(type_spec.BatchableTypeSpec):
+  """Type specification for `tf.data.Dataset`."""
 
-  def __init__(self, element_structure):
-    self._element_structure = element_structure
+  __slots__ = ["_element_structure", "_dataset_shape"]
 
-  def __eq__(self, other):
-    # pylint: disable=protected-access
-    return (isinstance(other, DatasetStructure) and
-            self._element_structure == other._element_structure)
-
-  def __hash__(self):
-    return hash(self._element_structure)
-
-  @property
-  def _flat_shapes(self):
-    return [tensor_shape.scalar()]
+  def __init__(self, element_spec, dataset_shape=None):
+    self._element_structure = element_spec
+    if dataset_shape:
+      self._dataset_shape = dataset_shape
+    else:
+      self._dataset_shape = tensor_shape.TensorShape([])
 
   @property
-  def _flat_types(self):
-    return [dtypes.variant]
+  def value_type(self):
+    return _VariantDataset
 
-  def is_compatible_with(self, other):
+  def _serialize(self):
+    return (self._element_structure, self._dataset_shape)
+
+  @property
+  def _component_specs(self):
+    return tensor_spec.TensorSpec(self._dataset_shape, dtypes.variant)
+
+  def _to_components(self, value):
+    return value._variant_tensor  # pylint: disable=protected-access
+
+  def _from_components(self, components):
     # pylint: disable=protected-access
-    return (isinstance(other, DatasetStructure) and
-            self._element_structure.is_compatible_with(
-                other._element_structure))
+    if self._dataset_shape.ndims == 0:
+      return _VariantDataset(components, self._element_structure)
+    else:
+      return _NestedVariant(components, self._element_structure,
+                            self._dataset_shape)
 
   def _to_tensor_list(self, value):
-    return [value._variant_tensor]  # pylint: disable=protected-access
-
-  def _to_batched_tensor_list(self, value):
-    raise NotImplementedError("Unbatching for `tf.data.Dataset` objects.")
-
-  def _from_tensor_list(self, flat_value):
-    if (len(flat_value) != 1 or flat_value[0].dtype != dtypes.variant or
-        not flat_value[0].shape.is_compatible_with(tensor_shape.scalar())):
-      raise ValueError(
-          "DatasetStructure corresponds to a single tf.variant scalar.")
-    return self._from_compatible_tensor_list(flat_value)
-
-  def _from_compatible_tensor_list(self, flat_value):
-    # pylint: disable=protected-access
-    return _VariantDataset(flat_value[0], self._element_structure)
+    return [
+        ops.convert_to_tensor(
+            tf_nest.map_structure(lambda x: x._variant_tensor, value))  # pylint: disable=protected-access
+    ]
 
   @staticmethod
   def from_value(value):
     return DatasetStructure(value._element_structure)  # pylint: disable=protected-access
+
+  def _batch(self, batch_size):
+    return DatasetStructure(
+        self._element_structure,
+        tensor_shape.TensorShape([batch_size]).concatenate(self._dataset_shape))
+
+  def _unbatch(self):
+    if self._dataset_shape.ndims == 0:
+      raise ValueError("Unbatching a dataset is only supported for rank >= 1")
+    return DatasetStructure(self._element_structure, self._dataset_shape[1:])
+
+  def _to_batched_tensor_list(self, value):
+    if self._dataset_shape.ndims == 0:
+      raise ValueError("Unbatching a dataset is only supported for rank >= 1")
+    return self._to_tensor_list(value)
 
   def _to_legacy_output_types(self):
     return self
@@ -2419,18 +2447,6 @@ class DatasetStructure(structure_lib.Structure):
 
   def _to_legacy_output_classes(self):
     return self
-
-  def _batch(self, batch_size):
-    raise NotImplementedError("Batching for `tf.data.Dataset` objects.")
-
-  def _unbatch(self):
-    raise NotImplementedError("Unbatching for `tf.data.Dataset` objects.")
-
-
-# pylint: disable=protected-access
-structure_lib.Structure._register_custom_converter(DatasetV2,
-                                                   DatasetStructure.from_value)
-# pylint: enable=protected-access
 
 
 class StructuredFunctionWrapper(object):
@@ -2512,6 +2528,13 @@ class StructuredFunctionWrapper(object):
         [readable_transformation_name,
          function_utils.get_func_name(func)])
 
+    ctx = autograph_ctx.control_status_ctx()
+    if ctx.status in (
+        autograph_ctx.Status.ENABLED, autograph_ctx.Status.UNSPECIFIED):
+      apply_autograph = True
+    else:
+      apply_autograph = False
+
     def _warn_if_collections(transformation_name):
       """Prints a warning if the given graph uses common graph collections.
 
@@ -2534,7 +2557,23 @@ class StructuredFunctionWrapper(object):
       if not _should_unpack_args(nested_args):
         nested_args = (nested_args,)
 
-      ret = func(*nested_args)
+      if apply_autograph:
+        try:
+          ret = autograph.converted_call(
+              func, None,
+              autograph.ConversionOptions(
+                  recursive=True,
+                  # TODO(mdan): Grab features from context.
+                  optional_features=None,
+                  force_conversion=False,
+              ), nested_args, {})
+        except Exception as e:  # pylint:disable=broad-except
+          if hasattr(e, "ag_error_metadata"):
+            raise e.ag_error_metadata.to_exception(type(e))
+          else:
+            raise
+      else:
+        ret = func(*nested_args)
       # If `func` returns a list of tensors, `nest.flatten()` and
       # `ops.convert_to_tensor()` would conspire to attempt to stack
       # those tensors into a single tensor, because the customized
@@ -2549,7 +2588,7 @@ class StructuredFunctionWrapper(object):
         ret = tuple(ret)
 
       try:
-        self._output_structure = structure_lib.Structure.from_value(ret)
+        self._output_structure = type_spec.type_spec_from_value(ret)
       except (ValueError, TypeError):
         raise TypeError("Unsupported return value from function passed to "
                         "%s: %s." % (transformation_name, ret))
@@ -2582,15 +2621,9 @@ class StructuredFunctionWrapper(object):
     else:
       defun_kwargs.update({"func_name": func_name})
 
-      # TODO(b/124254153): Enable autograph once the overhead is low enough.
-      # TODO(mdan): Make sure autograph recurses into _wrapper_helper when on.
+      # Note: _wrapper_helper will apply autograph based on context.
       @eager_function.defun_with_attributes(
-          input_signature=[
-              tensor_spec.TensorSpec(input_shape, input_type)  # pylint: disable=g-complex-comprehension
-              for input_shape, input_type in zip(
-                  self._input_structure._flat_shapes,
-                  self._input_structure._flat_types)
-          ],
+          input_signature=self._input_structure._flat_tensor_specs,
           autograph=False,
           attributes=defun_kwargs)
       def wrapper_fn(*args):  # pylint: disable=missing-docstring
@@ -2681,7 +2714,7 @@ class _GeneratorDataset(DatasetSource):
     """
     self._init_args = init_args
 
-    self._init_structure = structure_lib.Structure.from_value(init_args)
+    self._init_structure = type_spec.type_spec_from_value(init_args)
 
     self._init_func = StructuredFunctionWrapper(
         init_func,
@@ -3609,82 +3642,10 @@ class _PrivateThreadPoolDataset(UnaryUnchangedStructureDataset):
 class _RestructuredDataset(UnaryDataset):
   """An internal helper for changing the structure and shape of a dataset."""
 
-  def __init__(self,
-               dataset,
-               output_types,
-               output_shapes=None,
-               output_classes=None,
-               allow_unsafe_cast=False):
-    """Creates a new dataset with the given output types and shapes.
-
-    The given `dataset` must have a structure that is convertible:
-    * `dataset.output_types` must be the same as `output_types` module nesting.
-    * Each shape in `dataset.output_shapes` must be compatible with each shape
-      in `output_shapes` (if given).
-
-    Note: This helper permits "unsafe casts" for shapes, equivalent to using
-    `tf.Tensor.set_shape()` where domain-specific knowledge is available.
-
-    Args:
-      dataset: A `Dataset` object.
-      output_types: A nested structure of `tf.DType` objects.
-      output_shapes: (Optional.) A nested structure of `tf.TensorShape` objects.
-        If omitted, the shapes will be inherited from `dataset`.
-      output_classes: (Optional.) A nested structure of class types. If omitted,
-        the class types will be inherited from `dataset`.
-      allow_unsafe_cast: (Optional.) If `True`, the caller may switch the
-        reported output types and shapes of the restructured dataset, e.g. to
-        switch a sparse tensor represented as `tf.variant` to its user-visible
-        type and shape.
-
-    Raises:
-      ValueError: If either `output_types` or `output_shapes` is not compatible
-        with the structure of `dataset`.
-    """
+  def __init__(self, dataset, structure):
     self._input_dataset = dataset
+    self._structure = structure
 
-    input_types = get_legacy_output_types(dataset)
-    if not allow_unsafe_cast:
-      # Validate that the types are compatible.
-      output_types = nest.map_structure(dtypes.as_dtype, output_types)
-      flat_original_types = nest.flatten(input_types)
-      flat_new_types = nest.flatten(output_types)
-      if flat_original_types != flat_new_types:
-        raise ValueError(
-            "Dataset with output types %r cannot be restructured to have "
-            "output types %r" %
-            (get_legacy_output_types(dataset), output_types))
-
-    input_shapes = get_legacy_output_shapes(dataset)
-    if output_shapes is None:
-      # Inherit shapes from the original `dataset`.
-      output_shapes = nest.pack_sequence_as(
-          output_types, nest.flatten(input_shapes))
-    else:
-      if not allow_unsafe_cast:
-        # Validate that the shapes are compatible.
-        nest.assert_same_structure(output_types, output_shapes)
-        flat_original_shapes = nest.flatten(input_shapes)
-        flat_new_shapes = nest.flatten_up_to(output_types, output_shapes)
-
-        for original_shape, new_shape in zip(flat_original_shapes,
-                                             flat_new_shapes):
-          if not original_shape.is_compatible_with(new_shape):
-            raise ValueError(
-                "Dataset with output shapes %r cannot be restructured to have "
-                "incompatible output shapes %r" % (input_shapes,
-                                                   output_shapes))
-      output_shapes = nest.map_structure_up_to(
-          output_types, tensor_shape.as_shape, output_shapes)
-
-    input_classes = get_legacy_output_classes(dataset)
-    if output_classes is None:
-      # Inherit class types from the original `dataset`.
-      output_classes = nest.pack_sequence_as(
-          output_types, nest.flatten(input_classes))
-
-    self._structure = structure_lib.convert_legacy_structure(
-        output_types, output_shapes, output_classes)
     variant_tensor = self._input_dataset._variant_tensor  # pylint: disable=protected-access
     super(_RestructuredDataset, self).__init__(dataset, variant_tensor)
 
@@ -3698,8 +3659,7 @@ class _UnbatchDataset(UnaryDataset):
 
   def __init__(self, input_dataset):
     """See `unbatch()` for more details."""
-    input_shapes = get_legacy_output_shapes(input_dataset)
-    flat_shapes = nest.flatten(input_shapes)
+    flat_shapes = get_structure(input_dataset)._flat_shapes  # pylint: disable=protected-access
     if any(s.ndims == 0 for s in flat_shapes):
       raise ValueError("Cannot unbatch an input with scalar components.")
     known_batch_dim = tensor_shape.Dimension(None)
@@ -3710,9 +3670,7 @@ class _UnbatchDataset(UnaryDataset):
         raise ValueError("Cannot unbatch an input whose components have "
                          "different batch sizes.")
     self._input_dataset = input_dataset
-
     self._structure = get_structure(input_dataset)._unbatch()  # pylint: disable=protected-access
-
     variant_tensor = ged_ops.experimental_unbatch_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         **flat_structure(self))

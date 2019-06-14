@@ -283,6 +283,8 @@ class Shape(object):
   def from_pyval(pyval) -> Shape:
     "Returns a Shape that describes a tuple-tree of Numpy arrays."
 
+  def __init__(self, str) -> Shape:
+    "Parses a shape string."
   def __eq__(self, other: Shape) -> bool:
   def __ne__(self, other: Shape) -> bool:
   def __hash__(self):
@@ -296,7 +298,6 @@ class Shape(object):
   def element_type(self) -> np.dtype:
   def dimensions(self) -> (int, int, ...):
   def rank(self) -> int:
-  def minor_to_major(self) -> [int]:
   def with_major_to_minor_layout_if_absent(self) -> Shape:
     "Returns a copy with missing layouts set to major-to-minor."
 
@@ -354,12 +355,23 @@ class Buffer(object):
   # Buffer is not an instantiable type and exists only for its static methods.
   # The underlying buffer objects are C++ object with the following
   # API:
-  # def to_py(self):
   # def shape(self) -> Shape:
   # def device(self) -> int:
   # def delete(self):
   # def destructure(self) -> [Buffer]
   # def is_deleted(self) -> bool:
+  # def block_host_until_ready(self):
+  #    """Blocks the calling thread until the buffer is ready on device."""
+  # def copy_to_host_async(self):
+  #    """Requests a copy of the buffer to the host.
+  #
+  #       Does not block waiting for the copy. Values fetched are available via
+  #       `to_py()`; the purpose of `copy_to_host_async` is to prefetch values
+  #       for subsequent `to_py()` calls, especially when requesting many values
+  #       at once.
+  #    """
+  # def to_py(self):
+  #    """Returns the value of the buffer as a Python tuple tree of ndarrays."""
   #
   # TODO(phawkins): remove Buffer and its static methods completely, have
   # clients call methods on Backend to create buffers.
@@ -1258,7 +1270,8 @@ class ComputationBuilder(object):
       dimension_numbers = GetDotDimensionsFromLists(dimension_numbers)
     return ops.DotGeneral(lhs, rhs, dimension_numbers)
 
-  def Conv(self, lhs, rhs, window_strides, padding, feature_group_count=1):
+  def Conv(self, lhs, rhs, window_strides, padding,
+           feature_group_count=1, batch_group_count=1):
     """Enqueues a Conv operation onto the computation.
 
     Args:
@@ -1267,6 +1280,7 @@ class ComputationBuilder(object):
       window_strides: length-N array-like of integer kernel strides.
       padding: PaddingType representing either 'SAME' or 'VALID' padding.
       feature_group_count: number of feature groups for grouped convolution.
+      batch_group_count: number of batch groups for grouped convolution.
     Returns: a XlaOp representing the Conv operation.
     """
     pads = _convert_padding_type_to_pad_values(
@@ -1279,7 +1293,8 @@ class ComputationBuilder(object):
         window_strides,
         pads, [], [],
         dimension_numbers=None,
-        feature_group_count=feature_group_count)
+        feature_group_count=feature_group_count,
+        batch_group_count=batch_group_count)
 
   def ConvWithGeneralPadding(self,
                              lhs,
@@ -1288,7 +1303,8 @@ class ComputationBuilder(object):
                              padding,
                              lhs_dilation,
                              rhs_dilation,
-                             feature_group_count=1):
+                             feature_group_count=1,
+                             batch_group_count=1):
     """Enqueues a ConvWithGeneralPadding operation onto the computation.
 
     Args:
@@ -1299,6 +1315,7 @@ class ComputationBuilder(object):
       lhs_dilation: length-N array-like of dilation factors.
       rhs_dilation: length-N array-like of dilation factors.
       feature_group_count: number of feature groups for grouped convolution.
+      batch_group_count: number of batch groups for grouped convolution.
 
     Returns:
       A ComputationdataHandle representing the added ConvWithGeneralPadding op.
@@ -1311,7 +1328,8 @@ class ComputationBuilder(object):
         list(lhs_dilation),
         list(rhs_dilation),
         dimension_numbers=None,
-        feature_group_count=feature_group_count)
+        feature_group_count=feature_group_count,
+        batch_group_count=batch_group_count)
 
   def _GetConvDimensionNumbers(self, num_spatial_dims):
     """Create ConvolutionDimensionNumbers proto for convolutions."""
@@ -1336,7 +1354,8 @@ class ComputationBuilder(object):
                          lhs_dilation,
                          rhs_dilation,
                          dimension_numbers=None,
-                         feature_group_count=1):
+                         feature_group_count=1,
+                         batch_group_count=1):
     """Enqueues a ConvGeneralDilated operation onto the computation.
 
     Args:
@@ -1366,6 +1385,7 @@ class ComputationBuilder(object):
           default, use the same dimension numbering as Conv and
           ConvWithGeneralPadding.
       feature_group_count: number of feature groups for grouped convolution.
+      batch_group_count: number of batch groups for grouped convolution.
     Returns: a XlaOp representing the ConvGenralDilated operation.
     """
     if dimension_numbers is None:
@@ -1391,7 +1411,7 @@ class ComputationBuilder(object):
                  key=lambda i: rhs_spec.index(out_spec[i])))
     return ops.ConvGeneralDilated(lhs, rhs, window_strides, padding,
                                   lhs_dilation, rhs_dilation, dimension_numbers,
-                                  feature_group_count)
+                                  feature_group_count, batch_group_count)
 
   def Sort(self, operand, dimension=-1):
     """Enqueues a sort operation onto the computation."""

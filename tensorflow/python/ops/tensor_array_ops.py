@@ -29,7 +29,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_control_flow_ops
@@ -1342,3 +1344,111 @@ def _check_dtypes(value, dtype):
         "in future versions of TensorFlow.  Traceback:\n{}".format(
             value, str(value.dtype), str(dtype),
             "".join(traceback.format_stack())))
+
+
+@tf_export("TensorArraySpec")
+class TensorArraySpec(type_spec.TypeSpec):
+  """Type specification for a `tf.TensorArray`."""
+
+  __slots__ = ["_element_shape", "_dtype", "_dynamic_size", "_infer_shape"]
+
+  value_type = property(lambda self: TensorArray)
+
+  def __init__(self, element_shape=None, dtype=dtypes.float32,
+               dynamic_size=False, infer_shape=True):
+    """Constructs a type specification for a `tf.TensorArray`.
+
+    Args:
+      element_shape: The shape of each element in the `TensorArray`.
+      dtype: Data type of the `TensorArray`.
+      dynamic_size: Whether the `TensorArray` can grow past its initial size.
+      infer_shape: Whether shape inference is enabled.
+    """
+    self._element_shape = tensor_shape.as_shape(element_shape)
+    self._dtype = dtypes.as_dtype(dtype)
+    self._dynamic_size = dynamic_size
+    self._infer_shape = infer_shape
+
+  def is_compatible_with(self, other):
+    # pylint: disable=protected-access
+    if not isinstance(other, type_spec.TypeSpec):
+      other = type_spec.type_spec_from_value(other)
+
+    # Note: we intentionally exclude infer_shape in this check.
+    return (isinstance(other, TensorArraySpec) and
+            self._dtype.is_compatible_with(other._dtype) and
+            self._element_shape.is_compatible_with(other._element_shape) and
+            self._dynamic_size == other._dynamic_size)
+
+  def most_specific_compatible_type(self, other):
+    # pylint: disable=protected-access
+    if not self.is_compatible_with(other):
+      raise ValueError("Types are not compatible")
+    infer_shape = self._infer_shape and other._infer_shape
+    return TensorArraySpec(
+        self._element_shape.most_specific_compatible_shape(
+            other._element_shape),
+        self._dtype, self._dynamic_size, infer_shape)
+
+  def _serialize(self):
+    return (self._element_shape, self._dtype, self._dynamic_size,
+            self._infer_shape)
+
+  @property
+  def _component_specs(self):
+    return [tensor_spec.TensorSpec([], dtypes.variant)]
+
+  def _to_components(self, value):
+    if not isinstance(value, TensorArray):
+      raise TypeError("value must be a TensorArray, but saw: {}"
+                      .format(type(value)))
+    if value.flow is not None and value.flow.dtype == dtypes.variant:
+      return [value.flow]
+    else:
+      # Convert to a TF2-style TensorArray.
+      # TODO(ebrevdo): Add an "_as_variant" method to TensorArray class, or
+      # "implementation / as_variant" arg to TensorArray constructor.
+      with ops.name_scope("convert_tensor_array"):
+        flow = list_ops.tensor_list_from_tensor(
+            tensor=value.stack(), element_shape=value.element_shape)
+      return [flow]
+
+  def _from_components(self, tensor_list):
+    # This will return a TF2 Graph-style TensorArray because tensor_list[0] is
+    # a variant object.  size == -1 implies unknown size.
+    ret = TensorArray(
+        dtype=self._dtype,
+        flow=tensor_list[0],
+        dynamic_size=self._dynamic_size,
+        infer_shape=self._infer_shape)
+    ret._element_shape = [self._element_shape]  # pylint: disable=protected-access
+    return ret
+
+  @staticmethod
+  def from_value(value):
+    if not isinstance(value, TensorArray):
+      raise TypeError("Expected value to be a TensorArray, but saw: {}".
+                      format(type(value)))
+
+    return TensorArraySpec(
+        dtype=value.dtype,
+        element_shape=value.element_shape,
+        dynamic_size=value.dynamic_size,
+        infer_shape=value._infer_shape)  # pylint: disable=protected-access
+
+  def _to_legacy_output_types(self):
+    return self._dtype
+
+  def _to_legacy_output_shapes(self):
+    # Sneak the dynamic_size and infer_shape values into the legacy shape.
+    return (tensor_shape.matrix(self._dynamic_size, self._infer_shape)
+            .concatenate(self._element_shape))
+
+  def _to_legacy_output_classes(self):
+    return TensorArray
+
+
+# Register the TypeSpec for TensorArray.  If TensorArray is updated to be a
+# CompositeTensor, then this registration can be deleted.
+type_spec.register_type_spec_from_value_converter(
+    TensorArray, TensorArraySpec.from_value, allow_subclass=True)

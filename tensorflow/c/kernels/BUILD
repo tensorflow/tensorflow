@@ -6,9 +6,8 @@ load(
 
 package(
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 tf_kernel_library(
     name = "bitcast_op",
@@ -33,7 +32,11 @@ tf_cc_test(
 )
 
 # Changes to the Android srcs here should be replicated in
-# tensorflow/contrib/makefile/tf_op_files.txt
+# tensorflow/contrib/makefile/tf_op_files.txt.
+#
+# Be aware that this target is included by
+# //third_party/tensorflow/core/kernels:android_core_ops
+#
 # LINT.IfChange
 filegroup(
     name = "android_all_ops",

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_HELPER_H_
 
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/core/example/example.pb.h"

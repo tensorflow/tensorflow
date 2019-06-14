@@ -1291,12 +1291,12 @@ static PyTypeObject TFE_Py_Tape_Type = {
 // revisit this if/when decide to not hold the GIL while manipulating the tape
 // stack.
 tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>* GetTapeSet() {
-  thread_local tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>* tape_set{
-      nullptr};
+  thread_local std::unique_ptr<tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>>
+      tape_set = nullptr;
   if (tape_set == nullptr) {
-    tape_set = new tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>;
+    tape_set.reset(new tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>);
   }
-  return tape_set;
+  return tape_set.get();
 }
 
 // A safe copy of the current tapeset. Does not get affected by other python
@@ -3044,25 +3044,14 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
   } else if (tensorflow::swig::IsCompositeTensor(arg)) {
     absl::StrAppend(&result->str, kCompositeTensor);
 
-    static char _to_components[] = "_to_components";
-    tensorflow::Safe_PyObjectPtr components(
-        PyObject_CallMethod(arg, _to_components, nullptr));
-    if (components == nullptr) {
+    // Add the typespec to the list of objects.  (Do *not* use a weakref,
+    // since the type spec is often a temporary object.)
+    PyObject* type_spec(PyObject_GetAttrString(arg, "_type_spec"));
+    if (type_spec == nullptr) {
       return tensorflow::errors::InvalidArgument(
-          "Error while calling CompositeTensor._to_components().");
+          "Error while reading CompositeTensor._type_spec.");
     }
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(
-        components.get(), include_tensor_ranks_only, result));
-
-    static char _component_metadata[] = "_component_metadata";
-    tensorflow::Safe_PyObjectPtr metadata(
-        PyObject_CallMethod(arg, _component_metadata, nullptr));
-    if (metadata == nullptr) {
-      return tensorflow::errors::InvalidArgument(
-          "Error while calling CompositeTensor._component_metadata().");
-    }
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(
-        metadata.get(), include_tensor_ranks_only, result));
+    result->objects.push_back(type_spec);
   } else {
     PyObject* object = PyWeakref_NewRef(arg, nullptr);
 

@@ -64,7 +64,7 @@ def keras_style_scope():
   class RNNModel(tf.keras.Model):
 
     def __init__(self, name):
-      super(RNNModel, self.).__init__(name=name)
+      super(RNNModel, self).__init__(name=name)
       self.rnn = tf.compat.v1.nn.rnn_cell.MultiRNNCell(
         [tf.compat.v1.nn.rnn_cell.LSTMCell(64) for _ in range(2)])
 
@@ -358,7 +358,7 @@ class Layer(base_layer.Layer):
       instance is returned.
 
     Raises:
-      RuntimeError: If called with partioned variable regularization and
+      RuntimeError: If called with partitioned variable regularization and
         eager execution is enabled.
       ValueError: When trainable has been set to True with synchronization
         set as `ON_READ`.

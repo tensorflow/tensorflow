@@ -224,6 +224,7 @@ class DfsHloVisitorBase {
   virtual Status HandleInfeed(HloInstructionPtr hlo) = 0;
   virtual Status HandleOutfeed(HloInstructionPtr hlo) = 0;
   virtual Status HandleRng(HloInstructionPtr hlo) = 0;
+  virtual Status HandleRngGetAndUpdateState(HloInstructionPtr hlo) = 0;
   virtual Status HandleReverse(HloInstructionPtr hlo) = 0;
   virtual Status HandleSort(HloInstructionPtr hlo) = 0;
   virtual Status HandleConstant(HloInstructionPtr hlo) = 0;
@@ -351,6 +352,10 @@ class DfsHloVisitorBase {
 
   TF_DISALLOW_COPY_AND_ASSIGN(DfsHloVisitorBase);
 };
+
+// Explicit instantiations in dfs_hlo_visitor.cc.
+extern template class DfsHloVisitorBase<HloInstruction*>;
+extern template class DfsHloVisitorBase<const HloInstruction*>;
 
 // Users should use one of these two type aliases, which are the only two valid
 // instantiations of DfsHloVisitorBase.

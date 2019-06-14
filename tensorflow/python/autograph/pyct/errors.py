@@ -105,13 +105,28 @@ def _stack_trace_inside_mapped_code(tb, source_map):
 KNOWN_STRING_CONSTRUCTOR_ERRORS = (
     AssertionError,
     AttributeError,
-    KeyError,
+    NameError,
     NotImplementedError,
     RuntimeError,
     StopIteration,
     TypeError,
     ValueError,
 )
+
+
+# KeyError escapes newlines in strings. We create a special subclass
+# that doesn't do that. Overriding the name for display purposes; hopefully
+# that won't create too many surprises.
+class MultilineMessageKeyError(KeyError):
+
+  def __init__(self, message, original_key):
+    super(MultilineMessageKeyError, self).__init__(original_key)
+    self.__message = message
+
+  def __str__(self):
+    return self.__message
+
+MultilineMessageKeyError.__name__ = KeyError.__name__
 
 
 class ErrorMetadataBase(object):
@@ -163,9 +178,14 @@ class ErrorMetadataBase(object):
           frame_info.filename[path_idx:],
           frame_info.lineno,
           frame_info.function_name,
-          ' *' if frame_info.converted else '',
+          '  *' if frame_info.converted else '',
       ))
-      lines.append('        {}'.format(frame_info.code.strip()))
+      if frame_info.code is None:
+        code_snippet = '<source unavailable>'
+      else:
+        code_snippet = frame_info.code.strip()
+      lines.append('        {}'.format(code_snippet))
+
     lines.append('')
 
     message_lines = self.cause_message.split('\n')
@@ -178,8 +198,12 @@ class ErrorMetadataBase(object):
     return '\n'.join(lines)
 
   def create_exception(self, preferred_type):
+    if preferred_type.__init__ is Exception.__init__:
+      return preferred_type(self.get_message())
     if preferred_type in KNOWN_STRING_CONSTRUCTOR_ERRORS:
       return preferred_type(self.get_message())
+    elif preferred_type is KeyError:
+      return MultilineMessageKeyError(self.get_message(), self.cause_message)
     return None
 
   def to_exception(self, preferred_type):

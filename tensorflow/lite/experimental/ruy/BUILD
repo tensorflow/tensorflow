@@ -2,13 +2,15 @@
 
 # TODO(b/123403203) actually make TFLite use ruy.
 
-licenses(["notice"])  # Apache 2.0
+load(":ruy_visibility.bzl", "ruy_visibility")
+load(":ruy_test_ext.bzl", "ruy_test_ext_defines", "ruy_test_ext_deps")
+load(":ruy_test.bzl", "ruy_benchmark", "ruy_benchmark_opt_sets", "ruy_test")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
     default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-load(":ruy_visibility.bzl", "ruy_visibility")
 
 cc_library(
     name = "check_macros",
@@ -321,8 +323,6 @@ cc_library(
     deps = [":check_macros"],
 )
 
-load(":ruy_test_ext.bzl", "ruy_test_ext_defines", "ruy_test_ext_deps")
-
 # Testing framework.
 cc_library(
     name = "test_lib",
@@ -341,8 +341,6 @@ cc_library(
         "@com_google_googletest//:gtest",
     ] + ruy_test_ext_deps(),
 )
-
-load(":ruy_test.bzl", "ruy_benchmark", "ruy_benchmark_opt_sets", "ruy_test")
 
 ruy_benchmark(
     name = "benchmark",
@@ -416,7 +414,5 @@ ruy_benchmark_opt_sets(
         "7ff",
     ],
 )
-
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 tflite_portable_test_suite()

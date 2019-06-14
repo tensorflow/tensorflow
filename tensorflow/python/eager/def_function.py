@@ -97,8 +97,7 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
-        when to synchronize. If `synchronization` is set to `ON_READ`,
-        `trainable` must not be set to `True`.
+        when to synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
@@ -133,7 +132,7 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
       initial_value = initial_value.wrapped_value
 
     with ops.name_scope(name, "Variable", []
-                        if init_from_fn else [initial_value]) as name:
+                        if init_from_fn else [initial_value]) as scope_name:
       with ops.name_scope("Initializer"), ops.device(None):
         initial_value = ops.convert_to_tensor(
             initial_value() if init_from_fn else initial_value,
@@ -145,19 +144,21 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
       if shape is None:
         shape = initial_value.shape
 
-      # Use the constructor for UninitializedVariable to start.
-      super(UnliftedInitializerVariable, self).__init__(
-          trainable=trainable,
-          caching_device=caching_device,
-          name=name,
-          shape=shape,
-          dtype=initial_value.dtype,
-          constraint=constraint,
-          synchronization=synchronization,
-          aggregation=aggregation,
-          extra_handle_data=initial_value,
-          **unused_kwargs)
+    # Use the constructor for UninitializedVariable to start. Outside the name
+    # scope so we don't double up the prefix.
+    super(UnliftedInitializerVariable, self).__init__(
+        trainable=trainable,
+        caching_device=caching_device,
+        name=name,
+        shape=shape,
+        dtype=initial_value.dtype,
+        constraint=constraint,
+        synchronization=synchronization,
+        aggregation=aggregation,
+        extra_handle_data=initial_value,
+        **unused_kwargs)
 
+    with ops.name_scope(scope_name):
       if self._in_graph_mode:
         with ops.init_scope():
           outer_graph = ops.get_default_graph()

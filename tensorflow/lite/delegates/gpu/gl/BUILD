@@ -1,9 +1,10 @@
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "api",
@@ -174,8 +175,8 @@ cc_test(
     name = "gl_buffer_test",
     srcs = ["gl_buffer_test.cc"],
     linkopts = [
-        "-lGLESv3",
         "-lEGL",
+        "-lGLESv2",
     ],
     tags = [
         "local",
@@ -260,8 +261,10 @@ cc_library(
     srcs = ["gl_sync.cc"],
     hdrs = ["gl_sync.h"],
     deps = [
+        ":gl_buffer",
         ":gl_call",
         ":gl_errors",
+        ":gl_program",
         ":portable",
         "//tensorflow/lite/delegates/gpu/common:status",
     ],

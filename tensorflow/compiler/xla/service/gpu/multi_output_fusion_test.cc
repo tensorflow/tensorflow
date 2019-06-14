@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -601,7 +602,7 @@ TEST_F(MultiOutputFusionTest,
 // Check that we limit the number of operands to fusions we create.
 TEST_F(MultiOutputFusionTest, AvoidsLargeFusion) {
   constexpr int64 kNumParams = 200;
-  ASSERT_GT(kNumParams, GpuInstructionFusion::kMaxOperandsAndOutputsPerFusion);
+  ASSERT_GT(kNumParams, kMaxOperandsAndOutputsPerFusion);
 
   // Compute
   //   p0 * p1,
@@ -646,7 +647,7 @@ TEST_F(MultiOutputFusionTest, AvoidsLargeFusion) {
   SCOPED_TRACE(module->ToString());
   for (const HloInstruction* instr : computation->instructions()) {
     EXPECT_LE(instr->operand_count() + ShapeUtil::SubshapeCount(instr->shape()),
-              GpuInstructionFusion::kMaxOperandsAndOutputsPerFusion)
+              kMaxOperandsAndOutputsPerFusion)
         << instr->ToString();
   }
 }

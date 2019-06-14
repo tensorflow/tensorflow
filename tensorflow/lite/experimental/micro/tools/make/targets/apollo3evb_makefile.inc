@@ -116,7 +116,7 @@ $(MAKEFILE_DIR)/downloads/AmbiqSuite-Rel2.0.0/boards/SparkFun_TensorFlow_Apollo3
       $(APOLLO3_SDK)/devices/am_devices_led.c
   endif
 
-  CMSIS_SRC_DIR := tensorflow/lite/experimental/micro/tools/make/downloads/cmsis/CMSIS/DSP/Source
+  CMSIS_SRC_DIR := $(MAKEFILE_DIR)/downloads/cmsis/CMSIS/DSP/Source
   CMSIS_SRCS := \
   $(CMSIS_SRC_DIR)/BasicMathFunctions/arm_mult_q15.c \
   $(CMSIS_SRC_DIR)/TransformFunctions/arm_rfft_init_q15.c \

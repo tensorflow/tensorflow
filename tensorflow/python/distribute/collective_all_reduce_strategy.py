@@ -36,7 +36,6 @@ from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
@@ -79,6 +78,13 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
             self,
             communication=communication))
 
+  @classmethod
+  def _from_local_devices(cls, devices):
+    """A convenience method to create an obejct with a list of devices."""
+    obj = cls()
+    obj.extended._initialize_local(TFConfigClusterResolver(), devices=devices)  # pylint: disable=protected-access
+    return obj
+
 
 @tf_export(v1=["distribute.experimental.MultiWorkerMirroredStrategy"])
 class CollectiveAllReduceStrategyV1(distribute_lib.StrategyV1):
@@ -117,7 +123,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     else:
       self._initialize_local(cluster_resolver)
 
-  def _initialize_local(self, cluster_resolver):
+  def _initialize_local(self, cluster_resolver, devices=None):
     """Initializes the object for local training."""
     self._is_chief = True
     self._num_workers = 1
@@ -140,10 +146,13 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     else:
       num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
 
-    if num_gpus:
-      local_devices = tuple("/device:GPU:%d" % i for i in range(num_gpus))
+    if devices:
+      local_devices = devices
     else:
-      local_devices = ("/device:CPU:0",)
+      if num_gpus:
+        local_devices = tuple("/device:GPU:%d" % i for i in range(num_gpus))
+      else:
+        local_devices = ("/device:CPU:0",)
     self._worker_device = device_util.canonicalize("/device:CPU:0")
     self._host_input_device = numpy_dataset.SingleDevice(self._worker_device)
 
@@ -170,8 +179,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._rpc_layer = cluster_resolver.rpc_layer
     self._warn_nccl_no_gpu()
 
-    logging.info("CollectiveAllReduceStrategy with local_devices = %r",
-                 local_devices)
+    logging.info("Single-worker CollectiveAllReduceStrategy with local_devices "
+                 "= %r, communication = %s", local_devices, self._communication)
 
   def _initialize_multi_worker(self, cluster_resolver):
     """Initializes the object for multi-worker training."""
@@ -272,99 +281,52 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         task_id, self._num_workers, local_devices,
         self._communication)
 
-  def _create_variable(self, next_creator, *args, **kwargs):
-    colocate_with = kwargs.pop("colocate_with", None)
-    if colocate_with is None:
-      device_map = self._device_map
-      logical_device = 0  # TODO(josh11b): Get logical device from scope here.
-    elif isinstance(colocate_with, numpy_dataset.SingleDevice):
-      with ops.device(colocate_with.device):
-        return next_creator(*args, **kwargs)
+  def _get_variable_creator_initial_value(self,
+                                          replica_id=0,
+                                          device=None,
+                                          primary_var=None,
+                                          **kwargs):
+    if replica_id == 0:  # First replica on each worker.
+      assert device is not None
+      assert primary_var is None
+
+      def initial_value_fn():  # pylint: disable=g-missing-docstring
+        # Only the first device participates in the broadcast of initial values.
+        group_key = self._collective_keys.get_group_key([device])
+        group_size = self._num_workers
+        collective_instance_key = (
+            self._collective_keys.get_variable_instance_key())
+
+        with ops.device(device):
+          initial_value = kwargs["initial_value"]
+          if callable(initial_value):
+            initial_value = initial_value()
+          assert not callable(initial_value)
+          initial_value = ops.convert_to_tensor(
+              initial_value, dtype=kwargs.get("dtype", None))
+
+          if self._num_workers > 1:
+            if self._is_chief:
+              bcast_send = collective_ops.broadcast_send(
+                  initial_value, initial_value.shape, initial_value.dtype,
+                  group_size, group_key, collective_instance_key)
+              with ops.control_dependencies([bcast_send]):
+                return array_ops.identity(initial_value)
+            else:
+              return collective_ops.broadcast_recv(initial_value.shape,
+                                                   initial_value.dtype,
+                                                   group_size, group_key,
+                                                   collective_instance_key)
+          return initial_value
+
+      return initial_value_fn
     else:
-      device_map = colocate_with.device_map
-      logical_device = colocate_with.logical_device
-
-    def _real_mirrored_creator(devices, *args, **kwargs):
-      """Creates one MirroredVariable on the current worker."""
-      unique_var_name = ops.get_default_graph().unique_name(
-          kwargs["name"], mark_as_used=False).rstrip("/")
-      # pylint: disable=protected-access
-      collective_instance_key = self._collective_keys.get_instance_key(
-          key_id=unique_var_name)
-      # Only the first device participles in the broadcast of initial values.
-      group_key = self._collective_keys.get_group_key([devices[0]])
-      group_size = self._num_workers
-      if "initial_value" not in kwargs:
-        raise ValueError("Initial value must be specified.")
-      initial_value = kwargs["initial_value"]
-      if callable(initial_value):
-        initial_value_fn = initial_value
-      else:
-        initial_value_fn = lambda: initial_value
-
-      value_list = []
-      for i, d in enumerate(devices):
-        with ops.init_scope(), ops.device(d):
-          if i == 0:
-            # The initial value fn makes sure variables all initialized to
-            # same values. The first device of the chief worker will send their
-            # variable values to other workers.
-            def _overridden_initial_value_fn(device=d, index=i):  # pylint: disable=g-missing-docstring
-              with ops.device(device):
-                initial_value = initial_value_fn()
-                assert not callable(initial_value)
-                initial_value = ops.convert_to_tensor(initial_value)
-
-                assert index == 0, index
-                if self._num_workers > 1:
-                  if self._is_chief:
-                    bcast_send = collective_ops.broadcast_send(
-                        initial_value, initial_value.shape, initial_value.dtype,
-                        group_size, group_key, collective_instance_key)
-                    with ops.control_dependencies([bcast_send]):
-                      return array_ops.identity(initial_value)
-                  else:
-                    return collective_ops.broadcast_recv(
-                        initial_value.shape, initial_value.dtype, group_size,
-                        group_key, collective_instance_key)
-                return initial_value
-          else:
-            # Give replicas meaningful distinct names:
-            var0name = value_list[0].name.split(":")[0]
-            # We append a / to variable names created on replicas with id > 0 to
-            # ensure that we ignore the name scope and instead use the given
-            # name as the absolute name of the variable.
-            kwargs["name"] = "%s/replica_%d/" % (var0name, i)
-
-            # Variables on non-first replica get initial values from the
-            # variables created on the first device of each worker.
-            def _overridden_initial_value_fn(device=d, index=i):
-              assert index > 0
-              with ops.device(device):
-                if context.executing_eagerly():
-                  return array_ops.identity(value_list[0].value())
-                else:
-                  return array_ops.identity(value_list[0].initial_value)
-
-          kwargs["initial_value"] = _overridden_initial_value_fn
-          with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
-            # Don't record operations (e.g. other variable reads) during
-            # variable creation.
-            with tape.stop_recording():
-              v = next_creator(*args, **kwargs)
-
-          if i == 0:
-            actual_var_name = v.name.split(":")[0]
-            assert unique_var_name == actual_var_name, "%r vs %r" % (
-                unique_var_name, actual_var_name)
-          assert not isinstance(v, values.DistributedVariable)
-          value_list.append(v)
-      return value_list
-
-    # pylint: disable=protected-access
-    return mirrored_strategy._create_mirrored_variable(
-        self._container_strategy(), device_map, logical_device,
-        _real_mirrored_creator, *args, **kwargs)
+      return super(CollectiveAllReduceExtended,
+                   self)._get_variable_creator_initial_value(
+                       replica_id=replica_id,
+                       device=device,
+                       primary_var=primary_var,
+                       **kwargs)
 
   def _make_input_context(self):
     if self._cluster_spec is None:

@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
@@ -61,6 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/replica_id_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
@@ -238,17 +240,10 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
     }
   }
 
+  AnnotateFunctionAsGpuKernel(module, kernel, &b_);
+
   // TODO(b/65380986): Investigate if adding fast math flags for generated
   // kernels makes sense.
-
-  // Add the declaration of this kernel to llvm.nvvm.annotations so that NVPTX
-  // treats it as a CUDA kernel.
-  llvm::NamedMDNode* nvvm_annotations_node =
-      module->getOrInsertNamedMetadata("nvvm.annotations");
-  nvvm_annotations_node->addOperand(llvm::MDNode::get(
-      context, {llvm::ConstantAsMetadata::get(kernel),
-                llvm::MDString::get(context, "kernel"),
-                llvm::ConstantAsMetadata::get(b_.getInt32(1))}));
 
   // Update the insert point to the entry basic block.
   llvm::BasicBlock* entry_bb =
@@ -1405,6 +1400,18 @@ Status IrEmitterUnnested::HandleTupleSelect(HloInstruction* tuple_select) {
   AddThunkToThunkSequence(
       BuildKernelThunk(tuple_select, /*implements_whole_instruction=*/true));
   return IrEmitter::HandleTupleSelect(tuple_select);
+}
+
+Status IrEmitterUnnested::HandleReplicaId(HloInstruction* hlo) {
+  AddThunkToThunkSequence(
+      absl::make_unique<ReplicaIdThunk>(GetAllocationSlice(*hlo), hlo));
+  return Status::OK();
+}
+
+Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {
+  AddThunkToThunkSequence(absl::make_unique<CollectivePermuteThunk>(
+      GetAllocationSlice(*hlo->operand(0)), GetAllocationSlice(*hlo), hlo));
+  return Status::OK();
 }
 
 namespace {
@@ -3841,11 +3848,16 @@ Status IrEmitterUnnested::EmitConstantGlobals() {
     //
     // We may have to be more more clever here in the future if we notice that
     // we're keeping around too many globals because of their linkage.
+    unsigned global_address_space = llvm_ir::GetGlobalMemoryAddressSpace(
+        *ir_emitter_context_->llvm_module());
     llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
         global_type, /*isConstant=*/should_emit_initializer,
         llvm::GlobalValue::ExternalLinkage,
         /*Initializer=*/initializer,
-        llvm_ir::ConstantBufferAllocationToGlobalName(allocation));
+        llvm_ir::ConstantBufferAllocationToGlobalName(allocation),
+        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+        /*AddressSpace=*/global_address_space,
+        /*isExternallyInitialized=*/false);
     global_for_const->setAlignment(kConstantBufferAlignBytes);
     ir_emitter_context_->llvm_module()->getGlobalList().push_back(
         global_for_const);

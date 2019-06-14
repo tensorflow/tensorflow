@@ -1068,7 +1068,8 @@ TEST(FloatPoolingOpTest, L2PoolPaddingSameSlide1) {
   m.Invoke();
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(
-                  {3.5, 6.0, 6.5, 5.70088, 2.54951, 7.2111, 8.63134, 7.0})));
+                  {3.5, 6.0, 6.5, 5.70088, 2.54951, 7.2111, 8.63134, 7.0},
+                  /*max_abs_error=*/1e-4)));
 }
 
 TEST(FloatPoolingOpTest, L2PoolPaddingValidSlide1) {

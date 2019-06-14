@@ -476,7 +476,7 @@ TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
   tensorflow::Tensor tensor;
   status->status = tensorflow::TF_TensorToTensor(t, &tensor);
   if (!status->status.ok()) return nullptr;
-  return new TFE_TensorHandle(tensor, nullptr, nullptr);
+  return TFE_TensorHandle::CreateLocalHandle(tensor, status);
 }
 
 void TFE_DeleteTensorHandle(TFE_TensorHandle* h) {
@@ -572,8 +572,6 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
   // TODO(agarwal): move this implementation inside TFE_TensorHandle.
   const tensorflow::Tensor* t = nullptr;
   tensorflow::TensorHandle* h_cpu = nullptr;
-  tensorflow::Device* d = nullptr;
-  tensorflow::Device* op_device = nullptr;
 
   if (h->handle->IsRemote()) {
     status->status = EagerCopyToDevice(
@@ -582,22 +580,22 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
     if (!status->status.ok()) {
       return nullptr;
     }
-    status->status = h_cpu->TensorAndDevice(&t, &d, &op_device);
+    status->status = h_cpu->Tensor(&t);
     if (!status->status.ok()) {
       h_cpu->Unref();
       return nullptr;
     }
   } else {
-    status->status = h->handle->TensorAndDevice(&t, &d, &op_device);
+    status->status = h->handle->Tensor(&t);
     if (!status->status.ok()) return nullptr;
 
-    if (!IsCPU(d)) {
+    if (!IsCPU(h->handle->device())) {
       status->status = h->handle->CopyToDevice(
           h->handle->Context(), h->handle->Context()->HostCPU(), &h_cpu);
       if (!status->status.ok()) {
         return nullptr;
       }
-      status->status = h_cpu->TensorAndDevice(&t, &d, &op_device);
+      status->status = h_cpu->Tensor(&t);
       if (!status->status.ok()) {
         h_cpu->Unref();
         return nullptr;
@@ -973,8 +971,9 @@ void TFE_ContextDisableRunMetadata(TFE_Context* ctx) {
 
 }  // extern "C"
 
-TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t) {
-  return new TFE_TensorHandle(t, nullptr, nullptr);
+TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t,
+                                      TF_Status* status) {
+  return TFE_TensorHandle::CreateLocalHandle(t, status);
 }
 
 const tensorflow::Tensor* TFE_TensorHandleUnderlyingTensorInHostMemory(
@@ -985,12 +984,29 @@ const tensorflow::Tensor* TFE_TensorHandleUnderlyingTensorInHostMemory(
         "a tensorflow::Tensor");
     return nullptr;
   }
-  tensorflow::Device* d = nullptr;
-  tensorflow::Device* op_device = nullptr;
+
   const tensorflow::Tensor* t = nullptr;
-  status->status = h->handle->TensorAndDevice(&t, &d, &op_device);
+  status->status = h->handle->Tensor(&t);
   if (!status->status.ok()) return nullptr;
+
   return t;
+}
+
+TFE_TensorHandle* TFE_TensorHandleMaybeCopyToHostCPU(TFE_TensorHandle* h,
+                                                     TF_Status* status) {
+  // TensorHandles created by PyFuncOp lack context and therefore could
+  // not be copied.
+  if (!h->handle->OnHostCPU() && h->handle->Context() != nullptr) {
+    tensorflow::TensorHandle* handle;
+    status->status = tensorflow::EagerCopyToDevice(
+        h->handle, h->handle->Context(), "CPU:0", &handle);
+    if (status->status.ok()) {
+      return new TFE_TensorHandle(handle);
+    } else {
+      return nullptr;
+    }
+  }
+  return h;
 }
 
 void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,

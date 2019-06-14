@@ -33,7 +33,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
   """Test cases for stateless random-number generator operators."""
 
   def _random_types(self, include_int=False):
-    allowed_types = {dtypes.float32, dtypes.bfloat16}
+    allowed_types = {dtypes.float64, dtypes.float32, dtypes.bfloat16}
     if include_int:
       allowed_types.update({dtypes.int32, dtypes.int64})
     return self.all_tf_types & allowed_types

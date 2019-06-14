@@ -14,18 +14,27 @@ limitations under the License.
 ==============================================================================*/
 #include "absl/time/clock.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
+#include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/raw_coding.h"
+#include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/compression.h"
-#include "tensorflow/core/lib/io/record_reader.h"
-#include "tensorflow/core/lib/io/record_writer.h"
+#include "tensorflow/core/lib/io/random_inputstream.h"
+#if !defined(IS_SLIM_BUILD)
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_inputstream.h"
+#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
+#endif  // IS_SLIM_BUILD
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/base64.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/protobuf/data/experimental/snapshot.pb.h"
@@ -37,17 +46,136 @@ namespace {
 
 enum SnapshotMode { READER = 0, WRITER = 1, PASSTHROUGH = 2 };
 
-const uint64 kReaderBufferSize = 8 * 1024 * 1024;  // 8 MB
-
-const uint64 kOneDayInMicroseconds = 24L * 60L * 60L * 1e6L;
-
-const uint64 kNumMBPerShard = 10 * 1024;  // 10 GB per file.
+const size_t kHeaderSize = sizeof(uint64);
 
 const char kSnapshotFilename[] = "snapshot.metadata";
 
+class SnapshotWriter {
+ public:
+  explicit SnapshotWriter(WritableFile* dest, const string& compression_type =
+                                                  io::compression::kNone)
+      : dest_(dest), compression_type_(compression_type) {
+    if (compression_type == io::compression::kGzip) {
+#if defined(IS_SLIM_BUILD)
+      LOG(ERROR) << "Compression is unsupported on mobile platforms. Turning "
+                 << "off compression.";
+#else   // IS_SLIM_BUILD
+      io::ZlibCompressionOptions zlib_options;
+      zlib_options = io::ZlibCompressionOptions::GZIP();
+
+      io::ZlibOutputBuffer* zlib_output_buffer = new io::ZlibOutputBuffer(
+          dest, zlib_options.input_buffer_size, zlib_options.output_buffer_size,
+          zlib_options);
+      TF_CHECK_OK(zlib_output_buffer->Init());
+      dest_ = zlib_output_buffer;
+      dest_is_owned_ = true;
+#endif  // IS_SLIM_BUILD
+    }
+  }
+
+  Status WriteRecord(const StringPiece& data) {
+    char header[kHeaderSize];
+    core::EncodeFixed64(header, data.size());
+    TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
+    return dest_->Append(data);
+  }
+
+#if defined(PLATFORM_GOOGLE)
+  Status WriteRecord(const absl::Cord& data) {
+    char header[kHeaderSize];
+    core::EncodeFixed64(header, data.size());
+
+    TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
+
+    // TODO(frankchn): Remove after ZlibOutputBuffer Cord support is added.
+    if (compression_type_.empty()) {
+      return dest_->Append(data);
+    } else {
+      return dest_->Append(data.ToString());
+    }
+  }
+#endif  // PLATFORM_GOOGLE
+
+  Status Close() {
+    if (dest_is_owned_) {
+      Status s = dest_->Close();
+      delete dest_;
+      dest_ = nullptr;
+      return s;
+    }
+    return Status::OK();
+  }
+
+  ~SnapshotWriter() {
+    if (dest_ != nullptr) {
+      Status s = Close();
+      if (!s.ok()) {
+        LOG(ERROR) << "Could not finish writing file: " << s;
+      }
+    }
+  }
+
+ private:
+  WritableFile* dest_;
+  bool dest_is_owned_ = false;
+  const string compression_type_;
+};
+
+class SnapshotReader {
+ public:
+  explicit SnapshotReader(
+      RandomAccessFile* file,
+      const string& compression_type = io::compression::kNone)
+      : input_stream_(new io::RandomAccessInputStream(file)),
+        compression_type_(compression_type) {
+    if (compression_type_ == io::compression::kGzip) {
+#if defined(IS_SLIM_BUILD)
+      LOG(ERROR) << "Compression is unsupported on mobile platforms. Turning "
+                 << "off compression.";
+#else   // IS_SLIM_BUILD
+      io::ZlibCompressionOptions zlib_options;
+      zlib_options = io::ZlibCompressionOptions::GZIP();
+
+      input_stream_.reset(new io::ZlibInputStream(
+          input_stream_.release(), zlib_options.input_buffer_size,
+          zlib_options.output_buffer_size, zlib_options, true));
+#endif  // IS_SLIM_BUILD
+    }
+  }
+
+  Status ReadRecord(string* record) {
+    string header;
+    TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
+    uint64 length = core::DecodeFixed64(header.data());
+    return input_stream_->ReadNBytes(length, record);
+  }
+
+#if defined(PLATFORM_GOOGLE)
+  Status ReadRecord(absl::Cord* record) {
+    string header;
+    TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
+    uint64 length = core::DecodeFixed64(header.data());
+
+    if (compression_type_ == io::compression::kNone) {
+      return input_stream_->ReadNBytes(length, record);
+    } else {
+      string tmp_str;
+      Status s = input_stream_->ReadNBytes(length, &tmp_str);
+      record->Append(tmp_str);
+      return s;
+    }
+  }
+#endif
+
+ private:
+  std::unique_ptr<io::InputStreamInterface> input_stream_;
+  const string compression_type_;
+};
+
 string GetCurrentSnapshotDataFilename(uint64 bytes_written,
+                                      uint64 shard_size_bytes,
                                       const string& run_dir) {
-  uint64_t shard_id = bytes_written / (1024 * 1024 * kNumMBPerShard);
+  uint64_t shard_id = bytes_written / shard_size_bytes;
   return absl::StrCat(run_dir, "/", strings::Printf("%08lu", shard_id),
                       ".snapshot");
 }
@@ -61,7 +189,7 @@ Status WriteMetadataFile(const string& fingerprint_dir,
   std::unique_ptr<WritableFile> file;
   TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(metadata_filename, &file));
 
-  auto writer = absl::make_unique<io::RecordWriter>(file.get());
+  auto writer = absl::make_unique<SnapshotWriter>(file.get());
   TF_RETURN_IF_ERROR(writer->WriteRecord(metadata.SerializeAsString()));
   TF_RETURN_IF_ERROR(writer->Close());
 
@@ -78,7 +206,7 @@ Status ReadMetadataFile(const string& fingerprint_dir,
   TF_CHECK_OK(Env::Default()->NewRandomAccessFile(metadata_filename, &file));
 
   string record_bytes;
-  auto reader = absl::make_unique<io::SequentialRecordReader>(file.get());
+  auto reader = absl::make_unique<SnapshotReader>(file.get());
   TF_CHECK_OK(reader->ReadRecord(&record_bytes));
 
   metadata->ParseFromString(record_bytes);
@@ -87,7 +215,8 @@ Status ReadMetadataFile(const string& fingerprint_dir,
 
 SnapshotMode DetermineOpState(
     const Status& file_status,
-    const experimental::SnapshotMetadataRecord& metadata) {
+    const experimental::SnapshotMetadataRecord& metadata,
+    const uint64 pending_snapshot_expiry_seconds) {
   if (errors::IsNotFound(file_status)) {
     return WRITER;
   }
@@ -98,8 +227,8 @@ SnapshotMode DetermineOpState(
   }
 
   if (metadata.creation_timestamp() >=
-      Env::Default()->NowMicros() - kOneDayInMicroseconds) {
-    // TODO(frankchn): Make this timestamp configurable.
+      (static_cast<int64>(Env::Default()->NowMicros()) -
+       pending_snapshot_expiry_seconds * 1000000)) {
     // Someone else is already writing and time has not expired.
     return PASSTHROUGH;
   } else {
@@ -122,11 +251,23 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                    ctx->GetAttr("writer_path_prefix", &writer_path_prefix_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("compression", &compression_));
 
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("shard_size_bytes", &shard_size_bytes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("pending_snapshot_expiry_seconds",
+                                     &pending_snapshot_expiry_seconds_));
+
     OP_REQUIRES(
         ctx,
         compression_ == io::compression::kNone ||
             compression_ == io::compression::kGzip,
         errors::InvalidArgument("compression must be either '' or 'GZIP'."));
+
+    OP_REQUIRES(
+        ctx, shard_size_bytes_ >= 1024 * 1024,
+        errors::InvalidArgument("shard_size_bytes must be at least 1 MiB."));
+    OP_REQUIRES(
+        ctx, pending_snapshot_expiry_seconds_ >= 1,
+        errors::InvalidArgument(
+            "pending_snapshot_expiry_seconds must be at least 1 second."));
   }
 
  protected:
@@ -140,17 +281,15 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(
         ctx, AsGraphDef(ctx, input, SerializationContext({}), &graph_def));
 
-    // TODO(frankchn): Find a better way than SerializeToStringDeterministic()
+    // TODO(frankchn): Find a better way than DeterministicProtoHash64()
     // This is not deterministic across different builds of binaries right now.
-    string graph_def_serialized;
-    SerializeToStringDeterministic(graph_def, &graph_def_serialized);
-
     string graph_fingerprint = strings::StrCat(
-        strings::Hex(Fingerprint64(graph_def_serialized), strings::kZeroPad16));
+        strings::Hex(DeterministicProtoHash64(graph_def), strings::kZeroPad16));
 
     *output =
         new Dataset(ctx, input, path, graph_fingerprint, reader_path_prefix_,
-                    writer_path_prefix_, compression_);
+                    writer_path_prefix_, compression_, shard_size_bytes_,
+                    pending_snapshot_expiry_seconds_);
   }
 
  private:
@@ -158,14 +297,18 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input, const string& path,
             const string& graph_fingerprint, const string& reader_path_prefix,
-            const string& writer_path_prefix, const string& compression)
+            const string& writer_path_prefix, const string& compression,
+            const uint64 shard_size_bytes,
+            const uint64 pending_snapshot_expiry_seconds)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           dir_(path),
           graph_fingerprint_(graph_fingerprint),
           reader_path_prefix_(reader_path_prefix),
           writer_path_prefix_(writer_path_prefix),
-          compression_(compression) {
+          compression_(compression),
+          shard_size_bytes_(shard_size_bytes),
+          pending_snapshot_expiry_seconds_(pending_snapshot_expiry_seconds) {
       input_->Ref();
     }
 
@@ -208,6 +351,13 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
       AttrValue writer_path_prefix_attr;
       b->BuildAttrValue(writer_path_prefix_, &writer_path_prefix_attr);
 
+      AttrValue shard_size_bytes_attr;
+      b->BuildAttrValue<int64>(shard_size_bytes_, &shard_size_bytes_attr);
+
+      AttrValue pending_snapshot_expiry_seconds_attr;
+      b->BuildAttrValue<int64>(pending_snapshot_expiry_seconds_,
+                               &pending_snapshot_expiry_seconds_attr);
+
       TF_RETURN_IF_ERROR(b->AddDataset(
           this,
           /*inputs=*/
@@ -217,7 +367,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           /*attrs=*/
           {{"compression", compression_attr},
            {"reader_path_prefix", reader_path_prefix_attr},
-           {"writer_path_prefix", writer_path_prefix_attr}},
+           {"writer_path_prefix", writer_path_prefix_attr},
+           {"shard_size_bytes", shard_size_bytes_attr},
+           {"pending_snapshot_expiry_seconds",
+            pending_snapshot_expiry_seconds_attr}},
           output));
       return Status::OK();
     }
@@ -234,7 +387,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
         experimental::SnapshotMetadataRecord metadata;
         Status s = ReadMetadataFile(fingerprint_dir_, &metadata);
-        state_ = DetermineOpState(s, metadata);
+        state_ = DetermineOpState(s, metadata,
+                                  dataset()->pending_snapshot_expiry_seconds_);
 
         switch (state_) {
           case WRITER:
@@ -310,12 +464,21 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           mutex_lock l(mu_);
           do {
             if (current_reader_) {
+#if !defined(PLATFORM_GOOGLE)
               string record_bytes;
               Status s = current_reader_->ReadRecord(&record_bytes);
+#else
+              absl::Cord record_cord;
+              Status s = current_reader_->ReadRecord(&record_cord);
+#endif
               if (s.ok()) {
                 *end_of_sequence = false;
                 experimental::SnapshotRecord record;
+#if !defined(PLATFORM_GOOGLE)
                 record.ParseFromString(record_bytes);
+#else
+                record.ParseFromCord(record_cord);
+#endif
                 int64 num_bytes = 0;
                 for (int i = 0; i < record.tensor_size(); ++i) {
                   Tensor t;
@@ -366,13 +529,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                                                filenames_[current_file_index_]);
           TF_CHECK_OK(Env::Default()->NewRandomAccessFile(filename,
                                                           &current_read_file_));
-          auto reader_options =
-              io::RecordReaderOptions::CreateRecordReaderOptions(
-                  dataset()->compression_);
-          reader_options.buffer_size = kReaderBufferSize;
 
-          current_reader_ = absl::make_unique<io::SequentialRecordReader>(
-              current_read_file_.get(), reader_options);
+          current_reader_ = absl::make_unique<SnapshotReader>(
+              current_read_file_.get(), dataset()->compression_);
           return Status::OK();
         }
 
@@ -390,8 +549,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
 
         std::unique_ptr<RandomAccessFile> current_read_file_ GUARDED_BY(mu_);
-        std::unique_ptr<io::SequentialRecordReader> current_reader_
-            GUARDED_BY(mu_);
+        std::unique_ptr<SnapshotReader> current_reader_ GUARDED_BY(mu_);
 
         uint64 next_index_ GUARDED_BY(mu_) = 0;
         int64 time_spent_micros_ GUARDED_BY(mu_) = 0;
@@ -460,8 +618,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             return Status::OK();
           }
 
-          string snapshot_data_filename =
-              GetCurrentSnapshotDataFilename(bytes_written_, run_dir_);
+          string snapshot_data_filename = GetCurrentSnapshotDataFilename(
+              bytes_written_, dataset()->shard_size_bytes_, run_dir_);
 
           if (current_write_filename_ != snapshot_data_filename) {
             if (current_writer_) TF_RETURN_IF_ERROR(current_writer_->Close());
@@ -471,14 +629,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             current_writer_.reset();
             current_write_file_.reset();
 
-            auto writer_options =
-                io::RecordWriterOptions::CreateRecordWriterOptions(
-                    dataset()->compression_);
-
             TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(
                 snapshot_data_filename, &current_write_file_));
-            current_writer_ = absl::make_unique<io::RecordWriter>(
-                current_write_file_.get(), writer_options);
+            current_writer_ = absl::make_unique<SnapshotWriter>(
+                current_write_file_.get(), dataset()->compression_);
             current_write_filename_ = snapshot_data_filename;
           }
 
@@ -491,8 +645,13 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             out_tensor.AsProtoTensorContent(t);
           }
 
+#if defined(PLATFORM_GOOGLE)
+          TF_RETURN_IF_ERROR(
+              current_writer_->WriteRecord(record.SerializeAsCord()));
+#else   // PLATFORM_GOOGLE
           TF_RETURN_IF_ERROR(
               current_writer_->WriteRecord(record.SerializeAsString()));
+#endif  // PLATFORM_GOOGLE
 
           absl::Time end = absl::Now();
           absl::Duration d = end - start;
@@ -518,7 +677,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
         string current_write_filename_ GUARDED_BY(mu_);
         std::unique_ptr<WritableFile> current_write_file_ GUARDED_BY(mu_);
-        std::unique_ptr<io::RecordWriter> current_writer_ GUARDED_BY(mu_);
+        std::unique_ptr<SnapshotWriter> current_writer_ GUARDED_BY(mu_);
 
         uint64 next_index_ GUARDED_BY(mu_) = 0;
         int64 time_spent_micros_ GUARDED_BY(mu_) = 0;
@@ -559,6 +718,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     const string reader_path_prefix_;
     const string writer_path_prefix_;
     const string compression_;
+
+    const uint64 shard_size_bytes_;
+    const uint64 pending_snapshot_expiry_seconds_;
   };
 
   const int graph_def_version_;
@@ -568,6 +730,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
   string reader_path_prefix_;
   string writer_path_prefix_;
   string compression_;
+
+  int64 shard_size_bytes_;
+  int64 pending_snapshot_expiry_seconds_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("SnapshotDataset").Device(DEVICE_CPU),

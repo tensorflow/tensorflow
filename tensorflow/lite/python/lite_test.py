@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
+from tensorflow.lite.python.convert import ConverterError
 from tensorflow.lite.python.interpreter import Interpreter
 from tensorflow.python import keras
 from tensorflow.python.client import session
@@ -600,7 +601,9 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     # when targeting an integer only backend, quantization is mandatory.
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [inp], [output])
-    quantized_converter.target_ops = [lite.OpsSet.TFLITE_BUILTINS_INT8]
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS_INT8
+    ]
     quantized_converter.representative_dataset = calibration_gen
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
@@ -815,6 +818,38 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     converter.post_training_quantize = False
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
+
+  def testResizingIntermediateDynamicTensor(self):
+    # This is a regression test for the case where shape of dynamic output
+    # tensors changes between invocations.
+    # See also https://github.com/tensorflow/tensorflow/issues/26549
+    input_tensor = array_ops.placeholder(shape=[1, 1], dtype=dtypes.float32)
+    input2_tensor = array_ops.placeholder(shape=[1], dtype=dtypes.float32)
+
+    # The bug is triggered only when dynamic tensor is intermediate. Putting
+    # some other ops around it.
+    neg = math_ops.negative(input2_tensor)
+    padding = array_ops.placeholder(shape=[2, 2], dtype=dtypes.int32)
+    output_tensor = array_ops.pad(input_tensor, padding) + neg
+
+    sess = session.Session()
+    converter = lite.TFLiteConverter.from_session(
+        sess, [input_tensor, padding, input2_tensor], [output_tensor])
+    tflite_model = converter.convert()
+
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    interpreter.set_tensor(input_details[1]['index'],
+                           np.array([[1, 1], [1, 1]], dtype=np.int32))
+    interpreter.invoke()
+
+    # Without the fix, invocation will fail when changing the shape of
+    # intermediate dynamic tensors.
+    interpreter.set_tensor(input_details[1]['index'],
+                           np.array([[2, 2], [2, 2]], dtype=np.int32))
+    interpreter.invoke()
 
 
 @test_util.run_v1_only('Incompatible with 2.0.')
@@ -1188,15 +1223,17 @@ class FromSavedModelTest(test_util.TensorFlowTestCase):
         input_arrays=['inputA'],
         input_shapes={'inputA': [1, 16, 16, 3]})
 
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
+    # Since we only partially specify the input, this is not allowed.
+    with self.assertRaises(ConverterError):
+      _ = converter.convert()
 
     # Check case where input shape is None.
     converter = lite.TFLiteConverter.from_saved_model(
         saved_model_dir, input_arrays=['inputA'], input_shapes={'inputA': None})
 
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
+    # Since we only partially specify the input, this is not allowed.
+    with self.assertRaises(ConverterError):
+      _ = converter.convert()
 
   def testSimpleModelTocoConverter(self):
     """Test a SavedModel with deprecated TocoConverter."""

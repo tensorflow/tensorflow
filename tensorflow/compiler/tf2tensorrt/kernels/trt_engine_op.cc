@@ -21,11 +21,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/op.h"
@@ -96,7 +95,7 @@ class TRTEngineOp : public AsyncOpKernel {
 
   // Allocate necessary resources for calibration
   Status AllocateCalibrationResources(OpKernelContext* ctx,
-                                      SerializableResourceBase** cr);
+                                      TRTCalibrationResource** cr);
 
   // Get engine for the input shape
   EngineContext* GetEngine(const std::vector<TensorShape>& input_shapes,
@@ -285,9 +284,9 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   OP_REQUIRES_OK_ASYNC(
       ctx,
       ctx->resource_manager()->LookupOrCreate(
-          "TF-TRT-Calibration", name(),
-          reinterpret_cast<SerializableResourceBase**>(&calib_res),
-          {[ctx, this](SerializableResourceBase** cr) -> Status {
+          std::string(kCalibrationContainerName), name(),
+          reinterpret_cast<TRTCalibrationResource**>(&calib_res),
+          {[ctx, this](TRTCalibrationResource** cr) -> Status {
             return this->AllocateCalibrationResources(ctx, cr);
           }}),
       *helper);
@@ -577,8 +576,7 @@ EngineContext* TRTEngineOp::GetEngine(
     infer->setGpuAllocator(allocator);
     TrtUniquePtrType<nvinfer1::ICudaEngine> static_engine(
         infer->deserializeCudaEngine(serialized_segment_.c_str(),
-                                     serialized_segment_.size(),
-                                     PluginFactoryTensorRT::GetInstance()));
+                                     serialized_segment_.size(), nullptr));
     auto raw_static_engine = static_engine.get();
     const auto max_batch_size = raw_static_engine->getMaxBatchSize();
     // Static engine will have max_batch_size for batch size so that all inputs
@@ -663,8 +661,8 @@ EngineContext* TRTEngineOp::GetEngine(
   return cache.at(engine_input_shapes).get();
 }
 
-Status TRTEngineOp::AllocateCalibrationResources(
-    OpKernelContext* ctx, SerializableResourceBase** cr) {
+Status TRTEngineOp::AllocateCalibrationResources(OpKernelContext* ctx,
+                                                 TRTCalibrationResource** cr) {
   auto cres = new TRTCalibrationResource();
   *cr = cres;
   // Get the allocator.

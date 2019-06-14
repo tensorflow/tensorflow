@@ -130,7 +130,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
 
   def _resource_apply_dense(self, grad, var):
     var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
+    lr_t = self._decayed_lr_t[var_dtype]
     rms = self.get_slot(var, "rms")
     rho = self._get_hyper("rho", var_dtype)
     momentum = self._get_hyper("momentum", var_dtype)
@@ -175,7 +175,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
 
   def _resource_apply_sparse(self, grad, var, indices):
     var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
+    lr_t = self._decayed_lr_t[var_dtype]
     rms = self.get_slot(var, "rms")
     rho = self._get_hyper("rho", var_dtype)
     momentum = self._get_hyper("momentum", var_dtype)

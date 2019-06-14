@@ -144,7 +144,8 @@ class StackedRNNCells(Layer):
       input_shape = input_shape[0]
     for cell in self.cells:
       if isinstance(cell, Layer):
-        cell.build(input_shape)
+        if not cell.built:
+          cell.build(input_shape)
       if getattr(cell, 'output_size', None) is not None:
         output_dim = cell.output_size
       elif _is_multiple_state(cell.state_size):
@@ -406,7 +407,7 @@ class RNN(Layer):
     self.state_spec = None
     self._states = None
     self.constants_spec = None
-    self._num_constants = None
+    self._num_constants = 0
 
   @property
   def states(self):
@@ -537,7 +538,8 @@ class RNN(Layer):
 
     # allow cell (if layer) to build before we set or validate state_spec
     if isinstance(self.cell, Layer):
-      self.cell.build(step_input_shape)
+      if not self.cell.built:
+        self.cell.build(step_input_shape)
 
     # set or validate state_spec
     if _is_multiple_state(self.cell.state_size):
@@ -745,7 +747,7 @@ class RNN(Layer):
       updates = []
       for state_, state in zip(nest.flatten(self.states), nest.flatten(states)):
         updates.append(state_ops.assign(state_, state))
-      self.add_update(updates, inputs)
+      self.add_update(updates)
 
     if self.return_sequences:
       output = outputs
@@ -769,7 +771,7 @@ class RNN(Layer):
         and not isinstance(inputs, tuple)):
       # get initial_state from full input spec
       # as they could be copied to multiple GPU.
-      if self._num_constants is None:
+      if not self._num_constants:
         initial_state = inputs[1:]
       else:
         initial_state = inputs[1:-self._num_constants]
@@ -853,7 +855,7 @@ class RNN(Layer):
         'unroll': self.unroll,
         'time_major': self.time_major
     }
-    if self._num_constants is not None:
+    if self._num_constants:
       config['num_constants'] = self._num_constants
     if self.zero_output_for_mask:
       config['zero_output_for_mask'] = self.zero_output_for_mask
@@ -870,7 +872,7 @@ class RNN(Layer):
   def from_config(cls, config, custom_objects=None):
     from tensorflow.python.keras.layers import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top
     cell = deserialize_layer(config.pop('cell'), custom_objects=custom_objects)
-    num_constants = config.pop('num_constants', None)
+    num_constants = config.pop('num_constants', 0)
     layer = cls(cell, **config)
     layer._num_constants = num_constants
     return layer
@@ -1210,7 +1212,7 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
       h = K.bias_add(h, self.bias)
 
     if rec_dp_mask is not None:
-      prev_output *= rec_dp_mask
+      prev_output = prev_output * rec_dp_mask
     output = h + K.dot(prev_output, self.recurrent_kernel)
     if self.activation is not None:
       output = self.activation(output)
@@ -1676,7 +1678,7 @@ class GRUCell(DropoutRNNCellMixin, Layer):
       hh = self.activation(x_h + recurrent_h)
     else:
       if 0. < self.dropout < 1.:
-        inputs *= dp_mask[0]
+        inputs = inputs * dp_mask[0]
 
       # inputs projected by all gate matrices at once
       matrix_x = K.dot(inputs, self.kernel)
@@ -1689,7 +1691,7 @@ class GRUCell(DropoutRNNCellMixin, Layer):
       x_h = matrix_x[:, 2 * self.units:]
 
       if 0. < self.recurrent_dropout < 1.:
-        h_tm1 *= rec_dp_mask[0]
+        h_tm1 = h_tm1 * rec_dp_mask[0]
 
       if self.reset_after:
         # hidden state projected by all gate matrices at once
@@ -2240,10 +2242,10 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
       c, o = self._compute_carry_and_output(x, h_tm1, c_tm1)
     else:
       if 0. < self.dropout < 1.:
-        inputs *= dp_mask[0]
+        inputs = inputs * dp_mask[0]
       z = K.dot(inputs, self.kernel)
       if 0. < self.recurrent_dropout < 1.:
-        h_tm1 *= rec_dp_mask[0]
+        h_tm1 = h_tm1 * rec_dp_mask[0]
       z += K.dot(h_tm1, self.recurrent_kernel)
       if self.use_bias:
         z = K.bias_add(z, self.bias)
@@ -2698,7 +2700,7 @@ def _standardize_args(inputs, initial_state, constants, num_constants):
     # could be a list of items, or list of list if the initial_state is complex
     # structure, and finally followed by constants which is a flat list.
     assert initial_state is None and constants is None
-    if num_constants is not None:
+    if num_constants:
       constants = inputs[-num_constants:]
       inputs = inputs[:-num_constants]
     if len(inputs) > 1:

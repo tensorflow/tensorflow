@@ -80,7 +80,7 @@ category labels. The `validation_ground_truth.txt` can be converted by the follo
 ILSVRC_2012_DEVKIT_DIR=[set to path to ILSVRC 2012 devkit]
 VALIDATION_LABELS=[set to  path to output]
 
-python generate_validation_labels.py -- \
+python generate_validation_labels.py \
 --ilsvrc_devkit_dir=${ILSVRC_2012_DEVKIT_DIR} \
 --validation_labels_output=${VALIDATION_LABELS}
 ```

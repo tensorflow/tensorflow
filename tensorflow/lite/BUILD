@@ -1,12 +1,11 @@
-package(
-    default_visibility = ["//visibility:public"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(glob([
     "testdata/*.bin",
@@ -62,7 +61,7 @@ cc_library(
     name = "arena_planner",
     srcs = ["arena_planner.cc"],
     hdrs = ["arena_planner.h"],
-    copts = TFLITE_DEFAULT_COPTS + tflite_copts(),
+    copts = TFLITE_DEFAULT_COPTS,
     deps = [
         ":graph_info",
         ":memory_planner",
@@ -245,6 +244,7 @@ cc_test(
     deps = [
         ":framework",
         ":string_util",
+        ":version",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",

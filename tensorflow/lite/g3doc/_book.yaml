@@ -74,6 +74,8 @@ upper_tabs:
         path: /lite/performance/post_training_quantization
       - title: "Post-training quantization example"
         path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_quant.ipynb
+      - title: "Post-training integer quantization example"
+        path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_integer_quant.ipynb
         status: external
       - title: "Delegates"
         path: /lite/performance/delegates
@@ -128,11 +130,17 @@ upper_tabs:
       - title: "Smart reply"
         path: /lite/models/smart_reply/overview
 
-    - name: "API"
+    - name: "Python API"
       skip_translation: true
       contents:
-      - title: "API"
+      - title: "Python API"
         path: /api_docs/python/tf/lite
+    - name: "C++ API"
+      skip_translation: true
+      contents:
+      - title: "C++ API"
+        path: /lite/api_docs/cc/
+      - include: /lite/api_docs/cc/_doxygen.yaml
 
 - include: /api_docs/_upper_tabs_api.yaml
 - include: /resources/_upper_tabs_resources.yaml

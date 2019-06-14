@@ -36,7 +36,7 @@ REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 25,
                       IntroduceFloatingPointJitterPass);
 
 // from
-// third_party/tensorflow/compiler/tf2xla/functionalize_control_flow_pass_registration.cc
+// tensorflow/compiler/tf2xla/functionalize_control_flow_pass_registration.cc
 // FunctionalizeControlFlowPass: 27
 //
 // This pass looks at the graph and all associated FunctionDefs, and turns

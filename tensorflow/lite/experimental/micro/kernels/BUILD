@@ -1,13 +1,14 @@
-package(default_visibility = [
-    "//visibility:public",
-])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load(
     "//tensorflow/lite/experimental/micro/testing:micro_test.bzl",
     "tflite_micro_cc_test",
+)
+
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 cc_library(
@@ -15,6 +16,7 @@ cc_library(
     srcs = [
         "conv.cc",
         "depthwise_conv.cc",
+        "elementwise.cc",
         "fully_connected.cc",
         "pooling.cc",
         "softmax.cc",
@@ -52,6 +54,7 @@ cc_library(
     name = "portable_optimized_micro_ops",
     srcs = [
         "conv.cc",
+        "elementwise.cc",
         "fully_connected.cc",
         "pooling.cc",
         "portable_optimized/depthwise_conv.cc",
@@ -83,6 +86,17 @@ cc_library(
     deps = [
         ":portable_optimized_micro_ops",
         "//tensorflow/lite/experimental/micro:micro_framework",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "elementwise_test",
+    srcs = ["elementwise_test.cc"],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
 )
 

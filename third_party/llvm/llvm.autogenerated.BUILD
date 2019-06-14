@@ -210,7 +210,7 @@ cc_binary(
     deps = [
         ":config",
         ":support",
-        ":table_gen",
+        ":tablegen",
     ],
 )
 
@@ -2001,6 +2001,7 @@ cc_library(
         ":objc_arc",
         ":object",
         ":passes",
+        ":remarks",
         ":scalar",
         ":support",
         ":target",
@@ -2146,6 +2147,7 @@ cc_library(
     copts = llvm_copts,
     deps = [
         ":binary_format",
+        ":bit_reader",
         ":config",
         ":object",
         ":option",
@@ -3486,7 +3488,7 @@ cc_library(
 )
 
 cc_library(
-    name = "table_gen",
+    name = "tablegen",
     srcs = glob([
         "lib/TableGen/*.c",
         "lib/TableGen/*.cpp",

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -560,7 +561,7 @@ TEST_F(InstructionFusionTest, FuseScalarConstant) {
 // Check that we limit the number of operands to fusions we create.
 TEST_F(InstructionFusionTest, AvoidsLargeFusion) {
   constexpr int64 kNumParams = 200;
-  ASSERT_GT(kNumParams, GpuInstructionFusion::kMaxOperandsAndOutputsPerFusion);
+  ASSERT_GT(kNumParams, kMaxOperandsAndOutputsPerFusion);
 
   // Compute p0 + p1 + ... + pN.
   HloComputation::Builder b(TestName());
@@ -581,8 +582,7 @@ TEST_F(InstructionFusionTest, AvoidsLargeFusion) {
                   .ValueOrDie());
   SCOPED_TRACE(module->ToString());
   for (const HloInstruction* instr : computation->instructions()) {
-    EXPECT_LE(instr->operand_count(),
-              GpuInstructionFusion::kMaxOperandsAndOutputsPerFusion)
+    EXPECT_LE(instr->operand_count(), kMaxOperandsAndOutputsPerFusion)
         << instr->ToString();
   }
 }

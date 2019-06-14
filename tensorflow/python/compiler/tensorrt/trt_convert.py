@@ -532,7 +532,6 @@ DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams(
     max_batch_size=1,
     cached_engine_batches=None)
 
-_TRT_CALIBRATION_RESOURCE_CONTAINER_NAME = "TF-TRT-Calibration"
 _TRT_ENGINE_CACHE_CONTAINER_NAME = "TF-TRT-Engine-Cache"
 _TRT_ENGINE_OP_NAME = "TRTEngineOp"
 
@@ -630,6 +629,9 @@ def get_tensorrt_rewriter_config(
         conversion_params.rewriter_config_template)
 
   optimizer = rewriter_config_with_trt.custom_optimizers.add()
+  # Add a constfold optimizer to cleanup the unused Const nodes.
+  rewriter_config_with_trt.custom_optimizers.add().name = "constfold"
+
   optimizer.name = "TensorRTOptimizer"
   optimizer.parameter_map[
       "minimum_segment_size"].i = conversion_params.minimum_segment_size
@@ -784,37 +786,32 @@ class TrtGraphConverter(GraphConverter):
     assert not self._calibration_data_collected
 
     # TODO(laigd): a better way would be to use self._calibration_sess to list
-    # all the devices, add one get_serialized_resource_op for each device, and
+    # all the devices, add one get_calibration_data for each device, and
     # fetch each such op for every resource until its found. This can work
     # even when the device of the TRTEngineOp is empty or not fully specified.
 
-    # Maps device name to the corresponding get_serialized_resource_op.
+    # Maps device name to the corresponding get_calibration_data.
     device_to_get_resource_op_map = {}
 
     with self._calibration_graph.as_default():
-      container_input = array_ops.placeholder(dtypes.string)
       resource_name_input = array_ops.placeholder(dtypes.string)
 
       for node in self._converted_graph_def.node:
         if node.op == _TRT_ENGINE_OP_NAME:
-          # Adds the get_serialized_resource_op for the device if not done
-          # before. We only add one such op for each device.
+          # Adds the get_calibration_data op for the device if not done before.
+          # We only add one such op for each device.
           # TODO(laigd): What if the device is empty?????
           if node.device not in device_to_get_resource_op_map:
             with self._calibration_graph.device(node.device):
               serialized_resources_output = (
-                  gen_trt_ops.get_serialized_resource_op(
-                      container_input, resource_name_input))
+                  gen_trt_ops.get_calibration_data_op(resource_name_input))
             device_to_get_resource_op_map[node.device] = (
                 serialized_resources_output)
 
           # Get the calibration resource.
           calibration_result = self._calibration_sess.run(
               device_to_get_resource_op_map[node.device],
-              feed_dict={
-                  container_input: _TRT_CALIBRATION_RESOURCE_CONTAINER_NAME,
-                  resource_name_input: node.name
-              })
+              feed_dict={resource_name_input: node.name})
           node.attr["calibration_data"].s = calibration_result
 
     self._calibration_data_collected = True
@@ -1000,14 +997,6 @@ class TrtGraphConverterV2(object):
     """
     assert self._converted
 
-    @def_function.function
-    def _dump_trt_cache(resource_name, filename):
-      gen_trt_ops.dump_trt_engine_cache(
-          container=_TRT_ENGINE_CACHE_CONTAINER_NAME,
-          resource_name=resource_name,
-          filename=filename,
-          delete_cache_after_dump=True)
-
     # Serialize the TRT engines in the cache if any, and create trackable
     # resource to track them.
     engine_asset_dir = tempfile.mkdtemp()
@@ -1022,7 +1011,11 @@ class TrtGraphConverterV2(object):
       filename = os.path.join(engine_asset_dir,
                               "trt-serialized-engine." + canonical_engine_name)
       try:
-        _dump_trt_cache(canonical_engine_name, filename)
+        gen_trt_ops.dump_trt_engine_cache(
+            container=_TRT_ENGINE_CACHE_CONTAINER_NAME,
+            resource_name=canonical_engine_name,
+            filename=filename,
+            delete_cache_after_dump=True)
       except errors.NotFoundError:
         # If user haven't run the function to populate the engine, it's fine,
         # and we don't need to track any serialized TRT engines.

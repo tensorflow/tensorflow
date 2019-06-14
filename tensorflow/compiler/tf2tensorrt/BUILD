@@ -3,12 +3,6 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_shared_object",
@@ -29,6 +23,13 @@ load(
 )
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 # Placeholder for Google-internal load statements.
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 tf_cuda_cc_test(
     name = "tensorrt_test_cc",
@@ -53,7 +54,7 @@ tf_cuda_cc_test(
 cc_library(
     name = "trt_op_kernels",
     srcs = [
-        "kernels/get_serialized_resource_op.cc",
+        "kernels/get_calibration_data_op.cc",
         "kernels/trt_engine_op.cc",
     ],
     copts = tf_copts(),
@@ -145,31 +146,6 @@ tf_cc_shared_object(
 )
 
 tf_cuda_cc_test(
-    name = "get_serialized_resource_op_test",
-    size = "small",
-    srcs = ["kernels/get_serialized_resource_op_test.cc"],
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_windows",
-        "nomac",
-    ],
-    deps = [
-        # TODO(laigd): consider splitting get_serialized_resource_op out from
-        # TF-TRT.
-        ":trt_op_kernels",
-        ":trt_op_libs",
-        ":trt_resources",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels:ops_testutil",
-    ],
-)
-
-tf_cuda_cc_test(
     name = "trt_engine_op_test",
     size = "small",
     srcs = ["kernels/trt_engine_op_test.cc"],
@@ -201,7 +177,7 @@ tf_cuda_cc_test(
 tf_gen_op_libs(
     op_lib_names = [
         "trt_engine_op",
-        "get_serialized_resource_op",
+        "get_calibration_data_op",
         "trt_engine_resource_ops",
     ],
 )
@@ -209,7 +185,7 @@ tf_gen_op_libs(
 cc_library(
     name = "trt_op_libs",
     deps = [
-        ":get_serialized_resource_op_op_lib",
+        ":get_calibration_data_op_op_lib",
         ":trt_engine_op_op_lib",
     ],
 )
@@ -262,14 +238,14 @@ tf_custom_op_py_library(
 tf_cuda_library(
     name = "trt_resources",
     srcs = [
+        "utils/calibration_resource.cc",
         "utils/trt_int8_calibrator.cc",
         "utils/trt_lru_cache.cc",
-        "utils/trt_resources.cc",
     ],
     hdrs = [
+        "utils/calibration_resource.h",
         "utils/trt_int8_calibrator.h",
         "utils/trt_lru_cache.h",
-        "utils/trt_resources.h",
     ],
     deps = [
         ":trt_allocator",
@@ -482,40 +458,12 @@ tf_cuda_cc_test(
 # Library for the plugin factory
 tf_cuda_library(
     name = "trt_plugins",
-    srcs = [
-        "plugin/trt_plugin.cc",
-        "plugin/trt_plugin_factory.cc",
-        "plugin/trt_plugin_utils.cc",
-    ],
-    hdrs = [
-        "plugin/trt_plugin.h",
-        "plugin/trt_plugin_factory.h",
-        "plugin/trt_plugin_utils.h",
-    ],
+    srcs = ["plugin/trt_plugin.cc"],
+    hdrs = ["plugin/trt_plugin.h"],
     deps = [
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([
-        "@local_config_tensorrt//:tensorrt",
-    ]),
-)
-
-tf_cuda_cc_test(
-    name = "trt_plugin_factory_test",
-    size = "small",
-    srcs = ["plugin/trt_plugin_factory_test.cc"],
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_windows",
-        "nomac",
-    ],
-    deps = [
-        ":trt_plugins",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ] + if_tensorrt([
-        "@local_config_cuda//cuda:cuda_headers",
         "@local_config_tensorrt//:tensorrt",
     ]),
 )
@@ -553,7 +501,7 @@ tf_py_wrap_cc(
     srcs = ["utils/py_utils.i"],
     copts = tf_copts(),
     deps = [
-        "//tensorflow/compiler/tf2tensorrt:py_utils",
+        ":py_utils",
         "//third_party/python_runtime:headers",
     ],
 )

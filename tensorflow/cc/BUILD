@@ -2,11 +2,20 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
-package(
-    default_visibility = ["//visibility:public"],
+load(
+    "//tensorflow:tensorflow.bzl",
+    "cc_library_with_android_deps",
+    "tf_cc_binary",
+    "tf_cc_test",
+    "tf_copts",
+    "tf_gen_op_wrappers_cc",
+    "transitive_hdrs",
 )
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 filegroup(
     name = "srcs",
@@ -19,16 +28,6 @@ filegroup(
         "ops/while_loop.h",
         "//tensorflow/cc/saved_model:loader.h",
     ],
-)
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "cc_library_with_android_deps",
-    "tf_cc_binary",
-    "tf_cc_test",
-    "tf_copts",
-    "tf_gen_op_wrappers_cc",
-    "transitive_hdrs",
 )
 
 cc_library(

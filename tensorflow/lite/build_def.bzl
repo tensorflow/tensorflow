@@ -33,10 +33,7 @@ def tflite_copts():
             "/wd4018",  # -Wno-sign-compare
         ],
         "//conditions:default": [
-            "-Wno-comment",
-            "-Wno-ignored-attributes",
             "-Wno-sign-compare",
-            "-Wno-unknown-pragmas",
         ],
     }) + select({
         str(Label("//tensorflow:with_default_optimizations")): [],
@@ -45,6 +42,7 @@ def tflite_copts():
 
     return copts
 
+EXPORTED_SYMBOLS = "//tensorflow/lite/java/src/main/native:exported_symbols.lds"
 LINKER_SCRIPT = "//tensorflow/lite/java/src/main/native:version_script.lds"
 
 def tflite_linkopts_unstripped():
@@ -116,22 +114,28 @@ def tflite_jni_binary(
         copts = tflite_copts(),
         linkopts = tflite_jni_linkopts(),
         linkscript = LINKER_SCRIPT,
+        exported_symbols = EXPORTED_SYMBOLS,
         linkshared = 1,
         linkstatic = 1,
         testonly = 0,
         deps = [],
         srcs = []):
     """Builds a jni binary for TFLite."""
-    linkopts = linkopts + [
-        "-Wl,--version-script",  # Export only jni functions & classes.
-        "$(location {})".format(linkscript),
-    ]
+    linkopts = linkopts + select({
+        "//tensorflow:macos": [
+            "-Wl,-exported_symbols_list,$(location {})".format(exported_symbols),
+        ],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "-Wl,--version-script,$(location {})".format(linkscript),
+        ],
+    })
     native.cc_binary(
         name = name,
         copts = copts,
         linkshared = linkshared,
         linkstatic = linkstatic,
-        deps = deps + [linkscript],
+        deps = deps + [linkscript, exported_symbols],
         srcs = srcs,
         linkopts = linkopts,
         testonly = testonly,
@@ -311,6 +315,7 @@ def generated_test_models():
         "resolve_constant_strided_slice",
         "reverse_sequence",
         "reverse_v2",
+        "rfft2d",
         "round",
         "rsqrt",
         "shape",

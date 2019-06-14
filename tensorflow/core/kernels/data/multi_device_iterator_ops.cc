@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/unbounded_thread_pool.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -492,10 +493,9 @@ class MultiDeviceIteratorInitOp : public OpKernel {
 
     DatasetBase* dataset;
     OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
-    MultiDeviceIterator* resource;
+    core::RefCountPtr<MultiDeviceIterator> resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 1), &resource));
-    core::ScopedUnref unref(resource);
 
     std::unique_ptr<IteratorBase> iterator;
     IteratorContext::Params params(ctx);
@@ -535,7 +535,7 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
         ctx, ctx->input("incarnation_id", &tensor_incarnation_id), done);
     int64 incarnation_id = tensor_incarnation_id->scalar<int64>()();
 
-    MultiDeviceIterator* iterator;
+    core::RefCountPtr<MultiDeviceIterator> iterator;
     OP_REQUIRES_OK_ASYNC(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
 
@@ -557,7 +557,6 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
         std::placeholders::_1, std::move(done));
 
     iterator->GetNextFromShard(ctx, shard_num, incarnation_id, callback);
-    iterator->Unref();
   }
 };
 
@@ -577,10 +576,9 @@ class MultiDeviceIteratorToStringHandleOp : public OpKernel {
 
     // Validate that the handle corresponds to a real resource, and
     // that it is an MultiDeviceIterator.
-    MultiDeviceIterator* resource;
+    core::RefCountPtr<MultiDeviceIterator> resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
-    resource->Unref();
 
     Tensor* string_handle_t;
     OP_REQUIRES_OK(ctx,
@@ -629,9 +627,8 @@ class MultiDeviceIteratorFromStringHandleOp : public OpKernel {
 
     // Validate that the handle corresponds to a real resource, and
     // that it is an MultiDeviceIterator.
-    MultiDeviceIterator* resource;
+    core::RefCountPtr<MultiDeviceIterator> resource;
     OP_REQUIRES_OK(ctx, LookupResource(ctx, resource_handle, &resource));
-    core::ScopedUnref unref_iterator(resource);
     if (!output_types_.empty()) {
       OP_REQUIRES_OK(ctx,
                      VerifyTypesMatch(output_types_, resource->output_types()));

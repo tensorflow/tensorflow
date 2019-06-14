@@ -636,8 +636,10 @@ CORE_CC_ALL_SRCS := \
 $(ABSL_CC_SRCS) \
 tensorflow/c/c_api.cc \
 tensorflow/c/kernels.cc \
+tensorflow/c/tf_datatype.cc \
 tensorflow/c/tf_status.cc \
 tensorflow/c/tf_status_helper.cc \
+tensorflow/c/tf_tensor.cc \
 $(wildcard tensorflow/core/*.cc) \
 $(wildcard tensorflow/core/common_runtime/*.cc) \
 $(wildcard tensorflow/core/framework/*.cc) \

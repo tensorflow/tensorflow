@@ -105,7 +105,8 @@ do_pylint() {
 "^tensorflow/python/keras/engine/base_layer.py.*\[E0203.*access-member-before-definition "\
 "^tensorflow/python/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition "\
 "^tensorflow/python/kernel_tests/constant_op_eager_test.py.*\[E0303.*invalid-length-returned "\
-"^tensorflow/python/keras/utils/data_utils.py.*\[E1102.*not-callable"
+"^tensorflow/python/keras/utils/data_utils.py.*\[E1102.*not-callable "\
+"^tensorflow/python/autograph/.*_py3_test\.py.*\[E0001.*syntax-error "
 
   echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""
 

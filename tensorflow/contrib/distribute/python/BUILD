@@ -8,9 +8,8 @@ package(
     default_visibility = [
         "//tensorflow:internal",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
@@ -86,6 +85,7 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/133330625)
     ],
 )
 
@@ -147,8 +147,11 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     tags = [
+        "manual",
         "multi_and_single_gpu",
+        "no_oss",
         "nomsan",  # TODO(b/130299192)
+        "notap",  # TODO(b/130432997)
     ],
 )
 

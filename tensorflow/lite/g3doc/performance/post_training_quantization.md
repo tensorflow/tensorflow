@@ -66,8 +66,10 @@ deployment to accelerators that support float. To require the converter to only
 output integer operations, one can specify:
 
 ```
-converter.target_ops = [tf.lite.OpSet.TFLITE_BUILTINS_INT8]
+converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
 ```
+
+Note: `target_spec.supported_ops` was previously `target_ops` in the Python API.
 
 This makes the converter throw an error if it encounters an operation it cannot
 currently quantize.
@@ -92,10 +94,10 @@ formula. `real_value = (int8_value - zero_point) * scale`.
 
 The representation has two main parts:
 
-*   Per-axis (aka per-channel) or per-layer weights represented by int8 two’s
+*   Per-axis (aka per-channel) or per-tensor weights represented by int8 two’s
     complement values in the range [-127, 127] with zero-point equal to 0.
 
-*   Per-layer activations/inputs represented by int8 two’s complement values in
+*   Per-tensor activations/inputs represented by int8 two’s complement values in
     the range [-128, 127], with a zero-point in range [-128, 127].
 
 For a detailed view of our quantization scheme, please see our

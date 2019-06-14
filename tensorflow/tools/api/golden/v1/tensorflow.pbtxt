@@ -121,6 +121,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "IndexedSlicesSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "InteractiveSession"
     mtype: "<type \'type\'>"
   }
@@ -165,6 +169,10 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
+    name: "OptionalSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "PaddingFIFOQueue"
     mtype: "<type \'type\'>"
   }
@@ -182,6 +190,10 @@ tf_module {
   }
   member {
     name: "RaggedTensor"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RaggedTensorSpec"
     mtype: "<type \'type\'>"
   }
   member {
@@ -225,6 +237,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "SparseTensorSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "SparseTensorValue"
     mtype: "<type \'type\'>"
   }
@@ -249,6 +265,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "TensorArraySpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TensorInfo"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
@@ -262,6 +282,10 @@ tf_module {
   }
   member {
     name: "TextLineReader"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TypeSpec"
     mtype: "<type \'type\'>"
   }
   member {
@@ -1105,6 +1129,10 @@ tf_module {
     argspec: "args=[\'dimension\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "disable_control_flow_v2"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "disable_eager_execution"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
@@ -1147,6 +1175,10 @@ tf_module {
   member_method {
     name: "einsum"
     argspec: "args=[\'equation\'], varargs=inputs, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "enable_control_flow_v2"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "enable_eager_execution"
@@ -1586,11 +1618,11 @@ tf_module {
   }
   member_method {
     name: "matrix_diag"
-    argspec: "args=[\'diagonal\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'diagonal\', \'name\', \'k\', \'num_rows\', \'num_cols\', \'padding_value\'], varargs=None, keywords=None, defaults=[\'diag\', \'0\', \'-1\', \'-1\', \'0\'], "
   }
   member_method {
     name: "matrix_diag_part"
-    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'name\', \'k\', \'padding_value\'], varargs=None, keywords=None, defaults=[\'diag_part\', \'0\', \'0\'], "
   }
   member_method {
     name: "matrix_inverse"
@@ -1598,7 +1630,7 @@ tf_module {
   }
   member_method {
     name: "matrix_set_diag"
-    argspec: "args=[\'input\', \'diagonal\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'diagonal\', \'name\', \'k\'], varargs=None, keywords=None, defaults=[\'set_diag\', \'0\'], "
   }
   member_method {
     name: "matrix_solve"
@@ -1819,6 +1851,10 @@ tf_module {
   member_method {
     name: "reciprocal"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "recompute_grad"
+    argspec: "args=[\'f\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "reduce_all"

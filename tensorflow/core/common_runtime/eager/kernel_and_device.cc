@@ -133,6 +133,8 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
     // ops, we rely on Grappler to do the correct graph pruning.
     optimization_options.allow_pruning_stateful_and_dataset_ops = true;
 
+    optimization_options.is_eager_mode = true;
+
     // All the nested function calls will be executed and optimized via
     // PartitionedCallOp, there is no need to optimize functions now.
     optimization_options.optimize_function_library = false;
@@ -356,13 +358,17 @@ Status KernelAndDeviceFunc::Run(
   for (const TensorValue& tensor_value : inputs) {
     input_vector.push_back(*tensor_value.tensor);
   }
-
-  pflr_->Run(opts, handle_, input_vector, outputs,
-             [&status, &done](const Status& s) {
-               status = s;
-               done.Notify();
-             });
-  done.WaitForNotification();
+  {
+    profiler::TraceMe activity(
+        [&] { return absl::StrCat("FunctionRun:", name()); },
+        profiler::TraceMeLevel::kInfo);
+    pflr_->Run(opts, handle_, input_vector, outputs,
+               [&status, &done](const Status& s) {
+                 status = s;
+                 done.Notify();
+               });
+    done.WaitForNotification();
+  }
 
   rendezvous->Unref();
   if (step_stats_collector != nullptr) {

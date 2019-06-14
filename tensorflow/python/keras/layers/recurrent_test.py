@@ -35,6 +35,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.layers import recurrent as rnn_v1
 from tensorflow.python.keras.layers import recurrent_v2 as rnn_v2
 from tensorflow.python.ops import array_ops
@@ -601,15 +602,17 @@ class RNNTest(keras_parameterized.TestCase):
     cells = [keras.layers.LSTMCell(1),
              keras.layers.LSTMCell(1)]
     layer = keras.layers.RNN(cells)
-    layer.build((None, None, 1))
-
     x = keras.Input((None, 1))
+    _ = layer(x)
+
     update_1 = state_ops.assign_add(cells[0].kernel,
                                     x[0, 0, 0] * cells[0].kernel)
     update_2 = state_ops.assign_add(cells[0].kernel,
                                     array_ops.ones_like(cells[0].kernel))
-    cells[0].add_update(update_1, inputs=x)
-    cells[0].add_update(update_2)
+    # TODO(b/128682878): Remove when RNNCells are __call__'d.
+    with base_layer_utils.call_context().enter(layer, x, True, None):
+      cells[0].add_update(update_1, inputs=x)
+      cells[0].add_update(update_2)
     self.assertEqual(len(layer.updates), 2)
     self.assertEqual(len(layer.get_updates_for(None)), 1)
     self.assertEqual(len(layer.get_updates_for(x)), 1)

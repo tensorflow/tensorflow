@@ -1,18 +1,35 @@
-package(default_visibility = [
-    "//visibility:public",
-])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
 
-# Enables usage of ruy in TF Lite kernels.
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+# Enables usage of ruy in TFLite kernels.
 # WARNING: This build flag is experimental and subject to change.
 config_setting(
-    name = "tflite_with_ruy",
+    name = "tflite_with_ruy_explicit_true",
     define_values = {"tflite_with_ruy": "true"},
+)
+
+# Disables usage of ruy in TFLite kernels.
+# WARNING: This build flag is experimental and subject to change.
+config_setting(
+    name = "tflite_with_ruy_explicit_false",
+    define_values = {"tflite_with_ruy": "false"},
+)
+
+config_setting(
+    name = "chromiumos_arm64",
+    values = {
+        "crosstool_top": "//external:chromiumos/crosstool",
+        "cpu": "arm",
+    },
+    visibility = ["//visibility:public"],
 )
 
 # Suppress warnings that are introduced by Eigen Tensor.
@@ -102,6 +119,31 @@ cc_test(
 )
 
 cc_library(
+    name = "tflite_with_ruy_enabled",
+    defines = ["TFLITE_WITH_RUY"],
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "tflite_with_ruy_default",
+    visibility = ["//visibility:private"],
+    deps = select({
+        "//tensorflow:android_arm64": [":tflite_with_ruy_enabled"],
+        ":chromiumos_arm64": [":tflite_with_ruy_enabled"],
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "tflite_with_ruy",
+    deps = select({
+        ":tflite_with_ruy_explicit_true": [":tflite_with_ruy_enabled"],
+        ":tflite_with_ruy_explicit_false": [],
+        "//conditions:default": [":tflite_with_ruy_default"],
+    }),
+)
+
+cc_library(
     name = "cpu_backend_context",
     srcs = [
         "cpu_backend_context.cc",
@@ -110,13 +152,8 @@ cc_library(
         "cpu_backend_context.h",
     ],
     copts = tflite_copts(),
-    defines = select({
-        "//tensorflow/lite/kernels:tflite_with_ruy": [
-            "TFLITE_WITH_RUY",
-        ],
-        "//conditions:default": [],
-    }),
     deps = [
+        ":tflite_with_ruy",
         ":op_macros",
         # For now this unconditionally depends on both ruy and gemmlowp.
         # See the comment inside class CpuBackendContext on the
@@ -133,6 +170,7 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
+        ":tflite_with_ruy",
         "//tensorflow/lite/kernels/internal:types",
         ":cpu_backend_context",
         # For now this unconditionally depends on both ruy and gemmlowp.
@@ -158,22 +196,19 @@ cc_test(
 cc_library(
     name = "cpu_backend_gemm",
     srcs = [
-        "cpu_backend_gemm_ruy.h",
         "cpu_backend_gemm_custom_gemv.h",
-    ] + select({
-        "//tensorflow/lite/kernels:tflite_with_ruy": [],
-        "//conditions:default": [
-            "cpu_backend_gemm_gemmlowp.h",
-            "cpu_backend_gemm_eigen.h",
-            "cpu_backend_gemm_eigen.cc",
-        ],
-    }),
+        "cpu_backend_gemm_eigen.cc",
+        "cpu_backend_gemm_eigen.h",
+        "cpu_backend_gemm_gemmlowp.h",
+        "cpu_backend_gemm_ruy.h",
+    ],
     hdrs = [
         "cpu_backend_gemm.h",
         "cpu_backend_gemm_params.h",
     ],
     copts = tflite_copts(),
     deps = [
+        ":tflite_with_ruy",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/kernels/internal:common",
         ":cpu_backend_context",
@@ -402,6 +437,23 @@ cc_library(
 )
 
 cc_library(
+    name = "custom_ops",
+    srcs = ["rfft2d.cc"],
+    hdrs = ["custom_ops_register.h"],
+    deps = [
+        ":kernel_util",
+        ":op_macros",
+        "//tensorflow/lite:context",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels/internal:kernel_utils",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//third_party/fft2d:fft2d_headers",
+        "@fft2d",
+        "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
     name = "lstm_eval",
     srcs = ["lstm_eval.cc"],
     hdrs = ["lstm_eval.h"],
@@ -423,7 +475,6 @@ cc_library(
     deps = [
         ":builtin_op_kernels",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_internal",
     ],
 )
@@ -488,6 +539,7 @@ cc_test(
     name = "activations_test",
     size = "small",
     srcs = ["activations_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -501,6 +553,7 @@ cc_test(
     name = "add_test",
     size = "small",
     srcs = ["add_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -636,6 +689,7 @@ cc_test(
     name = "conv_test",
     size = "small",
     srcs = ["conv_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -650,6 +704,7 @@ cc_test(
     name = "depthwise_conv_test",
     size = "small",
     srcs = ["depthwise_conv_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -680,6 +735,7 @@ cc_test(
     name = "basic_rnn_test",
     size = "small",
     srcs = ["basic_rnn_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -805,6 +861,7 @@ cc_test(
     name = "l2norm_test",
     size = "small",
     srcs = ["l2norm_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -844,6 +901,7 @@ cc_test(
     name = "maximum_minimum_test",
     size = "small",
     srcs = ["maximum_minimum_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -870,6 +928,7 @@ cc_test(
     name = "mul_test",
     size = "small",
     srcs = ["mul_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -937,6 +996,7 @@ cc_test(
     name = "topk_v2_test",
     size = "small",
     srcs = ["topk_v2_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1017,6 +1077,7 @@ cc_test(
     name = "fully_connected_test",
     size = "small",
     srcs = ["fully_connected_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1208,6 +1269,7 @@ cc_test(
     name = "tile_test",
     size = "small",
     srcs = ["tile_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1224,6 +1286,7 @@ cc_test(
     srcs = [
         "comparisons_test.cc",
     ],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1391,6 +1454,7 @@ cc_test(
     name = "logical_test",
     size = "small",
     srcs = ["logical_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1568,6 +1632,19 @@ cc_test(
         ":builtin_ops",
         ":test_main",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "rfft2d_test",
+    size = "small",
+    srcs = ["rfft2d_test.cc"],
+    deps = [
+        ":custom_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],

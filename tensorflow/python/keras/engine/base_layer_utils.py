@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import threading
+
 import enum
 
 from tensorflow.python.distribute import distribution_strategy_context
@@ -55,10 +56,8 @@ class CallConvention(enum.Enum):
 def create_mean_metric(value, name=None):
   # TODO(psv): Remove this import when b/110718070 is fixed.
   from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
-  from tensorflow.python.keras.distribute import distributed_training_utils  # pylint: disable=g-import-not-at-top
   metric_obj = metrics_module.Mean(name=name)
-  return (metric_obj,
-          distributed_training_utils.call_replica_local_fn(metric_obj, value))
+  return metric_obj, metric_obj(value)
 
 
 def make_variable(name,
@@ -152,7 +151,7 @@ def make_variable(name,
       collections=collections,
       synchronization=synchronization,
       aggregation=aggregation,
-      shape=variable_shape if variable_shape.rank else None)
+      shape=variable_shape if variable_shape else None)
 
 
 def collect_previous_mask(input_tensors):
@@ -270,7 +269,7 @@ def needs_keras_history(tensors):
     Bool, whether at least one Tensor needs to be wrapped.
   """
   input_tensors = nest.flatten(tensors)
-  if is_in_call_context() or all(
+  if call_context().in_call or all(
       getattr(tensor, '_keras_history', None) is not None
       for tensor in input_tensors):
     # KerasHistory already set.
@@ -278,30 +277,9 @@ def needs_keras_history(tensors):
   return uses_keras_history(tensors)
 
 
-def is_in_call_context():
-  """Returns true if inside of a model/layer '__call__'."""
-  return getattr(_call_context, 'in_call', False)
-
-
-def is_in_frozen_context():
-  """Returns if currently executing inside a `call` of a frozen Layer.
-
-  A Layer is considered frozen if `layer.trainable=False`.
-
-  Returns:
-    Whether currently inside the `call` of a frozen Layer.
-  """
-  return getattr(_call_context, 'frozen', False)
-
-
 def is_in_keras_graph():
   """Returns if currently executing inside of a Keras graph."""
-  # Returns True even if in a subgraph of the Keras graph, such as those
-  # created by control flow ops.
-  if context.executing_eagerly():
-    return False
-  return (getattr(backend.get_graph(), 'name', None) == 'keras_graph' or
-          getattr(_call_context, 'in_keras_graph', False))
+  return call_context().in_keras_graph
 
 
 def is_in_eager_or_tf_function():
@@ -311,8 +289,20 @@ def is_in_eager_or_tf_function():
 
 def is_in_tf_function():
   """Returns if inside of a tf.function."""
-  return (ops.executing_eagerly_outside_functions() and
-          not context.executing_eagerly() and not is_in_keras_graph())
+  # Check if running in V1 graph mode.
+  if not ops.executing_eagerly_outside_functions():
+    return False
+  if not ops.inside_function():
+    return False
+  # Check if inside Keras FuncGraph.
+  if is_in_keras_graph():
+    return False
+  # Check for a v1 `wrap_function` FuncGraph.
+  graph = ops.get_default_graph()
+  if (getattr(graph, 'name', False) and
+      graph.name.startswith('wrapped_function')):
+    return False
+  return True
 
 
 def uses_keras_history(tensors):
@@ -372,34 +362,72 @@ def mark_checked(tensors):
   nest.map_structure(_mark_checked, tensors)
 
 
-@tf_contextlib.contextmanager
-def call_context(layer, build_graph):
-  """Scope that marks when we are currently inside a Layer/Model's `call`.
+def call_context():
+  """Returns currently active `CallContext`."""
+  if getattr(_call_context, 'call_context', None) is None:
+    _call_context.call_context = CallContext()
+  return _call_context.call_context
 
-  Args:
-    layer: The current layer we are entering.
-    build_graph: True if the layer is building a graph to handle symbolic
-      inputs, False if the layer is processing eager inputs eagerly.
 
-  Yields:
-    A scope in the new call context.
+class CallContext(object):
+  """Keeps track of properties currently inside a Layer/Model's `call`.
+
+  Attributes:
+    layer: The `Layer` whose `call` is currently active.
+    inputs: The inputs to the currently active `Layer`.
+    frozen: Whether currently executing inside a `Layer` with `trainable` set to
+      `False`.
+    in_call: Whether currently inside the `call` of a Layer.
+    training: Whether currently executing in training or inference mode.
+    in_keras_graph: Whether executing inside the Keras Graph.
   """
-  was_in_call = is_in_call_context()
-  was_frozen = is_in_frozen_context()
-  was_in_keras_graph = getattr(_call_context, 'in_keras_graph', False)
-  _call_context.in_call = True
-  _call_context.in_keras_graph = (
-      was_in_keras_graph or
-      (build_graph and
-       getattr(backend.get_graph(), 'name', None) == 'keras_graph'))
-  if not layer.trainable:
-    _call_context.frozen = True
-  try:
-    yield
-  finally:
-    _call_context.in_call = was_in_call
-    _call_context.frozen = was_frozen
-    _call_context.in_keras_graph = was_in_keras_graph
+
+  def __init__(self):
+    self.layer = None
+    self.inputs = None
+    self.frozen = False
+    self.in_call = False
+    self.training = None
+    self._in_keras_graph = False
+
+  @tf_contextlib.contextmanager
+  def enter(self, layer, inputs, build_graph, training):
+    """Push a Layer and its inputs and state onto the current call context."""
+    prev_layer = self.layer
+    prev_inputs = self.inputs
+    prev_frozen = self.frozen
+    prev_in_call = self.in_call
+    prev_training = self.training
+    prev_in_keras_graph = self._in_keras_graph
+
+    self.layer = layer
+    self.inputs = inputs
+    self.frozen = self.frozen or not layer.trainable
+    self.in_call = True
+    self.training = training
+    self._in_keras_graph = (
+        self._in_keras_graph or
+        (build_graph and
+         getattr(backend.get_graph(), 'name', None) == 'keras_graph'))
+
+    try:
+      yield
+    finally:
+      self.layer = prev_layer
+      self.inputs = prev_inputs
+      self.frozen = prev_frozen
+      self.in_call = prev_in_call
+      self.training = prev_training
+      self._in_keras_graph = prev_in_keras_graph
+
+  @property
+  def in_keras_graph(self):
+    # Returns True even if in a subgraph of the Keras graph, such as those
+    # created by control flow ops.
+    if context.executing_eagerly():
+      return False
+    return (self._in_keras_graph or
+            getattr(backend.get_graph(), 'name', None) == 'keras_graph')
 
 
 def training_arg_passed_to_call(argspec, args, kwargs):
@@ -439,6 +467,7 @@ def autocast_context_manager(input_list, should_cast):
 
 
 def is_subclassed(layer):
+  """Returns True if the object is a subclassed layer or subclassed model."""
   return (layer.__module__.find('keras.engine') == -1 and
           layer.__module__.find('keras.layers') == -1)
 
@@ -594,3 +623,9 @@ def mark_as_return(outputs, acd):
     # pylint: enable=protected-access
 
   return nest.map_structure(_mark_as_return, outputs)
+
+
+def default(method):
+  """Decorates a method to detect overrides in subclasses."""
+  method._is_default = True  # pylint: disable=protected-access
+  return method

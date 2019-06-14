@@ -510,24 +510,6 @@ Status BaseGPUDevice::FillContextMap(const Graph* graph,
   return Status::OK();
 }
 
-void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
-  // NOTE(tucker): We need to discriminate between Eigen GPU
-  // operations and all others.  If an operation is Eigen
-  // implemented (or otherwise tries to launch a GPU kernel
-  // directly), we need to establish a stacked-scoped environment
-  // that directs it to execute on the proper device.  Otherwise we
-  // expect the Op to use StreamExecutor directly and correctly.  The
-  // way we make this discrimination is quite hacky: At the moment
-  // the only non-Eigen GPU Op is the recv-op, which is known to be
-  // asynchronous.
-  if (op_kernel->is_internal() && op_kernel->type_string() == "_Recv") {
-    context->SetStatus(errors::Internal(
-        "Invalid synchronous 'Compute' on GPU for '_Recv' op"));
-  } else {
-    ComputeHelper(op_kernel, context);
-  }
-}
-
 string BaseGPUDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
                                                  const int& stream_id) {
   return strings::StrCat(op_kernel.name(), " op ", op_kernel.type_string(),
@@ -535,8 +517,25 @@ string BaseGPUDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
                          "]");
 }
 
-void BaseGPUDevice::ComputeHelper(OpKernel* op_kernel,
-                                  OpKernelContext* context) {
+void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
+  profiler::TraceMe activity(
+      [&] {
+        return strings::StrCat("BaseGPUDevice::Compute ", op_kernel->name(),
+                               ":", op_kernel->type_string(),
+                               "#step_id=", context->step_id(),
+                               ",step_container_name=",
+                               context->step_container() == nullptr
+                                   ? "n/a"
+                                   : context->step_container()->name(),
+                               "#");
+      },
+      profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
+  // NOTE(tucker): We need to discriminate between Eigen GPU
+  // operations and all others.  If an operation is Eigen
+  // implemented (or otherwise tries to launch a GPU kernel
+  // directly), we need to establish a stacked-scoped environment
+  // that directs it to execute on the proper device.  Otherwise we
+  // expect the Op to use StreamExecutor directly and correctly.
   GPUDeviceContext* gpu_device_context = device_contexts_[0];
   if (context->op_device_context() != nullptr) {
     gpu_device_context =
@@ -659,8 +658,14 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
   // activity is simple enough that its overhead is negligible.
   profiler::TraceMe activity(
       [&] {
-        return strings::StrCat(op_kernel->name(), ":",
-                               op_kernel->type_string());
+        return strings::StrCat("BaseGPUDevice::ComputeAsync ",
+                               op_kernel->name(), ":", op_kernel->type_string(),
+                               "#step_id=", context->step_id(),
+                               ",step_container_name=",
+                               context->step_container() == nullptr
+                                   ? "n/a"
+                                   : context->step_container()->name(),
+                               "#");
       },
       profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
   ScopedActivateExecutorContext scoped_activation{stream->parent()};
@@ -1660,7 +1665,12 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
   // Try to dlopen GPU libraries if they are supposed to be dynamically loaded.
   auto handle_or = se::internal::DsoLoader::MaybeTryDlopenGPULibraries();
   if (!handle_or.ok()) {
-    LOG(WARNING) << "Cannot dlopen some GPU libraries. Skipping registering "
+    LOG(WARNING) << "Cannot dlopen some GPU libraries. Please make sure the "
+                    "missing libraries mentioned above are installed properly "
+                    "if you would like to use GPU. Follow the guide at "
+                    "https://www.tensorflow.org/install/gpu for how to "
+                    "download and setup the required libraries for your "
+                    "platform.\nSkipping registering "
                     "GPU devices...";
     return Status::OK();
   }

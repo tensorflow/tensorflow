@@ -44,9 +44,7 @@ class CustomCallThunk : public Thunk {
       ShapeTree<BufferAllocation::Slice> result_slices, std::string opaque,
       const HloInstruction* instr);
 
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
-                         HloExecutionProfiler* profiler) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   void* call_target_;

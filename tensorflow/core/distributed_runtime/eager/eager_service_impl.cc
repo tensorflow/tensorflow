@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace eager {
@@ -121,7 +122,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
       request->async(), device_mgr, false, r, nullptr,
-      worker_session->cluster_flr.get(), std::move(rendezvous_creator));
+      worker_session->cluster_flr.get(), std::move(rendezvous_creator),
+      worker_session->remote_device_mgr());
 
   std::vector<DeviceAttributes> device_attributes;
   device_mgr->ListDeviceAttributes(&device_attributes);
@@ -208,6 +210,11 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
 
 Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
                                  EnqueueResponse* response) {
+  profiler::TraceMe activity(
+      [&] {
+        return absl::StrCat("EagerService:Enqueue:", request->DebugString());
+      },
+      profiler::TraceMeLevel::kInfo);
   ServerContext* context = nullptr;
   TF_RETURN_IF_ERROR(GetServerContext(request->context_id(), &context));
   core::ScopedUnref context_unref(context);
@@ -292,9 +299,8 @@ Status EagerServiceImpl::SendTensor(const SendTensorRequest* request,
       return errors::InvalidArgument("Unable to parse tensor proto");
     }
 
-    TensorHandle* tensor_handle =
-        new TensorHandle(tensor, nullptr, nullptr, nullptr);
-
+    TensorHandle* tensor_handle = nullptr;
+    TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(tensor, &tensor_handle));
     TensorHandle* copied_handle = nullptr;
     TF_RETURN_IF_ERROR(EagerCopyToDevice(tensor_handle, context->Context(),
                                          request->device_name().c_str(),

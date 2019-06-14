@@ -34,6 +34,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -264,6 +265,30 @@ class DefFunctionTest(test.TestCase):
         functools.partial(f, constant_op.constant(1)))
     self.assertAllEqual(func(5), 6)
 
+  def test_complicated_partial_with_defaults(self):
+
+    def identity(*args):
+      return args
+
+    def dynamic_unroll(core_fn,
+                       input_sequence,
+                       initial_state,
+                       sequence_length=None,
+                       parallel_iterations=1,
+                       swap_memory=False):
+      del core_fn
+      self.assertIs(None, sequence_length)
+      self.assertEqual(1, parallel_iterations)
+      self.assertTrue(swap_memory)
+      return input_sequence, initial_state
+
+    input_sequence = random_ops.random_uniform([1, 1, 1])
+    initial_state = random_ops.random_uniform([1, 1])
+
+    func = def_function.function(
+        functools.partial(dynamic_unroll, identity, swap_memory=True))
+    func(input_sequence, initial_state)
+
   def test_unspecified_default_argument(self):
     wrapped = def_function.function(
         lambda x, y=2: x + y,
@@ -292,6 +317,36 @@ class DefFunctionTest(test.TestCase):
     self.assertEqual(signature_args,
                      (tensor_spec.TensorSpec(
                          None, dtypes.float32, name='x'),))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_variable_naming(self):
+    class HasVars(module.Module):
+
+      def __init__(self):
+        self.x = None
+        self.y = None
+        self.z = None
+
+      @def_function.function
+      def make_x(self):
+        if self.x is None:
+          self.x = variables.Variable(1., name='v')
+
+      def make_y(self):
+        if self.y is None:
+          self.y = variables.Variable(1., name='v')
+
+      def make_z(self):
+        if self.z is None:
+          with ops.name_scope('z_scope'):
+            self.z = variables.Variable(1., name='z')
+
+    root = HasVars()
+    root.make_x()
+    root.make_y()
+    root.make_z()
+    self.assertEqual('v:0', root.x.name)
+    self.assertEqual('z_scope/z:0', root.z.name)
 
   def test_concrete_function_keyword_arguments(self):
     @def_function.function
@@ -416,6 +471,31 @@ class DefFunctionTest(test.TestCase):
         TypeError,
         re.compile('An op outside of the function.*passed.*Const', re.DOTALL)):
       failing_function()
+
+  def testNonUniqueNamesGetConcreteFunction(self):
+    @def_function.function
+    def non_unique_arg_names(x, **kwargs):
+      a, b, c = x
+      d = kwargs['d']
+      return a + b + c + d
+
+    concrete = non_unique_arg_names.get_concrete_function(
+        (tensor_spec.TensorSpec(None, dtypes.float32),
+         tensor_spec.TensorSpec(None, dtypes.float32),
+         tensor_spec.TensorSpec(None, dtypes.float32)),
+        d=tensor_spec.TensorSpec(None, dtypes.float32))
+    self.assertAllClose(
+        10.,
+        concrete(x=constant_op.constant(1.),
+                 x_1=constant_op.constant(2.),
+                 x_2=constant_op.constant(3.),
+                 d=constant_op.constant(4.)))
+    self.assertAllClose(
+        10.,
+        concrete(constant_op.constant(1.),
+                 constant_op.constant(2.),
+                 constant_op.constant(3.),
+                 constant_op.constant(4.)))
 
   def testVariableCreatorScope(self):
     created_variables = []

@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/tensor.h"
@@ -988,19 +987,17 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
         operand_2_shape, operand_2_is_tensor, operand_2_batch_size);
 
     // operand_1 broadcast operand_2
-    ExpectStatus(
-        this->converter_->GetTrtBroadcastShape(
-            operand_1, operand_2, &operand_1_new_dims, &operand_2_new_dims),
-        expected_code, expected_error_msg_substr);
+    ExpectStatus(GetTrtBroadcastShape(operand_1, operand_2, &operand_1_new_dims,
+                                      &operand_2_new_dims),
+                 expected_code, expected_error_msg_substr);
     if (expected_code == error::OK) {
       ExpectTrtDimsEqualsArray(expected_operand_1_shape, operand_1_new_dims);
       ExpectTrtDimsEqualsArray(expected_operand_2_shape, operand_2_new_dims);
     }
     // operand_2 broadcast operand_1
-    ExpectStatus(
-        this->converter_->GetTrtBroadcastShape(
-            operand_2, operand_1, &operand_2_new_dims, &operand_1_new_dims),
-        expected_code, expected_error_msg_substr);
+    ExpectStatus(GetTrtBroadcastShape(operand_2, operand_1, &operand_2_new_dims,
+                                      &operand_1_new_dims),
+                 expected_code, expected_error_msg_substr);
     if (expected_code == error::OK) {
       ExpectTrtDimsEqualsArray(expected_operand_1_shape, operand_1_new_dims);
       ExpectTrtDimsEqualsArray(expected_operand_2_shape, operand_2_new_dims);
@@ -1033,18 +1030,29 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
                  error::INVALID_ARGUMENT,
                  "Broadcasting beyond batch dimension is not supported "
                  "(tensor #dims 4 vs broadcast #dims 5)");
+  symmetric_test({3}, {1, 1, 3}, kIsTensor, kIsNotTensor, {}, {},
+                 error::INVALID_ARGUMENT,
+                 "Broadcasting beyond batch dimension is not supported "
+                 "(tensor #dims 2 vs broadcast #dims 3)",
+                 /*operand_1_batch_size=*/2);
 
   // Both inputs are tensors.
   symmetric_test({1, 1, 1}, {1, 1}, kIsTensor, kIsTensor, {}, {},
                  error::INVALID_ARGUMENT,
                  "Broadcasting beyond batch dimension is not supported "
                  "(tensor #dims 3 vs broadcast #dims 4)");
+  symmetric_test({1, 3}, {3}, kIsTensor, kIsTensor, {}, {},
+                 error::INVALID_ARGUMENT,
+                 "Broadcasting beyond batch dimension is not supported "
+                 "(tensor #dims 2 vs broadcast #dims 3)");
   symmetric_test({1, 3, 4}, {2, 1, 4}, kIsTensor, kIsTensor, {1, 3, 4},
                  {2, 1, 4});
   symmetric_test({1, 1, 1}, {1, 1, 1, 1}, kIsTensor, kIsTensor, {}, {},
                  error::INVALID_ARGUMENT,
                  "Broadcasting beyond batch dimension is not supported "
                  "(tensor #dims 4 vs broadcast #dims 5)");
+  symmetric_test({2, 3}, {7, 5}, kIsTensor, kIsTensor, {}, {},
+                 error::INVALID_ARGUMENT, "Infeasible broadcast scheme");
 }
 
 TEST_F(ConverterTest, CreateConstantLayer) {
@@ -1495,6 +1503,23 @@ TEST_F(OpConverterTest, ConvertConst) {
     RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                "Unsupported data type double");
   }
+  {
+    Reset();
+    Tensor tensor =
+        test::AsTensor<int64>({1, std::numeric_limits<int64>::max(), 1, 1, 1,
+                               std::numeric_limits<int64>::lowest()},
+                              TensorShape({2, 3}));
+    NodeDef node_def;
+    node_def.set_name("my_const");
+    node_def.set_op("Const");
+    (*node_def.mutable_attr())["dtype"].set_type(DT_INT64);
+    TensorProto* tensor_attr =
+        (*node_def.mutable_attr())["value"].mutable_tensor();
+    tensor_attr->Clear();
+    tensor.AsProtoTensorContent(tensor_attr);
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "outside the range of int32");
+  }
 
   TestConvertConst<DT_FLOAT, float, float>(this);
   TestConvertConst<DT_INT8, int8, int32>(this);
@@ -1502,6 +1527,9 @@ TEST_F(OpConverterTest, ConvertConst) {
   TestConvertConst<DT_INT16, int16, int32>(this);
   TestConvertConst<DT_UINT16, uint16, int32>(this);
   TestConvertConst<DT_INT32, int32, int32>(this);
+  TestConvertConst<DT_UINT32, uint32, int32>(this);
+  TestConvertConst<DT_INT64, int64, int32>(this);
+  TestConvertConst<DT_UINT64, uint64, int32>(this);
 }
 
 TEST_F(OpConverterTest, ConvertTranspose) {
@@ -2007,250 +2035,86 @@ void CheckAddedLayers(OpConverterTest* test, bool expect_scale_layer) {
 }
 
 template <typename OpType, DataType dtype>
-void TestBinaryTensorOpWeightNoBroadcast(OpConverterTest* test) {
-  typedef typename EnumToDataType<dtype>::Type CType;
-  for (auto swap_inputs : {false, true}) {
-    test->Reset();
-    NodeDef node_def;
-    if (swap_inputs) {
-      node_def = GetBinaryOpNodeDef<OpType>("weights", "input", dtype);
-    } else {
-      node_def = GetBinaryOpNodeDef<OpType>("input", "weights", dtype);
-    }
-
-    const std::vector<CType> operand1{CType(3), CType(7.5)};
-    const std::vector<CType> operand2{CType(2), CType(3)};
-
-    // It requires the dims to be at least of rank 3 to apply an IScaleLayer.
-    test->AddTestTensor("input", /*dims=*/{1, 1, 2}, /*batch_size=*/1,
-                        TfDataTypeToTrt(dtype));
-    test->AddTestWeights<CType>("weights", /*dims=*/{1, 1, 2},
-                                /*values=*/swap_inputs ? operand1 : operand2);
-    test->RunValidationAndConversion(node_def);
-
-    // Make sure it does use BinaryTensorOpWeight, not BinaryTensorOpTensor.
-    CheckAddedLayers(test, /*expect_scale_layer=*/true);
-
-    // Check the dims of the output ITensor.
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(test->GetTensorOrWeights("my_binary", &output));
-    ASSERT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray({1, 1, 2}, output.tensor()->getDimensions());
-
-    const DataVec input_data{
-        {"input", test::AsTensor<CType>(swap_inputs ? operand2 : operand1)}};
-    DataVec output_data{{"my_binary", ConstructTensor<CType>(2)}};
-    test->BuildAndRun(
-        input_data, &output_data,
-        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
-    if (node_def.op() == "Add") {
-      EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                  ElementsAre(CType(5), CType(10.5)));
-    } else if (node_def.op() == "Sub") {
-      EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                  ElementsAre(CType(1), CType(4.5)));
-    } else if (node_def.op() == "Mul") {
-      EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                  ElementsAre(CType(6), CType(22.5)));
-    } else if (node_def.op() == "Div") {
-      EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                  ElementsAre(CType(1.5), CType(2.5)));
-    } else if (node_def.op() == "RealDiv") {
-      EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                  ElementsAre(CType(1.5), CType(2.5)));
-    } else {
-      ASSERT_TRUE(false);
-    }
-  }
-}
-
-template <DataType dtype>
-void TestBinaryTensorOpWeightWithChannelWiseBroadcast(OpConverterTest* test) {
-  typedef typename EnumToDataType<dtype>::Type CType;
-  const NodeDef node_def =
-      GetBinaryOpNodeDef<ops::Add>("input", "weights", dtype);
-  const std::vector<CType> input{CType(1), CType(2), CType(3), CType(4)};
-  const std::vector<CType> weights{CType(10), CType(20)};
-  // There are two types of valid dim pairs which requires channel-wise
-  // broadcasting:
-  // - input dims (X Y Z) vs weights dims (X 1 1)
-  // - input dims (X Y Z) vs weights dims (Z)
-  // Here X=Z=2 and Y=1.
-  for (auto weights_dims : std::vector<std::vector<int>>{{2, 1, 1}, {2}}) {
-    test->Reset();
-    test->AddTestTensor("input", /*dims=*/{2, 1, 2}, /*batch_size=*/1,
-                        TfDataTypeToTrt(dtype));
-    test->AddTestWeights<CType>("weights", weights_dims, weights);
-    test->RunValidationAndConversion(node_def);
-
-    // Make sure it does use BinaryTensorOpWeight, not BinaryTensorOpTensor.
-    CheckAddedLayers(test, /*expect_scale_layer=*/true);
-
-    // Check the dims of the output ITensor.
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(test->GetTensorOrWeights("my_binary", &output));
-    ASSERT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray({2, 1, 2}, output.tensor()->getDimensions());
-
-    const DataVec input_data{{"input", test::AsTensor<CType>(input)}};
-    DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
-    test->BuildAndRun(input_data, &output_data);
-    if (weights_dims.size() == 1) {
-      EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                  ElementsAre(CType(11), CType(22), CType(13), CType(24)));
-    } else {
-      EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                  ElementsAre(CType(11), CType(12), CType(23), CType(24)));
-    }
-  }
-}
-
-template <DataType dtype>
-void TestBinaryTensorOpWeightWithUniformlyBroadcast(OpConverterTest* test) {
-  typedef typename EnumToDataType<dtype>::Type CType;
-  const NodeDef node_def =
-      GetBinaryOpNodeDef<ops::Add>("input", "weights", dtype);
-  const std::vector<CType> input{CType(1), CType(2), CType(3), CType(4)};
-  const std::vector<CType> weights{CType(10)};
-  test->Reset();
-  test->AddTestTensor("input", /*dims=*/{2, 1, 2}, /*batch_size=*/1,
-                      TfDataTypeToTrt(dtype));
-  test->AddTestWeights<CType>("weights", {1, 1, 1, 1}, weights);
-  test->RunValidationAndConversion(node_def);
-
-  // Make sure it does use BinaryTensorOpWeight, not BinaryTensorOpTensor.
-  CheckAddedLayers(test, /*expect_scale_layer=*/true);
-
-  // Check the dims of the output ITensor.
-  TRT_TensorOrWeights output;
-  TF_EXPECT_OK(test->GetTensorOrWeights("my_binary", &output));
-  ASSERT_TRUE(output.is_tensor());
-  ExpectTrtDimsEqualsArray({2, 1, 2}, output.tensor()->getDimensions());
-
-  const DataVec input_data{{"input", test::AsTensor<CType>(input)}};
-  DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
-  test->BuildAndRun(input_data, &output_data);
-  EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-              ElementsAre(CType(11), CType(12), CType(13), CType(14)));
-}
-
-template <typename OpType>
-void TestBinaryTensorOpWeightFallback(OpConverterTest* test,
-                                      const std::vector<int32>& input_dims,
-                                      const std::vector<int>& weights_dims,
-                                      error::Code code = error::OK,
-                                      const char* error_msg_substr = nullptr,
-                                      const int input_batch_size = 1) {
-  const DataType dtype = DT_FLOAT;
-  typedef typename EnumToDataType<dtype>::Type CType;
-  const size_t num_inputs = TrtTensorDimsNumElements(GetTestDims(input_dims));
-  const size_t num_weights =
-      TrtWeightDimsNumElements(GetTestDims(weights_dims));
-
-  test->Reset();
-  const NodeDef node_def =
-      GetBinaryOpNodeDef<OpType>("input", "weights", dtype);
-  test->AddTestTensor("input", /*dims=*/input_dims, input_batch_size,
-                      TfDataTypeToTrt(dtype));
-  test->AddTestWeights<CType>(
-      "weights", /*dims=*/weights_dims,
-      /*values=*/std::vector<CType>(num_weights, CType(1)));
-  test->RunValidationAndConversion(node_def, code, error_msg_substr);
-  if (code != error::OK) return;
-
-  // Make sure it does use BinaryTensorOpTensor, not BinaryTensorOpWeight.
-  CheckAddedLayers(test, /*expect_scale_layer=*/false);
-
-  TRT_TensorOrWeights output;
-  TF_EXPECT_OK(test->GetTensorOrWeights("my_binary", &output));
-  ASSERT_TRUE(output.is_tensor());
-
-  // Check the dims of the output ITensor.
-  std::vector<int> expected_output_dims = input_dims;
-  for (int i = expected_output_dims.size() - 1, j = weights_dims.size() - 1;
-       i >= 0 && j >= 0; --i, --j) {
-    if (expected_output_dims[i] == 1) {
-      expected_output_dims[i] = weights_dims[j];
-    }
-  }
-  ExpectTrtDimsEqualsArray(expected_output_dims,
-                           output.tensor()->getDimensions());
-
-  // Check the result of running the engine.
-  const int expected_num_outputs =
-      TrtTensorDimsNumElements(GetTestDims(expected_output_dims));
-  const DataVec input_data{
-      {"input", ConstructTensor<CType>(num_inputs, CType(2))}};
-  DataVec output_data{
-      {"my_binary", ConstructTensor<CType>(expected_num_outputs)}};
-  test->BuildAndRun(input_data, &output_data);
-  if (node_def.op() == "Add") {
-    EXPECT_THAT(
-        GetSpanForData<CType>(output_data[0]),
-        ElementsAreArray(std::vector<CType>(expected_num_outputs, CType(3))));
-  } else if (node_def.op() == "Minimum") {
-    EXPECT_THAT(
-        GetSpanForData<CType>(output_data[0]),
-        ElementsAreArray(std::vector<CType>(expected_num_outputs, CType(1))));
-  } else {
-    ASSERT_TRUE(false);
-  }
-}
-
-template <typename OpType, DataType dtype>
-void TestBinaryTensorOpTensor(OpConverterTest* test) {
+void TestBinaryOp(OpConverterTest* test, bool operand_1_is_tensor,
+                  bool operand_2_is_tensor) {
   typedef typename EnumToDataType<dtype>::Type CType;
   test->Reset();
   const NodeDef node_def =
       GetBinaryOpNodeDef<OpType>("input1", "input2", dtype);
-  test->AddTestTensor("input1", /*dims=*/{1, 2}, /*batch_size=*/1,
-                      TfDataTypeToTrt(dtype));
-  test->AddTestTensor("input2", /*dims=*/{2, 1}, /*batch_size=*/1,
-                      TfDataTypeToTrt(dtype));
+  if (operand_1_is_tensor) {
+    test->AddTestTensor("input1", /*dims=*/{1, 2}, /*batch_size=*/2,
+                        TfDataTypeToTrt(dtype));
+  } else {
+    test->AddTestWeights("input1", /*dims=*/{1, 2},
+                         /*values=*/std::vector<CType>{CType(3), CType(6)});
+  }
+  if (operand_2_is_tensor) {
+    test->AddTestTensor("input2", /*dims=*/{2, 1}, /*batch_size=*/2,
+                        TfDataTypeToTrt(dtype));
+  } else {
+    test->AddTestWeights("input2", /*dims=*/{2, 1},
+                         /*values=*/std::vector<CType>{CType(2), CType(3)});
+  }
   test->RunValidationAndConversion(node_def);
 
-  // Make sure it does use BinaryTensorOpTensor, not BinaryTensorOpWeight.
-  CheckAddedLayers(test, /*expect_scale_layer=*/false);
-
+  DataVec input_data;
+  if (operand_1_is_tensor) {
+    input_data.push_back(
+        {"input1",
+         test::AsTensor<CType>({CType(3), CType(6), CType(3), CType(6)})});
+  }
+  if (operand_2_is_tensor) {
+    input_data.push_back(
+        {"input2",
+         test::AsTensor<CType>({CType(2), CType(3), CType(2), CType(3)})});
+  }
+  DataVec output_data{{"my_binary", ConstructTensor<CType>(8)}};
   // Check output dims.
   TRT_TensorOrWeights output;
   TF_EXPECT_OK(test->GetTensorOrWeights("my_binary", &output));
   ASSERT_TRUE(output.is_tensor());
   ExpectTrtDimsEqualsArray({2, 2}, output.tensor()->getDimensions());
-
-  const DataVec input_data{
-      {"input1", test::AsTensor<CType>({CType(3), CType(6)})},
-      {"input2", test::AsTensor<CType>({CType(2), CType(3)})}};
-  DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
   // After broadcasting first input becomes {3, 6, 3, 6} and second input
   // becomes {2, 3, 2, 3}.
   test->BuildAndRun(
       input_data, &output_data,
-      dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+      dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32,
+      /*batch_size=*/2);
   if (node_def.op() == "Add") {
-    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                ElementsAre(CType(5), CType(8), CType(6), CType(9)));
+    EXPECT_THAT(
+        GetSpanForData<CType>(output_data[0]),
+        ElementsAreArray(CastTestVector<int, CType>({5, 8, 6, 9, 5, 8, 6, 9})));
   } else if (node_def.op() == "Sub") {
-    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                ElementsAre(CType(1), CType(4), CType(0), CType(3)));
+    EXPECT_THAT(
+        GetSpanForData<CType>(output_data[0]),
+        ElementsAreArray(CastTestVector<int, CType>({1, 4, 0, 3, 1, 4, 0, 3})));
   } else if (node_def.op() == "Mul") {
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                ElementsAre(CType(6), CType(12), CType(9), CType(18)));
+                ElementsAreArray(
+                    CastTestVector<int, CType>({6, 12, 9, 18, 6, 12, 9, 18})));
   } else if (node_def.op() == "Div") {
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                ElementsAre(CType(1.5), CType(3), CType(1), CType(2)));
+                ElementsAreArray(CastTestVector<float, CType>(
+                    {1.5, 3, 1, 2, 1.5, 3, 1, 2})));
   } else if (node_def.op() == "RealDiv") {
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                ElementsAre(CType(1.5), CType(3), CType(1), CType(2)));
+                ElementsAreArray(CastTestVector<float, CType>(
+                    {1.5, 3, 1, 2, 1.5, 3, 1, 2})));
+  } else if (node_def.op() == "FloorDiv") {
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                ElementsAreArray(
+                    CastTestVector<float, CType>({1, 3, 1, 2, 1, 3, 1, 2})));
   } else if (node_def.op() == "Minimum") {
-    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                ElementsAre(CType(2), CType(2), CType(3), CType(3)));
+    EXPECT_THAT(
+        GetSpanForData<CType>(output_data[0]),
+        ElementsAreArray(CastTestVector<int, CType>({2, 2, 3, 3, 2, 2, 3, 3})));
   } else if (node_def.op() == "Maximum") {
-    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                ElementsAre(CType(3), CType(6), CType(3), CType(6)));
+    EXPECT_THAT(
+        GetSpanForData<CType>(output_data[0]),
+        ElementsAreArray(CastTestVector<int, CType>({3, 6, 3, 6, 3, 6, 3, 6})));
   } else if (node_def.op() == "Pow") {
     ExpectArrayNear(
-        std::vector<CType>{CType(9), CType(36), CType(27), CType(216)},
+        CastTestVector<int, CType>({9, 36, 27, 216, 9, 36, 27, 216}),
         GetSpanForData<CType>(output_data[0]));
   } else {
     ASSERT_TRUE(false);
@@ -2284,58 +2148,130 @@ TEST_F(OpConverterTest, ConvertBinary) {
         "both input as constant at: my_add");
   }
 
-  // Test BinaryTensorOpWeight() without broadcasting.
-  TestBinaryTensorOpWeightNoBroadcast<ops::Add, DT_FLOAT>(this);
-  TestBinaryTensorOpWeightNoBroadcast<ops::Sub, DT_FLOAT>(this);
-  TestBinaryTensorOpWeightNoBroadcast<ops::Mul, DT_FLOAT>(this);
-  TestBinaryTensorOpWeightNoBroadcast<ops::Div, DT_FLOAT>(this);
-  TestBinaryTensorOpWeightNoBroadcast<ops::RealDiv, DT_FLOAT>(this);
+  // Test combinations of tensor vs weight inputs (except when both inputs are
+  // weights).
+  for (const bool operand_1_is_tensor : {true, false}) {
+    for (const bool operand_2_is_tensor : {true, false}) {
+      if (!operand_1_is_tensor && !operand_2_is_tensor) continue;
+      // FP32 tests
+      TestBinaryOp<ops::Add, DT_FLOAT>(this, operand_1_is_tensor,
+                                       operand_2_is_tensor);
+      TestBinaryOp<ops::Sub, DT_FLOAT>(this, operand_1_is_tensor,
+                                       operand_2_is_tensor);
+      TestBinaryOp<ops::Mul, DT_FLOAT>(this, operand_1_is_tensor,
+                                       operand_2_is_tensor);
+      TestBinaryOp<ops::Div, DT_FLOAT>(this, operand_1_is_tensor,
+                                       operand_2_is_tensor);
+      TestBinaryOp<ops::RealDiv, DT_FLOAT>(this, operand_1_is_tensor,
+                                           operand_2_is_tensor);
+      TestBinaryOp<ops::Minimum, DT_FLOAT>(this, operand_1_is_tensor,
+                                           operand_2_is_tensor);
+      TestBinaryOp<ops::Maximum, DT_FLOAT>(this, operand_1_is_tensor,
+                                           operand_2_is_tensor);
+      TestBinaryOp<ops::Pow, DT_FLOAT>(this, operand_1_is_tensor,
+                                       operand_2_is_tensor);
+      // FP16 tests
+      // TODO(tmorris): Use templates to avoid duplication.
+      TestBinaryOp<ops::Add, DT_HALF>(this, operand_1_is_tensor,
+                                      operand_2_is_tensor);
+      TestBinaryOp<ops::Sub, DT_HALF>(this, operand_1_is_tensor,
+                                      operand_2_is_tensor);
+      TestBinaryOp<ops::Mul, DT_HALF>(this, operand_1_is_tensor,
+                                      operand_2_is_tensor);
+      TestBinaryOp<ops::Div, DT_HALF>(this, operand_1_is_tensor,
+                                      operand_2_is_tensor);
+      TestBinaryOp<ops::RealDiv, DT_HALF>(this, operand_1_is_tensor,
+                                          operand_2_is_tensor);
+      TestBinaryOp<ops::Minimum, DT_HALF>(this, operand_1_is_tensor,
+                                          operand_2_is_tensor);
+      TestBinaryOp<ops::Maximum, DT_HALF>(this, operand_1_is_tensor,
+                                          operand_2_is_tensor);
+      TestBinaryOp<ops::Pow, DT_HALF>(this, operand_1_is_tensor,
+                                      operand_2_is_tensor);
+    }
+  }
+}
 
-  TestBinaryTensorOpWeightNoBroadcast<ops::Add, DT_HALF>(this);
-  TestBinaryTensorOpWeightNoBroadcast<ops::Sub, DT_HALF>(this);
-  TestBinaryTensorOpWeightNoBroadcast<ops::Mul, DT_HALF>(this);
-  TestBinaryTensorOpWeightNoBroadcast<ops::Div, DT_HALF>(this);
-  TestBinaryTensorOpWeightNoBroadcast<ops::RealDiv, DT_HALF>(this);
+NodeDef GetAddNNodeDef(const std::vector<string>& input_names, DataType dtype) {
+  Scope s = Scope::NewRootScope();
+  OutputList inputs;
+  for (const string& name : input_names) {
+    inputs.push_back(ops::Placeholder(s.WithOpName(name), dtype));
+  }
+  auto op = ops::AddN(s.WithOpName("my_addn"), inputs);
+  return op.operation.node()->def();
+}
 
-  // Test BinaryTensorOpWeight() with channel-wise broadcasting.
-  TestBinaryTensorOpWeightWithChannelWiseBroadcast<DT_FLOAT>(this);
+template <DataType dtype>
+void TestAddN(OpConverterTest* test) {
+  typedef typename EnumToDataType<dtype>::Type CType;
+  {
+    // All inputs are tensors.
+    test->Reset();
+    DataVec input_data;
+    for (const auto name : {"inp1", "inp2", "inp3"}) {
+      test->AddTestTensor(name, /*dims=*/{1, 2}, /*batch_size=*/2,
+                          TfDataTypeToTrt(dtype));
+      input_data.push_back({name, test::AsTensor<CType>({CType(1), CType(2),
+                                                         CType(3), CType(4)})});
+    }
+    const NodeDef node_def = GetAddNNodeDef({"inp1", "inp2", "inp3"}, dtype);
+    test->RunValidationAndConversion(node_def);
 
-  // Test BinaryTensorOpWeight() with uniformly broadcasting.
-  TestBinaryTensorOpWeightWithUniformlyBroadcast<DT_FLOAT>(this);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_addn", &output));
+    ASSERT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray({1, 2}, output.tensor()->getDimensions());
 
-  // Test BinaryTensorOpWeight() falling back to BinaryTensorOpTensor().
-  // Unsupported op.
-  TestBinaryTensorOpWeightFallback<ops::Minimum>(this, {1, 1, 1}, {1});
-  // Rank of input tensor dimension <3.
-  TestBinaryTensorOpWeightFallback<ops::Add>(this, {1, 1}, {1});
-  // Broadcast on batch dimension, should fail.
-  TestBinaryTensorOpWeightFallback<ops::Add>(
-      this, {1, 1, 1}, {2, 1, 1, 1}, error::INVALID_ARGUMENT,
-      "Unsupported binary op broadcast scheme for op my_binary",
-      /*input_batch_size=*/2);
-  // Incompatible dims with per-channel mode.
-  TestBinaryTensorOpWeightFallback<ops::Add>(this, {1, 1, 1}, {1, 2, 1});
-  // Incompatible dims.
-  TestBinaryTensorOpWeightFallback<ops::Add>(this, {1, 2, 1}, {2});
+    DataVec output_data{{"my_addn", ConstructTensor<CType>(4)}};
+    test->BuildAndRun(
+        input_data, &output_data,
+        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32,
+        /*batch_size=*/2);
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                ElementsAreArray(CastTestVector<int, CType>({3, 6, 9, 12})));
+  }
+  {
+    // Input contains tensors and weights.
+    test->Reset();
+    DataVec input_data;
+    for (const auto name : {"inp1", "inp2"}) {
+      test->AddTestTensor(name, /*dims=*/{1, 2}, /*batch_size=*/1,
+                          TfDataTypeToTrt(dtype));
+      input_data.push_back({name, test::AsTensor<CType>({CType(1), CType(2)})});
+    }
+    test->AddTestWeights("inp3", /*dims=*/{1, 1, 2},
+                         /*values=*/std::vector<CType>{CType(3), CType(4)});
+    const NodeDef node_def = GetAddNNodeDef({"inp1", "inp2", "inp3"}, dtype);
+    test->RunValidationAndConversion(node_def);
 
-  // Test BinaryTensorOpTensor() with broadcasting.
-  TestBinaryTensorOpTensor<ops::Add, DT_FLOAT>(this);
-  TestBinaryTensorOpTensor<ops::Sub, DT_FLOAT>(this);
-  TestBinaryTensorOpTensor<ops::Mul, DT_FLOAT>(this);
-  TestBinaryTensorOpTensor<ops::Div, DT_FLOAT>(this);
-  TestBinaryTensorOpTensor<ops::RealDiv, DT_FLOAT>(this);
-  TestBinaryTensorOpTensor<ops::Minimum, DT_FLOAT>(this);
-  TestBinaryTensorOpTensor<ops::Maximum, DT_FLOAT>(this);
-  TestBinaryTensorOpTensor<ops::Pow, DT_FLOAT>(this);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_addn", &output));
+    ASSERT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray({1, 2}, output.tensor()->getDimensions());
 
-  TestBinaryTensorOpTensor<ops::Add, DT_HALF>(this);
-  TestBinaryTensorOpTensor<ops::Sub, DT_HALF>(this);
-  TestBinaryTensorOpTensor<ops::Mul, DT_HALF>(this);
-  TestBinaryTensorOpTensor<ops::Div, DT_HALF>(this);
-  TestBinaryTensorOpTensor<ops::RealDiv, DT_HALF>(this);
-  TestBinaryTensorOpTensor<ops::Minimum, DT_HALF>(this);
-  TestBinaryTensorOpTensor<ops::Maximum, DT_HALF>(this);
-  TestBinaryTensorOpTensor<ops::Pow, DT_HALF>(this);
+    DataVec output_data{{"my_addn", ConstructTensor<CType>(2)}};
+    test->BuildAndRun(
+        input_data, &output_data,
+        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                ElementsAreArray(CastTestVector<int, CType>({5, 8})));
+  }
+}
+
+TEST_F(OpConverterTest, ConvertAddN) {
+  {
+    // Weights with batch dim that is not 1.
+    Reset();
+    const NodeDef node_def = GetAddNNodeDef({"tensor", "weights"}, DT_FLOAT);
+    AddTestTensor("tensor", /*dims=*/{1, 2}, /*batch_size=*/2);
+    AddTestWeights<float>("weights", {2, 1, 2}, {0, 1, 2, 3});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Weights input to AddN is required to have batch dimension 1.");
+  }
+  TestAddN<DT_FLOAT>(this);
+  TestAddN<DT_HALF>(this);
 }
 
 TEST_F(OpConverterTest, ConvertQuantize) {

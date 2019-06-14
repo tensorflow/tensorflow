@@ -1,13 +1,14 @@
-package(default_visibility = [
-    "//tensorflow/lite:__subpackages__",
-    "//tensorflow/tools/pip_package:__subpackages__",
-])
-
-licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "py_binary")
+
+package(
+    default_visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow/tools/pip_package:__subpackages__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 config_setting(
     name = "tflite_convert_with_select_tf_ops",

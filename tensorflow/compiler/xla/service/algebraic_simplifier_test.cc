@@ -4085,6 +4085,27 @@ TEST_F(AlgebraicSimplifierTest, MergeBroadcastAndIota2) {
   EXPECT_EQ(Cast<HloIotaInstruction>(root)->iota_dimension(), 2);
 }
 
+TEST_F(AlgebraicSimplifierTest, TransposeOfDot) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      lhs = f32[3,4,5] parameter(0)
+      rhs = f32[6,3,4] parameter(1)
+      dot = f32[5,6] dot(lhs,rhs), lhs_contracting_dims={0,1}, rhs_contracting_dims={1,2}
+      ROOT transpose = f32[6,5] transpose(dot), dimensions={1,0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Dot(m::Parameter(1), m::Parameter(0))));
+}
+
 TEST_F(AlgebraicSimplifierTest, SliceOfPadLow) {
   const char* hlo_string = R"(
     HloModule module
@@ -4549,7 +4570,7 @@ TEST_P(DotStrengthReductionTest, DotStrengthReduction) {
   // The second pass of algebriac simplifer will remove dots without
   // non-contracting dimensions or contracting dimensions.
   TF_ASSERT_OK_AND_ASSIGN(changed, simplifier.Run(module.get()));
-  EXPECT_EQ(changed, dot_should_be_transformed);
+  EXPECT_EQ(changed, computation_should_be_modified);
   bool has_no_dot = true;
   for (const auto& hlo : computation->instructions()) {
     if (hlo->opcode() == HloOpcode::kDot) {

@@ -77,8 +77,18 @@ unsigned char TF_SetXlaEnableLazyCompilation(unsigned char enable) {
   return original;
 }
 
-void TF_SetXLaAutoJitMode(const char* mode) {
+void TF_SetXlaAutoJitMode(const char* mode) {
   tensorflow::SetXlaAutoJitFlagFromFlagString(mode);
+}
+
+unsigned char TF_GetXlaConstantFoldingDisabled() {
+  return static_cast<unsigned char>(
+      tensorflow::GetBuildXlaOpsPassFlags()->tf_xla_disable_constant_folding);
+}
+
+void TF_SetXlaConstantFoldingDisabled(unsigned char should_enable) {
+  tensorflow::GetBuildXlaOpsPassFlags()->tf_xla_disable_constant_folding =
+      static_cast<bool>(should_enable);
 }
 
 void TF_SetXlaMinClusterSize(int size) {
@@ -726,14 +736,15 @@ int TF_PickUnusedPortOrDie() {
   return tensorflow::internal::PickUnusedPortOrDie();
 }
 
-TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType dtype_arg,
-                                                void* data, size_t len) {
-  auto dtype = static_cast<tensorflow::DataType>(dtype_arg);
+TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType data_type,
+                                                void* data, size_t len,
+                                                TF_Status* status) {
+  auto dtype = static_cast<tensorflow::DataType>(data_type);
   DCHECK(tensorflow::DataTypeCanUseMemcpy(dtype));
 
   tensorflow::Tensor tensor(dtype, tensorflow::TensorShape({}));
   std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
-  return new TFE_TensorHandle(tensor, nullptr, nullptr);
+  return TFE_TensorHandle::CreateLocalHandle(tensor, status);
 }
 
 namespace {

@@ -2130,7 +2130,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   int64 lhs_dims = hlo->operand(0)->shape().dimensions_size();
   int64 rhs_dims = hlo->operand(1)->shape().dimensions_size();
 
-  llvm::Type* index_type = dot_result_index[0]->getType();
+  llvm::Type* index_type = dot_result_index.GetType();
   auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_type, c);
   };

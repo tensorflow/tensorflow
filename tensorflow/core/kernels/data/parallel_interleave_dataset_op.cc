@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -56,8 +57,10 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ParallelInterleaveDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "f", /*params=*/{},
-                                                 &func_metadata_));
+    FunctionMetadata::Params params;
+    params.is_multi_device_function = true;
+    OP_REQUIRES_OK(ctx,
+                   FunctionMetadata::Create(ctx, "f", params, &func_metadata_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("sloppy", &sloppy_));
@@ -68,6 +71,9 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
     int64 cycle_length = 0;
     OP_REQUIRES_OK(ctx,
                    ParseScalarArgument(ctx, "cycle_length", &cycle_length));
+    if (cycle_length == model::kAutoTune) {
+      cycle_length = port::NumSchedulableCPUs();
+    }
     OP_REQUIRES(ctx, cycle_length > 0,
                 errors::InvalidArgument("`cycle_length` must be > 0"));
 
@@ -939,6 +945,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("ParallelInterleaveDatasetV2").Device(DEVICE_CPU),
                         ParallelInterleaveDatasetOp);
+REGISTER_INPUT_COLOCATION_EXEMPTION("ParallelInterleaveDatasetV2");
 
 }  // namespace
 }  // namespace data

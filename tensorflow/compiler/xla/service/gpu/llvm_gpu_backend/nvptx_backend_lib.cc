@@ -459,8 +459,9 @@ void GPUBackendInit(const HloModuleConfig& hlo_module_config) {
   // between those loads.
   FeedLLVMWithFlags({"-memdep-block-scan-limit=500"});
 
-  // Use div.approx -- it matters for some float-division heavy benchmarks.
-  FeedLLVMWithFlags({"-nvptx-prec-divf32=0"});
+  // Use div.full -- it matters for some float-division heavy benchmarks.
+  // Using div.approx produces incorrect result for float32(max)/float32(max).
+  FeedLLVMWithFlags({"-nvptx-prec-divf32=1"});
 
   llvm_ir::InitializeLLVMCommandLineOptions(hlo_module_config);
 

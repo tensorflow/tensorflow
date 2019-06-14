@@ -23,10 +23,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_int8_calibrator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -512,13 +512,6 @@ class Converter {
                                const bool validation_only,
                                nvinfer1::ITensor** tensor);
 
-  // Return OK if the broadcast scheme is supported and compute the shapes after
-  // broadcasting.
-  Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
-                              const TRT_TensorOrWeights& operand_r,
-                              nvinfer1::Dims* operand_l_new_dims,
-                              nvinfer1::Dims* operand_r_new_dims) const;
-
   // Creates an IConstantLayer using 'weights' whose dimensions are specified by
   // 'dims', and returns the output ITensor.
   nvinfer1::ITensor* CreateConstantLayer(const TRT_ShapedWeights& weights,
@@ -552,9 +545,6 @@ class Converter {
 
   // Tensors/weights added during construction of trt_network_.
   std::unordered_map<string, TRT_TensorOrWeights> trt_tensors_;
-
-  // Special op converter for custom plugins.
-  OpConverter plugin_converter_;
 
   // The TRT networking being built.
   nvinfer1::INetworkDefinition* trt_network_;
@@ -591,6 +581,13 @@ class Converter {
   friend class ConverterTest;
   friend class OpConverterTest;
 };
+
+// Return OK if the broadcast scheme is supported and compute the shapes after
+// broadcasting.
+Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
+                            const TRT_TensorOrWeights& operand_r,
+                            nvinfer1::Dims* operand_l_new_dims,
+                            nvinfer1::Dims* operand_r_new_dims);
 
 // Map of all supported UnaryOperations
 const std::unordered_map<string, nvinfer1::UnaryOperation>* UnaryOperationMap();

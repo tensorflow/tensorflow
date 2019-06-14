@@ -694,5 +694,140 @@ TEST_F(HloVerifierTestAllowMixedPrecision, ReduceOperandComputationMismatch) {
   ASSERT_TRUE(status.ok());
 }
 
+string ReplicaGroupsStr(std::vector<std::vector<int64>> replica_groups) {
+  std::vector<string> replica_group_strs;
+  for (const auto& g : replica_groups) {
+    replica_group_strs.push_back(
+        absl::StrFormat("{%s}", absl::StrJoin(g, ",")));
+  }
+  return absl::StrFormat("{%s}", absl::StrJoin(replica_group_strs, ", "));
+}
+
+StatusOr<std::unique_ptr<HloModule>> MakeAllReduceComputation(
+    std::vector<std::vector<int64>> replica_groups) {
+  const char* kTemplate = R"(
+  HloModule test
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+  ENTRY entry {
+    p = f32[128]{0} parameter(0)
+    crs = f32[128]{0} all-reduce(p), to_apply=add, replica_groups=REPLICA_GROUPS
+  })";
+  return ParseHloString(absl::StrReplaceAll(
+      kTemplate, {{"REPLICA_GROUPS", ReplicaGroupsStr(replica_groups)}}));
+}
+
+TEST_F(HloVerifierTest, AllReduce_NoReplicaGroupsOK) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllReduceComputation({}));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, AllReduce_DifferentGroupSizesOk) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          MakeAllReduceComputation({{0}, {1, 3}, {2}}));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, AllReduce_EmptyReplicaGroup) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllReduceComputation({{0}, {}}));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("empty replica group"));
+}
+
+TEST_F(HloVerifierTest, AllReduce_RepeatedReplicaId) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          MakeAllReduceComputation({{0, 1}, {2, 3}, {4, 0}}));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Replica 0 is repeated"));
+}
+
+TEST_F(HloVerifierTest, AllReduce_MissingReplicaId) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          MakeAllReduceComputation({{0, 1}, {2, 3}, {5, 6}}));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Replica 4 is not named"));
+}
+
+StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
+    std::vector<std::vector<int64>> replica_groups) {
+  const char* kTemplate = R"(
+  HloModule test
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+  ENTRY entry {
+    p0 = f32[128]{0} parameter(0)
+    p1 = f32[128]{0} parameter(1)
+    a2a = (f32[128], f32[128]) all-to-all(p0, p1), replica_groups=REPLICA_GROUPS
+  })";
+  return ParseHloString(absl::StrReplaceAll(
+      kTemplate, {{"REPLICA_GROUPS", ReplicaGroupsStr(replica_groups)}}));
+}
+
+TEST_F(HloVerifierTest, AllToAll_NoReplicaGroupsOK) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllToAllComputation({}));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, AllToAll_EmptyReplicaGroup) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllToAllComputation({{0, 1}, {}}));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("empty replica group"));
+}
+
+TEST_F(HloVerifierTest, AllToAll_RepeatedReplicaId) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          MakeAllToAllComputation({{0, 1}, {2, 3}, {4, 0}}));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Replica 0 is repeated"));
+}
+
+TEST_F(HloVerifierTest, AllToAll_MissingReplicaId) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          MakeAllToAllComputation({{0, 1}, {2, 3}, {5, 6}}));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Replica 4 is not named"));
+}
+
+TEST_F(HloVerifierTest, AllToAll_WrongNumberOfReplicasInGroup) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          MakeAllToAllComputation({{0, 1}, {2}, {3, 4}}));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Replica group has size 1"));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteSameSourceTwice) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128] parameter(0)
+    ROOT permute = f32[128] collective-permute(p0),
+      source_target_pairs={{0,1}, {0,2}, {1,0}}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kModuleStr));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Source 0 appears more than once"));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteSameTargetTwice) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128] parameter(0)
+    ROOT permute = f32[128] collective-permute(p0),
+      source_target_pairs={{0,2}, {1,2}, {2,0}}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kModuleStr));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Target 2 appears more than once"));
+}
+
 }  // namespace
 }  // namespace xla
