@@ -430,8 +430,11 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
   Returns:
     A `Tensor` of type `out_type`. Defaults to `tf.int32`.
   """
-  if context.executing_eagerly() and not isinstance(
-      input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
+  if (context.executing_eagerly()
+      and not hasattr(input, "graph")
+      and not isinstance(
+          input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue))
+     ):
     input = ops.convert_to_tensor(input)
     np_out_type = out_type.as_numpy_dtype
     num_elements = np.prod(input._shape_tuple(), dtype=np_out_type)  # pylint: disable=protected-access
