@@ -1,4 +1,4 @@
-//===- LLVMLowering.h - Lowering to the LLVM IR dialect ---------*- C++ -*-===//
+//===- ConvertStandardToLLVM.h - Convert to the LLVM dialect ----*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -21,8 +21,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_LLVMIR_LLVMLOWERING_H
-#define MLIR_LLVMIR_LLVMLOWERING_H
+#ifndef MLIR_CONVERSION_STANDARDTOLLVM_CONVERTSTANDARDTOLLVM_H
+#define MLIR_CONVERSION_STANDARDTOLLVM_CONVERTSTANDARDTOLLVM_H
 
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -131,4 +131,4 @@ protected:
 
 } // namespace mlir
 
-#endif // MLIR_LLVMIR_LLVMLOWERING_H
+#endif // MLIR_CONVERSION_STANDARDTOLLVM_CONVERTSTANDARDTOLLVM_H

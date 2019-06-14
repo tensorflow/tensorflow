@@ -13,6 +13,7 @@ set(LIBS
   MLIRParser
   MLIRTargetLLVMIR
   MLIRTransforms
+  MLIRStandardToLLVM
   MLIRSupport
   LLVMCore
   LLVMSupport

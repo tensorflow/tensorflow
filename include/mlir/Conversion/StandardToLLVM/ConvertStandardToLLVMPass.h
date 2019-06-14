@@ -1,4 +1,4 @@
-//===- Transforms.h - Pass Entrypoints --------------------------*- C++ -*-===//
+//===- ConvertStandardToLLVMPass.h - Pass entrypoint ------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,8 +15,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef MLIR_LLVMIR_TRANSFORMS_H_
-#define MLIR_LLVMIR_TRANSFORMS_H_
+#ifndef MLIR_CONVERSION_STANDARDTOLLVM_CONVERTSTANDARDTOLLVMPASS_H_
+#define MLIR_CONVERSION_STANDARDTOLLVM_CONVERTSTANDARDTOLLVMPASS_H_
 
 #include <memory>
 #include <vector>
@@ -53,4 +53,4 @@ void ensureDistinctSuccessors(Module *m);
 
 } // namespace mlir
 
-#endif // MLIR_LLVMIR_TRANSFORMS_H_
+#endif // MLIR_CONVERSION_STANDARDTOLLVM_CONVERTSTANDARDTOLLVMPASS_H_

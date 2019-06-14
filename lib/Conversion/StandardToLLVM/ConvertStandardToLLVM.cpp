@@ -1,4 +1,4 @@
-//===- ConvertToLLVMDialect.cpp - MLIR to LLVM dialect conversion ---------===//
+//===- ConvertStandardToLLVM.cpp - Standard to LLVM dialect conversion-----===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -20,13 +20,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
+#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/LLVMIR/LLVMDialect.h"
-#include "mlir/LLVMIR/LLVMLowering.h"
-#include "mlir/LLVMIR/Transforms.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/Functional.h"

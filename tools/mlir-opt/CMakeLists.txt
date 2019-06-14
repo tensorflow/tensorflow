@@ -31,6 +31,7 @@ set(LIBS
   MLIRQuantOps
   MLIRSPIRV
   MLIRStandardOps
+  MLIRStandardToLLVM
   MLIRTransforms
   MLIRSupport
   MLIRVectorOps
