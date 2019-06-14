@@ -1738,12 +1738,6 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         dot, HloInstruction::CreateBroadcast(dot->shape(), zero, {}));
   }
 
-  // Only optimize F32 or BF16 dot operations where the dot, rhs and lhs.
-  if (dot->shape().element_type() != F32 &&
-      dot->shape().element_type() != BF16) {
-    return Status::OK();
-  }
-
   // If there are no contracting dimensions, a dot can be rewritten as
   // mul(broadcast(transpose(x)),broadcast(transpose(y)))
   if (dot->dot_dimension_numbers().lhs_contracting_dimensions_size() == 0) {
@@ -1785,6 +1779,9 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   // If the lhs or rhs have only batch and contracting dimensions, a dot can be
   // rewritten as reduce(mul(broadcast(transpose(x)),broadcast(transpose(y))))
   if (options_.enable_dot_strength_reduction() &&
+      (dot->shape().element_type() == F32 ||
+       dot->shape().element_type() == F16 ||
+       dot->shape().element_type() == BF16) &&
       ((dot->dot_dimension_numbers().lhs_batch_dimensions_size() +
             dot->dot_dimension_numbers().lhs_contracting_dimensions_size() ==
         lhs->shape().rank()) ||
