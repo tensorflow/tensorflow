@@ -100,12 +100,13 @@ class TableConfig(
 class FeatureConfig(
     collections.namedtuple(
         'FeatureConfig',
-        ['table_id', 'max_sequence_length'])):
+        ['table_id', 'max_sequence_length', 'weight_key'])):
   """Feature configuration."""
 
   def __new__(cls,
               table_id,
-              max_sequence_length=0):
+              max_sequence_length=0,
+              weight_key=None):
     """Feature configuration.
 
     Args:
@@ -114,6 +115,8 @@ class FeatureConfig(
         the corresponding maximum sequence length. If the sequence is longer
         than this, it will be truncated. If 0, the feature is not a sequence
         feature.
+      weight_key: If using weights for the combiner, this key specifies which
+        input feature contains the weights.
 
     Returns:
       `FeatureConfig`.
@@ -125,7 +128,8 @@ class FeatureConfig(
       raise ValueError('Invalid max_sequence_length {}.'.format(
           max_sequence_length))
 
-    return super(FeatureConfig, cls).__new__(cls, table_id, max_sequence_length)
+    return super(FeatureConfig, cls).__new__(cls, table_id, max_sequence_length,
+                                             weight_key)
 
 
 class EnqueueData(
@@ -150,11 +154,10 @@ class EnqueueData(
         If it is None, we assume each embedding_indices belongs to a different
         sample. Both int32 and int64 are allowed and will be converted to int32
         internally.
-      aggregation_weights: A rank 1 Tensors containing per training example
-        aggregation weights. It corresponds to sp_weights.values in
-        embedding_lookup_sparse(). If it is None, we assume all weights are 1.
-        Both float32 and float64 are allowed and will be converted to float32
-        internally.
+      aggregation_weights: A rank 1 Tensors containing aggregation weights.
+        It corresponds to sp_weights.values in embedding_lookup_sparse(). If it
+        is None, we assume all weights are 1. Both float32 and float64 are
+        allowed and will be converted to float32 internally.
 
     Returns:
       An EnqueueData tuple.

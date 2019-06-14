@@ -22,6 +22,7 @@ import collections
 import functools
 import imp
 import sys
+import threading
 import types
 import unittest
 import weakref
@@ -122,6 +123,7 @@ class _ConversionCache(object):
     return self._cache[key]
 
 
+_CACHE_LOCK = threading.Lock()
 _CACHE = _ConversionCache()
 
 
@@ -218,37 +220,41 @@ def _convert_with_cache(entity, program_ctx, free_nonglobal_var_names):
   # cache subkey includes the names of the free non-globals.
   subkey = (program_ctx.options, frozenset(free_nonglobal_var_names))
 
-  # The cache values are _ConvertedEntityFactoryInfo objects.
-  if _CACHE.has(key, subkey):
-    # TODO(mdan): Check whether the module is still loaded.
-    converted_entity_info = _CACHE[key][subkey]
-    logging.log(3, 'Cache hit for entity %s key %s subkey %s: %s', entity, key,
-                subkey, converted_entity_info)
+  with _CACHE_LOCK:
+    # The cache values are _ConvertedEntityFactoryInfo objects.
+    if _CACHE.has(key, subkey):
+      # TODO(mdan): Check whether the module is still loaded.
+      converted_entity_info = _CACHE[key][subkey]
+      logging.log(3, 'Cache hit for entity %s key %s subkey %s: %s', entity,
+                  key, subkey, converted_entity_info)
+      return converted_entity_info
+
+    logging.log(1, 'Entity %s is not cached for key %s subkey %s', entity, key,
+                subkey)
+
+    nodes, converted_name, entity_info = convert_entity_to_ast(
+        entity, program_ctx)
+
+    namer = naming.Namer(entity_info.namespace)
+    factory_factory_name = namer.new_symbol('create_converted_entity_factory',
+                                            ())
+    factory_name = namer.new_symbol('create_converted_entity', ())
+    nodes = _wrap_into_dynamic_factory(nodes, converted_name,
+                                       factory_factory_name, factory_name,
+                                       free_nonglobal_var_names,
+                                       entity_info.future_features)
+
+    module, _, source_map = compiler.ast_to_object(
+        nodes, include_source_map=True)
+    module_name = module.__name__
+
+    converted_entity_info = _ConvertedEntityFactoryInfo(
+        module_name=module_name,
+        converted_name=converted_name,
+        factory_factory_name=factory_factory_name,
+        source_map=source_map)
+    _CACHE[key][subkey] = converted_entity_info
     return converted_entity_info
-
-  logging.log(1, 'Entity %s is not cached for key %s subkey %s', entity, key,
-              subkey)
-
-  nodes, converted_name, entity_info = convert_entity_to_ast(
-      entity, program_ctx)
-
-  namer = naming.Namer(entity_info.namespace)
-  factory_factory_name = namer.new_symbol('create_converted_entity_factory', ())
-  factory_name = namer.new_symbol('create_converted_entity', ())
-  nodes = _wrap_into_dynamic_factory(
-      nodes, converted_name, factory_factory_name, factory_name,
-      free_nonglobal_var_names, entity_info.future_features)
-
-  module, _, source_map = compiler.ast_to_object(nodes, include_source_map=True)
-  module_name = module.__name__
-
-  converted_entity_info = _ConvertedEntityFactoryInfo(
-      module_name=module_name,
-      converted_name=converted_name,
-      factory_factory_name=factory_factory_name,
-      source_map=source_map)
-  _CACHE[key][subkey] = converted_entity_info
-  return converted_entity_info
 
 
 def _instantiate(entity, converted_entity_info, free_nonglobal_var_names):
@@ -308,8 +314,8 @@ def convert(entity, program_ctx):
           entity, name))
     # TODO(mdan): In extreme cases, other ag__ symbols may also be clobbered.
 
-  converted_entity_info = _convert_with_cache(
-      entity, program_ctx, free_nonglobal_var_names)
+  converted_entity_info = _convert_with_cache(entity, program_ctx,
+                                              free_nonglobal_var_names)
 
   return _instantiate(entity, converted_entity_info, free_nonglobal_var_names)
 
@@ -485,9 +491,7 @@ def convert_class_to_ast(c, program_ctx):
     if inspect_utils.getdefiningclass(m, c) is not c:
       continue
     (node,), _, entity_info = convert_func_to_ast(
-        m,
-        program_ctx=program_ctx,
-        do_rename=False)
+        m, program_ctx=program_ctx, do_rename=False)
     class_namespace.update(entity_info.namespace)
     converted_members[m] = node
 
@@ -574,6 +578,7 @@ def _add_self_references(namespace, autograph_module):
     ag_internal = imp.new_module('autograph')
     ag_internal.__dict__.update(autograph_module.__dict__)
     ag_internal.ConversionOptions = converter.ConversionOptions
+    ag_internal.STD = converter.STANDARD_OPTIONS
     ag_internal.Feature = converter.Feature
     ag_internal.utils = utils
     ag_internal.function_scope = function_wrapping.function_scope

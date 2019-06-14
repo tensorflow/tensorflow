@@ -488,6 +488,14 @@ def _flip(image, flip_index, scope_name):
 def rot90(image, k=1, name=None):
   """Rotate image(s) counter-clockwise by 90 degrees.
 
+
+  For example:
+  ```python
+  a=tf.constant([[[1],[2]],[[3],[4]]])
+  # rotating `a` counter clockwise by 90 degrees
+  a_rot=tf.image.rot90(a,k=1) #rotated `a`
+  print(a_rot) # [[[2],[4]],[[1],[3]]]
+  ```
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
@@ -631,6 +639,13 @@ def central_crop(image, central_fraction):
     image: Either a 3-D float Tensor of shape [height, width, depth], or a 4-D
       Tensor of shape [batch_size, height, width, depth].
     central_fraction: float (0, 1], fraction of size to crop
+  
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.central_crop(x, 0.5)
+    ```
 
   Raises:
     ValueError: if central_crop_fraction is not within (0, 1].
@@ -1664,6 +1679,12 @@ def adjust_gamma(image, gamma=1, gain=1):
     gain  : A scalar or tensor. The constant multiplier.
   Returns:
     A Tensor. A Gamma-adjusted tensor of the same shape and type as `image`.
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.adjust_gamma(x, 0.2)
+    ```
   Raises:
     ValueError: If gamma is negative.
   Notes:
@@ -1889,6 +1910,13 @@ def adjust_hue(image, delta, name=None):
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
+  
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.adjust_hue(x, 0.2)
+    ```
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
     image = ops.convert_to_tensor(image, name='image')

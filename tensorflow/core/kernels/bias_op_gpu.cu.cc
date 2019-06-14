@@ -124,6 +124,7 @@ __global__ void BiasGradNHWC_SharedAtomics(int32 nthreads,
                                            const T* output_backprop,
                                            T* bias_backprop, int32 bias_size) {
   typedef typename AccumulatorType<T>::type AccT;
+  GPU_DYNAMIC_SHARED_MEM_DECL(8, char, s_buf);
   AccT* s_data = reinterpret_cast<AccT*>(s_buf);
   for (int32 index = threadIdx.x; index < bias_size; index += blockDim.x) {
     s_data[index] = AccT(0);

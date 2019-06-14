@@ -1,16 +1,15 @@
 # Description:
 #   OpKernels for tf.data
 
-package(
-    default_visibility = ["//visibility:public"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_kernel_library",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 # TODO(mrry): Remove this empty forwarding library.
@@ -40,6 +39,7 @@ cc_library(
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:ops_testutil",
     ],
 )
@@ -81,6 +81,21 @@ cc_library(
     hdrs = ["name_utils.h"],
     deps = [
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "name_utils_test",
+    srcs = ["name_utils_test.cc"],
+    deps = [
+        ":concatenate_dataset_op",
+        ":name_utils",
+        ":range_dataset_op",
+        ":shuffle_dataset_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -221,7 +236,9 @@ tf_cc_test(
 tf_kernel_library(
     name = "shard_dataset_op",
     srcs = ["shard_dataset_op.cc"],
+    hdrs = ["shard_dataset_op.h"],
     deps = [
+        ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -765,7 +782,9 @@ tf_cc_test(
 tf_kernel_library(
     name = "shuffle_dataset_op",
     srcs = ["shuffle_dataset_op.cc"],
+    hdrs = ["shuffle_dataset_op.h"],
     deps = [
+        ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1055,6 +1074,27 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "optimize_dataset_op_test",
+    size = "small",
+    srcs = ["optimize_dataset_op_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":iterator_ops",
+        ":optimize_dataset_op",
+        ":range_dataset_op",
+        ":take_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 

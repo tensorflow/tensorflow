@@ -162,12 +162,12 @@ struct ResizeNearestNeighbor<GPUDevice, T, half_pixel_centers, align_corners> {
                   const float height_scale, const float width_scale,
                   typename TTypes<T, 4>::Tensor output) {
     const int batch_size = input.dimension(0);
-    const int64 in_height = input.dimension(1);
-    const int64 in_width = input.dimension(2);
+    const int in_height = input.dimension(1);
+    const int in_width = input.dimension(2);
     const int channels = input.dimension(3);
 
-    const int64 out_height = output.dimension(1);
-    const int64 out_width = output.dimension(2);
+    const int out_height = output.dimension(1);
+    const int out_width = output.dimension(2);
 
     const int output_size = batch_size * out_height * out_width * channels;
     if (output_size == 0) return true;
@@ -177,17 +177,15 @@ struct ResizeNearestNeighbor<GPUDevice, T, half_pixel_centers, align_corners> {
       TF_CHECK_OK(GpuLaunchKernel(
           ResizeNearestNeighborNHWC<T>, config.block_count,
           config.thread_per_block, 0, d.stream(), output_size, input.data(),
-          static_cast<int>(in_height), static_cast<int>(in_width), channels,
-          static_cast<int>(out_height), static_cast<int>(out_width),
-          height_scale, width_scale, output.data()));
+          in_height, in_width, channels, out_height, out_width, height_scale,
+          width_scale, output.data()));
       return d.ok();
     } else {
       TF_CHECK_OK(GpuLaunchKernel(
           LegacyResizeNearestNeighborNHWC<T, align_corners>, config.block_count,
           config.thread_per_block, 0, d.stream(), output_size, input.data(),
-          static_cast<int>(in_height), static_cast<int>(in_width), channels,
-          static_cast<int>(out_height), static_cast<int>(out_width),
-          height_scale, width_scale, output.data()));
+          in_height, in_width, channels, out_height, out_width, height_scale,
+          width_scale, output.data()));
     }
     return d.ok();
   }
@@ -211,12 +209,12 @@ struct ResizeNearestNeighborGrad<GPUDevice, T, half_pixel_centers,
                   const float height_scale, const float width_scale,
                   typename TTypes<T, 4>::Tensor output) {
     const int batch_size = input.dimension(0);
-    const int64 in_height = input.dimension(1);
-    const int64 in_width = input.dimension(2);
+    const int in_height = input.dimension(1);
+    const int in_width = input.dimension(2);
     const int channels = input.dimension(3);
 
-    const int64 out_height = output.dimension(1);
-    const int64 out_width = output.dimension(2);
+    const int out_height = output.dimension(1);
+    const int out_width = output.dimension(2);
 
     const int output_size = batch_size * channels * out_height * out_width;
 
@@ -234,19 +232,17 @@ struct ResizeNearestNeighborGrad<GPUDevice, T, half_pixel_centers,
       TF_CHECK_OK(GpuLaunchKernel(
           ResizeNearestNeighborBackwardNHWC<T>, input_config.block_count,
           input_config.thread_per_block, 0, d.stream(),
-          input_config.virtual_thread_count, input.data(),
-          static_cast<int>(in_height), static_cast<int>(in_width), channels,
-          static_cast<int>(out_height), static_cast<int>(out_width),
-          height_scale, width_scale, output.data()));
+          input_config.virtual_thread_count, input.data(), in_height, in_width,
+          channels, out_height, out_width, height_scale, width_scale,
+          output.data()));
       return d.ok();
     } else {
       TF_CHECK_OK(GpuLaunchKernel(
           LegacyResizeNearestNeighborBackwardNHWC<T, align_corners>,
           input_config.block_count, input_config.thread_per_block, 0,
           d.stream(), input_config.virtual_thread_count, input.data(),
-          static_cast<int>(in_height), static_cast<int>(in_width), channels,
-          static_cast<int>(out_height), static_cast<int>(out_width),
-          height_scale, width_scale, output.data()));
+          in_height, in_width, channels, out_height, out_width, height_scale,
+          width_scale, output.data()));
       return d.ok();
     }
   }

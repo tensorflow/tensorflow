@@ -26,7 +26,6 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras import losses
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.saving import model_config as model_config_lib
 from tensorflow.python.keras.saving import saving_utils
@@ -146,31 +145,6 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
   if not custom_objects:
     custom_objects = {}
 
-  def convert_custom_objects(obj):
-    """Handles custom object lookup.
-
-    Arguments:
-        obj: object, dict, or list.
-
-    Returns:
-        The same structure, where occurrences
-            of a custom object name have been replaced
-            with the custom object.
-    """
-    if isinstance(obj, list):
-      deserialized = []
-      for value in obj:
-        deserialized.append(convert_custom_objects(value))
-      return deserialized
-    if isinstance(obj, dict):
-      deserialized = {}
-      for key, value in obj.items():
-        deserialized[key] = convert_custom_objects(value)
-      return deserialized
-    if obj in custom_objects:
-      return custom_objects[obj]
-    return obj
-
   opened_new_file = not isinstance(filepath, h5py.File)
   if opened_new_file:
     f = h5py.File(filepath, mode='r')
@@ -198,29 +172,10 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
                         'the model was *not* compiled. Compile it manually.')
         return model
       training_config = json.loads(training_config.decode('utf-8'))
-      optimizer_config = training_config['optimizer_config']
-      optimizer = optimizers.deserialize(
-          optimizer_config, custom_objects=custom_objects)
-
-      # Recover loss functions and metrics.
-      loss_config = training_config['loss']  # Deserialize loss class.
-      if isinstance(loss_config, dict) and 'class_name' in loss_config:
-        loss_config = losses.get(loss_config)
-      loss = convert_custom_objects(loss_config)
-      metrics = convert_custom_objects(training_config['metrics'])
-      weighted_metrics = convert_custom_objects(
-          training_config.get('weighted_metrics', None))
-      sample_weight_mode = training_config['sample_weight_mode']
-      loss_weights = training_config['loss_weights']
 
       # Compile model.
-      model.compile(
-          optimizer=optimizer,
-          loss=loss,
-          metrics=metrics,
-          weighted_metrics=weighted_metrics,
-          loss_weights=loss_weights,
-          sample_weight_mode=sample_weight_mode)
+      model.compile(**saving_utils.compile_args_from_training_config(
+          training_config, custom_objects))
 
       # Set optimizer weights.
       if 'optimizer_weights' in f:

@@ -83,11 +83,14 @@ def isbuiltin(f):
   """Returns True if the argument is a built-in function."""
   if f in six.moves.builtins.__dict__.values():
     return True
-  if isinstance(f, types.BuiltinFunctionType):
+  elif isinstance(f, types.BuiltinFunctionType):
     return True
-  if tf_inspect.isbuiltin(f):
+  elif inspect.isbuiltin(f):
     return True
-  return False
+  elif f is eval:
+    return True
+  else:
+    return False
 
 
 def _fix_linecache_record(obj):
@@ -238,7 +241,9 @@ def istfmethodtarget(m):
   # See eager.function.TfMethodTarget for more details.
   return (hasattr(m, '__self__') and
           hasattr(m.__self__, 'weakrefself_target__') and
-          hasattr(m.__self__, 'weakrefself_func__'))
+          hasattr(m.__self__, 'weakrefself_func__') and
+          hasattr(m, '__module__') and
+          (m.__module__ != 'mock'))
 
 
 def getmethodself(m):

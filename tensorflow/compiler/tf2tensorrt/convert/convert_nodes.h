@@ -546,9 +546,6 @@ class Converter {
   // Tensors/weights added during construction of trt_network_.
   std::unordered_map<string, TRT_TensorOrWeights> trt_tensors_;
 
-  // Special op converter for custom plugins.
-  OpConverter plugin_converter_;
-
   // The TRT networking being built.
   nvinfer1::INetworkDefinition* trt_network_;
 

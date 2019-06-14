@@ -1,13 +1,6 @@
 # Description:
 #   Tensorflow ops for nearest neighbor queries etc.
 
-package(
-    default_visibility = ["//tensorflow:__subpackages__"],
-    licenses = ["notice"],  # Apache 2.0
-)
-
-exports_files(["LICENSE"])
-
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -18,6 +11,13 @@ load(
     "tf_kernel_library",
     "tf_py_test",
 )
+
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 tf_custom_op_library(
     name = "python/ops/_nearest_neighbor_ops.so",

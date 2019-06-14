@@ -52,7 +52,7 @@ class DummyWorkerCache : public WorkerCacheInterface {
   void ListWorkers(std::vector<string>* workers) const override {}
   void ListWorkersInJob(const string& job_name,
                         std::vector<string>* workers) const override {}
-  WorkerInterface* CreateWorker(const string& target) override {
+  WorkerInterface* GetOrCreateWorker(const string& target) override {
     return nullptr;
   }
   bool GetDeviceLocalityNonBlocking(const string& device,

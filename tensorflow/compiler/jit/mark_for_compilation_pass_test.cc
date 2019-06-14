@@ -1677,5 +1677,37 @@ TEST(XlaCompilationTest, IterationIncrementAndGroupDeps) {
   EXPECT_EQ(clusters["some_ctrl_input"], clusters["matmul_0"]);
 }
 
+// Test a pattern where a special Identity node is driving consts in a loop.
+// Expect that the Identity node will not go into any clusters.  Note that we
+// create an incomplete graph here (e.g., lacking Enter/Exit/NextIteration,
+// etc.) just enough to test the pattern, as a complete graph may be too
+// cumbersome and unnecessary.
+TEST(XlaCompilationTest, DontClusterTheSpecialIdentityDrivingConstsInLoop) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  Output cond = ops::Placeholder(root.WithOpName("cond"), DT_BOOL);
+  Output value = ops::Placeholder(root.WithOpName("value"), DT_FLOAT);
+  Output loop_cond = ops::LoopCond(root.WithOpName("loop_cond"), cond);
+  ops::Switch switch_node(root.WithOpName("switch"), value, loop_cond);
+
+  Output identity =
+      ops::Identity(root.WithOpName("identity"), switch_node.output_true);
+  Output const_node = ops::Const(root.WithOpName("const"), 1.0f);
+  root.graph()->AddControlEdge(identity.node(), const_node.node());
+  Output tanh0 = ops::Tanh(root.WithOpName("tanh0"), const_node);
+  Output tanh1 = ops::Tanh(root.WithOpName("tanh1"), tanh0);
+  Output add = ops::Add(root.WithOpName("add"), const_node, tanh1);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_EXPECT_OK(root.ToGraph(graph.get()));
+
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(
+      &graph,
+      MarkForCompilationPassTestHelper::Options().WithDeadnessAnalysis()));
+  auto clusters = GetClusters(*graph);
+
+  EXPECT_EQ(clusters["identity"], "");
+}
+
 }  // namespace
 }  // namespace tensorflow

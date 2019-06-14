@@ -167,10 +167,9 @@ cc_library(
     srcs = ["target_util.cc"],
     hdrs = ["target_util.h"],
     deps = [
-        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm//:core",
@@ -267,6 +266,7 @@ cc_library(
     srcs = ["elemental_ir_emitter.cc"],
     hdrs = ["elemental_ir_emitter.h"],
     deps = [
+        ":target_util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -365,9 +365,43 @@ tf_cuda_library(
 )
 
 cc_library(
+    name = "gpu_debug_info_manager",
+    srcs = [
+        "gpu_debug_info_manager.cc",
+    ],
+    hdrs = [
+        "gpu_debug_info_manager.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_proto_util",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_debug_info_manager_test",
+    srcs = ["gpu_debug_info_manager_test.cc"],
+    deps = [
+        ":gpu_constants",
+        ":gpu_debug_info_manager",
+        ":gpu_hlo_schedule",
+        ":stream_assignment",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "gpu_executable",
     srcs = [
         "cholesky_thunk.cc",
+        "collective_permute_thunk.cc",
         "conditional_thunk.cc",
         "convolution_thunk.cc",
         "copy_thunk.cc",
@@ -381,6 +415,7 @@ cc_library(
         "kernel_thunk.cc",
         "memset_thunk.cc",
         "outfeed_thunk.cc",
+        "replica_id_thunk.cc",
         "sequential_thunk.cc",
         "thunk_schedule.cc",
         "triangular_solve_thunk.cc",
@@ -389,6 +424,7 @@ cc_library(
     ],
     hdrs = [
         "cholesky_thunk.h",
+        "collective_permute_thunk.h",
         "conditional_thunk.h",
         "convolution_thunk.h",
         "copy_thunk.h",
@@ -402,6 +438,7 @@ cc_library(
         "kernel_thunk.h",
         "memset_thunk.h",
         "outfeed_thunk.h",
+        "replica_id_thunk.h",
         "sequential_thunk.h",
         "thunk_schedule.h",
         "triangular_solve_thunk.h",
@@ -412,6 +449,7 @@ cc_library(
         ":buffer_allocations",
         ":cudnn_conv_runner",
         ":cusolver_context",
+        ":gpu_debug_info_manager",
         ":hlo_execution_profiler",
         ":infeed_manager",
         ":ir_emission_utils",
@@ -423,6 +461,7 @@ cc_library(
         ":thunk",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:refcounting_hash_map",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -434,6 +473,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_execution_profile",
         "//tensorflow/compiler/xla/service:logical_buffer",
         "//tensorflow/compiler/xla/service:shaped_buffer",
@@ -651,6 +691,7 @@ tf_cc_test(
     name = "instruction_fusion_test",
     srcs = ["instruction_fusion_test.cc"],
     deps = [
+        ":gpu_fusible",
         ":instruction_fusion",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -684,6 +725,7 @@ tf_cc_test(
     name = "multi_output_fusion_test",
     srcs = ["multi_output_fusion_test.cc"],
     deps = [
+        ":gpu_fusible",
         ":instruction_fusion",
         ":multi_output_fusion",
         "//tensorflow/compiler/xla:status_macros",
@@ -834,12 +876,17 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "nvptx_constants",
+    hdrs = ["nvptx_constants.h"],
+)
+
+cc_library(
     name = "gpu_transfer_manager",
     srcs = ["gpu_transfer_manager.cc"],
     hdrs = ["gpu_transfer_manager.h"],
     deps = [
         ":infeed_manager",
-        ":nvptx_compiler",
+        ":nvptx_constants",
         ":outfeed_manager",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
@@ -884,6 +931,7 @@ cc_library(
         ":ir_emission_utils",
         ":ir_emitter",
         ":multi_output_fusion",
+        ":nvptx_constants",
         ":partition_assignment",
         ":stream_assignment",
         ":stream_executor_util",

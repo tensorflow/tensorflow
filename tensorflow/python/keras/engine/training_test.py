@@ -1802,20 +1802,21 @@ class MaskingTest(keras_parameterized.TestCase):
     model.train_on_batch(x, y)
 
 
+@keras_parameterized.run_all_keras_modes
 class TestDynamicTrainability(keras_parameterized.TestCase):
 
   def test_trainable_warning(self):
-    with self.cached_session():
-      x = np.random.random((5, 3))
-      y = np.random.random((5, 2))
+    x = np.random.random((5, 3))
+    y = np.random.random((5, 2))
 
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(2, input_dim=3))
-      model.trainable = False
-      model.compile('rmsprop', 'mse')
-      model.trainable = True
-      model.train_on_batch(x, y)
-      self.assertRaises(Warning)
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(2, input_dim=3))
+    model.trainable = False
+    model.compile(
+        'rmsprop', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.trainable = True
+    model.train_on_batch(x, y)
+    self.assertRaises(Warning)
 
   def test_trainable_argument(self):
     with self.cached_session():
@@ -1824,7 +1825,8 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
 
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_dim=3, trainable=False))
-      model.compile('rmsprop', 'mse')
+      model.compile(
+          'rmsprop', 'mse', run_eagerly=testing_utils.should_run_eagerly())
       out = model.predict(x)
       model.train_on_batch(x, y)
       out_2 = model.predict(x)
@@ -1834,115 +1836,140 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
       inputs = keras.layers.Input(shape=(3,))
       output = model(inputs)
       model = keras.models.Model(inputs, output)
-      model.compile('rmsprop', 'mse')
+      model.compile(
+          'rmsprop', 'mse', run_eagerly=testing_utils.should_run_eagerly())
       out = model.predict(x)
       model.train_on_batch(x, y)
       out_2 = model.predict(x)
       self.assertAllClose(out, out_2)
 
   def test_layer_trainability_switch(self):
-    with self.cached_session():
-      # with constructor argument, in Sequential
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(2, trainable=False, input_dim=1))
-      self.assertListEqual(model.trainable_weights, [])
+    # with constructor argument, in Sequential
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(2, trainable=False, input_dim=1))
+    self.assertListEqual(model.trainable_weights, [])
 
-      # by setting the `trainable` argument, in Sequential
-      model = keras.models.Sequential()
-      layer = keras.layers.Dense(2, input_dim=1)
-      model.add(layer)
-      self.assertListEqual(model.trainable_weights, layer.trainable_weights)
-      layer.trainable = False
-      self.assertListEqual(model.trainable_weights, [])
+    # by setting the `trainable` argument, in Sequential
+    model = keras.models.Sequential()
+    layer = keras.layers.Dense(2, input_dim=1)
+    model.add(layer)
+    self.assertListEqual(model.trainable_weights, layer.trainable_weights)
+    layer.trainable = False
+    self.assertListEqual(model.trainable_weights, [])
 
-      # with constructor argument, in Model
-      x = keras.layers.Input(shape=(1,))
-      y = keras.layers.Dense(2, trainable=False)(x)
-      model = keras.models.Model(x, y)
-      self.assertListEqual(model.trainable_weights, [])
+    # with constructor argument, in Model
+    x = keras.layers.Input(shape=(1,))
+    y = keras.layers.Dense(2, trainable=False)(x)
+    model = keras.models.Model(x, y)
+    self.assertListEqual(model.trainable_weights, [])
 
-      # by setting the `trainable` argument, in Model
-      x = keras.layers.Input(shape=(1,))
-      layer = keras.layers.Dense(2)
-      y = layer(x)
-      model = keras.models.Model(x, y)
-      self.assertListEqual(model.trainable_weights, layer.trainable_weights)
-      layer.trainable = False
-      self.assertListEqual(model.trainable_weights, [])
+    # by setting the `trainable` argument, in Model
+    x = keras.layers.Input(shape=(1,))
+    layer = keras.layers.Dense(2)
+    y = layer(x)
+    model = keras.models.Model(x, y)
+    self.assertListEqual(model.trainable_weights, layer.trainable_weights)
+    layer.trainable = False
+    self.assertListEqual(model.trainable_weights, [])
 
   def test_model_trainability_switch(self):
-    with self.cached_session():
-      # a non-trainable model has no trainable weights
-      x = keras.layers.Input(shape=(1,))
-      y = keras.layers.Dense(2)(x)
-      model = keras.models.Model(x, y)
-      model.trainable = False
-      self.assertListEqual(model.trainable_weights, [])
+    # a non-trainable model has no trainable weights
+    x = keras.layers.Input(shape=(1,))
+    y = keras.layers.Dense(2)(x)
+    model = keras.models.Model(x, y)
+    model.trainable = False
+    self.assertListEqual(model.trainable_weights, [])
 
-      # same for Sequential
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(2, input_dim=1))
-      model.trainable = False
-      self.assertListEqual(model.trainable_weights, [])
+    # same for Sequential
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(2, input_dim=1))
+    model.trainable = False
+    self.assertListEqual(model.trainable_weights, [])
 
   def test_nested_model_trainability(self):
-    with self.cached_session():
-      # a Sequential inside a Model
-      inner_model = keras.models.Sequential()
-      inner_model.add(keras.layers.Dense(2, input_dim=1))
+    # a Sequential inside a Model
+    inner_model = keras.models.Sequential()
+    inner_model.add(keras.layers.Dense(2, input_dim=1))
 
-      x = keras.layers.Input(shape=(1,))
-      y = inner_model(x)
-      outer_model = keras.models.Model(x, y)
-      self.assertListEqual(outer_model.trainable_weights,
-                           inner_model.trainable_weights)
-      inner_model.trainable = False
-      self.assertListEqual(outer_model.trainable_weights, [])
-      inner_model.trainable = True
-      inner_model.layers[-1].trainable = False
-      self.assertListEqual(outer_model.trainable_weights, [])
+    x = keras.layers.Input(shape=(1,))
+    y = inner_model(x)
+    outer_model = keras.models.Model(x, y)
+    self.assertListEqual(outer_model.trainable_weights,
+                         inner_model.trainable_weights)
+    inner_model.trainable = False
+    self.assertListEqual(outer_model.trainable_weights, [])
+    inner_model.trainable = True
+    inner_model.layers[-1].trainable = False
+    self.assertListEqual(outer_model.trainable_weights, [])
 
-      # a Sequential inside a Sequential
-      inner_model = keras.models.Sequential()
-      inner_model.add(keras.layers.Dense(2, input_dim=1))
-      outer_model = keras.models.Sequential()
-      outer_model.add(inner_model)
-      self.assertListEqual(outer_model.trainable_weights,
-                           inner_model.trainable_weights)
-      inner_model.trainable = False
-      self.assertListEqual(outer_model.trainable_weights, [])
-      inner_model.trainable = True
-      inner_model.layers[-1].trainable = False
-      self.assertListEqual(outer_model.trainable_weights, [])
+    # a Sequential inside a Sequential
+    inner_model = keras.models.Sequential()
+    inner_model.add(keras.layers.Dense(2, input_dim=1))
+    outer_model = keras.models.Sequential()
+    outer_model.add(inner_model)
+    self.assertListEqual(outer_model.trainable_weights,
+                         inner_model.trainable_weights)
+    inner_model.trainable = False
+    self.assertListEqual(outer_model.trainable_weights, [])
+    inner_model.trainable = True
+    inner_model.layers[-1].trainable = False
+    self.assertListEqual(outer_model.trainable_weights, [])
 
-      # a Model inside a Model
-      x = keras.layers.Input(shape=(1,))
-      y = keras.layers.Dense(2)(x)
-      inner_model = keras.models.Model(x, y)
-      x = keras.layers.Input(shape=(1,))
-      y = inner_model(x)
-      outer_model = keras.models.Model(x, y)
-      self.assertListEqual(outer_model.trainable_weights,
-                           inner_model.trainable_weights)
-      inner_model.trainable = False
-      self.assertListEqual(outer_model.trainable_weights, [])
-      inner_model.trainable = True
-      inner_model.layers[-1].trainable = False
-      self.assertListEqual(outer_model.trainable_weights, [])
+    # a Model inside a Model
+    x = keras.layers.Input(shape=(1,))
+    y = keras.layers.Dense(2)(x)
+    inner_model = keras.models.Model(x, y)
+    x = keras.layers.Input(shape=(1,))
+    y = inner_model(x)
+    outer_model = keras.models.Model(x, y)
+    self.assertListEqual(outer_model.trainable_weights,
+                         inner_model.trainable_weights)
+    inner_model.trainable = False
+    self.assertListEqual(outer_model.trainable_weights, [])
+    inner_model.trainable = True
+    inner_model.layers[-1].trainable = False
+    self.assertListEqual(outer_model.trainable_weights, [])
 
-      # a Model inside a Sequential
-      x = keras.layers.Input(shape=(1,))
-      y = keras.layers.Dense(2)(x)
-      inner_model = keras.models.Model(x, y)
-      outer_model = keras.models.Sequential()
-      outer_model.add(inner_model)
-      self.assertListEqual(outer_model.trainable_weights,
-                           inner_model.trainable_weights)
-      inner_model.trainable = False
-      self.assertListEqual(outer_model.trainable_weights, [])
-      inner_model.trainable = True
-      inner_model.layers[-1].trainable = False
-      self.assertListEqual(outer_model.trainable_weights, [])
+    # a Model inside a Sequential
+    x = keras.layers.Input(shape=(1,))
+    y = keras.layers.Dense(2)(x)
+    inner_model = keras.models.Model(x, y)
+    outer_model = keras.models.Sequential()
+    outer_model.add(inner_model)
+    self.assertListEqual(outer_model.trainable_weights,
+                         inner_model.trainable_weights)
+    inner_model.trainable = False
+    self.assertListEqual(outer_model.trainable_weights, [])
+    inner_model.trainable = True
+    inner_model.layers[-1].trainable = False
+    self.assertListEqual(outer_model.trainable_weights, [])
+
+  def test_gan_workflow(self):
+    shared_layer = keras.layers.BatchNormalization()
+
+    inputs1 = keras.Input(10)
+    outputs1 = shared_layer(inputs1)
+    model1 = keras.Model(inputs1, outputs1)
+    shared_layer.trainable = False
+    model1.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+
+    inputs2 = keras.Input(10)
+    outputs2 = shared_layer(inputs2)
+    model2 = keras.Model(inputs2, outputs2)
+    shared_layer.trainable = True
+    model2.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+
+    x, y = np.ones((10, 10)), np.ones((10, 10))
+
+    out1_0 = model1.predict_on_batch(x)
+    model1.train_on_batch(x, y)
+    out1_1 = model1.predict_on_batch(x)
+    self.assertAllClose(out1_0, out1_1)
+
+    out2_0 = model2.predict_on_batch(x)
+    model2.train_on_batch(x, y)
+    out2_1 = model2.predict_on_batch(x)
+    self.assertNotAllClose(out2_0, out2_1)
 
 
 class TestTrainingWithDataTensors(keras_parameterized.TestCase):

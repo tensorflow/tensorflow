@@ -61,11 +61,18 @@ toolchain {
   # tensorflow/tools/ci_build/pi/build_raspberry_pi.sh.
   cxx_builtin_include_directory: "/tmp/openblas_install/include/"
   cxx_flag: "-std=c++11"
-  # The cxx_builtin_include_directory directives don't seem to be adding these, so
-  # explicitly set them as flags. There's a query to the Bazel team outstanding about
-  # why this is necessary.
   cxx_flag: "-isystem"
-  cxx_flag: "/usr/include/arm-linux-gnueabihf"
+  cxx_flag: "%{ARM_COMPILER_PATH}%/arm-linux-gnueabihf/include/c++/4.9.3/"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{ARM_COMPILER_PATH}%/arm-linux-gnueabihf/sysroot/usr/include/"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{ARM_COMPILER_PATH}%/arm-linux-gnueabihf/libc/usr/include/"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{ARM_COMPILER_PATH}%/lib/gcc/arm-linux-gnueabihf/4.9.3/include"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{ARM_COMPILER_PATH}%/lib/gcc/arm-linux-gnueabihf/4.9.3/include-fixed"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{ARM_COMPILER_PATH}%/local_include"
   cxx_flag: "-isystem"
   cxx_flag: "%{PYTHON_INCLUDE_PATH}%"
   cxx_flag: "-isystem"

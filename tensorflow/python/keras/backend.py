@@ -69,6 +69,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
@@ -157,7 +158,7 @@ def cast_to_floatx(x):
 
   Example:
   ```python
-      >>> from keras import backend as K
+      >>> from tensorflow.keras import backend as K
       >>> K.floatx()
       'float32'
       >>> arr = numpy.array([1.0, 2.0], dtype='float64')
@@ -210,10 +211,8 @@ def get_uid(prefix=''):
 def reset_uids():
   """Resets graph identifiers.
   """
-  per_graph_object_name_uids = PER_GRAPH_OBJECT_NAME_UIDS
-  keys = list(per_graph_object_name_uids.keys())
-  for key in keys:
-    del per_graph_object_name_uids[key]
+
+  PER_GRAPH_OBJECT_NAME_UIDS.clear()
 
 
 @keras_export('keras.backend.clear_session')
@@ -292,6 +291,10 @@ def learning_phase():
     return symbolic_learning_phase()
 
 
+def global_learning_phase_is_set():
+  return _DUMMY_EAGER_GRAPH in _GRAPH_LEARNING_PHASES
+
+
 def symbolic_learning_phase():
   graph = get_graph()
   with graph.as_default():
@@ -322,18 +325,6 @@ def set_learning_phase(value):
       # context and the internal Keras graph.
       _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
     _GRAPH_LEARNING_PHASES[get_graph()] = value
-
-
-def set_eager_learning_phase(value):
-  """Internal utility that sets the learning phase in eager execution only.
-
-  Arguments:
-      value: Learning phase value, either 0 or 1 (integers).
-  """
-  global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
-  assert value in {0, 1}
-  assert context.executing_eagerly()
-  _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
 
 
 @keras_export('keras.backend.learning_phase_scope')
@@ -380,9 +371,10 @@ def learning_phase_scope(value):
       elif graph in _GRAPH_LEARNING_PHASES:
         del _GRAPH_LEARNING_PHASES[graph]
 
+
 @tf_contextlib.contextmanager
 def eager_learning_phase_scope(value):
-  """Internal scope that sets the learning phase in eager execution only.
+  """Internal scope that sets the learning phase in eager / tf.function only.
 
   Arguments:
       value: Learning phase value, either 0 or 1 (integers).
@@ -396,13 +388,18 @@ def eager_learning_phase_scope(value):
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   assert value in {0, 1}
   assert ops.executing_eagerly_outside_functions()
-  previous_value = learning_phase()
+  global_learning_phase_was_set = global_learning_phase_is_set()
+  if global_learning_phase_was_set:
+    previous_value = learning_phase()
   try:
     _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
     yield
   finally:
-    # Restore learning phase to initial value.
-    _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
+    # Restore learning phase to initial value or unset.
+    if global_learning_phase_was_set:
+      _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
+    else:
+      del _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
 
 
 def _current_graph(op_input_list):
@@ -509,7 +506,7 @@ def _scratch_graph(graph=None):
     _CURRENT_SCRATCH_GRAPH = None
 
 
-@keras_export('keras.backend.set_session')
+@keras_export(v1=['keras.backend.set_session'])
 def set_session(session):
   """Sets the global TensorFlow session.
 
@@ -521,14 +518,14 @@ def set_session(session):
 
 
 def get_default_session_config():
-  if not os.environ.get('OMP_NUM_THREADS'):
-    config = config_pb2.ConfigProto(allow_soft_placement=True)
-  else:
-    num_thread = int(os.environ.get('OMP_NUM_THREADS'))
-    config = config_pb2.ConfigProto(
-        intra_op_parallelism_threads=num_thread,
-        inter_op_parallelism_threads=num_thread,
-        allow_soft_placement=True)
+  if os.environ.get('OMP_NUM_THREADS'):
+    logging.warning(
+        'OMP_NUM_THREADS is no longer used by the default Keras config. '
+        'To configure the number of threads, use tf.config.threading APIs.')
+
+  config = context.context().config
+  config.allow_soft_placement = True
+
   return config
 
 
@@ -4209,6 +4206,20 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
 
   Raises:
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
+      
+  Example:
+  ```python:
+      import tensorflow as tf
+      from tensorflow.keras import backend as K
+      a = tf.constant([1., 0., 0., 0., 1., 0., 0., 0., 1.], shape=[3,3])
+      print("a: ", a)
+      b = tf.constant([.9, .05, .05, .5, .89, .6, .05, .01, .94], shape=[3,3])
+      print("b: ", b)
+      loss = K.categorical_crossentropy(a, b)
+      print('Loss: ', loss) #Loss: tf.Tensor([0.10536055 0.8046684  0.06187541], shape=(3,), dtype=float32)
+      loss = K.categorical_crossentropy(a, a)
+      print('Loss: ', loss) #Loss:  tf.Tensor([1.1920929e-07 1.1920929e-07 1.1920929e-07], shape=(3,), dtype=float32)
+  ```
   """
   if not from_logits:
     if (isinstance(output, (ops.EagerTensor, variables_module.Variable)) or

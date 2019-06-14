@@ -382,7 +382,7 @@ class _IterableInput(object):
       return has_data, data, state
 
     has_data, data, final_state = control_flow_ops.while_loop(
-        cond, loop_body, [has_data, data, initial_state])
+        cond, loop_body, [has_data, data, initial_state], parallel_iterations=1)
     return final_state
 
 

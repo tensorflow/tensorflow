@@ -254,6 +254,10 @@ class EagerResourceDeleter(object):
            "Tensor." % (handle,)))
     self._handle = handle
     self._handle_device = handle_device
+    # This is held since the __del__ function runs an op, and if the context()
+    # is collected before this object, there will be a segfault when running the
+    # op.
+    self._context = context.context()
 
   def __del__(self):
     # Resources follow object-identity when executing eagerly, so it is safe to
@@ -388,7 +392,8 @@ class ResourceVariable(variables.VariableV1):
       trainable: If `True`, the default, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
-         Defaults to `True` unless `synchronization` is set to `ON_READ`.
+        Defaults to `True`, unless `synchronization` is set to `ON_READ`, in
+        which case it defaults to `False`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       validate_shape: Ignored. Provided for compatibility with tf.Variable.
@@ -421,8 +426,7 @@ class ResourceVariable(variables.VariableV1):
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
-        when to synchronize. If `synchronization` is set to `ON_READ`,
-        `trainable` must not be set to `True`.
+        when to synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
@@ -495,7 +499,8 @@ class ResourceVariable(variables.VariableV1):
       trainable: If `True`, the default, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
-        Defaults to `True` unless `synchronization` is set to `ON_READ`.
+        Defaults to `True`, unless `synchronization` is set to `ON_READ`, in
+        which case it defaults to `False`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       caching_device: Optional device string or function describing where the
@@ -520,8 +525,7 @@ class ResourceVariable(variables.VariableV1):
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
-        when to synchronize. If `synchronization` is set to `ON_READ`,
-        `trainable` must not be set to `True`.
+        when to synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
@@ -1793,8 +1797,7 @@ class UninitializedVariable(ResourceVariable):
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
-        when to synchronize. If `synchronization` is set to `ON_READ`,
-        `trainable` must not be set to `True`.
+        when to synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.

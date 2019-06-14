@@ -34,6 +34,7 @@ from enum import Enum
 import six
 # pylint:enable=g-bad-import-order
 
+from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import conversion
 from tensorflow.python.autograph.operators import py_builtins
@@ -129,7 +130,50 @@ class StackTraceMapper(tf_stack.StackTraceMapper):
     return origin.loc.filename, origin.loc.lineno, origin.function_name
 
 
-# TODO(mdan): This should behave like to_graph (e.g. convert statically).
+def tf_convert(f, ctx, convert_by_default=True):
+  """Decorator that applies AutoGraph to a function.
+
+  Use in internal APIs.
+
+  This API is suitable for high order functions internal to the TensorFlow API,
+  and more generally any function to which Autograph is not applied.
+
+  Guidance: convert was a decorator meant for use directly by developers, and
+  will be soon deprecated in favor of tf.function. tf_convert is to be called
+  from high order functions internal to TF.
+
+  Args:
+    f: Callable.
+    ctx: ag_ctx.ControlStatusCtx, the Autograph context in which `f` is used.
+    convert_by_default: bool, whether to use AutoGraph when the context doesn't
+      specify.
+
+  Returns:
+    Either `f or the converted version of `f`.
+  """
+
+  if hasattr(f, '__ag_compiled'):
+    return f
+  f_wrapper = f
+  decorators, f = tf_decorator.unwrap(f)
+
+  apply_autograph = ((ctx.status == ag_ctx.Status.ENABLED) or
+                     (convert_by_default and
+                      ctx.status == ag_ctx.Status.UNSPECIFIED))
+  if apply_autograph:
+    # TODO(mdan): Grab features from context.
+    wrapper = convert(recursive=True)(f)
+  else:
+    wrapper = do_not_convert(f)
+
+  if decorators:
+    wrapper = tf_decorator.rewrap(f_wrapper, f, wrapper)
+
+  setattr(wrapper, '__ag_compiled', True)
+  return wrapper
+
+
+# TODO(mdan): Make private.
 def convert(recursive=False, optional_features=None):
   """Decorator that compiles a function to use TensorFlow ops.
 
@@ -156,19 +200,21 @@ def convert(recursive=False, optional_features=None):
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
       """Wrapper that calls the converted version of f."""
-      try:
-        return converted_call(
-            f, None,
-            converter.ConversionOptions(
-                recursive=recursive,
-                force_conversion=True,
-                optional_features=optional_features,
-            ), args, kwargs)
-      except Exception as e:  # pylint:disable=broad-except
-        if hasattr(e, 'ag_error_metadata'):
-          raise e.ag_error_metadata.to_exception(type(e))
-        else:
-          raise
+      with ag_ctx.ControlStatusCtx(
+          status=ag_ctx.Status.ENABLED, options=optional_features):
+        try:
+          return converted_call(
+              f, None,
+              converter.ConversionOptions(
+                  recursive=recursive,
+                  force_conversion=True,
+                  optional_features=optional_features,
+              ), args, kwargs)
+        except Exception as e:  # pylint:disable=broad-except
+          if hasattr(e, 'ag_error_metadata'):
+            raise e.ag_error_metadata.to_exception(type(e))
+          else:
+            raise
 
     wrapper = tf_decorator.make_decorator(f, wrapper)
 
@@ -229,7 +275,8 @@ def do_not_convert(func=None, run_as=RunMode.GRAPH, return_dtypes=None):
 
   @functools.wraps(func)
   def graph_wrapper(*args, **kwargs):
-    return func(*args, **kwargs)
+    with ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED):
+      return func(*args, **kwargs)
 
   @functools.wraps(func)
   def py_func_wrapper(*args, **kwargs):
@@ -419,6 +466,11 @@ def converted_call(f, owner, options, args, kwargs):
       else:
         effective_args = args
 
+    elif hasattr(f, '__call__') and hasattr(f, '__class__'):
+      # Callable objects
+      target_entity = f.__call__
+      effective_args = (f,) + args
+
     elif tf_inspect.isclass(f):
       # Constructors
       # Note: Until we support class constructurs, and enable whole-class
@@ -426,11 +478,6 @@ def converted_call(f, owner, options, args, kwargs):
       # TODO(mdan): Consider removing unless there is a compelling use case.
       target_entity = f
       effective_args = args
-
-    elif hasattr(f, '__call__') and hasattr(f, '__class__'):
-      # Callable objects
-      target_entity = f.__call__
-      effective_args = (f,) + args
 
     else:
       target_entity = f
@@ -481,15 +528,15 @@ def converted_call(f, owner, options, args, kwargs):
         ' attach the full output. Cause: %s', target_entity, e)
     return _call_unconverted(f, args, kwargs)
 
-  try:
-    with StackTraceMapper(converted_f), tf_stack.CurrentModuleFilter():
+  with StackTraceMapper(converted_f), tf_stack.CurrentModuleFilter():
+    try:
       if kwargs is not None:
         result = converted_f(*effective_args, **kwargs)
       else:
         result = converted_f(*effective_args)
-  except Exception as e:
-    _attach_metadata(e, converted_f, True)
-    raise
+    except Exception as e:
+      _attach_metadata(e, converted_f, True)
+      raise
 
   return result
 

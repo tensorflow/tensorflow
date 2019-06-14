@@ -1266,12 +1266,18 @@ StatusOr<bool> HloRematerialization::Run(HloModule* module) {
 
   // Rematerialization can introduce dead code. This occurs if all uses of an
   // instruction are replaced with rematerializations of the instruction.
+
+  // Stash away the schedule during copy insertion, to avoid validation failures
+  // while the module is in flux.
+  HloSchedule saved_schedule = module->schedule();
+  module->clear_schedule();
   TF_ASSIGN_OR_RETURN(bool dead_code_removed, HloDCE().Run(module));
   changed |= dead_code_removed;
 
   // After DCE, the module sequence may include instructions which no longer
-  // exist.
-  TF_RETURN_IF_ERROR(module->schedule().Update());
+  // exist. Update the schedule and restore it.
+  TF_RETURN_IF_ERROR(saved_schedule.Update());
+  TF_RETURN_IF_ERROR(module->set_schedule(std::move(saved_schedule)));
   VLOG(1) << "Rematerialized " << instructions_rematerialized_
           << " instructions in module " << module->name() << "; "
           << net_instructions_added_ << " net instructions added";

@@ -25,6 +25,7 @@ cc_library(
     name = "include_hdrs",
     hdrs = process_srcs(glob(["src/include/*.h"])),
     strip_include_prefix = "include",
+    deps = ["@local_config_cuda//cuda:cuda_headers"],
 )
 
 device_srcs = process_srcs([

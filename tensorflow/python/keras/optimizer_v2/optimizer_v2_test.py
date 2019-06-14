@@ -586,6 +586,24 @@ class OptimizerTest(test.TestCase):
       var_key = optimizer_v2._var_key(b)
       self.assertEqual('var_1', var_key)
 
+  def testVarName(self):
+    with context.graph_mode():
+      var = variables.Variable([1., 2.], name='var')
+      loss = var + 1.
+      opt = adam.Adam()
+      opt.get_updates(loss, [var])
+      opt_vars = opt.variables()
+      self.assertLen(opt_vars, 3)
+      self.assertEqual('Adam/iter:0', opt_vars[0].name)
+      self.assertEqual('Adam/var/m:0', opt_vars[1].name)
+      var_2 = variables.Variable([1., 2.], name='var_2')
+      loss = var_2 + 1.
+      with backend.name_scope('outter'):
+        opt.get_updates(loss, [var_2])
+      opt_vars = opt.variables()
+      self.assertLen(opt_vars, 5)
+      self.assertEqual('outter/Adam/var_2/m:0', opt_vars[3].name)
+
 
 @keras_parameterized.run_with_all_model_types
 class OptimizersCompatibilityTest(keras_parameterized.TestCase):
@@ -775,6 +793,30 @@ class OptimizerWithFunctionTest(test.TestCase):
         self.assertNotEquals(var_key_a, var_key_b)
 
       var_key_test()
+
+  def testLearningRateDecayUsedInTwoFunctions(self):
+    with context.eager_mode():
+      a = variables.Variable([1., 2.], name='var')
+      b = variables.Variable([1.], name='var')
+
+      learning_rate_decay = learning_rate_schedule.InverseTimeDecay(
+          0.5, decay_steps=1.0, decay_rate=0.5)
+      opt = adam.Adam(learning_rate=learning_rate_decay)
+      loss_a = lambda: 3 * a
+      loss_b = lambda: 2 * b
+
+      @def_function.function
+      def fn_a():
+        opt.minimize(loss_a, [a])
+        return a
+
+      @def_function.function
+      def fn_b():
+        opt.minimize(loss_b, [b])
+        return b
+
+      fn_a()
+      fn_b()
 
 
 if __name__ == '__main__':

@@ -197,9 +197,14 @@ class Sequential(training.Model):
                         'For multi-output layers, '
                         'use the functional API.')
       self.outputs = [output_tensor]
+
+    if self.outputs:
+      # True if set_inputs or self._is_graph_network or if adding a layer
+      # to an already built deferred seq model.
+      self.built = True
+
     if set_inputs or self._is_graph_network:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
-      self.built = True
     else:
       self._layers.append(layer)
     if self._layers:
@@ -361,3 +366,7 @@ class Sequential(training.Model):
     if self.layers and hasattr(self.layers[0], 'input_spec'):
       return self.layers[0].input_spec
     return None
+
+  @property
+  def _object_identifier(self):
+    return '_tf_keras_sequential'

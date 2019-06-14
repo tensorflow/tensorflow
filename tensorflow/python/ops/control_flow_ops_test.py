@@ -188,14 +188,14 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
     with self.cached_session():
       data = ops.IndexedSlices(
           constant_op.constant([1, 2, 3]),
-          constant_op.constant([0, 1]),
+          constant_op.constant([0, 1, 2]),
           dense_shape=constant_op.constant([3]))
       zero = constant_op.constant(0)
       one = constant_op.constant(1)
       less_op = math_ops.less(zero, one)
       _, switch_true = control_flow_ops.switch(data, less_op)
       self.assertAllEqual([1, 2, 3], switch_true.values.eval())
-      self.assertAllEqual([0, 1], switch_true.indices.eval())
+      self.assertAllEqual([0, 1, 2], switch_true.indices.eval())
 
   @test_util.run_deprecated_v1
   def testIndexedSlicesGradient(self):

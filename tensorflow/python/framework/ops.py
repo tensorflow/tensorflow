@@ -951,10 +951,12 @@ class _EagerTensorBase(Tensor):
     """
     return self._copy_nograd(context.context(), "CPU:0")
 
+  @deprecation.deprecated(None, "Use tf.identity instead.")
   def cpu(self):
     """A copy of this Tensor with contents backed by host memory."""
     return self._copy(context.context(), "CPU:0")
 
+  @deprecation.deprecated(None, "Use tf.identity instead.")
   def gpu(self, gpu_index=0):
     """A copy of this Tensor with contents backed by memory on the GPU.
 
@@ -4984,12 +4986,21 @@ def device(device_name_or_function):
     RuntimeError: If eager execution is enabled and a function is passed in.
   """
   if context.executing_eagerly():
-    # TODO(agarwal): support device functions in EAGER mode.
     if callable(device_name_or_function):
       raise RuntimeError(
           "tf.device does not support functions when eager execution "
           "is enabled.")
     return context.device(device_name_or_function)
+  elif inside_function():
+    @tf_contextlib.contextmanager
+    def combined(device_name_or_function):
+      with get_default_graph().device(device_name_or_function):
+        if not callable(device_name_or_function):
+          with context.device(device_name_or_function):
+            yield
+        else:
+          yield
+    return combined(device_name_or_function)
   else:
     return get_default_graph().device(device_name_or_function)
 
@@ -5024,10 +5035,7 @@ def device_v2(device_name):
   """
   if callable(device_name):
     raise RuntimeError("tf.device does not support functions.")
-  if context.executing_eagerly():
-    return context.device(device_name)
-  else:
-    return get_default_graph().device(device_name)
+  return device(device_name)
 
 
 @tf_export(v1=["container"])
@@ -6161,25 +6169,9 @@ class name_scope(object):  # pylint: disable=invalid-name
       return self._name_scope.__enter__()
 
     if self._in_eager_mode:
-      self._old_name = self._ctx.scope_name
-      if not self._name:
-        scope_name = ""
-      else:
-        cache_key = self._name, self._old_name, self._default_name
-        if cache_key in name_scope_cache:
-          self._ctx.scope_name = name_scope_cache[cache_key]
-          return self._ctx.scope_name
-        elif self._name[-1] == "/":
-          # A trailing slash breaks out of nested name scopes, indicating a
-          # fully specified scope name, for compatibility with Graph.name_scope.
-          scope_name = self._name
-        else:
-          name_with_trailing_slash = self._name + "/"
-          scope_name = (
-              self._old_name + name_with_trailing_slash
-              if self._old_name else name_with_trailing_slash)
-        name_scope_cache[cache_key] = scope_name
-      self._ctx.scope_name = scope_name
+      scope_name, old_name = enter_eager_name_scope(self._ctx, self._name,
+                                                    self._default_name)
+      self._old_name = old_name
       return scope_name
     else:
       if self._name is None and self._values is not None:
@@ -6210,6 +6202,29 @@ class name_scope(object):  # pylint: disable=invalid-name
       self._name_scope.__exit__(type_arg, value_arg, traceback_arg)
       self._g_manager.__exit__(type_arg, value_arg, traceback_arg)
     return False  # False values do not suppress exceptions
+
+
+def enter_eager_name_scope(ctx, name, default_name=None):
+  """Updates the eager context to enter the given name scope."""
+  old_name = ctx.scope_name
+  if not name:
+    scope_name = ""
+  else:
+    if name[-1] == "/":
+      # A trailing slash breaks out of nested name scopes, indicating a
+      # fully specified scope name, for compatibility with Graph.name_scope.
+      scope_name = name
+    else:
+      # TODO(tomhennigan) Benchmark and consider removing the cache.
+      cache_key = name, old_name, default_name
+      scope_name = name_scope_cache.get(cache_key, None)
+      if scope_name is None:
+        scope_name = name + "/"
+        if old_name:
+          scope_name = old_name + scope_name
+        name_scope_cache[cache_key] = scope_name
+  ctx.scope_name = scope_name
+  return scope_name, old_name
 
 
 @tf_export("name_scope", v1=[])
@@ -6250,7 +6265,38 @@ class name_scope_v2(name_scope):
     """
     if name is None or not isinstance(name, six.string_types):
       raise ValueError("name for name_scope must be a string.")
-    super(name_scope_v2, self).__init__(name=None, default_name=name)
+    self._name = name
+    self._exit_fns = []
+
+  @property
+  def name(self):
+    return self._name
+
+  def __enter__(self):
+    """Start the scope block.
+
+    Returns:
+      The scope name.
+
+    Raises:
+      ValueError: if neither `name` nor `default_name` is provided
+        but `values` are.
+    """
+    ctx = context.context()
+    if ctx.executing_eagerly():
+      scope_name, old_scope_name = enter_eager_name_scope(ctx, self._name)
+      self._exit_fns.append(
+          lambda *a: setattr(ctx, "scope_name", old_scope_name))
+    else:
+      scope = get_default_graph().name_scope(self._name)
+      scope_name = scope.__enter__()
+      self._exit_fns.append(scope.__exit__)
+    return scope_name
+
+  def __exit__(self, type_arg, value_arg, traceback_arg):
+    exit_fn = self._exit_fns.pop()
+    exit_fn(type_arg, value_arg, traceback_arg)
+    return False  # False values do not suppress exceptions
 
 
 def strip_name_scope(name, export_scope):

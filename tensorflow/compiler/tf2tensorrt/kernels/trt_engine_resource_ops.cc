@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_instance.pb.h"  // NOLINT
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
@@ -125,8 +124,7 @@ class PopulateTRTEngineCache : public OpKernel {
       TrtUniquePtrType<nvinfer1::ICudaEngine> engine(
           infer->deserializeCudaEngine(
               engine_instance.serialized_engine().c_str(),
-              engine_instance.serialized_engine().size(),
-              PluginFactoryTensorRT::GetInstance()));
+              engine_instance.serialized_engine().size(), nullptr));
       auto raw_engine = engine.get();
       resource->cache_.emplace(
           engine_input_shapes,

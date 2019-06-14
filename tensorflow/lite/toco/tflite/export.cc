@@ -459,6 +459,13 @@ tensorflow::Status Export(
     const Model& model, string* output_file_contents,
     const ExportParams& params,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
+  for (const string& input_array : model.GetInvalidInputArrays()) {
+    if (model.HasArray(input_array)) {
+      return tensorflow::errors::InvalidArgument(absl::StrCat(
+          "Placeholder ", input_array, " should be specied by input_arrays."));
+    }
+  }
+
   flatbuffers::FlatBufferBuilder builder(/*initial_size=*/10240);
 
   details::TensorsMap tensors_map;

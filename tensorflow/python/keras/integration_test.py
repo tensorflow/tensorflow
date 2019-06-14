@@ -40,7 +40,6 @@ class KerasIntegrationTest(keras_parameterized.TestCase):
     fpath = os.path.join(self.temp_dir,
                          'test_model_%s' % (random.randint(0, 1e7),))
     if context.executing_eagerly():
-      keras.saving.save._KERAS_SAVED_MODEL_STILL_EXPERIMENTAL = False
       save_format = 'tf'
     else:
       if (not isinstance(model, keras.Sequential) and
@@ -155,8 +154,19 @@ class SequentialIntegrationTest(KerasIntegrationTest):
               validation_data=(x_train, y_train),
               verbose=2)
     model = self._save_and_reload_model(model)
+
+    # TODO(b/134537740): model.pop doesn't update model outputs properly when
+    # model.outputs is already defined, so just set to `None` for now.
+    model.inputs = None
+    model.outputs = None
+
     model.pop()
     model.add(keras.layers.Dense(y_train.shape[-1], activation='softmax'))
+
+    # TODO(b/134523282): There is an bug with Sequential models, so the model
+    # must be marked as compiled=False to ensure the next compile goes through.
+    model._is_compiled = False
+
     model.compile(
         loss='categorical_crossentropy',
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
