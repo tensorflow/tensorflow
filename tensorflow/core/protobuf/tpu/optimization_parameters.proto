@@ -60,10 +60,23 @@ message AdagradParameters {
   float initial_accumulator = 1;
 }
 
+// Algorithm in http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf.
+message BoundedAdagradParameters {
+  // Whether to use the updated or the old value of the accumulator when
+  // computing the effective learning rate. When update_accumulator_first is set
+  // to True, the updated value of the accumulator is used.
+  bool update_accumulator_first = 1;
+  // The max_var_update value to use. Set value to 0 (default) to disable using
+  // max_var_update to clip the gradient.
+  float max_var_update = 2;
+  // The maximum value of the accumulator. Set max_accumulator to 0 (default)
+  // to disable using max_accumulator to clip the accumulator.
+  float max_accumulator = 3;
+}
+
 // https://www.tensorflow.org/api_docs/python/tf/train/GradientDescentOptimizer
 // https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L423
-message StochasticGradientDescentParameters {
-}
+message StochasticGradientDescentParameters {}
 
 // https://www.tensorflow.org/api_docs/python/tf/train/FtrlOptimizer
 // https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L192
@@ -181,11 +194,11 @@ message GradientAccumulationStatus {
     ENABLED = 1;
     DISABLED = 2;
   }
-};
+}
 
 // Configuration proto for hot ID optimization. This is an experimental feature
 // that is currently disabled (by default).
-message HotIdOptimizerConfiguration {
+message HotIdReplicationConfiguration {
   // Whether to enable or disable hot ID optimization.
   // If UNSPECIFIED (default), hot ID optimization is DISABLED.
   enum Status {
@@ -194,28 +207,6 @@ message HotIdOptimizerConfiguration {
     DISABLED = 2;
   }
   Status status = 1;
-
-  // The following fields are never expected to be set by the TF model. However,
-  // a TF model could set them if it chooses to. If the fields are not set,
-  // meaningful default values will be chosen by the TPU software.
-
-  // Frequency above which an embedding ID is classified as hot. The valid
-  // range for the frequency is [0.0, 1.0]. The frequency of an embedding ID is
-  // defined as the ratio of the number of lookups for that ID to the total
-  // number of lookups for the embedding table.
-  float frequency_threshold = 2;
-
-  // The maximum number of hot IDs for the embedding table. If greater than
-  // max_id_count hot IDs exist for the table, the IDs with the highest
-  // frequencies are chosen.
-  int32 max_id_count = 3;
-
-  // The maximum number of slots reserved in HBM (across the entire TPU system)
-  // for storing the replicas of hot IDs for the embedding table. In future, the
-  // number of replicas for a particular hot ID could be adjusted based on its
-  // frequency. The max_slot_count value captures the total number of replicas
-  // across all hot IDs for the table.
-  int32 max_slot_count = 4;
 }
 
 message OptimizationParameters {
@@ -244,14 +235,15 @@ message OptimizationParameters {
   // apply them using the actual optimization algorithm).
   GradientAccumulationStatus.Status gradient_accumulation_status = 17;
 
-  // Configuration proto for hot ID optimization. This is an experimental
+  // Configuration proto for hot ID replication. This is an experimental
   // feature that is currently disabled (by default).
-  HotIdOptimizerConfiguration hot_id_optimizer_configuration = 18;
+  HotIdReplicationConfiguration hot_id_replication_configuration = 18;
 
   // Optimization algorithm parameters; which field is selected determines which
   // algorithm to use.
   oneof parameters {
     AdagradParameters adagrad = 3;
+    BoundedAdagradParameters bounded_adagrad = 19;
     StochasticGradientDescentParameters stochastic_gradient_descent = 4;
     FtrlParameters ftrl = 5;
     AdamParameters adam = 6;

@@ -126,21 +126,12 @@ class TestUpgrade(test_util.TensorFlowTestCase):
       self.assertAllEqual(tf.squeeze(tf.expand_dims(a, 1), [1]).eval(),
                           a)
       self.assertAllEqual(
-          tf.expand_dims(
-              tf.squeeze(
-                  [[1, 2, 3]], squeeze_dims=[0]), dim=0).eval(),
-          a)
+          tf.expand_dims(tf.squeeze([[1, 2, 3]], axis=[0]), dim=0).eval(), a)
       self.assertAllEqual(
-          tf.squeeze(
-              tf.expand_dims(
-                  [[1, 2, 3]], dim=1), squeeze_dims=[1]).eval(),
-          a)
+          tf.squeeze(tf.expand_dims([[1, 2, 3]], dim=1), axis=[1]).eval(), a)
 
       self.assertAllEqual(
-          tf.squeeze(
-              tf.expand_dims(
-                  [[1, 2, 3]], dim=1), squeeze_dims=[1]).eval(),
-          a)
+          tf.squeeze(tf.expand_dims([[1, 2, 3]], dim=1), axis=[1]).eval(), a)
 
   @test_util.run_v1_only("b/120545219")
   def testArithmeticRenames(self):

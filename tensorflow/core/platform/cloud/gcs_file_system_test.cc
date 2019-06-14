@@ -889,9 +889,9 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadAllAttemptsFail) {
   const auto& status = file->Close();
   EXPECT_EQ(errors::Code::ABORTED, status.code());
   EXPECT_TRUE(
-      str_util::StrContains(status.error_message(),
-                            "All 10 retry attempts failed. The last failure: "
-                            "Unavailable: important HTTP error 503"))
+      absl::StrContains(status.error_message(),
+                        "All 10 retry attempts failed. The last failure: "
+                        "Unavailable: important HTTP error 503"))
       << status;
 }
 
@@ -947,11 +947,11 @@ TEST(GcsFileSystemTest, NewWritableFile_UploadReturns410) {
   const auto& status = file->Close();
   EXPECT_EQ(errors::Code::UNAVAILABLE, status.code());
   EXPECT_TRUE(
-      str_util::StrContains(status.error_message(),
-                            "Upload to gs://bucket/path/writeable.txt failed, "
-                            "caused by: Not found: important HTTP error 410"))
+      absl::StrContains(status.error_message(),
+                        "Upload to gs://bucket/path/writeable.txt failed, "
+                        "caused by: Not found: important HTTP error 410"))
       << status;
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       status.error_message(), "when uploading gs://bucket/path/writeable.txt"))
       << status;
 }
@@ -983,6 +983,12 @@ TEST(GcsFileSystemTest, NewAppendableFile) {
            "Timeouts: 5 1 10\n",
            strings::StrCat("{\"size\": \"8\",\"generation\": \"1\","
                            "\"updated\": \"2016-04-29T23:15:24.896Z\"}")),
+       new FakeHttpRequest(
+           "Uri: https://storage.googleapis.com/bucket/path%2Fappendable\n"
+           "Auth Token: fake_token\n"
+           "Range: 0-1048575\n"
+           "Timeouts: 5 1 20\n",
+           "content1,"),
        new FakeHttpRequest(
            "Uri: https://storage.googleapis.com/bucket/path%2Fappendable\n"
            "Auth Token: fake_token\n"

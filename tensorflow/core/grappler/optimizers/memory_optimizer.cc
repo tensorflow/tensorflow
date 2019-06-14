@@ -500,16 +500,6 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
   // Look for AddN nodes (and equivalent) and record input names.
   MutableGraphView view(&item->graph);
 
-  // It's ok to use immutable GraphTopologyView here, because we do not destroy
-  // any of the nodes in the underlying graph, we only add new nodes.
-  GraphTopologyView graph_topology;
-  Status initialized_topology = graph_topology.InitializeFromGraph(item->graph);
-  if (!initialized_topology.ok()) {
-    VLOG(1) << "Failed to initialize graph topology view: "
-            << initialized_topology.error_message();
-    return false;
-  }
-
   std::unordered_map<string, std::unordered_set<NodeDef*>> addn_list;
   for (NodeDef& node : *item->graph.mutable_node()) {
     if (!IsAddN(node) && node.op() != "AccumulateNV2") {
@@ -568,9 +558,21 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
     return false;
   }
   GraphProperties properties(*item);
-  s = properties.InferStatically(false);
+  s = properties.InferStatically(/*assume_valid_feeds=*/false,
+                                 /*aggressive_shape_inference=*/false,
+                                 /*include_tensor_values=*/false);
   if (!s.ok()) {
     VLOG(1) << "Failed to infer shapes: " << s.error_message();
+    return false;
+  }
+
+  // It's ok to use immutable GraphTopologyView here, because we do not destroy
+  // any of the nodes in the underlying graph, we only add new nodes.
+  GraphTopologyView graph_topology;
+  Status initialized_topology = graph_topology.InitializeFromGraph(item->graph);
+  if (!initialized_topology.ok()) {
+    VLOG(1) << "Failed to initialize graph topology view: "
+            << initialized_topology.error_message();
     return false;
   }
 
@@ -637,10 +639,15 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
 
     DataType dtype = node->attr().at("T").type();
     const string& device = node->device();
+    const string tmp_var_name = strings::StrCat(node->name(), "/tmp_var");
+    if (view.GetNode(tmp_var_name) != nullptr) {
+      VLOG(1) << "Temporary variable already exists " << tmp_var_name;
+      return false;
+    }
 
     // Create the temporary variable that will hold intermediate results
     NodeDef* tmp_var = item->graph.add_node();
-    tmp_var->set_name(strings::StrCat(node->name(), "/tmp_var"));
+    tmp_var->set_name(tmp_var_name);
     tmp_var->set_op("TemporaryVariable");
     tmp_var->set_device(device);
     (*tmp_var->mutable_attr())["dtype"].set_type(dtype);
@@ -715,7 +722,7 @@ Status BuildSwapPair(NodeDef* node, int input_to_swap,
                      std::pair<NodeDef*, NodeDef*>* swap_pair) {
   string task, device;
   if (!DeviceNameUtils::SplitDeviceName(node->device(), &task, &device) ||
-      !str_util::StrContains(device, DEVICE_GPU)) {
+      !absl::StrContains(device, DEVICE_GPU)) {
     return errors::InvalidArgument("Can't swap input ", input_to_swap,
                                    " of node ", node->name(),
                                    " since it is not on GPU");
@@ -1143,7 +1150,11 @@ bool SwappingPass(RewriterConfig::MemOptType optimization_level,
 
   // Estimate the size of the data to swap for each node.
   GraphProperties properties(*item);
-  if (!properties.InferStatically(true).ok()) {
+  if (!properties
+           .InferStatically(/*assume_valid_feeds=*/true,
+                            /*aggressive_shape_inference=*/false,
+                            /*include_tensor_values=*/false)
+           .ok()) {
     return false;
   }
   for (auto& swap : nodes_to_swap) {
@@ -1238,10 +1249,10 @@ bool CrossesTaskOrCpuGpuBoundary(const NodeDef& node1, const NodeDef& node2) {
   string device2;
   DeviceNameUtils::SplitDeviceName(node2.device(), &task2, &device2);
   return task1 != task2 ||
-         (str_util::StrContains(device1, DEVICE_CPU) &&
-          str_util::StrContains(device2, DEVICE_GPU)) ||
-         (str_util::StrContains(device1, DEVICE_GPU) &&
-          str_util::StrContains(device2, DEVICE_CPU));
+         (absl::StrContains(device1, DEVICE_CPU) &&
+          absl::StrContains(device2, DEVICE_GPU)) ||
+         (absl::StrContains(device1, DEVICE_GPU) &&
+          absl::StrContains(device2, DEVICE_CPU));
 }
 
 // TODO(rmlarsen): Add distributed TF test.
@@ -1271,7 +1282,8 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
   }
 
   GraphTopologyView graph_view;
-  TF_RETURN_IF_ERROR(graph_view.InitializeFromGraph(*optimized_graph));
+  TF_RETURN_IF_ERROR(graph_view.InitializeFromGraph(
+      *optimized_graph, /*ignore_control_edges=*/true));
   std::unordered_set<const NodeDef*> optimized_nodes;
 
   for (int i : assign_nodes) {
@@ -1283,8 +1295,13 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
       assign_nodes_in_fanout.push_back(&assign_node);
 
       std::vector<const NodeDef*> transitive_fanout;
+      // Find the nodes in transitive fanout. If a node is known to never
+      // forward its inputs, we can skip its fanout.
       DfsTraversal(graph_view, {graph_view.GetNode(i)},
                    TraversalDirection::kFollowOutputs,
+                   DfsPredicates::Advance([&](const NodeDef* node) {
+                     return !NeverForwardsInputs(*node);
+                   }),
                    DfsCallbacks::PreOrder([&](const NodeDef* node) {
                      transitive_fanout.push_back(node);
                    }));
@@ -1293,7 +1310,6 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
       // If all nodes in the transitive fanout are on the same device as the
       // assign node, there is no need to allocate the output in pinned memory.
       for (const NodeDef* fanout_node : transitive_fanout) {
-        // const NodeDef& fanout_node = optimized_graph->node(fanout);
         if (relax_constraint &&
             (IsSend(*fanout_node) ||
              CrossesTaskOrCpuGpuBoundary(*fanout_node, assign_node))) {

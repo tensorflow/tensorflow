@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -37,7 +37,7 @@ namespace functor {
 #define GPUReduceSliceFunctorReduceop(reduceop, beginning)                     \
   template <typename T, typename Index>                                        \
   __global__ void ReduceSliceDeviceKernel##reduceop(                           \
-      Cuda3DLaunchConfig config, Index indices_width, Index bound,             \
+      Gpu3DLaunchConfig config, Index indices_width, Index bound,              \
       const T begin, const Index *indices, const T *input, T *out) {           \
     CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count.x, X) {               \
       CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count.y, Y) {             \
@@ -73,7 +73,7 @@ namespace functor {
       if (sizex * sizey * sizez == 0) {                                        \
         return;                                                                \
       }                                                                        \
-      Cuda3DLaunchConfig config = GetCuda3DLaunchConfig(                       \
+      Gpu3DLaunchConfig config = GetGpu3DLaunchConfig(                         \
           sizex, sizey, sizez, d, ReduceSliceDeviceKernel##reduceop<T, Index>, \
           0, 0);                                                               \
                                                                                \

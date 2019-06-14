@@ -44,21 +44,8 @@ StatusOr<HloOpcode> StringToHloOpcode(const string& opcode_name) {
   return it->second;
 }
 
-#define CHECK_DEFAULT(property_name, opcode_name) false
-#define CHECK_PROPERTY(property_name, opcode_name, value) \
-  (value & property_name)
-#define RESOLVE(_1, _2, target, ...) target
-#define HAS_PROPERTY(property, ...) \
-  RESOLVE(__VA_ARGS__, CHECK_PROPERTY, CHECK_DEFAULT)(property, __VA_ARGS__)
-
 bool HloOpcodeIsComparison(HloOpcode opcode) {
-  switch (opcode) {
-#define CASE_IS_COMPARISON(enum_name, opcode_name, ...) \
-  case HloOpcode::enum_name:                            \
-    return HAS_PROPERTY(kHloOpcodeIsComparison, __VA_ARGS__);
-    HLO_OPCODE_LIST(CASE_IS_COMPARISON)
-#undef CASE_IS_COMPARISON
-  }
+  return opcode == HloOpcode::kCompare;
 }
 
 bool HloOpcodeIsVariadic(HloOpcode opcode) {
@@ -81,10 +68,5 @@ absl::optional<int> HloOpcodeArity(HloOpcode opcode) {
 #undef CASE_ARITY
   }
 }
-
-#undef HAS_PROPERTY
-#undef RESOLVE
-#undef CHECK_DEFAULT
-#undef CHECK_PROPERTY
 
 }  // namespace xla

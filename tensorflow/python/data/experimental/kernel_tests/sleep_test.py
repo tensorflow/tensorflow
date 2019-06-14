@@ -26,8 +26,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
-_NUMPY_RANDOM_SEED = 42
-
 
 @test_util.run_all_in_graph_and_eager_modes
 class SleepTest(test_base.DatasetTestBase):

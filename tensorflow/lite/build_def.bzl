@@ -42,6 +42,7 @@ def tflite_copts():
 
     return copts
 
+EXPORTED_SYMBOLS = "//tensorflow/lite/java/src/main/native:exported_symbols.lds"
 LINKER_SCRIPT = "//tensorflow/lite/java/src/main/native:version_script.lds"
 
 def tflite_linkopts_unstripped():
@@ -113,22 +114,28 @@ def tflite_jni_binary(
         copts = tflite_copts(),
         linkopts = tflite_jni_linkopts(),
         linkscript = LINKER_SCRIPT,
+        exported_symbols = EXPORTED_SYMBOLS,
         linkshared = 1,
         linkstatic = 1,
         testonly = 0,
         deps = [],
         srcs = []):
     """Builds a jni binary for TFLite."""
-    linkopts = linkopts + [
-        "-Wl,--version-script",  # Export only jni functions & classes.
-        "$(location {})".format(linkscript),
-    ]
+    linkopts = linkopts + select({
+        "//tensorflow:macos": [
+            "-Wl,-exported_symbols_list,$(location {})".format(exported_symbols),
+        ],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "-Wl,--version-script,$(location {})".format(linkscript),
+        ],
+    })
     native.cc_binary(
         name = name,
         copts = copts,
         linkshared = linkshared,
         linkstatic = linkstatic,
-        deps = deps + [linkscript],
+        deps = deps + [linkscript, exported_symbols],
         srcs = srcs,
         linkopts = linkopts,
         testonly = testonly,
@@ -247,7 +254,9 @@ def generated_test_models():
         "elu",
         "equal",
         "exp",
+        "embedding_lookup",
         "expand_dims",
+        "eye",
         "fill",
         "floor",
         "floor_div",
@@ -260,6 +269,7 @@ def generated_test_models():
         "global_batch_norm",
         "greater",
         "greater_equal",
+        "identity",
         "sum",
         "l2norm",
         "l2norm_shared_epsilon",
@@ -274,6 +284,8 @@ def generated_test_models():
         "logical_or",
         "logical_xor",
         "lstm",
+        "matrix_diag",
+        "matrix_set_diag",
         "max_pool",
         "maximum",
         "mean",
@@ -303,6 +315,8 @@ def generated_test_models():
         "resolve_constant_strided_slice",
         "reverse_sequence",
         "reverse_v2",
+        "rfft2d",
+        "round",
         "rsqrt",
         "shape",
         "sigmoid",
@@ -325,6 +339,9 @@ def generated_test_models():
         "topk",
         "transpose",
         "transpose_conv",
+        "unfused_gru",
+        "unidirectional_sequence_lstm",
+        "unidirectional_sequence_rnn",
         "unique",
         "unpack",
         "unroll_batch_matmul",
@@ -339,7 +356,8 @@ def generated_test_models_failing(conversion_mode):
     if conversion_mode == "toco-flex":
         return [
             "lstm",  # TODO(b/117510976): Restore when lstm flex conversion works.
-            "unroll_batch_matmul",  # TODO(b/123030774): Fails in 1.13 tests.
+            "unidirectional_sequence_lstm",
+            "unidirectional_sequence_rnn",
         ]
 
     return []
@@ -394,7 +412,7 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
         # TODO(nupurgarg): Comment in when pb2lite is in open source. b/113614050.
         # if conversion_mode == "pb2lite":
         #     toco = "//tensorflow/lite/experimental/pb2lite:pb2lite"
-        flags = "--ignore_toco_errors --run_with_flex"
+        flags = "--ignore_converter_errors --run_with_flex"
 
     gen_zipped_test_file(
         name = "zip_%s" % test_name,

@@ -105,7 +105,7 @@ struct DenseUpdate<CPUDevice, string, ASSIGN> {
 
 INSTANTIATE_GET_VARIANT_COPY_FN(CPUDevice, TF_CALL_ALL_TYPES, CPU_DENSE_COPY);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define GPU_DENSE_COPY(T)                                                \
   case DataTypeToEnum<T>::value: {                                       \
     functor::DenseUpdate<GPUDevice, T, ASSIGN> copy_functor_;            \
@@ -121,7 +121,7 @@ INSTANTIATE_GET_VARIANT_COPY_FN(GPUDevice, TF_CALL_GPU_AND_ADDITIONAL_TYPES,
                                 GPU_DENSE_COPY);
 #undef TF_CALL_GPU_AND_ADDITIONAL_TYPES
 #undef GPU_DENSE_COPY
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef CPU_DENSE_COPY
 #undef INSTANTIATE_GET_VARIANT_COPY_FN

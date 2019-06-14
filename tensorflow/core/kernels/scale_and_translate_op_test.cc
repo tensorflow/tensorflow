@@ -120,7 +120,8 @@ void Sample(const DynamicKernel& kernel, const bool antialias,
       1;
 
   std::fill(dest, dest + channels, 0.0f);
-  if (y_span_end <= y_span_start || x_span_end <= x_span_start) {
+  if (sample_f.x() < 0.0f || sample_f.y() < 0.0f || sample_f.x() > in_width ||
+      sample_f.y() > in_height) {
     return;
   }
   const Vector2f one_over_kernel_scale(1.0f / kernel_scale.x(),
@@ -170,6 +171,8 @@ void ScaleAndTranslateBaseline(const DynamicKernel& kernel,
 
   const int64 out_height = output.dimension(1);
   const int64 out_width = output.dimension(2);
+  const int64 in_height = images.dimension(1);
+  const int64 in_width = images.dimension(2);
 
   for (int b = 0; b < batch; ++b) {
     for (int64 y = 0; y < out_height; ++y) {
@@ -178,8 +181,13 @@ void ScaleAndTranslateBaseline(const DynamicKernel& kernel,
       for (int64 x = 0; x < out_width; ++x) {
         const float out_x_f = static_cast<float>(x) + 0.5;
         const float in_x_f = out_x_f * scale.x() + translate.x();
-        Sample(kernel, antialias, images, b, scale, Vector2f(in_x_f, in_y_f),
-               &output(b, y, x, 0));
+        if (in_x_f < 0.0f || in_y_f < 0.0f || in_x_f > in_width ||
+            in_y_f > in_height) {
+          std::fill(&output(b, y, x, 0), &output(b, y, x + 1, 0), 0.0f);
+        } else {
+          Sample(kernel, antialias, images, b, scale, Vector2f(in_x_f, in_y_f),
+                 &output(b, y, x, 0));
+        }
       }
     }
   }

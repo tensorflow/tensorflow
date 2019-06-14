@@ -24,20 +24,6 @@ limitations under the License.
 
 namespace toco {
 
-namespace {
-
-std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
-    Model* model, const Operator* op) {
-  auto it = model->operators.begin();
-  for (; it != model->operators.end(); ++it) {
-    if (it->get() == op) {
-      break;
-    }
-  }
-  return it;
-}
-}  // namespace
-
 ::tensorflow::Status IdentifyL2Pool::Run(Model* model, std::size_t op_index,
                                          bool* modified) {
   *modified = false;
@@ -105,9 +91,9 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
   model->EraseArray(sqrt_op->inputs[0]);
 
   // Erase three operators being replaced.
-  model->operators.erase(FindOperator(model, square_op));
-  model->operators.erase(FindOperator(model, avpool_op));
-  model->operators.erase(FindOperator(model, sqrt_op));
+  model->operators.erase(FindOp(*model, square_op));
+  model->operators.erase(FindOp(*model, avpool_op));
+  model->operators.erase(FindOp(*model, sqrt_op));
 
   *modified = true;
   return ::tensorflow::Status::OK();

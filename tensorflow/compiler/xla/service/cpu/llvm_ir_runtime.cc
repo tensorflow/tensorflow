@@ -30,10 +30,13 @@ namespace runtime {
 
 const char* const kTanhV4F32SymbolName = "__xla_cpu_runtime_TanhV4F32";
 const char* const kTanhV8F32SymbolName = "__xla_cpu_runtime_TanhV8F32";
+const char* const kTanhV16F32SymbolName = "__xla_cpu_runtime_TanhV16F32";
 const char* const kExpV4F32SymbolName = "__xla_cpu_runtime_ExpV4F32";
 const char* const kExpV8F32SymbolName = "__xla_cpu_runtime_ExpV8F32";
+const char* const kExpV16F32SymbolName = "__xla_cpu_runtime_ExpV16F32";
 const char* const kLogV4F32SymbolName = "__xla_cpu_runtime_LogV4F32AVX";
 const char* const kLogV8F32SymbolName = "__xla_cpu_runtime_LogV8F32AVX";
+const char* const kLogV16F32SymbolName = "__xla_cpu_runtime_LogV16F32AVX";
 
 namespace {
 
@@ -119,13 +122,9 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilder<>* b, llvm::Value* input,
                              int32 vector_width) {
   VectorSupportLibrary vsl(F32, vector_width, b, "exp_f32");
 
-  // This implements the same polynomial approximation as implemented in Eigen3.
-
+  // This implements the same polynomial approximation as implemented in Cephes.
   const llvm::APFloat half = GetIeeeF32(0.5);
-  const llvm::APFloat one = GetIeeeF32(1.0);
-
-  const llvm::APFloat exp_hi = GetIeeeF32(88.3762626647950);
-  const llvm::APFloat exp_lo = GetIeeeF32(-88.3762626647949);
+  const llvm::APFloat one = GetIeeeF32(1);
 
   const llvm::APFloat cephes_LOG2EF = GetIeeeF32(1.44269504088896341);
   const llvm::APFloat cephes_exp_C1 = GetIeeeF32(0.693359375);
@@ -138,39 +137,79 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilder<>* b, llvm::Value* input,
   const llvm::APFloat cephes_exp_p4 = GetIeeeF32(1.6666665459E-1);
   const llvm::APFloat cephes_exp_p5 = GetIeeeF32(5.0000001201E-1);
 
-  llvm::Value* input_clamped =
-      vsl.Clamp(input, /*low=*/exp_lo, /*high=*/exp_hi);
-  llvm::Value* fx = vsl.Floor(vsl.MulAdd(input_clamped, cephes_LOG2EF, half));
-  llvm::Value* tmp = vsl.Mul(cephes_exp_C1, fx);
-  llvm::Value* z = vsl.Mul(cephes_exp_C2, fx);
-  llvm::Value* x = vsl.Sub(input_clamped, tmp);
-  x = vsl.Sub(x, z);
-  z = vsl.Mul(x, x);
+  // To compute e^input, we re-express it as
+  //
+  //   e^input = e^(a + b)
+  //           = e^(a + n log(2))
+  //           = e^a * 2^n.
+  //
+  // We choose n = floor(a * log(2) + 0.5), restricting the value of `a` to
+  // (-0.5, 0.5).  We then use a polynomial to compute e^a.
 
-  llvm::Value* y = vsl.MulAdd(x, cephes_exp_p0, cephes_exp_p1);
-  y = vsl.MulAdd(y, x, cephes_exp_p2);
-  y = vsl.MulAdd(y, x, cephes_exp_p3);
-  y = vsl.MulAdd(y, x, cephes_exp_p4);
-  y = vsl.MulAdd(y, x, cephes_exp_p5);
-  y = vsl.MulAdd(y, z, x);
-  y = vsl.Add(one, y);
+  // Restrict input to a small range, including some values that evaluate to
+  // +/- inf.  Our computations below aren't particularly sensitive to the exact
+  // choices here, so we choose values a bit larger/smaller than
+  //
+  //   log(F32_MAX) =       88.723...
+  //   log(F32_EPSILON) = -103.279....
+  //
+  input = vsl.Clamp(input, GetIeeeF32(-104), GetIeeeF32(88.8));
 
-  // VectorSupportLibrary (intentionally) can't juggle more than one type at a
-  // time so drop down to IRBuilder for this bit.
-  llvm::Value* vector_constant_0x7f =
-      b->CreateVectorSplat(vector_width, b->getInt32(0x7f));
-  llvm::Value* vector_constant_23 =
-      b->CreateVectorSplat(vector_width, b->getInt32(23));
-  llvm::Type* i32_vector_type =
-      llvm::VectorType::get(b->getInt32Ty(), vector_width);
-  // fx is clamped so we don't have to worry about it being out of range for
-  // i32.
-  llvm::Value* emm0 = b->CreateFPToSI(fx, i32_vector_type);
-  emm0 = b->CreateAdd(emm0, vector_constant_0x7f);
-  emm0 = b->CreateShl(emm0, vector_constant_23);
-  llvm::Value* emm0_f32 = b->CreateBitCast(emm0, vsl.vector_type());
+  llvm::Value* x = input;
+  llvm::Value* n = vsl.Floor(vsl.MulAdd(input, cephes_LOG2EF, half));
 
-  return vsl.Max(vsl.Mul(y, emm0_f32), input);
+  // When we eventually do the multiplication in e^a * 2^n, we need to handle
+  // the case when n > 127, the max fp32 exponent (so 2^n == inf) but e^a < 1
+  // (so e^a * 2^n != inf).  There's a similar problem for n < -126, the
+  // smallest fp32 exponent.
+  //
+  // A straightforward solution would be to detect n out of range and split it
+  // up, doing
+  //
+  //   e^a * 2^n = e^a * 2^(n1 + n2)
+  //             = (2^n1 * e^a) * 2^n2.
+  //
+  // But it turns out this approach is quite slow.  It's not clear why; our
+  // hypothesis is that the integer operations on the exponent `n` have nonlocal
+  // effects on the pipeline.
+  //
+  // The approach we use instead is to clamp n to [-126, 127] so 2^n doesn't
+  // over/underflow.  This causes `a` to be outside the range (-0.5, 0.5), which
+  // means that our polynomial for e^a will give a less-accurate result.  In
+  // practice this seems to work well enough; it passes our exhaustive tests,
+  // breaking only one result, and by one ulp (we return exp(88.7228394) =
+  // max-float but we should return inf).
+  n = vsl.Clamp(n, GetIeeeF32(-126), GetIeeeF32(127));
+
+  // Polynomial to compute z = e^a, accurate for a in (-0.5, 0.5).
+  x = vsl.Sub(x, vsl.Mul(cephes_exp_C1, n));
+  x = vsl.Sub(x, vsl.Mul(cephes_exp_C2, n));
+  llvm::Value* z = vsl.MulAdd(x, cephes_exp_p0, cephes_exp_p1);
+  z = vsl.MulAdd(z, x, cephes_exp_p2);
+  z = vsl.MulAdd(z, x, cephes_exp_p3);
+  z = vsl.MulAdd(z, x, cephes_exp_p4);
+  z = vsl.MulAdd(z, x, cephes_exp_p5);
+  z = vsl.MulAdd(z, vsl.Mul(x, x), x);
+  z = vsl.Add(one, z);
+
+  // Convert n to an i32.  This is safe because we clamped it above.
+  llvm::Value* n_i32 =
+      b->CreateFPToSI(n, llvm::VectorType::get(b->getInt32Ty(), vector_width));
+
+  // Create 2^n as an fp32.  This works because -126 <= n <= 127 means that n is
+  // within the bounds for an fp32 exponent.
+  auto splat_i32 = [&](int32 v) {
+    return b->CreateVectorSplat(vector_width, b->getInt32(v));
+  };
+  const int32 kF32SignificandBits = 23;
+  llvm::Value* exp_bias = splat_i32(0x7f);
+  llvm::Value* pow2 =
+      b->CreateBitCast(b->CreateShl(b->CreateAdd(n_i32, exp_bias),
+                                    splat_i32(kF32SignificandBits)),
+                       vsl.vector_type());
+
+  // Return z * 2^n.
+  return vsl.Mul(z, pow2);
 }
 
 llvm::Value* GenerateVF32Log(llvm::IRBuilder<>* b, llvm::Value* input,
@@ -289,16 +328,19 @@ void RewriteIRRuntimeFunctions(llvm::Module* module, bool enable_fast_math) {
   rewrite_calls("llvm.tanh.f32", GenerateVF32Tanh, /*vector_width=*/1);
   rewrite_calls(kTanhV4F32SymbolName, GenerateVF32Tanh, /*vector_width=*/4);
   rewrite_calls(kTanhV8F32SymbolName, GenerateVF32Tanh, /*vector_width=*/8);
+  rewrite_calls(kTanhV16F32SymbolName, GenerateVF32Tanh, /*vector_width=*/16);
 
   rewrite_calls("expf", GenerateVF32Exp, /*vector_width=*/1);
   rewrite_calls("llvm.exp.f32", GenerateVF32Exp, /*vector_width=*/1);
   rewrite_calls(kExpV4F32SymbolName, GenerateVF32Exp, /*vector_width=*/4);
   rewrite_calls(kExpV8F32SymbolName, GenerateVF32Exp, /*vector_width=*/8);
+  rewrite_calls(kExpV16F32SymbolName, GenerateVF32Exp, /*vector_width=*/16);
 
   rewrite_calls("logf", GenerateVF32Log, /*vector_width=*/1);
   rewrite_calls("llvm.log.f32", GenerateVF32Log, /*vector_width=*/1);
   rewrite_calls(kLogV4F32SymbolName, GenerateVF32Log, /*vector_width=*/4);
   rewrite_calls(kLogV8F32SymbolName, GenerateVF32Log, /*vector_width=*/8);
+  rewrite_calls(kLogV16F32SymbolName, GenerateVF32Log, /*vector_width=*/16);
 }
 
 }  // namespace runtime

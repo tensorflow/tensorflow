@@ -33,6 +33,10 @@ from tensorflow.python.platform import googletest
 
 class TensorSpecTest(test_util.TensorFlowTestCase):
 
+  def testDefaultDType(self):
+    desc = tensor_spec.TensorSpec([1])
+    self.assertEqual(desc.dtype, dtypes.float32)
+
   def testAcceptsNumpyDType(self):
     desc = tensor_spec.TensorSpec([1], np.float32)
     self.assertEqual(desc.dtype, dtypes.float32)

@@ -222,7 +222,7 @@ class RaggedMapOpTest(ragged_test_util.RaggedTensorTestCase,
   def testZip(self):
     x = ragged_factory_ops.constant(
         [[10, 20], [30, 40], [50, 60], [70], [80, 90, 100]], dtypes.int64)
-    y = array_ops.expand_dims(mo.range(x.nrows(), dtype=dtypes.int64), axis=1)
+    y = array_ops.expand_dims(mo.range(x.nrows(out_type=dtypes.int64)), axis=1)
 
     def _zip(foo):
       y_val, x_val = foo
@@ -273,7 +273,7 @@ class RaggedMapOpTest(ragged_test_util.RaggedTensorTestCase,
     elems = ragged_factory_ops.constant([[1, 2, 3], [4, 5], [6, 7]])
     fn = lambda x: ragged_tensor.RaggedTensor.from_row_starts(x, [0])
     with self.assertRaisesWithLiteralMatch(
-        ValueError, r'The declared ragged rank (10) mismatches the result (1)'):
+        ValueError, r'The declared ragged rank (10) mismatches the result (2)'):
       _ = ragged_map_ops.map_fn(
           fn,
           elems,

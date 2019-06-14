@@ -34,7 +34,7 @@ You should then be able to compile:
 ```
 
 This should compile a static library in:
-`tensorflow/lite/gen/lib/rpi_armv7/libtensorflow-lite.a`.
+`tensorflow/lite/tools/make/gen/rpi_armv7l/lib/libtensorflow-lite.a`.
 
 ## Native compiling
 This has been tested on Raspberry Pi 3b, Raspbian GNU/Linux 9.1 (stretch), gcc version 6.3.0 20170516 (Raspbian 6.3.0-18+rpi1).

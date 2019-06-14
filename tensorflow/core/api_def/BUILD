@@ -6,12 +6,6 @@
 #   :python_api_def
 #   :java_api_def
 
-package(
-    default_visibility = ["//visibility:private"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
@@ -20,6 +14,11 @@ load(
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
+)
+
+package(
+    default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 filegroup(

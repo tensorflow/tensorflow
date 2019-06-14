@@ -682,7 +682,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
         self._covariance_of_mean_given_quadrature_component(diag_only=False))
 
   def _variance(self):
-    # Equivalent to: tf.diag_part(self._covariance()),
+    # Equivalent to: tf.linalg.tensor_diag_part(self._covariance()),
     return add(
         self._mean_of_covariance_given_quadrature_component(diag_only=True),
         self._covariance_of_mean_given_quadrature_component(diag_only=True))

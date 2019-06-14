@@ -23,6 +23,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
@@ -151,18 +152,10 @@ class TraceCollector {
   virtual ~TraceCollector() {}
   virtual std::unique_ptr<Handle> CreateAnnotationHandle(
       StringPiece name_part1, StringPiece name_part2) const = 0;
-  virtual std::unique_ptr<Handle> CreateActivityHandle(
-      StringPiece name_part1, StringPiece name_part2,
-      bool is_expensive) const = 0;
 
   // Returns true if this annotation tracing is enabled for any op.
   virtual bool IsEnabledForAnnotations() const = 0;
 
-  // Returns true if this activity handle tracking is enabled for an op of the
-  // given expensiveness.
-  virtual bool IsEnabledForActivities(bool is_expensive) const = 0;
-
- protected:
   static string ConcatenateNames(StringPiece first, StringPiece second);
 
  private:
@@ -200,34 +193,10 @@ class ScopedAnnotation {
                                  : nullptr;
         }()) {}
 
-  bool IsEnabled() const { return static_cast<bool>(handle_); }
-
- private:
-  std::unique_ptr<TraceCollector::Handle> handle_;
-};
-
-// Adds an activity through the currently registered TraceCollector.
-// The activity starts when an object of this class is created and stops when
-// the object is destroyed.
-class ScopedActivity {
- public:
-  explicit ScopedActivity(StringPiece name, bool is_expensive = true)
-      : ScopedActivity(name, StringPiece(), is_expensive) {}
-
-  // If tracing is enabled, set up an activity with a label of
-  // "<name_part1>:<name_part2>".  This can be cheaper than the
-  // single-argument constructor because the concatenation of the
-  // label string is only done if tracing is enabled.
-  ScopedActivity(StringPiece name_part1, StringPiece name_part2,
-                 bool is_expensive = true)
-      : handle_([&] {
-          auto trace_collector = GetTraceCollector();
-          return trace_collector ? trace_collector->CreateActivityHandle(
-                                       name_part1, name_part2, is_expensive)
-                                 : nullptr;
-        }()) {}
-
-  bool IsEnabled() const { return static_cast<bool>(handle_); }
+  static bool IsEnabled() {
+    auto* trace_collector = GetTraceCollector();
+    return trace_collector && trace_collector->IsEnabledForAnnotations();
+  }
 
  private:
   std::unique_ptr<TraceCollector::Handle> handle_;

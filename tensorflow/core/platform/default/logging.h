@@ -21,6 +21,9 @@ limitations under the License.
 
 #include <limits>
 #include <sstream>
+
+#include "absl/base/log_severity.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -341,6 +344,59 @@ int64 MinLogLevelFromEnv();
 int64 MinVLogLevelFromEnv();
 
 }  // namespace internal
+
+// LogSink support adapted from //base/logging.h
+//
+// `LogSink` is an interface which can be extended to intercept and process
+// all log messages. LogSink implementations must be thread-safe. A single
+// instance will be called from whichever thread is performing a logging
+// operation.
+class TFLogEntry {
+  static absl::LogSeverity AsAbslLogSecurity(int severity) {
+    return static_cast<absl::LogSeverity>(severity);
+  }
+
+ public:
+  explicit TFLogEntry(int severity, absl::string_view log_line)
+      : severity_(AsAbslLogSecurity(severity)), log_line_(log_line) {}
+
+  absl::LogSeverity log_severity() const { return severity_; }
+  std::string ToString() const { return std::string(log_line_); }
+
+ private:
+  const absl::LogSeverity severity_;
+  const absl::string_view log_line_;
+};
+
+class TFLogSink {
+ public:
+  virtual ~TFLogSink() = default;
+
+  // `Send` is called synchronously during the log statement.  The logging
+  // module guarantees not to call `Send` concurrently on the same log sink.
+  // Implementations should be careful not to call`LOG` or `CHECK` or take
+  // any locks that might be held by the `LOG` caller, to avoid deadlock.
+  //
+  // `e` is guaranteed to remain valid until the subsequent call to
+  // `WaitTillSent` completes, so implementations may store a pointer to or
+  // copy of `e` (e.g. in a thread local variable) for use in `WaitTillSent`.
+  virtual void Send(const TFLogEntry& entry) = 0;
+
+  // `WaitTillSent` blocks the calling thread (the thread that generated a log
+  // message) until the sink has finished processing the log message.
+  // `WaitTillSent` is called once per log message, following the call to
+  // `Send`.  This may be useful when log messages are buffered or processed
+  // asynchronously by an expensive log sink.
+  // The default implementation returns immediately.  Like `Send`,
+  // implementations should be careful not to call `LOG` or `CHECK or take any
+  // locks that might be held by the `LOG` caller, to avoid deadlock.
+  virtual void WaitTillSent() {}
+};
+
+// Add or remove a `LogSink` as a consumer of logging data.  Thread-safe.
+void TFAddLogSink(TFLogSink* sink);
+void TFRemoveLogSink(TFLogSink* sink);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_LOGGING_H_

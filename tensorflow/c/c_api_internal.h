@@ -24,9 +24,12 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+// clang-format off
 // Required for IS_MOBILE_PLATFORM
-#include "tensorflow/core/platform/platform.h"  // NO_LINT
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
 
+#include "tensorflow/c/tf_status_internal.h"
 #if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/core/framework/op_gen_lib.h"
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
@@ -49,10 +52,6 @@ class ServerInterface;
 
 // Internal structures used by the C API. These are likely to change and should
 // not be depended on.
-
-struct TF_Status {
-  tensorflow::Status status;
-};
 
 struct TF_Tensor {
   ~TF_Tensor();

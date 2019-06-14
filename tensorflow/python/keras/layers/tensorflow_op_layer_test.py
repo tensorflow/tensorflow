@@ -23,6 +23,9 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -199,6 +202,29 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     y2 = self.evaluate(model2(x))
     self.assertAllClose(y1, y2)
 
+  def test_gradient_tape_in_function(self):
+    z = keras.Input((1,))
+    x = math_ops.matmul(z, constant_op.constant(2.0, shape=(1, 1)))
+    x = math_ops.reduce_mean(x, axis=0, keepdims=True)
+    h = gen_nn_ops.relu(x)
+    m = keras.Model(z, h)
+
+    @def_function.function()
+    def f(x):
+      with backprop.GradientTape() as t:
+        t.watch(x)
+        z = m(x ** 2)
+      grads = t.gradient(z, x)
+      return grads
+
+    self.assertAllEqual(f(constant_op.constant(10.0, shape=(1, 1))),
+                        constant_op.constant(40.0, shape=(1, 1)))
+
+    f = def_function.function(f)
+
+    self.assertAllEqual(f(constant_op.constant(10.0, shape=(1, 1))),
+                        constant_op.constant(40.0, shape=(1, 1)))
+
   def test_no_tracking(self):
     x = keras.backend.placeholder((10, 10))
     keras.layers.Dense(1)(x)
@@ -221,7 +247,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     size_500 = _construct_graph_of_size(500)
 
     # Check construction time grows approx. linearly with size.
-    e = 2  # Fudge factor to prevent flakiness.
+    e = 3  # Fudge factor to prevent flakiness.
     self.assertLess(size_500, (10 * e) * size_50)
 
   def test_no_mask_tracking(self):

@@ -142,7 +142,7 @@ class GdrRemoteRendezvous : public BaseRemoteRendezvous {
     }
 
     WorkerSession* sess = session();
-    WorkerInterface* rwi = sess->worker_cache->CreateWorker(src_worker);
+    WorkerInterface* rwi = sess->worker_cache->GetOrCreateWorker(src_worker);
     if (rwi == nullptr) {
       Status s = errors::Internal("No worker known as ", src_worker);
       done(s, Args(), recv_args, Tensor{}, false);

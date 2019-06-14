@@ -12,11 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/add.h"
+#include "tensorflow/lite/kernels/internal/optimized/integer_ops/add.h"
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/add.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -247,10 +249,21 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
                GetTensorData<dtype>(input2), GetTensorShape(output), \
                GetTensorData<dtype>(output));
     if (output->type == kTfLiteInt8) {
-      if (need_broadcast) {
-        TF_LITE_ADD(reference_integer_ops, BroadcastAdd4DSlow, int8_t);
+      if (kernel_type == kReference) {
+        if (need_broadcast) {
+          TF_LITE_ADD(reference_integer_ops, BroadcastAdd4DSlow, int8_t);
+        } else {
+          TF_LITE_ADD(reference_integer_ops, Add, int8_t);
+        }
       } else {
-        TF_LITE_ADD(reference_integer_ops, Add, int8_t);
+        if (op_params.broadcast_category ==
+            BroadcastableOpCategory::kGenericBroadcast) {
+          TF_LITE_ADD(reference_integer_ops, BroadcastAdd4DSlow, int8_t);
+        } else if (need_broadcast) {
+          TF_LITE_ADD(optimized_integer_ops, BroadcastAddFivefold, int8_t);
+        } else {
+          TF_LITE_ADD(optimized_integer_ops, Add, int8_t);
+        }
       }
     } else {
       if (kernel_type == kReference) {

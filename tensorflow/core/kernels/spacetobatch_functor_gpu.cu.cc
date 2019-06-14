@@ -15,14 +15,13 @@ limitations under the License.
 
 // Specialization of SpaceToBatchFunctor for a GPUDevice.
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/spacetobatch_functor.h"
-
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/kernels/spacetobatch_functor.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -47,7 +46,7 @@ struct S2BParameters {
 template <typename T, int NUM_BLOCK_DIMS, bool B2S>
 __global__ void S2B(const int32 nthreads, T* space_tensor_ptr,
                     S2BParameters<NUM_BLOCK_DIMS> args, T* batch_tensor_ptr) {
-  CUDA_1D_KERNEL_LOOP(batch_tensor_idx, nthreads) {
+  GPU_1D_KERNEL_LOOP(batch_tensor_idx, nthreads) {
     int32 remaining_batch_tensor_idx = batch_tensor_idx;
 
     int32 batch_tensor_pos[NUM_BLOCK_DIMS + 2];
@@ -139,13 +138,13 @@ struct SpaceToBatchFunctor<GPUDevice, T, NUM_BLOCK_DIMS, B2S> {
       return errors::InvalidArgument(
           "number of batch_tensor elements exceeds 2^32-1");
     }
-    CudaLaunchConfig config =
-        GetCudaLaunchConfig(static_cast<int32>(total_count), d);
-    return CudaLaunchKernel(S2B<T, NUM_BLOCK_DIMS, B2S>, config.block_count,
-                            config.thread_per_block, 0, d.stream(),
-                            config.virtual_thread_count,
-                            const_cast<T*>(space_tensor.data()), args,
-                            const_cast<T*>(batch_tensor.data()));
+    GpuLaunchConfig config =
+        GetGpuLaunchConfig(static_cast<int32>(total_count), d);
+    return GpuLaunchKernel(S2B<T, NUM_BLOCK_DIMS, B2S>, config.block_count,
+                           config.thread_per_block, 0, d.stream(),
+                           config.virtual_thread_count,
+                           const_cast<T*>(space_tensor.data()), args,
+                           const_cast<T*>(batch_tensor.data()));
   }
 };
 
@@ -166,4 +165,4 @@ TF_CALL_GPU_NUMBER_TYPES(INSTANTIATE_FOR_T)
 }  // end namespace functor
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

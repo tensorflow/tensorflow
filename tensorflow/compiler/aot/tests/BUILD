@@ -1,11 +1,10 @@
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 # We disable some tfcompile tests in the open source build with the
 # "manual" tag to avoid making our OSS users build LLVM twice
@@ -36,6 +35,7 @@ py_binary(
     name = "make_test_graphs",
     testonly = 1,
     srcs = ["make_test_graphs.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -184,7 +184,7 @@ tf_library(
     name = "test_graph_tfmatmulandadd",
     testonly = 1,
     config = "test_graph_tfmatmulandadd.config.pbtxt",
-    cpp_class = "MatMulAndAddComp",
+    cpp_class = "::foo::bar::MatMulAndAddComp",
     graph = "test_graph_tfmatmulandadd.pb",
     tags = [
         "manual",

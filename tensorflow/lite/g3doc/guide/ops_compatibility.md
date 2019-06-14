@@ -9,8 +9,8 @@ Since the set of TensorFlow Lite operations is smaller than TensorFlow's, not
 every model is convertible. Even for supported operations, very specific usage
 patterns are sometimes expected, for performance reasons. We expect to expand
 the set of supported operations in future TensorFlow Lite releases. Additional
-ops can be included by [using select TensorFlow ops](ops_select.md), at
-the cost of binary size.
+ops can be included by [using select TensorFlow ops](ops_select.md), at the cost
+of binary size.
 
 The best way to understand how to build a TensorFlow model that can be used with
 TensorFlow Lite is to carefully consider how operations are converted and
@@ -268,7 +268,7 @@ Options {
 }
 ```
 
-**CONV_2D_TRANSPOSE**
+**TRANSPOSE_CONV**
 
 ```
 Inputs {
@@ -390,10 +390,10 @@ Outputs {
 **CEIL**
 
 ```
-inputs {
-  0: tensor
+Inputs {
+  0: a tensor
 }
-outputs: {
+Outputs {
   0: result of computing element-wise ceil of the input tensor
 }
 ```
@@ -508,20 +508,6 @@ Outputs {
 }
 Options {
   alpha: slope of the activation at x < 0 (provided alpha <= 1)
-}
-```
-
-**LEAKY_RELU**
-
-```
-Inputs {
-  0: a tensor
-}
-Outputs {
-  0: a tensor equivalent to max(input, input * alpha)
-}
-Options {
-  alpha
 }
 ```
 
@@ -858,6 +844,17 @@ Options {
 }
 ```
 
+**ROUND**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: result of computing element-wise round of the input tensor
+}
+```
+
 **SLICE**
 
 ```
@@ -1013,7 +1010,7 @@ Inputs {
 }
 Outputs {
   0: k largest element along each last dimensional slice
-  1: indices of values within the last dimension of the input ensor
+  1: indices of values within the last dimension of the input tensor
 }
 ```
 

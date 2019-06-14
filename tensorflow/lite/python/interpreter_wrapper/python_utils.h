@@ -29,6 +29,8 @@ struct PyDecrefDeleter {
 
 int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type);
 
+TfLiteType TfLiteTypeFromPyType(int py_type);
+
 TfLiteType TfLiteTypeFromPyArray(PyArrayObject* array);
 
 bool FillStringBufferWithPyArray(PyObject* value,

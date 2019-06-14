@@ -71,7 +71,10 @@ enum PrimitiveType {
   // An opaque type used for passing context-specific data to a custom
   // operation. Shapes of this primitive type will have empty dimensions and
   // tuple_shapes fields.
-  OPAQUE = 14;
+  //
+  // (OPAQUE would be a better name for this identifier, but that conflicts with
+  // a macro defined in windows.h.)
+  OPAQUE_TYPE = 14;
 
   // A token type threaded between side-effecting operations. Shapes of this
   // primitive type will have empty dimensions and tuple_shapes fields.
@@ -166,6 +169,10 @@ message LayoutProto {
   //
   // TODO(b/119839262): implement in each backend or add Unimplemented error.
   int64 element_size_in_bits = 7;
+
+  // Memory space where this array resides. The integer field is interpreted in
+  // a backend-specific manner.
+  int64 memory_space = 8;
 
   // Important: if any field is added, be sure to modify ShapeUtil::Equal() and
   // LayoutUtil::Hash appropriately to account for the new field.
@@ -607,7 +614,7 @@ message OpSharding {
 // all-to-all).
 message ReplicaGroup {
   // The ids of the replicas that belongs to the same group. The ordering of the
-  // ids matters in some op (e.g., all-to-all).
+  // ids matters in some ops (e.g., all-to-all).
   repeated int64 replica_ids = 1;
 }
 

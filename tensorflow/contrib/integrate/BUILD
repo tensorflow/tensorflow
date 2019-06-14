@@ -1,13 +1,14 @@
 # Description:
 #   Integration and ODE solvers for TensorFlow.
 
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = ["//tensorflow:__subpackages__"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "integrate_py",
@@ -31,6 +32,7 @@ py_library(
 py_test(
     name = "odes_test",
     srcs = ["python/ops/odes_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":integrate_py",

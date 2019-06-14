@@ -30,7 +30,7 @@ from tensorflow.python.util import tf_inspect
 
 class CompilerTest(test.TestCase):
 
-  def test_parser_compile_idempotent(self):
+  def test_parser_compile_identity(self):
 
     def test_fn(x):
       a = True
@@ -39,11 +39,12 @@ class CompilerTest(test.TestCase):
         b = x + 1
       return b
 
+    node, _ = parser.parse_entity(test_fn, future_features=())
+    module, _, _ = compiler.ast_to_object(node)
+
     self.assertEqual(
         textwrap.dedent(tf_inspect.getsource(test_fn)),
-        tf_inspect.getsource(
-            compiler.ast_to_object(
-                parser.parse_entity(test_fn)[0].body[0])[0].test_fn))
+        tf_inspect.getsource(module.test_fn))
 
   def test_ast_to_source(self):
     node = gast.If(
@@ -88,7 +89,7 @@ class CompilerTest(test.TestCase):
         decorator_list=[],
         returns=None)
 
-    module, source = compiler.ast_to_object(node)
+    module, source, _ = compiler.ast_to_object(node)
 
     expected_source = """
       def f(a):

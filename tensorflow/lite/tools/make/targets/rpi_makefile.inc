@@ -13,7 +13,7 @@ ifeq ($(TARGET),rpi)
       -ftree-vectorize \
       -fPIC
 
-    CCFLAGS += \
+    CFLAGS += \
       -march=armv7-a \
       -mfpu=neon-vfpv4 \
       -funsafe-math-optimizations \
@@ -37,7 +37,7 @@ ifeq ($(TARGET),rpi)
       -ftree-vectorize \
       -fPIC
 
-    CCFLAGS += \
+    CFLAGS += \
       -march=armv6 \
       -mfpu=vfp \
       -funsafe-math-optimizations \

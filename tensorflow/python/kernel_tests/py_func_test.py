@@ -323,6 +323,7 @@ class PyFuncTest(test.TestCase):
       self.assertEqual(self.evaluate(x), 1)
       self.assertEqual(self.evaluate(x), 2)
 
+  @test_util.enable_tf_xla_constant_folding("b/134376434")
   def testStateless(self):
     # Not using self.cached_session(), which disables optimization.
     with session_lib.Session() as sess:
@@ -335,8 +336,8 @@ class PyFuncTest(test.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testGradientFunction(self):
-    # Input to tf.py_func is necessary, otherwise get_gradient_function()
-    # returns None per default.
+    # Input to tf.compat.v1.py_func is necessary,
+    # otherwise get_gradient_function() returns None per default.
     a = constant_op.constant(0)
     x, = script_ops.py_func(lambda a: 0, [a], [dtypes.int64])
     y, = script_ops.py_func(lambda a: 0, [a], [dtypes.int64], stateful=False)
@@ -353,7 +354,8 @@ class PyFuncTest(test.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testParallel(self):
-    # Tests that tf.py_func's can run in parallel if they release the GIL.
+    # Tests that tf.compat.v1.py_func's can run in parallel if they release
+    # the GIL.
     with self.cached_session() as session:
       q = queue.Queue(1)
 

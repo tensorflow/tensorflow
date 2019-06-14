@@ -22,6 +22,7 @@ from tensorflow.contrib.framework.python import ops as contrib_ops
 from tensorflow.contrib.layers.python.layers import initializers
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.quantize.python import graph_matcher
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -36,48 +37,51 @@ from tensorflow.python.platform import googletest
 class GraphMatcherTest(test_util.TensorFlowTestCase):
 
   def test_conv_layer(self):
-    g = ops.Graph()
-    with g.as_default():
-      inputs = array_ops.placeholder(dtypes.float32, shape=[8, 5, 5, 3])
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      g = ops.Graph()
+      with g.as_default():
+        inputs = array_ops.placeholder(dtypes.float32, shape=[8, 5, 5, 3])
 
-    with contrib_ops.arg_scope(
-        [layers.batch_norm], fused=True, is_training=True, trainable=True):
-      return layers.convolution(
-          inputs,
-          num_outputs=16,
-          kernel_size=3,
-          stride=1,
-          padding='VALID',
-          activation_fn=nn_ops.relu,
-          normalizer_fn=layers.batch_norm,
-          normalizer_params={},
-          weights_initializer=initializers.xavier_initializer(),
-          weights_regularizer=None,
-          biases_initializer=init_ops.zeros_initializer(),
-          biases_regularizer=None,
-          reuse=None,
-          trainable=True,
-          scope=None)
+      with contrib_ops.arg_scope([layers.batch_norm],
+                                 fused=True,
+                                 is_training=True,
+                                 trainable=True):
+        return layers.convolution(
+            inputs,
+            num_outputs=16,
+            kernel_size=3,
+            stride=1,
+            padding='VALID',
+            activation_fn=nn_ops.relu,
+            normalizer_fn=layers.batch_norm,
+            normalizer_params={},
+            weights_initializer=initializers.xavier_initializer(),
+            weights_regularizer=None,
+            biases_initializer=init_ops.zeros_initializer(),
+            biases_regularizer=None,
+            reuse=None,
+            trainable=True,
+            scope=None)
 
-    inputs_pattern = graph_matcher.OpTypePattern('*', name='inputs')
-    relu_pattern = graph_matcher.OpTypePattern(
-        'Relu',
-        name='relu',
-        inputs=[
-            graph_matcher.OpTypePattern(
-                'FusedBatchNorm',
-                inputs=[
-                    graph_matcher.OpTypePattern(
-                        'Conv2D', inputs=[inputs_pattern, '*']), '*', '*', '*',
-                    '*'
-                ])
-        ])
-    matcher = graph_matcher.GraphMatcher(relu_pattern)
-    match_results = list(matcher.match_graph(g))
-    self.assertEqual(1, len(match_results))
-    match_result = match_results[0]
-    self.assertEqual(match_result.get_tensor(inputs_pattern), inputs)
-    self.assertEqual(match_result.get_tensor('inputs'), inputs)
+      inputs_pattern = graph_matcher.OpTypePattern('*', name='inputs')
+      relu_pattern = graph_matcher.OpTypePattern(
+          'Relu',
+          name='relu',
+          inputs=[
+              graph_matcher.OpTypePattern(
+                  'FusedBatchNormV3',
+                  inputs=[
+                      graph_matcher.OpTypePattern(
+                          'Conv2D', inputs=[inputs_pattern, '*']), '*', '*',
+                      '*', '*'
+                  ])
+          ])
+      matcher = graph_matcher.GraphMatcher(relu_pattern)
+      match_results = list(matcher.match_graph(g))
+      self.assertEqual(1, len(match_results))
+      match_result = match_results[0]
+      self.assertEqual(match_result.get_tensor(inputs_pattern), inputs)
+      self.assertEqual(match_result.get_tensor('inputs'), inputs)
 
   def test_multiple_outputs(self):
     #   -         +
@@ -119,7 +123,7 @@ class GraphMatcherTest(test_util.TensorFlowTestCase):
       minus = y - z
 
     add_or_sub_pattern = graph_matcher.OpTypePattern(
-        'Add|Sub', inputs=['*', '*'])
+        'AddV2|Add|Sub', inputs=['*', '*'])
     matcher = graph_matcher.GraphMatcher(add_or_sub_pattern)
     self.assertEqual([
         match_result.get_op(add_or_sub_pattern)
@@ -176,11 +180,11 @@ class GraphMatcherTest(test_util.TensorFlowTestCase):
       plus = x + y
 
     add_pattern_a = graph_matcher.OpTypePattern(
-        'Add', inputs=['Const', 'Placeholder'], ordered_inputs=False)
+        'Add|AddV2', inputs=['Const', 'Placeholder'], ordered_inputs=False)
     add_pattern_b = graph_matcher.OpTypePattern(
-        'Add', inputs=['Placeholder', 'Const'], ordered_inputs=False)
+        'Add|AddV2', inputs=['Placeholder', 'Const'], ordered_inputs=False)
     add_pattern_fail = graph_matcher.OpTypePattern(
-        'Add', inputs=['Const', 'Placeholder'], ordered_inputs=True)
+        'Add|AddV2', inputs=['Const', 'Placeholder'], ordered_inputs=True)
     # Both add_pattern_a and add_pattern_b should match the graph since
     # ordered_input was set False.
     matcher_a = graph_matcher.GraphMatcher(add_pattern_a)

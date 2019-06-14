@@ -20,8 +20,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.lite.python.op_hint as op_hint
+from tensorflow.lite.python.op_hint import OpHint
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -37,7 +38,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("lite.experimental.nn.dynamic_rnn")
+@tf_export(v1=["lite.experimental.nn.dynamic_rnn"])
 def dynamic_rnn(cell,
                 inputs,
                 sequence_length=None,
@@ -55,7 +56,7 @@ def dynamic_rnn(cell,
 
   ```python
   # create a BasicRNNCell
-  rnn_cell = tf.nn.rnn_cell.BasicRNNCell(hidden_size)
+  rnn_cell = tf.compat.v1.nn.rnn_cell.BasicRNNCell(hidden_size)
 
   # 'outputs' is a tensor of shape [batch_size, max_time, cell_state_size]
 
@@ -63,22 +64,22 @@ def dynamic_rnn(cell,
   initial_state = rnn_cell.zero_state(batch_size, dtype=tf.float32)
 
   # 'state' is a tensor of shape [batch_size, cell_state_size]
-  outputs, state = tf.nn.dynamic_rnn(rnn_cell, input_data,
+  outputs, state = tf.compat.v1.nn.dynamic_rnn(rnn_cell, input_data,
                                      initial_state=initial_state,
                                      dtype=tf.float32)
   ```
 
   ```python
   # create 2 LSTMCells
-  rnn_layers = [tf.nn.rnn_cell.LSTMCell(size) for size in [128, 256]]
+  rnn_layers = [tf.compat.v1.nn.rnn_cell.LSTMCell(size) for size in [128, 256]]
 
   # create a RNN cell composed sequentially of a number of RNNCells
-  multi_rnn_cell = tf.nn.rnn_cell.MultiRNNCell(rnn_layers)
+  multi_rnn_cell = tf.compat.v1.nn.rnn_cell.MultiRNNCell(rnn_layers)
 
   # 'outputs' is a tensor of shape [batch_size, max_time, 256]
   # 'state' is a N-tuple where N is the number of LSTMCells containing a
-  # tf.contrib.rnn.LSTMStateTuple for each cell
-  outputs, state = tf.nn.dynamic_rnn(cell=multi_rnn_cell,
+  # tf.nn.rnn_cell.LSTMStateTuple for each cell
+  outputs, state = tf.compat.v1.nn.dynamic_rnn(cell=multi_rnn_cell,
                                      inputs=data,
                                      dtype=tf.float32)
   ```
@@ -189,7 +190,7 @@ def dynamic_rnn(cell,
       "parent_last_child_output": parent_last_child_output,
       "internal_children_input_output": internal_children_input_output
   }
-  tflite_wrapper = op_hint.OpHint(
+  tflite_wrapper = OpHint(
       "TfLiteDynamicRnn",
       level=2,
       children_inputs_mappings=inputs_outputs_mappings)
@@ -215,11 +216,11 @@ def dynamic_rnn(cell,
 
     parallel_iterations = parallel_iterations or 32
     if sequence_length is not None:
-      sequence_length = math_ops.to_int32(sequence_length)
-      if sequence_length.get_shape().rank not in (None, 1):
+      sequence_length = math_ops.cast(sequence_length, dtypes.int32)
+      if sequence_length.shape.rank not in (None, 1):
         raise ValueError(
             "sequence_length must be a vector of length batch_size, "
-            "but saw shape: %s" % sequence_length.get_shape())
+            "but saw shape: %s" % sequence_length.shape)
       sequence_length = array_ops.identity(  # Just to find it in the graph.
           sequence_length,
           name="sequence_length")

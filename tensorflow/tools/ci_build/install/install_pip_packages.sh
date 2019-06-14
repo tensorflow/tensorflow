@@ -39,9 +39,11 @@ pip3 install --upgrade setuptools==39.1.0
 pip2 install virtualenv
 pip3 install virtualenv
 
-# Install six.
+# Install six and future.
 pip2 install --upgrade six==1.12.0
 pip3 install --upgrade six==1.12.0
+pip2 install future>=0.17.1
+pip3 install future>=0.17.1
 
 # Install absl-py.
 pip2 install --upgrade absl-py
@@ -120,13 +122,17 @@ pip2 install --upgrade termcolor
 pip3 install --upgrade termcolor
 
 # Keras
-pip2 install keras_applications==1.0.6 --no-deps
-pip3 install keras_applications==1.0.6 --no-deps
+pip2 install keras_applications==1.0.8 --no-deps
+pip3 install keras_applications==1.0.8 --no-deps
 pip2 install keras_preprocessing==1.0.5 --no-deps
 pip3 install keras_preprocessing==1.0.5 --no-deps
 pip2 install --upgrade h5py==2.8.0
 pip3 install --upgrade h5py==2.8.0
 
 # Estimator
-pip2 install tf-estimator-nightly==1.12.0.dev20181203 --no-deps
-pip3 install tf-estimator-nightly==1.12.0.dev20181203 --no-deps
+pip2 install tf-estimator-nightly --no-deps
+pip3 install tf-estimator-nightly --no-deps
+
+# Argparse
+pip2 install --upgrade argparse
+pip3 install --upgrade argparse

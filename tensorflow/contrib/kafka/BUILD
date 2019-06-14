@@ -6,11 +6,11 @@ exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_gen_op_wrapper_py",
-    "tf_kernel_library",
     "tf_custom_op_library",
     "tf_custom_op_py_library",
     "tf_gen_op_libs",
+    "tf_gen_op_wrapper_py",
+    "tf_kernel_library",
     "tf_py_test",
 )
 

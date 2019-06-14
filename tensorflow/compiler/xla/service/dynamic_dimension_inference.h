@@ -83,6 +83,12 @@ class DynamicDimensionInference {
   // by a scalar instruction `size`.
   void SetDynamicSize(HloInstruction* inst, const ShapeIndex& index, int64 dim,
                       HloInstruction* size) {
+    Shape subshape = ShapeUtil::GetSubshape(inst->shape(), index);
+    CHECK(!subshape.IsTuple())
+        << "Can't set a tuple shape to dynamic dimension";
+    CHECK(dim < subshape.rank() && dim >= 0)
+        << "Asked to set invalid dynamic dimension. Shape: "
+        << subshape.ToString() << ", Dimension: " << dim;
     dynamic_mapping_.try_emplace(DynamicDimension{inst, index, dim}, size);
     auto iter = per_hlo_dynamic_dimensions_.try_emplace(inst);
     iter.first->second.emplace(DynamicDimension{inst, index, dim});

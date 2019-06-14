@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ctypes
 import sys
 import numpy as np
 
@@ -38,7 +39,7 @@ try:
   del LazyLoader
 except ImportError:
   # When full Tensorflow Python PIP is not available do not use lazy load
-  # and instead uf the tflite_runtime path.
+  # and instead of the tflite_runtime path.
   from tflite_runtime.lite.python import interpreter_wrapper as _interpreter_wrapper
 
   def tf_export_dummy(*x, **kwargs):
@@ -47,16 +48,117 @@ except ImportError:
   _tf_export = tf_export_dummy
 
 
+class Delegate(object):
+  """Python wrapper class to manage TfLiteDelegate objects.
+
+  The shared library is expected to have two functions:
+    TfLiteDelegate* tflite_plugin_create_delegate(char**, char**, size_t)
+    void tflite_plugin_destroy_delegate(TfLiteDelegate*)
+
+  The first one creates a delegate object. It may return NULL to indicate an
+  error. The second one destroys delegate object and must be called for every
+  created delegate object. Passing NULL as argument value is allowed, i.e.
+
+    tflite_plugin_destroy_delegate(tflite_plugin_create_delegate(...))
+
+  always works.
+  """
+
+  def __init__(self, library, options=None):
+    """Loads delegate from the shared library.
+
+    Args:
+      library: Shared library name.
+      options: Dictionary of options that are required to load the delegate. All
+        keys and values in the dictionary should be serializable. Consult the
+        documentation of the specific delegate for required and legal options.
+        (default None)
+    """
+    self._library = ctypes.pydll.LoadLibrary(library)
+    self._library.tflite_plugin_create_delegate.argtypes = [
+        ctypes.POINTER(ctypes.c_char_p),
+        ctypes.POINTER(ctypes.c_char_p), ctypes.c_int
+    ]
+    self._library.tflite_plugin_create_delegate.restype = ctypes.c_void_p
+
+    # Convert the options from a dictionary to lists of char pointers.
+    options = options or {}
+    options_keys = (ctypes.c_char_p * len(options))()
+    options_values = (ctypes.c_char_p * len(options))()
+    for idx, (key, value) in enumerate(options.items()):
+      options_keys[idx] = str(key)
+      options_values[idx] = str(value)
+
+    # Do not make a copy of _delegate_ptr. It is freed by Delegate's finalizer.
+    self._delegate_ptr = self._library.tflite_plugin_create_delegate(
+        options_keys, options_values, len(options))
+
+  def __del__(self):
+    self._library.tflite_plugin_destroy_delegate.argtypes = [ctypes.c_void_p]
+    self._library.tflite_plugin_destroy_delegate(self._delegate_ptr)
+
+  def _get_native_delegate_pointer(self):
+    """Returns the native TfLiteDelegate pointer.
+
+    It is not safe to copy this pointer because it needs to be freed.
+
+    Returns:
+      TfLiteDelegate *
+    """
+    return self._delegate_ptr
+
+
+@_tf_export('lite.experimental.load_delegate')
+def load_delegate(library, options=None):
+  """Returns loaded Delegate object.
+
+  Args:
+    library: Name of shared library containing the
+      [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates).
+    options: Dictionary of options that are required to load the delegate. All
+      keys and values in the dictionary should be convertible to str. Consult
+      the documentation of the specific delegate for required and legal options.
+      (default None)
+
+  Returns:
+    Delegate object.
+
+  Raises:
+    ValueError: Delegate failed to load.
+  """
+  delegate = Delegate(library, options)
+  if not delegate._get_native_delegate_pointer():  # pylint: disable=protected-access
+    raise ValueError('Failed to load delegate from {}'.format(library))
+  return delegate
+
+
 @_tf_export('lite.Interpreter')
 class Interpreter(object):
-  """Interpreter inferace for TF-Lite Models."""
+  """Interpreter interface for TensorFlow Lite Models.
 
-  def __init__(self, model_path=None, model_content=None):
+  This makes the TensorFlow Lite interpreter accessible in Python.
+  It is possible to use this interpreter in a multithreaded Python environment,
+  but you must be sure to call functions of a particular instance from only
+  one thread at a time. So if you want to have 4 threads running different
+  inferences simultaneously, create  an interpreter for each one as thread-local
+  data. Similarly, if you are calling invoke() in one thread on a single
+  interpreter but you want to use tensor() on another thread once it is done,
+  you must use a synchronization primitive between the threads to ensure invoke
+  has returned before calling tensor().
+  """
+
+  def __init__(self,
+               model_path=None,
+               model_content=None,
+               experimental_delegates=None):
     """Constructor.
 
     Args:
       model_path: Path to TF-Lite Flatbuffer file.
       model_content: Content of model.
+      experimental_delegates: Experimental. Subject to change. List of
+        [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
+        objects returned by lite.load_delegate().
 
     Raises:
       ValueError: If the interpreter was unable to create.
@@ -79,6 +181,17 @@ class Interpreter(object):
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:
       raise ValueError('Can\'t both provide `model_path` and `model_content`')
+
+    # Each delegate is a wrapper that owns the delegates that have been loaded
+    # as plugins. The interpreter wrapper will be using them, but we need to
+    # hold them in a list so that the lifetime is preserved at least as long as
+    # the interpreter wrapper.
+    self._delegates = []
+    if experimental_delegates:
+      self._delegates = experimental_delegates
+      for delegate in self._delegates:
+        self._interpreter.ModifyGraphWithDelegate(
+            delegate._get_native_delegate_pointer())  # pylint: disable=protected-access
 
   def allocate_tensors(self):
     self._ensure_safe()
@@ -282,7 +395,10 @@ class Interpreter(object):
     """Invoke the interpreter.
 
     Be sure to set the input sizes, allocate tensors and fill values before
-    calling this.
+    calling this. Also, note that this function releases the GIL so heavy
+    computation can be done in the background while the Python interpreter
+    continues. No other function on this object should be called while the
+    invoke() call has not finished.
 
     Raises:
       ValueError: When the underlying interpreter fails raise ValueError.

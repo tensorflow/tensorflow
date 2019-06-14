@@ -101,6 +101,16 @@ REGISTER_OP("ReduceJoin")
     .Output("output: string")
     .SetShapeFn(shape_inference::ReductionShape);
 
+REGISTER_OP("UnsortedSegmentJoin")
+    .Input("inputs: string")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: Tnumsegments")
+    .Attr("separator: string = ''")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .Output("output: string")
+    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
+
 REGISTER_OP("AsString")
     .Input("input: T")
     .Output("output: string")
@@ -206,6 +216,18 @@ REGISTER_OP("StringSplitV2")
       return Status::OK();
     });
 
+REGISTER_OP("StringLower")
+    .Input("input: string")
+    .Output("output: string")
+    .Attr("encoding: string =''")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("StringUpper")
+    .Input("input: string")
+    .Output("output: string")
+    .Attr("encoding: string =''")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("StringStrip")
     .Input("input: string")
     .Output("output: string")
@@ -263,10 +285,11 @@ REGISTER_OP("UnicodeScript")
 
 REGISTER_OP("UnicodeEncode")
     .Input("input_values: int32")
-    .Input("input_splits: int64")
+    .Input("input_splits: Tsplits")
     .Attr("errors: {'ignore', 'replace', 'strict'} = 'replace'")
     .Attr("output_encoding: {'UTF-8', 'UTF-16-BE', 'UTF-32-BE'}")
     .Attr("replacement_char: int = 65533")  // 0xFFFD unicode replacement char
+    .Attr("Tsplits: {int32, int64} = DT_INT64")
     .Output("output: string")
     .SetShapeFn([](InferenceContext* c) {
       // Check rank of inner values
@@ -298,12 +321,13 @@ REGISTER_OP("UnicodeTranscode")
 
 REGISTER_OP("UnicodeDecode")
     .Input("input: string")
-    .Output("row_splits: int64")
+    .Output("row_splits: Tsplits")
     .Output("char_values: int32")
     .Attr("input_encoding: string")
     .Attr("errors: {'strict', 'replace', 'ignore'} = 'replace'")
     .Attr("replacement_char: int = 65533")  // 0xFFFD unicode replacement char
     .Attr("replace_control_characters: bool = false")
+    .Attr("Tsplits: {int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       // row_splits.shape == [input.size() + 1]
       DimensionHandle num_row_splits;
@@ -319,13 +343,14 @@ REGISTER_OP("UnicodeDecode")
 
 REGISTER_OP("UnicodeDecodeWithOffsets")
     .Input("input: string")
-    .Output("row_splits: int64")
+    .Output("row_splits: Tsplits")
     .Output("char_values: int32")
     .Output("char_to_byte_starts: int64")
     .Attr("input_encoding: string")
     .Attr("errors: {'strict', 'replace', 'ignore'} = 'replace'")
     .Attr("replacement_char: int = 65533")  // 0xFFFD unicode replacement char
     .Attr("replace_control_characters: bool = false")
+    .Attr("Tsplits: {int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       // row_splits.shape == [input.size() + 1]
       DimensionHandle num_row_splits;

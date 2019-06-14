@@ -47,7 +47,7 @@ class OpsTest(tf.test.TestCase):
       tape.watch(x)
       y = ops.downsample(x, filters=3, strides=(1, 1))
     self.assertEqual(y.shape, x.shape)
-    dy = tf.random_normal(shape=[batch_size, 3, 32, 32])
+    dy = tf.random_normal(shape=[batch_size, 32, 32, 3])
     grad, = tape.gradient(y, [x], output_gradients=[dy])
     self.assertEqual(grad.shape, x.shape)
 

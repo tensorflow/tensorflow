@@ -105,8 +105,8 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
 
     with ops.Graph().as_default() as g, ops.device('/job:worker/task:0'):
       const = constant_op.constant(17)
-    sess = session.Session(server1.target, config=config, graph=g)
-    output = self.evaluate(const)
+    with session.Session(server1.target, config=config, graph=g):
+      output = self.evaluate(const)
     self.assertEqual(17, output)
 
   def testCanonicalDeviceNames(self):
@@ -207,8 +207,8 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
 
       with ops.device('/job:worker/task:0/cpu:0'):
         sum3 = sum1 + sum2
-    sess = session.Session(server1.target, config=config, graph=g)
-    output = self.evaluate(sum3)
+    with session.Session(server1.target, config=config, graph=g):
+      output = self.evaluate(sum3)
     self.assertEqual(40, output)
 
   def testLegacyDeviceNames(self):
@@ -457,6 +457,87 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     self.assertEqual(37, sess1.run(v))
     with self.assertRaises(errors.FailedPreconditionError):
       sess3.run(v)
+
+  def testClusterSpecPropagationNonIsolation(self):
+    """Test that two sessions using ClusterSpec propagation shares state.
+
+    For example, the updated Variable value are visible among all worker
+    sessions registered in the same server.
+    """
+    server = server_lib.Server.create_local_server()
+    init_value = array_ops.placeholder(dtypes.int32, shape=[])
+    v = variables.Variable(init_value)
+
+    cluster_def = cluster_pb2.ClusterDef()
+    job = cluster_def.job.add()
+    job.name = 'worker'
+    job.tasks[0] = server.target[len('grpc://'):]
+    config = config_pb2.ConfigProto(cluster_def=cluster_def)
+    config.experimental.share_session_state_in_clusterspec_propagation = True
+
+    sess1 = session.Session(server.target, config=config)
+    sess2 = session.Session(server.target, config=config)
+
+    # Initially, the variable is uninitialized in both sessions.
+    with self.assertRaises(errors.FailedPreconditionError):
+      sess1.run(v)
+    with self.assertRaises(errors.FailedPreconditionError):
+      sess2.run(v)
+
+    # An update in sess1 should be visible in sess2.
+    sess1.run(v.initializer, feed_dict={init_value: 37})
+    self.assertEqual(37, sess1.run(v))
+    self.assertEqual(37, sess2.run(v))
+
+    # Closing sess2 has no effect on the state of sess1.
+    sess2.close()
+    self.assertEqual(37, sess1.run(v))
+
+    # Subsequent sessions should see the state of existing sessions.
+    sess3 = session.Session(server.target, config=config)
+    self.assertEqual(37, sess1.run(v))
+    self.assertEqual(37, sess3.run(v))
+
+  def testClusterSpecPropagationNonIsolation2Graphs(self):
+    """Creates 2 sessions with each own graph, ensures appropriate operations.
+
+    We ensure that variables on the workers shares state.
+    """
+    server = server_lib.Server.create_local_server()
+    cluster_def = cluster_pb2.ClusterDef()
+    job = cluster_def.job.add()
+    job.name = 'worker'
+    job.tasks[0] = server.target[len('grpc://'):]
+    config = config_pb2.ConfigProto(cluster_def=cluster_def)
+    config.experimental.share_session_state_in_clusterspec_propagation = True
+
+    with ops.Graph().as_default() as g1:
+      var1 = variables.Variable(array_ops.zeros([2]), name='var')
+      update_op1 = state_ops.assign_add(
+          var1, array_ops.ones([2]), name='var1_assign_add')
+      init1 = variables.global_variables_initializer()
+
+    with ops.Graph().as_default() as g2:
+      var2 = variables.Variable(array_ops.zeros([2]), name='var')
+      update_op2 = state_ops.assign_add(
+          var2, array_ops.ones([2]), name='var2_assign_add')
+
+    sess1 = session.Session(server.target, graph=g1, config=config)
+    sess2 = session.Session(server.target, graph=g2, config=config)
+
+    expected_zeros = np.zeros([2])
+    expected_ones = np.ones([2])
+
+    init1.run(session=sess1)
+    self.assertAllEqual(expected_zeros, sess1.run(var1))
+    self.assertAllEqual(expected_zeros, sess2.run(var2))
+
+    self.assertAllEqual(expected_ones, sess1.run(update_op1))
+    self.assertAllEqual(expected_ones, sess1.run(var1))
+    self.assertAllEqual(expected_ones, sess2.run(var2))
+    self.assertAllEqual(expected_ones + expected_ones, sess2.run(update_op2))
+    self.assertAllEqual(expected_ones + expected_ones, sess2.run(var2))
+    self.assertAllEqual(expected_ones + expected_ones, sess1.run(var1))
 
   def testClusterSpecPropagationPartialRun(self):
     """Test successful partial run with ClusterSpec propagation."""

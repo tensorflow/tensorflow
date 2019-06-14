@@ -21,7 +21,6 @@ from __future__ import print_function
 from tensorflow.core.grappler.costs import op_performance_data_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python import pywrap_tensorflow as tf_item
-from tensorflow.python.framework import errors
 
 
 class Item(object):
@@ -87,7 +86,6 @@ class Item(object):
     return self._tf_item
 
   def _BuildTFItem(self):
-    with errors.raise_exception_on_not_ok_status() as status:
-      self._tf_item = tf_item.TF_NewItem(self._metagraph.SerializeToString(),
-                                         self._ignore_colocation,
-                                         self._ignore_user_placement, status)
+    self._tf_item = tf_item.TF_NewItem(self._metagraph.SerializeToString(),
+                                       self._ignore_colocation,
+                                       self._ignore_user_placement)

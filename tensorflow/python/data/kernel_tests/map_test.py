@@ -47,8 +47,12 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_concat_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
@@ -728,6 +732,64 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset,
         expected_output=[self.evaluate(_check(_sparse(i))) for i in range(10)])
 
+  def testTensorArray(self):
+
+    def _tensor_array(i):
+      i = math_ops.cast(i, dtypes.int32)
+      return (
+          tensor_array_ops.TensorArray(dtypes.int32, element_shape=(), size=i)
+          .unstack(math_ops.range(i, dtype=dtypes.int32)))
+
+    dataset = dataset_ops.Dataset.range(10).map(_tensor_array)
+    self.assertDatasetProduces(
+        dataset, expected_output=[list(range(i)) for i in range(10)])
+
+  def testTensorArrayChain(self):
+
+    def _tensor_array(i):
+      i = math_ops.cast(i, dtypes.int32)
+      return (
+          tensor_array_ops.TensorArray(dtypes.int32, element_shape=(), size=i)
+          .unstack(math_ops.range(i, dtype=dtypes.int32)))
+
+    def _check(x):
+      self.assertIsInstance(x, tensor_array_ops.TensorArray)
+      return x.identity()
+
+    dataset = dataset_ops.Dataset.range(10).map(_tensor_array).map(_check)
+
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[list(range(i)) for i in range(10)])
+
+  def testRagged(self):
+
+    def _ragged(i):
+      return ragged_tensor.RaggedTensor.from_tensor(i * [[1]])
+
+    dataset = dataset_ops.Dataset.range(5).map(_ragged)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[ragged_factory_ops.constant([[i]]) for i in range(5)])
+
+  def testRaggedChain(self):
+
+    def _ragged(i):
+      return ragged_tensor.RaggedTensor.from_tensor(i * [[1]])
+
+    def _concat(i):
+      self.assertTrue(ragged_tensor.is_ragged(i))
+      return ragged_concat_ops.concat([i, i], 0)
+
+    dataset = dataset_ops.Dataset.range(10).map(_ragged).map(_concat)
+
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[
+            self.evaluate(_concat(ragged_factory_ops.constant([[i]])))
+            for i in range(10)
+        ])
+
   @test_util.run_v1_only("b/123904513")
   def testParallelMapOutOfRangeError(self):
     def raising_py_func(i):
@@ -752,7 +814,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testWarnOnLookupTable(self):
     def collecting_function(x):
       _ = lookup_ops.HashTable(
-          lookup_ops.KeyValueTensorInitializer([], []), 0.0, name="t1")
+          lookup_ops.KeyValueTensorInitializer(["a"], [1.]), 0.0, name="t1")
       return x
 
     warnings.simplefilter("always")
@@ -763,7 +825,30 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertGreaterEqual(len(w), 1)
     found_warning = False
     for warning in w:
-      if ("Creating lookup tables inside a function passed to Dataset.map() is "
+      if ("Creating resources inside a function passed to Dataset.map() is "
+          "not supported." in str(warning)):
+        found_warning = True
+        break
+    self.assertTrue(found_warning)
+
+  @test_util.run_v1_only("map_with_legacy_function v1 only")
+  def testWarnOnLookupTableLegacyFunction(self):
+
+    def collecting_function(x):
+      _ = lookup_ops.HashTable(
+          lookup_ops.KeyValueTensorInitializer(["a"], [1.]), 0.0, name="t1")
+      return x
+
+    warnings.simplefilter("always")
+    with warnings.catch_warnings(record=True) as w:
+      _ = dataset_ops.Dataset.range(10).map_with_legacy_function(
+          collecting_function)
+    # NOTE(mrry): Python 3 prints other warnings in addition to the one we are
+    # testing, so we search for the expected warning.
+    self.assertGreaterEqual(len(w), 1)
+    found_warning = False
+    for warning in w:
+      if ("Creating resources inside a function passed to Dataset.map() is "
           "not supported." in str(warning)):
         found_warning = True
         break
@@ -1114,7 +1199,7 @@ class MapWithCapturedVariableTests(test_base.DatasetTestBase,
 
   # TODO(b/121264236): add eager mode coverage when we have multi-device setup.
   @test_util.run_v1_only("b/121264236")
-  def testSkipEagerRefVariablesWithConflictingDevices(self):
+  def testSkipEagerRefVariablesWithMultipleDevices(self):
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.cached_session(config=config):
 
@@ -1138,34 +1223,33 @@ class MapWithCapturedVariableTests(test_base.DatasetTestBase,
 
   # TODO(b/121264236): add eager mode coverage when we have multi-device setup.
   @test_util.run_v1_only("b/121264236")
-  def testSkipEagerResourceVariablesWithConflictingDevices(self):
+  def testSkipEagerResourceVariablesWithMultipleDevices(self):
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
 
     def func(_):
       with variable_scope.variable_scope(
           "variable", reuse=variable_scope.AUTO_REUSE):
         with ops.device("/device:CPU:0"):
-          a = variable_scope.get_variable(
+          a_var = variable_scope.get_variable(
               "a", (), dtypes.int32, use_resource=True)
-          a = math_ops.add(a, 1)
+          a_var = math_ops.add(a_var, 1)
         with ops.device("/device:CPU:1"):
-          b = variable_scope.get_variable(
+          b_var = variable_scope.get_variable(
               "b", (), dtypes.int32, use_resource=True)
-      return math_ops.add(a, b)
+      return math_ops.add(a_var, b_var)
 
     g_1 = ops.Graph()
     with self.session(config=config, graph=g_1):
       # The MapDataset node ends up with two ResourceVariable inputs, one on
-      # device CPU:0 and the other on device CPU:1. The placer cannot resolve
-      # this as it cannot place the MapDatasetOp on both devices.
+      # device CPU:0 and the other on device CPU:1.
       dataset = dataset_ops.Dataset.from_tensors(0).repeat(10)
       dataset = dataset.map(func)
-      expected_error = (
-          errors.InvalidArgumentError,
-          "Cannot place the graph because a reference or resource edge "
-          "connects colocation groups with incompatible assigned devices")
+      self.evaluate(variables.global_variables_initializer())
+      expected_output = [1] * 10
       self.assertDatasetProduces(
-          dataset, expected_error=expected_error, requires_initialization=True)
+          dataset,
+          expected_output=expected_output,
+          requires_initialization=True)
 
     g_2 = ops.Graph()
     with self.session(config=config, graph=g_2):

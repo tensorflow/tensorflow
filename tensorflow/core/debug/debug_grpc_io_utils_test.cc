@@ -66,11 +66,11 @@ class GrpcDebugTest : public ::testing::Test {
   void ClearEnabledWatchKeys() { DebugGrpcIO::ClearEnabledWatchKeys(); }
 
   const int64 GetChannelConnectionTimeoutMicros() {
-    return DebugGrpcIO::channel_connection_timeout_micros;
+    return DebugGrpcIO::channel_connection_timeout_micros_;
   }
 
   void SetChannelConnectionTimeoutMicros(const int64 timeout) {
-    DebugGrpcIO::channel_connection_timeout_micros = timeout;
+    DebugGrpcIO::channel_connection_timeout_micros_ = timeout;
   }
 
   ServerData server_data_;

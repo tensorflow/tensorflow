@@ -69,9 +69,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return context->ResizeTensor(context, output, outputSize);
 }
 
-TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
-                       const TfLiteTensor* lookup, const TfLiteTensor* value,
-                       TfLiteTensor* output) {
+TfLiteStatus EvalSimple(TfLiteContext* context, TfLiteNode* node,
+                        const TfLiteTensor* lookup, const TfLiteTensor* value,
+                        TfLiteTensor* output) {
   const int row_size = SizeOfDimension(value, 0);
   const int row_bytes = value->bytes / row_size;
 
@@ -138,10 +138,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   switch (value->type) {
     case kTfLiteFloat32:
-      return EvalFloat(context, node, lookup, value, output);
+      return EvalSimple(context, node, lookup, value, output);
     case kTfLiteUInt8:
     case kTfLiteInt8:
-      return EvalHybrid(context, node, lookup, value, output);
+      if (output->type == kTfLiteFloat32) {
+        return EvalHybrid(context, node, lookup, value, output);
+      } else {
+        return EvalSimple(context, node, lookup, value, output);
+      }
     default:
       context->ReportError(context, "Type not currently supported.");
       return kTfLiteError;
