@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -94,8 +95,7 @@ class TensorHandle : public core::RefCounted {
   static Status CreateLocalHandle(const class Tensor& t, Device* d,
                                   Device* op_device, EagerContext* ctx,
                                   TensorHandle** h);
-  static Status CreateAsyncLocalHandle(uint64 node_id, Device* d,
-                                       Device* op_device,
+  static Status CreateAsyncLocalHandle(Device* d, Device* op_device,
                                        Device* resource_device, DataType dtype,
                                        EagerContext* ctx, TensorHandle** h);
 #if !defined(IS_MOBILE_PLATFORM)
@@ -106,7 +106,6 @@ class TensorHandle : public core::RefCounted {
                                    Device* resource_device, EagerContext* ctx,
                                    TensorHandle** h);
   static Status CreateUnshapedRemoteHandle(int64 op_id, int32 output_num,
-                                           uint64 shape_node_id,
                                            eager::EagerClient* eager_client,
                                            uint64 context_id, DataType dtype,
                                            Device* d, Device* resource_device,
@@ -117,7 +116,7 @@ class TensorHandle : public core::RefCounted {
   TensorHandle(OutputGraphNode symbolic_tensor, DataType dtype);
 
   ~TensorHandle() override {
-    VLOG(1) << "Deleting internal TensorHandle " << this;
+    VLOG(3) << "Deleting internal TensorHandle " << this;
   }
 
   Status Tensor(const tensorflow::Tensor** t);
@@ -142,20 +141,28 @@ class TensorHandle : public core::RefCounted {
   // transitions the tensor handle from a non-ready to a ready state by
   // replacing the backing data abstraction to allow for the shape to be
   // queried.
+  // This method or Poison must be called exactly once for remote tensors that
+  // were created without a known shape.
   void SetRemoteShape(const TensorShape& shape);
 #endif
 
-  // Note that this can be called at most once, and only on non-ready handles,
-  // and makes them ready.
+  // Sets the `tensor` for this async non-ready handle making it ready.
+  // This method or Poison must be called exactly once for non-ready async
+  // handles to make them ready.
   void SetTensor(const tensorflow::Tensor& tensor);
+
+  // Poisons this non-ready handle with an error `status`.
+  // Poisoning means that the handle will become ready and methods trying
+  // to access the actual tensor or shape will return this error `status`.
+  // Exactly one of SetTensor, SetRemoteShape, or Poison methods must be called
+  // on a non-ready tensor.
+  void Poison(Status status);
 
   Status CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
                       TensorHandle** output);
 
   // Warning: can return nullptr for CPU tensors.
-  EagerContext* Context() {
-    return ctx_;
-  }
+  EagerContext* Context() { return ctx_; }
 
   // dtype for the handle. It must be the same as t.dtype() once the handle is
   // ready.
@@ -217,18 +224,19 @@ class TensorHandle : public core::RefCounted {
   // `ctx` object is not owned and should outlive this handle.
   EagerContext* const ctx_;
 
-  bool is_ready_ GUARDED_BY(ready_mutex_);
-  bool is_remote_;
+  // Explanation for NOLINT below: absl has clang-tidy macro to rename
+  // 'tensorflow::Notification' to 'absl::Notification'. TF does not use
+  // absl::Notification in open source now, so we can't follow clang-tidy
+  tensorflow::Notification is_ready_notification_;  // NOLINT
+  // Does not need synchronization because it can be accessed only after
+  // WaitReady() has returned. At that point, is_poisoned_ is immutable.
+  Status is_poisoned_;
+  const bool is_remote_;
 
   // When non-NULL, this tensor handle instance represents a symbolic tensor
   // (corresponding to a graph node), whose concrete value is to be produced by
   // executing that graph node.
   std::unique_ptr<OutputGraphNode> symbolic_tensor_;
-
-  // A TensorHandle may be in a non-ready state because it is being backed by
-  // an async node. We need this mutex to allow clients to block on the
-  // TensorHandle until it is ready.
-  mutable mutex ready_mutex_;
 
   // If this TensorHandle is 1) a local tensor, and 2) a resource handle, we
   // we store the container and name to be able to get the data type and shape
@@ -240,6 +248,8 @@ class TensorHandle : public core::RefCounted {
   // Further, it can be in a non-ready state. It would become ready with a call
   // to either SetTensor or SetRemoteShape which replaces the underlying data
   // with a ready version of the tensor handle data.
+  // Does not need synchronization because it can be accessed only after
+  // WaitReady() has returned. At that point, tensor_handle_data_ is immutable.
   std::unique_ptr<TensorHandleData> tensor_handle_data_;
 };
 

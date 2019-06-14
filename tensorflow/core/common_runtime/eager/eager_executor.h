@@ -50,6 +50,12 @@ class EagerNode {
   // execution is done.
   virtual Status Run() = 0;
 
+  // Called when this node will not be run due to some error contained in
+  // `status`. `status` must not be OK.
+  // For example, if the node would have computed some tensors in the Run(),
+  // it should poison the corresponding tensor handles in this method.
+  virtual void Abort(Status status) = 0;
+
   // An id unique to the TFE_Context under which this node is created. Allocated
   // monotonically.
   const uint64 id;
@@ -78,6 +84,8 @@ class EagerExecutor {
   uint64 NextId();
 
   // Schedules `node` for execution.
+  // Takes ownership of `node`.
+  // TODO(iga): take a unique_ptr instead.
   // Note that Add must be called in monotonically increasing order of node->id.
   void Add(EagerNode* node);
 

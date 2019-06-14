@@ -126,15 +126,14 @@ string RemoteTensorHandleData::DebugString() const {
 }
 
 UnshapedRemoteTensorHandleData::UnshapedRemoteTensorHandleData(
-    int64 op_id, int32 output_num, uint64 shape_node_id,
-    eager::EagerClient* eager_client, uint64 context_id, EagerContext* ctx)
+    int64 op_id, int32 output_num, eager::EagerClient* eager_client,
+    uint64 context_id, EagerContext* ctx)
     : op_id_(op_id),
       output_num_(output_num),
-      shape_node_id_(shape_node_id),
+      delete_remote_tensor_(true),
       eager_client_(eager_client),
       context_id_(context_id),
       ctx_(ctx) {
-  DCHECK(shape_node_id > 0) << "Must provide a valid shape_node_id";
   DCHECK(op_id_ >= 0 && output_num_ >= 0)
       << "Op ID and output num should be >= 0. Op ID: " << op_id
       << ", Output num: " << output_num;
@@ -142,11 +141,7 @@ UnshapedRemoteTensorHandleData::UnshapedRemoteTensorHandleData(
 }
 
 UnshapedRemoteTensorHandleData::~UnshapedRemoteTensorHandleData() {
-  // Only if the ExecuteNode is still pending should we destroy the remote
-  // tensor handle. Otherwise, we expect SetRemoteShape to have caused the
-  // TensorHandle to point to a RemoteTensorHandleData.
-  EagerExecutor* executor = ctx_->Executor();
-  if (executor->IsQueued(shape_node_id_)) {
+  if (delete_remote_tensor_) {
     DestoryRemoteTensorHandle(ctx_, eager_client_, context_id_, op_id_,
                               output_num_);
   }
@@ -189,14 +184,9 @@ Status UnshapedRemoteTensorHandleData::NumElements(int64* num_elements) const {
       "until it is ready");
 }
 
-Status UnshapedRemoteTensorHandleData::WaitReady() {
-  return ctx_->Executor()->WaitFor(shape_node_id_);
-}
-
 string UnshapedRemoteTensorHandleData::DebugString() const {
   return strings::StrCat("UnshapedRemoteTensorHandleDat:", " op_id: ", op_id_,
-                         " output_num: ", output_num_,
-                         " shape node_id: ", shape_node_id_);
+                         " output_num: ", output_num_);
 }
 
 }  // namespace tensorflow

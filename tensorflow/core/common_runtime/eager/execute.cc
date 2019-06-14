@@ -641,7 +641,7 @@ Status EagerLocalExecute(EagerOperation* op,
     tensorflow::uint64 id = ctx->NextId();
     for (int i = 0; i < *num_retvals; ++i) {
       TF_RETURN_IF_ERROR(TensorHandle::CreateAsyncLocalHandle(
-          id, /* d= */ kernel->OutputDevice(i),
+          /* d= */ kernel->OutputDevice(i),
           /* op_device= */ kernel->device(),
           /* resource_device= */ kernel->OutputResourceDevice(i),
           output_dtypes[i], ctx, &(*retvals)[i]));
@@ -817,8 +817,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
       // to copy this tensor to this process, the remote end will know the
       // correct device of this handle.
       TF_RETURN_IF_ERROR(TensorHandle::CreateUnshapedRemoteHandle(
-          id, i, remote_node_id, eager_client, context_id, output_dtypes[i],
-          op_device, output_dtypes[i] == DT_RESOURCE ? op_device : nullptr, ctx,
+          id, i, eager_client, context_id, output_dtypes[i], op_device,
+          output_dtypes[i] == DT_RESOURCE ? op_device : nullptr, ctx,
           &retvals[i]));
     }
 
@@ -844,9 +844,13 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
             [inputs](const gtl::InlinedVector<TensorHandle*, 2>& retvals,
                      const Status& status,
                      const eager::EnqueueResponse& response) {
-              if (!status.ok()) return;
               for (int i = 0; i < retvals.size(); i++) {
-                retvals[i]->SetRemoteShape(response.queue_response(0).shape(i));
+                if (status.ok()) {
+                  retvals[i]->SetRemoteShape(
+                      response.queue_response(0).shape(i));
+                } else {
+                  retvals[i]->Poison(status);
+                }
                 retvals[i]->Unref();
               }
               for (auto* handle : inputs) {

@@ -138,9 +138,10 @@ TensorHandle::TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
       remote_output_num_(-1),
 #endif
       ctx_(ctx),
-      is_ready_(true),
       is_remote_(false),
       tensor_handle_data_(std::move(t)) {
+  // Notify immediately since this handle is already ready.
+  is_ready_notification_.Notify();
 }
 
 TensorHandle::TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
@@ -155,21 +156,20 @@ TensorHandle::TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
       remote_output_num_(-1),
 #endif
       ctx_(ctx),
-      is_ready_(true),
       is_remote_(false),
       resource_handle_container_(resource_handle.container()),
       resource_handle_name_(resource_handle.name()),
       tensor_handle_data_(std::move(t)) {
+  // Notify immediately since this handle is already ready.
+  is_ready_notification_.Notify();
 }
 
-Status TensorHandle::CreateAsyncLocalHandle(uint64 node_id, Device* d,
-                                            Device* op_device,
+Status TensorHandle::CreateAsyncLocalHandle(Device* d, Device* op_device,
                                             Device* resource_device,
                                             DataType dtype, EagerContext* ctx,
                                             TensorHandle** h) {
-  *h = new TensorHandle(
-      absl::make_unique<AsyncLocalTensorHandleData>(node_id, ctx), d, op_device,
-      resource_device, dtype, ctx);
+  *h = new TensorHandle(absl::make_unique<AsyncLocalTensorHandleData>(), d,
+                        op_device, resource_device, dtype, ctx);
 
   return Status::OK();
 }
@@ -187,7 +187,6 @@ TensorHandle::TensorHandle(std::unique_ptr<AsyncLocalTensorHandleData> t,
       remote_output_num_(-1),
 #endif
       ctx_(ctx),
-      is_ready_(false),
       is_remote_(false),
       tensor_handle_data_(std::move(t)) {
 }
@@ -203,7 +202,6 @@ Status TensorHandle::CreateRemoteHandle(int64 op_id, int output_num,
       absl::make_unique<RemoteTensorHandleData>(op_id, output_num, shape,
                                                 eager_client, context_id, ctx),
       dtype, d, resource_device, ctx);
-
   return Status::OK();
 }
 
@@ -217,22 +215,22 @@ TensorHandle::TensorHandle(std::unique_ptr<RemoteTensorHandleData> t,
       remote_op_id_(t->op_id()),
       remote_output_num_(t->output_num()),
       ctx_(ctx),
-      is_ready_(true),
       is_remote_(true),
-      tensor_handle_data_(std::move(t)) {}
+      tensor_handle_data_(std::move(t)) {
+  // Notify immediately since this handle is already ready.
+  is_ready_notification_.Notify();
+}
 
 Status TensorHandle::CreateUnshapedRemoteHandle(
-    int64 op_id, int32 output_num, uint64 shape_node_id,
-    eager::EagerClient* eager_client, uint64 context_id, DataType dtype,
-    Device* d, Device* resource_device, EagerContext* ctx, TensorHandle** h) {
+    int64 op_id, int32 output_num, eager::EagerClient* eager_client,
+    uint64 context_id, DataType dtype, Device* d, Device* resource_device,
+    EagerContext* ctx, TensorHandle** h) {
   DCHECK(dtype == DT_RESOURCE ? resource_device != nullptr
                               : resource_device == nullptr);
 
-  *h = new TensorHandle(
-      absl::make_unique<UnshapedRemoteTensorHandleData>(
-          op_id, output_num, shape_node_id, eager_client, context_id, ctx),
-      dtype, d, resource_device, ctx);
-
+  *h = new TensorHandle(absl::make_unique<UnshapedRemoteTensorHandleData>(
+                            op_id, output_num, eager_client, context_id, ctx),
+                        dtype, d, resource_device, ctx);
   return Status::OK();
 }
 
@@ -248,7 +246,6 @@ TensorHandle::TensorHandle(std::unique_ptr<UnshapedRemoteTensorHandleData> t,
       remote_eager_client_(t->eager_client()),
       remote_context_id_(t->context_id()),
       ctx_(ctx),
-      is_ready_(false),
       is_remote_(true),
       tensor_handle_data_(std::move(t)) {}
 #endif
@@ -263,59 +260,47 @@ TensorHandle::TensorHandle(OutputGraphNode symbolic_tensor, DataType dtype)
       remote_output_num_(-1),
 #endif
       ctx_(nullptr),
-      is_ready_(true),
       is_remote_(false),
       symbolic_tensor_(new OutputGraphNode(symbolic_tensor)) {
+  // Notify immediately since this handle is already ready.
+  is_ready_notification_.Notify();
 }
 
 Status TensorHandle::WaitReady() {
-  while (true) {
-    {
-      tf_shared_lock l(ready_mutex_);
-      if (is_ready_) return Status::OK();
-    }
-    TF_RETURN_IF_ERROR(tensor_handle_data_->WaitReady());
-  }
-
-  return Status::OK();
+  is_ready_notification_.WaitForNotification();
+  return is_poisoned_;
 }
 
 Status TensorHandle::Tensor(const tensorflow::Tensor** t) {
   TF_RETURN_IF_ERROR(WaitReady());
-
   return tensor_handle_data_->Tensor(t);
 }
 
 Status TensorHandle::TensorValue(tensorflow::TensorValue* t) {
   TF_RETURN_IF_ERROR(WaitReady());
-
   return tensor_handle_data_->TensorValue(t);
 }
 
 Status TensorHandle::Shape(tensorflow::TensorShape* shape) {
   TF_RETURN_IF_ERROR(WaitReady());
-
   return tensor_handle_data_->Shape(shape);
 }
 
 Status TensorHandle::NumDims(int* num_dims) {
   DCHECK(num_dims != nullptr);
   TF_RETURN_IF_ERROR(WaitReady());
-
   return tensor_handle_data_->NumDims(num_dims);
 }
 
 Status TensorHandle::Dim(int dim_index, int64* dim) {
   DCHECK(dim != nullptr);
   TF_RETURN_IF_ERROR(WaitReady());
-
   return tensor_handle_data_->Dim(dim_index, dim);
 }
 
 Status TensorHandle::NumElements(int64* num_elements) {
   DCHECK(num_elements != nullptr);
   TF_RETURN_IF_ERROR(WaitReady());
-
   return tensor_handle_data_->NumElements(num_elements);
 }
 
@@ -330,29 +315,40 @@ Status TensorHandle::RemoteAddress(int64* op_id, int32* output_num) const {
   *output_num = remote_output_num_;
   return Status::OK();
 }
-#endif
 
-void TensorHandle::SetTensor(const tensorflow::Tensor& tensor) {
-  mutex_lock l(ready_mutex_);
-  DCHECK(!is_remote_) << "SetTensor is not called on remote handles.";
-  DCHECK(!is_ready_) << "SetTensor is only called on non-ready handles.";
-
-  tensor_handle_data_ = absl::make_unique<LocalTensorHandleData>(tensor);
-  is_ready_ = true;
-}
-
-#if !defined(IS_MOBILE_PLATFORM)
 void TensorHandle::SetRemoteShape(const TensorShape& shape) {
-  mutex_lock l(ready_mutex_);
   DCHECK(is_remote_) << "SeRemoteShape is only called on remote handles.";
-  DCHECK(!is_ready_) << "SetRemoteShape is only called on non-ready handles.";
+  DCHECK(!is_ready_notification_.HasBeenNotified())
+      << "SetRemoteShape is only called on non-ready handles.";
 
+  UnshapedRemoteTensorHandleData* p =
+      reinterpret_cast<UnshapedRemoteTensorHandleData*>(
+          tensor_handle_data_.get());
+  p->ReleaseRemoteTensorHandle();
   tensor_handle_data_ = absl::make_unique<RemoteTensorHandleData>(
       remote_op_id_, remote_output_num_, shape, remote_eager_client_,
       remote_context_id_, ctx_);
-  is_ready_ = true;
+  is_poisoned_ = Status::OK();
+  is_ready_notification_.Notify();
 }
 #endif
+
+void TensorHandle::SetTensor(const tensorflow::Tensor& tensor) {
+  DCHECK(!is_remote_) << "SetTensor is not called on remote handles.";
+  DCHECK(!is_ready_notification_.HasBeenNotified())
+      << "SetTensor is only called on non-ready handles.";
+
+  tensor_handle_data_ = absl::make_unique<LocalTensorHandleData>(tensor);
+  is_poisoned_ = Status::OK();
+  is_ready_notification_.Notify();
+}
+
+void TensorHandle::Poison(Status status) {
+  DCHECK(!is_ready_notification_.HasBeenNotified())
+      << "Poison(status) can only be called on non-ready handles.";
+  is_poisoned_ = status;
+  is_ready_notification_.Notify();
+}
 
 Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
                                   TensorHandle** output) {
