@@ -43,23 +43,19 @@ TEST(DenseSplatTest, BoolSplat) {
 
   // Check that splat is automatically detected for boolean values.
   /// True.
-  DenseElementsAttr trueSplat =
-      DenseElementsAttr::get(shape, llvm::ArrayRef<bool>(true));
+  DenseElementsAttr trueSplat = DenseElementsAttr::get(shape, true);
   EXPECT_TRUE(trueSplat.isSplat());
   /// False.
-  DenseElementsAttr falseSplat =
-      DenseElementsAttr::get(shape, llvm::ArrayRef<bool>(false));
+  DenseElementsAttr falseSplat = DenseElementsAttr::get(shape, false);
   EXPECT_TRUE(falseSplat.isSplat());
   EXPECT_NE(falseSplat, trueSplat);
 
   /// Detect and handle splat within 8 elements (bool values are bit-packed).
   /// True.
-  auto detectedSplat = DenseElementsAttr::get(
-      shape, llvm::ArrayRef<bool>({true, true, true, true}));
+  auto detectedSplat = DenseElementsAttr::get(shape, {true, true, true, true});
   EXPECT_EQ(detectedSplat, trueSplat);
   /// False.
-  detectedSplat = DenseElementsAttr::get(
-      shape, llvm::ArrayRef<bool>({false, false, false, false}));
+  detectedSplat = DenseElementsAttr::get(shape, {false, false, false, false});
   EXPECT_EQ(detectedSplat, falseSplat);
 }
 

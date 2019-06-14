@@ -512,6 +512,15 @@ public:
   /// shape.
   static DenseElementsAttr get(ShapedType type, ArrayRef<APFloat> values);
 
+  /// Construct a dense elements attribute for an initializer_list of values.
+  /// Each value is expected to be the same bitwidth of the element type of
+  /// 'type'. 'type' must be a vector or tensor with static shape.
+  template <typename T>
+  static DenseElementsAttr get(const ShapedType &type,
+                               const std::initializer_list<T> &list) {
+    return get(type, ArrayRef<T>(list));
+  }
+
   //===--------------------------------------------------------------------===//
   // Iterators
   //===--------------------------------------------------------------------===//
