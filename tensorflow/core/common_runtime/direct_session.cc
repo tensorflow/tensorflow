@@ -56,7 +56,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/core/threadpool_options.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
@@ -440,11 +439,10 @@ Status DirectSession::DecorateAndPublishGraphForDebug(
   return Status::OK();
 }
 
-Status DirectSession::RunInternal(
-    int64 step_id, const RunOptions& run_options,
-    CallFrameInterface* call_frame, ExecutorsAndKeys* executors_and_keys,
-    RunMetadata* run_metadata,
-    const thread::ThreadPoolOptions& threadpool_options) {
+Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
+                                  CallFrameInterface* call_frame,
+                                  ExecutorsAndKeys* executors_and_keys,
+                                  RunMetadata* run_metadata) {
   const uint64 start_time_usecs = options_.env->NowMicros();
   profiler::TraceMe activity(
       [&] { return strings::StrCat("SessionRun #id=", step_id, "#"); },
@@ -573,18 +571,12 @@ Status DirectSession::RunInternal(
     return errors::Cancelled("Run call was cancelled");
   }
 
-  // Use std::unique_ptr to ensure garbage collection
-  std::unique_ptr<thread::ThreadPool> threadpool_wrapper;
-  thread::ThreadPool* pool = nullptr;
-
+  thread::ThreadPool* pool =
+      run_options.inter_op_thread_pool() >= 0
+          ? thread_pools_[run_options.inter_op_thread_pool()].first
+          : nullptr;
   if (run_in_caller_thread_) {
     pool = nullptr;
-  } else if (threadpool_options.inter_op_threadpool != nullptr) {
-    threadpool_wrapper = absl::make_unique<thread::ThreadPool>(
-        threadpool_options.inter_op_threadpool);
-    pool = threadpool_wrapper.get();
-  } else if (run_options.inter_op_thread_pool() >= 0) {
-    pool = thread_pools_[run_options.inter_op_thread_pool()].first;
   }
 
   if (pool == nullptr) {
@@ -771,8 +763,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   }
 
   TF_RETURN_IF_ERROR(RunInternal(step_id, run_options, &call_frame,
-                                 executors_and_keys, run_metadata,
-                                 thread::ThreadPoolOptions()));
+                                 executors_and_keys, run_metadata));
 
   // Receive outputs.
   if (outputs) {
@@ -1778,14 +1769,6 @@ class DirectSession::RunCallableCallFrame : public CallFrameInterface {
 ::tensorflow::Status DirectSession::RunCallable(
     CallableHandle handle, const std::vector<Tensor>& feed_tensors,
     std::vector<Tensor>* fetch_tensors, RunMetadata* run_metadata) {
-  return RunCallable(handle, feed_tensors, fetch_tensors, run_metadata,
-                     thread::ThreadPoolOptions());
-}
-
-::tensorflow::Status DirectSession::RunCallable(
-    CallableHandle handle, const std::vector<Tensor>& feed_tensors,
-    std::vector<Tensor>* fetch_tensors, RunMetadata* run_metadata,
-    const thread::ThreadPoolOptions& threadpool_options) {
   TF_RETURN_IF_ERROR(CheckNotClosed());
   TF_RETURN_IF_ERROR(CheckGraphCreated("RunCallable()"));
   direct_session_runs->GetCell()->IncrementBy(1);
@@ -1843,9 +1826,9 @@ class DirectSession::RunCallableCallFrame : public CallFrameInterface {
     LogMemory::RecordStep(step_id, run_state_args.handle);
   }
 
-  TF_RETURN_IF_ERROR(RunInternal(
-      step_id, executors_and_keys->callable_options.run_options(), &call_frame,
-      executors_and_keys.get(), run_metadata, threadpool_options));
+  TF_RETURN_IF_ERROR(
+      RunInternal(step_id, executors_and_keys->callable_options.run_options(),
+                  &call_frame, executors_and_keys.get(), run_metadata));
 
   if (fetch_tensors != nullptr) {
     size_t output_size = 0;

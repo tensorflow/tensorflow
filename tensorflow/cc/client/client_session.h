@@ -23,16 +23,9 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
-#include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
-
-namespace thread {
-
-struct ThreadPoolOptions;
-
-}
 
 /// @addtogroup core
 /// @{
@@ -116,20 +109,6 @@ class ClientSession {
                      const std::vector<Tensor>& feed_tensors,
                      std::vector<Tensor>* fetch_tensors,
                      RunMetadata* run_metadata);
-
-  /// \brief Invokes the subgraph named by `handle` with the given options and
-  /// input tensors.
-  ///
-  /// The order of tensors in `feed_tensors` must match the order of names in
-  /// `CallableOptions::feed()` and the order of tensors in `fetch_tensors` will
-  /// match the order of names in `CallableOptions::fetch()` when this subgraph
-  /// was created.
-  /// NOTE: This API is still experimental and may change.
-  Status RunCallable(CallableHandle handle,
-                     const std::vector<Tensor>& feed_tensors,
-                     std::vector<Tensor>* fetch_tensors,
-                     RunMetadata* run_metadata,
-                     const thread::ThreadPoolOptions& options);
 
   /// \brief Releases resources associated with the given `handle` in this
   /// session.
