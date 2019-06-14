@@ -3520,6 +3520,38 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
                                            transpose->dimensions())));
   }
 
+  // Convert transpose(dot(a,b)) to dot(b,a).
+  if (operand->opcode() == HloOpcode::kDot && operand->user_count() == 1 &&
+      operand->shape().rank() == 2) {
+    TF_ASSIGN_OR_RETURN(bool did_transform, [&]() -> StatusOr<bool> {
+      const auto& dnums = operand->dot_dimension_numbers();
+      if (dnums.lhs_batch_dimensions_size() != 0) {
+        return false;
+      }
+      HloInstruction* lhs = operand->mutable_operand(0);
+      if (lhs->shape().rank() != 1 + dnums.lhs_contracting_dimensions_size()) {
+        return false;
+      }
+      HloInstruction* rhs = operand->mutable_operand(1);
+      if (rhs->shape().rank() != 1 + dnums.rhs_contracting_dimensions_size()) {
+        return false;
+      }
+      DotDimensionNumbers new_dnums;
+      *new_dnums.mutable_lhs_contracting_dimensions() =
+          dnums.rhs_contracting_dimensions();
+      *new_dnums.mutable_rhs_contracting_dimensions() =
+          dnums.lhs_contracting_dimensions();
+      TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
+          transpose, HloInstruction::CreateDot(transpose->shape(), /*lhs=*/rhs,
+                                               /*rhs=*/lhs, new_dnums,
+                                               operand->precision_config())));
+      return true;
+    }());
+    if (did_transform) {
+      return Status::OK();
+    }
+  }
+
   // Replace transpose with a reshape if more than one degenerate method is
   // permuted.
   if (OnlyPermutesDegenerateDims(transpose->shape(), transpose->dimensions())) {

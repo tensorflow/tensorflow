@@ -68,6 +68,10 @@ static std::map<std::string, CustomCallFn> custom_call_map = {
     {"scaled_inplace", CreateScaledInplace},
     {"conv_scaled_inplace", CreateConvScaledInplace},
     {"padding_reduce_window", CreatePaddingReduceWindow},
+    {"implicit_binary", CreateBinaryElementwiseOp},
+    {"implicit_binary_inplace", CreateBinaryElementwiseOp},
+    {"implicit_ternary", CreateTernaryElementwiseOp},
+    {"implicit_ternary_inplace", CreateTernaryElementwiseOp},
 };
 
 BaseVisitor::BaseVisitor(CompilerResources& res) : resources_(res) {}
@@ -100,12 +104,7 @@ Status BaseVisitor::HandleElementwiseBinary(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleCompare(HloInstruction* inst) {
-  VLOG(1) << "Processing " << inst->name();
-  TF_ASSIGN_OR_RETURN(
-      poplar::program::Program prog,
-      CreateComparisonOp(resources_, inst, GetOutputShape(inst), tensor_map));
-  sequence.add(prog);
-  return Status::OK();
+  return HandleElementwiseBinary(inst);
 }
 
 Status BaseVisitor::HandleConvert(HloInstruction* inst) {
@@ -132,18 +131,18 @@ Status BaseVisitor::HandleCopy(HloInstruction* inst) {
 
 Status BaseVisitor::HandleClamp(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  TF_ASSIGN_OR_RETURN(
-      poplar::program::Program prog,
-      CreateClampOp(resources_, inst, GetOutputShape(inst), tensor_map));
+  TF_ASSIGN_OR_RETURN(poplar::program::Program prog,
+                      CreateTernaryElementwiseOp(
+                          resources_, inst, GetOutputShape(inst), tensor_map));
   sequence.add(prog);
   return Status::OK();
 }
 
 Status BaseVisitor::HandleSelect(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  TF_ASSIGN_OR_RETURN(
-      poplar::program::Program prog,
-      CreateSelectOp(resources_, inst, GetOutputShape(inst), tensor_map));
+  TF_ASSIGN_OR_RETURN(poplar::program::Program prog,
+                      CreateTernaryElementwiseOp(
+                          resources_, inst, GetOutputShape(inst), tensor_map));
   sequence.add(prog);
   return Status::OK();
 }
@@ -152,7 +151,7 @@ Status BaseVisitor::HandleTupleSelect(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   TF_ASSIGN_OR_RETURN(
       poplar::program::Program prog,
-      CreateSelectOp(resources_, inst, GetOutputShape(inst), tensor_map));
+      CreateTupleSelectOp(resources_, inst, GetOutputShape(inst), tensor_map));
   sequence.add(prog);
   return Status::OK();
 }

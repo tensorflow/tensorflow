@@ -106,21 +106,36 @@ class MappingTest(test_util.TensorFlowTestCase):
           j = e.compile_end.tensor_map.decode('utf-8')
           if len(j) > 0:
             tm = json.loads(e.compile_end.tensor_map.decode('utf-8'))
-
-            bcast_layout = []
-            pad_layout = []
+            # There are two fusions in the graph, zero pad and implicit
+            # broadcast add. We work out which one's which by looking at
+            # layouts.
+            fusion_0_layout = []
+            fusion_1_layout = []
             slice_layout = []
+            add_layout = []
             for g in tm['mappings']:
               for tensor in tm['mappings'][g]:
-                if tensor[0].startswith('broadcast'):
-                  bcast_layout = tensor
+                if tensor[0].startswith('fusion.'):
+                  fusion_1_layout = tensor
                 elif tensor[0].startswith('fusion'):
-                  pad_layout = tensor
+                  fusion_0_layout = tensor
                 elif tensor[0].startswith('slice'):
                   slice_layout = tensor
+                elif tensor[0].startswith('add'):
+                  add_layout = tensor
 
-            self.assertEqual(len(bcast_layout[7]), 1)
-            self.assertEqual(bcast_layout[7][0], [272, 1024])
+            # The slice contains 4 elements on 256 tiles
+            self.assertEqual(len(slice_layout[7]), 256)
+            for tile in range(256):
+              self.assertEqual(slice_layout[7][tile], [tile, 4])
+
+            # The broadcast add will have the same layout as the slice as it
+            # should be done inplace.
+            if slice_layout[7] == fusion_1_layout[7]:
+              pad_layout = fusion_0_layout
+            else:
+              self.assertEqual(slice_layout[7], fusion_0_layout[7])
+              pad_layout = fusion_1_layout
 
             # The pad contains 512 elements on tile 0,
             # and one region with 32 elements on tiles 256-271
@@ -129,10 +144,8 @@ class MappingTest(test_util.TensorFlowTestCase):
             for idx in range(1, 16):
               self.assertEqual(pad_layout[7][idx], [255 + idx, 32])
 
-            # The slice contains 4 elements on 256 tiles
-            self.assertEqual(len(slice_layout[7]), 256)
-            for tile in range(256):
-              self.assertEqual(slice_layout[7][tile], [tile, 4])
+            # The add is done inplace
+            self.assertEqual(slice_layout[7], add_layout[7])
 
 
 if __name__ == "__main__":

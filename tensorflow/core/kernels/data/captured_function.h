@@ -156,6 +156,8 @@ class FunctionMetadata {
         is_multi_device_function_(params.is_multi_device_function),
         use_inter_op_parallelism_(params.use_inter_op_parallelism) {}
 
+  void ValidateMultiDevice();
+
   NameAttrList func_;
   bool is_multi_device_function_ = false;
   std::unique_ptr<FunctionLibraryDefinition> lib_def_ = nullptr;

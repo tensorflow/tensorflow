@@ -29,6 +29,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "IndexedSlicesSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Module"
     mtype: "<type \'type\'>"
   }
@@ -37,7 +41,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "OptionalSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "RaggedTensor"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RaggedTensorSpec"
     mtype: "<type \'type\'>"
   }
   member {
@@ -49,6 +61,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "SparseTensorSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Tensor"
     mtype: "<type \'type\'>"
   }
@@ -57,11 +73,19 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "TensorArraySpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TensorShape"
     mtype: "<type \'type\'>"
   }
   member {
     name: "TensorSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TypeSpec"
     mtype: "<type \'type\'>"
   }
   member {

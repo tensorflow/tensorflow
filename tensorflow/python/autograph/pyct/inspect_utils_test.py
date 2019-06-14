@@ -529,6 +529,7 @@ class InspectUtilsTest(test.TestCase):
 
   def test_isbuiltin(self):
     self.assertTrue(inspect_utils.isbuiltin(enumerate))
+    self.assertTrue(inspect_utils.isbuiltin(eval))
     self.assertTrue(inspect_utils.isbuiltin(float))
     self.assertTrue(inspect_utils.isbuiltin(int))
     self.assertTrue(inspect_utils.isbuiltin(len))

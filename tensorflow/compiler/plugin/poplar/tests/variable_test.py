@@ -346,8 +346,8 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       ok = [
           '__seed*',
           'z1/Initializer/truncated_normal/TruncatedNormal/custom-call*/truncatedNormal',
-          'z1/Initializer/truncated_normal/mul/multiply.*/Op/Multiply',
-          'z1/Initializer/truncated_normal/add.*/AddTo'
+          'z1/Initializer/truncated_normal/mul/fusion*/Op/Multiply',
+          'z1/Initializer/truncated_normal/fusion*/Add'
       ]
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 

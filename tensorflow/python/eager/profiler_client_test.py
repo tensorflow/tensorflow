@@ -30,6 +30,10 @@ class ProfilerClientTest(test_util.TensorFlowTestCase):
     with self.assertRaises(errors.UnavailableError):
       profiler_client.start_tracing('localhost:6006', '/tmp/', 2000)
 
+  def testMonitor_ProcessInvalidAddress(self):
+    with self.assertRaises(errors.UnavailableError):
+      profiler_client.monitor('localhost:6006', 2000)
+
 
 if __name__ == '__main__':
   test.main()

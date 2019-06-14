@@ -6126,6 +6126,7 @@ filegroup(
         "cwise_op_equal_to_2.cc",
         "cwise_op_not_equal_to_1.cc",
         "cwise_op_not_equal_to_2.cc",
+        "cwise_op_erf.cc",
         "cwise_op_exp.cc",
         "cwise_op_floor.cc",
         "cwise_op_floor_div.cc",

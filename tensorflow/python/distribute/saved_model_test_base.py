@@ -58,15 +58,6 @@ strategies_minus_tpu = [
 ]
 
 
-def get_strategy_cross_product():
-  result = []
-  for strategy_1 in strategies_minus_tpu:
-    for strategy_2 in strategies_minus_tpu:
-      result.append(combinations.NamedDistributionPair(strategy_1, strategy_2))
-
-  return result
-
-
 def simple_models_with_strategies():
   return combinations.combine(
       model_and_input=simple_models,
@@ -77,7 +68,8 @@ def simple_models_with_strategies():
 def simple_models_with_strategy_pairs():
   return combinations.combine(
       model_and_input=simple_models,
-      distribution_pair=get_strategy_cross_product(),
+      distribution_for_saving=strategies_minus_tpu,
+      distribution_for_restoring=strategies_minus_tpu,
       mode=['eager'])
 
 
@@ -213,19 +205,15 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
     self.assertAllClose(result_before_save, load_result, atol=_TOLERANCE)
 
   def run_test_save_strategy_restore_strategy(self, model_and_input,
-                                              distribution_pair, save_in_scope):
+                                              distribution_for_saving,
+                                              distribution_for_restoring,
+                                              save_in_scope):
     """Save a model with DS, and restore it with potentially different DS."""
-
-    combinations.maybe_skip_test(self, distribution_pair.is_tpu_required,
-                                 distribution_pair.num_gpus_required)
 
     saved_dir = os.path.join(self.get_temp_dir(), self._root_dir,
                              'test_save_dist_restore_dist')
 
-    dist_for_save = distribution_pair.strategy_1
-    dist_for_restore = distribution_pair.strategy_2
-
-    with dist_for_save.scope():
+    with distribution_for_saving.scope():
       model, output_name = model_and_input.get_model()
       x_train, y_train, x_predict = model_and_input.get_data()
       batch_size = model_and_input.get_batch_size()
@@ -235,14 +223,15 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
       result_before_save = model.predict(predict_dataset, steps=PREDICT_STEPS)
 
     if save_in_scope:
-      with dist_for_save.scope():
+      with distribution_for_saving.scope():
         self._save_model(model, saved_dir)
     else:
       self._save_model(model, saved_dir)
 
-    with dist_for_restore.scope():
+    with distribution_for_restoring.scope():
+
       load_result = self._load_and_run_model(
-          distribution=dist_for_restore,
+          distribution=distribution_for_restoring,
           saved_dir=saved_dir,
           predict_dataset=predict_dataset,
           output_name=output_name)

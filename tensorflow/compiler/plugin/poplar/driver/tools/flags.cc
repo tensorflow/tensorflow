@@ -40,8 +40,8 @@ absl::flat_hash_map<std::string, std::string> GetFlagUsage() {
       {"synthetic_data_initializer",
        "If set when using synthetic data, all the inputs to the graph can be "
        "initialized directly on the IPU either randomly "
-       "(synthetic_data_initializer=random) or to a constant value X "
-       "(synthetic_data_initializer=int)."},
+       "(synthetic_data_initializer=random, uniform, normal) or to a constant "
+       "value X (synthetic_data_initializer=int)."},
       {"use_ipu_model",
        "If enabled, this computation will be executed on the IPU model. "
        "(bool)"},

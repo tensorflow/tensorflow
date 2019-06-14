@@ -17,9 +17,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/slice_op.h"
 
@@ -267,7 +267,7 @@ TF_CALL_POD_STRING_TYPES(REGISTER_SLICE);
 TF_CALL_QUANTIZED_TYPES(REGISTER_SLICE);
 #undef REGISTER_SLICE
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T, NDIM)                                  \
@@ -331,7 +331,7 @@ REGISTER_KERNEL_BUILDER(Name("Slice")
 
 #undef REGISTER_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 // Forward declarations of the functor specializations for SYCL.

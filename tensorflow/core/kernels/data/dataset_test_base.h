@@ -213,11 +213,12 @@ class DatasetOpsTestBase : public ::testing::Test {
   std::vector<AllocatorAttributes> allocator_attrs_;
   std::unique_ptr<ScopedStepContainer> step_container_;
 
+  // Device manager is used by function handle cache and needs to outlive it.
+  std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
   FunctionLibraryRuntime* flr_;  // Owned by `pflr_`.
   std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   std::function<void(std::function<void()>)> runner_;
-  std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<FunctionLibraryDefinition> lib_def_;
   std::unique_ptr<ResourceMgr> resource_mgr_;
   std::unique_ptr<OpKernelContext::Params> params_;

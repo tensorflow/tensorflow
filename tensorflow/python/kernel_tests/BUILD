@@ -834,7 +834,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "resource_variable_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["resource_variable_ops_test.py"],
     additional_deps = [
         "@absl_py//absl/testing:parameterized",

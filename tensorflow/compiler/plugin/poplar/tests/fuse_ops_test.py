@@ -485,7 +485,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
           'gradients/vs/conv2d_1/Conv2D_grad/Conv2DBackpropFilter/fusion*/Conv_4x4/',
           'gradients/vs/conv2d_1/Conv2D_grad/Conv2DBackpropFilter/fusion*/AddTo',
           'GradientDescent/update_vs/conv2d_1/bias/ResourceApplyGradientDescent/multiply*/Op/Multiply',
-          'GradientDescent/update_vs/conv2d_1/bias/ResourceApplyGradientDescent/subtract*/AddTo',
+          'GradientDescent/update_vs/conv2d_1/bias/ResourceApplyGradientDescent/fusion*/AddTo',
           'vs/conv2d/BiasAdd/fusion*/addToChannel',
           'Sum/reduce*/ReduceFinalStage/IntermediateToOutput/Reduce',
       ]

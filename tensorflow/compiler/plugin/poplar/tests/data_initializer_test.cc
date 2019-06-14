@@ -71,6 +71,42 @@ TEST_F(DataInitializerTest, TestRandomDataInitializer) {
   }
 }
 
+TEST_F(DataInitializerTest, TestRandomNormalDataInitializer) {
+  // Check that the initializer parses correctly.
+  auto initializer = DataInitializer::GetDataInitializer("normal");
+  for (auto dimensions : dimensions_to_test) {
+    for (auto type : supported_types) {
+      auto shape = ShapeUtil::MakeShape(type, dimensions);
+      // Check that the literal can be created given the type and shape.
+      TF_ASSERT_OK_AND_ASSIGN(auto literal, initializer->GetData(shape));
+      // For floating point, check that non of the values are NaNs/Infs.
+      if (ShapeUtil::ElementIsFloating(shape)) {
+        int64 num_elements = ShapeUtil::ElementsIn(shape);
+        TF_ASSERT_OK_AND_ASSIGN(auto literal_flat,
+                                literal.Reshape({num_elements}));
+        for (int64 i = 0; i < num_elements; i++) {
+          float value;
+          switch (type) {
+            case F16:
+              value = Eigen::half_impl::half_to_float(
+                  literal_flat.Get<Eigen::half>({i}));
+              break;
+            case F32:
+              value = literal_flat.Get<float>({i});
+              break;
+            default:
+              // Unsupported type - should never happen.
+              EXPECT_TRUE(false);
+              break;
+          }
+          EXPECT_FALSE(std::isnan(value));
+          EXPECT_FALSE(std::isinf(value));
+        }
+      }
+    }
+  }
+}
+
 TEST_F(DataInitializerTest, TestConstantDataInitializer) {
   for (auto value : {0, 1}) {
     // Check that the initializer parses correctly.

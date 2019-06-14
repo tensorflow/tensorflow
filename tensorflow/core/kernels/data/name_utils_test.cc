@@ -40,13 +40,6 @@ TEST(NameUtilsTest, DatasetDebugString) {
             "ShuffleDatasetOp(10, 1, 2)::FixedSeedDataset");
 }
 
-TEST(NameUtilsTest, StrJoin) {
-  EXPECT_EQ(name_utils::StrJoin("_"), "");
-  EXPECT_EQ(name_utils::StrJoin("_", "A"), "A");
-  EXPECT_EQ(name_utils::StrJoin("_", "A", 1, "B"), "A_1_B");
-  EXPECT_EQ(name_utils::StrJoin(", ", "a", "b", "c"), "a, b, c");
-}
-
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

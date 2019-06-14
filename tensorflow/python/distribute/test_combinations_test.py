@@ -22,7 +22,7 @@ from collections import OrderedDict
 
 from absl.testing import parameterized
 
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import test_combinations as combinations
 from tensorflow.python.eager import test
 
 

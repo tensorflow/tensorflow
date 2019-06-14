@@ -157,6 +157,9 @@ void TFE_Py_TapeSetStopOnThread();
 // Restarts gradient recording on the current thread.
 void TFE_Py_TapeSetRestartOnThread();
 
+// Returns if gradient recording is stopped on the current thread.
+PyObject* TFE_Py_TapeSetIsStopped();
+
 // Records an operation in the gradient tape stack.type is a string for the
 // operation type, used in the backprop code. output_tensors should be a list of
 // python ops.Tensor objects. input_tensor_ids should be a list of python

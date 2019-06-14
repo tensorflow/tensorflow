@@ -1291,12 +1291,12 @@ static PyTypeObject TFE_Py_Tape_Type = {
 // revisit this if/when decide to not hold the GIL while manipulating the tape
 // stack.
 tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>* GetTapeSet() {
-  thread_local tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>* tape_set{
-      nullptr};
+  thread_local std::unique_ptr<tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>>
+      tape_set = nullptr;
   if (tape_set == nullptr) {
-    tape_set = new tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>;
+    tape_set.reset(new tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>);
   }
-  return tape_set;
+  return tape_set.get();
 }
 
 // A safe copy of the current tapeset. Does not get affected by other python
@@ -1335,6 +1335,13 @@ bool* ThreadTapeIsStopped() {
 void TFE_Py_TapeSetStopOnThread() { *ThreadTapeIsStopped() = true; }
 
 void TFE_Py_TapeSetRestartOnThread() { *ThreadTapeIsStopped() = false; }
+
+PyObject* TFE_Py_TapeSetIsStopped() {
+  if (*ThreadTapeIsStopped()) {
+    Py_RETURN_TRUE;
+  }
+  Py_RETURN_FALSE;
+}
 
 PyObject* TFE_Py_TapeSetNew(PyObject* persistent,
                             PyObject* watch_accessed_variables) {
