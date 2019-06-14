@@ -1,5 +1,8 @@
 // RUN: mlir-opt %s -verify | mlir-opt -verify | FileCheck %s
 
+// CHECK: #[[map0:.*]] = (d0, d1, d2) -> (d0, d2, d1)
+// CHECK: #[[map1:.*]] = (d0, d1, d2) -> (d2, d1, d0)
+
 func @range(%arg0: index, %arg1: index, %arg2: index) {
   %0 = linalg.range %arg0:%arg1:%arg2 : !linalg.range
   return
@@ -97,3 +100,33 @@ func @linalg_for(%arg0 : index, %arg1 : index, %arg2 : index) {
 //  CHECK-NEXT:       %2 = cmpi "sge", %i0, %i1 : index
 //  CHECK-NEXT:       %3 = select %2, %i0, %i1 : index
 //  CHECK-NEXT:       linalg.for %i2 = %1 to %3 step %i1 {
+
+func @fill_view(%arg0: !linalg.view<?xf32>, %arg1: f32) {
+  linalg.fill(%arg0, %arg1) : !linalg.view<?xf32>, f32
+  return
+}
+// CHECK-LABEL: func @fill_view(%arg0: !linalg.view<?xf32>, %arg1: f32) {
+//       CHECK:   linalg.fill(%arg0, %arg1) : !linalg.view<?xf32>, f32
+
+func @fill_view3(%arg0: !linalg.view<?x?x?xf32>, %arg1: f32) {
+  linalg.fill(%arg0, %arg1) : !linalg.view<?x?x?xf32>, f32
+  return
+}
+// CHECK-LABEL: func @fill_view3(%arg0: !linalg.view<?x?x?xf32>, %arg1: f32) {
+//       CHECK:   linalg.fill(%arg0, %arg1) : !linalg.view<?x?x?xf32>, f32
+
+func @copy_view(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf32>) {
+  linalg.copy(%arg0, %arg1) : !linalg.view<?xf32>, !linalg.view<?xf32>
+  return
+}
+// CHECK-LABEL: func @copy_view(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf32>) {
+//       CHECK:   linalg.copy(%arg0, %arg1) : !linalg.view<?xf32>, !linalg.view<?xf32>
+
+func @copy_view3(%arg0: !linalg.view<?x?x?xf32>, %arg1: !linalg.view<?x?x?xf32>) {
+  linalg.copy(%arg0, %arg1) {inputPermutation : (i, j, k) -> (i, k, j),
+                             outputPermutation : (i, j, k) -> (k, j, i)} :
+    !linalg.view<?x?x?xf32>, !linalg.view<?x?x?xf32>
+  return
+}
+// CHECK-LABEL: func @copy_view3(%arg0: !linalg.view<?x?x?xf32>, %arg1: !linalg.view<?x?x?xf32>) {
+//       CHECK:   linalg.copy(%arg0, %arg1) {inputPermutation: #[[map0]], outputPermutation: #[[map1]]} : !linalg.view<?x?x?xf32>, !linalg.view<?x?x?xf32>

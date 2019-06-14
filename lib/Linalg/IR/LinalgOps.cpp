@@ -27,8 +27,10 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Linalg/IR/LinalgTypes.h"
+#include "mlir/Linalg/Utils/Utils.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/STLExtras.h"
+#include "mlir/Transforms/FoldUtils.h"
 
 using namespace mlir;
 using namespace mlir::edsc;
@@ -696,7 +698,9 @@ static void printLinalgLibraryOp(OpAsmPrinter *p, Operation *op) {
   interleave(
       op->getOperands().begin(), op->getOperands().end(),
       [&](Value *v) { *p << *v; }, [&]() { *p << ", "; });
-  *p << ") : ";
+  *p << ")";
+  p->printOptionalAttrDict(op->getAttrs());
+  *p << " : ";
   interleave(
       op->getOperands().begin(), op->getOperands().end(),
       [&](Value *v) { *p << v->getType(); }, [&]() { *p << ", "; });
@@ -721,6 +725,31 @@ static LogicalResult verify(FillOp op) {
   return success();
 }
 
+static LogicalResult verify(CopyOp op) {
+  auto outputViewType = op.getOutputViewType(0);
+  auto inputViewType = op.getInputViewType(0);
+  if (inputViewType.getElementType() != outputViewType.getElementType())
+    return op.emitOpError("expects views of the same type");
+  if (inputViewType.getRank() != outputViewType.getRank())
+    return op.emitOpError("expects views of the same rank");
+  auto rank = op.getNumLoops();
+  auto inputPermutationMap = op.inputPermutation();
+  if (inputPermutationMap.getNumInputs() != rank)
+    return op.emitOpError("expects optional input_permutation map of rank ")
+           << rank;
+  if (!inputPermutationMap.isPermutation())
+    return op.emitOpError(
+        "expects optional input_permutation map to be a permutation");
+  auto outputPermutationMap = op.outputPermutation();
+  if (outputPermutationMap.getNumInputs() != rank)
+    return op.emitOpError("expects optional output_permutation map of rank ")
+           << rank;
+  if (!outputPermutationMap.isPermutation())
+    return op.emitOpError(
+        "expects optional output_permutation map to be a permutation");
+  return success();
+}
+
 namespace mlir {
 namespace linalg {
 
@@ -737,15 +766,20 @@ namespace linalg {
 // AffineMap for now.
 SmallVector<AffineMap, 4> mlir::linalg::loopToOperandRangesMaps(Operation *op) {
   MLIRContext *context = op->getContext();
-  auto i = getAffineDimExpr(0, context);
-  auto j = getAffineDimExpr(1, context);
-  auto k = getAffineDimExpr(2, context);
+  if (auto copyOp = dyn_cast<CopyOp>(op)) {
+    // I(input_perm(ivs)) -> O(output_perm(ivs))
+    return SmallVector<AffineMap, 4>{copyOp.inputPermutation(),
+                                     copyOp.outputPermutation()};
+  }
   if (auto fillOp = dyn_cast<FillOp>(op)) {
     // filling_value -> O(ivs)
     unsigned rank = fillOp.getNumLoops();
     return SmallVector<AffineMap, 4>{
         AffineMap::getMultiDimIdentityMap(rank, op->getContext())};
   }
+  auto i = getAffineDimExpr(0, context);
+  auto j = getAffineDimExpr(1, context);
+  auto k = getAffineDimExpr(2, context);
   if (isa<DotOp>(op))
     // A(r_i) * B(r_i) -> C()
     return SmallVector<AffineMap, 4>{AffineMap::get(1, 0, {i}),
@@ -761,6 +795,14 @@ SmallVector<AffineMap, 4> mlir::linalg::loopToOperandRangesMaps(Operation *op) {
                                      AffineMap::get(3, 0, {k, j}),
                                      AffineMap::get(3, 0, {i, j})};
   llvm_unreachable("Missing loopToOperandRangesMaps for op");
+}
+
+static SmallVector<Value *, 8> permuteIvs(ArrayRef<Value *> ivs,
+                                          AffineMap permutation,
+                                          OperationFolder &state) {
+  return applyMapToValues(ScopedContext::getBuilder(),
+                          ScopedContext::getLocation(), permutation, ivs,
+                          state);
 }
 
 // Ideally this should all be Tablegen'd but there is no good story for op
@@ -780,10 +822,20 @@ void mlir::linalg::emitScalarImplementation(
   using edsc::op::operator==;
   using edsc::intrinsics::select;
 
-  // account for affine.terminator in loop.
+  // account for linalg.terminator in loop.
   OpBuilder b(body, std::prev(body->end(), 1));
   ScopedContext scope(b, innermostLoop.getLoc());
   auto *op = linalgOp.getOperation();
+  if (auto copyOp = dyn_cast<CopyOp>(op)) {
+    OperationFolder state(op->getFunction());
+    IndexedValue O(copyOp.getOutput(0)), I(copyOp.getInput(0));
+    auto inputIvs = permuteIvs(parallelIvs, copyOp.inputPermutation(), state);
+    auto outputIvs = permuteIvs(parallelIvs, copyOp.outputPermutation(), state);
+    SmallVector<IndexHandle, 8> iivs(inputIvs.begin(), inputIvs.end());
+    SmallVector<IndexHandle, 8> oivs(outputIvs.begin(), outputIvs.end());
+    O(oivs) = I(iivs);
+    return;
+  }
   if (auto fillOp = dyn_cast<FillOp>(op)) {
     IndexedValue O(fillOp.getOutput(0));
     SmallVector<IndexHandle, 8> ivs(parallelIvs.begin(), parallelIvs.end());

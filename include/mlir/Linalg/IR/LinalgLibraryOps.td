@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// This is the operation definition file for linear algebra operations that 
+// This is the operation definition file for linear algebra operations that
 // correspond to underlying library calls (e.g. BLAS).
 //
 //===----------------------------------------------------------------------===//
@@ -78,9 +78,74 @@ class LinalgLibrary_Op<string mnemonic, list<OpTrait> props>
   }];
 }
 
+class AffineMapAttrWithDefault<string val> : DefaultValuedAttr<
+    Attr<CPred<"$_self.isa<AffineMapAttr>()">, "AffineMap attribute">, val> {
+  let storageType = [{ AffineMapAttr }];
+  let returnType = [{ AffineMap }];
+  let constBuilderCall = "$_builder.getAffineMapAttr($0)";
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Concrete Linalg ops.
 ////////////////////////////////////////////////////////////////////////////////
+def CopyOp : LinalgLibrary_Op<"copy", [NInputsAndOutputs<1, 1>]> {
+  let description = [{
+    Copies the data in the input view into the output view.
+
+    Usage:
+      linalg.copy(%arg0, %arg1) : !linalg.view<?xf32>, !linalg.view<?xf32>
+
+    One possible lowering to affine form is:
+      %0 = linalg.dim %arg0, 0 : index
+      linalg.for %i0 = %c0 to %0 step %c1 {
+        %1 = linalg.load %arg0[%i0] : !linalg.view<?xf32>
+        linalg.store %1, %arg1[%i0] : !linalg.view<?xf32>
+      }
+
+    Optionally, can take `input_permutation` and `output_permutation` attributes
+    to reorder the dimensions of the input and output views.
+
+    Usage:
+      linalg.copy(%arg0, %arg1) {inputPermutation : (i, j, k) -> (i, k, j),
+                                 outputPermutation : (i, j, k) -> (k, j, i)} :
+        !linalg.view<?x?x?xf32>, !linalg.view<?x?x?xf32>
+
+    One possible lowering to affine form is:
+      %0 = linalg.dim %arg0, 0
+      %1 = linalg.dim %arg0, 1
+      %2 = linalg.dim %arg0, 2
+      linalg.for %i0 = %c0 to %{{.*}} step %c1 {
+        linalg.for %i1 = %c0 to %{{.*}} step %c1 {
+          linalg.for %i2 = %c0 to %{{.*}} step %c1 {
+            %3 = linalg.load %arg0[%i0, %i2, %i1] : !linalg.view<?x?x?xf32>
+            linalg.store %3, %arg1[%i2, %i1, %i0] : !linalg.view<?x?x?xf32>
+
+    The views are expected to be compatible for correctness but this is not
+    enforced at the moment.
+  }];
+  let arguments = (ins
+    View,
+    View,
+    AffineMapAttrWithDefault<[{
+      AffineMap::getMultiDimIdentityMap(getInputViewType(0).getRank(),
+                                        getOperation()->getContext())
+    }]>:$inputPermutation,
+    AffineMapAttrWithDefault<[{
+      AffineMap::getMultiDimIdentityMap(getOutputViewType(0).getRank(),
+                                        getOperation()->getContext())
+    }]>:$outputPermutation);
+  let extraClassDeclaration = [{
+    unsigned getNumParallelLoops() {
+      auto *view = *(getOperands().begin());
+      return view->getType().cast<ViewType>().getRank();
+    }
+    unsigned getNumReductionLoops() { return 0; }
+    unsigned getNumWindowLoops() { return 0; }
+    unsigned getNumLoops() { return getNumParallelLoops(); }
+  }];
+  let verifier = [{ return ::verify(*this); }];
+}
+
 def FillOp : LinalgLibrary_Op<"fill", [NInputsAndOutputs<0, 1>]> {
   let arguments = (ins View, AnyTypeOf<[AnyFloat, AnyInteger, AnyVector]>);
   let extraClassDeclaration = [{

@@ -236,6 +236,28 @@ AffineMap AffineMap::compose(AffineMap map) {
   return AffineMap::get(numDims, numSymbols, exprs);
 }
 
+bool AffineMap::isProjectedPermutation() {
+  if (getNumSymbols() > 0)
+    return false;
+  SmallVector<bool, 8> seen(getNumInputs(), false);
+  for (auto expr : getResults()) {
+    if (auto dim = expr.dyn_cast<AffineDimExpr>()) {
+      if (seen[dim.getPosition()])
+        return false;
+      seen[dim.getPosition()] = true;
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+bool AffineMap::isPermutation() {
+  if (getNumDims() != getNumResults())
+    return false;
+  return isProjectedPermutation();
+}
+
 AffineMap mlir::simplifyAffineMap(AffineMap map) {
   SmallVector<AffineExpr, 8> exprs;
   for (auto e : map.getResults()) {
