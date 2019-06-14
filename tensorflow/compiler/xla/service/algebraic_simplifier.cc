@@ -1237,7 +1237,8 @@ StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfConcat(
     HloInstruction* dot) {
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
   if (dnums.lhs_contracting_dimensions_size() != 1 ||
-      dnums.lhs_batch_dimensions_size() != 0) {
+      dnums.lhs_batch_dimensions_size() != 0 ||
+      dot->shape().dimensions_size() != 2) {  // dot output 2D
     return nullptr;
   }
 
@@ -1783,12 +1784,13 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
 
   // If the lhs or rhs have only batch and contracting dimensions, a dot can be
   // rewritten as reduce(mul(broadcast(transpose(x)),broadcast(transpose(y))))
-  if ((dot->dot_dimension_numbers().lhs_batch_dimensions_size() +
-           dot->dot_dimension_numbers().lhs_contracting_dimensions_size() ==
-       lhs->shape().rank()) ||
-      (dot->dot_dimension_numbers().rhs_contracting_dimensions_size() +
-           dot->dot_dimension_numbers().rhs_batch_dimensions_size() ==
-       rhs->shape().rank())) {
+  if (options_.enable_dot_strength_reduction() &&
+      ((dot->dot_dimension_numbers().lhs_batch_dimensions_size() +
+            dot->dot_dimension_numbers().lhs_contracting_dimensions_size() ==
+        lhs->shape().rank()) ||
+       (dot->dot_dimension_numbers().rhs_contracting_dimensions_size() +
+            dot->dot_dimension_numbers().rhs_batch_dimensions_size() ==
+        rhs->shape().rank()))) {
     TF_ASSIGN_OR_RETURN(
         HloInstruction * new_lhs,
         NormalizeDotOperandToBatchMajorAndContractingMinor(
@@ -1884,12 +1886,10 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
     return ReplaceInstruction(dot, dot_of_gather_optimized);
   }
 
-  if (options_.enable_dot_strength_reduction()) {
-    TF_ASSIGN_OR_RETURN(bool removed_degenerate_dimensions,
-                        RemoveDegenerateDimensionFromDot(dot));
-    if (removed_degenerate_dimensions) {
-      return Status::OK();
-    }
+  TF_ASSIGN_OR_RETURN(bool removed_degenerate_dimensions,
+                      RemoveDegenerateDimensionFromDot(dot));
+  if (removed_degenerate_dimensions) {
+    return Status::OK();
   }
 
   // Simplify dot(transpose(a), transpose(b)) to transpose(dot(b,a)).
