@@ -110,10 +110,17 @@ class DirectSession : public Session {
 
   ::tensorflow::Status MakeCallable(const CallableOptions& callable_options,
                                     CallableHandle* out_handle) override;
+
   ::tensorflow::Status RunCallable(CallableHandle handle,
                                    const std::vector<Tensor>& feed_tensors,
                                    std::vector<Tensor>* fetch_tensors,
                                    RunMetadata* run_metadata) override;
+
+  ::tensorflow::Status RunCallable(
+      CallableHandle handle, const std::vector<Tensor>& feed_tensors,
+      std::vector<Tensor>* fetch_tensors, RunMetadata* run_metadata,
+      const thread::ThreadPoolOptions& threadpool_options) override;
+
   ::tensorflow::Status ReleaseCallable(CallableHandle handle) override;
 
  private:
@@ -242,10 +249,11 @@ class DirectSession : public Session {
       RunStateArgs* run_state_args, DataTypeVector* input_types,
       DataTypeVector* output_types, int64* collective_graph_key);
 
-  ::tensorflow::Status RunInternal(int64 step_id, const RunOptions& run_options,
-                                   CallFrameInterface* call_frame,
-                                   ExecutorsAndKeys* executors_and_keys,
-                                   RunMetadata* run_metadata);
+  ::tensorflow::Status RunInternal(
+      int64 step_id, const RunOptions& run_options,
+      CallFrameInterface* call_frame, ExecutorsAndKeys* executors_and_keys,
+      RunMetadata* run_metadata,
+      const thread::ThreadPoolOptions& threadpool_options);
 
   // Returns whether inter-op execution uses a global pool or the input
   // `run_options` requests being run on inter_op_thread_pool = 0 in case
