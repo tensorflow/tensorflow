@@ -64,7 +64,7 @@ You can install the exact version that was used to generate these docs
 with:
 
 ```
-pip install tensorflow==2.0.0-beta0
+pip install tensorflow==2.0.0-beta1
 ```
 """
 
