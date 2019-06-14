@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -795,6 +796,18 @@ Status ShapeVerifier::HandlePad(HloInstruction* pad) {
                                                        pad->padding_config()));
 }
 
+Status ShapeVerifier::HandleCopyStart(HloInstruction* copy_start) {
+  return CheckShape(copy_start,
+                    ShapeUtil::MakeTupleShape({copy_start->operand(0)->shape(),
+                                               ShapeUtil::MakeShape(U32, {})}),
+                    /*only_compare_minor_to_major_in_layout=*/true);
+}
+
+Status ShapeVerifier::HandleCopyDone(HloInstruction* copy_done) {
+  return CheckShape(copy_done, ShapeUtil::GetTupleElementShape(
+                                   copy_done->operand(0)->shape(), 0));
+}
+
 Status ShapeVerifier::HandleSend(HloInstruction* send) {
   return CheckShape(send,
                     ShapeUtil::MakeTupleShape({send->operand(0)->shape(),
@@ -869,6 +882,8 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kConditional:
     case HloOpcode::kConstant:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kCopyDone:
+    case HloOpcode::kCopyStart:
     case HloOpcode::kCustomCall:
     case HloOpcode::kDomain:
     case HloOpcode::kFusion:
@@ -973,6 +988,8 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       case HloOpcode::kCall:
       case HloOpcode::kConditional:
       case HloOpcode::kConstant:
+      case HloOpcode::kCopyDone:
+      case HloOpcode::kCopyStart:
       case HloOpcode::kCustomCall:
       case HloOpcode::kGetTupleElement:
       case HloOpcode::kInfeed:
@@ -1216,6 +1233,42 @@ Status CheckSameIsHostTransfer(const HloInstruction* instr1,
         "%s, "
         "%s ",
         instr1->ToString(), instr2->ToString());
+  }
+  return Status::OK();
+}
+
+// Checks CopyStart and CopyDone nodes.
+Status VerifyAsynchronousCopies(const HloModule& module) {
+  // CopyStart must have a single CopyDone user.
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      switch (instruction->opcode()) {
+        case HloOpcode::kCopyStart: {
+          TF_RET_CHECK(instruction->users().size() == 1)
+              << "CopyStart instruction requires one consumer, found "
+              << instruction->users().size();
+          const HloInstruction* copy_done = instruction->users().front();
+          TF_RET_CHECK(copy_done->opcode() == HloOpcode::kCopyDone)
+              << "The consumer of a CopyStart instruction needs to be "
+                 "CopyDone, found "
+              << HloOpcodeString(copy_done->opcode());
+          break;
+        }
+        case HloOpcode::kCopyDone: {
+          TF_RET_CHECK(instruction->operands().size() == 1)
+              << "CopyDone instruction requires one operand, found "
+              << instruction->operands().size();
+          const HloInstruction* copy_start = instruction->operand(0);
+          TF_RET_CHECK(copy_start->opcode() == HloOpcode::kCopyStart)
+              << "The operand of a CopyDone instruction needs to be CopyStart, "
+                 "found "
+              << HloOpcodeString(copy_start->opcode());
+          break;
+        }
+        default:
+          break;
+      }
+    }
   }
   return Status::OK();
 }
@@ -1582,6 +1635,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
   }
 
   TF_RETURN_IF_ERROR(VerifyHloStructure(module));
+  TF_RETURN_IF_ERROR(VerifyAsynchronousCopies(*module));
   TF_RETURN_IF_ERROR(VerifySendsAndRecvs(*module));
 
   std::unique_ptr<ShapeVerifier> shape_verifier =

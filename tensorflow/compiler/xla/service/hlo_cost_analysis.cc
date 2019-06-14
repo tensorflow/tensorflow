@@ -413,6 +413,14 @@ Status HloCostAnalysis::HandlePad(const HloInstruction*) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleCopyStart(const HloInstruction*) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleCopyDone(const HloInstruction*) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleSend(const HloInstruction*) {
   return Status::OK();
 }

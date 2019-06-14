@@ -72,6 +72,8 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kConstant:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
+    case HloOpcode::kCopyDone:
+    case HloOpcode::kCopyStart:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kFloor:
