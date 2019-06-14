@@ -846,8 +846,10 @@ tf_cc_test(
 tf_kernel_library(
     name = "tensor_dataset_op",
     srcs = ["tensor_dataset_op.cc"],
+    hdrs = ["tensor_dataset_op.h"],
     deps = [
         ":dataset_utils",
+        ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -860,13 +862,7 @@ tf_cc_test(
     srcs = ["tensor_dataset_op_test.cc"],
     deps = [
         ":dataset_test_base",
-        ":dataset_utils",
-        ":iterator_ops",
         ":tensor_dataset_op",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
