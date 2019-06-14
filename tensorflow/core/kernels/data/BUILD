@@ -691,6 +691,7 @@ tf_kernel_library(
     srcs = ["take_dataset_op.cc"],
     hdrs = ["take_dataset_op.h"],
     deps = [
+        ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
