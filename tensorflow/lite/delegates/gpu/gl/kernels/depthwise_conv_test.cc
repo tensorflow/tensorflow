@@ -64,7 +64,7 @@ TEST(DepthwiseConvTest, O4H1W1I2Strides1x1Dilation1x1) {
       {ToString(OperationType::CONVOLUTION_2D), std::move(attr)}, {input},
       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 3}));
-  ASSERT_TRUE(model.Invoke(*NewDepthwiseConvolutionNodeShader()));
+  ASSERT_OK(model.Invoke(*NewDepthwiseConvolutionNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {2, 4, 12, 16}));
 }
 
@@ -102,7 +102,7 @@ TEST(DepthwiseConvTest, O2H1W1I1Strides2x2Dilation1x1) {
       {ToString(OperationType::CONVOLUTION_2D), std::move(attr)}, {input},
       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 0, 1, 1, 0, 1, 1, 0, 1}));
-  ASSERT_TRUE(model.Invoke(*NewDepthwiseConvolutionNodeShader()));
+  ASSERT_OK(model.Invoke(*NewDepthwiseConvolutionNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {1, 3, 1, 3, 1, 3, 1, 3}));
 }
@@ -141,7 +141,7 @@ TEST(DepthwiseConvTest, O2H2W2I1Strides1x1Dilation2x2) {
       {ToString(OperationType::CONVOLUTION_2D), std::move(attr)}, {input},
       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 0, 1, 1, 0, 1, 1, 0, 1}));
-  ASSERT_TRUE(model.Invoke(*NewDepthwiseConvolutionNodeShader()));
+  ASSERT_OK(model.Invoke(*NewDepthwiseConvolutionNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {10, 26}));
 }
 

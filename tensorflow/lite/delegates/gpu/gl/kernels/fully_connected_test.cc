@@ -58,7 +58,7 @@ TEST(FullyConnectedTest, MatrixByVectorMultiplication) {
   SingleOpModel model({ToString(OperationType::FULLY_CONNECTED), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2}));
-  ASSERT_TRUE(model.Invoke(*NewFullyConnectedNodeShader()));
+  ASSERT_OK(model.Invoke(*NewFullyConnectedNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {6, 13, 20, 27}));
 }
 

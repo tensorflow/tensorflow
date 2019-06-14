@@ -63,7 +63,7 @@ TEST(ConvTest, O2H2W1I1Stride1x1Dilation1x1) {
       {ToString(OperationType::CONVOLUTION_2D), std::move(attr)}, {input},
       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 1, 1, 1}));
-  ASSERT_TRUE(model.Invoke(*NewConvolutionNodeShader()));
+  ASSERT_OK(model.Invoke(*NewConvolutionNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {4, 8, 4, 8, 2, 4, 2, 4}));
 }
@@ -101,7 +101,7 @@ TEST(ConvTest, O1H2W2I1Stride1x1Dilation2x2) {
       {ToString(OperationType::CONVOLUTION_2D), std::move(attr)}, {input},
       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 1, 1, 1, 1, 1, 1, 1, 1}));
-  ASSERT_TRUE(model.Invoke(*NewConvolutionNodeShader()));
+  ASSERT_OK(model.Invoke(*NewConvolutionNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {10}));
 }
 
@@ -138,7 +138,7 @@ TEST(ConvTest, O1H3W3I1Stride1x1Dilation1x1) {
       {ToString(OperationType::CONVOLUTION_2D), std::move(attr)}, {input},
       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 1, 1, 1}));
-  ASSERT_TRUE(model.Invoke(*NewConvolutionNodeShader()));
+  ASSERT_OK(model.Invoke(*NewConvolutionNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {11}));
 }
 
@@ -175,7 +175,7 @@ TEST(ConvTest, O2H1W1I2Stride1x1Dilation1x1) {
       {ToString(OperationType::CONVOLUTION_2D), std::move(attr)}, {input},
       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 1, 1, 1}));
-  ASSERT_TRUE(model.Invoke(*NewConvolution1x1NodeShader()));
+  ASSERT_OK(model.Invoke(*NewConvolution1x1NodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {4, 8, 4, 8}));
 }
 
@@ -213,7 +213,7 @@ TEST(ConvTest, O1H1W1I1Stride2x2Dilation1x1) {
       {ToString(OperationType::CONVOLUTION_2D), std::move(attr)}, {input},
       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 0, 2, 0, 0, 0, 4, 0, 8}));
-  ASSERT_TRUE(model.Invoke(*NewConvolutionNodeShader()));
+  ASSERT_OK(model.Invoke(*NewConvolutionNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {2, 4, 8, 16}));
 }
 

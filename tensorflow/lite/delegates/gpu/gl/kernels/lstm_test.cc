@@ -58,7 +58,7 @@ TEST(LstmTest, Input2x2x1) {
                       {input, prev_state}, {output_state, output_activation});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
   ASSERT_TRUE(model.PopulateTensor(1, {5, 6, 7, 8}));
-  ASSERT_TRUE(model.Invoke(*NewLstmNodeShader()));
+  ASSERT_OK(model.Invoke(*NewLstmNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {2.5, 3.0, 3.5, 4.0}));
   EXPECT_THAT(
