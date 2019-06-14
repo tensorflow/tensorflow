@@ -58,7 +58,8 @@ class CollectiveAdapter {
 
   // Generate a scalar tensor of same DataType and on the same device
   // as the backing tensor.
-  virtual Tensor Scalar(Allocator* a) const = 0;
+  virtual Tensor Scalar(Allocator* a,
+                        const AllocationAttributes& attr) const = 0;
 
   // Debugging string describing buffer location
   virtual string TBounds(const Tensor& t) const = 0;

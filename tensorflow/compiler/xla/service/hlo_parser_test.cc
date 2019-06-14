@@ -364,6 +364,18 @@ ENTRY %CallR0F32IdentityScalar.v2 () -> f32[] {
 
 )"
 },
+// CustomCall with backend_config.
+{
+"CustomCallWithOpaque",
+R"(HloModule custom_call
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar", backend_config="this string is opaque"
+}
+
+)"
+},
 // reduce window
 {
 "ReduceWindow",
@@ -933,6 +945,19 @@ ENTRY %CustomCallWithLayoutConstraints (p0: (f32[2,2], f32[42,2,3]), p1: f32[123
 
 )"
 },
+// CustomCallWithHasSideEffect
+{
+"CustomCallWithHasSideEffect",
+R"(HloModule CustomCallWithHasSideEffect
+
+ENTRY %CustomCallWithHasSideEffect (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4]) -> (f32[1,2,3], f32[1,2,3]) {
+  %p0 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
+  %p1 = f32[123,4]{0,1} parameter(1)
+  ROOT %custom-call = (f32[1,2,3]{0,2,1}, f32[1,2,3]{1,2,0}) custom-call((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) %p0, f32[123,4]{0,1} %p1), custom_call_target="baz", custom_call_has_side_effect=true
+}
+
+)"
+},
 // Parse c64 literal
 {
 "ParseC64Literal",
@@ -1288,18 +1313,6 @@ ENTRY CustomCall {
 
 )"
 },
-// CustomCall with opaque value.
-{
-"CustomCallWithOpaque",
-R"(HloModule custom_call
-
-ENTRY CustomCall {
-  constant = f32[1]{0} constant({12345})
-  ROOT custom-call = f32[1,2,3]{0,2,1} custom-call(constant), custom_call_target="foo\"bar", opaque="this string is opaque"
-}
-
-)"
-},
 // Variables with non-default names
 {
 "NonDefaultNames",
@@ -1438,6 +1451,17 @@ ENTRY Replica-id {
 
 )"
 },
+// partition-id
+{
+"PartitionId",
+R"(HloModule partition-id
+
+ENTRY PartitionId {
+  ROOT id = u32[] partition-id()
+}
+
+)"
+},
 // Iota
 {
 "Iota",
@@ -1532,6 +1556,29 @@ ENTRY MinMaxValues {
   x.f64 = f64[2]{0} constant({-1.79769e+308, 1.79769e+308})
   x.c64 = c64[2]{0} constant({(-3.40282e+38, 3.40282e+38), (3.40282e+38, -3.40282e+38)})
   ROOT c.c128 = c128[2]{0} constant({(-1.79769e+308, 1.79769e+308), (1.79769e+308, -1.79769e+308)})
+}
+
+)"
+},
+
+// Bitcast-convert usage
+{
+"BitcastConvert",
+R"(HloModule BitcastConvert
+
+ENTRY BitcastConvertUsage {
+  p = f32[100]{0} parameter(0)
+  ROOT out = u32[100]{0} bitcast-convert(p)
+}
+
+)"
+},
+{
+"OuterDimensionPartitions",
+R"(HloModule OuterDimensionPartitions
+
+ENTRY Test {
+  ROOT foo = f32[100]{0} parameter(0), outer_dimension_partitions={0,10,20}
 }
 
 )"
@@ -2478,6 +2525,16 @@ TEST(HloParserSingleOpTest, ConvolutionTrivialFeatureGroupCount) {
   EXPECT_EQ(convolution->feature_group_count(), 1);
 }
 
+TEST(HloParserSingleOpTest, MultipleOpsProducesError) {
+  const string text = R"(
+    param = f32[2,5,1,3] parameter(0)
+    transpose = f32[1,5,2,3] transpose(param), dimensions={2,1,0,3}
+  )";
+  auto status = ParseHloString(text).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Expected eof"));
+}
+
 TEST_F(HloParserTest, IsScheduledIsFalse) {
   const string text = R"(
 HloModule axpy_module, is_scheduled=false
@@ -2774,6 +2831,33 @@ TEST_F(HloParserTest, ParseShapeStringWithSparseLayout) {
       << "actual: " << ShapeUtil::HumanString(actual);
 }
 
+TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
+  // Tile, element size, and memory space.
+  string shape_string = "pred[123,456]{1,0:T(2,128)E(1)S(3)}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0},
+                                                  {Tile({2, 128})}, 1, 3);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Element size and memory space.
+  shape_string = "pred[123,456]{1,0:E(1)S(3)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, 1, 3);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Memory space only.
+  shape_string = "pred[123,456]{1,0:S(3)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, 0, 3);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+}
+
 TEST_F(HloParserTest, ParseOpaqueType) {
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape("opaque[]"));
   Shape expected = ShapeUtil::MakeOpaqueShape();
@@ -2838,6 +2922,90 @@ TEST_F(HloParserTest, WrongNumberOfParameterLeafBuffersInReplication) {
   EXPECT_THAT(result.status().error_message(),
               ::testing::HasSubstr("parameter has 2 leaf buffers, but "
                                    "parameter_replication has 3 elements"));
+}
+
+TEST_F(HloParserTest, CheckIndexedConditionalDimension) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  branch0 {
+    tparam = f32[4] parameter(0)
+    ROOT tgte1 = f32[4] ceil(tparam)
+  }
+
+  branch1 {
+    fparam = f32[4] parameter(0)
+    ROOT fgte1 = f32[4] floor(fparam)
+  }
+
+  ENTRY entry {
+    p0 = f32[4] parameter(0)
+    b0 = s32[2] parameter(1)
+    ROOT conditional = f32[4] conditional(b0, p0, p0),
+      branch_computations={branch0, branch1}
+  }
+  )";
+  auto result = ParseHloString(hlo_string);
+  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_THAT(result.status().error_message(),
+              ::testing::HasSubstr("The first operand must be a scalar"));
+}
+
+TEST_F(HloParserTest, CheckIndexedConditionalElementType) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  branch0 {
+    tparam = f32[4] parameter(0)
+    ROOT tgte1 = f32[4] ceil(tparam)
+  }
+
+  branch1 {
+    fparam = f32[4] parameter(0)
+    ROOT fgte1 = f32[4] floor(fparam)
+  }
+
+  ENTRY entry {
+    p0 = f32[4] parameter(0)
+    b0 = f32[] parameter(1)
+    ROOT conditional = f32[4] conditional(b0, p0, p0),
+      branch_computations={branch0, branch1}
+  }
+  )";
+  auto result = ParseHloString(hlo_string);
+  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_THAT(result.status().error_message(),
+              ::testing::HasSubstr(
+                  "The first operand must be a scalar of PRED or S32"));
+}
+
+TEST_F(HloParserTest,
+       CheckPredicatedConditionalRequiresTrueAndFalseComputation) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  branch0 {
+    tparam = f32[4] parameter(0)
+    ROOT tgte1 = f32[4] ceil(tparam)
+  }
+
+  branch1 {
+    fparam = f32[4] parameter(0)
+    ROOT fgte1 = f32[4] floor(fparam)
+  }
+
+  ENTRY entry {
+    p0 = f32[4] parameter(0)
+    b0 = pred[] parameter(1)
+    ROOT conditional = f32[4] conditional(b0, p0, p0),
+      branch_computations={branch0, branch1}
+  }
+  )";
+  auto result = ParseHloString(hlo_string);
+  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_THAT(
+      result.status().error_message(),
+      ::testing::HasSubstr("unexpected attribute \"branch_computations\""));
 }
 
 }  // namespace

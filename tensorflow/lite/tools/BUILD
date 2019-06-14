@@ -1,11 +1,13 @@
-package(default_visibility = [
-    "//visibility:public",
-])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 common_copts = ["-Wall"]
 
@@ -17,6 +19,7 @@ py_binary(
         "//tensorflow/python:platform",
         "@flatbuffers//:flatc",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
 )
 
@@ -93,6 +96,25 @@ cc_test(
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "command_line_flags",
+    srcs = ["command_line_flags.cc"],
+    hdrs = ["command_line_flags.h"],
+    copts = tflite_copts(),
+)
+
+cc_test(
+    name = "command_line_flags_test",
+    srcs = ["command_line_flags_test.cc"],
+    copts = tflite_copts(),
+    visibility = ["//visibility:private"],
+    deps = [
+        ":command_line_flags",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
     ],
 )
 

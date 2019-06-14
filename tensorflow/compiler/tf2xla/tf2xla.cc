@@ -165,7 +165,7 @@ Status RewriteAndPruneGraph(
   TF_RETURN_IF_ERROR(
       AddRetvalNodes(graph, node_map, config.fetch(), &retval_nodes));
   VLOG(2) << "Post rewrite: " << DumpGraphToFile("tf2xla_post_rewrite", *graph);
-  PruneForReverseReachability(graph, retval_nodes);
+  PruneForReverseReachability(graph, std::move(retval_nodes));
   FixupSourceAndSinkEdges(graph);
   VLOG(2) << "Post prune: " << DumpGraphToFile("tfcompile_post_prune", *graph);
   // Sanity-check, to make sure the feeds and fetches still exist post-pruning.
@@ -295,6 +295,8 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
   compiler_options.flib_def = &graph->flib_def();
   compiler_options.graph_def_version = graph->versions().producer();
   compiler_options.allow_cpu_custom_calls = true;
+  compiler_options.custom_fake_quant_op_calls =
+      config.conversion_options().custom_fake_quant_op_calls();
   XlaCompiler compiler(compiler_options);
 
   XlaCompiler::CompilationResult result;

@@ -98,8 +98,7 @@ TF_CAPI_EXPORT extern TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx,
 
 // Clears the internal caches in the TFE context. Useful when reseeding random
 // ops.
-TF_CAPI_EXPORT extern void TFE_ContextClearCaches(TFE_Context* ctx,
-                                                  TF_Status* status);
+TF_CAPI_EXPORT extern void TFE_ContextClearCaches(TFE_Context* ctx);
 
 // Sets a thread-local device placement policy. After this call, other calls to
 // TFE_Execute in the same thread will use the device policy specified here
@@ -411,6 +410,13 @@ TF_CAPI_EXPORT extern void TFE_ContextAddFunction(TFE_Context* ctx,
                                                   TF_Function* function,
                                                   TF_Status* status);
 
+// Removes a function from the context. Once removed, you can no longer
+// TFE_Execute it or TFE_Execute any TFE_Op which has it as an attribute or any
+// other function which calls it as an attribute.
+TF_CAPI_EXPORT extern void TFE_ContextRemoveFunction(TFE_Context* ctx,
+                                                     const char* name,
+                                                     TF_Status* status);
+
 // Checks whether a function is registered under `name`.
 TF_CAPI_EXPORT unsigned char TFE_ContextHasFunction(TFE_Context* ctx,
                                                     const char* name);
@@ -456,7 +462,11 @@ class Tensor;
 
 const tensorflow::Tensor* TFE_TensorHandleUnderlyingTensorInHostMemory(
     TFE_TensorHandle* h, TF_Status* status);
-TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t);
+
+TFE_TensorHandle* TFE_TensorHandleMaybeCopyToHostCPU(TFE_TensorHandle* h,
+                                                     TF_Status* status);
+TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t,
+                                      TF_Status* status);
 #endif
 
 #endif  // TENSORFLOW_C_EAGER_C_API_H_

@@ -1580,6 +1580,9 @@ std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(
 }
 
 Status HloFusionInstruction::DeduplicateFusionOperands() {
+  if (IsCustomFusion()) {
+    return Status::OK();
+  }
   absl::flat_hash_map<const HloInstruction*, int> operand_indices;
   std::vector<int> operands_to_remove;
   for (int i = 0; i < operand_count(); ++i) {
@@ -1593,8 +1596,8 @@ Status HloFusionInstruction::DeduplicateFusionOperands() {
   if (operands_to_remove.empty()) {
     return Status::OK();
   }
-  TF_RETURN_IF_ERROR(
-      fused_instructions_computation()->RemoveUnusedParameters());
+  TF_RETURN_IF_ERROR(fused_instructions_computation()
+                         ->RemoveUnusedParametersFromFusedComputation());
   RemoveOperandsAtAscendingIndices(operands_to_remove);
   return Status::OK();
 }
@@ -2046,13 +2049,14 @@ HloSelectAndScatterInstruction::CloneWithNewOperandsImpl(
 
 HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    absl::string_view custom_call_target, absl::string_view opaque)
+    absl::string_view custom_call_target, string opaque)
     : HloInstruction(HloOpcode::kCustomCall, shape),
       custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
-      opaque_(opaque.begin(), opaque.end()),
       feature_group_count_(1),
       batch_group_count_(1),
-      layout_constrained_(false) {
+      layout_constrained_(false),
+      custom_call_has_side_effect_(false) {
+  set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
   }
@@ -2060,16 +2064,17 @@ HloCustomCallInstruction::HloCustomCallInstruction(
 
 HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    absl::string_view custom_call_target, absl::string_view opaque,
+    absl::string_view custom_call_target, string opaque,
     absl::Span<const Shape> operand_shapes_with_layout)
     : HloInstruction(HloOpcode::kCustomCall, shape),
       custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
-      opaque_(opaque.begin(), opaque.end()),
       feature_group_count_(1),
       batch_group_count_(1),
       layout_constrained_(true),
       operand_shapes_with_layout_(operand_shapes_with_layout.begin(),
-                                  operand_shapes_with_layout.end()) {
+                                  operand_shapes_with_layout.end()),
+      custom_call_has_side_effect_(false) {
+  set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
   }
@@ -2085,7 +2090,6 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
         *convolution_dimension_numbers_;
   }
   proto.set_custom_call_target(custom_call_target_);
-  proto.set_custom_call_opaque(opaque_);
   proto.set_feature_group_count(feature_group_count_);
   proto.set_batch_group_count(batch_group_count_);
   if (layout_constrained()) {
@@ -2094,6 +2098,7 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
       *proto.add_operand_shapes_with_layout() = shape.ToProto();
     }
   }
+  proto.set_custom_call_has_side_effect(custom_call_has_side_effect_);
   return proto;
 }
 
@@ -2119,11 +2124,7 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
   // an HloComputation.
   extra.push_back(
       StrCat("custom_call_target=\"", CEscape(custom_call_target_), "\""));
-  // If the opaque string becomes enormous we may want to reconsider printing
-  // this inline and consider other options.
-  if (!opaque_.empty()) {
-    extra.push_back(StrCat("opaque=\"", CEscape(opaque_), "\""));
-  }
+
   if (layout_constrained()) {
     std::vector<string> shape_strings;
     for (const Shape& shape : operand_shapes_with_layout_) {
@@ -2131,6 +2132,9 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
     }
     extra.push_back(StrCat("operand_layout_constraints={",
                            StrJoin(shape_strings, ", "), "}"));
+  }
+  if (custom_call_has_side_effect_) {
+    extra.push_back("custom_call_has_side_effect=true");
   }
   return extra;
 }
@@ -2171,8 +2175,13 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
       }
     }
   }
-  return custom_call_target_ == casted_other.custom_call_target_ &&
-         opaque_ == casted_other.opaque_;
+  if (custom_call_has_side_effect_ !=
+      casted_other.custom_call_has_side_effect()) {
+    return false;
+  }
+  // Note: backend_config comparison is done in Identical, which is the
+  // intended/exposed way to compare computations, and so not repeated here.
+  return custom_call_target_ == casted_other.custom_call_target_;
 }
 
 std::unique_ptr<HloInstruction>
@@ -2193,6 +2202,7 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
   }
   cloned->set_feature_group_count(feature_group_count_);
   cloned->set_batch_group_count(batch_group_count_);
+  cloned->set_custom_call_has_side_effect(custom_call_has_side_effect_);
   return std::move(cloned);
 }
 
@@ -2675,6 +2685,41 @@ HloGetDimensionSizeInstruction::CloneWithNewOperandsImpl(
   }
   return absl::make_unique<HloGetDimensionSizeInstruction>(
       shape, new_operands[0], dimension());
+}
+
+HloRngGetAndUpdateStateInstruction::HloRngGetAndUpdateStateInstruction(
+    const Shape& shape, int64 delta)
+    : HloInstruction(HloOpcode::kRngGetAndUpdateState, shape), delta_(delta) {}
+
+HloInstructionProto HloRngGetAndUpdateStateInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_delta(delta_);
+  return proto;
+}
+
+std::vector<string>
+HloRngGetAndUpdateStateInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& /*options*/) const {
+  return {StrCat("delta={", delta(), "}")};
+}
+
+bool HloRngGetAndUpdateStateInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    /*eq_computations*/) const {
+  const auto& casted_other =
+      static_cast<const HloRngGetAndUpdateStateInstruction&>(other);
+  return delta() == casted_other.delta();
+}
+
+std::unique_ptr<HloInstruction>
+HloRngGetAndUpdateStateInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* /*context*/) const {
+  if (!new_operands.empty()) {
+    LOG(FATAL) << "expects 0 operand";
+  }
+  return absl::make_unique<HloRngGetAndUpdateStateInstruction>(shape, delta());
 }
 
 }  // namespace xla

@@ -1088,14 +1088,6 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
   return Status::OK();
 }
 
-Status CopyInsertion::VerifyNoLiveRangeInterference(const HloOrdering& ordering,
-                                                    HloModule* module) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, fusion_can_share_buffer_));
-  TF_RET_CHECK(!alias_analysis->HasLiveRangeInterference(ordering));
-  return Status::OK();
-}
-
 Status CopyInsertion::RemoveUnnecessaryCopies(const HloOrdering& ordering,
                                               HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
@@ -1180,10 +1172,8 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
   DumpHloModuleDuringPassIfEnabled(
       name(), "after adding copies to resolve interference", *module);
 
-  DependencyHloOrdering dep_ordering(module);
-  TF_DCHECK_OK(VerifyNoLiveRangeInterference(dep_ordering, module));
-
-  TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(dep_ordering, module));
+  TF_RETURN_IF_ERROR(
+      RemoveUnnecessaryCopies(DependencyHloOrdering(module), module));
   DumpHloModuleDuringPassIfEnabled(name(), "after removing unnecessary copies",
                                    *module);
 
@@ -1193,8 +1183,6 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
 
   TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
   TF_RETURN_IF_ERROR(dce.Run(module).status());
-  TF_DCHECK_OK(
-      VerifyNoLiveRangeInterference(DependencyHloOrdering(module), module));
 
   if (VLOG_IS_ON(1)) {
     int64 num_total_copies = 0;
@@ -1234,57 +1222,4 @@ bool IsWhileBody(const HloComputation* computation,
 }
 
 }  // namespace
-
-/* static */ StatusOr<bool> CopyInsertion::AddCopiesForBufferAssignment(
-    HloModule* module) {
-  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow,
-                      HloDataflowAnalysis::Run(*module));
-
-  bool changed = false;
-
-  // If a buffer live out of a computation is a constant, a parameter, or not
-  // defined in the computation, then copy it to account for the limited
-  // computation-scoped analysis in buffer assignment. An exception to this rule
-  // is the while body which is handled properly without copies.
-  for (HloComputation* computation : module->computations()) {
-    if (computation == module->entry_computation() ||
-        IsWhileBody(computation, *call_graph)) {
-      continue;
-    }
-
-    HloInstruction* root = computation->root_instruction();
-    ShapeTree<bool> indices_to_copy(root->shape(), /*init_value=*/false);
-    bool copy_root = false;
-    for (const auto& pair : dataflow->GetInstructionValueSet(root)) {
-      const ShapeIndex& index = pair.first;
-      const HloValueSet& value_set = pair.second;
-      for (const HloValue* value : value_set.values()) {
-        HloInstruction* def = value->defining_instruction();
-        if (def->parent() != computation ||
-            def->opcode() == HloOpcode::kConstant ||
-            def->opcode() == HloOpcode::kParameter) {
-          *indices_to_copy.mutable_element(index) = true;
-          copy_root = true;
-        }
-      }
-    }
-    if (copy_root) {
-      TF_ASSIGN_OR_RETURN(
-          HloInstruction * root_copy,
-          computation->DeepCopyInstruction(root, &indices_to_copy));
-      computation->set_root_instruction(root_copy);
-      changed = true;
-    }
-  }
-
-  TupleSimplifier tuple_simplifier;
-  HloDCE dce;
-  TF_ASSIGN_OR_RETURN(bool tuple_simplifier_changed,
-                      tuple_simplifier.Run(module));
-  TF_ASSIGN_OR_RETURN(bool dce_changed, dce.Run(module));
-
-  return changed || tuple_simplifier_changed || dce_changed;
-}
-
 }  // namespace xla

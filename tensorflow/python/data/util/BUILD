@@ -1,6 +1,7 @@
-package(default_visibility = ["//tensorflow:internal"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -20,6 +21,7 @@ py_test(
     name = "nest_test",
     size = "small",
     srcs = ["nest_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":nest",
@@ -27,6 +29,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/ops/ragged",
         "//third_party/py/numpy",
     ],
 )
@@ -51,6 +54,7 @@ py_test(
     name = "sparse_test",
     size = "small",
     srcs = ["sparse_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":nest",
@@ -73,9 +77,11 @@ py_library(
         "//tensorflow/python:ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python/ops/ragged",
     ],
 )
 
@@ -83,6 +89,7 @@ py_test(
     name = "structure_test",
     size = "small",
     srcs = ["structure_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":nest",
@@ -91,9 +98,12 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/ops/ragged:ragged_test_util",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -108,6 +118,7 @@ py_test(
     name = "options_test",
     size = "small",
     srcs = ["options_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":options",
@@ -131,6 +142,7 @@ py_test(
     name = "convert_test",
     size = "small",
     srcs = ["convert_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":convert",
@@ -155,6 +167,7 @@ py_test(
     name = "random_seed_test",
     size = "small",
     srcs = ["random_seed_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":random_seed",
@@ -176,6 +189,7 @@ py_test(
     name = "traverse_test",
     size = "small",
     srcs = ["traverse_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":traverse",

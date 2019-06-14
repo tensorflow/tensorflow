@@ -27,6 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
@@ -95,6 +96,9 @@ def convert_structure_to_signature(structure, arg_names=None):
       else:
         name = "/".join([str(p) for p in path])
       return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
+    if isinstance(arg, composite_tensor.CompositeTensor):
+      # TODO(b/133606651) Do we need to inject arg_name?
+      return arg._type_spec  # pylint: disable=protected-access
     if isinstance(arg, (
         int,
         float,
@@ -147,6 +151,9 @@ class FuncGraph(ops.Graph):
       or the global default Graph.
     captures: Maps external tensor -> internal tensor (i.e. input placeholder).
       The entries are in the order they were captured.
+    deferred_captures: Maps arbitrary key -> (closure, placeholder), where at
+      function call time the value of closure() will be used to feed the
+      placeholder.
     control_captures: Set of external ops on which this graph has a control
       dependency.
     seed: The graph-level random seed.
@@ -186,6 +193,7 @@ class FuncGraph(ops.Graph):
     self._watched_variables = weakref.WeakSet()
     self.outer_graph = ops.get_default_graph()
     self.captures = py_collections.OrderedDict()
+    self.deferred_captures = py_collections.OrderedDict()
     # Inherit capture-by-value from outer graph.
     if capture_by_value is not None:
       self.capture_by_value = capture_by_value
@@ -235,6 +243,48 @@ class FuncGraph(ops.Graph):
     while self is not None and isinstance(self, FuncGraph):
       self._watched_variables.add(v)
       self = self.outer_graph
+
+  def capture_call_time_value(self, closure, spec, key=None):
+    """Creates a placeholder which at call time has the value closure().
+
+    Useful, for example, to respect TensorFlow context managers, which are often
+    dynamically scoped.
+
+    Args:
+      closure: function which takes no arguments, to be evaluated at function
+       call time, returning a tensor of compatible `shape` and `dtype`
+      spec: TypeSpec for the value to capture.
+      key: optional. If not None, multiple calls to lazy_capture with the same
+       key in the same graph will return the same placeholder, and the
+       first closure will be used at function call time.
+
+    Returns:
+      placeholder which, at function call time, will be fed with the result
+      of calling closure().
+
+    Raises:
+      ValueError: at function call time, if the return value of closure() is
+       not compatible with shape and dtype.
+      TypeError: if spec is not a supported type (currently only TensorSpec
+       is supported).
+    """
+    if key is None:
+      key = object()
+    if not isinstance(spec, tensor_spec.TensorSpec):
+      raise TypeError("Only TensorSpec supported so far, not", repr(spec))
+    dtype = spec.dtype
+    shape = spec.shape
+    if key not in self.deferred_captures:
+      placeholder = array_ops.placeholder(dtype=dtype, shape=shape)
+      def wrapped_closure():
+        tensor = ops.convert_to_tensor(closure(), dtype=dtype)
+        if not tensor.shape.is_compatible_with(shape):
+          raise ValueError(
+              "Return value of closure,", tensor,
+              "not compatible with shape", shape, "passed to lazy_placeholder")
+        return tensor
+      self.deferred_captures[key] = (wrapped_closure, placeholder)
+    return self.deferred_captures[key][1]
 
   def control_dependencies(self, control_inputs):
     """Handles control dependencies.
@@ -301,6 +351,7 @@ class FuncGraph(ops.Graph):
       old_device_stack = self._device_function_stack
       if context.executing_eagerly():
         if self._distribution_strategy_stack:
+          self._device_function_stack = self._device_function_stack.copy()
           self._add_device_to_stack(context.context().device_name)
       else:
         if (self._distribution_strategy_stack
@@ -368,7 +419,6 @@ class FuncGraph(ops.Graph):
       name=None,
       attrs=None,
       op_def=None,
-      compute_shapes=True,
       compute_device=True):
     # When capturing by value, do the read outside
     reverse_captures = dict((v, k) for k, v in self.captures.items())
@@ -381,8 +431,14 @@ class FuncGraph(ops.Graph):
             context.context())
       else:
         op = ops.get_default_graph().create_op(
-            op_type, uncaptured_inputs, dtypes, input_types, name, attrs,
-            op_def, compute_shapes, compute_device)
+            op_type,
+            uncaptured_inputs,
+            dtypes,
+            input_types,
+            name,
+            attrs,
+            op_def,
+            compute_device=compute_device)
         value = op.outputs[0]
     captured_value = self.capture(value)
     return captured_value.op
@@ -430,11 +486,11 @@ class FuncGraph(ops.Graph):
     Returns:
       An `Operation` object.
     """
+    del compute_shapes
     if self.capture_by_value and op_type in ["ReadVariableOp",
                                              "ResourceGather"]:
-      return self._capture_by_value(
-          op_type, inputs, dtypes, input_types, name, attrs, op_def,
-          compute_shapes, compute_device)
+      return self._capture_by_value(op_type, inputs, dtypes, input_types, name,
+                                    attrs, op_def, compute_device)
 
     # This capturing logic interacts poorly with control flow contexts which
     # want to replace inputs of ops far too late in the process. This can lead
@@ -479,6 +535,18 @@ class FuncGraph(ops.Graph):
     # tensors those will be captured first in the forward graph. This
     # makes sure that any tensor needed by a custom_gradient is correctly
     # captured.
+
+    # TODO(b/134097853): figure out a better way to check distributed variables
+    if hasattr(tensor, "_distribute_strategy") and hasattr(tensor, "_values"):
+      # This checks if the 'tensor' is a DistributedVariable. When it is a
+      # DistributedVariable, we do not want to check its "graph" attr as the
+      # following if branch does, because "graph" is not an attr for the
+      # container DistributedVariable object, and the underlying components may
+      # not have been initialized yet.
+      # The reason we do not use isinstance() is due to cyclic dependency issue.
+      if name is None:
+        name = str("distributed_variable")
+      return self._capture_helper(tensor, name)
     if (getattr(tensor, "graph", None) is not self and
         hasattr(self, "_forward_func_graph") and
         isinstance(self._forward_func_graph, FuncGraph)):
@@ -582,10 +650,10 @@ def func_graph_from_py_func(name,
       graphs, and failing that will default to False.
     override_flat_arg_shapes: An optional list of instances that are either
       `None` or `TensorShape`.  The length must match that of
-      `nest.flatten((args, kwargs))`.  The entries containing value `None`
-      must match entries in flattened arguments containing non-tensors, while
-      entries containing a `TensorShape` must match entries in the flattened
-      arguments containing tensors.
+      `nest.flatten((args, kwargs), expand_composites=True)`.  The entries
+      containing value `None` must match entries in flattened arguments
+      containing non-tensors, while entries containing a `TensorShape` must
+      match entries in the flattened arguments containing tensors.
 
   Returns:
     A FuncGraph.
@@ -622,7 +690,7 @@ def func_graph_from_py_func(name,
 
     # Creates and names placeholders for all arguments.
     if override_flat_arg_shapes is not None:
-      flat_args = nest.flatten(args)
+      flat_args = nest.flatten(args, expand_composites=True)
       arg_shapes = override_flat_arg_shapes[:len(flat_args)]
       kwarg_shapes = override_flat_arg_shapes[len(flat_args):]
     else:
@@ -641,8 +709,8 @@ def func_graph_from_py_func(name,
         convert_structure_to_signature(func_args, arg_names),
         convert_structure_to_signature(func_kwargs))
 
-    flat_func_args = nest.flatten(func_args)
-    flat_func_kwargs = nest.flatten(func_kwargs)
+    flat_func_args = nest.flatten(func_args, expand_composites=True)
+    flat_func_kwargs = nest.flatten(func_kwargs, expand_composites=True)
     # Temporarily set inputs to allow graph building code to inspect
     # them. Reassigned below.
     func_graph.inputs = [arg for arg in flat_func_args + flat_func_kwargs
@@ -651,9 +719,10 @@ def func_graph_from_py_func(name,
     # Note: `nest.flatten` sorts by keys, as does `_deterministic_dict_values`.
     # Variables to help check whether mutation happens in calling the function
     # Copy the recursive list, tuple and map structure, but not base objects
-    func_args_before = nest.pack_sequence_as(func_args, flat_func_args)
+    func_args_before = nest.pack_sequence_as(func_args, flat_func_args,
+                                             expand_composites=True)
     func_kwargs_before = nest.pack_sequence_as(
-        func_kwargs, flat_func_kwargs)
+        func_kwargs, flat_func_kwargs, expand_composites=True)
 
     def convert(x):
       """Converts a function output to a Tensor."""
@@ -684,19 +753,21 @@ def func_graph_from_py_func(name,
         _, original_func = tf_decorator.unwrap(python_func)
 
         def wrapper(*args, **kwargs):
-          # Note: functions annotated with @tf.function should always be
-          # converted even though they would meet autograph's whitelisting
-          # criteria.
-          # If this assumption is ever broken, converted_call will need to
-          # handle the possibility of original_func still being a shim, e.g.
-          # bound to WeakrefSelf.
-          return autograph.converted_call(
-              original_func, None,
-              autograph.ConversionOptions(
-                  recursive=True,
-                  optional_features=autograph_options,
-                  force_conversion=True,
-              ), args, kwargs)
+          """Calls a converted version of original_func."""
+          # TODO(mdan): Push this block higher in tf.function's call stack.
+          try:
+            return autograph.converted_call(
+                original_func, None,
+                autograph.ConversionOptions(
+                    recursive=True,
+                    optional_features=autograph_options,
+                    force_conversion=True,
+                ), args, kwargs)
+          except Exception as e:  # pylint:disable=broad-except
+            if hasattr(e, "ag_error_metadata"):
+              raise e.ag_error_metadata.to_exception(type(e))
+            else:
+              raise
 
         # Wrapping around a decorator allows checks like tf_inspect.getargspec
         # to be accurate.
@@ -706,9 +777,10 @@ def func_graph_from_py_func(name,
 
       func_outputs = python_func(*func_args, **func_kwargs)
 
-      # invariant: `func_outputs` contains only Tensors, IndexedSlices,
-      # SparseTensors, TensorArrays and `None`s.
-      func_outputs = nest.map_structure(convert, func_outputs)
+      # invariant: `func_outputs` contains only Tensors, CompositeTensors,
+      # TensorArrays and `None`s.
+      func_outputs = nest.map_structure(convert, func_outputs,
+                                        expand_composites=True)
 
       check_mutation(func_args_before, func_args)
       check_mutation(func_kwargs_before, func_kwargs)
@@ -720,7 +792,8 @@ def func_graph_from_py_func(name,
     graph_variables = list(func_graph._watched_variables)  # pylint: disable=protected-access
     arg_variables = set()
     inputs = []
-    for arg in nest.flatten(func_args) + nest.flatten(func_kwargs):
+    for arg in (nest.flatten(func_args, expand_composites=True) +
+                nest.flatten(func_kwargs, expand_composites=True)):
       if isinstance(arg, resource_variable_ops.ResourceVariable):
         # Even if an argument variable was not used in the function, we've
         # already manually captured the resource Tensor when creating argument
@@ -733,7 +806,9 @@ def func_graph_from_py_func(name,
       elif isinstance(arg, ops.Tensor):
         inputs.append(arg)
     variables = [v for v in graph_variables if v not in arg_variables]
-    func_graph.inputs = inputs + list(func_graph.captures.values())
+    func_graph.inputs = inputs + list(
+        func_graph.captures.values()) + [
+            x[1] for x in func_graph.deferred_captures.values()]
 
     func_graph.structured_outputs = func_outputs
     # Returning a closed-over tensor does not trigger convert_to_tensor.
@@ -746,13 +821,6 @@ def func_graph_from_py_func(name,
 
   if add_control_dependencies:
     func_graph.control_outputs.extend(control_manager.ops_which_must_run)
-
-# Register any other functions defined in the graph.
-  with ops.init_scope():
-    if context.executing_eagerly():
-      for f in func_graph._functions.values():  # pylint: disable=protected-access
-        # TODO(ashankar): What about the gradient registry?
-        context.add_function(f._c_func.func)  # pylint: disable=protected-access
 
   return func_graph
 
@@ -788,19 +856,19 @@ def check_mutation(n1, n2):
             "operations that alter input arguments, "
             "such as `list.pop`, `list.append`")
   try:
-    nest.assert_same_structure(n1, n2)
+    nest.assert_same_structure(n1, n2, expand_composites=True)
   except ValueError:
     raise ValueError(errmsg)
 
-  for arg1, arg2 in zip(nest.flatten(n1), nest.flatten(n2)):
+  for arg1, arg2 in zip(nest.flatten(n1, expand_composites=True),
+                        nest.flatten(n2, expand_composites=True)):
     if arg1 is not arg2:
       raise ValueError(errmsg)
 
 
+# TODO(edloper): If TensorArray becomes a CompositeTensor, then delete this.
 def flatten(sequence):
-  """Like `nest.flatten` but also unpacks other Tensor-like objects.
-
-  Flattens non-tensor objects into their constituent tensors.
+  """Like nest.flatten w/ expand_composites, but returns flow for TensorArrays.
 
   Args:
     sequence: A nested structure of Tensors, CompositeTensors, and
@@ -809,15 +877,15 @@ def flatten(sequence):
   Returns:
     A list of tensors.
   """
-  # TODO(akshayka): Support `SparseTensor` in a similar fashion.
   flat_sequence = nest.flatten(sequence, expand_composites=True)
   return [
       item.flow if isinstance(item, tensor_array_ops.TensorArray) else item
       for item in flat_sequence]
 
 
+# TODO(edloper): If TensorArray becomes a CompositeTensor, then delete this.
 def pack_sequence_as(structure, flat_sequence):
-  """Like `nest.pack_sequence_as` but also packs other Tensor-like objects.
+  """Like `nest.pack_sequence_as` but also builds TensorArrays from flows.
 
   Args:
     structure: The structure to pack into. May contain Tensors,
@@ -839,7 +907,6 @@ def pack_sequence_as(structure, flat_sequence):
       flat_sequence[i] = tensor_array_ops.build_ta_with_new_flow(
           old_ta=flattened_structure[i], flow=flat_sequence[i])
   return nest.pack_sequence_as(structure, flat_sequence, expand_composites=True)
-
 
 
 def _create_substitute_placeholder(value, name=None, dtype=None):
@@ -869,9 +936,9 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
     structure: The original argument list or dictionary.
     flat_shapes: A flat list of values that are either `None` or
       instances of `TensorShape`.  If provided, then length must match
-      that of `nest.flatten(args)`; and locations where `args` are
-      instances of `Tensor` must have a corresponding `TensorShape` in
-      `flat_shapes`.  May be `None`, in which case exact shapes are read
+      that of `nest.flatten(args, expand_composites=True)`; and locations where
+      `args` are instances of `Tensor` must have a corresponding `TensorShape`
+      in `flat_shapes`.  May be `None`, in which case exact shapes are read
       directly from the args.
 
   Returns:
@@ -879,7 +946,7 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
 
   Raises:
     RuntimeError: if `flat_shapes` is provided, but
-     `len(flat_shapes) != len(nest.flatten(args))`.
+     `len(flat_shapes) != len(nest.flatten(args, expand_composites=True))`.
     RuntimeError: if a shape from `flat_shapes` is not None
      for an argument that is not a `Tensor`, `TensorSpec`,
      or `ResourceVariable`.
@@ -891,7 +958,7 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
   if flat_shapes is None:
     shapes_iter = itertools.repeat(None)
   else:
-    len_flat_args = len(nest.flatten(args))
+    len_flat_args = len(nest.flatten(args, expand_composites=True))
     if len_flat_args != len(flat_shapes):
       raise RuntimeError(
           "Length of fully flat shapes (%d) must match that of "
@@ -902,7 +969,7 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
              flat_shapes))
     shapes_iter = iter(flat_shapes)
   for arg_value, name in zip(args, names):
-    flattened = nest.flatten(arg_value)
+    flattened = nest.flatten(arg_value, expand_composites=True)
     tensor_specs = [
         arg for arg in flattened if isinstance(arg, tensor_spec.TensorSpec)
     ]
@@ -953,7 +1020,8 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
               "a Tensor, but saw arg: '%s', shape: '%s'.  args: %s"
               % (arg, shape, args))
         function_inputs.append(arg)
-  return nest.pack_sequence_as(structure, function_inputs)
+  return nest.pack_sequence_as(structure, function_inputs,
+                               expand_composites=True)
 
 
 def _get_defun_inputs_from_kwargs(kwargs, flat_shapes):
@@ -983,4 +1051,7 @@ def dismantle_func_graph(func_graph):
   while func_graph.captures:
     func_graph.captures.popitem()
   memory.dismantle_ordered_dict(func_graph.captures)
+  while func_graph.deferred_captures:
+    func_graph.deferred_captures.popitem()
+  memory.dismantle_ordered_dict(func_graph.deferred_captures)
   ops.dismantle_graph(func_graph)

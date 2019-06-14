@@ -238,7 +238,7 @@ class LinearOperatorTest(test.TestCase):
 
     self.assertTrue(operator_matmul.is_square)
     self.assertTrue(operator_matmul.is_non_singular)
-    self.assertTrue(operator_matmul.is_self_adjoint)
+    self.assertEqual(None, operator_matmul.is_self_adjoint)
     self.assertEqual(None, operator_matmul.is_positive_definite)
 
   @test_util.run_deprecated_v1
@@ -287,6 +287,75 @@ class LinearOperatorTest(test.TestCase):
     self.assertTrue(operator1.matmul(operator2).is_square)
     self.assertTrue(operator2.matmul(operator1).is_square)
     self.assertFalse(operator1.matmul(operator3).is_square)
+
+  def testDispatchedMethods(self):
+    operator = linalg.LinearOperatorFullMatrix(
+        [[1., 0.5], [0.5, 1.]],
+        is_square=True,
+        is_self_adjoint=True,
+        is_non_singular=True,
+        is_positive_definite=True)
+    methods = {
+        "trace": linalg.trace,
+        "diag_part": linalg.diag_part,
+        "log_abs_determinant": linalg.logdet,
+        "determinant": linalg.det
+    }
+    for method in methods:
+      op_val = getattr(operator, method)()
+      linalg_val = methods[method](operator)
+      self.assertAllClose(
+          self.evaluate(op_val),
+          self.evaluate(linalg_val))
+    # Solve and Matmul go here.
+
+    adjoint = linalg.adjoint(operator)
+    self.assertIsInstance(adjoint, linalg.LinearOperator)
+    cholesky = linalg.cholesky(operator)
+    self.assertIsInstance(cholesky, linalg.LinearOperator)
+    inverse = linalg.inv(operator)
+    self.assertIsInstance(inverse, linalg.LinearOperator)
+
+  def testDispatchMatmulSolve(self):
+    operator = linalg.LinearOperatorFullMatrix(
+        np.float64([[1., 0.5], [0.5, 1.]]),
+        is_square=True,
+        is_self_adjoint=True,
+        is_non_singular=True,
+        is_positive_definite=True)
+    rhs = np.random.uniform(-1., 1., size=[3, 2, 2])
+    for adjoint in [False, True]:
+      for adjoint_arg in [False, True]:
+        op_val = operator.matmul(
+            rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
+        matmul_val = math_ops.matmul(
+            operator, rhs, adjoint_a=adjoint, adjoint_b=adjoint_arg)
+        self.assertAllClose(
+            self.evaluate(op_val), self.evaluate(matmul_val))
+
+      op_val = operator.solve(rhs, adjoint=adjoint)
+      solve_val = linalg.solve(operator, rhs, adjoint=adjoint)
+      self.assertAllClose(
+          self.evaluate(op_val), self.evaluate(solve_val))
+
+  def testDispatchMatmulLeftOperatorIsTensor(self):
+    mat = np.float64([[1., 0.5], [0.5, 1.]])
+    right_operator = linalg.LinearOperatorFullMatrix(
+        mat,
+        is_square=True,
+        is_self_adjoint=True,
+        is_non_singular=True,
+        is_positive_definite=True)
+    lhs = np.random.uniform(-1., 1., size=[3, 2, 2])
+
+    for adjoint in [False, True]:
+      for adjoint_arg in [False, True]:
+        op_val = math_ops.matmul(
+            lhs, mat, adjoint_a=adjoint, adjoint_b=adjoint_arg)
+        matmul_val = math_ops.matmul(
+            lhs, right_operator, adjoint_a=adjoint, adjoint_b=adjoint_arg)
+        self.assertAllClose(
+            self.evaluate(op_val), self.evaluate(matmul_val))
 
 
 if __name__ == "__main__":

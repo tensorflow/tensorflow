@@ -53,9 +53,11 @@ import com.squareup.javapoet.FieldSpec;
 import com.squareup.javapoet.JavaFile;
 import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.ParameterSpec;
+import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeName;
 import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.TypeVariableName;
+import com.squareup.javapoet.WildcardTypeName;
 
 /**
  * A compile-time Processor that aggregates classes annotated with {@link
@@ -157,7 +159,15 @@ public final class OperatorProcessor extends AbstractProcessor {
   private static final TypeName T_SCOPE = ClassName.get("org.tensorflow.op", "Scope");
   private static final TypeName T_EXEC_ENV =
       ClassName.get("org.tensorflow", "ExecutionEnvironment");
+  private static final TypeName T_EAGER_SESSION = ClassName.get("org.tensorflow", "EagerSession");
   private static final TypeName T_STRING = ClassName.get(String.class);
+  // Operand<?>
+  private static final TypeName T_OPERAND =
+      ParameterizedTypeName.get(
+          ClassName.get("org.tensorflow", "Operand"), WildcardTypeName.subtypeOf(Object.class));
+  // Iterable<Operand<?>>
+  private static final TypeName T_ITERABLE_OPERAND =
+      ParameterizedTypeName.get(ClassName.get(Iterable.class), T_OPERAND);
 
   private Filer filer;
   private Messager messager;
@@ -350,13 +360,13 @@ public final class OperatorProcessor extends AbstractProcessor {
                     + "  Operand four = ops.constant(4);\n"
                     + "  // Most builders are found within a group, and accept\n"
                     + "  // Operand types as operands\n"
-                    + "  Operand nine = ops.math().add(four, ops.constant(5));\n"
+                    + "  Operand nine = ops.math.add(four, ops.constant(5));\n"
                     + "  // Multi-result operations however offer methods to\n"
                     + "  // select a particular result for use.\n"
                     + "  Operand result = \n"
-                    + "      ops.math().add(ops.array().unique(s, a).y(), b);\n"
+                    + "      ops.math.add(ops.unique(s, a).y(), b);\n"
                     + "  // Optional attributes\n"
-                    + "  ops.math().matMul(a, b, MatMul.transposeA(true));\n"
+                    + "  ops.linalg.matMul(a, b, MatMul.transposeA(true));\n"
                     + "  // Naming operators\n"
                     + "  ops.withName(\"foo\").constant(5); // name \"foo\"\n"
                     + "  // Names can exist in a hierarchy\n"
@@ -393,6 +403,18 @@ public final class OperatorProcessor extends AbstractProcessor {
                 T_SCOPE)
             .build());
 
+    opsBuilder.addMethod(
+        MethodSpec.methodBuilder("withControlDependencies")
+            .addModifiers(Modifier.PUBLIC)
+            .addParameter(T_ITERABLE_OPERAND, "controls")
+            .returns(T_OPS)
+            .addStatement("return new Ops(scope.withControlDependencies(controls))")
+            .addJavadoc(
+                "Returns an API that adds operations to the graph with the provided control dependencies.\n\n"
+                    + "@see {@link $T#withControlDependencies(Iterable<Operand<?>>)}\n",
+                T_SCOPE)
+            .build());
+
     opsBuilder.addField(
         FieldSpec.builder(T_SCOPE, "scope").addModifiers(Modifier.PRIVATE, Modifier.FINAL).build());
 
@@ -425,7 +447,18 @@ public final class OperatorProcessor extends AbstractProcessor {
             .addParameter(T_EXEC_ENV, "env")
             .returns(T_OPS)
             .addStatement("return new Ops(new $T(env))", T_SCOPE)
-            .addJavadoc("Creates an API for building operations in the provided environment\n")
+            .addJavadoc(
+                "Creates an API for building operations in the provided execution environment\n")
+            .build());
+
+    opsBuilder.addMethod(
+        MethodSpec.methodBuilder("create")
+            .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+            .returns(T_OPS)
+            .addStatement("return new Ops(new $T($T.getDefault()))", T_SCOPE, T_EAGER_SESSION)
+            .addJavadoc(
+                "Creates an API for building operations in the default eager execution environment\n\n"
+                    + "<p>Invoking this method is equivalent to {@code Ops.create(EagerSession.getDefault())}.\n")
             .build());
 
     return opsBuilder.build();

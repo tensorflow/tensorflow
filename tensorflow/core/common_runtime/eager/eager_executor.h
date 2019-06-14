@@ -88,11 +88,14 @@ class EagerExecutor {
   // Blocks till all currently pending ops are done.
   Status WaitForAllPendingNodes();
 
+  // Checks if the specific node_id is queued.
+  bool IsQueued(uint64 node_id) const;
+
   // Clears all currently set errors which re-enables async execution.
   void ClearError();
 
   // Returns Status based on any errors that occurred during async execution.
-  Status status();
+  Status status() const;
 
  private:
   // Starts execution of pending EagerNodes. This function loops till
@@ -103,7 +106,7 @@ class EagerExecutor {
 
   Status WaitImpl(bool wait_all, uint64 node_id);
 
-  mutex node_queue_mutex_;
+  mutable mutex node_queue_mutex_;
 
   // Used to signal that some EagerNodes are pending execution.
   condition_variable nodes_pending_ GUARDED_BY(node_queue_mutex_);
@@ -128,6 +131,9 @@ class EagerExecutor {
   // Indicates that `thread_` should stop as soon as it is done executing the
   // current EagerNode.
   bool thread_done_ GUARDED_BY(node_queue_mutex_) = false;
+
+  // Indicates the id of last successfully or unsuccessfully executed node.
+  uint64 last_node_id_ GUARDED_BY(node_queue_mutex_) = 0;
 
   mutex next_id_mutex_;
   uint64 next_id_ GUARDED_BY(next_id_mutex_) = 1;

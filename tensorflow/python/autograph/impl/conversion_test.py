@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import imp
+import threading
+
 import gast
 
 from tensorflow.python.autograph import utils
@@ -45,6 +48,16 @@ class ConversionTest(test.TestCase):
     self.assertFalse(conversion.is_whitelisted_for_graph(test_fn))
     self.assertTrue(conversion.is_whitelisted_for_graph(utils))
     self.assertTrue(conversion.is_whitelisted_for_graph(constant_op.constant))
+
+  def test_is_whitelisted_for_graph_tensorflow_like(self):
+
+    tf_like = imp.new_module('tensorflow_foo')
+    def test_fn():
+      pass
+    tf_like.test_fn = test_fn
+    test_fn.__module__ = tf_like
+
+    self.assertFalse(conversion.is_whitelisted_for_graph(tf_like.test_fn))
 
   def test_convert_entity_to_ast_unsupported_types(self):
     with self.assertRaises(NotImplementedError):
@@ -202,6 +215,28 @@ class ConversionTest(test.TestCase):
     self.assertEqual(fn_node.name, 'tf__f')
     self.assertEqual('tf__f', name)
     self.assertIs(entity_info.namespace['b'], b)
+
+  def test_convert_concurrency(self):
+
+    def test_fn():
+      pass
+
+    generated_file_names = []
+
+    def conversion_thread():
+      new_f = conversion.convert(test_fn, self._simple_program_ctx())
+      generated_file_names.append(new_f.__code__.co_filename)
+
+    threads = tuple(
+        threading.Thread(target=conversion_thread) for _ in range(10))
+    for t in threads:
+      t.start()
+    for t in threads:
+      t.join()
+
+    # Races would potentially create multiple files (non-deterministically,
+    # but with high likelihood).
+    self.assertEqual(len(set(generated_file_names)), 1)
 
 
 if __name__ == '__main__':

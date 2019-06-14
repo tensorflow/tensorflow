@@ -17,21 +17,26 @@ syntax = "proto2";
 
 package tflite.evaluation;
 
+option cc_enable_arenas = true;
+option java_multiple_files = true;
+option java_package = "tflite.evaluation";
+
 // Defines the functionality executed by an EvaluationStage.
 //
-// Next ID: 4
+// Next ID: 5
 message ProcessSpecification {
   oneof params {
     ImagePreprocessingParams image_preprocessing_params = 1;
     TopkAccuracyEvalParams topk_accuracy_eval_params = 2;
     TfliteInferenceParams tflite_inference_params = 3;
+    ImageClassificationParams image_classification_params = 4;
   }
 }
 
 // Latency numbers in microseconds, based on all EvaluationStage::Run() calls so
 // far.
 //
-// Next ID: 6
+// Next ID: 7
 message LatencyMetrics {
   // Latency for the last Run.
   optional int64 last_us = 1;
@@ -43,18 +48,36 @@ message LatencyMetrics {
   optional int64 sum_us = 4;
   // Average latency across all Runs.
   optional double avg_us = 5;
+  // Standard deviation for latency across all Runs.
+  optional int64 std_deviation_us = 6;
+}
+
+// Statistics for an accuracy value over multiple runs of evaluation.
+//
+// Next ID: 5
+message AccuracyMetrics {
+  // Maximum value observed for any Run.
+  optional float max_value = 1;
+  // Minimum value observed for any Run.
+  optional float min_value = 2;
+  // Average value across all Runs.
+  optional double avg_value = 3;
+  // Standard deviation across all Runs.
+  optional float std_deviation = 4;
 }
 
 // Contains process-specific metrics, which may differ based on what an
 // EvaluationStage does.
 //
-// Next ID: 4
+// Next ID: 6
 message ProcessMetrics {
   optional LatencyMetrics total_latency = 1;
 
   oneof stage_metrics {
     TopkAccuracyEvalMetrics topk_accuracy_metrics = 2;
     TfliteInferenceMetrics tflite_inference_metrics = 3;
+    ImageClassificationMetrics image_classification_metrics = 4;
+    InferenceProfilerMetrics inference_profiler_metrics = 5;
   }
 }
 
@@ -86,11 +109,11 @@ message TfliteInferenceParams {
   enum Delegate {
     NONE = 0;
     NNAPI = 1;
+    GPU = 2;
   }
   optional Delegate delegate = 2;
   // Number of threads available to the TFLite Interpreter.
-  // -1 defaults to best estimate.
-  optional int32 num_threads = 3 [default = -1];
+  optional int32 num_threads = 3 [default = 1];
 
   // Defines how many times the TFLite Interpreter is invoked for every input.
   // This helps benchmark cases where extensive pre-processing might not be
@@ -121,8 +144,53 @@ message TopkAccuracyEvalMetrics {
   // A repeated field of size |k| where the ith element denotes the fraction of
   // samples for which the correct label was present in the top (i + 1) model
   // outputs.
-  // For example, topk_accuracy_percentages(1) will contain the fraction of
+  // For example, topk_accuracies(1) will contain the fraction of
   // samples for which the model returned the correct label as the top first or
   // second output.
-  repeated float topk_accuracy_percentages = 1;
+  repeated float topk_accuracies = 1;
+}
+
+// Parameters that define how the Image Classification task is evaluated
+// end-to-end.
+//
+// Next ID: 3
+message ImageClassificationParams {
+  // Required.
+  // TfLite model should have 1 input & 1 output tensor.
+  // Input shape: {1, image_height, image_width, 3}
+  // Output shape: {1, num_total_labels}
+  optional TfliteInferenceParams inference_params = 1;
+
+  // Optional.
+  // If not set, accuracy evaluation is not performed.
+  optional TopkAccuracyEvalParams topk_accuracy_eval_params = 2;
+}
+
+// Metrics from evaluation of the image classification task.
+//
+// Next ID: 5
+message ImageClassificationMetrics {
+  optional LatencyMetrics pre_processing_latency = 1;
+  optional LatencyMetrics inference_latency = 2;
+  optional TfliteInferenceMetrics inference_metrics = 3;
+  // Not set if topk_accuracy_eval_params was not populated in
+  // ImageClassificationParams.
+  optional TopkAccuracyEvalMetrics topk_accuracy_metrics = 4;
+}
+
+// Metrics computed from comparing TFLite execution in two settings:
+// 1. User-defined TfliteInferenceParams (The 'test' setting)
+// 2. Default TfliteInferenceParams (The 'reference' setting)
+//
+// Next ID: 4
+message InferenceProfilerMetrics {
+  // Latency metrics from Single-thread CPU inference.
+  optional LatencyMetrics reference_latency = 1;
+  // Latency from TfliteInferenceParams under test.
+  optional LatencyMetrics test_latency = 2;
+  // For reference & test output vectors {R, T}, the error is computed as:
+  // Mean([Abs(R[i] - T[i]) for i in num_elements])
+  // output_errors[v] : statistics for the error value of the vth output vector
+  //   across all Runs.
+  repeated AccuracyMetrics output_errors = 3;
 }

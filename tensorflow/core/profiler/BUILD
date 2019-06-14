@@ -1,11 +1,10 @@
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_profiler_all_protos")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos", "tf_profiler_all_protos", "tf_proto_library")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 tf_cc_binary(
     name = "profiler",
@@ -66,4 +65,13 @@ tf_proto_library(
     ),
     cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
+)
+
+filegroup(
+    name = "mobile_srcs",
+    srcs = [
+        "//tensorflow/core/profiler/internal:mobile_srcs",
+        "//tensorflow/core/profiler/lib:mobile_srcs",
+    ],
+    visibility = ["//visibility:public"],
 )

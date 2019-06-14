@@ -239,6 +239,38 @@ ENTRY %EmbeddedComputationParameters (param0: f32[42], param1: f32[42]) -> (f32[
       InstructionsMayInterfere(*liveness, embedded_param0, embedded_param1));
 }
 
+TEST_F(BufferLivenessTest, InterferenceWithOuterRoot) {
+  absl::string_view hlo_string = R"(
+HloModule InterferenceWithOuterRoot, is_scheduled=true
+
+Emmbedded (embedded_param: f32[42]) -> f32[42] {
+  embedded_param = f32[42]{0} parameter(0)
+  multiply = f32[42]{0} multiply(embedded_param, embedded_param)
+  ROOT log = f32[42]{0} log(multiply)
+}
+
+ENTRY InterferenceWithOuterRoot {
+  param = f32[4096,4096]{1,0} parameter(0)
+  ROOT add = f32[4096,4096]{1,0} add(param, param)
+  call = f32[42]{0} call(param), to_apply=Emmbedded
+}
+
+)";
+  HloModuleConfig hlo_config;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string, hlo_config));
+  auto liveness =
+      BufferLiveness::Run(
+          module.get(),
+          absl::make_unique<SequentialHloOrdering>(module->schedule()))
+          .ConsumeValueOrDie();
+
+  auto multiply = FindInstruction(module.get(), "multiply");
+  auto add = FindInstruction(module.get(), "add");
+
+  EXPECT_TRUE(InstructionsMayInterfere(*liveness, multiply, add));
+}
+
 TEST_F(BufferLivenessTest, NonElementwiseOperand) {
   // A chain of operations with two elementwise and one non-elementwise. The
   // elementwise op should not interfere with its operand, while the

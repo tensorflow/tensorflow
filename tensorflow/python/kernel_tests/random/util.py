@@ -140,5 +140,7 @@ def test_truncated_normal(assert_equal, assert_all_close, dtype, n, y):
       (alpha * normal_pdf(alpha) - beta * normal_pdf(beta)) / z) - (
           (normal_pdf(alpha) - normal_pdf(beta)) / z)**2)
   actual_variance = np.var(y)
-  assert_all_close(actual_variance, expected_variance,
-                   rtol=5e-3 if dtype == dtypes.bfloat16 else 1e-3)
+  assert_all_close(
+      actual_variance,
+      expected_variance,
+      rtol=6e-3 if dtype == dtypes.bfloat16 else 1e-3)

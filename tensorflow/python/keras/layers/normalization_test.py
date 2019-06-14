@@ -22,6 +22,10 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
+from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
@@ -29,6 +33,8 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers import normalization
 from tensorflow.python.keras.layers import normalization_v2
 from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
@@ -155,6 +161,84 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     self.assertEqual(norm.beta.dtype.base_dtype, 'float32')
     self.assertEqual(norm.gamma.dtype.base_dtype, 'float32')
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_batchnorm_non_trainable_with_fit(self):
+    inputs = keras.Input((3,))
+    bn = normalization_v2.BatchNormalization()
+    outputs = bn(inputs)
+    model = keras.Model(inputs, outputs)
+    model.compile('rmsprop', 'mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(np.random.random((100, 3)), np.random.random((100, 3)))
+
+    test_data = np.random.random((10, 3))
+    test_targets = np.random.random((10, 3))
+    test_loss = model.evaluate(test_data, test_targets)
+
+    bn.trainable = False
+    model.compile('rmsprop', 'mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    train_loss = model.train_on_batch(test_data, test_targets)
+    self.assertAlmostEqual(test_loss, train_loss)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_batchnorm_non_trainable_with_tf_function(self):
+    inputs = keras.Input((3,))
+    bn = normalization_v2.BatchNormalization()
+    outputs = bn(inputs)
+    model = keras.Model(inputs, outputs)
+    loss_fn = keras.losses.MeanSquaredError()
+    optimizer = rmsprop_v2.RMSprop()
+
+    @def_function.function()
+    def train_step(x, y):
+      with backprop.GradientTape() as tape:
+        y_pred = model(x, training=True)
+        loss = loss_fn(y, y_pred)
+      grads = tape.gradient(loss, model.trainable_weights)
+      optimizer.apply_gradients(zip(grads, model.trainable_weights))
+      return loss
+
+    @def_function.function()
+    def test_step(x, y):
+      y_pred = model(x, training=False)
+      loss = loss_fn(y, y_pred)
+      return loss
+
+    train_step(np.random.random((100, 3)), np.random.random((100, 3)))
+
+    test_data = np.random.random((10, 3))
+    test_targets = np.random.random((10, 3))
+    test_loss = test_step(test_data, test_targets)
+
+    bn.trainable = False
+    train_loss = train_step(test_data, test_targets)
+    if context.executing_eagerly():
+      self.assertAlmostEqual(test_loss.numpy(), train_loss.numpy())
+
+  def test_eager_batchnorm_in_custom_model_call_with_tf_function(self):
+
+    class MyModel(keras.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.bn = keras.layers.BatchNormalization()
+
+      @def_function.function()
+      def call(self, x, training):
+        return self.bn(x, training=training)
+
+    with context.eager_mode():
+      model = MyModel()
+
+      for _ in range(10):
+        x = constant_op.constant(0.5, shape=[1, 1])
+        model(x, training=True)
+
+      # Make sure the moving mean and variance have been updated
+      self.assertAllClose(model.bn.moving_mean.numpy(), [0.047], atol=3e-3)
+      self.assertAllClose(model.bn.moving_variance.numpy(), [0.9], atol=3e-2)
+
 
 class BatchNormalizationV1Test(test.TestCase):
 
@@ -245,6 +329,20 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, '4D input tensors'):
       norm(inp)
 
+  def test_updates_in_wrap_function(self):
+    with context.eager_mode():
+      layer = keras.layers.BatchNormalization()
+
+      def my_func():
+        x = array_ops.ones((10, 1))
+        return layer(x, training=True)
+
+      wrapped_fn = wrap_function.wrap_function(my_func, [])
+      wrapped_fn()
+
+      # Updates should be tracked in a `wrap_function`.
+      self.assertLen(layer.updates, 2)
+
 
 def _run_batchnorm_correctness_test(layer, dtype='float32', fused=False):
   model = keras.models.Sequential()
@@ -292,18 +390,18 @@ class NormalizationLayersGraphModeOnlyTest(
       model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
       model.train_on_batch(x, x)
 
-      self.assertEqual(len(bn.updates), 4)
-      self.assertEqual(len(model.updates), 2)
-      self.assertEqual(len(model.get_updates_for(x2)), 2)
+      self.assertLen(bn.updates, 4)
+      self.assertLen(bn.get_updates_for(x1), 2)
+      self.assertLen(model.get_updates_for(x2), 2)
 
       # Test model-level reuse
       x3 = keras.layers.Input(shape=(10,))
       y3 = model(x3)
       new_model = keras.models.Model(x3, y3, name='new_model')
 
-      self.assertEqual(len(new_model.updates), 2)
-      self.assertEqual(len(model.updates), 4)
-      self.assertEqual(len(new_model.get_updates_for(x3)), 2)
+      self.assertLen(new_model.updates, 6)
+      self.assertLen(model.updates, 6)
+      self.assertLen(new_model.get_updates_for(x3), 2)
       new_model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
       new_model.train_on_batch(x, x)
 
@@ -454,28 +552,6 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
     self.assertEqual(layer.beta.constraint, max_norm)
 
   @keras_parameterized.run_all_keras_modes
-  def test_layernorm_convnet(self):
-    if test.is_gpu_available(cuda_only=True):
-      with self.session(use_gpu=True):
-        model = keras.models.Sequential()
-        norm = keras.layers.LayerNormalization(
-            input_shape=(3, 4, 4), params_axis=1)
-        model.add(norm)
-        model.compile(loss='mse',
-                      optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                      run_eagerly=testing_utils.should_run_eagerly())
-
-        # centered on 5.0, variance 10.0
-        x = np.random.normal(loc=5.0, scale=10.0, size=(1000, 3, 4, 4))
-        model.fit(x, x, epochs=4, verbose=0)
-        out = model.predict(x)
-        out -= np.reshape(keras.backend.eval(norm.beta), (1, 3, 1, 1))
-        out /= np.reshape(keras.backend.eval(norm.gamma), (1, 3, 1, 1))
-
-        np.testing.assert_allclose(np.mean(out, axis=(0, 2, 3)), 0.0, atol=1e-1)
-        np.testing.assert_allclose(np.std(out, axis=(0, 2, 3)), 1.0, atol=1e-1)
-
-  @keras_parameterized.run_all_keras_modes
   def test_layernorm_convnet_channel_last(self):
     model = keras.models.Sequential()
     norm = keras.layers.LayerNormalization(input_shape=(4, 4, 3))
@@ -504,113 +580,23 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
     _run_layernorm_correctness_test(
         normalization.LayerNormalization, dtype='float16')
 
-  def doOutputTest(self,
-                   input_shape,
-                   tol=1e-5,
-                   norm_axis=None,
-                   params_axis=-1,
-                   dtype=None):
-    ndim = len(input_shape)
-    if norm_axis is None:
-      moments_axis = range(1, ndim)
-    elif isinstance(norm_axis, int):
-      if norm_axis < 0:
-        moments_axis = [norm_axis + ndim]
-      else:
-        moments_axis = [norm_axis]
-    else:
-      moments_axis = []
-      for dim in norm_axis:
-        if dim < 0:
-          dim = dim + ndim
-        moments_axis.append(dim)
-
-    moments_axis = tuple(moments_axis)
-    expected_shape = []
-    for i in range(ndim):
-      if i not in moments_axis:
-        expected_shape.append(input_shape[i])
-
-    expected_mean = np.zeros(expected_shape)
-    expected_var = np.ones(expected_shape)
-    for mu in [0.0, 1e2]:
-      for sigma in [1.0, 0.1]:
-        inputs = np.random.randn(*input_shape) * sigma + mu
-        inputs_t = constant_op.constant(inputs, shape=input_shape)
-        layer = normalization.LayerNormalization(
-            norm_axis=norm_axis, params_axis=params_axis, dtype=dtype)
-        outputs = layer(inputs_t)
-        beta = layer.beta
-        gamma = layer.gamma
-        for weight in layer.weights:
-          self.evaluate(weight.initializer)
-        outputs = self.evaluate(outputs)
-        beta = self.evaluate(beta)
-        gamma = self.evaluate(gamma)
-
-        # The mean and variance of the output should be close to 0 and 1
-        # respectively.
-
-        # Make sure that there are no NaNs
-        self.assertFalse(np.isnan(outputs).any())
-        mean = np.mean(outputs, axis=moments_axis)
-        var = np.var(outputs, axis=moments_axis)
-        # Layer-norm implemented in numpy
-        eps = 1e-12
-        expected_out = (
-            (gamma * (inputs - np.mean(
-                inputs, axis=moments_axis, keepdims=True)) /
-             np.sqrt(eps + np.var(
-                 inputs, axis=moments_axis, keepdims=True))) + beta)
-        self.assertAllClose(expected_mean, mean, atol=tol, rtol=tol)
-        self.assertAllClose(expected_var, var, atol=tol)
-        # The full computation gets a bigger tolerance
-        self.assertAllClose(expected_out, outputs, atol=5 * tol)
+  @tf_test_util.run_in_graph_and_eager_modes
+  def testIncorrectAxisType(self):
+    with self.assertRaisesRegexp(
+        ValueError, r'Expected an int or a list/tuple of ints'):
+      _ = normalization.LayerNormalization(axis={'axis': -1})
 
   @tf_test_util.run_in_graph_and_eager_modes
-  def testOutput2DInput(self):
-    self.doOutputTest((10, 300))
-    self.doOutputTest((10, 300), norm_axis=[0])
-    self.doOutputTest((10, 300), params_axis=[0, 1])
+  def testInvalidAxis(self):
+    with self.assertRaisesRegexp(ValueError, r'Invalid axis: 3'):
+      layer_norm = normalization.LayerNormalization(axis=3)
+      layer_norm.build(input_shape=(2, 2, 2))
 
   @tf_test_util.run_in_graph_and_eager_modes
-  def testOutput2DInputDegenerateNormAxis(self):
-    with self.assertRaisesRegexp(ValueError, r'Invalid axis: 2'):
-      self.doOutputTest((10, 300), norm_axis=2)
-
-  @tf_test_util.run_in_graph_and_eager_modes
-  def testOutput4DInput(self):
-    self.doOutputTest((100, 10, 10, 3))
-
-  @tf_test_util.run_in_graph_and_eager_modes
-  def testOutput4DInputNormOnInnermostAxis(self):
-    # Equivalent tests
-    shape = (100, 10, 10, 3)
-    self.doOutputTest(
-        shape, norm_axis=list(range(3, len(shape))), tol=1e-4, dtype='float64')
-    self.doOutputTest(shape, norm_axis=-1, tol=1e-4, dtype='float64')
-
-  @tf_test_util.run_in_graph_and_eager_modes
-  def testOutputSmallInput(self):
-    self.doOutputTest((10, 10, 10, 30))
-
-  @tf_test_util.run_in_graph_and_eager_modes
-  def testOutputSmallInputNormOnInnermostAxis(self):
-    self.doOutputTest((10, 10, 10, 30), norm_axis=3)
-
-  @tf_test_util.run_in_graph_and_eager_modes
-  def testOutputSmallInputNormOnMixedAxes(self):
-    self.doOutputTest((10, 10, 10, 30), norm_axis=[0, 3])
-    self.doOutputTest((10, 10, 10, 30), params_axis=[-2, -1])
-    self.doOutputTest((10, 10, 10, 30), norm_axis=[0, 3],
-                      params_axis=[-3, -2, -1])
-
-  @tf_test_util.run_in_graph_and_eager_modes
-  def testOutputBigInput(self):
-    self.doOutputTest((1, 100, 100, 1))
-    self.doOutputTest((1, 100, 100, 1), norm_axis=[1, 2])
-    self.doOutputTest((1, 100, 100, 1), norm_axis=[1, 2],
-                      params_axis=[-2, -1])
+  def testDuplicateAxis(self):
+    with self.assertRaisesRegexp(ValueError, r'Duplicate axis:'):
+      layer_norm = normalization.LayerNormalization(axis=[-1, -1])
+      layer_norm.build(input_shape=(2, 2, 2))
 
 
 if __name__ == '__main__':

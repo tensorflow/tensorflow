@@ -695,6 +695,20 @@ class RaggedElementwiseOpsTest(ragged_test_util.RaggedTensorTestCase,
           op=array_ops.size_v2,
           kwargs={'input': ragged_factory_ops.constant_value([[8, 3], [5]])},
           expected=3),
+      dict(
+          op=array_ops.squeeze,
+          kwargs={
+              'input': ragged_factory_ops.constant_value([[[1, 2, 3], [4, 5]]]),
+              'axis': [0]
+          },
+          expected=ragged_factory_ops.constant_value([[1, 2, 3], [4, 5]])),
+      dict(
+          op=array_ops.squeeze_v2,
+          kwargs={
+              'input': ragged_factory_ops.constant_value([[[1, 2, 3], [4, 5]]]),
+              'axis': [0]
+          },
+          expected=ragged_factory_ops.constant_value([[1, 2, 3], [4, 5]])),
   ])
   def testRaggedDispatch(self, op, expected, args=(), kwargs=None):
     if kwargs is None: kwargs = {}

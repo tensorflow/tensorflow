@@ -182,7 +182,8 @@ bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
   // We have already tested above for existence of buffers (synonymous to being
   // a constant param).
   CHECK(input_array.buffer);
-  std::vector<DataType<ArrayDataType::kFloat>> const* input_float_data;
+  std::vector<DataType<ArrayDataType::kFloat>> const* input_float_data =
+      nullptr;
   if (unary_op->type == OperatorType::kCast) {
     CastOperator const* cast_op = static_cast<CastOperator const*>(unary_op);
     if (cast_op->dst_data_type != ArrayDataType::kFloat) {

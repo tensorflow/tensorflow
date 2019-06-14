@@ -138,7 +138,7 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     Args:
       rnn_layer: The rnn layer either a single rnn cell or a multi rnn cell.
       sess: Old session.
-      saver: saver created by tf.train.Saver()
+      saver: saver created by tf.compat.v1.train.Saver()
       is_dynamic_rnn: use dynamic_rnn or not.
 
     Returns:

@@ -76,6 +76,12 @@ TestCase PlainTensorTestCase() {
           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({2}), {1, 2}),
            DatasetOpsTestBase::CreateTensor<int64>(TensorShape({2, 2}),
                                                    {1, 2, 3, 4}),
+           DatasetOpsTestBase::CreateTensor<uint32>(TensorShape({2}), {2, 3}),
+           DatasetOpsTestBase::CreateTensor<uint32>(TensorShape({2, 2}),
+                                                    {2, 3, 4, 5}),
+           DatasetOpsTestBase::CreateTensor<uint64>(TensorShape({2}), {3, 4}),
+           DatasetOpsTestBase::CreateTensor<uint64>(TensorShape({2, 2}),
+                                                    {3, 4, 5, 6}),
            DatasetOpsTestBase::CreateTensor<double>(TensorShape({2, 1}),
                                                     {37.0, 38.0}),
            DatasetOpsTestBase::CreateTensor<string>(TensorShape({2, 1}),
@@ -83,10 +89,18 @@ TestCase PlainTensorTestCase() {
           /*expected_outputs*/
           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
            DatasetOpsTestBase::CreateTensor<int64>(TensorShape({2}), {1, 2}),
+           DatasetOpsTestBase::CreateTensor<uint32>(TensorShape({}), {2}),
+           DatasetOpsTestBase::CreateTensor<uint32>(TensorShape({2}), {2, 3}),
+           DatasetOpsTestBase::CreateTensor<uint64>(TensorShape({}), {3}),
+           DatasetOpsTestBase::CreateTensor<uint64>(TensorShape({2}), {3, 4}),
            DatasetOpsTestBase::CreateTensor<double>(TensorShape({1}), {37.0}),
            DatasetOpsTestBase::CreateTensor<string>(TensorShape({1}), {"a"}),
            DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
            DatasetOpsTestBase::CreateTensor<int64>(TensorShape({2}), {3, 4}),
+           DatasetOpsTestBase::CreateTensor<uint32>(TensorShape({}), {3}),
+           DatasetOpsTestBase::CreateTensor<uint32>(TensorShape({2}), {4, 5}),
+           DatasetOpsTestBase::CreateTensor<uint64>(TensorShape({}), {4}),
+           DatasetOpsTestBase::CreateTensor<uint64>(TensorShape({2}), {5, 6}),
            DatasetOpsTestBase::CreateTensor<double>(TensorShape({1}), {38.0}),
            DatasetOpsTestBase::CreateTensor<string>(TensorShape({1}), {"b"})},
           /*breakpoints*/ {0, 1, 3}};
@@ -650,7 +664,8 @@ TEST_P(ParameterizedTensorSliceDatasetOpTest, Roundtrip) {
     TF_ASSERT_OK(iterator->Save(serialization_context.get(), &writer));
     TF_ASSERT_OK(writer.Flush());
     VariantTensorDataReader reader(&data);
-    TF_ASSERT_OK(iterator->Restore(iterator_context.get(), &reader));
+    TF_EXPECT_OK(RestoreIterator(iterator_context.get(), &reader, "Iterator",
+                                 *tensor_slice_dataset, &iterator));
   }
 }
 

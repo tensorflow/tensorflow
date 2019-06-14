@@ -14,11 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include <limits>
+#include "tensorflow/core/framework/allocator.h"
 
 #define EIGEN_USE_THREADS
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/list_kernels.h"
 
@@ -194,17 +195,11 @@ Status GetInputList(OpKernelContext* c, int index, const TensorList** list) {
 Status ForwardInputOrCreateNewList(OpKernelContext* c, int32 input_index,
                                    int32 output_index,
                                    const TensorList& input_list,
-                                   bool allocator_attr_on_host,
                                    TensorList** output_list) {
   // Attempt to forward the input tensor to the output if possible.
-  AllocatorAttributes attr;
-  // Note: This is a workaround to get buffer forwarding to work on CPU.
-  // Setting on_host=true blocks forwarding because of a mismatch between the
-  // input and output allocator attributes.
-  attr.set_on_host(allocator_attr_on_host);
-  std::unique_ptr<Tensor> maybe_output =
-      c->forward_input(input_index, output_index, DT_VARIANT, TensorShape{},
-                       c->input_memory_type(input_index), attr);
+  std::unique_ptr<Tensor> maybe_output = c->forward_input(
+      input_index, output_index, DT_VARIANT, TensorShape{},
+      c->input_memory_type(input_index), AllocatorAttributes());
   Tensor* output_tensor;
   if (maybe_output != nullptr) {
     // Woohoo, forwarding succeeded!
@@ -213,6 +208,8 @@ Status ForwardInputOrCreateNewList(OpKernelContext* c, int32 input_index,
   } else {
     // If forwarding is not possible allocate a new output tensor and copy
     // the `input_list` to it.
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
     TF_RETURN_IF_ERROR(
         c->allocate_output(output_index, {}, &output_tensor, attr));
     output_tensor->scalar<Variant>()() = input_list;
@@ -256,7 +253,7 @@ const char TensorList::kTypeName[] = "tensorflow::TensorList";
 REGISTER_KERNEL_BUILDER(Name("EmptyTensorList").Device(DEVICE_CPU),
                         EmptyTensorList);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_KERNEL_BUILDER(Name("EmptyTensorList")
                             .Device(DEVICE_GPU)
@@ -264,13 +261,12 @@ REGISTER_KERNEL_BUILDER(Name("EmptyTensorList")
                             .HostMemory("max_num_elements"),
                         EmptyTensorList);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class TensorListPushBack : public OpKernel {
  public:
   explicit TensorListPushBack(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
-    is_cpu_kernel_ = c->device_type().type() == DEVICE_CPU;
   }
 
   ~TensorListPushBack() override {}
@@ -306,25 +302,23 @@ class TensorListPushBack : public OpKernel {
     }
 
     TensorList* output_list = nullptr;
-    OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, !is_cpu_kernel_,
-                                                  &output_list));
+    OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
     output_list->tensors.push_back(input);
   }
 
  private:
   DataType element_dtype_;
-  bool is_cpu_kernel_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TensorListPushBack").Device(DEVICE_CPU),
                         TensorListPushBack);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_KERNEL_BUILDER(Name("TensorListPushBack").Device(DEVICE_GPU),
                         TensorListPushBack);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class TensorListLength : public OpKernel {
  public:
@@ -343,13 +337,13 @@ class TensorListLength : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TensorListLength").Device(DEVICE_CPU),
                         TensorListLength);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_KERNEL_BUILDER(
     Name("TensorListLength").Device(DEVICE_GPU).HostMemory("length"),
     TensorListLength);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class TensorListElementShape : public OpKernel {
  public:
@@ -411,7 +405,7 @@ class TensorListReserve : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TensorListReserve").Device(DEVICE_CPU),
                         TensorListReserve);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_KERNEL_BUILDER(Name("TensorListReserve")
                             .Device(DEVICE_GPU)
@@ -419,12 +413,10 @@ REGISTER_KERNEL_BUILDER(Name("TensorListReserve")
                             .HostMemory("num_elements"),
                         TensorListReserve);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 class TensorListResize : public OpKernel {
  public:
-  explicit TensorListResize(OpKernelConstruction* c) : OpKernel(c) {
-    is_cpu_kernel_ = c->device_type().type() == DEVICE_CPU;
-  }
+  explicit TensorListResize(OpKernelConstruction* c) : OpKernel(c) {}
 
   void Compute(OpKernelContext* c) override {
     const TensorList* input_list = nullptr;
@@ -435,18 +427,17 @@ class TensorListResize : public OpKernel {
         errors::InvalidArgument(
             "TensorListSlice expects size to be non-negative. Got: ", size));
 
-    AllocatorAttributes attr;
-    if (!is_cpu_kernel_) {
-      attr.set_on_host(true);
-    }
-    std::unique_ptr<Tensor> maybe_result = c->forward_input(
-        0, 0, DT_VARIANT, TensorShape{}, c->input_memory_type(0), attr);
+    std::unique_ptr<Tensor> maybe_result =
+        c->forward_input(0, 0, DT_VARIANT, TensorShape{},
+                         c->input_memory_type(0), AllocatorAttributes());
     if (maybe_result != nullptr) {
       maybe_result->scalar<Variant>()().get<TensorList>()->tensors.resize(
           size, Tensor(DT_INVALID));
       c->set_output(0, *maybe_result);
     } else {
       Tensor* result;
+      AllocatorAttributes attr;
+      attr.set_on_host(true);
       OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape{}, &result, attr));
       TensorList output_list;
       output_list.element_shape = input_list->element_shape;
@@ -467,27 +458,23 @@ class TensorListResize : public OpKernel {
       result->scalar<Variant>()() = std::move(output_list);
     }
   }
-
- private:
-  bool is_cpu_kernel_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TensorListResize").Device(DEVICE_CPU),
                         TensorListResize);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_KERNEL_BUILDER(
     Name("TensorListResize").Device(DEVICE_GPU).HostMemory("size"),
     TensorListResize);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class TensorListSetItem : public OpKernel {
  public:
   explicit TensorListSetItem(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
-    is_cpu_kernel_ = c->device_type().type() == DEVICE_CPU;
   }
 
   void Compute(OpKernelContext* c) override {
@@ -511,20 +498,18 @@ class TensorListSetItem : public OpKernel {
                     value.shape().DebugString(),
                     " list shape: ", l->element_shape.DebugString()));
     TensorList* output_list = nullptr;
-    OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, !is_cpu_kernel_,
-                                                  &output_list));
+    OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
     output_list->tensors[index] = value;
   }
 
  private:
   DataType element_dtype_;
-  bool is_cpu_kernel_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TensorListSetItem").Device(DEVICE_CPU),
                         TensorListSetItem);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_TENSOR_LIST_SET_ITEM_GPU(T)                      \
   REGISTER_KERNEL_BUILDER(Name("TensorListSetItem")               \
@@ -541,7 +526,7 @@ TF_CALL_int64(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
 REGISTER_TENSOR_LIST_SET_ITEM_GPU(bfloat16)
 #undef REGISTER_TENSOR_LIST_SET_ITEM_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class TensorListConcatLists : public OpKernel {
  public:
@@ -629,12 +614,12 @@ class TensorListConcatLists : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TensorListConcatLists").Device(DEVICE_CPU),
                         TensorListConcatLists);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_KERNEL_BUILDER(Name("TensorListConcatLists").Device(DEVICE_GPU),
                         TensorListConcatLists);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_TENSOR_LIST_OPS_CPU(T)                                    \
   REGISTER_KERNEL_BUILDER(Name("TensorListStack")                          \

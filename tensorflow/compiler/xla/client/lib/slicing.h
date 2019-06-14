@@ -63,7 +63,11 @@ XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim);
 // The returned tensor has the same number of dimensions as the original tensor
 // (input). The dimth dimension has the same size as the length of index; other
 // dimensions have the same size as in the original tensor.
-XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64 dim);
+//
+// This operation supports 0 or more major batch dimensions that act like a
+// multidimensional loop over both the input and the index.
+XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64 dim,
+                       int64 batch_dims = 0);
 
 }  // namespace xla
 

@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value_util.h"
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
+#include "absl/strings/escaping.h"
 #include "tensorflow/core/framework/attr_value.pb_text.h"
 #include "tensorflow/core/framework/tensor.pb_text.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -96,18 +98,34 @@ bool AreTensorProtosEqual(const TensorProto& lhs, const TensorProto& rhs) {
 // string representation. Tensors with identical content potentially can have
 // different tensor proto representation.
 bool FastAreTensorProtosEqual(const TensorProto& lhs, const TensorProto& rhs) {
-  if (TensorByteSize(lhs) > kMaxAttrValueTensorByteSize ||
-      TensorByteSize(rhs) > kMaxAttrValueTensorByteSize) {
-    string lhs_str, rhs_str;
-    bool success = lhs.AppendToString(&lhs_str);
-    DCHECK(success);
-    success = rhs.AppendToString(&rhs_str);
-    DCHECK(success);
-
-    return lhs_str == rhs_str;
-  } else {
-    return AreTensorProtosEqual(lhs, rhs);
+  // A small TensorProto can expand into a giant Tensor.  So we avoid
+  // conversion to an actual Tensor if we can quickly rule out equality
+  // by comparing the Tensor size since different sized Tensors are definitely
+  // different.
+  const int64 lhs_tensor_bytes = TensorByteSize(lhs);
+  const int64 rhs_tensor_bytes = TensorByteSize(rhs);
+  if (lhs_tensor_bytes != rhs_tensor_bytes) {
+    return false;
   }
+
+  // If the tensor is very large, we'll only compare the proto representation
+  // (even though this may miss some equivalent tensors whose actual tensor
+  // values are the same but which are described by different TensorProtos).
+  if (lhs_tensor_bytes > kMaxAttrValueTensorByteSize) {
+    return AreSerializedProtosEqual(lhs, rhs);
+  }
+
+  // If the TensorProto representation expands into a much bigger Tensor,
+  // we have a fast-path that first compares the protos.
+  const int64 lhs_proto_bytes = lhs.ByteSizeLong();
+  const bool large_expansion =
+      (lhs_proto_bytes < 512 && lhs_tensor_bytes > 4096);
+  if (large_expansion && AreSerializedProtosEqual(lhs, rhs)) {
+    return true;
+  }
+
+  // Fall back to the general code in AreTensorProtosEqual.
+  return AreTensorProtosEqual(lhs, rhs);
 }
 
 using TensorProtoHasher = std::function<uint64(const TensorProto&)>;
@@ -167,7 +185,7 @@ bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b,
 }
 
 string SummarizeString(const string& str) {
-  string escaped = str_util::CEscape(str);
+  string escaped = absl::CEscape(str);
 
   // If the string is long, replace the middle with ellipses.
   constexpr int kMaxStringSummarySize = 80;
@@ -198,7 +216,7 @@ string SummarizeFunc(const NameAttrList& func) {
         strings::StrCat(p.first, "=", SummarizeAttrValue(p.second)));
   }
   std::sort(entries.begin(), entries.end());
-  return strings::StrCat(func.name(), "[", str_util::Join(entries, ", "), "]");
+  return strings::StrCat(func.name(), "[", absl::StrJoin(entries, ", "), "]");
 }
 
 }  // namespace
@@ -260,7 +278,7 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
         pieces.erase(pieces.begin() + 5, pieces.begin() + (pieces.size() - 6));
         pieces[5] = "...";
       }
-      return strings::StrCat("[", str_util::Join(pieces, ", "), "]");
+      return strings::StrCat("[", absl::StrJoin(pieces, ", "), "]");
     }
     case AttrValue::kFunc: {
       return SummarizeFunc(attr_value.func());
@@ -319,7 +337,7 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
   // check if has_list is false and some other field in attr_value is
   // set to flag the error.  This test can be made more strict once
   // support for GraphDef versions <= 4 is dropped.
-  if (str_util::StartsWith(type, "list(") && !attr_value.has_list()) {
+  if (absl::StartsWith(type, "list(") && !attr_value.has_list()) {
     if (num_set) {
       return errors::InvalidArgument(
           "AttrValue missing value with expected type '", type, "'");
@@ -330,7 +348,7 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
   }
 
   // Okay to have an empty list, but not to be missing a non-list value.
-  if (num_set == 0 && !str_util::StartsWith(type, "list(")) {
+  if (num_set == 0 && !absl::StartsWith(type, "list(")) {
     return errors::InvalidArgument(
         "AttrValue missing value with expected type '", type, "'");
   }
@@ -374,29 +392,29 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
 bool ParseAttrValue(StringPiece type, StringPiece text, AttrValue* out) {
   // Parse type.
   string field_name;
-  bool is_list = str_util::ConsumePrefix(&type, "list(");
-  if (str_util::ConsumePrefix(&type, "string")) {
+  bool is_list = absl::ConsumePrefix(&type, "list(");
+  if (absl::ConsumePrefix(&type, "string")) {
     field_name = "s";
-  } else if (str_util::ConsumePrefix(&type, "int")) {
+  } else if (absl::ConsumePrefix(&type, "int")) {
     field_name = "i";
-  } else if (str_util::ConsumePrefix(&type, "float")) {
+  } else if (absl::ConsumePrefix(&type, "float")) {
     field_name = "f";
-  } else if (str_util::ConsumePrefix(&type, "bool")) {
+  } else if (absl::ConsumePrefix(&type, "bool")) {
     field_name = "b";
-  } else if (str_util::ConsumePrefix(&type, "type")) {
+  } else if (absl::ConsumePrefix(&type, "type")) {
     field_name = "type";
-  } else if (str_util::ConsumePrefix(&type, "shape")) {
+  } else if (absl::ConsumePrefix(&type, "shape")) {
     field_name = "shape";
-  } else if (str_util::ConsumePrefix(&type, "tensor")) {
+  } else if (absl::ConsumePrefix(&type, "tensor")) {
     field_name = "tensor";
-  } else if (str_util::ConsumePrefix(&type, "func")) {
+  } else if (absl::ConsumePrefix(&type, "func")) {
     field_name = "func";
-  } else if (str_util::ConsumePrefix(&type, "placeholder")) {
+  } else if (absl::ConsumePrefix(&type, "placeholder")) {
     field_name = "placeholder";
   } else {
     return false;
   }
-  if (is_list && !str_util::ConsumePrefix(&type, ")")) {
+  if (is_list && !absl::ConsumePrefix(&type, ")")) {
     return false;
   }
 

@@ -41,14 +41,11 @@ class WorkerCacheWrapper : public WorkerCacheInterface {
   // or can be constructed, returns a pointer to a WorkerInterface object
   // wrapping that channel. The returned value must be destroyed by
   // calling `this->ReleaseWorker(target, ret)`
-  // TODO(mrry): rename this to GetOrCreateWorker() or something that
-  // makes it more obvious that this method returns a potentially
-  // shared object.
-  virtual WorkerInterface* CreateWorker(const string& target) {
-    return wrapped_->CreateWorker(target);
+  virtual WorkerInterface* GetOrCreateWorker(const string& target) {
+    return wrapped_->GetOrCreateWorker(target);
   }
 
-  // Release a worker previously returned by this->CreateWorker(target).
+  // Release a worker previously returned by this->GetOrCreateWorker(target).
   //
   // TODO(jeff,sanjay): Consider moving target into WorkerInterface.
   // TODO(jeff,sanjay): Unify all worker-cache impls and factor out a

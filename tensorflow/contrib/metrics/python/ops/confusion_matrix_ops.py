@@ -24,7 +24,7 @@ from tensorflow.python.ops import confusion_matrix as cm
 
 def confusion_matrix(labels, predictions, num_classes=None, dtype=dtypes.int32,
                      name=None, weights=None):
-  """Deprecated. Use tf.confusion_matrix instead."""
+  """Deprecated. Use tf.math.confusion_matrix instead."""
   return cm.confusion_matrix(labels=labels, predictions=predictions,
                              num_classes=num_classes, dtype=dtype, name=name,
                              weights=weights)

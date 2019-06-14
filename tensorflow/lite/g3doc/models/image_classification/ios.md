@@ -1,229 +1,224 @@
-# TensorFlow Lite iOS Image Classifier App Example
+# TensorFlow Lite iOS image classification example
 
-This tutorial provides a simple iOS mobile application to classify images using
-the iOS device camera. In this tutorial, you will download the demo application
-from the Tensorflow repository, build it on your computer, and install it on
-your iOS Device. You will also learn how to customize the application to suit
-your needs.
+This document walks through the code of a simple iOS mobile application that
+demonstrates [image classification](overview.md) using the device camera.
 
-## Prerequisites
+The application code is located in the
+[Tensorflow examples](https://github.com/tensorflow/examples) repository, along
+with instructions for building and deploying the app.
 
-*   You must have [Xcode](https://developer.apple.com/xcode/) installed and have
-    a valid Apple Developer ID, and have an iOS device set up and linked to your
-    developer account with all of the appropriate certificates. For these
-    instructions, we assume that you have already been able to build and deploy
-    an app to an iOS device with your current developer environment.
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios">Example
+application</a>
 
-*   The demo app requires a camera and must be executed on a real iOS device.
-    You can build it and run with the iPhone Simulator but it won't have any
-    camera information to classify.
+## Explore the code
 
-*   You don't need to build the entire TensorFlow library to run the demo, but
-    you will need to clone the TensorFlow repository if you haven't already:
+The app is written entirely in Swift and uses the TensorFlow Lite
+[Swift library](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/swift)
+for performing image classification.
 
-        git clone https://github.com/tensorflow/tensorflow
-        cd tensorflow
+Note: Objective-C developers should use the TensorFlow Lite
+[Objective-C library](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/objc).
 
-*   You'll also need the Xcode command-line tools:
-
-        xcode-select --install
-
-    If this is a new install, you will need to run the Xcode application once to
-    agree to the license before continuing.
-
-*   Install CocoaPods if you don't have it:
-
-        sudo gem install cocoapods
-
-### Step 1. Clone the TensorFlow source code
-
-lone the GitHub repository onto your computer to get the
-demo application.
-
-```
-git clone https://github.com/tensorflow/tensorflow
-```
-
-### Step 2. Download required dependencies
-
-Execute the shell script to download the model files used by the demo app (this
-is done from inside the cloned directory):
-
-```
-    tensorflow/lite/examples/ios/download_models.sh
-```
-
-Run the following command to install TensorFlow Lite pod:
-
-```
-    cd tensorflow/lite/examples/ios/camera
-    pod install
-```
-
-If you have installed this pod before and that command doesn't work, try
-
-```
-    pod repo update
-```
-
-### Step 3. Build the XCode project
-
-Open the `tflite_camera_example.xcworkspace` project file generated in the last
-step:
-
-```
-    open tflite_camera_example.xcworkspace
-```
-
-Under `Project navigator -> tflite_camera_example -> Targets ->
-tflite_camera_example -> General` change the bundle identifier by pre-pending
-your name:
-
-![pre-pend your name to the bundle identifier](images/bundle_identifier.png)
-
-Plug in your iOS device. Note that the app must be executed with a real device with
-a camera. Select the iOS device from the drop-down menu.
-
-![Device selection](images/device_selection.png)
-
-Click the "Run" button to build and run the app
-
-![Build and execute](images/build_and_execute.png)
-
-Note that, as mentioned earlier, you must already have a device set up and linked
-to your Apple Developer account in order to deploy the app onto a device.
-
-You'll have to grant permissions for the app to use the device's camera. Point
-the camera at various objects and enjoy seeing how the model classifies things!
-
-## Understanding iOS App Code
+We're now going to walk through the most important parts of the sample code.
 
 ### Get camera input
 
-The main logic of this app is in the Objective C++ source file
-`tensorflow/lite/examples/ios/camera/CameraExampleViewController.mm`.
+The app's main view is represented by the `ViewController` class in
+[`ViewController.swift`](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios/ImageClassification/ViewControllers/ViewController.swift),
+which we extend with functionality from the `CameraFeedManagerDelegate` protocol
+to process frames from a camera feed. To run inference on a given frame, we
+implement the `didOutput` method, which is called whenever a frame is available
+from the camera.
 
-The `setupAVCapture` method constructs a `AVCaptureSession` and set itself as a
-delegate. The `captureOutput:didOutputSampleBuffer:fromConnection:` method is
-called for every captured frame. It calls `runModelOnFrame` to run the model for
-every frame.
+Our implementation of `didOutput` includes a call to the `runModel` method of a
+`ModelDataHandler` instance. As we will see below, this class gives us access to
+the TensorFlow Lite `Interpreter` class for performing image classification.
 
-### Create an interpreter
+```swift
+extension ViewController: CameraFeedManagerDelegate {
 
-To create the interpreter, we need to load the model file. The following code
-will load a model and create an interpreter.
+  func didOutput(pixelBuffer: CVPixelBuffer) {
+    let currentTimeMs = Date().timeIntervalSince1970 * 1000
+    guard (currentTimeMs - previousInferenceTimeMs) >= delayBetweenInferencesMs else { return }
+    previousInferenceTimeMs = currentTimeMs
 
-```
-model = tflite::FlatBufferModel::BuildFromFile([graph_path UTF8String]);
-```
+    // Pass the pixel buffer to TensorFlow Lite to perform inference.
+    result = modelDataHandler?.runModel(onFrame: pixelBuffer)
 
-Behind the scenes, the model is loaded as a memory-mapped file. It offers faster
-load times and reduce the dirty pages in memory.
-
-Construct a `BuiltinOpResolver` to use the TensorFliw Lite buildin ops. Then,
-create the interpreter object using `InterpreterBuilder` that takes the model
-file as argument as shown below.
-
-```
-tflite::ops::builtin::BuiltinOpResolver resolver;
-tflite::InterpreterBuilder(*model, resolver)(&interpreter);
-```
-
-### Obtain the input buffer
-
-By default, the app uses a quantized model since it's smaller and faster. The
-buffer is a raw pointer to an array of 8 bit unsigned integers (`uint8_t`). The
-following code obtains the input buffer from the interpreter:
-
-```
-// Get the index of first input tensor.
-int input_tensor_index = interpreter->inputs()[0];
-// Get the pointer to the input buffer.
-uint8_t* buffer = interpreter->typed_tensor<uint8_t>(input_tensor_index);
-```
-
-Throughout this document, it's assumed that a quantized model is used.
-
-### Pre-process bitmap image
-
-The MobileNet model that we're using takes 224x224x3 inputs, where the dimensions are
-width, height, and colors (RGB). The images returned from `AVCaptureSession` is
-bigger and has 4 color channels (RGBA).
-
-Many image classification models (like MobileNet) take fixe-sized inputs. It's
-required to scale or crop the image before feeding it into the model and change
-the channels from RGBA to RGB.
-
-The code to pre-process the images is in `ProcessInputWithQuantizedModel`
-function in
-`tensorflow/lite/examples/ios/camera/CameraExampleViewController.mm`. It's a
-simple implementation for nearest neighbor color sampling and it only copies
-the first 3 bytes for each pixel.
-
-```
-void ProcessInputWithQuantizedModel(
-    uint8_t* input, uint8_t* output, int image_width, int image_height, int image_channels) {
-  for (int y = 0; y < wanted_input_height; ++y) {
-    uint8_t* out_row = output + (y * wanted_input_width * wanted_input_channels);
-    for (int x = 0; x < wanted_input_width; ++x) {
-      const int in_x = (y * image_width) / wanted_input_width;
-      const int in_y = (x * image_height) / wanted_input_height;
-      uint8_t* in_pixel = input + (in_y * image_width * image_channels) + (in_x * image_channels);
-      uint8_t* out_pixel = out_row + (x * wanted_input_channels);
-      for (int c = 0; c < wanted_input_channels; ++c) {
-        out_pixel[c] = in_pixel[c];
-      }
+    // Display results by handing off to the InferenceViewController.
+    DispatchQueue.main.async {
+      let resolution = CGSize(width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
+      self.inferenceViewController?.inferenceResult = self.result
+      self.inferenceViewController?.resolution = resolution
+      self.inferenceViewController?.tableView.reloadData()
     }
   }
+...
+```
+
+### ModelDataHandler
+
+The Swift class `ModelDataHandler`, defined in
+[`ModelDataHandler.swift`](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios/ImageClassification/ModelDataHandler/ModelDataHandler.swift),
+handles all data preprocessing and makes calls to run inference on a given frame
+using the TensorFlow Lite [`Interpreter`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/swift/Sources/Interpreter.swift).
+It then formats the inferences obtained from invoking the `Interpreter` and
+returns the top N results for a successful inference.
+
+The following sections show how this works.
+
+#### Initialization
+
+The `init` method creates a new instance of the `Interpreter` and loads the
+specified model and labels files from the app's main bundle.
+
+```swift
+init?(modelFileInfo: FileInfo, labelsFileInfo: FileInfo, threadCount: Int = 1) {
+  let modelFilename = modelFileInfo.name
+
+  // Construct the path to the model file.
+  guard let modelPath = Bundle.main.path(
+    forResource: modelFilename,
+    ofType: modelFileInfo.extension
+  ) else {
+    print("Failed to load the model file with name: \(modelFilename).")
+    return nil
+  }
+
+  // Specify the options for the `Interpreter`.
+  self.threadCount = threadCount
+  var options = InterpreterOptions()
+  options.threadCount = threadCount
+  options.isErrorLoggingEnabled = true
+  do {
+    // Create the `Interpreter`.
+    interpreter = try Interpreter(modelPath: modelPath, options: options)
+  } catch let error {
+    print("Failed to create the interpreter with error: \(error.localizedDescription)")
+    return nil
+  }
+  // Load the classes listed in the labels file.
+  loadLabels(fileInfo: labelsFileInfo)
 }
 ```
 
-Note that the code pre-processes and prepares the model input from the camera
-data. Therefore, the first parameter `input` should be the camera buffer. The
-second parameter `output` should be the buffer of model input.
+#### Process input
 
-### Run inference and obtain output buffer
+The method `runModel` accepts a `CVPixelBuffer` of camera data, which can be
+obtained from the `didOutput` method defined in `ViewController`.
 
-After pre-processing and filling the data into the input buffer of the
-interpreter, it's really easy to run the interpreter:
+We crop the image to the size that the model was trained on. For example,
+`224x224` for the MobileNet v1 model.
 
-```
-if (interpreter->Invoke() != kTfLiteOk) {
-  NSLog("Failed to invoke!");
+The image buffer contains an encoded color for each pixel in `BGRA` format
+(where `A` represents Alpha, or transparency). Our model expects the format to
+be `RGB`, so we use the following helper method to remove the alpha component
+from the image buffer to get the `RGB` data representation:
+
+```swift
+private let alphaComponent = (baseOffset: 4, moduloRemainder: 3)
+private func rgbDataFromBuffer(
+  _ buffer: CVPixelBuffer,
+  byteCount: Int,
+  isModelQuantized: Bool
+) -> Data? {
+  CVPixelBufferLockBaseAddress(buffer, .readOnly)
+  defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+  guard let mutableRawPointer = CVPixelBufferGetBaseAddress(buffer) else {
+    return nil
+  }
+  let count = CVPixelBufferGetDataSize(buffer)
+  let bufferData = Data(bytesNoCopy: mutableRawPointer, count: count, deallocator: .none)
+  var rgbBytes = [UInt8](repeating: 0, count: byteCount)
+  var index = 0
+  for component in bufferData.enumerated() {
+    let offset = component.offset
+    let isAlphaComponent = (offset % alphaComponent.baseOffset) == alphaComponent.moduloRemainder
+    guard !isAlphaComponent else { continue }
+    rgbBytes[index] = component.element
+    index += 1
+  }
+  if isModelQuantized { return Data(bytes: rgbBytes) }
+  return Data(copyingBufferOf: rgbBytes.map { Float($0) / 255.0 })
 }
 ```
 
-The result is stored in the output tensor buffer of the interpreter. The
-following code obtains the pointer to the buffer:
+#### Run inference
 
-```
-// Get the index of first output tensor.
-const int output_tensor_index = interpreter->outputs()[0];
-// Get the pointer to the output buffer.
-uint8_t* buffer = interpreter->typed_tensor<uint8_t>(output_tensor_index);
-```
+Here's the code for getting the `RGB` data representation of the pixel buffer,
+copying that data to the input
+[`Tensor`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/swift/Sources/Tensor.swift),
+and running inference by invoking the `Interpreter`:
 
-### Post-process values
+```swift
+let outputTensor: Tensor
+do {
+  // Allocate memory for the model's input `Tensor`s.
+  try interpreter.allocateTensors()
+  let inputTensor = try interpreter.input(at: 0)
 
-The output buffer contains an array of `uint8_t`, and the value range is from 0-255.
-We need to convert the value to float to get the probabilities with a value range from
-0.0-1.0. The formula of the quantization value mapping is:
+  // Remove the alpha component from the image buffer to get the RGB data.
+  guard let rgbData = rgbDataFromBuffer(
+    thumbnailPixelBuffer,
+    byteCount: batchSize * inputWidth * inputHeight * inputChannels,
+    isModelQuantized: inputTensor.dataType == .uInt8
+  ) else {
+    print("Failed to convert the image buffer to RGB data.")
+    return
+  }
 
-    float_value = (quantized_value - zero_point) * scale
+  // Copy the RGB data to the input `Tensor`.
+  try interpreter.copy(rgbData, toInputAt: 0)
 
-The following code converts quantized values back to float values, using the
-quantizaiton parameters in tensors:
+  // Run inference by invoking the `Interpreter`.
+  try interpreter.invoke()
 
-```
-uint8_t* quantized_output = interpreter->typed_output_tensor<uint8_t>(0);
-int32_t zero_point = input_tensor->params.zero_point;
-float scale = input_tensor->params.scale;
-float output[output_size];
-for (int i = 0; i < output_size; ++i) {
-  output[i] = (quantized_output[i] - zero_point) * scale;
+  // Get the output `Tensor` to process the inference results.
+  outputTensor = try interpreter.output(at: 0)
+} catch let error {
+  print("Failed to invoke the interpreter with error: \(error.localizedDescription)")
+  return
 }
 ```
 
-Finally, we find the best set of classifications by storing them in a priority
-queue based on their confidence scores. See the `GetTopN` function in
-`tensorflow/lite/examples/ios/camera/CameraExampleViewController.mm`.
+#### Process results
+
+If the model is quantized, the output `Tensor` contains one `UInt8` value per
+class label. Dequantize the results so the values are floats, ranging from 0.0
+to 1.0, where each value represents the confidence that a label is present in
+the image:
+
+```swift
+guard let quantization = outputTensor.quantizationParameters else {
+  print("No results returned because the quantization values for the output tensor are nil.")
+  return
+}
+
+// Get the quantized results from the output tensor's `data` property.
+let quantizedResults = [UInt8](outputTensor.data)
+
+// Dequantize the results using the quantization values.
+let results = quantizedResults.map {
+  quantization.scale * Float(Int($0) - quantization.zeroPoint)
+}
+```
+
+Next, the results are sorted to get the top `N` results (where `N` is
+`resultCount`):
+
+```swift
+// Create a zipped array of tuples [(labelIndex: Int, confidence: Float)].
+let zippedResults = zip(labels.indices, results)
+
+// Sort the zipped results by confidence value in descending order.
+let sortedResults = zippedResults.sorted { $0.1 > $1.1 }.prefix(resultCount)
+
+// Get the top N `Inference` results.
+let topNInferences = sortedResults.map { result in Inference(confidence: result.1, label: labels[result.0]) }
+```
+
+### Display results
+
+The file
+[`InferenceViewController.swift`](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios/ImageClassification/ViewControllers/InferenceViewController.swift)
+defines the app's UI. A `UITableView` is used to display the results.

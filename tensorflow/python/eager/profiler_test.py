@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.core.profiler import trace_events_pb2
+from tensorflow.core.protobuf import trace_events_pb2
 from tensorflow.python.eager import profiler
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op

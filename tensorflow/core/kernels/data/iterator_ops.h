@@ -96,13 +96,19 @@ class AnonymousIteratorHandleOp : public OpKernel {
   DataTypeVector output_dtypes_;
   std::vector<PartialTensorShape> output_shapes_;
   const int graph_def_version_;
+  const int op_version_;
 };
 
-class MakeIteratorOp : public OpKernel {
+class MakeIteratorOp : public AsyncOpKernel {
  public:
-  explicit MakeIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit MakeIteratorOp(OpKernelConstruction* ctx)
+      : AsyncOpKernel(ctx),
+        background_worker_(ctx->env(), "tf_data_make_iterator") {}
 
-  void Compute(OpKernelContext* ctx) override;
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
+
+ private:
+  BackgroundWorker background_worker_;
 };
 
 class IteratorGetNextOp : public AsyncOpKernel {
@@ -115,6 +121,13 @@ class IteratorGetNextOp : public AsyncOpKernel {
 
  private:
   BackgroundWorker background_worker_;
+};
+
+class DeleteIteratorOp : public OpKernel {
+ public:
+  explicit DeleteIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override;
 };
 
 class IteratorGetNextAsOptionalOp : public AsyncOpKernel {

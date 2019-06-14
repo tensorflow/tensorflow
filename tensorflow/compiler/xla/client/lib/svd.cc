@@ -75,11 +75,6 @@ struct OneSidedJacobiRotation {
   JacobiRotation rot_r;
 };
 
-struct FrobeniusNorms {
-  XlaOp off_diagonal_norm;
-  XlaOp total_norm;
-};
-
 // Householder reflection on the trailing elements of a vector.
 //
 // H = I - beta * [1, v]' * [1, v]
@@ -163,9 +158,8 @@ StatusOr<HouseHolderResult> HouseRow(XlaOp a, XlaOp i, XlaOp j, XlaOp eps,
   HouseHolderResult result;
   result.v = v;
   result.beta = beta;
-  result.a =
-      Sub(a, Mul(beta, BatchDot(BatchDot(a, TransposeInMinorDims(v), precision),
-                                v, precision)));
+  result.a = Sub(a, Mul(beta, BatchDot(BatchDot(a, false, v, true, precision),
+                                       v, precision)));
 
   return result;
 }
@@ -231,8 +225,8 @@ StatusOr<HouseHolderResult> HouseCol(XlaOp a, XlaOp i, XlaOp j, XlaOp eps,
   result.v = v;
   result.beta = beta;
   result.a = Sub(
-      a, Mul(beta, BatchDot(v, BatchDot(TransposeInMinorDims(v), a, precision),
-                            precision)));
+      a, Mul(beta, BatchDot(v, false, BatchDot(v, true, a, false, precision),
+                            false, precision)));
 
   return result;
 }
@@ -290,18 +284,16 @@ StatusOr<SVDResult> HouseHolderBidiagonalization(
 
     TF_ASSIGN_OR_RETURN(HouseHolderResult house_col,
                         HouseCol(a, i, i, eps, precision));
-    u = Sub(u, Mul(house_col.beta,
-                   BatchDot(BatchDot(u, house_col.v, precision),
-                            TransposeInMinorDims(house_col.v), precision)));
+    u = Sub(u,
+            Mul(house_col.beta, BatchDot(BatchDot(u, house_col.v, precision),
+                                         false, house_col.v, true, precision)));
     a = house_col.a;
 
     TF_ASSIGN_OR_RETURN(HouseHolderResult house_row,
                         HouseRow(a, i, i + one, eps, precision));
-    v = Sub(
-        v,
-        Mul(house_row.beta,
-            BatchDot(BatchDot(v, TransposeInMinorDims(house_row.v), precision),
-                     house_row.v, precision)));
+    v = Sub(v, Mul(house_row.beta,
+                   BatchDot(BatchDot(v, false, house_row.v, true, precision),
+                            house_row.v, precision)));
     a = house_row.a;
 
     std::vector<XlaOp> updated_values;
@@ -331,11 +323,10 @@ StatusOr<SVDResult> HouseHolderBidiagonalization(
       XlaOp index = ScalarLike(values[0], n - k);
       TF_ASSIGN_OR_RETURN(HouseHolderResult house_col,
                           HouseCol(values[3], index, index, eps, precision));
-      values[1] =
-          Sub(values[1],
-              Mul(house_col.beta,
-                  BatchDot(BatchDot(values[1], house_col.v, precision),
-                           TransposeInMinorDims(house_col.v), precision)));
+      values[1] = Sub(values[1],
+                      Mul(house_col.beta,
+                          BatchDot(BatchDot(values[1], house_col.v, precision),
+                                   false, house_col.v, true, precision)));
       values[3] = house_col.a;
     }
   }
@@ -571,27 +562,26 @@ StatusOr<SVDResult> OneSidedJacobiUpdate(SVDResult svd_result, XlaOp p, XlaOp q,
   return svd_result;
 }
 
-StatusOr<FrobeniusNorms> ComputeFrobeniusNorms(XlaOp w) {
+StatusOr<XlaOp> ComputeToleranceComparison(XlaOp w, XlaOp epsilon) {
   XlaBuilder* builder = w.builder();
   TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(w));
-  const int64 num_dims = shape.rank();
-  auto frobenius_norm =
-      Sqrt(Reduce(Square(w), ScalarLike(w, 0.0),
-                  CreateScalarAddComputation(shape.element_type(), builder),
-                  {num_dims - 2, num_dims - 1}));
-  auto diag = GetMatrixDiagonal(w);
-  auto diag_square =
-      Reduce(Square(diag), ScalarLike(w, 0.0),
-             CreateScalarAddComputation(shape.element_type(), builder),
-             {num_dims - 2});
-
-  FrobeniusNorms frobenius_norms;
-
-  frobenius_norms.off_diagonal_norm =
-      Sqrt(Max(Square(frobenius_norm) - diag_square, ScalarLike(w, 0.0)));
-  frobenius_norms.total_norm = frobenius_norm;
-
-  return frobenius_norms;
+  auto num_dims = static_cast<int32>(shape.rank());
+  int64 n = shape.dimensions(num_dims - 1);
+  shape.set_dimensions(num_dims - 2, n);
+  auto w_sliced = SliceInMinorDims(w, {0, 0}, {n, n});
+  auto diag = GetMatrixDiagonal(w_sliced);
+  diag = Select(Lt(diag, ZerosLike(diag)), -diag, diag);
+  std::vector<int64> broadcasted_dims(num_dims - 1);
+  std::iota(broadcasted_dims.begin(), broadcasted_dims.end(), 0);
+  auto broadcast_to_rows =
+      BroadcastInDim(diag, shape.dimensions(), broadcasted_dims);
+  broadcasted_dims.back() = num_dims - 1;
+  auto broadcast_to_columns =
+      BroadcastInDim(diag, shape.dimensions(), broadcasted_dims);
+  // Compute w_{i,i} * w_{j,j} * epsilon^2 < (w_{i,j})^2
+  return Lt(
+      broadcast_to_rows * broadcast_to_columns * epsilon * epsilon,
+      Square(Select(GetDiagonalMask(w_sliced), ZerosLike(w_sliced), w_sliced)));
 }
 
 // Main boby of One-sided Jacobi Method.
@@ -607,13 +597,13 @@ StatusOr<std::vector<XlaOp>> WhileLoopFn(
     auto max_sweeps = ScalarLike(k, max_sweep_updates);
     auto sweep_update_cond = Gt(max_sweeps, k);
 
-    auto norms = ComputeFrobeniusNorms(values[3]).ValueOrDie();
-    auto tol = norms.total_norm * values[4];
-    auto tol_cond = ReduceAll(Lt(tol, norms.off_diagonal_norm),
-                              xla::ConstantR0<bool>(cond_builder, false),
-                              CreateScalarOrComputation(PRED, cond_builder));
+    TF_ASSIGN_OR_RETURN(auto tolerance_comparison,
+                        ComputeToleranceComparison(values[3], values[4]));
+    auto tolerance_cond = ReduceAll(
+        tolerance_comparison, xla::ConstantR0<bool>(cond_builder, false),
+        CreateScalarOrComputation(PRED, cond_builder));
 
-    return And(sweep_update_cond, tol_cond);
+    return And(sweep_update_cond, tolerance_cond);
   };
 
   auto while_body_fn =
@@ -751,23 +741,20 @@ StatusOr<SVDResult> SortBySingularValuesAndPostProcessing(SVDResult result) {
 
   d = BroadcastInDim(d, dimensions, broadcast_dims);
 
-  // As m >= n, only first m columns vectors are needed to be permuted, and the
-  // rest of m - n vectors are appended after the sorting is done.
+  // As m >= n, only first n column vectors need to be permuted, and the rest of
+  // m - n vectors are appended after the sorting is done.
   XlaOp sort_u_result =
-      Sort({-d, SliceInMinorDims(result.u, {0, 0}, {m, n})},
-           CreateScalarLtComputation(
+      Sort({d, SliceInMinorDims(result.u, {0, 0}, {m, n})},
+           CreateScalarGtComputation(
                {shape.element_type(), shape.element_type()}, builder),
            num_dims - 1);
 
-  // TODO(kuny): using CreateScalarGtComputation after b/124862300 is fixed.
   XlaOp sort_v_result =
-      Sort({SliceInMinorDims(-d, {0, 0}, {n, n}), result.v},
-           CreateScalarLtComputation(
+      Sort({SliceInMinorDims(d, {0, 0}, {n, n}), result.v},
+           CreateScalarGtComputation(
                {shape.element_type(), shape.element_type()}, builder),
            num_dims - 1);
-  // Make sure all the signular values are non-negative.
-  result.d = Max(-GetMatrixDiagonal(GetTupleElement(sort_v_result, 0)),
-                 ScalarLike(d, 0.0));
+  result.d = GetMatrixDiagonal(GetTupleElement(sort_v_result, 0));
 
   result.v = GetTupleElement(sort_v_result, 1);
   result.v = Mul(

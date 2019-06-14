@@ -23,10 +23,12 @@ import copy
 
 from tensorflow.python.keras import layers as layer_module
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
@@ -104,6 +106,7 @@ class Sequential(training.Model):
 
     # Add to the model any layers passed to the constructor.
     if layers:
+      tf_utils.assert_no_legacy_layers(layers)
       for layer in layers:
         self.add(layer)
 
@@ -150,6 +153,9 @@ class Sequential(training.Model):
       raise TypeError('The added layer must be '
                       'an instance of class Layer. '
                       'Found: ' + str(layer))
+
+    tf_utils.assert_no_legacy_layers([layer])
+
     self.built = False
     set_inputs = False
     if not self._layers:
@@ -185,15 +191,20 @@ class Sequential(training.Model):
       # If the model is being built continuously on top of an input layer:
       # refresh its output.
       output_tensor = layer(self.outputs[0])
-      if isinstance(output_tensor, list):
+      if len(nest.flatten(output_tensor)) != 1:
         raise TypeError('All layers in a Sequential model '
                         'should have a single output tensor. '
                         'For multi-output layers, '
                         'use the functional API.')
       self.outputs = [output_tensor]
+
+    if self.outputs:
+      # True if set_inputs or self._is_graph_network or if adding a layer
+      # to an already built deferred seq model.
+      self.built = True
+
     if set_inputs or self._is_graph_network:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
-      self.built = True
     else:
       self._layers.append(layer)
     if self._layers:
@@ -223,7 +234,7 @@ class Sequential(training.Model):
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
       self.built = True
 
-  @base_layer.default
+  @base_layer_utils.default
   def build(self, input_shape=None):
     if self._is_graph_network:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
@@ -316,10 +327,6 @@ class Sequential(training.Model):
     else:
       return (proba > 0.5).astype('int32')
 
-  def save(self, filepath, overwrite=True, include_optimizer=True):
-    from tensorflow.python.keras.models import save_model  # pylint: disable=g-import-not-at-top
-    save_model(self, filepath, overwrite, include_optimizer)
-
   def get_config(self):
     layer_configs = []
     for layer in self.layers:
@@ -352,9 +359,6 @@ class Sequential(training.Model):
       model.add(layer)
     if not model.inputs and build_input_shape:
       model.build(build_input_shape)
-    if not model._is_graph_network:
-      # Still needs to be built when passed input data.
-      model.built = False
     return model
 
   @property
@@ -362,3 +366,7 @@ class Sequential(training.Model):
     if self.layers and hasattr(self.layers[0], 'input_spec'):
       return self.layers[0].input_spec
     return None
+
+  @property
+  def _object_identifier(self):
+    return '_tf_keras_sequential'

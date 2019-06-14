@@ -27,7 +27,7 @@ from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
 
-def _is_bounded_method(fn):
+def _is_bound_method(fn):
   _, fn = tf_decorator.unwrap(fn)
   return tf_inspect.ismethod(fn) and (fn.__self__ is not None)
 
@@ -55,8 +55,11 @@ def fn_args(fn):
     if _is_callable_object(fn):
       fn = fn.__call__
     args = tf_inspect.getfullargspec(fn).args
-    if _is_bounded_method(fn):
-      args.remove('self')
+    if _is_bound_method(fn) and args:
+      # If it's a bound method, it may or may not have a self/cls first
+      # argument; for example, self could be captured in *args.
+      # If it does have a positional argument, it is self/cls.
+      args.pop(0)
   return tuple(args)
 
 

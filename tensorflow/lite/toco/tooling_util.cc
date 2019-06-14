@@ -157,7 +157,8 @@ int CountOpsWithInput(const Model& model, const string& array_name) {
 
 bool DeleteArrayIfUnused(const string& array_name, Model* model) {
   if (IsDiscardableArray(*model, array_name) &&
-      CountOpsWithInput(*model, array_name) == 0) {
+      CountOpsWithInput(*model, array_name) == 0 &&
+      GetOpWithOutput(*model, array_name) == nullptr) {
     model->EraseArray(array_name);
     return true;
   }
@@ -166,7 +167,8 @@ bool DeleteArrayIfUnused(const string& array_name, Model* model) {
 
 bool DeleteArrayIfUsedOnce(const string& array_name, Model* model) {
   if (IsDiscardableArray(*model, array_name) &&
-      CountOpsWithInput(*model, array_name) == 1) {
+      CountOpsWithInput(*model, array_name) == 1 &&
+      GetOpWithOutput(*model, array_name) == nullptr) {
     model->EraseArray(array_name);
     return true;
   }
@@ -320,6 +322,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(DepthToSpace)
     HANDLE_OPERATORTYPENAME_CASE(SpaceToDepth)
     HANDLE_OPERATORTYPENAME_CASE(FullyConnected)
+    HANDLE_OPERATORTYPENAME_CASE(HardSwish)
     HANDLE_OPERATORTYPENAME_CASE(Dequantize)
     HANDLE_OPERATORTYPENAME_CASE(L2Normalization)
     HANDLE_OPERATORTYPENAME_CASE(LocalResponseNormalization)
@@ -387,6 +390,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Cast)
     HANDLE_OPERATORTYPENAME_CASE(Floor)
     HANDLE_OPERATORTYPENAME_CASE(Ceil)
+    HANDLE_OPERATORTYPENAME_CASE(Round)
     HANDLE_OPERATORTYPENAME_CASE(Gather)
     HANDLE_OPERATORTYPENAME_CASE(GatherNd)
     HANDLE_OPERATORTYPENAME_CASE(ResizeBilinear)
@@ -1333,7 +1337,9 @@ namespace {
 void CopyArrayAttribs(const Array& source_array, Array* target_array) {
   target_array->data_type = source_array.data_type;
   target_array->final_data_type = source_array.final_data_type;
-  target_array->copy_shape(source_array.shape());
+  if (source_array.has_shape()) {
+    target_array->copy_shape(source_array.shape());
+  }
 
   if (source_array.minmax) {
     target_array->GetOrCreateMinMax() = source_array.GetMinMax();
@@ -1383,23 +1389,9 @@ void CloneArray(Model* model, const string& source_array_name,
   Array& target_array = model->GetOrCreateArray(target_array_name);
   CopyArrayAttribs(source_array, &target_array);
 
-  if (source_array.minmax) {
-    const auto& smm = source_array.GetMinMax();
-    auto& tmm = target_array.GetOrCreateMinMax();
-    tmm.min = smm.min;
-    tmm.max = smm.max;
+  if (!source_array.buffer) {
+    return;
   }
-
-  if (source_array.quantization_params) {
-    const auto& sqp = source_array.GetQuantizationParams();
-    auto& tqp = target_array.GetOrCreateQuantizationParams();
-    tqp.zero_point = sqp.zero_point;
-    tqp.scale = sqp.scale;
-  }
-
-  target_array.data_type = source_array.data_type;
-  target_array.final_data_type = source_array.final_data_type;
-  target_array.copy_shape(source_array.shape());
 
   switch (source_array.data_type) {
     case ArrayDataType::kBool:

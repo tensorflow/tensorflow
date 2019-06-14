@@ -42,6 +42,7 @@ def tflite_copts():
 
     return copts
 
+EXPORTED_SYMBOLS = "//tensorflow/lite/java/src/main/native:exported_symbols.lds"
 LINKER_SCRIPT = "//tensorflow/lite/java/src/main/native:version_script.lds"
 
 def tflite_linkopts_unstripped():
@@ -113,22 +114,28 @@ def tflite_jni_binary(
         copts = tflite_copts(),
         linkopts = tflite_jni_linkopts(),
         linkscript = LINKER_SCRIPT,
+        exported_symbols = EXPORTED_SYMBOLS,
         linkshared = 1,
         linkstatic = 1,
         testonly = 0,
         deps = [],
         srcs = []):
     """Builds a jni binary for TFLite."""
-    linkopts = linkopts + [
-        "-Wl,--version-script",  # Export only jni functions & classes.
-        "$(location {})".format(linkscript),
-    ]
+    linkopts = linkopts + select({
+        "//tensorflow:macos": [
+            "-Wl,-exported_symbols_list,$(location {})".format(exported_symbols),
+        ],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "-Wl,--version-script,$(location {})".format(linkscript),
+        ],
+    })
     native.cc_binary(
         name = name,
         copts = copts,
         linkshared = linkshared,
         linkstatic = linkstatic,
-        deps = deps + [linkscript],
+        deps = deps + [linkscript, exported_symbols],
         srcs = srcs,
         linkopts = linkopts,
         testonly = testonly,
@@ -247,6 +254,7 @@ def generated_test_models():
         "elu",
         "equal",
         "exp",
+        "embedding_lookup",
         "expand_dims",
         "eye",
         "fill",
@@ -307,6 +315,8 @@ def generated_test_models():
         "resolve_constant_strided_slice",
         "reverse_sequence",
         "reverse_v2",
+        "rfft2d",
+        "round",
         "rsqrt",
         "shape",
         "sigmoid",
@@ -329,6 +339,7 @@ def generated_test_models():
         "topk",
         "transpose",
         "transpose_conv",
+        "unfused_gru",
         "unidirectional_sequence_lstm",
         "unidirectional_sequence_rnn",
         "unique",
@@ -345,7 +356,6 @@ def generated_test_models_failing(conversion_mode):
     if conversion_mode == "toco-flex":
         return [
             "lstm",  # TODO(b/117510976): Restore when lstm flex conversion works.
-            "unroll_batch_matmul",  # TODO(b/123030774): Fails in 1.13 tests.
             "unidirectional_sequence_lstm",
             "unidirectional_sequence_rnn",
         ]

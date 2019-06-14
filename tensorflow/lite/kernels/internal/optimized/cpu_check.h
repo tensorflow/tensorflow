@@ -15,44 +15,82 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_CPU_CHECK_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_CPU_CHECK_H_
 
-namespace tflite {
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 
-#ifdef __ANDROID__
+#if !defined(NEON_OR_PORTABLE_USE_PORTABLE) && \
+    !defined(NEON_OR_PORTABLE_USE_NEON)
+// If neither is defined, figure out if we can use NEON_OR_PORTABLE_USE_PORTABLE
+// or NEON_OR_PORTABLE_USE_NEON
+
+#if defined(__ARM_ARCH_5TE__)
+// NEON isn't available at all on ARMv5.
+#define NEON_OR_PORTABLE_USE_PORTABLE
+
+#elif defined(__aarch64__)
+// A64 always has NEON support.
+#define NEON_OR_PORTABLE_USE_NEON
+
+#elif defined(__ANDROID__)
+// Runtime check for NEON support on Android.
+
 #include "ndk/sources/android/cpufeatures/cpu-features.h"
 
-// Runtime check for Neon support on Android.
+namespace tflite {
+
 inline bool TestCPUFeatureNeon() {
-#ifdef __aarch64__
-  // ARM-64 always has NEON support.
-  return true;
-#else
-  static bool kUseAndroidNeon =
+  static const bool kUseAndroidNeon =
       (android_getCpuFamily() == ANDROID_CPU_FAMILY_ARM &&
        android_getCpuFeatures() & ANDROID_CPU_ARM_FEATURE_ARMv7 &&
        android_getCpuFeatures() & ANDROID_CPU_ARM_FEATURE_NEON);
   return kUseAndroidNeon;
-#endif  // __aarch64__
 }
-
-#elif defined USE_NEON || defined __ARM_NEON
-
-inline bool TestCPUFeatureNeon() { return true; }
-
-#else
-
-inline bool TestCPUFeatureNeon() { return false; }
-
-#endif
 
 }  // namespace tflite
 
-// NEON_OR_PORTABLE(SomeFunc, arcs) calls NeonSomeFunc(args) if Neon is both
-// enabled at build time and detected at runtime, or PortableSomeFunc(args)
-// otherwise.
-#ifdef __ARM_ARCH_5TE__
-// Neon isn't available at all on ARMv5.
-#define NEON_OR_PORTABLE(funcname, ...) Portable##funcname(__VA_ARGS__)
+#elif defined USE_NEON || defined __ARM_NEON
+// Non-Android build using NEON
+#define NEON_OR_PORTABLE_USE_NEON
+
 #else
+// All else: use Portable
+#define NEON_OR_PORTABLE_USE_PORTABLE
+
+#endif  // 'switch' among architectures
+
+#endif  // !defined(NEON_OR_PORTABLE_USE_PORTABLE) &&
+        // !defined(NEON_OR_PORTABLE_USE_NEON)
+
+namespace tflite {
+
+struct CpuFlags {
+  bool neon_dotprod = false;
+};
+
+inline void GetCpuFlags(CpuBackendContext* cpu_backend_context,
+                        CpuFlags* cpu_flags) {
+  ruy::Context* ruy_context = cpu_backend_context->ruy_context();
+  cpu_flags->neon_dotprod =
+      ruy_context != nullptr && (ruy_context->GetRuntimeEnabledPaths() &
+                                 ruy::Path::kNeonDotprod) != ruy::Path::kNone;
+}
+
+}  // namespace tflite
+
+// NEON_OR_PORTABLE(SomeFunc, args) calls:
+//  NeonSomeFunc(args) if NEON_OR_PORTABLE_USE_NEON is defined, or
+//  PortableSomeFunc(args) if NEON_OR_PORTABLE_USE_PORTABLE is defined, or
+// detects Neon at runtime and calls the appropriate version.
+
+#if defined(NEON_OR_PORTABLE_USE_NEON)
+// Always use Neon code
+#define NEON_OR_PORTABLE(funcname, ...) Neon##funcname(__VA_ARGS__)
+
+#elif defined(NEON_OR_PORTABLE_USE_PORTABLE)
+// Always use Portable code
+#define NEON_OR_PORTABLE(funcname, ...) Portable##funcname(__VA_ARGS__)
+
+#else
+// Detect availability of Neon at runtime
 #define NEON_OR_PORTABLE(funcname, ...)              \
   TestCPUFeatureNeon() ? Neon##funcname(__VA_ARGS__) \
                        : Portable##funcname(__VA_ARGS__)

@@ -8,7 +8,6 @@ tensorflow/contrib/boosted_trees/ops/training_ops.cc
 tensorflow/core/kernels/aggregate_ops.cc
 tensorflow/core/kernels/argmax_op.cc
 tensorflow/core/kernels/avgpooling_op.cc
-tensorflow/core/kernels/batch_matmul_op_common.cc
 tensorflow/core/kernels/batch_matmul_op_real.cc
 tensorflow/core/kernels/batch_norm_op.cc
 tensorflow/core/kernels/batchtospace_op.cc
@@ -62,6 +61,7 @@ tensorflow/core/kernels/cwise_op_cosh.cc
 tensorflow/core/kernels/cwise_op_div.cc
 tensorflow/core/kernels/cwise_op_equal_to_1.cc
 tensorflow/core/kernels/cwise_op_equal_to_2.cc
+tensorflow/core/kernels/cwise_op_erf.cc
 tensorflow/core/kernels/cwise_op_exp.cc
 tensorflow/core/kernels/cwise_op_floor.cc
 tensorflow/core/kernels/cwise_op_floor_div.cc
@@ -126,6 +126,7 @@ tensorflow/core/kernels/fill_functor.cc
 tensorflow/core/kernels/fft_ops.cc
 tensorflow/core/kernels/function_ops.cc
 tensorflow/core/kernels/fused_batch_norm_op.cc
+tensorflow/core/kernels/fused_eigen_output_kernels.cc
 tensorflow/core/kernels/gather_functor.cc
 tensorflow/core/kernels/gather_nd_op.cc
 tensorflow/core/kernels/gather_nd_op_cpu_impl_0.cc

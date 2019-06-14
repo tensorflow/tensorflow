@@ -1,6 +1,7 @@
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 # Primary purpose of this config is to replace ::util::Status with our custom
 # light implementation ::tflite::gpu::StatusLite to reduce binary size.  Besides
@@ -85,9 +86,9 @@ objc_library(
     ],
 )
 
-# build -c opt --config android_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=hidden --linkopt -s --strip always :libtflite_gpu_gl.so
+# build -c opt --config android_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=hidden --linkopt -s --strip always :libtensorflowlite_gpu_gl.so
 cc_binary(
-    name = "libtflite_gpu_gl.so",
+    name = "libtensorflowlite_gpu_gl.so",
     linkopts = select({
         "//tensorflow:android": [
             "-lEGL",
@@ -104,9 +105,9 @@ cc_binary(
     deps = [":gl_delegate"],
 )
 
-# build -c opt --config ios_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=hidden --linkopt -s --strip always :libtflite_gpu_metal.so
+# build -c opt --config ios_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=hidden --linkopt -s --strip always :libtensorflowlite_gpu_metal.so
 cc_binary(
-    name = "libtflite_gpu_metal.so",
+    name = "libtensorflowlite_gpu_metal.so",
     linkshared = 1,
     linkstatic = 1,
     tags = [

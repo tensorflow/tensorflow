@@ -19,9 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
+from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.util.tf_export import keras_export
 
@@ -57,6 +60,15 @@ class InputLayer(base_layer.Layer):
                sparse=False,
                name=None,
                **kwargs):
+    strategy = distribution_strategy_context.get_strategy()
+    if strategy and batch_size is not None and \
+        distributed_training_utils.global_batch_size_supported(strategy):
+      if batch_size % strategy.num_replicas_in_sync != 0:
+        raise ValueError('The `batch_size` argument value {} cannot be '
+                         'divisible by number of replicas {}'.format(
+                             batch_size, strategy.num_replicas_in_sync))
+      batch_size = batch_size // strategy.num_replicas_in_sync
+
     if 'batch_input_shape' in kwargs:
       batch_input_shape = kwargs.pop('batch_input_shape')
       if input_shape and batch_input_shape:
@@ -88,6 +100,8 @@ class InputLayer(base_layer.Layer):
 
     if isinstance(input_shape, tensor_shape.TensorShape):
       input_shape = tuple(input_shape.as_list())
+    elif isinstance(input_shape, int):
+      input_shape = (input_shape,)
 
     if input_tensor is None:
       if input_shape is not None:
@@ -122,9 +136,9 @@ class InputLayer(base_layer.Layer):
 
     # Create an input node to add to self.outbound_node
     # and set output_tensors' _keras_history.
-    input_tensor._keras_history = (self, 0, 0)  # pylint: disable=protected-access
+    input_tensor._keras_history = base_layer.KerasHistory(self, 0, 0)
     input_tensor._keras_mask = None
-    base_layer.Node(
+    node_module.Node(
         self,
         inbound_layers=[],
         node_indices=[],
@@ -184,30 +198,31 @@ def Input(  # pylint: disable=invalid-name
       **kwargs: deprecated arguments support.
 
   Returns:
-      A tensor.
+    A `tensor`.
 
   Example:
 
-      ```python
-      # this is a logistic regression in Keras
-      x = Input(shape=(32,))
-      y = Dense(16, activation='softmax')(x)
-      model = Model(x, y)
-      ```
+  ```python
+  # this is a logistic regression in Keras
+  x = Input(shape=(32,))
+  y = Dense(16, activation='softmax')(x)
+  model = Model(x, y)
+  ```
 
-      Note that even if eager execution is enabled,
-      `Input` produces a symbolic tensor (i.e. a placeholder).
-      This symbolic tensor can be used with other
-      TensorFlow ops, as such:
+  Note that even if eager execution is enabled,
+  `Input` produces a symbolic tensor (i.e. a placeholder).
+  This symbolic tensor can be used with other
+  TensorFlow ops, as such:
 
-      ```python
-      x = Input(shape=(32,))
-      y = tf.square(x)
-      ```
+  ```python
+  x = Input(shape=(32,))
+  y = tf.square(x)
+  ```
 
   Raises:
     ValueError: in case of invalid arguments.
   """
+  batch_shape = None
   if 'batch_shape' in kwargs:
     batch_shape = kwargs.pop('batch_shape')
     if shape and batch_shape:
@@ -224,13 +239,23 @@ def Input(  # pylint: disable=invalid-name
                      ' or a `tensor` argument. Note that '
                      '`shape` does not include the batch '
                      'dimension.')
-  input_layer = InputLayer(
-      input_shape=shape,
-      batch_size=batch_size,
-      name=name,
-      dtype=dtype,
-      sparse=sparse,
-      input_tensor=tensor)
+
+  if batch_shape:
+    input_layer = InputLayer(
+        batch_input_shape=batch_shape,
+        name=name,
+        dtype=dtype,
+        sparse=sparse,
+        input_tensor=tensor)
+  else:
+    input_layer = InputLayer(
+        input_shape=shape,
+        batch_size=batch_size,
+        name=name,
+        dtype=dtype,
+        sparse=sparse,
+        input_tensor=tensor)
+
   # Return tensor including `_keras_history`.
   # Note that in this case train_output and test_output are the same pointer.
   outputs = input_layer._inbound_nodes[0].output_tensors

@@ -268,7 +268,7 @@ Options {
 }
 ```
 
-**CONV_2D_TRANSPOSE**
+**TRANSPOSE_CONV**
 
 ```
 Inputs {
@@ -390,10 +390,10 @@ Outputs {
 **CEIL**
 
 ```
-inputs {
-  0: tensor
+Inputs {
+  0: a tensor
 }
-outputs: {
+Outputs {
   0: result of computing element-wise ceil of the input tensor
 }
 ```
@@ -841,6 +841,17 @@ Outputs {
 }
 Options {
   out_type: the output type of the op (int32 or int64). Defaults to int32.
+}
+```
+
+**ROUND**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: result of computing element-wise round of the input tensor
 }
 ```
 

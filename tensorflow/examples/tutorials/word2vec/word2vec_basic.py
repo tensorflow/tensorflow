@@ -337,8 +337,9 @@ def word2vec_basic(log_dir):
     print(ex)
 
 
-# All functionality is run after tf.app.run() (b/122547914). This could be split
-# up but the methods are laid sequentially with their usage for clarity.
+# All functionality is run after tf.compat.v1.app.run() (b/122547914). This
+# could be split up but the methods are laid sequentially with their usage for
+# clarity.
 def main(unused_argv):
   # Give a folder path as an argument with '--log_dir' to save
   # TensorBoard summaries. Default is a log folder in current directory.
@@ -352,6 +353,7 @@ def main(unused_argv):
       help='The log directory for TensorBoard summaries.')
   flags, unused_flags = parser.parse_known_args()
   word2vec_basic(flags.log_dir)
+
 
 if __name__ == '__main__':
   tf.app.run()

@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -34,6 +35,7 @@ struct NodeDebugInfo;
 // We forward declare protos so that kernels don't need to depend on them
 class NodeDef;
 class OpDef;
+class AttrSlice;
 
 // Name of the attribute used to encode node colocation constraints.
 //
@@ -50,12 +52,16 @@ extern const char* const kColocationGroupPrefix;
 string SummarizeNode(const Node& node);
 string SummarizeNodeDef(const NodeDef& node_def);
 string SummarizeAttrs(const NodeDef& node_def);
+string SummarizeAttrsHelper(AttrSlice attrs, StringPiece device);
 
 // Produces a formatted string pattern from the node which can uniquely identify
 // this node upstream to produce an informative error message. The pattern
 // followed is: {{node <node_name>}}
 string FormatNodeForError(const Node& node);
 string FormatNodeDefForError(const NodeDef& node_def);
+string FormatNodeDefForError(
+    StringPiece node_name, bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info);
 
 // Merges the original node names from the debug information of 'from' to the
 // debug information of 'to'.
@@ -167,6 +173,8 @@ class AttrSlice {
   AttrValueMap::const_iterator begin() const { return attrs_->begin(); }
   AttrValueMap::const_iterator end() const { return attrs_->end(); }
 
+  string DebugString() const;
+
  private:
   const NodeDef* ndef_;
   const AttrValueMap* attrs_;
@@ -268,6 +276,9 @@ Status OutputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
 // REQUIRES: ValidateOpDef(op_def).ok()
 Status OutputTypesForNode(const NodeDef& node_def, const OpDef& op_def,
                           DataTypeVector* outputs);
+Status OutputTypesForNode(const AttrSlice& attrs, const OpDef& op_def,
+                          DataTypeVector* outputs);
+
 // Computes the input and output types for a specific node.
 // REQUIRES: ValidateOpDef(op_def).ok()
 Status InOutTypesForNode(const NodeDef& node_def, const OpDef& op_def,

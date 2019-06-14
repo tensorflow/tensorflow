@@ -18,12 +18,14 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace Eigen {
 class Allocator;
+class ThreadPoolInterface;
 }  // namespace Eigen
 namespace tensorflow {
 namespace thread {
@@ -120,9 +122,14 @@ class ThreadPool {
   // thread in the pool. Returns -1 otherwise.
   int CurrentThreadId() const;
 
-  struct Impl;
+  // If ThreadPool implementation is compatible with Eigen::ThreadPoolInterface,
+  // returns a non-null pointer. The caller does not own the object the returned
+  // pointer points to, and should not attempt to delete.
+  Eigen::ThreadPoolInterface* AsEigenThreadPool();
 
  private:
+  struct Impl;
+
   std::unique_ptr<Impl> impl_;
   TF_DISALLOW_COPY_AND_ASSIGN(ThreadPool);
 };

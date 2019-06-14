@@ -255,6 +255,12 @@ Status AvgPoolShape(shape_inference::InferenceContext* c);
 // Shape function for FusedBatchNorm and FusedBatchNormV2 operations.
 Status FusedBatchNormShape(shape_inference::InferenceContext* c);
 
+// Shape function for FusedBatchNormV3 operations.
+Status FusedBatchNormV3Shape(shape_inference::InferenceContext* c);
+
+// Shape function for _FusedBatchNormEx operations.
+Status FusedBatchNormExShape(shape_inference::InferenceContext* c);
+
 // Shape function for FusedBatchNormGrad and FusedBatchNormGradV2 operations.
 Status FusedBatchNormGradShape(shape_inference::InferenceContext* c);
 
@@ -272,6 +278,9 @@ Status UnknownShape(shape_inference::InferenceContext* c);
 
 // Shape function for reduction operations.
 Status ReductionShape(shape_inference::InferenceContext* c);
+
+// Shape function for unsorted segment operations.
+Status UnsortedSegmentReductionShapeFn(InferenceContext* c);
 
 // Shape function for concat operations.
 // <num_inputs_to_concat> is the number of inputs to concatenate and are taken
@@ -320,6 +329,12 @@ Status SliceShape(shape_inference::InferenceContext* c);
 // shapes. This mimics SparseTensor.__init__ in python/framework/ops.py.
 Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
                             ShapeHandle values_shape, ShapeHandle shape_shape);
+
+Status ValidateVariableResourceHandle(
+    InferenceContext* c, std::vector<ShapeAndType>* shape_and_type);
+
+// Shape function for GatherNd operations.
+Status GatherNdShape(InferenceContext* c);
 
 // Shape function for ScatterNd update/add/sub/... operations.
 Status ScatterNdUpdateShape(InferenceContext* c);

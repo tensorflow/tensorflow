@@ -219,7 +219,7 @@ class BNTest(test.TestCase):
                                  use_gpu_test_a, True)
     loss_nonfused_val = self._infer(checkpoint_path_b, image_val, shape,
                                     use_gpu_test_b, False)
-    self.assertAllClose(loss_fused_val, loss_nonfused_val, atol=1e-6)
+    self.assertAllClose(loss_fused_val, loss_nonfused_val, atol=1e-6, rtol=3e-4)
 
   def _testCheckpointCrossDevice(self, ckpt_a_fused, ckpt_a_use_gpu,
                                  ckpt_b_fused, ckpt_b_use_gpu):
@@ -895,7 +895,8 @@ class BNTest(test.TestCase):
 
     moving_mean = 0.
     moving_variance = 1.
-    renorm_mean = renorm_stddev = 0.
+    renorm_mean = 0.
+    renorm_stddev = 1.
     renorm_weight = 0.
     with self.session(use_gpu=True) as sess:
       self.evaluate(variables.global_variables_initializer())
@@ -903,19 +904,15 @@ class BNTest(test.TestCase):
         x = np.random.random(shape)
 
         mean = x.mean(0)
-        stddev = np.sqrt(x.var(0) + epsilon)
-        adj_mean = renorm_mean + (1. - renorm_weight) * mean
-        adj_stddev = renorm_stddev + (1. - renorm_weight) * stddev
-        r = (stddev / adj_stddev).clip(rmin, rmax)
-        d = ((mean - adj_mean) / adj_stddev).clip(-dmax, dmax)
+        variance = x.var(0)
+        stddev = np.sqrt(variance + epsilon)
+        r = (stddev / renorm_stddev).clip(rmin, rmax)
+        d = ((mean - renorm_mean) / renorm_stddev).clip(-dmax, dmax)
         y_train = ((x - mean) / stddev * r + d) * gamma + beta
         renorm_mean += (mean - renorm_mean) * (1. - renorm_momentum)
         renorm_stddev += (stddev - renorm_stddev) * (1. - renorm_momentum)
-        renorm_weight += (1. - renorm_weight) * (1. - renorm_momentum)
-        moving_mean += (renorm_mean / renorm_weight -
-                        moving_mean) * (1. - momentum)
-        moving_variance += ((renorm_stddev / renorm_weight) ** 2 - epsilon -
-                            moving_variance) * (1. - momentum)
+        moving_mean += (mean - moving_mean) * (1. - momentum)
+        moving_variance += (variance - moving_variance) * (1. - momentum)
 
         y_test = ((x - moving_mean) / (moving_variance + epsilon) ** 0.5 *
                   gamma) + beta
@@ -1000,8 +997,8 @@ class BNTest(test.TestCase):
 
     moving_mean = 0.
     moving_variance = 1.
-    renorm_mean = renorm_stddev = 0.
-    renorm_weight = 0.
+    renorm_mean = 0.
+    renorm_stddev = 1.
     with self.session(use_gpu=True) as sess:
       self.evaluate(variables.global_variables_initializer())
       for _ in range(5):
@@ -1013,20 +1010,16 @@ class BNTest(test.TestCase):
                                feed_dict={xt: x, training: False})[0]
 
         mean = x.mean(0)
-        stddev = np.sqrt(x.var(0) + epsilon)
-        adj_mean = renorm_mean + (1. - renorm_weight) * mean
-        adj_stddev = renorm_stddev + (1. - renorm_weight) * stddev
-        r = (stddev / adj_stddev).clip(rmin, rmax)
-        d = ((mean - adj_mean) / adj_stddev).clip(-dmax, dmax)
+        variance = x.var(0)
+        stddev = np.sqrt(variance + epsilon)
+        r = (stddev / renorm_stddev).clip(rmin, rmax)
+        d = ((mean - renorm_mean) / renorm_stddev).clip(-dmax, dmax)
         y_train = (((x - mean) / stddev * r + d) * adj_scale_val +
                    adj_bias_val) * gamma + beta
         renorm_mean += (mean - renorm_mean) * (1. - renorm_momentum)
         renorm_stddev += (stddev - renorm_stddev) * (1. - renorm_momentum)
-        renorm_weight += (1. - renorm_weight) * (1. - renorm_momentum)
-        moving_mean += (renorm_mean / renorm_weight -
-                        moving_mean) * (1. - momentum)
-        moving_variance += ((renorm_stddev / renorm_weight) ** 2 - epsilon -
-                            moving_variance) * (1. - momentum)
+        moving_mean += (mean - moving_mean) * (1. - momentum)
+        moving_variance += (variance - moving_variance) * (1. - momentum)
 
         y_test = ((x - moving_mean) / (moving_variance + epsilon) ** 0.5 *
                   gamma) + beta

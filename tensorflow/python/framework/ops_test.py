@@ -26,6 +26,7 @@ import weakref
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import common_shapes
@@ -41,12 +42,14 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import resources
+from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 import tensorflow.python.ops.gradients  # pylint: disable=unused-import
@@ -139,9 +142,8 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
       a = array_ops.ones([1, 2, 3])
       b = array_ops.ones([4, 5, 6])
       with self.assertRaisesRegexp(
-          ValueError,
-          r"Dimensions must be equal, but are 2 and 5 for 'add' \(op: 'Add'\) "
-          r"with input shapes: \[1,2,3\], \[4,5,6\]."):
+          ValueError, r"Dimensions must be equal, but are 2 and 5 for 'add' "
+          r"\(op: 'Add(V2)?'\) with input shapes: \[1,2,3\], \[4,5,6\]."):
         _ = a + b
 
 
@@ -155,6 +157,18 @@ class IndexedSlicesTest(test_util.TensorFlowTestCase):
     x = ops.IndexedSlices(values, indices, dense_shape)
     tensor = ops.convert_to_tensor(x, name="tensor")
     self.assertAllEqual(self.evaluate(tensor), [[2, 3], [0, 0], [5, 7]])
+
+  @test_util.run_gpu_only
+  def testEagerCopy(self):
+    with context.eager_mode():
+      var = variables.Variable([[0.0], [0.0], [0.0], [0.0]], name="tensor")
+      with backprop.GradientTape() as tape:
+        a = array_ops.gather(array_ops.gather(var, [0, 1]), [0, 1])
+        b = array_ops.gather(array_ops.gather(var, [2, 3]), [0, 1])
+        r = special_math_ops.einsum("ij,ij->i", a, b)
+      g = tape.gradient(r, [var])[0]
+      values = g.values if isinstance(g, ops.IndexedSlices) else g
+      self.assertAllEqual(values.get_shape(), [4, 1])
 
   @test_util.run_deprecated_v1
   def testNegation(self):
@@ -646,7 +660,7 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(x.op.op_def.input_arg), 0)
     self.assertEqual(len(x.op.op_def.output_arg), 1)
 
-    self.assertEqual(z.op.op_def.name, "Add")
+    self.assertRegexpMatches(z.op.op_def.name, "Add(V2)?")
     self.assertEqual(len(z.op.op_def.input_arg), 2)
     self.assertEqual(len(z.op.op_def.output_arg), 1)
 
@@ -2034,6 +2048,21 @@ class OpScopeTest(test_util.TensorFlowTestCase):
       with ops.name_scope(None, "default2") as scope2:
         self.assertEqual(scope2, "default/default2/")
 
+  @test_util.run_in_graph_and_eager_modes
+  def testNameScopeV2IsReEntrant(self):
+    foo = ops.name_scope_v2("foo")
+    bar = ops.name_scope_v2("bar")
+    with foo as scope_name:
+      self.assertEqual("foo/", scope_name)
+      with foo as scope_name:
+        self.assertEqual("foo/foo/", scope_name)
+      with bar as scope_name:
+        self.assertEqual("foo/bar/", scope_name)
+        with foo as scope_name:
+          self.assertEqual("foo/bar/foo/", scope_name)
+    with bar as scope_name:
+      self.assertEqual("bar/", scope_name)
+
   @test_util.run_deprecated_v1
   def testNoScopeName(self):
     g0 = ops.Graph()
@@ -3052,18 +3081,9 @@ class _TupleTensor(composite_tensor.CompositeTensor):
     super(_TupleTensor, self).__init__()
     self._components = tuple(ops.convert_to_tensor(c) for c in components)
 
-  def _to_components(self):
-    return self._components
-
-  @classmethod
-  def _from_components(cls, components):
-    return cls(*components)
-
-  def _shape_invariant_to_components(self, shape=None):
-    raise NotImplementedError("CompositeTensor._shape_invariant_to_components")
-
-  def _is_graph_tensor(self):
-    return any(hasattr(t, "graph") for t in self._components)
+  @property
+  def _type_spec(self):
+    return _TupleTensorSpec(type_spec.from_value(c) for c in self._components)
 
   def __getitem__(self, key):
     return self._components[key]
@@ -3073,6 +3093,24 @@ class _TupleTensor(composite_tensor.CompositeTensor):
 
   def __iter__(self):
     return iter(self._components)
+
+
+class _TupleTensorSpec(type_spec.TypeSpec):
+
+  def __init__(self, specs):
+    self._specs = specs
+
+  value_type = property(lambda self: _TupleTensor)
+  _component_specs = property(lambda self: self._specs)
+
+  def _to_components(self, value):
+    return value._components
+
+  def _from_components(self, components):
+    return _TupleTensor(*components)
+
+  def _serialize(self):
+    return (self._specs,)
 
 
 class _MyTuple(object):
@@ -3102,7 +3140,7 @@ class CustomConvertToCompositeTensorTest(test_util.TensorFlowTestCase):
     """Tests that a user can register a CompositeTensor converter."""
     x = _MyTuple((1, [2., 3.], [[4, 5], [6, 7]]))
     y = ops.convert_to_tensor_or_composite(x)
-    self.assertTrue(tensor_util.is_tensor(y))
+    self.assertFalse(tensor_util.is_tensor(y))
     self.assertIsInstance(y, _TupleTensor)
     self.assertLen(y, len(x))
     for x_, y_ in zip(x, y):

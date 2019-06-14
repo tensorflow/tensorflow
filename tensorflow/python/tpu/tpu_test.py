@@ -30,6 +30,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 from tensorflow.python.tpu import tpu
@@ -82,7 +83,6 @@ class TPULayerRewriteTest(test.TestCase):
 
     # This should not throw an error.
     tpu.rewrite(loop)
-
 
 class TPUGraphPruneTest(test.TestCase):
 
@@ -140,6 +140,32 @@ class TPUGraphPruneTest(test.TestCase):
           "Operation \'import/y\' has no attr named \'_tpu_replicate\'"):
         graph.get_operation_by_name("import/y").get_attr(
             tpu._TPU_REPLICATE_ATTR)
+
+def do_einsum():
+  a = array_ops.placeholder(dtype=dtypes.float32, name="a", shape=[2, 3, 4])
+  b = array_ops.placeholder(dtype=dtypes.float32, name="b", shape=[2, 4, 5])
+  return special_math_ops.einsum("abc,acd->abd", a, b)
+
+
+def find_einsum(g):
+  graph_def = g.as_graph_def()
+  for node in graph_def.node:
+    if node.op == "XlaEinsum":
+      return True
+  return False
+
+
+class TPUXlaEinsumTest(test.TestCase):
+
+  def test_tpu_rewrite_uses_xla_einsum(self):
+    with ops.Graph().as_default() as g:
+      tpu.rewrite(do_einsum)
+      self.assertTrue(find_einsum(g))
+
+  def test_default_does_not_use_xla_einsum(self):
+    with ops.Graph().as_default() as g:
+      do_einsum()
+      self.assertFalse(find_einsum(g))
 
 
 if __name__ == "__main__":

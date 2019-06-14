@@ -123,7 +123,10 @@ std::unique_ptr<llvm::MemoryBuffer> CompilerFunctor::operator()(
 
   CHECK(!llvm::verifyModule(module, &llvm::dbgs()));
 
-  runtime::RewriteIRRuntimeFunctions(&module, enable_fast_math_);
+  const auto& opts = target_machine_->Options;
+  bool fast_math_enabled = opts.UnsafeFPMath && opts.NoInfsFPMath &&
+                           opts.NoNaNsFPMath && opts.NoSignedZerosFPMath;
+  runtime::RewriteIRRuntimeFunctions(&module, fast_math_enabled);
 
   // Buffer for holding machine code prior to constructing the ObjectFile.
   llvm::SmallVector<char, 0> stream_buffer;
@@ -166,17 +169,26 @@ static std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl() {
       {"tanhf", runtime::kTanhV8F32SymbolName, 8},
       {"llvm.tanh.f32", runtime::kTanhV8F32SymbolName, 8},
 
+      {"tanhf", runtime::kTanhV16F32SymbolName, 16},
+      {"llvm.tanh.f32", runtime::kTanhV16F32SymbolName, 16},
+
       {"expf", runtime::kExpV4F32SymbolName, 4},
       {"llvm.exp.f32", runtime::kExpV4F32SymbolName, 4},
 
       {"expf", runtime::kExpV8F32SymbolName, 8},
       {"llvm.exp.f32", runtime::kExpV8F32SymbolName, 8},
 
+      {"expf", runtime::kExpV16F32SymbolName, 16},
+      {"llvm.exp.f32", runtime::kExpV16F32SymbolName, 16},
+
       {"logf", runtime::kLogV4F32SymbolName, 4},
       {"llvm.log.f32", runtime::kLogV4F32SymbolName, 4},
 
       {"logf", runtime::kLogV8F32SymbolName, 8},
       {"llvm.log.f32", runtime::kLogV8F32SymbolName, 8},
+
+      {"logf", runtime::kLogV16F32SymbolName, 16},
+      {"llvm.log.f32", runtime::kLogV16F32SymbolName, 16},
   };
   return result;
 }
@@ -209,7 +221,6 @@ void CompilerFunctor::AddOptimizationPasses(
     builder.Inliner = llvm::createAlwaysInlinerLegacyPass();
   }
 
-  builder.DisableUnitAtATime = false;
   builder.DisableUnrollLoops = opt_level == 0;
   builder.LoopVectorize = opt_level > 0 && size_level == 0;
   builder.SLPVectorize = opt_level > 1 && size_level == 0;

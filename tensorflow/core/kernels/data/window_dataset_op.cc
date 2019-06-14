@@ -83,13 +83,15 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
     }
 
     const DataTypeVector& output_dtypes() const override {
-      static DataTypeVector* output_dtypes = new DataTypeVector({DT_VARIANT});
+      static DataTypeVector* output_dtypes =
+          new DataTypeVector(input_->output_dtypes().size(), {DT_VARIANT});
       return *output_dtypes;
     }
 
     const std::vector<PartialTensorShape>& output_shapes() const override {
       static std::vector<PartialTensorShape>* output_shapes =
-          new std::vector<PartialTensorShape>({TensorShape({})});
+          new std::vector<PartialTensorShape>(input_->output_shapes().size(),
+                                              TensorShape({}));
       return *output_shapes;
     }
 
@@ -103,8 +105,18 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
       if (n == kInfiniteCardinality || n == kUnknownCardinality) {
         return n;
       }
-      return n / window_shift_ +
-             (n % window_shift_ == 0 || drop_remainder_ ? 0 : 1);
+      int64 cardinality = 0;
+      if (drop_remainder_) {
+        // Compute rest_elements, the number of elements after the last element
+        // of the initial window. If it is negative, we know that the
+        // cardinality is 0. Otherwise, it will be the number of valid shifts
+        // over the rest_elements.
+        int64 rest_elements = n - ((window_size_ - 1) * window_stride_ + 1);
+        cardinality = rest_elements < 0 ? 0 : rest_elements / window_shift_ + 1;
+      } else {
+        cardinality = n / window_shift_ + (n % window_shift_ == 0 ? 0 : 1);
+      }
+      return cardinality;
     }
 
    protected:
@@ -288,7 +300,7 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
           input_impl_.reset();
         }
         // Restore buffer.
-        int64 buffer_size;
+        int64 buffer_size = 0;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(strings::StrCat("buffer_size"), &buffer_size));
         buffer_.resize(buffer_size);

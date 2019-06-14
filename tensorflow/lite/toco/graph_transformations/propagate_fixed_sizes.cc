@@ -720,21 +720,33 @@ void ProcessRangeOperator(Model* model, RangeOperator* op) {
     return;
   }
 
-  CHECK(start_array.data_type == ArrayDataType::kInt32)
-      << "Range op inputs must be int32.";
-  CHECK(limit_array.data_type == ArrayDataType::kInt32)
-      << "Range op inputs must be int32.";
-  CHECK(delta_array.data_type == ArrayDataType::kInt32)
-      << "Range op inputs must be int32.";
+  const ArrayDataType& start_dtype = start_array.data_type;
+  CHECK(start_dtype == ArrayDataType::kInt32 ||
+        start_dtype == ArrayDataType::kFloat)
+      << "Range op inputs must be int32 or float.";
+  CHECK(limit_array.data_type == start_dtype)
+      << "In Range op, limit tensor must have the same data type as start "
+         "tensor.";
+  CHECK(delta_array.data_type == start_dtype)
+      << "In Range op, delta tensor must have the same data type as start "
+         "tensor.";
   CHECK_EQ(RequiredBufferSizeForShape(start_array.shape()), 1)
       << "Range op inputs must be scalar.";
   CHECK_EQ(RequiredBufferSizeForShape(limit_array.shape()), 1)
       << "Range op inputs must be scalar.";
   CHECK_EQ(RequiredBufferSizeForShape(delta_array.shape()), 1)
       << "Range op inputs must be scalar.";
-  int size = floor((limit_array.GetBuffer<ArrayDataType::kInt32>().data[0] -
-                    start_array.GetBuffer<ArrayDataType::kInt32>().data[0]) /
-                   delta_array.GetBuffer<ArrayDataType::kInt32>().data[0]);
+
+  int size = 0;
+  if (start_dtype == ArrayDataType::kInt32) {
+    size = std::floor((limit_array.GetBuffer<ArrayDataType::kInt32>().data[0] -
+                       start_array.GetBuffer<ArrayDataType::kInt32>().data[0]) /
+                      delta_array.GetBuffer<ArrayDataType::kInt32>().data[0]);
+  } else if (start_dtype == ArrayDataType::kFloat) {
+    size = std::floor((limit_array.GetBuffer<ArrayDataType::kFloat>().data[0] -
+                       start_array.GetBuffer<ArrayDataType::kFloat>().data[0]) /
+                      delta_array.GetBuffer<ArrayDataType::kFloat>().data[0]);
+  }
 
   // Only set the output shape. Contents are set by ResolveConstantRange.
   CHECK_EQ(op->outputs.size(), 1);
@@ -2119,6 +2131,7 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
     case OperatorType::kL2Normalization:
     case OperatorType::kDequantize:
     case OperatorType::kElu:
+    case OperatorType::kHardSwish:
     case OperatorType::kRelu:
     case OperatorType::kRelu1:
     case OperatorType::kRelu6:
@@ -2141,6 +2154,7 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
     case OperatorType::kCast:
     case OperatorType::kFloor:
     case OperatorType::kCeil:
+    case OperatorType::kRound:
     case OperatorType::kExp:
     case OperatorType::kSin:
     case OperatorType::kCos:
@@ -2407,6 +2421,10 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
     case OperatorType::kMatrixSetDiag:
       ProcessMatrixSetDiagOperator(model,
                                    static_cast<MatrixSetDiagOperator*>(op));
+      break;
+    case OperatorType::kCTCBeamSearchDecoder:
+      // The sizes of the outputs are only known in runtime based on the input.
+      // Ignore shape progapation here and defer that to the interpreter.
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

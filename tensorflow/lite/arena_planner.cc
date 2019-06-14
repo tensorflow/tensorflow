@@ -108,8 +108,8 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
     refcounts[tensor_index]++;
   }
 
-  // Variable tensors should are also never overwritten and need to be alive all
-  // the time.
+  // Variable tensors also should be ensured to be never overwritten and need to
+  // be alive all the time.
   for (int tensor_index : graph_info_->variables()) {
     refcounts[tensor_index]++;
   }

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for unspect_utils module."""
+"""Tests for inspect_utils module."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import functools
 import imp
+import textwrap
 import types
 import weakref
 
@@ -28,13 +29,11 @@ import six
 
 from tensorflow.python import lib
 from tensorflow.python.autograph.pyct import inspect_utils
-from tensorflow.python.autograph.pyct.testing import future_import_module
+from tensorflow.python.autograph.pyct.testing import basic_definitions
+from tensorflow.python.autograph.pyct.testing import decorators
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
-
-future_import_module_statements = ('absolute_import', 'division',
-                                   'print_function', 'with_statement')
 
 
 def decorator(f):
@@ -132,6 +131,125 @@ class InspectUtilsTest(test.TestCase):
       pass
 
     self.assertTrue(inspect_utils.isnamedtuple(NamedTupleSubclass))
+
+  def assertSourceIdentical(self, actual, expected):
+    self.assertEqual(
+        textwrap.dedent(actual).strip(),
+        textwrap.dedent(expected).strip()
+    )
+
+  def test_getimmediatesource_basic(self):
+
+    def test_decorator(f):
+
+      def f_wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+
+      return f_wrapper
+
+    expected = """
+      def f_wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+    """
+
+    @test_decorator
+    def test_fn(a):
+      """Test docstring."""
+      return [a]
+
+    self.assertSourceIdentical(
+        inspect_utils.getimmediatesource(test_fn), expected)
+
+  def test_getimmediatesource_noop_decorator(self):
+
+    def test_decorator(f):
+      return f
+
+    expected = '''
+      @test_decorator
+      def test_fn(a):
+        """Test docstring."""
+        return [a]
+    '''
+
+    @test_decorator
+    def test_fn(a):
+      """Test docstring."""
+      return [a]
+
+    self.assertSourceIdentical(
+        inspect_utils.getimmediatesource(test_fn), expected)
+
+  def test_getimmediatesource_functools_wrapper(self):
+
+    def wrapper_decorator(f):
+
+      @functools.wraps(f)
+      def wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+
+      return wrapper
+
+    expected = textwrap.dedent("""
+      @functools.wraps(f)
+      def wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+    """)
+
+    @wrapper_decorator
+    def test_fn(a):
+      """Test docstring."""
+      return [a]
+
+    self.assertSourceIdentical(
+        inspect_utils.getimmediatesource(test_fn), expected)
+
+  def test_getimmediatesource_functools_wrapper_different_module(self):
+
+    expected = textwrap.dedent("""
+      @functools.wraps(f)
+      def wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+    """)
+
+    @decorators.wrapping_decorator
+    def test_fn(a):
+      """Test docstring."""
+      return [a]
+
+    self.assertSourceIdentical(
+        inspect_utils.getimmediatesource(test_fn), expected)
+
+  def test_getimmediatesource_normal_decorator_different_module(self):
+
+    expected = textwrap.dedent("""
+      def standalone_wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+    """)
+
+    @decorators.standalone_decorator
+    def test_fn(a):
+      """Test docstring."""
+      return [a]
+
+    self.assertSourceIdentical(
+        inspect_utils.getimmediatesource(test_fn), expected)
+
+  def test_getimmediatesource_normal_functional_decorator_different_module(
+      self):
+
+    expected = textwrap.dedent("""
+      def functional_wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+    """)
+
+    @decorators.functional_decorator()
+    def test_fn(a):
+      """Test docstring."""
+      return [a]
+
+    self.assertSourceIdentical(
+        inspect_utils.getimmediatesource(test_fn), expected)
 
   def test_getnamespace_globals(self):
     ns = inspect_utils.getnamespace(factory)
@@ -411,6 +529,7 @@ class InspectUtilsTest(test.TestCase):
 
   def test_isbuiltin(self):
     self.assertTrue(inspect_utils.isbuiltin(enumerate))
+    self.assertTrue(inspect_utils.isbuiltin(eval))
     self.assertTrue(inspect_utils.isbuiltin(float))
     self.assertTrue(inspect_utils.isbuiltin(int))
     self.assertTrue(inspect_utils.isbuiltin(len))
@@ -419,17 +538,20 @@ class InspectUtilsTest(test.TestCase):
     self.assertFalse(inspect_utils.isbuiltin(function_decorator))
 
   def test_getfutureimports_functions(self):
-    self.assertEqual(inspect_utils.getfutureimports(future_import_module.f),
-                     future_import_module_statements)
+    self.assertEqual(
+        inspect_utils.getfutureimports(basic_definitions.function_with_print),
+        ('absolute_import', 'division', 'print_function', 'with_statement'))
 
   def test_getfutureimports_lambdas(self):
     self.assertEqual(
-        inspect_utils.getfutureimports(future_import_module.lambda_f),
-        future_import_module_statements)
+        inspect_utils.getfutureimports(basic_definitions.simple_lambda),
+        ('absolute_import', 'division', 'print_function', 'with_statement'))
 
   def test_getfutureimports_methods(self):
-    self.assertEqual(inspect_utils.getfutureimports(future_import_module.Foo.f),
-                     future_import_module_statements)
+    self.assertEqual(
+        inspect_utils.getfutureimports(
+            basic_definitions.SimpleClass.method_with_print),
+        ('absolute_import', 'division', 'print_function', 'with_statement'))
 
   def test_super_wrapper_for_dynamic_attrs(self):
 

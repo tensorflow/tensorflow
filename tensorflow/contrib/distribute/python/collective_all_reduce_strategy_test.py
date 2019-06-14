@@ -22,7 +22,6 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.contrib.distribute.python import collective_all_reduce_strategy
-from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
@@ -35,6 +34,7 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
@@ -57,7 +57,7 @@ from tensorflow.python.training import training_util
 from tensorflow.python.training.server_lib import ClusterSpec
 
 
-class MockCollectiveAllReduceStrategy(distribute_lib.DistributionStrategy):
+class MockCollectiveAllReduceStrategy(distribute_lib.StrategyV1):
   """Mock the strategy to allow cluster resolver as an argument."""
 
   def __init__(self, cluster_resolver):
@@ -115,7 +115,7 @@ class CollectiveAllReduceStrategyTestBase(
   def setUp(self):
     # We use a different key_base for each test so that collective keys won't be
     # reused.
-    # TODO(yuefengz, tucker): enable it to reuse collective keys in different
+    # TODO(yuefengz, ayushd): enable it to reuse collective keys in different
     # tests.
     CollectiveAllReduceStrategyTestBase.collective_key_base += 100000
     super(CollectiveAllReduceStrategyTestBase, self).setUp()
@@ -133,11 +133,11 @@ class CollectiveAllReduceStrategyTestBase(
         use_core_strategy=use_core_strategy)
 
     collective_keys = cross_device_utils.CollectiveKeys(
-        group_key_start=10 * num_gpus +
+        group_key_start=10 +
         CollectiveAllReduceStrategyTestBase.collective_key_base,
-        instance_key_start=num_gpus * 100 +
+        op_instance_key_start=100 +
         CollectiveAllReduceStrategyTestBase.collective_key_base,
-        instance_key_with_id_start=num_gpus * 10000 +
+        variable_instance_key_start=10000 +
         CollectiveAllReduceStrategyTestBase.collective_key_base)
     strategy.extended._collective_keys = collective_keys
     strategy.extended._cross_device_ops._collective_keys = (collective_keys)
@@ -293,7 +293,7 @@ class CollectiveAllReduceStrategyTestBase(
         return array_ops.identity(x)
 
       x = distribution.extended.call_for_each_replica(model_fn)
-      reduced_x = distribution.reduce(reduce_util.ReduceOp.MEAN, x)
+      reduced_x = distribution.reduce(reduce_util.ReduceOp.MEAN, x, axis=None)
       x = distribution.experimental_local_results(x)[0]
 
       sess.run(variables.global_variables_initializer())
@@ -312,6 +312,7 @@ class CollectiveAllReduceStrategyTestBase(
                               input_fn,
                               expected_values,
                               test_reinitialize=True,
+                              ignore_order=False,
                               use_core_strategy=False):
     distribution, master_target, config = self._get_test_object(
         task_type, task_id, num_gpus)
@@ -327,7 +328,10 @@ class CollectiveAllReduceStrategyTestBase(
         next_element = iterator.get_next()
         computed_value = sess.run([values.select_replica(r, next_element)
                                    for r in range(len(devices))])
-        self.assertEqual(expected_value, computed_value)
+        if ignore_order:
+          self.assertCountEqual(expected_value, computed_value)
+        else:
+          self.assertEqual(expected_value, computed_value)
 
       with self.assertRaises(errors.OutOfRangeError):
         next_element = iterator.get_next()
@@ -342,7 +346,10 @@ class CollectiveAllReduceStrategyTestBase(
           next_element = iterator.get_next()
           computed_value = sess.run([values.select_replica(r, next_element)
                                      for r in range(len(devices))])
-          self.assertEqual(expected_value, computed_value)
+          if ignore_order:
+            self.assertCountEqual(expected_value, computed_value)
+          else:
+            self.assertEqual(expected_value, computed_value)
 
 
 class DistributedCollectiveAllReduceStrategyTest(
@@ -413,7 +420,6 @@ class DistributedCollectiveAllReduceStrategyTest(
         num_gpus=num_gpus,
         use_core_strategy=use_core_strategy)
 
-  # TODO(b/124344198): Re-enable after fixing this flaky test.
   # TODO(yuefengz): Update how we use num_gpus and required_gpus
   @combinations.generate(
       combinations.combine(
@@ -422,8 +428,7 @@ class DistributedCollectiveAllReduceStrategyTest(
           required_gpus=1,
           use_dataset=[True, False],
           use_core_strategy=[True, False]))
-  def DISABLED_testMakeInputFnIterator(self, num_gpus, use_dataset,
-                                       use_core_strategy):
+  def testMakeInputFnIterator(self, num_gpus, use_dataset, use_core_strategy):
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
     if use_dataset:
@@ -450,6 +455,7 @@ class DistributedCollectiveAllReduceStrategyTest(
         input_fn,
         expected_values,
         test_reinitialize=use_dataset,
+        ignore_order=not use_dataset,
         use_core_strategy=use_core_strategy)
 
   @combinations.generate(
@@ -492,8 +498,13 @@ class DistributedCollectiveAllReduceStrategyTest(
       self.assertEqual('grpc', server_def.protocol)
       mock_called[0] = True
 
+    def mock_configure_collective_ops(*args, **kwargs):
+      del args, kwargs
+
     with test.mock.patch.object(context.context(), 'enable_collective_ops',
-                                mock_enable_collective_ops):
+                                mock_enable_collective_ops), \
+         test.mock.patch.object(context.context(), 'configure_collective_ops',
+                                mock_configure_collective_ops):
       strategy, _, _ = self._get_test_object(
           task_type='worker', task_id=1, num_gpus=2, use_core_strategy=True)
     self.assertTrue(strategy.extended._std_server_started)
@@ -576,7 +587,7 @@ class LocalCollectiveAllReduceStrategy(
           required_gpus=2,
           use_dataset=[True, False],
           use_core_strategy=[True, False]))
-  def DISABLED_testMakeInputFnIterator(self, use_dataset, use_core_strategy):
+  def testMakeInputFnIterator(self, use_dataset, use_core_strategy):
     num_gpus = 2
     if use_dataset:
       fn = lambda: dataset_ops.Dataset.range(5 * num_gpus)
@@ -599,6 +610,7 @@ class LocalCollectiveAllReduceStrategy(
         input_fn,
         expected_values,
         test_reinitialize=use_dataset,
+        ignore_order=not use_dataset,
         use_core_strategy=use_core_strategy)
 
   @combinations.generate(

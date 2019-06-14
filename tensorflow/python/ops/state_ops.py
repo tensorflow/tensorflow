@@ -135,21 +135,23 @@ def is_variable_initialized(ref, name=None):
 
 @tf_export(v1=["assign_sub"])
 def assign_sub(ref, value, use_locking=None, name=None):
-  """Update 'ref' by subtracting 'value' from it.
+  """Update `ref` by subtracting `value` from it.
 
-  This operation outputs "ref" after the update is done.
+  This operation outputs `ref` after the update is done.
   This makes it easier to chain operations that need to use the reset value.
+  Unlike `tf.math.subtract`, this op does not broadcast. `ref` and `value`
+  must have the same shape.
 
   Args:
-    ref: A mutable `Tensor`. Must be one of the following types:
-      `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`,
-      `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-      Should be from a `Variable` node.
-    value: A `Tensor`. Must have the same type as `ref`.
-      The value to be subtracted to the variable.
-    use_locking: An optional `bool`. Defaults to `False`.
-      If True, the subtraction will be protected by a lock;
-      otherwise the behavior is undefined, but may exhibit less contention.
+    ref: A mutable `Tensor`. Must be one of the following types: `float32`,
+      `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`,
+      `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`. Should be
+      from a `Variable` node.
+    value: A `Tensor`. Must have the same shape and dtype as `ref`. The value to
+      be subtracted to the variable.
+    use_locking: An optional `bool`. Defaults to `False`. If True, the
+      subtraction will be protected by a lock; otherwise the behavior is
+      undefined, but may exhibit less contention.
     name: A name for the operation (optional).
 
   Returns:
@@ -164,21 +166,23 @@ def assign_sub(ref, value, use_locking=None, name=None):
 
 @tf_export(v1=["assign_add"])
 def assign_add(ref, value, use_locking=None, name=None):
-  """Update 'ref' by adding 'value' to it.
+  """Update `ref` by adding `value` to it.
 
   This operation outputs "ref" after the update is done.
   This makes it easier to chain operations that need to use the reset value.
+  Unlike `tf.math.add`, this op does not broadcast. `ref` and `value` must have
+  the same shape.
 
   Args:
-    ref: A mutable `Tensor`. Must be one of the following types:
-      `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`,
-      `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-      Should be from a `Variable` node.
-    value: A `Tensor`. Must have the same type as `ref`.
-      The value to be added to the variable.
-    use_locking: An optional `bool`. Defaults to `False`.
-      If True, the addition will be protected by a lock;
-      otherwise the behavior is undefined, but may exhibit less contention.
+    ref: A mutable `Tensor`. Must be one of the following types: `float32`,
+      `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`,
+      `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`. Should be
+      from a `Variable` node.
+    value: A `Tensor`. Must have the same shape and dtype as `ref`. The value to
+      be added to the variable.
+    use_locking: An optional `bool`. Defaults to `False`. If True, the addition
+      will be protected by a lock; otherwise the behavior is undefined, but may
+      exhibit less contention.
     name: A name for the operation (optional).
 
   Returns:
@@ -193,28 +197,28 @@ def assign_add(ref, value, use_locking=None, name=None):
 
 @tf_export(v1=["assign"])
 def assign(ref, value, validate_shape=None, use_locking=None, name=None):
-  """Update 'ref' by assigning 'value' to it.
+  """Update `ref` by assigning `value` to it.
 
-  This operation outputs a Tensor that holds the new value of 'ref' after
-    the value has been assigned. This makes it easier to chain operations
-    that need to use the reset value.
+  This operation outputs a Tensor that holds the new value of `ref` after
+  the value has been assigned. This makes it easier to chain operations that
+  need to use the reset value.
 
   Args:
-    ref: A mutable `Tensor`.
-      Should be from a `Variable` node. May be uninitialized.
-    value: A `Tensor`. Must have the same type as `ref`.
-      The value to be assigned to the variable.
-    validate_shape: An optional `bool`. Defaults to `True`.
-      If true, the operation will validate that the shape
-      of 'value' matches the shape of the Tensor being assigned to.  If false,
-      'ref' will take on the shape of 'value'.
-    use_locking: An optional `bool`. Defaults to `True`.
-      If True, the assignment will be protected by a lock;
-      otherwise the behavior is undefined, but may exhibit less contention.
+    ref: A mutable `Tensor`. Should be from a `Variable` node. May be
+      uninitialized.
+    value: A `Tensor`. Must have the same shape and dtype as `ref`. The value to
+      be assigned to the variable.
+    validate_shape: An optional `bool`. Defaults to `True`. If true, the
+      operation will validate that the shape of 'value' matches the shape of the
+      Tensor being assigned to.  If false, 'ref' will take on the shape of
+      'value'.
+    use_locking: An optional `bool`. Defaults to `True`. If True, the assignment
+      will be protected by a lock; otherwise the behavior is undefined, but may
+      exhibit less contention.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` that will hold the new value of 'ref' after
+    A `Tensor` that will hold the new value of `ref` after
       the assignment has completed.
   """
   if ref.dtype._is_ref_dtype:
@@ -328,8 +332,8 @@ def scatter_nd_update(ref, indices, updates, use_locking=True, name=None):
       ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
       indices = tf.constant([[4], [3], [1] ,[7]])
       updates = tf.constant([9, 10, 11, 12])
-      update = tf.scatter_nd_update(ref, indices, updates)
-      with tf.Session() as sess:
+      update = tf.compat.v1.scatter_nd_update(ref, indices, updates)
+      with tf.compat.v1.Session() as sess:
         print sess.run(update)
   ```
 
@@ -442,8 +446,8 @@ def scatter_nd_add(ref, indices, updates, use_locking=False, name=None):
   ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
   indices = tf.constant([[4], [3], [1], [7]])
   updates = tf.constant([9, 10, 11, 12])
-  add = tf.scatter_nd_add(ref, indices, updates)
-  with tf.Session() as sess:
+  add = tf.compat.v1.scatter_nd_add(ref, indices, updates)
+  with tf.compat.v1.Session() as sess:
     print sess.run(add)
   ```
 
@@ -559,8 +563,8 @@ def scatter_nd_sub(ref, indices, updates, use_locking=False, name=None):
   ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
   indices = tf.constant([[4], [3], [1] ,[7]])
   updates = tf.constant([9, 10, 11, 12])
-  op = tf.scatter_nd_sub(ref, indices, updates)
-  with tf.Session() as sess:
+  op = tf.compat.v1.scatter_nd_sub(ref, indices, updates)
+  with tf.compat.v1.Session() as sess:
     print sess.run(op)
   ```
 
@@ -641,12 +645,12 @@ def scatter_mul(ref, indices, updates, use_locking=False, name=None):
   Returns:
     A mutable `Tensor`. Has the same type as `ref`.
   """
-  return gen_state_ops.scatter_mul(
-      ref=ref,
-      indices=indices,
-      updates=updates,
-      use_locking=use_locking,
-      name=name)
+  if ref.dtype._is_ref_dtype:
+    return gen_state_ops.scatter_mul(ref, indices, updates,
+                                     use_locking=use_locking, name=name)
+  return ref._lazy_read(gen_resource_variable_ops.resource_scatter_mul(  # pylint: disable=protected-access
+      ref.handle, indices, ops.convert_to_tensor(updates, ref.dtype),
+      name=name))
 
 
 @tf_export(v1=["scatter_div"])
@@ -693,12 +697,12 @@ def scatter_div(ref, indices, updates, use_locking=False, name=None):
   Returns:
     A mutable `Tensor`. Has the same type as `ref`.
   """
-  return gen_state_ops.scatter_div(
-      ref=ref,
-      indices=indices,
-      updates=updates,
-      use_locking=use_locking,
-      name=name)
+  if ref.dtype._is_ref_dtype:
+    return gen_state_ops.scatter_div(ref, indices, updates,
+                                     use_locking=use_locking, name=name)
+  return ref._lazy_read(gen_resource_variable_ops.resource_scatter_div(  # pylint: disable=protected-access
+      ref.handle, indices, ops.convert_to_tensor(updates, ref.dtype),
+      name=name))
 
 
 @tf_export(v1=["scatter_max"])
@@ -748,12 +752,12 @@ def scatter_max(ref, indices, updates, use_locking=False, name=None):
   Returns:
     A mutable `Tensor`. Has the same type as `ref`.
   """
-  return gen_state_ops.scatter_max(
-      ref=ref,
-      indices=indices,
-      updates=updates,
-      use_locking=use_locking,
-      name=name)
+  if ref.dtype._is_ref_dtype:
+    return gen_state_ops.scatter_max(ref, indices, updates,
+                                     use_locking=use_locking, name=name)
+  return ref._lazy_read(gen_resource_variable_ops.resource_scatter_max(  # pylint: disable=protected-access
+      ref.handle, indices, ops.convert_to_tensor(updates, ref.dtype),
+      name=name))
 
 
 @tf_export(v1=["scatter_min"])
@@ -803,19 +807,19 @@ def scatter_min(ref, indices, updates, use_locking=False, name=None):
   Returns:
     A mutable `Tensor`. Has the same type as `ref`.
   """
-  return gen_state_ops.scatter_min(
-      ref=ref,
-      indices=indices,
-      updates=updates,
-      use_locking=use_locking,
-      name=name)
+  if ref.dtype._is_ref_dtype:
+    return gen_state_ops.scatter_min(ref, indices, updates,
+                                     use_locking=use_locking, name=name)
+  return ref._lazy_read(gen_resource_variable_ops.resource_scatter_min(  # pylint: disable=protected-access
+      ref.handle, indices, ops.convert_to_tensor(updates, ref.dtype),
+      name=name))
 
 
 @tf_export(v1=["batch_scatter_update"])
 @deprecation.deprecated(
     "2018-11-29", "Use the batch_scatter_update method of Variable instead.")
 def batch_scatter_update(ref, indices, updates, use_locking=True, name=None):
-  """Generalization of `tf.scatter_update` to axis different than 0.
+  """Generalization of `tf.compat.v1.scatter_update` to axis different than 0.
 
   Analogous to `batch_gather`. This assumes that `ref`, `indices` and `updates`
   have a series of leading dimensions that are the same for all of them, and the
@@ -837,18 +841,19 @@ def batch_scatter_update(ref, indices, updates, use_locking=True, name=None):
   `var[i_1, ..., i_n, indices[i_1, ..., i_n, j]] = updates[i_1, ..., i_n, j]`
 
   When indices is a 1D tensor, this operation is equivalent to
-  `tf.scatter_update`.
+  `tf.compat.v1.scatter_update`.
 
   To avoid this operation there would be 2 alternatives:
   1) Reshaping the variable by merging the first `ndims` dimensions. However,
      this is not possible because `tf.reshape` returns a Tensor, which we
-     cannot use `tf.scatter_update` on.
+     cannot use `tf.compat.v1.scatter_update` on.
   2) Looping over the first `ndims` of the variable and using
-     `tf.scatter_update` on the subtensors that result of slicing the first
+     `tf.compat.v1.scatter_update` on the subtensors that result of slicing the
+     first
      dimension. This is a valid option for `ndims = 1`, but less efficient than
      this implementation.
 
-  See also `tf.scatter_update` and `tf.scatter_nd_update`.
+  See also `tf.compat.v1.scatter_update` and `tf.compat.v1.scatter_nd_update`.
 
   Args:
     ref: `Variable` to scatter onto.
@@ -883,7 +888,7 @@ def batch_scatter_update(ref, indices, updates, use_locking=True, name=None):
     # coordinates we created with the original indices.
 
     # For example if indices.shape = [2, 3, 4], we should generate the following
-    # indices for tf.scatter_nd_update:
+    # indices for tf.compat.v1.scatter_nd_update:
     # nd_indices[:, :, 0] = [[0, 0, 0], [1, 1, 1]]
     # nd_indices[:, :, 1] = [[0, 1, 2], [0, 1, 2]]
     # nd_indices[:, :, 2] = indices

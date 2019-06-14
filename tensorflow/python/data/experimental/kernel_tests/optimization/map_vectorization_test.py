@@ -26,7 +26,6 @@ from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -478,25 +477,21 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testOptimizationIgnoreStateful(self):
 
     def map_fn(x):
-      with ops.control_dependencies([check_ops.assert_equal(x, 0)]):
+      with ops.control_dependencies([check_ops.assert_equal(x, np.int64(0))]):
         return array_ops.identity(x)
 
-    base_dataset = dataset_ops.Dataset.from_tensor_slices([[1, 2],
-                                                           [3, 4]]).repeat(5)
-    unoptimized, optimized = self._get_test_datasets(
-        base_dataset, map_fn, expect_optimized=False)
-    replacements = None
-    if not context.executing_eagerly():
-      # In graph mode, the ops have unique names.
-      replacements = [("OneShotIterator", "OneShotIterator_1", 1),
-                      ("IteratorGetNext", "IteratorGetNext_1", 1)]
-    self.assertDatasetsRaiseSameError(unoptimized, optimized,
-                                      errors.InvalidArgumentError, replacements)
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.map(map_fn)
+    dataset = dataset.batch(10)
+    dataset = self._enable_map_vectorization(dataset, use_choose=False)
+    with self.assertRaises(errors.InvalidArgumentError):
+      get_next = self.getNext(dataset)
+      self.evaluate(get_next())
 
   def testOptimizationIgnoreRagged(self):
     # Make sure we ignore inputs that might not be uniformly sized
     def map_fn(x):
-      return array_ops.gather(x, 0)
+      return array_ops.gather(x, np.int64(0))
 
     # output_shape = (?,)
     base_dataset = dataset_ops.Dataset.range(20).batch(3, drop_remainder=False)
@@ -509,16 +504,13 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     def map_fn(x):
       return array_ops.tile(x, x)
 
-    base_dataset = dataset_ops.Dataset.range(20).batch(1, drop_remainder=True)
-    unoptimized, optimized = self._get_test_datasets(
-        base_dataset, map_fn, expect_optimized=False)
-    replacements = None
-    if not context.executing_eagerly():
-      # In graph mode, the ops have unique names.
-      replacements = [("OneShotIterator", "OneShotIterator_1", 1),
-                      ("IteratorGetNext", "IteratorGetNext_1", 1)]
-    self.assertDatasetsRaiseSameError(unoptimized, optimized,
-                                      errors.InvalidArgumentError, replacements)
+    dataset = dataset_ops.Dataset.range(10).batch(1)
+    dataset = dataset.map(map_fn)
+    dataset = dataset.batch(10)
+    dataset = self._enable_map_vectorization(dataset, use_choose=False)
+    with self.assertRaises(errors.InvalidArgumentError):
+      get_next = self.getNext(dataset)
+      self.evaluate(get_next())
 
   def testOptimizationWithUnknownBatchShape(self):
     tensor = sparse_tensor.SparseTensor(

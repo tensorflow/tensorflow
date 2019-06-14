@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
+
 #include <algorithm>
 #include <cstring>
 #include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
-
-#include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
@@ -37,14 +37,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
@@ -59,6 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/replica_id_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
@@ -236,17 +240,10 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
     }
   }
 
+  AnnotateFunctionAsGpuKernel(module, kernel, &b_);
+
   // TODO(b/65380986): Investigate if adding fast math flags for generated
   // kernels makes sense.
-
-  // Add the declaration of this kernel to llvm.nvvm.annotations so that NVPTX
-  // treats it as a CUDA kernel.
-  llvm::NamedMDNode* nvvm_annotations_node =
-      module->getOrInsertNamedMetadata("nvvm.annotations");
-  nvvm_annotations_node->addOperand(llvm::MDNode::get(
-      context, {llvm::ConstantAsMetadata::get(kernel),
-                llvm::MDString::get(context, "kernel"),
-                llvm::ConstantAsMetadata::get(b_.getInt32(1))}));
 
   // Update the insert point to the entry basic block.
   llvm::BasicBlock* entry_bb =
@@ -527,7 +524,35 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
     return Status::OK();
   }
 
-  return IrEmitter::HandleCustomCall(custom_call);
+  if (void* call_target = CustomCallTargetRegistry::Global()->Lookup(
+          custom_call->custom_call_target(),
+          ir_emitter_context_->platform()->Name())) {
+    const auto& assn = ir_emitter_context_->buffer_assignment();
+    auto get_slices_for_instr = [&](const HloInstruction* instr) {
+      ShapeTree<BufferAllocation::Slice> slices(instr->shape());
+      slices.ForEachMutableElement([&](const ShapeIndex& index,
+                                       BufferAllocation::Slice* slice) {
+        StatusOr<BufferAllocation::Slice> s = assn.GetUniqueSlice(instr, index);
+        if (s.ok()) {
+          *slice = s.ValueOrDie();
+        }
+      });
+      return slices;
+    };
+    std::vector<ShapeTree<BufferAllocation::Slice>> operand_slices;
+    for (const auto* operand : custom_call->operands()) {
+      operand_slices.push_back(get_slices_for_instr(operand));
+    }
+    ShapeTree<BufferAllocation::Slice> result_slices =
+        get_slices_for_instr(custom_call);
+    AddThunkToThunkSequence(absl::make_unique<CustomCallThunk>(
+        call_target, std::move(operand_slices), std::move(result_slices),
+        Cast<HloCustomCallInstruction>(custom_call)->opaque(), custom_call));
+    return Status::OK();
+  }
+
+  return Unimplemented("No registered implementation for custom call to \"%s\"",
+                       custom_call->custom_call_target());
 }
 
 Status IrEmitterUnnested::HandleFft(HloInstruction* fft) {
@@ -1375,6 +1400,18 @@ Status IrEmitterUnnested::HandleTupleSelect(HloInstruction* tuple_select) {
   AddThunkToThunkSequence(
       BuildKernelThunk(tuple_select, /*implements_whole_instruction=*/true));
   return IrEmitter::HandleTupleSelect(tuple_select);
+}
+
+Status IrEmitterUnnested::HandleReplicaId(HloInstruction* hlo) {
+  AddThunkToThunkSequence(
+      absl::make_unique<ReplicaIdThunk>(GetAllocationSlice(*hlo), hlo));
+  return Status::OK();
+}
+
+Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {
+  AddThunkToThunkSequence(absl::make_unique<CollectivePermuteThunk>(
+      GetAllocationSlice(*hlo->operand(0)), GetAllocationSlice(*hlo), hlo));
+  return Status::OK();
 }
 
 namespace {
@@ -3546,105 +3583,6 @@ Status AreFusedReductionOutputsConsistent(
   return Status::OK();
 }
 
-// Given a shape and a group of contiguous dimensions in the shape, returns
-// a tuple of three values (major, middle, minor), where major is the size of
-// the dimensions more major then the given dimensions, minor is the size of
-// dimensions more minor then the given dimensions, and middle is the size of
-// the given dimensions.
-std::tuple<int64, int64, int64> PartitionShapeByMiddleDimensions(
-    const Shape& shape, DimensionVector dims_middle) {
-  CHECK(LayoutUtil::AreDimensionsConsecutive(shape.layout(), dims_middle));
-
-  absl::Span<const int64> minor_to_major = LayoutUtil::MinorToMajor(shape);
-  int64 values[3] = {1, 1, 1};
-  enum Segment { kMajor = 0, kMiddle = 1, kMinor = 2 };
-  Segment cur_segment = kMinor;
-
-  // Iterate through the dimensions for the three segments in the order of
-  // minor, middle and major to accumulate the size of each segment.
-  absl::c_for_each(minor_to_major, [&](int64 cur_dim) {
-    if (cur_segment != kMajor) {
-      // Handle change of segments.
-      bool cur_dim_in_middle = absl::c_any_of(
-          dims_middle, [&](int64 dim) { return dim == cur_dim; });
-      if (cur_segment == kMinor) {
-        if (cur_dim_in_middle) {
-          cur_segment = kMiddle;
-        }
-      } else if (cur_segment == kMiddle) {
-        if (!cur_dim_in_middle) {
-          cur_segment = kMajor;
-        }
-      }
-    }
-
-    values[cur_segment] *= shape.dimensions(cur_dim);
-  });
-
-  return std::make_tuple(values[kMajor], values[kMiddle], values[kMinor]);
-}
-
-// Given the input shape and dimensions to reduce for a reduction, returns
-// <is_row_reduction, DimensionVector>:
-// is_row_reduction:  indicates whether the reduction is a row reduction or a
-//   column reduction.
-// DimensionVector: contains the size of the three contiguous components for the
-//   reduction [depth, height, width]. For row reduction, height is the size of
-//   the dimensions to keep, depth is the size of the dimensions to reduce that
-//   are more major than the dimensions to keep, and width is the size of the
-//   dimensions to reduce that are more minor than the dimensions to keep. For
-//   column reduction, height is the size of dimensions to reduce, depth is the
-//   the size of the dimensions to keep that are more major than the dimensions
-//   to reduce, and width is the size of the dimensions to keep that are more
-//   minor than the dimensions to reduce.
-//
-// Prerequisite: the reduction instruction passes the check
-// IsReductionFromOrToContiguousDimensions, which guarantees either the
-// dimensions to reduce or the dimensions to keep are consecutive.
-std::pair<bool, DimensionVector> GetReductionKindAndContiguousComponents(
-    const Shape& input_shape, absl::Span<const int64> dims_to_reduce) {
-  DimensionVector dims_to_keep;
-  for (int64 dim = 0; dim < input_shape.rank(); ++dim) {
-    if (!absl::c_linear_search(dims_to_reduce, dim)) {
-      dims_to_keep.push_back(dim);
-    }
-  }
-
-  if (dims_to_keep.empty()) {
-    return std::make_pair(
-        true, DimensionVector{1, 1, ShapeUtil::ElementsIn(input_shape)});
-  }
-
-  if (LayoutUtil::AreDimensionsConsecutive(input_shape.layout(),
-                                           dims_to_keep)) {
-    int64 num_reduced_major = 1, num_kept = 1, num_reduced_minor = 1;
-    std::tie(num_reduced_major, num_kept, num_reduced_minor) =
-        PartitionShapeByMiddleDimensions(input_shape, dims_to_keep);
-    if (num_kept == 1) {
-      return std::make_pair(
-          true, DimensionVector{1, 1, num_reduced_minor * num_reduced_major});
-    }
-    if (num_reduced_minor == 1) {
-      return std::make_pair(false,
-                            DimensionVector{1, num_reduced_major, num_kept});
-    }
-    return std::make_pair(
-        true, DimensionVector{num_reduced_major, num_kept, num_reduced_minor});
-  }
-
-  int64 num_kept_major = 1, num_reduced = 1, num_kept_minor = 1;
-  std::tie(num_kept_major, num_reduced, num_kept_minor) =
-      PartitionShapeByMiddleDimensions(
-          input_shape,
-          DimensionVector(dims_to_reduce.begin(), dims_to_reduce.end()));
-  if (num_kept_minor == 1) {
-    return std::make_pair(true,
-                          DimensionVector{1, num_kept_major, num_reduced});
-  }
-  return std::make_pair(
-      false, DimensionVector{num_kept_major, num_reduced, num_kept_minor});
-}
-
 // Returns true if all the transitive users of hlo before hitting users in
 // use_chain_endings are elementwise operations.
 bool AreUsersElementwise(const HloInstruction* hlo,
@@ -3910,11 +3848,16 @@ Status IrEmitterUnnested::EmitConstantGlobals() {
     //
     // We may have to be more more clever here in the future if we notice that
     // we're keeping around too many globals because of their linkage.
+    unsigned global_address_space = llvm_ir::GetGlobalMemoryAddressSpace(
+        *ir_emitter_context_->llvm_module());
     llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
         global_type, /*isConstant=*/should_emit_initializer,
         llvm::GlobalValue::ExternalLinkage,
         /*Initializer=*/initializer,
-        llvm_ir::ConstantBufferAllocationToGlobalName(allocation));
+        llvm_ir::ConstantBufferAllocationToGlobalName(allocation),
+        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+        /*AddressSpace=*/global_address_space,
+        /*isExternallyInitialized=*/false);
     global_for_const->setAlignment(kConstantBufferAlignBytes);
     ir_emitter_context_->llvm_module()->getGlobalList().push_back(
         global_for_const);

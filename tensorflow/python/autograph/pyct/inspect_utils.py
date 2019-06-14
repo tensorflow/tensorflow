@@ -21,12 +21,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
 import itertools
+import linecache
+import sys
+import threading
 import types
 
 import six
 
 from tensorflow.python.util import tf_inspect
+
+# This lock seems to help avoid linecache concurrency errors.
+_linecache_lock = threading.Lock()
 
 
 # These functions test negative for isinstance(*, types.BuiltinFunctionType)
@@ -76,11 +83,49 @@ def isbuiltin(f):
   """Returns True if the argument is a built-in function."""
   if f in six.moves.builtins.__dict__.values():
     return True
-  if isinstance(f, types.BuiltinFunctionType):
+  elif isinstance(f, types.BuiltinFunctionType):
     return True
-  if tf_inspect.isbuiltin(f):
+  elif inspect.isbuiltin(f):
     return True
-  return False
+  elif f is eval:
+    return True
+  else:
+    return False
+
+
+def _fix_linecache_record(obj):
+  """Fixes potential corruption of linecache in the presence of functools.wraps.
+
+  functools.wraps modifies the target object's __module__ field, which seems
+  to confuse linecache in special instances, for example when the source is
+  loaded from a .par file (see https://google.github.io/subpar/subpar.html).
+
+  This function simply triggers a call to linecache.updatecache when a mismatch
+  was detected between the object's __module__ property and the object's source
+  file.
+
+  Args:
+    obj: Any
+  """
+  if hasattr(obj, '__module__'):
+    obj_file = inspect.getfile(obj)
+    obj_module = obj.__module__
+
+    # A snapshot of the loaded modules helps avoid "dict changed size during
+    # iteration" errors.
+    loaded_modules = tuple(sys.modules.values())
+    for m in loaded_modules:
+      if hasattr(m, '__file__') and m.__file__ == obj_file:
+        if obj_module is not m:
+          linecache.updatecache(obj_file, m.__dict__)
+
+
+def getimmediatesource(obj):
+  """A variant of inspect.getsource that ignores the __wrapped__ property."""
+  with _linecache_lock:
+    _fix_linecache_record(obj)
+    lines, lnum = inspect.findsource(obj)
+    return ''.join(inspect.getblock(lines[lnum:]))
 
 
 def getnamespace(f):
@@ -196,7 +241,9 @@ def istfmethodtarget(m):
   # See eager.function.TfMethodTarget for more details.
   return (hasattr(m, '__self__') and
           hasattr(m.__self__, 'weakrefself_target__') and
-          hasattr(m.__self__, 'weakrefself_func__'))
+          hasattr(m.__self__, 'weakrefself_func__') and
+          hasattr(m, '__module__') and
+          (m.__module__ != 'mock'))
 
 
 def getmethodself(m):

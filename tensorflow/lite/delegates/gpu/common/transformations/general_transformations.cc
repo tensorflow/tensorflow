@@ -34,6 +34,8 @@ bool ApplyGeneralTransformations(ModelTransformer* transformer) {
                             NewRemoveSingleInputAdd().get()) &&
          transformer->Apply("remove_single_input_concat",
                             NewRemoveSingleInputConcat().get()) &&
+         transformer->Apply("remove_identity_reshape",
+                            NewRemoveIdentityReshape().get()) &&
          transformer->Apply("make_padding_from_concat",
                             NewMakePaddingFromConcat().get()) &&
          transformer->Apply("make_fully_connected_from_convolution",

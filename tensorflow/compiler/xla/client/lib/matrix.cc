@@ -46,30 +46,39 @@ XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64 m,
   return ConvertElementType(indicator, type);
 }
 
+XlaOp GetDiagonalMask(XlaOp x, int diagonal) {
+  XlaBuilder* builder = x.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
+    auto n_dims = static_cast<int32>(shape.rank());
+    TF_RET_CHECK(n_dims >= 2);
+    auto m = shape.dimensions(n_dims - 2);
+    auto n = shape.dimensions(n_dims - 1);
+    absl::Span<const int64> major_dims =
+        AsInt64Slice(shape.dimensions()).subspan(/*pos=*/0, /*len=*/n_dims - 2);
+    auto a = Iota(builder, S32, n);
+    auto b = Iota(builder, S32, m) + ConstantR0WithType(builder, S32, diagonal);
+    auto indicator = Eq(b, Broadcast(a, {m}), /*broadcast_dimensions=*/{0});
+    auto mask = Broadcast(indicator, major_dims);
+    return mask;
+  });
+}
+
 XlaOp GetMatrixDiagonal(XlaOp x, int k) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = shape.rank();
+    auto n_dims = static_cast<int32>(shape.rank());
     TF_RET_CHECK(n_dims >= 2);
     const int64 m = shape.dimensions(n_dims - 2);
     const int64 n = shape.dimensions(n_dims - 1);
 
-    auto offset = ConstantR0WithType(builder, S32, k);
-
-    absl::Span<const int64> major_dims =
-        AsInt64Slice(shape.dimensions()).subspan(/*pos=*/0, /*len=*/n_dims - 2);
-    auto a = Iota(builder, S32, n);
-    auto b = Iota(builder, S32, m) + offset;
-    auto indicator = Eq(b, Broadcast(a, {m}), /*broadcast_dimensions=*/{0});
-    auto mask = Broadcast(indicator, major_dims);
+    auto mask = GetDiagonalMask(x, k);
 
     // TPUs don't support S64 add reduction at the moment. But fortunately
     // OR-reductions work just as well for integers.
     XlaComputation reducer =
-        primitive_util::IsIntegralType(shape.element_type())
-            ? CreateScalarOrComputation(shape.element_type(), builder)
-            : CreateScalarAddComputation(shape.element_type(), builder);
+        CreateScalarIdentityWithZeroComputation(shape.element_type(), builder);
     // k == 0, we can save one slice op.
     if (k == 0) {
       return Reduce(Select(mask, x, Zeros(builder, shape)), ScalarLike(x, 0),
@@ -253,6 +262,11 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
 }
 
 XlaOp BatchDot(XlaOp x, XlaOp y, PrecisionConfig::Precision precision) {
+  return BatchDot(x, false, y, false, precision);
+}
+
+XlaOp BatchDot(XlaOp x, bool transpose_x, XlaOp y, bool transpose_y,
+               PrecisionConfig::Precision precision) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
@@ -296,10 +310,20 @@ XlaOp BatchDot(XlaOp x, XlaOp y, PrecisionConfig::Precision precision) {
         return InvalidArgument("Expected batch dot dimension to be equal or 1");
       }
     }
-    x_config.push_back(ndims - 2);
-    x_config.push_back(ndims);
-    y_config.push_back(ndims);
-    y_config.push_back(ndims - 1);
+    if (transpose_x) {
+      x_config.push_back(ndims);
+      x_config.push_back(ndims - 2);
+    } else {
+      x_config.push_back(ndims - 2);
+      x_config.push_back(ndims);
+    }
+    if (transpose_y) {
+      y_config.push_back(ndims - 1);
+      y_config.push_back(ndims);
+    } else {
+      y_config.push_back(ndims);
+      y_config.push_back(ndims - 1);
+    }
     output_config.push_back(ndims - 2);
     output_config.push_back(ndims - 1);
     if (!x_implicit_broadcast.empty()) {

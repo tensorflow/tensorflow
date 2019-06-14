@@ -65,7 +65,7 @@ def _call_concrete_function(function, inputs):
     if isinstance(expected, tensor_spec.TensorSpec):
       tensor_inputs.append(
           ops.convert_to_tensor(arg, dtype_hint=expected.dtype))
-  result = function._call_flat(tensor_inputs)  # pylint: disable=protected-access
+  result = function._call_flat(tensor_inputs, function._captured_inputs)  # pylint: disable=protected-access
   if isinstance(result, ops.Operation):
     return None
   return result
@@ -138,13 +138,11 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto, coder):
       kwonlyargs=typeless_fullargspec.kwonlyargs,
       kwonlydefaults=typeless_fullargspec.kwonlydefaults,
       annotations=typeless_fullargspec.annotations)
-  args_to_prepend = coder.decode_proto(function_spec_proto.args_to_prepend)
-  kwargs_to_include = coder.decode_proto(function_spec_proto.kwargs_to_include)
   input_signature = coder.decode_proto(function_spec_proto.input_signature)
   return function_lib.FunctionSpec(fullargspec=fullargspec,
                                    is_method=False,
-                                   args_to_prepend=args_to_prepend,
-                                   kwargs_to_include=kwargs_to_include,
+                                   args_to_prepend=[],
+                                   kwargs_to_include={},
                                    input_signature=input_signature)
 
 
@@ -179,11 +177,16 @@ class RestoredFunction(def_function.Function):
     # TODO(mdan): We may enable autograph once exceptions are supported.
     super(RestoredFunction, self).__init__(
         python_function, name, autograph=False)
-    self._concrete_functions = concrete_functions
+    self.concrete_functions = concrete_functions
     self._function_spec = function_spec
 
   def _list_all_concrete_functions_for_serialization(self):
-    return self._concrete_functions
+    return self.concrete_functions
+
+  def _defun_with_scope(self, scope):
+    func = super(RestoredFunction, self)._defun_with_scope(scope)
+    func._function_spec = self._function_spec  # pylint: disable=protected-access
+    return func
 
 
 def recreate_function(saved_function, concrete_functions):
@@ -231,14 +234,26 @@ def recreate_function(saved_function, concrete_functions):
         if _concrete_function_callable_with(function, inputs, allow_conversion):
           return _call_concrete_function(function, inputs)
 
-    available_signatures = [
-        concrete_functions[function_name].graph.structured_input_signature
-        for function_name in saved_function.concrete_functions
-    ]
+    signature_descriptions = []
+
+    def _pretty_format_positional(positional):
+      return "Positional arguments ({} total):\n    * {}".format(
+          len(positional),
+          "\n    * ".join([str(a) for a in positional]))
+
+    for index, function_name in enumerate(saved_function.concrete_functions):
+      concrete_function = concrete_functions[function_name]
+      positional, keyword = concrete_function.structured_input_signature
+      signature_descriptions.append(
+          "Option {}:\n  {}\n  Keyword arguments: {}"
+          .format(index + 1, _pretty_format_positional(positional), keyword))
     raise ValueError(
-        "Could not find matching function to call for inputs %r. "
-        "Only existing signatures are %r."
-        % (inputs, available_signatures))
+        "Could not find matching function to call loaded from the SavedModel. "
+        "Got:\n  {}\n  Keyword arguments: {}\n\nExpected "
+        "these arguments to match one of the following {} option(s):\n\n{}"
+        .format(_pretty_format_positional(args), kwargs,
+                len(saved_function.concrete_functions),
+                "\n\n".join(signature_descriptions)))
 
   concrete_function_objects = []
   for concrete_function_name in saved_function.concrete_functions:
@@ -278,7 +293,13 @@ def load_function_def_library(library):
   for fdef in _sort_function_defs(library):
     copy = _fix_fdef(fdef, functions, load_shared_name_suffix)
 
-    func_graph = function_def_lib.function_def_to_graph(copy)
+    # There is no need to copy functions into the function def graph.
+    # It leads to a O(n^2) increase of memory when importing functions
+    # and the extra function definitions are a no-op since they already
+    # imported as a function before (due to the topologic sort import).
+    func_graph = function_def_lib.function_def_to_graph(
+        copy, copy_functions=False)
+
     for dep in _list_function_deps(fdef):
       functions[dep].add_to_graph(func_graph)
     func = function_lib.ConcreteFunction(func_graph)

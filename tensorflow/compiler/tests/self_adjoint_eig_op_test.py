@@ -38,7 +38,7 @@ class SelfAdjointEigOpTest(xla_test.XLATestCase, parameterized.TestCase):
     n = shape[-1]
 
     e_np, _ = np.linalg.eigh(x_np)
-    with self.cached_session() as sess:
+    with self.session() as sess:
       x_tf = array_ops.placeholder(dtype)
       with self.test_scope():
         e, v = linalg_ops.self_adjoint_eig(x_tf)

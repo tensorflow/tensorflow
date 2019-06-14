@@ -21,12 +21,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/dump_ir_pass.h"
-#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/util.h"
-
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
@@ -55,11 +49,17 @@ limitations under the License.
 #include "llvm/Transforms/IPO/Internalize.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Scalar.h"
+#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/dump_ir_pass.h"
+#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
@@ -219,7 +219,6 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
     builder.Inliner = llvm::createAlwaysInlinerLegacyPass();
   }
 
-  builder.DisableUnitAtATime = false;
   builder.DisableUnrollLoops = opt_level == 0;
   builder.LoopVectorize = opt_level > 0;
   builder.SLPVectorize = opt_level > 1 && size_level < 2;
@@ -460,8 +459,9 @@ void GPUBackendInit(const HloModuleConfig& hlo_module_config) {
   // between those loads.
   FeedLLVMWithFlags({"-memdep-block-scan-limit=500"});
 
-  // Use div.approx -- it matters for some float-division heavy benchmarks.
-  FeedLLVMWithFlags({"-nvptx-prec-divf32=0"});
+  // Use div.full -- it matters for some float-division heavy benchmarks.
+  // Using div.approx produces incorrect result for float32(max)/float32(max).
+  FeedLLVMWithFlags({"-nvptx-prec-divf32=1"});
 
   llvm_ir::InitializeLLVMCommandLineOptions(hlo_module_config);
 
@@ -488,9 +488,9 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
 
   string ptx;
   {
-    tensorflow::tracing::ScopedActivity activity("Compiling IR",
-                                                 module->getName().str(),
-                                                 /*is_expensive=*/true);
+    tensorflow::profiler::TraceMe activity(
+        [&] { return absl::StrCat("Compiling IR:", module->getName().str()); },
+        tensorflow::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
     TF_ASSIGN_OR_RETURN(
         ptx, CompileModuleToPtx(module, compute_capability, hlo_module_config,

@@ -12,7 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Bring in all of the public TensorFlow interface into this module."""
+"""
+Top-level module of TensorFlow. By convention, we refer to this module as 
+`tf` instead of `tensorflow`, following the common practice of importing 
+TensorFlow via the command `import tensorflow as tf`.
+
+The primary function of this module is to import all of the public TensorFlow 
+interfaces into a single place. The interfaces themselves are located in 
+sub-modules, as described below.
+
+Note that the file `__init__.py` in the TensorFlow source code tree is actually 
+only a placeholder to enable test cases to run. The TensorFlow build replaces 
+this file with a file generated from [`api_template.__init__.py`](https://www.github.com/tensorflow/tensorflow/blob/master/tensorflow/api_template.__init__.py)
+"""
 
 from __future__ import absolute_import as _absolute_import
 from __future__ import division as _division
@@ -20,9 +32,12 @@ from __future__ import print_function as _print_function
 
 import distutils as _distutils
 import inspect as _inspect
+import logging as _logging
 import os as _os
 import site as _site
 import sys as _sys
+
+from tensorflow.python.tools import module_util as _module_util
 
 # API IMPORTS PLACEHOLDER
 
@@ -37,25 +52,29 @@ if not hasattr(_current_module, '__path__'):
 elif _tf_api_dir not in __path__:
   __path__.append(_tf_api_dir)
 
-# pylint: disable=g-bad-import-order
-from tensorflow.python.tools import component_api_helper as _component_api_helper
-_component_api_helper.package_hook(
-    parent_package_str=__name__,
-    child_package_str=('tensorboard.summary._tf.summary'),
-    error_msg="Limited tf.summary API due to missing TensorBoard installation")
-_component_api_helper.package_hook(
-    parent_package_str=__name__,
-    child_package_str=(
-        'tensorflow_estimator.python.estimator.api._v2.estimator'))
+# Hook external TensorFlow modules.
+try:
+  from tensorboard.summary._tf import summary
+  _current_module.__path__ = (
+      [_module_util.get_parent_dir(summary)] + _current_module.__path__)
+except ImportError:
+  _logging.warning(
+      "Limited tf.summary API due to missing TensorBoard installation.")
 
-if not hasattr(_current_module, 'estimator'):
-  _component_api_helper.package_hook(
-      parent_package_str=__name__,
-      child_package_str=(
-          'tensorflow_estimator.python.estimator.api.estimator'))
-_component_api_helper.package_hook(
-    parent_package_str=__name__,
-    child_package_str=('tensorflow.python.keras.api._v2.keras'))
+try:
+  from tensorflow_estimator.python.estimator.api._v2 import estimator
+  _current_module.__path__ = (
+      [_module_util.get_parent_dir(estimator)] + _current_module.__path__)
+except ImportError:
+  pass
+
+try:
+  from tensorflow.python.keras.api._v2 import keras
+  _current_module.__path__ = (
+      [_module_util.get_parent_dir(keras)] + _current_module.__path__)
+except ImportError:
+  pass
+
 
 # Enable TF2 behaviors
 from tensorflow.python.compat import v2_compat as _compat  # pylint: disable=g-import-not-at-top
@@ -103,7 +122,11 @@ if _running_from_pip_package():
 # pylint: disable=undefined-variable
 try:
   del python
+  if '__all__' in vars():
+    vars()['__all__'].remove('python')
   del core
+  if '__all__' in vars():
+    vars()['__all__'].remove('core')
 except NameError:
   # Don't fail if these modules are not available.
   # For e.g. this file will be originally placed under tensorflow/_api/v1 which
@@ -114,6 +137,8 @@ except NameError:
 # others don't exist.
 try:
   del compiler
+  if '__all__' in vars():
+    vars()['__all__'].remove('compiler')
 except NameError:
   pass
 

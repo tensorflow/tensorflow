@@ -1,6 +1,7 @@
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "kernels",
@@ -20,7 +21,6 @@ cc_library(
         ":reshape",
         ":slice",
         ":softmax",
-        ":sub",
         ":transpose_conv",
         ":upsample",
     ],
@@ -174,6 +174,7 @@ cc_library(
     srcs = ["pooling.cc"],
     hdrs = ["pooling.h"],
     deps = [
+        ":util",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -220,6 +221,7 @@ cc_library(
     srcs = ["reshape.cc"],
     hdrs = ["reshape.h"],
     deps = [
+        ":util",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -262,21 +264,6 @@ cc_library(
 )
 
 cc_library(
-    name = "sub",
-    srcs = ["sub.cc"],
-    hdrs = ["sub.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "transpose_conv",
     srcs = ["transpose_conv.cc"],
     hdrs = ["transpose_conv.h"],
@@ -305,5 +292,14 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "util",
+    srcs = ["util.cc"],
+    hdrs = ["util.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:types",
     ],
 )

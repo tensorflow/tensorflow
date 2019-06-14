@@ -1,6 +1,7 @@
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//tensorflow:internal"])
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
@@ -86,6 +87,7 @@ cuda_py_test(
     additional_deps = [":blocks_test_main_lib"],
     shard_count = 4,
     tags = [
+        "no_oss",  # TODO(b/132387200): Segfaulting
         "optonly",
     ],
 )
@@ -134,6 +136,7 @@ py_library(
 py_binary(
     name = "cifar_tfrecords",
     srcs = ["cifar_tfrecords.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
@@ -143,6 +146,7 @@ py_binary(
 py_binary(
     name = "main",
     srcs = ["main.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [":main_lib"],
 )
@@ -162,6 +166,7 @@ py_library(
 py_binary(
     name = "main_estimator",
     srcs = ["main_estimator.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":cifar_input",

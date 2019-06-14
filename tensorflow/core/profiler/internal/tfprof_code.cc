@@ -672,11 +672,11 @@ string TFCode::FormatNode(CodeNode* node, const Options& opts,
 
   if (opts.select.find(kShown[5]) != opts.select.end() &&
       !node->node->devices().empty()) {
-    attrs.push_back(str_util::Join(node->node->devices(), "|"));
+    attrs.push_back(absl::StrJoin(node->node->devices(), "|"));
   }
   if (opts.select.find(kShown[6]) != opts.select.end()) {
     std::set<string> op_types = node->node->op_types();
-    attrs.push_back(str_util::Join(op_types, "|"));
+    attrs.push_back(absl::StrJoin(op_types, "|"));
   }
   if (opts.select.find(kShown[7]) != opts.select.end()) {
     // TODO(xpan): Make op count available in code view?
@@ -688,7 +688,7 @@ string TFCode::FormatNode(CodeNode* node, const Options& opts,
 
   return strings::Printf("%s%s (%s)\n", string(indent, ' ').c_str(),
                          node->name().c_str(),
-                         str_util::Join(attrs, ", ").c_str());
+                         absl::StrJoin(attrs, ", ").c_str());
 }
 }  // namespace tfprof
 }  // namespace tensorflow

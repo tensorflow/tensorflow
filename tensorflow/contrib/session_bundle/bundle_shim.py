@@ -40,10 +40,8 @@ def _add_input_to_signature_def(tensor_name, map_key, signature_def):
     tensor_name: string name of tensor to add to signature_def inputs
     map_key: string key to key into signature_def inputs map
     signature_def: object of type meta_graph_pb2.SignatureDef()
-
-  Sideffect:
-    adds a TensorInfo with tensor_name to signature_def inputs map keyed with
-    map_key
+  Sideffect: adds a TensorInfo with tensor_name to signature_def inputs map
+    keyed with map_key
   """
   tensor_info = meta_graph_pb2.TensorInfo(name=tensor_name)
   signature_def.inputs[map_key].CopyFrom(tensor_info)
@@ -56,10 +54,8 @@ def _add_output_to_signature_def(tensor_name, map_key, signature_def):
     tensor_name: string name of tensor to add to signature_def outputs
     map_key: string key to key into signature_def outputs map
     signature_def: object of type meta_graph_pb2.SignatureDef()
-
-  Sideffect:
-    adds a TensorInfo with tensor_name to signature_def outputs map keyed with
-    map_key
+  Sideffect: adds a TensorInfo with tensor_name to signature_def outputs map
+    keyed with map_key
   """
 
   tensor_info = meta_graph_pb2.TensorInfo(name=tensor_name)
@@ -106,9 +102,10 @@ def _convert_default_signature_to_signature_def(signatures):
                                  signature_constants.CLASSIFY_OUTPUT_SCORES,
                                  signature_def)
   else:
-    logging.error("Only classification and regression default signatures "
-                  "are supported for up-conversion. %s is not "
-                  "supported" % default_signature.WhichOneof("type"))
+    logging.error(
+        "Only classification and regression default signatures "
+        "are supported for up-conversion. %s is not "
+        "supported", default_signature.WhichOneof("type"))
     return None
   return signature_def
 
@@ -156,7 +153,7 @@ def _convert_signatures_to_signature_defs(metagraph_def):
 
   Args:
     metagraph_def: object of type meta_graph_pb2.MetaGraphDef containing legacy
-    format Session Bundle signatures
+      format Session Bundle signatures
 
   Returns:
     default_signature_def: object of type SignatureDef which contains an
@@ -186,9 +183,10 @@ def _load_saved_model_from_session_bundle_path(export_dir, target, config):
 
   Args:
     export_dir: the directory that contains files exported by exporter.
-    target: The execution engine to connect to. See target in tf.Session()
+    target: The execution engine to connect to. See target in
+      tf.compat.v1.Session()
     config: A ConfigProto proto with configuration options. See config in
-    tf.Session()
+      tf.compat.v1.Session()
 
   Returns:
     session: a tensorflow session created from the variable files.
@@ -247,11 +245,12 @@ def load_session_bundle_or_saved_model_bundle_from_path(export_dir,
   Args:
     export_dir: the directory that contains files exported by exporter.
     tags: Set of string tags to identify the required MetaGraphDef when model is
-          saved as SavedModel. These should correspond to the tags used when
-          saving the variables using the SavedModel `save()` API.
-    target: The execution engine to connect to. See target in tf.Session()
+      saved as SavedModel. These should correspond to the tags used when saving
+      the variables using the SavedModel `save()` API.
+    target: The execution engine to connect to. See target in
+      tf.compat.v1.Session()
     config: A ConfigProto proto with configuration options. See config in
-            tf.Session()
+      tf.compat.v1.Session()
 
   Returns:
     session: a tensorflow session created from the variable files.
@@ -267,9 +266,8 @@ def load_session_bundle_or_saved_model_bundle_from_path(export_dir,
     sess = session.Session(target, graph=None, config=config)
     metagraph_def = loader.load(sess, tags, export_dir)
   elif session_bundle.maybe_session_bundle_dir(export_dir):
-    sess, metagraph_def = _load_saved_model_from_session_bundle_path(export_dir,
-                                                                     target,
-                                                                     config)
+    sess, metagraph_def = _load_saved_model_from_session_bundle_path(
+        export_dir, target, config)
   else:
     raise RuntimeError("SessionBundle or SavedModelBundle not found at "
                        "specified export location: %s" % export_dir)

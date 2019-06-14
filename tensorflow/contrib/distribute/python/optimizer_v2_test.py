@@ -21,11 +21,11 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy
 from tensorflow.contrib.distribute.python import mirrored_strategy as mirrored_lib
-from tensorflow.contrib.distribute.python.single_loss_example import minimize_loss_example
 from tensorflow.contrib.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.contrib.optimizer_v2 import gradient_descent as gradient_descent_v2
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute.single_loss_example import minimize_loss_example
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.ops import control_flow_ops
@@ -72,8 +72,9 @@ class MinimizeLossOptimizerV2Test(test.TestCase, parameterized.TestCase):
   def testTrainNetwork(self, distribution, optimizer_fn,
                        use_callable_loss=True):
     with distribution.scope():
+      optimizer = optimizer_fn()
       model_fn, dataset_fn, layer = minimize_loss_example(
-          optimizer_fn, use_bias=True, use_callable_loss=use_callable_loss)
+          optimizer, use_bias=True, use_callable_loss=use_callable_loss)
       iterator = distribution.make_input_fn_iterator(lambda _: dataset_fn())
 
       def run_step():
