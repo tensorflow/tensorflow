@@ -959,7 +959,16 @@ class NNAPIDelegateKernel {
         }
         break;
       case kTfLiteBuiltinReshape:
-        if (version == 1 && node->inputs->size == 2) {
+        if (version == 1) {
+          if (!IsFloatOrUint8Operator(context, node)) {
+            return nullptr;
+          }
+          // The shape input tensor must be constant.
+          if ((node->inputs->size < 2) ||
+              (context->tensors[node->inputs->data[1]].allocation_type !=
+               kTfLiteMmapRo)) {
+            return nullptr;
+          }
           return BasicMappingFn<ANEURALNETWORKS_RESHAPE>;
         }
         break;
@@ -969,7 +978,13 @@ class NNAPIDelegateKernel {
           const auto output_dims =
               context->tensors[node->outputs->data[0]].dims;
           if (input.dims->size != 4) return nullptr;
-          if (input.type != kTfLiteFloat32 && input.type != kTfLiteUInt8) {
+          if (!IsFloatOrUint8Operator(context, node)) {
+            return nullptr;
+          }
+          // The size input tensor must be constant.
+          if ((node->inputs->size < 2) ||
+              (context->tensors[node->inputs->data[1]].allocation_type !=
+               kTfLiteMmapRo)) {
             return nullptr;
           }
           if (android_sdk_version < kMinSdkVersionForNNAPI12 &&

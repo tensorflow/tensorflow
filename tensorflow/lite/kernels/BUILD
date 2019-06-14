@@ -960,6 +960,7 @@ cc_test(
     name = "reshape_test",
     size = "small",
     srcs = ["reshape_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1016,6 +1017,7 @@ cc_test(
     name = "resize_bilinear_test",
     size = "small",
     srcs = ["resize_bilinear_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
