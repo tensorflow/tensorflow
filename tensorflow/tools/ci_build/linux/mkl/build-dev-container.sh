@@ -86,6 +86,8 @@ function build_container()
   TF_DOCKER_BUILD_ARGS+=("--build-arg https_proxy=${https_proxy}")
   TF_DOCKER_BUILD_ARGS+=("--build-arg socks_proxy=${socks_proxy}")
   TF_DOCKER_BUILD_ARGS+=("--build-arg no_proxy=${no_proxy}")
+  # In general having uppercase proxies is a good idea because different
+  # applications running inside Docker may only honor uppercase proxies
   TF_DOCKER_BUILD_ARGS+=("--build-arg HTTP_PROXY=${HTTP_PROXY}")
   TF_DOCKER_BUILD_ARGS+=("--build-arg HTTPS_PROXY=${HTTPS_PROXY}")
   TF_DOCKER_BUILD_ARGS+=("--build-arg SOCKS_PROXY=${SOCKS_PROXY}")
