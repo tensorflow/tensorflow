@@ -33,6 +33,5 @@ bitwise_ops.left_shift(lhs, rhs)
 # <tf.Tensor: id=139, shape=(4,), dtype=int8, numpy=array([ -2,  64, 101,  32], dtype=int8)>
 ```
 
-
 END
 }
