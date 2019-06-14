@@ -4991,7 +4991,7 @@ def device(device_name_or_function):
           "tf.device does not support functions when eager execution "
           "is enabled.")
     return context.device(device_name_or_function)
-  elif inside_function():
+  elif simplified_executing_eagerly_outside_functions():
     @tf_contextlib.contextmanager
     def combined(device_name_or_function):
       with get_default_graph().device(device_name_or_function):
@@ -5351,6 +5351,46 @@ class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
 _default_graph_stack = _DefaultGraphStack()
 
 
+# Shared helper used in init_scope and executing_eagerly_outside_functions
+# to obtain the outermost context that is not building a function, and the
+# innermost non empty device stack.
+def _get_outer_context_and_inner_device_stack():
+  """Get the outermost context not building a function."""
+  default_graph = get_default_graph()
+  outer_context = None
+  innermost_nonempty_device_stack = default_graph._device_function_stack  # pylint: disable=protected-access
+
+  if not _default_graph_stack.stack:
+    # If the default graph stack is empty, then we cannot be building a
+    # function. Install the global graph (which, in this case, is also the
+    # default graph) as the outer context.
+    if default_graph.building_function:
+      raise RuntimeError("The global graph is building a function.")
+    outer_context = default_graph.as_default
+  else:
+    # Find a context that is not building a function.
+    for stack_entry in reversed(context.context().context_switches.stack):
+      if not innermost_nonempty_device_stack:
+        innermost_nonempty_device_stack = stack_entry.device_stack
+      if not stack_entry.is_building_function:
+        outer_context = stack_entry.enter_context_fn
+        break
+
+    if outer_context is None:
+      # As a last resort, obtain the global default graph; this graph doesn't
+      # necessarily live on the graph stack (and hence it doesn't necessarily
+      # live on the context stack), but it is stored in the graph stack's
+      # encapsulating object.
+      outer_context = _default_graph_stack._GetGlobalDefaultGraph().as_default  # pylint: disable=protected-access
+
+  if outer_context is None:
+    # Sanity check; this shouldn't be triggered.
+    raise RuntimeError("All graphs are building functions, and no "
+                       "eager context was previously active.")
+
+  return outer_context, innermost_nonempty_device_stack
+
+
 # pylint: disable=g-doc-return-or-yield,line-too-long
 @tf_export("init_scope")
 @tf_contextlib.contextmanager
@@ -5411,42 +5451,14 @@ def init_scope():
   else:
     # Retrieve the active name scope: entering an `init_scope` preserves
     # the name scope of the current context.
-    default_graph = get_default_graph()
-    scope = default_graph.get_name_scope()
+    scope = get_default_graph().get_name_scope()
     if scope and scope[-1] != "/":
       # Names that end with trailing slashes are treated by `name_scope` as
       # absolute.
       scope = scope + "/"
-    innermost_nonempty_device_stack = default_graph._device_function_stack  # pylint: disable=protected-access
 
-    outer_context = None
-    if not _default_graph_stack.stack:
-      # If the default graph stack is empty, then we cannot be building a
-      # function. Install the global graph (which, in this case, is also the
-      # default graph) as the outer context.
-      if default_graph.building_function:
-        raise RuntimeError("The global graph is building a function.")
-      outer_context = default_graph.as_default
-    else:
-      # Find a context that is not building a function.
-      for stack_entry in reversed(context.context().context_switches.stack):
-        if not innermost_nonempty_device_stack:
-          innermost_nonempty_device_stack = stack_entry.device_stack
-        if not stack_entry.is_building_function:
-          outer_context = stack_entry.enter_context_fn
-          break
-
-      if outer_context is None:
-        # As a last resort, obtain the global default graph; this graph doesn't
-        # necessarily live on the graph stack (and hence it doesn't necessarily
-        # live on the context stack), but it is stored in the graph stack's
-        # encapsulating object.
-        outer_context = _default_graph_stack._GetGlobalDefaultGraph().as_default  # pylint: disable=protected-access
-
-    if outer_context is None:
-      # Sanity check; this shouldn't be triggered.
-      raise RuntimeError("All graphs are building functions, and no "
-                         "eager context was previously active.")
+    outer_context, innermost_nonempty_device_stack = (
+        _get_outer_context_and_inner_device_stack())
 
     outer_graph = None
     outer_device_stack = None
@@ -5493,6 +5505,18 @@ def executing_eagerly_outside_functions():
 
   with init_scope():
     return context.executing_eagerly()
+
+
+# TODO(priyag, b/135207700): Make this the default implementation and remove
+# the older implementation of `executing_eagerly_outside_functions`.
+def simplified_executing_eagerly_outside_functions():
+  """Returns True if executing eagerly, even if inside a graph function."""
+  if context.executing_eagerly():
+    return True
+  else:
+    outer_context, _ = _get_outer_context_and_inner_device_stack()
+    with outer_context():
+      return context.executing_eagerly()
 
 
 def inside_function():
