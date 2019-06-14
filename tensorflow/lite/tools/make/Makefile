@@ -125,7 +125,8 @@ $(wildcard tensorflow/lite/kernels/internal/*.c) \
 $(wildcard tensorflow/lite/kernels/internal/optimized/*.c) \
 $(wildcard tensorflow/lite/kernels/internal/reference/*.c) \
 $(wildcard tensorflow/lite/tools/make/downloads/farmhash/src/farmhash.cc) \
-$(wildcard tensorflow/lite/tools/make/downloads/fft2d/fftsg.c)
+$(wildcard tensorflow/lite/tools/make/downloads/fft2d/fftsg.c) \
+$(wildcard tensorflow/lite/tools/make/downloads/fft2d/fftsg2d.c)
 endif
 # Remove any duplicates.
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
