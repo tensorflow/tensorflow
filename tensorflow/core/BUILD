@@ -962,6 +962,7 @@ tf_cuda_library(
         "util/guarded_philox_random.h",
         "util/mirror_pad_mode.h",
         "util/padding.h",
+        "util/einsum_op_util.h",
         "util/port.h",
         "util/ptr_util.h",
         "util/reffed_status_callback.h",
