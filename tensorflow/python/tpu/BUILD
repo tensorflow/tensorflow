@@ -9,6 +9,9 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
+# Do not add anymore paths here. You do not need to be in the visibility list
+# to use TPU symbols. They are accessible from tf.contrib.tpu in TF 1.x and
+# tf.tpu and tf.compat.v1.tpu in TF 2.x.
 package(
     default_visibility = [
         "//cloud/vmm/testing/tests/tpu:__subpackages__",

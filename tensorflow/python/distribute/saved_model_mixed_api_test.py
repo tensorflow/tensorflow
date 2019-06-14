@@ -68,12 +68,15 @@ class SavedModelSaveAndLoadTest(test_base.TestSavedModelBase):
       combinations.times(test_base.simple_models_with_strategy_pairs(),
                          combinations.combine(save_in_scope=[True, False])))
   def test_save_strategy_restore_strategy(self, model_and_input,
-                                          distribution_pair, save_in_scope):
+                                          distribution_for_saving,
+                                          distribution_for_restoring,
+                                          save_in_scope):
     if save_in_scope:
       self.skipTest(('Saving model within tf.distribute.Strategy scope is not ',
                      'supported.'))
     self.run_test_save_strategy_restore_strategy(model_and_input,
-                                                 distribution_pair,
+                                                 distribution_for_saving,
+                                                 distribution_for_restoring,
                                                  save_in_scope)
 
 

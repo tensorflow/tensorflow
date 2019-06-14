@@ -50,7 +50,7 @@ TEST_F(ReluTest, Smoke) {
   SingleOpModel model({ToString(op_type), attr}, {GetTensorRef(0)},
                       {GetTensorRef(1)});
   ASSERT_TRUE(model.PopulateTensor(0, {-6.0, 0.0, 2.0, 8.0}));
-  ASSERT_TRUE(model.Invoke(*NewReLUNodeShader()));
+  ASSERT_OK(model.Invoke(*NewReLUNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {0.0, 0.0, 2.0, 8.0}));
 }
@@ -63,7 +63,7 @@ TEST_F(ReluTest, ClipOnly) {
   SingleOpModel model({ToString(op_type), attr}, {GetTensorRef(0)},
                       {GetTensorRef(1)});
   ASSERT_TRUE(model.PopulateTensor(0, {-6.0, 0.0, 2.0, 8.0}));
-  ASSERT_TRUE(model.Invoke(*NewReLUNodeShader()));
+  ASSERT_OK(model.Invoke(*NewReLUNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {0.0, 0.0, 2.0, 6.0}));
 }
@@ -76,7 +76,7 @@ TEST_F(ReluTest, AlphaOnly) {
   SingleOpModel model({ToString(op_type), attr}, {GetTensorRef(0)},
                       {GetTensorRef(1)});
   ASSERT_TRUE(model.PopulateTensor(0, {-6.0, 0.0, 2.0, 8.0}));
-  ASSERT_TRUE(model.Invoke(*NewReLUNodeShader()));
+  ASSERT_OK(model.Invoke(*NewReLUNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {-3.0, 0.0, 2.0, 8.0}));
 }
@@ -89,7 +89,7 @@ TEST_F(ReluTest, ClipAndAlpha) {
   SingleOpModel model({ToString(op_type), attr}, {GetTensorRef(0)},
                       {GetTensorRef(1)});
   ASSERT_TRUE(model.PopulateTensor(0, {-6.0, 0.0, 2.0, 8.0}));
-  ASSERT_TRUE(model.Invoke(*NewReLUNodeShader()));
+  ASSERT_OK(model.Invoke(*NewReLUNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {-3.0, 0.0, 2.0, 6.0}));
 }

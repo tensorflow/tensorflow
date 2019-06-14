@@ -41,9 +41,8 @@ ops = LazyLoader(
     "tensorflow.python.framework.ops")
 
 
-# TODO(b/133606651) Export this as "TypeSpec" (or experimental.TypeSpec?) and
-# deprecate the tf.data.experimental.Structure endpoint.
-@tf_export("data.experimental.Structure")
+# TODO(b/133606651) Deprecate the tf.data.experimental.Structure endpoint.
+@tf_export("TypeSpec", "data.experimental.Structure")
 @six.add_metaclass(abc.ABCMeta)
 class TypeSpec(object):
   """Specifies a TensorFlow value type.

@@ -36,6 +36,7 @@ from tensorflow.python.autograph.impl import api
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.utils import py_func
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
@@ -628,6 +629,26 @@ class ApiTest(test.TestCase):
     x = api.converted_call(tc.method, None, opts, (), {})
 
     self.assertAllEqual(1, self.evaluate(x))
+
+  def test_converted_call_through_tf_dataset(self):
+
+    def other_fn(x):
+      if x > 0:
+        return x
+      return -x
+
+    def f():
+      return dataset_ops.Dataset.range(-3, 3).map(other_fn)
+
+    # Dataset iteration only works inside tf.function.
+    @def_function.function
+    def graph_fn():
+      opts = converter.ConversionOptions(recursive=True)
+      ds = api.converted_call(f, None, opts, (), {})
+      itr = iter(ds)
+      return next(itr), next(itr), next(itr)
+
+    self.assertAllEqual(self.evaluate(graph_fn()), (3, 2, 1))
 
   def assertNoMemoryLeaks(self, f):
     object_ids_before = {id(o) for o in gc.get_objects()}

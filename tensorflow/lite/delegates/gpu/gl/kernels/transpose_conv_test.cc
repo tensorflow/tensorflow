@@ -63,7 +63,7 @@ TEST(TransposeConvTest, O2H2W1I1Stride1x1DAdjacent1x1) {
       {ToString(OperationType::CONVOLUTION_TRANSPOSED), std::move(attr)},
       {input}, {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 1, 1, 1}));
-  ASSERT_TRUE(model.Invoke(*NewConvolutionTransposedNodeShader()));
+  ASSERT_OK(model.Invoke(*NewConvolutionTransposedNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {2, 4, 2, 4, 4, 8, 4, 8}));
 }
@@ -101,7 +101,7 @@ TEST(TransposeConvTest, O1H2W2I1Stride1x1Adjacent2x2) {
       {ToString(OperationType::CONVOLUTION_TRANSPOSED), std::move(attr)},
       {input}, {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 1, 1, 1, 1, 1, 1, 1, 1}));
-  ASSERT_TRUE(model.Invoke(*NewConvolutionTransposedNodeShader()));
+  ASSERT_OK(model.Invoke(*NewConvolutionTransposedNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {1}));
 }
 
@@ -138,7 +138,7 @@ TEST(TransposeConvTest, O1H3W3I1Stride1x1Adjacent1x1) {
       {ToString(OperationType::CONVOLUTION_TRANSPOSED), std::move(attr)},
       {input}, {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 1, 1, 1}));
-  ASSERT_TRUE(model.Invoke(*NewConvolutionTransposedNodeShader()));
+  ASSERT_OK(model.Invoke(*NewConvolutionTransposedNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {7}));
 }
 
@@ -175,7 +175,7 @@ TEST(TransposeConvTest, O2H1W1I2Stride1x1Dilation1x1) {
       {ToString(OperationType::CONVOLUTION_TRANSPOSED), std::move(attr)},
       {input}, {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 1, 1, 1}));
-  ASSERT_TRUE(model.Invoke(*NewConvolutionTransposedNodeShader()));
+  ASSERT_OK(model.Invoke(*NewConvolutionTransposedNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {4, 8, 4, 8}));
 }
 
@@ -213,7 +213,7 @@ TEST(TransposeConvTest, O1H1W1I1Stride2x2Dilation1x1) {
       {ToString(OperationType::CONVOLUTION_TRANSPOSED), std::move(attr)},
       {input}, {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 0, 2, 0, 0, 0, 4, 0, 8}));
-  ASSERT_TRUE(model.Invoke(*NewConvolutionTransposedNodeShader()));
+  ASSERT_OK(model.Invoke(*NewConvolutionTransposedNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {2}));
 }
 

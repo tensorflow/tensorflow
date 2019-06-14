@@ -81,6 +81,12 @@ fi
 # Use nvidia-docker if the container is GPU.
 if [[ "${CONTAINER_TYPE}" == gpu* ]]; then
   DOCKER_BINARY="nvidia-docker"
+  if [[ -z `which ${DOCKER_BINARY}` ]]; then
+    # No nvidia-docker; fall back on docker to allow build operations that
+    # require CUDA but don't require a GPU to run.
+    echo "Warning: nvidia-docker not found in PATH. Falling back on 'docker'."
+    DOCKER_BINARY="docker"
+  fi
 else
   DOCKER_BINARY="docker"
 fi

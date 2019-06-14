@@ -225,7 +225,8 @@ __all__.extend([_s for _s in _names_with_underscore])
 
     if self._api_version == 1:  # Add 1.* deprecations.
       for dest_module, _ in self._module_imports.items():
-        if not dest_module.startswith(_COMPAT_MODULE_PREFIX):
+        if (dest_module and
+            not dest_module.startswith(_COMPAT_MODULE_PREFIX)):
           footer_text_map[dest_module] = _DEPRECATION_FOOTER % (
               dest_module)
 

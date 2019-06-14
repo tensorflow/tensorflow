@@ -28,7 +28,8 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import node_def_pb2
-from tensorflow.python import autograph
+from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
@@ -677,19 +678,11 @@ class Layer(module.Module):
           # Wrapping `call` function in autograph to allow for dynamic control
           # dependencies in call. We are limiting this to subclassed layers as
           # autograph is strictly needed only for subclassed layers and models.
-          # As an additional optimization, we avoid calling autograph if the
-          # function is already converted or marked for no conversion. The
-          # effect is largely cosmetic - it avoid four extra frames in the call
-          # stack.
-          if (base_layer_utils.is_subclassed(self)
-              and not hasattr(self.call, '__ag_compiled')):
-            decorators, original_func = tf_decorator.unwrap(self.call)
-            converted_func = autograph.convert(recursive=True)(original_func)
-            if decorators:
-              call_fn = tf_decorator.rewrap(self.call, original_func,
-                                            converted_func)
-            else:
-              call_fn = converted_func
+          # tf_convert will respect the value of autograph setting in the
+          # enclosing tf.function, if any.
+          if base_layer_utils.is_subclassed(self):
+            call_fn = autograph.tf_convert(
+                self.call, ag_ctx.control_status_ctx())
           else:
             call_fn = self.call
 

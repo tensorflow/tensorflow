@@ -3944,63 +3944,176 @@ void TestConvertGather(OpConverterTest* test) {
   const NodeDef& node_def = gather.operation.node()->def();
 
   struct TestParams {
-    std::vector<int> params_dims;
-    std::vector<int> indices_dims;
+    // TF shape of the input 'params' (including batch dimension).
+    std::vector<int> params_shape;
+    // TF shape of the input 'indices' (including batch dimension).
+    std::vector<int> indices_shape;
     std::vector<int> indices;
     int axis;
-    std::vector<int> expected_output_dims;
+    // Expected TF shape of the output (including batch dimension).
+    std::vector<int> expected_output_shape;
     std::vector<int> expected_output;
+    bool params_is_tensor;
   };
 
   // Input is the same {1, 2, 3, 4, 5, 6} for all cases.
-  const int kGatherOKCases = 7;
+  const int kGatherOKCases = 11;
   const std::vector<CType> params_input = {CType(1), CType(2), CType(3),
                                            CType(4), CType(5), CType(6)};
   TestParams ok_params[kGatherOKCases] = {
       // Vector indices, and output rank is rank(params).
-      TestParams{{1, 2, 3}, {}, {0}, 3, {1, 2, 1}, {1, 4}},
-      TestParams{{1, 2, 3}, {}, {1}, 2, {1, 1, 3}, {4, 5, 6}},
-      // Indices with rank>1, and output rank is rank(params)+rank(indices)-1.
-      TestParams{{1, 2, 3}, {1}, {0}, 3, {1, 2, 1, 1}, {1, 4}},
-      TestParams{{1, 2, 3}, {1}, {1}, 3, {1, 2, 1, 1}, {2, 5}},
-      TestParams{{1, 2, 3}, {1}, {2}, -1, {1, 2, 1, 1}, {3, 6}},
       TestParams{
-          {1, 2, 3}, {3}, {2, 0, 1}, 3, {1, 2, 1, 3}, {3, 1, 2, 6, 4, 5}},
-      TestParams{{3, 2},
-                 {2, 2},
-                 {0, 0, 1, 0},
-                 2,
-                 {3, 1, 2, 2},
-                 {1, 1, 2, 1, 3, 3, 4, 3, 5, 5, 6, 5}},
+          /*params_shape=*/{1, 1, 2, 3},
+          /*indices_shape=*/{1},
+          /*indices=*/{0},
+          /*axis=*/3,
+          /*expected_output_shape=*/{1, 1, 2, 1},
+          /*expected_output=*/{1, 4},
+          /*params_is_tensor=*/true,
+      },
+      TestParams{
+          /*params_shape=*/{1, 1, 2, 3},
+          /*indices_shape=*/{1},
+          /*indices=*/{1},
+          /*axis=*/2,
+          /*expected_output_shape=*/{1, 1, 1, 3},
+          /*expected_output=*/{4, 5, 6},
+          /*params_is_tensor=*/true,
+      },
+      // Indices with rank>1, and output rank is rank(params)+rank(indices)-1.
+      TestParams{
+          /*params_shape=*/{1, 1, 2, 3},
+          /*indices_shape=*/{1, 1},
+          /*indices=*/{0},
+          /*axis=*/3,
+          /*expected_output_shape=*/{1, 1, 2, 1, 1},
+          /*expected_output=*/{1, 4},
+          /*params_is_tensor=*/true,
+      },
+      TestParams{
+          /*params_shape=*/{1, 1, 2, 3},
+          /*indices_shape=*/{1, 1},
+          /*indices=*/{1},
+          /*axis=*/3,
+          /*expected_output_shape=*/{1, 1, 2, 1, 1},
+          /*expected_output=*/{2, 5},
+          /*params_is_tensor=*/true,
+      },
+      TestParams{
+          /*params_shape=*/{1, 1, 2, 3},
+          /*indices_shape=*/{1, 1},
+          /*indices=*/{2},
+          /*axis=*/-1,
+          /*expected_output_shape=*/{1, 1, 2, 1, 1},
+          /*expected_output=*/{3, 6},
+          /*params_is_tensor=*/true,
+      },
+      TestParams{
+          /*params_shape=*/{1, 1, 2, 3},
+          /*indices_shape=*/{1, 3},
+          /*indices=*/{2, 0, 1},
+          /*axis=*/3,
+          /*expected_output_shape=*/{1, 1, 2, 1, 3},
+          /*expected_output=*/{3, 1, 2, 6, 4, 5},
+          /*params_is_tensor=*/true,
+      },
+      TestParams{
+          /*params_shape=*/{1, 3, 2},
+          /*indices_shape=*/{1, 2, 2},
+          /*indices=*/{0, 0, 1, 0},
+          /*axis=*/2,
+          /*expected_output_shape=*/{1, 3, 1, 2, 2},
+          /*expected_output=*/{1, 1, 2, 1, 3, 3, 4, 3, 5, 5, 6, 5},
+          /*params_is_tensor=*/true,
+      },
+      TestParams{
+          /*params_shape=*/{1, 2, 3},
+          /*indices_shape=*/{1},
+          /*indices=*/{0},
+          /*axis=*/0,
+          /*expected_output_shape=*/{1, 2, 3},
+          /*expected_output=*/{1, 2, 3, 4, 5, 6},
+          /*params_is_tensor=*/false,
+      },
+      TestParams{
+          /*params_shape=*/{3, 2},
+          /*indices_shape=*/{1, 2},
+          /*indices=*/{0, 1},
+          /*axis=*/0,
+          /*expected_output_shape=*/{1, 2, 2},
+          /*expected_output=*/{1, 2, 3, 4},
+          /*params_is_tensor=*/false,
+      },
+      TestParams{
+          /*params_shape=*/{2, 3},
+          /*indices_shape=*/{1, 1, 2},
+          /*indices=*/{0, 1},
+          /*axis=*/0,
+          /*expected_output_shape=*/{1, 1, 2, 3},
+          /*expected_output=*/{1, 2, 3, 4, 5, 6},
+          /*params_is_tensor=*/false,
+      },
+      TestParams{
+          /*params_shape=*/{3, 2},
+          /*indices_shape=*/{2, 2},
+          /*indices=*/{0, 2, 1, 0},
+          /*axis=*/0,
+          /*expected_output_shape=*/{2, 2, 2},
+          /*expected_output=*/{1, 2, 5, 6, 3, 4, 1, 2},
+          /*params_is_tensor=*/false,
+      },
   };
 
   // Ok.
   for (int i = 0; i < kGatherOKCases; i++) {
     test->Reset();
-    test->AddTestTensor("params", ok_params[i].params_dims, 1,
-                        TfDataTypeToTrt(dtype));
-    test->AddTestTensor("indices", ok_params[i].indices_dims, 1,
-                        nvinfer1::DataType::kINT32);
+    const auto& params_shape = ok_params[i].params_shape;
+    if (ok_params[i].params_is_tensor) {
+      std::vector<int> params_dims(params_shape.begin() + 1,
+                                   params_shape.end());
+      test->AddTestTensor("params", params_dims, params_shape[0],
+                          TfDataTypeToTrt(dtype));
+    } else {
+      test->AddTestWeights<CType>("params", params_shape, params_input);
+    }
+
+    const auto& indices_shape = ok_params[i].indices_shape;
+    test->AddTestTensor(
+        "indices",
+        std::vector<int>(indices_shape.begin() + 1, indices_shape.end()),
+        indices_shape[0], nvinfer1::DataType::kINT32);
     test->AddTestWeights<int32>("axis", {1}, {ok_params[i].axis});
     test->RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(test->GetTensorOrWeights("my_gather", &output));
     ASSERT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
+
+    const auto& expected_output_shape = ok_params[i].expected_output_shape;
+    const auto& expected_output = ok_params[i].expected_output;
+    ASSERT_EQ(expected_output.size(),
+              TrtWeightDimsNumElements(GetTestDims(expected_output_shape)));
+    const std::vector<int> expected_output_dims(
+        expected_output_shape.begin() + 1, expected_output_shape.end());
+    ExpectTrtDimsEqualsArray(expected_output_dims,
                              output.tensor()->getDimensions());
 
     // Create input in CType and convert expected output to CType.
-    std::vector<CType> converted_expected_output(
-        ok_params[i].expected_output.begin(),
-        ok_params[i].expected_output.end());
+    std::vector<CType> converted_expected_output(expected_output.begin(),
+                                                 expected_output.end());
 
-    const DataVec input_data{
-        {"params", test::AsTensor<CType>(params_input)},
-        {"indices", test::AsTensor<int32>(ok_params[i].indices)}};
+    DataVec input_data;
+    if (ok_params[i].params_is_tensor) {
+      input_data = {{"params", test::AsTensor<CType>(params_input)},
+                    {"indices", test::AsTensor<int32>(ok_params[i].indices)}};
+    } else {
+      input_data = {{"indices", test::AsTensor<int32>(ok_params[i].indices)}};
+    }
     DataVec output_data{
-        {"my_gather",
-         ConstructTensor<CType>(ok_params[i].expected_output.size())}};
-    test->BuildAndRun(input_data, &output_data);
+        {"my_gather", ConstructTensor<CType>(expected_output.size())}};
+    test->BuildAndRun(
+        input_data, &output_data,
+        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32,
+        /*batch_size=*/expected_output_shape[0]);
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAreArray(converted_expected_output));
   }
@@ -4051,6 +4164,26 @@ TEST_F(OpConverterTest, ConvertGather) {
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "TensorRT does not allow manipulation of the "
                                "batch dimension, at my_gather");
+  }
+  {
+    // Axis is not zero when params is a weight, should fail.
+    Reset();
+    AddTestWeights<int32>("params", {1, 3}, {1, 2, 3});
+    AddTestTensor("indices", {2});
+    AddTestWeights<int32>("axis", {1}, {1});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input axis must be zero when params is a weight.");
+  }
+  {
+    // Batch size of indices is not 1 when params is a tensor.
+    Reset();
+    AddTestTensor("params", {1, 2, 3}, /*batch_size=*/2);
+    AddTestTensor("indices", {2}, /*batch_size=*/2);
+    AddTestWeights<int32>("axis", {1}, {1});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Indices must have a batch size of 1 when params is a tensor.");
   }
 
   Reset();

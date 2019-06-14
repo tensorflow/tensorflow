@@ -47,7 +47,7 @@ TEST(Reshape, 1x2x3To3x2x1) {
   SingleOpModel model({ToString(OperationType::RESHAPE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4, 5, 6}));
-  ASSERT_TRUE(model.Invoke(*NewReshapeNodeShader()));
+  ASSERT_OK(model.Invoke(*NewReshapeNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {1, 2, 3, 4, 5, 6}));
 }
@@ -69,7 +69,7 @@ TEST(Reshape, 3x1x2To2x1x3) {
   SingleOpModel model({ToString(OperationType::RESHAPE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4, 5, 6}));
-  ASSERT_TRUE(model.Invoke(*NewReshapeNodeShader()));
+  ASSERT_OK(model.Invoke(*NewReshapeNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {1, 2, 3, 4, 5, 6}));
 }
@@ -91,7 +91,7 @@ TEST(Reshape, 1x1x4To2x2x1) {
   SingleOpModel model({ToString(OperationType::RESHAPE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  ASSERT_TRUE(model.Invoke(*NewReshapeNodeShader()));
+  ASSERT_OK(model.Invoke(*NewReshapeNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {1, 2, 3, 4}));
 }
 
@@ -112,7 +112,9 @@ TEST(Reshape, BatchIsUnsupported) {
   SingleOpModel model({ToString(OperationType::RESHAPE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  EXPECT_FALSE(model.Invoke(*NewReshapeNodeShader()));
+  ASSERT_THAT(
+      model.Invoke(*NewReshapeNodeShader()).message(),
+      testing::HasSubstr("Only identical batch dimension is supported"));
 }
 
 }  // namespace

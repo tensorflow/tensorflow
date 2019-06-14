@@ -178,7 +178,7 @@ IndexedSlicesValue = collections.namedtuple(
     "IndexedSlicesValue", ["values", "indices", "dense_shape"])
 
 
-# TODO(b/133606651) Export this as tf.IndexedSlicesSpec.
+@tf_export("IndexedSlicesSpec")
 class IndexedSlicesSpec(type_spec.TypeSpec):
   """Type specification for a `tf.IndexedSlices`."""
 
