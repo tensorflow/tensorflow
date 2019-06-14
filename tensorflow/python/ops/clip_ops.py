@@ -51,12 +51,10 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   For example:
   
   ```python
-  A=tf.constant([[1,20,13],[3,21,13]])
-  B=tf.clip_by_value(A, clip_value_min=0, clip_value_max=3) #[[1, 3, 3],[3, 3, 3]]
-  C=tf.clip_by_value(A, clip_value_min=0., clip_value_max=3.)
-  # throws `TypeError` as input and clip_values are of different dtype
-  D=tf.constant([2.0,3.1,5.3])
-  E=tf.clip_by_value(D, clip_value_min=1., clip_value_max=3.) #[2.,3.,3.]
+  A = tf.constant([[1, 20, 13], [3, 21, 13]])
+  B = tf.clip_by_value(A, clip_value_min=0, clip_value_max=3) # [[1, 3, 3],[3, 3, 3]]
+  C = tf.clip_by_value(A, clip_value_min=0., clip_value_max=3.) # throws `TypeError` 
+  as input and clip_values are of different dtype
   ```
   
   Args:
@@ -73,6 +71,8 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   Raises:
     ValueError: If the clip tensors would trigger array broadcasting
       that would make the returned tensor larger than the input.
+    TypeError: If dtype of the input is `int32` and dtype of the `clip_value_min' or 
+    `clip_value_max` is `float32`  
   """
   with ops.name_scope(name, "clip_by_value",
                       [t, clip_value_min, clip_value_max]) as name:
