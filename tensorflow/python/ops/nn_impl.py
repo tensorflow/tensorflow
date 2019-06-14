@@ -1396,7 +1396,7 @@ def fused_batch_norm(
   min_epsilon = 1.001e-5
   epsilon = epsilon if epsilon > min_epsilon else min_epsilon
 
-  if compat.forward_compatible(2019, 6, 6):
+  if compat.forward_compatible(2019, 10, 10):
     y, batch_mean, batch_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
         x,
         scale,
