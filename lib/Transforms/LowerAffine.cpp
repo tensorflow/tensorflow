@@ -219,11 +219,12 @@ private:
 
 // Create a sequence of operations that implement the `expr` applied to the
 // given dimension and symbol values.
-static mlir::Value *expandAffineExpr(OpBuilder *builder, Location loc,
-                                     AffineExpr expr,
-                                     ArrayRef<Value *> dimValues,
-                                     ArrayRef<Value *> symbolValues) {
-  return AffineApplyExpander(builder, dimValues, symbolValues, loc).visit(expr);
+mlir::Value *mlir::expandAffineExpr(OpBuilder &builder, Location loc,
+                                    AffineExpr expr,
+                                    ArrayRef<Value *> dimValues,
+                                    ArrayRef<Value *> symbolValues) {
+  return AffineApplyExpander(&builder, dimValues, symbolValues, loc)
+      .visit(expr);
 }
 
 // Create a sequence of operations that implement the `affineMap` applied to
@@ -234,7 +235,7 @@ Optional<SmallVector<Value *, 8>> static expandAffineMap(
   auto numDims = affineMap.getNumDims();
   auto expanded = functional::map(
       [numDims, builder, loc, operands](AffineExpr expr) {
-        return expandAffineExpr(builder, loc, expr,
+        return expandAffineExpr(*builder, loc, expr,
                                 operands.take_front(numDims),
                                 operands.drop_front(numDims));
       },
@@ -268,6 +269,32 @@ static Value *buildMinMaxReductionSeq(Location loc, CmpIPredicate predicate,
   }
 
   return value;
+}
+
+// Emit instructions that correspond to the affine map in the lower bound
+// applied to the respective operands, and compute the maximum value across
+// the results.
+Value *mlir::lowerAffineLowerBound(AffineForOp op, OpBuilder &builder) {
+  SmallVector<Value *, 8> boundOperands(op.getLowerBoundOperands());
+  auto lbValues = expandAffineMap(&builder, op.getLoc(), op.getLowerBoundMap(),
+                                  boundOperands);
+  if (!lbValues)
+    return nullptr;
+  return buildMinMaxReductionSeq(op.getLoc(), CmpIPredicate::SGT, *lbValues,
+                                 builder);
+}
+
+// Emit instructions that correspond to the affine map in the upper bound
+// applied to the respective operands, and compute the minimum value across
+// the results.
+Value *mlir::lowerAffineUpperBound(AffineForOp op, OpBuilder &builder) {
+  SmallVector<Value *, 8> boundOperands(op.getUpperBoundOperands());
+  auto ubValues = expandAffineMap(&builder, op.getLoc(), op.getUpperBoundMap(),
+                                  boundOperands);
+  if (!ubValues)
+    return nullptr;
+  return buildMinMaxReductionSeq(op.getLoc(), CmpIPredicate::SLT, *ubValues,
+                                 builder);
 }
 
 namespace {
@@ -377,29 +404,17 @@ public:
     rewriter.setInsertionPointToEnd(lastBodyBlock);
     auto affStep = rewriter.getAffineConstantExpr(forOp.getStep());
     auto affDim = rewriter.getAffineDimExpr(0);
-    auto stepped = expandAffineExpr(&rewriter, loc, affDim + affStep, iv, {});
+    auto stepped = expandAffineExpr(rewriter, loc, affDim + affStep, iv, {});
     if (!stepped)
       return matchFailure();
     rewriter.create<BranchOp>(loc, conditionBlock, stepped);
 
     // Compute loop bounds before branching to the condition.
     rewriter.setInsertionPointToEnd(initBlock);
-    SmallVector<Value *, 8> boundOperands(forOp.getLowerBoundOperands());
-    auto lbValues = expandAffineMap(&rewriter, loc, forOp.getLowerBoundMap(),
-                                    boundOperands);
-    if (!lbValues)
+    Value *lowerBound = lowerAffineLowerBound(forOp, rewriter);
+    Value *upperBound = lowerAffineUpperBound(forOp, rewriter);
+    if (!lowerBound || !upperBound)
       return matchFailure();
-    Value *lowerBound =
-        buildMinMaxReductionSeq(loc, CmpIPredicate::SGT, *lbValues, rewriter);
-
-    boundOperands.assign(forOp.getUpperBoundOperands().begin(),
-                         forOp.getUpperBoundOperands().end());
-    auto ubValues = expandAffineMap(&rewriter, loc, forOp.getUpperBoundMap(),
-                                    boundOperands);
-    if (!ubValues)
-      return matchFailure();
-    Value *upperBound =
-        buildMinMaxReductionSeq(loc, CmpIPredicate::SLT, *ubValues, rewriter);
     rewriter.create<BranchOp>(loc, conditionBlock, lowerBound);
 
     // With the body block done, we can fill in the condition block.
@@ -549,7 +564,7 @@ public:
 
       // Build and apply an affine expression
       auto numDims = integerSet.getNumDims();
-      Value *affResult = expandAffineExpr(&rewriter, loc, constraintExpr,
+      Value *affResult = expandAffineExpr(rewriter, loc, constraintExpr,
                                           operands.take_front(numDims),
                                           operands.drop_front(numDims));
       if (!affResult)

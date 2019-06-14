@@ -411,6 +411,10 @@ public:
     blocks.splice(blocks.end(), other.getBlocks());
   }
 
+  /// Get a list of values used by operations in the region, including nested
+  /// regions, defined outside this region.
+  SmallVector<Value *, 8> getUsedValuesDefinedAbove();
+
   /// Check that this does not use any value defined outside it.
   /// Emit errors if `noteLoc` is provided; this location is used to point
   /// to the operation containing the region, the actual error is reported at

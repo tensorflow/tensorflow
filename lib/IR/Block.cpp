@@ -369,14 +369,18 @@ void Region::cloneInto(Region *dest, BlockAndValueMapping &mapper,
     it->walk(remapOperands);
 }
 
-/// Check that the given `region` does not use any value defined outside its
-/// ancestor region `limit`.  That is, given `A{B{C{}}}` with limit `B`, `C` is
-/// allowed to use values defined in `B` but not those defined in `A`.
-/// Emit errors if `noteLoc` is provided; this location is used to point to
-/// the operation containing the region, the actual error is reported at the
-/// operation with an offending use.
-static bool isRegionIsolatedAbove(Region &region, Region &limit,
-                                  llvm::Optional<Location> noteLoc) {
+/// Find the values used by operations in `region` that are defined outside its
+/// ancestor region `limit`.  That is, given `A{B{C{}}}` with region `C` and
+/// limit `B`, the values defined in `A` will be found while the values defined
+/// in `B` will not.  Append these values to `values`.  If `stopAfterOne` is
+/// set, return immediate after one such value was found (used for isolation
+/// checks).  Additionally, emit errors if `noteLoc` is provided; this location
+/// is used to point to the operation containing the region, the actual error is
+/// reported at the operation with an offending use.
+static void findValuesDefinedAbove(Region &region, Region &limit,
+                                   SmallVectorImpl<Value *> &values,
+                                   llvm::Optional<Location> noteLoc,
+                                   bool stopAfterOne = false) {
   assert(limit.isAncestor(&region) &&
          "expected isolation limit to be an ancestor of the given region");
 
@@ -399,7 +403,9 @@ static bool isRegionIsolatedAbove(Region &region, Region &limit,
                       .attachNote(noteLoc)
                   << "required by region isolation constraints";
             }
-            return false;
+            values.push_back(operand);
+            if (stopAfterOne)
+              return;
           }
         }
         // Schedule any regions the operations contain for further checking.
@@ -409,12 +415,19 @@ static bool isRegionIsolatedAbove(Region &region, Region &limit,
       }
     }
   }
+}
 
-  return true;
+SmallVector<Value *, 8> Region::getUsedValuesDefinedAbove() {
+  SmallVector<Value *, 8> values;
+  findValuesDefinedAbove(*this, *this, values, llvm::None,
+                         /*stopAfterOne=*/false);
+  return values;
 }
 
 bool Region::isIsolatedFromAbove(llvm::Optional<Location> noteLoc) {
-  return isRegionIsolatedAbove(*this, *this, noteLoc);
+  SmallVector<Value *, 1> values;
+  findValuesDefinedAbove(*this, *this, values, noteLoc, /*stopAfterOne=*/true);
+  return values.empty();
 }
 
 Region *llvm::ilist_traits<::mlir::Block>::getContainingRegion() {

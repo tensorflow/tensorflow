@@ -86,6 +86,9 @@ public:
   /// Get the SSA values passed as operands to specify the block size.
   KernelDim3 getBlockSizeOperandValues();
 
+  /// Get the SSA values of the kernel arguments.
+  llvm::iterator_range<Block::args_iterator> getKernelArguments();
+
   LogicalResult verify();
 
   /// Custom syntax support.

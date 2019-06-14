@@ -115,6 +115,11 @@ KernelDim3 LaunchOp::getBlockSizeOperandValues() {
   return KernelDim3{getOperand(3), getOperand(4), getOperand(5)};
 }
 
+llvm::iterator_range<Block::args_iterator> LaunchOp::getKernelArguments() {
+  auto args = getBody().getBlocks().front().getArguments();
+  return llvm::drop_begin(args, LaunchOp::kNumConfigRegionAttributes);
+}
+
 LogicalResult LaunchOp::verify() {
   // Kernel launch takes kNumConfigOperands leading operands for grid/block
   // sizes and transforms them into kNumConfigRegionAttributes region arguments

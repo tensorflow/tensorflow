@@ -22,6 +22,7 @@ add_llvm_library(MLIRTransforms
   Utils/GreedyPatternRewriteDriver.cpp
   Utils/LoopFusionUtils.cpp
   Utils/LoopUtils.cpp
+  Utils/RegionUtils.cpp
   Utils/Utils.cpp
   Vectorization
   Vectorize.cpp

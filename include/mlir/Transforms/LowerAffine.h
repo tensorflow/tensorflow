@@ -18,11 +18,34 @@
 #ifndef MLIR_TRANSFORMS_LOWERAFFINE_H
 #define MLIR_TRANSFORMS_LOWERAFFINE_H
 
-namespace mlir {
-class Function;
-struct LogicalResult;
+#include "mlir/Support/LLVM.h"
 
+namespace mlir {
+class AffineExpr;
+class AffineForOp;
+class Function;
+class Location;
+struct LogicalResult;
+class OpBuilder;
+class Value;
+
+/// Emit code that computes the given affine expression using standard
+/// arithmetic operations applied to the provided dimension and symbol values.
+Value *expandAffineExpr(OpBuilder &builder, Location loc, AffineExpr expr,
+                        ArrayRef<Value *> dimValues,
+                        ArrayRef<Value *> symbolValues);
+
+/// Convert from the Affine dialect to the Standard dialect, in particular
+/// convert structured affine control flow into CFG branch-based control flow.
 LogicalResult lowerAffineConstructs(Function &function);
+
+/// Emit code that computes the lower bound of the given affine loop using
+/// standard arithmetic operations.
+Value *lowerAffineLowerBound(AffineForOp op, OpBuilder &builder);
+
+/// Emit code that computes the upper bound of the given affine loop using
+/// standard arithmetic operations.
+Value *lowerAffineUpperBound(AffineForOp op, OpBuilder &builder);
 } // namespace mlir
 
 #endif // MLIR_TRANSFORMS_LOWERAFFINE_H
