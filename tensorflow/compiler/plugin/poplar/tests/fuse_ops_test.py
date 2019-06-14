@@ -692,7 +692,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       ok = [
           '__seed*', 'host-exchange-local-copy', 'Copy_',
           'vs/conv2d/Conv2D/convolution.*/Conv_1x1', 'vs/conv2d/BiasAdd',
-          'vs/batch_normalization/FusedBatchNorm/batch-norm-inference.*/',
+          'vs/batch_normalization/FusedBatchNorm*/batch-norm-inference.*/',
           'vs/Relu/custom-call/Nonlinearity'
       ]
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
