@@ -28,6 +28,11 @@ class Shape;
 
 namespace poplarplugin {
 
+enum class RandomType {
+  UNIFORM,
+  NORMAL,
+};
+
 class DataInitializer {
  public:
   // Creates a DataInitializer given the type string.
@@ -56,12 +61,13 @@ class DataInitializer {
 
 class RandomDataInitializer : public DataInitializer {
  public:
-  RandomDataInitializer(const std::string& type_string);
+  RandomDataInitializer(const std::string& type_string, RandomType random_type);
 
  protected:
   void GetValue(char*& buffer, const PrimitiveType& type) override;
 
  private:
+  RandomType random_type_;
   std::random_device random_device_;
   std::mt19937 generator_;
 };

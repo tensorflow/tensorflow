@@ -59,8 +59,8 @@ void PutValueIntoBuffer(char*& buffer, const PrimitiveType type, TValue value) {
   }
 }
 
-void PutRandomValueIntoBuffer(char*& buffer, const PrimitiveType type,
-                              std::mt19937& generator) {
+void PutRandomUniformValueIntoBuffer(char*& buffer, const PrimitiveType type,
+                                     std::mt19937& generator) {
   switch (type) {
     case PRED: {
       std::uniform_int_distribution<int8> dist(0, 1);
@@ -106,6 +106,33 @@ void PutRandomValueIntoBuffer(char*& buffer, const PrimitiveType type,
       break;
   }
 }
+
+void PutRandomNormalValueIntoBuffer(char*& buffer, const PrimitiveType type,
+                                    std::mt19937& generator) {
+  switch (type) {
+    case PRED:
+    case S8:
+    case U8:
+    case S16:
+    case U16:
+    case S32:
+    case U32:
+    case S64:
+    case U64: {
+      PutValueIntoBuffer(buffer, type, 1);
+      break;
+    }
+    case F16:
+    case F32: {
+      std::normal_distribution<float> dist(0, 1);
+      PutValueIntoBuffer(buffer, type, dist(generator));
+      break;
+    }
+    default:
+      LOG(FATAL) << "Unsupported primitive type " << type;
+      break;
+  }
+}
 }  // namespace
 
 DataInitializer::DataInitializer(const std::string& type_string)
@@ -113,8 +140,12 @@ DataInitializer::DataInitializer(const std::string& type_string)
 
 std::unique_ptr<DataInitializer> DataInitializer::GetDataInitializer(
     const std::string& type_string) {
-  if (type_string == "random") {
-    return absl::make_unique<RandomDataInitializer>(type_string);
+  if (type_string == "random" || type_string == "uniform") {
+    return absl::make_unique<RandomDataInitializer>(type_string,
+                                                    RandomType::UNIFORM);
+  } else if (type_string == "normal") {
+    return absl::make_unique<RandomDataInitializer>(type_string,
+                                                    RandomType::NORMAL);
   } else {
     return absl::make_unique<ConstantDataInitializer>(type_string);
   }
@@ -151,14 +182,21 @@ StatusOr<Literal> DataInitializer::GetData(const Shape& shape) {
   return literal;
 }
 
-RandomDataInitializer::RandomDataInitializer(const std::string& type_string)
-    : DataInitializer(type_string), generator_(random_device_()) {
+RandomDataInitializer::RandomDataInitializer(const std::string& type_string,
+                                             RandomType random_type)
+    : DataInitializer(type_string),
+      random_type_(random_type),
+      generator_(random_device_()) {
   VLOG(1) << "Created RandomDataInitializer given \"type_string\"="
           << type_string << ".";
 };
 
 void RandomDataInitializer::GetValue(char*& buffer, const PrimitiveType& type) {
-  PutRandomValueIntoBuffer(buffer, type, generator_);
+  if (random_type_ == RandomType::UNIFORM) {
+    PutRandomUniformValueIntoBuffer(buffer, type, generator_);
+  } else {
+    PutRandomNormalValueIntoBuffer(buffer, type, generator_);
+  }
 }
 
 ConstantDataInitializer::ConstantDataInitializer(const std::string& type_string)

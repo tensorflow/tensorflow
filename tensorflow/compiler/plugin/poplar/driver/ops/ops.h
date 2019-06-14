@@ -150,6 +150,10 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output, TensorMap& tensor_map);
 
+StatusOr<poplar::program::Program> CreateTernaryElementwiseOp(
+    CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output, TensorMap& tensor_map);
+
 StatusOr<poplar::program::Program> CreateComparisonOp(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output, TensorMap& tensor_map);
@@ -183,20 +187,14 @@ StatusOr<poplar::program::Program> CreateMatMulBiasAddOp(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map);
 
-StatusOr<poplar::program::Program> CreateSelectOp(CompilerResources& res,
-                                                  const HloInstruction* inst,
-                                                  const xla::Shape& output,
-                                                  TensorMap& tensor_map);
+StatusOr<poplar::program::Program> CreateTupleSelectOp(
+    CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output, TensorMap& tensor_map);
 
 StatusOr<poplar::program::Program> CreateCastOp(CompilerResources& res,
                                                 const HloInstruction* inst,
                                                 const xla::Shape& output,
                                                 TensorMap& tensor_map);
-
-StatusOr<poplar::program::Program> CreateClampOp(CompilerResources& res,
-                                                 const HloInstruction* inst,
-                                                 const xla::Shape& output,
-                                                 TensorMap& tensor_map);
 
 StatusOr<poplar::program::Program> CreateSimpleReduction(
     CompilerResources& res, const HloInstruction* inst,
