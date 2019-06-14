@@ -23,7 +23,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -34,21 +34,12 @@ class _ScanDataset(dataset_ops.UnaryDataset):
   def __init__(self, input_dataset, initial_state, scan_func):
     """See `scan()` for details."""
     self._input_dataset = input_dataset
-
-    with ops.name_scope("initial_state"):
-      # Convert any `SparseTensorValue`s to `SparseTensor`s and all other
-      # values to tensors.
-      self._initial_state = nest.pack_sequence_as(initial_state, [
-          sparse_tensor.SparseTensor.from_value(t)
-          if sparse_tensor.is_sparse(t) else ops.convert_to_tensor(
-              t, name="component_%d" % i)
-          for i, t in enumerate(nest.flatten(initial_state))
-      ])
+    self._initial_state = structure.normalize_tensors(initial_state)
 
     # Compute initial values for the state classes, shapes and types based on
     # the initial state. The shapes may be refined by running `tf_scan_func` one
     # or more times below.
-    self._state_structure = structure.Structure.from_value(self._initial_state)
+    self._state_structure = type_spec.type_spec_from_value(self._initial_state)
 
     # Iteratively rerun the scan function until reaching a fixed point on
     # `self._state_shapes`.

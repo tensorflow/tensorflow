@@ -1,10 +1,9 @@
+load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+
 package(
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 
 cc_library(
     name = "calibration_wrapper_lib",
@@ -12,13 +11,14 @@ cc_library(
     hdrs = ["calibration_wrapper.h"],
     deps = [
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/python/interpreter_wrapper:numpy",
         "//tensorflow/lite/python/interpreter_wrapper:python_error_reporter",
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",
-        "//tensorflow/lite/tools/optimize:calibration_reader",
-        "//tensorflow/lite/tools/optimize:calibrator_lib",
         "//tensorflow/lite/tools/optimize:quantize_model",
+        "//tensorflow/lite/tools/optimize/calibration:calibration_reader",
+        "//tensorflow/lite/tools/optimize/calibration:calibrator_lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/memory",
@@ -53,11 +53,16 @@ py_library(
 py_test(
     name = "calibrator_test",
     srcs = ["calibrator_test.py"],
-    data = [":test_data"],
+    data = [
+        ":test_data",
+        "//tensorflow/lite:testdata/multi_add.bin",
+    ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_oss"],
     deps = [
         ":calibrator",
+        "//tensorflow/lite/python:lite_constants",
         "//tensorflow/lite/python/optimize:tensorflow_lite_wrap_calibration_wrapper",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",

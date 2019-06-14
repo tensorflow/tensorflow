@@ -26,17 +26,35 @@ from tensorflow.python.util.tf_export import keras_export
 
 @keras_export('keras.optimizers.Ftrl')
 class Ftrl(optimizer_v2.OptimizerV2):
-  """Optimizer that implements the FTRL algorithm.
+  r"""Optimizer that implements the FTRL algorithm.
 
-  See this [paper](
+  See Algorithm 1 of this [paper](
   https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf).
   This version has support for both online L2 (the L2 penalty given in the paper
   above) and shrinkage-type L2 (which is the addition of an L2 penalty to the
   loss function).
+
+  Initialization:
+  $$t = 0$$
+  $$n_{0} = 0$$
+  $$\sigma_{0} = 0$$
+  $$z_{0} = 0$$
+
+  Update ($$i$$ is variable index):
+  $$t = t + 1$$
+  $$n_{t,i} = n_{t-1,i} + g_{t,i}^{2}$$
+  $$\sigma_{t,i} = (\sqrt{n_{t,i}} - \sqrt{n_{t-1,i}}) / \alpha$$
+  $$z_{t,i} = z_{t-1,i} + g_{t,i} - \sigma_{t,i} * w_{t,i}$$
+  $$w_{t,i} = - ((\beta+\sqrt{n+{t}}) / \alpha + \lambda_{2})^{-1} * (z_{i} -
+               sgn(z_{i}) * \lambda_{1}) if \abs{z_{i}} > \lambda_{i} else 0$$
+
+  Check the documentation for the l2_shrinkage_regularization_strength
+  parameter for more details when shrinkage is enabled, where gradient is
+  replaced with gradient_with_shrinkage.
   """
 
   def __init__(self,
-               learning_rate,
+               learning_rate=0.001,
                learning_rate_power=-0.5,
                initial_accumulator_value=0.1,
                l1_regularization_strength=0.0,
@@ -127,7 +145,7 @@ class Ftrl(optimizer_v2.OptimizerV2):
 
   def _resource_apply_dense(self, grad, var):
     var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
+    lr_t = self._decayed_lr_t[var_dtype]
     learning_rate_power = self._get_hyper('learning_rate_power', var_dtype)
     l1_regularization_strength = self._get_hyper('l1_regularization_strength',
                                                  var_dtype)
@@ -161,7 +179,7 @@ class Ftrl(optimizer_v2.OptimizerV2):
 
   def _resource_apply_sparse(self, grad, var, indices):
     var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
+    lr_t = self._decayed_lr_t[var_dtype]
     learning_rate_power = self._get_hyper('learning_rate_power', var_dtype)
     l1_regularization_strength = self._get_hyper('l1_regularization_strength',
                                                  var_dtype)
@@ -207,9 +225,9 @@ class Ftrl(optimizer_v2.OptimizerV2):
         'learning_rate_power':
             self._serialize_hyperparameter('learning_rate_power'),
         'l1_regularization_strength':
-            self._serializer_hyperparameter('l1_regularization_strength'),
+            self._serialize_hyperparameter('l1_regularization_strength'),
         'l2_regularization_strength':
-            self._serializer_hyperparameter('l2_regularization_strength'),
+            self._serialize_hyperparameter('l2_regularization_strength'),
         'l2_shrinkage_regularization_strength':
             self._l2_shrinkage_regularization_strength,
     })

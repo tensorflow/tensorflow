@@ -621,7 +621,7 @@ Status DoQuantizeTraining(int32 num_bits, const string& quant_op_type,
       // 5. Reshape OP: Also depends on the first input to this op.
       // 6. Not-Listed-Above OP: If there is only 1 such op, consider it as the
       // model input. However, if there are >1 unknown ops, then returns an
-      // error for now to avoid unexpected bahavior.
+      // error for now to avoid unexpected behavior.
       // Note: The list above might not be a complete list. Please let us
       // know if you see the error so we can handle your case.
       for (const Edge* edge : node->in_edges()) {

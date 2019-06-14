@@ -1,6 +1,7 @@
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//tensorflow:internal"])
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
@@ -12,7 +13,7 @@ py_library(
         ":python_state",
         ":split_dependency",
         ":visualize",
-        "//tensorflow/python/training/checkpointable:data_structures",
+        "//tensorflow/python/training/tracking:data_structures",
     ],
 )
 
@@ -22,8 +23,8 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python/training/checkpointable:base",
-        "//tensorflow/python/training/checkpointable:data_structures",
+        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/training/tracking:data_structures",
     ],
 )
 
@@ -36,8 +37,8 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python/training/checkpointable:base",
-        "//tensorflow/python/training/checkpointable:util",
+        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/training/tracking:util",
     ],
 )
 
@@ -47,7 +48,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/tracking:base",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -64,7 +65,7 @@ tf_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/checkpointable:util",
+        "//tensorflow/python/training/tracking:util",
     ],
 )
 
@@ -76,7 +77,7 @@ py_library(
     deps = [
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:training",
-        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/tracking:base",
     ],
 )
 
@@ -89,8 +90,8 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/checkpointable:base",
-        "//tensorflow/python/training/checkpointable:util",
+        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/training/tracking:util",
     ],
 )
 
@@ -101,8 +102,8 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:pywrap_tensorflow",
-        "//tensorflow/python/training/checkpointable:base",
-        "//tensorflow/python/training/checkpointable:util",
+        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/training/tracking:util",
     ],
 )
 
@@ -118,7 +119,6 @@ tf_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras:engine",
         "//tensorflow/python/keras:layers",
-        "//tensorflow/python/training/checkpointable:util",
+        "//tensorflow/python/training/tracking:util",
     ],
-    tags = ["nooss"],  # b/124472244
 )

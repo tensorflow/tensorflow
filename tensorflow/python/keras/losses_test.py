@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.platform import test
@@ -45,7 +46,7 @@ ALL_LOSSES = [keras.losses.mean_squared_error,
               keras.losses.binary_crossentropy,
               keras.losses.kullback_leibler_divergence,
               keras.losses.poisson,
-              keras.losses.cosine_proximity,
+              keras.losses.cosine_similarity,
               keras.losses.logcosh,
               keras.losses.categorical_hinge]
 
@@ -72,7 +73,7 @@ class KerasLossesTest(test.TestCase):
       y_b = keras.backend.variable(np.random.random((5, 6, 7)))
       for obj in ALL_LOSSES:
         objective_output = obj(y_a, y_b)
-        self.assertListEqual(objective_output.get_shape().as_list(), [5, 6])
+        self.assertListEqual(objective_output.shape.as_list(), [5, 6])
 
   def test_objective_shapes_2d(self):
     with self.cached_session():
@@ -80,7 +81,9 @@ class KerasLossesTest(test.TestCase):
       y_b = keras.backend.variable(np.random.random((6, 7)))
       for obj in ALL_LOSSES:
         objective_output = obj(y_a, y_b)
-        self.assertListEqual(objective_output.get_shape().as_list(), [6,])
+        self.assertListEqual(objective_output.shape.as_list(), [
+            6,
+        ])
 
   def test_cce_one_hot(self):
     with self.cached_session():
@@ -108,6 +111,28 @@ class KerasLossesTest(test.TestCase):
         keras.backend.eval(output_from_softmax), atol=1e-5)
 
   @test_util.run_in_graph_and_eager_modes
+  def test_categorical_crossentropy_loss_with_unknown_rank_tensor(self):
+    t = keras.backend.placeholder()
+    p = keras.backend.placeholder()
+    o = keras.losses.categorical_crossentropy(t, p)
+
+    t_val = ops.convert_to_tensor([[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]])
+    p_val = ops.convert_to_tensor([[.9, .05, .05], [.05, .89, .06],
+                                   [.05, .01, .94]])
+    f = keras.backend.function([t, p], o)
+
+    result = f([t_val, p_val])
+    self.assertArrayNear(result, [.105, .116, .062], 1e-3)
+
+    # from logits
+    p_val = ops.convert_to_tensor([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    o = keras.losses.categorical_crossentropy(t, p, from_logits=True)
+    f = keras.backend.function([t, p], o)
+
+    result = f([t_val, p_val])
+    self.assertArrayNear(result, [.002, 0, .17], 1e-3)
+
+  @test_util.run_in_graph_and_eager_modes
   def test_sparse_categorical_crossentropy_loss(self):
     target = keras.backend.variable(np.random.randint(0, 1, (5, 1)))
     logits = keras.backend.variable(np.random.random((5, 1)))
@@ -119,6 +144,28 @@ class KerasLossesTest(test.TestCase):
     np.testing.assert_allclose(
         keras.backend.eval(output_from_logit),
         keras.backend.eval(output_from_softmax), atol=1e-5)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_sparse_categorical_crossentropy_loss_with_unknown_rank_tensor(self):
+    t = keras.backend.placeholder()
+    p = keras.backend.placeholder()
+    o = keras.losses.sparse_categorical_crossentropy(t, p)
+
+    t_val = ops.convert_to_tensor([0, 1, 2])
+    p_val = ops.convert_to_tensor([[.9, .05, .05], [.05, .89, .06],
+                                   [.05, .01, .94]])
+    f = keras.backend.function([t, p], o)
+
+    result = f([t_val, p_val])
+    self.assertArrayNear(result, [.105, .116, .062], 1e-3)
+
+    # from logits
+    p_val = ops.convert_to_tensor([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    o = keras.losses.sparse_categorical_crossentropy(t, p, from_logits=True)
+    f = keras.backend.function([t, p], o)
+
+    result = f([t_val, p_val])
+    self.assertArrayNear(result, [.002, 0, .17], 1e-3)
 
   @test_util.run_in_graph_and_eager_modes
   def test_binary_crossentropy_loss(self):
@@ -185,8 +232,7 @@ class KerasLossesTest(test.TestCase):
     mse_obj = keras.losses.LossFunctionWrapper(loss_fn, name=loss_fn.__name__)
 
     self.assertEqual(mse_obj.name, 'mean_squared_error')
-    self.assertEqual(mse_obj.reduction,
-                     losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE)
+    self.assertEqual(mse_obj.reduction, losses_utils.ReductionV2.AUTO)
 
     y_true = constant_op.constant([[1., 9.], [2., 5.]])
     y_pred = constant_op.constant([[4., 8.], [12., 3.]])
@@ -198,6 +244,16 @@ class KerasLossesTest(test.TestCase):
     # weighted_mse = [5 * 1.2, 52 * 0.5] = [6, 26]
     # reduced_weighted_mse = (6 + 26) / 2 =
     self.assertAllClose(self.evaluate(loss), 16, 1e-2)
+
+  def test_invalid_reduction(self):
+    with self.assertRaisesRegexp(ValueError, 'Invalid Reduction Key Foo.'):
+      keras.losses.MeanSquaredError(reduction='Foo')
+
+    mse_obj = keras.losses.MeanSquaredError()
+    y = constant_op.constant([1])
+    mse_obj.reduction = 'Bar'
+    with self.assertRaisesRegexp(ValueError, 'Invalid Reduction Key Bar.'):
+      mse_obj(y, y)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -267,8 +323,8 @@ class MeanSquaredErrorTest(test.TestCase):
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3, 1))
     y_pred = constant_op.constant([4, 8, 12, 8, 1, 3], shape=(2, 3, 1))
     sample_weight = constant_op.constant([3, 6, 5, 0], shape=(2, 2))
-    with self.assertRaisesRegexp(
-        ValueError, r'Shapes \(2, 2\) and \(2, 3\) are incompatible'):
+    with self.assertRaisesRegexp(ValueError,
+                                 'weights can not be broadcast to values'):
       mse_obj(y_true, y_pred, sample_weight=sample_weight)
 
   def test_no_reduction(self):
@@ -360,8 +416,8 @@ class MeanAbsoluteErrorTest(test.TestCase):
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3, 1))
     y_pred = constant_op.constant([4, 8, 12, 8, 1, 3], shape=(2, 3, 1))
     sample_weight = constant_op.constant([3, 6, 5, 0], shape=(2, 2))
-    with self.assertRaisesRegexp(
-        ValueError, r'Shapes \(2, 2\) and \(2, 3\) are incompatible'):
+    with self.assertRaisesRegexp(ValueError,
+                                 'weights can not be broadcast to values'):
       mae_obj(y_true, y_pred, sample_weight=sample_weight)
 
   def test_no_reduction(self):
@@ -394,6 +450,14 @@ class MeanAbsolutePercentageErrorTest(test.TestCase):
         reduction=losses_utils.ReductionV2.SUM, name='mape_1')
     self.assertEqual(mape_obj.name, 'mape_1')
     self.assertEqual(mape_obj.reduction, losses_utils.ReductionV2.SUM)
+
+  def test_all_correct_unweighted(self):
+    mape_obj = keras.losses.MeanAbsolutePercentageError()
+    y_true = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3),
+                                  dtype=dtypes.float32)
+    loss = mape_obj(y_true, y_true)
+    self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
 
   def test_unweighted(self):
     mape_obj = keras.losses.MeanAbsolutePercentageError()
@@ -441,6 +505,17 @@ class MeanAbsolutePercentageErrorTest(test.TestCase):
                                   dtype=dtypes.float32)
     loss = mape_obj(y_true, y_pred, sample_weight=0)
     self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
+
+  def test_no_reduction(self):
+    mape_obj = keras.losses.MeanAbsolutePercentageError(
+        reduction=losses_utils.ReductionV2.NONE)
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3),
+                                  dtype=dtypes.float32)
+    loss = mape_obj(y_true, y_pred, sample_weight=2.3)
+    loss = self.evaluate(loss)
+    self.assertArrayNear(loss, [621.8518, 352.6666], 1e-3)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -501,7 +576,7 @@ class MeanSquaredLogarithmicErrorTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class CosineProximityTest(test.TestCase):
+class CosineSimilarityTest(test.TestCase):
 
   def l2_norm(self, x, axis):
     epsilon = 1e-12
@@ -515,28 +590,27 @@ class CosineProximityTest(test.TestCase):
 
     y_true = self.l2_norm(self.np_y_true, axis)
     y_pred = self.l2_norm(self.np_y_pred, axis)
-    self.expected_loss = -np.sum(np.multiply(y_true, y_pred), axis=(axis,))
+    self.expected_loss = np.sum(np.multiply(y_true, y_pred), axis=(axis,))
 
     self.y_true = constant_op.constant(self.np_y_true)
     self.y_pred = constant_op.constant(self.np_y_pred)
 
   def test_config(self):
-    cosine_obj = keras.losses.CosineProximity(
+    cosine_obj = keras.losses.CosineSimilarity(
         axis=2, reduction=losses_utils.ReductionV2.SUM, name='cosine_loss')
     self.assertEqual(cosine_obj.name, 'cosine_loss')
     self.assertEqual(cosine_obj.reduction, losses_utils.ReductionV2.SUM)
-    self.assertEqual(cosine_obj.axis, 2)
 
   def test_unweighted(self):
     self.setup()
-    cosine_obj = keras.losses.CosineProximity()
+    cosine_obj = keras.losses.CosineSimilarity()
     loss = cosine_obj(self.y_true, self.y_pred)
     expected_loss = np.mean(self.expected_loss)
     self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
   def test_scalar_weighted(self):
     self.setup()
-    cosine_obj = keras.losses.CosineProximity()
+    cosine_obj = keras.losses.CosineSimilarity()
     sample_weight = 2.3
     loss = cosine_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
     expected_loss = np.mean(self.expected_loss * sample_weight)
@@ -544,7 +618,7 @@ class CosineProximityTest(test.TestCase):
 
   def test_sample_weighted(self):
     self.setup()
-    cosine_obj = keras.losses.CosineProximity()
+    cosine_obj = keras.losses.CosineSimilarity()
     sample_weight = np.asarray([1.2, 3.4])
     loss = cosine_obj(
         self.y_true,
@@ -555,14 +629,14 @@ class CosineProximityTest(test.TestCase):
 
   def test_timestep_weighted(self):
     self.setup()
-    cosine_obj = keras.losses.CosineProximity()
+    cosine_obj = keras.losses.CosineSimilarity()
     np_y_true = self.np_y_true.reshape((2, 3, 1))
     np_y_pred = self.np_y_pred.reshape((2, 3, 1))
     sample_weight = np.asarray([3, 6, 5, 0, 4, 2]).reshape((2, 3))
 
     y_true = self.l2_norm(np_y_true, 2)
     y_pred = self.l2_norm(np_y_pred, 2)
-    expected_loss = -np.sum(np.multiply(y_true, y_pred), axis=(2,))
+    expected_loss = np.sum(np.multiply(y_true, y_pred), axis=(2,))
 
     y_true = constant_op.constant(np_y_true)
     y_pred = constant_op.constant(np_y_pred)
@@ -574,13 +648,13 @@ class CosineProximityTest(test.TestCase):
 
   def test_zero_weighted(self):
     self.setup()
-    cosine_obj = keras.losses.CosineProximity()
+    cosine_obj = keras.losses.CosineSimilarity()
     loss = cosine_obj(self.y_true, self.y_pred, sample_weight=0)
     self.assertAlmostEqual(self.evaluate(loss), 0., 3)
 
   def test_axis(self):
     self.setup(axis=1)
-    cosine_obj = keras.losses.CosineProximity(axis=1)
+    cosine_obj = keras.losses.CosineSimilarity(axis=1)
     loss = cosine_obj(self.y_true, self.y_pred)
     expected_loss = np.mean(self.expected_loss)
     self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
@@ -852,6 +926,12 @@ class CategoricalCrossentropyTest(test.TestCase):
 
 @test_util.run_all_in_graph_and_eager_modes
 class SparseCategoricalCrossentropyTest(test.TestCase):
+
+  def test_config(self):
+    cce_obj = keras.losses.SparseCategoricalCrossentropy(
+        reduction=losses_utils.ReductionV2.SUM, name='scc')
+    self.assertEqual(cce_obj.name, 'scc')
+    self.assertEqual(cce_obj.reduction, losses_utils.ReductionV2.SUM)
 
   def test_all_correct_unweighted(self):
     y_true = constant_op.constant([[0], [1], [2]], dtype=dtypes.int64)
@@ -1191,97 +1271,6 @@ class CategoricalHingeTest(test.TestCase):
                                   shape=(2, 3),
                                   dtype=dtypes.float32)
     loss = cat_hinge_obj(y_true, y_pred, sample_weight=0)
-    self.assertAlmostEqual(self.evaluate(loss), 0., 3)
-
-
-@test_util.run_all_in_graph_and_eager_modes
-class LogLossTest(test.TestCase):
-
-  def setup(self):
-    # TODO(psv): Change to setUp() after b/122319309 is fixed.
-    y_pred = np.asarray([.9, .2, .2, .8, .4, .6]).reshape((2, 3))
-    y_true = np.asarray([1., 0., 1., 1., 0., 0.]).reshape((2, 3))
-    epsilon = 1e-7  # to avoid log 0
-
-    self.batch_size = 6
-    self.expected_losses = np.multiply(y_true, np.log(y_pred + epsilon))
-    self.expected_losses += np.multiply(1 - y_true,
-                                        np.log(1 - y_pred + epsilon))
-    self.expected_losses = -self.expected_losses
-
-    self.y_pred = constant_op.constant(y_pred)
-    self.y_true = constant_op.constant(y_true)
-
-  def test_config(self):
-    log_loss_obj = keras.losses.LogLoss(
-        reduction=losses_utils.ReductionV2.SUM, name='log')
-    self.assertEqual(log_loss_obj.name, 'log')
-    self.assertEqual(log_loss_obj.reduction, losses_utils.ReductionV2.SUM)
-
-  def test_all_correct(self):
-    self.setup()
-    log_loss_obj = keras.losses.LogLoss()
-    loss = log_loss_obj(self.y_true, self.y_true)
-    self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
-
-  def test_unweighted(self):
-    self.setup()
-    log_loss_obj = keras.losses.LogLoss()
-    loss = log_loss_obj(self.y_true, self.y_pred)
-    actual_loss = np.sum(self.expected_losses) / self.batch_size
-    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
-
-  def test_scalar_weighted(self):
-    self.setup()
-    log_loss_obj = keras.losses.LogLoss()
-    sample_weight = 2.3
-    loss = log_loss_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
-    actual_loss = sample_weight * np.sum(self.expected_losses) / self.batch_size
-    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
-
-    # Verify we get the same output when the same input is given
-    loss_2 = log_loss_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
-    self.assertAlmostEqual(self.evaluate(loss), self.evaluate(loss_2), 3)
-
-  def test_sample_weighted(self):
-    self.setup()
-    log_loss_obj = keras.losses.LogLoss()
-    sample_weight = constant_op.constant((1.2, 3.4), shape=(2, 1))
-
-    loss = log_loss_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
-    actual_loss = np.multiply(
-        self.expected_losses,
-        np.asarray([1.2, 1.2, 1.2, 3.4, 3.4, 3.4]).reshape((2, 3)))
-    actual_loss = np.sum(actual_loss) / self.batch_size
-    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
-
-  def test_timestep_weighted(self):
-    log_loss_obj = keras.losses.LogLoss()
-
-    y_pred = np.asarray([.9, .2, .2, .8, .4, .6]).reshape((2, 3, 1))
-    y_true = np.asarray([1., 0., 1., 1., 0., 0.]).reshape((2, 3, 1))
-    epsilon = 1e-7  # to avoid log 0
-    batch_size = 6
-
-    expected_losses = np.multiply(y_true, np.log(y_pred + epsilon))
-    expected_losses += np.multiply(1 - y_true, np.log(1 - y_pred + epsilon))
-
-    y_pred = constant_op.constant(y_pred)
-    y_true = constant_op.constant(y_true)
-    sample_weight = np.array([3, 6, 5, 0, 4, 2]).reshape((2, 3, 1))
-    loss = log_loss_obj(
-        y_true,
-        y_pred,
-        sample_weight=constant_op.constant(sample_weight, shape=(2, 3)))
-    actual_loss = np.multiply(-expected_losses, sample_weight)
-    actual_loss = np.sum(actual_loss) / batch_size
-    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
-
-  def test_zero_weighted(self):
-    self.setup()
-    log_loss_obj = keras.losses.LogLoss()
-    sample_weight = 0
-    loss = log_loss_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
     self.assertAlmostEqual(self.evaluate(loss), 0., 3)
 
 

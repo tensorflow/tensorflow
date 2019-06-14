@@ -42,7 +42,7 @@ class XlaCompilationAllocator : public Allocator {
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     // Regardless of the size requested, always allocates an XlaExpression.
-    // Respects the aligment request because there is alignment checking even
+    // Respects the alignment request because there is alignment checking even
     // for Tensors whose data is never accessed.
     void* p = port::AlignedMalloc(sizeof(XlaExpression), alignment);
     XlaExpression* expression = reinterpret_cast<XlaExpression*>(p);
@@ -58,20 +58,13 @@ class XlaCompilationAllocator : public Allocator {
 
   // Make sure that even tensors with 0 elements have allocated
   // buffers, so they get ids to track.
-  bool ShouldAllocateEmptyTensors() override { return true; }
-
-  void GetStats(AllocatorStats* stats) override { stats->Clear(); }
-
- private:
-  // Don't run any constructors or destructors for complex objects,
-  // since there is no backing store for the tensor to run them
-  // on. strings are the only complex objects currently stored in
-  // Tensors. If others are added, this set of overrides must be
-  // extended to include them.
-  void RunStringCtor(string* p, size_t n) override {}
-  void RunStringDtor(string* p, size_t n) override {}
-  void RunResourceCtor(ResourceHandle* p, size_t n) override {}
-  void RunResourceDtor(ResourceHandle* p, size_t n) override {}
+  //
+  // NOTE: It is the caller's responsibility to track whether an allocated
+  // object is a buffer or an opaque handle. In particular, when this allocator
+  // is used, the caller must not run any constructors or destructors for
+  // complex objects, since there is no backing store for the tensor in which to
+  // place their outputs.
+  bool AllocatesOpaqueHandle() const override { return true; }
 };
 
 XlaCompilationDevice::XlaCompilationDevice(const SessionOptions& options,

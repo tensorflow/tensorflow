@@ -50,7 +50,7 @@ template <typename Kernel>
 Status ComputeSpansCore(OpKernelContext* context, const Kernel& kernel,
                         const int64 output_size, const int64 input_size,
                         const float scale, const float translate,
-                        Spans* spans) {
+                        const bool antialias, Spans* spans) {
   // When sampling, we need the inverse scale and translation, to map from an
   // output to an input pixel.
   const float inv_scale = 1.0 / scale;
@@ -58,7 +58,7 @@ Status ComputeSpansCore(OpKernelContext* context, const Kernel& kernel,
   // When downsampling the kernel should be scaled since we want to low pass
   // filter and interpolate, but when upsampling it should not be since we only
   // want to interpolate.
-  const float kernel_scale = std::max(inv_scale, 1.0f);
+  const float kernel_scale = antialias ? std::max(inv_scale, 1.0f) : 1.0f;
   spans->span_size = std::min(
       2 * static_cast<int>(std::ceil(kernel.Radius() * kernel_scale)) + 1,
       static_cast<int>(input_size));
@@ -82,10 +82,8 @@ Status ComputeSpansCore(OpKernelContext* context, const Kernel& kernel,
     const float col_f = x + 0.5f;
     const float sample_f = col_f * inv_scale + inv_translate;
 
-    // Don't sample when the sampling *kernel* is completely outside the
-    // source image.
-    if (sample_f < 0 - kernel.Radius() * kernel_scale ||
-        sample_f > input_size + kernel.Radius() * kernel_scale) {
+    // Don't sample when the sampling location is outside the source image.
+    if (sample_f < 0 || sample_f > input_size) {
       // Add an empty span.
       starts_vec(x) = 0;
       continue;
@@ -169,11 +167,15 @@ Status ComputeGradSpansCore(OpKernelContext* context, const Spans& spans,
   auto grad_weights_vec = grad_spans->weights.vec<float>();
   grad_weights_vec.setZero();
   for (int input_index = 0; input_index < forward_input_size; ++input_index) {
-    const int start_span = grad_components[input_index].front().index;
-    grad_starts_vec(input_index) = start_span;
-    for (const GradComponent& gc : grad_components[input_index]) {
-      grad_weights_vec(input_index * grad_spans->span_size + gc.index -
-                       start_span) += gc.weight;
+    if (!grad_components[input_index].empty()) {
+      const int start_span = grad_components[input_index].front().index;
+      grad_starts_vec(input_index) = start_span;
+      for (const GradComponent& gc : grad_components[input_index]) {
+        grad_weights_vec(input_index * grad_spans->span_size + gc.index -
+                         start_span) += gc.weight;
+      }
+    } else {
+      grad_starts_vec(input_index) = 0;
     }
   }
   return Status::OK();
@@ -186,39 +188,40 @@ Status ComputeGradSpansCore(OpKernelContext* context, const Spans& spans,
 Status ComputeSpans(OpKernelContext* context,
                     const functor::SamplingKernelType kernel_type,
                     const int64 output_size, const int64 input_size,
-                    const float scale, const float translate, Spans* spans) {
+                    const float scale, const float translate,
+                    const bool antialias, Spans* spans) {
   switch (kernel_type) {
     case functor::Lanczos1Kernel: {
       return ComputeSpansCore(context, CreateLanczos1Kernel(), output_size,
-                              input_size, scale, translate, spans);
+                              input_size, scale, translate, antialias, spans);
     }
     case functor::Lanczos3Kernel: {
       return ComputeSpansCore(context, CreateLanczos3Kernel(), output_size,
-                              input_size, scale, translate, spans);
+                              input_size, scale, translate, antialias, spans);
     }
     case functor::Lanczos5Kernel: {
       return ComputeSpansCore(context, CreateLanczos5Kernel(), output_size,
-                              input_size, scale, translate, spans);
+                              input_size, scale, translate, antialias, spans);
     }
     case functor::GaussianKernel: {
       return ComputeSpansCore(context, CreateGaussianKernel(), output_size,
-                              input_size, scale, translate, spans);
+                              input_size, scale, translate, antialias, spans);
     }
     case functor::BoxKernel: {
       return ComputeSpansCore(context, CreateBoxKernel(), output_size,
-                              input_size, scale, translate, spans);
+                              input_size, scale, translate, antialias, spans);
     }
     case functor::TriangleKernel: {
       return ComputeSpansCore(context, CreateTriangleKernel(), output_size,
-                              input_size, scale, translate, spans);
+                              input_size, scale, translate, antialias, spans);
     }
     case functor::KeysCubicKernel: {
       return ComputeSpansCore(context, CreateKeysCubicKernel(), output_size,
-                              input_size, scale, translate, spans);
+                              input_size, scale, translate, antialias, spans);
     }
     case functor::MitchellCubicKernel: {
       return ComputeSpansCore(context, CreateMitchellCubicKernel(), output_size,
-                              input_size, scale, translate, spans);
+                              input_size, scale, translate, antialias, spans);
     }
     default:
       return errors::InvalidArgument(Printf("Unrecognized kernel type: %d",
@@ -234,11 +237,12 @@ Status ComputeGradSpans(OpKernelContext* context,
                         const functor::SamplingKernelType kernel_type,
                         const int64 forward_output_size,
                         const int64 forward_input_size, const float scale,
-                        const float translate, Spans* grad_spans) {
+                        const float translate, const bool antialias,
+                        Spans* grad_spans) {
   Spans spans;
   TF_RETURN_IF_ERROR(ComputeSpans(context, kernel_type, forward_output_size,
                                   forward_input_size, scale, translate,
-                                  &spans));
+                                  antialias, &spans));
   return ComputeGradSpansCore(context, spans, forward_output_size,
                               forward_input_size, grad_spans);
 }
@@ -264,6 +268,7 @@ class ScaleAndTranslateOp : public OpKernel {
  public:
   explicit ScaleAndTranslateOp(OpKernelConstruction* context)
       : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("antialias", &antialias_));
     string kernel_type_str;
     OP_REQUIRES_OK(context, context->GetAttr("kernel_type", &kernel_type_str));
     kernel_type_ = functor::SamplingKernelTypeFromString(kernel_type_str);
@@ -331,12 +336,14 @@ class ScaleAndTranslateOp : public OpKernel {
 
     functor::Spans col_spans;
     OP_REQUIRES_OK(
-        context, ComputeSpans(context, kernel_type_, output_width, input_width,
-                              col_scale, col_translation, &col_spans));
+        context,
+        ComputeSpans(context, kernel_type_, output_width, input_width,
+                     col_scale, col_translation, antialias_, &col_spans));
     functor::Spans row_spans;
-    OP_REQUIRES_OK(context, ComputeSpans(context, kernel_type_, output_height,
-                                         input_height, row_scale,
-                                         row_translation, &row_spans));
+    OP_REQUIRES_OK(
+        context,
+        ComputeSpans(context, kernel_type_, output_height, input_height,
+                     row_scale, row_translation, antialias_, &row_spans));
     Tensor intermediate_t;
     OP_REQUIRES_OK(
         context, context->allocate_temp(DT_FLOAT,
@@ -363,6 +370,7 @@ class ScaleAndTranslateOp : public OpKernel {
         intermediate_data, output_data);
   }
   functor::SamplingKernelType kernel_type_;
+  bool antialias_;
 };
 
 template <typename Device, typename T>
@@ -370,6 +378,7 @@ class ScaleAndTranslateGradOp : public OpKernel {
  public:
   explicit ScaleAndTranslateGradOp(OpKernelConstruction* context)
       : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("antialias", &antialias_));
     string kernel_type_str;
     OP_REQUIRES_OK(context, context->GetAttr("kernel_type", &kernel_type_str));
     kernel_type_ = functor::SamplingKernelTypeFromString(kernel_type_str);
@@ -434,12 +443,12 @@ class ScaleAndTranslateGradOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    ComputeGradSpans(context, kernel_type_, forward_output_width,
                                     forward_input_width, col_scale,
-                                    col_translation, &col_spans));
+                                    col_translation, antialias_, &col_spans));
     functor::Spans row_spans;
     OP_REQUIRES_OK(
         context, ComputeGradSpans(context, kernel_type_, forward_output_height,
                                   forward_input_height, row_scale,
-                                  row_translation, &row_spans));
+                                  row_translation, antialias_, &row_spans));
     Tensor intermediate_t;
     OP_REQUIRES_OK(context, context->allocate_temp(
                                 DT_FLOAT,
@@ -467,6 +476,7 @@ class ScaleAndTranslateGradOp : public OpKernel {
   }
 
   functor::SamplingKernelType kernel_type_;
+  bool antialias_;
 };
 
 template <typename T>

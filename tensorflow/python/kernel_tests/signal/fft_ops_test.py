@@ -110,13 +110,13 @@ class FFTOpsTest(BaseFFTOpsTest):
 
   def _tfFFT(self, x, rank, fft_length=None, feed_dict=None):
     # fft_length unused for complex FFTs.
-    with self.cached_session(use_gpu=True):
-      return self._tfFFTForRank(rank)(x).eval(feed_dict=feed_dict)
+    with self.cached_session(use_gpu=True) as sess:
+      return sess.run(self._tfFFTForRank(rank)(x), feed_dict=feed_dict)
 
   def _tfIFFT(self, x, rank, fft_length=None, feed_dict=None):
     # fft_length unused for complex FFTs.
-    with self.cached_session(use_gpu=True):
-      return self._tfIFFTForRank(rank)(x).eval(feed_dict=feed_dict)
+    with self.cached_session(use_gpu=True) as sess:
+      return sess.run(self._tfIFFTForRank(rank)(x), feed_dict=feed_dict)
 
   def _npFFT(self, x, rank, fft_length=None):
     if rank == 1:
@@ -292,12 +292,14 @@ class RFFTOpsTest(BaseFFTOpsTest):
                                               use_placeholder)
 
   def _tfFFT(self, x, rank, fft_length=None, feed_dict=None):
-    with self.cached_session(use_gpu=True):
-      return self._tfFFTForRank(rank)(x, fft_length).eval(feed_dict=feed_dict)
+    with self.cached_session(use_gpu=True) as sess:
+      return sess.run(
+          self._tfFFTForRank(rank)(x, fft_length), feed_dict=feed_dict)
 
   def _tfIFFT(self, x, rank, fft_length=None, feed_dict=None):
-    with self.cached_session(use_gpu=True):
-      return self._tfIFFTForRank(rank)(x, fft_length).eval(feed_dict=feed_dict)
+    with self.cached_session(use_gpu=True) as sess:
+      return sess.run(
+          self._tfIFFTForRank(rank)(x, fft_length), feed_dict=feed_dict)
 
   def _npFFT(self, x, rank, fft_length=None):
     if rank == 1:
@@ -397,6 +399,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
                 rank, (size,) * rank,
                 use_placeholder=True)
 
+  @test_util.run_deprecated_v1
   def testFftLength(self):
     if test.is_gpu_available(cuda_only=True):
       with spectral_ops_test_util.fft_kernel_label_map():
@@ -465,7 +468,6 @@ class RFFTOpsTest(BaseFFTOpsTest):
                 gen_complex(complex_dims), rank, (size,) * rank)
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("b/123738986")  # More assertions needed.
   def testError(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:
@@ -512,7 +514,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
           x = np.zeros((5,) * rank).astype(np.float32)
           fft_length = [6] * rank
           with self.cached_session():
-            rfft_fn(x, fft_length).eval()
+            self.evaluate(rfft_fn(x, fft_length))
 
         with self.assertRaisesWithPredicateMatch(
             errors.InvalidArgumentError,
@@ -520,7 +522,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
           x = np.zeros((3,) * rank).astype(np.complex64)
           fft_length = [6] * rank
           with self.cached_session():
-            irfft_fn(x, fft_length).eval()
+            self.evaluate(irfft_fn(x, fft_length))
 
   @test_util.run_deprecated_v1
   def testGrad_Simple(self):
@@ -551,6 +553,57 @@ class RFFTOpsTest(BaseFFTOpsTest):
             self._checkGradReal(self._tfFFTForRank(rank), re)
             self._checkGradComplex(
                 self._tfIFFTForRank(rank), re, im, result_is_complex=False)
+
+
+class FFTShiftTest(test.TestCase):
+
+  @test_util.run_deprecated_v1
+  def testDefinition(self):
+    with self.session():
+      x = [0, 1, 2, 3, 4, -4, -3, -2, -1]
+      y = [-4, -3, -2, -1, 0, 1, 2, 3, 4]
+      self.assertAllEqual(fft_ops.fftshift(x).eval(), y)
+      self.assertAllEqual(fft_ops.ifftshift(y).eval(), x)
+      x = [0, 1, 2, 3, 4, -5, -4, -3, -2, -1]
+      y = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4]
+      self.assertAllEqual(fft_ops.fftshift(x).eval(), y)
+      self.assertAllEqual(fft_ops.ifftshift(y).eval(), x)
+
+  @test_util.run_deprecated_v1
+  def testAxesKeyword(self):
+    with self.session():
+      freqs = [[0, 1, 2], [3, 4, -4], [-3, -2, -1]]
+      shifted = [[-1, -3, -2], [2, 0, 1], [-4, 3, 4]]
+      self.assertAllEqual(fft_ops.fftshift(freqs, axes=(0, 1)).eval(), shifted)
+      self.assertAllEqual(
+          fft_ops.fftshift(freqs, axes=0).eval(),
+          fft_ops.fftshift(freqs, axes=(0,)).eval())
+      self.assertAllEqual(fft_ops.ifftshift(shifted, axes=(0, 1)).eval(), freqs)
+      self.assertAllEqual(
+          fft_ops.ifftshift(shifted, axes=0).eval(),
+          fft_ops.ifftshift(shifted, axes=(0,)).eval())
+      self.assertAllEqual(fft_ops.fftshift(freqs).eval(), shifted)
+      self.assertAllEqual(fft_ops.ifftshift(shifted).eval(), freqs)
+
+  @test_util.run_deprecated_v1
+  def testNumpyCompatibility(self):
+    with self.session():
+      x = [0, 1, 2, 3, 4, -4, -3, -2, -1]
+      y = [-4, -3, -2, -1, 0, 1, 2, 3, 4]
+      self.assertAllEqual(fft_ops.fftshift(x).eval(), np.fft.fftshift(x))
+      self.assertAllEqual(fft_ops.ifftshift(y).eval(), np.fft.ifftshift(y))
+      x = [0, 1, 2, 3, 4, -5, -4, -3, -2, -1]
+      y = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4]
+      self.assertAllEqual(fft_ops.fftshift(x).eval(), np.fft.fftshift(x))
+      self.assertAllEqual(fft_ops.ifftshift(y).eval(), np.fft.ifftshift(y))
+      freqs = [[0, 1, 2], [3, 4, -4], [-3, -2, -1]]
+      shifted = [[-1, -3, -2], [2, 0, 1], [-4, 3, 4]]
+      self.assertAllEqual(
+          fft_ops.fftshift(freqs, axes=(0, 1)).eval(),
+          np.fft.fftshift(freqs, axes=(0, 1)))
+      self.assertAllEqual(
+          fft_ops.ifftshift(shifted, axes=(0, 1)).eval(),
+          np.fft.ifftshift(shifted, axes=(0, 1)))
 
 
 if __name__ == "__main__":

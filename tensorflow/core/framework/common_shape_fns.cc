@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/common_shape_fns.h"
+
+#include <unordered_set>
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -230,6 +233,43 @@ Status MatMulShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->Merge(inner_a, inner_b, &merged));
 
   c->set_output(0, c->Matrix(output_rows, output_cols));
+  return Status::OK();
+}
+
+Status BatchMatMulV2Shape(shape_inference::InferenceContext* c) {
+  ShapeHandle a_shape;
+  ShapeHandle b_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &a_shape));
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 2, &b_shape));
+
+  // Determine output rows and columns.
+  bool adj_x;
+  bool adj_y;
+  TF_RETURN_IF_ERROR(c->GetAttr("adj_x", &adj_x));
+  TF_RETURN_IF_ERROR(c->GetAttr("adj_y", &adj_y));
+  DimensionHandle output_rows = c->Dim(a_shape, adj_x ? -1 : -2);
+  DimensionHandle output_cols = c->Dim(b_shape, adj_y ? -2 : -1);
+
+  // Inner dimensions should be compatible.
+  DimensionHandle inner_merged;
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(a_shape, adj_x ? -2 : -1),
+                              c->Dim(b_shape, adj_y ? -1 : -2), &inner_merged));
+
+  // Batch dimensions should broadcast with each other.
+  ShapeHandle a_batch_shape;
+  ShapeHandle b_batch_shape;
+  ShapeHandle output_batch_shape;
+  TF_RETURN_IF_ERROR(c->Subshape(a_shape, 0, -2, &a_batch_shape));
+  TF_RETURN_IF_ERROR(c->Subshape(b_shape, 0, -2, &b_batch_shape));
+
+  TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(
+      c, a_batch_shape, b_batch_shape, &output_batch_shape));
+
+  ShapeHandle output_shape;
+  TF_RETURN_IF_ERROR(c->Concatenate(
+      output_batch_shape, c->Matrix(output_rows, output_cols), &output_shape));
+
+  c->set_output(0, output_shape);
   return Status::OK();
 }
 
@@ -492,11 +532,27 @@ Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
         filter_shape, GetFilterDimIndex<num_spatial_dims>(filter_format, 'I'));
   }
 
-  // Check that the input tensor and the filter tensor agree on the input
-  // channel count.
-  DimensionHandle unused;
-  TF_RETURN_IF_ERROR(
-      c->Merge(input_depth_dim, filter_input_depth_dim, &unused));
+  // Check that the input tensor and the filter tensor agree on the channel
+  // count.
+  if (c->ValueKnown(input_depth_dim) && c->ValueKnown(filter_input_depth_dim)) {
+    int64 input_depth_value = c->Value(input_depth_dim),
+          filter_input_depth_value = c->Value(filter_input_depth_dim);
+    if (input_depth_value % filter_input_depth_value != 0)
+      return errors::InvalidArgument(
+          "Depth of input (", input_depth_value,
+          ") is not a multiple of input depth of filter (",
+          filter_input_depth_value, ")");
+    if (input_depth_value != filter_input_depth_value) {
+      int64 num_groups = input_depth_value / filter_input_depth_value;
+      if (c->ValueKnown(output_depth_dim)) {
+        int64 output_depth_value = c->Value(output_depth_dim);
+        if (output_depth_value % num_groups != 0)
+          return errors::InvalidArgument(
+              "Depth of output (", output_depth_value,
+              ") is not a multiple of the number of groups (", num_groups, ")");
+      }
+    }
+  }
 
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
@@ -512,7 +568,7 @@ Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
     TF_RETURN_IF_ERROR(CheckValidPadding(padding, explicit_paddings,
                                          /*num_dims=*/4, data_format));
   } else {
-    DCHECK(padding != Padding::EXPLICIT);
+    CHECK(padding != Padding::EXPLICIT);  // Crash ok.
   }
 
   DimensionHandle output_rows, output_cols;
@@ -818,6 +874,37 @@ Status FusedBatchNormShape(shape_inference::InferenceContext* c) {
   c->set_output(2, vector_shape);
   c->set_output(3, vector_shape);
   c->set_output(4, vector_shape);
+  return Status::OK();
+}
+
+Status FusedBatchNormV3Shape(shape_inference::InferenceContext* c) {
+  TF_RETURN_IF_ERROR(FusedBatchNormShape(c));
+  c->set_output(5, c->UnknownShape());
+  return Status::OK();
+}
+
+Status FusedBatchNormExShape(shape_inference::InferenceContext* c) {
+  TF_RETURN_IF_ERROR(FusedBatchNormV3Shape(c));
+
+  string data_format_str;
+  TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
+  TensorFormat data_format;
+  if (!FormatFromString(data_format_str, &data_format)) {
+    return errors::InvalidArgument("Invalid data format string: ",
+                                   data_format_str);
+  }
+  ShapeHandle x;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &x));
+
+  int channel_dim_index = GetTensorFeatureDimIndex(4, data_format);
+  DimensionHandle channel_dim = c->Dim(x, channel_dim_index);
+
+  // This is a cuDNN implementation constraint.
+  if (c->ValueKnown(channel_dim) && c->Value(channel_dim) % 4 != 0) {
+    return errors::InvalidArgument(
+        "_FusedBatchNormEx channel dimension must be divisible by 4.");
+  }
+
   return Status::OK();
 }
 
@@ -1384,6 +1471,37 @@ Status RandomShape(shape_inference::InferenceContext* c) {
   return Status::OK();
 }
 
+Status UnsortedSegmentReductionShapeFn(InferenceContext* c) {
+  ShapeHandle s_data = c->input(0);
+  ShapeHandle s_segment_ids = c->input(1);
+  ShapeHandle s_num_segments = c->input(2);
+  TF_RETURN_IF_ERROR(c->WithRank(s_num_segments, 0, &s_num_segments));
+
+  ShapeHandle out;
+
+  // Leading dimensions of data must be compatible with dimensions of
+  // <s_segment_ids>.
+  if (c->RankKnown(s_segment_ids)) {
+    TF_RETURN_IF_ERROR(
+        c->MergePrefix(s_data, s_segment_ids, &s_data, &s_segment_ids));
+
+    // Get the value of the num_segments input tensor.
+    DimensionHandle num_segments_dim;
+    TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &num_segments_dim));
+
+    // Output is {segment_id_rank} + s_data[segment_id_rank:].
+    ShapeHandle s_data_suffix;
+    TF_RETURN_IF_ERROR(
+        c->Subshape(s_data, c->Rank(s_segment_ids), &s_data_suffix));
+    TF_RETURN_IF_ERROR(
+        c->Concatenate(c->Vector(num_segments_dim), s_data_suffix, &out));
+  } else {
+    out = c->UnknownShape();
+  }
+  c->set_output(0, out);
+  return Status::OK();
+}
+
 namespace {
 
 // This SliceHelper processes the output shape of the `slice`
@@ -1529,6 +1647,62 @@ Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
     }
   }
 
+  return Status::OK();
+}
+
+Status ValidateVariableResourceHandle(
+    InferenceContext* c, std::vector<ShapeAndType>* shape_and_type) {
+  auto* handle_data = c->input_handle_shapes_and_types(0);
+  if (handle_data == nullptr || handle_data->empty()) {
+    shape_and_type->emplace_back(c->UnknownShape(), DT_INVALID);
+  } else {
+    *shape_and_type = *handle_data;
+    DataType value_dtype;
+    TF_RETURN_IF_ERROR(c->GetAttr("dtype", &value_dtype));
+    if (shape_and_type->at(0).dtype != value_dtype) {
+      return errors::InvalidArgument(
+          "Trying to read variable with wrong dtype. "
+          "Expected ",
+          DataTypeString(shape_and_type->at(0).dtype), " got ",
+          DataTypeString(value_dtype));
+    }
+  }
+  return Status::OK();
+}
+
+Status GatherNdShape(InferenceContext* c) {
+  ShapeHandle params;
+  std::vector<ShapeAndType> handle_shape_and_type;
+  if (c->input_handle_shapes_and_types(0) != nullptr) {
+    TF_RETURN_IF_ERROR(
+        ValidateVariableResourceHandle(c, &handle_shape_and_type));
+    params = handle_shape_and_type[0].shape;
+  } else {
+    params = c->input(0);
+  }
+  ShapeHandle indices;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &indices));
+  DimensionHandle r_dim = c->Dim(indices, -1);
+
+  if (!c->RankKnown(params) || !c->ValueKnown(r_dim)) {
+    c->set_output(0, c->UnknownShape());
+    return Status::OK();
+  }
+
+  if (c->Value(r_dim) > c->Rank(params)) {
+    return errors::InvalidArgument(
+        "indices.shape[-1] must be <= params.rank, but saw indices shape: ",
+        c->DebugString(indices), " and params shape: ", c->DebugString(params));
+  }
+
+  // Remove r_dim from indices to get output.
+  ShapeHandle indices_slice;
+  ShapeHandle params_slice;
+  TF_RETURN_IF_ERROR(c->Subshape(indices, 0, -1, &indices_slice));
+  TF_RETURN_IF_ERROR(c->Subshape(params, c->Value(r_dim), &params_slice));
+  ShapeHandle out;
+  TF_RETURN_IF_ERROR(c->Concatenate(indices_slice, params_slice, &out));
+  c->set_output(0, out);
   return Status::OK();
 }
 

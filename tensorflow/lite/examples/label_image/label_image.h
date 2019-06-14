@@ -26,6 +26,7 @@ struct Settings {
   bool accel = false;
   bool input_floating = false;
   bool profiling = false;
+  bool allow_fp16 = false;
   int loop_count = 1;
   float input_mean = 127.5f;
   float input_std = 127.5f;

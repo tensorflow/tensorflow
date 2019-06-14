@@ -37,12 +37,6 @@ XlaOp IsNegZero(XlaOp operand);
 // std::nextafter(from, to) would.
 XlaOp NextAfter(XlaOp from, XlaOp to);
 
-// Computes the square root of 'operand'.
-XlaOp Sqrt(XlaOp operand);
-
-// Computes the reciprocal of the square root of 'operand'.
-XlaOp Rsqrt(XlaOp operand);
-
 // Computes the square of 'operand'.
 XlaOp Square(XlaOp operand);
 
@@ -106,6 +100,9 @@ XlaOp Sinh(XlaOp x);
 // Applies a complex conjugation operation if 'a' is complex and 'conjugate'
 // is true, otherwise returns its argument.
 xla::XlaOp MaybeConjugate(xla::XlaOp x, bool conjugate);
+
+// Computes the logistic function: logistic(x) = 0.5 + 0.5 * tanh(0.5 * x).
+XlaOp Logistic(XlaOp x);
 
 }  // namespace xla
 

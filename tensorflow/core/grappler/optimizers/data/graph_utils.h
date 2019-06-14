@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -143,6 +144,11 @@ void ConcatAttributeList(const string& attribute_name, const NodeDef& first,
 // C++ API). Note that the nodes in the graph are identified by their id,
 // and renaming nodes does not mutate any edges.
 Status EnsureNodeNamesUnique(Graph* g);
+
+// Returns the item's fetch node, if there is exactly one. Otherwise, returns an
+// error.
+Status GetFetchNode(const MutableGraphView& graph, const GrapplerItem& item,
+                    NodeDef** fetch_node);
 
 }  // namespace graph_utils
 }  // namespace grappler

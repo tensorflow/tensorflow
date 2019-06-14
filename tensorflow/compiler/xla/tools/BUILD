@@ -1,8 +1,11 @@
 # Tools and utilities that aid in XLA development and usage.
 
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
-package(default_visibility = ["//tensorflow/compiler/xla:internal"])
+package(
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 # Filegroup used to collect source files for dependency checking.
 filegroup(
@@ -13,8 +16,6 @@ filegroup(
     ]),
     visibility = ["//tensorflow/compiler/xla:internal"],
 )
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
 tf_cc_binary(
     name = "hex_floats_to_packed_literal",
@@ -72,6 +73,7 @@ cc_library(
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//third_party/eigen3",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = True,
@@ -178,26 +180,6 @@ tf_cc_binary(
 )
 
 tf_cc_binary(
-    name = "dumped_computation_to_tf_graphdef",
-    srcs = ["dumped_computation_to_tf_graphdef.cc"],
-    deps = [
-        "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla/client",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/service",
-        "//tensorflow/compiler/xla/service:hlo_graph_dumper",
-        "//tensorflow/compiler/xla/service:hlo_proto",
-        "//tensorflow/compiler/xla/service:interpreter_plugin",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-tf_cc_binary(
     name = "hlo_proto_to_json",
     srcs = ["hlo_proto_to_json.cc"],
     deps = [
@@ -251,6 +233,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
     ],

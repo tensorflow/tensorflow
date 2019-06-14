@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
@@ -81,9 +82,9 @@ class WindowTest(test_base.DatasetTestBase, parameterized.TestCase):
             drop_remainder=drop_remainder).flat_map(_flat_map_fn)
     get_next = self.getNext(dataset)
 
-    self.assertEqual(
-        [[None] + list(c.shape[1:]) for c in components],
-        [ts.as_list() for ts in nest.flatten(dataset.output_shapes)])
+    self.assertEqual([[None] + list(c.shape[1:]) for c in components],
+                     [ts.as_list() for ts in nest.flatten(
+                         dataset_ops.get_legacy_output_shapes(dataset))])
 
     num_full_batches = max(0,
                            (count * 7 - ((size - 1) * stride + 1)) // shift + 1)
@@ -147,7 +148,7 @@ class WindowTest(test_base.DatasetTestBase, parameterized.TestCase):
       return sparse_tensor.SparseTensorValue(
           indices=array_ops.expand_dims(
               math_ops.range(i, dtype=dtypes.int64), 1),
-          values=array_ops.fill([math_ops.to_int32(i)], i),
+          values=array_ops.fill([math_ops.cast(i, dtypes.int32)], i),
           dense_shape=[i])
 
     dataset = dataset_ops.Dataset.range(10).map(_sparse).window(
@@ -224,6 +225,16 @@ class WindowTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         dataset, expected_output=[np.float32([1., 2.]),
                                   np.float32([2., 3.])])
+
+  def testNestedOutput(self):
+    if not context.executing_eagerly():
+      self.skipTest("self.evaluate() does not work with a dataset")
+    dataset = dataset_ops.Dataset.range(100)
+    dataset = dataset_ops.Dataset.zip((dataset, dataset)).window(10)
+    for i, nested_dataset in enumerate(dataset):
+      x, y = nested_dataset
+      self.assertDatasetProduces(x, range(i*10, (i+1)*10))
+      self.assertDatasetProduces(y, range(i*10, (i+1)*10))
 
 
 if __name__ == "__main__":

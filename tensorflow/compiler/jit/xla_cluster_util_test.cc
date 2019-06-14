@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 
+#include "absl/algorithm/container.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -42,7 +45,7 @@ TEST(CreateCycleDetectionGraph, ConnectivityThroughEnterExitRegion) {
   FixupSourceAndSinkEdges(root.graph());
 
   GraphCycles cycles;
-  TF_ASSERT_OK(CreateCycleDetectionGraph(root.graph(), &cycles));
+  TF_ASSERT_OK(CreateCycleDetectionGraph(root.graph(), &cycles).status());
   EXPECT_FALSE(cycles.ContractEdge(a.node()->id(), b.node()->id()));
 }
 
@@ -61,8 +64,71 @@ TEST(CreateCycleDetectionGraph, ConnectivityThroughMultipleEnterExitRegions) {
   FixupSourceAndSinkEdges(root.graph());
 
   GraphCycles cycles;
-  TF_ASSERT_OK(CreateCycleDetectionGraph(root.graph(), &cycles));
+  TF_ASSERT_OK(CreateCycleDetectionGraph(root.graph(), &cycles).status());
   EXPECT_FALSE(cycles.ContractEdge(a.node()->id(), b.node()->id()));
+}
+
+TEST(CreateCycleDetectionGraph, ReachingEnterExit) {
+  // TODO(b/127521408): We can lift this limitation with some work.
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  Output a = ops::Const(root.WithOpName("a"), Input::Initializer(0.0));
+  Output enter_0 =
+      ops::internal::Enter(root.WithOpName("enter_0"), a, "frame_0");
+  Output exit_0 = ops::internal::Exit(root.WithOpName("exit_0"), enter_0);
+
+  Output add = ops::Add(root.WithOpName("add"), exit_0, exit_0);
+
+  Output enter_1 =
+      ops::internal::Enter(root.WithOpName("enter_1"), add, "frame_0");
+  Output exit_1 = ops::internal::Exit(root.WithOpName("exit_1"), enter_1);
+
+  FixupSourceAndSinkEdges(root.graph());
+
+  GraphCycles cycles;
+  TF_ASSERT_OK_AND_ASSIGN(bool ok,
+                          CreateCycleDetectionGraph(root.graph(), &cycles));
+  EXPECT_FALSE(ok);
+}
+
+const char* kCPU0 = "/job:localhost/replica:0/task:0/device:CPU:0";
+const char* kGPU0 = "/job:localhost/replica:0/task:0/device:GPU:0";
+const char* kGPU1 = "/job:localhost/replica:0/task:0/device:GPU:1";
+
+TEST(IsSingleGpuGraph, ReturnsTrue) {
+  Scope root = Scope::NewRootScope().WithAssignedDevice(kGPU0).ExitOnError();
+
+  Output a = ops::Const(root.WithOpName("a"), Input::Initializer(0.0));
+  Output b = ops::Add(root.WithOpName("b"), a, a);
+  Output c = ops::Add(root.WithOpName("c"), b, b);
+
+  FixupSourceAndSinkEdges(root.graph());
+
+  EXPECT_TRUE(IsSingleGpuGraph(*root.graph()));
+}
+
+TEST(IsSingleGpuGraph, ReturnsFalseForCpuGraph) {
+  Scope root = Scope::NewRootScope().WithAssignedDevice(kCPU0).ExitOnError();
+
+  Output a = ops::Const(root.WithOpName("a"), Input::Initializer(0.0));
+  Output b = ops::Add(root.WithOpName("b"), a, a);
+  Output c = ops::Add(root.WithOpName("c"), b, b);
+
+  FixupSourceAndSinkEdges(root.graph());
+
+  EXPECT_FALSE(IsSingleGpuGraph(*root.graph()));
+}
+
+TEST(IsSingleGpuGraph, ReturnsFalseForMultiGpuGraph) {
+  Scope root = Scope::NewRootScope().WithAssignedDevice(kGPU0).ExitOnError();
+
+  Output a = ops::Const(root.WithOpName("a"), Input::Initializer(0.0));
+  Output b = ops::Add(root.WithOpName("b").WithAssignedDevice(kGPU1), a, a);
+  Output c = ops::Add(root.WithOpName("c"), b, b);
+
+  FixupSourceAndSinkEdges(root.graph());
+
+  EXPECT_FALSE(IsSingleGpuGraph(*root.graph()));
 }
 }  // namespace
 }  // namespace tensorflow

@@ -21,9 +21,33 @@ limitations under the License.
 
 using tensorflow::string;
 
-TFE_TensorHandle* TestScalarTensorHandle() {
-  float data[] = {1.0f};
+TFE_TensorHandle* TestScalarTensorHandle(float value) {
+  float data[] = {value};
   TF_Tensor* t = TF_AllocateTensor(TF_FLOAT, nullptr, 0, sizeof(float));
+  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TF_Status* status = TF_NewStatus();
+  TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteTensor(t);
+  TF_DeleteStatus(status);
+  return th;
+}
+
+TFE_TensorHandle* TestScalarTensorHandle(int value) {
+  int data[] = {value};
+  TF_Tensor* t = TF_AllocateTensor(TF_INT32, nullptr, 0, sizeof(int));
+  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TF_Status* status = TF_NewStatus();
+  TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteTensor(t);
+  TF_DeleteStatus(status);
+  return th;
+}
+
+TFE_TensorHandle* TestScalarTensorHandle(bool value) {
+  bool data[] = {value};
+  TF_Tensor* t = TF_AllocateTensor(TF_BOOL, nullptr, 0, sizeof(bool));
   memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
   TF_Status* status = TF_NewStatus();
   TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);

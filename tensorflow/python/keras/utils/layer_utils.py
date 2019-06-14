@@ -75,7 +75,7 @@ def count_params(weights):
   Returns:
       The total number of scalars composing the weights
   """
-  return int(sum(np.prod(p.get_shape().as_list()) for p in set(weights)))
+  return int(sum(np.prod(p.shape.as_list()) for p in set(weights)))
 
 
 def print_summary(model, line_length=None, positions=None, print_fn=None):
@@ -359,3 +359,13 @@ def convert_dense_weights_data_format(dense,
       ki = np.transpose(ki, (1, 2, 0))  # first -> last
     kernel[:, i] = np.reshape(ki, (np.prod(previous_feature_map_shape),))
   dense.set_weights([kernel, bias])
+
+
+def is_builtin_layer(layer):
+  if not getattr(layer, '_keras_api_names', None):
+    return False
+
+  # Subclasses of `Layer` that are not exported inherit the export name
+  # of the base layer class.
+  return (layer._keras_api_names != ('keras.layers.Layer',) and
+          layer._keras_api_names_v1 != ('keras.layers.Layer',))

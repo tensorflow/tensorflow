@@ -89,7 +89,7 @@ void CheckPartitionSubgraphs(
     const std::vector<NodeSubset>& generated_subgraphs,
     const std::vector<NodeSubset>& expected_subgraphs) {
   ASSERT_EQ(generated_subgraphs.size(), expected_subgraphs.size());
-  for (int subgraph_index = 0; subgraph_index < generated_subgraphs.size();
+  for (size_t subgraph_index = 0; subgraph_index < generated_subgraphs.size();
        subgraph_index++) {
     EXPECT_EQ(generated_subgraphs[subgraph_index].nodes,
               expected_subgraphs[subgraph_index].nodes);
@@ -101,8 +101,22 @@ void CheckPartitionSubgraphs(
 }
 
 // Test an empty trivial graph with no partitions.
-TEST(PartitionTest, Nodes0_PartitionNodes0) {
+TEST(PartitionTest, Nodes0PartitionNodes0) {
   SimpleTestGraph graph;
+  std::vector<int> nodes_to_partition = {};
+  std::vector<NodeSubset> generated_subgraphs;
+  PartitionGraph(graph, nodes_to_partition, &generated_subgraphs);
+  CheckPartitionSubgraphs(generated_subgraphs, {});
+}
+
+// Test a trivial graph with no node and only 1 tensor.
+// The tensor is input & output of the graph at the same time.
+// Note: This is a regression test to ensure the partitioning logic
+// handles this case without crashing.
+TEST(PartitionTest, Nodes0PartitionNodes0Tensors1) {
+  SimpleTestGraph graph;
+  graph.AddTensors(1);
+  graph.SetInputsAndOutputs({0}, {0});
   std::vector<int> nodes_to_partition = {};
   std::vector<NodeSubset> generated_subgraphs;
   PartitionGraph(graph, nodes_to_partition, &generated_subgraphs);
@@ -220,8 +234,8 @@ TEST(PartitionTest, Nodes2PartitionNodes2) {
   CheckPartitionSubgraphs(generated_subgraphs, {expected_subgraph0});
 }
 
-// Test a three node model where we want to partition nodes 0 and nodes
-// 2, but nodes 0 and nodes 2 cannot be in the same subgraph since node 2
+// Test a three node model where we want to partition node 0 and node
+// 2, but node 0 and node 2 cannot be in the same subgraph since node 2
 // depends on node 1 which depends on node 0. Thus, we need to produce three
 // subgraphs.
 //

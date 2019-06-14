@@ -68,6 +68,14 @@ tf_module {
     name: "ServerDef"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "checkpoints_iterator"
+    argspec: "args=[\'checkpoint_dir\', \'min_interval_secs\', \'timeout\', \'timeout_fn\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \'None\'], "
+  }
   member_method {
     name: "get_checkpoint_state"
     argspec: "args=[\'checkpoint_dir\', \'latest_filename\'], varargs=None, keywords=None, defaults=[\'None\'], "
@@ -87,17 +95,5 @@ tf_module {
   member_method {
     name: "load_variable"
     argspec: "args=[\'ckpt_dir_or_file\', \'name\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "sdca_fprint"
-    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "sdca_optimizer"
-    argspec: "args=[\'sparse_example_indices\', \'sparse_feature_indices\', \'sparse_feature_values\', \'dense_features\', \'example_weights\', \'example_labels\', \'sparse_indices\', \'sparse_weights\', \'dense_weights\', \'example_state_data\', \'loss_type\', \'l1\', \'l2\', \'num_loss_partitions\', \'num_inner_iterations\', \'adaptative\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
-  }
-  member_method {
-    name: "sdca_shrink_l1"
-    argspec: "args=[\'weights\', \'l1\', \'l2\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
 }

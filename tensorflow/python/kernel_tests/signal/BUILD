@@ -1,11 +1,12 @@
-package(default_visibility = ["//tensorflow:internal"])
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow:tensorflow.bzl", "py_test")  # @unused
+
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 py_library(
     name = "test_util",
@@ -29,6 +30,7 @@ cuda_py_tests(
         "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python/ops/signal",
     ],
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -45,7 +47,10 @@ cuda_py_tests(
         "//tensorflow/python/ops/signal",
     ],
     shard_count = 4,
-    tags = ["optonly"],
+    tags = [
+        "no_rocm",
+        "optonly",
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -73,6 +78,7 @@ cuda_py_tests(
         "//tensorflow/python/ops/signal",
         "//tensorflow/python:spectral_ops_test_util",
     ],
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -130,7 +136,10 @@ cuda_py_tests(
         "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python/ops/signal",
     ],
-    tags = ["nomac"],
+    tags = [
+        "no_rocm",
+        "nomac",
+    ],
     xla_enable_strict_auto_jit = True,
 )
 

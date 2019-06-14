@@ -37,6 +37,15 @@ inline void CopyToArray(const string& src, char* dst) {
   memcpy(dst, src.data(), src.size());
 }
 
+// Copy subrange [pos:(pos + n)) from src to dst. If pos >= src.size() the
+// result is empty. If pos + n > src.size() the subrange [pos, size()) is
+// copied.
+inline void CopySubrangeToArray(const string& src, size_t pos, size_t n,
+                                char* dst) {
+  if (pos >= src.size()) return;
+  memcpy(dst, src.data() + pos, std::min(n, src.size() - pos));
+}
+
 // Store encoding of strings[0..n-1] in *out.
 void EncodeStringList(const string* strings, int64 n, string* out);
 
@@ -94,6 +103,13 @@ void AssignRefCounted(StringPiece src, core::RefCounted* obj, Cord* out);
 
 // TODO(kmensah): Macro guard this with a check for Cord support.
 inline void CopyToArray(const Cord& src, char* dst) { src.CopyToArray(dst); }
+
+// Copy n bytes of src to dst. If pos >= src.size() the result is empty.
+// If pos + n > src.size() the subrange [pos, size()) is copied.
+inline void CopySubrangeToArray(const Cord& src, int64 pos, int64 n,
+                                char* dst) {
+  src.Subcord(pos, n).CopyToArray(dst);
+}
 
 // Store encoding of strings[0..n-1] in *out.
 void EncodeStringList(const string* strings, int64 n, Cord* out);

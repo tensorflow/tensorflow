@@ -47,11 +47,12 @@ struct OpTapeEntry {
 // Map from tensor_id to internally-defined operation-id of the operation which
 // produced this tensor. A value of -1 means that the tensor was directly
 // watched and not the result of any operation in the tape.
-using TensorTape = gtl::FlatMap<int64, int64>;
+using TensorTape = std::unordered_map<int64, int64>;
 
 // Map from operation-id to tape entry.
 template <typename BackwardFunction, typename TapeTensor>
-using OpTape = gtl::FlatMap<int64, OpTapeEntry<BackwardFunction, TapeTensor>>;
+using OpTape =
+    std::unordered_map<int64, OpTapeEntry<BackwardFunction, TapeTensor>>;
 
 // Operations the tape needs to perform on tensors to do backpropagation. Named
 // "vspace" because a subset of these are related to a vector space, such as
@@ -94,6 +95,7 @@ class VSpace {
   // Calls the passed-in backward function.
   virtual Status CallBackwardFunction(
       BackwardFunction* backward_function,
+      const std::vector<int64>& unneeded_gradients,
       gtl::ArraySlice<Gradient*> output_gradients,
       std::vector<Gradient*>* result) const = 0;
 
@@ -143,7 +145,7 @@ class GradientTape {
       const VSpace<Gradient, BackwardFunction, TapeTensor>& vspace,
       const gtl::ArraySlice<int64> target_tensor_ids,
       const gtl::ArraySlice<int64> source_tensor_ids,
-      const gtl::FlatMap<int64, TapeTensor> sources_that_are_targets,
+      const std::unordered_map<int64, TapeTensor>& sources_that_are_targets,
       gtl::ArraySlice<Gradient*> output_gradients,
       std::vector<Gradient*>* result);
 
@@ -156,7 +158,7 @@ class GradientTape {
 
   // Map from tensor id to number of remaining usages (i.e. how many entries in
   // the tape refer to it); to aid in tape garbage collection.
-  gtl::FlatMap<int64, int64> tensor_usage_;
+  std::unordered_map<int64, int64> tensor_usage_;
 
   // If false, all activations are deleted in the first call to ComputeGradient.
   // Else, only when this is destructed.
@@ -307,11 +309,11 @@ struct BackpropInitialState {
 
   // Map from tensor ID to how many references still exist for this tensor in
   // the tape.
-  gtl::FlatMap<int64, int64> tensor_usage_counts;
+  std::unordered_map<int64, int64> tensor_usage_counts;
 
   // Maps from op ID to how many output tensors of this op still need to have
   // their gradients computed.
-  gtl::FlatMap<int64, int64> op_missing_tensor;
+  std::unordered_map<int64, int64> op_missing_tensor;
 };
 
 // If `persistent_tape` is true, op_tape is not changed and none of the
@@ -323,7 +325,7 @@ template <typename BackwardFunction, typename TapeTensor>
 BackpropInitialState<BackwardFunction, TapeTensor> PrepareBackprop(
     gtl::ArraySlice<int64> target, const TensorTape& tensor_tape,
     OpTape<BackwardFunction, TapeTensor>* op_tape,
-    const gtl::FlatSet<int64>& sources_set, bool persistent_tape) {
+    const std::unordered_set<int64>& sources_set, bool persistent_tape) {
   std::vector<int64> tensor_stack;
   tensor_stack.reserve(target.size());
   for (auto t : target) {
@@ -383,7 +385,7 @@ BackpropInitialState<BackwardFunction, TapeTensor> PrepareBackprop(
 template <typename BackwardFunction, typename TapeTensor>
 std::vector<int64> InitialStack(
     const OpTape<BackwardFunction, TapeTensor>& op_tape,
-    const gtl::FlatMap<int64, int64>& op_missing_tensor) {
+    const std::unordered_map<int64, int64>& op_missing_tensor) {
   std::vector<int64> result;
   for (auto& op_entry : op_tape) {
     if (op_missing_tensor.find(op_entry.first) == op_missing_tensor.end()) {
@@ -397,10 +399,10 @@ template <typename Gradient, typename BackwardFunction, typename TapeTensor>
 Status InitialGradients(
     const VSpace<Gradient, BackwardFunction, TapeTensor>& vspace,
     gtl::ArraySlice<int64> target_tensor_ids,
-    gtl::FlatMap<int64, TapeTensor> sources_that_are_targets,
+    const std::unordered_map<int64, TapeTensor>& sources_that_are_targets,
     gtl::ArraySlice<Gradient*> output_gradients, const TensorTape& tensor_tape,
     const OpTape<BackwardFunction, TapeTensor>& op_tape,
-    gtl::FlatMap<int64, std::vector<Gradient*>>* result) {
+    std::unordered_map<int64, std::vector<Gradient*>>* result) {
   for (int i = 0; i < target_tensor_ids.size(); ++i) {
     const int64 id = target_tensor_ids[i];
     if (output_gradients.empty() || output_gradients[i] == nullptr) {
@@ -454,12 +456,14 @@ Status InitialGradients(
 // corresponding to index 0 is used, and the gradient values at indices 1-4 are
 // ignored (and hence can be None). The backprop algorithm can then leverage
 // this by not constructing zeros to pass for those indices.
-gtl::FlatMap<string, gtl::FlatSet<int>>* FunctionsAcceptingNoneForIndicesMap() {
-  static auto* const m = new gtl::FlatMap<string, gtl::FlatSet<int>>({
-      {"SoftmaxCrossEntropyWithLogits", {1}},
-      {"SparseSoftmaxCrossEntropyWithLogits", {1}},
-      {"FusedBatchNorm", {1, 2, 3, 4}},
-  });
+std::unordered_map<string, std::unordered_set<int>>*
+FunctionsAcceptingNoneForIndicesMap() {
+  static auto* const m =
+      new std::unordered_map<string, std::unordered_set<int>>({
+          {"SoftmaxCrossEntropyWithLogits", {1}},
+          {"SparseSoftmaxCrossEntropyWithLogits", {1}},
+          {"FusedBatchNorm", {1, 2, 3, 4}},
+      });
   return m;
 }
 
@@ -476,16 +480,16 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
     const VSpace<Gradient, BackwardFunction, TapeTensor>& vspace,
     const gtl::ArraySlice<int64> target_tensor_ids,
     const gtl::ArraySlice<int64> source_tensor_ids,
-    const gtl::FlatMap<int64, TapeTensor> sources_that_are_targets,
+    const std::unordered_map<int64, TapeTensor>& sources_that_are_targets,
     gtl::ArraySlice<Gradient*> output_gradients,
     std::vector<Gradient*>* result) {
-  gtl::FlatSet<int64> sources_set(source_tensor_ids.begin(),
-                                  source_tensor_ids.end());
+  std::unordered_set<int64> sources_set(source_tensor_ids.begin(),
+                                        source_tensor_ids.end());
   BackpropInitialState<BackwardFunction, TapeTensor> state = PrepareBackprop(
       target_tensor_ids, tensor_tape_, &op_tape_, sources_set, persistent_);
   std::vector<int64> op_stack =
       InitialStack(state.op_tape, state.op_missing_tensor);
-  gtl::FlatMap<int64, std::vector<Gradient*>> gradients;
+  std::unordered_map<int64, std::vector<Gradient*>> gradients;
   Status s = InitialGradients(vspace, target_tensor_ids,
                               sources_that_are_targets, output_gradients,
                               tensor_tape_, state.op_tape, &gradients);
@@ -501,7 +505,8 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
     cleanup();
     return s;
   }
-  gtl::FlatMap<int64, int64> gradients_size;
+
+  std::unordered_map<int64, int64> gradients_size;
   // TODO(apassos) multiple threads could be dequeuing from op_stack at the same
   // time, for better CPU backprop performance.
   VLOG(1) << "Initial stack:";
@@ -524,7 +529,17 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
     state.op_tape.erase(op_it);
     std::vector<Gradient*> out_gradients;
     out_gradients.reserve(trace.output_tensor_info.size());
+    std::vector<int64> unneeded_gradients;
+    for (int i = 0; i < trace.input_tensor_id.size(); i++) {
+      const auto& in_tensor_id = trace.input_tensor_id[i];
+      if (tensor_tape_.find(in_tensor_id) == tensor_tape_.end() &&
+          sources_set.find(in_tensor_id) == sources_set.end()) {
+        unneeded_gradients.push_back(i);
+      }
+    }
+
     bool any_gradient_nonzero = false;
+    std::vector<int> zero_indices;
     for (int i = 0; i < trace.output_tensor_info.size(); ++i) {
       const int64 id = trace.output_tensor_info[i].GetID();
       auto grad_it = gradients.find(id);
@@ -535,7 +550,8 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
             func_name_it->second.find(i) != func_name_it->second.end()) {
           out_gradients.push_back(nullptr);
         } else {
-          out_gradients.push_back(vspace.Zeros(trace.output_tensor_info[i]));
+          out_gradients.push_back(nullptr);
+          zero_indices.push_back(i);
         }
       } else {
         any_gradient_nonzero = true;
@@ -557,8 +573,13 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
     }
     std::vector<Gradient*> in_gradients;
     if (any_gradient_nonzero) {
-      Status s = vspace.CallBackwardFunction(trace.backward_function,
-                                             out_gradients, &in_gradients);
+      for (const auto i : zero_indices) {
+        out_gradients[i] = vspace.Zeros(trace.output_tensor_info[i]);
+      }
+      Status s;
+      s = vspace.CallBackwardFunction(trace.backward_function,
+                                      unneeded_gradients, out_gradients,
+                                      &in_gradients);
       if (!persistent_) {
         trace.backward_function_deleter(trace.backward_function);
       }
@@ -634,14 +655,16 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
         VLOG(1) << "Op " << op_id << " missing " << missing_it->second
                 << " output gradients";
         if (missing_it->second == 0) {
-          op_stack.push_back(op_id);
+          op_stack.insert(op_stack.begin(), op_id);
         }
       }
     }
   }
-  CHECK(state.op_tape.empty());
+  if (!state.op_tape.empty()) {
+    return tensorflow::errors::Internal("Invalid tape state.");
+  }
   result->reserve(source_tensor_ids.size());
-  gtl::FlatSet<int64> used_gradient_ids(source_tensor_ids.size());
+  std::unordered_set<int64> used_gradient_ids(source_tensor_ids.size());
   for (auto is : source_tensor_ids) {
     auto grad_it = gradients.find(is);
     if (grad_it == gradients.end()) {

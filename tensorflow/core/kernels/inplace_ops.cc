@@ -211,7 +211,7 @@ REGISTER_KERNEL_BUILDER(Name("_ParallelConcatUpdate")
                         ParallelConcatUpdate<CPUDevice>);
 #endif  // TENSORFLOW_USE_SYCL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 typedef Eigen::GpuDevice GPUDevice;
 
@@ -482,7 +482,7 @@ REGISTER_EMPTY(int64, CPU)
 REGISTER_EMPTY(bool, CPU)
 REGISTER_EMPTY(uint8, CPU)
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 typedef Eigen::GpuDevice GPUDevice;
 
@@ -543,8 +543,9 @@ REGISTER_EMPTY(float, GPU);
 REGISTER_EMPTY(double, GPU);
 REGISTER_EMPTY(Eigen::half, GPU);
 REGISTER_EMPTY(int64, GPU);
+REGISTER_EMPTY(int32, GPU);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace
 }  // end namespace tensorflow

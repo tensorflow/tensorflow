@@ -12,40 +12,44 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Training-related utilities.
-"""
+"""Training-related utilities."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import abc
+import atexit
 import collections
 from collections import OrderedDict
+import multiprocessing.pool
+import threading
+import time
 
 import numpy as np
 import six
 
+from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
-from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
-from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.utils import generic_utils
-from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
+from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import weights_broadcast_ops
+from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
@@ -114,32 +118,193 @@ class MetricsAggregator(Aggregator):
     self.results[0] /= self.num_samples_or_steps
 
 
+class ConcatAggregator(Aggregator):
+  """Combine tensor-likes which cannot be merged on the fly.
+
+  This class expects to aggregate a single tensor-like rather than a nested
+  structure of tensor-likes.
+  """
+
+  def __init__(self):
+    self.composite = None
+    super(ConcatAggregator, self).__init__(
+        use_steps=True, num_samples_or_steps=None)
+
+  def create(self, batch_element):
+    self.composite = composite_tensor_utils.is_composite_or_composite_value(
+        batch_element)
+
+  def aggregate(self, batch_element, batch_start=None, batch_end=None):
+    self.results.append(batch_element)
+
+  def finalize(self):
+    # Special case of single batch inference which skips a copy.
+    if len(self.results) == 1:
+      self.results = self.results[0]
+
+    elif self.composite:
+      # TODO(taylorrobie): efficiently concatenate.
+      results = self.results[0]
+      for r in self.results[1:]:
+        results = composite_tensor_utils.append_composite_tensor(results, r)
+      self.results = results
+
+    else:
+      self.results = np.concatenate(self.results, axis=0)
+
+    if isinstance(self.results, ops.EagerTensor):
+      self.results = self.results._cpu_nograd()._numpy()  # pylint: disable=protected-access
+
+
+_COPY_THREADS = 4
+_COPY_POOL = None
+
+
+def get_copy_pool():
+  """Shared threadpool for copying arrays.
+
+  Pool instantiation takes ~ 2ms, so a singleton pool is used rather than
+  creating a pool per SliceAggregator.
+
+  Returns:
+    The global copy threadpool.
+  """
+  global _COPY_POOL
+  if _COPY_POOL is None:
+    _COPY_POOL = multiprocessing.pool.ThreadPool(_COPY_THREADS)
+    atexit.register(_COPY_POOL.close)
+  return _COPY_POOL
+
+
+class SliceAggregator(Aggregator):
+  """Combine arrays where the final size is known.
+
+  This class expects to aggregate a single tensor-like rather than a nested
+  structure of tensor-likes.
+
+  NumPy copies are an operation that threads handle quite well because all of
+  the heavy lifting is in c and does not need the GIL. Moreover, we can perform
+  lock-free writes to the same buffer in multiple threads because the nature of
+  result aggregation guarantees that either the indices are disjoint or the
+  aggregator will throw an exception in finalize. Moreover, because aggregation
+  is performed on the slowest varying dimension, assignments for a given batch
+  will write to contiguous blocks of memory, further minimizing contention.
+
+  There is, however, some scheduling and context switching overhead which will
+  offset the gains from pipelining the slice assignment. Below a given threshold
+  it is faster to simply assign in the main thread rather than enqueue the
+  assigmnet in a side thread. The exact threshold will vary from system to
+  system, but the time is not very sensitive to the exact transition so a value
+  of 2 ** 14 was chosen which should be reasonable on most systems.
+  """
+
+  _BINARY_SIZE_THRESHOLD = 2 ** 14
+  _MAX_COPY_SECONDS = 300
+
+  def __init__(self, num_samples_or_steps):
+    self._async_copies = []
+    self._pool = get_copy_pool()
+    self._errors = []
+    super(SliceAggregator, self).__init__(
+        use_steps=False, num_samples_or_steps=num_samples_or_steps)
+
+  def create(self, batch_element):
+    # This step does not need to be pipelined because NumPy empty array
+    # initialization is effectively instantaneous.
+    shape = (self.num_samples_or_steps,) + batch_element.shape[1:]
+    dtype = batch_element.dtype
+    if isinstance(batch_element, ops.EagerTensor):
+      dtype = dtype.as_numpy_dtype()
+
+    self.results = np.empty(shape=shape, dtype=dtype)
+
+  def aggregate(self, batch_element, batch_start, batch_end):
+    # Fail early.
+    if self._errors:
+      six.reraise(type(self._errors[0]), self._errors[0])
+
+    # In the special case of single batch inference, no copy is needed.
+    if batch_end - batch_start == self.num_samples_or_steps:
+      self.results = batch_element
+      return
+
+    # This is an approximate threshold, so we don't need to consider the number
+    # of bytes per element.
+    num_elements = np.prod(batch_element.shape)
+    if num_elements < self._BINARY_SIZE_THRESHOLD:
+      self.results[batch_start:batch_end] = batch_element
+    else:
+      is_finished = threading.Event()
+      self._pool.apply_async(
+          self._slice_assign,
+          args=(batch_element, batch_start, batch_end, is_finished))
+      self._async_copies.append(is_finished)
+
+  def _slice_assign(self, batch_element, batch_start, batch_end, is_finished):
+    try:
+      self.results[batch_start:batch_end] = batch_element
+
+    except Exception as e:  # pylint: disable=broad-except
+      # `_slice_assign` should only be called in threads and exceptions raised
+      # in threads do not carry over to the main thread. So instead we perform a
+      # a broad catch in the thread and then store the exception to be re-raised
+      # in the main thread.
+      self._errors.append(e)
+
+    finally:
+      is_finished.set()
+
+  def finalize(self):
+    start_time = time.time()
+    for is_finished in self._async_copies:
+      timeout = max([0., self._MAX_COPY_SECONDS - (time.time() - start_time)])
+      if not is_finished.wait(timeout):
+        raise ValueError('Timed out waiting for copy to complete.')
+
+    if self._errors:
+      six.reraise(self._errors[0].__class__, self._errors[0])
+
+
 class OutputsAggregator(Aggregator):
   """Aggregator that concatenates outputs."""
 
+  _structure = None
+
   def create(self, batch_outs):
-    if self.use_steps:
-      # Cannot pre-allocate the returned NumPy arrays bc
-      # batch sizes are unknown. Concatenate batches at the end.
-      for _ in batch_outs:
-        self.results.append([])
-    else:
-      # Pre-allocate NumPy arrays.
-      for batch_out in batch_outs:
-        shape = (self.num_samples_or_steps,) + batch_out.shape[1:]
-        self.results.append(np.zeros(shape, dtype=batch_out.dtype))
+    # SparseTensorValue is a named tuple which nest will flatten, so we need
+    # to guard it to properly handle the structure.
+    self._structure = nest.get_traverse_shallow_structure(
+        lambda x: not composite_tensor_utils.is_composite_or_composite_value(x),
+        batch_outs)
+    batch_outs = nest.flatten_up_to(self._structure, batch_outs)
+
+    for batch_element in batch_outs:
+      if composite_tensor_utils.is_composite_or_composite_value(batch_element):
+        # If the output is not a ndarray, it will be either a composite tensor
+        # or a composite tensor's Value object. In either case, we can't
+        # allocate an array to hold the object - we'll handle it later.
+        self.results.append(ConcatAggregator())
+      elif isinstance(batch_element, (np.ndarray, ops.EagerTensor)):
+        self.results.append(ConcatAggregator() if self.use_steps else
+                            SliceAggregator(self.num_samples_or_steps))
+      else:
+        # This is not a ndarray, a CompositeTensor, or a CompositeTensorValue.
+        # Fail fast rather than trying to concatenate it.
+        raise RuntimeError('Attempted to aggregate unsupported object {}.'
+                           .format(batch_element))
+
+      self.results[-1].create(batch_element)
 
   def aggregate(self, batch_outs, batch_start=None, batch_end=None):
-    if self.use_steps:
-      for i, batch_out in enumerate(batch_outs):
-        self.results[i].append(batch_out)
-    else:
-      for i, batch_out in enumerate(batch_outs):
-        self.results[i][batch_start:batch_end] = batch_out
+    batch_outs = nest.flatten_up_to(self._structure, batch_outs)
+    for batch_element, result in zip(batch_outs, self.results):
+      result.aggregate(batch_element, batch_start, batch_end)
 
   def finalize(self):
-    if self.use_steps:
-      self.results = [np.concatenate(result, axis=0) for result in self.results]
+    for result in self.results:
+      result.finalize()
+    self.results = [i.results for i in self.results]
+    self.results = nest.pack_sequence_as(self._structure, self.results)
 
 
 def get_progbar(model, count_mode):
@@ -186,10 +351,7 @@ def slice_arrays(arrays, indices, contiguous=True):
   return slices
 
 
-def check_num_samples(ins,
-                      batch_size=None,
-                      steps=None,
-                      steps_name='steps'):
+def check_num_samples(ins, batch_size=None, steps=None, steps_name='steps'):
   """Determine the number of samples provided for training and evaluation.
 
   The number of samples is not defined when running with `steps`,
@@ -198,9 +360,8 @@ def check_num_samples(ins,
   Arguments:
       ins: List of tensors to be fed to the Keras function.
       batch_size: Integer batch size or `None` if not defined.
-      steps: Total number of steps (batches of samples)
-          before declaring `_predict_loop` finished.
-          Ignored with the default value of `None`.
+      steps: Total number of steps (batches of samples) before declaring
+        `_predict_loop` finished. Ignored with the default value of `None`.
       steps_name: The public API's parameter name for `steps`.
 
   Raises:
@@ -214,13 +375,10 @@ def check_num_samples(ins,
       processed based on the size of the first dimension of the
       first input numpy array. When steps is not `None` and
       `batch_size` is `None`, returns `None`.
-
-  Raises:
-      ValueError: In case of invalid arguments.
   """
   if steps is not None and batch_size is not None:
-    raise ValueError(
-        'If ' + steps_name + ' is set, the `batch_size` must be None.')
+    raise ValueError('If ' + steps_name +
+                     ' is set, the `batch_size` must be None.')
   if check_steps_argument(ins, steps, steps_name):
     return None
   if hasattr(ins[0], 'shape'):
@@ -233,9 +391,11 @@ def standardize_single_array(x, expected_shape=None):
   if x is None:
     return None
 
-  if (x.shape is not None
-      and len(x.shape) == 1
-      and (expected_shape is None or len(expected_shape) != 1)):
+  if composite_tensor_utils.is_composite_or_composite_value(x):
+    return x
+
+  if (x.shape is not None and len(x.shape) == 1 and
+      (expected_shape is None or len(expected_shape) != 1)):
     if tensor_util.is_tensor(x):
       x = array_ops.expand_dims(x, axis=1)
     else:
@@ -259,9 +419,8 @@ def standardize_input_data(data,
       data: User-provided input data (polymorphic).
       names: List of expected array names.
       shapes: Optional list of expected array shapes.
-      check_batch_axis: Boolean; whether to check that
-          the batch axis of the arrays matches the expected
-          value found in `shapes`.
+      check_batch_axis: Boolean; whether to check that the batch axis of the
+        arrays matches the expected value found in `shapes`.
       exception_prefix: String prefix used for exception formatting.
 
   Returns:
@@ -273,8 +432,9 @@ def standardize_input_data(data,
   if not names:
     if (data is not None and hasattr(data, '__len__') and len(data) and
         not isinstance(data, dict)):
-      raise ValueError('Error when checking model ' + exception_prefix + ': '
-                       'expected no data, but got:', data)
+      raise ValueError(
+          'Error when checking model ' + exception_prefix + ': '
+          'expected no data, but got:', data)
     return []
   if data is None:
     return [None for _ in range(len(names))]
@@ -301,9 +461,11 @@ def standardize_input_data(data,
   else:
     data = data.values if data.__class__.__name__ == 'DataFrame' else data
     data = [data]
+
   if shapes is not None:
-    data = [standardize_single_array(x, shape)
-            for (x, shape) in zip(data, shapes)]
+    data = [
+        standardize_single_array(x, shape) for (x, shape) in zip(data, shapes)
+    ]
   else:
     data = [standardize_single_array(x) for x in data]
 
@@ -316,11 +478,11 @@ def standardize_input_data(data,
                        'but instead got the following list of ' +
                        str(len(data)) + ' arrays: ' + str(data)[:200] + '...')
     elif len(names) > 1:
-      raise ValueError(
-          'Error when checking model ' + exception_prefix +
-          ': you are passing a list as input to your model, '
-          'but the model expects a list of ' + str(len(names)) +
-          ' Numpy arrays instead. The list you passed was: ' + str(data)[:200])
+      raise ValueError('Error when checking model ' + exception_prefix +
+                       ': you are passing a list as input to your model, '
+                       'but the model expects a list of ' + str(len(names)) +
+                       ' Numpy arrays instead. The list you passed was: ' +
+                       str(data)[:200])
     elif len(data) == 1 and not hasattr(data[0], 'shape'):
       raise TypeError('Error when checking model ' + exception_prefix +
                       ': data should be a Numpy array, or list/dict of '
@@ -333,12 +495,15 @@ def standardize_input_data(data,
     for i in range(len(names)):
       if shapes[i] is not None:
         if tensor_util.is_tensor(data[i]):
-          tensorshape = data[i].get_shape()
+          tensorshape = data[i].shape
           if not tensorshape:
             continue
           data_shape = tuple(tensorshape.as_list())
+        elif composite_tensor_utils.is_composite_or_composite_value(data[i]):
+          data_shape = composite_tensor_utils.get_shape(data[i])
         else:
           data_shape = data[i].shape
+
         shape = shapes[i]
         if len(data_shape) != len(shape):
           raise ValueError('Error when checking ' + exception_prefix +
@@ -350,10 +515,10 @@ def standardize_input_data(data,
           shape = shape[1:]
         for dim, ref_dim in zip(data_shape, shape):
           if ref_dim != dim and ref_dim is not None and dim is not None:
-            raise ValueError(
-                'Error when checking ' + exception_prefix + ': expected ' +
-                names[i] + ' to have shape ' + str(shape) +
-                ' but got array with shape ' + str(data_shape))
+            raise ValueError('Error when checking ' + exception_prefix +
+                             ': expected ' + names[i] + ' to have shape ' +
+                             str(shape) + ' but got array with shape ' +
+                             str(data_shape))
   return data
 
 
@@ -372,16 +537,17 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
   Raises:
       ValueError: In case of invalid user-provided argument.
   """
-  if x_weight is None or (isinstance(x_weight, list) and len(x_weight) == 0):  # pylint: disable=g-explicit-length-test
+  if x_weight is None or (isinstance(x_weight, (list, tuple)) and
+                          len(x_weight) == 0):  # pylint: disable=g-explicit-length-test
     return [None for _ in output_names]
   if len(output_names) == 1:
-    if isinstance(x_weight, list) and len(x_weight) == 1:
+    if isinstance(x_weight, (list, tuple)) and len(x_weight) == 1:
       return x_weight
     if isinstance(x_weight, dict) and output_names[0] in x_weight:
       return [x_weight[output_names[0]]]
     else:
       return [x_weight]
-  if isinstance(x_weight, list):
+  if isinstance(x_weight, (list, tuple)):
     if len(x_weight) != len(output_names):
       raise ValueError('Provided `' + weight_type + '` was a list of ' +
                        str(len(x_weight)) + ' elements, but the model has ' +
@@ -389,16 +555,17 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
                        'You should provide one `' + weight_type + '`'
                        'array per model output.')
     return x_weight
-  if isinstance(x_weight, dict):
+  if isinstance(x_weight, collections.Mapping):
+    generic_utils.check_for_unexpected_keys(weight_type, x_weight, output_names)
     x_weights = []
     for name in output_names:
       x_weights.append(x_weight.get(name))
     return x_weights
   else:
-    raise TypeError(
-        'The model has multiple outputs, so `' + weight_type + '` '
-        'should be either a list or a dict. '
-        'Provided `' + weight_type + '` type not understood: ' + str(x_weight))
+    raise TypeError('The model has multiple outputs, so `' + weight_type + '` '
+                    'should be either a list or a dict. '
+                    'Provided `' + weight_type + '` type not understood: ' +
+                    str(x_weight))
 
 
 def standardize_class_weights(class_weight, output_names):
@@ -429,8 +596,11 @@ def check_array_lengths(inputs, targets, weights=None):
     if x is None:
       return {}
     else:
-      return set([y.shape[0] for y in x
-                  if y is not None and not tensor_util.is_tensor(y)])
+      return set([
+          y.shape[0]
+          for y in x
+          if y is not None and not tensor_util.is_tensor(y)
+      ])
 
   set_x = set_of_lengths(inputs)
   set_y = set_of_lengths(targets)
@@ -485,8 +655,9 @@ def check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
       continue
     if losses.is_categorical_crossentropy(loss):
       if y.shape[-1] == 1:
-        raise ValueError('You are passing a target array of shape ' + str(
-            y.shape) + ' while using as loss `categorical_crossentropy`. '
+        raise ValueError('You are passing a target array of shape ' +
+                         str(y.shape) +
+                         ' while using as loss `categorical_crossentropy`. '
                          '`categorical_crossentropy` expects '
                          'targets to be binary matrices (1s and 0s) '
                          'of shape (samples, classes). '
@@ -536,15 +707,12 @@ def collect_per_output_metric_info(metrics,
       For instance, if the model has 2 outputs, and for the first output
       we want to compute "binary_accuracy" and "binary_crossentropy",
       and just "binary_accuracy" for the second output,
-      the list would look like: `[
-        {
-          'acc': (binary_accuracy(), mean_obj_1),
-          'ce': (binary_crossentropy(), mean_obj_2)
-        },
-        {
-          'acc': (binary_accuracy(), mean_obj_3)
-        }
-      ]`
+      the list would look like: `[{
+          'acc': binary_accuracy(),
+          'ce': binary_crossentropy(),
+        }, {
+          'acc': binary_accuracy(),
+        }]`
 
   Raises:
       TypeError: if an incorrect type is passed for the `metrics` argument.
@@ -571,7 +739,8 @@ def collect_per_output_metric_info(metrics,
               [metrics_module.clone_metric(m) for m in metrics])
       else:
         nested_metrics = [metrics]
-  elif isinstance(metrics, dict):
+  elif isinstance(metrics, collections.Mapping):
+    generic_utils.check_for_unexpected_keys('metrics', metrics, output_names)
     nested_metrics = []
     for name in output_names:
       output_metrics = generic_utils.to_list(metrics.get(name, []))
@@ -588,18 +757,11 @@ def collect_per_output_metric_info(metrics,
       metric_fn = get_metric_function(
           metric, output_shape=output_shapes[i], loss_fn=loss_fns[i])
 
-      # If the metric function is not stateful, we create a stateful version and
-      # return both the stateless and the stateful version together. For batch
-      # APIs like `train_on_batch` we will use the stateless version and for
-      # other APIs like `fit` we will use the stateful version.
-      is_stateful = isinstance(metric_fn,
-                               base_layer.Layer) and metric_fn.stateful
-      stateful_fn = metric_fn
-      if not is_stateful:
-        stateful_fn = metrics_module.MeanMetricWrapper(
-            metric_fn, name=metric_fn.__name__)
-
-      metrics_dict[metric_name] = (metric_fn, stateful_fn)
+      # If the metric function is not stateful, we create a stateful version.
+      if not isinstance(metric_fn, metrics_module.Metric):
+        metric_fn = metrics_module.MeanMetricWrapper(
+            metric_fn, name=metric_name)
+      metrics_dict[metric_name] = metric_fn
     per_output_metrics.append(metrics_dict)
 
   return per_output_metrics
@@ -629,71 +791,6 @@ def batch_shuffle(index_array, batch_size):
   return np.append(index_array, last_batch)
 
 
-def weighted_masked_objective(fn):
-  """Adds support for masking and sample-weighting to an objective function.
-
-  It transforms an objective function `fn(y_true, y_pred)`
-  into a sample-weighted, cost-masked objective function
-  `fn(y_true, y_pred, weights, mask)`.
-
-  Arguments:
-      fn: The objective function to wrap,
-          with signature `fn(y_true, y_pred)`.
-
-  Returns:
-      A function with signature `fn(y_true, y_pred, weights, mask)`.
-  """
-  if fn is None:
-    return None
-
-  def weighted(y_true, y_pred, weights, mask=None):
-    """Wrapper function.
-
-    Arguments:
-        y_true: `y_true` argument of `fn`.
-        y_pred: `y_pred` argument of `fn`.
-        weights: Weights tensor.
-        mask: Mask tensor.
-
-    Returns:
-        Scalar tensor.
-    """
-    # score_array has ndim >= 2
-    score_array = fn(y_true, y_pred)
-    if mask is not None:
-      mask = math_ops.cast(mask, y_pred.dtype)
-      # Update weights with mask.
-      if weights is None:
-        weights = mask
-      else:
-        # Update dimensions of weights to match with mask if possible.
-        mask, _, weights = squeeze_or_expand_dimensions(mask, None, weights)
-        weights *= mask
-
-    # Apply sample weighting.
-    if weights is not None:
-
-      # Update dimensions of weights to match with values if possible.
-      score_array, _, weights = squeeze_or_expand_dimensions(
-          score_array, None, weights)
-      try:
-        # Broadcast weights if possible.
-        weights = weights_broadcast_ops.broadcast_weights(weights, score_array)
-      except ValueError:
-        # Reduce values to same ndim as weight array.
-        ndim = K.ndim(score_array)
-        weight_ndim = K.ndim(weights)
-        score_array = K.mean(score_array, axis=list(range(weight_ndim, ndim)))
-
-      score_array = math_ops.multiply(score_array, weights)
-      score_array = math_ops.reduce_sum(score_array)
-      weights = math_ops.reduce_sum(weights)
-      score_array = math_ops.div_no_nan(score_array, weights)
-    return K.mean(score_array)
-
-  return weighted
-
-
 def standardize_weights(y,
                         sample_weight=None,
                         class_weight=None,
@@ -708,10 +805,10 @@ def standardize_weights(y,
       y: Numpy array of model targets to be weighted.
       sample_weight: User-provided `sample_weight` argument.
       class_weight: User-provided `class_weight` argument.
-      sample_weight_mode: One of `None` or `"temporal"`.
-          `"temporal"` indicated that we expect 2D weight data
-          that will be applied to the last 2 dimensions of
-          the targets (i.e. we are weighting timesteps, not samples).
+      sample_weight_mode: One of `None` or `"temporal"`. `"temporal"` indicated
+        that we expect 2D weight data that will be applied to the last 2
+        dimensions of the targets (i.e. we are weighting timesteps, not
+        samples).
 
   Returns:
       A numpy array of target weights, one entry per sample to weight.
@@ -722,7 +819,7 @@ def standardize_weights(y,
   # Iterator may return sample_weight as 1-tuple
   if isinstance(sample_weight, tuple):
     sample_weight = sample_weight[0]
-  if sample_weight_mode is not None:
+  if sample_weight_mode is not None and sample_weight_mode != 'samplewise':
     if sample_weight_mode != 'temporal':
       raise ValueError('"sample_weight_mode '
                        'should be None or "temporal". '
@@ -752,17 +849,17 @@ def standardize_weights(y,
 
   if sample_weight is not None:
     if len(sample_weight.shape) > len(y.shape):
-      raise ValueError(
-          'Found a sample_weight with shape' + str(sample_weight.shape) + '.'
-          'Expected sample_weight with rank '
-          'less than or equal to ' + str(len(y.shape)))
+      raise ValueError('Found a sample_weight with shape' +
+                       str(sample_weight.shape) + '.'
+                       'Expected sample_weight with rank '
+                       'less than or equal to ' + str(len(y.shape)))
 
     if (not tensor_util.is_tensor(sample_weight) and
         y.shape[:sample_weight.ndim] != sample_weight.shape):
-      raise ValueError(
-          'Found a sample_weight array with shape ' + str(sample_weight.shape) +
-          ' for an input with shape ' + str(y.shape) + '. '
-          'sample_weight cannot be broadcast.')
+      raise ValueError('Found a sample_weight array with shape ' +
+                       str(sample_weight.shape) + ' for an input with shape ' +
+                       str(y.shape) + '. '
+                       'sample_weight cannot be broadcast.')
 
   # Class weights applied per-sample.
   class_sample_weight = None
@@ -786,10 +883,10 @@ def standardize_weights(y,
       # subtract the sets to pick all missing classes
       existing_classes = set(y_classes)
       existing_class_weight = set(class_weight.keys())
-      raise ValueError('`class_weight` must contain all classes in the data.'
-                       ' The classes %s exist in the data but not in '
-                       '`class_weight`.' %
-                       (existing_classes - existing_class_weight))
+      raise ValueError(
+          '`class_weight` must contain all classes in the data.'
+          ' The classes %s exist in the data but not in '
+          '`class_weight`.' % (existing_classes - existing_class_weight))
 
   if class_sample_weight is not None and sample_weight is not None:
     # Multiply weights if both are provided.
@@ -825,21 +922,29 @@ def get_metric_name(metric, weighted=False):
   Returns:
       The metric name.
   """
-  metric_name_prefix = 'weighted_' if weighted else ''
-  if metric in ('accuracy', 'acc', 'crossentropy', 'ce'):
-    if metric in ('accuracy', 'acc'):
-      suffix = 'acc'
-    elif metric in ('crossentropy', 'ce'):
-      suffix = 'ce'
+  if tf2.enabled():
+    # We keep the string that the user has set in compile as the metric name.
+    if isinstance(metric, six.string_types):
+      return metric
+
+    metric = metrics_module.get(metric)
+    return metric.name if hasattr(metric, 'name') else metric.__name__
   else:
-    metric_fn = metrics_module.get(metric)
-    # Get metric name as string
-    if hasattr(metric_fn, 'name'):
-      suffix = metric_fn.name
+    metric_name_prefix = 'weighted_' if weighted else ''
+    if metric in ('accuracy', 'acc', 'crossentropy', 'ce'):
+      if metric in ('accuracy', 'acc'):
+        suffix = 'acc'
+      elif metric in ('crossentropy', 'ce'):
+        suffix = 'ce'
     else:
-      suffix = metric_fn.__name__
-  metric_name = metric_name_prefix + suffix
-  return metric_name
+      metric_fn = metrics_module.get(metric)
+      # Get metric name as string
+      if hasattr(metric_fn, 'name'):
+        suffix = metric_fn.name
+      else:
+        suffix = metric_fn.__name__
+    metric_name = metric_name_prefix + suffix
+    return metric_name
 
 
 def get_metric_function(metric, output_shape=None, loss_fn=None):
@@ -847,8 +952,8 @@ def get_metric_function(metric, output_shape=None, loss_fn=None):
 
   Arguments:
       metric: Metric function name or reference.
-      output_shape: The shape of the output that this metric
-          will be calculated for.
+      output_shape: The shape of the output that this metric will be calculated
+        for.
       loss_fn: The loss function used.
 
   Returns:
@@ -884,24 +989,31 @@ def get_metric_function(metric, output_shape=None, loss_fn=None):
     return metrics_module.categorical_crossentropy
 
 
-def call_metric_function(metric_fn, y_true, y_pred, weights=None, mask=None):
+def call_metric_function(metric_fn,
+                         y_true,
+                         y_pred=None,
+                         weights=None,
+                         mask=None):
   """Invokes metric function and returns the metric result tensor."""
-  if mask is None:
+  if mask is not None:
+    mask = math_ops.cast(mask, y_pred.dtype)
+    if weights is None:
+      # Use mask as sample weight.
+      weights = mask
+    else:
+      # Update dimensions of weights to match with mask.
+      mask, _, weights = tf_losses_utils.squeeze_or_expand_dimensions(
+          mask, sample_weight=weights)
+      weights *= mask
+
+  if y_pred is not None:
     return metric_fn(y_true, y_pred, sample_weight=weights)
-
-  mask = math_ops.cast(mask, y_pred.dtype)
-  if weights is None:
-    # Use mask as sample weight.
-    return metric_fn(y_true, y_pred, sample_weight=mask)
-
-  # Update dimensions of weights to match with mask.
-  mask, _, weights = squeeze_or_expand_dimensions(mask, None, weights)
-  weights *= mask
-  return metric_fn(y_true, y_pred, sample_weight=weights)
+  # `Mean` metric only takes a single value.
+  return metric_fn(y_true, sample_weight=weights)
 
 
 def get_loss_function(loss):
-  """Returns the loss function corresponding to the given loss input."""
+  """Returns the loss corresponding to the loss input in `compile` API."""
   if loss is None or isinstance(loss, losses.Loss):
     return loss
 
@@ -916,7 +1028,14 @@ def get_loss_function(loss):
   # Wrap loss function with signature `(y_true, y_pred, **kwargs)`
   # in `LossFunctionWrapper` class.
   loss_fn = losses.get(loss)
-  return losses.LossFunctionWrapper(loss_fn, name=loss_fn.__name__)
+
+  # For losses which are given as strings/functions in the compile API,
+  # we always set the loss reduction type to be `SUM_OVER_BATCH_SIZE`
+  # (both in distribution strategy context and otherwise).
+  return losses.LossFunctionWrapper(
+      loss_fn,
+      name=loss_fn.__name__,
+      reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE)
 
 
 def validate_dataset_input(x, y, sample_weight, validation_split=None):
@@ -925,13 +1044,13 @@ def validate_dataset_input(x, y, sample_weight, validation_split=None):
   Arguments:
     x: Input data. A `tf.data` dataset or iterator.
     y: Target data. It could be either Numpy array(s) or TensorFlow tensor(s).
-        Expected to be `None` when `x` is a dataset iterator.
-    sample_weight: An optional sample-weight array passed by the user to
-        weight the importance of each sample in `x`. Expected to be `None` when
-        `x` is a dataset iterator
-    validation_split: Float between 0 and 1. Fraction of the training data to
-        be used as validation data. Expected to be `None` when `x` is a dataset
-        iterator.
+      Expected to be `None` when `x` is a dataset iterator.
+    sample_weight: An optional sample-weight array passed by the user to weight
+      the importance of each sample in `x`. Expected to be `None` when `x` is a
+      dataset iterator
+    validation_split: Float between 0 and 1. Fraction of the training data to be
+      used as validation data. Expected to be `None` when `x` is a dataset
+      iterator.
 
   Raises:
     ValueError: if argument `y` or `sample_weight` or `validation_split` are
@@ -957,8 +1076,7 @@ def validate_dataset_input(x, y, sample_weight, validation_split=None):
         'Received: x=%s, validation_split=%f' % (x, validation_split))
 
 
-def check_generator_arguments(y=None,
-                              sample_weight=None,
+def check_generator_arguments(y=None, sample_weight=None,
                               validation_split=None):
   """Validates arguments passed when using a generator."""
   if y is not None:
@@ -998,8 +1116,8 @@ def check_steps_argument(input_data, steps, steps_name):
         but not provided.
   """
   # TODO(fchollet): allow datasets with steps=None if cardinality is known.
-  is_x_iterator = isinstance(input_data, (iterator_ops.Iterator,
-                                          iterator_ops.EagerIterator))
+  is_x_iterator = isinstance(
+      input_data, (iterator_ops.Iterator, iterator_ops.IteratorV2))
   if (input_data is None or is_x_iterator or has_symbolic_tensors(input_data) or
       (isinstance(input_data, list) and not input_data)):
     if steps is None:
@@ -1011,9 +1129,11 @@ def check_steps_argument(input_data, steps, steps_name):
   return False
 
 
-def cast_single_tensor(x):
-  if tensor_util.is_tensor(x) and x.dtype.is_floating:
-    return math_ops.cast(x, dtype=K.floatx())
+def cast_single_tensor(x, dtype=None):
+  x = ops.convert_to_tensor(x)
+  dtype = dtype or K.floatx()
+  if x.dtype.is_floating:
+    return math_ops.cast(x, dtype=dtype)
   return x
 
 
@@ -1026,95 +1146,67 @@ def cast_if_floating_dtype(x):
 
   Returns:
     Converted input.
-
-  Raises:
-    RuntimeError: if data isn't tensors.
   """
-  if not has_tensors(x):
-    raise RuntimeError(
-        'Please provide tensors for casting, got: {x}'.format(x=x))
-
   return nest.map_structure(cast_single_tensor, x)
 
 
-def get_output_sample_weight_and_mode(skip_target_weighing_indices,
-                                      sample_weight_mode, output_name,
-                                      output_index):
-  """Returns the sample weight and weight mode for a single output."""
-  if output_index in skip_target_weighing_indices:
-    return None, None
+def cast_if_floating_to_model_input_dtypes(x, model):
+  """Casts the given data tensors to the dtypes of the model inputs.
 
-  if sample_weight_mode == 'temporal':
-    default_value = [[1.]]
-    shape = [None, None]
-    mode = 'temporal'
-  else:
-    default_value = [1.]
-    shape = [None]
-    mode = None
-  if context.executing_eagerly():
-    weight = None
-  else:
-    weight = array_ops.placeholder_with_default(
-        constant_op.constant(default_value, dtype=K.floatx()),
-        shape=shape,
-        name=output_name + '_sample_weights')
-  return weight, mode
-
-
-def prepare_sample_weights(output_names, sample_weight_mode,
-                           skip_target_weighing_indices):
-  """Prepares sample weights for the model.
+  Casts only if the input is already a floating point type.
 
   Args:
-    output_names: List of model output names.
-    sample_weight_mode: sample weight mode user input passed from compile API.
-    skip_target_weighing_indices: Indices of output for which sample weights
-      should be skipped.
+    x: tensor or list/tuple of tensors.
+    model: The model.
 
   Returns:
-    A pair of list of sample weights and sample weight modes
-      (one for each output).
+    Converted input. Each tensor is casted to the corresponding input in
+    `model.inputs`.
+  """
+  # TODO(b/131372221): We should probably cast even if the input is not
+  # floating-point.
+  input_dtypes = nest.map_structure(lambda t: t.dtype, model.inputs)
+  return nest.map_structure(cast_single_tensor, x, input_dtypes)
+
+
+def prepare_sample_weight_modes(training_endpoints, sample_weight_mode):
+  """Prepares sample weight modes for the model.
+
+  Args:
+    training_endpoints: List of model _TrainingEndpoints.
+    sample_weight_mode: sample weight mode user input passed from compile API.
 
   Raises:
     ValueError: In case of invalid `sample_weight_mode` input.
   """
-  sample_weights = []
-  sample_weight_modes = []
-  if isinstance(sample_weight_mode, dict):
-    unknown_output = set(sample_weight_mode.keys()) - set(output_names)
-    if unknown_output:
-      raise ValueError('Unknown entry in '
-                       'sample_weight_mode dictionary: "' + unknown_output +
-                       '". Only expected the following keys: ' +
-                       str(output_names))
-    for i, name in enumerate(output_names):
-      if (i not in skip_target_weighing_indices and
-          name not in sample_weight_mode):
-        raise ValueError('Output missing from sample_weight_modes dictionary')
-      weight, mode = get_output_sample_weight_and_mode(
-          skip_target_weighing_indices, sample_weight_mode.get(name), name, i)
-      sample_weights.append(weight)
-      sample_weight_modes.append(mode)
-  elif isinstance(sample_weight_mode, list):
-    if len(sample_weight_mode) != len(output_names):
+
+  if isinstance(sample_weight_mode, collections.Mapping):
+    generic_utils.check_for_unexpected_keys(
+        'sample_weight_mode', sample_weight_mode,
+        [e.output_name for e in training_endpoints])
+
+    for end_point in training_endpoints:
+      if not end_point.should_skip_target_weights():
+        if end_point.output_name not in sample_weight_mode:
+          raise ValueError('Output ' + end_point.output_name +
+                           'missing from `_sample_weight_modes` dictionary')
+        else:
+          end_point.sample_weight_mode = sample_weight_mode.get(
+              end_point.output_name)
+  elif isinstance(sample_weight_mode, (list, tuple)):
+    if len(sample_weight_mode) != len(training_endpoints):
       raise ValueError('When passing a list as sample_weight_mode, '
                        'it should have one entry per model output. '
-                       'The model has ' + str(len(output_names)) +
+                       'The model has ' + str(len(training_endpoints)) +
                        ' outputs, but you passed ' +
-                       str(len(sample_weight_mode)) + 'sample_weight_modes')
-    for i, name in enumerate(output_names):
-      weight, mode = get_output_sample_weight_and_mode(
-          skip_target_weighing_indices, sample_weight_mode[i], name, i)
-      sample_weights.append(weight)
-      sample_weight_modes.append(mode)
+                       str(len(sample_weight_mode)) + '_sample_weight_modes.')
+    for mode, endpoint in zip(sample_weight_mode, training_endpoints):
+      if not endpoint.should_skip_target_weights():
+        endpoint.sample_weight_mode = mode
   else:
-    for i, name in enumerate(output_names):
-      weight, mode = get_output_sample_weight_and_mode(
-          skip_target_weighing_indices, sample_weight_mode, name, i)
-      sample_weights.append(weight)
-      sample_weight_modes.append(mode)
-  return sample_weights, sample_weight_modes
+    for endpoint in training_endpoints:
+      if not endpoint.should_skip_target_weights():
+        endpoint.sample_weight_mode = sample_weight_mode
 
 
 def prepare_loss_functions(loss, output_names):
@@ -1136,10 +1228,7 @@ def prepare_loss_functions(loss, output_names):
           or if loss is a list with len not equal to model outputs.
   """
   if isinstance(loss, collections.Mapping):
-    for name in loss:
-      if name not in output_names:
-        raise ValueError('Unknown entry in loss dictionary: {}. Only expected '
-                         'following keys: {}'.format(name, output_names))
+    generic_utils.check_for_unexpected_keys('loss', loss, output_names)
     loss_functions = []
     for name in output_names:
       if name not in loss:
@@ -1162,11 +1251,13 @@ def prepare_loss_functions(loss, output_names):
   return loss_functions
 
 
-def prepare_loss_weights(output_names, loss_weights=None):
+def prepare_loss_weights(training_endpoints, loss_weights=None):
   """Converts loss weights to a list of loss weights.
 
+  The result loss weights will be populated on the trainging endpoint.
+
   Arguments:
-      output_names: List of model output names.
+      training_endpoints: List of model training endpoints.
       loss_weights: Optional list or dictionary specifying scalar coefficients
         (Python floats) to weight the loss contributions of different model
         outputs. The loss value that will be minimized by the model will then be
@@ -1175,35 +1266,31 @@ def prepare_loss_weights(output_names, loss_weights=None):
             mapping to the model's outputs. If a dict, it is expected to map
             output names (strings) to scalar coefficients.
 
-  Returns:
-      A list of loss weights of python floats.
-
   Raises:
       ValueError: If loss weight is a dict with key not in model output names,
           or if loss is a list with len not equal to model outputs.
   """
   if loss_weights is None:
-    weights_list = [1.] * len(output_names)
-  elif isinstance(loss_weights, dict):
-    for name in loss_weights:
-      if name not in output_names:
-        raise ValueError('Unknown entry in loss_weights dictionary: {}. '
-                         'Only expected the following keys: {}'.format(
-                             name, output_names))
-    weights_list = [loss_weights.get(name, 1.) for name in output_names]
+    for e in training_endpoints:
+      e.loss_weight = 1.
+  elif isinstance(loss_weights, collections.Mapping):
+    generic_utils.check_for_unexpected_keys(
+        'loss_weights', loss_weights,
+        [e.output_name for e in training_endpoints])
+    for e in training_endpoints:
+      e.loss_weight = loss_weights.get(e.output_name, 1.)
   elif isinstance(loss_weights, list):
-    if len(loss_weights) != len(output_names):
+    if len(loss_weights) != len(training_endpoints):
       raise ValueError('When passing a list as loss_weights, '
                        'it should have one entry per model output. '
-                       'The model has ' + str(len(output_names)) +
+                       'The model has ' + str(len(training_endpoints)) +
                        ' outputs, but you passed loss_weights=' +
                        str(loss_weights))
-    weights_list = loss_weights
+    for w, e in zip(loss_weights, training_endpoints):
+      e.loss_weight = w
   else:
     raise TypeError('Could not interpret loss_weights argument: ' +
                     str(loss_weights) + ' - expected a list of dicts.')
-
-  return weights_list
 
 
 # TODO(rohanj): This is a hack to get around not depending on feature_column and
@@ -1215,9 +1302,8 @@ def is_feature_layer(layer):
 
 def is_eager_dataset_or_iterator(data):
   return context.executing_eagerly() and isinstance(
-      data, (dataset_ops.DatasetV1,
-             dataset_ops.DatasetV2,
-             iterator_ops.EagerIterator))
+      data,
+      (dataset_ops.DatasetV1, dataset_ops.DatasetV2, iterator_ops.IteratorV2))
 
 
 # pylint: disable=protected-access
@@ -1353,22 +1439,23 @@ def verify_dataset_shuffled(x):
 
 
 def is_dataset_or_iterator(data):
-  return isinstance(data, (dataset_ops.DatasetV1,
-                           dataset_ops.DatasetV2,
-                           iterator_ops.EagerIterator,
-                           iterator_ops.Iterator))
+  return isinstance(data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
+                           iterator_ops.Iterator, iterator_ops.IteratorV2))
 
 
 def get_iterator(dataset):
   """Create and initialize an iterator from a dataset."""
-  iterator = dataset_ops.make_initializable_iterator(dataset)
+  if context.executing_eagerly():
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
+  else:
+    iterator = dataset_ops.make_initializable_iterator(dataset)
   initialize_iterator(iterator)
   return iterator
 
 
 def initialize_iterator(iterator):
-  init_op = iterator.initializer
   if not context.executing_eagerly():
+    init_op = iterator.initializer
     K.get_session((init_op,)).run(init_op)
 
 
@@ -1520,9 +1607,9 @@ class ModelInputs(object):
         if dtype.is_floating:
           dtype = K.floatx()
         v = K.placeholder(shape=shape, name=k, dtype=dtype)
-      elif isinstance(v, tensor_shape.TensorShape):
-        shape = (None,) + tuple(v.as_list()[1:])
-        v = K.placeholder(shape=shape, name=k)
+      elif isinstance(v, tensor_spec.TensorSpec):
+        shape = (None,) + tuple(v.shape.as_list()[1:])
+        v = K.placeholder(shape=shape, name=k, dtype=v.dtype)
 
       self._flattened_inputs[i] = v
 
@@ -1597,28 +1684,6 @@ def generic_output_names(outputs_list):
   return ['output_%d' % (i + 1) for i in range(len(outputs_list))]
 
 
-def set_run_eagerly_for_dict_structure(model, x):
-  """Set model.run_eagerly to true if x is dict structure.
-
-  Set model.run_eagerly to true if x is dict or
-  Iterator/EagerIterator/Dataset of dict.
-
-  Args:
-    model: A Keras model.
-    x: Input data.
-  """
-  if not context.executing_eagerly():
-    return
-  if isinstance(x, dict):
-    model.run_eagerly = True
-  if (isinstance(x, (iterator_ops.Iterator, iterator_ops.EagerIterator,
-                     dataset_ops.DatasetV2))):
-    for item in x.output_shapes:
-      if isinstance(item, dict):
-        model.run_eagerly = True
-        return
-
-
 def convert_eager_tensors_to_numpy(structure):
   """Convert every EagerTensor in `structure` to NumPy.
 
@@ -1666,3 +1731,58 @@ def should_run_validation(validation_freq, epoch):
     raise ValueError('`validation_freq` must be an Integer or '
                      '`collections.Container` (e.g. list, tuple, etc.)')
   return one_indexed_epoch in validation_freq
+
+
+class TrainingLoop(object):
+  """TrainingLoop is a wrapper class around the training logic.
+
+  This class is trying to encapsulate the different logic of fit/eval/predict
+  with regard to different data input and model condition.
+
+  Note that TrainingLoop is stateless, which means it doesn't contain any
+  internal field and can be reused with different model and inputs.
+  """
+
+  def fit(self,
+          model,
+          x=None,
+          y=None,
+          batch_size=None,
+          epochs=1,
+          verbose=1,
+          callbacks=None,
+          validation_split=0.,
+          validation_data=None,
+          shuffle=True,
+          class_weight=None,
+          sample_weight=None,
+          initial_epoch=0,
+          steps_per_epoch=None,
+          validation_steps=None,
+          validation_freq=1,
+          **kwargs):
+    """Train the model with the inputs and targets."""
+    raise NotImplementedError()
+
+  def evaluate(self,
+               model,
+               x=None,
+               y=None,
+               batch_size=None,
+               verbose=1,
+               sample_weight=None,
+               steps=None,
+               callbacks=None,
+               **kwargs):
+    """Returns the loss value & metrics values for the model in test mode."""
+    raise NotImplementedError()
+
+  def predict(self,
+              model,
+              x,
+              batch_size=None,
+              verbose=0,
+              steps=None,
+              callbacks=None,
+              **kwargs):
+    raise NotImplementedError()

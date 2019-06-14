@@ -22,5 +22,5 @@ from tensorflow.python.keras import saving
 
 
 # TODO(kathywu): Remove all contrib callers, switch to tf.keras.
-save_keras_model = saving.export
+save_keras_model = saving.export_saved_model
 load_keras_model = saving.load_from_saved_model

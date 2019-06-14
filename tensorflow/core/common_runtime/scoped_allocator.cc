@@ -19,7 +19,7 @@ namespace tensorflow {
 
 ScopedAllocator::ScopedAllocator(const Tensor& backing_tensor, int32 scope_id,
                                  const string& name,
-                                 const gtl::ArraySlice<Field>& fields,
+                                 const gtl::ArraySlice<Field> fields,
                                  int32 expected_call_count,
                                  ScopedAllocatorContainer* container)
     : backing_tensor_(backing_tensor),

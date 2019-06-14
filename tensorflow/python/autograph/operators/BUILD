@@ -1,8 +1,10 @@
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 filegroup(
     name = "all_files",
@@ -27,6 +29,7 @@ py_library(
         "py_builtins.py",
         "slices.py",
         "special_values.py",
+        "symbols.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
@@ -60,6 +63,9 @@ py_test(
     name = "control_flow_test",
     srcs = ["control_flow_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_gpu",  # b/127001953
+    ],
     deps = [
         ":operators",
         "//tensorflow/python:client_testlib",
@@ -110,6 +116,16 @@ py_test(
 py_test(
     name = "special_values_test",
     srcs = ["special_values_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":operators",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "symbols_test",
+    srcs = ["symbols_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":operators",

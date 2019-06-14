@@ -31,13 +31,10 @@ bool ChangeArrayDataType(GraphTransformation* transformation, Array* array,
                          ArrayDataType new_data_type,
                          const MinMax* new_minmax) {
   // Ensure the array ends up in the new type (if it hasn't yet been quantized).
-  bool changed = false;
-  if (array->final_data_type != new_data_type) {
-    array->final_data_type = new_data_type;
-    changed = true;
-  }
+  bool data_type_changed = array->final_data_type != new_data_type;
+  array->final_data_type = new_data_type;
 
-  if (array->minmax && array->quantization_params) {
+  if (array->minmax && array->quantization_params && data_type_changed) {
     // The array is already quantized and has min/max info.
     // As we are changing the data type we need to fix up the existing min/max
     // to the new data type range.
@@ -72,23 +69,22 @@ bool ChangeArrayDataType(GraphTransformation* transformation, Array* array,
         *array, new_data_type, array->quantization_params.get());
     // Directly change the type as the array was already quantized.
     array->data_type = new_data_type;
-    changed = true;
-  } else if (!array->quantization_params) {
-    // Array has not yet been quantized so we can just set the final data type
-    // and assign the new min/max value (if provided).
-
-    if (!array->minmax && new_minmax) {
-      transformation->AddMessageF("Forcing new minmax to %g,%g (%s)",
-                                  new_minmax->min, new_minmax->max,
-                                  ArrayDataTypeName(new_data_type));
-      auto& array_minmax = array->GetOrCreateMinMax();
-      array_minmax.min = new_minmax->min;
-      array_minmax.max = new_minmax->max;
-      changed = true;
-    }
+    return true;
   }
 
-  return changed;
+  // Array has not yet been quantized so we can just set the final data type
+  // and assign the new min/max value (if provided).
+  if (!array->quantization_params && !array->minmax && new_minmax) {
+    transformation->AddMessageF("Forcing new minmax to %g,%g (%s)",
+                                new_minmax->min, new_minmax->max,
+                                ArrayDataTypeName(new_data_type));
+    auto& array_minmax = array->GetOrCreateMinMax();
+    array_minmax.min = new_minmax->min;
+    array_minmax.max = new_minmax->max;
+    return true;
+  }
+
+  return data_type_changed;
 }
 
 // Returns true if the op blocks our backward recursive data type propagation.
@@ -110,6 +106,13 @@ bool DoesOpBlockBackwardPropagation(const Operator& op) {
     case OperatorType::kSelect:
     case OperatorType::kTile:
       // Reshapes and transposes don't change values.
+    case OperatorType::kRelu:
+    case OperatorType::kRelu1:
+    case OperatorType::kRelu6:
+      // Relus only clamp the output. If min/max of parent is unknown, just
+      // prop the range backward. This only happens for cases where activations
+      // are not fused to avoid a default being set on the RELU input and
+      // propagating forward to the RELU output.
       return false;
     default:
       return true;
@@ -149,33 +152,30 @@ bool RecursivelyBackwardPropagateDataType(GraphTransformation* transformation,
   for (int input_index = 0; input_index < op->inputs.size(); ++input_index) {
     const auto& input = op->inputs[input_index];
     auto& input_array = model->GetArray(input);
-    if (input_array.final_data_type == new_data_type) {
-      // Final data type is already - skip.
-      continue;
-    }
 
     // Prevent moving into constant param args that we don't want to modify.
     if (DoesOpInputBlockBackwardPropagation(*op, input_index)) {
       continue;
     }
 
-    if (input_array.final_data_type != new_data_type) {
+    bool array_did_change = ChangeArrayDataType(transformation, &input_array,
+                                                new_data_type, &new_minmax);
+    if (array_did_change) {
       transformation->AddMessageF(
           "Adjusting input final data type of array %s from %s to %s", input,
           ArrayDataTypeName(input_array.final_data_type),
           ArrayDataTypeName(new_data_type));
-      did_change |= ChangeArrayDataType(transformation, &input_array,
-                                        new_data_type, &new_minmax);
+    }
+    did_change |= array_did_change;
 
-      // Walk up into all ops producing the inputs to this op.
-      for (auto& producing_op : model->operators) {
-        if (!DoesOpBlockBackwardPropagation(*producing_op)) {
-          for (const auto& output : producing_op->outputs) {
-            if (input == output) {
-              did_change |= RecursivelyBackwardPropagateDataType(
-                  transformation, model, producing_op.get(), new_data_type,
-                  new_minmax);
-            }
+    // Walk up into all ops producing the inputs to this op.
+    for (auto& producing_op : model->operators) {
+      if (!DoesOpBlockBackwardPropagation(*producing_op)) {
+        for (const auto& output : producing_op->outputs) {
+          if (input == output) {
+            did_change |= RecursivelyBackwardPropagateDataType(
+                transformation, model, producing_op.get(), new_data_type,
+                new_minmax);
           }
         }
       }

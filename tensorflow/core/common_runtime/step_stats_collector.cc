@@ -94,7 +94,7 @@ void NodeExecStatsWrapper::Done(const string& device) {
   } else {
     text =
         strings::StrCat(memory, node_->name(), " = ", node_->type_string(), "(",
-                        str_util::Join(node_->requested_inputs(), ", "), ")");
+                        absl::StrJoin(node_->requested_inputs(), ", "), ")");
   }
   stats_->set_timeline_label(text);
   step_stats_collector_->Save(device, this);
@@ -176,9 +176,10 @@ void NodeExecStatsWrapper::AddAllocation(
   memory->set_peak_bytes(std::get<1>(sizes));
   memory->set_live_bytes(std::get<2>(sizes));
 
-  AllocatorStats stats;
-  allocator->GetStats(&stats);
-  memory->set_allocator_bytes_in_use(stats.bytes_in_use);
+  absl::optional<AllocatorStats> stats = allocator->GetStats();
+  if (stats) {
+    memory->set_allocator_bytes_in_use(stats->bytes_in_use);
+  }
   allocations_.push_back(std::make_pair(memory, tracking_allocator));
 }
 

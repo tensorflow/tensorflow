@@ -28,8 +28,8 @@ namespace xla {
 // optimized for one specific platform on a different platform (undoing platform
 // specific passes) with matching numerics for comparison.
 //
-// Current despecialization passes are Defuser, ImplicitBroadcastRemover,
-// and BFloat16MixedPrecisionRemoval.
+// Current despecialization passes are HloDescheduler, ControlDepRemover,
+// Defuser and BFloat16MixedPrecisionRemoval.
 class Despecializer : public HloModulePass {
  public:
   Despecializer();

@@ -30,6 +30,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import layers as keras_layers
@@ -53,6 +54,26 @@ from tensorflow.python.util import nest
 
 
 class RNNCellTest(test.TestCase):
+
+  def _assert_cell_builds(self, cell_class, dtype, batch_size, in_size,
+                          out_size):
+    cell = cell_class(out_size, dtype=dtype)
+    in_shape = tensor_shape.TensorShape((batch_size, in_size))
+    cell.build(in_shape)
+    state_output = cell.get_initial_state(
+        inputs=None, batch_size=batch_size, dtype=dtype)
+    cell_output, _ = cell(array_ops.zeros(in_shape, dtype), state_output)
+    self.assertAllEqual([batch_size, out_size], cell_output.shape.as_list())
+
+  def testCellsBuild(self):
+    f32 = dtypes.float32
+    f64 = dtypes.float64
+    self._assert_cell_builds(contrib_rnn_cell.IndRNNCell, f32, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn_cell.IndRNNCell, f64, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn_cell.IndyGRUCell, f32, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn_cell.IndyGRUCell, f64, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn_cell.IndyLSTMCell, f32, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn_cell.IndyLSTMCell, f64, 5, 7, 3)
 
   def testIndRNNCell(self):
     with self.cached_session() as sess:
@@ -1553,6 +1574,61 @@ class RNNCellTest(test.TestCase):
 
       self.assertEqual(len(outputs), batch)
       self.assertEqual(len(state), batch)
+
+  def testNTMCell(self):
+    expected_output = np.array(
+        [[-0.04973561, -0.00020032, -0.09586009, -0.05049511],
+         [-0.02199885, 0.02302885, -0.05558189, -0.02051288],
+         [-0.01399924, 0.02543444, -0.06975862, -0.03782758],
+         [-0.02238393, 0.0135776, -0.09102941, -0.05594013]],
+        dtype=np.float32)
+    expected_read_vector_list = np.array(
+        [[1e-6, 1e-6, 1e-6, 1e-6], [1e-6, 1e-6, 1e-6, 1e-6],
+         [1e-6, 1e-6, 1e-6, 1e-6], [1e-6, 1e-6, 1e-6, 1e-6]],
+        dtype=np.float32)
+    expected_w_list = np.array(
+        [[[0.15837428, 0.21354634, 0.22115856, 0.21117255, 0.19574821],
+          [0.15826838, 0.2150458, 0.2228198, 0.20747298, 0.19639312],
+          [0.15750293, 0.21550071, 0.22280747, 0.20737495, 0.19681393],
+          [0.15763053, 0.21473582, 0.22187267, 0.20920397, 0.19655706]],
+         [[0.21703579, 0.19425659, 0.22143759, 0.18024713, 0.18702294],
+          [0.2164267, 0.19451937, 0.22112325, 0.18051708, 0.18741359],
+          [0.21567065, 0.1947548, 0.22107735, 0.18058982, 0.18790732],
+          [0.2163743, 0.194361, 0.22131558, 0.18042919, 0.1875199]]],
+        dtype=np.float32)
+    expected_M_0 = np.array(
+        [[-0.00553495, -0.01089884, 0.00683121, -0.00273276],
+         [-0.00495392, -0.00975483, 0.00611433, -0.00244583],
+         [-0.00564722, -0.0111199, 0.00696973, -0.0027882],
+         [-0.00459658, -0.00905126, 0.00567345, -0.00226937],
+         [-0.00476941, -0.00939155, 0.00588669, -0.00235472]],
+        dtype=np.float32)
+
+    with session.Session() as sess:
+      with variable_scope.variable_scope("root"):
+        seed = 1234
+        random_seed.set_random_seed(seed)
+        batch_size = 4
+        inputs = random_ops.random_uniform((batch_size, 4),
+                                           0.0,
+                                           1.0,
+                                           seed=seed + 1)
+        cell = contrib_rnn_cell.NTMCell(
+            controller=rnn_cell_impl.LSTMCell(num_units=4),
+            memory_size=5,
+            memory_vector_dim=4,
+            read_head_num=1,
+            write_head_num=1)
+        output, state = cell(inputs, cell.zero_state(batch_size,
+                                                     dtypes.float32))
+        sess.run([variables.global_variables_initializer()])
+        res, read_vector_list, w_list, M = sess.run(
+            [output, state.read_vector_list, state.w_list, state.M])
+        # Smoke test
+        self.assertAllClose(res, expected_output)
+        self.assertAllClose(read_vector_list[0], expected_read_vector_list)
+        self.assertAllClose(w_list, expected_w_list)
+        self.assertAllClose(M[0], expected_M_0)
 
 
 class LayerNormBasicLSTMCellTest(test.TestCase):

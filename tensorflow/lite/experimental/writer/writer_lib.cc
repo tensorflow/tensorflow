@@ -219,6 +219,11 @@ std::vector<int> InterpreterWriter::RemapTensorIndicesToWritten(
   std::vector<int> output;
   output.reserve(input.size());
   for (int x : input) {
+    // Special value representing an optional tensor which is not present.
+    if (x == -1) {
+      output.push_back(x);
+      continue;
+    }
     if (tensor_to_written_tensor_[x] != -1) {
       output.push_back(tensor_to_written_tensor_[x]);
     }

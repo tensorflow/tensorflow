@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -194,6 +195,80 @@ TEST_F(BufferLivenessTest, MultipleEntryParameters_Sequential) {
   EXPECT_FALSE(InstructionsMayInterfere(*liveness, add, negate));
   EXPECT_FALSE(InstructionsMayInterfere(*liveness, exp, add));
   EXPECT_FALSE(InstructionsMayInterfere(*liveness, add, exp));
+}
+
+TEST_F(BufferLivenessTest, EmbeddedComputationParameters) {
+  absl::string_view hlo_string = R"(
+HloModule EmbeddedComputationParameters, is_scheduled=true
+
+%EmbeddedComputationParameters_embedded (embedded_param0: f32[42], embedded_param1: f32[42]) -> (f32[42], f32[42]) {
+  %embedded_param0 = f32[42]{0} parameter(0)
+  %log = f32[42]{0} log(f32[42]{0} %embedded_param0)
+  %add = f32[42]{0} add(f32[42]{0} %log, f32[42]{0} %log)
+  %embedded_param1 = f32[42]{0} parameter(1)
+  ROOT %tuple = (f32[42]{0}, f32[42]{0}) tuple(f32[42]{0} %add, f32[42]{0} %embedded_param1)
+}
+
+ENTRY %EmbeddedComputationParameters (param0: f32[42], param1: f32[42]) -> (f32[42], f32[42]) {
+  %param0 = f32[42]{0} parameter(0)
+  %param1 = f32[42]{0} parameter(1)
+  ROOT %call = (f32[42]{0}, f32[42]{0}) call(f32[42]{0} %param0, f32[42]{0} %param1), to_apply=%EmbeddedComputationParameters_embedded
+}
+)";
+  HloModuleConfig hlo_config;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string, hlo_config));
+  auto liveness =
+      BufferLiveness::Run(
+          module.get(),
+          absl::make_unique<SequentialHloOrdering>(module->schedule()))
+          .ConsumeValueOrDie();
+
+  auto embedded_log = FindInstruction(module.get(), "log");
+  auto embedded_param0 = FindInstruction(module.get(), "embedded_param0");
+  auto embedded_param1 = FindInstruction(module.get(), "embedded_param1");
+  auto param0 = FindInstruction(module.get(), "param0");
+  auto param1 = FindInstruction(module.get(), "param1");
+
+  // Parameters should interfere with other instructions inside the computation.
+  EXPECT_TRUE(
+      InstructionsMayInterfere(*liveness, embedded_log, embedded_param1));
+  EXPECT_TRUE(InstructionsMayInterfere(*liveness, embedded_log, param0));
+  EXPECT_TRUE(InstructionsMayInterfere(*liveness, embedded_log, param1));
+  EXPECT_TRUE(
+      InstructionsMayInterfere(*liveness, embedded_param0, embedded_param1));
+}
+
+TEST_F(BufferLivenessTest, InterferenceWithOuterRoot) {
+  absl::string_view hlo_string = R"(
+HloModule InterferenceWithOuterRoot, is_scheduled=true
+
+Emmbedded (embedded_param: f32[42]) -> f32[42] {
+  embedded_param = f32[42]{0} parameter(0)
+  multiply = f32[42]{0} multiply(embedded_param, embedded_param)
+  ROOT log = f32[42]{0} log(multiply)
+}
+
+ENTRY InterferenceWithOuterRoot {
+  param = f32[4096,4096]{1,0} parameter(0)
+  ROOT add = f32[4096,4096]{1,0} add(param, param)
+  call = f32[42]{0} call(param), to_apply=Emmbedded
+}
+
+)";
+  HloModuleConfig hlo_config;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string, hlo_config));
+  auto liveness =
+      BufferLiveness::Run(
+          module.get(),
+          absl::make_unique<SequentialHloOrdering>(module->schedule()))
+          .ConsumeValueOrDie();
+
+  auto multiply = FindInstruction(module.get(), "multiply");
+  auto add = FindInstruction(module.get(), "add");
+
+  EXPECT_TRUE(InstructionsMayInterfere(*liveness, multiply, add));
 }
 
 TEST_F(BufferLivenessTest, NonElementwiseOperand) {

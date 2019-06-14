@@ -80,11 +80,14 @@ def load_op_library(library_filename):
   module.LIB_HANDLE = lib_handle
   # OpDefs of the list of ops defined in the library.
   module.OP_LIST = op_list
+  # Allow this to be recognized by AutoGraph.
+  setattr(module, '_IS_TENSORFLOW_PLUGIN', True)
   sys.modules[module_name] = module
   return module
 
 
-@deprecation.deprecated(date=None, instructions='Use tf.load_library instead.')
+@deprecation.deprecated(date=None,
+                        instructions='Use `tf.load_library` instead.')
 @tf_export(v1=['load_file_system_library'])
 def load_file_system_library(library_filename):
   """Loads a TensorFlow plugin, containing file system implementation.
@@ -131,7 +134,7 @@ def load_library(library_location):
   """Loads a TensorFlow plugin.
 
   "library_location" can be a path to a specific shared object, or a folder.
-  If it is a folder, all sahred objects that are named "libtfkernel*" will be
+  If it is a folder, all shared objects that are named "libtfkernel*" will be
   loaded. When the library is loaded, kernels registered in the library via the
   `REGISTER_*` macros are made available in the TensorFlow process.
 

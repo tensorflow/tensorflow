@@ -56,7 +56,7 @@ class Shape {
   bool IsArray() const { return primitive_util::IsArrayType(element_type()); }
   bool IsTuple() const { return element_type() == TUPLE; }
   bool IsToken() const { return element_type() == TOKEN; }
-  bool IsOpaque() const { return element_type() == OPAQUE; }
+  bool IsOpaque() const { return element_type() == OPAQUE_TYPE; }
 
   // Returns true if no array dimension in the shape is dynamically sized. Tuple
   // shapes are traversed recursively.
@@ -146,10 +146,10 @@ class Shape {
   //
   // Examples:
   //
-  // - Comparing two shapes ignoring they layout difference:
+  // - Comparing two shapes ignoring their layout difference:
   //   Equal().IgnoreLayout()(shape1, shape2);
   //
-  // - Comparing two shapes ignoring they layout and element type difference:
+  // - Comparing two shapes ignoring their layout and element type difference:
   //   Equal().IgnoreLayout().IgnoreElementType()(shape1, shape2);
   class Equal {
    public:
@@ -159,6 +159,23 @@ class Shape {
 
     Equal& IgnoreLayout() {
       ignore_layout_ = true;
+      return *this;
+    }
+    Equal& IgnoreTilesInLayout() {
+      ignore_tiles_in_layout_ = true;
+      return *this;
+    }
+    Equal& IgnoreElementSizeInLayout() {
+      ignore_element_size_in_layout_ = true;
+      return *this;
+    }
+    Equal& IgnoreMemorySpaceInLayout() {
+      ignore_memory_space_in_layout_ = true;
+      return *this;
+    }
+    Equal& MinorToMajorOnlyInLayout() {
+      ignore_tiles_in_layout_ = true;
+      ignore_element_size_in_layout_ = true;
       return *this;
     }
     Equal& IgnoreElementType() {
@@ -174,8 +191,11 @@ class Shape {
       return *this;
     }
 
-   public:
+   private:
     bool ignore_layout_ = false;
+    bool ignore_tiles_in_layout_ = false;
+    bool ignore_element_size_in_layout_ = false;
+    bool ignore_memory_space_in_layout_ = false;
     bool ignore_element_type_ = false;
     bool ignore_fp_precision_ = false;
     bool ignore_dynamic_dimension_ = false;
@@ -184,6 +204,12 @@ class Shape {
   // Test that all fields of the shape are the same, equivalent to Equal().
   bool operator==(const Shape& other) const { return Equal()(*this, other); }
   bool operator!=(const Shape& other) const { return !(*this == other); }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const Shape& s) {
+    return H::combine(std::move(h), s.element_type_, s.dimensions_,
+                      s.dynamic_dimensions_, s.tuple_shapes_, s.layout_);
+  }
 
  private:
   // The element type of this shape (tuple, array, etc).

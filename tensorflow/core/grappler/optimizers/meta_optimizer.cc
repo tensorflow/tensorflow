@@ -14,13 +14,18 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+
+#include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/auto_mixed_precision.h"
 #include "tensorflow/core/grappler/optimizers/auto_parallel.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
@@ -36,9 +41,11 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/remapper.h"
 #include "tensorflow/core/grappler/optimizers/scoped_allocator_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/shape_optimizer.h"
+#include "tensorflow/core/grappler/utils/canonicalizer.h"
 #include "tensorflow/core/grappler/utils/colocation.h"
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include "tensorflow/core/grappler/utils/tpu.h"
 #include "tensorflow/core/grappler/verifiers/structure_verifier.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -77,17 +84,7 @@ int NumIterations(const RewriterConfig& cfg) {
 // Check if optimizer is allowed to run only once.
 bool IsRunOnceOptimizer(const string& name) {
   return name == "layout" || name == "memory_optimizer" ||
-         name == "loop_optimizer";
-}
-
-// Check if the graphdef contains nodes that indicate TPU execution.
-bool IsTPUGraphDef(const GraphDef& def) {
-  for (auto node : def.node()) {
-    if (node.op() == "TPUCompile" || node.op() == "TPUPartitionedCall") {
-      return true;
-    }
-  }
-  return false;
+         name == "loop_optimizer" || name == "auto_mixed_precision";
 }
 
 uint64 DeadlineMicroSeconds(const RewriterConfig& cfg) {
@@ -100,6 +97,16 @@ uint64 DeadlineMicroSeconds(const RewriterConfig& cfg) {
                : Env::Default()->NowMicros() +
                      cfg.meta_optimizer_timeout_ms() * 1000;
   }
+}
+
+// A helper function to decide whether to enable the automatic mixed precision
+// optimizer.
+bool AutoMixedPrecisionEnabled(RewriterConfig::Toggle opt_level) {
+  if (opt_level == RewriterConfig::ON ||
+      opt_level == RewriterConfig::AGGRESSIVE) {
+    return true;
+  }
+  return false;
 }
 
 }  // namespace
@@ -115,6 +122,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("shape", new ShapeOptimizer());
   MK_OPT("remap", new Remapper(cfg_.remapping()));
   MK_OPT("layout", new LayoutOptimizer());
+  MK_OPT("auto_mixed_precision",
+         new AutoMixedPrecision(cfg_.auto_mixed_precision()));
   MK_OPT("memory", new MemoryOptimizer(RewriterConfig::MANUAL));
   MK_OPT("arithmetic", new ArithmeticOptimizer(cfg_.arithmetic_optimization()));
   MK_OPT("autoparallel", new AutoParallel(cfg_.auto_parallel().num_replicas()));
@@ -148,6 +157,9 @@ Status MetaOptimizer::InitializeOptimizers(
   if (!cfg_.disable_model_pruning()) {
     optimizers->push_back(MakeUnique<ModelPruner>());
   }
+  if (cfg_.implementation_selector() != RewriterConfig::OFF) {
+    optimizers->push_back(MakeUnique<ImplementationSelector>());
+  }
   if (cfg_.function_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(
         MakeUnique<FunctionOptimizer>(cfg_.function_optimization()));
@@ -165,7 +177,7 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.remapping() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
   }
-  if (cfg_.pin_to_host_optimization() != RewriterConfig::OFF) {
+  if (cfg_.pin_to_host_optimization() == RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<PinToHostOptimizer>());
   }
   if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
@@ -182,6 +194,10 @@ Status MetaOptimizer::InitializeOptimizers(
   }
   if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<LayoutOptimizer>());
+  }
+  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision())) {
+    optimizers->push_back(
+        MakeUnique<AutoMixedPrecision>(cfg_.auto_mixed_precision()));
   }
   if (cfg_.memory_optimization() != RewriterConfig::NO_MEM_OPT) {
     if (cfg_.memory_optimizer_target_node_name_scope().empty()) {
@@ -241,18 +257,10 @@ Status MetaOptimizer::InitializeCustomGraphOptimizers(
         pre_initialized_optimizers.end()) {
       continue;
     }
-    // Initialize the ImplementationSelector here instead of
-    // CustomizeOptimizer registry, due the static link issue in TensorRT for
-    // double registry.
-    // TODO(laigd): Remove this hack and change it back to use the registry once
-    // the duplicate static import issue is fixed.
-    std::unique_ptr<CustomGraphOptimizer> custom_optimizer;
-    if (optimizer_config.name() == "ImplementationSelector") {
-      custom_optimizer.reset(new ImplementationSelector());
-    } else {
-      custom_optimizer = CustomGraphOptimizerRegistry::CreateByNameOrNull(
-          optimizer_config.name());
-    }
+
+    auto custom_optimizer = CustomGraphOptimizerRegistry::CreateByNameOrNull(
+        optimizer_config.name());
+
     if (custom_optimizer) {
       VLOG(2) << "Registered custom configurable graph optimizer: "
               << optimizer_config.name();
@@ -299,18 +307,6 @@ void MetaOptimizer::InitializeVerifiers(
     post_optimization_verifiers->push_back(MakeUnique<StructureVerifier>());
   }
 }
-
-#define RUN_OPTIMIZER_OR_RETURN_IF_ERROR(optimizer)                            \
-  {                                                                            \
-    const Status status = RunOptimizer(optimizer, cluster, &optimized_item,    \
-                                       optimized_graph, &optimization_result); \
-    if (status.ok()) {                                                         \
-      is_optimized = true;                                                     \
-    } else if (cfg_.fail_on_optimizer_errors()) {                              \
-      VLOG(2) << "Optimizer '" << optimizer->name() << "' failed: " << status; \
-      TF_RETURN_IF_ERROR(status);                                              \
-    }                                                                          \
-  }
 
 Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
                                     GraphDef* optimized_graph) {
@@ -362,10 +358,15 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   GrapplerItem optimized_item = item;
   optimized_graph->Swap(&optimized_item.graph);
 
-  bool is_optimized = false;
   GraphOptimizationResult optimization_result(item.id);
   GraphOptimizer* fusion_optimizer = nullptr;
   GraphOptimizer* sa_optimizer = nullptr;
+
+  // Constants in the graph are normally compressed after model_pruner.
+  // Do it here if model pruner is disabled.
+  if (cfg_.disable_model_pruning()) {
+    CompressConstants(optimized_graph);
+  }
 
   for (int iteration = 0; iteration < NumIterations(cfg_); ++iteration) {
     // Don't bother optimizing further if the graph is already tiny.
@@ -383,6 +384,7 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
                           reinterpret_cast<uintptr_t>(optimized_graph)),
           *optimized_graph);
     }
+
     for (const auto& optimizer : optimizers) {
       GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
       // Some optimizers can run only once.
@@ -396,7 +398,13 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
         if (fusion_optimizer == nullptr) fusion_optimizer = optimizer.get();
         continue;
       }
-      RUN_OPTIMIZER_OR_RETURN_IF_ERROR(optimizer.get());
+
+      TF_RETURN_IF_ERROR(RunOptimizer(optimizer.get(), cluster, &optimized_item,
+                                      optimized_graph, &optimization_result));
+
+      if (iteration == 0 && optimizer->name() == "model_pruner") {
+        CompressConstants(optimized_graph);
+      }
 
       if (VLOG_IS_ON(4)) {
         DumpGraphDefToFile(
@@ -429,13 +437,23 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   // optimizations from taking place since we don't have shape inference for
   // functions, and we can't optimize across function boundaries.
   if (fusion_optimizer != nullptr) {
-    RUN_OPTIMIZER_OR_RETURN_IF_ERROR(fusion_optimizer);
+    TF_RETURN_IF_ERROR(RunOptimizer(fusion_optimizer, cluster, &optimized_item,
+                                    optimized_graph, &optimization_result));
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
   }
 
   // ScopedAllocatorOptimizer must run last.
   if (sa_optimizer != nullptr) {
-    RUN_OPTIMIZER_OR_RETURN_IF_ERROR(sa_optimizer);
+    TF_RETURN_IF_ERROR(RunOptimizer(sa_optimizer, cluster, &optimized_item,
+                                    optimized_graph, &optimization_result));
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
   }
+
+  bool is_optimized = std::find_if(optimization_result.results.begin(),
+                                   optimization_result.results.end(),
+                                   [](const OptimizerResult& result) {
+                                     return result.status.ok();
+                                   }) != optimization_result.results.end();
 
   // Record graph optimization result.
   optimization_results_.push_back(optimization_result);
@@ -451,8 +469,6 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   return Status::OK();
 }
 
-#undef RUN_OPTIMIZER_OR_RETURN_IF_ERROR
-
 Status MetaOptimizer::RunOptimizer(
     GraphOptimizer* optimizer, Cluster* cluster, GrapplerItem* optimized_item,
     GraphDef* optimized_graph, GraphOptimizationResult* optimization_result) {
@@ -465,22 +481,39 @@ Status MetaOptimizer::RunOptimizer(
   Status status =
       optimizer->Optimize(cluster, *optimized_item, optimized_graph);
   uint64 end_us = Env::Default()->NowMicros();
+  float duration_ms = (end_us - start_us) / 1000.0f;
 
-  string result;
+  string message;
   if (!status.ok()) {
     optimized_graph->Swap(&optimized_item->graph);
-    result = status.ToString();
+    if (errors::IsAborted(status)) {
+      // By convention we (ab-)use the Aborted error code to signal that the
+      // optimizer returned without performing any changes to the graph.
+      message = strings::StrCat(optimizer->name(),
+                                " did nothing. time = ", duration_ms, "ms.");
+      // Swallow the non-critical error.
+      status = Status::OK();
+    } else if (errors::IsDeadlineExceeded(status)) {
+      message =
+          strings::StrCat(status.ToString(), ", time = ", duration_ms, "ms.");
+      LOG(WARNING) << optimizer->name() << " failed: " << message;
+    } else {
+      message = status.ToString();
+      LOG(ERROR) << optimizer->name() << " failed: " << message;
+    }
   } else {
-    float duration_ms = (end_us - start_us) / 1000.0f;
-    result = strings::StrCat(
+    message = strings::StrCat(
         PrintSizesBeforeAfter(optimized_item->graph, *optimized_graph),
         ", time = ", duration_ms, "ms.");
+    VLOG(1) << optimizer->name() << ": " << message;
   }
-  VLOG(1) << optimizer->name() << ": " << result;
 
-  OptimizerResult optimizer_result{optimizer->name(), result};
+  OptimizerResult optimizer_result{optimizer->name(), message, status};
   optimization_result->results.push_back(optimizer_result);
-  return status;
+
+  if (!status.ok() && cfg_.fail_on_optimizer_errors()) return status;
+
+  return Status::OK();
 }
 
 Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -520,35 +553,28 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   VLOG(1) << "Optimized main graph.";
   GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
-  // Skip optimizing functions if this is a TPU graph. Currently, Grappler
-  // passes do not handle TPU functions correctly in a variety of ways (Note
-  // that due to the pre-placement TPU graph rewriting passes, the TPU-related
-  // ops are encapsulated away into functions). For example, TPU graphs contain
-  // TPUReplicateMetadata node that carries relevant TPU metadata and Grappler
-  // passes could prune that away. Grappler passes could also cause issues
-  // around shape inference. Since the desired and existing behavior is to not
-  // optimize TPU functions with Grappler, this check preserves that.
-  if (IsTPUGraphDef(*optimized_graph)) {
-    VLOG(2) << "Skipping optimizing funcs for TPU graphs";
-    if (VLOG_IS_ON(1)) {
-      DumpGraphDefToFile(
-          strings::StrCat("after_MetaOptimizer_",
-                          reinterpret_cast<uintptr_t>(optimized_graph)),
-          *optimized_graph);
-    }
-    return Status::OK();
-  }
-
   // 2. Optimize functions reachable from the optimized graph.
   FunctionLibraryDefinition flib = minimized_flib(*optimized_graph);
 
   // Find functions for which we might need to compute a gradient at runtime.
   absl::flat_hash_set<string> differentiable_functions;
-  for (const NodeDef& node : optimized_graph->node()) {
-    if (IsSymbolicGradient(node)) {
-      const auto* f_attr = gtl::FindOrNull(node.attr(), "f");
-      if (f_attr) differentiable_functions.insert(f_attr->func().name());
+
+  using NodeDefs = protobuf::RepeatedPtrField<NodeDef>;
+  const auto find_differentiable_functions =
+      [&differentiable_functions](const NodeDefs& nodes) -> void {
+    for (const NodeDef& node : nodes) {
+      if (IsSymbolicGradient(node)) {
+        const auto* f_attr = gtl::FindOrNull(node.attr(), "f");
+        if (f_attr) differentiable_functions.insert(f_attr->func().name());
+      }
     }
+  };
+
+  // SymbolicGradient nodes inside the main graph.
+  find_differentiable_functions(optimized_graph->node());
+  // SymbolicGradient nodes inside the function library.
+  for (const FunctionDef& function : optimized_graph->library().function()) {
+    find_differentiable_functions(function.node_def());
   }
 
   // Optimize each function only once.
@@ -590,16 +616,15 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
       // If we need to compute the gradient of optimized function at runtime, we
       // can't perform non-differentiable rewrites.
-      if (differentiable_functions.find(func_name) !=
-          differentiable_functions.end()) {
-        func_item.optimization_options().allow_non_differentiable_rewrites =
-            false;
-      }
+      func_item.optimization_options().allow_non_differentiable_rewrites =
+          !differentiable_functions.contains(func_name);
 
-      // Function item is allowed to use all devices from the main graph.
-      Status added_devices = func_item.AddDevices(item);
-      if (!added_devices.ok()) {
-        VLOG(3) << added_devices.error_message();
+      // Device set available to the function is defined only by the runtime,
+      // when we instantiate and execute the function. We can't use all devices
+      // available to the main graph, because after partitioning the function
+      // call node might execute on a remote worker.
+      if (!func_item.devices().empty()) {
+        return errors::Internal("GrapplerFunctionItem devices must be empty.");
       }
 
       // We are not allowed to prune certain types of ops from the graph
@@ -609,10 +634,46 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       func_item.optimization_options().allow_pruning_stateful_and_dataset_ops =
           false;
 
+      // TODO(b/129545186): Shape inference in GraphProperties doesn't work well
+      // with _Arg nodes. Replace them with Placeholders with unknown shape.
+      absl::flat_hash_set<absl::string_view> input_nodes;
+      for (auto& input_arg : func_item.inputs()) {
+        input_nodes.insert(input_arg.node_name);
+      }
+      for (NodeDef& func_node : *func_item.graph.mutable_node()) {
+        if (input_nodes.contains(func_node.name())) {
+          func_node.set_op("Placeholder");
+          auto& attrs = *func_node.mutable_attr();
+          attrs["dtype"] = attrs["T"];
+          attrs.erase("index");
+          attrs.erase("T");
+          TensorShapeProto unknown_shape;
+          unknown_shape.set_unknown_rank(true);
+          *(attrs["shape"].mutable_shape()) = unknown_shape;
+        }
+      }
+
       // Optimize function body graph.
       GraphDef optimized_func_graph;
-      TF_RETURN_IF_ERROR(
-          OptimizeGraph(cluster, func_item, &optimized_func_graph));
+      if (IsTPUGraphDef(*optimized_graph)) {
+        // Skip optimizing functions if this is a TPU graph. Currently, Grappler
+        // passes do not handle TPU functions correctly in a variety of ways
+        // (Note that due to the pre-placement TPU graph rewriting passes, the
+        // TPU-related ops are encapsulated away into functions). For example,
+        // TPU graphs contain TPUReplicateMetadata node that carries relevant
+        // TPU metadata and Grappler passes could prune that away. Grappler
+        // passes could also cause issues around shape inference. Since the
+        // desired and existing behavior is to not optimize TPU functions with
+        // Grappler, this check preserves that. The only execption is
+        // implementation selector what is required to swap in some TPU specific
+        // lowering code and is verified the work correctly on TPUs.
+        ImplementationSelector implementation_selector;
+        TF_RETURN_IF_ERROR(implementation_selector.Optimize(
+            cluster, func_item, &optimized_func_graph));
+      } else {
+        TF_RETURN_IF_ERROR(
+            OptimizeGraph(cluster, func_item, &optimized_func_graph));
+      }
 
       // Function body optimization might have created new specialized
       // functions for each instantiation context. Add them to the library.
@@ -639,7 +700,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   VLOG(1) << "Optimized " << optimized_funcs.size()
-          << " functions: " << str_util::Join(optimized_funcs, ", ");
+          << " functions: " << absl::StrJoin(optimized_funcs, ", ");
 
   if (VLOG_IS_ON(1)) {
     DumpGraphDefToFile(
@@ -654,13 +715,13 @@ void MetaOptimizer::PrintResult() {
   for (const GraphOptimizationResult& graph_result : optimization_results_) {
     LOG(INFO) << "Optimization results for grappler item: " << graph_result.id;
     for (const OptimizerResult& result : graph_result.results) {
-      LOG(INFO) << "  " << result.optimizer_name << ": " << result.result;
+      LOG(INFO) << "  " << result.optimizer_name << ": " << result.message;
     }
   }
 }
 
 void MetaOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
-                             const GraphDef& pruned_graph, double result) {
+                             const GraphDef& optimized_graph, double result) {
   // Nothing to do for MetaOptimizer.
 }
 
@@ -682,7 +743,8 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg) {
          rewrite_cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          rewrite_cfg.debug_stripper() == RewriterConfig::ON ||
          rewrite_cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
-         rewrite_cfg.pin_to_host_optimization() != RewriterConfig::OFF ||
+         rewrite_cfg.pin_to_host_optimization() == RewriterConfig::ON ||
+         AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision()) ||
          !rewrite_cfg.optimizers().empty() ||
          !rewrite_cfg.custom_optimizers().empty();
 }
@@ -693,17 +755,14 @@ Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
   MetaOptimizer optimizer(cpu_device, cfg);
   optimizer.set_deadline_usec(
       DeadlineMicroSeconds(cfg.graph_options().rewrite_options()));
-  Status status = optimizer.Optimize(cluster, item, optimized_graph);
-  if (!status.ok()) {
-    *optimized_graph = item.graph;
-  }
-  return status;
+  return optimizer.Optimize(cluster, item, optimized_graph);
 }
 
 Status OptimizeGraph(
-    std::vector<string> ret_node_names, FunctionLibraryDefinition* flib,
-    const DeviceSet& device_set, Device* cpu_device,
-    const ConfigProto& config_proto, const string& grappler_item_id,
+    std::vector<string> ret_node_names, std::vector<string> keep_node_names,
+    FunctionLibraryDefinition* flib, const DeviceSet& device_set,
+    Device* cpu_device, const ConfigProto& config_proto,
+    const string& grappler_item_id,
     const GrapplerItem::OptimizationOptions& optimization_options,
     std::unique_ptr<tensorflow::Graph>* g) {
   if (!tensorflow::grappler::MetaOptimizerEnabled(config_proto)) {
@@ -719,9 +778,14 @@ Status OptimizeGraph(
     Status added_device = item.AddDevice(d->name());
     if (!added_device.ok()) VLOG(3) << added_device.error_message();
   }
+  VLOG(3) << "Grappler available devices: "
+          << absl::StrJoin(item.devices(), ", ");
 
   // Add fetches so that the graph can be pruned.
   item.fetch.swap(ret_node_names);
+
+  // Add noes that can't be removed from the graph.
+  item.keep_ops = std::move(keep_node_names);
 
   (*g)->ToGraphDef(&item.graph);
 
@@ -730,9 +794,7 @@ Status OptimizeGraph(
   }
 
   tensorflow::GraphDef out_graph;
-
   tensorflow::grappler::VirtualCluster cluster(&device_set);
-
   // TODO(nareshmodi): Consider adding and using the more generic GraphOptions
   // proto (which also contain the OptimizerOptions).
   TF_RETURN_IF_ERROR(tensorflow::grappler::RunMetaOptimizer(

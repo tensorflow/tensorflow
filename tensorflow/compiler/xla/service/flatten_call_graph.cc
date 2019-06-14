@@ -26,7 +26,7 @@ namespace xla {
 
 namespace {
 
-// Helper to replace the called computation at a while-, call-, or
+// Helper to replace the called computation at a while-, call-, case-, or
 // conditional-instruction. This function replaces exactly one instance of
 // 'computation' with 'new_computation' even if 'instruction' calls
 // 'computation' more than once.
@@ -49,11 +49,14 @@ void ReplaceCalledComputation(HloInstruction* instruction,
       break;
     }
     case HloOpcode::kConditional: {
-      if (computation == instruction->true_computation()) {
-        instruction->set_true_computation(new_computation);
-      } else {
-        CHECK_EQ(computation, instruction->false_computation());
-        instruction->set_false_computation(new_computation);
+      for (int b = 0; b < instruction->branch_count(); ++b) {
+        if (b == instruction->branch_count() - 1) {
+          CHECK_EQ(computation, instruction->branch_computation(b));
+        }
+        if (computation == instruction->branch_computation(b)) {
+          instruction->set_branch_computation(b, new_computation);
+          break;
+        }
       }
       break;
     }

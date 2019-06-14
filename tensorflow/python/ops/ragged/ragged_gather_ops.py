@@ -25,7 +25,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_ragged_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
-from tensorflow.python.ops.ragged import ragged_conversion_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 
 
@@ -96,6 +95,7 @@ def gather(params, indices, validate_indices=None, axis=0, batch_dims=0,
         params, name='params')
     indices = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         indices, name='indices')
+    params, indices = ragged_tensor.match_row_splits_dtypes(params, indices)
 
     if ragged_tensor.is_ragged(indices):
       return indices.with_values(gather(params, indices.values))
@@ -116,13 +116,13 @@ def gather(params, indices, validate_indices=None, axis=0, batch_dims=0,
 
     # Compose the RaggedTensor from splits & values.
     return ragged_tensor.RaggedTensor.from_nested_row_splits(
-        result.output_dense_values, result.output_nested_splits)
+        result.output_dense_values, result.output_nested_splits, validate=False)
 
 
 #===============================================================================
 # ragged.gather_nd
 #===============================================================================
-def gather_nd(params, indices, name=None):
+def gather_nd(params, indices, batch_dims=0, name=None):
   """Gather slices from `params` using `n`-dimensional indices.
 
   This operation is similar to `gather`, but it uses the innermost dimension
@@ -139,6 +139,7 @@ def gather_nd(params, indices, name=None):
   Args:
     params: A potentially ragged tensor with shape `[A1...AN, I]`.
     indices: A potentially ragged tensor with shape `[B1...BM]`.
+    batch_dims: Must be zero.
     name: A name for the operation (optional).
 
   Returns:
@@ -146,7 +147,7 @@ def gather_nd(params, indices, name=None):
 
   #### Examples:
     ```python
-    >>> params = tf.ragged.constant_value(
+    >>> params = tf.compat.v1.ragged.constant_value(
     ...     [ [ ['000', '001'], ['010'              ]          ],
     ...       [ ['100'       ], ['110', '111', '112'], ['120'] ],
     ...       [ [            ], ['210'              ]          ] ])
@@ -165,6 +166,8 @@ def gather_nd(params, indices, name=None):
     ['001', '112']
     ```
   """
+  if not isinstance(batch_dims, int) or batch_dims != 0:
+    raise ValueError('batch_dims != 0 is not supported for ragged gather yet.')
   if not (ragged_tensor.is_ragged(params) or ragged_tensor.is_ragged(indices)):
     return array_ops.gather_nd(params, indices, name)
 
@@ -174,6 +177,7 @@ def gather_nd(params, indices, name=None):
         params, name='params')
     indices = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         indices, name='indices')
+    params, indices = ragged_tensor.match_row_splits_dtypes(params, indices)
     indices_shape = indices.shape
     indices_ndims = indices_shape.ndims
     if indices_ndims is None:
@@ -196,12 +200,13 @@ def gather_nd(params, indices, name=None):
     if indices_ndims > 2:
       indices_is_dense = not ragged_tensor.is_ragged(indices)
       if indices_is_dense:
-        indices = ragged_conversion_ops.from_tensor(
-            indices, ragged_rank=indices_ndims - 2)
+        indices = ragged_tensor.RaggedTensor.from_tensor(
+            indices, ragged_rank=indices_ndims - 2,
+            row_splits_dtype=params.row_splits.dtype)
       result = indices.with_flat_values(gather_nd(params, indices.flat_values))
       if (indices_is_dense and ragged_tensor.is_ragged(result) and
           result.ragged_rank == indices_ndims - 2):
-        result = ragged_conversion_ops.to_tensor(result)
+        result = ragged_tensor.RaggedTensor.to_tensor(result)
       return result
 
     # indices_ndims <= 2, and the innermost dimension of indices may not be
@@ -232,7 +237,7 @@ def gather_nd(params, indices, name=None):
     # index tuples point to the correct values in the flattened params; and
     # then use ragged.gather on the flattened index tuples & params.
     else:
-      indices = math_ops.to_int64(indices)
+      indices = math_ops.cast(indices, params.row_splits.dtype)
 
       # Flatten the outermost 2 dimensions of the index tuples & params.
       flattened_index_tuples = array_ops.gather(params.row_splits,

@@ -144,6 +144,11 @@ std::unique_ptr<VerifiedHloModule> HloTestBase::CreateNewVerifiedModule(
 }
 
 StatusOr<std::unique_ptr<VerifiedHloModule>>
+HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text) {
+  return ParseAndReturnVerifiedModule(hlo_text, GetModuleConfigForTest());
+}
+
+StatusOr<std::unique_ptr<VerifiedHloModule>>
 HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
                                           const HloModuleConfig& config) {
   auto module = absl::make_unique<VerifiedHloModule>(
@@ -207,13 +212,29 @@ Literal HloTestBase::ExecuteAndTransfer(std::unique_ptr<HloModule> module,
 
 StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
     std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
-    int64 num_replicas) {
+    int64 num_replicas, bool use_threads) {
   HloRunner::ReplicatedExecuteOptions options;
   options.num_replicas = num_replicas;
+  options.use_threads = use_threads;
   for (auto argument : arguments) {
     options.arguments.push_back(argument);
   }
   return test_runner_.ExecuteReplicated(std::move(module), options);
+}
+
+StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
+    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
+    int64 num_replicas, DeviceAssignment* device_assignment,
+    bool run_hlo_passes, bool use_threads) {
+  HloRunner::ReplicatedExecuteOptions options;
+  options.num_replicas = num_replicas;
+  options.run_hlo_passes = run_hlo_passes;
+  options.use_threads = use_threads;
+  for (auto argument : arguments) {
+    options.arguments.push_back(argument);
+  }
+  return test_runner_.ExecuteReplicated(std::move(module), options,
+                                        device_assignment);
 }
 
 StatusOr<std::unique_ptr<HloModule>> HloTestBase::MakeReferenceModule(

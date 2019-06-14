@@ -172,8 +172,7 @@ class ReduceJoinOp : public OpKernel {
         curr_strings[reduction_index] =
             input_flat(output_full_index + reduction_full_index);
       }
-      output_flat(output_index) =
-          str_util::Join(curr_strings, separator_.c_str());
+      output_flat(output_index) = absl::StrJoin(curr_strings, separator_);
     }
   }
 

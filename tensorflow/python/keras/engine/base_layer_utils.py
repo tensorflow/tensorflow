@@ -17,14 +17,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections as collections_lib
 import threading
+
 import enum
 
+from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
@@ -52,8 +57,7 @@ def create_mean_metric(value, name=None):
   # TODO(psv): Remove this import when b/110718070 is fixed.
   from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
   metric_obj = metrics_module.Mean(name=name)
-  result = metric_obj(value)
-  return metric_obj, result
+  return metric_obj, metric_obj(value)
 
 
 def make_variable(name,
@@ -76,7 +80,7 @@ def make_variable(name,
   that has fewer constraints (`variable_scope.variable()`).
 
   In the longer term, it seems like a similar "default variable creator" method
-  should exist in `CheckpointableBase` instead. When this happens, we can get
+  should exist in `Trackable` instead. When this happens, we can get
   rid of this temporary solution.
 
   TODO(fchollet): remove this method when no longer needed.
@@ -123,9 +127,9 @@ def make_variable(name,
       variable_dtype = None
     else:
       # Instantiate initializer if provided initializer is a type object.
-      if isinstance(initializer, type(init_ops.Initializer)):
-        initializer = initializer(dtype=dtype)
-      elif isinstance(initializer, type(init_ops_v2.Initializer)):
+      if isinstance(
+          initializer,
+          (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
         initializer = initializer()
       init_val = lambda: initializer(shape, dtype=dtype)
       variable_dtype = dtype.base_dtype
@@ -134,7 +138,8 @@ def make_variable(name,
 
   # TODO(apassos,rohanj) figure out how to remove collections from here so we
   # can remove the V1.
-  v = tf_variables.VariableV1(
+  variable_shape = tensor_shape.TensorShape(shape)
+  return tf_variables.VariableV1(
       initial_value=init_val,
       name=name,
       trainable=trainable,
@@ -145,64 +150,8 @@ def make_variable(name,
       use_resource=use_resource,
       collections=collections,
       synchronization=synchronization,
-      aggregation=aggregation)
-  return v
-
-
-def get_default_graph_uid_map():
-  # TODO(fchollet): refactor this into backend.
-  graph = ops.get_default_graph()
-  name_uid_map = backend.PER_GRAPH_LAYER_NAME_UIDS.get(graph, None)
-  if name_uid_map is None:
-    name_uid_map = collections_lib.defaultdict(int)
-    backend.PER_GRAPH_LAYER_NAME_UIDS[graph] = name_uid_map
-  return name_uid_map
-
-
-def unique_layer_name(name, name_uid_map=None, avoid_names=None, namespace='',
-                      zero_based=False):
-  """Makes a layer name (or arbitrary string) unique within a TensorFlow graph.
-
-  Arguments:
-    name: String name to make unique.
-    name_uid_map: An optional defaultdict(int) to use when creating unique
-      names. If None (default), uses a per-Graph dictionary.
-    avoid_names: An optional set or dict with names which should not be used. If
-      None (default) does not avoid any names.
-    namespace: Gets a name which is unique within the (graph, namespace). Layers
-      which are not Networks use a blank namespace and so get graph-global
-      names.
-    zero_based: If True, name sequences start with no suffix (e.g. "dense",
-      "dense_1"). If False, naming is one-based ("dense_1", "dense_2").
-
-  Returns:
-    Unique string name.
-
-  Example:
-
-  ```python
-  _unique_layer_name('dense')  # dense_1
-  _unique_layer_name('dense')  # dense_2
-  ```
-  """
-  if name_uid_map is None:
-    name_uid_map = get_default_graph_uid_map()
-  if avoid_names is None:
-    avoid_names = set()
-  proposed_name = None
-  while proposed_name is None or proposed_name in avoid_names:
-    name_key = (namespace, name)
-    if zero_based:
-      number = name_uid_map[name_key]
-      if number:
-        proposed_name = name + '_' + str(number)
-      else:
-        proposed_name = name
-      name_uid_map[name_key] += 1
-    else:
-      name_uid_map[name_key] += 1
-      proposed_name = name + '_' + str(name_uid_map[name_key])
-  return proposed_name
+      aggregation=aggregation,
+      shape=variable_shape if variable_shape else None)
 
 
 def collect_previous_mask(input_tensors):
@@ -243,21 +192,27 @@ def create_keras_history(tensors):
   Arguments:
     tensors: A structure of Tensors, some of which come from raw TensorFlow
       operations and need to have Keras metadata assigned to them.
+
+  Returns:
+    keras_tensors: The Tensors found that came from a Keras Layer.
   """
-  _create_keras_history_helper(tensors, set())
+  _, created_layers = _create_keras_history_helper(tensors, set(), [])
+  return created_layers
 
 
-def _create_keras_history_helper(tensors, processed_ops=None):
+def _create_keras_history_helper(tensors, processed_ops, created_layers):
   """Helper method for `create_keras_history`.
 
   Arguments:
     tensors: A structure of Tensors for which to create Keras metadata.
-    processed_ops: Set. TensorFlow operations that have already been wrapped
-      in `TensorFlowOpLayer` instances.
+    processed_ops: Set. TensorFlow operations that have already been wrapped in
+      `TensorFlowOpLayer` instances.
+    created_layers: List. The `TensorFlowOpLayer` instances created.
 
   Returns:
-    The updated set of TensorFlow Operations that have been wrapped
-    in `TensorFlowOpLayer` instances.
+    Tuple. First element is the updated set of TensorFlow Operations that
+    have been wrapped in `TensorFlowOpLayer` instances. Second element is
+    a list of the `TensorFlowOpLayer` instances created.
   """
   # Import of `base_layer` needed in order to create `TensorFlowOpLayer`.
   # Cannot be imported at top because of circular dependencies.
@@ -278,19 +233,25 @@ def _create_keras_history_helper(tensors, processed_ops=None):
           layer_inputs.append(op_input)
         else:
           # Treat any value not originating from a `keras.Input` as
-          # a constant (Variables currently have `Placeholder` op type
-          # when originating from an eager context
-          # so can't be supported.
-          constants[i] = backend.function([], op_input)([])
-      processed_ops = _create_keras_history_helper(layer_inputs, processed_ops)
+          # a constant. Variables cannot be supported.
+          if (distribution_strategy_context.in_cross_replica_context() and
+              not ops.executing_eagerly_outside_functions()):
+            # In Legacy Graph mode, evaluating here makes Session be
+            # configured improperly.
+            constants[i] = op_input
+          else:
+            constants[i] = backend.function([], op_input)([])
+      processed_ops, created_layers = _create_keras_history_helper(
+          layer_inputs, processed_ops, created_layers)
       name = op.name
       node_def = op.node_def.SerializeToString()
       op_layer = base_layer.TensorFlowOpLayer(
           node_def, constants=constants, name=name)
+      created_layers.append(op_layer)
       op_layer._add_inbound_node(  # pylint: disable=protected-access
           layer_inputs, op.outputs)
       processed_ops.update([op])
-  return processed_ops
+  return processed_ops, created_layers
 
 
 def needs_keras_history(tensors):
@@ -308,12 +269,40 @@ def needs_keras_history(tensors):
     Bool, whether at least one Tensor needs to be wrapped.
   """
   input_tensors = nest.flatten(tensors)
-  if getattr(_call_context, 'in_call', False) or all(
+  if call_context().in_call or all(
       getattr(tensor, '_keras_history', None) is not None
       for tensor in input_tensors):
     # KerasHistory already set.
     return False
   return uses_keras_history(tensors)
+
+
+def is_in_keras_graph():
+  """Returns if currently executing inside of a Keras graph."""
+  return call_context().in_keras_graph
+
+
+def is_in_eager_or_tf_function():
+  """Returns if in eager mode or inside of a tf.function."""
+  return context.executing_eagerly() or is_in_tf_function()
+
+
+def is_in_tf_function():
+  """Returns if inside of a tf.function."""
+  # Check if running in V1 graph mode.
+  if not ops.executing_eagerly_outside_functions():
+    return False
+  if not ops.inside_function():
+    return False
+  # Check if inside Keras FuncGraph.
+  if is_in_keras_graph():
+    return False
+  # Check for a v1 `wrap_function` FuncGraph.
+  graph = ops.get_default_graph()
+  if (getattr(graph, 'name', False) and
+      graph.name.startswith('wrapped_function')):
+    return False
+  return True
 
 
 def uses_keras_history(tensors):
@@ -373,15 +362,72 @@ def mark_checked(tensors):
   nest.map_structure(_mark_checked, tensors)
 
 
-@tf_contextlib.contextmanager
 def call_context():
-  """Scope that marks when we are currently inside a Layer/Model's `call`."""
-  was_in_call = getattr(_call_context, 'in_call', False)
-  _call_context.in_call = True
-  try:
-    yield
-  finally:
-    _call_context.in_call = was_in_call
+  """Returns currently active `CallContext`."""
+  if getattr(_call_context, 'call_context', None) is None:
+    _call_context.call_context = CallContext()
+  return _call_context.call_context
+
+
+class CallContext(object):
+  """Keeps track of properties currently inside a Layer/Model's `call`.
+
+  Attributes:
+    layer: The `Layer` whose `call` is currently active.
+    inputs: The inputs to the currently active `Layer`.
+    frozen: Whether currently executing inside a `Layer` with `trainable` set to
+      `False`.
+    in_call: Whether currently inside the `call` of a Layer.
+    training: Whether currently executing in training or inference mode.
+    in_keras_graph: Whether executing inside the Keras Graph.
+  """
+
+  def __init__(self):
+    self.layer = None
+    self.inputs = None
+    self.frozen = False
+    self.in_call = False
+    self.training = None
+    self._in_keras_graph = False
+
+  @tf_contextlib.contextmanager
+  def enter(self, layer, inputs, build_graph, training):
+    """Push a Layer and its inputs and state onto the current call context."""
+    prev_layer = self.layer
+    prev_inputs = self.inputs
+    prev_frozen = self.frozen
+    prev_in_call = self.in_call
+    prev_training = self.training
+    prev_in_keras_graph = self._in_keras_graph
+
+    self.layer = layer
+    self.inputs = inputs
+    self.frozen = self.frozen or not layer.trainable
+    self.in_call = True
+    self.training = training
+    self._in_keras_graph = (
+        self._in_keras_graph or
+        (build_graph and
+         getattr(backend.get_graph(), 'name', None) == 'keras_graph'))
+
+    try:
+      yield
+    finally:
+      self.layer = prev_layer
+      self.inputs = prev_inputs
+      self.frozen = prev_frozen
+      self.in_call = prev_in_call
+      self.training = prev_training
+      self._in_keras_graph = prev_in_keras_graph
+
+  @property
+  def in_keras_graph(self):
+    # Returns True even if in a subgraph of the Keras graph, such as those
+    # created by control flow ops.
+    if context.executing_eagerly():
+      return False
+    return (self._in_keras_graph or
+            getattr(backend.get_graph(), 'name', None) == 'keras_graph')
 
 
 def training_arg_passed_to_call(argspec, args, kwargs):
@@ -389,4 +435,197 @@ def training_arg_passed_to_call(argspec, args, kwargs):
   # `argspec.args` starts with ['self', 'inputs']
   full_args = dict(zip(argspec.args[2:], args))
   full_args.update(kwargs)
-  return 'training' in full_args
+  return 'training' in full_args and full_args['training'] is not None
+
+
+def _get_var_read_dtype(input_list, should_cast):
+  """Gets the dtype that AutoCastVariables should be read in."""
+  if should_cast and input_list and input_list[0].dtype.is_floating:
+    return input_list[0].dtype.base_dtype
+  else:
+    return None
+
+
+def autocast_context_manager(input_list, should_cast):
+  """Returns a context manager to autocast AutoCastVariables.
+
+  Under this context manager, if `should_cast` is True, AutoCastVariables will
+  be casted. If `should_cast` is False, AutoCastVariables will not be casted,
+  which can be used to disable autocasting if nested under another
+  call to `autocast_context_manager`.
+
+  Args:
+    input_list: The inputs to the layer with the AutoCastVariables.
+    should_cast: Whether AutoCastVariables should be casted.
+
+  Returns:
+    A context manager to automatically cast AutoCastVariables.
+  """
+  var_read_dtype = _get_var_read_dtype(input_list, should_cast)
+  return ops.get_default_graph()._enable_auto_casting_variables(  # pylint: disable=protected-access
+      var_read_dtype)
+
+
+def is_subclassed(layer):
+  """Returns True if the object is a subclassed layer or subclassed model."""
+  return (layer.__module__.find('keras.engine') == -1 and
+          layer.__module__.find('keras.layers') == -1)
+
+
+def check_graph_consistency(tensor=None, method='add_loss', force_raise=False):
+  """Checks that tensors passed to `add_*` method match the Keras graph.
+
+  When one of the `add_*` method is called inside a V2 conditional branch,
+  the underlying tensor gets created in a FuncGraph managed by control_flow_v2.
+  We need to raise clear error messages in such cases.
+
+  Arguments:
+    tensor: Tensor to check, or `False` if it is known that an error
+      should be raised.
+    method: Caller method, one of {'add_metric', 'add_loss', 'add_update'}.
+    force_raise: If an error should be raised regardless of `tensor`.
+
+  Raises:
+    RuntimeError: In case of an out-of-graph tensor.
+  """
+  if (force_raise or (ops.executing_eagerly_outside_functions() and
+                      hasattr(tensor, 'graph') and
+                      isinstance(tensor.graph,
+                                 (control_flow_util_v2.CondBranchFuncGraph,
+                                  control_flow_util_v2.WhileCondFuncGraph,
+                                  control_flow_util_v2.WhileBodyFuncGraph)))):
+    if method == 'activity_regularizer':
+      bad_example = """
+      class TestModel(tf.keras.Model):
+
+        def __init__(self):
+          super(TestModel, self).__init__(name='test_model')
+          self.dense = tf.keras.layers.Dense(2, activity_regularizer='l2')
+
+        def call(self, x, training=None):
+          if training:
+            return self.dense(x)
+          else:
+            return self.dense(x)
+      """
+      correct_example = """
+      class TestModel(tf.keras.Model):
+
+        def __init__(self):
+          super(TestModel, self).__init__(name='test_model')
+          self.dense = tf.keras.layers.Dense(2, activity_regularizer='l2')
+
+        def call(self, x, training=None):
+          return self.dense(x)
+      """
+      raise RuntimeError(
+          'You are using a layer with `activity_regularizer` in a control flow '
+          'branch, e.g.:\n{bad_example}\nThis is currently not supported. '
+          'Please move your call to the layer with `activity_regularizer` out '
+          'of the control flow branch, e.g.:\n{correct_example}\n'
+          'You can also resolve this by marking your outer model/layer dynamic'
+          ' (eager-only) by passing `dynamic=True` to the layer constructor. '
+          'Any kind of control flow is supported with dynamic layers. '
+          'Note that using `dynamic=True` requires you to implement static '
+          'shape inference in the `compute_output_shape(input_shape)` '
+          'method.'.format(
+              bad_example=bad_example, correct_example=correct_example))
+
+    if method == 'add_metric':
+      bad_example = """
+      def call(self, inputs, training=None):
+        if training:
+          metric = compute_metric(inputs)
+          self.add_metric(metric, name='my_metric', aggregation='mean')
+        return inputs
+      """
+      correct_example = """
+      def call(self, inputs, training=None):
+        if training:
+          metric = compute_metric(inputs)
+        else:
+          metric = 0.
+        self.add_metric(metric, name='my_metric', aggregation='mean')
+        return inputs
+      """
+    elif method == 'add_loss':
+      bad_example = """
+      def call(self, inputs, training=None):
+        if training:
+          loss = compute_loss(inputs)
+          self.add_loss(loss)
+        return inputs
+      """
+      correct_example = """
+      def call(self, inputs, training=None):
+        if training:
+          loss = compute_loss(inputs)
+        else:
+          loss = 0.
+        self.add_loss(loss)
+        return inputs
+      """
+    else:
+      bad_example = """
+      def call(self, inputs, training=None):
+        if training:
+          self.add_update(self.w.assign_add(1))
+        return inputs
+      """
+      correct_example = """
+      def call(self, inputs, training=None):
+        if training:
+          increment = 1
+        else:
+          increment = 0
+        self.add_update(self.w.assign_add(increment))
+        return inputs
+      """
+    raise RuntimeError(
+        'You are using the method `{method}` in a control flow branch '
+        'in your layer, e.g.:\n{bad_example}\n'
+        'This is not currently supported. '
+        'Please move your call to {method} out of the control flow branch, '
+        'e.g.:\n{correct_example}\n'
+        'You can also resolve this by marking your layer '
+        'as dynamic (eager-only) by passing '
+        '`dynamic=True` to the layer constructor. '
+        'Any kind of control flow is supported with dynamic layers. '
+        'Note that using `dynamic=True` requires you '
+        'to implement static shape inference '
+        'in the `compute_output_shape(input_shape)` method.'.format(
+            method=method,
+            bad_example=bad_example,
+            correct_example=correct_example))
+
+
+def mark_as_return(outputs, acd):
+  """Marks `outputs` as the return values for automatic control deps."""
+
+  def _mark_as_return(tensor):
+    """Marks `tensor` as the return value for automatic control deps."""
+    if not tensor_util.is_tensor(tensor):
+      return tensor
+
+    # pylint: disable=protected-access
+    return_tensor = acd.mark_as_return(tensor)
+    if getattr(tensor, '_keras_mask', None) is not None:
+      return_tensor._keras_mask = acd.mark_as_return(tensor._keras_mask)
+    else:
+      return_tensor._keras_mask = None
+
+    # Handle TensorFlow Probability attached metadata.
+    # TODO(b/132076537): Remove this once TFP uses `CompositeTensor`.
+    if getattr(tensor, '_tfp_distribution', None) is not None:
+      return_tensor._tfp_distribution = tensor._tfp_distribution
+
+    return return_tensor
+    # pylint: enable=protected-access
+
+  return nest.map_structure(_mark_as_return, outputs)
+
+
+def default(method):
+  """Decorates a method to detect overrides in subclasses."""
+  method._is_default = True  # pylint: disable=protected-access
+  return method

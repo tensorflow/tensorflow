@@ -82,14 +82,18 @@ class MklSmallSizeAllocator : public Allocator {
     port::AlignedFree(ptr);
   }
 
-  void GetStats(AllocatorStats* stats) override {
+  absl::optional<AllocatorStats> GetStats() override {
     mutex_lock l(mutex_);
-    *stats = stats_;
+    return stats_;
   }
 
   void ClearStats() override {
     mutex_lock l(mutex_);
-    stats_.Clear();
+    stats_.num_allocs = 0;
+    stats_.peak_bytes_in_use = 0;
+    stats_.largest_alloc_size = 0;
+    stats_.bytes_in_use = 0;
+    stats_.bytes_limit = 0;
   }
 
  private:
@@ -98,10 +102,10 @@ class MklSmallSizeAllocator : public Allocator {
     mutex_lock l(mutex_);
     ++stats_.num_allocs;
     stats_.bytes_in_use += alloc_size;
-    stats_.max_bytes_in_use =
-        std::max(stats_.max_bytes_in_use, stats_.bytes_in_use);
-    stats_.max_alloc_size =
-        std::max(alloc_size, static_cast<size_t>(stats_.max_alloc_size));
+    stats_.peak_bytes_in_use =
+        std::max(stats_.peak_bytes_in_use, stats_.bytes_in_use);
+    stats_.largest_alloc_size =
+        std::max(alloc_size, static_cast<size_t>(stats_.largest_alloc_size));
   }
 
   // Decrement statistics for the allocator handling small allocations.
@@ -244,22 +248,22 @@ class MklCPUAllocator : public Allocator {
     }
   }
 
-  void GetStats(AllocatorStats* stats) override {
-    AllocatorStats l_stats, s_stats;
-    small_size_allocator_->GetStats(&s_stats);
-    large_size_allocator_->GetStats(&l_stats);
+  absl::optional<AllocatorStats> GetStats() override {
+    auto s_stats = small_size_allocator_->GetStats();
+    auto l_stats = large_size_allocator_->GetStats();
 
     // Combine statistics from small-size and large-size allocator.
-    stats->num_allocs = l_stats.num_allocs + s_stats.num_allocs;
-    stats->bytes_in_use = l_stats.bytes_in_use + s_stats.bytes_in_use;
-    stats->max_bytes_in_use =
-        l_stats.max_bytes_in_use + s_stats.max_bytes_in_use;
+    stats_.num_allocs = l_stats->num_allocs + s_stats->num_allocs;
+    stats_.bytes_in_use = l_stats->bytes_in_use + s_stats->bytes_in_use;
+    stats_.peak_bytes_in_use =
+        l_stats->peak_bytes_in_use + s_stats->peak_bytes_in_use;
 
     // Since small-size allocations go to MklSmallSizeAllocator,
     // max_alloc_size from large_size_allocator would be the maximum
     // size allocated by MklCPUAllocator.
-    stats->max_alloc_size = l_stats.max_alloc_size;
-    stats->bytes_limit = std::max(s_stats.bytes_limit, l_stats.bytes_limit);
+    stats_.largest_alloc_size = l_stats->largest_alloc_size;
+    stats_.bytes_limit = std::max(s_stats->bytes_limit, l_stats->bytes_limit);
+    return stats_;
   }
 
   void ClearStats() override {
@@ -308,6 +312,7 @@ class MklCPUAllocator : public Allocator {
 
   SubAllocator* sub_allocator_;  // not owned by this class
   mutable mutex mutex_;
+  AllocatorStats stats_ GUARDED_BY(mutex_);
 
   // Hash map to keep track of "BFC" allocations
   // We do not use BFC allocator for small allocations.

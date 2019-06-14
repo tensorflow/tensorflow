@@ -30,6 +30,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import losses
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer
@@ -292,29 +293,33 @@ class OptimizerTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testConfigWithLearningRateDecay(self):
     with self.cached_session():
-      decay_schedule = learning_rate_schedule.InverseTimeDecay(
-          0.5, decay_steps=1.0, decay_rate=0.1)
-      step = 10
-      opt = gradient_descent.SGD(decay_schedule)
-      config = opt.get_config()
-      opt2 = gradient_descent.SGD.from_config(config)
-      # assert both are equal float values.
-      self.assertAllEqual(
-          decay_schedule(step),
-          opt._get_hyper('learning_rate')(step))
-      self.assertAllEqual(
-          decay_schedule(step),
-          opt2._get_hyper('learning_rate')(step))
       var0 = variables.Variable([[1.0], [2.0]], dtype=dtypes.float32)
-      loss = lambda: 3 * var0
-      # learning rate variable created when calling minimize.
-      opt.minimize(loss, [var0])
-      self.evaluate(variables.global_variables_initializer())
-      config = opt.get_config()
-      opt3 = gradient_descent.SGD.from_config(config)
-      self.assertAllEqual(
-          self.evaluate(opt._get_hyper('learning_rate')(step)),
-          opt3._get_hyper('learning_rate')(step))
+      for decay_schedule in [
+          learning_rate_schedule.InverseTimeDecay(
+              0.5, decay_steps=1.0, decay_rate=0.1),
+          learning_rate_schedule.PiecewiseConstantDecay(
+              [5], [1., .5])
+      ]:
+        step = 10
+        opt = gradient_descent.SGD(decay_schedule)
+        config = opt.get_config()
+        opt2 = gradient_descent.SGD.from_config(config)
+        # assert both are equal float values.
+        self.assertAllEqual(
+            decay_schedule(step),
+            opt._get_hyper('learning_rate')(step))
+        self.assertAllEqual(
+            decay_schedule(step),
+            opt2._get_hyper('learning_rate')(step))
+        loss = lambda: 3 * var0
+        # learning rate variable is created when calling minimize.
+        opt.minimize(loss, [var0])
+        self.evaluate(variables.global_variables_initializer())
+        config = opt.get_config()
+        opt3 = gradient_descent.SGD.from_config(config)
+        self.assertAllEqual(
+            self.evaluate(opt._get_hyper('learning_rate')(step)),
+            opt3._get_hyper('learning_rate')(step))
 
   @test_util.run_in_graph_and_eager_modes
   def testGradClipValue(self):
@@ -476,6 +481,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testOptimizerWithCallbacks(self):
+    np.random.seed(1331)
     input_np = np.random.random((10, 3))
     output_np = np.random.random((10, 4))
     a = input_layer.Input(shape=(3,), name='input_a')
@@ -496,7 +502,7 @@ class OptimizerTest(test.TestCase):
         batch_size=10,
         validation_data=(input_np, output_np),
         callbacks=cbks,
-        epochs=5,
+        epochs=2,
         verbose=0)
     self.assertAllClose(
         float(backend.get_value(model.optimizer.lr)), 0.1, atol=1e-4)
@@ -516,7 +522,7 @@ class OptimizerTest(test.TestCase):
         batch_size=10,
         validation_data=(input_np, output_np),
         callbacks=cbks,
-        epochs=5,
+        epochs=2,
         verbose=2)
     self.assertAllClose(
         float(backend.get_value(model.optimizer.lr)), 0.01, atol=1e-4)
@@ -536,6 +542,39 @@ class OptimizerTest(test.TestCase):
     new_step_value = self.evaluate(global_step)
     self.assertEqual(new_step_value, init_step_value + 1)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testOptimizerWithCallableVarList(self):
+    train_samples = 20
+    input_dim = 1
+    num_classes = 2
+    (x, y), _ = testing_utils.get_test_data(
+        train_samples=train_samples,
+        test_samples=10,
+        input_shape=(input_dim,),
+        num_classes=num_classes)
+    y = keras.utils.to_categorical(y)
+
+    num_hidden = 1
+    model = testing_utils.get_small_sequential_mlp(
+        num_hidden=num_hidden, num_classes=num_classes)
+    opt = adam.Adam()
+
+    loss = lambda: losses.mean_squared_error(model(x), y)
+    var_list = lambda: model.trainable_weights
+
+    with self.assertRaisesRegexp(
+        ValueError, 'Weights for model .* have not yet been created'):
+      var_list()
+    train_op = opt.minimize(loss, var_list)
+    if not context.executing_eagerly():
+      self.evaluate(variables.global_variables_initializer())
+      self.assertEqual(
+          [[0.]], self.evaluate(opt.get_slot(var_list()[0], 'm')))
+      self.evaluate(train_op)
+    self.assertNotEqual(
+        [[0.]], self.evaluate(opt.get_slot(var_list()[0], 'm')))
+    self.assertLen(var_list(), 4)
+
   def testVarKey(self):
     with context.graph_mode():
       a = variables.Variable([1., 2.], name='var')
@@ -546,6 +585,24 @@ class OptimizerTest(test.TestCase):
       self.assertEqual('var', var_key)
       var_key = optimizer_v2._var_key(b)
       self.assertEqual('var_1', var_key)
+
+  def testVarName(self):
+    with context.graph_mode():
+      var = variables.Variable([1., 2.], name='var')
+      loss = var + 1.
+      opt = adam.Adam()
+      opt.get_updates(loss, [var])
+      opt_vars = opt.variables()
+      self.assertLen(opt_vars, 3)
+      self.assertEqual('Adam/iter:0', opt_vars[0].name)
+      self.assertEqual('Adam/var/m:0', opt_vars[1].name)
+      var_2 = variables.Variable([1., 2.], name='var_2')
+      loss = var_2 + 1.
+      with backend.name_scope('outter'):
+        opt.get_updates(loss, [var_2])
+      opt_vars = opt.variables()
+      self.assertLen(opt_vars, 5)
+      self.assertEqual('outter/Adam/var_2/m:0', opt_vars[3].name)
 
 
 @keras_parameterized.run_with_all_model_types
@@ -648,10 +705,10 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
       model_tf.set_weights(model_k_v2.get_weights())
 
-      opt_k_v1 = optimizers.SGD(lr=0.001, momentum=0.9, nesterov=True)
+      opt_k_v1 = optimizers.SGD(momentum=0.9, nesterov=True)
       opt_k_v2 = gradient_descent.SGD(momentum=0.9, nesterov=True)
       opt_tf = momentum.MomentumOptimizer(
-          learning_rate=0.001, momentum=0.9, use_nesterov=True)
+          learning_rate=0.01, momentum=0.9, use_nesterov=True)
 
       model_k_v1.compile(opt_k_v1, loss='categorical_crossentropy', metrics=[])
       model_k_v2.compile(opt_k_v2, loss='categorical_crossentropy', metrics=[])
@@ -736,6 +793,30 @@ class OptimizerWithFunctionTest(test.TestCase):
         self.assertNotEquals(var_key_a, var_key_b)
 
       var_key_test()
+
+  def testLearningRateDecayUsedInTwoFunctions(self):
+    with context.eager_mode():
+      a = variables.Variable([1., 2.], name='var')
+      b = variables.Variable([1.], name='var')
+
+      learning_rate_decay = learning_rate_schedule.InverseTimeDecay(
+          0.5, decay_steps=1.0, decay_rate=0.5)
+      opt = adam.Adam(learning_rate=learning_rate_decay)
+      loss_a = lambda: 3 * a
+      loss_b = lambda: 2 * b
+
+      @def_function.function
+      def fn_a():
+        opt.minimize(loss_a, [a])
+        return a
+
+      @def_function.function
+      def fn_b():
+        opt.minimize(loss_b, [b])
+        return b
+
+      fn_a()
+      fn_b()
 
 
 if __name__ == '__main__':

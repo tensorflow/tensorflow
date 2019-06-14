@@ -30,7 +30,7 @@ def set_stats_aggregator(stats_aggregator, prefix="", counter_prefix=""):
   """Set the given `stats_aggregator` for aggregating the input dataset stats.
 
   Args:
-    stats_aggregator: A `tf.contrib.data.StatsAggregator` object.
+    stats_aggregator: A `tf.data.experimental.StatsAggregator` object.
     prefix: (Optional) String, all statistics recorded for the input `dataset`
       will have given `prefix` prepend with the name.
     counter_prefix: (Optional) String, all statistics recorded as `counters`
@@ -48,8 +48,7 @@ def set_stats_aggregator(stats_aggregator, prefix="", counter_prefix=""):
   return _apply_fn
 
 
-# TODO(b/38416882): Properly export in the `tf.data.experimental` API when
-# stable or make private / remove.
+@tf_export("data.experimental.bytes_produced_stats")
 def bytes_produced_stats(tag):
   """Records the number of bytes produced by each element of the input dataset.
 

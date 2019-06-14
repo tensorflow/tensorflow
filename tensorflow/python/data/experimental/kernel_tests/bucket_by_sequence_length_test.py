@@ -95,11 +95,11 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase,
 
     # Expected sum of all batches with an equal sequence length.
     # <seq-length>: <expected-total-sum>
-    expected_sums = dict()
+    expected_sums = {}
 
     # Expected batch sizes of batches depending on the sequence length.
     # <seq-length>: [batch1_size, ..., batchN_size]
-    expected_batch_sizes = dict()
+    expected_batch_sizes = {}
 
     for length, batch_size, bucket_elements in zip(lengths, batch_sizes,
                                                    n_bucket_elements):
@@ -155,10 +155,10 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase,
       generated_lengths = []
 
       # <seq-length>: <total-sum>
-      generated_sums = dict()
+      generated_sums = {}
 
       # <seq-length>: [<batch_size>, ...]
-      generated_batch_sizes = dict()
+      generated_batch_sizes = {}
 
       for length, batch_size, bucket_elements in zip(lengths, batch_sizes,
                                                      n_bucket_elements):
@@ -375,7 +375,7 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase,
           bucket_batch_sizes=[2, 2, 2],
           bucket_boundaries=[0, 8],
           no_padding=no_padding))
-      shapes = dataset.output_shapes
+      shapes = dataset_ops.get_legacy_output_shapes(dataset)
       self.assertEqual([None, None], shapes[0].as_list())
       self.assertEqual([None], shapes[1].as_list())
 

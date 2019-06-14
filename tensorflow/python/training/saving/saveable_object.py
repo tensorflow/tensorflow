@@ -21,7 +21,7 @@ from __future__ import print_function
 class SaveSpec(object):
   """Class used to describe tensor slices that need to be saved."""
 
-  def __init__(self, tensor, slice_spec, name, dtype=None):
+  def __init__(self, tensor, slice_spec, name, dtype=None, device=None):
     """Creates a `SaveSpec` object.
 
     Args:
@@ -30,18 +30,22 @@ class SaveSpec(object):
       name: the name to save the tensor under.
       dtype: The data type of the Tensor. Required if `tensor` is callable.
         Used for error checking in the restore op.
+      device: The device generating and consuming this tensor. Required if
+        `tensor` is callable. Used to group objects to save by device.
     """
     self._tensor = tensor
     self.slice_spec = slice_spec
     self.name = name
     if callable(self._tensor):
-      if dtype is None:
+      if dtype is None or device is None:
         raise AssertionError(
             "When passing a callable `tensor` to a SaveSpec, an explicit "
-            "dtype must be provided.")
+            "dtype and device must be provided.")
       self.dtype = dtype
+      self.device = device
     else:
       self.dtype = tensor.dtype
+      self.device = tensor.device
 
   @property
   def tensor(self):
@@ -64,7 +68,6 @@ class SaveableObject(object):
     self.op = op
     self.specs = specs
     self.name = name
-    self._device = None
 
   @property
   def optional_restore(self):
@@ -74,16 +77,7 @@ class SaveableObject(object):
   @property
   def device(self):
     """The device for SaveSpec Tensors."""
-    # Note that SaveSpec.tensor runs Tensor-gathering ops when executing
-    # eagerly, making this call potentially very expensive.
-    #
-    # TODO(allenl): Consider another way to gather device information. Lower
-    # priority since this property isn't part of the normal save()/restore()
-    # workflow, but does come up when some alternative builders are passed to
-    # the Saver.
-    if self._device is None:
-      self._device = self.specs[0].tensor.device
-    return self._device
+    return self.specs[0].device
 
   def restore(self, restored_tensors, restored_shapes):
     """Restores this object from 'restored_tensors'.

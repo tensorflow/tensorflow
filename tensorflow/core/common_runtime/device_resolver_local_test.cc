@@ -31,7 +31,6 @@ namespace {
 class DeviceResolverLocalTest : public ::testing::Test {
  protected:
   DeviceResolverLocalTest() {
-    ConfigProto cp;
     SessionOptions options;
     string task_name = "/job:localhost/replica:0/task:0";
     auto* device_count = options.config.mutable_device_count();

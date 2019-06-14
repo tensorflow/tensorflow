@@ -103,9 +103,12 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         else np.asarray(input_tensor).size)
     for k, f in feature_val.items():
       if isinstance(f, parsing_ops.FixedLenFeature) and f.shape is not None:
-        self.assertEqual(dataset.output_shapes[k].as_list()[0], batch_size)
+        self.assertEqual(
+            dataset_ops.get_legacy_output_shapes(dataset)[k].as_list()[0],
+            batch_size)
       elif isinstance(f, parsing_ops.VarLenFeature):
-        self.assertEqual(dataset.output_shapes[k].as_list()[1], None)
+        self.assertEqual(
+            dataset_ops.get_legacy_output_shapes(dataset)[k].as_list()[1], None)
 
   def testEmptySerializedWithAllDefaults(self):
     sparse_name = "st_a"

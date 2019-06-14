@@ -38,6 +38,24 @@ class SingleReturnTest(converter_testing.TestCase):
 
     self.assertTransformedEquivalent(test_fn, 2)
 
+  def test_superfluous_returns(self):
+
+    def test_fn():
+      retval = 1
+      return retval
+      retval = 2  # pylint:disable=unreachable
+      return retval
+
+    self.assertTransformedEquivalent(test_fn)
+
+  def test_superfluous_returns_adjacent(self):
+
+    def test_fn():
+      return 1
+      return 2  # pylint:disable=unreachable
+
+    self.assertTransformedEquivalent(test_fn)
+
   def test_conditional(self):
 
     def test_fn(x):
@@ -49,7 +67,7 @@ class SingleReturnTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(test_fn, 2)
     self.assertTransformedEquivalent(test_fn, -2)
 
-  def test_missing_else(self):
+  def test_contitional_missing_else(self):
 
     def test_fn(x):
       if x > 0:
@@ -58,7 +76,7 @@ class SingleReturnTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(test_fn, 2)
     self.assertTransformedEquivalent(test_fn, -2)
 
-  def test_missing_else_then_default(self):
+  def test_conditional_missing_else_then_default(self):
 
     def test_fn(x):
       if x > 0:
@@ -68,7 +86,7 @@ class SingleReturnTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(test_fn, 2)
     self.assertTransformedEquivalent(test_fn, -2)
 
-  def test_else_only_then_default(self):
+  def test_conditional_else_only_then_default(self):
 
     def test_fn(x):
       if x < 0:
@@ -197,6 +215,44 @@ class SingleReturnTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(test_fn, 4)
     self.assertTransformedEquivalent(test_fn, 5)
 
+  def test_nested_multiple_withs(self):
+
+    def test_fn(x):
+      v = []
+      while x > 0:
+        x -= 1
+        with ops.name_scope(''):
+          if x % 2 == 0:
+            return v
+        with ops.name_scope(''):
+          v.append(x)
+        v.append(x)
+      return v
+
+    self.assertTransformedEquivalent(test_fn, 0)
+    self.assertTransformedEquivalent(test_fn, 1)
+    self.assertTransformedEquivalent(test_fn, 3)
+    self.assertTransformedEquivalent(test_fn, 4)
+
+  def test_multiple_returns_in_nested_scope(self):
+
+    def test_fn(a):
+      v = []
+      for x in a:
+        x -= 1
+        if x > 100:
+          return v
+        try:
+          raise ValueError('intentional')
+        except ValueError:  # pylint:disable=bare-except
+          return v
+        v.append(x)
+      return v
+
+    self.assertTransformedEquivalent(test_fn, [])
+    self.assertTransformedEquivalent(test_fn, [1])
+    self.assertTransformedEquivalent(test_fn, [2])
+    self.assertTransformedEquivalent(test_fn, [1, 2, 3])
 
 if __name__ == '__main__':
   test.main()

@@ -55,7 +55,7 @@ SECTIONS
     {
         _datax = .;
         KEEP(*(.mainStack))
-        . += 12288;
+        . += 16384;
         _edatax = .;
         _stack_top = .;
         . += 4;

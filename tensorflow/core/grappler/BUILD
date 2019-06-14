@@ -1,6 +1,8 @@
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "op_types",
@@ -117,8 +119,10 @@ tf_cc_test(
         ":graph_view",
         ":grappler_item",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",

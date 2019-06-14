@@ -81,7 +81,7 @@ class SparseTensorDenseMatMulTest(test.TestCase):
       self.assertEqual(tf_value_ans.get_shape()[1], np_ans.shape[1])
       self.assertEqual(tf_tensor_ans.get_shape()[1], np_ans.shape[1])
 
-      for out in (tf_value_ans.eval(), self.evaluate(tf_tensor_ans)):
+      for out in (self.evaluate(tf_value_ans), self.evaluate(tf_tensor_ans)):
         if x.dtype == np.float32:
           self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
         elif x.dtype == np.float64:
@@ -134,6 +134,7 @@ class SparseTensorDenseMatMulTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, "Dimensions must be equal"):
       sparse_ops.sparse_tensor_dense_matmul(x_st_shape_inconsistent, y)
 
+  @test_util.deprecated_graph_mode_only
   def testInvalidIndicesForSparseTensorDenseMatmul(self):
     # Note: use_gpu=False because nice errors are only returned from CPU kernel.
     with self.session(use_gpu=False):
@@ -147,23 +148,25 @@ class SparseTensorDenseMatMulTest(test.TestCase):
       dense_t = np.matrix([[1] * 5, [2] * 5], dtype=np.float32)
       with self.assertRaisesOpError(
           "k .10. from index.0,1. out of bounds .>=2."):
-        sparse_ops.sparse_tensor_dense_matmul(sparse_t, dense_t).eval()
+        self.evaluate(sparse_ops.sparse_tensor_dense_matmul(sparse_t, dense_t))
       dense_t = np.matrix([[1] * 500, [2] * 500], dtype=np.float32)
       with self.assertRaisesOpError(
           "k .10. from index.0,1. out of bounds .>=2."):
-        sparse_ops.sparse_tensor_dense_matmul(sparse_t, dense_t).eval()
+        self.evaluate(sparse_ops.sparse_tensor_dense_matmul(sparse_t, dense_t))
 
       # Repeat with adjoint_a, to get a different error.
       dense_t = np.matrix([[1] * 5, [2] * 5, [3] * 5], dtype=np.float32)
       with self.assertRaisesOpError(
           "m .10. from index.0,1. out of bounds .>=2."):
-        sparse_ops.sparse_tensor_dense_matmul(
-            sparse_t, dense_t, adjoint_a=True).eval()
+        self.evaluate(
+            sparse_ops.sparse_tensor_dense_matmul(
+                sparse_t, dense_t, adjoint_a=True))
       dense_t = np.matrix([[1] * 500, [2] * 500, [3] * 500], dtype=np.float32)
       with self.assertRaisesOpError(
           "m .10. from index.0,1. out of bounds .>=2."):
-        sparse_ops.sparse_tensor_dense_matmul(
-            sparse_t, dense_t, adjoint_a=True).eval()
+        self.evaluate(
+            sparse_ops.sparse_tensor_dense_matmul(
+                sparse_t, dense_t, adjoint_a=True))
 
   def testInvalidIndicesForSparseTensorDenseMatmulOnGPU(self):
     # Note: use_gpu=False because nice errors are only returned from CPU kerne
@@ -181,13 +184,13 @@ class SparseTensorDenseMatMulTest(test.TestCase):
       expected_t = np.array([[0] * 5, [np.nan] * 5, [0] * 5], dtype=np.float32)
       self.assertAllClose(expected_t,
                           sparse_ops.sparse_tensor_dense_matmul(
-                              sparse_t, dense_t).eval())
+                              sparse_t, dense_t))
       dense_t = np.matrix([[1] * 500, [2] * 500], dtype=np.float32)
       expected_t = np.array(
           [[0] * 500, [np.nan] * 500, [0] * 500], dtype=np.float32)
       self.assertAllClose(expected_t,
                           sparse_ops.sparse_tensor_dense_matmul(
-                              sparse_t, dense_t).eval())
+                              sparse_t, dense_t))
 
       # Repeat with adjoint_a, now the error is that the sparse index
       # is OOO w.r.t. the output.  The GPU kernel can't do much here,
@@ -197,13 +200,13 @@ class SparseTensorDenseMatMulTest(test.TestCase):
       expected_t = np.array([[0] * 5, [0] * 5], dtype=np.float32)
       self.assertAllClose(expected_t,
                           sparse_ops.sparse_tensor_dense_matmul(
-                              sparse_t, dense_t, adjoint_a=True).eval())
+                              sparse_t, dense_t, adjoint_a=True))
 
       dense_t = np.matrix([[1] * 500, [2] * 500, [3] * 500], dtype=np.float32)
       expected_t = np.array([[0] * 500, [0] * 500], dtype=np.float32)
       self.assertAllClose(expected_t,
                           sparse_ops.sparse_tensor_dense_matmul(
-                              sparse_t, dense_t, adjoint_a=True).eval())
+                              sparse_t, dense_t, adjoint_a=True))
 
   # Tests setting one dimension to be a high value.
   def _testLarge(self, np_dtype):

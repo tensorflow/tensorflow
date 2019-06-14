@@ -3,9 +3,8 @@ load("//tensorflow:tensorflow.bzl", "py_binary")
 
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
@@ -16,6 +15,15 @@ config_setting(
 
 py_binary(
     name = "predict",
+    srcs = ["predict.py"],
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [":predict_main_lib"],
+)
+
+py_library(
+    name = "predict_main_lib",
     srcs = ["predict.py"],
     data = ["data/period_trend.csv"],
     srcs_version = "PY2AND3",
@@ -34,19 +42,29 @@ py_test(
     timeout = "long",  # Moderate but for asan
     srcs = ["predict_test.py"],
     data = ["data/period_trend.csv"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",  # TODO: needs investigation on Windows
         "notsan",  # b/67513579
     ],
     deps = [
-        ":predict",
+        ":predict_main_lib",
         "//tensorflow/python:client_testlib",
     ],
 )
 
 py_binary(
     name = "known_anomaly",
+    srcs = ["known_anomaly.py"],
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [":known_anomaly_main_lib"],
+)
+
+py_library(
+    name = "known_anomaly_main_lib",
     srcs = ["known_anomaly.py"],
     data = ["data/changepoints.csv"],
     srcs_version = "PY2AND3",
@@ -64,15 +82,25 @@ py_test(
     name = "known_anomaly_test",
     timeout = "long",  # Moderate but for asan
     srcs = ["known_anomaly_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
-        ":known_anomaly",
+        ":known_anomaly_main_lib",
         "//tensorflow/python:client_testlib",
     ],
 )
 
 py_binary(
     name = "multivariate",
+    srcs = ["multivariate.py"],
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [":multivariate_main_lib"],
+)
+
+py_library(
+    name = "multivariate_main_lib",
     srcs = ["multivariate.py"],
     data = ["data/multivariate_level.csv"],
     srcs_version = "PY2AND3",
@@ -92,15 +120,26 @@ py_test(
     srcs = [
         "multivariate_test.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
-        ":multivariate",
+        ":multivariate_main_lib",
         "//tensorflow/python:client_testlib",
     ],
 )
 
 py_binary(
     name = "lstm",
+    srcs = ["lstm.py"],
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    visibility = ["//visibility:public"],
+    deps = [":lstm_main_lib"],
+)
+
+py_library(
+    name = "lstm_main_lib",
     srcs = ["lstm.py"],
     data = ["data/multivariate_periods.csv"],
     srcs_version = "PY2AND3",
@@ -122,10 +161,11 @@ py_test(
     name = "lstm_test",
     timeout = "long",  # Moderate but for asan
     srcs = ["lstm_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [
-        ":lstm",
+        ":lstm_main_lib",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/estimator:estimator_py",
     ],

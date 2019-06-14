@@ -16,8 +16,6 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/conv_3d.h"
-
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -25,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/conv_2d.h"
+#include "tensorflow/core/kernels/conv_3d.h"
 #include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -1063,7 +1062,8 @@ namespace functor {
       typename TTypes<T, 5, int>::Tensor out);                        \
   template <>                                                         \
   void ReverseTransformFilter<GPUDevice, T, 5>::operator()(           \
-      const GPUDevice& d, typename TTypes<T, 5>::ConstTensor in,      \
+      const GPUDevice& d, FilterTensorFormat src_filter_format,       \
+      typename TTypes<T, 5>::ConstTensor in,                          \
       typename TTypes<T, 5>::Tensor out);                             \
   template <>                                                         \
   void PadInput<GPUDevice, T, int, 5>::operator()(                    \
@@ -1145,8 +1145,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     TensorShape input_shape;
     if (takes_shape_) {
       const Tensor& input_sizes = context->input(0);
-      OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
-                                  input_sizes.vec<int32>(), &input_shape));
+      OP_REQUIRES_OK(context, MakeShape(input_sizes, &input_shape));
     } else {
       input_shape = context->input(0).shape();
     }
@@ -1530,8 +1529,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     TensorShape filter_shape;
     if (takes_shape_) {
       const Tensor& filter_sizes = context->input(1);
-      OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
-                                  filter_sizes.vec<int32>(), &filter_shape));
+      OP_REQUIRES_OK(context, MakeShape(filter_sizes, &filter_shape));
     } else {
       filter_shape = context->input(1).shape();
     }
@@ -1832,7 +1830,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
 
     auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
     functor::ReverseTransformFilter<GPUDevice, T, 5>()(
-        context->eigen_device<GPUDevice>(),
+        context->eigen_device<GPUDevice>(), /*src_filter_format=*/FORMAT_OIHW,
         toConstTensor(pre_transformed_filter_backprop).template tensor<T, 5>(),
         filter_backprop->tensor<T, 5>());
   }

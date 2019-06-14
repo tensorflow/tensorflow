@@ -31,7 +31,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import training_util
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 # pylint: disable=not-callable
@@ -65,7 +65,7 @@ class NetworkTest(test.TestCase):
 
   def test_checkpointing_not_implemented(self):
     checkpoint_directory = self.get_temp_dir()
-    checkpoint = checkpointable_utils.Checkpoint(net=MyNetwork())
+    checkpoint = trackable_utils.Checkpoint(net=MyNetwork())
     with self.assertRaises(NotImplementedError):
       checkpoint.save(checkpoint_directory)
 

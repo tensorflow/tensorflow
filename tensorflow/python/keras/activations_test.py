@@ -55,6 +55,17 @@ class KerasActivationsTest(test.TestCase):
       fn = keras.activations.deserialize(config)
       assert fn.__name__ == activation_map[fn_v2_key]
 
+  def test_serialization_with_layers(self):
+    activation = keras.layers.LeakyReLU(alpha=0.1)
+    layer = keras.layers.Dense(3, activation=activation)
+    config = keras.layers.serialize(layer)
+    deserialized_layer = keras.layers.deserialize(
+        config, custom_objects={'LeakyReLU': activation})
+    self.assertEqual(deserialized_layer.__class__.__name__,
+                     layer.__class__.__name__)
+    self.assertEqual(deserialized_layer.activation.__class__.__name__,
+                     activation.__class__.__name__)
+
   def test_softmax(self):
     x = keras.backend.placeholder(ndim=2)
     f = keras.backend.function([x], [keras.activations.softmax(x)])
@@ -145,10 +156,14 @@ class KerasActivationsTest(test.TestCase):
   def test_relu(self):
     x = keras.backend.placeholder(ndim=2)
     f = keras.backend.function([x], [keras.activations.relu(x)])
-    test_values = np.random.random((2, 5))
-    result = f([test_values])[0]
-    # No negative values in test values...
-    self.assertAllClose(result, test_values, rtol=1e-05)
+    positive_values = np.random.random((2, 5))
+    result = f([positive_values])[0]
+    self.assertAllClose(result, positive_values, rtol=1e-05)
+
+    negative_values = np.random.uniform(-1, 0, (2, 5))
+    result = f([negative_values])[0]
+    expected = np.zeros((2, 5))
+    self.assertAllClose(result, expected, rtol=1e-05)
 
   def test_elu(self):
     x = keras.backend.placeholder(ndim=2)

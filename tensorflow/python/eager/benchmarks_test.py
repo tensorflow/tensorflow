@@ -37,6 +37,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import profiler
 from tensorflow.python.eager import test
@@ -146,7 +147,7 @@ class MicroBenchmarks(test.Benchmark):
   def _run(self, func, num_iters, execution_mode=None):
     # call func to maybe warm up the GPU
     ctx = context.context()
-    with ctx.execution_mode(execution_mode):
+    with context.execution_mode(execution_mode):
       func()
       if execution_mode == context.ASYNC:
         ctx.async_wait()
@@ -915,6 +916,31 @@ class MicroBenchmarks(test.Benchmark):
           lambda a, x: a + x, elems, parallel_iterations=1)
 
     self._run(scan, 100)
+
+  def benchmark_fastpath_conversion_type_inference(self):
+    c = constant_op.constant(1., dtype=dtypes.float32)
+
+    def fn():
+      return gen_math_ops.add(c, 1)
+
+    self._run(fn, 10000)
+
+  def _benchmarkFunctionWithResourceInputs(self, num_resources, num_iters):
+    @def_function.function
+    def add_all(*args):
+      return math_ops.add_n(*args)
+
+    with context.device(CPU):
+      resources = []
+      for _ in range(num_resources):
+        resources.append(resource_variable_ops.ResourceVariable(self._m_2))
+      self._run(lambda: add_all(resources), num_iters)
+
+  def benchmarkFunctionWithFiveResourceInputs(self):
+    self._benchmarkFunctionWithResourceInputs(5, 1000)
+
+  def benchmarkFunctionWithFiveHundredResourceInputs(self):
+    self._benchmarkFunctionWithResourceInputs(500, 100)
 
 
 if __name__ == "__main__":

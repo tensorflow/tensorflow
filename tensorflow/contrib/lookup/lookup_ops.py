@@ -30,6 +30,7 @@ from tensorflow.python.ops.lookup_ops import IdTableWithHashBuckets
 from tensorflow.python.ops.lookup_ops import index_table_from_file
 from tensorflow.python.ops.lookup_ops import index_to_string_table_from_file
 from tensorflow.python.ops.lookup_ops import InitializableLookupTableBase
+from tensorflow.python.ops.lookup_ops import InitializableLookupTableBaseV1
 from tensorflow.python.ops.lookup_ops import KeyValueTensorInitializer
 from tensorflow.python.ops.lookup_ops import LookupInterface
 from tensorflow.python.ops.lookup_ops import StrongHashSpec
@@ -50,8 +51,13 @@ def string_to_index_table_from_file(vocabulary_file=None,
                                     hasher_spec=FastHashSpec,
                                     name=None):
   return index_table_from_file(
-      vocabulary_file, num_oov_buckets, vocab_size, default_value, hasher_spec,
-      key_dtype=dtypes.string, name=name)
+      vocabulary_file,
+      num_oov_buckets,
+      vocab_size,
+      default_value,
+      hasher_spec,
+      key_dtype=dtypes.string,
+      name=name)
 
 
 @deprecated("2017-04-10", "Use `index_table_from_tensor`.")
@@ -87,7 +93,8 @@ def index_table_from_tensor(mapping,
   The bucket ID range is `[mapping size, mapping size + num_oov_buckets - 1]`.
 
   The underlying table must be initialized by calling
-  `session.run(tf.tables_initializer)` or `session.run(table.init)` once.
+  `session.run(tf.compat.v1.tables_initializer)` or `session.run(table.init)`
+  once.
 
   Elements in `mapping` cannot have duplicates, otherwise when executing the
   table initializer op, it will throw a `FailedPreconditionError`.
@@ -101,7 +108,7 @@ def index_table_from_tensor(mapping,
   features = tf.constant(["emerson", "lake", "and", "palmer"])
   ids = table.lookup(features)
   ...
-  tf.tables_initializer().run()
+  tf.compat.v1.tables_initializer().run()
 
   ids.eval()  ==> [0, 1, 3, 2]
   ```
@@ -136,10 +143,9 @@ def index_table_from_tensor(mapping,
       name=name)
 
 
-@deprecated(
-    "2017-01-07", "This op will be removed after the deprecation date. "
-    "Please switch to index_table_from_tensor and call the lookup "
-    "method of the returned table.")
+@deprecated("2017-01-07", "This op will be removed after the deprecation date. "
+            "Please switch to index_table_from_tensor and call the lookup "
+            "method of the returned table.")
 def string_to_index(tensor, mapping, default_value=-1, name=None):
   """Maps `tensor` of strings into `int64` indices based on `mapping`.
 
@@ -154,7 +160,7 @@ def string_to_index(tensor, mapping, default_value=-1, name=None):
   will throw a FailedPreconditionError.
 
   The underlying table must be initialized by calling
-  `session.run(tf.tables_initializer)` once.
+  `session.run(tf.compat.v1.tables_initializer)` once.
 
   For example:
 
@@ -164,7 +170,7 @@ def string_to_index(tensor, mapping, default_value=-1, name=None):
   ids = tf.contrib.lookup.string_to_index(
       feats, mapping=mapping_strings, default_value=-1)
   ...
-  tf.tables_initializer().run()
+  tf.compat.v1.tables_initializer().run()
 
   ids.eval()  ==> [0, 1, -1, 2]
   ```
@@ -198,7 +204,8 @@ def index_to_string_table_from_tensor(mapping, default_value="UNK", name=None):
   (an out-of-vocabulary entry) is assigned the `default_value`
 
   The underlying table must be initialized by calling
-  `session.run(tf.tables_initializer)` or `session.run(table.init)` once.
+  `session.run(tf.compat.v1.tables_initializer)` or `session.run(table.init)`
+  once.
 
   Elements in `mapping` cannot have duplicates, otherwise when executing the
   table initializer op, it will throw a `FailedPreconditionError`.
@@ -212,7 +219,7 @@ def index_to_string_table_from_tensor(mapping, default_value="UNK", name=None):
       mapping_string, default_value="UNKNOWN")
   values = table.lookup(indices)
   ...
-  tf.tables_initializer().run()
+  tf.compat.v1.tables_initializer().run()
 
   values.eval() ==> ["lake", "UNKNOWN"]
   ```
@@ -253,7 +260,7 @@ def index_to_string(tensor, mapping, default_value="UNK", name=None):
   (an out-of-vocabulary entry) is assigned the `default_value`
 
   The underlying table must be initialized by calling
-  `session.run(tf.tables_initializer)` once.
+  `session.run(tf.compat.v1.tables_initializer)` once.
 
   For example:
 
@@ -263,7 +270,7 @@ def index_to_string(tensor, mapping, default_value="UNK", name=None):
   values = tf.contrib.lookup.index_to_string(
       indices, mapping=mapping_string, default_value="UNKNOWN")
   ...
-  tf.tables_initializer().run()
+  tf.compat.v1.tables_initializer().run()
 
   values.eval() ==> ["lake", "UNKNOWN"]
   ```
@@ -284,7 +291,7 @@ def index_to_string(tensor, mapping, default_value="UNK", name=None):
   return table.lookup(tensor)
 
 
-class HashTable(InitializableLookupTableBase):
+class HashTable(InitializableLookupTableBaseV1):
   """A generic hash table implementation.
 
   Example usage:
@@ -325,7 +332,7 @@ class HashTable(InitializableLookupTableBase):
     super(HashTable, self).__init__(default_value, initializer)
     self._value_shape = self._default_value.get_shape()
 
-  def create_resource(self):
+  def _create_resource(self):
     table_ref = gen_lookup_ops.hash_table_v2(
         shared_name=self._shared_name,
         key_dtype=self._initializer.key_dtype,
@@ -336,6 +343,10 @@ class HashTable(InitializableLookupTableBase):
     else:
       self._table_name = table_ref.op.name.split("/")[-1]
     return table_ref
+
+  @property
+  def init(self):
+    return self.initializer
 
   @property
   def name(self):
@@ -362,4 +373,4 @@ class HashTable(InitializableLookupTableBase):
 
 
 MutableHashTable = lookup_ops.MutableHashTable
-MutableDenseHashTable = lookup_ops.MutableDenseHashTable
+MutableDenseHashTable = lookup_ops.DenseHashTable

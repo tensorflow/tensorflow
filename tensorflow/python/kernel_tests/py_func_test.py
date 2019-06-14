@@ -323,6 +323,7 @@ class PyFuncTest(test.TestCase):
       self.assertEqual(self.evaluate(x), 1)
       self.assertEqual(self.evaluate(x), 2)
 
+  @test_util.enable_tf_xla_constant_folding("b/134376434")
   def testStateless(self):
     # Not using self.cached_session(), which disables optimization.
     with session_lib.Session() as sess:
@@ -335,8 +336,8 @@ class PyFuncTest(test.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testGradientFunction(self):
-    # Input to tf.py_func is necessary, otherwise get_gradient_function()
-    # returns None per default.
+    # Input to tf.compat.v1.py_func is necessary,
+    # otherwise get_gradient_function() returns None per default.
     a = constant_op.constant(0)
     x, = script_ops.py_func(lambda a: 0, [a], [dtypes.int64])
     y, = script_ops.py_func(lambda a: 0, [a], [dtypes.int64], stateful=False)
@@ -353,7 +354,8 @@ class PyFuncTest(test.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testParallel(self):
-    # Tests that tf.py_func's can run in parallel if they release the GIL.
+    # Tests that tf.compat.v1.py_func's can run in parallel if they release
+    # the GIL.
     with self.cached_session() as session:
       q = queue.Queue(1)
 
@@ -485,6 +487,21 @@ class PyFuncTest(test.TestCase):
     output = script_ops.eager_py_func(matmul, inp=[a, x], Tout=dtypes.int32)
     ret = self.evaluate(output)
     self.assertAllEqual(ret, [[3], [3], [3]])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testRenamedDeviceInTestClusterCorrectlyIdentifiedAsLocalhost(self):
+    if context.executing_eagerly():
+      self.skipTest("b/126565353: We don't test eager's remote execution.")
+
+    workers, _ = test_util.create_local_cluster(num_workers=1, num_ps=0)
+    worker = workers[0]
+    session = session_lib.Session(worker.target)
+    with ops.device("/job:worker/task:0/cpu:0"):
+      a = array_ops.ones((3, 3), dtype=dtypes.float32)
+      x = array_ops.ones((3, 1), dtype=dtypes.float32)
+      output = script_ops.eager_py_func(matmul, inp=[a, x], Tout=dtypes.float32)
+    ret = session.run(output)
+    self.assertAllClose(ret, [[3.0], [3.0], [3.0]])
 
   @test_util.run_in_graph_and_eager_modes
   def testEagerSingleOutputFloat32(self):

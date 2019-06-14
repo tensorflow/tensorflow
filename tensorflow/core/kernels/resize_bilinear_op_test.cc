@@ -30,13 +30,15 @@ limitations under the License.
 
 namespace tensorflow {
 
-class ResizeBilinearOpTest : public OpsTestBase {
+class ResizeBilinearOpTestBase : public OpsTestBase {
  protected:
-  ResizeBilinearOpTest() {
+  explicit ResizeBilinearOpTestBase(bool half_pixel_centers)
+      : half_pixel_centers_(half_pixel_centers) {
     TF_EXPECT_OK(NodeDefBuilder("resize_bilinear_op", "ResizeBilinear")
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_INT32))
                      .Attr("align_corners", false)
+                     .Attr("half_pixel_centers", half_pixel_centers_)
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
   }
@@ -81,17 +83,25 @@ class ResizeBilinearOpTest : public OpsTestBase {
 
     for (int b = 0; b < batch; ++b) {
       for (int64 y = 0; y < out_height; ++y) {
-        const float in_y = y * height_scale;
-        const int64 top_y_index = static_cast<int64>(floorf(in_y));
+        const float in_y =
+            half_pixel_centers_
+                ? (static_cast<float>(y) + 0.5f) * height_scale - 0.5f
+                : y * height_scale;
+        const int64 top_y_index =
+            std::max(static_cast<int64>(floorf(in_y)), static_cast<int64>(0));
         const int64 bottom_y_index =
             std::min(static_cast<int64>(ceilf(in_y)), in_height - 1);
-        const float y_lerp = in_y - top_y_index;
+        const float y_lerp = in_y - std::floor(in_y);
         for (int64 x = 0; x < out_width; ++x) {
-          const float in_x = x * width_scale;
-          const int64 left_x_index = static_cast<int64>(floorf(in_x));
+          const float in_x =
+              half_pixel_centers_
+                  ? (static_cast<float>(x) + 0.5f) * width_scale - 0.5f
+                  : x * width_scale;
+          const int64 left_x_index =
+              std::max(static_cast<int64>(floorf(in_x)), static_cast<int64>(0));
           const int64 right_x_index =
               std::min(static_cast<int64>(ceilf(in_x)), in_width - 1);
-          const float x_lerp = in_x - left_x_index;
+          const float x_lerp = in_x - std::floor(in_x);
           for (int c = 0; c < channels; ++c) {
             const float top_left = images(b, top_y_index, left_x_index, c);
             const float top_right = images(b, top_y_index, right_x_index, c);
@@ -139,6 +149,17 @@ class ResizeBilinearOpTest : public OpsTestBase {
       }
     }
   }
+  bool half_pixel_centers_;
+};
+
+class ResizeBilinearOpTest : public ResizeBilinearOpTestBase {
+ public:
+  ResizeBilinearOpTest() : ResizeBilinearOpTestBase(false) {}
+};
+
+class ResizeBilinearHalfPixelCentersOpTest : public ResizeBilinearOpTestBase {
+ public:
+  ResizeBilinearHalfPixelCentersOpTest() : ResizeBilinearOpTestBase(true) {}
 };
 
 class ResizeBilinearOpAlignCornersTest : public OpsTestBase {
@@ -343,6 +364,14 @@ TEST_F(ResizeBilinearOpTest, TestBilinear4x4To3x3) {
   test::ExpectClose(expected, *GetOutput(0));
 }
 
+TEST_F(ResizeBilinearHalfPixelCentersOpTest, TestDownsamples) {
+  TestResize(4, 298, 297, 3, 61, 71);
+}
+
+TEST_F(ResizeBilinearHalfPixelCentersOpTest, TestUpsamples) {
+  TestResize(4, 61, 71, 3, 298, 297);
+}
+
 TEST_F(ResizeBilinearOpAlignCornersTest, TestBilinearAlignCorners4x4To3x3) {
   // Input:
   //  1,  2,  3,  4
@@ -458,7 +487,7 @@ TEST_F(ResizeBilinearOpTest, TestInvalidOutputSize) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {0, 0});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       s.ToString(), "Invalid argument: output dimensions must be positive"))
       << s;
 }
@@ -467,7 +496,7 @@ TEST_F(ResizeBilinearOpTest, TestInvalidInputShape) {
   AddInputFromArray<float>(TensorShape({2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {4, 4});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       s.ToString(), "Invalid argument: input must be 4-dimensional"))
       << s;
 }
@@ -476,7 +505,7 @@ TEST_F(ResizeBilinearOpTest, TestInvalidSizeDim) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2, 1}), {4, 4});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       s.ToString(), "Invalid argument: shape_t must be 1-dimensional"))
       << s;
 }
@@ -485,7 +514,7 @@ TEST_F(ResizeBilinearOpTest, TestInvalidSizeElements) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({3}), {4, 4, 1});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       s.ToString(), "Invalid argument: shape_t must have two elements"))
       << s;
 }

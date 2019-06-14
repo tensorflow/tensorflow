@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/dataset.h"
+
 #include <unordered_map>
 
 #include "tensorflow/core/framework/device_base.h"
@@ -22,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace data {
@@ -48,6 +50,14 @@ class DatasetVariantWrapper {
     if (dataset_) dataset_->Ref();
   }
 
+  DatasetVariantWrapper& operator=(DatasetVariantWrapper&& other) {
+    if (&other == this) return *this;
+    std::swap(dataset_, other.dataset_);
+    return *this;
+  }
+
+  DatasetVariantWrapper& operator=(const DatasetVariantWrapper& other) = delete;
+
   ~DatasetVariantWrapper() {
     if (dataset_) dataset_->Unref();
   }
@@ -73,7 +83,7 @@ class DatasetVariantWrapper {
   }
 
  private:
-  DatasetBase* const dataset_;  // Owns one reference.
+  DatasetBase* dataset_;  // Owns one reference.
 };
 
 const char kWrappedDatasetVariantTypeName[] =
@@ -191,13 +201,13 @@ Status GraphDefBuilderWrapper::AddDataset(
     const std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>>& list_inputs,
     const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
     Node** output) {
-  const string& name = dataset->name();
+  const string& type_string = dataset->type_string();
   std::unique_ptr<const GraphDefBuilder::Options> opts(
       new GraphDefBuilder::Options(b_->opts()));
   // TODO(srbs|mrry): Not all datasets have output_types and output_shapes
   // attributes defined. It will be nice to have a consistent pattern.
-  bool has_output_types_attr = HasAttr(name, "output_types");
-  bool has_output_shapes_attr = HasAttr(name, "output_shapes");
+  bool has_output_types_attr = HasAttr(type_string, "output_types");
+  bool has_output_shapes_attr = HasAttr(type_string, "output_shapes");
   if (has_output_shapes_attr) {
     opts.reset(new GraphDefBuilder::Options(
         opts->WithAttr("output_shapes", dataset->output_shapes())));
@@ -214,7 +224,8 @@ Status GraphDefBuilderWrapper::AddDataset(
     return errors::Internal("AddDataset: Failed to build Options with error ",
                             opts->StatusToString());
   }
-  NodeBuilder node_builder(opts->GetNameForOp(name), name, opts->op_registry());
+  NodeBuilder node_builder(opts->GetNameForOp(type_string), type_string,
+                           opts->op_registry());
   {
     size_t total_size = inputs.size() + list_inputs.size();
     auto inputs_iter = inputs.begin();
@@ -239,31 +250,31 @@ Status GraphDefBuilderWrapper::AddDataset(
   }
   *output = opts->FinalizeBuilder(&node_builder);
   if (*output == nullptr) {
-    return errors::Internal("AddDataset: Failed to build ", name,
+    return errors::Internal("AddDataset: Failed to build ", type_string,
                             " op with error ", opts->StatusToString());
   }
   return Status::OK();
 }
 
-Status GraphDefBuilderWrapper::AddFunction(SerializationContext* ctx,
-                                           const string& function_name) {
+Status GraphDefBuilderWrapper::AddFunction(
+    SerializationContext* ctx, const string& function_name,
+    const FunctionLibraryDefinition& lib_def) {
   if (b_->HasFunction(function_name)) {
     VLOG(1) << "Function with name " << function_name << "already exists in"
             << " the graph. It will not be added again.";
     return Status::OK();
   }
   if (!ctx->optimization_only()) {
-    TF_RETURN_IF_ERROR(
-        EnsureFunctionIsStateless(ctx->flib_def(), function_name));
+    TF_RETURN_IF_ERROR(EnsureFunctionIsStateless(function_name, lib_def));
   }
-  const FunctionDef* f_def = ctx->flib_def().Find(function_name);
+  const FunctionDef* f_def = lib_def.Find(function_name);
   if (f_def == nullptr) {
     return errors::InvalidArgument("Unable to find FunctionDef for ",
                                    function_name, " in the registry.");
   }
   FunctionDefLibrary def;
   *def.add_function() = *f_def;
-  const string gradient_func = ctx->flib_def().FindGradient(function_name);
+  const string gradient_func = lib_def.FindGradient(function_name);
   if (!gradient_func.empty()) {
     GradientDef* g_def = def.add_gradient();
     g_def->set_function_name(function_name);
@@ -274,19 +285,19 @@ Status GraphDefBuilderWrapper::AddFunction(SerializationContext* ctx,
   // Recursively add functions in inputs of function_name.
   for (const NodeDef& node_def : f_def->node_def()) {
     const OpRegistrationData* op_reg_data = nullptr;
-    TF_RETURN_IF_ERROR(ctx->flib_def().LookUp(node_def.op(), &op_reg_data));
+    TF_RETURN_IF_ERROR(lib_def.LookUp(node_def.op(), &op_reg_data));
     if (op_reg_data->is_function_op) {
-      TF_RETURN_IF_ERROR(AddFunction(ctx, op_reg_data->op_def.name()));
+      TF_RETURN_IF_ERROR(AddFunction(ctx, op_reg_data->op_def.name(), lib_def));
     }
     // Recursively add functions in attrs of this NodeDef.
     for (const auto& pair : node_def.attr()) {
-      TF_RETURN_IF_ERROR(AddAttrFunctions(ctx, pair.second));
+      TF_RETURN_IF_ERROR(AddAttrFunctions(ctx, pair.second, lib_def));
     }
   }
 
   // Recursively add functions in attrs of function_name.
   for (auto iter = f_def->attr().begin(); iter != f_def->attr().end(); iter++) {
-    TF_RETURN_IF_ERROR(AddAttrFunctions(ctx, iter->second));
+    TF_RETURN_IF_ERROR(AddAttrFunctions(ctx, iter->second, lib_def));
   }
   return Status::OK();
 }
@@ -399,6 +410,26 @@ Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
   return status;
 }
 
+Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
+                                    std::vector<Tensor>* out_tensors,
+                                    bool* end_of_sequence) {
+  profiler::TraceMe activity([&] { return BuildTraceMeName(); },
+                             profiler::TraceMeLevel::kInfo);
+  RecordStart(ctx, /*stop_output=*/true);
+  Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
+  if (s.ok() && !*end_of_sequence) RecordElement(ctx);
+  RecordStop(ctx, /*start_output=*/true);
+  if (TF_PREDICT_FALSE(errors::IsOutOfRange(s) && !*end_of_sequence)) {
+    s = errors::Internal(
+        "Iterator \"", params_.prefix,
+        "\" returned OutOfRange without setting `*end_of_sequence`. This "
+        "indicates that an error may have occurred. Original message: ",
+        s.error_message());
+    LOG(ERROR) << s;
+  }
+  return s;
+}
+
 void DatasetOpKernel::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset = nullptr;
   MakeDataset(ctx, &dataset);
@@ -475,6 +506,29 @@ void BackgroundWorker::WorkerLoop() {
     DCHECK(work_item != nullptr);
     work_item();
   }
+}
+
+namespace {
+class RunnerImpl : public Runner {
+ public:
+  void Run(const std::function<void()>& f) override {
+    f();
+
+    // NOTE: We invoke a virtual function to prevent `f` being tail-called, and
+    // thus ensure that this function remains on the stack until after `f`
+    // returns.
+    PreventTailCall();
+  }
+
+ private:
+  virtual void PreventTailCall() {}
+};
+}  // namespace
+
+/* static */
+Runner* Runner::get() {
+  static Runner* singleton = new RunnerImpl;
+  return singleton;
 }
 
 }  // namespace data

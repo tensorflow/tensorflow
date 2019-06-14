@@ -21,7 +21,6 @@ from __future__ import print_function
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -29,43 +28,36 @@ from tensorflow.python.platform import test
 
 
 class RankTwoTest(trt_test.TfTrtIntegrationTestBase):
+  """Test for rank 2 input in TF-TRT."""
+
+  def GraphFn(self, x1, x2):
+    # Two paths: first with rank 2 input, second with rank 4 input.
+    outputs = []
+    xs = [x1, x2]
+    for i in range(2):
+      x = xs[i]
+      c = constant_op.constant(1.0, name="c%d_1" % i)
+      q = math_ops.add(x, c, name="add%d_1" % i)
+      q = math_ops.abs(q, name="abs%d_1" % i)
+      c = constant_op.constant(2.2, name="c%d_2" % i)
+      q = math_ops.add(q, c, name="add%d_2" % i)
+      q = math_ops.abs(q, name="abs%d_2" % i)
+      c = constant_op.constant(3.0, name="c%d_3" % i)
+      q = math_ops.add(q, c, name="add%d_3" % i)
+      if i == 0:
+        axis = constant_op.constant(-1, dtype=dtypes.int32, name="axis")
+        for j in range(2):
+          q = array_ops.expand_dims(q, axis, name="expand%d_%d" % (i, j))
+        q = self.trt_incompatible_op(q)
+      q = gen_math_ops.reciprocal(q, name="reciprocal%d" % i)
+      outputs.append(q)
+    # Combine both paths
+    q = math_ops.add(outputs[0], outputs[1], name="add")
+    return array_ops.squeeze(q, name="output_0")
 
   def GetParams(self):
-    """Test for rank 2 input in TF-TRT."""
-    input_names = ["input", "input2"]
-    # Two paths: first with rank 2 input, second with rank 4 input.
-    input_dims = [[12, 5], [12, 5, 2, 2]]
-    output_name = "output"
-    g = ops.Graph()
-    with g.as_default():
-      outputs = []
-      for i in range(2):
-        x = array_ops.placeholder(
-            dtype=dtypes.float32, shape=input_dims[i], name=input_names[i])
-        c = constant_op.constant(1.0, name="c%d_1" % i)
-        q = math_ops.add(x, c, name="add%d_1" % i)
-        q = math_ops.abs(q, name="abs%d_1" % i)
-        c = constant_op.constant(2.2, name="c%d_2" % i)
-        q = math_ops.add(q, c, name="add%d_2" % i)
-        q = math_ops.abs(q, name="abs%d_2" % i)
-        c = constant_op.constant(3.0, name="c%d_3" % i)
-        q = math_ops.add(q, c, name="add%d_3" % i)
-        if i == 0:
-          axis = constant_op.constant(-1, dtype=dtypes.int32, name="axis")
-          for j in range(2):
-            q = array_ops.expand_dims(q, axis, name="expand%d_%d" % (i, j))
-          q = self.trt_incompatible_op(q)
-        q = gen_math_ops.reciprocal(q, name="reciprocal%d" % i)
-        outputs.append(q)
-      # Combine both paths
-      q = math_ops.add(outputs[0], outputs[1], name="add")
-      array_ops.squeeze(q, name=output_name)
-    return trt_test.TfTrtIntegrationTestParams(
-        gdef=g.as_graph_def(),
-        input_names=input_names,
-        input_dims=[input_dims],
-        output_names=[output_name],
-        expected_output_dims=[[input_dims[1]]])
+    return self.BuildParams(self.GraphFn, dtypes.float32,
+                            [[12, 5], [12, 5, 2, 2]], [[12, 5, 2, 2]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""

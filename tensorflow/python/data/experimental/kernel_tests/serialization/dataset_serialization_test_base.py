@@ -31,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.training import checkpoint_management
@@ -558,7 +559,7 @@ class DatasetSerializationTestBase(test.TestCase):
 
     Recursively matches shape and values of `expected` and `actual`.
     Handles scalars, numpy arrays and other python sequence containers
-    e.g. list, dict.
+    e.g. list, dict, as well as SparseTensorValue and RaggedTensorValue.
 
     Args:
       expected: Nested structure 1.
@@ -582,6 +583,14 @@ class DatasetSerializationTestBase(test.TestCase):
       else:
         for item1, item2 in zip(expected, actual):
           self.match(item1, item2)
+    elif isinstance(expected, sparse_tensor.SparseTensorValue):
+      return self.match(
+          (expected.indices, expected.values, expected.dense_shape),
+          (actual.indices, actual.values, actual.dense_shape))
+    elif isinstance(expected, ragged_tensor_value.RaggedTensorValue):
+      return self.match(
+          (expected.values, expected.row_splits),
+          (actual.values, actual.row_splits))
     else:
       self.assertEqual(expected, actual)
 
@@ -668,15 +677,15 @@ class DatasetSerializationTestBase(test.TestCase):
 
   def _get_output_types(self, ds_fn):
     with ops.Graph().as_default():
-      return ds_fn().output_types
+      return dataset_ops.get_legacy_output_types(ds_fn())
 
   def _get_output_shapes(self, ds_fn):
     with ops.Graph().as_default():
-      return ds_fn().output_shapes
+      return dataset_ops.get_legacy_output_shapes(ds_fn())
 
   def _get_output_classes(self, ds_fn):
     with ops.Graph().as_default():
-      return ds_fn().output_classes
+      return dataset_ops.get_legacy_output_classes(ds_fn())
 
   def _ckpt_path(self):
     return os.path.join(self.get_temp_dir(), "iterator")

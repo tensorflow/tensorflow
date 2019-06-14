@@ -69,6 +69,11 @@ class Tile {
   // combined with the next minor dimension before tiling is applied.
   static constexpr int64 kCombineDimension = std::numeric_limits<int64>::min();
 
+  template <typename H>
+  friend H AbslHashValue(H h, const Tile& t) {
+    return H::combine(std::move(h), t.dimensions_);
+  }
+
  private:
   // The bounds of the tile.
   std::vector<int64> dimensions_;
@@ -85,10 +90,13 @@ class Layout {
 
   // Constructs a dense tiled layout with the given minor-to-major order and
   // tiles.
-  Layout(absl::Span<const int64> minor_to_major, absl::Span<const Tile> tiles)
+  Layout(absl::Span<const int64> minor_to_major, absl::Span<const Tile> tiles,
+         int64 element_size_in_bits = 0, int64 memory_space = 0)
       : format_(DENSE),
         minor_to_major_(minor_to_major.begin(), minor_to_major.end()),
-        tiles_(tiles.begin(), tiles.end()) {}
+        tiles_(tiles.begin(), tiles.end()),
+        element_size_in_bits_(element_size_in_bits),
+        memory_space_(memory_space) {}
 
   // Construct a shape from a LayoutProto.
   static Layout CreateFromProto(const LayoutProto& proto);
@@ -98,6 +106,49 @@ class Layout {
 
   // Returns a human-readable string that represents this layout.
   string ToString() const;
+
+  // Equal is a configurable functor to check the equality of two layouts.
+  //
+  // Examples:
+  //
+  // - Comparing two layouts ignoring their difference in tiles:
+  //   Equal().IgnoreTiles()(layout1, layout2);
+  //
+  // - Comparing two layouts ignoring their difference in tiles and element
+  //   size:
+  //   Equal().IgnoreTiles().IgnoreElementSize()(layout1, layout2);
+  class Equal {
+   public:
+    Equal() = default;
+
+    bool operator()(const Layout& lhs, const Layout& rhs);
+
+    Equal& IgnoreTiles() {
+      ignore_tiles_ = true;
+      return *this;
+    }
+
+    Equal& IgnoreElementSize() {
+      ignore_element_size_ = true;
+      return *this;
+    }
+
+    Equal& MinorToMajorOnly() {
+      ignore_tiles_ = true;
+      ignore_element_size_ = true;
+      return *this;
+    }
+
+    Equal& IgnoreMemorySpace() {
+      ignore_memory_space_ = true;
+      return *this;
+    }
+
+   private:
+    bool ignore_tiles_ = false;
+    bool ignore_element_size_ = false;
+    bool ignore_memory_space_ = false;
+  };
 
   bool operator==(const Layout& other) const;
   bool operator!=(const Layout& other) const { return !(*this == other); }
@@ -160,6 +211,11 @@ class Layout {
     element_size_in_bits_ = value;
     return *this;
   }
+  int64 memory_space() const { return memory_space_; }
+  Layout& set_memory_space(int64 value) {
+    memory_space_ = value;
+    return *this;
+  }
 
   void Swap(Layout* other) {
     using std::swap;
@@ -173,7 +229,14 @@ class Layout {
     element_size_in_bits_ = 0;
   }
 
- public:
+  template <typename H>
+  friend H AbslHashValue(H h, const Layout& l) {
+    return H::combine(std::move(h), l.format_, l.minor_to_major_,
+                      l.max_sparse_elements_, l.tiles_,
+                      l.element_size_in_bits_);
+  }
+
+ private:
   // The format of this layout.
   Format format_ = INVALID_FORMAT;
 
@@ -186,11 +249,14 @@ class Layout {
   // memory.  This field must be zero unless the format is SPARSE.
   int64 max_sparse_elements_ = 0;
 
+  // The tiles used in tiling-based layout.
+  std::vector<Tile> tiles_;
+
   // The number of bits used to store an individual array element.
   int64 element_size_in_bits_ = 0;
 
-  // The tiles used in tiling-based layout.
-  std::vector<Tile> tiles_;
+  // The assigned memory space.
+  int64 memory_space_ = 0;
 };
 
 std::ostream& operator<<(std::ostream& out, const Tile& Tile);

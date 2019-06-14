@@ -16,11 +16,15 @@ limitations under the License.
 // See docs in ../ops/nn_ops.cc.
 #ifdef INTEL_MKL
 
+#include "tensorflow/core/kernels/mkl_conv_ops.h"
+
 #include <string.h>
+
 #include <algorithm>
 #include <map>
 #include <vector>
 
+#include "mkldnn.hpp"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -29,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/kernels/mkl_conv_ops.h"
 #include "tensorflow/core/kernels/mkl_quantized_conv_ops.h"
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -40,27 +43,16 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
-
-#include "tensorflow/core/util/mkl_util.h"
-
-#ifndef INTEL_MKL_ML_ONLY
-#include "mkldnn.hpp"
 
 using mkldnn::prop_kind;
 using mkldnn::stream;
 using mkldnn::convolution_forward;
 using mkldnn::convolution_direct;
 
-#else
-#include "mkl_dnn.h"
-#include "mkl_dnn_types.h"
-#endif
-
 namespace tensorflow {
-
-#ifndef INTEL_MKL_ML_ONLY
 
 // This structure aggregates multiple inputs to Conv2DFwd* methods.
 struct MklConvFwdParams {
@@ -75,6 +67,7 @@ struct MklConvFwdParams {
   string dtypes = string("");
   struct PostOpParam {
     string name;
+    mkldnn::algorithm alg;
     std::vector<float> param;
   };
   std::vector<PostOpParam> post_op_params;
@@ -96,9 +89,8 @@ struct MklConvFwdParams {
 typedef mkldnn::convolution_forward::primitive_desc ConvFwdPd;
 
 // With quantization, input, filter, and output can have different types
-// so we use differnt template parameter for each type
-template <typename T, typename Tinput, typename Tfilter, typename Tbias,
-          typename Toutput>
+// so we use different template parameter for each type
+template <typename Tinput, typename Tfilter, typename Tbias, typename Toutput>
 class MklConvFwdPrimitive : public MklPrimitive {
  public:
   explicit MklConvFwdPrimitive(const MklConvFwdParams& convFwdDims)
@@ -249,24 +241,25 @@ class MklConvFwdPrimitive : public MklPrimitive {
     mkldnn::post_ops post_ops;
     if (!post_op_params.empty()) {
       for (auto const& post_op_param : post_op_params) {
-        if (post_op_param.name == "relu") {
+        if (post_op_param.name == "activation") {
           DCHECK_EQ(post_op_param.param.size(), 3);
           float op_scale = post_op_param.param[0];
           float op_alpha = post_op_param.param[1];
           float op_beta = post_op_param.param[2];
-          post_ops.append_eltwise(op_scale, mkldnn::eltwise_relu, op_alpha,
+          post_ops.append_eltwise(op_scale, post_op_param.alg, op_alpha,
                                   op_beta);
         } else if (post_op_param.name == "sum") {
           DCHECK_EQ(post_op_param.param.size(), 1);
           float op_scale = post_op_param.param[0];
           post_ops.append_sum(op_scale);
         } else if (post_op_param.name == "output_scale") {
-          DCHECK_EQ(post_op_param.param.size(), 1);
-          std::vector<float> scales;
-          scales.push_back(post_op_param.param[0]);
-          post_ops_attr.set_output_scales(0, scales);
+          if (post_op_param.param.size() == 1) {
+            post_ops_attr.set_output_scales(0, post_op_param.param);
+          } else {
+            post_ops_attr.set_output_scales(2, post_op_param.param);
+          }
         } else {
-          DCHECK((post_op_param.name == "relu") ||
+          DCHECK((post_op_param.name == "activation") ||
                  (post_op_param.name == "sum") ||
                  (post_op_param.name == "output_scale"));
         }
@@ -296,7 +289,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
     // Create convolution primitive and add it to net
     if (!convFwdDims.bias_dims.empty()) {
       context_.bias_mem.reset(new memory(
-          {{{convFwdDims.bias_dims}, MklDnnType<T>(), memory::format::x},
+          {{{convFwdDims.bias_dims}, MklDnnType<Tbias>(), memory::format::x},
            cpu_engine_},
           DummyData));
       context_.conv_fwd.reset(new convolution_forward(
@@ -316,29 +309,31 @@ class MklConvFwdPrimitive : public MklPrimitive {
   engine cpu_engine_;
 };
 
-template <typename T, typename Tinput, typename Tfilter, typename Tbias,
-          typename Toutput>
-class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
+// TODO(nhasabni): We should not require passing a type to MklPrimitiveFactory.
+// But removing the need for type in MklPrimitiveFactory is going to require
+// change to every MKL op. So not doing it now. Instead passing float.
+template <typename Tinput, typename Tfilter, typename Tbias, typename Toutput>
+class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<float> {
  public:
-  static MklConvFwdPrimitive<T, Tinput, Tfilter, Tbias, Toutput>* Get(
+  static MklConvFwdPrimitive<Tinput, Tfilter, Tbias, Toutput>* Get(
       const MklConvFwdParams& convFwdDims, bool do_not_cache) {
-    MklConvFwdPrimitive<T, Tinput, Tfilter, Tbias, Toutput>* conv_fwd = nullptr;
+    MklConvFwdPrimitive<Tinput, Tfilter, Tbias, Toutput>* conv_fwd = nullptr;
 
     if (do_not_cache) {
       // Always create a new primitive
-      conv_fwd = new MklConvFwdPrimitive<T, Tinput, Tfilter, Tbias, Toutput>(
-          convFwdDims);
+      conv_fwd =
+          new MklConvFwdPrimitive<Tinput, Tfilter, Tbias, Toutput>(convFwdDims);
     } else {
       // Try to find a suitable one in pool
-      conv_fwd = dynamic_cast<
-          MklConvFwdPrimitive<T, Tinput, Tfilter, Tbias, Toutput>*>(
-          MklConvFwdPrimitiveFactory<T, Tinput, Tfilter, Tbias,
-                                     Toutput>::GetInstance()
-              .GetConvFwd(convFwdDims));
+      conv_fwd =
+          dynamic_cast<MklConvFwdPrimitive<Tinput, Tfilter, Tbias, Toutput>*>(
+              MklConvFwdPrimitiveFactory<Tinput, Tfilter, Tbias,
+                                         Toutput>::GetInstance()
+                  .GetConvFwd(convFwdDims));
       if (conv_fwd == nullptr) {
-        conv_fwd = new MklConvFwdPrimitive<T, Tinput, Tfilter, Tbias, Toutput>(
+        conv_fwd = new MklConvFwdPrimitive<Tinput, Tfilter, Tbias, Toutput>(
             convFwdDims);
-        MklConvFwdPrimitiveFactory<T, Tinput, Tfilter, Tbias,
+        MklConvFwdPrimitiveFactory<Tinput, Tfilter, Tbias,
                                    Toutput>::GetInstance()
             .SetConvFwd(convFwdDims, conv_fwd);
       }
@@ -374,22 +369,16 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
 
     // Generate keys for post-ops
     for (auto const& post_op_param : convFwdDims.post_op_params) {
-      if (post_op_param.name == "relu") {
+      if (post_op_param.name == "activation") {
         DCHECK_EQ(post_op_param.param.size(), 3);
-        key_creator.AddAsKey(post_op_param.name);
-        key_creator.AddAsKey(post_op_param.param[0]);
-        key_creator.AddAsKey(post_op_param.param[1]);
-        key_creator.AddAsKey(post_op_param.param[2]);
       } else if (post_op_param.name == "sum") {
         DCHECK_EQ(post_op_param.param.size(), 1);
-        key_creator.AddAsKey(post_op_param.name);
-        key_creator.AddAsKey(post_op_param.param[0]);
-      } else if (post_op_param.name == "output_scale") {
-        DCHECK_EQ(post_op_param.param.size(), 1);
-        key_creator.AddAsKey(post_op_param.name);
-        key_creator.AddAsKey(post_op_param.param[0]);
-      } else {
+      } else if (post_op_param.name != "output_scale") {
         return string("not_a_key");
+      }
+      key_creator.AddAsKey(post_op_param.name);
+      for (auto& param : post_op_param.param) {
+        key_creator.AddAsKey(param);
       }
     }
 
@@ -407,448 +396,7 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 };
 
-#endif
-
 typedef Eigen::ThreadPoolDevice CPUDevice;
-
-// For now, MKL-ML is default. So making MKL-DNN not a default choice.
-#ifdef INTEL_MKL_ML_ONLY
-template <typename Device, typename T, bool bias_enabled>
-class MklConvOp : public OpKernel {
- public:
-  ~MklConvOp() {}
-
-  explicit MklConvOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
-    string data_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
-    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES(context, strides_.size() == 4,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 dimensions"));
-
-    const int64 stride_n = GetTensorDim(strides_, data_format_, 'N');
-    const int64 stride_c = GetTensorDim(strides_, data_format_, 'C');
-    OP_REQUIRES(
-        context, stride_n == 1 && stride_c == 1,
-        errors::InvalidArgument("Current implementation does not yet support "
-                                "strides in the batch and depth dimensions."));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
-  }
-
-  void Compute(OpKernelContext* context) override {
-    MklConv2DOpContext mkl_context;
-    const Tensor& input = MklGetInput(context, 0);
-    GetMklShape(context, 0, &(mkl_context.input_shape));
-    bool input_in_mkl_format = mkl_context.input_shape.IsMklTensor();
-
-    const Tensor& filter = MklGetInput(context, 1);
-    MklShape mkl_filter_shape;
-    GetMklShape(context, 1, &mkl_filter_shape);
-    CHECK(!mkl_filter_shape.IsMklTensor())
-        << "Conv filter should not be in MKL Layout";
-
-    if (bias_enabled) {
-      const Tensor& bias = MklGetInput(context, 2);
-      OP_REQUIRES(context, bias.dims() == 1,
-                  errors::InvalidArgument("bias must be 1-dimensional: ",
-                                          bias.shape().DebugString()));
-    }
-
-    if (!input_in_mkl_format) {
-      OP_REQUIRES(context, input.dims() == 4,
-                  errors::InvalidArgument("input must be 4-dimensional",
-                                          input.shape().DebugString()));
-    }
-
-    OP_REQUIRES(context, filter.dims() == 4,
-                errors::InvalidArgument("filter must be 4-dimensional: ",
-                                        filter.shape().DebugString()));
-
-    for (int i = 0; i < 3; i++) {
-      OP_REQUIRES(
-          context,
-          FastBoundsCheck(filter.dim_size(i), std::numeric_limits<int>::max()),
-          errors::InvalidArgument("filter too large"));
-    }
-
-    const int64 input_depth =
-        input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'C')
-                            : GetTensorDim(input, data_format_, 'C');
-    OP_REQUIRES(context, input_depth == filter.dim_size(2),
-                errors::InvalidArgument(
-                    "input and filter must have the same depth: ", input_depth,
-                    " vs ", filter.dim_size(2)));
-    // The last dimension for filter is out_depth.
-    const int out_depth = static_cast<int>(filter.dim_size(3));
-
-    // The second dimension for input is rows/height.
-    // The first dimension for filter is rows/height.
-    const int64 input_rows_raw =
-        input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'H')
-                            : GetTensorDim(input, data_format_, 'H');
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input_rows_raw, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("Input rows too large"));
-    const int input_rows = static_cast<int>(input_rows_raw);
-    const int filter_rows = static_cast<int>(filter.dim_size(0));
-
-    // The third dimension for input is columns/width.
-    // The second dimension for filter is columns/width.
-    const int64 input_cols_raw =
-        input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'W')
-                            : GetTensorDim(input, data_format_, 'W');
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input_cols_raw, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("Input cols too large"));
-    const int input_cols = static_cast<int>(input_cols_raw);
-    const int filter_cols = static_cast<int>(filter.dim_size(1));
-
-    // The first dimension for input is batch.
-    const int64 input_batch_raw =
-        input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'N')
-                            : GetTensorDim(input, data_format_, 'N');
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input_batch_raw, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("batch is too large"));
-    const int batch = static_cast<int>(input_batch_raw);
-
-    // For now we take the stride from the second and third dimensions only (we
-    // do not support striding on the batch or depth dimension).
-    const int stride_rows = GetTensorDim(strides_, data_format_, 'H');
-    const int stride_cols = GetTensorDim(strides_, data_format_, 'W');
-
-    int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
-    OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(input_rows, filter_rows, stride_rows,
-                                         padding_, &out_rows, &pad_rows));
-    OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(input_cols, filter_cols, stride_cols,
-                                         padding_, &out_cols, &pad_cols));
-    TensorShape out_shape =
-        ShapeFromFormat(data_format_, batch, out_rows, out_cols, out_depth);
-
-    // Output tensor is of the following dimensions:
-    // [ in_batch, out_rows, out_cols, out_depth ]
-    Tensor* output = nullptr;
-
-    // If there is nothing to compute, return.
-    if (out_shape.num_elements() == 0) {
-      // Nothing to do, allocate output tensor and return
-      MklShape mkl_output_mkl_shape;
-      mkl_output_mkl_shape.SetMklTensor(false);
-      AllocateOutputSetMklShape(context, 0, &output, input.shape(),
-                                mkl_output_mkl_shape);
-      return;
-    }
-
-    if (batch == 0) {
-      // Nothing to do, allocate output tensor and return
-      MklShape mkl_output_mkl_shape;
-      mkl_output_mkl_shape.SetMklTensor(false);
-      AllocateOutputSetMklShape(context, 0, &output, input.shape(),
-                                mkl_output_mkl_shape);
-      return;
-    }
-
-    // Create MKL convolution primitives
-    mkl_context.in_dims = input_in_mkl_format
-                              ? mkl_context.input_shape.GetDimension()
-                              : input.dims();
-    mkl_context.filter_dims = filter.dims();
-
-    mkl_context.in_sizes[MklDims::W] = static_cast<size_t>(input_cols);
-    mkl_context.in_sizes[MklDims::H] = static_cast<size_t>(input_rows);
-    mkl_context.in_sizes[MklDims::C] = static_cast<size_t>(input_depth);
-    mkl_context.in_sizes[MklDims::N] = static_cast<size_t>(batch);
-
-    mkl_context.out_sizes[MklDims::W] = static_cast<size_t>(out_cols);
-    mkl_context.out_sizes[MklDims::H] = static_cast<size_t>(out_rows);
-    mkl_context.out_sizes[MklDims::C] = static_cast<size_t>(out_depth);
-    mkl_context.out_sizes[MklDims::N] = static_cast<size_t>(batch);
-
-    mkl_context.input_offset[0] = static_cast<int>(-pad_cols);
-    mkl_context.input_offset[1] = static_cast<int>(-pad_rows);
-
-    mkl_context.conv_stride[0] = static_cast<size_t>(stride_cols);
-    mkl_context.conv_stride[1] = static_cast<size_t>(stride_rows);
-
-    GetStridesFromSizes(data_format_, mkl_context.out_strides,
-                        mkl_context.out_sizes);
-    GetStridesFromSizes(data_format_, mkl_context.in_strides,
-                        mkl_context.in_sizes);
-
-    // TF filter dimension order (out_depth, in_depth, cols, rows) ->
-    // MKL filter dimension order (out_depth, in_depth, rows, cols)
-    mkl_context.filter_sizes[0] = filter.dim_size(1);  // cols
-    mkl_context.filter_sizes[1] = filter.dim_size(0);  // rows
-    mkl_context.filter_sizes[2] = filter.dim_size(2);  // in_depth
-    mkl_context.filter_sizes[3] = filter.dim_size(3);  // out_depth
-
-    // TF filter layout - (rows, cols, in_depth, out_depth)
-    mkl_context.filter_strides[0] =
-        filter.dim_size(2) * filter.dim_size(3);  // cols
-    mkl_context.filter_strides[1] =
-        filter.dim_size(1) * filter.dim_size(2) * filter.dim_size(3);  // rows
-    mkl_context.filter_strides[2] = filter.dim_size(3);  // in_depth
-    mkl_context.filter_strides[3] = 1;                   // out_depth
-
-    if (bias_enabled) {
-      const Tensor& bias = MklGetInput(context, 2);
-      mkl_context.bias_sizes[0] = {static_cast<size_t>(bias.dim_size(0))};
-      mkl_context.bias_strides[0] = {1};
-    }
-
-    // Create Convolution Primitive
-    if (bias_enabled) {
-      CHECK_EQ(
-          dnnConvolutionCreateForwardBias_F32(
-              &mkl_context.prim_fwd, nullptr, dnnAlgorithmConvolutionDirect,
-              mkl_context.in_dims, mkl_context.in_sizes, mkl_context.out_sizes,
-              mkl_context.filter_sizes, mkl_context.conv_stride,
-              mkl_context.input_offset, dnnBorderZeros),
-          E_SUCCESS);
-    } else {
-      CHECK_EQ(
-          dnnConvolutionCreateForward_F32(
-              &mkl_context.prim_fwd, nullptr, dnnAlgorithmConvolutionDirect,
-              mkl_context.in_dims, mkl_context.in_sizes, mkl_context.out_sizes,
-              mkl_context.filter_sizes, mkl_context.conv_stride,
-              mkl_context.input_offset, dnnBorderZeros),
-          E_SUCCESS);
-    }
-
-    TensorShape mkl_output_tf_shape;
-    MklShape mkl_output_mkl_shape;
-    mkl_output_mkl_shape.SetMklTensor(true);
-    mkl_output_mkl_shape.SetMklLayout(mkl_context.prim_fwd, dnnResourceDst);
-    mkl_output_mkl_shape.SetTfLayout(mkl_context.in_dims, mkl_context.out_sizes,
-                                     mkl_context.out_strides);
-    // MKL might change the dimension ordering
-    // Create mapping to recover the original TF dimension order
-    mkl_output_mkl_shape.SetTfDimOrder(mkl_context.in_dims, data_format_);
-
-    mkl_output_tf_shape.AddDim(
-        dnnLayoutGetMemorySize_F32(
-            static_cast<dnnLayout_t>(mkl_output_mkl_shape.GetMklLayout())) /
-        sizeof(T));
-    AllocateOutputSetMklShape(context, 0, &output, mkl_output_tf_shape,
-                              mkl_output_mkl_shape);
-    // Filter output to be used in the backprop_input
-    TensorShape mkl_filter_output_tf_shape;
-    MklShape mkl_filter_output_mkl_shape;
-    mkl_filter_output_mkl_shape.SetMklTensor(true);
-    mkl_filter_output_mkl_shape.SetMklLayout(mkl_context.prim_fwd,
-                                             dnnResourceFilter);
-
-    size_t filter_sizes[4] = {static_cast<size_t>(filter.dim_size(0)),
-                              static_cast<size_t>(filter.dim_size(1)),
-                              static_cast<size_t>(filter.dim_size(2)),
-                              static_cast<size_t>(filter.dim_size(3))};
-    mkl_filter_output_mkl_shape.SetTfLayout(filter.dims(), filter_sizes,
-                                            mkl_context.filter_strides);
-
-    mkl_filter_output_mkl_shape.SetTfDimOrder(mkl_context.filter_dims,
-                                              data_format_);
-    mkl_filter_output_tf_shape.AddDim(
-        dnnLayoutGetMemorySize_F32(static_cast<dnnLayout_t>(
-            mkl_filter_output_mkl_shape.GetMklLayout())) /
-        sizeof(T));
-    AllocateOutputSetMklShape(context, 1, &mkl_context.output_filter,
-                              mkl_filter_output_tf_shape,
-                              mkl_filter_output_mkl_shape);
-
-    mkl_context.conv_res[dnnResourceDst] =
-        static_cast<void*>(output->flat<T>().data());
-
-    mkl_context.MklCreateInputLayouts(context);
-
-    // Temp tensor used to allocate tmp buffers
-    Tensor mkl_tmp_input_buf_tensor, mkl_tmp_filter_buf_tensor,
-        mkl_tmp_bias_buf_tensor;
-    mkl_context.MklPrepareConvolutionInputs(context, &mkl_tmp_input_buf_tensor,
-                                            &mkl_tmp_filter_buf_tensor,
-                                            &mkl_tmp_bias_buf_tensor);
-
-    // Execute convolution
-    CHECK_EQ(dnnExecute_F32(mkl_context.prim_fwd, mkl_context.conv_res),
-             E_SUCCESS);
-
-    mkl_context.MklCleanup();
-  }
-
- private:
-  typedef struct {
-    int in_dims;
-    size_t in_sizes[4];
-    size_t in_strides[4];
-    size_t out_sizes[4];
-    size_t out_strides[4];
-    int filter_dims;
-    size_t filter_sizes[4];
-    size_t filter_strides[4];
-    size_t bias_sizes[1];
-    size_t bias_strides[1];
-    int input_offset[2];
-    size_t conv_stride[2];
-    MklShape input_shape;
-    dnnPrimitive_t prim_fwd;
-    void* conv_res[dnnResourceNumber];
-    dnnLayout_t lt_filter, lt_bias, lt_input;
-    Tensor* output_filter = nullptr;
-
-    // Create MKL dnnLayout_t objects for tensors coming into the layer
-    void MklCreateInputLayouts(OpKernelContext* context) {
-      bool input_in_mkl_format = input_shape.IsMklTensor();
-      if (input_in_mkl_format) {
-        lt_input = static_cast<dnnLayout_t>(input_shape.GetCurLayout());
-      } else {
-        CHECK_EQ(dnnLayoutCreate_F32(&lt_input, in_dims, in_sizes, in_strides),
-                 E_SUCCESS);
-      }
-
-      CHECK_EQ(dnnLayoutCreate_F32(&lt_filter, filter_dims, filter_sizes,
-                                   filter_strides),
-               E_SUCCESS);
-
-      if (bias_enabled) {
-        CHECK_EQ(dnnLayoutCreate_F32(&lt_bias, 1, bias_sizes, bias_strides),
-                 E_SUCCESS);
-      }
-    }
-
-    // Compare incoming tensor layouts with MKL preferred layouts and convert
-    // data to the preferred layout if necessary
-    void MklPrepareConvolutionInputs(OpKernelContext* context,
-                                     Tensor* mkl_tmp_input_buf_tensor,
-                                     Tensor* mkl_tmp_filter_buf_tensor,
-                                     Tensor* mkl_tmp_bias_buf_tensor) {
-      bool mkl_convert_input, mkl_convert_filter, mkl_convert_bias;
-      dnnPrimitive_t mkl_prim_convert_filter, mkl_prim_convert_bias,
-          mkl_prim_convert_input;
-      dnnLayout_t mkl_lt_internal_filter, mkl_lt_internal_bias,
-          mkl_lt_internal_input;
-      void *mkl_buf_convert_input, *mkl_buf_convert_filter,
-          *mkl_buf_convert_bias;
-      mkl_prim_convert_filter = nullptr;
-      mkl_prim_convert_bias = nullptr;
-      mkl_prim_convert_input = nullptr;
-      mkl_lt_internal_filter = nullptr;
-      mkl_lt_internal_bias = nullptr;
-      mkl_lt_internal_input = nullptr;
-      mkl_buf_convert_input = nullptr;
-      mkl_buf_convert_filter = nullptr;
-      mkl_buf_convert_bias = nullptr;
-
-      // Compare with internal layouts and convert if needed
-      const Tensor& input = MklGetInput(context, 0);
-      void* mkl_buf_input =
-          const_cast<void*>(static_cast<const void*>(input.flat<T>().data()));
-      CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(&mkl_lt_internal_input,
-                                                prim_fwd, dnnResourceSrc),
-               E_SUCCESS);
-      mkl_convert_input =
-          !dnnLayoutCompare_F32(mkl_lt_internal_input, lt_input);
-      if (mkl_convert_input) {
-        CHECK_EQ(dnnConversionCreate_F32(&mkl_prim_convert_input, lt_input,
-                                         mkl_lt_internal_input),
-                 E_SUCCESS);
-        AllocTmpBuffer(context, mkl_tmp_input_buf_tensor, mkl_lt_internal_input,
-                       &mkl_buf_convert_input);
-        CHECK_EQ(dnnConversionExecute_F32(mkl_prim_convert_input, mkl_buf_input,
-                                          mkl_buf_convert_input),
-                 E_SUCCESS);
-        dnnDelete_F32(mkl_prim_convert_input);
-      }
-      dnnLayoutDelete_F32(mkl_lt_internal_input);
-
-      conv_res[dnnResourceSrc] =
-          (mkl_convert_input) ? mkl_buf_convert_input : mkl_buf_input;
-
-      const Tensor& filter = MklGetInput(context, 1);
-      void* mkl_buf_filter =
-          const_cast<void*>(static_cast<const void*>(filter.flat<T>().data()));
-      CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(&mkl_lt_internal_filter,
-                                                prim_fwd, dnnResourceFilter),
-               E_SUCCESS);
-      mkl_convert_filter =
-          !dnnLayoutCompare_F32(mkl_lt_internal_filter, lt_filter);
-      if (mkl_convert_filter) {
-        CHECK_EQ(dnnConversionCreate_F32(&mkl_prim_convert_filter, lt_filter,
-                                         mkl_lt_internal_filter),
-                 E_SUCCESS);
-
-        mkl_buf_convert_filter = const_cast<void*>(
-            static_cast<const void*>(output_filter->flat<T>().data()));
-
-        CHECK_EQ(
-            dnnConversionExecute_F32(mkl_prim_convert_filter, mkl_buf_filter,
-                                     mkl_buf_convert_filter),
-            E_SUCCESS);
-        dnnDelete_F32(mkl_prim_convert_filter);
-      }
-      dnnLayoutDelete_F32(mkl_lt_internal_filter);
-
-      conv_res[dnnResourceFilter] =
-          (mkl_convert_filter) ? mkl_buf_convert_filter : mkl_buf_filter;
-
-      if (bias_enabled) {
-        const Tensor& bias = MklGetInput(context, 2);
-        void* mkl_buf_bias =
-            const_cast<void*>(static_cast<const void*>(bias.flat<T>().data()));
-        CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(&mkl_lt_internal_bias,
-                                                  prim_fwd, dnnResourceBias),
-                 E_SUCCESS);
-        mkl_convert_bias = !dnnLayoutCompare_F32(mkl_lt_internal_bias, lt_bias);
-        if (mkl_convert_bias) {
-          CHECK_EQ(dnnConversionCreate_F32(&mkl_prim_convert_bias, lt_bias,
-                                           mkl_lt_internal_bias),
-                   E_SUCCESS);
-          AllocTmpBuffer(context, mkl_tmp_bias_buf_tensor, mkl_lt_internal_bias,
-                         &mkl_buf_convert_bias);
-          CHECK_EQ(dnnConversionExecute_F32(mkl_prim_convert_bias, mkl_buf_bias,
-                                            mkl_buf_convert_bias),
-                   E_SUCCESS);
-          dnnDelete_F32(mkl_prim_convert_bias);
-        }
-        dnnLayoutDelete_F32(mkl_lt_internal_bias);
-
-        conv_res[dnnResourceBias] =
-            (mkl_convert_bias) ? mkl_buf_convert_bias : mkl_buf_bias;
-      }
-    }
-
-    void MklCleanup() {
-      bool input_in_mkl_format = input_shape.IsMklTensor();
-      dnnDelete_F32(prim_fwd);
-      if (!input_in_mkl_format) dnnLayoutDelete_F32(lt_input);
-      dnnLayoutDelete_F32(lt_filter);
-      if (bias_enabled) dnnLayoutDelete_F32(lt_bias);
-    }
-  } MklConv2DOpContext;
-
-  std::vector<int32> strides_;
-  Padding padding_;
-  TensorFormat data_format_;
-};
-
-// FP32 kernel registration for INTEL_MKL_ML
-REGISTER_KERNEL_BUILDER(Name("_MklConv2D")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T")
-                            .Label(mkl_op_registry::kMklOpLabel),
-                        MklConv2DOp<CPUDevice, float, false>);
-REGISTER_KERNEL_BUILDER(Name("_MklConv2DWithBias")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T")
-                            .Label(mkl_op_registry::kMklOpLabel),
-                        MklConv2DOp<CPUDevice, float, true>);
-
-#else
 
 // Base class for convolution forward operations
 template <typename Device, typename Tinput, typename Tfilter, typename Tbias,
@@ -860,6 +408,9 @@ class MklConvOp : public OpKernel {
 
   explicit MklConvOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
+    if (context->HasAttr("padding_list")) {
+      OP_REQUIRES_OK(context, context->GetAttr("padding_list", &padding_list_));
+    }
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
@@ -920,10 +471,6 @@ class MklConvOp : public OpKernel {
       const Tensor& src_tensor = MklGetInput(context, kInputIndex_Src);
       const Tensor& filter_tensor = MklGetInput(context, kInputIndex_Filter);
 
-      // Data from persistent (cached) filter tensor
-      const Tensor& cached_filter_data_tensor =
-          *cached_filter_data_ptensor_.AccessTensor(context);
-
       MklDnnShape src_mkl_shape, filter_mkl_shape;
       GetMklShape(context, kInputIndex_Src, &src_mkl_shape);
       GetMklShape(context, kInputIndex_Filter, &filter_mkl_shape);
@@ -938,9 +485,19 @@ class MklConvOp : public OpKernel {
           dilations, strides;
       memory::dims dst_dims_tf_order, dst_dims_mkl_order;
 
-      // If pad with conv2d fusion is enabled
-      if (fuse_pad_) {
-        PadWithConvFusion(context, padding_left, padding_right);
+      // For Quantized-Conv2D and Pad fusion, we get padding from the
+      // `padding_list` attribute. Otherwise, we get it from one of the inputs.
+      bool quantized_pad_enabled = false;
+      for (auto const& padding_val : padding_list_) {
+        if (padding_val) {
+          quantized_pad_enabled = true;
+          break;
+        }
+      }
+
+      if (fuse_pad_ || quantized_pad_enabled) {
+        PadWithConvFusion(context, padding_left, padding_right,
+                          quantized_pad_enabled);
       }
 
       // Get shapes of input tensors in MKL-DNN order
@@ -951,7 +508,8 @@ class MklConvOp : public OpKernel {
       conv_utl.GetConvFwdSizesInMklOrder(
           src_tf_shape, filter_tf_shape, &src_dims, &filter_dims, &strides,
           &dilations, &dst_dims_tf_order, &dst_dims_mkl_order, &padding_left,
-          &padding_right, fuse_pad_, is_depthwise);
+          &padding_right, (fuse_pad_ || quantized_pad_enabled), is_depthwise);
+
       if (!context->status().ok()) return;
 
       // Check for corner case - if there is nothing to compute, return.
@@ -959,6 +517,10 @@ class MklConvOp : public OpKernel {
 
       // Corner cases: output with 0 elements and 0 batch size.
       Tensor* dst_tensor = nullptr;
+      bool emit_filter_output = (typeid(Tinput) == typeid(Tfilter) &&
+                                 typeid(Tinput) == typeid(Toutput) &&
+                                 (typeid(Tinput) == typeid(float) ||
+                                  typeid(Tinput) == typeid(bfloat16)));
       if (dst_tf_shape.num_elements() == 0 || dst_dims_tf_order[0] == 0) {
         MklDnnShape dst_mkl_shape;
         dst_mkl_shape.SetMklTensor(false);
@@ -968,9 +530,7 @@ class MklConvOp : public OpKernel {
         // MklConv2D/3D also outputs converted filter as 2nd output.
         filter_mkl_shape.SetMklTensor(false);
         Tensor* output_filter_tensor = nullptr;
-        if (typeid(Tinput) == typeid(float) &&
-            typeid(Tfilter) == typeid(float) &&
-            typeid(Toutput) == typeid(float)) {
+        if (emit_filter_output) {
           filter_mkl_shape.SetMklTensor(false);
           AllocateOutputSetMklShape(context, kOutputIndex_Filter,
                                     &output_filter_tensor, filter_tf_shape,
@@ -1049,8 +609,8 @@ class MklConvOp : public OpKernel {
            IsConv1x1StrideNot1(filter_dims, strides));
 
       // Get a conv2d fwd from primitive pool
-      MklConvFwdPrimitive<float, Tinput, Tfilter, Tbias, Ttemp_output>*
-          conv_fwd = nullptr;
+      MklConvFwdPrimitive<Tinput, Tfilter, Tbias, Ttemp_output>* conv_fwd =
+          nullptr;
       memory::dims bias_dims = {};
       if (fuse_biasadd_) {
         conv_utl.GetBiasSizeInMklOrder(kInputIndex_Bias, &bias_dims);
@@ -1062,17 +622,17 @@ class MklConvOp : public OpKernel {
       // TODO(mdfaijul): Extend the basic parameters for data types and fusions
       this->ExtendConvFwdParams(context, convFwdDims);
 
-      conv_fwd = MklConvFwdPrimitiveFactory<float, Tinput, Tfilter, Tbias,
-                                            Ttemp_output>::Get(convFwdDims,
-                                                               do_not_cache);
+      conv_fwd =
+          MklConvFwdPrimitiveFactory<Tinput, Tfilter, Tbias, Ttemp_output>::Get(
+              convFwdDims, do_not_cache);
 
       // Allocate output tensors `output_tensor` and `filter_out_tensor`
       std::shared_ptr<ConvFwdPd> conv_fwd_pd = conv_fwd->GetPrimitiveDesc();
       AllocateOutputTensor(context, *conv_fwd_pd, dst_dims_mkl_order, tf_fmt,
                            &dst_tensor);
+
       Tensor* filter_out_tensor = nullptr;
-      if (typeid(Tinput) == typeid(float) && typeid(Tfilter) == typeid(float) &&
-          typeid(Toutput) == typeid(float)) {
+      if (emit_filter_output) {
         AllocateFilterOutputTensor(context, *conv_fwd_pd,
                                    TFShapeToMklDnnDims(filter_tf_shape),
                                    &filter_out_tensor);
@@ -1151,16 +711,20 @@ class MklConvOp : public OpKernel {
   }
 
   void PadWithConvFusion(OpKernelContext* context, memory::dims& padding_left,
-                         memory::dims& padding_right) {
+                         memory::dims& padding_right,
+                         bool quantized_pad_enabled) {
     const Tensor& paddings_tf = MklGetInput(context, input_index_pad_);
-    OP_REQUIRES(context, paddings_tf.dims() == 2,
-                errors::InvalidArgument("paddings must be 2-dimensional: ",
-                                        paddings_tf.shape().DebugString()));
-
-    // Flatten tensor to get individual paddings.
-    Tpadding* paddings = static_cast<Tpadding*>(
-        const_cast<Tpadding*>(paddings_tf.flat<Tpadding>().data()));
-
+    Tpadding* paddings = nullptr;
+    if (quantized_pad_enabled) {
+      paddings = padding_list_.data();
+    } else {
+      OP_REQUIRES(context, paddings_tf.dims() == 2,
+                  errors::InvalidArgument("paddings must be 2-dimensional: ",
+                                          paddings_tf.shape().DebugString()));
+      // Flatten tensor to get individual paddings.
+      paddings = static_cast<Tpadding*>(
+          const_cast<Tpadding*>(paddings_tf.flat<Tpadding>().data()));
+    }
     // If the data format is NHWC, indices 0, 1, 6 and 7 of paddings(_tf)
     // will be zero.
     // Example:
@@ -1172,8 +736,8 @@ class MklConvOp : public OpKernel {
     // Similarly, if the data format is NCHW, indices 0, 1, 2 and 3 of
     // paddings(_tf) will be zero.
     // i.e. for the above example, paddings = {0, 0, 0, 0, 1, 2, 3, 4}.
-    int64 pad_top, pad_left;
-    int64 pad_bottom, pad_right;
+    int64 pad_top = 0, pad_left = 0;
+    int64 pad_bottom = 0, pad_right = 0;
     string data_format = ToString(data_format_);
     if (data_format == "NHWC") {
       pad_top = paddings[2];
@@ -1186,8 +750,7 @@ class MklConvOp : public OpKernel {
       pad_left = paddings[6];
       pad_right = paddings[7];
     }
-
-    // Create padding arrays for MKL DNN convolutions.
+    // Create padding arrays for MKL-DNN convolutions.
     // MKL-DNN uses asymetric padding.
     padding_left = {static_cast<int>(pad_top), static_cast<int>(pad_left)};
     padding_right = {static_cast<int>(pad_bottom), static_cast<int>(pad_right)};
@@ -1195,12 +758,19 @@ class MklConvOp : public OpKernel {
 
  protected:
   void set_fuse_biasadd(bool fuse_biasadd) { fuse_biasadd_ = fuse_biasadd; }
-  void set_fuse_relu(bool fuse_relu) { fuse_relu_ = fuse_relu; }
+  void set_fuse_activation(bool fuse_activation,
+                           mkldnn::algorithm activation_alg,
+                           float relu_up_bound = 0.0) {
+    fuse_activation_ = fuse_activation;
+    activation_alg_ = activation_alg;
+    relu_up_bound_ = relu_up_bound;
+  }
   void set_fuse_pad(bool fuse_pad) {
     fuse_pad_ = fuse_pad;
     // In PadwithFusedConv OP, pad is the fourth index.
     input_index_pad_ = 3;
   }
+  void set_fuse_add(bool fuse_add) { fuse_add_ = fuse_add; }
 
   // This method is for the base class MklConvOp, which handles the
   // floating point implementation of Conv. The quantized conv implementations
@@ -1216,7 +786,13 @@ class MklConvOp : public OpKernel {
     // Add fusions as post ops
     // NOTE: Fusion of BiasAdd is handled directly inside MklConvOp by
     // checking `fuse_biasadd_` flag.
-    if (fuse_relu_) params.post_op_params.push_back({"relu", {1.0, 0.0, 0.0}});
+    if (fuse_add_) {
+      params.post_op_params.push_back({"sum", mkldnn::algorithm_undef, {1.0}});
+    }
+    if (fuse_activation_) {
+      params.post_op_params.push_back(
+          {"activation", activation_alg_, {1.0, relu_up_bound_, 0.0}});
+    }
   }
 
   virtual Tbias* GetBiasHandle(OpKernelContext* context,
@@ -1257,6 +833,34 @@ class MklConvOp : public OpKernel {
 
     AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
                               output_tf_shape, output_mkl_shape);
+    if (fuse_add_) {
+      const Tensor& add_tensor = MklGetInput(context, kInputIndex_Add);
+      MklDnnShape add_mkl_shape;
+      GetMklShape(context, kInputIndex_Add, &add_mkl_shape);
+
+      // Check if need reorder
+      if (add_mkl_shape == output_mkl_shape) {
+        CHECK((*output_tensor)->CopyFrom(add_tensor, output_tf_shape));
+      } else {
+        auto add_md =
+            add_mkl_shape.IsMklTensor()
+                ? add_mkl_shape.GetMklLayout()
+                : memory::desc(output_dims_mkl_order, MklDnnType<Toutput>(),
+                               output_mkl_shape.GetTfDataFormat());
+        auto add_pd = memory::primitive_desc(add_md, this->cpu_engine_);
+        void* add_buf = static_cast<void*>(
+            const_cast<Toutput*>(add_tensor.flat<Toutput>().data()));
+        void* dst_buf =
+            static_cast<void*>((*output_tensor)->flat<Ttemp_output>().data());
+        auto add = new memory(add_pd, add_buf);
+        auto dst = new memory(dst_pd, dst_buf);
+        auto reorder_desc = mkldnn::reorder::primitive_desc(add_pd, dst_pd);
+
+        std::vector<mkldnn::primitive> net;
+        net.push_back(mkldnn::reorder(reorder_desc, *add, *dst));
+        stream(stream::kind::eager).submit(net).wait();
+      }
+    }
   }
 
   engine cpu_engine_ = engine(engine::cpu, 0);
@@ -1264,6 +868,7 @@ class MklConvOp : public OpKernel {
  private:
   std::vector<int32> strides_;
   std::vector<int32> dilations_;
+  std::vector<Tpadding> padding_list_;
   bool is_filter_const_;
   mutex mu_;
   Padding padding_;
@@ -1273,12 +878,17 @@ class MklConvOp : public OpKernel {
 
   // Initialize to values the template is instantiated with
   bool fuse_biasadd_ = bias_enabled;
-  bool fuse_relu_ = false;
+  bool fuse_activation_ = false;
   bool fuse_pad_ = pad_enabled;
+  bool fuse_add_ = false;
+
+  float relu_up_bound_ = 0.0;
+  mkldnn::algorithm activation_alg_ = mkldnn::algorithm_undef;
 
   int input_index_pad_ = 2;
 
   const int kInputIndex_Src = 0, kInputIndex_Filter = 1, kInputIndex_Bias = 2;
+  const int kInputIndex_Add = 3;
   const int kOutputIndex_Dst = 0, kOutputIndex_Filter = 1;
   const int kDilationH = 0, kDilationW = 1;
 
@@ -1459,17 +1069,64 @@ class MklFusedConvOp
                   errors::InvalidArgument(
                       "Fused Conv2D must have one extra argument: bias."));
     } else if (fused_ops == std::vector<string>{"Relu"}) {
-      this->set_fuse_relu(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_relu);
+    } else if (fused_ops == std::vector<string>{"Relu6"}) {
+      this->set_fuse_activation(true, mkldnn::eltwise_bounded_relu, 6.0);
+    } else if (fused_ops == std::vector<string>{"Elu"}) {
+      this->set_fuse_activation(true, mkldnn::eltwise_elu);
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu"}) {
       this->set_fuse_biasadd(true);
-      this->set_fuse_relu(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_relu);
       OP_REQUIRES(context, num_args == 1,
                   errors::InvalidArgument(
                       "Fused Conv2D must have one extra argument: bias."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu6"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_bounded_relu, 6.0);
+      OP_REQUIRES(context, num_args == 1,
+                  errors::InvalidArgument(
+                      "Fused Conv2D must have one extra argument: bias."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Elu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_elu);
+      OP_REQUIRES(context, num_args == 1,
+                  errors::InvalidArgument(
+                      "Fused Conv2D must have one extra argument: bias."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      OP_REQUIRES(
+          context, num_args == 2,
+          errors::InvalidArgument(
+              "Fused Conv2D must have two extra arguments: bias and add."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_relu);
+      OP_REQUIRES(
+          context, num_args == 2,
+          errors::InvalidArgument(
+              "Fused Conv2D must have two extra arguments: bias and add."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu6"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_bounded_relu, 6.0);
+      OP_REQUIRES(
+          context, num_args == 2,
+          errors::InvalidArgument(
+              "Fused Conv2D must have two extra arguments: bias and add."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Elu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_elu);
+      OP_REQUIRES(
+          context, num_args == 2,
+          errors::InvalidArgument(
+              "Fused Conv2D must have two extra arguments: bias and add."));
     } else {
       OP_REQUIRES(context, false,
                   errors::Unimplemented("Fusion is not implemented: [",
-                                        str_util::Join(fused_ops, ","), "]"));
+                                        absl::StrJoin(fused_ops, ","), "]"));
     }
 
     if (pad_enabled) {
@@ -1483,10 +1140,10 @@ class MklFusedConvOp
 // We create new class for each version of Quantized Convolution and inherit
 // from the FP32 version of the base class
 template <typename Device, typename Tbias, typename Toutput,
-          typename Ttemp_output, bool bias_enabled>
+          typename Ttemp_output, bool bias_enabled, bool is_depthwise>
 class MklQuantizedConv2DOp
     : public MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output,
-                       int32, bias_enabled, false, false> {
+                       int32, bias_enabled, false, is_depthwise> {
  public:
   virtual ~MklQuantizedConv2DOp() {
     if (this->input_bias_ != nullptr) {
@@ -1502,7 +1159,7 @@ class MklQuantizedConv2DOp
 
   explicit MklQuantizedConv2DOp(OpKernelConstruction* context)
       : MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output, int32,
-                  bias_enabled, false, false>(context) {
+                  bias_enabled, false, is_depthwise>(context) {
     bool is_filter_const;
     OP_REQUIRES_OK(context,
                    context->GetAttr("is_filter_const", &is_filter_const));
@@ -1513,7 +1170,7 @@ class MklQuantizedConv2DOp
   void Compute(OpKernelContext* context) override {
     // Compute int32 output tensor
     MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output, int32,
-              bias_enabled, false, false>::Compute(context);
+              bias_enabled, false, is_depthwise>::Compute(context);
 
     // Compute additional outputs: min/max scalars.
     int bias_index_offset;
@@ -1523,44 +1180,60 @@ class MklQuantizedConv2DOp
         context->input(2 + bias_index_offset).flat<float>()(0);
     const float max_input =
         context->input(3 + bias_index_offset).flat<float>()(0);
-    const float min_filter =
-        context->input(4 + bias_index_offset).flat<float>()(0);
-    const float max_filter =
-        context->input(5 + bias_index_offset).flat<float>()(0);
 
-    float min_output_value;
-    float max_output_value;
-    if (std::is_same<Toutput, quint8>::value ||
-        std::is_same<Toutput, qint8>::value) {
-      // This is the case when convolution and requantization are fused.
-      // min_freezed_output and max_freezed_output are the actual range
-      // of the output.
-      min_output_value = context->input(6 + bias_index_offset).flat<float>()(0);
-      max_output_value = context->input(7 + bias_index_offset).flat<float>()(0);
-    } else {
-      MklQuantizationRangeForMultiplication<quint8, qint8, qint32>(
-          min_input, max_input, min_filter, max_filter, &min_output_value,
-          &max_output_value);
-    }
-
-    Tensor* output_min = nullptr;
-    Tensor* output_max = nullptr;
     MklDnnShape output_min_mkl_shape, output_max_mkl_shape;
     output_min_mkl_shape.SetMklTensor(false);
     output_max_mkl_shape.SetMklTensor(false);
-    AllocateOutputSetMklShape(context, 1, &output_min, {},
-                              output_min_mkl_shape);
-    AllocateOutputSetMklShape(context, 2, &output_max, {},
-                              output_max_mkl_shape);
-    output_min->flat<float>()(0) = min_output_value;
-    output_max->flat<float>()(0) = max_output_value;
+
+    Tensor* output_min = nullptr;
+    Tensor* output_max = nullptr;
+    if (std::is_same<Toutput, quint8>::value ||
+        std::is_same<Toutput, qint8>::value) {
+      AllocateOutputSetMklShape(context, 1, &output_min, {},
+                                output_min_mkl_shape);
+      AllocateOutputSetMklShape(context, 2, &output_max, {},
+                                output_max_mkl_shape);
+      // This is the case the convolution and requantization are fused.
+      output_min->flat<float>()(0) =
+          context->input(6 + bias_index_offset).flat<float>()(0);
+      output_max->flat<float>()(0) =
+          context->input(7 + bias_index_offset).flat<float>()(0);
+    } else {
+      const Tensor& min_filter = context->input(4 + bias_index_offset);
+      const Tensor& max_filter = context->input(5 + bias_index_offset);
+      if (min_filter.dims() == 0) {
+        float min_output_value;
+        float max_output_value;
+        MklQuantizationRangeForMultiplication<quint8, qint8, qint32>(
+            min_input, max_input, min_filter.flat<float>()(0),
+            max_filter.flat<float>()(0), &min_output_value, &max_output_value);
+        AllocateOutputSetMklShape(context, 1, &output_min, {},
+                                  output_min_mkl_shape);
+        AllocateOutputSetMklShape(context, 2, &output_max, {},
+                                  output_max_mkl_shape);
+        output_min->flat<float>()(0) = min_output_value;
+        output_max->flat<float>()(0) = max_output_value;
+      } else {
+        size_t depth = min_filter.NumElements();
+        AllocateOutputSetMklShape(context, 1, &output_min,
+                                  {static_cast<ptrdiff_t>(depth)},
+                                  output_min_mkl_shape);
+        AllocateOutputSetMklShape(context, 2, &output_max,
+                                  {static_cast<ptrdiff_t>(depth)},
+                                  output_max_mkl_shape);
+        MklQuantizationRangeForMultiplication<quint8, qint8, qint32>(
+            min_input, max_input, min_filter, max_filter, &output_min,
+            &output_max);
+      }
+    }
   }
 
  protected:
   void ExtendConvFwdParams(OpKernelContext* context,
                            MklConvFwdParams& params) override {
     MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output, int32,
-              bias_enabled, false, false>::ExtendConvFwdParams(context, params);
+              bias_enabled, false, is_depthwise>::ExtendConvFwdParams(context,
+                                                                      params);
 
     // When the output type is quint8, the output data id requantized
     // into quint8. A post_op "output_scale" is added to do the conversion.
@@ -1573,33 +1246,35 @@ class MklQuantizedConv2DOp
           context->input(2 + bias_index_offset).flat<float>()(0);
       const float max_input =
           context->input(3 + bias_index_offset).flat<float>()(0);
-      const float min_filter =
-          context->input(4 + bias_index_offset).flat<float>()(0);
-      const float max_filter =
-          context->input(5 + bias_index_offset).flat<float>()(0);
+      const Tensor& min_filter_vector = context->input(4 + bias_index_offset);
+      const Tensor& max_filter_vector = context->input(5 + bias_index_offset);
+
+      // min_freezed_output and max_freezed_output are the actual range
+      // for the output.
       const float min_freezed_output =
           context->input(6 + bias_index_offset).flat<float>()(0);
       const float max_freezed_output =
           context->input(7 + bias_index_offset).flat<float>()(0);
 
-      float min_output_value;
-      float max_output_value;
-      MklQuantizationRangeForMultiplication<quint8, qint8, qint32>(
-          min_input, max_input, min_filter, max_filter, &min_output_value,
-          &max_output_value);
-      float scale_int32 =
-          std::max(std::abs(min_output_value), std::abs(max_output_value));
-      float scale_eightbit =
+      float factor = std::is_same<Toutput, quint8>::value ? 255.0f : 127.0f;
+      size_t depth = min_filter_vector.NumElements();
+      const float* min_filter = min_filter_vector.flat<float>().data();
+      const float* max_filter = max_filter_vector.flat<float>().data();
+      std::vector<float> scales(depth);
+      float input_range = std::max(std::abs(min_input), std::abs(max_input));
+      float output_range =
           std::max(std::abs(min_freezed_output), std::abs(max_freezed_output));
-      float scale = 1.0;
-      if (std::is_same<Toutput, quint8>::value)
-        scale = scale_int32 / scale_eightbit / static_cast<float>(1 << 23);
-      else
-        scale = scale_int32 / scale_eightbit / static_cast<float>(1 << 24);
-
-      std::vector<float> output_scale;
-      output_scale.push_back(scale);
-      params.post_op_params.push_back({"output_scale", output_scale});
+      for (size_t i = 0; i < depth; ++i) {
+        // For simplicity and symmetry, we set filter range to be outer
+        // bounds of min_filter and max_filter.
+        float filter_range =
+            std::max(std::abs(min_filter[i]), std::abs(max_filter[i]));
+        // To understand the scaling, please see mkl_requantize_ops_test.
+        scales[i] = factor * input_range * filter_range /
+                    (255.0f * 127.0f * output_range);
+      }
+      params.post_op_params.push_back(
+          {"output_scale", mkldnn::algorithm_undef, scales});
     }
   }
 
@@ -1613,10 +1288,10 @@ class MklQuantizedConv2DOp
         context->input(2 + bias_index_offset).flat<float>()(0);
     const float max_input =
         context->input(3 + bias_index_offset).flat<float>()(0);
-    const float min_filter =
-        context->input(4 + bias_index_offset).flat<float>()(0);
-    const float max_filter =
-        context->input(5 + bias_index_offset).flat<float>()(0);
+    const Tensor& min_filter_vector = context->input(4 + bias_index_offset);
+    const Tensor& max_filter_vector = context->input(5 + bias_index_offset);
+    const float* min_filter = min_filter_vector.flat<float>().data();
+    const float* max_filter = max_filter_vector.flat<float>().data();
 
     std::vector<mkldnn::primitive> net;
     if (bias_enabled) {
@@ -1626,17 +1301,29 @@ class MklQuantizedConv2DOp
       }
       // If bias is enabled and requantization is not fused, scale the
       // bias to be consistent with quantized-input and quantized-filter.
-      float bias_scale = 255.0 * 127.0 /
-                         (std::max(std::abs(max_input), std::abs(min_input)) *
-                          std::max(std::abs(max_filter), std::abs(min_filter)));
-      std::vector<float> scales;
-      scales.push_back(bias_scale);
+      size_t depth = min_filter_vector.NumElements();
+      std::vector<float> scales(depth);
+      for (size_t i = 0; i < depth; ++i) {
+        scales[i] =
+            255.0 * 127.0 /
+            (std::max(std::abs(max_input), std::abs(min_input)) *
+             std::max(std::abs(max_filter[i]), std::abs(min_filter[i])));
+      }
       mkldnn::primitive_attr bias_attr;
-      bias_attr.set_output_scales(0, scales);
+      if (depth == 1) {
+        bias_attr.set_output_scales(0, scales);
+      } else {
+        bias_attr.set_output_scales(1, scales);
+      }
+      auto bias_pd =
+          memory::primitive_desc({{static_cast<int>(bias_tensor.NumElements())},
+                                  MklDnnType<Tbias>(),
+                                  memory::format::x},
+                                 this->cpu_engine_);
 
       void* bias_buf = static_cast<void*>(
           const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
-      input_bias_ = new memory(conv_fwd_pd->bias_primitive_desc(), bias_buf);
+      input_bias_ = new memory(bias_pd, bias_buf);
       scaled_bias_ = new memory(conv_fwd_pd->bias_primitive_desc());
       auto reorder_desc = mkldnn::reorder::primitive_desc(
           input_bias_->get_primitive_desc(), scaled_bias_->get_primitive_desc(),
@@ -1654,31 +1341,32 @@ class MklQuantizedConv2DOp
 };
 
 template <typename Device, typename Tbias, typename Toutput,
-          typename Ttemp_output, bool bias_enabled>
+          typename Ttemp_output, bool bias_enabled, bool is_depthwise>
 class MklQuantizedConv2DReluOp
     : public MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output,
-                                  bias_enabled> {
+                                  bias_enabled, is_depthwise> {
  public:
   virtual ~MklQuantizedConv2DReluOp() {}
 
   explicit MklQuantizedConv2DReluOp(OpKernelConstruction* context)
-      : MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output,
-                             bias_enabled>(context) {}
+      : MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output, bias_enabled,
+                             is_depthwise>(context) {}
 
  protected:
   void ExtendConvFwdParams(OpKernelContext* context,
                            MklConvFwdParams& params) override {
-    MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output,
-                         bias_enabled>::ExtendConvFwdParams(context, params);
-    params.post_op_params.push_back({"relu", {1.0, 0.0, 0.0}});
+    MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output, bias_enabled,
+                         is_depthwise>::ExtendConvFwdParams(context, params);
+    params.post_op_params.push_back(
+        {"activation", mkldnn::eltwise_relu, {1.0, 0.0, 0.0}});
   }
 };
 
 template <typename Device, typename Tbias, typename Toutput,
-          typename Ttemp_output, bool bias_enabled>
+          typename Ttemp_output, bool bias_enabled, bool is_depthwise>
 class MklQuantizedConv2DSumReluOp
     : public MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output,
-                                  bias_enabled> {
+                                  bias_enabled, is_depthwise> {
  public:
   virtual ~MklQuantizedConv2DSumReluOp() {
     if (this->summand_ != nullptr) {
@@ -1693,14 +1381,14 @@ class MklQuantizedConv2DSumReluOp
   }
 
   explicit MklQuantizedConv2DSumReluOp(OpKernelConstruction* context)
-      : MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output,
-                             bias_enabled>(context) {}
+      : MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output, bias_enabled,
+                             is_depthwise>(context) {}
 
  protected:
   void ExtendConvFwdParams(OpKernelContext* context,
                            MklConvFwdParams& params) override {
-    MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output,
-                         bias_enabled>::ExtendConvFwdParams(context, params);
+    MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output, bias_enabled,
+                         is_depthwise>::ExtendConvFwdParams(context, params);
     // Calculate the scale (beta in mkldnn api term) for sum
     if (std::is_same<Toutput, quint8>::value) {
       int summand_idx = context->num_inputs() / 2 - 1 - 2;
@@ -1722,16 +1410,22 @@ class MklQuantizedConv2DSumReluOp
           std::max(std::abs(min_freezed_output), std::abs(max_freezed_output));
       float scale_summand = std::max(std::abs(min_freezed_summand),
                                      std::abs(max_freezed_summand));
+      // if summand_type is also DT_QUINT8 as the scale_output,
+      // the scaling factor of 255.0f cancels each other and thus is avoided.
+      // If it is not then  it is DT_INT8 and is scaled appropriately.
       if (summand_type == DT_QUINT8)
         params.post_op_params.push_back(
-            {"sum", {scale_summand / scale_output}});
+            {"sum", mkldnn::algorithm_undef, {scale_summand / scale_output}});
       else
         params.post_op_params.push_back(
-            {"sum", {2.0f * scale_summand / scale_output}});
+            {"sum",
+             mkldnn::algorithm_undef,
+             {255.0f * scale_summand / (scale_output * 127.0f)}});
     } else {
-      params.post_op_params.push_back({"sum", {1.0}});
+      params.post_op_params.push_back({"sum", mkldnn::algorithm_undef, {1.0}});
     }
-    params.post_op_params.push_back({"relu", {1.0, 0.0, 0.0}});
+    params.post_op_params.push_back(
+        {"activation", mkldnn::eltwise_relu, {1.0, 0.0, 0.0}});
   }
 
   void AllocateOutputTensor(OpKernelContext* context,
@@ -1740,7 +1434,6 @@ class MklQuantizedConv2DSumReluOp
                             memory::format output_tf_format,
                             Tensor** output_tensor) override {
     int summand_idx = context->num_inputs() / 2 - 1;
-    float reorder_sum_scale = 1.0;
     if (std::is_same<Toutput, quint8>::value) {
       summand_idx -= 2;
       DataType summand_type = this->input_type(summand_idx);
@@ -1751,25 +1444,22 @@ class MklQuantizedConv2DSumReluOp
       MklDnnShape summand_mkl_shape;
       GetMklShape(context, summand_idx, &summand_mkl_shape);
       auto dst_md = summand_mkl_shape.GetMklLayout();
-      if (summand_mkl_shape.IsMklTensor()) {
-        if (summand_type == DT_QINT8) {
-          OP_REQUIRES_OK(context, summand.BitcastFrom(summand, DT_QUINT8,
-                                                      summand.shape()));
-          dst_md.data.data_type =
-              static_cast<mkldnn_data_type_t>(MklDnnType<Toutput>());
-          summand_mkl_shape.SetMklLayout(&dst_md);
-          summand_mkl_shape.SetElemType(MklDnnType<Toutput>());
-        }
-        ForwardMklTensorInToOutWithMklShape(context, summand_idx, 0,
-                                            summand_mkl_shape);
-        *output_tensor = const_cast<Tensor*>(&summand);
-        return;
-      } else {
-        TF_CHECK_OK(Status(error::Code::FAILED_PRECONDITION,
-                           "Current fusion is not successful."));
+
+      // TODO(mdfaijul): handle both non-MKL and MKL tensors
+      if (summand_type == DT_QINT8) {
+        OP_REQUIRES_OK(
+            context, summand.BitcastFrom(summand, DT_QUINT8, summand.shape()));
+        dst_md.data.data_type =
+            static_cast<mkldnn_data_type_t>(MklDnnType<Toutput>());
+        summand_mkl_shape.SetMklLayout(&dst_md);
+        summand_mkl_shape.SetElemType(MklDnnType<Toutput>());
       }
+      ForwardMklTensorInToOutWithMklShape(context, summand_idx, 0,
+                                          summand_mkl_shape);
+      *output_tensor = const_cast<Tensor*>(&summand);
+      return;
     }
-    // TODO(mdfaijul): Add cleaner code for non-mkl tensor
+
     MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output, int32,
               bias_enabled, false,
               false>::AllocateOutputTensor(context, conv_prim_desc,
@@ -1787,19 +1477,28 @@ class MklQuantizedConv2DSumReluOp
         context->input(2 + bias_index_offset).flat<float>()(0);
     const float max_input =
         context->input(3 + bias_index_offset).flat<float>()(0);
-    const float min_filter =
-        context->input(4 + bias_index_offset).flat<float>()(0);
-    const float max_filter =
-        context->input(5 + bias_index_offset).flat<float>()(0);
+    const Tensor& min_filter_vector = context->input(4 + bias_index_offset);
+    const Tensor& max_filter_vector = context->input(5 + bias_index_offset);
+    const float* min_filter = min_filter_vector.flat<float>().data();
+    const float* max_filter = max_filter_vector.flat<float>().data();
 
-    reorder_sum_scale = 255.0 * 127.0 /
-                        (std::max(std::abs(max_input), std::abs(min_input)) *
-                         std::max(std::abs(max_filter), std::abs(min_filter)));
-    std::vector<float> scales;
-    scales.push_back(reorder_sum_scale);
+    size_t depth = min_filter_vector.NumElements();
+    std::vector<float> scales(depth);
+    for (size_t i = 0; i < depth; ++i) {
+      // TODO(nammbash): scale factors for UINT8(inputs) & INT8(weights) are
+      // done regularly. A Cleaner design to address all mapping in one
+      // function needs to be implemented in future which also supports other
+      // quantized type mapping in future.
+      scales[i] = 255.0 * 127.0 /
+                  (std::max(std::abs(max_input), std::abs(min_input)) *
+                   std::max(std::abs(max_filter[i]), std::abs(min_filter[i])));
+    }
     mkldnn::primitive_attr reorder_attr;
-    reorder_attr.set_output_scales(0, scales);
-
+    if (depth == 1) {
+      reorder_attr.set_output_scales(0, scales);
+    } else {
+      reorder_attr.set_output_scales(2, scales);
+    }
     auto summand_md =
         summand_mkl_shape.IsMklTensor()
             ? summand_mkl_shape.GetMklLayout()
@@ -1825,7 +1524,7 @@ class MklQuantizedConv2DSumReluOp
 };
 
 // INT8 kernel registration
-// Register NoOp kernel for QunatizedConv2D for qint8 filter
+// Register NoOp kernel for QuantizedConv2D for qint8 filter
 REGISTER_KERNEL_BUILDER(Name("QuantizedConv2D")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<quint8>("Tinput")
@@ -1840,7 +1539,24 @@ REGISTER_KERNEL_BUILDER(Name("QuantizedConv2DAndRequantize")
                             .TypeConstraint<qint8>("out_type"),
                         NoOp);
 
-// Register a templatized implementation of MklQuntizedConv2D.
+// Register NoOp kernel for QuantizedConv2DPerChannel.
+REGISTER_KERNEL_BUILDER(Name("QuantizedConv2DPerChannel")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<qint32>("out_type"),
+                        NoOp);
+// Register a templatized implementation of MklQuantizedConv2DPerChannel.
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedConv2DPerChannel")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("Tinput")
+        .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<qint32>("out_type")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklQuantizedConv2DOp<CPUDevice, float, qint32, qint32, false, false>);
+
+// Register a templatized implementation of MklQuantizedConv2D.
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedConv2D")
         .Device(DEVICE_CPU)
@@ -1848,7 +1564,7 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<qint8>("Tfilter")
         .TypeConstraint<qint32>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DOp<CPUDevice, float, qint32, qint32, false>);
+    MklQuantizedConv2DOp<CPUDevice, float, qint32, qint32, false, false>);
 
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedConv2DAndRequantize")
@@ -1857,7 +1573,7 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<qint8>("Tfilter")
         .TypeConstraint<qint8>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DOp<CPUDevice, qint32, qint8, qint8, false>);
+    MklQuantizedConv2DOp<CPUDevice, qint32, qint8, qint8, false, false>);
 
 // Register NoOp kernel for QuantizedConv2DWithBias to get a python interface.
 // This kernel will be replaced by an MKL kernel during graph
@@ -1884,7 +1600,7 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<qint8>("Tfilter")
         .TypeConstraint<qint32>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DOp<CPUDevice, float, qint32, qint32, true>);
+    MklQuantizedConv2DOp<CPUDevice, float, qint32, qint32, true, false>);
 
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedConv2DWithBiasAndRequantize")
@@ -1894,7 +1610,8 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<qint32>("Tbias")
         .TypeConstraint<qint8>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DOp<CPUDevice, qint32, qint8, qint8, true>);
+    MklQuantizedConv2DOp<CPUDevice, qint32, qint8, qint8, true, false>);
+
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedConv2DWithBiasAndRequantize")
         .Device(DEVICE_CPU)
@@ -1903,7 +1620,7 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<float>("Tbias")
         .TypeConstraint<qint8>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DOp<CPUDevice, float, qint8, qint8, true>);
+    MklQuantizedConv2DOp<CPUDevice, float, qint8, qint8, true, false>);
 
 // Register NoOp kernel for QuantizedConv2DAndRelu to get a python interface.
 // This kernel will be replaced by an MKL kernel during graph-optimization pass.
@@ -1929,7 +1646,7 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<qint8>("Tfilter")
         .TypeConstraint<qint32>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DReluOp<CPUDevice, float, qint32, qint32, false>);
+    MklQuantizedConv2DReluOp<CPUDevice, float, qint32, qint32, false, false>);
 
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedConv2DAndReluAndRequantize")
@@ -1938,7 +1655,7 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<qint8>("Tfilter")
         .TypeConstraint<quint8>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DReluOp<CPUDevice, qint32, quint8, quint8, false>);
+    MklQuantizedConv2DReluOp<CPUDevice, qint32, quint8, quint8, false, false>);
 
 // Register NoOp kernel for QuantizedConv2DWithBiasAndRelu to get a python
 // interface.
@@ -1968,7 +1685,7 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<qint8>("Tfilter")
         .TypeConstraint<qint32>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DReluOp<CPUDevice, float, qint32, qint32, true>);
+    MklQuantizedConv2DReluOp<CPUDevice, float, qint32, qint32, true, false>);
 
 // Register a templatized implementation of
 // MklQuantizedConv2DWithBiasAndReluAndRequantize.
@@ -1980,7 +1697,8 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<float>("Tbias")
         .TypeConstraint<quint8>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DReluOp<CPUDevice, float, quint8, quint8, true>);
+    MklQuantizedConv2DReluOp<CPUDevice, float, quint8, quint8, true, false>);
+
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedConv2DWithBiasAndReluAndRequantize")
         .Device(DEVICE_CPU)
@@ -1989,7 +1707,7 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<qint32>("Tbias")
         .TypeConstraint<quint8>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DReluOp<CPUDevice, qint32, quint8, quint8, true>);
+    MklQuantizedConv2DReluOp<CPUDevice, qint32, quint8, quint8, true, false>);
 
 // Register NoOp kernel for QuantizedConv2DWithBiasSumAndRelu to get a python
 // interface.
@@ -2007,6 +1725,7 @@ REGISTER_KERNEL_BUILDER(Name("QuantizedConv2DWithBiasSumAndReluAndRequantize")
                             .TypeConstraint<qint8>("Tfilter")
                             .TypeConstraint<quint8>("out_type"),
                         NoOp);
+
 REGISTER_KERNEL_BUILDER(
     Name("QuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
         .Device(DEVICE_CPU)
@@ -2014,7 +1733,9 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<qint8>("Tfilter")
         .TypeConstraint<quint8>("out_type"),
     NoOp);
-// Register a templatized implementation of MklQuantizedConv2DWithBiasAndRelu.
+
+// Register a templatized implementation of
+// MklQuantizedConv2DWithBiasSumAndRelu.
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedConv2DWithBiasSumAndRelu")
         .Device(DEVICE_CPU)
@@ -2022,77 +1743,185 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<qint8>("Tfilter")
         .TypeConstraint<qint32>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DSumReluOp<CPUDevice, float, qint32, qint32, true>);
+    MklQuantizedConv2DSumReluOp<CPUDevice, float, qint32, qint32, true, false>);
 
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedConv2DWithBiasSumAndReluAndRequantize")
         .Device(DEVICE_CPU)
         .TypeConstraint<quint8>("Tinput")
         .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<qint32>("Tbias")
         .TypeConstraint<quint8>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DSumReluOp<CPUDevice, qint32, quint8, quint8, true>);
+    MklQuantizedConv2DSumReluOp<CPUDevice, qint32, quint8, quint8, true,
+                                false>);
+
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
         .Device(DEVICE_CPU)
         .TypeConstraint<quint8>("Tinput")
         .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<qint32>("Tbias")
         .TypeConstraint<quint8>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklQuantizedConv2DSumReluOp<CPUDevice, qint32, quint8, qint8, true>);
-#endif  // INTEL_MKL_ML
+    MklQuantizedConv2DSumReluOp<CPUDevice, qint32, quint8, qint8, true, false>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedConv2DWithBiasSumAndReluAndRequantize")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("Tinput")
+        .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<float>("Tbias")
+        .TypeConstraint<quint8>("out_type")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklQuantizedConv2DSumReluOp<CPUDevice, float, quint8, quint8, true, false>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("Tinput")
+        .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<float>("Tbias")
+        .TypeConstraint<quint8>("out_type")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklQuantizedConv2DSumReluOp<CPUDevice, float, quint8, qint8, true, false>);
+
+// Register NoOp kernels for non-fused and fused versions of
+// QuantizedDepthwiseConv2D to get a Python interface. These kernels will be
+// replaced by MKL kernels during the graph-optimization pass.
+REGISTER_KERNEL_BUILDER(Name("QuantizedDepthwiseConv2D")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<qint32>("out_type"),
+                        NoOp);
+
+REGISTER_KERNEL_BUILDER(Name("QuantizedDepthwiseConv2DWithBias")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<qint32>("out_type"),
+                        NoOp);
+
+REGISTER_KERNEL_BUILDER(Name("QuantizedDepthwiseConv2DWithBiasAndRelu")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("Tinput")
+                            .TypeConstraint<qint8>("Tfilter")
+                            .TypeConstraint<qint32>("out_type"),
+                        NoOp);
+
+REGISTER_KERNEL_BUILDER(
+    Name("QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("Tinput")
+        .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<quint8>("out_type"),
+    NoOp);
+
+// Register templatized MKL kernels for non-fused and fused-versions of
+// QuantizedDepthwiseConv2D.
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedDepthwiseConv2D")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("Tinput")
+        .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<qint32>("out_type")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklQuantizedConv2DOp<CPUDevice, float, qint32, qint32, false, true>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedDepthwiseConv2DWithBias")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("Tinput")
+        .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<qint32>("out_type")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklQuantizedConv2DOp<CPUDevice, float, qint32, qint32, true, true>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedDepthwiseConv2DWithBiasAndRelu")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("Tinput")
+        .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<qint32>("out_type")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklQuantizedConv2DReluOp<CPUDevice, float, qint32, qint32, true, true>);
+
+// Tbias -> float
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedDepthwiseConv2DWithBiasAndReluAndRequantize")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("Tinput")
+        .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<float>("Tbias")
+        .TypeConstraint<quint8>("out_type")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklQuantizedConv2DReluOp<CPUDevice, float, quint8, quint8, true, true>);
+
+// Tbias -> qint32
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedDepthwiseConv2DWithBiasAndReluAndRequantize")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("Tinput")
+        .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<qint32>("Tbias")
+        .TypeConstraint<quint8>("out_type")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklQuantizedConv2DReluOp<CPUDevice, qint32, quint8, quint8, true, true>);
 
 // Register 2D operations
-#define REGISTER_MKL_CPU_2D(T)                                             \
-  REGISTER_KERNEL_BUILDER(Name("_MklConv2D")                               \
-                              .Device(DEVICE_CPU)                          \
-                              .TypeConstraint<T>("T")                      \
-                              .Label(mkl_op_registry::kMklOpLabel),        \
-                          MklConvOp<CPUDevice, float, float, float, float, \
-                                    float, int32, false, false, false>);   \
-  REGISTER_KERNEL_BUILDER(Name("_MklConv2DWithBias")                       \
-                              .Device(DEVICE_CPU)                          \
-                              .TypeConstraint<T>("T")                      \
-                              .Label(mkl_op_registry::kMklOpLabel),        \
-                          MklConvOp<CPUDevice, float, float, float, float, \
-                                    float, int32, true, false, false>);    \
-  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DWithBias")                 \
-                              .Device(DEVICE_CPU)                          \
-                              .TypeConstraint<T>("T")                      \
-                              .Label(mkl_op_registry::kMklOpLabel),        \
-                          MklDummyOp<CPUDevice, T>);                       \
-  REGISTER_KERNEL_BUILDER(Name("_MklPadWithConv2D")                        \
-                              .Device(DEVICE_CPU)                          \
-                              .TypeConstraint<T>("T")                      \
-                              .TypeConstraint<int32>("Tpaddings")          \
-                              .Label(mkl_op_registry::kMklOpLabel),        \
-                          MklConvOp<CPUDevice, float, float, float, float, \
-                                    float, int32, false, true, false>);    \
-  REGISTER_KERNEL_BUILDER(Name("_MklPadWithConv2D")                        \
-                              .Device(DEVICE_CPU)                          \
-                              .TypeConstraint<T>("T")                      \
-                              .TypeConstraint<int64>("Tpaddings")          \
-                              .Label(mkl_op_registry::kMklOpLabel),        \
-                          MklConvOp<CPUDevice, float, float, float, float, \
-                                    float, int64, false, true, false>);    \
-  REGISTER_KERNEL_BUILDER(Name("__MklDummyPadWithConv2D")                  \
-                              .Device(DEVICE_CPU)                          \
-                              .TypeConstraint<T>("T")                      \
-                              .TypeConstraint<int32>("Tpaddings")          \
-                              .Label(mkl_op_registry::kMklOpLabel),        \
+#define REGISTER_MKL_CPU_2D(T)                                          \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("_MklConv2D")                                                \
+          .Device(DEVICE_CPU)                                           \
+          .TypeConstraint<T>("T")                                       \
+          .Label(mkl_op_registry::kMklOpLabel),                         \
+      MklConvOp<CPUDevice, T, T, T, T, T, int32, false, false, false>); \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("_MklConv2DWithBias")                                        \
+          .Device(DEVICE_CPU)                                           \
+          .TypeConstraint<T>("T")                                       \
+          .Label(mkl_op_registry::kMklOpLabel),                         \
+      MklConvOp<CPUDevice, T, T, T, T, T, int32, true, false, false>);  \
+  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DWithBias")              \
+                              .Device(DEVICE_CPU)                       \
+                              .TypeConstraint<T>("T")                   \
+                              .Label(mkl_op_registry::kMklOpLabel),     \
+                          MklDummyOp<CPUDevice, T>);                    \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("_MklPadWithConv2D")                                         \
+          .Device(DEVICE_CPU)                                           \
+          .TypeConstraint<T>("T")                                       \
+          .TypeConstraint<int32>("Tpaddings")                           \
+          .Label(mkl_op_registry::kMklOpLabel),                         \
+      MklConvOp<CPUDevice, T, T, T, T, T, int32, false, true, false>);  \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("_MklPadWithConv2D")                                         \
+          .Device(DEVICE_CPU)                                           \
+          .TypeConstraint<T>("T")                                       \
+          .TypeConstraint<int64>("Tpaddings")                           \
+          .Label(mkl_op_registry::kMklOpLabel),                         \
+      MklConvOp<CPUDevice, T, T, T, T, T, int64, false, true, false>);  \
+  REGISTER_KERNEL_BUILDER(Name("__MklDummyPadWithConv2D")               \
+                              .Device(DEVICE_CPU)                       \
+                              .TypeConstraint<T>("T")                   \
+                              .TypeConstraint<int32>("Tpaddings")       \
+                              .Label(mkl_op_registry::kMklOpLabel),     \
                           MklDummyOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU_2D);
+TF_CALL_bfloat16(REGISTER_MKL_CPU_2D);
 
-#define REGISTER_MKL_CPU_2D_DEPTHWISE(T)                                   \
-  REGISTER_KERNEL_BUILDER(Name("_MklDepthwiseConv2dNative")                \
-                              .Device(DEVICE_CPU)                          \
-                              .TypeConstraint<float>("T")                  \
-                              .Label(mkl_op_registry::kMklOpLabel),        \
-                          MklConvOp<CPUDevice, float, float, float, float, \
-                                    float, int32, false, false, true>);
+#define REGISTER_MKL_CPU_2D_DEPTHWISE(T)        \
+  REGISTER_KERNEL_BUILDER(                      \
+      Name("_MklDepthwiseConv2dNative")         \
+          .Device(DEVICE_CPU)                   \
+          .TypeConstraint<T>("T")               \
+          .Label(mkl_op_registry::kMklOpLabel), \
+      MklConvOp<CPUDevice, T, T, T, T, T, int32, false, false, true>);
 
 TF_CALL_float(REGISTER_MKL_CPU_2D_DEPTHWISE);
+TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_DEPTHWISE);
 
 // Note we are registering _MklFusedConv2D.
 // We check the fused_ops attributes to decide if bias is enabled or not.
@@ -2125,6 +1954,7 @@ TF_CALL_float(REGISTER_MKL_CPU_2D_DEPTHWISE);
                           MklDummyOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU_2D_FUSED);
+TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_FUSED);
 
 // Register 3D operations
 #define REGISTER_MKL_CPU_3D(T)                  \
@@ -2135,6 +1965,7 @@ TF_CALL_float(REGISTER_MKL_CPU_2D_FUSED);
           .Label(mkl_op_registry::kMklOpLabel), \
       MklConvOp<CPUDevice, T, T, T, T, T, int32, false, false, false>);
 TF_CALL_float(REGISTER_MKL_CPU_3D);
+TF_CALL_bfloat16(REGISTER_MKL_CPU_3D);
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL

@@ -17,86 +17,31 @@ limitations under the License.
 
 #include <stdint.h>
 #include <sys/types.h>
+
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <type_traits>
 
+#include "third_party/eigen3/Eigen/Core"
 #include "fixedpoint/fixedpoint.h"
-#include "public/gemmlowp.h"
+#include "profiling/instrumentation.h"
+#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/conv.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
+#include "tensorflow/lite/kernels/internal/reference/pooling.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 #include "tensorflow/lite/kernels/internal/round.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
+#include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
-
-// TODO(b/77858996): Add these to gemmlowp.
-template <typename IntegerType>
-IntegerType SaturatingAddNonGemmlowp(IntegerType a, IntegerType b) {
-  static_assert(std::is_same<IntegerType, void>::value, "unimplemented");
-  return a;
-}
-
-template <>
-inline std::int32_t SaturatingAddNonGemmlowp(std::int32_t a, std::int32_t b) {
-  std::int64_t a64 = a;
-  std::int64_t b64 = b;
-  std::int64_t sum = a64 + b64;
-  return static_cast<std::int32_t>(std::min(
-      static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max()),
-      std::max(
-          static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()),
-          sum)));
-}
-
-template <typename tRawType, int tIntegerBits>
-gemmlowp::FixedPoint<tRawType, tIntegerBits> SaturatingAddNonGemmlowp(
-    gemmlowp::FixedPoint<tRawType, tIntegerBits> a,
-    gemmlowp::FixedPoint<tRawType, tIntegerBits> b) {
-  return gemmlowp::FixedPoint<tRawType, tIntegerBits>::FromRaw(
-      SaturatingAddNonGemmlowp(a.raw(), b.raw()));
-}
-
-template <typename IntegerType>
-IntegerType SaturatingSub(IntegerType a, IntegerType b) {
-  static_assert(std::is_same<IntegerType, void>::value, "unimplemented");
-  return a;
-}
-
-template <>
-inline std::int16_t SaturatingSub(std::int16_t a, std::int16_t b) {
-  std::int32_t a32 = a;
-  std::int32_t b32 = b;
-  std::int32_t diff = a32 - b32;
-  return static_cast<std::int16_t>(std::min(32767, std::max(-32768, diff)));
-}
-
-template <>
-inline std::int32_t SaturatingSub(std::int32_t a, std::int32_t b) {
-  std::int64_t a64 = a;
-  std::int64_t b64 = b;
-  std::int64_t diff = a64 - b64;
-  return static_cast<std::int32_t>(std::min(
-      static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max()),
-      std::max(
-          static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()),
-          diff)));
-}
-
-template <typename tRawType, int tIntegerBits>
-gemmlowp::FixedPoint<tRawType, tIntegerBits> SaturatingSub(
-    gemmlowp::FixedPoint<tRawType, tIntegerBits> a,
-    gemmlowp::FixedPoint<tRawType, tIntegerBits> b) {
-  return gemmlowp::FixedPoint<tRawType, tIntegerBits>::FromRaw(
-      SaturatingSub(a.raw(), b.raw()));
-}
-// End section to be moved to gemmlowp.
 
 namespace reference_ops {
 
@@ -190,215 +135,6 @@ inline bool ProcessBroadcastShapes(const RuntimeShape& shape0,
     params->broadcast_category = BroadcastableOpCategory::kGenericBroadcast;
   }
   return true;
-}
-
-template <typename T>
-int CountLeadingZeros(T integer_input) {
-  static_assert(std::is_unsigned<T>::value,
-                "Only unsigned integer types handled.");
-  if (integer_input == 0) {
-    return std::numeric_limits<T>::digits;
-  }
-  const T one_in_leading_positive = static_cast<T>(1)
-                                    << (std::numeric_limits<T>::digits - 1);
-  int leading_zeros = 0;
-  while (integer_input < one_in_leading_positive) {
-    integer_input <<= 1;
-    ++leading_zeros;
-  }
-  return leading_zeros;
-}
-
-template <typename IntegerType>
-IntegerType SaturatingRoundingMultiplyByPOTParam(IntegerType x, int exponent) {
-  if (exponent == 0) {
-    return x;
-  }
-  using ScalarIntegerType =
-      typename gemmlowp::FixedPointRawTypeTraits<IntegerType>::ScalarRawType;
-  const IntegerType min =
-      gemmlowp::Dup<IntegerType>(std::numeric_limits<ScalarIntegerType>::min());
-  const IntegerType max =
-      gemmlowp::Dup<IntegerType>(std::numeric_limits<ScalarIntegerType>::max());
-  const int ScalarIntegerTypeBits = 8 * sizeof(ScalarIntegerType);
-
-  const std::int32_t threshold =
-      ((1 << (ScalarIntegerTypeBits - 1 - exponent)) - 1);
-  const IntegerType positive_mask =
-      gemmlowp::MaskIfGreaterThan(x, gemmlowp::Dup<IntegerType>(threshold));
-  const IntegerType negative_mask =
-      gemmlowp::MaskIfLessThan(x, gemmlowp::Dup<IntegerType>(-threshold));
-
-  IntegerType result = gemmlowp::ShiftLeft(x, exponent);
-  result = gemmlowp::SelectUsingMask(positive_mask, max, result);
-  result = gemmlowp::SelectUsingMask(negative_mask, min, result);
-  return result;
-}
-
-// If we want to leave IntegerBits fixed, then multiplication
-// by a power of two has to be saturating/rounding, not exact anymore.
-template <typename tRawType, int tIntegerBits>
-gemmlowp::FixedPoint<tRawType, tIntegerBits>
-SaturatingRoundingMultiplyByPOTParam(
-    gemmlowp::FixedPoint<tRawType, tIntegerBits> a, int exponent) {
-  return gemmlowp::FixedPoint<tRawType, tIntegerBits>::FromRaw(
-      SaturatingRoundingMultiplyByPOTParam(a.raw(), exponent));
-}
-
-inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
-                 const float* input_data, const RuntimeShape& filter_shape,
-                 const float* filter_data, const RuntimeShape& bias_shape,
-                 const float* bias_data, const RuntimeShape& output_shape,
-                 float* output_data, const RuntimeShape& im2col_shape,
-                 float* im2col_data) {
-  const int stride_width = params.stride_width;
-  const int stride_height = params.stride_height;
-  const int dilation_width_factor = params.dilation_width_factor;
-  const int dilation_height_factor = params.dilation_height_factor;
-  const int pad_width = params.padding_values.width;
-  const int pad_height = params.padding_values.height;
-  const float output_activation_min = params.float_activation_min;
-  const float output_activation_max = params.float_activation_max;
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-
-  (void)im2col_data;   // only used in optimized code.
-  (void)im2col_shape;  // only used in optimized code.
-  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int input_depth = MatchingDim(input_shape, 3, filter_shape, 3);
-  const int output_depth = MatchingDim(filter_shape, 0, output_shape, 3);
-  if (bias_data) {
-    TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
-  }
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-  const int filter_height = filter_shape.Dims(1);
-  const int filter_width = filter_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
-  for (int batch = 0; batch < batches; ++batch) {
-    for (int out_y = 0; out_y < output_height; ++out_y) {
-      for (int out_x = 0; out_x < output_width; ++out_x) {
-        for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
-          const int in_x_origin = (out_x * stride_width) - pad_width;
-          const int in_y_origin = (out_y * stride_height) - pad_height;
-          float total = 0.f;
-          for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
-            for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
-              for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-                const int in_x = in_x_origin + dilation_width_factor * filter_x;
-                const int in_y =
-                    in_y_origin + dilation_height_factor * filter_y;
-                // If the location is outside the bounds of the input image,
-                // use zero as a default value.
-                if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
-                    (in_y < input_height)) {
-                  float input_value = input_data[Offset(
-                      input_shape, batch, in_y, in_x, in_channel)];
-                  float filter_value =
-                      filter_data[Offset(filter_shape, out_channel, filter_y,
-                                         filter_x, in_channel)];
-                  total += (input_value * filter_value);
-                }
-              }
-            }
-          }
-          float bias_value = 0.0f;
-          if (bias_data) {
-            bias_value = bias_data[out_channel];
-          }
-          output_data[Offset(output_shape, batch, out_y, out_x, out_channel)] =
-              ActivationFunctionWithMinMax(total + bias_value,
-                                           output_activation_min,
-                                           output_activation_max);
-        }
-      }
-    }
-  }
-}
-
-inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
-                 const uint8* input_data, const RuntimeShape& filter_shape,
-                 const uint8* filter_data, const RuntimeShape& bias_shape,
-                 const int32* bias_data, const RuntimeShape& output_shape,
-                 uint8* output_data, const RuntimeShape& im2col_shape,
-                 uint8* im2col_data, gemmlowp::GemmContext* gemm_context) {
-  (void)im2col_data;   // only used in optimized code.
-  (void)im2col_shape;  // only used in optimized code.
-  (void)gemm_context;  // only used in optimized code.
-  const int stride_width = params.stride_width;
-  const int stride_height = params.stride_height;
-  const int dilation_width_factor = params.dilation_width_factor;
-  const int dilation_height_factor = params.dilation_height_factor;
-  const int pad_width = params.padding_values.width;
-  const int pad_height = params.padding_values.height;
-  const int32 input_offset = params.input_offset;
-  const int32 filter_offset = params.weights_offset;
-  const int32 output_offset = params.output_offset;
-  const int32 output_multiplier = params.output_multiplier;
-  const int output_shift = params.output_shift;
-  const int32 output_activation_min = params.quantized_activation_min;
-  const int32 output_activation_max = params.quantized_activation_max;
-  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
-
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int input_depth = MatchingDim(input_shape, 3, filter_shape, 3);
-  const int output_depth = MatchingDim(filter_shape, 0, output_shape, 3);
-  if (bias_data) {
-    TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
-  }
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-  const int filter_height = filter_shape.Dims(1);
-  const int filter_width = filter_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
-  for (int batch = 0; batch < batches; ++batch) {
-    for (int out_y = 0; out_y < output_height; ++out_y) {
-      for (int out_x = 0; out_x < output_width; ++out_x) {
-        for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
-          const int in_x_origin = (out_x * stride_width) - pad_width;
-          const int in_y_origin = (out_y * stride_height) - pad_height;
-          int32 acc = 0;
-          for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
-            for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
-              for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-                const int in_x = in_x_origin + dilation_width_factor * filter_x;
-                const int in_y =
-                    in_y_origin + dilation_height_factor * filter_y;
-                // If the location is outside the bounds of the input image,
-                // use zero as a default value.
-                if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
-                    (in_y < input_height)) {
-                  int32 input_val = input_data[Offset(input_shape, batch, in_y,
-                                                      in_x, in_channel)];
-                  int32 filter_val =
-                      filter_data[Offset(filter_shape, out_channel, filter_y,
-                                         filter_x, in_channel)];
-                  acc +=
-                      (filter_val + filter_offset) * (input_val + input_offset);
-                }
-              }
-            }
-          }
-          if (bias_data) {
-            acc += bias_data[out_channel];
-          }
-          acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
-                                              output_shift);
-          acc += output_offset;
-          acc = std::max(acc, output_activation_min);
-          acc = std::min(acc, output_activation_max);
-          output_data[Offset(output_shape, batch, out_y, out_x, out_channel)] =
-              static_cast<uint8>(acc);
-        }
-      }
-    }
-  }
 }
 
 template <typename T>
@@ -506,26 +242,37 @@ inline void SpaceToDepth(const tflite::SpaceToDepthParams& op_params,
   }
 }
 
-inline void Relu(const RuntimeShape& input_shape, const float* input_data,
-                 const RuntimeShape& output_shape, float* output_data) {
+inline void Elu(const RuntimeShape& input_shape, const float* input_data,
+                const RuntimeShape& output_shape, float* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const float val = input_data[i];
-    const float lower = 0;
-    const float clamped = val < lower ? lower : val;
+    output_data[i] = val < 0.0 ? std::exp(val) - 1 : val;
+  }
+}
+
+template <typename T>
+inline void Relu(const RuntimeShape& input_shape, const T* input_data,
+                 const RuntimeShape& output_shape, T* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; ++i) {
+    const T val = input_data[i];
+    const T lower = 0;
+    const T clamped = val < lower ? lower : val;
     output_data[i] = clamped;
   }
 }
 
-inline void Relu1(const RuntimeShape& input_shape, const float* input_data,
-                  const RuntimeShape& output_shape, float* output_data) {
+template <typename T>
+inline void Relu1(const RuntimeShape& input_shape, const T* input_data,
+                  const RuntimeShape& output_shape, T* output_data) {
   gemmlowp::ScopedProfilingLabel label("Relu1 (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
-    const float val = input_data[i];
-    const float upper = 1;
-    const float lower = -1;
-    const float clamped = val > upper ? upper : val < lower ? lower : val;
+    const T val = input_data[i];
+    const T upper = 1;
+    const T lower = -1;
+    const T clamped = val > upper ? upper : val < lower ? lower : val;
     output_data[i] = clamped;
   }
 }
@@ -566,9 +313,36 @@ inline void LeakyRelu(const tflite::LeakyReluParams& params,
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const float val = input_data[i];
-    // Note that this implementation matches that of TensorFlow, and corresponds
-    // to the traditional LeakyRelu equation only for alpha <= 1.
-    output_data[i] = std::max(val, val * params.alpha);
+    // Note that alpha might be > 1 or < 0, so we don't use std::max here.
+    output_data[i] = val > 0 ? val : val * params.alpha;
+  }
+}
+
+template <typename T>
+inline void QuantizeLeakyRelu(const LeakyReluParams& params, T q_alpha,
+                              const RuntimeShape& input_shape,
+                              const T* input_data,
+                              const RuntimeShape& output_shape,
+                              T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("LeakyRelu (not fused)");
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  static const int32 quantized_min = std::numeric_limits<T>::min();
+  static const int32 quantized_max = std::numeric_limits<T>::max();
+  static const int32 alpha_value = q_alpha - params.alpha_offset;
+  for (int i = 0; i < flat_size; ++i) {
+    const int32 input_value = input_data[i] - params.input_offset;
+    if (input_value >= 0) {
+      output_data[i] = input_data[i];
+    } else {
+      const int32 unclamped_output =
+          params.output_offset + MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                                     input_value * alpha_value,
+                                     params.output_multiplier,
+                                     params.output_shift);
+      const T clamped_output =
+          std::min(quantized_max, std::max(quantized_min, unclamped_output));
+      output_data[i] = static_cast<uint8>(clamped_output);
+    }
   }
 }
 
@@ -595,55 +369,6 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
   }
 }
 
-inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
-                                             int32* output_inv_sqrt,
-                                             int* output_shift) {
-  *output_shift = 11;
-  while (input >= (1 << 29)) {
-    input /= 4;
-    ++*output_shift;
-  }
-  TFLITE_DCHECK_GT(input, 0);
-  const unsigned max_left_shift_bits =
-      CountLeadingZeros(static_cast<uint32>(input)) - 1;
-  const unsigned max_left_shift_bit_pairs = max_left_shift_bits / 2;
-  const unsigned left_shift_bit_pairs = max_left_shift_bit_pairs - 1;
-  *output_shift -= left_shift_bit_pairs;
-  input <<= 2 * left_shift_bit_pairs;
-  TFLITE_DCHECK_GE(input, (1 << 27));
-  TFLITE_DCHECK_LT(input, (1 << 29));
-  using gemmlowp::FixedPoint;
-  using gemmlowp::Rescale;
-  using gemmlowp::SaturatingRoundingMultiplyByPOT;
-  // Using 3 integer bits gives us enough room for the internal arithmetic in
-  // this Newton-Raphson iteration.
-  using F3 = FixedPoint<int32, 3>;
-  using F0 = FixedPoint<int32, 0>;
-  const F3 fixedpoint_input = F3::FromRaw(input >> 1);
-  const F3 fixedpoint_half_input =
-      SaturatingRoundingMultiplyByPOT<-1>(fixedpoint_input);
-  const F3 fixedpoint_half_three =
-      GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(F3, (1 << 28) + (1 << 27), 1.5);
-  // Newton-Raphson iteration
-  // Naive unoptimized starting guess: x = 1
-  F3 x = F3::One();
-  // Naive unoptimized number of iterations: 5
-  for (int i = 0; i < 5; i++) {
-    const F3 x3 = Rescale<3>(x * x * x);
-    x = Rescale<3>(fixedpoint_half_three * x - fixedpoint_half_input * x3);
-  }
-  const F0 fixedpoint_half_sqrt_2 =
-      GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(F0, 1518500250, std::sqrt(2.) / 2.);
-  x = x * fixedpoint_half_sqrt_2;
-  *output_inv_sqrt = x.raw();
-  if (*output_shift < 0) {
-    *output_inv_sqrt <<= -*output_shift;
-    *output_shift = 0;
-  }
-  // Convert right shift (right is positive) to left shift.
-  *output_shift *= kReverseShift;
-}
-
 inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
                             const RuntimeShape& input_shape,
                             const uint8* input_data,
@@ -663,9 +388,8 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
     }
     int32 inv_l2norm_multiplier;
     int inv_l2norm_shift;
-    GetInvSqrtQuantizedMultiplierExp(square_l2_norm, &inv_l2norm_multiplier,
-                                     &inv_l2norm_shift);
-
+    GetInvSqrtQuantizedMultiplierExp(square_l2_norm, kReverseShift,
+                                     &inv_l2norm_multiplier, &inv_l2norm_shift);
     for (int c = 0; c < depth; c++) {
       int32 diff = input_data[depth * i + c] - input_zero_point;
       int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
@@ -1854,7 +1578,7 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
         const float bias = -input_zeropoint[i] * scale;
         for (int j = 0; j < copy_size; ++j) {
           const int32_t value =
-              static_cast<int32_t>(round(input_ptr[j] * scale + bias)) +
+              static_cast<int32_t>(std::round(input_ptr[j] * scale + bias)) +
               output_zeropoint;
           output_ptr[j] =
               static_cast<uint8_t>(std::max(std::min(255, value), 0));
@@ -1902,11 +1626,17 @@ void Unpack(const UnpackParams& params, const RuntimeShape& input_shape,
   const int outputs_count = params.num_split;
 
   int outer_size = 1;
-  for (int i = 0; i < params.axis; i++) {
+  int axis = params.axis;
+  if (axis < 0) {
+    axis += dimensions;
+  }
+  TFLITE_DCHECK_GE(axis, 0);
+  TFLITE_DCHECK_LT(axis, dimensions);
+  for (int i = 0; i < axis; ++i) {
     outer_size *= input_shape.Dims(i);
   }
   int copy_size = 1;
-  for (int i = params.axis + 1; i < dimensions; i++) {
+  for (int i = axis + 1; i < dimensions; ++i) {
     copy_size *= input_shape.Dims(i);
   }
   TFLITE_DCHECK_EQ(output_shape.FlatSize(), copy_size * outer_size);
@@ -1959,7 +1689,7 @@ void PackWithScaling(const PackParams& params,
         auto input_ptr = input_data[i];
         for (int j = 0; j < copy_size; ++j) {
           const int32_t value =
-              static_cast<int32_t>(round(input_ptr[j] * scale + bias)) +
+              static_cast<int32_t>(std::round(input_ptr[j] * scale + bias)) +
               output_zeropoint;
           output_ptr[j] =
               static_cast<uint8_t>(std::max(std::min(255, value), 0));
@@ -2184,24 +1914,26 @@ inline void LstmCell(
 // aiming for 16-bit fixed-point quantization of these internal nodes here.
 //
 template <int StateIntegerBits>
-inline void LstmCell(
-    const LstmCellParams& params, const RuntimeShape& unextended_input_shape,
-    const uint8* input_data_uint8,
-    const RuntimeShape& unextended_prev_activ_shape,
-    const uint8* prev_activ_data_uint8, const RuntimeShape& weights_shape,
-    const uint8* weights_data_uint8, const RuntimeShape& unextended_bias_shape,
-    const int32* bias_data_int32,
-    const RuntimeShape& unextended_prev_state_shape,
-    const int16* prev_state_data_int16,
-    const RuntimeShape& unextended_output_state_shape,
-    int16* output_state_data_int16,
-    const RuntimeShape& unextended_output_activ_shape,
-    uint8* output_activ_data_uint8,
-    const RuntimeShape& unextended_concat_temp_shape,
-    uint8* concat_temp_data_uint8,
-    const RuntimeShape& unextended_activ_temp_shape,
-    int16* activ_temp_data_int16, gemmlowp::GemmContext* gemm_context) {
-  (void)gemm_context;  // only used in optimized code.
+inline void LstmCell(const LstmCellParams& params,
+                     const RuntimeShape& unextended_input_shape,
+                     const uint8* input_data_uint8,
+                     const RuntimeShape& unextended_prev_activ_shape,
+                     const uint8* prev_activ_data_uint8,
+                     const RuntimeShape& weights_shape,
+                     const uint8* weights_data_uint8,
+                     const RuntimeShape& unextended_bias_shape,
+                     const int32* bias_data_int32,
+                     const RuntimeShape& unextended_prev_state_shape,
+                     const int16* prev_state_data_int16,
+                     const RuntimeShape& unextended_output_state_shape,
+                     int16* output_state_data_int16,
+                     const RuntimeShape& unextended_output_activ_shape,
+                     uint8* output_activ_data_uint8,
+                     const RuntimeShape& unextended_concat_temp_shape,
+                     uint8* concat_temp_data_uint8,
+                     const RuntimeShape& unextended_activ_temp_shape,
+                     int16* activ_temp_data_int16, void* gemmlowp_context) {
+  (void)gemmlowp_context;  // only used in optimized code.
   int32 weights_zero_point = params.weights_zero_point;
   int32 accum_multiplier = params.accum_multiplier;
   int accum_shift = params.accum_shift;
@@ -2378,22 +2110,22 @@ void Split(const SplitParams& params, const RuntimeShape& input_shape,
            const Scalar* input_data, const RuntimeShape* const* output_shapes,
            Scalar* const* output_data) {
   gemmlowp::ScopedProfilingLabel label("Split");
-  const int concat_dimensions = input_shape.DimensionsCount();
-  int axis = params.axis < 0 ? params.axis + concat_dimensions : params.axis;
+  const int split_dimensions = input_shape.DimensionsCount();
+  int axis = params.axis < 0 ? params.axis + split_dimensions : params.axis;
   int outputs_count = params.num_split;
-  TFLITE_DCHECK_LT(axis, concat_dimensions);
+  TFLITE_DCHECK_LT(axis, split_dimensions);
 
-  int64_t concat_size = 0;
+  int64_t split_size = 0;
   for (int i = 0; i < outputs_count; i++) {
-    TFLITE_DCHECK_EQ(output_shapes[i]->DimensionsCount(), concat_dimensions);
-    for (int j = 0; j < concat_dimensions; j++) {
+    TFLITE_DCHECK_EQ(output_shapes[i]->DimensionsCount(), split_dimensions);
+    for (int j = 0; j < split_dimensions; j++) {
       if (j != axis) {
         MatchingDim(*output_shapes[i], j, input_shape, j);
       }
     }
-    concat_size += output_shapes[i]->Dims(axis);
+    split_size += output_shapes[i]->Dims(axis);
   }
-  TFLITE_DCHECK_EQ(concat_size, input_shape.Dims(axis));
+  TFLITE_DCHECK_EQ(split_size, input_shape.Dims(axis));
   int64_t outer_size = 1;
   for (int i = 0; i < axis; ++i) {
     outer_size *= input_shape.Dims(i);
@@ -2401,7 +2133,7 @@ void Split(const SplitParams& params, const RuntimeShape& input_shape,
   // For all output arrays,
   // FlatSize() = outer_size * Dims(axis) * base_inner_size;
   int64_t base_inner_size = 1;
-  for (int i = axis + 1; i < concat_dimensions; ++i) {
+  for (int i = axis + 1; i < split_dimensions; ++i) {
     base_inner_size *= input_shape.Dims(i);
   }
 
@@ -2418,274 +2150,6 @@ void Split(const SplitParams& params, const RuntimeShape& input_shape,
 
 inline int NodeOffset(int b, int h, int w, int height, int width) {
   return (b * height + h) * width + w;
-}
-
-inline void AveragePool(const PoolParams& params,
-                        const RuntimeShape& input_shape,
-                        const float* input_data,
-                        const RuntimeShape& output_shape, float* output_data) {
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int depth = MatchingDim(input_shape, 3, output_shape, 3);
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
-  const int stride_height = params.stride_height;
-  const int stride_width = params.stride_width;
-  for (int batch = 0; batch < batches; ++batch) {
-    for (int out_y = 0; out_y < output_height; ++out_y) {
-      for (int out_x = 0; out_x < output_width; ++out_x) {
-        for (int channel = 0; channel < depth; ++channel) {
-          const int in_x_origin =
-              (out_x * stride_width) - params.padding_values.width;
-          const int in_y_origin =
-              (out_y * stride_height) - params.padding_values.height;
-          // Compute the boundaries of the filter region clamped so as to
-          // ensure that the filter window fits in the input array.
-          const int filter_x_start = std::max(0, -in_x_origin);
-          const int filter_x_end =
-              std::min(params.filter_width, input_width - in_x_origin);
-          const int filter_y_start = std::max(0, -in_y_origin);
-          const int filter_y_end =
-              std::min(params.filter_height, input_height - in_y_origin);
-          float total = 0.f;
-          float filter_count = 0;
-          for (int filter_y = filter_y_start; filter_y < filter_y_end;
-               ++filter_y) {
-            for (int filter_x = filter_x_start; filter_x < filter_x_end;
-                 ++filter_x) {
-              const int in_x = in_x_origin + filter_x;
-              const int in_y = in_y_origin + filter_y;
-              total +=
-                  input_data[Offset(input_shape, batch, in_y, in_x, channel)];
-              filter_count++;
-            }
-          }
-          const float average = total / filter_count;
-          output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
-              ActivationFunctionWithMinMax(average, params.float_activation_min,
-                                           params.float_activation_max);
-        }
-      }
-    }
-  }
-}
-
-inline void AveragePool(const PoolParams& params,
-                        const RuntimeShape& input_shape,
-                        const uint8* input_data,
-                        const RuntimeShape& output_shape, uint8* output_data) {
-  TFLITE_DCHECK_LE(params.quantized_activation_min,
-                   params.quantized_activation_max);
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int depth = MatchingDim(input_shape, 3, output_shape, 3);
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
-  const int stride_height = params.stride_height;
-  const int stride_width = params.stride_width;
-  for (int batch = 0; batch < batches; ++batch) {
-    for (int out_y = 0; out_y < output_height; ++out_y) {
-      for (int out_x = 0; out_x < output_width; ++out_x) {
-        for (int channel = 0; channel < depth; ++channel) {
-          const int in_x_origin =
-              (out_x * stride_width) - params.padding_values.width;
-          const int in_y_origin =
-              (out_y * stride_height) - params.padding_values.height;
-          // Compute the boundaries of the filter region clamped so as to
-          // ensure that the filter window fits in the input array.
-          const int filter_x_start = std::max(0, -in_x_origin);
-          const int filter_x_end =
-              std::min(params.filter_width, input_width - in_x_origin);
-          const int filter_y_start = std::max(0, -in_y_origin);
-          const int filter_y_end =
-              std::min(params.filter_height, input_height - in_y_origin);
-          int32 acc = 0;
-          int filter_count = 0;
-          for (int filter_y = filter_y_start; filter_y < filter_y_end;
-               ++filter_y) {
-            for (int filter_x = filter_x_start; filter_x < filter_x_end;
-                 ++filter_x) {
-              const int in_x = in_x_origin + filter_x;
-              const int in_y = in_y_origin + filter_y;
-              acc +=
-                  input_data[Offset(input_shape, batch, in_y, in_x, channel)];
-              filter_count++;
-            }
-          }
-          acc = (acc + filter_count / 2) / filter_count;
-          acc = std::max(acc, params.quantized_activation_min);
-          acc = std::min(acc, params.quantized_activation_max);
-          output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
-              static_cast<uint8>(acc);
-        }
-      }
-    }
-  }
-}
-
-inline void L2Pool(const PoolParams& params, const RuntimeShape& input_shape,
-                   const float* input_data, const RuntimeShape& output_shape,
-                   float* output_data) {
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int depth = MatchingDim(input_shape, 3, output_shape, 3);
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
-  const int stride_height = params.stride_height;
-  const int stride_width = params.stride_width;
-  for (int batch = 0; batch < batches; ++batch) {
-    for (int out_y = 0; out_y < output_height; ++out_y) {
-      for (int out_x = 0; out_x < output_width; ++out_x) {
-        for (int channel = 0; channel < depth; ++channel) {
-          const int in_x_origin =
-              (out_x * stride_width) - params.padding_values.width;
-          const int in_y_origin =
-              (out_y * stride_height) - params.padding_values.height;
-          // Compute the boundaries of the filter region clamped so as to
-          // ensure that the filter window fits in the input array.
-          const int filter_x_start = std::max(0, -in_x_origin);
-          const int filter_x_end =
-              std::min(params.filter_width, input_width - in_x_origin);
-          const int filter_y_start = std::max(0, -in_y_origin);
-          const int filter_y_end =
-              std::min(params.filter_height, input_height - in_y_origin);
-          float sum_squares = 0.f;
-          int filter_count = 0;
-          for (int filter_y = filter_y_start; filter_y < filter_y_end;
-               ++filter_y) {
-            for (int filter_x = filter_x_start; filter_x < filter_x_end;
-                 ++filter_x) {
-              const int in_x = in_x_origin + filter_x;
-              const int in_y = in_y_origin + filter_y;
-              const float val =
-                  input_data[Offset(input_shape, batch, in_y, in_x, channel)];
-              sum_squares += val * val;
-              filter_count++;
-            }
-          }
-          const float l2pool_result = std::sqrt(sum_squares / filter_count);
-          output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
-              ActivationFunctionWithMinMax(l2pool_result,
-                                           params.float_activation_min,
-                                           params.float_activation_max);
-        }
-      }
-    }
-  }
-}
-
-inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
-                    const float* input_data, const RuntimeShape& output_shape,
-                    float* output_data) {
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int depth = MatchingDim(input_shape, 3, output_shape, 3);
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
-  const int stride_height = params.stride_height;
-  const int stride_width = params.stride_width;
-  for (int batch = 0; batch < batches; ++batch) {
-    for (int out_y = 0; out_y < output_height; ++out_y) {
-      for (int out_x = 0; out_x < output_width; ++out_x) {
-        for (int channel = 0; channel < depth; ++channel) {
-          const int in_x_origin =
-              (out_x * stride_width) - params.padding_values.width;
-          const int in_y_origin =
-              (out_y * stride_height) - params.padding_values.height;
-          // Compute the boundaries of the filter region clamped so as to
-          // ensure that the filter window fits in the input array.
-          const int filter_x_start = std::max(0, -in_x_origin);
-          const int filter_x_end =
-              std::min(params.filter_width, input_width - in_x_origin);
-          const int filter_y_start = std::max(0, -in_y_origin);
-          const int filter_y_end =
-              std::min(params.filter_height, input_height - in_y_origin);
-          float max = std::numeric_limits<float>::lowest();
-          for (int filter_y = filter_y_start; filter_y < filter_y_end;
-               ++filter_y) {
-            for (int filter_x = filter_x_start; filter_x < filter_x_end;
-                 ++filter_x) {
-              const int in_x = in_x_origin + filter_x;
-              const int in_y = in_y_origin + filter_y;
-              max = std::max(
-                  max,
-                  input_data[Offset(input_shape, batch, in_y, in_x, channel)]);
-            }
-          }
-          output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
-              ActivationFunctionWithMinMax(max, params.float_activation_min,
-                                           params.float_activation_max);
-        }
-      }
-    }
-  }
-}
-
-inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
-                    const uint8* input_data, const RuntimeShape& output_shape,
-                    uint8* output_data) {
-  TFLITE_DCHECK_LE(params.quantized_activation_min,
-                   params.quantized_activation_max);
-  TFLITE_DCHECK_GE(params.quantized_activation_min, 0);
-  TFLITE_DCHECK_LE(params.quantized_activation_max, 255);
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int depth = MatchingDim(input_shape, 3, output_shape, 3);
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
-  const int stride_height = params.stride_height;
-  const int stride_width = params.stride_width;
-  for (int batch = 0; batch < batches; ++batch) {
-    for (int out_y = 0; out_y < output_height; ++out_y) {
-      for (int out_x = 0; out_x < output_width; ++out_x) {
-        for (int channel = 0; channel < depth; ++channel) {
-          const int in_x_origin =
-              (out_x * stride_width) - params.padding_values.width;
-          const int in_y_origin =
-              (out_y * stride_height) - params.padding_values.height;
-          // Compute the boundaries of the filter region clamped so as to
-          // ensure that the filter window fits in the input array.
-          const int filter_x_start = std::max(0, -in_x_origin);
-          const int filter_x_end =
-              std::min(params.filter_width, input_width - in_x_origin);
-          const int filter_y_start = std::max(0, -in_y_origin);
-          const int filter_y_end =
-              std::min(params.filter_height, input_height - in_y_origin);
-          uint8 max = 0;
-          for (int filter_y = filter_y_start; filter_y < filter_y_end;
-               ++filter_y) {
-            for (int filter_x = filter_x_start; filter_x < filter_x_end;
-                 ++filter_x) {
-              const int in_x = in_x_origin + filter_x;
-              const int in_y = in_y_origin + filter_y;
-              max = std::max(
-                  max,
-                  input_data[Offset(input_shape, batch, in_y, in_x, channel)]);
-            }
-          }
-          max = std::max<uint8>(max, params.quantized_activation_min);
-          max = std::min<uint8>(max, params.quantized_activation_max);
-          output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
-              static_cast<uint8>(max);
-        }
-      }
-    }
-  }
 }
 
 inline void LocalResponseNormalization(
@@ -2744,121 +2208,6 @@ inline void LogSoftmax(const SoftmaxParams& params,
       output_data[i * depth + c] = input_data[i * depth + c] - max - log_sum;
     }
   }
-}
-
-// Although currently the name of this function says that it cannot handle
-// values less than 1, in practice it can handle as low as 1/x_max, where
-// x_max is the largest representable input.  In other words, the output range
-// is symmetric.
-template <int OutputIntegerBits, int InputIntegerBits>
-inline gemmlowp::FixedPoint<int32, OutputIntegerBits>
-log_x_for_x_greater_than_or_equal_to_1_impl(
-    gemmlowp::FixedPoint<int32, InputIntegerBits> input_val) {
-  using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
-  // The reason for accumulating the result with an extra bit of headroom is
-  // that z_pow_2_adj * log_2 might be saturated, and adding num_scaled *
-  // recip_denom will otherwise introduce an error.
-  static constexpr int kAccumIntegerBits = OutputIntegerBits + 1;
-  using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumIntegerBits>;
-
-  const FixedPoint0 log_2 = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 1488522236, std::log(2.0));
-  const FixedPoint0 sqrt_sqrt_half = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 1805811301, std::sqrt(std::sqrt(0.5)));
-  const FixedPoint0 sqrt_half = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 1518500250, std::sqrt(0.5));
-  const FixedPoint0 one_quarter =
-      GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(FixedPoint0, 536870912, 1.0 / 4.0);
-
-  const FixedPoint0 alpha_n = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 117049297, 11.0 / 240.0 * std::sqrt(std::sqrt(2.0)));
-  const FixedPoint0 alpha_d = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 127690142, 1.0 / 20.0 * std::sqrt(std::sqrt(2.0)));
-  const FixedPoint0 alpha_i = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 1057819769,
-      2.0 / std::sqrt(std::sqrt(2.0)) - std::sqrt(std::sqrt(2.0)));
-  const FixedPoint0 alpha_f = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 638450708, 1.0 / 4.0 * std::sqrt(std::sqrt(2.0)));
-
-  const FixedPointAccum shifted_quarter =
-      gemmlowp::Rescale<kAccumIntegerBits>(one_quarter);
-
-  // Reinterpret the input value as Q0.31, because we will figure out the
-  // required shift "ourselves" instead of using, say, Rescale.
-  FixedPoint0 z_a = FixedPoint0::FromRaw(input_val.raw());
-  // z_a_pow_2 = input_integer_bits - z_a_headroom;
-  int z_a_headroom_plus_1 = CountLeadingZeros(static_cast<uint32>(z_a.raw()));
-  FixedPoint0 r_a_tmp =
-      SaturatingRoundingMultiplyByPOTParam(z_a, (z_a_headroom_plus_1 - 1));
-  const int32 r_a_raw =
-      SaturatingRoundingMultiplyByPOTParam((r_a_tmp * sqrt_half).raw(), 1);
-  // z_pow_2_adj = max(z_pow_2_a - 0.75, z_pow_2_b - 0.25);
-  // z_pow_2_adj = max(InputIntegerBits - z_a_headroom_plus_1 + 0.25,
-  //                   InputIntegerBits - z_b_headroom - 0.25);
-  const FixedPointAccum z_a_pow_2_adj = SaturatingAddNonGemmlowp(
-      FixedPointAccum::FromRaw(SaturatingRoundingMultiplyByPOTParam(
-          InputIntegerBits - z_a_headroom_plus_1, 31 - kAccumIntegerBits)),
-      shifted_quarter);
-
-  // z_b is treated like z_a, but premultiplying by sqrt(0.5).
-  FixedPoint0 z_b = z_a * sqrt_half;
-  int z_b_headroom = CountLeadingZeros(static_cast<uint32>(z_b.raw())) - 1;
-  const int32 r_b_raw =
-      SaturatingRoundingMultiplyByPOTParam(z_a.raw(), z_b_headroom);
-  const FixedPointAccum z_b_pow_2_adj = SaturatingSub(
-      FixedPointAccum::FromRaw(SaturatingRoundingMultiplyByPOTParam(
-          InputIntegerBits - z_b_headroom, 31 - kAccumIntegerBits)),
-      shifted_quarter);
-
-  const FixedPoint0 r = FixedPoint0::FromRaw(std::min(r_a_raw, r_b_raw));
-  const FixedPointAccum z_pow_2_adj = FixedPointAccum::FromRaw(
-      std::max(z_a_pow_2_adj.raw(), z_b_pow_2_adj.raw()));
-
-  const FixedPoint0 p = gemmlowp::RoundingHalfSum(r, sqrt_sqrt_half);
-  FixedPoint0 q = r - sqrt_sqrt_half;
-  q = q + q;
-
-  const FixedPoint0 common_sq = q * q;
-  const FixedPoint0 num = q * r + q * common_sq * alpha_n;
-  const FixedPoint0 denom_minus_one_0 =
-      p * (alpha_i + q + alpha_d * common_sq) + alpha_f * q;
-  const FixedPoint0 recip_denom =
-      one_over_one_plus_x_for_x_in_0_1(denom_minus_one_0);
-
-  const FixedPointAccum num_scaled = gemmlowp::Rescale<kAccumIntegerBits>(num);
-  return gemmlowp::Rescale<OutputIntegerBits>(z_pow_2_adj * log_2 +
-                                              num_scaled * recip_denom);
-}
-
-// Minimum output bits to accommodate log of maximum input range.  It actually
-// does not matter if one considers, say, [-64,64] or [-64,64).
-//
-// For example, run this through Octave:
-// [0:127; ...
-//  ceil(log(abs( log(2.^(0:127))+1 ))/log(2)); ...
-//  ceil(log(abs( log(2.^(0:127))+1 ))/log(2))]
-constexpr int min_log_x_output_bits(int input_bits) {
-  return input_bits > 90
-             ? 7
-             : input_bits > 44
-                   ? 6
-                   : input_bits > 21
-                         ? 5
-                         : input_bits > 10
-                               ? 4
-                               : input_bits > 4 ? 3 : input_bits > 1 ? 2 : 1;
-}
-
-template <int OutputIntegerBits, int InputIntegerBits>
-inline gemmlowp::FixedPoint<int32, OutputIntegerBits>
-log_x_for_x_greater_than_or_equal_to_1(
-    gemmlowp::FixedPoint<int32, InputIntegerBits> input_val) {
-  static_assert(
-      OutputIntegerBits >= min_log_x_output_bits(InputIntegerBits),
-      "Output integer bits must be sufficent to accommodate logs of inputs.");
-  return log_x_for_x_greater_than_or_equal_to_1_impl<OutputIntegerBits,
-                                                     InputIntegerBits>(
-      input_val);
 }
 
 inline void LogSoftmax(const SoftmaxParams& params,
@@ -3142,6 +2491,74 @@ inline void Dequantize(const tflite::DequantizationParams& op_params,
   }
 }
 
+inline void Dequantize(const RuntimeShape& input_shape,
+                       const Eigen::half* input_data,
+                       const RuntimeShape& output_shape, float* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; i++) {
+    output_data[i] = Eigen::half_impl::half_to_float(input_data[i]);
+  }
+}
+
+template <typename T>
+inline void AffineQuantize(const tflite::QuantizationParams& op_params,
+                           const RuntimeShape& input_shape,
+                           const float* input_data,
+                           const RuntimeShape& output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Quantize");
+  const int32 zero_point = op_params.zero_point;
+  const double scale = static_cast<double>(op_params.scale);
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  static constexpr int32 min_val = std::numeric_limits<T>::min();
+  static constexpr int32 max_val = std::numeric_limits<T>::max();
+
+  for (int i = 0; i < flat_size; i++) {
+    const float val = input_data[i];
+    int32 unclamped = static_cast<int32>(TfLiteRound(val / scale)) + zero_point;
+    int32 clamped = std::min(std::max(unclamped, min_val), max_val);
+    output_data[i] = clamped;
+  }
+}
+
+template <typename input_type, typename output_type>
+inline void Requantize(const input_type* input_data, int32_t size,
+                       int32_t effective_scale_multiplier,
+                       int32_t effective_scale_shift, int32_t input_zeropoint,
+                       int32_t output_zeropoint, output_type* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Requantize");
+  const bool same_scale =
+      (effective_scale_multiplier == 1 << 30 && effective_scale_shift == 1);
+  if (same_scale) {
+    const bool mixed_type_int8_uint8 =
+        std::is_same<input_type, int8_t>::value &&
+        std::is_same<output_type, uint8_t>::value;
+    const bool mixed_type_uint8_int8 =
+        std::is_same<input_type, uint8_t>::value &&
+        std::is_same<output_type, int8_t>::value;
+    const int32_t zero_point_diff = input_zeropoint - output_zeropoint;
+    // Fast path to do requantization for the case when just a shift of 128 is
+    // needed.
+    if ((mixed_type_int8_uint8 && zero_point_diff == -128) ||
+        (mixed_type_uint8_int8 && zero_point_diff == 128)) {
+      for (int i = 0; i < size; ++i) {
+        output_data[i] = input_data[i] ^ 0x80;
+      }
+    }
+  }
+  static constexpr int32_t kMinOutput = std::numeric_limits<output_type>::min();
+  static constexpr int32_t kMaxOutput = std::numeric_limits<output_type>::max();
+  for (int i = 0; i < size; ++i) {
+    const int32_t input = input_data[i] - input_zeropoint;
+    const int32_t output =
+        MultiplyByQuantizedMultiplier(input, effective_scale_multiplier,
+                                      effective_scale_shift) +
+        output_zeropoint;
+    const int32_t clamped_output =
+        std::max(std::min(output, kMaxOutput), kMinOutput);
+    output_data[i] = static_cast<output_type>(clamped_output);
+  }
+}
+
 inline void FakeQuant(const tflite::FakeQuantParams& op_params,
                       const RuntimeShape& input_shape, const float* input_data,
                       const RuntimeShape& output_shape, float* output_data) {
@@ -3177,6 +2594,22 @@ inline void Cast(const RuntimeShape& input_shape, const SrcT* input_data,
   }
 }
 
+template <typename T>
+T FloorMod(T input1, T input2) {
+  struct FloatMod {
+    float operator()(const float lhs, const float rhs) const {
+      return std::fmod(lhs, rhs);
+    }
+  };
+  using ModFunc = typename std::conditional<std::is_integral<T>::value,
+                                            std::modulus<T>, FloatMod>::type;
+  ModFunc mod_func;
+  T trunc_mod = mod_func(input1, input2);
+  return trunc_mod != 0 && ((input2 < 0) != (trunc_mod < 0))
+             ? trunc_mod + input2
+             : trunc_mod;
+}
+
 inline void Floor(const RuntimeShape& input_shape, const float* input_data,
                   const RuntimeShape& output_shape, float* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
@@ -3194,6 +2627,29 @@ inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
   for (int i = 0; i < flat_size; i++) {
     int offset = i;
     output_data[offset] = std::ceil(input_data[offset]);
+  }
+}
+
+inline float RoundToNearest(float value) {
+  auto floor_val = std::floor(value);
+  auto diff = value - floor_val;
+  if ((diff < 0.5f) ||
+      ((diff == 0.5f) && (static_cast<int>(floor_val) % 2 == 0))) {
+    return floor_val;
+  } else {
+    return floor_val = floor_val + 1.0f;
+  }
+}
+
+inline void Round(const RuntimeShape& input_shape, const float* input_data,
+                  const RuntimeShape& output_shape, float* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; i++) {
+    // Note that this implementation matches that of tensorFlow tf.round
+    // and corresponds to the bankers rounding method.
+    // cfenv (for fesetround) is not yet supported universally on Android, so
+    // using a work around.
+    output_data[i] = RoundToNearest(input_data[i]);
   }
 }
 
@@ -3573,12 +3029,23 @@ inline void PadImageStyle(const tflite::PadParams& op_params,
 template <typename P>
 inline void PadImageStyle(const tflite::PadParams& op_params,
                           const RuntimeShape& input_shape,
+                          const int8_t* input_data, const P* pad_value_ptr,
+                          const RuntimeShape& output_shape,
+                          int8_t* output_data) {
+  Pad(op_params, input_shape, input_data, pad_value_ptr, output_shape,
+      output_data);
+}
+
+template <typename P>
+inline void PadImageStyle(const tflite::PadParams& op_params,
+                          const RuntimeShape& input_shape,
                           const float* input_data, const P* pad_value_ptr,
                           const RuntimeShape& output_shape,
                           float* output_data) {
   Pad(op_params, input_shape, input_data, pad_value_ptr, output_shape,
       output_data);
 }
+
 template <typename T>
 inline void StridedSlice(const tflite::StridedSliceParams& op_params,
                          const RuntimeShape& unextended_input_shape,
@@ -3634,8 +3101,9 @@ inline void StridedSlice(const tflite::StridedSliceParams& op_params,
 
 template <typename T>
 inline void Slice(const tflite::SliceParams& op_params,
-                  const RuntimeShape& input_shape, const T* input_data,
-                  const RuntimeShape& output_shape, T* output_data) {
+                  const RuntimeShape& input_shape,
+                  const RuntimeShape& output_shape,
+                  SequentialTensorWriter<T>* writer) {
   const RuntimeShape ext_shape = RuntimeShape::ExtendedShape(4, input_shape);
   // TODO(dkalenichenko): This op only supports 4D tensors or smaller.
   TFLITE_DCHECK_LE(op_params.begin_count, 4);
@@ -3645,27 +3113,26 @@ inline void Slice(const tflite::SliceParams& op_params,
   // We front-pad the begin and size vectors.
   const int start_b = 4 - begin_count > 0 ? 0 : op_params.begin[0];
   const int stop_b = (4 - size_count > 0 || op_params.size[0] == -1)
-                         ? ext_shape.Dims(0) - start_b
+                         ? ext_shape.Dims(0)
                          : start_b + op_params.size[0];
   const int start_h = begin_count < 3 ? 0 : op_params.begin[begin_count - 3];
   const int stop_h = (size_count < 3 || op_params.size[size_count - 3] == -1)
-                         ? ext_shape.Dims(1) - start_h
+                         ? ext_shape.Dims(1)
                          : start_h + op_params.size[size_count - 3];
   const int start_w = begin_count < 2 ? 0 : op_params.begin[begin_count - 2];
   const int stop_w = (size_count < 2 || op_params.size[size_count - 2] == -1)
-                         ? ext_shape.Dims(2) - start_w
+                         ? ext_shape.Dims(2)
                          : start_w + op_params.size[size_count - 2];
   const int start_d = begin_count < 1 ? 0 : op_params.begin[begin_count - 1];
   const int stop_d = (size_count < 1 || op_params.size[size_count - 1] == -1)
-                         ? ext_shape.Dims(3) - start_d
+                         ? ext_shape.Dims(3)
                          : start_d + op_params.size[size_count - 1];
 
-  T* out_ptr = output_data;
   for (int in_b = start_b; in_b < stop_b; ++in_b) {
     for (int in_h = start_h; in_h < stop_h; ++in_h) {
       for (int in_w = start_w; in_w < stop_w; ++in_w) {
         for (int in_d = start_d; in_d < stop_d; ++in_d) {
-          *out_ptr++ = input_data[Offset(ext_shape, in_b, in_h, in_w, in_d)];
+          writer->Write(Offset(ext_shape, in_b, in_h, in_w, in_d));
         }
       }
     }
@@ -3673,11 +3140,27 @@ inline void Slice(const tflite::SliceParams& op_params,
 }
 
 template <typename T>
+inline void Slice(const tflite::SliceParams& op_params,
+                  const RuntimeShape& input_shape, const T* input_data,
+                  const RuntimeShape& output_shape, T* output_data) {
+  SequentialTensorWriter<T> writer(input_data, output_data);
+  return Slice(op_params, input_shape, output_shape, &writer);
+}
+
+template <typename T>
+inline void Slice(const tflite::SliceParams& op_params,
+                  const RuntimeShape& input_shape, const TfLiteTensor* input,
+                  const RuntimeShape& output_shape, TfLiteTensor* output) {
+  SequentialTensorWriter<T> writer(input, output);
+  return Slice(op_params, input_shape, output_shape, &writer);
+}
+
+template <typename T>
 inline void Exp(const T* input_data, const size_t num_elements,
                 T* output_data) {
   gemmlowp::ScopedProfilingLabel label("Exp");
   for (size_t idx = 0; idx < num_elements; ++idx) {
-    output_data[idx] = exp(input_data[idx]);
+    output_data[idx] = std::exp(input_data[idx]);
   }
 }
 
@@ -3948,10 +3431,10 @@ inline void Mean(const tflite::MeanParams& op_params,
       temp_value = temp_value / num_elements_in_axis;
       if (ordinary_mean) {
         output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
-            static_cast<uint8_t>(round(temp_value));
+            static_cast<uint8_t>(std::round(temp_value));
       } else {
         output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
-            static_cast<uint8_t>(round(temp_value * scale + bias)) +
+            static_cast<uint8_t>(std::round(temp_value * scale + bias)) +
             output_zero_point;
       }
     }
@@ -4018,8 +3501,9 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
       // TODO(b/116341117): Eliminate float and do this completely in 8bit.
       const float bias = -input_zero_point * scale * num_elements_in_axis + 0.5;
       for (size_t idx = 0; idx < num_outputs; ++idx) {
-        const U value = static_cast<U>(round(temp_sum[idx] * scale + bias)) +
-                        output_zero_point;
+        const U value =
+            static_cast<U>(std::round(temp_sum[idx] * scale + bias)) +
+            output_zero_point;
         output_data[idx] = static_cast<T>(value);
       }
     } else {
@@ -4029,8 +3513,9 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
                            static_cast<float>(num_elements_in_axis);
 
         // Convert to float value.
-        output_data[idx] = static_cast<T>(round(float_mean * scale + bias)) +
-                           output_zero_point;
+        output_data[idx] =
+            static_cast<T>(std::round(float_mean * scale + bias)) +
+            output_zero_point;
       }
     }
   }
@@ -4301,6 +3786,93 @@ inline void TransposeConv(
         }
       }
     }
+  }
+}
+
+inline void TransposeConv(const ConvParams& params,
+                          const RuntimeShape& input_shape,
+                          const uint8* input_data,
+                          const RuntimeShape& filter_shape,
+                          const uint8* filter_data,
+                          const RuntimeShape& output_shape, uint8* output_data,
+                          const RuntimeShape& im2col_shape, uint8* im2col_data,
+                          int32* scratch_buffer) {
+  const int stride_width = params.stride_width;
+  const int stride_height = params.stride_height;
+  const int pad_width = params.padding_values.width;
+  const int pad_height = params.padding_values.height;
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+  (void)im2col_data;   // only used in optimized code.
+  (void)im2col_shape;  // only used in optimized code.
+
+  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
+  const int input_depth = MatchingDim(input_shape, 3, filter_shape, 3);
+  const int output_depth = MatchingDim(filter_shape, 0, output_shape, 3);
+  const int input_height = input_shape.Dims(1);
+  const int input_width = input_shape.Dims(2);
+  const int filter_height = filter_shape.Dims(1);
+  const int filter_width = filter_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+  const int output_width = output_shape.Dims(2);
+  const int32 input_offset = params.input_offset;
+  const int32 filter_offset = params.weights_offset;
+  const int32 output_offset = params.output_offset;
+  const int32 output_multiplier = params.output_multiplier;
+  const int output_shift = params.output_shift;
+  const int32 output_activation_min = params.quantized_activation_min;
+  const int32 output_activation_max = params.quantized_activation_max;
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+
+  const int num_elements = output_shape.FlatSize();
+  // We need to initialize scratch_buffer to all 0s, as we apply the same
+  // 'scatter' based trick as in float version.
+  memset(scratch_buffer, 0, num_elements * sizeof(int32));
+
+  // Loop through input elements one at a time.
+  for (int batch = 0; batch < batches; ++batch) {
+    for (int in_y = 0; in_y < input_height; ++in_y) {
+      for (int in_x = 0; in_x < input_width; ++in_x) {
+        for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
+          // Loop through the output elements it will influence.
+          const int out_x_origin = (in_x * stride_width) - pad_width;
+          const int out_y_origin = (in_y * stride_height) - pad_height;
+          for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
+            for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
+              for (int out_channel = 0; out_channel < output_depth;
+                   ++out_channel) {
+                // Compute output element location.
+                const int out_x = out_x_origin + filter_x;
+                const int out_y = out_y_origin + filter_y;
+                // We cannot accumulate out of bounds.
+                if ((out_x >= 0) && (out_x < output_width) && (out_y >= 0) &&
+                    (out_y < output_height)) {
+                  uint8 input_value = input_data[Offset(
+                      input_shape, batch, in_y, in_x, in_channel)];
+                  uint8 filter_value =
+                      filter_data[Offset(filter_shape, out_channel, filter_y,
+                                         filter_x, in_channel)];
+                  scratch_buffer[Offset(output_shape, batch, out_y, out_x,
+                                        out_channel)] +=
+                      (input_value + input_offset) *
+                      (filter_value + filter_offset);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  for (int i = 0; i < num_elements; ++i) {
+    int32 acc = scratch_buffer[i];
+    acc = MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
+    acc += output_offset;
+    // Clamp the output before converting back to uint8.
+    acc = std::max(acc, output_activation_min);
+    acc = std::min(acc, output_activation_max);
+    output_data[i] = static_cast<uint8>(acc);
   }
 }
 
@@ -4583,6 +4155,34 @@ void RankOneSelect(const RuntimeShape& input_condition_shape,
     const T* input_data = input_condition_data[i] ? input_x_data : input_y_data;
     memcpy(output_data + offset, input_data + offset, inner_size * sizeof(T));
     offset += inner_size;
+  }
+}
+
+template <typename D, typename T>
+void SelectTrueCoords(const RuntimeShape& input_condition_shape,
+                      const D* input_condition_data, T* output_data) {
+  const size_t size = input_condition_shape.FlatSize();
+  const size_t cond_rank = input_condition_shape.DimensionsCount();
+
+  std::vector<int> dims_to_count(cond_rank, 0);
+  int cur_flat_size = size;
+  for (int i = 0; i < cond_rank; ++i) {
+    dims_to_count[i] = cur_flat_size / input_condition_shape.Dims(i);
+    cur_flat_size = dims_to_count[i];
+  }
+
+  int output_index = 0;
+  for (int i = 0; i < size; ++i) {
+    if (input_condition_data[i]) {
+      // Insert the coordinate of the current item (row major) into output.
+      int flat_index = i;
+      for (int j = 0; j < cond_rank; ++j) {
+        int coord_j = flat_index / dims_to_count[j];
+        output_data[output_index * cond_rank + j] = coord_j;
+        flat_index %= dims_to_count[j];
+      }
+      output_index++;
+    }
   }
 }
 
@@ -4905,6 +4505,144 @@ void Reverse(int axis, const RuntimeShape& input_shape,
       int loc = (i * dims_at_axis + dims_at_axis - j - 1) * copy_size;
       memcpy(output_ptr, input_data + loc, copy_size * sizeof(Scalar));
     }
+  }
+}
+
+template <typename Scalar, typename TS>
+void ReverseSequence(const TS* seq_lengths, const int seq_dim,
+                     const int batch_dim, const RuntimeShape& input_shape,
+                     const Scalar* input_data, const RuntimeShape& output_shape,
+                     Scalar* output_data) {
+  gemmlowp::ScopedProfilingLabel label("ReverseSequence");
+
+  int outer_size = 1;
+  int outer_dim = std::min(batch_dim, seq_dim);
+  int medium_dim = std::max(batch_dim, seq_dim);
+  for (int i = 0; i < outer_dim; ++i) {
+    outer_size *= input_shape.Dims(i);
+  }
+
+  int medium_size = 1;
+  for (int i = outer_dim + 1; i < medium_dim; ++i) {
+    medium_size *= input_shape.Dims(i);
+  }
+
+  int copy_size = 1;
+  for (int i = medium_dim + 1; i < input_shape.DimensionsCount(); ++i) {
+    copy_size *= input_shape.Dims(i);
+  }
+
+  const int dims_at_outer_dim = input_shape.Dims(outer_dim);
+  const int dims_at_medium_dim = input_shape.Dims(medium_dim);
+
+  Scalar* output_ptr;
+  if (batch_dim > seq_dim) {
+    for (int i = 0; i < outer_size; ++i) {
+      for (int j = 0; j < dims_at_outer_dim; ++j) {
+        const int in_pos_base = (i * dims_at_outer_dim + j) * medium_size;
+        for (int p = 0; p < medium_size; ++p) {
+          for (int q = 0; q < dims_at_medium_dim; ++q) {
+            const int in_pos =
+                ((in_pos_base + p) * dims_at_medium_dim + q) * copy_size;
+            const Scalar* in_ptr = input_data + in_pos;
+            int sl = seq_lengths[q] - 1;
+            if (j > sl) {
+              output_ptr = output_data + in_pos;
+            } else {
+              const int out_pos_base =
+                  (i * dims_at_outer_dim + sl - j) * medium_size;
+              const int out_pos =
+                  ((out_pos_base + p) * dims_at_medium_dim + q) * copy_size;
+              output_ptr = output_data + out_pos;
+            }
+            memcpy(output_ptr, in_ptr, copy_size * sizeof(Scalar));
+          }
+        }
+      }
+    }
+  } else if (batch_dim < seq_dim) {
+    for (int i = 0; i < outer_size; ++i) {
+      for (int j = 0; j < dims_at_outer_dim; ++j) {
+        const int in_pos_base = (i * dims_at_outer_dim + j) * medium_size;
+        int sl = seq_lengths[j] - 1;
+        const int out_pos_base = (i * dims_at_outer_dim + j) * medium_size;
+        for (int p = 0; p < medium_size; ++p) {
+          for (int q = 0; q < dims_at_medium_dim; ++q) {
+            const int in_pos =
+                ((in_pos_base + p) * dims_at_medium_dim + q) * copy_size;
+            const Scalar* in_ptr = input_data + in_pos;
+            if (q > sl) {
+              output_ptr = output_data + in_pos;
+            } else {
+              const int out_pos =
+                  ((out_pos_base + p) * dims_at_medium_dim + sl - q) *
+                  copy_size;
+              output_ptr = output_data + out_pos;
+            }
+            memcpy(output_ptr, in_ptr, copy_size * sizeof(Scalar));
+          }
+        }
+      }
+    }
+  }
+}
+
+template <typename T>
+inline void HardSwish(const RuntimeShape& input_shape, const T* input_data,
+                      const RuntimeShape& output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("ReferenceHardSwish/Float");
+  auto matching_size = MatchingFlatSize(input_shape, output_shape);
+  const T* in_end = input_data + matching_size;
+  for (; input_data < in_end; input_data++, output_data++) {
+    const float in = *input_data;
+    *output_data =
+        in * std::min(static_cast<T>(6), std::max(static_cast<T>(0), in + 3)) /
+        6;
+  }
+}
+
+template <typename T>
+inline T Saturate(int32_t v) {
+  return static_cast<T>(std::min(
+      static_cast<int32_t>(std::numeric_limits<T>::max()),
+      std::max(static_cast<int32_t>(std::numeric_limits<T>::min()), v)));
+}
+
+template <typename T>
+inline void HardSwish(const HardSwishParams& params,
+                      const RuntimeShape& input_shape, const T* input_data,
+                      const RuntimeShape& output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("ReferenceHardSwish/Quantized");
+  // Goal: (x * relu6(x+3))/6
+  const T* in = input_data;
+  T* out = output_data;
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  const T* in_end = in + flat_size;
+  const int32_t extra_input_shift = params.clip_input_shift;
+  const auto in_zero_point = params.input_zero_point;
+  const auto three_in = params.three_input;
+  const auto six_in = params.six_input;
+  const auto real_shift = params.shift;
+  const auto scale = params.scale;
+  const auto offset = params.output_offset;
+
+  for (; in < in_end; in++, out++) {
+    int32_t v = static_cast<int32>(*in);
+    v -= in_zero_point;  // Make zeros - zero again!
+
+    // Computes x + 3 in input * 2^extra_input_shift scale.
+    //
+    // Note: three_in is in that scale already.
+    const int32_t v3 = (v << extra_input_shift) + three_in;
+
+    // Computes hard-swish up to a final scale
+    v *= std::min(six_in, std::max(0, v3));
+
+    // this converts from x * relu6(x+3) in input into x * relu6(x+3) / 6
+    // in output scale.
+    v = MultiplyByQuantizedMultiplierSmallerThanOneExp(v, scale, real_shift);
+    v += offset;
+    *out = Saturate<uint8>(v);
   }
 }
 

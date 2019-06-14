@@ -20,7 +20,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 // TODO(yangzihao): Remove the dependency of conv_2d.h once we move all
 // GPU util functions and transpose kernels into separate files.
@@ -79,11 +79,11 @@ void TransposeSimple(const GPUDevice& d, const Tensor& in,
   // Launch kernel to q[...] = p[...].
   const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
   T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
-  CudaLaunchConfig cfg = GetCudaLaunchConfig(nelem, d);
-  TransposeKernel<T, conjugate>
-      <<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>(
-          cfg.virtual_thread_count, p, reinterpret_cast<const int32*>(dev_buf),
-          ndims, q);
+  GpuLaunchConfig cfg = GetCudaLaunchConfig(nelem, d);
+  TF_CHECK_OK(CudaLaunchKernel(
+      TransposeKernel<T, conjugate>, cfg.block_count, cfg.thread_per_block, 0,
+      d.stream(), cfg.virtual_thread_count, p,
+      reinterpret_cast<const int32*>(dev_buf), ndims, q));
   // Safe to deallocate immediately after the kernel launch.
   d.deallocate(dev_buf);
 }
@@ -168,66 +168,37 @@ struct TransposeUsingTile<complex128, conjugate> {
 }  // namespace internal
 
 // Transpose kernel specialized for GPU Device.
+#define HANDLE_DIM(DIM)                                                      \
+  case DIM:                                                                  \
+    internal::TransposeUsingEigen<GPUDevice, T, DIM>(d, in, perm, conjugate, \
+                                                     out);                   \
+    break
+
 template <typename T, bool conjugate>
 struct Transpose<GPUDevice, T, conjugate> {
   static void run(const GPUDevice& d, const Tensor& in,
                   const gtl::ArraySlice<int32> perm, Tensor* out) {
+    if (in.dims() < 2) return;
+    if (internal::TransposeUsingTile<T, conjugate>::run(d, in, perm, out)) {
+      return;
+    }
+
     switch (in.dims()) {
-      case 2:
-        if (!internal::TransposeUsingTile<T, conjugate>::run(d, in, perm,
-                                                             out)) {
-          internal::TransposeUsingEigen<GPUDevice, T, 2>(d, in, perm, conjugate,
-                                                         out);
-        }
-        break;
-      case 3:
-        if (!internal::TransposeUsingTile<T, conjugate>::run(d, in, perm,
-                                                             out)) {
-          internal::TransposeUsingEigen<GPUDevice, T, 3>(d, in, perm, conjugate,
-                                                         out);
-        }
-        break;
-      case 4:
-        if (!internal::TransposeUsingTile<T, conjugate>::run(d, in, perm,
-                                                             out)) {
-          internal::TransposeUsingEigen<GPUDevice, T, 4>(d, in, perm, conjugate,
-                                                         out);
-        }
-        break;
-      case 5:
-        if (!internal::TransposeUsingTile<T, conjugate>::run(d, in, perm,
-                                                             out)) {
-          internal::TransposeUsingEigen<GPUDevice, T, 5>(d, in, perm, conjugate,
-                                                         out);
-        }
-        break;
-      case 6:
-        if (!internal::TransposeUsingTile<T, conjugate>::run(d, in, perm,
-                                                             out)) {
-          internal::TransposeUsingEigen<GPUDevice, T, 6>(d, in, perm, conjugate,
-                                                         out);
-        }
-        break;
-      case 7:
-        if (!internal::TransposeUsingTile<T, conjugate>::run(d, in, perm,
-                                                             out)) {
-          internal::TransposeUsingEigen<GPUDevice, T, 7>(d, in, perm, conjugate,
-                                                         out);
-        }
-        break;
-      case 8:
-        if (!internal::TransposeUsingTile<T, conjugate>::run(d, in, perm,
-                                                             out)) {
-          internal::TransposeUsingEigen<GPUDevice, T, 8>(d, in, perm, conjugate,
-                                                         out);
-        }
-        break;
+      HANDLE_DIM(2);
+      HANDLE_DIM(3);
+      HANDLE_DIM(4);
+      HANDLE_DIM(5);
+      HANDLE_DIM(6);
+      HANDLE_DIM(7);
+      HANDLE_DIM(8);
       default:
         internal::TransposeSimple<T, conjugate>(d, in, perm, out);
         break;
     }
   }
 };
+
+#undef HANDLE_DIM
 
 template <bool conjugate>
 struct Transpose<GPUDevice, string, conjugate> {

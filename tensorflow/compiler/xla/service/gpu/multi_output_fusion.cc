@@ -37,7 +37,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-GpuMultiOutputFusion::GpuMultiOutputFusion() : MultiOutputFusion(INT64_MAX) {}
+GpuMultiOutputFusion::GpuMultiOutputFusion() {}
 
 bool GpuMultiOutputFusion::ShapesCompatibleForFusion(HloInstruction* instr1,
                                                      HloInstruction* instr2) {
@@ -45,15 +45,7 @@ bool GpuMultiOutputFusion::ShapesCompatibleForFusion(HloInstruction* instr1,
 }
 
 bool GpuMultiOutputFusion::IsFusible(HloInstruction* instr) {
-  // We can fuse reduces and loop fusions. Elementwise instructions can be fused
-  // with any other instruction.
-  // TODO(b/112957171): This should use the same isFusible logic as
-  // instruction_fusion.
-  return instr->IsFusible() &&
-         (IsInputFusibleReduction(*instr) ||
-          (instr->opcode() == HloOpcode::kFusion &&
-           instr->fusion_kind() == HloInstruction::FusionKind::kLoop) ||
-          instr->IsElementwise());
+  return IsFusibleAsMultiOutputFusionRoot(*instr);
 }
 
 int64 GpuMultiOutputFusion::GetProfit(HloInstruction* instr1,
@@ -92,8 +84,8 @@ bool GpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
   CHECK(instr1->opcode() == HloOpcode::kFusion);
   if ((instr2->opcode() == HloOpcode::kFusion &&
        instr1->fusion_kind() != instr2->fusion_kind()) ||
-      (IsReductionToVector(*instr2) &&
-       instr1->fusion_kind() == HloInstruction::FusionKind::kLoop)) {
+      (IsReductionFromOrToContiguousDimensions(*instr2) &&
+       instr1->IsLoopFusion())) {
     return false;
   }
 
@@ -110,7 +102,7 @@ bool GpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
   }
 
   // Do this check last, as it may be expensive.
-  return !GpuInstructionFusion::FusionWouldBeTooLarge(instr1, instr2);
+  return !FusionWouldBeTooLarge(*instr1, *instr2);
 }
 
 bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
@@ -145,29 +137,15 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
     auto consumer_operands = consumer->operands();
     for (size_t i = 0; i < consumer_operands.size(); ++i) {
       HloInstruction* producer = consumer_operands[i];
-      if (!producer->IsFusible()) {
-        VLOG(3) << producer->name() << " is not fusible.";
+      if (!IsProducerConsumerMultiOutputFusible(*producer, *consumer)) {
+        VLOG(3) << producer->name() << " and " << consumer->name()
+                << " are not fusible.";
         continue;
       }
       // Never multi-output fuse constants.  To the extent that we want to fuse
       // constants, that should be handled by the regular fusion pass.
       if (producer->opcode() == HloOpcode::kConstant) {
         VLOG(3) << producer->name() << " is a constant.";
-        continue;
-      }
-      const bool is_loop_fusion =
-          producer->opcode() == HloOpcode::kFusion &&
-          producer->fusion_kind() == HloInstruction::FusionKind::kLoop;
-      if (!producer->IsElementwise() && !is_loop_fusion) {
-        VLOG(3) << producer->name() << " is not a loop fusion.";
-        continue;
-      }
-      if (!ShapesCompatibleForMultiOutputFusion(*producer, *consumer)) {
-        VLOG(3) << producer->name() << " has an incompatible shape.";
-        continue;
-      }
-      if (!LayoutsAreReduceInputFusionFriendly(*producer, *consumer)) {
-        VLOG(3) << producer->name() << " has inputs with mixed layouts.";
         continue;
       }
       // If we have already decided to fuse this producer, skip it.

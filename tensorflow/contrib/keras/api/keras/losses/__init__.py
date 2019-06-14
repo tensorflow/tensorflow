@@ -22,7 +22,7 @@ from __future__ import print_function
 from tensorflow.python.keras.losses import binary_crossentropy
 from tensorflow.python.keras.losses import categorical_crossentropy
 from tensorflow.python.keras.losses import categorical_hinge
-from tensorflow.python.keras.losses import cosine_proximity
+from tensorflow.python.keras.losses import cosine_similarity
 from tensorflow.python.keras.losses import hinge
 from tensorflow.python.keras.losses import kullback_leibler_divergence
 from tensorflow.python.keras.losses import logcosh

@@ -303,6 +303,37 @@ For example, if `operand` is a scalar `f32` with value `2.0f`, and
 `broadcast_sizes` is `{2, 3}`, then the result will be an array with shape
 `f32[2, 3]` and all the values in the result will be `2.0f`.
 
+## BroadcastInDim
+
+See also
+[`XlaBuilder::BroadcastInDim`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Expands the size and rank of an array by duplicating the data in the array.
+
+<b> `BroadcastInDim(operand, out_dim_size, broadcast_dimensions)` </b>
+
+| Arguments              | Type                | Semantics                     |
+| ---------------------- | ------------------- | ----------------------------- |
+| `operand`              | `XlaOp`             | The array to duplicate        |
+| `out_dim_size`         | `ArraySlice<int64>` | The sizes of the dimensions   |
+:                        :                     : of the target shape           :
+| `broadcast_dimensions` | `ArraySlice<int64>` | Which dimension in the target |
+:                        :                     : shape each dimension of the   :
+:                        :                     : operand shape corresponds to  :
+
+Similar to Broadcast, but allows adding dimensions anywhere and expanding
+existing dimensions with size 1.
+
+The `operand` is broadcast to the shape described by `out_dim_size`.
+`broadcast_dimensions` maps the dimensions of `operand` to the dimensions of the
+target shape, i.e. the i'th dimension of the operand is mapped to the
+broadcast_dimension\[i\]'th dimension of the output shape. The dimensions of
+`operand` must have size 1 or be the same size as the dimension in in the output
+shape they are mapped to. The remaining dimensions are filled with dimensions of
+size 1. Degenerate-dimension broadcasting then broadcasts along these degenerate
+dimensions to reach the output shape. The semantics are described in detail on
+the [broadcasting page](broadcasting.md).
+
 ## Call
 
 See also
@@ -321,6 +352,37 @@ Invokes a computation with the given arguments.
 
 The arity and types of the `args` must match the parameters of the
 `computation`. It is allowed to have no `args`.
+
+## Cholesky
+
+See also
+[`XlaBuilder::Cholesky`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Computes the
+[Cholesky decomposition](https://en.wikipedia.org/wiki/Cholesky_decomposition)
+of a batch of symmetric (Hermitian) positive definite matrices.
+
+<b> `Cholesky(a, lower)` </b>
+
+Arguments | Type    | Semantics
+--------- | ------- | -----------------------------------------------------
+`a`       | `XlaOp` | a rank > 2 array of a complex or floating-point type.
+`lower`   | `bool`  | whether to use the upper or lower triangle of `a`.
+
+If `lower` is `true`, computes lower-triangular matrices `l` such that $$ a = l
+. l^T $$. If `lower` is `false`, computes upper-triangular matrices `u` such
+that $$ a = u^T . u $$.
+
+Input data is read only from the lower/upper triangle of `a`, depending on the
+value of `lower`. Values from the other triangle are ignored. Output data is
+returned in the same triangle; the values in the other triangle are
+implementation-defined and may be anything.
+
+If the rank of `a` is greater than 2, `a` is treated as a batch of matrices,
+where all except the minor 2 dimensions are batch dimensions.
+
+If `a` is not symmetric (Hermitian) positive definite, the result is
+implementation-defined.
 
 ## Clamp
 
@@ -510,24 +572,46 @@ See also
 false_computation)` </b>
 
 Arguments           | Type             | Semantics
-------------------- | ---------------- | ---------------------------------
+------------------- | ---------------- | --------------------------------------
 `pred`              | `XlaOp`          | Scalar of type `PRED`
-`true_operand`      | `XlaOp`          | Argument of type `T_0`
-`true_computation`  | `XlaComputation` | XlaComputation of type `T_0 -> S`
-`false_operand`     | `XlaOp`          | Argument of type `T_1`
-`false_computation` | `XlaComputation` | XlaComputation of type `T_1 -> S`
+`true_operand`      | `XlaOp`          | Argument of type $$ T_0 $$
+`true_computation`  | `XlaComputation` | XlaComputation of type $$ T_0 \to S$$
+`false_operand`     | `XlaOp`          | Argument of type $$ T_1 $$
+`false_computation` | `XlaComputation` | XlaComputation of type $$ T_1 \to S $$
 
 Executes `true_computation` if `pred` is `true`, `false_computation` if `pred`
 is `false`, and returns the result.
 
-The `true_computation` must take in a single argument of type `T_0` and will be
-invoked with `true_operand` which must be of the same type. The
-`false_computation` must take in a single argument of type `T_1` and will be
+The `true_computation` must take in a single argument of type $$ T_0 $$ and will
+be invoked with `true_operand` which must be of the same type. The
+`false_computation` must take in a single argument of type $$ T_1 $$ and will be
 invoked with `false_operand` which must be of the same type. The type of the
 returned value of `true_computation` and `false_computation` must be the same.
 
 Note that only one of `true_computation` and `false_computation` will be
 executed depending on the value of `pred`.
+
+<b> `Conditional(branch_index, branch_computations, branch_operands)` </b>
+
+| Arguments             | Type                  | Semantics                    |
+| --------------------- | --------------------- | ---------------------------- |
+| `branch_index`        | `XlaOp`               | Scalar of type `S32`         |
+| `branch_computations` | sequence of N         | XlaComputations of type $$   |
+:                       : `XlaComputation`      : T_0 \to S , T_1 \to S , ..., :
+:                       :                       : T_{N-1} \to S $$             :
+| `branch_operands`     | sequence of N `XlaOp` | Arguments of type $$ T_0 ,   |
+:                       :                       : T_1 , ..., T_{N-1} $$        :
+
+Executes `branch_computations[branch_index]`, and returns the result. If
+`branch_index` is an `S32` which is < 0 or >= N, then `branch_computations[N-1]`
+is executed as the default branch.
+
+Each `branch_computations[b]` must take in a single argument of type `T_b` and
+will be invoked with `branch_operands[b]` which must be of the same type. The
+type of the returned value of each `branch_computations[b]` must be the same.
+
+Note that only one of the `branch_computations` will be executed depending on
+the value of `branch_index`.
 
 ## Conv (convolution)
 
@@ -842,11 +926,11 @@ The exact semantics of this operation depend on the ranks of the operands:
 | matrix [m x k] `dot`    | matrix [m x n]        | matrix-matrix           |
 : matrix [k x n]          :                       : multiplication          :
 
-The operation performs sum of products over the last dimension of `lhs` and the
-one-before-last dimension of `rhs`. These are the "contracted" dimensions. The
-contracted dimensions of `lhs` and `rhs` must be of the same size. In practice,
-it can be used to perform dot products between vectors, vector/matrix
-multiplications or matrix/matrix multiplications.
+The operation performs sum of products over the second dimension of `lhs` (or
+the first if it has rank 1) and the first dimension of `rhs`. These are the
+"contracted" dimensions. The contracted dimensions of `lhs` and `rhs` must be of
+the same size. In practice, it can be used to perform dot products between
+vectors, vector/matrix multiplications or matrix/matrix multiplications.
 
 ## DotGeneral
 
@@ -1182,6 +1266,9 @@ if and only if the corresponding input element is finite.
 
 <b>`LogicalNot(operand)`</b> Element-wise logical not `x -> !(x)`.
 
+<b>`PopulationCount(operand)`</b> Computes the number of bits set in each
+element of `operand`.
+
 <b>`Neg(operand)`</b> Element-wise negation `x -> -x`.
 
 <b>`Sign(operand)`</b> Element-wise sign operation `x -> sgn(x)` where
@@ -1199,6 +1286,59 @@ Arguments | Type    | Semantics
 
 The function is applied to each element in the `operand` array, resulting in an
 array with the same shape. It is allowed for `operand` to be a scalar (rank 0).
+
+## Fft
+
+The XLA FFT operation implements the forward and inverse Fourier Transforms for
+real and complex inputs/outputs. Multidimensional FFTs on up to 3 axes are
+supported, except on TPU, where only a single axis is supported (please file a
+github issue if you require higher order).
+
+See also
+[`XlaBuilder::Fft`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+| Arguments    | Type                | Semantics                |
+| ------------ | ------------------- | ------------------------ |
+| `operand`    | `XlaOp`             | The array we are Fourier |
+:              :                     : transforming.            :
+| `fft_type`   | `FftType`           | See the table below.     |
+| `fft_length` | `ArraySlice<int64>` | The time-domain lengths  |
+:              :                     : of the axes being        :
+:              :                     : transformed. This is     :
+:              :                     : needed in particular for :
+:              :                     : IRFFT to right-size the  :
+:              :                     : innermost axis, since    :
+:              :                     : `RFFT(fft_length=[16])`  :
+:              :                     : has the same output      :
+:              :                     : shape as                 :
+:              :                     : `RFFT(fft_length=[17])`. :
+
+| `FftType` | Semantics                                                        |
+| --------- | ---------------------------------------------------------------- |
+| `FFT`     | Forward complex-to-complex FFT. Shape is unchanged.              |
+| `IFFT`    | Inverse complex-to-complex FFT. Shape is unchanged.              |
+| `RFFT`    | Forward real-to-complex FFT. Shape of the innermost axis is      |
+:           : reduced to `fft_length[-1] // 2 + 1` if `fft_length[-1]` is a    :
+:           : non-zero value, omitting the reversed conjugate part of the      :
+:           : transformed signal beyond the Nyquist frequency.                 :
+| `IRFFT`   | Inverse real-to-complex FFT (i.e. takes complex, returns real).  |
+:           : Shape of the innermost axis is expanded to `fft_length[-1]` if   :
+:           : `fft_length[-1]` is a non-zero value, inferring the part of the  :
+:           : transformed signal beyond the Nyquist frequency from the reverse :
+:           : conjugate of the `1` to `fft_length[-1] // 2 + 1` entries.       :
+
+#### Multidimensional FFT
+
+When more than 1 `fft_length` is provided, this is equivalent to applying a
+cascade of FFT operations to each of the innermost axes. Note that for the
+real->complex and complex->real cases, the innermost axis transform is
+(effectively) performed first (RFFT; last for IRFFT), which is why the innermost
+axis is the one which changes size. Other axis transforms will then be
+complex->complex.
+
+#### Implementation details
+
+CPU FFT is backed by Eigen's TensorFFT. GPU FFT uses cuFFT.
 
 ## Gather
 
@@ -1341,8 +1481,8 @@ The element in the output array at index
 [`G`,`O`<sub>`0`</sub>,`O`<sub>`1`</sub>] is then the element in the input
 array at index [`X`+`O`<sub>`0`</sub>,`Y`+`O`<sub>`1`</sub>].
 
-`slice_sizes` is `[8,6]`, which decides the range of W<sub>`0`</sub> and
-W<sub>`1`</sub>, and this in turn decides the bounds of the slice.
+`slice_sizes` is `[8,6]`, which decides the range of O<sub>`0`</sub> and
+O<sub>`1`</sub>, and this in turn decides the bounds of the slice.
 
 This gather operation acts as a batch dynamic slice with `G` as the batch
 dimension.
@@ -1608,15 +1748,15 @@ Applies a reduction function to one or more arrays in parallel.
 
 <b> `Reduce(operands..., init_values..., computation, dimensions)` </b>
 
-Arguments     | Type                  | Semantics
-------------- | --------------------- | ---------------------------------------
-`operands`    | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N`.
-`init_values` | Sequence of N `XlaOp` | N scalars of types `T_0, ..., T_N`.
-`computation` | `XlaComputation`      | computation of type
-              :                       : `T_0, ..., T_N, T_0, ..., T_N -> Collate(T_0, ..., T_N)`
-`dimensions`  | `int64` array         | unordered array of dimensions to reduce
+| Arguments     | Type                  | Semantics                            |
+| ------------- | --------------------- | ------------------------------------ |
+| `operands`    | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N`.   |
+| `init_values` | Sequence of N `XlaOp` | N scalars of types `T_0, ..., T_N`.  |
+| `computation` | `XlaComputation`      | computation of type `T_0, ..., T_N, T_0, ..., T_N ->` `Collate(T_0, ..., T_N)`. |
+| `dimensions`  | `int64` array         | unordered array of dimensions to reduce. |
 
 Where:
+
 * N is required to be greater or equal to 1.
 * All input arrays must have the same dimensions.
 * If `N = 1`, `Collate(T)` is `T`.
@@ -1626,10 +1766,10 @@ The output of the op is `Collate(Q_0, ..., Q_N)` where `Q_i` is an array of type
 `T_i`, the dimensions of which are described below.
 
 This operation reduces one or more dimensions of each input array into scalars.
-The rank of each returned array is `rank(operand) - len(dimensions)`.
-`init_value` is the initial value used for every reduction and may be inserted
+The rank of each returned array is `rank(operand) - len(dimensions)`. The
+initial value used for every reduction is `init_value`, and it may be inserted
 anywhere during computation by the back-end. In most cases, `init_value` is an
-identity of the reduction function (for example, 0 for addition). The applied
+identity of the reduction function (for example, `0` for addition). The applied
 `computation` is always passed the `init_value` on the left-hand side.
 
 The evaluation order of the reduction function is arbitrary and may be
@@ -1640,10 +1780,10 @@ Some reduction functions like addition are not strictly associative for floats.
 However, if the range of the data is limited, floating-point addition is close
 enough to being associative for most practical uses. It is possible to conceive
 of some completely non-associative reductions, however, and these will produce
-incorrect or unpredictable results in XLA reductions.
+incorrect or unpredictable results in XLA.
 
 As an example, when reducing across one dimension in a single 1D array with
-values [10, 11, 12, 13], with reduction function `f` (this is `computation`)
+values `[10, 11, 12, 13]`, with reduction function `f` (this is `computation`)
 then that could be computed as
 
 `f(10, f(11, f(12, f(init_value, 13)))`
@@ -1722,16 +1862,27 @@ preserved in the output, but some dimensions may get assigned new numbers (since
 the rank changes).
 
 We can also reduce multiple dimensions. Add-reducing dimensions 0 and 1 produces
-the 1D array `| 20 28 36 |`.
+the 1D array `[20, 28, 36]`.
 
 Reducing the 3D array over all its dimensions produces the scalar `84`.
 
-When `N > 1`, reduce function application is slightly more complex, as it is
-applied simultaneously to all inputs. For example, consider the following
-reduction function, which can be used to compute the max and the argmax of a a
-1-D array in parallel:
+### Variadic Reduce
 
-```
+When `N > 1`, reduce function application is slightly more complex, as it is
+applied simultaneously to all inputs. The operands are supplied to the
+computation in the following order:
+
+*   Running reduced value for the first operand
+*   ...
+*   Running reduced value for the N'th operand
+*   Input value for the first operand
+*   ...
+*   Input value for the N'th operand
+
+For example, consider the following reduction function, which can be used to
+compute the max and the argmax of a 1-D array in parallel:
+
+```python
 f: (Float, Int, Float, Int) -> Float, Int
 f(max, argmax, value, index):
   if value >= argmax:
@@ -1743,6 +1894,7 @@ f(max, argmax, value, index):
 For 1-D Input arrays `V = Float[N], K = Int[N]`, and init values
 `I_V = Float, I_K =  Int`, the result `f_(N-1)` of reducing across the only
 input dimension is equivalent to the following recursive application:
+
 ```
 f_0 = f(I_V, I_K, V_0, K_0)
 f_1 = f(f_0.first, f_0.second, V_1, K_1)
@@ -2049,7 +2201,7 @@ Arguments                      | Type                | Semantics
 `operand`                      | `XlaOp`             | Array to be scattered into.
 `scatter_indices`              | `XlaOp`             | Array containing the starting indices of the slices that must be scattered to.
 `updates`                      | `XlaOp`             | Array containing the values that must be used for scattering.
-`update_computation`           | `XlaComputation`    | Computation to be used for combining the existing values in the input array and the updates during scatter. This computation should be of type `T, T -> T`.
+`update_computation`           | `XlaComputation`    | Computation to be used for combining the existing values in the input array and the updates during scatter. This computation should be of type `(T, T) -> T`.
 `index_vector_dim`             | `int64`             | The dimension in `scatter_indices` that contains the starting indices.
 `update_window_dims`           | `ArraySlice<int64>` | The set of dimensions in `updates` shape that are _window dimensions_.
 `inserted_window_dims`         | `ArraySlice<int64>` | The set of _window dimensions_ that must be inserted into `updates` shape.
@@ -2109,7 +2261,7 @@ For a given index `U` in the `updates` array, the corresponding index `I` in the
     at `update_window_dims` in `U` according to `inserted_window_dims`. More
     formally:
     1.  `W`<sub>`in`</sub>[`window_dims_to_operand_dims`(`k`)] = `U`[`k`] if `k`
-        < `update_window_dims.size`, where `window_dims_to_operand_dims` is the
+        is in `update_window_dims`, where `window_dims_to_operand_dims` is the
         monotonic function with domain [`0`, `update_window_dims.size`) and
         range [`0`, `operand.rank`) \\ `inserted_window_dims`. (For example, if
         `update_window_dims.size` is `4`, `operand.rank` is `6`, and
@@ -2125,7 +2277,7 @@ In summary, the scatter operation can be defined as follows.
     `operand` array: \
     `output`[`O`] = `operand`[`O`]
 -   For every index `U` in the `updates` array and the corresponding index `O`
-    in the `operand` array: \
+    in the `operand` array, if `O` is a valid index for `output`: \
     `output`[`O`] = `update_computation`(`output`[`O`], `updates`[`U`])
 
 The order in which updates are applied is non-deterministic. So, when multiple
@@ -2383,43 +2535,58 @@ Slice(b, {2, 1}, {4, 3}) produces:
 See also
 [`XlaBuilder::Sort`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
-There are two versions of the Sort instruction: a single-operand and a
-multi-operand version.
+<b>`Sort(operands, comparator, dimension, is_stable)`</b>
 
-<b>`Sort(operand, dimension)`</b>
+Arguments    | Type                | Semantics
+------------ | ------------------- | --------------------
+`operands`   | `ArraySlice<XlaOp>` | The operands to sort.
+`comparator` | `XlaComputation`    | The comparator computation to use.
+`dimension`  | `int64`             | The dimension along which to sort.
+`is_stable`  | `bool`              | Whether stable sorting should be used.
 
-Arguments   | Type    | Semantics
------------ | ------- | --------------------
-`operand`   | `XlaOp` | The operand to sort.
-`dimension` | `int64` | The dimension along which to sort.
+If only one operand is provided:
 
-Sorts the elements in the operand in ascending order along the provided
-dimension. For example, for a rank-2 (matrix) operand, a `dimension` value of 0
-will sort each column independently, and a `dimension` value of 1 will sort each
-row independently. If the operand's elements have floating point type, and the
-operand contains NaN elements, the order of elements in the output is
-implementation-defined.
+* If the operand is a rank-1 tensor (an array), the result is a sorted array.
+  If you want to sort the array into ascending order, the comparator should
+  perform a less-than comparison. Formally, after the array is sorted, it holds
+  for all index positions `i, j` with `i < j` that either
+  `comparator(value[i], value[j]) = comparator(value[j], value[i]) = false` or
+  `comparator(value[i], value[j]) = true`.
 
-<b>`Sort(keys, values, ... values, dimension)`</b>
+* If the operand has higher rank, the operand is sorted along the provided
+  dimension. For example, for a rank-2 tensor (a matrix), a dimension value of
+  `0` will independently sort every column, and a dimension value of `1` will
+  independently sort each row. If no dimension number is provided, then the last
+  dimension is chosen by default. For the dimension which is sorted, the same
+  sorting order applies as in the rank-1 case.
 
-Sorts both the key and one or more value operands. The keys are sorted as in the
-single-operand version. Each of the values inputs is sorted according to the
-order of the corresponding keys. For example, if the three inputs are `keys =
-[3, 1]`, `values0 = [42, 50]`, `values1 = [-3.0, 1.1]`, then the output of the
-sort is the tuple `{[1, 3], [50, 42], [1.1, -3.0]}`.
+If `n > 1` operands are provided:
 
-The sort is not guaranteed to be stable, that is, if the keys array contains
-duplicates, the order of values corresponding to these keys may not be
-preserved.
+* All `n` operands must be tensors with the same dimensions. The element types
+  of the tensors may be different.
 
-Arguments   | Type                   | Semantics
------------ | ---------------------- | ----------------------------------
-`keys`      | `XlaOp`                | The sort keys.
-`values`    | Sequence of N `XlaOp`s | The values to sort.
-`dimension` | `int64`                | The dimension along which to sort.
+* All operands are sorted together, not individually. Conceptually the operands
+  are treated as a tuple. When checking whether the elements of each operand at
+  index positions `i` and `j` need to be swapped, the comparator is called with
+  `2 * n` scalar parameters, where parameter `2 * k` corresponds to the value at
+  position `i` from the `k-th` operand, and parameter `2 * k + 1` corresponds to
+  the value at position `j` from the `k-th` operand. Usually, the comparator
+  would thus compare parameters `2 * k` and `2 * k + 1` with each other and
+  possibly use other parameter pairs as tie breakers.
 
-The `keys` and each of the `values` inputs must have the same dimensions, but
-may have different element types.
+* The result is a tuple that consists of the operands in sorted order (along
+  the provided dimension, as above). The `i-th` operand of the tuple corresponds
+  to the `i-th` operand of Sort.
+
+For example, if there are three operands `operand0 = [3, 1]`,
+`operand1 = [42, 50]`, `operand2 = [-3.0, 1.1]`, and the comparator compares
+only the values of `operand0` with less-than, then the output of the sort is the
+tuple `([1, 3], [50, 42], [1.1, -3.0])`.
+
+If `is_stable` is set to true, the sort is guaranteed to be stable, that is, if
+there are elements which are considered to be equal by the comparator, the
+relative order of the equal values is preserved. By default, `is_stable` is set
+to false.
 
 ## Transpose
 
@@ -2438,6 +2605,46 @@ Permutes the operand dimensions with the given permutation, so
 
 This is the same as Reshape(operand, permutation,
                             Permute(permutation, operand.shape.dimensions)).
+
+## TriangularSolve
+
+See also
+[`XlaBuilder::TriangularSolve`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Solves systems of linear equations with lower or upper triangular coefficient
+matrices by forward- or back-substitution. Broadcasting along leading
+dimensions, this routine solves one of the matrix systems `op(a) * x =
+b`, or `x * op(a) = b`, for the variable `x`, given `a` and `b`, where `op(a)` is
+either `op(a) = a`, or `op(a) = Transpose(a)`, or `op(a) = Conj(Transpose(a))`.
+
+<b> `TriangularSolve(a, b, left_side, lower, unit_diagonal, transpose_a)` </b>
+
+| Arguments       | Type        | Semantics                                    |
+| --------------- | ----------- | -------------------------------------------- |
+| `a`             | `XlaOp`     | a rank > 2 array of a complex or             |
+:                 :             : floating-point type with shape `[..., M,     :
+:                 :             : M]`.                                         :
+| `b`             | `XlaOp`     | a rank > 2 array of the same type with shape |
+:                 :             : `[..., M, K]` if `left_side` is true, `[..., :
+:                 :             : K, M]` otherwise.                            :
+| `left_side`     | `bool`      | indicates whether to solve a system of the   |
+:                 :             : form `op(a) * x = b` (`true`) or `x *        :
+:                 :             : op(a) = b` (`false`).                        :
+| `lower`         | `bool`      | whether to use the upper or lower triangle   |
+:                 :             : of `a`.                                      :
+| `unit_diagonal` | `bool`      | if `true`, the diagonal elements of `a` are  |
+:                 :             : assumed to be `1` and not accessed.          :
+| `transpose_a`   | `Transpose` | whether to use `a` as is, transpose it or    |
+:                 :             : take its conjugate transpose.                :
+
+Input data is read only from the lower/upper triangle of `a`, depending on the
+value of `lower`. Values from the other triangle are ignored. Output data is
+returned in the same triangle; the values in the other triangle are
+implementation-defined and may be anything.
+
+If the rank of `a` and `b` are greater than 2, they are treated as batches of
+matrices, where all except the minor 2 dimensions are batch dimensions. `a` and
+`b` must have equal batch dimensions.
 
 ## Tuple
 

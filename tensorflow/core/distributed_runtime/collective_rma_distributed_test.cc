@@ -97,8 +97,7 @@ class FakeWorker : public TestWorkerInterface {
     });
     buf_rendezvous_.ConsumeBuf(
         request->buf_rendezvous_key(),
-        [this, opts, request, response, done](const Status& s,
-                                              BufRendezvous::Hook* h) {
+        [opts, response, done](const Status& s, BufRendezvous::Hook* h) {
           if (s.ok()) {
             opts->ClearCancelCallback();
             // Since this is not really RDMA into pre-allocated memory send the
@@ -147,7 +146,6 @@ class FakeCache : public TestWorkerCache {
     WorkerInterface* wi = it->second;
     GetStatusRequest req;
     GetStatusResponse resp;
-    Notification note;
     Status status = wi->GetStatus(&req, &resp);
     if (!status.ok()) {
       done(status);
@@ -267,11 +265,10 @@ TEST_F(CollRMADistTest, ProdFirstOK) {
   wi->buf_rendezvous()->ProvideBuf(
       kBufKey, nullptr /*device*/, nullptr /*dev_ctx*/, &expected_value_,
       AllocatorAttributes(),
-      [this, &producer_note, &producer_status](const Status& s) {
+      [&producer_note, &producer_status](const Status& s) {
         producer_status.Update(s);
         producer_note.Notify();
       });
-  Status status;
   Device* dst_device = nullptr;
   string dev_name = "CPU:0";
   TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
@@ -282,7 +279,7 @@ TEST_F(CollRMADistTest, ProdFirstOK) {
       false,                                              // peer_is_local
       kBufKey, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
       device_locality_, 0 /*dev_to_dev_stream_index*/,
-      [this, &consumer_status, &consumer_note](const Status& s) {
+      [&consumer_status, &consumer_note](const Status& s) {
         consumer_status = s;
         consumer_note.Notify();
       });
@@ -300,7 +297,6 @@ TEST_F(CollRMADistTest, ConsFirstOK) {
   Status producer_status;
   FakeWorker* wi = workers_[1];
   const string kBufKey = "fake_buf_key";
-  Status status;
   Device* dst_device = nullptr;
   string dev_name = "CPU:0";
   TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
@@ -311,14 +307,14 @@ TEST_F(CollRMADistTest, ConsFirstOK) {
       false,                                              // peer_is_local
       kBufKey, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
       device_locality_, 0 /*dev_to_dev_stream_index*/,
-      [this, &consumer_status, &consumer_note](const Status& s) {
+      [&consumer_status, &consumer_note](const Status& s) {
         consumer_status = s;
         consumer_note.Notify();
       });
   wi->buf_rendezvous()->ProvideBuf(
       kBufKey, nullptr /*device*/, nullptr /*dev_ctx*/, &expected_value_,
       AllocatorAttributes(),
-      [this, &producer_note, &producer_status](const Status& s) {
+      [&producer_note, &producer_status](const Status& s) {
         producer_status.Update(s);
         producer_note.Notify();
       });
@@ -333,7 +329,6 @@ TEST_F(CollRMADistTest, ConsFirstAbort) {
   Notification consumer_note;
   Status consumer_status;
   const string kBufKey = "fake_buf_key";
-  Status status;
   Device* dst_device = nullptr;
   string dev_name = "CPU:0";
   TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
@@ -344,7 +339,7 @@ TEST_F(CollRMADistTest, ConsFirstAbort) {
       false,                                              // peer_is_local
       kBufKey, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
       device_locality_, 0 /*dev_to_dev_stream_index*/,
-      [this, &consumer_status, &consumer_note](const Status& s) {
+      [&consumer_status, &consumer_note](const Status& s) {
         consumer_status = s;
         consumer_note.Notify();
       });

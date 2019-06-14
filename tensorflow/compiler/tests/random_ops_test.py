@@ -36,11 +36,11 @@ class RandomOpsTest(xla_test.XLATestCase):
 
   def _random_types(self):
     return set(self.numeric_types) - set(
-        self.complex_types) - {np.uint8, np.int8}
+        self.complex_types) - {np.uint64, np.int64, np.uint8, np.int8}
 
   def _testRngIsNotConstant(self, rng, dtype):
     # Tests that 'rng' does not always return the same value.
-    with self.cached_session() as sess:
+    with self.session() as sess:
       with self.test_scope():
         x = rng(dtype)
 
@@ -72,6 +72,30 @@ class RandomOpsTest(xla_test.XLATestCase):
     for dtype in self._random_types() & self.float_types:
       self._testRngIsNotConstant(rng, dtype)
 
+  def testRandomNormalMean(self):
+    for dtype in self._random_types() & self.float_types:
+      with self.session():
+        with self.test_scope():
+          normal = random_ops.random_normal([1024],
+                                            dtype=dtype,
+                                            mean=1.4,
+                                            stddev=1.2)
+          mean = math_ops.reduce_mean(normal)
+          x = self.evaluate(mean)
+          self.assertAllClose(x, 1.4, rtol=1e-1, atol=1e-1)
+
+  def testRandomNormalVariance(self):
+    for dtype in self._random_types() & self.float_types:
+      with self.session():
+        with self.test_scope():
+          normal = random_ops.random_normal([1024],
+                                            dtype=dtype,
+                                            mean=2.3,
+                                            stddev=2.0)
+          variance = math_ops.reduce_variance(normal)
+          x = self.evaluate(variance)
+          self.assertAllClose(x, 4.0, rtol=1e-1, atol=1e-1)
+
   def testRandomUniformIsInRange(self):
     for dtype in self._random_types():
       # TODO (b/112272078): enable bfloat16 for CPU and GPU when the bug is
@@ -79,7 +103,7 @@ class RandomOpsTest(xla_test.XLATestCase):
       if (self.device in ["XLA_GPU", "XLA_CPU"
                          ]) and (dtype in [dtypes.bfloat16, dtypes.half]):
         continue
-      with self.cached_session() as sess:
+      with self.session() as sess:
         with self.test_scope():
           x = random_ops.random_uniform(
               shape=[1000], dtype=dtype, minval=-2, maxval=33)
@@ -92,14 +116,13 @@ class RandomOpsTest(xla_test.XLATestCase):
     def rng(dtype):
       return random_ops.truncated_normal(shape=[2], dtype=dtype)
 
-    for dtype in self._random_types() & self.float_types:
-      self._testRngIsNotConstant(rng, dtype)
+    self._testRngIsNotConstant(rng, dtypes.float32)
 
   def testTruncatedNormalIsInRange(self):
     count = 10000000
     # TODO(b/34339814): make this test work with 16 bit float types.
     for dtype in self._random_types() & {dtypes.float32, dtypes.float64}:
-      with self.cached_session() as sess:
+      with self.session() as sess:
         with self.test_scope():
           x = random_ops.truncated_normal(shape=[count], dtype=dtype)
         y = self.evaluate(x)
@@ -122,8 +145,8 @@ class RandomOpsTest(xla_test.XLATestCase):
         beta = (b - mu) / sigma
         z = normal_cdf(beta) - normal_cdf(alpha)
 
-        self.assertTrue((y >= a).sum() == count)
-        self.assertTrue((y <= b).sum() == count)
+        self.assertEqual((y >= a).sum(), count)
+        self.assertEqual((y <= b).sum(), count)
 
         # For more information on these calculations, see:
         # Burkardt, John. "The Truncated Normal Distribution".
@@ -144,7 +167,7 @@ class RandomOpsTest(xla_test.XLATestCase):
         self.assertAllClose(actual_variance, expected_variance, rtol=2*1e-3)
 
   def testShuffle1d(self):
-    with self.cached_session() as sess:
+    with self.session() as sess:
       with self.test_scope():
         x = math_ops.range(1 << 16)
         shuffle = random_ops.random_shuffle(x)
@@ -155,7 +178,7 @@ class RandomOpsTest(xla_test.XLATestCase):
       self.assertAllEqual(set(result), set(expected))
 
   def testShuffle2d(self):
-    with self.cached_session() as sess:
+    with self.session() as sess:
       with self.test_scope():
         x = array_ops.diag(math_ops.range(20))
         shuffle = random_ops.random_shuffle(x)

@@ -34,16 +34,35 @@ from tensorflow.python.autograph.pyct import templates
 # TODO(mdan): Rename to FunctionCallsTransformer.
 
 
+class _Function(object):
+
+  no_root = True
+
+
 class CallTreeTransformer(converter.Base):
   """Transforms the call tree by renaming transformed symbols."""
 
   def visit_FunctionDef(self, node):
+    self.state[_Function].enter()
     node.args = self.visit(node.args)
     node.body = self.visit_block(node.body)
-    # TODO(mdan): Is this correct for local functions?
-    node.decorator_list = []
+
+    if self.state[_Function].level < 2:
+      # Top-level functions lose their decorator because the conversion is
+      # always just-in-time and by the time it happens the decorators are
+      # already set to be applied.
+      node.decorator_list = []
+    else:
+      # Inner functions are converted already, so we insert a decorator to
+      # prevent double conversion. Double conversion would work too, but this
+      # saves the overhead.
+      node.decorator_list.append(
+          parser.parse_expression('ag__.do_not_convert_internal'))
+
     if node.returns:
       node.returns = self.visit(node.returns)
+
+    self.state[_Function].exit()
     return node
 
   def visit_With(self, node):
@@ -77,6 +96,7 @@ class CallTreeTransformer(converter.Base):
         assert starred_arg is None, 'Multiple *args should be impossible.'
         starred_arg = a
       else:
+        a = self.visit(a)
         normal_args.append(a)
     if starred_arg is None:
       args = templates.replace_as_expression('(args,)', args=normal_args)
@@ -93,9 +113,13 @@ class CallTreeTransformer(converter.Base):
         assert kwargs_arg is None, 'Multiple **kwargs should be impossible.'
         kwargs_arg = k
       else:
+        k = self.visit(k)
         normal_keywords.append(k)
     if kwargs_arg is None:
-      kwargs = ast_util.keywords_to_dict(normal_keywords)
+      if not normal_keywords:
+        kwargs = parser.parse_expression('None')
+      else:
+        kwargs = ast_util.keywords_to_dict(normal_keywords)
     else:
       kwargs = templates.replace_as_expression(
           'dict(kwargs, **keywords)',
@@ -110,12 +134,27 @@ class CallTreeTransformer(converter.Base):
         func=func,
         owner=owner,
         options=self.ctx.program.options.to_ast(
-            self.ctx,
             internal_convert_user_code=self.ctx.program.options.recursive),
         args=args,
         kwargs=kwargs)
 
     return new_call
+
+  def visit_Print(self, node):
+    node = self.generic_visit(node)
+    args = node.values
+    # Following is the case when calling print(a, b)
+    if len(args) == 1 and isinstance(args[0], gast.Tuple):
+      args = args[0].elts
+
+    template = """
+      ag__.converted_call(func, None, options, args, {})
+    """
+    return templates.replace_as_expression(
+        template,
+        func='print',
+        options=self.ctx.program.options.to_ast(),
+        args=args)
 
 
 def transform(node, ctx):

@@ -72,13 +72,16 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleConvolution(const HloInstruction* convolution) override;
   Status HandleFft(const HloInstruction* fft) override;
   Status HandleTriangularSolve(const HloInstruction* hlo) override;
+  Status HandleCholesky(const HloInstruction* hlo) override;
   Status HandleAllReduce(const HloInstruction* crs) override;
   Status HandleAllToAll(const HloInstruction* hlo) override;
   Status HandleCollectivePermute(const HloInstruction* hlo) override;
   Status HandleReplicaId(const HloInstruction* hlo) override;
+  Status HandlePartitionId(const HloInstruction* hlo) override;
   Status HandleInfeed(const HloInstruction* infeed) override;
   Status HandleOutfeed(const HloInstruction* outfeed) override;
   Status HandleRng(const HloInstruction* random) override;
+  Status HandleRngGetAndUpdateState(const HloInstruction* random) override;
   Status HandleReverse(const HloInstruction* reverse) override;
   Status HandleSort(const HloInstruction* sort) override;
   Status HandleParameter(const HloInstruction* parameter) override;
@@ -194,6 +197,10 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // Decorates shape_size_ by returning 0 immediately if the shape does not have
   // a layout.
   int64 GetShapeSize(const Shape& shape) const;
+
+  // Traverses a fusion operand to find the actual bytes accessed by the fusion
+  // node.
+  int64 FusionParameterReadBytes(const HloInstruction* hlo) const;
 
   // Function which computes the size of the top-level of a given shape (not
   // including nested elements, if any). If null then bytes_accessed methods

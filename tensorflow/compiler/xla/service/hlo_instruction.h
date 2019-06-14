@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -79,6 +80,7 @@ class HloPrintOptions {
         print_metadata_(true),
         print_backend_config_(true),
         compact_operands_(false),
+        include_layout_in_shapes_(true),
         print_operand_shape_(true),
         print_operand_names_(true),
         print_program_shape_(true),
@@ -177,6 +179,13 @@ class HloPrintOptions {
     return *this;
   }
 
+  // If true, include the layout in any shapes that are printed (instruction
+  // and operands).
+  HloPrintOptions& set_include_layout_in_shapes(bool value) {
+    include_layout_in_shapes_ = value;
+    return *this;
+  }
+
   // If true, canonicalizes instructions' name. Instead of using "%foo.1" as
   // the name of an instruction, we use "%tmp_1", "%tmp_2" etc.
   HloPrintOptions& set_canonicalize_instruction_names(bool value) {
@@ -204,6 +213,7 @@ class HloPrintOptions {
   bool print_metadata() const { return print_metadata_; }
   bool print_backend_config() const { return print_backend_config_; }
   bool compact_operands() const { return compact_operands_; }
+  bool include_layout_in_shapes() const { return include_layout_in_shapes_; }
   bool print_operand_shape() const { return print_operand_shape_; }
   bool print_operand_names() const { return print_operand_names_; }
   bool print_program_shape() const { return print_program_shape_; }
@@ -223,6 +233,7 @@ class HloPrintOptions {
   bool print_metadata_;
   bool print_backend_config_;
   bool compact_operands_;
+  bool include_layout_in_shapes_;
   bool print_operand_shape_;
   bool print_operand_names_;
   bool print_program_shape_;
@@ -397,6 +408,12 @@ class HloInstruction {
       const Shape& shape, RandomDistribution distribution,
       absl::Span<HloInstruction* const> parameters);
 
+  // Creates an instruction to update the random number generator state to
+  // reflect the new state after `delta` units of 32 random bits are generated
+  // and returns the old state.
+  static std::unique_ptr<HloInstruction> CreateRngGetAndUpdateState(
+      const Shape& shape, int64 delta);
+
   // Creates a unary instruction (one operand).
   // Precondition: opcode must be a legitimate unary operation.
   static std::unique_ptr<HloInstruction> CreateUnary(const Shape& shape,
@@ -444,9 +461,17 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand, FftType fft_type,
       absl::Span<const int64> fft_length);
 
+  // Creates a compare op, performing the comparison specified in direction.
+  static std::unique_ptr<HloInstruction> CreateCompare(
+      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+      ComparisonDirection direction);
+
   static std::unique_ptr<HloInstruction> CreateTriangularSolve(
       const Shape& shape, HloInstruction* a, HloInstruction* b,
       const TriangularSolveOptions& options);
+
+  static std::unique_ptr<HloInstruction> CreateCholesky(
+      const Shape& shape, HloInstruction* a, const CholeskyOptions& options);
 
   // Creates a dot op with operands 'lhs' and 'rhs' with contracting and batch
   // dimensions specified in 'dimension_numbers'.
@@ -481,19 +506,34 @@ class HloInstruction {
       const std::vector<ReplicaGroup>& replica_groups,
       absl::string_view barrier, const absl::optional<int64>& all_reduce_id);
 
-  // This op handles the communication of an Alltoall operation. On each core,
-  // the operands are N ops in the same shape, where N is the number of cores
-  // participating the Alltoall. Then the N operands are scattered to N cores,
-  // e.g., the ith operand is sent to the ith core. Then each core gathers the
-  // received data into a tuple.
+  // An all-to-all op takes N array operands of the same shape and scatters them
+  // to N replicas.  Each replica gathers the results into a tuple.
   //
-  // - `replica_groups`: each ReplicaGroup contains a list of replica id. If
-  // empty, all replicas belong to one group in the order of 0 - (n-1). Alltoall
-  // will be applied within subgroups in the specified order. For example,
-  // replica groups = {{1,2,3},{4,5,0}} means, an Alltoall will be applied
-  // within replica 1, 2, 3, and in the gather phase, the received blocks will
-  // be concatenated in the order of 1, 2, 3; another Alltoall will be applied
-  // within replica 4, 5, 0, and the concatenation order is 4, 5, 0.
+  // For example, suppose we have 3 replicas, with replica i passing inputs
+  // [a_i, b_i, c_i] to its all-to-all op.  Then the resulting tuples are
+  //
+  //   replica 0: (a_0, a_1, a_2)
+  //   replica 1: (b_0, b_1, b_2)
+  //   replica 2: (c_0, c_1, c_2).
+  //
+  // If replica_groups is set, the op is sharded and the replicas are permuted.
+  // To explain by way of example, suppose we have replica_groups={{1,2},{3,0}}.
+  // Then each replica passes two operands, say [a_i, b_i], and the result is
+  //
+  //   replica 0: (b_3, b_0)
+  //   replica 1: (a_1, a_2)
+  //   replica 2: (b_1, b_2)
+  //   replica 3: (a_3, a_0).
+  //
+  // All replica groups must have the same number of elements, and the number of
+  // operands must be equal to the size of one replica group.  Each replica must
+  // appear in exactly one group.
+  //
+  // Note that this instruction is different than the all-to-all op in
+  // xla_builder.h.  The version in XlaBuilder takes one input and slices it,
+  // and then concatenates the results into a single array.  This instruction
+  // takes multiple inputs and returns a tuple; it doesn't slice or concatenate.
+  // It is used to implement the higher-level instruction in XlaBuilder.
   static std::unique_ptr<HloInstruction> CreateAllToAll(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       const std::vector<ReplicaGroup>& replica_groups);
@@ -509,6 +549,9 @@ class HloInstruction {
 
   // Creates an instruction that returns a U32 replica ID.
   static std::unique_ptr<HloInstruction> CreateReplicaId();
+
+  // Creates an instruction that returns a U32 partition ID.
+  static std::unique_ptr<HloInstruction> CreatePartitionId();
 
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.
@@ -708,6 +751,11 @@ class HloInstruction {
       HloInstruction* true_computation_arg, HloComputation* true_computation,
       HloInstruction* false_computation_arg, HloComputation* false_computation);
 
+  static std::unique_ptr<HloInstruction> CreateConditional(
+      const Shape& shape, HloInstruction* branch_index,
+      absl::Span<HloComputation* const> branch_computations,
+      absl::Span<HloInstruction* const> branch_computation_args);
+
   static std::unique_ptr<HloInstruction> CreateGather(
       const Shape& shape, HloInstruction* operand,
       HloInstruction* start_indices,
@@ -750,7 +798,7 @@ class HloInstruction {
   // backend-specific interpretation. "shape" is the resultant shape.
   static std::unique_ptr<HloInstruction> CreateCustomCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      absl::string_view custom_call_target, absl::string_view opaque = "");
+      absl::string_view custom_call_target, string opaque = "");
 
   // Overload which constrains the layouts of the operand and result. 'shape'
   // and 'operand_shapes_with_layout' must have layouts.
@@ -759,8 +807,7 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateCustomCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::string_view custom_call_target,
-      absl::Span<const Shape> operand_shapes_with_layout,
-      absl::string_view opaque = "");
+      absl::Span<const Shape> operand_shapes_with_layout, string opaque = "");
 
   // Creates a tuple instruction with the given elements. This is a convenience
   // wrapper around CreateVariadic.
@@ -949,6 +996,10 @@ class HloInstruction {
   // operands of it which could be created due to this replacement.
   Status ReplaceUseWith(HloInstruction* user, HloInstruction* new_producer);
 
+  // Same as ReplaceUseWith(), but new_producer can have a different shape.
+  Status ReplaceUseWithDifferentShape(HloInstruction* user,
+                                      HloInstruction* new_producer);
+
   // Replaces the specified operand with new_operand. The old and new operands
   // must have compatible shapes ignoring floating-point precision.
   //
@@ -1050,14 +1101,23 @@ class HloInstruction {
 
   HloInstruction* while_init() const;
 
-  // Gets/sets the true and false HloComputation for Conditional. The setters
-  // should only be called by HloModule or HloComputation methods.
+  // Gets/sets the true and false HloComputation for Conditional.
   //
-  // Precondition: The instruction is a Conditional instruction.
+  // Precondition: The instruction is a predicated Conditional instruction.
   HloComputation* true_computation() const;
   HloComputation* false_computation() const;
-  void set_true_computation(HloComputation* true_computation);
-  void set_false_computation(HloComputation* false_computation);
+
+  // Gets the branch HloComputations for Conditional.
+  //
+  // Precondition: The instruction is a Conditional instruction.
+  const std::vector<HloComputation*>& branch_computations() const;
+  int branch_count() const;
+  HloComputation* branch_computation(int b) const;
+  // Sets a branch HloComputation for Conditional.
+  // The setter should only be called by HloModule or HloComputation methods.
+  //
+  // Precondition: The instruction is a Conditional instruction.
+  void set_branch_computation(int b, HloComputation* computation);
 
   // Returns a string for the signature of this instruction if considered as a
   // function, e.g. the signature of an F32 add is (F32, F32) -> F32.
@@ -1102,6 +1162,11 @@ class HloInstruction {
   // Returns true if this instruction is fused, ie contained within a fusion
   // instruction.
   bool IsFused() const;
+
+  bool IsLoopFusion() const;
+  bool IsInputFusion() const;
+  bool IsOutputFusion() const;
+  bool IsCustomFusion() const;
 
   // Returns true if this instruction can be legally fused into a fusion
   // instruction.
@@ -1199,10 +1264,8 @@ class HloInstruction {
 
   // Returns true if this instruction performs an elementwise operation on
   // `operand_idx`-th operand. An instruction is elementwise on an operand iff,
-  // after performing necessary implicit broadcast
-  // (cs/IrArray::EmitArrayElementAddress), to compute the output at index
-  // {i_0,i_1,...,i_n}, the only element required from the operand (if any) is
-  // the element at {i_0,i_1,...,i_n}.
+  // to compute the output at index {i_0,i_1,...,i_n}, the only element required
+  // from the operand (if any) is the element at {i_0,i_1,...,i_n}.
   //
   // Note on performance: when this instruction is kFusion, this method, in the
   // worst case, scans all fused instructions. We could speed this up by
@@ -1217,12 +1280,6 @@ class HloInstruction {
 
   // Returns true if this is a cross-replica all-reduce instruction.
   bool IsCrossReplicaAllReduce() const;
-
-  // Returns true if this elementwise instruction implicitly broadcasts operand
-  // `operand_idx`.
-  //
-  // Precondition: this instruction should be an elementwise operation.
-  bool ImplicitlyBroadcastsOperand(int64 operand_idx) const;
 
   // Returns true if this instruction is binary and elementwise.
   bool IsElementwiseBinary() const;
@@ -1278,7 +1335,8 @@ class HloInstruction {
   // this HLO. The meaning of the field is backend specific. Not for use before
   // or during general HLO optimization, since HLO optimizations do not preserve
   // this field and they cannot interpret it due to its meaning being backend
-  // specific.
+  // specific. Except for CustomCall, where this field is preserved and no
+  // general HLO optimization needs to interpret it.
   //
   // ConfigProto should be a protobuf Message type.
   template <typename ConfigProto>
@@ -1473,6 +1531,8 @@ class HloInstruction {
   // HloParameterInstruction::set_parameter_replicated_at_leaf_buffers.
   void set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool> parameter_replicated_at_leaf_buffers);
+  void set_parameter_replicated_at_leaf_buffers(
+      const std::vector<bool>& parameter_replicated_at_leaf_buffers);
 
   // Delegates to HloParameterInstruction::parameter_replicated_at_leaf_buffers.
   const absl::optional<std::vector<bool>>&
@@ -1480,6 +1540,9 @@ class HloInstruction {
 
   // Delegates to HloGetTupleElementInstruction::tuple_index.
   int64 tuple_index() const;
+
+  // Delegates to HloGetTupleElementInstruction::set_tuple_index.
+  void set_tuple_index(int64 new_tuple_index);
 
   // Delegates to HloReducePrecisionInstruction::exponent_bits.
   int32 exponent_bits() const;
@@ -1587,8 +1650,14 @@ class HloInstruction {
   // Delegates to HloDomainInstruction::user_side_metadata().
   const DomainMetadata& user_side_metadata() const;
 
+  // Delegates to HloCompareInstruction::direction().
+  ComparisonDirection comparison_direction() const;
+
   // Delegates to HloTriangularSolveInstruction::triangular_solve_options().
   const TriangularSolveOptions& triangular_solve_options() const;
+
+  // Delegates to HloCholeskyInstruction::cholesky_options().
+  const CholeskyOptions& cholesky_options() const;
 
   // Old methods kept for smooth subclassing transition END.
 
@@ -1773,6 +1842,12 @@ class HloInstruction {
   TF_DISALLOW_COPY_AND_ASSIGN(HloInstruction);
 };
 
+// Explicit instantiations in hlo_instruction.cc.
+extern template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool);
+extern template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool);
+extern template Status HloInstruction::Visit(DfsHloVisitor* visitor);
+extern template Status HloInstruction::Visit(ConstDfsHloVisitor* visitor);
+
 string ToString(HloInstruction::FusionKind kind);
 StatusOr<HloInstruction::FusionKind> StringToFusionKind(
     const string& kind_name);
@@ -1785,6 +1860,7 @@ string RandomDistributionToString(const RandomDistribution& distribution);
 string PrecisionToString(const PrecisionConfig::Precision& precision);
 string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
+string ReplicaGroupsToString(const std::vector<ReplicaGroup>& replica_groups);
 
 StatusOr<RandomDistribution> StringToRandomDistribution(const string& name);
 StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name);

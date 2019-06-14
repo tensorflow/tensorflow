@@ -128,7 +128,7 @@ def xla_test(
         srcs = srcs,
         copts = copts,
         testonly = True,
-        deps = deps + ["//tensorflow/compiler/xla/tests:test_macros_header"],
+        deps = deps,
     )
 
     for backend in filter_backends(backends):
@@ -265,6 +265,8 @@ def generate_backend_test_macros(backends = []):
                 "-DXLA_DISABLED_MANIFEST=\\\"%s\\\"" % manifest,
             ],
             deps = [
+                "@com_google_absl//absl/container:flat_hash_map",
+                "@com_google_absl//absl/strings",
                 "//tensorflow/compiler/xla:types",
                 "//tensorflow/core:lib",
                 "//tensorflow/core:regexp_internal",

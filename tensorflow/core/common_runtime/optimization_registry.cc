@@ -46,7 +46,7 @@ Status OptimizationPassRegistry::RunGrouping(
                 strings::StrCat(
                     "after_phase_", phase.first, "_", pass->name(), "_",
                     reinterpret_cast<uintptr_t>((*options.graph).get())),
-                **options.graph);
+                **options.graph, options.flib_def);
           }
           if (options.partition_graphs) {
             for (auto& part : *options.partition_graphs) {
@@ -55,7 +55,7 @@ Status OptimizationPassRegistry::RunGrouping(
                       "after_phase_", phase.first, "_", pass->name(),
                       "_partition_", part.first, "_",
                       reinterpret_cast<uintptr_t>(part.second.get())),
-                  *part.second);
+                  *part.second, options.flib_def);
             }
           }
         }

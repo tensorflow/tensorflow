@@ -194,10 +194,11 @@ class DocGeneratorVisitor(object):
       contrib_score = 1
 
     while parts:
-      parts.pop()
       container = self._index['.'.join(parts)]
       if tf_inspect.ismodule(container):
         break
+      parts.pop()
+
     module_length = len(parts)
     if len(parts) == 2:
       # `tf.submodule.thing` is better than `tf.thing`

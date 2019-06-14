@@ -18,7 +18,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "tensorflow/contrib/seq2seq/kernels/beam_search_ops.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 namespace functor {
@@ -90,17 +90,12 @@ struct GatherTree<GPUDevice, T> {
     // First kernel launch to "zero" things out
     beams.device(d) = beams.constant(end_token);
 
-    CudaLaunchConfig config = GetCudaLaunchConfig(batch_size * beam_width, d);
-    // clang-format off
-    GatherTreeOpKernel<T>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            batch_size, max_time, beam_width,
-            step_ids.data(),
-            parent_ids.data(),
-            max_sequence_length.data(),
-            end_token,
-            beams.data());
-    // clang-format on
+    GpuLaunchConfig config = GetCudaLaunchConfig(batch_size * beam_width, d);
+    TF_CHECK_OK(CudaLaunchKernel(
+        GatherTreeOpKernel<T>, config.block_count, config.thread_per_block, 0,
+        d.stream(), batch_size, max_time, beam_width, step_ids.data(),
+        parent_ids.data(), max_sequence_length.data(), end_token,
+        beams.data()));
   }
 };
 

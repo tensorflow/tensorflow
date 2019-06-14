@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/profiling/profile_summarizer.h"
+
 #include <string>
 #include <vector>
 
@@ -22,7 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
-#include "tensorflow/lite/profiling/profile_summarizer.h"
+#include "tensorflow/lite/profiling/buffered_profiler.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/version.h"
 
@@ -33,7 +35,6 @@ namespace {
 
 const char* kOpName = "SimpleOpEval";
 
-#ifdef TFLITE_PROFILING_ENABLED
 TfLiteStatus SimpleOpEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input1 = tflite::GetInput(context, node, /*index=*/0);
   const TfLiteTensor* input2 = tflite::GetInput(context, node, /*index=*/1);
@@ -69,7 +70,6 @@ TfLiteRegistration* RegisterSimpleOpWithProfilingDetails() {
                                             1};
   return &registration;
 }
-#endif
 
 class SimpleOpModel : public SingleOpModel {
  public:
@@ -101,9 +101,8 @@ TEST(ProfileSummarizerTest, Empty) {
   EXPECT_GT(output.size(), 0);
 }
 
-#ifdef TFLITE_PROFILING_ENABLED
 TEST(ProfileSummarizerTest, Interpreter) {
-  Profiler profiler;
+  BufferedProfiler profiler;
   SimpleOpModel m;
   m.Init(RegisterSimpleOp);
   auto interpreter = m.GetInterpreter();
@@ -124,7 +123,7 @@ TEST(ProfileSummarizerTest, Interpreter) {
 }
 
 TEST(ProfileSummarizerTest, InterpreterPlusProfilingDetails) {
-  Profiler profiler;
+  BufferedProfiler profiler;
   SimpleOpModel m;
   m.Init(RegisterSimpleOpWithProfilingDetails);
   auto interpreter = m.GetInterpreter();
@@ -144,8 +143,6 @@ TEST(ProfileSummarizerTest, InterpreterPlusProfilingDetails) {
   ASSERT_TRUE(output.find("SimpleOpEval:Profile") != std::string::npos)
       << output;
 }
-
-#endif
 
 }  // namespace
 }  // namespace profiling

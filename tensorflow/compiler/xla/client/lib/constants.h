@@ -46,6 +46,8 @@ XlaOp ConstantR0WithType(XlaBuilder* builder, PrimitiveType type, T value) {
         PrimitiveType_Name(type)));
   }
   switch (type) {
+    case PRED:
+      return ConstantR0<bool>(builder, static_cast<bool>(value));
     case F16:
       return ConstantR0<half>(builder, static_cast<half>(value));
     case BF16:
@@ -134,6 +136,9 @@ XlaOp MinValue(XlaBuilder* builder, PrimitiveType type);
 // Returns the minimum representable finite value for 'type'. For a floating
 // point type, this is equal to -MaxFiniteValue().
 XlaOp MinFiniteValue(XlaBuilder* builder, PrimitiveType type);
+
+// Returns the minimum positive normal value for floating-point type `type`.
+XlaOp MinPositiveNormalValue(XlaBuilder* builder, PrimitiveType type);
 
 // Returns the maximum representable finite or infinite value for 'type'.
 // Returns 'inf' for floating-point types.

@@ -23,7 +23,6 @@ from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import op_hint
 from tensorflow.lite.python.interpreter import Interpreter
-from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -35,7 +34,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("Incompatible with 2.0.")
 class ConvertTest(test_util.TensorFlowTestCase):
 
   def testBasic(self):
@@ -178,7 +177,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
         "QUANTIZED_UINT8.", str(error.exception))
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("Incompatible with 2.0.")
 class ConvertTestOpHint(test_util.TensorFlowTestCase):
   """Test the hint to stub functionality."""
 
@@ -323,6 +322,7 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
       self.assertEqual(self._get_input_index(a), 0)
       self.assertEqual(self._get_sort_index(a), 0)
       self.assertEqual(self._get_input_index(b), 1)
+      self.assertEqual(self._get_sort_index(b), 0)
       self.assertEqual(self._get_input_index(c), 0)
       self.assertEqual(self._get_sort_index(c), 1)
 
@@ -368,27 +368,6 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
               stubbed_graphdef,
               output_nodes=[op_hint._tensor_name_base(output.name)]),
           set(["agg", "Const", "Identity"]))
-
-  def testConvertDtype(self):
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(lite_constants.FLOAT),
-        _types_pb2.FLOAT)
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(dtypes.float32), _types_pb2.FLOAT)
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(dtypes.int32), _types_pb2.INT32)
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(dtypes.int64), _types_pb2.INT64)
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(dtypes.string), _types_pb2.STRING)
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(dtypes.uint8),
-        _types_pb2.QUANTIZED_UINT8)
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(dtypes.complex64),
-        _types_pb2.COMPLEX64)
-    with self.assertRaises(ValueError):
-      convert.convert_dtype_to_tflite_type(dtypes.bool)
 
   def testFindHintedOutputNodes(self):
     """Test if all hinted output nodes are correctly found."""

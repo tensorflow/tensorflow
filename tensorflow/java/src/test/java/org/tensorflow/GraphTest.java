@@ -254,7 +254,115 @@ public class GraphTest {
       }
     }
   }
-  
+
+  @Test
+  public void buildWhileLoopSingleInput() {
+    try (Graph g = new Graph();
+        Session s = new Session(g)) {
+
+      Output<?> input = TestUtil.placeholder(g, "input1", Integer.class);
+
+      // could write this using lambda after Java 8
+      Graph.WhileSubgraphBuilder condGraphBuilder =
+          new Graph.WhileSubgraphBuilder() {
+            @Override
+            public void buildSubgraph(
+                Graph condGraph, Output<?>[] condInputs, Output<?>[] condOutputs) {
+              Output<Integer> sixteen = TestUtil.constant(condGraph, "sixteen", 16);
+              // condInputs[0] < 16
+              Output<?> condOutput =
+                  condGraph
+                      .opBuilder("Less", "cond")
+                      .addInput(condInputs[0])
+                      .addInput(sixteen)
+                      .build()
+                      .output(0);
+
+              condOutputs[0] = condOutput;
+            }
+          };
+
+      // could write this using lambda after Java 8
+      Graph.WhileSubgraphBuilder bodyGraphBuilder =
+          new Graph.WhileSubgraphBuilder() {
+            @Override
+            public void buildSubgraph(
+                Graph bodyGraph, Output<?>[] bodyInputs, Output<?>[] bodyOutputs) {
+              bodyOutputs[0] = TestUtil.square(bodyGraph, "square", bodyInputs[0]);
+            }
+          };
+
+      Output<?>[] loopOutputs =
+          g.whileLoop(toArray(input), condGraphBuilder, bodyGraphBuilder, "test_loop");
+
+      try (Tensor<Integer> c = Tensors.create(2);
+          Tensor<?> output = s.runner().feed(input, c).fetch(loopOutputs[0]).run().get(0)) {
+
+        assertEquals(16, output.intValue()); // ((2^2)^2)
+      }
+    }
+  }
+
+  @Test
+  public void buildWhileLoopMultipleInputs() {
+    try (Graph g = new Graph();
+        Session s = new Session(g)) {
+
+      Output<?> input1 = TestUtil.placeholder(g, "input1", Integer.class);
+      Output<?> input2 = TestUtil.placeholder(g, "input2", Integer.class);
+      Output<?>[] inputs = toArray(input1, input2);
+
+      // could write this using lambda after Java 8
+      Graph.WhileSubgraphBuilder condGraphBuilder =
+          new Graph.WhileSubgraphBuilder() {
+            @Override
+            public void buildSubgraph(
+                Graph condGraph, Output<?>[] condInputs, Output<?>[] condOutputs) {
+              Output<Integer> sixteen = TestUtil.constant(condGraph, "sixteen", 16);
+              Output<?> condOutput =
+                  condGraph
+                      .opBuilder("Less", "cond")
+                      .addInput(condInputs[0])
+                      .addInput(sixteen)
+                      .build()
+                      .output(0); // condInputs[0] < 16
+
+              condOutputs[0] = condOutput;
+            }
+          };
+
+      // could write this using lambda after Java 8
+      Graph.WhileSubgraphBuilder bodyGraphBuilder =
+          new Graph.WhileSubgraphBuilder() {
+            @Override
+            public void buildSubgraph(
+                Graph bodyGraph, Output<?>[] bodyInputs, Output<?>[] bodyOutputs) {
+              bodyOutputs[0] = TestUtil.square(bodyGraph, "square1", bodyInputs[0]);
+              bodyOutputs[1] = TestUtil.square(bodyGraph, "square2", bodyInputs[1]);
+            }
+          };
+
+      Output<?>[] loopOutputs =
+          g.whileLoop(inputs, condGraphBuilder, bodyGraphBuilder, "test_loop");
+
+      try (Tensor<Integer> c1 = Tensors.create(2);
+          Tensor<Integer> c2 = Tensors.create(5);
+          TestUtil.AutoCloseableList<Tensor<?>> outputs =
+              new TestUtil.AutoCloseableList<>(
+                  s.runner()
+                      .feed(input1, c1)
+                      .feed(input2, c2)
+                      .fetch(loopOutputs[0])
+                      .fetch(loopOutputs[1])
+                      .run())) {
+
+        assertEquals(2, outputs.size());
+        assertEquals(16, outputs.get(0).intValue()); // ((2^2)^2)
+        assertEquals(625, outputs.get(1).intValue()); // ((5^2)^2)
+      }
+    }
+  }
+
   private static Output<?>[] toArray(Output<?>... outputs) {
     return outputs;
   }

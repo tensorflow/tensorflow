@@ -116,7 +116,7 @@ TEST(BasicFlatBufferModel, TestModelWithoutNullRegistrations) {
   ASSERT_EQ(interpreter, nullptr);
 }
 
-// Make sure model is read to interpreter propelrly
+// Make sure model is read to interpreter properly
 TEST(BasicFlatBufferModel, TestModelInInterpreter) {
   auto model = FlatBufferModel::BuildFromFile(
       "tensorflow/lite/testdata/test_model.bin");

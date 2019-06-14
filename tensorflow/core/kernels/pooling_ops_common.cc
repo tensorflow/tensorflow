@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 
 #if GOOGLE_CUDA
-#include "cuda/include/cudnn.h"
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/pooling_ops_common_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
@@ -215,7 +215,7 @@ void DnnPoolingOp<T>::Compute(OpKernelContext* context,
       // NCHW_VECT_C is not supported by cudnnPoolingForward(), but can be
       // emulated via NHWC.
       data_layout = se::dnn::DataLayout::kBatchYXDepth;
-      batch_size *= depth;
+      batch_size *= depth / 4;
       depth = 4;
       break;
     default:

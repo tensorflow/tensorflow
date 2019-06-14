@@ -13,6 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <fcntl.h>      // NOLINT(build/include_order)
+#include <getopt.h>     // NOLINT(build/include_order)
+#include <sys/time.h>   // NOLINT(build/include_order)
+#include <sys/types.h>  // NOLINT(build/include_order)
+#include <sys/uio.h>    // NOLINT(build/include_order)
+#include <unistd.h>     // NOLINT(build/include_order)
+
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -25,20 +32,13 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include <fcntl.h>      // NOLINT(build/include_order)
-#include <getopt.h>     // NOLINT(build/include_order)
-#include <sys/time.h>   // NOLINT(build/include_order)
-#include <sys/types.h>  // NOLINT(build/include_order)
-#include <sys/uio.h>    // NOLINT(build/include_order)
-#include <unistd.h>     // NOLINT(build/include_order)
-
+#include "tensorflow/lite/examples/label_image/bitmap_helpers.h"
+#include "tensorflow/lite/examples/label_image/get_top_n.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/optional_debug_tools.h"
+#include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/string_util.h"
-
-#include "tensorflow/lite/examples/label_image/bitmap_helpers.h"
-#include "tensorflow/lite/examples/label_image/get_top_n.h"
 
 #define LOG(x) std::cerr
 
@@ -113,6 +113,7 @@ void RunInference(Settings* s) {
   }
 
   interpreter->UseNNAPI(s->accel);
+  interpreter->SetAllowFp16PrecisionForFp32(s->allow_fp16);
 
   if (s->verbose) {
     LOG(INFO) << "tensors size: " << interpreter->tensors_size() << "\n";
@@ -251,19 +252,21 @@ void RunInference(Settings* s) {
 }
 
 void display_usage() {
-  LOG(INFO) << "label_image\n"
-            << "--accelerated, -a: [0|1], use Android NNAPI or not\n"
-            << "--count, -c: loop interpreter->Invoke() for certain times\n"
-            << "--input_mean, -b: input mean\n"
-            << "--input_std, -s: input standard deviation\n"
-            << "--image, -i: image_name.bmp\n"
-            << "--labels, -l: labels for the model\n"
-            << "--tflite_model, -m: model_name.tflite\n"
-            << "--profiling, -p: [0|1], profiling or not\n"
-            << "--num_results, -r: number of results to show\n"
-            << "--threads, -t: number of threads\n"
-            << "--verbose, -v: [0|1] print more information\n"
-            << "\n";
+  LOG(INFO)
+      << "label_image\n"
+      << "--accelerated, -a: [0|1], use Android NNAPI or not\n"
+      << "--allow_fp16, -f: [0|1], allow running fp32 models with fp16 not\n"
+      << "--count, -c: loop interpreter->Invoke() for certain times\n"
+      << "--input_mean, -b: input mean\n"
+      << "--input_std, -s: input standard deviation\n"
+      << "--image, -i: image_name.bmp\n"
+      << "--labels, -l: labels for the model\n"
+      << "--tflite_model, -m: model_name.tflite\n"
+      << "--profiling, -p: [0|1], profiling or not\n"
+      << "--num_results, -r: number of results to show\n"
+      << "--threads, -t: number of threads\n"
+      << "--verbose, -v: [0|1] print more information\n"
+      << "\n";
 }
 
 int Main(int argc, char** argv) {
@@ -273,6 +276,7 @@ int Main(int argc, char** argv) {
   while (1) {
     static struct option long_options[] = {
         {"accelerated", required_argument, nullptr, 'a'},
+        {"allow_fp16", required_argument, nullptr, 'f'},
         {"count", required_argument, nullptr, 'c'},
         {"verbose", required_argument, nullptr, 'v'},
         {"image", required_argument, nullptr, 'i'},
@@ -303,6 +307,10 @@ int Main(int argc, char** argv) {
         break;
       case 'c':
         s.loop_count =
+            strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
+        break;
+      case 'f':
+        s.allow_fp16 =
             strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
       case 'i':

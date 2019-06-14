@@ -386,6 +386,8 @@ class TestImage(test.TestCase):
     _ = keras.preprocessing.image.random_shift(x, 0.2, 0.2)
     _ = keras.preprocessing.image.random_shear(x, 2.)
     _ = keras.preprocessing.image.random_zoom(x, (0.5, 0.5))
+    _ = keras.preprocessing.image.apply_channel_shift(x, 2, 2)
+    _ = keras.preprocessing.image.apply_affine_transform(x, 2)
     with self.assertRaises(ValueError):
       keras.preprocessing.image.random_zoom(x, (0, 0, 0))
     _ = keras.preprocessing.image.random_channel_shift(x, 2.)

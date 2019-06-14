@@ -282,8 +282,13 @@ TF_CAPI_EXPORT extern const char* TFE_OpGetDevice(TFE_Op* op,
 TF_CAPI_EXPORT extern void TFE_OpSetXLACompilation(TFE_Op* op,
                                                    unsigned char enable);
 
-TF_CAPI_EXPORT extern void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* h,
+TF_CAPI_EXPORT extern void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* input,
                                           TF_Status* status);
+
+TF_CAPI_EXPORT extern void TFE_OpAddInputList(TFE_Op* op,
+                                              TFE_TensorHandle** inputs,
+                                              int num_inputs,
+                                              TF_Status* status);
 
 TF_CAPI_EXPORT extern TF_AttrType TFE_OpGetAttrType(TFE_Op* op,
                                                     const char* attr_name,
@@ -361,6 +366,18 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrFunctionList(TFE_Op* op,
                                                      const TFE_Op** value,
                                                      int num_values);
 
+// Returns the length (number of tensors) of the input argument `input_name`
+// found in the provided `op`.
+TF_CAPI_EXPORT extern int TFE_OpGetInputLength(TFE_Op* op,
+                                               const char* input_name,
+                                               TF_Status* status);
+
+// Returns the length (number of tensors) of the output argument `output_name`
+// found in the provided `op`.
+TF_CAPI_EXPORT extern int TFE_OpGetOutputLength(TFE_Op* op,
+                                                const char* output_name,
+                                                TF_Status* status);
+
 // Execute the operation defined by 'op' and return handles to computed
 // tensors in `retvals`.
 //
@@ -392,6 +409,13 @@ TF_CAPI_EXPORT extern void TFE_ContextAddFunctionDef(
 TF_CAPI_EXPORT extern void TFE_ContextAddFunction(TFE_Context* ctx,
                                                   TF_Function* function,
                                                   TF_Status* status);
+
+// Removes a function from the context. Once removed, you can no longer
+// TFE_Execute it or TFE_Execute any TFE_Op which has it as an attribute or any
+// other function which calls it as an attribute.
+TF_CAPI_EXPORT extern void TFE_ContextRemoveFunction(TFE_Context* ctx,
+                                                     const char* name,
+                                                     TF_Status* status);
 
 // Checks whether a function is registered under `name`.
 TF_CAPI_EXPORT unsigned char TFE_ContextHasFunction(TFE_Context* ctx,
@@ -438,7 +462,11 @@ class Tensor;
 
 const tensorflow::Tensor* TFE_TensorHandleUnderlyingTensorInHostMemory(
     TFE_TensorHandle* h, TF_Status* status);
-TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t);
+
+TFE_TensorHandle* TFE_TensorHandleMaybeCopyToHostCPU(TFE_TensorHandle* h,
+                                                     TF_Status* status);
+TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t,
+                                      TF_Status* status);
 #endif
 
 #endif  // TENSORFLOW_C_EAGER_C_API_H_

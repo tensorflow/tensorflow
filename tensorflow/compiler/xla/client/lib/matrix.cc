@@ -46,30 +46,39 @@ XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64 m,
   return ConvertElementType(indicator, type);
 }
 
+XlaOp GetDiagonalMask(XlaOp x, int diagonal) {
+  XlaBuilder* builder = x.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
+    auto n_dims = static_cast<int32>(shape.rank());
+    TF_RET_CHECK(n_dims >= 2);
+    auto m = shape.dimensions(n_dims - 2);
+    auto n = shape.dimensions(n_dims - 1);
+    absl::Span<const int64> major_dims =
+        AsInt64Slice(shape.dimensions()).subspan(/*pos=*/0, /*len=*/n_dims - 2);
+    auto a = Iota(builder, S32, n);
+    auto b = Iota(builder, S32, m) + ConstantR0WithType(builder, S32, diagonal);
+    auto indicator = Eq(b, Broadcast(a, {m}), /*broadcast_dimensions=*/{0});
+    auto mask = Broadcast(indicator, major_dims);
+    return mask;
+  });
+}
+
 XlaOp GetMatrixDiagonal(XlaOp x, int k) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = shape.rank();
+    auto n_dims = static_cast<int32>(shape.rank());
     TF_RET_CHECK(n_dims >= 2);
     const int64 m = shape.dimensions(n_dims - 2);
     const int64 n = shape.dimensions(n_dims - 1);
 
-    auto offset = ConstantR0WithType(builder, S32, k);
-
-    absl::Span<const int64> major_dims =
-        AsInt64Slice(shape.dimensions()).subspan(/*pos=*/0, /*len=*/n_dims - 2);
-    auto a = Iota(builder, S32, n);
-    auto b = Iota(builder, S32, m) + offset;
-    auto indicator = Eq(b, Broadcast(a, {m}), /*broadcast_dimensions=*/{0});
-    auto mask = Broadcast(indicator, major_dims);
+    auto mask = GetDiagonalMask(x, k);
 
     // TPUs don't support S64 add reduction at the moment. But fortunately
     // OR-reductions work just as well for integers.
     XlaComputation reducer =
-        primitive_util::IsIntegralType(shape.element_type())
-            ? CreateScalarOrComputation(shape.element_type(), builder)
-            : CreateScalarAddComputation(shape.element_type(), builder);
+        CreateScalarIdentityWithZeroComputation(shape.element_type(), builder);
     // k == 0, we can save one slice op.
     if (k == 0) {
       return Reduce(Select(mask, x, Zeros(builder, shape)), ScalarLike(x, 0),
@@ -253,28 +262,86 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
 }
 
 XlaOp BatchDot(XlaOp x, XlaOp y, PrecisionConfig::Precision precision) {
+  return BatchDot(x, false, y, false, precision);
+}
+
+XlaOp BatchDot(XlaOp x, bool transpose_x, XlaOp y, bool transpose_y,
+               PrecisionConfig::Precision precision) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
     TF_ASSIGN_OR_RETURN(Shape y_shape, builder->GetShape(y));
 
-    // The batch dimensions must be equal and the matrix dimensions must be
-    // valid.
-    std::vector<int64> batch_dimension_numbers;
-    const int ndims = x_shape.rank();
-    batch_dimension_numbers.reserve(ndims - 2);
+    // The batch dimensions must be broadcast-compatible and the matrix
+    // dimensions must be valid.
+    std::vector<int64> x_config;
+    std::vector<int64> y_config;
+    std::vector<int64> output_config;
+
+    std::vector<int64> x_implicit_broadcast;
+    std::vector<int64> y_implicit_broadcast;
+
+    const int64 ndims = std::max(y_shape.rank(), x_shape.rank());
+    // If X and Y have unequal ranks, the major dimensions of the higher rank
+    // shape are broadcasted.
+    //
+    // A dimension of size 1 can be implicitly broadcasted to any other
+    // dimension.
+    const int64 x_offset = std::max<int64>(0, y_shape.rank() - x_shape.rank());
+    const int64 y_offset = std::max<int64>(0, x_shape.rank() - y_shape.rank());
     for (int i = 0; i < ndims - 2; ++i) {
-      batch_dimension_numbers.push_back(i);
+      const int64 x_dim = i - x_offset;
+      const int64 y_dim = i - y_offset;
+      output_config.push_back(i);
+      if (x_dim < 0) {
+        y_config.push_back(i);
+      } else if (y_dim < 0) {
+        x_config.push_back(i);
+      } else if (x_shape.dimensions(x_dim) == y_shape.dimensions(y_dim)) {
+        y_config.push_back(i);
+        x_config.push_back(i);
+      } else if (x_shape.dimensions(x_dim) == 1) {
+        y_config.push_back(i);
+        x_implicit_broadcast.push_back(x_dim);
+      } else if (y_shape.dimensions(y_dim) == 1) {
+        x_config.push_back(i);
+        y_implicit_broadcast.push_back(y_dim);
+      } else {
+        return InvalidArgument("Expected batch dot dimension to be equal or 1");
+      }
     }
-    std::vector<int64> x_config = batch_dimension_numbers;
-    x_config.push_back(ndims - 2);
-    x_config.push_back(ndims);
-    std::vector<int64> y_config = batch_dimension_numbers;
-    y_config.push_back(ndims);
-    y_config.push_back(ndims - 1);
-    std::vector<int64> output_config = batch_dimension_numbers;
+    if (transpose_x) {
+      x_config.push_back(ndims);
+      x_config.push_back(ndims - 2);
+    } else {
+      x_config.push_back(ndims - 2);
+      x_config.push_back(ndims);
+    }
+    if (transpose_y) {
+      y_config.push_back(ndims - 1);
+      y_config.push_back(ndims);
+    } else {
+      y_config.push_back(ndims);
+      y_config.push_back(ndims - 1);
+    }
     output_config.push_back(ndims - 2);
     output_config.push_back(ndims - 1);
+    if (!x_implicit_broadcast.empty()) {
+      x_shape = ShapeUtil::FilterDimensions(
+          [&](int64 dim) {
+            return !absl::c_linear_search(x_implicit_broadcast, dim);
+          },
+          x_shape);
+      x = Reshape(x, x_shape.dimensions());
+    }
+    if (!y_implicit_broadcast.empty()) {
+      y_shape = ShapeUtil::FilterDimensions(
+          [&](int64 dim) {
+            return !absl::c_linear_search(y_implicit_broadcast, dim);
+          },
+          y_shape);
+      y = Reshape(y, y_shape.dimensions());
+    }
     return Einsum(x, x_config, y, y_config, output_config, precision);
   });
 }

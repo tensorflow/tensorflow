@@ -26,23 +26,33 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-constexpr int kOptimizationPeriodThresholdMs = 60 * EnvTime::kSecondsToMicros;
+constexpr int64 kOptimizationPeriodThresholdMs = 60 * EnvTime::kSecondsToMillis;
 
 class ModelDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ModelDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {}
+      : UnaryDatasetOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("cpu_budget", &cpu_budget_));
+    if (cpu_budget_ == 0) {
+      cpu_budget_ = port::NumSchedulableCPUs();
+    }
+    OP_REQUIRES(ctx, cpu_budget_ > 0,
+                errors::InvalidArgument("CPU budget must be positive but is ",
+                                        cpu_budget_, "."));
+  }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    *output = new Dataset(ctx, input);
+    *output = new Dataset(ctx, input, cpu_budget_);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
-    Dataset(OpKernelContext* ctx, const DatasetBase* input)
-        : DatasetBase(DatasetContext(ctx)), input_(input) {
+    Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 cpu_budget)
+        : DatasetBase(DatasetContext(ctx)),
+          input_(input),
+          cpu_budget_(cpu_budget) {
       input_->Ref();
     }
 
@@ -140,9 +150,8 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
         if (!optimize_thread_) {
           std::shared_ptr<IteratorContext> new_ctx =
               std::make_shared<IteratorContext>(*ctx);
-          optimize_thread_.reset(ctx->env()->StartThread(
-              {}, "tf_data_model",
-              [this, new_ctx]() { OptimizeThread(new_ctx); }));
+          optimize_thread_ = ctx->StartThread(
+              "tf_data_model", [this, new_ctx]() { OptimizeThread(new_ctx); });
         }
         return Status::OK();
       }
@@ -150,31 +159,32 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
       void OptimizeThread(const std::shared_ptr<IteratorContext>& ctx) {
         int64 last_optimization_ms = 0;
         int64 optimization_period_ms = 10;
+        int64 current_time_ms =
+            ctx->env()->NowMicros() / EnvTime::kMillisToMicros;
         while (true) {
           {
             mutex_lock l(mu_);
             while (!cancelled_ &&
-                   last_optimization_ms + optimization_period_ms >=
-                       ctx->env()->NowMicros() / EnvTime::kMillisToMicros) {
-              cond_var_.wait_for(
-                  l, std::chrono::milliseconds(
-                         last_optimization_ms + optimization_period_ms -
-                         ctx->env()->NowMicros() / EnvTime::kMillisToMicros));
+                   last_optimization_ms + optimization_period_ms >
+                       current_time_ms) {
+              auto wait_ms = last_optimization_ms + optimization_period_ms -
+                             current_time_ms;
+              VLOG(2) << "Waiting for " << wait_ms << " ms.";
+              cond_var_.wait_for(l, std::chrono::milliseconds(wait_ms));
+              current_time_ms =
+                  ctx->env()->NowMicros() / EnvTime::kMillisToMicros;
             }
             if (cancelled_) return;
           }
-          model_->Optimize(port::NumSchedulableCPUs());
+          model_->Optimize(dataset()->cpu_budget_);
           // Exponentially increase the period of running the optimization
           // until a threshold is reached.
-          if (optimization_period_ms < kOptimizationPeriodThresholdMs) {
-            if (optimization_period_ms << 1 < kOptimizationPeriodThresholdMs) {
-              optimization_period_ms <<= 1;
-            } else {
-              optimization_period_ms = kOptimizationPeriodThresholdMs;
-            }
+          if (optimization_period_ms != kOptimizationPeriodThresholdMs) {
+            optimization_period_ms = std::min(optimization_period_ms << 1,
+                                              kOptimizationPeriodThresholdMs);
           }
-          last_optimization_ms =
-              ctx->env()->NowMicros() / EnvTime::kMillisToMicros;
+          current_time_ms = ctx->env()->NowMicros() / EnvTime::kMillisToMicros;
+          last_optimization_ms = current_time_ms;
         }
       }
 
@@ -187,7 +197,10 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* input_;
+    const int64 cpu_budget_;
   };
+
+  int64 cpu_budget_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ModelDataset").Device(DEVICE_CPU),

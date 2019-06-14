@@ -148,6 +148,17 @@ class VariableScopeTest(test.TestCase):
         w = variable_scope.get_variable("w", [])
         self.assertEqual(w.constraint, constraint)
 
+  @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
+  def testVarScopeNestingError(self):
+    with variable_scope.variable_scope("aa"):
+      scope = variable_scope.variable_scope("bb")
+      scope.__enter__()
+      with variable_scope.variable_scope("cc"):
+        with self.assertRaises(RuntimeError):
+          scope.__exit__(None, None, None)
+      scope.__exit__(None, None, None)
+
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # TypeError: Fetch argument <tf.Variable 'string:0' shape=() dtype=string>
   # has invalid type <class '...ResourceVariable'>, must be a string or Tensor.
@@ -1229,24 +1240,24 @@ class VariableScopeTest(test.TestCase):
             [v.name for v in scope.trainable_variables()],
             ["testGetTrainableVariables_foo/testGetTrainableVariables_b:0"])
 
-        # All other sync values sets trainable=True
-        _ = variable_scope.get_variable(
-            "testGetTrainableVariables_e", [],
-            synchronization=variable_scope.VariableSynchronization.ON_WRITE)
-        self.assertEqual([v.name for v in scope.trainable_variables()], [
-            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
-            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0"
-        ])
-
-      with self.assertRaisesRegexp(
-          ValueError, "Synchronization value can be set to "
-          "VariableSynchronization.ON_READ only for non-trainable variables. "
-          "You have specified trainable=True and "
-          "synchronization=VariableSynchronization.ON_READ."):
         _ = variable_scope.get_variable(
             "testGetTrainableVariables_e", [],
             synchronization=variable_scope.VariableSynchronization.ON_READ,
             trainable=True)
+        self.assertEqual([v.name for v in scope.trainable_variables()], [
+            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0",
+        ])
+
+        # All other sync values sets trainable=True
+        _ = variable_scope.get_variable(
+            "testGetTrainableVariables_f", [],
+            synchronization=variable_scope.VariableSynchronization.ON_WRITE)
+        self.assertEqual([v.name for v in scope.trainable_variables()], [
+            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_f:0",
+        ])
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
@@ -1269,26 +1280,26 @@ class VariableScopeTest(test.TestCase):
             [v.name for v in scope.trainable_variables()],
             ["testGetTrainableVariables_foo/testGetTrainableVariables_b:0"])
 
-        # All other sync values sets trainable=True
-        _ = variable_scope.variable(
-            1.0,
-            name="testGetTrainableVariables_e",
-            synchronization=variable_scope.VariableSynchronization.ON_WRITE)
-        self.assertEqual([v.name for v in scope.trainable_variables()], [
-            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
-            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0"
-        ])
-
-      with self.assertRaisesRegexp(
-          ValueError, "Synchronization value can be set to "
-          "VariableSynchronization.ON_READ only for non-trainable variables. "
-          "You have specified trainable=True and "
-          "synchronization=VariableSynchronization.ON_READ."):
         _ = variable_scope.variable(
             1.0,
             name="testGetTrainableVariables_e",
             synchronization=variable_scope.VariableSynchronization.ON_READ,
             trainable=True)
+        self.assertEqual([v.name for v in scope.trainable_variables()], [
+            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0",
+        ])
+
+        # All other sync values sets trainable=True
+        _ = variable_scope.variable(
+            1.0,
+            name="testGetTrainableVariables_f",
+            synchronization=variable_scope.VariableSynchronization.ON_WRITE)
+        self.assertEqual([v.name for v in scope.trainable_variables()], [
+            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_f:0",
+        ])
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
@@ -1703,6 +1714,26 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
           synchronization=variable_scope.VariableSynchronization.ON_WRITE,
           aggregation=variable_scope.VariableAggregation.MEAN)
     self.assertTrue(called[0])
+
+  @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
+  def testVariableCreatorNestingError(self):
+
+    def creator(next_creator, **kwargs):
+      return next_creator(**kwargs)
+
+    # Save the state so we can clean up at the end.
+    graph = ops.get_default_graph()
+    old_creator_stack = graph._variable_creator_stack
+
+    try:
+      scope = variable_scope.variable_creator_scope(creator)
+      scope.__enter__()
+      with variable_scope.variable_creator_scope(creator):
+        with self.assertRaises(RuntimeError):
+          scope.__exit__(None, None, None)
+    finally:
+      graph._variable_creator_stack = old_creator_stack
 
 
 class PartitionInfoTest(test.TestCase):

@@ -23,7 +23,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -31,10 +30,9 @@ from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gen_functional_ops
@@ -64,7 +62,6 @@ def while_loop(cond,
                name=None,
                return_same_structure=True):
   """Like tf.while_loop, except emits a single While op."""
-  maximum_iterations = _validate_and_convert_to_tensor(maximum_iterations)
   # Keep the original loop_vars around to know which args were TensorArrays.
   orig_loop_vars = loop_vars
   # Cache its length since we use it at multiple places below.
@@ -75,12 +72,24 @@ def while_loop(cond,
   # `wrapped_body` below.
   loop_vars = list(_tensor_array_to_flow(orig_loop_vars))
   loop_vars = nest.map_structure(
-      ops.internal_convert_to_tensor_or_indexed_slices, loop_vars)
+      ops.internal_convert_to_tensor_or_indexed_slices, loop_vars,
+      expand_composites=True)
   if shape_invariants is not None:
-    nest.assert_same_structure(orig_loop_vars, shape_invariants)
-  else:
-    shape_invariants = nest.map_structure(lambda t: t.shape, loop_vars)
+    nest.assert_same_structure(orig_loop_vars, shape_invariants,
+                               expand_composites=False)
+    signature = nest.map_structure(
+        control_flow_ops._shape_invariant_to_type_spec, loop_vars,
+        list(shape_invariants), expand_composites=False)
+    shape_invariants = nest.map_structure(
+        control_flow_ops._get_shape_invariant, loop_vars,
+        list(shape_invariants), expand_composites=False)
 
+  else:
+    signature = nest.map_structure(
+        type_spec.type_spec_from_value, loop_vars, expand_composites=False)
+    shape_invariants = nest.map_structure(
+        control_flow_ops._get_shape_invariant, loop_vars,
+        expand_composites=False)
   if not name:
     name = "while"
 
@@ -88,24 +97,29 @@ def while_loop(cond,
     with ops.name_scope(None):
       cond_name = util.unique_fn_name(scope, "cond")
       body_name = util.unique_fn_name(scope, "body")
-
+    maximum_iterations_loop_var = _build_maximum_iterations_loop_var(
+        maximum_iterations)
     loop_counter = constant_op.constant(
         0,
-        dtype=maximum_iterations.dtype
+        dtype=maximum_iterations_loop_var.dtype
         if maximum_iterations is not None else None,
         name="loop_counter")
     # Add loop counter needed for computing gradients.
-    loop_vars = [loop_counter] + loop_vars
+    loop_vars = [loop_counter, maximum_iterations_loop_var] + loop_vars
 
-    shape_invariants = type(shape_invariants)([tensor_shape.scalar()
-                                              ]) + shape_invariants
+    shape_invariants = (
+        [tensor_shape.scalar(), tensor_shape.scalar()] + shape_invariants)
+    signature = (
+        [tensor_spec.TensorSpec.from_tensor(loop_counter),
+         tensor_spec.TensorSpec.from_tensor(maximum_iterations_loop_var)] +
+        signature)
 
     # Automatic control dependencies are added in defuns, but not in v1
     # graphs. Propagate that behavior here.
     add_control_dependencies = ops.get_default_graph()._add_control_dependencies
 
     # Build a `cond` wrapper that can handle the extra counter loop_var.
-    def wrapped_cond(loop_counter, *args):
+    def wrapped_cond(loop_counter, maximum_iterations_arg, *args):
       # Convert the flow variables in `args` to TensorArrays. `args` should
       # already have the same structure as `orig_loop_vars` but currently there
       # is no nest.zip so we call `_pack_sequence_as` which flattens both
@@ -115,7 +129,7 @@ def while_loop(cond,
         return cond(*_pack_sequence_as(orig_loop_vars, args))
       else:
         return math_ops.logical_and(
-            loop_counter < maximum_iterations,
+            loop_counter < maximum_iterations_arg,
             cond(*_pack_sequence_as(orig_loop_vars, args)))
 
     # NOTE(skyewm): we set collections to the outer graph's collections for
@@ -125,16 +139,17 @@ def while_loop(cond,
         wrapped_cond,
         [],  # We provide signature instead of args.
         {},
-        signature=_build_signature(loop_vars, shape_invariants),
+        signature=signature,
         func_graph=util.WhileCondFuncGraph(
             cond_name, collections=ops.get_default_graph()._collections),  # pylint: disable=protected-access
         add_control_dependencies=add_control_dependencies)
 
-    def wrapped_body(loop_counter, *args):
+    def wrapped_body(loop_counter, maximum_iterations_arg, *args):
       """Loop body augmented with counter update.
 
       Args:
         loop_counter: Loop counter which needs to be incremented in the body.
+        maximum_iterations_arg: Maximum iterations of the loop.
         *args: List of args
 
       Returns:
@@ -151,24 +166,25 @@ def while_loop(cond,
       # `orig_loop_vars` and `args`, converts flows in `args` to TensorArrays
       # and packs it into the structure of `orig_loop_vars`.
       outputs = body(*_pack_sequence_as(orig_loop_vars, args))
-      if not nest.is_sequence(outputs):
+      if not nest.is_sequence_or_composite(outputs):
         outputs = [outputs]
       # Compare the structure of input and output of body converting the
       # top-level tuples to list to be compatible with legacy while_loop.
-      nest.assert_same_structure(list(outputs), list(orig_loop_vars))
+      nest.assert_same_structure(list(outputs), list(orig_loop_vars),
+                                 expand_composites=True)
 
       outputs = _tensor_array_to_flow(outputs)
 
       # TODO(srbs): Update lowering code to create _Enter nodes with
       # is_constant=True for inputs that are directly passed to outputs.
-      return [loop_counter + 1] + list(outputs)
+      return [loop_counter + 1, maximum_iterations_arg] + list(outputs)
 
     body_graph = func_graph_module.func_graph_from_py_func(
         body_name,
         wrapped_body,
         [],  # We provide signature instead of args.
         {},
-        signature=_build_signature(loop_vars, shape_invariants),
+        signature=signature,
         func_graph=util.WhileBodyFuncGraph(
             body_name, collections=ops.get_default_graph()._collections),  # pylint: disable=protected-access
         add_control_dependencies=add_control_dependencies)
@@ -194,26 +210,41 @@ def while_loop(cond,
     # Make sure that the shapes of the loop outputs are compatible with the
     # shape invariants, or the shapes of the loop vars if the invariants are not
     # specified.
-    num_flattened_outputs = len(nest.flatten(orig_loop_vars))
+    num_flattened_outputs = len(nest.flatten(orig_loop_vars,
+                                             expand_composites=True))
+    # First var is loop counter and second var is maximum_iterations.
+    first_loop_var_index = 2
     _check_shapes_compat(
-        body_graph.outputs[1:1 + num_flattened_outputs],
-        nest.flatten(shape_invariants[1:1 + len_orig_loop_vars]),
-        nest.flatten(loop_vars[1:1 + len_orig_loop_vars]))
-    flattened_loop_vars = nest.flatten(loop_vars)
+        body_graph.outputs[first_loop_var_index:first_loop_var_index +
+                           num_flattened_outputs],
+        nest.flatten(
+            shape_invariants[first_loop_var_index:first_loop_var_index +
+                             len_orig_loop_vars], expand_composites=True),
+        nest.flatten(loop_vars[first_loop_var_index:first_loop_var_index +
+                               len_orig_loop_vars], expand_composites=True))
+    flattened_loop_vars = nest.flatten(loop_vars, expand_composites=True)
     _check_num_inputs_outputs(cond_graph, body_graph,
                               len(flattened_loop_vars))
+    _check_inputs_outputs_types_match(body_graph, flattened_loop_vars)
 
-    outputs = gen_functional_ops._while(
-        flattened_loop_vars,
-        util.create_new_tf_function(cond_graph),
-        util.create_new_tf_function(body_graph),
-        output_shapes=[t.shape for t in body_graph.outputs],
-        parallel_iterations=parallel_iterations,
-        name=scope)
+    with ops.control_dependencies(
+        list(cond_graph.control_captures) + list(body_graph.control_captures)):
+      output_shapes = [t.shape for t in body_graph.outputs]
+      orig_loop_vars_range = slice(first_loop_var_index,
+                                   first_loop_var_index + num_flattened_outputs)
+      output_shapes[orig_loop_vars_range] = nest.flatten(
+          shape_invariants, expand_composites=True)[orig_loop_vars_range]
+      outputs = gen_functional_ops._while(
+          flattened_loop_vars,
+          util.create_new_tf_function(cond_graph),
+          util.create_new_tf_function(body_graph),
+          output_shapes=output_shapes,
+          parallel_iterations=parallel_iterations,
+          name=scope)
 
     _copy_handle_data(body_graph.outputs, outputs)
     util.maybe_set_lowering_attr(outputs[0].op)
-    _maybe_set_maximum_iterations_attr(outputs[0].op, maximum_iterations)
+    util.maybe_propagate_compile_time_consts_in_xla(outputs[0].op)
 
     # Return identities for each output of the While op, rather than the output
     # of the While op directly. This makes pruning work if the output of
@@ -223,14 +254,14 @@ def while_loop(cond,
     # identity op will end up with only the appropriate exit op as input.
     outputs = tuple(array_ops.identity(t) for t in outputs)
 
-  # First var is loop counter.
-  outputs = _pack_sequence_as(orig_loop_vars,
-                              outputs[1:1 + num_flattened_outputs])
+  outputs = _pack_sequence_as(
+      orig_loop_vars, outputs[first_loop_var_index:first_loop_var_index +
+                              num_flattened_outputs])
 
   if return_same_structure:
     return outputs
 
-  flattened_outputs = nest.flatten(outputs)
+  flattened_outputs = nest.flatten(outputs, expand_composites=True)
   if len(flattened_outputs) == 1:
     return flattened_outputs[0]
   else:
@@ -249,11 +280,8 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   body_graph = _get_graph(while_op, "body")
   orig_num_params = len(body_graph.outputs)
 
-  maximum_iterations = op.get_attr(
-      "_maximum_iterations") if _is_in_xla_context() else None
+  maximum_iterations = op.inputs[1]
   parallel_iterations = op.get_attr("parallel_iterations")
-  assert not _is_in_xla_context() or maximum_iterations is not None
-  maximum_iterations = _validate_and_convert_to_tensor(maximum_iterations)
 
   grads = [_preprocess_grad(grad, body_out, while_out)
            for grad, body_out, while_out
@@ -298,8 +326,9 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   loop_vars = while_v2_indexed_slices_rewriter.rewrite_grad_indexed_slices(
       grads, body_grad_graph, loop_vars, while_op.inputs)
 
-  def grad_cond(counter, max_iters, *unused_args):
-    return counter < max_iters
+  def grad_cond(counter, unused_maximum_iterations_arg, forward_loop_iters,
+                *unused_args):
+    return counter < forward_loop_iters
 
   grad_cond_name = util.unique_grad_fn_name(op.get_attr("cond").name)
   cond_grad_graph = func_graph_module.func_graph_from_py_func(
@@ -319,7 +348,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
 
   _copy_handle_data(body_grad_graph.outputs, outputs)
   util.maybe_set_lowering_attr(grad_op)
-  _maybe_set_maximum_iterations_attr(grad_op, maximum_iterations)
+  util.maybe_propagate_compile_time_consts_in_xla(grad_op)
 
   # See comment in while_loop.
   outputs = [array_ops.identity(t) for t in outputs]
@@ -387,48 +416,6 @@ def _is_trainable(tensor):
   return True
 
 
-def _validate_and_convert_to_tensor(maximum_iterations):
-  """Checks that `maximum_iterations` is valid.
-
-  In XLA context, `maximum_iterations` is required and must be statically
-  inferable, e.g. output tensor of a Const node.
-
-  Args:
-    maximum_iterations: The maximum_iterations passed to while_loop.
-
-  Returns:
-    A scalar valued tensor of type int32 or None.
-
-  Raises:
-    ValueError: If `maximum_iterations` is invalid.
-  """
-  if maximum_iterations is None:
-    return None
-
-  if _is_in_xla_context() and isinstance(maximum_iterations, ops.Tensor):
-    # Get the constant value from the `maximum_iterations` tensor to avoid
-    # capturing a Const tensor from outside this graph.
-    value = tensor_util.constant_value(maximum_iterations)
-    if value is None:
-      # XLA requires maximum_iterations to be statically known (e.g. a
-      # constant value or known shape dimension) when intermediate values
-      # from the forward pass are needed in the gradients pass. However,
-      # maximum_iterations may not be required if the gradient isn't built
-      # or no intermediates are required, thus we return the tensor as is.
-      return maximum_iterations
-
-    maximum_iterations = value
-
-  # EmptyTensorList expects `max_num_elements` to be of type int32.
-  maximum_iterations = ops.convert_to_tensor(
-      maximum_iterations, dtype=dtypes.int32, name="maximum_iterations")
-  if maximum_iterations.shape.ndims != 0:
-    raise ValueError("maximum_iterations must be a scalar, saw shape: %s" %
-                     maximum_iterations.shape)
-
-  return maximum_iterations
-
-
 # TODO(srbs): Pull this into common utils for cond_v2 and while_v2.
 def _get_graph(while_op, func_attr_name):
   """Returns `FuncGraph` for the given function attribute.
@@ -458,7 +445,7 @@ def _get_graph(while_op, func_attr_name):
 
 
 def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
-                      max_iters):
+                      maximum_iterations):
   """Builds and returns the gradient FuncGraph of `func_graph` and its args.
 
   The returned grad_func_graph must be called with the returned
@@ -472,7 +459,7 @@ def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
     body_graph: FuncGraph for the forward body function.
     name: Name of the returned gradient function.
     while_op: The forward While op.
-    max_iters: the maximum number of iterations, or None if no limit.
+    maximum_iterations: Tensor. The maximum number of iterations.
 
   Returns:
     2-tuple of (grad_func_graph, args).
@@ -483,7 +470,7 @@ def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
   counter = constant_op.constant(
       0, dtype=total_iters.dtype, name="grad_counter")
 
-  args = [counter, total_iters] + list(grads)
+  args = [counter, maximum_iterations, total_iters] + list(grads)
   # Note: The returned function does not have `args` in the list of
   # `external_captures`.
   grad_func_graph = func_graph_module.func_graph_from_py_func(
@@ -491,7 +478,7 @@ def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
       lambda *args: _grad_fn(ys, xs, args, body_graph),
       args, {},
       func_graph=_WhileBodyGradFuncGraph(name, cond_graph, body_graph,
-                                         max_iters))
+                                         maximum_iterations, while_op))
 
   # Add the popped accumulators to the list of outputs.
   for internal_capture in grad_func_graph.internal_captures:
@@ -521,13 +508,14 @@ def _grad_fn(ys, xs, args, func_graph):
     args: The input arguments.
       args[0] - Loop counter
       args[1] - Total number of iterations.
-      args[2:] - Incoming gradients for `ys`.
+      args[2] - maximum_iterations.
+      args[3:] - Incoming gradients for `ys`.
     func_graph: function.FuncGraph. The corresponding forward-pass function.
 
   Returns:
     The output gradient Tensors.
   """
-  grad_ys = args[2:]
+  grad_ys = args[3:]
 
   # Build the gradient graph. Note that this builds the gradient computation of
   # func_graph in the current graph, which requires capturing tensors from
@@ -542,8 +530,9 @@ def _grad_fn(ys, xs, args, func_graph):
   # is a tf.StopGradient in the loop body.
   assert all(g is not None for g in grad_outs)
   counter = args[0]
-  total_iters = args[1]
-  return [counter + 1, total_iters] + grad_outs
+  maximum_iterations = args[1]
+  total_iters = args[2]
+  return [counter + 1, maximum_iterations, total_iters] + grad_outs
 
 
 def _resolve_grad_captures(body_graph, body_grad_graph, while_op):
@@ -600,9 +589,10 @@ def _get_structured_grad_output(outputs, grads, body_grad_graph):
   """
   result = []
   # outputs[0] is the loop counter.
-  # outputs[1] is the total number of loop iterations.
-  outputs_idx = 2
-  structured_outputs_idx = 2
+  # outputs[1] is maximum_iterations.
+  # outputs[2] is the total number of loop iterations.
+  outputs_idx = 3
+  structured_outputs_idx = 3
   for g in grads:
     # Set None as the output gradient for tensors with None input gradient.
     if g is None:
@@ -724,7 +714,8 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
       values of this dict need to be added to the list of outputs.
   """
 
-  def __init__(self, name, forward_cond_graph, forward_body_graph, max_iters):
+  def __init__(self, name, forward_cond_graph, forward_body_graph,
+               maximum_iterations, forward_while_op):
     super(_WhileBodyGradFuncGraph, self).__init__(name)
     self.empty_tensor_lists = []
     self.popped_tensor_lists = {}
@@ -732,7 +723,8 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     self._forward_graph = forward_body_graph
     # FuncGraph for the cond of the forward While op.
     self._forward_cond_graph = forward_cond_graph
-    self._maximum_iterations = max_iters
+    self._maximum_iterations = maximum_iterations
+    self._forward_while_op = forward_while_op
     # Dict from forward intermediate tensor to its indirectly captured tensor
     # in this graph. Indirect capturing happens in two ways:
     # 1. For non-resource tensors we capture their accumulators from the forward
@@ -795,10 +787,25 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     accumulator = _get_accumulator(tensor)
     if accumulator is None:
       # Create the initial empty tensor list.
+      #
+      # Note: We clear the control dependencies to avoid a cycle in case a
+      # control tensor has an input path to an output of the  forward While.
+      #
+      # E.g.:
+      # x = tf.while_loop(...)
+      # y = f(x)
+      # with tf.control_dependencies([y]):
+      #   tf.gradients(y, x)
+      #
+      # Since the EmptyTensorList is fed back into the forward While, not
+      # removing the control edge would cause a cycle.
       with self._forward_graph.outer_graph.as_default():
-        tensor_list = list_ops.empty_tensor_list(
-            element_dtype=tensor.dtype, element_shape=tensor.shape,
-            max_num_elements=self._maximum_iterations)
+        with util.clear_control_inputs():
+          tensor_list = list_ops.empty_tensor_list(
+              element_dtype=tensor.dtype,
+              element_shape=tensor.shape,
+              max_num_elements=self._maximum_iterations,
+              name=_build_accumulator_name(tensor))
       self.empty_tensor_lists.append(tensor_list)
 
       # Push the intermediate tensor to the tensor list. This captures
@@ -843,9 +850,8 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     """
     assert tensor.dtype == dtypes.resource
 
-    index = self._resource_input_index(
-        tensor.name,
-        [t.name for t in self._forward_graph.inputs],
+    index = util.resource_input_index(
+        tensor.name, [t.name for t in self._forward_graph.inputs],
         {op.name: op.node_def for op in self._forward_graph.get_operations()},
         self._forward_graph._functions)
 
@@ -862,76 +868,6 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     self._indirect_captures[tensor] = self.capture(
         tensor_in_outer_graph, whitelisted=True)
     return self._indirect_captures[tensor]
-
-  def _resource_input_index(self, tensor_name, input_names, node_defs,
-                            functions):
-    """Returns the index of the input corresponding to `tensor_name`.
-
-    This method is used to find the corresponding index of an arbitrary resource
-    tensor in a function (the function could be a loop body). We assume that
-    resource handles are never created in functions, so that every resource
-    tensor can be traced back to a function input.
-
-    The awkward signature of this method is to make it work with both FuncGraphs
-    and FunctionDefs. This is so we can recurse on function call ops without
-    building the corresponding FuncGraph (note that even if a FuncGraph for a
-    FunctionDef already exists, the input/output/node names may have been
-    changed when the FuncGraph was serialized to the FunctionDef, which makes it
-    unusable with this algorithm).
-
-    Args:
-      tensor_name: the name of the resource tensor to be resolved to an input.
-      input_names: a list of the names of all inputs to the function.
-      node_defs: a dict mapping op name -> NodeDef for every op in the function.
-      functions: a dict mapping function name -> _EagerDefinedFunction.
-
-    Returns:
-      The index into input_names corresponding to `tensor_name`.
-    """
-    while tensor_name not in input_names:
-      # FunctionDefs and graphs use different tensor naming conventions.
-      parts = tensor_name.split(":")
-      if len(parts) == 3:
-        op_name, _, output_idx = parts
-      elif len(parts) == 2:
-        op_name, output_idx = parts
-      else:
-        assert len(parts) == 1
-        op_name = parts[0]
-        output_idx = 0
-      output_idx = int(output_idx)
-      node_def = node_defs[op_name]
-
-      if node_def.op == "While":
-        # Captured resources occur at the same index in the lists of inputs and
-        # outputs of a while op. So we lookup the input of `tensor.op` at the
-        # same index as the index of `tensor` in the `tensor.op.outputs`.
-        tensor_name = node_def.input[output_idx]
-      elif node_def.op in ("PartitionedCall", "StatefulPartitionedCall"):
-        # Functions output any captured resource tensors used by their
-        # gradients.  `tensor_name` is one of these outputs from a nested
-        # function call, so recursively find the corresponding input in the
-        # nested FunctionDef.
-        func_name = node_def.attr["f"].func.name
-        fdef = functions[func_name].definition
-        output_arg_name = fdef.signature.output_arg[output_idx].name
-        output_tensor_name = fdef.ret[output_arg_name]
-        input_index = self._resource_input_index(
-            output_tensor_name,
-            [arg.name for arg in fdef.signature.input_arg],
-            {ndef.name: ndef for ndef in fdef.node_def},
-            functions)
-        tensor_name = node_def.input[input_index]
-      else:
-        # We assume there are no other ops types that will "forward" resource
-        # handles like this, so all other handles must have been created by the
-        # op. (Note that cond_v2 wraps resource handle outputs in optionals,
-        # which we'll end up accumulating).
-        raise ValueError(
-            "Taking gradient of a while loop which creates "
-            "a resource in its body is not supported: %s" % op_name)
-
-    return input_names.index(tensor_name)
 
 
 def _check_shapes_compat(output_tensors, shape_invariants, input_tensors):
@@ -960,31 +896,18 @@ def _check_num_inputs_outputs(cond_graph, body_graph, num_flattened_loop_vars):
                                                    num_flattened_loop_vars))
 
 
+def _check_inputs_outputs_types_match(body_graph, flattened_loop_vars):
+  for inp, out, loop_var in zip(body_graph.inputs, body_graph.outputs,
+                                flattened_loop_vars):
+    if inp.dtype != out.dtype:
+      raise TypeError("Loop var {} enters the loop with type {} "
+                      "but has type {} after 1 iteration.".format(
+                          loop_var.name, inp.dtype, out.dtype))
+
+
 def _copy_handle_data(src_tensors, tgt_tensors):
   for src_t, tgt_t in zip(src_tensors, tgt_tensors):
     custom_gradient.copy_handle_data(src_t, tgt_t)
-
-
-def _maybe_set_maximum_iterations_attr(op, maximum_iterations):
-  if maximum_iterations is not None and control_flow_util.IsInXLAContext(op):
-    # Store the maximum_iterations to use in the gradient pass.
-    op._set_attr(  # pylint: disable=protected-access
-        "_maximum_iterations",
-        attr_value_pb2.AttrValue(
-            i=tensor_util.constant_value(maximum_iterations)))
-
-
-# TODO(srbs): This method should be in control_flow_util but that introduces
-# a circular dependency ops -> control_flow_util -> ops.
-def _is_in_xla_context():
-  """Returns whether the current context is inside an XLA context."""
-  outer_graph = ops.get_default_graph()
-  # The `_control_flow_context` is not copied when building a FuncGraph so
-  # we look it up from the base graph.
-  while isinstance(outer_graph, func_graph_module.FuncGraph):
-    outer_graph = outer_graph.outer_graph
-  cur_ctxt = outer_graph._get_control_flow_context()  # pylint: disable=protected-access
-  return control_flow_util.GetContainingXLAContext(cur_ctxt) is not None
 
 
 def _graph_name(graph):
@@ -1002,9 +925,11 @@ def _pack_sequence_as(structure_with_tas, loop_vars):
 
   flattened_loop_vars = [
       flow_to_tensor_array(*z)
-      for z in zip(nest.flatten(loop_vars), nest.flatten(structure_with_tas))
+      for z in zip(nest.flatten(loop_vars, expand_composites=True),
+                   nest.flatten(structure_with_tas, expand_composites=True))
   ]
-  return nest.pack_sequence_as(structure_with_tas, flattened_loop_vars)
+  return nest.pack_sequence_as(structure_with_tas, flattened_loop_vars,
+                               expand_composites=True)
 
 
 def _tensor_array_to_flow(loop_vars):
@@ -1014,14 +939,21 @@ def _tensor_array_to_flow(loop_vars):
       return maybe_ta.flow
     return maybe_ta
 
-  return nest.map_structure(f, loop_vars)
+  return nest.map_structure(f, loop_vars, expand_composites=True)
 
 
-def _build_signature(loop_vars, shape_invariants):
-  return nest.pack_sequence_as(loop_vars, [
-      tensor_spec.TensorSpec(s, t.dtype, name=t.op.name)
-      for s, t in zip(nest.flatten(shape_invariants), nest.flatten(loop_vars))
-  ])
+def _build_maximum_iterations_loop_var(maximum_iterations):
+  if maximum_iterations is None:
+    # Default value for max_num_elements to EmptyTensorList meaning that the
+    # list size is unbounded.
+    maximum_iterations = -1
+  # EmptyTensorList expects `max_num_elements` to be of type int32.
+  return ops.convert_to_tensor(
+      maximum_iterations, dtype=dtypes.int32, name="maximum_iterations")
 
+
+def _build_accumulator_name(tensor):
+  # Tensor name may be of the form "pow/y:0". Name scope does not allow ":".
+  return "{}/accumulator".format(tensor.name).replace(":", "_")
 
 # pylint: enable=protected-access

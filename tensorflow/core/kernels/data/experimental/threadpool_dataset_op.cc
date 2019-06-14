@@ -17,6 +17,8 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -98,8 +100,9 @@ class ThreadPoolHandleOp : public OpKernel {
                                   EXCLUSIVE_LOCKS_REQUIRED(mu_) {
                                     *ret = new ThreadPoolResource(
                                         ctx->env(), {}, display_name_,
-                                        num_threads_, max_intra_op_parallelism_,
-                                        false /* low_latency_hint */);
+                                        num_threads_,
+                                        /*low_latency_hint=*/false,
+                                        max_intra_op_parallelism_);
                                     return Status::OK();
                                   }));
       initialized_ = true;
@@ -125,12 +128,10 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    ThreadPoolResource* threadpool_resource;
+    core::RefCountPtr<ThreadPoolResource> threadpool_resource;
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 1),
                                        &threadpool_resource));
-    core::ScopedUnref unref_iterator(threadpool_resource);
-
-    *output = new Dataset(ctx, input, ctx->input(1), threadpool_resource);
+    *output = new Dataset(ctx, input, ctx->input(1), threadpool_resource.get());
   }
 
  private:
@@ -306,19 +307,8 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
                              bool* end_of_sequence) override {
         IteratorContext::Params params(ctx);
         auto max_parallelism = dataset()->max_intra_op_parallelism_;
-        params.runner = std::bind(
-            [max_parallelism](
-                const std::function<void(std::function<void()>)>& runner,
-                std::function<void()> fn) {
-              std::function<void()> scoped_fn = std::bind(
-                  [max_parallelism](const std::function<void()>& fn) {
-                    ScopedPerThreadMaxParallelism scope(max_parallelism);
-                    fn();
-                  },
-                  std::move(fn));
-              (runner)(std::move(scoped_fn));
-            },
-            std::move(*ctx->runner()), std::placeholders::_1);
+        params.runner =
+            RunnerWithMaxParallelism(*ctx->runner(), max_parallelism);
         return input_impl_->GetNext(IteratorContext{std::move(params)},
                                     out_tensors, end_of_sequence);
       }
@@ -346,7 +336,7 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 num_threads;
+    int64 num_threads = 0;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64>(ctx, "num_threads", &num_threads));
     OP_REQUIRES(ctx, num_threads >= 1,

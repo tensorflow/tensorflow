@@ -46,9 +46,12 @@ typedef enum {
   kTfLiteMirrorPaddingSymmetric,
 } TfLiteMirrorPaddingMode;
 
+// TODO(b/130259536): We should move this out of builtin_op_data.
 typedef struct {
   int width;
   int height;
+  int width_offset;
+  int height_offset;
 } TfLitePaddingValues;
 
 typedef struct {
@@ -131,6 +134,12 @@ typedef struct {
 
   // Parameters for FullyConnected version 2 or above.
   TfLiteFullyConnectedWeightsFormat weights_format;
+
+  // Parameters for FullyConnected version 5 or above.
+  // If set to true, then the number of dimensions in the input and the output
+  // tensors are the same. Furthermore, all but the last dimension of the input
+  // and output shapes will be equal.
+  bool keep_num_dims;
 } TfLiteFullyConnectedParams;
 
 typedef enum {
@@ -334,6 +343,7 @@ typedef struct {
 } TfLiteShapeParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLiteRankParams;
 
 typedef struct {
@@ -367,6 +377,19 @@ typedef struct {
 typedef struct {
   TfLiteType index_out_type;
 } TfLiteUniqueParams;
+
+typedef struct {
+  int seq_dim;
+  int batch_dim;
+} TfLiteReverseSequenceParams;
+
+typedef struct {
+  EmptyStructPlaceholder placeholder;
+} TfLiteMatrixDiagParams;
+
+typedef struct {
+  EmptyStructPlaceholder placeholder;
+} TfLiteMatrixSetDiagParams;
 
 #ifdef __cplusplus
 }  // extern "C"

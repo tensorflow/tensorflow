@@ -121,8 +121,7 @@ void RunSingleTest(const std::vector<int32>& test_input,
                    const string& check_label, int tolerance) {
   const int n = test_input.size();
   std::vector<int32> float_gen_output(n, 0);
-  std::vector<int32> reference_output(n, 0);
-  std::vector<int32> optimized_output(n, 0);
+  std::vector<int32> quantized_output(n, 0);
 
   // Workaround the stupid things that intelligent humans do.
   // Consequence of __builtin_clz(0u) may equal 31 instead of 32.
@@ -132,45 +131,21 @@ void RunSingleTest(const std::vector<int32>& test_input,
   }
 
   for (int i = 0; i < n; ++i) {
-    reference_output[i] =
-        tflite::reference_ops::log_x_for_x_greater_than_or_equal_to_1_impl<
-            OutputIntegerBits, InputIntegerBits>(
-            gemmlowp::FixedPoint<int32, InputIntegerBits>::FromRaw(
-                fudged_input[i]))
-            .raw();
-    optimized_output[i] =
-        tflite::optimized_ops::log_x_for_x_greater_than_or_equal_to_1_impl<
-            OutputIntegerBits, InputIntegerBits>(
+    quantized_output[i] =
+        tflite::log_x_for_x_greater_than_or_equal_to_1_impl<OutputIntegerBits,
+                                                            InputIntegerBits>(
             gemmlowp::FixedPoint<int32, InputIntegerBits>::FromRaw(
                 fudged_input[i]))
             .raw();
     float_gen_output[i] = LogPositiveValuesViaFloat(
         fudged_input[i], InputIntegerBits, OutputIntegerBits);
   }
-  // Note that first check is intolerant.
-  {
-    std::ostringstream label;
-    label << check_label << " / optimized vs reference / InputIntegerBits="
-          << InputIntegerBits << ", OutputIntegerBits=" << OutputIntegerBits;
-    CheckOutputData(
-        optimized_output, reference_output, test_input, label.str(),
-        InputIntegerBits, OutputIntegerBits, 0);
-  }
   {
     std::ostringstream label;
     label << check_label << " / reference vs float-gen / InputIntegerBits="
           << InputIntegerBits << ", OutputIntegerBits=" << OutputIntegerBits;
-    CheckOutputData(
-        reference_output, float_gen_output, test_input, label.str(),
-        InputIntegerBits, OutputIntegerBits, tolerance);
-  }
-  {
-    std::ostringstream label;
-    label << check_label << " optimized vs float-gen / InputIntegerBits="
-          << InputIntegerBits << ", OutputIntegerBits=" << OutputIntegerBits;
-    CheckOutputData(
-        optimized_output, float_gen_output, test_input, label.str(),
-        InputIntegerBits, OutputIntegerBits, tolerance);
+    CheckOutputData(quantized_output, float_gen_output, test_input, label.str(),
+                    InputIntegerBits, OutputIntegerBits, tolerance);
   }
 }
 

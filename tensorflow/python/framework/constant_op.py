@@ -95,6 +95,7 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
       dtype = dtype.as_datatype_enum
     except AttributeError:
       dtype = dtypes.as_dtype(dtype).as_datatype_enum
+  ctx.ensure_initialized()
   device = ctx.device_name
   handle = ctx._handle  # pylint: disable=protected-access
   if isinstance(value, (float,) + six.integer_types):

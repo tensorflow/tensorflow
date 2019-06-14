@@ -141,7 +141,7 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
                        {}, {}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_TRUE(str_util::StrContains(
+    EXPECT_TRUE(absl::StrContains(
         s.ToString(), "Invalid argument: Shape must be rank 2 but is rank 1"));
   }
 
@@ -161,7 +161,7 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
                        {S({2, 5}), S({3, 4})}, {}, {}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_TRUE(str_util::StrContains(
+    EXPECT_TRUE(absl::StrContains(
         s.ToString(),
         "Invalid argument: Dimensions must be equal, but are 5 and 3"));
   }
@@ -172,7 +172,7 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
                        {S({2, 5, 3}), S({3, 5, 4})}, {}, {}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_TRUE(str_util::StrContains(
+    EXPECT_TRUE(absl::StrContains(
         s.ToString(), "Invalid argument: Shape must be rank 2 but is rank 3"));
   }
 
@@ -211,6 +211,74 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
     EXPECT_EQ(2, c.Value(c.Dim(output, 0)));
     EXPECT_EQ(4, c.Value(c.Dim(output, 1)));
   }
+}
+
+TEST(CommonShapeFnsTest, BatchMatMulV2_ShapeFn) {
+  ShapeInferenceTestOp op("BatchMatMulV2");
+  auto set_adj = [&op](bool adj_x, bool adj_y) {
+    TF_ASSERT_OK(NodeDefBuilder("test", "BatchMatMulV2")
+                     .Input({"a", 0, DT_FLOAT})
+                     .Input({"b", 0, DT_FLOAT})
+                     .Attr("adj_x", adj_x)
+                     .Attr("adj_y", adj_y)
+                     .Finalize(&op.node_def));
+  };
+
+  set_adj(false, false);
+
+  // Rank checks.
+  INFER_ERROR("at least rank 2", op, "[];?");
+  INFER_ERROR("at least rank 2", op, "[1];?");
+  INFER_ERROR("at least rank 2", op, "?;[]");
+  INFER_ERROR("at least rank 2", op, "?;[2]");
+
+  INFER_OK(op, "?;?", "?");
+
+  // 0 batch dims.
+  INFER_OK(op, "[?,?];[?,?]", "[d0_0,d1_1]");
+
+  // 1 batch dims.
+  INFER_OK(op, "[3,?,?];[3,?,?]", "[d0_0,d0_1,d1_2]");
+  INFER_OK(op, "[?,?,?];[1,?,?]", "[d0_0,d0_1,d1_2]");
+  INFER_OK(op, "[?,?,?];[2,?,?]", "[d1_0,d0_1,d1_2]");
+  INFER_OK(op, "[1,?,?];[?,?,?]", "[d1_0,d0_1,d1_2]");
+  INFER_OK(op, "[2,?,?];[?,?,?]", "[d0_0,d0_1,d1_2]");
+  INFER_OK(op, "[?,?,?];[?,?,?]", "[?,d0_1,d1_2]");
+
+  // Empty batch dim with broadcasting.
+  INFER_OK(op, "[?,?];[?,?,?]", "[d1_0,d0_0,d1_2]");
+  INFER_OK(op, "[?,?,?];[?,?]", "[d0_0,d0_1,d1_1]");
+  INFER_OK(op, "[?,?];[?,?,?,?]", "[d1_0,d1_1,d0_0,d1_3]");
+  INFER_OK(op, "[?,?,?,?];[?,?]", "[d0_0,d0_1,d0_2,d1_1]");
+
+  // Unknown number of batch dims.
+  INFER_OK(op, "[?,?];?", "?");
+  INFER_OK(op, "?;[?,?]", "?");
+  INFER_OK(op, "[?,?,?,?];?", "?");
+
+  // Large number of batch dims.
+  INFER_OK(op, "[?,?,?,?,?];[1,?,?]", "[d0_0,d0_1,d0_2,d0_3,d1_2]");
+  INFER_OK(op, "[1,?,?];[?,?,?,?,?]", "[d1_0,d1_1,d1_2,d0_1,d1_4]");
+
+  // Batch dim mismatch.
+  INFER_ERROR("are 2 and 3", op, "[?,?,2,?,?];[3,?,?]");
+  INFER_ERROR("are 2 and 3", op, "[2,?,?];[?,?,3,?,?]");
+
+  // Test adj_a, testing output and that inner dims are compared.
+  set_adj(false, false);
+  INFER_OK(op, "[2,2,3,4];[2,2,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+  INFER_ERROR("are 2 and 3", op, "[?,1,2];[?,3,1]");  // inner dim mismatch
+  set_adj(true, false);
+  INFER_OK(op, "[2,2,3,4];[2,2,?,?]", "[d0_0,d0_1,d0_3,d1_3]");
+  INFER_ERROR("are 2 and 3", op, "[?,2,1];[?,3,1]");  // inner dim mismatch
+
+  // Test adj_b=true.
+  set_adj(false, true);
+  INFER_OK(op, "[2,2,?,?];[2,2,3,4]", "[d0_0,d0_1,d0_2,d1_2]");
+  INFER_ERROR("are 2 and 3", op, "[?,1,2];[?,1,3]");  // inner dim mismatch
+  set_adj(true, true);
+  INFER_OK(op, "[2,2,?,?];[2,2,3,4]", "[d0_0,d0_1,d0_3,d1_2]");
+  INFER_ERROR("are 2 and 3", op, "[?,2,1];[?,1,3]");  // inner dim mismatch
 }
 
 TEST(CommonShapeFnsTest, BiasAddShapeTest) {
@@ -314,6 +382,33 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
                        {}, {}, {});
     EXPECT_FALSE(BiasAddShape(&c).ok());
   }
+}
+
+TEST(CommonShapeFnsTest, FusedBatchNormExTest) {
+  ShapeInferenceTestOp op("_FusedBatchNormEx");
+
+  std::vector<NodeDefBuilder::NodeOut> no_side_inputs;
+  TF_CHECK_OK(NodeDefBuilder("test", "_FusedBatchNormEx")
+                  .Input("x", 0, DT_HALF)
+                  .Input("scale", 0, DT_FLOAT)
+                  .Input("offset", 0, DT_FLOAT)
+                  .Input("mean", 0, DT_FLOAT)
+                  .Input("variance", 0, DT_FLOAT)
+                  .Input(no_side_inputs)
+                  .Attr("T", DT_HALF)
+                  .Attr("U", DT_FLOAT)
+                  .Attr("epsilon", 0.001)
+                  .Attr("data_format", "NHWC")
+                  .Attr("activation_mode", "Relu")
+                  .Attr("num_side_inputs", 0)
+                  .Attr("is_training", true)
+                  .Finalize(&op.node_def));
+
+  // Channels are not multiple of 4.
+  INFER_ERROR("must be divisible by 4", op, "[2,2,2,2];[2];[2];[0];[0]");
+
+  INFER_OK(op, "[2,2,2,4];[4];[4];[0];[0]",
+           "[d0_0,d0_1,d0_2,d0_3];[d0_3];[d0_3];[d0_3];[d0_3];?");
 }
 
 TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
@@ -458,9 +553,10 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
   INFER_OK(op, "[1,4,4,1];[?,1,1,1]", "[d0_0,?,2,d1_3]");
   INFER_OK(op, "[1,4,4,1];[2,?,1,1]", "[d0_0,3,?,d1_3]");
 
-  // input depths must match.
-  INFER_ERROR("Dimensions must be equal, but are 10 and 10000", op,
-              "[1,2,2,10];[1,1,10000,20]");
+  // input depths must be multiple of filter.
+  INFER_ERROR(
+      "Depth of input (10) is not a multiple of input depth of filter (10000)",
+      op, "[1,2,2,10];[1,1,10000,20]");
 
   // Tests for NCHW
   // 1x1 filter

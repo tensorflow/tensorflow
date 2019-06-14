@@ -102,7 +102,7 @@ void FusedConvParallelFor(
 // Holds the state needed for the resizing subtasks.
 template <class T1>
 struct ResizeTaskParameters {
-  ResizeTaskParameters() : st(false) {}
+  ResizeTaskParameters() : st(false, false) {}
 
   int cache_height;
   T1* resize_cache;
@@ -649,9 +649,9 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
     OP_REQUIRES(context, (input.shape().num_elements() > 0),
                 errors::InvalidArgument("Input tensor can't be empty"));
 
-    ImageResizerState st(false);
+    ImageResizerState st(false, false);
     if (DoResize) {
-      st = ImageResizerState(align_corners_);
+      st = ImageResizerState(align_corners_, false);
       st.ValidateAndCalculateOutputSize(context, input);
       if (!context->status().ok()) return;
     } else {

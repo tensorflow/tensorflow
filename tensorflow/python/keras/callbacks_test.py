@@ -25,6 +25,7 @@ import re
 import shutil
 import sys
 import threading
+import time
 import unittest
 
 from absl.testing import parameterized
@@ -35,12 +36,15 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary_iterator
 from tensorflow.python.training import adam
-from tensorflow.python.util import tf_contextlib
+from tensorflow.python.training import checkpoint_management
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -274,14 +278,13 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         keras.layers.Dense(NUM_CLASSES, activation='softmax')
     ]
     model = testing_utils.get_model_from_layers(layers, input_shape=(10,))
-    model.compile(loss='categorical_crossentropy',
-                  optimizer='rmsprop',
-                  metrics=['accuracy'])
+    model.compile(
+        loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
 
     temp_dir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
-    filepath = os.path.join(temp_dir, 'checkpoint')
+    filepath = os.path.join(temp_dir, 'checkpoint.h5')
     (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
         train_samples=TRAIN_SAMPLES,
         test_samples=TEST_SAMPLES,
@@ -300,9 +303,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
             NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
     model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
     model.compile(
-        loss='categorical_crossentropy',
-        optimizer='rmsprop',
-        metrics=['accuracy'])
+        loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
 
     cbks = [
         keras.callbacks.ModelCheckpoint(
@@ -437,6 +438,241 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         save_best_only=save_best_only,
         mode='unknown')
 
+    # Case 6: `ModelCheckpoint` with a combination of `save_freq` and `period`.
+    # Though `period` is deprecated, we're testing it for
+    # backward-compatibility.
+    filepath = os.path.join(temp_dir, 'checkpoint.epoch{epoch:02d}.h5')
+    cbks = [
+        keras.callbacks.ModelCheckpoint(
+            filepath, monitor=monitor, mode=mode, save_freq='epoch', period=5)
+    ]
+    assert not os.path.exists(filepath.format(epoch=0))
+    assert not os.path.exists(filepath.format(epoch=5))
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=2,
+        validation_data=(x_test, y_test),
+        callbacks=cbks,
+        epochs=10,
+        verbose=1)
+    assert not os.path.exists(filepath.format(epoch=1))
+    assert not os.path.exists(filepath.format(epoch=2))
+    assert not os.path.exists(filepath.format(epoch=3))
+    assert not os.path.exists(filepath.format(epoch=4))
+    assert os.path.exists(filepath.format(epoch=5))
+    assert not os.path.exists(filepath.format(epoch=6))
+    assert os.path.exists(filepath.format(epoch=10))
+    os.remove(filepath.format(epoch=5))
+    os.remove(filepath.format(epoch=10))
+
+    # Case 7: `ModelCheckpoint` with an integer `save_freq`
+    filepath = os.path.join(temp_dir, 'checkpoint.epoch{epoch:02d}.h5')
+    cbks = [
+        keras.callbacks.ModelCheckpoint(
+            filepath,
+            monitor=monitor,
+            save_best_only=save_best_only,
+            mode=mode,
+            save_freq=30,
+            period=100)  # The period should be ignored (this test tests this).
+    ]
+    assert not os.path.exists(filepath.format(epoch=3))
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=2,
+        validation_data=(x_test, y_test),
+        callbacks=cbks,
+        epochs=10,
+        verbose=1)
+    assert not os.path.exists(filepath.format(epoch=1))
+    assert not os.path.exists(filepath.format(epoch=2))
+    assert os.path.exists(filepath.format(epoch=3))
+    assert not os.path.exists(filepath.format(epoch=4))
+    assert not os.path.exists(filepath.format(epoch=5))
+    assert os.path.exists(filepath.format(epoch=6))
+    assert not os.path.exists(filepath.format(epoch=7))
+    assert not os.path.exists(filepath.format(epoch=8))
+    assert os.path.exists(filepath.format(epoch=9))
+    os.remove(filepath.format(epoch=3))
+    os.remove(filepath.format(epoch=6))
+    os.remove(filepath.format(epoch=9))
+
+    # Case 8: `ModelCheckpoint` with valid and invalid save_freq argument.
+    with self.assertRaisesRegexp(ValueError, 'Unrecognized save_freq'):
+      keras.callbacks.ModelCheckpoint(
+          filepath,
+          monitor=monitor,
+          save_best_only=save_best_only,
+          mode=mode,
+          save_freq='invalid_save_freq')
+    # The following should not raise ValueError.
+    keras.callbacks.ModelCheckpoint(
+        filepath,
+        monitor=monitor,
+        save_best_only=save_best_only,
+        mode=mode,
+        save_freq='epoch')
+    keras.callbacks.ModelCheckpoint(
+        filepath,
+        monitor=monitor,
+        save_best_only=save_best_only,
+        mode=mode,
+        save_freq=3)
+
+  def _run_load_weights_on_restart_test_common_iterations(self):
+
+    def get_input_datasets():
+      # Simple training input.
+      train_input = [[1]] * 16
+      train_label = [[0]] * 16
+      ds = dataset_ops.Dataset.from_tensor_slices((train_input, train_label))
+      return ds.batch(8, drop_remainder=True)
+
+    class Bias(base_layer.Layer):
+
+      def build(self, input_shape):
+        self.bias = self.add_variable('bias', (1,), initializer='zeros')
+
+      def call(self, inputs):
+        return inputs + self.bias
+
+    # Very simple bias model to eliminate randomness.
+    optimizer = gradient_descent.SGD(0.1)
+    model = sequential.Sequential()
+    model.add(Bias(input_shape=(1,)))
+    model.compile(loss='mae', optimizer=optimizer, metrics=['mae'])
+    train_ds = get_input_datasets()
+
+    temp_dir = self.get_temp_dir()
+    filepath = os.path.join(temp_dir, 'checkpoint.epoch{epoch:02d}.h5')
+    initial_epochs = 3
+
+    # The filepath shouldn't exist at the beginning.
+    self.assertFalse(os.path.exists(filepath))
+    callback = keras.callbacks.ModelCheckpoint(
+        filepath=filepath, save_weights_only=True)
+    model.fit(train_ds, epochs=initial_epochs, callbacks=[callback])
+
+    # The files should exist after fitting with callback.
+    for epoch in range(initial_epochs):
+      self.assertTrue(os.path.exists(filepath.format(epoch=epoch + 1)))
+    self.assertFalse(os.path.exists(filepath.format(epoch=initial_epochs + 1)))
+    self.assertEqual(
+        callback._get_most_recently_modified_file_matching_pattern(filepath),
+        filepath.format(epoch=initial_epochs))
+
+    model.fit(train_ds, epochs=1)
+    weights_after_one_more_epoch = model.get_weights()
+
+    # The filepath should continue to exist after fitting without callback.
+    for epoch in range(initial_epochs):
+      self.assertTrue(os.path.exists(filepath.format(epoch=epoch + 1)))
+
+    return model, train_ds, filepath, weights_after_one_more_epoch
+
+  @staticmethod
+  def get_ModelCheckpoint_load_weights_on_restart_true_test(save_weights_only):
+
+    def func(self):
+      (model, train_ds, filepath, weights_after_one_more_epoch
+      ) = self._run_load_weights_on_restart_test_common_iterations()
+
+      # Sleep for some short time period ensuring the files are created with
+      # a different time (in MacOS OSS the granularity is only 1 second).
+      time.sleep(2)
+      callback = keras.callbacks.ModelCheckpoint(
+          filepath=filepath,
+          save_weights_only=save_weights_only,
+          load_weights_on_restart=True)
+      model.fit(train_ds, epochs=1, callbacks=[callback])
+      weights_after_model_restoring_and_one_more_epoch = model.get_weights()
+
+      self.assertEqual(
+          callback._get_most_recently_modified_file_matching_pattern(filepath),
+          filepath.format(epoch=1))
+
+      model.fit(
+          train_ds,
+          epochs=1,
+          callbacks=[
+              keras.callbacks.ModelCheckpoint(
+                  filepath=filepath,
+                  save_weights_only=save_weights_only,
+                  load_weights_on_restart=True)
+          ])
+      weights_with_one_final_extra_epoch = model.get_weights()
+
+      # Asserting the weights one epoch after initial fitting and another epoch
+      # after that are closed, if a ModelCheckpoint with
+      # load_weights_on_restart=True is given (so the model is restored at the
+      # beginning of training).
+      self.assertAllClose(weights_after_one_more_epoch,
+                          weights_after_model_restoring_and_one_more_epoch)
+
+      self.assertNotAllClose(weights_after_one_more_epoch,
+                             weights_with_one_final_extra_epoch)
+
+    return func
+
+  @staticmethod
+  def get_ModelCheckpoint_load_weights_on_restart_false_test(save_weights_only):
+
+    def func(self):
+      (model, train_ds, filepath, weights_after_one_more_epoch
+      ) = self._run_load_weights_on_restart_test_common_iterations()
+
+      model.fit(
+          train_ds,
+          epochs=1,
+          callbacks=[
+              keras.callbacks.ModelCheckpoint(
+                  filepath=filepath, save_weights_only=save_weights_only)
+          ])
+      weights_after_model_restoring_and_one_more_epoch = model.get_weights()
+
+      # Asserting the weights one epoch after initial fitting and another epoch
+      # after that are different, if a ModelCheckpoint with
+      # load_weights_on_restart=False is given (so the model is not restored at
+      # the beginning of training).
+      self.assertNotAllClose(weights_after_one_more_epoch,
+                             weights_after_model_restoring_and_one_more_epoch)
+
+    return func
+
+  test_model_checkpoint_load_weights_on_restart_true_save_weights_only_true = \
+        get_ModelCheckpoint_load_weights_on_restart_true_test.__func__(True)
+
+  test_model_checkpoint_load_weights_on_restart_true_save_weights_only_false = \
+        get_ModelCheckpoint_load_weights_on_restart_true_test.__func__(False)
+
+  test_model_checkpoint_load_weights_on_restart_false_save_weights_only_true = \
+        get_ModelCheckpoint_load_weights_on_restart_false_test.__func__(True)
+
+  test_model_checkpoint_load_weights_on_restart_false_save_weights_only_false \
+        = get_ModelCheckpoint_load_weights_on_restart_false_test.__func__(False)
+
+  def test_ModelCheckpoint_override_if_file_exist(self):
+    (model, train_ds, filepath,
+     _) = self._run_load_weights_on_restart_test_common_iterations()
+
+    # Sleep for some short time period to ensure the files are created with
+    # a different time (in MacOS OSS the granularity is only 1 second).
+    time.sleep(2)
+    callback = keras.callbacks.ModelCheckpoint(
+        filepath=filepath, save_weights_only=True)
+    model.load_weights(
+        callback._get_most_recently_modified_file_matching_pattern(filepath))
+    weights_before_additional_fit = model.get_weights()
+    model.fit(train_ds, epochs=1, callbacks=[callback])
+    model.load_weights(
+        callback._get_most_recently_modified_file_matching_pattern(filepath))
+    weights_after_additional_fit = model.get_weights()
+
+    self.assertNotAllClose(weights_before_additional_fit,
+                           weights_after_additional_fit)
+
   def test_EarlyStopping(self):
     with self.cached_session():
       np.random.seed(123)
@@ -450,9 +686,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       model = testing_utils.get_small_sequential_mlp(
           num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
       model.compile(
-          loss='categorical_crossentropy',
-          optimizer='rmsprop',
-          metrics=['accuracy'])
+          loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
 
       cases = [
           ('max', 'val_acc'),
@@ -510,7 +744,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       model = testing_utils.get_small_sequential_mlp(
           num_hidden=1, num_classes=1, input_dim=1)
       model.compile(
-          optimizer='sgd', loss='binary_crossentropy', metrics=['accuracy'])
+          optimizer='sgd', loss='binary_crossentropy', metrics=['acc'])
 
       stopper = keras.callbacks.EarlyStopping(monitor='acc',
                                               baseline=baseline)
@@ -654,7 +888,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           batch_size=BATCH_SIZE,
           validation_data=(x_test, y_test),
           callbacks=cbks,
-          epochs=5,
+          epochs=2,
           verbose=0)
       self.assertAllClose(
           float(keras.backend.get_value(model.optimizer.lr)), 0.1, atol=1e-4)
@@ -675,7 +909,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           batch_size=BATCH_SIZE,
           validation_data=(x_test, y_test),
           callbacks=cbks,
-          epochs=5,
+          epochs=2,
           verbose=2)
       self.assertAllClose(
           float(keras.backend.get_value(model.optimizer.lr)), 0.01, atol=1e-4)
@@ -966,56 +1200,83 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
             epochs=1)
 
 
-class _MockSummaryFile(object):
-  """Mocks a TensorBoard summary file, recording the tag names it sees."""
+# A summary that was emitted during a test. Fields:
+#   logdir: str. The logdir of the FileWriter to which the summary was
+#     written.
+#   tag: str. The name of the summary.
+_ObservedSummary = collections.namedtuple('_ObservedSummary', ('logdir', 'tag'))
+
+
+class _SummaryFile(object):
+  """A record of summary tags and the files to which they were written.
+
+  Fields `scalars`, `images`, `histograms`, and `tensors` are sets
+  containing `_ObservedSummary` values.
+  """
 
   def __init__(self):
-    self.scalar_names = set()
-    self.hist_names = set()
-    self.image_names = set()
+    self.scalars = set()
+    self.images = set()
+    self.histograms = set()
+    self.tensors = set()
 
 
-def _make_mock_scalar_summary(summary_file):
+def list_summaries(logdir):
+  """Read all summaries under the logdir into a `_SummaryFile`.
 
-  def _mock_scalar_summary(name, *args, **kwargs):  # pylint: disable=unused-argument
-    summary_file.scalar_names.update({name})
+  Args:
+    logdir: A path to a directory that contains zero or more event
+      files, either as direct children or in transitive subdirectories.
+      Summaries in these events must only contain old-style scalars,
+      images, and histograms. Non-summary events, like `graph_def`s, are
+      ignored.
 
-  return _mock_scalar_summary
+  Returns:
+    A `_SummaryFile` object reflecting all summaries written to any
+    event files in the logdir or any of its descendant directories.
 
-
-def _make_mock_hist_summary(summary_file):
-
-  def _mock_hist_summary(name, *args, **kwargs):  # pylint: disable=unused-argument
-    summary_file.hist_names.update({name})
-
-  return _mock_hist_summary
-
-
-def _make_mock_image_summary(summary_file):
-
-  def _mock_image_summary(name, *args, **kwargs):  # pylint: disable=unused-argument
-    summary_file.image_names.update({name})
-
-  return _mock_image_summary
-
-
-@tf_contextlib.contextmanager
-def _mock_summary_api(summary_file):
-  with test.mock.patch.object(summary_ops_v2,
-                              'scalar',
-                              _make_mock_scalar_summary(summary_file)), \
-        test.mock.patch.object(summary_ops_v2,
-                               'histogram',
-                               _make_mock_hist_summary(summary_file)), \
-        test.mock.patch.object(summary_ops_v2,
-                               'image',
-                               _make_mock_image_summary(summary_file)):
-    yield
+  Raises:
+    ValueError: If an event file contains an summary of unexpected kind.
+  """
+  result = _SummaryFile()
+  for (dirpath, dirnames, filenames) in os.walk(logdir):
+    del dirnames  # unused
+    for filename in filenames:
+      if not filename.startswith('events.out.'):
+        continue
+      path = os.path.join(dirpath, filename)
+      for event in summary_iterator.summary_iterator(path):
+        if not event.summary:  # (e.g., it's a `graph_def` event)
+          continue
+        for value in event.summary.value:
+          tag = value.tag
+          # Case on the `value` rather than the summary metadata because
+          # the Keras callback uses `summary_ops_v2` to emit old-style
+          # summaries. See b/124535134.
+          kind = value.WhichOneof('value')
+          container = {
+              'simple_value': result.scalars,
+              'image': result.images,
+              'histo': result.histograms,
+              'tensor': result.tensors,
+          }.get(kind)
+          if container is None:
+            raise ValueError(
+                'Unexpected summary kind %r in event file %s:\n%r'
+                % (kind, path, event))
+          container.add(_ObservedSummary(logdir=dirpath, tag=tag))
+  return result
 
 
 @keras_parameterized.run_with_all_model_types
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class TestTensorBoardV2(keras_parameterized.TestCase):
+
+  def setUp(self):
+    super(TestTensorBoardV2, self).setUp()
+    self.logdir = os.path.join(self.get_temp_dir(), 'tb')
+    self.train_dir = os.path.join(self.logdir, 'train')
+    self.validation_dir = os.path.join(self.logdir, 'validation')
 
   def _get_model(self):
     layers = [
@@ -1024,17 +1285,65 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         keras.layers.Dense(1)
     ]
     model = testing_utils.get_model_from_layers(layers, input_shape=(10, 10, 1))
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    opt = gradient_descent.SGD(learning_rate=0.001)
+    model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
     return model
 
-  def test_TensorBoard_basic(self):
-    summary_file = _MockSummaryFile()
+  def test_TensorBoard_default_logdir(self):
+    """Regression test for cross-platform pathsep in default logdir."""
+    os.chdir(self.get_temp_dir())
+
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
-    temp_dir = self.get_temp_dir() + '/tb'
-    tb_cbk = keras.callbacks.TensorBoard(temp_dir)
+    tb_cbk = keras.callbacks.TensorBoard()  # no logdir specified
 
-    with _mock_summary_api(summary_file):  # pylint: disable=not-context-manager
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+
+    summary_file = list_summaries(logdir='.')
+    train_dir = os.path.join('.', 'logs', 'train')
+    validation_dir = os.path.join('.', 'logs', 'validation')
+    self.assertEqual(
+        summary_file.scalars, {
+            _ObservedSummary(logdir=train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=validation_dir, tag='epoch_loss'),
+        })
+
+  def test_TensorBoard_basic(self):
+    model = self._get_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+
+    summary_file = list_summaries(self.logdir)
+    self.assertEqual(
+        summary_file.scalars, {
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+        })
+
+  def test_TensorBoard_across_invocations(self):
+    """Regression test for summary writer resource use-after-free.
+
+    See: <https://github.com/tensorflow/tensorflow/issues/25707>
+    """
+    model = self._get_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir)
+
+    for _ in (1, 2):
       model.fit(
           x,
           y,
@@ -1043,87 +1352,374 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
           validation_data=(x, y),
           callbacks=[tb_cbk])
 
-    self.assertEqual(summary_file.scalar_names,
-                     {'epoch_loss', 'epoch_val_loss'})
+    summary_file = list_summaries(self.logdir)
+    self.assertEqual(
+        summary_file.scalars, {
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+        })
+
+  def test_TensorBoard_no_spurious_event_files(self):
+    model = self._get_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        callbacks=[tb_cbk])
+
+    events_file_run_basenames = set()
+    for (dirpath, dirnames, filenames) in os.walk(self.logdir):
+      del dirnames  # unused
+      if any(fn.startswith('events.out.') for fn in filenames):
+        events_file_run_basenames.add(os.path.basename(dirpath))
+    self.assertEqual(events_file_run_basenames, {'train'})
 
   def test_TensorBoard_batch_metrics(self):
-    summary_file = _MockSummaryFile()
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
-    temp_dir = self.get_temp_dir() + '/tb'
-    tb_cbk = keras.callbacks.TensorBoard(temp_dir, update_freq=1)
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir, update_freq=1)
 
-    with _mock_summary_api(summary_file):  # pylint: disable=not-context-manager
-      model.fit(
-          x,
-          y,
-          batch_size=2,
-          epochs=2,
-          validation_data=(x, y),
-          callbacks=[tb_cbk])
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
 
-    self.assertEqual(summary_file.scalar_names,
-                     {'batch_loss', 'epoch_loss', 'epoch_val_loss'})
+    summary_file = list_summaries(self.logdir)
+    self.assertEqual(
+        summary_file.scalars,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='batch_loss'),
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+        },
+    )
 
   def test_TensorBoard_weight_histograms(self):
-    summary_file = _MockSummaryFile()
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
-    temp_dir = self.get_temp_dir() + '/tb'
-    tb_cbk = keras.callbacks.TensorBoard(temp_dir, histogram_freq=1)
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir, histogram_freq=1)
+    model_type = testing_utils.get_model_type()
 
-    with _mock_summary_api(summary_file):  # pylint: disable=not-context-manager
-      model.fit(
-          x,
-          y,
-          batch_size=2,
-          epochs=2,
-          validation_data=(x, y),
-          callbacks=[tb_cbk])
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
 
-    self.assertEqual(summary_file.scalar_names,
-                     {'epoch_loss', 'epoch_val_loss'})
-
-    # Strip Layer names as Layers are created multiple times in test.
-    hist_names = {
-        name[name.rfind('/') + 1:] for name in summary_file.hist_names
-    }
-    self.assertEqual(hist_names, {'bias_0', 'kernel_0'})
+    self.assertEqual(
+        summary_file.scalars,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+        },
+    )
+    self.assertEqual(
+        self._strip_layer_names(summary_file.histograms, model_type),
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='bias_0'),
+            _ObservedSummary(logdir=self.train_dir, tag='kernel_0'),
+        },
+    )
 
   def test_TensorBoard_weight_images(self):
-    summary_file = _MockSummaryFile()
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
-    temp_dir = self.get_temp_dir() + '/tb'
     tb_cbk = keras.callbacks.TensorBoard(
-        temp_dir, histogram_freq=1, write_images=True)
+        self.logdir, histogram_freq=1, write_images=True)
+    model_type = testing_utils.get_model_type()
 
-    with _mock_summary_api(summary_file):  # pylint: disable=not-context-manager
-      model.fit(
-          x,
-          y,
-          batch_size=2,
-          epochs=2,
-          validation_data=(x, y),
-          callbacks=[tb_cbk])
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
 
-    self.assertEqual(summary_file.scalar_names,
-                     {'epoch_loss', 'epoch_val_loss'})
+    self.assertEqual(
+        summary_file.scalars,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+        },
+    )
+    self.assertEqual(
+        self._strip_layer_names(summary_file.histograms, model_type),
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='bias_0'),
+            _ObservedSummary(logdir=self.train_dir, tag='kernel_0'),
+        },
+    )
+    self.assertEqual(
+        self._strip_layer_names(summary_file.images, model_type),
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='bias_0/image/0'),
+            _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/0'),
+            _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/1'),
+            _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/2'),
+        },
+    )
 
-    # Strip Layer names as Layers are created multiple times in test.
-    hist_names = {
-        name[name.rfind('/') + 1:] for name in summary_file.hist_names
-    }
-    self.assertEqual(hist_names, {'bias_0', 'kernel_0'})
+  def _strip_layer_names(self, summaries, model_type):
+    """Deduplicate summary names modulo layer prefix.
 
-    image_names = {
-        name[name.rfind('/') + 1:] for name in summary_file.image_names
-    }
-    self.assertEqual(image_names, {'bias_0', 'kernel_0'})
+    This removes the first slash-component of each tag name: for
+    instance, "foo/bar/baz" becomes "bar/baz".
+
+    Args:
+      summaries: A `set` of `_ObservedSummary` values.
+      model_type: The model type currently being tested.
+
+    Returns:
+      A new `set` of `_ObservedSummary` values with layer prefixes
+      removed.
+    """
+    result = set()
+    for summary in summaries:
+      if '/' not in summary.tag:
+        raise ValueError('tag has no layer name: %r' % summary.tag)
+      start_from = 2 if 'subclass' in model_type else 1
+      new_tag = '/'.join(summary.tag.split('/')[start_from:])
+      result.add(summary._replace(tag=new_tag))
+    return result
 
   def test_TensorBoard_invalid_argument(self):
     with self.assertRaisesRegexp(ValueError, 'Unrecognized arguments'):
       keras.callbacks.TensorBoard(wwrite_images=True)
+
+
+# Note that this test specifies model_type explicitly.
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
+
+  def setUp(self):
+    super(TestTensorBoardV2NonParameterizedTest, self).setUp()
+    self.logdir = os.path.join(self.get_temp_dir(), 'tb')
+    self.train_dir = os.path.join(self.logdir, 'train')
+    self.validation_dir = os.path.join(self.logdir, 'validation')
+
+  def _get_seq_model(self):
+    model = keras.models.Sequential([
+        keras.layers.Conv2D(8, (3, 3), input_shape=(10, 10, 1)),
+        keras.layers.Flatten(),
+        keras.layers.Dense(1),
+    ])
+    opt = gradient_descent.SGD(learning_rate=0.001)
+    model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    return model
+
+  def fitModelAndAssertKerasModelWritten(self, model):
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir,
+                                         write_graph=True,
+                                         profile_batch=0)
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+    self.assertEqual(
+        summary_file.tensors,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='keras'),
+        },
+    )
+
+  def test_TensorBoard_writeSequentialModel_noInputShape(self):
+    model = keras.models.Sequential([
+        keras.layers.Conv2D(8, (3, 3)),
+        keras.layers.Flatten(),
+        keras.layers.Dense(1),
+    ])
+    model.compile('sgd', 'mse', run_eagerly=False)
+    self.fitModelAndAssertKerasModelWritten(model)
+
+  def test_TensorBoard_writeSequentialModel_withInputShape(self):
+    model = keras.models.Sequential([
+        keras.layers.Conv2D(8, (3, 3), input_shape=(10, 10, 1)),
+        keras.layers.Flatten(),
+        keras.layers.Dense(1),
+    ])
+    model.compile('sgd', 'mse', run_eagerly=False)
+    self.fitModelAndAssertKerasModelWritten(model)
+
+  def test_TensoriBoard_writeModel(self):
+    inputs = keras.layers.Input([10, 10, 1])
+    x = keras.layers.Conv2D(8, (3, 3), activation='relu')(inputs)
+    x = keras.layers.Flatten()(x)
+    x = keras.layers.Dense(1)(x)
+    model = keras.models.Model(inputs=inputs, outputs=[x])
+    model.compile('sgd', 'mse', run_eagerly=False)
+    self.fitModelAndAssertKerasModelWritten(model)
+
+  def test_TensorBoard_autoTrace(self):
+    model = self._get_seq_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir, histogram_freq=1, profile_batch=1, write_graph=False)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+
+    self.assertEqual(
+        summary_file.tensors,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag=u'batch_1'),
+        },
+    )
+
+  def test_TensorBoard_autoTrace_tagNameWithBatchNum(self):
+    model = self._get_seq_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir, histogram_freq=1, profile_batch=2, write_graph=False)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+
+    self.assertEqual(
+        summary_file.tensors,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag=u'batch_2'),
+        },
+    )
+
+  def test_TensorBoard_autoTrace_profile_batch_largerThanBatchCount(self):
+    model = self._get_seq_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir, histogram_freq=1, profile_batch=10000, write_graph=False)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+
+    # Enabled trace only on the 10000th batch, thus it should be empty.
+    self.assertEmpty(summary_file.tensors)
+
+
+class MostRecentlyModifiedFileMatchingPatternTest(test.TestCase):
+
+  def test_get_most_recently_modified_file_matching_pattern(self):
+    file_pattern = 'f.batch{batch:02d}epoch{epoch:02d}.h5'
+    test_dir = self.get_temp_dir()
+    path_pattern = os.path.join(test_dir, file_pattern)
+    file_paths = [
+        os.path.join(test_dir, file_name) for file_name in
+        ['f.batch03epoch02.h5', 'f.batch02epoch02.h5', 'f.batch01epoch01.h5']
+    ]
+    for file_path in file_paths:
+      with open(file_path, 'w') as f:
+        # Ensure there are some intervals between file creation.
+        time.sleep(2)
+        f.write('foo bar')
+    # Ensure the files have been actually written.
+    self.assertEqual(
+        set([
+            os.path.join(test_dir, file_name)
+            for file_name in os.listdir(test_dir)
+        ]), set(file_paths))
+    self.assertEqual(
+        keras.callbacks.ModelCheckpoint(None)
+        ._get_most_recently_modified_file_matching_pattern(path_pattern),
+        file_paths[-1])
+
+  def test_some_file_not_matching_pattern(self):
+    file_pattern = 'f.batch{batch:02d}epoch{epoch:02d}.h5'
+    test_dir = self.get_temp_dir()
+    path_pattern = os.path.join(test_dir, file_pattern)
+    file_paths = [
+        os.path.join(test_dir, file_name) for file_name in
+        ['f.batch03epoch02.h5', 'f.batch02epoch02.h5', 'f.baatch01epoch01.h5']
+    ]
+    for file_path in file_paths:
+      with open(file_path, 'w') as f:
+        # Ensure there are some intervals between file creation.
+        time.sleep(2)
+        f.write('foo bar')
+    self.assertEqual(
+        keras.callbacks.ModelCheckpoint(None)
+        ._get_most_recently_modified_file_matching_pattern(path_pattern),
+        file_paths[-2])
+
+  def test_get_same_file_if_file_name_equals_pattern(self):
+    file_name = 'f.batch02.h5'
+    test_dir = self.get_temp_dir()
+    file_path = os.path.join(test_dir, file_name)
+    with open(file_path, 'w') as f:
+      f.write('foo bar')
+    self.assertEqual(os.path.join(test_dir, os.listdir(test_dir)[0]), file_path)
+    self.assertEqual(
+        keras.callbacks.ModelCheckpoint(
+            None)._get_most_recently_modified_file_matching_pattern(file_path),
+        file_path)
+
+  def test_get_none_if_file_does_not_exist(self):
+    file_name = 'f.batch02.h5'
+    test_dir = self.get_temp_dir()
+    file_path = os.path.join(test_dir, file_name)
+    self.assertLen(os.listdir(test_dir), 0)
+    self.assertEqual(
+        keras.callbacks.ModelCheckpoint(
+            None)._get_most_recently_modified_file_matching_pattern(file_path),
+        None)
+
+  def test_using_checkpoint_management_latest_checkpoint(self):
+    file_pattern = 'f.batch{batch:02d}epoch{epoch:02d}'
+    ckpt_file_name = 'f.batchXepochY'
+    test_dir = self.get_temp_dir()
+    path_pattern = os.path.join(test_dir, file_pattern)
+    ckpt_file_path = os.path.join(test_dir, ckpt_file_name)
+    with open(ckpt_file_path, 'w') as f:
+      f.write('dummy ckpt')
+    checkpoint_management.update_checkpoint_state_internal(
+        test_dir, ckpt_file_path)
+
+    file_paths = [
+        os.path.join(test_dir, file_name)
+        for file_name in ['f.batch03epoch02', 'f.batch02epoch02']
+    ]
+    for file_path in file_paths:
+      with open(file_path, 'w') as f:
+        f.write('foo bar')
+
+    # The result returned from checkpoint_management.latest_checkpoint takes
+    # priority, so even if it was written earlier, we should still return that.
+    self.assertEqual(
+        keras.callbacks.ModelCheckpoint(None)
+        ._get_most_recently_modified_file_matching_pattern(path_pattern),
+        ckpt_file_path)
 
 
 if __name__ == '__main__':

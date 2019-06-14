@@ -20,12 +20,7 @@ from __future__ import print_function
 
 from absl import app
 from absl import flags
-
-import tensorflow as tf
-# TODO(vbardiovsky): Remove when load is available.
-from tensorflow.python.saved_model.load import load
-
-tf.saved_model.load = load
+import tensorflow.compat.v2 as tf
 
 FLAGS = flags.FLAGS
 

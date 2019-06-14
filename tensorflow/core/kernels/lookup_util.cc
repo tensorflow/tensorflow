@@ -163,7 +163,7 @@ class TextFileLineIterator
 
   int64 total_size() const override {
     if (vocab_size_ == -1) {
-      int64 new_size;
+      int64 new_size = -1;
       Status status = GetNumLinesInTextFile(env_, filename_, &new_size);
       if (!status.ok()) {
         LOG(WARNING) << "Unable to get line count: " << status;

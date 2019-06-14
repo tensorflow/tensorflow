@@ -67,6 +67,11 @@ inline const float* GetTensorData(const TfLiteTensor* tensor) {
 }
 
 template <>
+inline const TfLiteFloat16* GetTensorData(const TfLiteTensor* tensor) {
+  return tensor != nullptr ? tensor->data.f16 : nullptr;
+}
+
+template <>
 inline const uint8_t* GetTensorData(const TfLiteTensor* tensor) {
   return tensor != nullptr ? tensor->data.uint8 : nullptr;
 }
@@ -103,7 +108,8 @@ inline RuntimeShape GetTensorShape(const TfLiteTensor* tensor) {
 
   TfLiteIntArray* dims = tensor->dims;
   const int dims_size = dims->size;
-  const int32_t* dims_data = dims->data;
+  // C-style cast so this can be included in pure C code.
+  const int32_t* dims_data = (const int32_t*)(dims->data);
   return RuntimeShape(dims_size, dims_data);
 }
 

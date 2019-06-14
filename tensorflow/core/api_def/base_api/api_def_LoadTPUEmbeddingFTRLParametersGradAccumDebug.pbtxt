@@ -1,5 +1,6 @@
 op {
   graph_op_name: "LoadTPUEmbeddingFTRLParametersGradAccumDebug"
+  visibility: HIDDEN
   in_arg {
     name: "parameters"
     description: <<END

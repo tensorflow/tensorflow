@@ -59,7 +59,7 @@ class FileCacheTest(test_base.DatasetTestBase):
 
     self.assertEqual(
         tuple([c.shape[1:] for c in components]),
-        dataset_fn().output_shapes)
+        dataset_ops.get_legacy_output_shapes(dataset_fn()))
 
     get_next = self.getNext(dataset_fn())
 
@@ -163,6 +163,12 @@ class FileCacheTest(test_base.DatasetTestBase):
 
     self.assertAllEqual(elements, elements_itr1)
     self.assertAllEqual(elements, elements_itr2)
+
+  def testReadingPastEndOfSequence(self):
+    dataset = dataset_ops.Dataset.range(10).cache(self.cache_prefix)
+    dataset = dataset.map(lambda a: a).batch(4).repeat(2)
+    expected_output = [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9]] * 2
+    self.assertDatasetProduces(dataset, expected_output)
 
 
 @test_util.run_all_in_graph_and_eager_modes

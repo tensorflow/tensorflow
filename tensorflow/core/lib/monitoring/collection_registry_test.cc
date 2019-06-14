@@ -73,20 +73,9 @@ TEST(CollectionRegistryDeathTest, DuplicateRegistration) {
 
   auto handle =
       collection_registry->Register(&metric_def, EmptyCollectionFunction);
-  EXPECT_DEATH(
-      {
-        auto duplicate_handle =
-            collection_registry->Register(&metric_def, EmptyCollectionFunction);
-      },
-      "/tensorflow/metric");
-}
-
-TEST(CollectMetricsTest, NoMetrics) {
-  auto* collection_registry = CollectionRegistry::Default();
-  const std::unique_ptr<CollectedMetrics> collected_metrics =
-      collection_registry->CollectMetrics({});
-  EXPECT_EQ(0, collected_metrics->metric_descriptor_map.size());
-  EXPECT_EQ(0, collected_metrics->point_set_map.size());
+  auto duplicate_handle =
+      collection_registry->Register(&metric_def, EmptyCollectionFunction);
+  EXPECT_EQ(duplicate_handle, nullptr);
 }
 
 TEST(CollectMetricsTest, Counter) {
@@ -111,7 +100,7 @@ TEST(CollectMetricsTest, Counter) {
         collection_registry->CollectMetrics(options);
 
     if (collect_metric_descriptors) {
-      ASSERT_EQ(2, collected_metrics->metric_descriptor_map.size());
+      ASSERT_GE(collected_metrics->metric_descriptor_map.size(), 2);
 
       const MetricDescriptor& ld = *collected_metrics->metric_descriptor_map.at(
           "/tensorflow/test/counter_with_labels");
@@ -134,7 +123,7 @@ TEST(CollectMetricsTest, Counter) {
       EXPECT_EQ(0, collected_metrics->metric_descriptor_map.size());
     }
 
-    ASSERT_EQ(2, collected_metrics->point_set_map.size());
+    ASSERT_GE(collected_metrics->point_set_map.size(), 2);
 
     const PointSet& lps = *collected_metrics->point_set_map.at(
         "/tensorflow/test/counter_with_labels");
@@ -201,7 +190,7 @@ TEST(CollectMetricsTest, Gauge) {
         collection_registry->CollectMetrics(options);
 
     if (collect_metric_descriptors) {
-      ASSERT_EQ(2, collected_metrics->metric_descriptor_map.size());
+      ASSERT_GE(collected_metrics->metric_descriptor_map.size(), 2);
 
       const MetricDescriptor& ld = *collected_metrics->metric_descriptor_map.at(
           "/tensorflow/test/string_gauge_with_labels");
@@ -224,7 +213,7 @@ TEST(CollectMetricsTest, Gauge) {
       EXPECT_EQ(0, collected_metrics->metric_descriptor_map.size());
     }
 
-    ASSERT_EQ(2, collected_metrics->point_set_map.size());
+    ASSERT_GE(collected_metrics->point_set_map.size(), 2);
 
     const PointSet& lps = *collected_metrics->point_set_map.at(
         "/tensorflow/test/string_gauge_with_labels");
@@ -307,7 +296,7 @@ TEST(CollectMetricsTest, Sampler) {
         collection_registry->CollectMetrics(options);
 
     if (collect_metric_descriptors) {
-      ASSERT_EQ(2, collected_metrics->metric_descriptor_map.size());
+      ASSERT_GE(collected_metrics->metric_descriptor_map.size(), 2);
 
       const MetricDescriptor& ld = *collected_metrics->metric_descriptor_map.at(
           "/tensorflow/test/sampler_with_labels");
@@ -330,7 +319,7 @@ TEST(CollectMetricsTest, Sampler) {
       EXPECT_EQ(0, collected_metrics->metric_descriptor_map.size());
     }
 
-    ASSERT_EQ(2, collected_metrics->point_set_map.size());
+    ASSERT_GE(collected_metrics->point_set_map.size(), 2);
 
     const PointSet& lps = *collected_metrics->point_set_map.at(
         "/tensorflow/test/sampler_with_labels");
@@ -382,7 +371,7 @@ class FakeClockEnv : public EnvWrapper {
   void AdvanceByMillis(const uint64 millis) { current_millis_ += millis; }
 
   // Method that this environment specifically overrides.
-  uint64 NowMicros() override { return current_millis_ * 1000; }
+  uint64 NowMicros() const override { return current_millis_ * 1000; }
 
  private:
   uint64 current_millis_;

@@ -229,9 +229,9 @@ def bucket_by_sequence_length(element_length_func,
                                             dtype=dtypes.int64)
           bucket_boundary = boundaries[bucket_id]
           none_filler = bucket_boundary - 1
-      shapes = make_padded_shapes(
-          padded_shapes or grouped_dataset.output_shapes,
-          none_filler=none_filler)
+      input_shapes = dataset_ops.get_legacy_output_shapes(grouped_dataset)
+      shapes = make_padded_shapes(padded_shapes or input_shapes,
+                                  none_filler=none_filler)
       return grouped_dataset.padded_batch(
           batch_size, shapes, padding_values, drop_remainder=drop_remainder)
 
@@ -276,6 +276,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
           "`key_func` must return a single tf.int64 tensor. "
           "Got type=%s and shape=%s"
           % (self._key_func.output_types, self._key_func.output_shapes))
+
   def _make_init_func(self, init_func):
     """Make wrapping defun for init_func."""
     self._init_func = dataset_ops.StructuredFunctionWrapper(

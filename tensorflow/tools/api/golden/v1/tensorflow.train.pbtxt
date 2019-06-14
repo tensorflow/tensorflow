@@ -241,6 +241,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "queue_runner"
     mtype: "<type \'module\'>"
   }
@@ -275,6 +279,10 @@ tf_module {
   member_method {
     name: "checkpoint_exists"
     argspec: "args=[\'checkpoint_prefix\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "checkpoints_iterator"
+    argspec: "args=[\'checkpoint_dir\', \'min_interval_secs\', \'timeout\', \'timeout_fn\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \'None\'], "
   }
   member_method {
     name: "cosine_decay"

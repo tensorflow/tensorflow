@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 TEST(CApiDebug, ScalarCPU) {
-  TFE_TensorHandle* h = TestScalarTensorHandle();
+  TFE_TensorHandle* h = TestScalarTensorHandle(1.0f);
   TF_Status* status = TF_NewStatus();
   TFE_TensorDebugInfo* debug_info = TFE_TensorHandleTensorDebugInfo(h, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);

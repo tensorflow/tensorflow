@@ -96,6 +96,11 @@ class MaxPoolingOp : public OpKernel {
     OP_REQUIRES(context, ksize_.size() == 4,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 4 dimensions"));
+    for (int i = 0; i < ksize_.size(); ++i) {
+      OP_REQUIRES(context, ksize_[i] > 0,
+                  errors::InvalidArgument("Sliding window ksize for dimension ",
+                                          i, " was zero."));
+    }
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
                 errors::InvalidArgument("Sliding window stride field must "

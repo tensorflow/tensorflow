@@ -157,6 +157,9 @@ void TFE_Py_TapeSetStopOnThread();
 // Restarts gradient recording on the current thread.
 void TFE_Py_TapeSetRestartOnThread();
 
+// Returns if gradient recording is stopped on the current thread.
+PyObject* TFE_Py_TapeSetIsStopped();
+
 // Records an operation in the gradient tape stack.type is a string for the
 // operation type, used in the backprop code. output_tensors should be a list of
 // python ops.Tensor objects. input_tensor_ids should be a list of python
@@ -181,6 +184,7 @@ void TFE_Py_TapeWatchVariable(PyObject* tape, PyObject* variable);
 // target.
 PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
                               PyObject* sources, PyObject* output_gradients,
+                              PyObject* sources_raw,
                               PyObject* unconnected_gradients,
                               TF_Status* status);
 
@@ -231,8 +235,11 @@ PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim);
 PyObject* TFE_Py_TensorShapeOnDevice(PyObject* tensor);
 
 // Encodes the object as a tuple that is meant to be used as part of the key
-// for the defun function cache.
-PyObject* TFE_Py_EncodeArg(PyObject*);
+// for the defun function cache.  If `include_tensor_ranks_only` is true,
+// then the encoding only stores tensor ranks, and the key is
+// agnostic to dimension sizes.  Otherwise, full tensor shape encodings are
+// returned.
+PyObject* TFE_Py_EncodeArg(PyObject*, bool include_tensor_ranks_only);
 
 void TFE_Py_EnableInteractivePythonLogging();
 

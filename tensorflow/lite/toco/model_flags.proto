@@ -85,6 +85,7 @@ message RnnState {
   // Will be expanded with 1's to fit the model.
   // TODO(benoitjacob): should allow a generic, explicit shape.
   optional int32 size = 3;
+  optional int32 num_dims = 4;
 }
 
 // An ArraysExtraInfo message stores a collection of additional Information

@@ -94,6 +94,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleTriangularSolve(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
+  Status HandleCholesky(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
   Status HandleAllReduce(HloInstructionPtr crs) override {
     return DefaultAction(crs);
   }
@@ -106,7 +109,13 @@ class DfsHloVisitorWithDefaultBase
   Status HandleReplicaId(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
+  Status HandlePartitionId(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
   Status HandleRng(HloInstructionPtr random) override {
+    return DefaultAction(random);
+  }
+  Status HandleRngGetAndUpdateState(HloInstructionPtr random) override {
     return DefaultAction(random);
   }
   Status HandleInfeed(HloInstructionPtr infeed) override {

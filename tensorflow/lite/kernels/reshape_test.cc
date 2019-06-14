@@ -33,7 +33,7 @@ enum ShapeSpecificationType {
   // Const node, which is guaranteed not to change once inference starts. The
   // shape is also hardcoded as in kAsReshapeOption.
   kAsConstantTensor,
-  // The output shape is specifed as an input tensor that can change based on
+  // The output shape is specified as an input tensor that can change based on
   // external input. That is, the shape is not know before the inference
   // starts. The shape is also hardcoded as in kAsReshapeOption.
   kAsTensor,
@@ -123,18 +123,19 @@ class ReshapeOpModel : public SingleOpModel {
   int output_;
 };
 
-#ifdef GTEST_HAS_DEATH_TEST
 TEST_P(ReshapeOpTest, MismatchedDimensions) {
   if (GetParam() == kAsTensor) {
     ReshapeOpModel<float> m({1, 2, 4, 1}, {2}, {2, 1}, GetParam());
     m.SetInput({3});
-    EXPECT_DEATH(m.Invoke(), "num_input_elements != num_output_elements");
+    EXPECT_NE(m.InvokeUnchecked(), kTfLiteOk)
+        << "num_input_elements != num_output_elements";
   } else {
+#ifdef GTEST_HAS_DEATH_TEST
     EXPECT_DEATH(ReshapeOpModel<float>({1, 2, 4, 1}, {2}, {2, 1}, GetParam()),
                  "num_input_elements != num_output_elements");
+#endif
   }
 }
-#endif
 
 TEST_P(ReshapeOpTest, TooManyDimensions) {
 #ifdef GTEST_HAS_DEATH_TEST
@@ -144,18 +145,18 @@ TEST_P(ReshapeOpTest, TooManyDimensions) {
 #endif
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
 TEST_P(ReshapeOpTest, TooManySpecialDimensions) {
   if (GetParam() != kAsTensor) {
+#ifdef GTEST_HAS_DEATH_TEST
     EXPECT_DEATH(
         ReshapeOpModel<float>({1, 2, 4, 1}, {4}, {-1, -1, 2, 4}, GetParam()),
         "stretch_dim != -1");
+#endif
   } else {
     ReshapeOpModel<float> m({1, 2, 4, 1}, {4}, {-1, -1, 2, 4}, GetParam());
-    EXPECT_DEATH(m.Invoke(), "stretch_dim != -1");
+    EXPECT_NE(m.InvokeUnchecked(), kTfLiteOk) << "stretch_dim != -1";
   }
 }
-#endif
 
 // Create the model with a 2x2 shape. Processing still works because the new
 // shape ends up being hardcoded as a flat vector.
@@ -203,11 +204,10 @@ TEST_P(ReshapeOpTest, LegacyScalarOutput) {
                  "num_input_elements != num_output_elements");
 #endif
   } else if (GetParam() == kAsTensor) {
-#ifdef GTEST_HAS_DEATH_TEST
     ReshapeOpModel<float> m({1}, {1}, {0}, GetParam());
     m.SetInput({3});
-    EXPECT_DEATH(m.Invoke(), "num_input_elements != num_output_elements");
-#endif
+    ASSERT_NE(m.InvokeUnchecked(), kTfLiteOk)
+        << "num_input_elements != num_output_elements";
   } else {
     ReshapeOpModel<float> m({1}, {1}, {0}, GetParam());
     m.SetInput({3});
@@ -231,9 +231,3 @@ INSTANTIATE_TEST_SUITE_P(VariedShapeSpec, ReshapeOpTest,
                                            kAsTensor));
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

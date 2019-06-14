@@ -26,14 +26,18 @@ from tensorflow.python.platform import test
 
 MODEL_LIST = [
     (applications.ResNet50, 2048),
+    (applications.ResNet101, 2048),
+    (applications.ResNet152, 2048),
+    (applications.ResNet50V2, 2048),
+    (applications.ResNet101V2, 2048),
+    (applications.ResNet152V2, 2048),
     (applications.VGG16, 512),
     (applications.VGG19, 512),
     (applications.Xception, 2048),
     (applications.InceptionV3, 2048),
     (applications.InceptionResNetV2, 1536),
     (applications.MobileNet, 1024),
-    # TODO(fchollet): enable MobileNetV2 tests when a new TensorFlow test image
-    # is released with keras_applications upgraded to 1.0.5 or above.
+    (applications.MobileNetV2, 1280),
     (applications.DenseNet121, 1024),
     (applications.DenseNet169, 1664),
     (applications.DenseNet201, 1920),

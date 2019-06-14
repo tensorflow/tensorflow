@@ -70,7 +70,7 @@ Status PartitionFunctionGraph(
 }
 
 Status UpdateArgAndRetvalMetadata(
-    Graph* subgraph, std::vector<int>* arg_indices,
+    Graph* subgraph, const string& device_type, std::vector<int>* arg_indices,
     std::vector<int>* ret_indices,
     std::vector<AllocatorAttributes>* arg_alloc_attrs,
     std::vector<AllocatorAttributes>* ret_alloc_attrs) {
@@ -82,12 +82,12 @@ Status UpdateArgAndRetvalMetadata(
   // in the original function.
   for (Node* node : subgraph->op_nodes()) {
     string node_type = node->type_string();
-    if (node_type == FunctionLibraryDefinition::kArgOp) {
+    if (node->IsArg()) {
       TF_RETURN_IF_ERROR(node->attrs().Find("index", &attr_value));
       int index = static_cast<int>(attr_value->i());
       arg_indices->push_back(index);
       arg_nodes.push_back(std::make_pair(node, index));
-    } else if (node_type == FunctionLibraryDefinition::kRetOp) {
+    } else if (node->IsRetval()) {
       TF_RETURN_IF_ERROR(node->attrs().Find("index", &attr_value));
       int index = static_cast<int>(attr_value->i());
       ret_indices->push_back(index);
@@ -101,7 +101,9 @@ Status UpdateArgAndRetvalMetadata(
     TF_RETURN_IF_ERROR(arg->attrs().Find("T", &attr_value));
     AllocatorAttributes alloc_attr;
     DataType type = attr_value->type();
-    if (MTypeFromDType(type) == HOST_MEMORY) {
+    MemoryType mtype = (device_type == "TPU") ? MTypeFromDTypeIntsOnDevice(type)
+                                              : MTypeFromDType(type);
+    if (mtype == HOST_MEMORY) {
       alloc_attr.set_on_host(true);
     }
     arg_alloc_attrs->push_back(alloc_attr);
@@ -112,7 +114,9 @@ Status UpdateArgAndRetvalMetadata(
     TF_RETURN_IF_ERROR(ret->attrs().Find("T", &attr_value));
     AllocatorAttributes alloc_attr;
     DataType type = attr_value->type();
-    if (MTypeFromDType(type) == HOST_MEMORY) {
+    MemoryType mtype = (device_type == "TPU") ? MTypeFromDTypeIntsOnDevice(type)
+                                              : MTypeFromDType(type);
+    if (mtype == HOST_MEMORY) {
       alloc_attr.set_on_host(true);
     }
     ret_alloc_attrs->push_back(alloc_attr);

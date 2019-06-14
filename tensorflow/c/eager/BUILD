@@ -1,5 +1,4 @@
 # Experimental extensions to the C API for eager execution of kernels.
-licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
@@ -16,6 +15,10 @@ load(
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
+)
+
+package(
+    licenses = ["notice"],  # Apache 2.0
 )
 
 tf_cuda_library(
@@ -70,6 +73,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:remote_device",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core/profiler/lib:profiler_eager_lib",
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core:gpu_runtime",
     ],
@@ -110,6 +114,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_service",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
+        "//tensorflow/core/profiler/lib:profiler_eager_lib",
         "//tensorflow/core/profiler/lib:profiler_session",
     ],
 )
@@ -147,6 +152,7 @@ tf_cuda_cc_test(
     ],
     deps = [
         ":c_api",
+        ":c_api_internal",
         ":c_api_test_util",
         "//tensorflow/c:c_test_util",
         "//tensorflow/core:lib",
@@ -199,6 +205,7 @@ tf_cuda_library(
         "//conditions:default": [],
     }) + [
         "@com_google_absl//absl/memory",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/distributed_runtime/eager:eager_client",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
@@ -211,6 +218,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/profiler/rpc:profiler_server",
+        "//tensorflow/core/profiler/rpc/client:capture_profile",
         "//tensorflow/core:gpu_runtime",
     ],
 )
@@ -230,12 +238,10 @@ tf_cuda_cc_test(
         ":c_api_test_util",
         "//tensorflow/c:c_test_util",
         "//tensorflow/cc/profiler",
-        "//tensorflow/contrib/tpu/profiler:trace_events_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/profiler:protos_all_cc",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -254,4 +260,23 @@ filegroup(
     name = "headers",
     srcs = ["c_api.h"],
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+# TODO(karllessard): only used by //tensorflow/core:mobile_srcs_only_runtime
+# right now, remove this public rule when no longer needed (it should be
+# replaced by TF Lite)
+filegroup(
+    name = "srcs",
+    srcs = glob(
+        [
+            "*.cc",
+            "*.h",
+        ],
+        exclude = [
+            "c_api_experimental.cc",
+            "c_api_experimental.h",
+            "*test*",
+        ],
+    ),
+    visibility = ["//visibility:public"],
 )

@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
-#include "tensorflow/lite/tools/benchmark/command_line_flags.h"
+#include "tensorflow/lite/tools/command_line_flags.h"
 
 namespace {
 const std::string* g_model_path = nullptr;
@@ -44,7 +44,11 @@ BenchmarkParams CreateParams() {
   params.AddParam("input_layer", BenchmarkParam::Create<std::string>(""));
   params.AddParam("input_layer_shape", BenchmarkParam::Create<std::string>(""));
   params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
+  params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
   params.AddParam("warmup_min_secs", BenchmarkParam::Create<float>(0.5f));
+  params.AddParam("use_legacy_nnapi", BenchmarkParam::Create<bool>(false));
+  params.AddParam("use_gpu", BenchmarkParam::Create<bool>(false));
+  params.AddParam("enable_op_profiling", BenchmarkParam::Create<bool>(false));
   return params;
 }
 
@@ -54,7 +58,10 @@ class TestBenchmark : public BenchmarkTfLiteModel {
       : BenchmarkTfLiteModel(std::move(params)) {}
   const tflite::Interpreter* GetInterpreter() { return interpreter.get(); }
 
-  void Prepare() { PrepareInputsAndOutputs(); }
+  void Prepare() {
+    PrepareInputData();
+    ResetInputsAndOutputs();
+  }
 };
 
 TEST(BenchmarkTest, DoesntCrash) {

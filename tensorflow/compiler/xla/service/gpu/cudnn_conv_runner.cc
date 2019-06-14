@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_runner.h"
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -38,42 +38,6 @@ using se::dnn::DimIndex;
 using se::dnn::FilterDescriptor;
 using se::dnn::FilterLayout;
 using se::dnn::ProfileResult;
-
-struct CudnnConvParams {
-  // Here are the fields related to cuDNN's fused convolution. The result thus
-  // is defined as:
-  //   activation(conv_result_scale * conv(x, w) +
-  //       side_input_scale * side_input + broadcast(bias))
-  //
-  // The most common fused conv is conv forward + relu/identity, for example.
-  //
-  // bias_buf is a single-dimensional array, with the length equal to the number
-  // of output features. It'll be broadcasted to the output shape in order to be
-  // added to the final results.
-  //
-  // side_input_buf, if valid, must have the same shape as the output buffer.
-  struct FusionParams {
-    se::dnn::ActivationMode mode;
-    double side_input_scale;
-    se::DeviceMemoryBase bias_buf;
-    se::DeviceMemoryBase side_input_buf;  // nullable
-  };
-
-  CudnnConvKind kind;
-  const Shape* input_shape;
-  const Shape* filter_shape;
-  const Shape* output_shape;
-  se::DeviceMemoryBase input_buf;
-  se::DeviceMemoryBase filter_buf;
-  se::DeviceMemoryBase output_buf;
-  const Window* window;
-  const ConvolutionDimensionNumbers* dnums;
-  int64 feature_group_count;
-  se::dnn::AlgorithmConfig algorithm;
-  double conv_result_scale;
-
-  absl::optional<FusionParams> fusion;
-};
 
 // A StreamExecutor ScratchAllocator that wraps a single XLA allocation,
 // returning it (in its entirety) the first time Allocate() is called.
@@ -110,132 +74,19 @@ class ScratchBufAllocator : public se::ScratchAllocator {
 };
 
 template <typename T>
-Status RunCudnnConvImpl(CudnnConvParams params,
+Status RunCudnnConvImpl(const CudnnConvParams& params,
                         se::ScratchAllocator* scratch_allocator,
-                        se::Stream* stream,
-                        se::dnn::ProfileResult* profile_result) {
-  CudnnConvKind kind = params.kind;
-  const Shape& input_shape = *params.input_shape;
-  const Shape& filter_shape = *params.filter_shape;
-  const Shape& output_shape = *params.output_shape;
-  DeviceMemory<T> input_buf(params.input_buf);
-  DeviceMemory<T> filter_buf(params.filter_buf);
-  DeviceMemory<T> output_buf(params.output_buf);
-  const Window& window = *params.window;
-  const ConvolutionDimensionNumbers& dnums = *params.dnums;
-  int64 feature_group_count = params.feature_group_count;
+                        se::Stream* stream, RunConvOptions options) {
+  auto input_buf = se::DeviceMemory<T>(params.input_buf);
+  auto filter_buf = se::DeviceMemory<T>(params.filter_buf);
+  auto output_buf = se::DeviceMemory<T>(params.output_buf);
   AlgorithmConfig algorithm = params.algorithm;
 
-  VLOG(3) << "Convolution Algorithm: " << algorithm.algorithm()->algo_id();
-  VLOG(3) << "tensor_ops_enabled: "
-          << algorithm.algorithm()->tensor_ops_enabled();
-  VLOG(3) << "Convolution kind: " << CudnnConvKindToString(kind);
-  VLOG(3) << "input shape: " << ShapeUtil::HumanStringWithLayout(input_shape);
-  VLOG(3) << "filter shape: " << ShapeUtil::HumanStringWithLayout(filter_shape);
-  VLOG(3) << "Output shape: " << ShapeUtil::HumanStringWithLayout(output_shape);
-  VLOG(3) << "Window: { " << window.ShortDebugString() << " }";
-  VLOG(3) << "Dim nums: { " << dnums.ShortDebugString() << " }";
-
-  const int num_dimensions = window.dimensions_size();
-  CHECK_LE(num_dimensions, 3);
-  CHECK_GE(num_dimensions, 1);
-  // cuDNN does not support 1D convolutions. We therefore express 1D
-  // convolutions as 2D convolutions where the first spatial dimension is 1.
-  // This matches the behavior of TF (see definition of conv1d in
-  // tensorflow/python/ops/nn_ops.py).
-  const int effective_num_dimensions = std::max(2, num_dimensions);
-
-  CHECK_EQ(primitive_util::NativeToPrimitiveType<T>(),
-           output_shape.element_type())
-      << ShapeUtil::HumanString(output_shape);
-
-  // If one dimension is reversed, we need to have all dimensions reversed (so
-  // we're doing convolution not cross correlation).
-  const bool dims_reversed = window.dimensions()[0].window_reversal();
-
-  CHECK_EQ(num_dimensions, dnums.input_spatial_dimensions_size());
-  CHECK_EQ(num_dimensions, dnums.kernel_spatial_dimensions_size());
-  CHECK_EQ(num_dimensions, dnums.output_spatial_dimensions_size());
-  for (const WindowDimension& dim : window.dimensions()) {
-    CHECK_EQ(dims_reversed, dim.window_reversal());
-    CHECK_EQ(dim.padding_low(), dim.padding_high());
-    CHECK_EQ(dim.base_dilation(), 1)
-        << "cudnn does not support base dilation; it "
-           "must be made explicit with a kPad";
-    CHECK_EQ(dim.window_dilation(), 1)
-        << "XLA does not support window dilation (although cudnn does); it "
-           "must be made explicit with a kPad";
+  if (options.algo_override) {
+    algorithm = AlgorithmConfig(*options.algo_override);
   }
 
-  // cuDNN's convolution APIs support the BDYX layout for activations/output and
-  // the OIYX layout for weights.
-  DataLayout input_dl;
-  FilterLayout filter_dl;
-  DataLayout output_dl;
-
-  TF_ASSIGN_OR_RETURN(std::tie(input_dl, filter_dl, output_dl),
-                      XlaConvLayoutsToStreamExecutorLayouts(
-                          dnums, input_shape.layout(), filter_shape.layout(),
-                          output_shape.layout()));
-
-  BatchDescriptor input_descriptor(effective_num_dimensions);
-  input_descriptor.set_layout(input_dl)
-      .set_feature_map_count(
-          input_shape.dimensions(dnums.input_feature_dimension()))
-      .set_count(input_shape.dimensions(dnums.input_batch_dimension()));
-  for (int dim = 0; dim < num_dimensions; ++dim) {
-    // Note that the dimensions are reversed. The same holds below.
-    input_descriptor.set_spatial_dim(
-        static_cast<DimIndex>(effective_num_dimensions - dim - 1),
-        input_shape.dimensions(dnums.input_spatial_dimensions(dim)));
-  }
-
-  FilterDescriptor filter_descriptor(effective_num_dimensions);
-  filter_descriptor.set_layout(filter_dl)
-      .set_input_feature_map_count(
-          filter_shape.dimensions(dnums.kernel_input_feature_dimension()))
-      .set_output_feature_map_count(
-          filter_shape.dimensions(dnums.kernel_output_feature_dimension()));
-  for (int dim = 0; dim < num_dimensions; ++dim) {
-    filter_descriptor.set_spatial_dim(
-        static_cast<DimIndex>(effective_num_dimensions - dim - 1),
-        filter_shape.dimensions(dnums.kernel_spatial_dimensions(dim)));
-  }
-
-  ConvolutionDescriptor convolution_descriptor(effective_num_dimensions);
-  convolution_descriptor.set_group_count(feature_group_count);
-  convolution_descriptor.set_convolution_not_crosscorr(dims_reversed);
-  for (int dim = 0; dim < num_dimensions; ++dim) {
-    convolution_descriptor
-        .set_zero_padding(
-            static_cast<DimIndex>(effective_num_dimensions - dim - 1),
-            window.dimensions(dim).padding_low())
-        .set_filter_stride(
-            static_cast<DimIndex>(effective_num_dimensions - dim - 1),
-            window.dimensions(dim).stride());
-  }
-
-  BatchDescriptor output_descriptor(effective_num_dimensions);
-  output_descriptor.set_layout(output_dl)
-      .set_feature_map_count(
-          output_shape.dimensions(dnums.output_feature_dimension()))
-      .set_count(output_shape.dimensions(dnums.output_batch_dimension()));
-  for (int dim = 0; dim < num_dimensions; ++dim) {
-    output_descriptor.set_spatial_dim(
-        static_cast<DimIndex>(effective_num_dimensions - dim - 1),
-        output_shape.dimensions(dnums.output_spatial_dimensions(dim)));
-  }
-
-  // Add a singleton dimension in the 1D convolution case.
-  if (num_dimensions == 1) {
-    input_descriptor.set_spatial_dim(static_cast<DimIndex>(0), 1);
-    output_descriptor.set_spatial_dim(static_cast<DimIndex>(0), 1);
-    filter_descriptor.set_spatial_dim(static_cast<DimIndex>(0), 1);
-    convolution_descriptor.set_zero_padding(static_cast<DimIndex>(0), 0)
-        .set_filter_stride(static_cast<DimIndex>(0), 1);
-  }
-
-  switch (kind) {
+  switch (params.kind) {
     case CudnnConvKind::kForward:
       if (params.conv_result_scale != 1) {
         return InternalError(
@@ -243,9 +94,9 @@ Status RunCudnnConvImpl(CudnnConvParams params,
             params.conv_result_scale);
       }
       stream->ThenConvolveWithAlgorithm(
-          input_descriptor, input_buf, filter_descriptor, filter_buf,
-          convolution_descriptor, output_descriptor, &output_buf,
-          scratch_allocator, algorithm, profile_result);
+          params.input_descriptor, input_buf, params.filter_descriptor,
+          filter_buf, params.conv_desc, params.output_descriptor, &output_buf,
+          scratch_allocator, algorithm, options.profile_result);
       break;
     case CudnnConvKind::kBackwardInput:
       if (params.conv_result_scale != 1) {
@@ -254,9 +105,9 @@ Status RunCudnnConvImpl(CudnnConvParams params,
             params.conv_result_scale);
       }
       stream->ThenConvolveBackwardDataWithAlgorithm(
-          filter_descriptor, filter_buf, output_descriptor, output_buf,
-          convolution_descriptor, input_descriptor, &input_buf,
-          scratch_allocator, algorithm, profile_result);
+          params.filter_descriptor, filter_buf, params.output_descriptor,
+          output_buf, params.conv_desc, params.input_descriptor, &input_buf,
+          scratch_allocator, algorithm, options.profile_result);
       break;
     case CudnnConvKind::kBackwardFilter:
       if (params.conv_result_scale != 1) {
@@ -265,18 +116,17 @@ Status RunCudnnConvImpl(CudnnConvParams params,
             params.conv_result_scale);
       }
       stream->ThenConvolveBackwardFilterWithAlgorithm(
-          input_descriptor, input_buf, output_descriptor, output_buf,
-          convolution_descriptor, filter_descriptor, &filter_buf,
-          scratch_allocator, algorithm, profile_result);
+          params.input_descriptor, input_buf, params.output_descriptor,
+          output_buf, params.conv_desc, params.filter_descriptor, &filter_buf,
+          scratch_allocator, algorithm, options.profile_result);
       break;
     case CudnnConvKind::kForwardActivation: {
       BatchDescriptor bias_desc;
       bias_desc.set_count(1)
           .set_height(1)
           .set_width(1)
-          .set_feature_map_count(
-              output_shape.dimensions(dnums.output_feature_dimension()))
-          .set_layout(output_dl);
+          .set_feature_map_count(params.output_descriptor.feature_map_count())
+          .set_layout(params.output_descriptor.layout());
 
       se::DeviceMemory<T> side_input(params.fusion->side_input_buf);
       // If there is no side input, use output as the side input.
@@ -296,12 +146,12 @@ Status RunCudnnConvImpl(CudnnConvParams params,
       }
 
       stream->ThenFusedConvolveWithAlgorithm(
-          input_descriptor, input_buf, params.conv_result_scale,
-          filter_descriptor, filter_buf, convolution_descriptor, side_input,
+          params.input_descriptor, input_buf, params.conv_result_scale,
+          params.filter_descriptor, filter_buf, params.conv_desc, side_input,
           params.fusion->side_input_scale, bias_desc,
           DeviceMemory<T>(params.fusion->bias_buf), params.fusion->mode,
-          output_descriptor, &output_buf, scratch_allocator, algorithm,
-          profile_result);
+          params.output_descriptor, &output_buf, scratch_allocator, algorithm,
+          options.profile_result);
       break;
     }
   }
@@ -309,14 +159,14 @@ Status RunCudnnConvImpl(CudnnConvParams params,
   if (!stream->ok()) {
     return InternalError(
         "Unable to launch convolution with type %s and algorithm (%d, %d)",
-        CudnnConvKindToString(kind), algorithm.algorithm()->algo_id(),
+        CudnnConvKindToString(params.kind), algorithm.algorithm()->algo_id(),
         algorithm.algorithm_no_scratch()->algo_id());
   }
   return Status::OK();
 }
 
-// Returns the cudnn convolution parameters generated from conv, which must be a
-// custom-call to a cudnn convolution.
+}  // anonymous namespace
+
 StatusOr<CudnnConvParams> GetCudnnConvParams(
     const HloCustomCallInstruction* conv,
     absl::Span<se::DeviceMemoryBase> operand_buffers,
@@ -325,51 +175,46 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
 
   TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
                       conv->backend_config<CudnnConvBackendConfig>());
-  TF_ASSIGN_OR_RETURN(CudnnConvKind kind, GetCudnnConvKind(conv));
-  const auto& lhs_shape = conv->operand(0)->shape();
-  const auto& rhs_shape = conv->operand(1)->shape();
-  const auto& conv_result_shape = conv->shape().tuple_shapes(0);
+  TF_ASSIGN_OR_RETURN(params.kind, GetCudnnConvKind(conv));
+  const Shape* input_shape;
+  const Shape* filter_shape;
+  const Shape* output_shape;
 
-  params.kind = kind;
-  params.window = &conv->window();
-  params.dnums = &conv->convolution_dimension_numbers();
-  params.feature_group_count = conv->feature_group_count();
   params.algorithm = se::dnn::AlgorithmConfig(se::dnn::AlgorithmDesc(
       backend_config.algorithm(), backend_config.tensor_ops_enabled()));
   params.conv_result_scale = backend_config.conv_result_scale();
 
-  switch (kind) {
+  switch (params.kind) {
     case CudnnConvKind::kForward:
-      params.input_shape = &lhs_shape;
-      params.filter_shape = &rhs_shape;
-      params.output_shape = &conv_result_shape;
+      input_shape = &conv->operand(0)->shape();
+      filter_shape = &conv->operand(1)->shape();
+      output_shape = &conv->shape().tuple_shapes(0);
       params.input_buf = operand_buffers[0];
       params.filter_buf = operand_buffers[1];
       params.output_buf = result_buffer;
       break;
     case CudnnConvKind::kBackwardInput:
-      params.input_shape = &conv_result_shape;
-      params.filter_shape = &rhs_shape;
-      params.output_shape = &lhs_shape;
+      input_shape = &conv->shape().tuple_shapes(0);
+      filter_shape = &conv->operand(1)->shape();
+      output_shape = &conv->operand(0)->shape();
       params.input_buf = result_buffer;
       params.filter_buf = operand_buffers[1];
       params.output_buf = operand_buffers[0];
       break;
     case CudnnConvKind::kBackwardFilter:
-      params.input_shape = &lhs_shape;
-      params.filter_shape = &conv_result_shape;
-      params.output_shape = &rhs_shape;
+      input_shape = &conv->operand(0)->shape();
+      filter_shape = &conv->shape().tuple_shapes(0);
+      output_shape = &conv->operand(1)->shape();
       params.input_buf = operand_buffers[0];
       params.filter_buf = result_buffer;
       params.output_buf = operand_buffers[1];
       break;
     case CudnnConvKind::kForwardActivation: {
-      params.kind = CudnnConvKind::kForwardActivation;
-      params.input_shape = &lhs_shape;
-      params.filter_shape = &rhs_shape;
-      params.output_shape = &conv_result_shape;
+      input_shape = &conv->operand(0)->shape();
+      filter_shape = &conv->operand(1)->shape();
+      output_shape = &conv->shape().tuple_shapes(0);
       params.fusion.emplace();
-      auto& fusion = *params.fusion;
+      CudnnConvParams::FusionParams& fusion = *params.fusion;
       if (!se::dnn::ActivationMode_IsValid(backend_config.activation_mode())) {
         return InternalError("Bad activation mode: %s",
                              backend_config.ShortDebugString());
@@ -386,10 +231,128 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
       }
     }
   }
+
+  const Window& window = conv->window();
+  const ConvolutionDimensionNumbers& dnums =
+      conv->convolution_dimension_numbers();
+
+  VLOG(3) << "Convolution Algorithm: "
+          << params.algorithm.algorithm()->algo_id();
+  VLOG(3) << "tensor_ops_enabled: "
+          << params.algorithm.algorithm()->tensor_ops_enabled();
+  VLOG(3) << "Convolution kind: " << CudnnConvKindToString(params.kind);
+  VLOG(3) << "input shape: " << ShapeUtil::HumanStringWithLayout(*input_shape);
+  VLOG(3) << "filter shape: "
+          << ShapeUtil::HumanStringWithLayout(*filter_shape);
+  VLOG(3) << "Output shape: "
+          << ShapeUtil::HumanStringWithLayout(*output_shape);
+  VLOG(3) << "Window: { " << window.ShortDebugString() << " }";
+  VLOG(3) << "Dim nums: { " << dnums.ShortDebugString() << " }";
+
+  const int num_dimensions = window.dimensions_size();
+  CHECK_LE(num_dimensions, 3) << conv->ToString();
+  CHECK_GE(num_dimensions, 1) << conv->ToString();
+  // cuDNN does not support 1D convolutions. We therefore express 1D
+  // convolutions as 2D convolutions where the first spatial dimension is 1.
+  // This matches the behavior of TF (see definition of conv1d in
+  // tensorflow/python/ops/nn_ops.py).
+  const int effective_num_dimensions = std::max(2, num_dimensions);
+
+  // If one dimension is reversed, we need to have all dimensions reversed (so
+  // we're doing convolution not cross correlation).
+  const bool dims_reversed = window.dimensions()[0].window_reversal();
+
+  CHECK_EQ(num_dimensions, dnums.input_spatial_dimensions_size())
+      << conv->ToString();
+  CHECK_EQ(num_dimensions, dnums.kernel_spatial_dimensions_size())
+      << conv->ToString();
+  CHECK_EQ(num_dimensions, dnums.output_spatial_dimensions_size())
+      << conv->ToString();
+  for (const WindowDimension& dim : window.dimensions()) {
+    CHECK_EQ(dims_reversed, dim.window_reversal()) << conv->ToString();
+    CHECK_EQ(dim.padding_low(), dim.padding_high()) << conv->ToString();
+    CHECK_EQ(dim.base_dilation(), 1)
+        << "cudnn does not support base dilation; it "
+           "must be made explicit with a kPad: "
+        << conv->ToString();
+  }
+
+  // cuDNN's convolution APIs support the BDYX layout for activations/output and
+  // the OIYX layout for weights.
+  DataLayout input_dl;
+  FilterLayout filter_dl;
+  DataLayout output_dl;
+
+  TF_ASSIGN_OR_RETURN(std::tie(input_dl, filter_dl, output_dl),
+                      XlaConvLayoutsToStreamExecutorLayouts(
+                          dnums, input_shape->layout(), filter_shape->layout(),
+                          output_shape->layout()));
+
+  BatchDescriptor& input_descriptor = params.input_descriptor;
+  input_descriptor = BatchDescriptor(effective_num_dimensions);
+  input_descriptor.set_layout(input_dl)
+      .set_feature_map_count(
+          input_shape->dimensions(dnums.input_feature_dimension()))
+      .set_count(input_shape->dimensions(dnums.input_batch_dimension()));
+  for (int dim = 0; dim < num_dimensions; ++dim) {
+    // Note that the dimensions are reversed. The same holds below.
+    input_descriptor.set_spatial_dim(
+        static_cast<DimIndex>(effective_num_dimensions - dim - 1),
+        input_shape->dimensions(dnums.input_spatial_dimensions(dim)));
+  }
+
+  FilterDescriptor& filter_descriptor = params.filter_descriptor;
+  filter_descriptor = FilterDescriptor(effective_num_dimensions);
+  filter_descriptor.set_layout(filter_dl)
+      .set_input_feature_map_count(
+          filter_shape->dimensions(dnums.kernel_input_feature_dimension()))
+      .set_output_feature_map_count(
+          filter_shape->dimensions(dnums.kernel_output_feature_dimension()));
+  for (int dim = 0; dim < num_dimensions; ++dim) {
+    filter_descriptor.set_spatial_dim(
+        static_cast<DimIndex>(effective_num_dimensions - dim - 1),
+        filter_shape->dimensions(dnums.kernel_spatial_dimensions(dim)));
+  }
+
+  params.conv_desc = ConvolutionDescriptor(effective_num_dimensions);
+  params.conv_desc.set_group_count(conv->feature_group_count());
+  params.conv_desc.set_convolution_not_crosscorr(dims_reversed);
+  for (int dim = 0; dim < num_dimensions; ++dim) {
+    params.conv_desc
+        .set_zero_padding(
+            static_cast<DimIndex>(effective_num_dimensions - dim - 1),
+            window.dimensions(dim).padding_low())
+        .set_filter_stride(
+            static_cast<DimIndex>(effective_num_dimensions - dim - 1),
+            window.dimensions(dim).stride())
+        .set_dilation_rate(
+            static_cast<DimIndex>(effective_num_dimensions - dim - 1),
+            window.dimensions(dim).window_dilation());
+  }
+
+  BatchDescriptor& output_descriptor = params.output_descriptor;
+  output_descriptor = BatchDescriptor(effective_num_dimensions);
+  output_descriptor.set_layout(output_dl)
+      .set_feature_map_count(
+          output_shape->dimensions(dnums.output_feature_dimension()))
+      .set_count(output_shape->dimensions(dnums.output_batch_dimension()));
+  for (int dim = 0; dim < num_dimensions; ++dim) {
+    output_descriptor.set_spatial_dim(
+        static_cast<DimIndex>(effective_num_dimensions - dim - 1),
+        output_shape->dimensions(dnums.output_spatial_dimensions(dim)));
+  }
+
+  // Add a singleton dimension in the 1D convolution case.
+  if (num_dimensions == 1) {
+    input_descriptor.set_spatial_dim(static_cast<DimIndex>(0), 1);
+    output_descriptor.set_spatial_dim(static_cast<DimIndex>(0), 1);
+    filter_descriptor.set_spatial_dim(static_cast<DimIndex>(0), 1);
+    params.conv_desc.set_zero_padding(static_cast<DimIndex>(0), 0)
+        .set_filter_stride(static_cast<DimIndex>(0), 1);
+  }
+
   return params;
 }
-
-}  // anonymous namespace
 
 Status RunCudnnConv(const HloCustomCallInstruction* conv,
                     absl::Span<se::DeviceMemoryBase> operand_buffers,
@@ -409,24 +372,20 @@ Status RunCudnnConv(const HloCustomCallInstruction* conv,
   TF_ASSIGN_OR_RETURN(CudnnConvParams params,
                       GetCudnnConvParams(conv, operand_buffers, result_buffer));
 
-  if (options.algo_override) {
-    params.algorithm = AlgorithmConfig(*options.algo_override);
-  }
-
   PrimitiveType output_primitive_type =
       conv->shape().tuple_shapes(0).element_type();
   switch (output_primitive_type) {
     case F16:
       return RunCudnnConvImpl<Eigen::half>(params, scratch_allocator, stream,
-                                           options.profile_result);
+                                           options);
     case F32:
       return RunCudnnConvImpl<float>(params, scratch_allocator, stream,
-                                     options.profile_result);
+                                     options);
     case F64:
       return RunCudnnConvImpl<double>(params, scratch_allocator, stream,
-                                      options.profile_result);
+                                      options);
     default:
-      LOG(FATAL) << ShapeUtil::HumanString(*params.output_shape);
+      LOG(FATAL) << conv->ToString();
   }
 }
 

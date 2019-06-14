@@ -149,8 +149,8 @@ def gather_tree_from_array(t, parent_ids, sequence_length):
       array_ops.expand_dims(math_ops.range(beam_width), 0), 0)
   beam_ids = array_ops.tile(beam_ids, [max_time, batch_size, 1])
 
-  max_sequence_lengths = math_ops.to_int32(
-      math_ops.reduce_max(sequence_length, axis=1))
+  max_sequence_lengths = math_ops.cast(
+      math_ops.reduce_max(sequence_length, axis=1), dtypes.int32)
   sorted_beam_ids = beam_search_ops.gather_tree(
       step_ids=beam_ids,
       parent_ids=parent_ids,
@@ -218,7 +218,7 @@ def _check_batch_beam(t, batch_size, beam_width):
                    "incompatible with the dynamic shape of %s elements. "
                    "Consider setting reorder_tensor_arrays to False to disable "
                    "TensorArray reordering during the beam search."
-                   % (t.name))
+                   % (t if context.executing_eagerly() else t.name))
   rank = t.shape.ndims
   shape = array_ops.shape(t)
   if rank == 2:
@@ -351,8 +351,8 @@ class BeamSearchDecoderMixin(object):
     """
     del sequence_lengths
     # Get max_sequence_length across all beams for each batch.
-    max_sequence_lengths = math_ops.to_int32(
-        math_ops.reduce_max(final_state.lengths, axis=1))
+    max_sequence_lengths = math_ops.cast(
+        math_ops.reduce_max(final_state.lengths, axis=1), dtypes.int32)
     predicted_ids = beam_search_ops.gather_tree(
         outputs.predicted_ids,
         outputs.parent_ids,
@@ -982,10 +982,10 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
   lengths_to_add = array_ops.one_hot(
       indices=array_ops.fill([batch_size, beam_width], end_token),
       depth=vocab_size,
-      on_value=np.int64(0),
-      off_value=np.int64(1),
+      on_value=math_ops.to_int64(0),
+      off_value=math_ops.to_int64(1),
       dtype=dtypes.int64)
-  add_mask = math_ops.to_int64(not_finished)
+  add_mask = math_ops.cast(not_finished, dtypes.int64)
   lengths_to_add *= array_ops.expand_dims(add_mask, 2)
   new_prediction_lengths = (
       lengths_to_add + array_ops.expand_dims(prediction_lengths, 2))
@@ -996,7 +996,8 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
   attention_probs = get_attention_probs(
       next_cell_state, coverage_penalty_weight)
   if attention_probs is not None:
-    attention_probs *= array_ops.expand_dims(math_ops.to_float(not_finished), 2)
+    attention_probs *= array_ops.expand_dims(
+        math_ops.cast(not_finished, dtypes.float32), 2)
     accumulated_attention_probs = (
         beam_state.accumulated_attention_probs + attention_probs)
 
@@ -1030,15 +1031,17 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
       gather_shape=[-1],
       name="next_beam_probs")
   # Note: just doing the following
-  #   math_ops.to_int32(word_indices % vocab_size,
+  #   math_ops.cast(
+  #       word_indices % vocab_size,
+  #       dtypes.int32,
   #       name="next_beam_word_ids")
   # would be a lot cleaner but for reasons unclear, that hides the results of
   # the op which prevents capturing it with tfdbg debug ops.
   raw_next_word_ids = math_ops.mod(
       word_indices, vocab_size, name="next_beam_word_ids")
-  next_word_ids = math_ops.to_int32(raw_next_word_ids)
-  next_beam_ids = math_ops.to_int32(
-      word_indices / vocab_size, name="next_beam_parent_ids")
+  next_word_ids = math_ops.cast(raw_next_word_ids, dtypes.int32)
+  next_beam_ids = math_ops.cast(
+      word_indices / vocab_size, dtypes.int32, name="next_beam_parent_ids")
 
   # Append new ids to current predictions
   previously_finished = _tensor_gather_helper(
@@ -1057,7 +1060,8 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
   # 2. Beams that are now finished (EOS predicted) have their length
   #    increased by 1.
   # 3. Beams that are not yet finished have their length increased by 1.
-  lengths_to_add = math_ops.to_int64(math_ops.logical_not(previously_finished))
+  lengths_to_add = math_ops.cast(
+      math_ops.logical_not(previously_finished), dtypes.int64)
   next_prediction_len = _tensor_gather_helper(
       gather_indices=next_beam_ids,
       gather_from=beam_state.lengths,
@@ -1204,7 +1208,7 @@ def _get_scores(log_probs, sequence_lengths, length_penalty_weight,
   coverage_penalty = math_ops.reduce_sum(
       math_ops.log(math_ops.minimum(accumulated_attention_probs, 1.0)), 2)
   # Apply coverage penalty to finished predictions.
-  coverage_penalty *= math_ops.to_float(finished)
+  coverage_penalty *= math_ops.cast(finished, dtypes.float32)
   weighted_coverage_penalty = coverage_penalty * coverage_penalty_weight
   # Reshape from [batch_size, beam_width] to [batch_size, beam_width, 1]
   weighted_coverage_penalty = array_ops.expand_dims(
@@ -1257,8 +1261,9 @@ def _length_penalty(sequence_lengths, penalty_factor):
   static_penalty = tensor_util.constant_value(penalty_factor)
   if static_penalty is not None and static_penalty == 0:
     return 1.0
-  return math_ops.div((5. + math_ops.to_float(sequence_lengths))
-                      **penalty_factor, (5. + 1.)**penalty_factor)
+  return math_ops.div(
+      (5. + math_ops.cast(sequence_lengths, dtypes.float32))**penalty_factor,
+      (5. + 1.)**penalty_factor)
 
 
 def _mask_probs(probs, eos_token, finished):

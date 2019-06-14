@@ -32,7 +32,7 @@ ORELSE_DEFINITELY_RETURNS = 'ORELSE_DEFINITELY_RETURNS'
 STMT_DEFINITELY_RETURNS = 'STMT_DEFINITELY_RETURNS'
 
 
-class _Block(object):
+class _RewriteBlock(object):
 
   def __init__(self):
     self.definitely_returns = False
@@ -66,14 +66,14 @@ class ConditionalReturnRewriter(converter.Base):
   """
 
   def visit_Return(self, node):
-    self.state[_Block].definitely_returns = True
+    self.state[_RewriteBlock].definitely_returns = True
     return node
 
   def _postprocess_statement(self, node):
     # If the node definitely returns (e.g. it's a with statement with a
     # return stateent in it), then the current block also definitely returns.
     if anno.getanno(node, STMT_DEFINITELY_RETURNS, default=False):
-      self.state[_Block].definitely_returns = True
+      self.state[_RewriteBlock].definitely_returns = True
 
     # The special case: collapse a typical conditional return pattern into
     # a single conditional with possibly returns on both branches. This
@@ -89,10 +89,10 @@ class ConditionalReturnRewriter(converter.Base):
     return node, None
 
   def _visit_statement_block(self, node, nodes):
-    self.state[_Block].enter()
+    self.state[_RewriteBlock].enter()
     new_nodes = self.visit_block(nodes, after_visit=self._postprocess_statement)
-    block_definitely_returns = self.state[_Block].definitely_returns
-    self.state[_Block].exit()
+    block_definitely_returns = self.state[_RewriteBlock].definitely_returns
+    self.state[_RewriteBlock].exit()
     return new_nodes, block_definitely_returns
 
   def visit_While(self, node):
@@ -144,7 +144,7 @@ class ConditionalReturnRewriter(converter.Base):
       anno.setanno(node, ORELSE_DEFINITELY_RETURNS, True)
 
     if body_definitely_returns and orelse_definitely_returns:
-      self.state[_Block].definitely_returns = True
+      self.state[_RewriteBlock].definitely_returns = True
 
     return node
 
@@ -154,16 +154,17 @@ class ConditionalReturnRewriter(converter.Base):
     return node
 
 
-class _Return(object):
+class _Block(object):
 
   def __init__(self):
-    self.used = False
-    self.create_guard = False
-    self.guard_created = False
+    self.is_function = False
+    self.return_used = False
+    self.create_guard_next = False
+    self.create_guard_now = False
 
   def __repr__(self):
     return 'used: {}'.format(
-        self.used)
+        self.return_used)
 
 
 class _Function(object):
@@ -222,7 +223,11 @@ class ReturnStatementsTransformer(converter.Base):
     self.default_to_null_return = default_to_null_return
 
   def visit_Return(self, node):
-    self.state[_Return].used = True
+    for block in reversed(self.state[_Block].stack):
+      block.return_used = True
+      block.create_guard_next = True
+      if block.is_function:
+        break
 
     retval = node.value if node.value else parser.parse_expression('None')
 
@@ -239,56 +244,32 @@ class ReturnStatementsTransformer(converter.Base):
     return node
 
   def _postprocess_statement(self, node):
-    # Example of how the state machine below works:
-    #
-    #   1| stmt           # State: _Return.used = False
-    #    |                # Action: none
-    #   3| return         # State: _Return.used = True,
-    #    |                #        _Return.guard_created = False,
-    #    |                #        _Return.create_guard = False
-    #    |                # Action: _Return.create_guard = True
-    #   4| stmt           # State: _Return.used = True,
-    #    |                #        _Return.guard_created = False,
-    #    |                #        _Return.create_guard = True
-    #    |                # Action: create `if not return_used`,
-    #    |                #         set _Return.guard_created = True
-    #   5| stmt           # State: _Return.used = True,
-    #    |                #        _Return.guard_created = True
-    #    |                # Action: none (will be wrapped under previously
-    #    |                #         created if node)
-    if self.state[_Return].used:
-      if self.state[_Return].guard_created:
-        return node, None
+    if not self.state[_Block].return_used:
+      return node, None
 
-      elif not self.state[_Return].create_guard:
-        self.state[_Return].create_guard = True
-        return node, None
+    state = self.state[_Block]
+    if state.create_guard_now:
+      template = """
+        if ag__.not_(do_return_var_name):
+          original_node
+      """
+      cond, = templates.replace(
+          template,
+          do_return_var_name=self.state[_Function].do_return_var_name,
+          original_node=node)
+      node, block = cond, cond.body
+    else:
+      node, block = node, None
 
-      elif (not self.state[_Return].guard_created and
-            self.state[_Return].create_guard):
-        self.state[_Return].guard_created = True
-        template = """
-          if ag__.not_(do_return_var_name):
-            original_node
-        """
-        cond, = templates.replace(
-            template,
-            do_return_var_name=self.state[_Function].do_return_var_name,
-            original_node=node)
-        return cond, cond.body
+    state.create_guard_now = state.create_guard_next
+    state.create_guard_next = False
 
-      else:
-        assert False, 'should handle all states'
-
-    return node, None
+    return node, block
 
   def _visit_statement_block(self, node, nodes):
-    self.state[_Return].enter()
+    self.state[_Block].enter()
     nodes = self.visit_block(nodes, after_visit=self._postprocess_statement)
-    return_used = self.state[_Return].used
-    self.state[_Return].exit()
-    if return_used:
-      self.state[_Return].used = True
+    self.state[_Block].exit()
     return nodes
 
   def visit_While(self, node):
@@ -296,7 +277,7 @@ class ReturnStatementsTransformer(converter.Base):
 
     # Add the check for return to the loop condition.
     node.body = self._visit_statement_block(node, node.body)
-    if self.state[_Return].used:
+    if self.state[_Block].return_used:
       node.test = templates.replace_as_expression(
           'ag__.and_(lambda: ag__.not_(control_var), lambda: test)',
           test=node.test,
@@ -311,7 +292,7 @@ class ReturnStatementsTransformer(converter.Base):
 
     # Add the check for return to the loop condition.
     node.body = self._visit_statement_block(node, node.body)
-    if self.state[_Return].used:
+    if self.state[_Block].return_used:
       extra_test = anno.getanno(node, 'extra_test', default=None)
       if extra_test is not None:
         extra_test = templates.replace_as_expression(
@@ -351,7 +332,8 @@ class ReturnStatementsTransformer(converter.Base):
 
   def visit_FunctionDef(self, node):
     self.state[_Function].enter()
-    self.state[_Return].enter()
+    self.state[_Block].enter()
+    self.state[_Block].is_function = True
 
     scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
     do_return_var_name = self.ctx.namer.new_symbol(
@@ -371,15 +353,19 @@ class ReturnStatementsTransformer(converter.Base):
         docstring = converted_body[0]
         converted_body = converted_body[1:]
 
-    if self.state[_Return].used:
+    if self.state[_Block].return_used:
+
       if self.default_to_null_return:
         template = """
           do_return_var_name = False
-          retval_var_name = None
+          retval_var_name = ag__.UndefinedReturnValue()
           body
-          return retval_var_name
+          # TODO(b/134753123) Remove the do_return_var_name tuple.
+          (do_return_var_name,)
+          return ag__.retval(retval_var_name)
         """
       else:
+        # TODO(b/134753123) Fix loops that return when do_return is not set.
         template = """
           body
           return retval_var_name
@@ -393,7 +379,7 @@ class ReturnStatementsTransformer(converter.Base):
       if docstring:
         node.body.insert(0, docstring)
 
-    self.state[_Return].exit()
+    self.state[_Block].exit()
     self.state[_Function].exit()
     return node
 

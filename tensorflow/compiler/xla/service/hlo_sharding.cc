@@ -96,13 +96,13 @@ string HloSharding::ToString() const {
 
   if (replicated_) {
     return "{replicated}";
-  } else if (maximal_) {
+  }
+  if (maximal_) {
     return StrCat(
         "{maximal device=", static_cast<int64>(*tile_assignment_.begin()), "}");
-  } else {
-    return StrCat("{devices=[", StrJoin(tile_assignment_.dimensions(), ","),
-                  "]", StrJoin(tile_assignment_, ","), "}");
   }
+  return StrCat("{devices=[", StrJoin(tile_assignment_.dimensions(), ","), "]",
+                StrJoin(tile_assignment_, ","), "}");
 }
 
 bool HloSharding::UsesDevice(int64 device) const {
@@ -328,8 +328,8 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
             status = tensorflow::errors::InvalidArgument(
                 StrCat("core ", core, " is not unique in tile assignment"));
           }
+          seen_cores.insert(core);
         }
-        seen_cores.insert(core);
       });
   if (!status.ok()) {
     return status;
@@ -347,7 +347,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
         ToString(), ", input_shape=", ShapeUtil::HumanString(shape));
   }
 
-  // The correct constructor have to be used to create tile maximal shardings.
+  // The correct constructor has to be used to create tile maximal shardings.
   if (tile_assignment_.num_elements() == 1) {
     return tensorflow::errors::InvalidArgument(
         "Tile assignment only contains a single device. If a replicated "

@@ -167,6 +167,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
       with self.assertRaises(ValueError):
         self._verifySolve(matrix, rhs, batch_dims=[2, 3])
 
+  @test_util.run_deprecated_v1
   def testNotInvertible(self):
     # The input should be invertible.
     # The matrix is singular because it has a zero on the diagonal.

@@ -20,12 +20,15 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+
+using xla::llvm_ir::IrArray;
 
 namespace xla {
 namespace cpu {
@@ -53,8 +56,8 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
   // Create a function declaration.
   llvm::Function* function = llvm::dyn_cast<llvm::Function>(
       module_
-          ->getOrInsertFunction(llvm_ir::AsStringRef(function_name),
-                                lhs->getType(), lhs->getType(), rhs->getType())
+          ->getOrInsertFunction(function_name, lhs->getType(), lhs->getType(),
+                                rhs->getType())
           .getCallee());
   function->setCallingConv(llvm::CallingConv::C);
   function->setDoesNotThrow();
@@ -88,8 +91,8 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   // Create a function declaration.
   llvm::Function* function = llvm::dyn_cast<llvm::Function>(
       module_
-          ->getOrInsertFunction(llvm_ir::AsStringRef(function_name),
-                                value->getType(), value->getType())
+          ->getOrInsertFunction(function_name, value->getType(),
+                                value->getType())
           .getCallee());
   function->setCallingConv(llvm::CallingConv::C);
   function->setDoesNotThrow();
@@ -105,21 +108,52 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
 llvm_ir::ElementGenerator CpuElementalIrEmitter::MakeElementGenerator(
     const HloInstruction* hlo,
     const HloToElementGeneratorMap& operand_to_generator) {
-  if (hlo->opcode() == HloOpcode::kMap) {
-    return [this, hlo, &operand_to_generator](
-               const llvm_ir::IrArray::Index& index) -> StatusOr<llvm::Value*> {
-      std::vector<llvm::Value*> operands;
-      for (int i = 0; i < hlo->operand_count(); i++) {
-        TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
-                            operand_to_generator.at(hlo->operand(i))(
-                                ElementwiseSourceIndex(index, *hlo, i)));
-        operands.push_back(operand_value);
-      }
-      return ir_emitter_->EmitElementalMap(*Cast<HloMapInstruction>(hlo),
-                                           operands, llvm_ir::IrName(hlo));
-    };
+  switch (hlo->opcode()) {
+    case HloOpcode::kMap:
+      return [this, hlo, &operand_to_generator](
+                 const IrArray::Index& index) -> StatusOr<llvm::Value*> {
+        std::vector<llvm::Value*> operands;
+        for (int i = 0; i < hlo->operand_count(); i++) {
+          TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
+                              operand_to_generator.at(hlo->operand(i))(index));
+          operands.push_back(operand_value);
+        }
+        return ir_emitter_->EmitElementalMap(*Cast<HloMapInstruction>(hlo),
+                                             operands, llvm_ir::IrName(hlo));
+      };
+    case HloOpcode::kReduceWindow:
+      return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
+        return ir_emitter_->EmitElementalReduceWindow(
+            Cast<HloReduceWindowInstruction>(hlo),
+            operand_to_generator.at(hlo->operand(0)), index);
+      };
+    case HloOpcode::kConvolution:
+      return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
+        return ir_emitter_->EmitElementalConvolution(
+            Cast<HloConvolutionInstruction>(hlo),
+            operand_to_generator.at(hlo->operand(0)),
+            operand_to_generator.at(hlo->operand(1)), index);
+      };
+    case HloOpcode::kReduce:
+      return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
+        auto reduce_instr = Cast<HloReduceInstruction>(hlo);
+        std::vector<llvm_ir::ElementGenerator> input_generators;
+        for (const HloInstruction* instr : reduce_instr->inputs()) {
+          input_generators.push_back(operand_to_generator.at(instr));
+        }
+
+        std::vector<llvm_ir::ElementGenerator> initial_value_generators;
+        for (const HloInstruction* instr : reduce_instr->init_values()) {
+          initial_value_generators.push_back(operand_to_generator.at(instr));
+        }
+        return ir_emitter_->EmitElementalReduce(
+            reduce_instr, std::move(input_generators),
+            std::move(initial_value_generators), index);
+      };
+    default:
+      return ElementalIrEmitter::MakeElementGenerator(hlo,
+                                                      operand_to_generator);
   }
-  return ElementalIrEmitter::MakeElementGenerator(hlo, operand_to_generator);
 }
 }  // namespace cpu
 }  // namespace xla

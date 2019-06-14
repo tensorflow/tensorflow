@@ -46,12 +46,12 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kLogistic || type == OperatorType::kSoftmax ||
          type == OperatorType::kLogSoftmax || type == OperatorType::kSlice ||
          type == OperatorType::kResizeBilinear ||
-         type == OperatorType::kSplit || type == OperatorType::kSub ||
-         type == OperatorType::kSqueeze || type == OperatorType::kPad ||
-         type == OperatorType::kPadV2 || type == OperatorType::kReshape ||
-         type == OperatorType::kTanh || type == OperatorType::kMul ||
-         type == OperatorType::kBatchToSpaceND || type == OperatorType::kSum ||
-         type == OperatorType::kSpaceToBatchND ||
+         type == OperatorType::kSplit || type == OperatorType::kSplitV ||
+         type == OperatorType::kSub || type == OperatorType::kSqueeze ||
+         type == OperatorType::kPad || type == OperatorType::kPadV2 ||
+         type == OperatorType::kReshape || type == OperatorType::kTanh ||
+         type == OperatorType::kMul || type == OperatorType::kBatchToSpaceND ||
+         type == OperatorType::kSum || type == OperatorType::kSpaceToBatchND ||
          type == OperatorType::kSpaceToDepth ||
          type == OperatorType::kStridedSlice ||
          type == OperatorType::kDepthToSpace ||
@@ -62,12 +62,16 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kLessEqual || type == OperatorType::kSelect ||
          type == OperatorType::kArgMax || type == OperatorType::kRelu ||
          type == OperatorType::kRelu1 || type == OperatorType::kRelu6 ||
-         type == OperatorType::kShape || type == OperatorType::kExpandDims ||
-         type == OperatorType::kPack || type == OperatorType::kTopK_V2 ||
+         type == OperatorType::kLeakyRelu || type == OperatorType::kShape ||
+         type == OperatorType::kExpandDims || type == OperatorType::kPack ||
+         type == OperatorType::kUnpack || type == OperatorType::kTopK_V2 ||
          type == OperatorType::kRandomUniform ||
          type == OperatorType::kResizeNearestNeighbor ||
          type == OperatorType::kPRelu || type == OperatorType::kReduceMax ||
-         type == OperatorType::kReduceMin;
+         type == OperatorType::kReduceMin ||
+         type == OperatorType::kTransposeConv ||
+         type == OperatorType::kMatrixSetDiag ||
+         type == OperatorType::kMatrixDiag || type == OperatorType::kHardSwish;
 }
 
 // The quantized op allows output arrays of type float using
@@ -106,7 +110,7 @@ const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {
     // We always want [min, max] to contain 0.
     float min = 0.f;
     float max = 0.f;
-    for (auto val : data) {
+    for (const auto& val : data) {
       min = std::min(min, val);
       max = std::max(max, val);
     }
@@ -121,7 +125,7 @@ const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {
     // weights arrays for which fake-quantization would make sense, rather
     // they tend to be hardcoded arrays of zeros or ones used in some graphs.
     bool is_quantization_trivially_exact = true;
-    for (auto val : data) {
+    for (const auto& val : data) {
       is_quantization_trivially_exact &= (val == min || val == max);
     }
     if (!is_quantization_trivially_exact) {
@@ -501,8 +505,8 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
     const auto& array = model->GetArray(input);
     if (array.data_type == ArrayDataType::kFloat) {
       if (!array.minmax && !array.buffer) {
-        LOG(ERROR) << "Can't quantize input array " << input
-                   << " because it lacks min/max info";
+        LOG(WARNING) << "Can't quantize input array " << input
+                     << " because it lacks min/max info";
         return ::tensorflow::Status::OK();
       }
       const auto* other_op = GetOpWithOutput(*model, input);
@@ -617,7 +621,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
   if (SupportOutputTypeFloatInQuantizedOp(op)) {
     LOG(WARNING)
         << HelpfulOperatorTypeName(op) << " is a quantized op"
-        << "but it has a model flag that sets the output arrays to float.";
+        << " but it has a model flag that sets the output arrays to float.";
   } else {
     for (std::size_t output_index = 0; output_index < op.outputs.size();
          output_index++) {
