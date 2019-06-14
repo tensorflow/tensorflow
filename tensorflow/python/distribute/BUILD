@@ -1085,6 +1085,9 @@ distribute_py_test(
     size = "medium",
     srcs = ["keras_experimental_saved_model_test.py"],
     main = "keras_experimental_saved_model_test.py",
+    tags = [
+        "no_oss",  # TODO(b/135287893) reenable
+    ],
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras:saving",
