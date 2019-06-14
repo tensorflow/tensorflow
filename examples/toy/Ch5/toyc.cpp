@@ -130,17 +130,6 @@ mlir::LogicalResult lowerDialect(mlir::Module &module, bool OnlyLinalg) {
   return pm.run(&module);
 }
 
-mlir::LogicalResult lowerLLVMModule(mlir::Module &module) {
-  mlir::PassManager pm;
-  pm.addPass(createEarlyLoweringPass());
-  pm.addPass(createLateLoweringPass());
-
-  // Apply any generic pass manager command line options.
-  applyPassManagerCLOptions(pm);
-
-  return pm.run(&module);
-}
-
 std::unique_ptr<mlir::Module> loadFileAndProcessModule(
     mlir::MLIRContext &context, bool EnableLinalgLowering = false,
     bool EnableLLVMLowering = false, bool EnableOpt = false) {
