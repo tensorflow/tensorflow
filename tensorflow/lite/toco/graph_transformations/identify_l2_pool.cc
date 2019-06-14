@@ -86,14 +86,9 @@ namespace toco {
 
   AddMessageF("Creating %s replacing equivalent subgraph", LogName(*l2pool_op));
 
-  // Erase intermediate arrays, keeping input to square op.
-  model->EraseArray(avpool_op->inputs[0]);
-  model->EraseArray(sqrt_op->inputs[0]);
-
-  // Erase three operators being replaced.
-  model->operators.erase(FindOp(*model, square_op));
-  model->operators.erase(FindOp(*model, avpool_op));
-  model->operators.erase(FindOp(*model, sqrt_op));
+  DeleteOpAndArrays(model, square_op);
+  DeleteOpAndArrays(model, avpool_op);
+  DeleteOpAndArrays(model, sqrt_op);
 
   *modified = true;
   return ::tensorflow::Status::OK();
