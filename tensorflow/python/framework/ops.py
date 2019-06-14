@@ -4991,7 +4991,7 @@ def device(device_name_or_function):
           "tf.device does not support functions when eager execution "
           "is enabled.")
     return context.device(device_name_or_function)
-  elif simplified_executing_eagerly_outside_functions():
+  elif executing_eagerly_outside_functions():
     @tf_contextlib.contextmanager
     def combined(device_name_or_function):
       with get_default_graph().device(device_name_or_function):
@@ -5498,18 +5498,6 @@ def init_scope():
 
 
 def executing_eagerly_outside_functions():
-  """Returns True if executing eagerly, even if inside a graph function."""
-  # Fastpath for when this is called eagerly (its not necessary to init_scope).
-  if context.executing_eagerly():
-    return True
-
-  with init_scope():
-    return context.executing_eagerly()
-
-
-# TODO(priyag, b/135207700): Make this the default implementation and remove
-# the older implementation of `executing_eagerly_outside_functions`.
-def simplified_executing_eagerly_outside_functions():
   """Returns True if executing eagerly, even if inside a graph function."""
   if context.executing_eagerly():
     return True
