@@ -2135,6 +2135,12 @@ void AddExtraOutputs(Model* model) {
   // Now add operator outputs so that all arrays that are consumed,
   // are produced.
   for (const string& consumed_array : consumed_arrays) {
+    // Test if consumed_array is already the output of some op.
+    // This has occurred in a model where separate nodes had names of the form
+    // foo:$i with the same base name foo.
+    if (GetOpWithOutput(*model, consumed_array)) {
+      continue;
+    }
     // Split the consumed array name into the form name:output_index.
     const std::vector<string>& split = absl::StrSplit(consumed_array, ':');
     // If not of the form name:output_index, then this is not an additional
