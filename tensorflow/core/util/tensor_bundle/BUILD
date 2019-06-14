@@ -22,6 +22,7 @@ filegroup(
         "naming.h",
         "tensor_bundle.cc",
         "tensor_bundle.h",
+        "byte_swap.h"
     ],
 )
 
@@ -32,8 +33,8 @@ alias(
 
 cc_library(
     name = "tensor_bundle",
-    srcs = ["tensor_bundle.cc"],
-    hdrs = ["tensor_bundle.h"],
+    srcs = ["tensor_bundle.cc", "byte_swap.cc"],
+    hdrs = ["tensor_bundle.h", "byte_swap.h"],
     copts = tf_copts() + if_not_windows(["-Wno-sign-compare"]),
     deps = [
         ":naming",

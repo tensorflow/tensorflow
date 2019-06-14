@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap.h"
 
 #include <random>
 #include <vector>
 
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
@@ -35,10 +37,13 @@ namespace tensorflow {
 
 namespace {
 
+// Prepend the current test case's working temporary directory to <prefix>
 string Prefix(const string& prefix) {
   return strings::StrCat(testing::TmpDir(), "/", prefix);
 }
 
+// Construct a data  input directory by prepending the test data root
+// directory to <prefix>
 string TestdataPrefix(const string& prefix) {
   return strings::StrCat(testing::TensorFlowSrcRoot(),
                          "/core/util/tensor_bundle/testdata/", prefix);
@@ -261,6 +266,206 @@ void TestBasic() {
     ExpectNext<T>(&reader, Constant_2x3(T(1)));
     ExpectNext<T>(&reader, Constant_2x3(T(2)));
     ExpectNext<T>(&reader, Constant_2x3(T(3)));
+    EXPECT_TRUE(reader.Valid());
+    reader.Next();
+    EXPECT_FALSE(reader.Valid());
+  }
+}
+
+// Reinterpret the bytes of an rvalue
+#define _CAST(x, T) (*reinterpret_cast<const T*>(&x))
+
+// Type-specific subroutine of SwapBytes test below
+template <typename T>
+void TestByteSwap(const T* forward, const T* swapped, int array_len) {
+  auto bytes_per_elem = sizeof(T);
+
+  // Convert the entire array at once
+  std::unique_ptr<T> forward_copy(new T[array_len]);
+  std::memcpy(forward_copy.get(), forward, array_len * bytes_per_elem);
+  TF_EXPECT_OK(
+      ByteSwapArray((char*)forward_copy.get(), bytes_per_elem, array_len));
+  for (int i = 0; i < array_len; i++) {
+    EXPECT_EQ(forward_copy.get()[i], swapped[i]);
+  }
+
+  // Then the array wrapped in a tensor
+  auto shape = TensorShape({array_len});
+  auto dtype = DataTypeToEnum<T>::value;
+  Tensor forward_tensor(dtype, shape);
+  Tensor swapped_tensor(dtype, shape);
+  std::memcpy((char*)forward_tensor.tensor_data().data(), forward,
+              array_len * bytes_per_elem);
+  std::memcpy((char*)swapped_tensor.tensor_data().data(), swapped,
+              array_len * bytes_per_elem);
+  TF_EXPECT_OK(ByteSwapTensor(&forward_tensor));
+  test::ExpectTensorEqual<T>(forward_tensor, swapped_tensor);
+}
+
+// Unit test of the byte-swapping operations that TensorBundle uses.
+TEST(TensorBundleTest, SwapBytes) {
+  // A bug in the compiler on MacOS causes ByteSwap() and FlipEndiannessBit()
+  // to be removed from the executable if they are only called from templated
+  // functions. As a workaround, we make some dummy calls here.
+  // TODO(frreiss): Remove this workaround when the compiler bug is fixed.
+  ByteSwap(Constant_2x3<int>(42));
+  EXPECT_NE(Status::OK(), FlipEndiannessBit(Prefix("not_a_valid_prefix")));
+
+  // Test patterns, manually swapped so that we aren't relying on the
+  // correctness of our own byte-swapping macros when testing those macros.
+  // At least one of the entries in each list has the sign bit set when
+  // interpreted as a signed int.
+  const int arr_len_16 = 4;
+  const uint16_t forward_16[] = {0x1de5, 0xd017, 0xf1ea, 0xc0a1};
+  const uint16_t swapped_16[] = {0xe51d, 0x17d0, 0xeaf1, 0xa1c0};
+  const int arr_len_32 = 2;
+  const uint32_t forward_32[] = {0x0ddba115, 0xf01dab1e};
+  const uint32_t swapped_32[] = {0x15a1db0d, 0x1eab1df0};
+  const int arr_len_64 = 2;
+  const uint64_t forward_64[] = {0xf005ba11caba1000, 0x5ca1ab1ecab005e5};
+  const uint64_t swapped_64[] = {0x0010baca11ba05f0, 0xe505b0ca1eaba15c};
+
+  // 16-bit types
+  TestByteSwap(forward_16, swapped_16, arr_len_16);
+  TestByteSwap((int16_t*)forward_16, (int16_t*)swapped_16, arr_len_16);
+  // TODO(frreiss): Test half-precision float
+
+  // 32-bit types
+  TestByteSwap(forward_32, swapped_32, arr_len_32);
+  TestByteSwap((const int32_t*)forward_32, (const int32_t*)swapped_32,
+               arr_len_32);
+  TestByteSwap((const float*)forward_32, (const float*)swapped_32, arr_len_32);
+
+  // 64-bit types
+  // Cast to uint64*/int64* to make DataTypeToEnum<T> happy
+  TestByteSwap((const uint64*)forward_64, (const uint64*)swapped_64,
+               arr_len_64);
+  TestByteSwap((const int64*)forward_64, (const int64*)swapped_64, arr_len_64);
+  TestByteSwap((const double*)forward_64, (const double*)swapped_64,
+               arr_len_64);
+
+  // Complex types.
+  // Logic for complex number handling is only in ByteSwapTensor, so don't test
+  // ByteSwapArray
+  const float* forward_float = (const float*)forward_32;
+  const float* swapped_float = (const float*)swapped_32;
+  const double* forward_double = (const double*)forward_64;
+  const double* swapped_double = (const double*)swapped_64;
+  Tensor forward_complex64 = Constant_2x3<complex64>(
+      std::complex<float>(forward_float[0], forward_float[1]));
+  Tensor swapped_complex64 = Constant_2x3<complex64>(
+      std::complex<float>(swapped_float[0], swapped_float[1]));
+  Tensor forward_complex128 = Constant_2x3<complex128>(
+      std::complex<double>(forward_double[0], forward_double[1]));
+  Tensor swapped_complex128 = Constant_2x3<complex128>(
+      std::complex<double>(swapped_double[0], swapped_double[1]));
+
+  TF_EXPECT_OK(ByteSwapTensor(&forward_complex64));
+  test::ExpectTensorEqual<complex64>(forward_complex64, swapped_complex64);
+
+  TF_EXPECT_OK(ByteSwapTensor(&forward_complex128));
+  test::ExpectTensorEqual<complex128>(forward_complex128, swapped_complex128);
+}
+
+// Basic test of alternate-endianness support. Generates a bundle in
+// the opposite of the current system's endianness and attempts to
+// read the bundle back in. Does not exercise sharding or access to
+// nonaligned tensors. Does cover the major access types exercised
+// in TestBasic.
+template <typename T>
+void TestEndianness() {
+  {
+    // Write out a TensorBundle in the opposite of this host's endianness.
+    BundleWriter writer(Env::Default(), Prefix("foo"));
+    TF_EXPECT_OK(writer.Add("foo_003", ByteSwap(Constant_2x3<T>(3))));
+    TF_EXPECT_OK(writer.Add("foo_000", ByteSwap(Constant_2x3<T>(0))));
+    TF_EXPECT_OK(writer.Add("foo_002", ByteSwap(Constant_2x3<T>(2))));
+    TF_EXPECT_OK(writer.Add("foo_001", ByteSwap(Constant_2x3<T>(1))));
+    TF_ASSERT_OK(writer.Finish());
+    TF_ASSERT_OK(FlipEndiannessBit(Prefix("foo")));
+  }
+  {
+    BundleReader reader(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(reader.status());
+    EXPECT_EQ(
+        AllTensorKeys(&reader),
+        std::vector<string>({"foo_000", "foo_001", "foo_002", "foo_003"}));
+    Expect<T>(&reader, "foo_000", Constant_2x3<T>(0));
+    Expect<T>(&reader, "foo_001", Constant_2x3<T>(1));
+    Expect<T>(&reader, "foo_002", Constant_2x3<T>(2));
+    Expect<T>(&reader, "foo_003", Constant_2x3<T>(3));
+  }
+  {
+    BundleReader reader(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(reader.status());
+    ExpectNext<T>(&reader, Constant_2x3<T>(0));
+    ExpectNext<T>(&reader, Constant_2x3<T>(1));
+    ExpectNext<T>(&reader, Constant_2x3<T>(2));
+    ExpectNext<T>(&reader, Constant_2x3<T>(3));
+    EXPECT_TRUE(reader.Valid());
+    reader.Next();
+    EXPECT_FALSE(reader.Valid());
+  }
+  {
+    BundleWriter writer(Env::Default(), Prefix("bar"));
+    TF_EXPECT_OK(writer.Add("bar_003", ByteSwap(Constant_2x3<T>(3))));
+    TF_EXPECT_OK(writer.Add("bar_000", ByteSwap(Constant_2x3<T>(0))));
+    TF_EXPECT_OK(writer.Add("bar_002", ByteSwap(Constant_2x3<T>(2))));
+    TF_EXPECT_OK(writer.Add("bar_001", ByteSwap(Constant_2x3<T>(1))));
+    TF_ASSERT_OK(writer.Finish());
+    TF_ASSERT_OK(FlipEndiannessBit(Prefix("bar")));
+  }
+  {
+    BundleReader reader(Env::Default(), Prefix("bar"));
+    TF_ASSERT_OK(reader.status());
+    EXPECT_EQ(
+        AllTensorKeys(&reader),
+        std::vector<string>({"bar_000", "bar_001", "bar_002", "bar_003"}));
+    Expect<T>(&reader, "bar_003", Constant_2x3<T>(3));
+    Expect<T>(&reader, "bar_002", Constant_2x3<T>(2));
+    Expect<T>(&reader, "bar_001", Constant_2x3<T>(1));
+    Expect<T>(&reader, "bar_000", Constant_2x3<T>(0));
+  }
+  {
+    BundleReader reader(Env::Default(), Prefix("bar"));
+    TF_ASSERT_OK(reader.status());
+    ExpectNext<T>(&reader, Constant_2x3<T>(0));
+    ExpectNext<T>(&reader, Constant_2x3<T>(1));
+    ExpectNext<T>(&reader, Constant_2x3<T>(2));
+    ExpectNext<T>(&reader, Constant_2x3<T>(3));
+    EXPECT_TRUE(reader.Valid());
+    reader.Next();
+    EXPECT_FALSE(reader.Valid());
+  }
+  TF_ASSERT_OK(MergeBundles(Env::Default(), {Prefix("foo"), Prefix("bar")},
+                            Prefix("merged")));
+  {
+    BundleReader reader(Env::Default(), Prefix("merged"));
+    TF_ASSERT_OK(reader.status());
+    EXPECT_EQ(
+        AllTensorKeys(&reader),
+        std::vector<string>({"bar_000", "bar_001", "bar_002", "bar_003",
+                             "foo_000", "foo_001", "foo_002", "foo_003"}));
+    Expect<T>(&reader, "bar_000", Constant_2x3<T>(0));
+    Expect<T>(&reader, "bar_001", Constant_2x3<T>(1));
+    Expect<T>(&reader, "bar_002", Constant_2x3<T>(2));
+    Expect<T>(&reader, "bar_003", Constant_2x3<T>(3));
+    Expect<T>(&reader, "foo_000", Constant_2x3<T>(0));
+    Expect<T>(&reader, "foo_001", Constant_2x3<T>(1));
+    Expect<T>(&reader, "foo_002", Constant_2x3<T>(2));
+    Expect<T>(&reader, "foo_003", Constant_2x3<T>(3));
+  }
+  {
+    BundleReader reader(Env::Default(), Prefix("merged"));
+    TF_ASSERT_OK(reader.status());
+    ExpectNext<T>(&reader, Constant_2x3<T>(0));
+    ExpectNext<T>(&reader, Constant_2x3<T>(1));
+    ExpectNext<T>(&reader, Constant_2x3<T>(2));
+    ExpectNext<T>(&reader, Constant_2x3<T>(3));
+    ExpectNext<T>(&reader, Constant_2x3<T>(0));
+    ExpectNext<T>(&reader, Constant_2x3<T>(1));
+    ExpectNext<T>(&reader, Constant_2x3<T>(2));
+    ExpectNext<T>(&reader, Constant_2x3<T>(3));
     EXPECT_TRUE(reader.Valid());
     reader.Next();
     EXPECT_FALSE(reader.Valid());
@@ -736,20 +941,6 @@ TEST(TensorBundleTest, Checksum) {
     ExpectLookupFails("strings", "foo",
                       "Checksum does not match" /* expected fail msg */, val);
   }
-}
-
-TEST(TensorBundleTest, Endianness) {
-  BundleWriter writer(Env::Default(), Prefix("end"));
-  TF_EXPECT_OK(writer.Add("key", Constant_2x3<float>(1.0)));
-  TF_ASSERT_OK(writer.Finish());
-
-  // Flips the endianness bit.
-  TF_ASSERT_OK(FlipEndiannessBit(Prefix("end")));
-
-  BundleReader reader(Env::Default(), Prefix("end"));
-  EXPECT_TRUE(errors::IsUnimplemented(reader.status()));
-  EXPECT_TRUE(absl::StrContains(reader.status().ToString(),
-                                "different endianness from the reader"));
 }
 
 TEST(TensorBundleTest, TruncatedTensorContents) {
