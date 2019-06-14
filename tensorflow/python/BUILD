@@ -3056,6 +3056,9 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    tags = [
+        "no_rocm",
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -6553,6 +6556,7 @@ cuda_py_test(
     ],
     tags = [
         "grappler",
+        "no_rocm",
     ],
     # This test analyzes the graph, but XLA changes the names of nodes.
     xla_enable_strict_auto_jit = False,
