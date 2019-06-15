@@ -325,9 +325,15 @@ class Conv1D(Conv):
 
   Examples:
     ```python
-    # Small convolutional model for 128-length vectors
+    # Small convolutional model for 128-length vectors with 6 timesteps
+    # model.input_shape == (None, 6, 128)
+    
     model = Sequential()
-    model.add(Conv1D(32, 3, activation='relu', input_shape=(, 128))
+    model.add(Conv1D(32, 3, 
+              activation='relu', 
+              input_shape=(6, 128)))
+    
+    # now: model.output_shape == (None, 4, 32)
     ```
 
   Input shape:
