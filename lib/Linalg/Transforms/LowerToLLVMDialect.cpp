@@ -643,7 +643,7 @@ static void getLLVMLibraryCallDefinition(Function *fn,
     llvm_store(arg, alloca);
   }
   call(ArrayRef<Type>(), builder.getFunctionAttr(implFn), implFnArgs);
-  llvm_return(ArrayRef<Value *>());
+  llvm_return{ArrayRef<Value *>()};
 }
 
 namespace {
