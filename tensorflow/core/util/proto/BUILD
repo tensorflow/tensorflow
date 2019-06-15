@@ -23,6 +23,7 @@ cc_library(
         ":local_descriptor_pool_registration",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
     ],
 )
 
