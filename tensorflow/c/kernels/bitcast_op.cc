@@ -16,11 +16,12 @@ limitations under the License.
 #include <sstream>
 
 #include "tensorflow/c/kernels.h"
+#include "tensorflow/c/ops.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/framework/types.h"
 
 // BitcastOp implements a bitcast kernel, creating an output tensor that shares
 // the same data buffer as the input but with a different shape and/or data
@@ -135,9 +136,8 @@ static void BitcastOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   TF_DeleteTensor(tensor);
 }
 
-static void RegisterBitcastOp() {
+void RegisterBitcastOp() {
   TF_Status* status = TF_NewStatus();
-
   {
     auto* builder = TF_NewKernelBuilder("Bitcast", tensorflow::DEVICE_CPU,
                                         &BitcastOp_Create, &BitcastOp_Compute,
