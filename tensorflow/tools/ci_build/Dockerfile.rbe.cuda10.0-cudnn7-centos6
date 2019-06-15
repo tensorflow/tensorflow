@@ -16,7 +16,7 @@
 # To work around this, we create a Docker environment in /tmp to build the
 # image from in a shell script (2).
 
-FROM cudatest/test:10.0-cudnn7-devel-centos6-patched-glibc
+FROM nvidia/cuda:10.0-cudnn7-devel-centos6
 LABEL maintainer="Amit Patankar <amitpatankar@google.com>"
 
 # Install packages required to build tensorflow.
