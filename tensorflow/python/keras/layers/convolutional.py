@@ -327,7 +327,7 @@ class Conv1D(Conv):
     ```python
     # Small convolutional model for 128-length vectors
     model = Sequential()
-    model.add(Conv1D(32, 3, activation='relu', input_shape(, 128))
+    model.add(Conv1D(32, 3, activation='relu', input_shape=(, 128))
     ```
 
   Input shape:
