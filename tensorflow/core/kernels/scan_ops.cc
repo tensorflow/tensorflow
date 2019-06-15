@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 
-#include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #include "tensorflow/core/kernels/scan_ops.h"
@@ -106,6 +105,8 @@ namespace functor {
   DECLARE(Eigen::internal::ProdReducer<T>, T);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_ALL_REDUCERS);
+DECLARE_FOR_ALL_REDUCERS(int32);
+DECLARE_FOR_ALL_REDUCERS(int64);
 
 #undef DECLARE_FOR_ALL_REDUCERS
 #undef DECLARE
@@ -147,6 +148,8 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
           .HostMemory("axis"),                                           \
       ScanOp<GPUDevice, type, Eigen::internal::SumReducer<type>, int64>)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS)
+REGISTER_GPU_KERNELS(int32);
+REGISTER_GPU_KERNELS(int64);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
 
@@ -184,6 +187,8 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
           .HostMemory("axis"),                                            \
       ScanOp<GPUDevice, type, Eigen::internal::ProdReducer<type>, int64>)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS)
+REGISTER_GPU_KERNELS(int32);
+REGISTER_GPU_KERNELS(int64);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
 

@@ -3757,6 +3757,7 @@ tf_kernel_library(
         "scan_ops_gpu_double.cu.cc",
         "scan_ops_gpu_float.cu.cc",
         "scan_ops_gpu_half.cu.cc",
+        "scan_ops_gpu_int.cu.cc",
     ],
     deps = MATH_DEPS + if_cuda([
         "@cub_archive//:cub",
