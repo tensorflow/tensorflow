@@ -600,6 +600,14 @@ Status BaseVisitor::HandleRngGetAndUpdateState(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
+Status BaseVisitor::HandleCopyStart(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
+Status BaseVisitor::HandleCopyDone(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
 
 }  // namespace poplarplugin
 }  // namespace xla
