@@ -60,8 +60,8 @@ class CudnnFusedConvRewriterTest : public HloTestBase {
                   Not(HasSubstr(kCudnnConvForwardCallTarget)));
       EXPECT_THAT(optimized_hlo_string,
                   HasSubstr(kCudnnConvBiasActivationForwardCallTarget));
-      // EXPECT_TRUE(RunAndCompare(hlo_resolved_string, ErrorSpec{0.01}))
-      //     << hlo_resolved_string;
+      EXPECT_TRUE(RunAndCompare(hlo_resolved_string, ErrorSpec{0.01}))
+          << hlo_resolved_string;
     }
   }
 
