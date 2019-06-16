@@ -552,6 +552,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core/kernels:constant_op",
+        "//tensorflow/core/kernels:no_op",
     ],
     linkopts = [
         "$(locations @local_config_poplar//poplar:poplar_lib)",
