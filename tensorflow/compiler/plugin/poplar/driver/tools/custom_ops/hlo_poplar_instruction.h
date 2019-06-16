@@ -21,13 +21,25 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 
+#include "absl/strings/str_cat.h"
+
 namespace xla {
 namespace poplarplugin {
 
 // Base class for a poplar hlo instruction
 class HloPoplarInstruction : public HloCustomCallInstruction {
  public:
-  using HloCustomCallInstruction::HloCustomCallInstruction;
+  // Note that the variadic arguments "attributes" is used to create the opaque
+  // field.
+  template <typename... Args>
+  HloPoplarInstruction(const Shape& shape,
+                       absl::Span<HloInstruction* const> operands,
+                       absl::string_view custom_call_target,
+                       Args&&... attributes)
+      : HloCustomCallInstruction(
+            shape, operands, custom_call_target,
+            std::to_string(std::hash<string>()(
+                absl::StrCat(std::forward<Args>(attributes)...)))) {}
 
   // Allocating indexes used by the Allocation Finder - op specific.
   virtual absl::flat_hash_set<int64> AllocatingIndices() const = 0;

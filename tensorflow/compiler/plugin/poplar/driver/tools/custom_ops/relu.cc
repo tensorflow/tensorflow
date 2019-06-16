@@ -23,8 +23,7 @@ namespace poplarplugin {
 HloReluInstruction::HloReluInstruction(HloInstruction* operand)
     : HloPoplarInstruction(
           operand->shape(), {operand},
-          GetPoplibsCustomOpTargetString(PoplibsOp::Popnn, PoplibsOp::Relu),
-          {}) {}
+          GetPoplibsCustomOpTargetString(PoplibsOp::Popnn, PoplibsOp::Relu)) {}
 
 const HloInstruction* HloReluInstruction::input() const { return operand(0); }
 
@@ -53,10 +52,9 @@ std::unique_ptr<HloInstruction> CreateRelu(HloInstruction* operand) {
 
 HloReluGradInstruction::HloReluGradInstruction(HloInstruction* out,
                                                HloInstruction* grad)
-    : HloPoplarInstruction(
-          out->shape(), {out, grad},
-          GetPoplibsCustomOpTargetString(PoplibsOp::Popnn, PoplibsOp::ReluGrad),
-          {}) {}
+    : HloPoplarInstruction(out->shape(), {out, grad},
+                           GetPoplibsCustomOpTargetString(
+                               PoplibsOp::Popnn, PoplibsOp::ReluGrad)) {}
 
 const HloInstruction* HloReluGradInstruction::out() const { return operand(0); }
 

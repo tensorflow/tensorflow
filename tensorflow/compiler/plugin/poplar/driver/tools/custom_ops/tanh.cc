@@ -22,10 +22,9 @@ namespace poplarplugin {
 
 HloTanhGradInstruction::HloTanhGradInstruction(HloInstruction* out,
                                                HloInstruction* grad)
-    : HloPoplarInstruction(
-          out->shape(), {out, grad},
-          GetPoplibsCustomOpTargetString(PoplibsOp::Popnn, PoplibsOp::TanhGrad),
-          {}) {}
+    : HloPoplarInstruction(out->shape(), {out, grad},
+                           GetPoplibsCustomOpTargetString(
+                               PoplibsOp::Popnn, PoplibsOp::TanhGrad)) {}
 
 const HloInstruction* HloTanhGradInstruction::out() const { return operand(0); }
 

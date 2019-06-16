@@ -27,8 +27,7 @@ namespace poplarplugin {
 HloPrintTensor::HloPrintTensor(HloInstruction* input)
     : HloPoplarInstruction(ShapeUtil::MakeTokenShape(), {input},
                            GetPoplibsCustomOpTargetString(
-                               PoplibsOp::Poputil, PoplibsOp::PrintTensor),
-                           {}) {}
+                               PoplibsOp::Poputil, PoplibsOp::PrintTensor)) {}
 
 absl::flat_hash_set<int64> HloPrintTensor::AllocatingIndices() const {
   return {};

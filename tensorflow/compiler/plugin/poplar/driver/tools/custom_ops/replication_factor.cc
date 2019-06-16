@@ -26,8 +26,7 @@ HloReplicationFactorInstruction::HloReplicationFactorInstruction()
                                {}),
           {},
           GetPoplibsCustomOpTargetString(PoplibsOp::Poputil,
-                                         PoplibsOp::ReplicationFactor),
-          {}) {}
+                                         PoplibsOp::ReplicationFactor)) {}
 
 absl::flat_hash_set<int64> HloReplicationFactorInstruction::AllocatingIndices()
     const {
@@ -63,8 +62,7 @@ HloReplicationNormaliseInstruction::HloReplicationNormaliseInstruction(
     : HloPoplarInstruction(
           operand->shape(), {operand},
           GetPoplibsCustomOpTargetString(PoplibsOp::Poputil,
-                                         PoplibsOp::ReplicationNormalise),
-          {}) {}
+                                         PoplibsOp::ReplicationNormalise)) {}
 
 const HloInstruction* HloReplicationNormaliseInstruction::input() const {
   return operand(0);

@@ -24,7 +24,8 @@ HloLSTMInstruction::HloLSTMInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     const std::string& custom_call_target, bool is_training, int32 num_channels,
     xla::PrimitiveType partials_type)
-    : HloPoplarInstruction(shape, operands, custom_call_target, {}),
+    : HloPoplarInstruction(shape, operands, custom_call_target, is_training,
+                           num_channels, partials_type),
       is_training_(is_training),
       num_channels_(num_channels),
       partials_type_(partials_type) {}

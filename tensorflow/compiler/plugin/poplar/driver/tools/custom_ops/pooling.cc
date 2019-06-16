@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
 #include "tensorflow/compiler/plugin/poplar/kernels/poplibs_ops.pb.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
+#include "tensorflow/compiler/xla/window_util.h"
 
 namespace xla {
 namespace poplarplugin {
@@ -23,7 +24,8 @@ namespace poplarplugin {
 HloPoolingInstruction::HloPoolingInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::string_view custom_call_target, xla::Window window)
-    : HloPoplarInstruction(shape, operands, custom_call_target, {}),
+    : HloPoplarInstruction(shape, operands, custom_call_target,
+                           window_util::ToString(window)),
       window_(window) {}
 
 const xla::Window& HloPoolingInstruction::window() const { return window_; }

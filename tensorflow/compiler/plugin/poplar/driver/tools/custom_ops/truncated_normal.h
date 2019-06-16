@@ -29,6 +29,7 @@ class HloTruncatedNormalInstruction : public HloPoplarInstruction {
   absl::flat_hash_map<int64, int64> LayoutDependencies() const override;
   uint64 NumberOfInplaceOperands() const override;
   bool IsPopOpsElementwise() const override;
+  bool HasSideEffectNoRecurse() const override;
 
  private:
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
