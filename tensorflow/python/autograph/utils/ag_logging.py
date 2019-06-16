@@ -46,7 +46,7 @@ def set_verbosity(level, alsologtostdout=False):
   More verbose logging is useful to enable when filing bug reports or doing
   more in-depth debugging.
 
-  There are two parameters that control the logging verbosity:
+  There are two means to control the logging verbosity:
 
    * The `set_verbosity` function
 
