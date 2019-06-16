@@ -123,7 +123,11 @@ class _ConversionCache(object):
     return self._cache[key]
 
 
-_CACHE_LOCK = threading.Lock()
+# Using a re-entrant lock to guard against the unlikely possibility that the
+# conversion process tiggers additional code execution.
+_CACHE_LOCK = threading.RLock()
+
+
 _CACHE = _ConversionCache()
 
 

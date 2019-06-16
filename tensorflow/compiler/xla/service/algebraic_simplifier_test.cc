@@ -4731,6 +4731,23 @@ DotOfConcatTestSpec kDotOfConcatTestSpecs[] = {
     {/*m=*/1, /*k=*/16, /*n=*/1},   //
 };
 
+TEST_F(DotOfConcatSimplificationTest, ConcatIntoScalarDot) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      param0 = f32[4] parameter(0)
+      param1 = f32[1] parameter(1)
+      constant = f32[5] constant({-0.38, 0.07, -0.62, 0.66, 0.20})
+      concat = f32[5] concatenate(param0, param1), dimensions={0}
+      ROOT dot = f32[] dot(concat, constant), lhs_contracting_dims={0},
+                                              rhs_contracting_dims={0}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_dot_strength_reduction(false);
+  ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).ValueOrDie());
+}
+
 // Test that DynamicUpdateSlice update param with any dimension equal to zero
 // gets removed.
 TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceZeroUpdate) {

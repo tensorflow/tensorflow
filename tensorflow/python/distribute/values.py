@@ -765,7 +765,8 @@ class DistributedVariable(DistributedDelegate, variables_lib.AbstractVariable):
     return self.primary._in_graph_mode   # pylint: disable=protected-access
 
   def read_value(self):
-    return self._distribute_strategy.extended.read_var(self)
+    with _enter_or_assert_strategy(self._distribute_strategy):
+      return array_ops.identity(self.get())
 
   def value(self):
     return self._get_closest().value()

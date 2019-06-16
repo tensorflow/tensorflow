@@ -1541,8 +1541,11 @@ class Function(object):
     # TODO(b/117617952): The current distribution strategy will affect graph
     # building (e.g. accessing different variables from different devices) and
     # so requires retracing for each device.
-    uses_distribution_strategy = bool(
-        default_graph._distribution_strategy_stack)
+    strategy_stack = default_graph._distribution_strategy_stack
+    uses_distribution_strategy = (
+        strategy_stack and
+        strategy_stack[-1].strategy.extended._retrace_functions_for_each_device
+    )
     if executing_eagerly:
       colocation_stack = ()
       if uses_distribution_strategy:

@@ -46,6 +46,9 @@ namespace {
 
 enum SnapshotMode { READER = 0, WRITER = 1, PASSTHROUGH = 2 };
 
+// Defaults to 10 GiB per shard.
+const int64 kDefaultShardSizeBytes = 10L * 1024 * 1024 * 1024;
+
 const size_t kHeaderSize = sizeof(uint64);
 
 const char kSnapshotFilename[] = "snapshot.metadata";
@@ -254,6 +257,13 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("shard_size_bytes", &shard_size_bytes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("pending_snapshot_expiry_seconds",
                                      &pending_snapshot_expiry_seconds_));
+
+    if (shard_size_bytes_ == -1) shard_size_bytes_ = kDefaultShardSizeBytes;
+
+    // Default to 1 day expiry for snapshots.
+    if (pending_snapshot_expiry_seconds_ == -1) {
+      pending_snapshot_expiry_seconds_ = 86400;
+    }
 
     OP_REQUIRES(
         ctx,

@@ -77,7 +77,10 @@ tf_cuda_library(
             "//tensorflow/core:op_gen_lib",
             "//tensorflow/core/distributed_runtime:server_lib",
         ],
-    }) + [":tf_status_internal"],
+    }) + [
+        ":tf_status_internal",
+        ":tf_tensor_internal",
+    ],
 )
 
 cc_library(
@@ -211,12 +214,31 @@ cc_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            ":c_api_internal",
             ":tf_datatype",
             ":tf_status",
+            ":tf_status_helper",
+            ":tf_tensor_internal",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
             "//tensorflow/core:protos_all_cc",
+        ],
+    }),
+)
+
+tf_cuda_library(
+    name = "tf_tensor_internal",
+    hdrs = [
+        "tf_tensor.h",
+        "tf_tensor_internal.h",
+    ],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            ":tf_datatype",
+            ":tf_status",
+            "//tensorflow/core:framework",
         ],
     }),
 )
@@ -263,7 +285,7 @@ tf_cuda_library(
     hdrs = ["tf_status_helper.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":c_api_no_xla",
+        ":tf_status",
         ":tf_status_internal",
         "//tensorflow/core:lib",
     ],
@@ -329,17 +351,16 @@ tf_cuda_library(
     ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
-    deps = select({
+    deps = [
+        ":tf_status",
+        ":tf_status_helper",
+    ] + select({
         "//tensorflow:android": [
-            ":c_api_no_xla",
             ":c_api_internal",
-            ":tf_status_helper",
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            ":c_api_no_xla",
             ":c_api_internal",
-            ":tf_status_helper",
             ":tf_tensor",
             "//tensorflow/core:framework",
         ],
@@ -357,6 +378,8 @@ tf_cuda_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":tf_datatype",
+        ":tf_status",
         ":tf_status_helper",
     ] + select({
         "//tensorflow:android": [
@@ -365,7 +388,7 @@ tf_cuda_library(
         "//conditions:default": [
             "//tensorflow/core:framework",
         ],
-    }) + [":c_api_internal"],
+    }),
 )
 
 # -----------------------------------------------------------------------------

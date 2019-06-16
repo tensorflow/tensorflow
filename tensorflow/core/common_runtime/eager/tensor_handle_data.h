@@ -35,8 +35,6 @@ class TensorHandleData {
   virtual Status Dim(int dim_index, int64* dim) const = 0;
   virtual Status NumElements(int64* num_elements) const = 0;
 
-  virtual Status WaitReady() = 0;
-
   virtual string DebugString() const = 0;
 };
 
@@ -54,8 +52,6 @@ class LocalTensorHandleData : public TensorHandleData {
   Status Dim(int dim_index, int64* dim) const override;
   Status NumElements(int64* num_elements) const override;
 
-  Status WaitReady() override { return Status::OK(); };
-
   string DebugString() const override { return tensor_.DebugString(); }
 
  private:
@@ -67,7 +63,7 @@ class LocalTensorHandleData : public TensorHandleData {
 // tensor handle.
 class AsyncLocalTensorHandleData : public TensorHandleData {
  public:
-  AsyncLocalTensorHandleData(uint64 node_id, EagerContext* ctx);
+  AsyncLocalTensorHandleData() {}
   ~AsyncLocalTensorHandleData() override {}
 
   // Async tensor handles are not ready and hence cannot satisfy any of these
@@ -79,17 +75,7 @@ class AsyncLocalTensorHandleData : public TensorHandleData {
   Status Dim(int dim_index, int64* dim) const override;
   Status NumElements(int64* num_elements) const override;
 
-  // If the contents of the Tensor pointed to by this handle is yet to be
-  // computed by an EagerNode, this function will block till that computation is
-  // done and the handle is ready.
-  Status WaitReady() override;
-
   string DebugString() const override;
-
- private:
-  // Id for the EagerNode that will compute the value pointed to by this handle.
-  const uint64 node_id_;
-  EagerContext* const ctx_;
 };
 
 }  // namespace tensorflow

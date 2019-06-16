@@ -165,19 +165,33 @@ bool DeleteArrayIfUnused(const string& array_name, Model* model) {
   return false;
 }
 
-bool DeleteArrayIfUsedOnce(const string& array_name, Model* model) {
-  if (IsDiscardableArray(*model, array_name) &&
-      CountOpsWithInput(*model, array_name) == 1 &&
-      GetOpWithOutput(*model, array_name) == nullptr) {
-    model->EraseArray(array_name);
-    return true;
+bool DeleteArrayIfUnusedOutsideOfOp(const string& array_name,
+                                    const Operator* op, Model* model) {
+  if (!IsDiscardableArray(*model, array_name)) {
+    return false;
   }
-  return false;
+  if (CountOpsWithInput(*model, array_name) > 1) {
+    return false;
+  }
+  const Operator* op_having_this_as_input = GetOpWithInput(*model, array_name);
+  if (op_having_this_as_input && op_having_this_as_input != op) {
+    return false;
+  }
+  const Operator* op_having_this_as_output =
+      GetOpWithOutput(*model, array_name);
+  if (op_having_this_as_output && op_having_this_as_output != op) {
+    return false;
+  }
+  model->EraseArray(array_name);
+  return true;
 }
 
-void DeleteOpAndArraysIfUnused(Model* model, const Operator* op) {
+void DeleteOpAndArrays(Model* model, const Operator* op) {
   for (const string& array_name : op->inputs) {
-    DeleteArrayIfUsedOnce(array_name, model);
+    DeleteArrayIfUnusedOutsideOfOp(array_name, op, model);
+  }
+  for (const string& array_name : op->outputs) {
+    DeleteArrayIfUnusedOutsideOfOp(array_name, op, model);
   }
   auto op_it = FindOp(*model, op);
   CHECK(op_it != model->operators.end());

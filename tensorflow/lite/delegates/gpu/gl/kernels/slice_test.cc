@@ -49,7 +49,7 @@ TEST(SliceTest, Identity) {
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  ASSERT_TRUE(model.Invoke(*NewSliceNodeShader()));
+  ASSERT_OK(model.Invoke(*NewSliceNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {1, 2, 3, 4}));
 }
 
@@ -72,7 +72,7 @@ TEST(SliceTest, NegativeEnds) {
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  ASSERT_TRUE(model.Invoke(*NewSliceNodeShader()));
+  ASSERT_OK(model.Invoke(*NewSliceNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {1, 2, 3, 4}));
 }
 
@@ -95,7 +95,7 @@ TEST(SliceTest, NegativeEndsNonZeroStarts) {
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  ASSERT_TRUE(model.Invoke(*NewSliceNodeShader()));
+  ASSERT_OK(model.Invoke(*NewSliceNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {3}));
 }
 
@@ -118,7 +118,7 @@ TEST(SliceTest, StridesByHeight) {
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  ASSERT_TRUE(model.Invoke(*NewSliceNodeShader()));
+  ASSERT_OK(model.Invoke(*NewSliceNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {1, 3}));
 }
 
@@ -141,7 +141,7 @@ TEST(SliceTest, StridesByWidth) {
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  ASSERT_TRUE(model.Invoke(*NewSliceNodeShader()));
+  ASSERT_OK(model.Invoke(*NewSliceNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {2, 4}));
 }
 
@@ -164,7 +164,7 @@ TEST(SliceTest, StridesByChannels) {
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  ASSERT_TRUE(model.Invoke(*NewSliceNodeShader()));
+  ASSERT_OK(model.Invoke(*NewSliceNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {3}));
 }
 

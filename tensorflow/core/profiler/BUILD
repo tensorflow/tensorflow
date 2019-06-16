@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos", "tf_profiler_all_protos", "tf_proto_library")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library", "tf_additional_all_protos")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -37,12 +37,18 @@ cc_library(
 )
 
 tf_proto_library(
+    name = "op_profile_proto",
+    srcs = ["op_profile.proto"],
+    cc_api_version = 2,
+)
+
+tf_proto_library(
     name = "profiler_service_proto",
     srcs = ["profiler_service.proto"],
     has_services = 1,
     cc_api_version = 2,
     cc_grpc_version = 1,
-    protodeps = tf_profiler_all_protos() + tf_additional_all_protos(),
+    protodeps = [":op_profile_proto"] + tf_additional_all_protos(),
 )
 
 tf_proto_library(
@@ -51,7 +57,7 @@ tf_proto_library(
     has_services = 1,
     cc_api_version = 2,
     cc_grpc_version = 1,
-    protodeps = [":profiler_service_proto"] + tf_additional_all_protos(),
+    protodeps = [":profiler_service_proto"],
 )
 
 tf_proto_library(
@@ -61,6 +67,7 @@ tf_proto_library(
         exclude = [
             "profiler_service.proto",
             "profiler_analysis.proto",
+            "op_profile.proto",
         ],
     ),
     cc_api_version = 2,

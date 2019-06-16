@@ -1369,6 +1369,7 @@ def tf_kernel_library(
         deps = None,
         alwayslink = 1,
         copts = None,
+        gpu_copts = None,
         is_external = False,
         **kwargs):
     """A rule to build a TensorFlow OpKernel.
@@ -1400,6 +1401,8 @@ def tf_kernel_library(
         deps = []
     if not copts:
         copts = []
+    if not gpu_copts:
+        gpu_copts = []
     textual_hdrs = []
     copts = copts + tf_copts(is_external = is_external)
 
@@ -1437,6 +1440,7 @@ def tf_kernel_library(
             name = name + "_gpu",
             srcs = gpu_srcs,
             deps = deps,
+            copts = gpu_copts,
             **kwargs
         )
         cuda_deps.extend([":" + name + "_gpu"])

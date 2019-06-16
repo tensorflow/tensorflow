@@ -58,6 +58,28 @@ xla_proto_library(
 )
 
 cc_library(
+    name = "bit_cast",
+    hdrs = ["bit_cast.h"],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/base",
+    ],
+)
+
+tf_cc_test(
+    name = "bit_cast_test",
+    srcs = ["bit_cast_test.cc"],
+    deps = [
+        ":bit_cast",
+        ":test",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "comparison_util",
     srcs = [
         "comparison_util.cc",

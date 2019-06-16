@@ -691,6 +691,9 @@ tf_py_test(
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
     ],
     shard_count = 3,
 )

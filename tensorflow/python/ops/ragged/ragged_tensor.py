@@ -1885,7 +1885,9 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
 
   __slots__ = ["_shape", "_dtype", "_ragged_rank", "_row_splits_dtype"]
 
-  value_type = property(lambda self: RaggedTensor)
+  @property
+  def value_type(self):
+    return RaggedTensor if self._ragged_rank > 0 else ops.Tensor
 
   def __init__(self, shape=None, dtype=dtypes.float32, ragged_rank=None,
                row_splits_dtype=dtypes.int64):

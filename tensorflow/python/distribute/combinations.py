@@ -48,13 +48,11 @@ class DistributionParameter(test_combinations.ParameterModifier):
     return distribution_arguments
 
 
-class GPUCombination(test_combinations.TestCombination):
+class NamedGPUCombination(test_combinations.TestCombination):
   """Enable tests to request GPU hardware and skip non-GPU combinations.
 
   This class expects test_combinations to be genarated with `NamedDistribution`
-  wrapping instances of `tf.distribute.Strategy`.  The test method themselves
-  will get `tf.distribute.Strategy`.  The translation is done using
-  `distribution_parameter` that is passed to the constructor.
+  wrapping instances of `tf.distribute.Strategy`.
 
   Optionally, the `required_gpus` argument is supported.  GPU hardware is
   required, if its value is `True` or > 0.
@@ -88,19 +86,22 @@ class GPUCombination(test_combinations.TestCombination):
       return (True, None)
 
   def parameter_modifiers(self):
-    return [
-        DistributionParameter(),
-        test_combinations.OptionalParameter("required_gpus")
-    ]
+    return [test_combinations.OptionalParameter("required_gpus")]
 
 
-class TPUCombination(test_combinations.TestCombination):
+class GPUCombination(NamedGPUCombination):
+  """NamedGPUCombination that passes `tf.distribute.Strategy` to the tests."""
+
+  def parameter_modifiers(self):
+    return [DistributionParameter()
+           ] + NamedGPUCombination.parameter_modifiers(self)
+
+
+class NamedTPUCombination(test_combinations.TestCombination):
   """Allow to request TPU hardware and skip non-TPU combinations.
 
   This class expects test_combinations to be genarated with `NamedDistribution`
-  wrapping instances of `tf.distribute.Strategy`.  The test method themselves
-  will get `tf.distribute.Strategy`.  The translation is done using
-  `distribution_parameter` that is passed to the constructor.
+  wrapping instances of `tf.distribute.Strategy`.
 
   Optionally, the `required_tpus` parameter is supported.  TPU hardware is
   required, if its argument is `True` or > 0.
@@ -142,10 +143,17 @@ class TPUCombination(test_combinations.TestCombination):
 
   def parameter_modifiers(self):
     return [
-        DistributionParameter(),
         test_combinations.OptionalParameter("required_tpus"),
         test_combinations.OptionalParameter("required_tpu")
     ]
+
+
+class TPUCombination(NamedTPUCombination):
+  """NamedTPUCombination that passes `tf.distribute.Strategy` to the tests."""
+
+  def parameter_modifiers(self):
+    return [DistributionParameter()
+           ] + NamedTPUCombination.parameter_modifiers(self)
 
 
 class EagerGraphCombination(test_combinations.TestCombination):

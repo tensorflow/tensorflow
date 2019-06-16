@@ -247,16 +247,7 @@ void EvaluateBinaryOperatorOnConstantInputs(Model* model,
   // Do the actual constants propagation
   EvaluateBinaryOperatorOnConstantInputs(model, binary_op);
 
-  // Remove the binary operator and its inputs
-  if (CountOpsWithInput(*model, binary_op->inputs[0]) == 1) {
-    model->EraseArray(binary_op->inputs[0]);
-  }
-  if (CountOpsWithInput(*model, binary_op->inputs[1]) == 1) {
-    model->EraseArray(binary_op->inputs[1]);
-  }
-  AddMessageF("Resolved constant %s to the equivalent constant array",
-              LogName(*binary_op));
-  model->operators.erase(binary_it);
+  DeleteOpAndArrays(model, binary_op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

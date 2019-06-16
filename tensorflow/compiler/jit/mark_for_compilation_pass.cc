@@ -1364,46 +1364,36 @@ void MarkForCompilationPassImpl::VLogClusteringSummary() {
     return;
   }
 
-  std::map<absl::string_view, int> cluster_name_to_size;
-  std::map<absl::string_view, std::map<absl::string_view, int>>
-      cluster_name_to_op_histogram;
-  std::map<absl::string_view, int> unclustered_op_histogram;
-  int clustered_node_count = 0;
-
-  for (Node* n : graph_->nodes()) {
-    absl::optional<absl::string_view> cluster_name = GetXlaClusterForNode(*n);
-    if (cluster_name) {
-      clustered_node_count++;
-      cluster_name_to_size[*cluster_name]++;
-      cluster_name_to_op_histogram[*cluster_name][n->type_string()]++;
-    } else {
-      unclustered_op_histogram[n->type_string()]++;
-    }
-  }
-
-  int unclustered_node_count = graph_->num_nodes() - clustered_node_count;
+  XlaAutoClusteringSummary auto_clustering_info =
+      GetXlaAutoClusteringSummary(*graph_);
 
   VLOG(2) << "*** Clustering info for graph of size " << graph_->num_nodes();
-  VLOG(2) << " Built " << cluster_name_to_size.size() << " clusters, size "
-          << RatioToString(clustered_node_count, graph_->num_nodes());
+  VLOG(2) << " Built " << auto_clustering_info.clusters_size()
+          << " clusters, size "
+          << RatioToString(auto_clustering_info.clustered_node_count(),
+                           graph_->num_nodes());
 
-  for (const auto& cluster_name_size_pair : cluster_name_to_size) {
-    absl::string_view cluster_name = cluster_name_size_pair.first;
-    int size = cluster_name_size_pair.second;
+  for (XlaAutoClusteringSummary::Cluster cluster :
+       auto_clustering_info.clusters()) {
+    absl::string_view cluster_name = cluster.name();
+    int size = cluster.size();
     VLOG(2) << "  " << cluster_name << " "
             << RatioToString(size, graph_->num_nodes());
-    for (const auto& op_count_pair :
-         cluster_name_to_op_histogram[cluster_name]) {
-      VLOG(3) << "   " << op_count_pair.first << ": " << op_count_pair.second
+    for (const XlaAutoClusteringSummary::OpAndCount& op_count :
+         cluster.op_histogram()) {
+      VLOG(3) << "   " << op_count.op() << ": " << op_count.count()
               << " instances";
     }
   }
 
-  if (!unclustered_op_histogram.empty()) {
+  if (!auto_clustering_info.unclustered_op_histogram().empty()) {
     VLOG(2) << " Unclustered nodes: "
-            << RatioToString(unclustered_node_count, graph_->num_nodes());
-    for (const auto& pair : unclustered_op_histogram) {
-      VLOG(3) << "  " << pair.first << ": " << pair.second << " instances";
+            << RatioToString(auto_clustering_info.unclustered_node_count(),
+                             graph_->num_nodes());
+    for (const XlaAutoClusteringSummary::OpAndCount& op_count :
+         auto_clustering_info.unclustered_op_histogram()) {
+      VLOG(3) << "  " << op_count.op() << ": " << op_count.count()
+              << " instances";
     }
   }
 

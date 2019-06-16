@@ -28,7 +28,7 @@ class CopyToDeviceNode : public EagerNode {
   CopyToDeviceNode(TensorHandle* src, Device* dstd, EagerContext* ctx)
       : EagerNode(ctx->NextId()), src_(src), dstd_(dstd), ctx_(ctx) {
     src_->Ref();
-    status_ = TensorHandle::CreateAsyncLocalHandle(id, dstd_, dstd_, nullptr,
+    status_ = TensorHandle::CreateAsyncLocalHandle(dstd_, dstd_, nullptr,
                                                    src_->dtype, ctx, &dst_);
     if (status_.ok()) {
       dst_->Ref();
@@ -47,9 +47,13 @@ class CopyToDeviceNode : public EagerNode {
       return status_;
     }
     TensorHandle* temp = nullptr;
-    TF_RETURN_IF_ERROR(src_->CopyToDevice(ctx_, dstd_, &temp));
+    Status status = src_->CopyToDevice(ctx_, dstd_, &temp);
+    if (!status.ok()) {
+      dst_->Poison(status);
+      return status;
+    }
     const Tensor* tensor = nullptr;
-    Status status = temp->Tensor(&tensor);
+    status = temp->Tensor(&tensor);
     // `temp` is a ready handle. So the following call should return OK.
     TF_DCHECK_OK(status) << status.error_message();
     DCHECK(tensor);
@@ -57,6 +61,8 @@ class CopyToDeviceNode : public EagerNode {
     temp->Unref();
     return Status::OK();
   }
+
+  void Abort(Status status) override { dst_->Poison(status); }
 
   TensorHandle* dst() { return dst_; }
 

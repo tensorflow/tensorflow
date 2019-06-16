@@ -51,7 +51,7 @@ void TestPadOperation(const HWC& prepend, const HWC& append,
 
   SingleOpModel model({ToString(OperationType::PAD), attr}, {input}, {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1.0}));
-  ASSERT_TRUE(model.Invoke(*NewPadNodeShader()));
+  ASSERT_OK(model.Invoke(*NewPadNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), expected));
 }
 

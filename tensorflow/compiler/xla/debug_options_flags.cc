@@ -79,7 +79,7 @@ static absl::node_hash_map<string, std::atomic<bool>>* fuel_ever_consumed;
 static absl::node_hash_map<string, std::atomic<int64>>* global_fuel;
 
 // If we're using thread-local fuel, this stores it.
-static thread_local absl::optional<
+static thread_local std::unique_ptr<
     absl::node_hash_map<string, std::atomic<int64>>>
     thread_fuel;  // NOLINT (global variable with nontrivial destructor)
 
@@ -519,7 +519,7 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
 void ResetThreadLocalFuel() {
   std::call_once(flags_init, &AllocateFlags);
 
-  thread_fuel.emplace();
+  thread_fuel.reset(new absl::node_hash_map<string, std::atomic<int64>>());
   CHECK(initial_fuel != nullptr);
   for (const auto& kv : *initial_fuel) {
     thread_fuel->emplace(kv.first, kv.second);
@@ -531,7 +531,7 @@ bool ConsumeFuel(absl::string_view pass, bool* just_ran_out) {
   if (just_ran_out != nullptr) {
     *just_ran_out = false;
   }
-  auto* fuel_pool = thread_fuel.has_value() ? &*thread_fuel : global_fuel;
+  auto* fuel_pool = thread_fuel ? thread_fuel.get() : global_fuel;
   if (fuel_pool->empty()) {
     return true;
   }
