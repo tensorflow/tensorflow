@@ -516,6 +516,9 @@ TfLiteStatus NonMaxSuppressionMultiClassRegularHelper(TfLiteContext* context,
     // Add selected indices from non-max suppression of boxes in this class
     int output_index = size_of_sorted_indices;
     for (const auto& selected_index : selected) {
+      if (output_box_index >= max_detections) {
+        break;
+      }
       box_indices_after_regular_non_max_suppression[output_index] =
           (selected_index * num_classes_with_background + col + label_offset);
       scores_after_regular_non_max_suppression[output_index] =
