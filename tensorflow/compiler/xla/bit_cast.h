@@ -43,26 +43,26 @@ T BitCast(U src) {
 
 template <>
 inline tensorflow::bfloat16 BitCast<tensorflow::bfloat16, uint16_t>(
-    uint16 src) {
+    uint16_t src) {
   tensorflow::bfloat16 result;
   result.value = src;
   return result;
 }
 
 template <>
-inline uint16 BitCast<uint16, tensorflow::bfloat16>(tensorflow::bfloat16 src) {
+inline uint16_t BitCast<uint16_t, tensorflow::bfloat16>(tensorflow::bfloat16 src) {
   return src.value;
 }
 
 template <>
-inline Eigen::half BitCast<Eigen::half, uint16>(uint16 src) {
+inline Eigen::half BitCast<Eigen::half, uint16_t>(uint16_t src) {
   Eigen::half result;
   result.x = src;
   return result;
 }
 
 template <>
-inline uint16 BitCast<uint16, Eigen::half>(Eigen::half src) {
+inline uint16_t BitCast<uint16_t, Eigen::half>(Eigen::half src) {
   return src.x;
 }
 
