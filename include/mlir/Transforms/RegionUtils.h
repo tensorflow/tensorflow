@@ -18,7 +18,8 @@
 #ifndef MLIR_TRANSFORMS_REGIONUTILS_H_
 #define MLIR_TRANSFORMS_REGIONUTILS_H_
 
-#include "mlir/IR/Block.h"
+#include "mlir/IR/Region.h"
+#include "mlir/IR/Value.h"
 
 namespace mlir {
 

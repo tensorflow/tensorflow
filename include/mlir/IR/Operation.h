@@ -25,9 +25,8 @@
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/Region.h"
 #include "llvm/ADT/Twine.h"
-#include "llvm/ADT/ilist.h"
-#include "llvm/ADT/ilist_node.h"
 
 namespace mlir {
 class BlockAndValueMapping;
