@@ -833,7 +833,7 @@ _pop_op_relu {
   EXPECT_EQ(hash0.GetProtoStr(), hash1.GetProtoStr());
 }
 
-TEST_F(HloHashTest, HloPoplarInstructions) {
+TEST_F(HloHashTest, HloPoplarInstructionsDifferent) {
   std::string hlo_string0 = R"(
 HloModule top
 
@@ -880,6 +880,55 @@ ENTRY c1 {
   HloHash hash1(module1);
   EXPECT_NE(hash0.GetHash(), hash1.GetHash());
   EXPECT_NE(hash0.GetProtoStr(), hash1.GetProtoStr());
+}
+
+TEST_F(HloHashTest, HloPoplarInstructionsSame) {
+  std::string hlo_string0 = R"(
+HloModule top
+
+ENTRY c1 {
+  p0 = (s32[20], s32[20], s32[20], s32[20]) parameter(0)
+  p0_0 = s32[20] get-tuple-element(p0), index=0
+
+  c = s32[20] custom-call(p0), custom_call_target="Popnn::LstmLayerFwd", opaque="{\"num_channels\":4, \"is_training\":false, \"partials_dtype\":\"DT_FLOAT\"}\n"
+
+  ROOT a = s32[20] add(p0_0, c)
+}
+
+)";
+
+  std::string hlo_string1 = R"(
+HloModule top
+
+ENTRY c1 {
+  p0 = (s32[20], s32[20], s32[20], s32[20]) parameter(0)
+  p0_0 = s32[20] get-tuple-element(p0), index=0
+
+  c = s32[20] custom-call(p0), custom_call_target="Popnn::LstmLayerFwd", opaque="{\"num_channels\":4, \"is_training\":false, \"partials_dtype\":\"DT_FLOAT\"}\n"
+
+  ROOT a = s32[20] add(p0_0, c)
+}
+
+)";
+
+  CustomOpReplacer custom_op_replacer;
+
+  auto module0_or_status =
+      HloRunner::CreateModuleFromString(hlo_string0, GetDebugOptionsForTest());
+  EXPECT_TRUE(module0_or_status.ok());
+  auto* module0 = module0_or_status.ValueOrDie().get();
+  EXPECT_TRUE(custom_op_replacer.Run(module0).ValueOrDie());
+
+  auto module1_or_status =
+      HloRunner::CreateModuleFromString(hlo_string1, GetDebugOptionsForTest());
+  EXPECT_TRUE(module1_or_status.ok());
+  auto* module1 = module1_or_status.ValueOrDie().get();
+  EXPECT_TRUE(custom_op_replacer.Run(module1).ValueOrDie());
+
+  HloHash hash0(module0);
+  HloHash hash1(module1);
+  EXPECT_EQ(hash0.GetHash(), hash1.GetHash());
+  EXPECT_EQ(hash0.GetProtoStr(), hash1.GetProtoStr());
 }
 
 }  // namespace
