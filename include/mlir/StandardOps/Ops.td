@@ -605,6 +605,23 @@ def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
   let hasFolder = 1;
 }
 
+def IndexCastOp : CastOp<"index_cast">, Arguments<(ins AnyType:$in)> {
+  let summary = "cast between index and integer types";
+  let description = [{
+    Casts between integer scalars and 'index' scalars.  Index is an integer of
+    platform-specific bit width.  If casting to a wider integer, the value is
+    sign-extended.  If casting to a narrower integer, the value is truncated.
+  }];
+
+  let extraClassDeclaration = [{
+    /// Return true if `a` and `b` are valid operand and result pairs for
+    /// the operation.
+    static bool areCastCompatible(Type a, Type b);
+  }];
+
+  let hasFolder = 0;
+}
+
 def LoadOp : Std_Op<"load"> {
   let summary = "load operation";
   let description = [{

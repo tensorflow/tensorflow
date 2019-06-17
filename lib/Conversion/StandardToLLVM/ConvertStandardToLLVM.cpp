@@ -792,6 +792,37 @@ struct StoreOpLowering : public LoadStoreOpLowering<StoreOp> {
   }
 };
 
+// The lowering of index_cast becomes an integer conversion since index becomes
+// an integer.  If the bit width of the source and target integer types is the
+// same, just erase the cast.  If the target type is wider, sign-extend the
+// value, otherwise truncate it.
+struct IndexCastOpLowering : public LLVMLegalizationPattern<IndexCastOp> {
+  using LLVMLegalizationPattern<IndexCastOp>::LLVMLegalizationPattern;
+
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
+    IndexCastOpOperandAdaptor transformed(operands);
+    auto indexCastOp = cast<IndexCastOp>(op);
+
+    auto targetType =
+        this->lowering.convertType(indexCastOp.getResult()->getType())
+            .cast<LLVM::LLVMType>();
+    auto sourceType = transformed.in()->getType().cast<LLVM::LLVMType>();
+    unsigned targetBits = targetType.getUnderlyingType()->getIntegerBitWidth();
+    unsigned sourceBits = sourceType.getUnderlyingType()->getIntegerBitWidth();
+
+    if (targetBits == sourceBits)
+      rewriter.replaceOp(op, transformed.in());
+    else if (targetBits < sourceBits)
+      rewriter.replaceOpWithNewOp<LLVM::TruncOp>(op, targetType,
+                                                 transformed.in());
+    else
+      rewriter.replaceOpWithNewOp<LLVM::SExtOp>(op, targetType,
+                                                transformed.in());
+    return matchSuccess();
+  }
+};
+
 // Base class for LLVM IR lowering terminator operations with successors.
 template <typename SourceOp, typename TargetOp>
 struct OneToOneLLVMTerminatorLowering
@@ -924,11 +955,11 @@ void mlir::populateStdToLLVMConversionPatterns(
       BranchOpLowering, CallIndirectOpLowering, CallOpLowering, CmpIOpLowering,
       CondBranchOpLowering, ConstLLVMOpLowering, DeallocOpLowering,
       DimOpLowering, DivISOpLowering, DivIUOpLowering, DivFOpLowering,
-      LoadOpLowering, MemRefCastOpLowering, MulFOpLowering, MulIOpLowering,
-      OrOpLowering, RemISOpLowering, RemIUOpLowering, RemFOpLowering,
-      ReturnOpLowering, SelectOpLowering, StoreOpLowering, SubFOpLowering,
-      SubIOpLowering, XOrOpLowering>::build(patterns, *converter.getDialect(),
-                                            converter);
+      IndexCastOpLowering, LoadOpLowering, MemRefCastOpLowering, MulFOpLowering,
+      MulIOpLowering, OrOpLowering, RemISOpLowering, RemIUOpLowering,
+      RemFOpLowering, ReturnOpLowering, SelectOpLowering, StoreOpLowering,
+      SubFOpLowering, SubIOpLowering,
+      XOrOpLowering>::build(patterns, *converter.getDialect(), converter);
 }
 
 // Convert types using the stored LLVM IR module.

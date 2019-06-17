@@ -149,3 +149,21 @@ func @foo(%arg0: !llvm.i32) -> !llvm<"{ i32, double, i32 }"> {
   %22 = llvm.insertvalue %5, %21[2] : !llvm<"{ i32, double, i32 }">
   llvm.return %22 : !llvm<"{ i32, double, i32 }">
 }
+
+// CHECK-LABEL: @casts
+func @casts(%arg0: !llvm.i32, %arg1: !llvm.i64, %arg2: !llvm<"<4 x i32>">,
+            %arg3: !llvm<"<4 x i64>">) {
+// CHECK-NEXT:  = llvm.sext %arg0 : !llvm.i32 to !llvm.i56
+  %0 = llvm.sext %arg0 : !llvm.i32 to !llvm.i56
+// CHECK-NEXT:  = llvm.zext %arg0 : !llvm.i32 to !llvm.i64
+  %1 = llvm.zext %arg0 : !llvm.i32 to !llvm.i64
+// CHECK-NEXT:  = llvm.trunc %arg1 : !llvm.i64 to !llvm.i56
+  %2 = llvm.trunc %arg1 : !llvm.i64 to !llvm.i56
+// CHECK-NEXT:  = llvm.sext %arg2 : !llvm<"<4 x i32>"> to !llvm<"<4 x i56>">
+  %3 = llvm.sext %arg2 : !llvm<"<4 x i32>"> to !llvm<"<4 x i56>">
+// CHECK-NEXT:  = llvm.zext %arg2 : !llvm<"<4 x i32>"> to !llvm<"<4 x i64>">
+  %4 = llvm.zext %arg2 : !llvm<"<4 x i32>"> to !llvm<"<4 x i64>">
+// CHECK-NEXT:  = llvm.trunc %arg3 : !llvm<"<4 x i64>"> to !llvm<"<4 x i56>">
+  %5 = llvm.trunc %arg3 : !llvm<"<4 x i64>"> to !llvm<"<4 x i56>">
+  llvm.return
+}

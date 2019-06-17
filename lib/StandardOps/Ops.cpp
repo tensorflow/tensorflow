@@ -1631,6 +1631,16 @@ OpFoldResult ExtractElementOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// IndexCastOp
+//===----------------------------------------------------------------------===//
+
+// Index cast is applicable from index to integer and backwards.
+bool IndexCastOp::areCastCompatible(Type a, Type b) {
+  return (a.isIndex() && b.isa<IntegerType>()) ||
+         (a.isa<IntegerType>() && b.isIndex());
+}
+
+//===----------------------------------------------------------------------===//
 // LoadOp
 //===----------------------------------------------------------------------===//
 

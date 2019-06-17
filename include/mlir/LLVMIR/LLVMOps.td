@@ -179,27 +179,24 @@ def LLVM_StoreOp : LLVM_ZeroResultOp<"store">,
   let parser = [{ return parseStoreOp(parser, result); }];
   let printer = [{ printStoreOp(p, *this); }];
 }
-def LLVM_BitcastOp
-    : LLVM_OneResultOp<"bitcast", [NoSideEffect]>,
-      Arguments<(ins LLVM_Type:$arg)>,
-      LLVM_Builder<"$res = builder.CreateBitCast($arg, $_resultType);"> {
+
+// Casts.
+class LLVM_CastOp<string mnemonic, string builderFunc,
+                  list<OpTrait> traits = []> :
+    LLVM_OneResultOp<mnemonic,
+           !listconcat([NoSideEffect], traits)>,
+    Arguments<(ins LLVM_Type:$arg)>,
+    LLVM_Builder<"$res = builder." # builderFunc # "($arg, $_resultType);"> {
   let parser = [{ return mlir::impl::parseCastOp(parser, result); }];
   let printer = [{ mlir::impl::printCastOp(this->getOperation(), p); }];
 }
-def LLVM_IntToPtrOp
-    : LLVM_OneResultOp<"inttoptr", [NoSideEffect]>,
-      Arguments<(ins LLVM_Type:$arg)>,
-      LLVM_Builder<"$res = builder.CreateIntToPtr($arg, $_resultType);"> {
-  let parser = [{ return mlir::impl::parseCastOp(parser, result); }];
-  let printer = [{ mlir::impl::printCastOp(this->getOperation(), p); }];
-}
-def LLVM_PtrToIntOp
-    : LLVM_OneResultOp<"ptrtoint", [NoSideEffect]>,
-      Arguments<(ins LLVM_Type:$arg)>,
-      LLVM_Builder<"$res = builder.CreatePtrToInt($arg, $_resultType);"> {
-  let parser = [{ return mlir::impl::parseCastOp(parser, result); }];
-  let printer = [{ mlir::impl::printCastOp(this->getOperation(), p); }];
-}
+def LLVM_BitcastOp : LLVM_CastOp<"bitcast", "CreateBitCast">;
+def LLVM_IntToPtrOp : LLVM_CastOp<"inttoptr", "CreateIntToPtr">;
+def LLVM_PtrToIntOp : LLVM_CastOp<"ptrtoint", "CreatePtrToInt">;
+def LLVM_SExtOp : LLVM_CastOp<"sext", "CreateSExt">;
+def LLVM_ZExtOp : LLVM_CastOp<"zext", "CreateZExt">;
+def LLVM_TruncOp : LLVM_CastOp<"trunc", "CreateTrunc">;
+
 // Call-related operations.
 def LLVM_CallOp : LLVM_Op<"call">,
                   Arguments<(ins OptionalAttr<FunctionAttr>:$callee,

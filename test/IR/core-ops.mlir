@@ -285,6 +285,12 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
   // CHECK: = constant unit
   %73 = constant unit
 
+  // CHECK: = index_cast {{.*}} : index to i64
+  %74 = index_cast %idx : index to i64
+
+  // CHECK: = index_cast {{.*}} : i32 to index
+  %75 = index_cast %i : i32 to index
+
   return
 }
 

@@ -417,6 +417,18 @@ func @ops(f32, f32, i32, i32) -> (f32, i32) {
   return %0, %4 : f32, i32
 }
 
+// Checking conversion of index types to integers using i1, assuming no target
+// system would have a 1-bit address space.  Otherwise, we would have had to
+// make this test dependent on the pointer size on the target system.
+// CHECK-LABEL: @index_cast
+func @index_cast(%arg0: index, %arg1: i1) {
+// CHECK-NEXT: = llvm.trunc %arg0 : !llvm.i{{.*}} to !llvm.i1
+  %0 = index_cast %arg0: index to i1
+// CHECK-NEXT: = llvm.sext %arg1 : !llvm.i1 to !llvm.i{{.*}}
+  %1 = index_cast %arg1: i1 to index
+  return
+}
+
 // CHECK-LABEL: @dfs_block_order
 func @dfs_block_order() -> (i32) {
 // CHECK-NEXT:  %0 = llvm.constant(42 : i32) : !llvm.i32

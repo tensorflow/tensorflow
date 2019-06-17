@@ -675,3 +675,27 @@ func @extract_element_tensor_too_few_indices(%t : tensor<2x3xf32>, %i : index) {
   %0 = "std.extract_element"(%t, %i) : (tensor<2x3xf32>, index) -> f32
   return
 }
+
+// -----
+
+func @index_cast_index_to_index(%arg0: index) {
+  // expected-error@+1 {{are cast incompatible}}
+  %0 = index_cast %arg0: index to index
+  return
+}
+
+// -----
+
+func @index_cast_float(%arg0: index, %arg1: f32) {
+  // expected-error@+1 {{are cast incompatible}}
+  %0 = index_cast %arg0 : index to f32
+  return
+}
+
+// -----
+
+func @index_cast_float_to_index(%arg0: f32) {
+  // expected-error@+1 {{are cast incompatible}}
+  %0 = index_cast %arg0 : f32 to index
+  return
+}
