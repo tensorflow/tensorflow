@@ -88,6 +88,9 @@ def histogram_fixed_width_bins(values,
     # map tensor values within the open interval value_range to {0,.., nbins-1},
     # values outside the open interval will be zero or less, or nbins or more.
     indices = math_ops.floor(nbins_float * scaled_values, name='indices')
+    
+    if value_range[0].numpy() == value_range[1].numpy():
+      indices=tf.where(math_ops.is_nan(indices), tf.ones_like(indices), indices)
 
     # Clip edge cases (e.g. value = value_range[1]) or "outliers."
     indices = math_ops.cast(
