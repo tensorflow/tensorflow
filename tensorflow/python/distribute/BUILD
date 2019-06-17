@@ -686,6 +686,24 @@ tf_xla_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "regularization_loss_test",
+    size = "medium",
+    srcs = ["regularization_loss_test.py"],
+    additional_deps = [
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:layers_base",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:variables",
+    ],
+    tags = [
+        "multi_and_single_gpu",
+    ],
+)
+
 distribute_py_test(
     name = "input_lib_test",
     srcs = ["input_lib_test.py"],

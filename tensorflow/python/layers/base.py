@@ -26,6 +26,8 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
+from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
@@ -395,13 +397,14 @@ class Layer(base_layer.Layer):
       trainable = True
 
     def _should_add_regularizer(variable, existing_variable_set):
+      if ops.executing_eagerly_outside_functions():
+        return True
       if isinstance(variable, tf_variables.PartitionedVariable):
         for var in variable:
           if var in existing_variable_set:
             return False
         return True
-      else:
-        return variable not in existing_variable_set
+      return variable not in existing_variable_set
 
     init_graph = None
     if not context.executing_eagerly():
@@ -450,9 +453,61 @@ class Layer(base_layer.Layer):
             **kwargs)
 
         if regularizer:
-          if (ops.executing_eagerly_outside_functions()
-              or _should_add_regularizer(variable, existing_variables)):
-            self._handle_weight_regularization(name, variable, regularizer)
+
+          # In order to support DistributionStrategy, we move regularization
+          # in the following `add_regularizer` merge_fn. Regularization should
+          # be declared according to variable type. For example, we should call
+          # regularizer on all repilcas when it is a `MirroredVariable`.
+          # However, `MirroredVariable` is created when first replica thread is
+          # called, which makes regularizer statements on other replica
+          # thread ignored because of the `existing_variabale` check. Therefore,
+          # it is reasonable to put regularization statement in
+          # `cross_replica` context.
+          def add_regularizer(_, should_add_regularizer, variable, regularizer,
+                              name):
+            if isinstance(should_add_regularizer, value_lib.PerReplica):
+              should_add_regularizer = any(should_add_regularizer.values)
+            if should_add_regularizer:
+              if not isinstance(variable, value_lib.DistributedValues):
+                regularizer = regularizer.primary if \
+                    isinstance(regularizer, value_lib.DistributedValues) else \
+                    regularizer
+                self._handle_weight_regularization(name, variable, regularizer)
+                return
+
+              g = ops.get_default_graph()
+              l_before = g.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
+              for d in variable.devices:
+                self._handle_weight_regularization(
+                    name, variable.get(d), regularizer.get(d))
+
+              # Since the regularization loss operations have been added to
+              # global collection, so we manually remove them and replace with
+              # the `Mirrored` type.
+              l_after = g.get_collection_ref(
+                  ops.GraphKeys.REGULARIZATION_LOSSES)
+              l_reg_added = list(set(l_after).difference(set(l_before)))
+              for reg in l_reg_added:
+                if reg in l_after:
+                  l_after.remove(reg)
+
+              mirrored_reg = value_lib.Mirrored(
+                  variable.device_map, tuple(l_reg_added))
+              ops.add_to_collections(
+                  [ops.GraphKeys.REGULARIZATION_LOSSES], mirrored_reg)
+
+          replica_context = distribute_ctx.get_replica_context()
+          if replica_context:
+            distribute_ctx.get_replica_context().merge_call(
+                add_regularizer,
+                args=(_should_add_regularizer(variable, existing_variables),
+                      variable, regularizer, name))
+          else:
+            strategy = distribute_ctx.get_cross_replica_context()
+            add_regularizer(strategy,
+                            _should_add_regularizer(variable,
+                                                    existing_variables),
+                            variable, regularizer, name)
 
         if init_graph is not None:
           # Handle edge case where a custom getter has overridden `trainable`.

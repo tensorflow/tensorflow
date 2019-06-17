@@ -552,6 +552,12 @@ class Mirrored(DistributedDelegate):
       return conv_fn()
     return obj
 
+def _tensor_conversion_mirrored(value, dtype=None, name=None, as_ref=False):
+  return ops.internal_convert_to_tensor(
+      value.get(), dtype=dtype, name=name, as_ref=as_ref)
+
+ops.register_tensor_conversion_function(Mirrored, _tensor_conversion_mirrored)
+
 
 def _assign_on_device(device, variable, tensor):
   with ops.device(device):
@@ -956,12 +962,12 @@ class MirroredVariable(DistributedVariable, Mirrored):
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
-def _tensor_conversion_mirrored(var, dtype=None, name=None, as_ref=False):
+def _tensor_conversion_mirrored_var(var, dtype=None, name=None, as_ref=False):
   return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
 
 ops.register_tensor_conversion_function(MirroredVariable,
-                                        _tensor_conversion_mirrored)
+                                        _tensor_conversion_mirrored_var)
 
 
 def _enclosing_tpu_context():
