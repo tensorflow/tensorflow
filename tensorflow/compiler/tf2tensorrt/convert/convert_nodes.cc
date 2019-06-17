@@ -2798,9 +2798,6 @@ Status ConvertBiasAdd(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
 
-  TF_RETURN_IF_ERROR(
-       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}))
-
   if (inputs.size() != 2) {
     return errors::InvalidArgument(
         "BiasAdd expects exactly 2 inputs, but received ", inputs.size());
@@ -2811,27 +2808,30 @@ Status ConvertBiasAdd(OpConverterParams* params) {
         "All inputs are weights, but Grappler is expected to fold them.");
   }
 
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+
   TFAttrs attrs(node_def);
   const string& data_format = attrs.get<string>("data_format");
 
   nvinfer1::Dims input_shape = inputs.at(0).GetTrtDims();
   nvinfer1::Dims bias_shape = inputs.at(1).GetTrtDims();
   // If the input is NCHW, then we need to unsqueeze the bias such that its last
-  // 3 dimensions are (C, 1, 1)
+  // dimensions are 1s (and the first dimension is C).
   if (data_format == "NCHW") {
     bias_shape.nbDims = inputs.at(0).GetTrtDims().nbDims;
-    std::fill(bias_shape.d + 1,
-              bias_shape.d + bias_shape.nbDims, 1);
+    std::fill(bias_shape.d + 1, bias_shape.d + bias_shape.nbDims, 1);
   } else {
     // Next, broadcast the bias across the input.
-    TF_RETURN_IF_ERROR(GetTrtBroadcastShape(
-        inputs.at(0), inputs.at(1), &input_shape, &bias_shape));
+    TF_RETURN_IF_ERROR(GetTrtBroadcastShape(inputs.at(0), inputs.at(1),
+                                            &input_shape, &bias_shape));
   }
 
   // Convert input to a TRT tensor
   nvinfer1::ITensor* input_tensor{nullptr};
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      inputs.at(0), inputs.at(0).GetTrtDims(), params->validation_only, &input_tensor));
+      inputs.at(0), inputs.at(0).GetTrtDims(), params->validation_only,
+      &input_tensor));
 
   // Finally, reshape bias. Since the bias is usually a constant, this will
   // normally happen at conversion-time.
