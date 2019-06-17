@@ -1802,7 +1802,22 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
           if (completed) ScheduleFinish();
         };
         nodestats::SetOpStart(stats);
-        device->ComputeAsync(async, &state->ctx, done);
+        if (TF_PREDICT_FALSE(
+                MightTrace(item, event_collector_, trace_using_annotations_))) {
+          profiler::TraceMe activity(
+              [&] {
+                return strings::StrCat(
+                    op_kernel->name(), ":", op_kernel->type_string(),
+                    "#id=", step_id_, ",step_container_name=",
+                    step_container_ == nullptr ? "n/a"
+                                               : step_container_->name(),
+                    ",device=", device->name(), ",async=true#");
+              },
+              profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
+          device->ComputeAsync(async, &state->ctx, done);
+        } else {
+          device->ComputeAsync(async, &state->ctx, done);
+        }
       } else {
         // Synchronous computes.
         OpKernelContext ctx(&params, item.num_outputs);
@@ -1812,7 +1827,10 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
                 MightTrace(item, event_collector_, trace_using_annotations_))) {
           const string& op_name = op_kernel->name();
           const string kernel_label = strings::StrCat(
-              op_name, ":", op_kernel->type_string(), "#id=", step_id_, "#");
+              op_name, ":", op_kernel->type_string(), "#id=", step_id_,
+              ",step_container_name=",
+              step_container_ == nullptr ? "n/a" : step_container_->name(),
+              ",device=", device->name(), ",async=false#");
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                        op_name);
           if (trace_using_annotations_) {
