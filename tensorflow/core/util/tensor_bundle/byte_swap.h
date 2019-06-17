@@ -39,9 +39,9 @@ limitations under the License.
 
 #elif defined(PLATFORM_WINDOWS)
 
-// On windows, byte-swapping is in winsock.h, and there is a version of htonl
-// that can byte-swap 64-bit values
-#include <winsock.h>
+// On windows, byte-swapping is in winsock.h, and winsock2.h has a version of
+// of htonl that can byte-swap 64-bit values
+#include <winsock2.h>
 #define BYTE_SWAP_16(x) htons (x)
 #define BYTE_SWAP_32(x) htonl (x)
 #define BYTE_SWAP_64(x) htonll (x)
