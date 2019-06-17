@@ -48,8 +48,8 @@ def SPV_FMulOp : SPV_Op<"FMul", [NoSideEffect, SameOperandsAndResultType]> {
   }];
 
   let arguments = (ins
-    SPV_ScalarOrVectorOf<AnyFloat>:$operand1,
-    SPV_ScalarOrVectorOf<AnyFloat>:$operand2
+    SPV_ScalarOrVectorOf<SPV_Float>:$operand1,
+    SPV_ScalarOrVectorOf<SPV_Float>:$operand2
   );
 
   let results = (outs

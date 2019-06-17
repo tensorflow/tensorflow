@@ -85,8 +85,10 @@ static ParseResult parseModule(OpAsmParser *parser, OperationState *state) {
   return success();
 }
 
-static ParseResult printModule(Operation *op, OpAsmPrinter *printer) {
-  *printer << op->getName();
+static ParseResult printModule(spirv::ModuleOp moduleOp,
+                               OpAsmPrinter *printer) {
+  auto *op = moduleOp.getOperation();
+  *printer << spirv::ModuleOp::getOperationName();
   printer->printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false,
                        /*printBlockTerminators=*/false);
   *printer << " attributes";
@@ -113,8 +115,6 @@ static LogicalResult verifyModule(spirv::ModuleOp moduleOp) {
 
     for (auto &block : funcOp)
       for (auto &op : block) {
-        // TODO(antiagainst): verify that return ops have the same type as the
-        // enclosing function
         if (op.getDialect() == dialect)
           continue;
 

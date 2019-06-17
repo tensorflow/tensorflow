@@ -19,15 +19,23 @@ func @fmul_vector(%arg: vector<4xf32>) -> vector<4xf32> {
 // -----
 
 func @fmul_i32(%arg: i32) -> i32 {
-  // expected-error @+1 {{must be scalar/vector of floating-point}}
+  // expected-error @+1 {{must be scalar/vector of 16/32/64-bit float}}
   %0 = spv.FMul %arg, %arg : i32
   return %0 : i32
 }
 
 // -----
 
+func @fmul_bf16(%arg: bf16) -> bf16 {
+  // expected-error @+1 {{must be scalar/vector of 16/32/64-bit float}}
+  %0 = spv.FMul %arg, %arg : bf16
+  return %0 : bf16
+}
+
+// -----
+
 func @fmul_tensor(%arg: tensor<4xf32>) -> tensor<4xf32> {
-  // expected-error @+1 {{must be scalar/vector of floating-point}}
+  // expected-error @+1 {{must be scalar/vector of 16/32/64-bit float}}
   %0 = spv.FMul %arg, %arg : tensor<4xf32>
   return %0 : tensor<4xf32>
 }

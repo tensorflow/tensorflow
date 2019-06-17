@@ -79,7 +79,7 @@ def SPV_ModuleOp : SPV_Op<"module", []> {
 
   // Custom parser and printer implemented by static functions in SPVOps.cpp
   let parser = [{ return parseModule(parser, result); }];
-  let printer = [{ printModule(getOperation(), p); }];
+  let printer = [{ printModule(*this, p); }];
 
   let verifier = [{ return verifyModule(*this); }];
 }
