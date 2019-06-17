@@ -20,7 +20,6 @@ from __future__ import print_function
 import os
 import sys
 from absl.testing import parameterized
-from tensorflow.python import tf2
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import multi_worker_test_base as test_base
 from tensorflow.python.keras import callbacks
@@ -48,9 +47,6 @@ class MultiWorkerTrainingStateTest(test_base.IndependentWorkerTestBase,
             filepath=saving_filepath, save_weights_only=save_weights_only)
     ]
     self.assertFalse(training_state.checkpoint_exists(saving_filepath))
-
-    if file_format == 'tf' and not save_weights_only and tf2.enabled():
-      self.skipTest('b/135217014')
 
     model.fit(x=train_ds, epochs=2, steps_per_epoch=2, callbacks=callbacks_list)
     self.assertTrue(training_state.checkpoint_exists(saving_filepath))
