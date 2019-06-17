@@ -113,6 +113,12 @@ Type SPIRVDialect::parseAndVerifyType(StringRef spec, Location loc) const {
   return type;
 }
 
+// element-type ::= integer-type
+//                | floating-point-type
+//                | vector-type
+//                | spirv-type
+//
+// array-type ::= `!spv.array<` integer-literal `x` element-type `>`
 Type SPIRVDialect::parseArrayType(StringRef spec, Location loc) const {
   auto *context = getContext();
   if (!spec.consume_front("array<") || !spec.consume_back(">")) {
@@ -141,6 +147,12 @@ Type SPIRVDialect::parseArrayType(StringRef spec, Location loc) const {
   return ArrayType::get(elementType, count);
 }
 
+// storage-class ::= `UniformConstant`
+//                 | `Uniform`
+//                 | `Workgroup`
+//                 | <and other storage classes...>
+//
+// pointer-type ::= `!spv.ptr<` element-type `,` storage-class `>`
 Type SPIRVDialect::parsePointerType(StringRef spec, Location loc) const {
   auto *context = getContext();
   if (!spec.consume_front("ptr<") || !spec.consume_back(">")) {
@@ -177,6 +189,7 @@ Type SPIRVDialect::parsePointerType(StringRef spec, Location loc) const {
   return PointerType::get(pointeeType, *storageClass);
 }
 
+// runtime-array-type ::= `!spv.rtarray<` element-type `>`
 Type SPIRVDialect::parseRuntimeArrayType(StringRef spec, Location loc) const {
   auto *context = getContext();
   if (!spec.consume_front("rtarray<") || !spec.consume_back(">")) {
