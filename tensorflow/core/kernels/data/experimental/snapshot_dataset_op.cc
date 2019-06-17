@@ -287,9 +287,14 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "path", &path));
 
+    SerializationContext::Params params;
+    std::vector<std::pair<string, Tensor>> input_list;
+    params.input_list = &input_list;
+    params.optimization_only = true;
+
     GraphDef graph_def;
     OP_REQUIRES_OK(
-        ctx, AsGraphDef(ctx, input, SerializationContext({}), &graph_def));
+        ctx, AsGraphDef(ctx, input, SerializationContext(params), &graph_def));
 
     // TODO(frankchn): Find a better way than DeterministicProtoHash64()
     // This is not deterministic across different builds of binaries right now.
