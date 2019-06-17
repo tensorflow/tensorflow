@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_KERNELS_DATA_WINDOW_DATASET_H_
-#define TENSORFLOW_CORE_KERNELS_DATA_WINDOW_DATASET_H_
+#ifndef TENSORFLOW_CORE_KERNELS_DATA_WINDOW_DATASET_OP_H_
+#define TENSORFLOW_CORE_KERNELS_DATA_WINDOW_DATASET_OP_H_
 
 #include <vector>
 
@@ -24,6 +24,27 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+
+class WindowDatasetOp : public UnaryDatasetOpKernel {
+ public:
+  static constexpr const char* const kDatasetType = "Window";
+  static constexpr const char* const kInputDataset = "input_dataset";
+  static constexpr const char* const kSize = "size";
+  static constexpr const char* const kShift = "shift";
+  static constexpr const char* const kStride = "stride";
+  static constexpr const char* const kDropRemainder = "drop_remainder";
+  static constexpr const char* const kOutputTypes = "output_types";
+  static constexpr const char* const kOutputShapes = "output_shapes";
+
+  explicit WindowDatasetOp(OpKernelConstruction* ctx);
+
+ protected:
+  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                   DatasetBase** output) override;
+
+ private:
+  class Dataset;
+};
 
 // Creates a dataset representing an eagerly-collected window of elements.
 //
@@ -47,4 +68,4 @@ Status NewWindowDataset(std::vector<std::vector<Tensor>> elements,
 }  // namespace data
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_DATA_WINDOW_DATASET_H_
+#endif  // TENSORFLOW_CORE_KERNELS_DATA_WINDOW_DATASET_OP_H_

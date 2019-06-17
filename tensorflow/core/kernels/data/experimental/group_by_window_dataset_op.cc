@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/window_dataset.h"
+#include "tensorflow/core/kernels/data/window_dataset_op.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
