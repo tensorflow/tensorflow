@@ -843,6 +843,43 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       model.fit(dataset_dict, epochs=1, steps_per_epoch=2, verbose=1)
 
   @combinations.generate(all_strategy_combinations_plus_cloning())
+  def test_fit_with_dictionary_in_the_dataset_b135161171(
+      self, distribution, cloning):
+
+    def custom_loss(predict, label, weight):
+      bce = keras.losses.binary_crossentropy(label, predict)
+      return math_ops.reduce_mean(bce * weight)
+
+    with self.cached_session():
+      with distribution.scope():
+        input_img = keras.layers.Input([64, 64, 3], name='img')
+        input_lbl = keras.layers.Input([64, 64, 1], name='lbl')
+        input_weight = keras.layers.Input([64, 64], name='weight')
+        predict = keras.layers.Conv2D(2, [1, 1], padding='same')(input_img)
+        loss_lambda = keras.layers.Lambda(
+            lambda x: custom_loss(*x), name='my_loss')
+        my_loss = loss_lambda([predict, input_lbl, input_weight])
+        model = keras.models.Model(
+            inputs=[input_img, input_lbl, input_weight],
+            outputs=[predict, my_loss])
+        model.add_loss(model.get_layer('my_loss').output)
+        model.compile(optimizer='adam', cloning=cloning)
+
+      def map_fn(img, lbl, weight):
+        inputs = {'img': img, 'lbl': lbl, 'weight': weight}
+        targets = {}
+        return inputs, targets
+
+      fake_imgs = np.ones([50, 64, 64, 3], dtype=np.float32)
+      fake_lbls = np.ones([50, 64, 64, 1], dtype=np.float32)
+      fake_weights = np.ones([50, 64, 64], dtype=np.float32)
+
+      data = dataset_ops.Dataset.from_tensor_slices(
+          (fake_imgs, fake_lbls, fake_weights)).map(map_fn).batch(10)
+
+      model.fit(data)
+
+  @combinations.generate(all_strategy_combinations_plus_cloning())
   def test_fit_eval_and_predict_methods_on_dataset_without_steps(
       self, distribution, cloning):
     with self.cached_session():
