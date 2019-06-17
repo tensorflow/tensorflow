@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
@@ -737,7 +738,10 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   };
 
   int i = 0;
-  FunctionNameGenerator name_generator(&data->lib_def_, function_name);
+  // Generate a random function_name to avoid one function reuse the partition
+  // function instantiated by another function.
+  FunctionNameGenerator name_generator(
+      &data->lib_def_, absl::StrCat(function_name, "_", random::New64()));
   for (const auto& pair : subgraphs) {
     i += 1;
     const string& target = pair.first;
