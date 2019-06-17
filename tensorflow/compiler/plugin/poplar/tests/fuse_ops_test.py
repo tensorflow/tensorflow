@@ -473,6 +473,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
+
       ok = [
           '__seed*',
           'Copy_',
@@ -482,8 +483,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
           'vs/conv2d_1/BiasAdd/fusion.2/addToChannel',
           'GradientDescent/update_vs/conv2d/bias/ResourceApplyGradientDescent/fusion.3/ReduceFinalStage/IntermediateToOutput/Reduce',
           'GradientDescent/update_vs/conv2d/bias/ResourceApplyGradientDescent/fusion*/negate/Op/Negate',
-          'gradients/vs/conv2d_1/Conv2D_grad/Conv2DBackpropFilter/fusion*/Conv_4x4/',
-          'gradients/vs/conv2d_1/Conv2D_grad/Conv2DBackpropFilter/fusion*/AddTo',
+          'gradients/vs/conv2d/Conv2D_grad/Conv2DBackpropFilter/fusion*/Conv_4x4/',
+          'gradients/vs/conv2d/Conv2D_grad/Conv2DBackpropFilter/fusion*/AddTo',
           'GradientDescent/update_vs/conv2d_1/bias/ResourceApplyGradientDescent/multiply*/Op/Multiply',
           'GradientDescent/update_vs/conv2d_1/bias/ResourceApplyGradientDescent/fusion*/AddTo',
           'vs/conv2d/BiasAdd/fusion*/addToChannel',
