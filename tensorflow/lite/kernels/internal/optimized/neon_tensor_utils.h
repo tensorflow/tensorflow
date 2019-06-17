@@ -19,7 +19,8 @@ limitations under the License.
 // structure.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
-#include "tensorflow/lite/kernels/internal/optimized/tensor_utils_impl.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_tensor_utils_impl.h"
+#include "tensorflow/lite/kernels/internal/reference/portable_tensor_utils_impl.h"
 
 namespace tflite {
 namespace tensor_utils {
