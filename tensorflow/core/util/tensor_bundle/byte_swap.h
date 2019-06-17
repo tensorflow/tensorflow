@@ -40,11 +40,17 @@ limitations under the License.
 #elif defined(PLATFORM_WINDOWS)
 
 // On windows, byte-swapping is in winsock.h, and winsock2.h has a version of
-// of htonl that can byte-swap 64-bit values
+// of htonl that can byte-swap 64-bit values.
 #include <winsock2.h>
 #define BYTE_SWAP_16(x) htons (x)
 #define BYTE_SWAP_32(x) htonl (x)
-#define BYTE_SWAP_64(x) htonll (x)
+// At the moment the 64-bit and 128-bit byte-swapping routines in Winsock2 are
+// disabled in TensorFlow's standard Windows build environment, so we use
+// htonl() instead of "#define BYTE_SWAP_64(x) htonll (x)".
+#define BYTE_SWAP_64(x) ( \
+    (uint64_t(htonl((x) & 0x00000000ffffffffUL)) << 32) \
+    | (htonl(((x) & 0xffffffff00000000UL) >> 32)) \
+)
 
 #elif __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 
