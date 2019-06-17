@@ -47,6 +47,7 @@ from tensorflow.python.ops.gen_resource_variable_ops import *
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.deprecation import deprecated_args
 
 
 def get_resource_handle_data(graph_op):
@@ -316,6 +317,10 @@ def variable_accessed(variable):
 class BaseResourceVariable(variables.VariableV1):
   """A python variable from an existing handle."""
 
+  @deprecated_args(
+      None,
+      "If using Keras pass *_constraint arguments to layers.",
+      "constraint")
   def __init__(  # pylint: disable=super-init-not-called
       self,
       trainable=None,
@@ -535,6 +540,9 @@ class BaseResourceVariable(variables.VariableV1):
     return self._initial_value
 
   @property
+  @deprecated(
+      None,
+      "Apply a constraint manually following the optimizer update step.")
   def constraint(self):
     """Returns the constraint function associated with this variable.
 
