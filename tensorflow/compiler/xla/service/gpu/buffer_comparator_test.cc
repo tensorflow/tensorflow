@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 
+#include <complex>
 #include <limits>
+#include <string>
 
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -35,17 +37,15 @@ class BufferComparatorTest : public testing::Test {
 
   // Take floats only for convenience. Still uses ElementType internally.
   template <typename ElementType>
-  bool CompareEqualFloatBuffers(const std::vector<float>& lhs_float,
-                                const std::vector<float>& rhs_float) {
-    std::vector<ElementType> lhs(lhs_float.begin(), lhs_float.end());
-    std::vector<ElementType> rhs(rhs_float.begin(), rhs_float.end());
+  bool CompareEqualBuffers(const std::vector<ElementType>& lhs,
+                           const std::vector<ElementType>& rhs) {
     se::Stream stream(stream_exec_);
     stream.Init();
 
     se::ScopedDeviceMemory<ElementType> lhs_buffer =
         stream_exec_->AllocateOwnedArray<ElementType>(lhs.size());
     se::ScopedDeviceMemory<ElementType> rhs_buffer =
-        stream_exec_->AllocateOwnedArray<ElementType>(lhs.size());
+        stream_exec_->AllocateOwnedArray<ElementType>(rhs.size());
 
     stream.ThenMemcpy(lhs_buffer.ptr(), lhs.data(), lhs_buffer->size());
     stream.ThenMemcpy(rhs_buffer.ptr(), rhs.data(), rhs_buffer->size());
@@ -60,9 +60,46 @@ class BufferComparatorTest : public testing::Test {
         .ConsumeValueOrDie();
   }
 
+  // Take floats only for convenience. Still uses ElementType internally.
+  template <typename ElementType>
+  bool CompareEqualFloatBuffers(const std::vector<float>& lhs_float,
+                                const std::vector<float>& rhs_float) {
+    std::vector<ElementType> lhs(lhs_float.begin(), lhs_float.end());
+    std::vector<ElementType> rhs(rhs_float.begin(), rhs_float.end());
+    return CompareEqualBuffers(lhs, rhs);
+  }
+
+  template <typename ElementType>
+  bool CompareEqualComplex(const std::vector<std::complex<ElementType>>& lhs,
+                           const std::vector<std::complex<ElementType>>& rhs) {
+    return CompareEqualBuffers<std::complex<ElementType>>(lhs, rhs);
+  }
+
   se::Platform* platform_;
   se::StreamExecutor* stream_exec_;
 };
+
+TEST_F(BufferComparatorTest, TestComplex) {
+  EXPECT_FALSE(
+      CompareEqualComplex<float>({{0.1, 0.2}, {2, 3}}, {{0.1, 0.2}, {6, 7}}));
+  EXPECT_TRUE(CompareEqualComplex<float>({{0.1, 0.2}, {2, 3}},
+                                         {{0.1, 0.2}, {2.2, 3.3}}));
+  EXPECT_TRUE(
+      CompareEqualComplex<float>({{0.1, 0.2}, {2, 3}}, {{0.1, 0.2}, {2, 3}}));
+
+  EXPECT_FALSE(
+      CompareEqualComplex<float>({{0.1, 0.2}, {2, 3}}, {{0.1, 0.2}, {6, 3}}));
+
+  EXPECT_FALSE(
+      CompareEqualComplex<float>({{0.1, 0.2}, {2, 3}}, {{0.1, 0.2}, {6, 7}}));
+
+  EXPECT_FALSE(
+      CompareEqualComplex<float>({{0.1, 0.2}, {2, 3}}, {{0.1, 6}, {2, 3}}));
+  EXPECT_TRUE(CompareEqualComplex<double>({{0.1, 0.2}, {2, 3}},
+                                          {{0.1, 0.2}, {2.2, 3.3}}));
+  EXPECT_FALSE(
+      CompareEqualComplex<double>({{0.1, 0.2}, {2, 3}}, {{0.1, 0.2}, {2, 7}}));
+}
 
 TEST_F(BufferComparatorTest, TestNaNs) {
   EXPECT_TRUE(

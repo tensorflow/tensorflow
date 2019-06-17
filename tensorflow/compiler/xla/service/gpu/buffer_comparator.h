@@ -29,8 +29,7 @@ class BufferComparator {
   BufferComparator(const BufferComparator&) = delete;
   BufferComparator(BufferComparator&&) = default;
 
-  BufferComparator(const Shape& shape, const HloModuleConfig& config)
-      : shape_(shape), config_(config) {}
+  BufferComparator(const Shape& shape, const HloModuleConfig& config);
 
   // Returns true if the two buffers compare equal. The definition of "equal"
   // is:
