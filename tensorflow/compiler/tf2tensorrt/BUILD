@@ -31,6 +31,20 @@ package(
 
 exports_files(["LICENSE"])
 
+cc_library(
+    name = "tensorrt_stub",
+    srcs = if_tensorrt([
+        "stub/nvinfer_stub.cc",
+        "stub/nvinfer_plugin_stub.cc",
+    ]),
+    textual_hdrs = glob(["stub/*.inc"]),
+    deps = if_tensorrt([
+        "@local_config_tensorrt//:tensorrt_headers",
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/platform:dso_loader",
+    ]),
+)
+
 tf_cuda_cc_test(
     name = "tensorrt_test_cc",
     size = "small",
