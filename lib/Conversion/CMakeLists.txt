@@ -1,2 +1,3 @@
 add_subdirectory(AffineToGPU)
+add_subdirectory(GPUToNVVM)
 add_subdirectory(StandardToLLVM)
