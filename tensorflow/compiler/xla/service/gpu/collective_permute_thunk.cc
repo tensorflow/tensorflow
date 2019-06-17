@@ -67,7 +67,7 @@ void WaitAndLogIfStuck(tensorflow::BlockingCounter* counter,
 // because we use that information when constructing the Rendezvous.
 struct RendezvousKey {
   RunId run_id;
-  int64 num_participants;
+  int num_participants;  // int, not int64, to match BlockingCounter's counter.
 
   string ToString() const {
     return absl::StrFormat("RendezvousKey{run_id=%s, num_participants=%d}",
@@ -108,11 +108,7 @@ struct ParticipantData {
 // Rendezvous objects can only be used once.
 class Rendezvous {
  public:
-  explicit Rendezvous(const RendezvousKey& key)
-      : key_(key),
-        all_arrived_(key.num_participants),
-        returned_blocking_counter_(
-            std::make_shared<BlockingCounter>(key.num_participants)) {}
+  explicit Rendezvous(const RendezvousKey& key) : key_(key) {}
 
   // Runs the collective permute on the given thread.
   //
@@ -125,10 +121,11 @@ class Rendezvous {
 
  private:
   const RendezvousKey key_;
-  BlockingCounter all_arrived_;
+  BlockingCounter all_arrived_{key_.num_participants};
 
   // BlockingCounter returned by SubmitParticipant.
-  std::shared_ptr<BlockingCounter> returned_blocking_counter_;
+  std::shared_ptr<BlockingCounter> returned_blocking_counter_{
+      std::make_shared<BlockingCounter>(key_.num_participants)};
 
   tensorflow::mutex mu_;
   bool initialized_ GUARDED_BY(mu_) = false;
