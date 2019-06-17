@@ -188,7 +188,7 @@ function prepare_src() {
   sed \
     "/_deprecation_wrapper$/,/_sys.modules[__name__],/ d" \
     "${TMPDIR}/tensorflow_core/__init__.py" > "${TMPDIR}/tensorflow_core/__init__.out"
-  mv "${TMPDIR}/tensorflow_core/__init__.out ${TMPDIR}/tensorflow_core/__init__.py"
+  mv "${TMPDIR}/tensorflow_core/__init__.out" "${TMPDIR}/tensorflow_core/__init__.py"
 }
 
 function build_wheel() {
