@@ -20,6 +20,8 @@
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
 
+#include "llvm/ADT/SmallSet.h"
+
 using namespace mlir;
 
 void mlir::replaceAllUsesInRegionWith(Value *orig, Value *replacement,
@@ -28,4 +30,26 @@ void mlir::replaceAllUsesInRegionWith(Value *orig, Value *replacement,
     if (region.isAncestor(use.getOwner()->getContainingRegion()))
       use.set(replacement);
   }
+}
+
+void mlir::getUsedValuesDefinedAbove(Region &region, Region &limit,
+                                     llvm::SetVector<Value *> &values) {
+  assert(limit.isAncestor(&region) &&
+         "expected isolation limit to be an ancestor of the given region");
+
+  // Collect proper ancestors of `limit` upfront to avoid traversing the region
+  // tree for every value.
+  llvm::SmallPtrSet<Region *, 4> properAncestors;
+  for (auto *reg = limit.getContainingRegion(); reg != nullptr;
+       reg = reg->getContainingRegion()) {
+    properAncestors.insert(reg);
+  }
+
+  region.walk([&values, &properAncestors](Operation *op) {
+    for (Value *operand : op->getOperands())
+      // Collect values that are used by an operation and defined in a proper
+      // ancestor of region.
+      if (properAncestors.count(operand->getContainingRegion()))
+        values.insert(operand);
+  });
 }

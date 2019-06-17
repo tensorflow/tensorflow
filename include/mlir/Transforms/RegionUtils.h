@@ -21,6 +21,8 @@
 #include "mlir/IR/Region.h"
 #include "mlir/IR/Value.h"
 
+#include "llvm/ADT/SetVector.h"
+
 namespace mlir {
 
 /// Check if all values in the provided range are defined above the `limit`
@@ -37,6 +39,11 @@ bool areValuesDefinedAbove(Range values, Region &limit) {
 /// Replace all uses of `orig` within the given region with `replacement`.
 void replaceAllUsesInRegionWith(Value *orig, Value *replacement,
                                 Region &region);
+
+/// Fill `values` with a list of values defined at the ancestors of the `limit`
+/// region and used within `region` or its descendants.
+void getUsedValuesDefinedAbove(Region &region, Region &limit,
+                               llvm::SetVector<Value *> &values);
 
 } // namespace mlir
 

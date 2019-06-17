@@ -159,9 +159,12 @@ LogicalResult mlir::convertAffineLoopNestToGPULaunch(AffineForOp forOp,
   // inside the innermost loop and loop lower bounds as kernel data arguments.
   // Still assuming perfect nesting so there are no values other than induction
   // variables that are defined in one loop and used in deeper loops.
-  auto valuesToForward = forOp.getRegion().getUsedValuesDefinedAbove();
+  llvm::SetVector<Value *> valuesToForwardSet;
+  getUsedValuesDefinedAbove(forOp.getRegion(), forOp.getRegion(),
+                            valuesToForwardSet);
+  auto valuesToForward = valuesToForwardSet.takeVector();
   auto originallyForwardedValues = valuesToForward.size();
-  valuesToForward.append(lbs.begin(), lbs.end());
+  valuesToForward.insert(valuesToForward.end(), lbs.begin(), lbs.end());
   auto launchOp = builder.create<gpu::LaunchOp>(
       forOp.getLoc(), gridSizeX, gridSizeY, gridSizeZ, blockSizeX, blockSizeY,
       blockSizeZ, valuesToForward);
