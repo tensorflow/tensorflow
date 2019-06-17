@@ -32,7 +32,7 @@ HloArgMinMax::HloArgMinMax(HloInstruction* input, const Shape shape,
     : HloPoplarInstruction(shape, {input},
                            GetPoplibsCustomOpTargetString(
                                PoplibsOp::Popnn, SwitchArgMinMax(is_min)),
-                           {}),
+                           axis),
       axis(axis_) {}
 
 absl::flat_hash_set<int64> HloArgMinMax::AllocatingIndices() const {

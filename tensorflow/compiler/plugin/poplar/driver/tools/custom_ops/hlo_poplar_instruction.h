@@ -18,6 +18,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_TOOLS_CUSTOM_OPS_HLO_CUSTOM_OP_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_TOOLS_CUSTOM_OPS_HLO_CUSTOM_OP_H_
 
+#include "tensorflow/compiler/plugin/poplar/driver/tools/hash.h"
+
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 
@@ -27,7 +29,16 @@ namespace poplarplugin {
 // Base class for a poplar hlo instruction
 class HloPoplarInstruction : public HloCustomCallInstruction {
  public:
-  using HloCustomCallInstruction::HloCustomCallInstruction;
+  // Note that the variadic arguments "attributes" is used to create the opaque
+  // field.
+  template <typename... Args>
+  HloPoplarInstruction(const Shape& shape,
+                       absl::Span<HloInstruction* const> operands,
+                       absl::string_view custom_call_target,
+                       Args&&... attributes)
+      : HloCustomCallInstruction(shape, operands, custom_call_target,
+                                 std::to_string(hash_util::hash(
+                                     std::forward<Args>(attributes)...))) {}
 
   // Allocating indexes used by the Allocation Finder - op specific.
   virtual absl::flat_hash_set<int64> AllocatingIndices() const = 0;

@@ -21,10 +21,9 @@ namespace xla {
 namespace poplarplugin {
 
 HloRemapInstruction::HloRemapInstruction(HloInstruction* operand)
-    : HloPoplarInstruction(
-          operand->shape(), {operand},
-          GetPoplibsCustomOpTargetString(PoplibsOp::Poputil, PoplibsOp::Remap),
-          {}) {}
+    : HloPoplarInstruction(operand->shape(), {operand},
+                           GetPoplibsCustomOpTargetString(PoplibsOp::Poputil,
+                                                          PoplibsOp::Remap)) {}
 
 const HloInstruction* HloRemapInstruction::input() const { return operand(0); }
 

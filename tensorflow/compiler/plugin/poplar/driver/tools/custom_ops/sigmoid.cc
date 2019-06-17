@@ -21,10 +21,9 @@ namespace xla {
 namespace poplarplugin {
 
 HloSigmoidInstruction::HloSigmoidInstruction(HloInstruction* operand)
-    : HloPoplarInstruction(
-          operand->shape(), {operand},
-          GetPoplibsCustomOpTargetString(PoplibsOp::Popnn, PoplibsOp::Sigmoid),
-          {}) {}
+    : HloPoplarInstruction(operand->shape(), {operand},
+                           GetPoplibsCustomOpTargetString(
+                               PoplibsOp::Popnn, PoplibsOp::Sigmoid)) {}
 
 const HloInstruction* HloSigmoidInstruction::input() const {
   return operand(0);
@@ -57,8 +56,7 @@ HloSigmoidGradInstruction::HloSigmoidGradInstruction(HloInstruction* out,
                                                      HloInstruction* grad)
     : HloPoplarInstruction(out->shape(), {out, grad},
                            GetPoplibsCustomOpTargetString(
-                               PoplibsOp::Popnn, PoplibsOp::SigmoidGrad),
-                           {}) {}
+                               PoplibsOp::Popnn, PoplibsOp::SigmoidGrad)) {}
 
 const HloInstruction* HloSigmoidGradInstruction::out() const {
   return operand(0);
