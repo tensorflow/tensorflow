@@ -27,8 +27,6 @@ UnaryOpsTest.testAllTypeOps # Need bitwise reductions
 QrOpTest # No QR support
 GatherTest.testHigherRank # Bad
 MatrixTriangularSolveOpTest.testBatch # Arithmetic precision?
-XlaOpsTest.testShiftRightLogical # using UINT32
-XlaOpsTest.testShiftRightArithmetic # using UINT32
 EagerTest.testIdentityOnVariable # Copy back from device failing
 EagerTest.testAssignAddVariable
 EagerTest.testReadAssignRead
@@ -90,3 +88,5 @@ ResizeBilinearTest.test86x86To456x456 # Too slow
 ResizeBilinearTest.test100x100To456x456 # Too slow
 CategoricalTest.testEmpty # Integer output
 NonMaxSuppressionTest # Complex reductions
+XlaOpsNumericalTest.testShiftRightLogical # Unsigned int
+XlaOpsNumericalTest.testShiftRightArithmetic  # Unsigned int
