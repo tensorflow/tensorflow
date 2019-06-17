@@ -23,8 +23,7 @@ namespace poplarplugin {
 HloIpuInterCopy::HloIpuInterCopy(HloInstruction* instruction)
     : HloPoplarInstruction(instruction->shape(), {instruction},
                            GetPoplibsCustomOpTargetString(
-                               PoplibsOp::Poputil, PoplibsOp::IpuInterCopy),
-                           {}) {}
+                               PoplibsOp::Poputil, PoplibsOp::IpuInterCopy)) {}
 
 absl::flat_hash_set<int64> HloIpuInterCopy::AllocatingIndices() const {
   return {};

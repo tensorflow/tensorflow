@@ -191,6 +191,7 @@ cc_library(
         "driver/tools/custom_ops/truncated_normal.h",
         "driver/tools/find_all_users.h",
         "driver/tools/flags.h",
+        "driver/tools/hash.h",
         "driver/tools/hlo_hash.h",
         "driver/tools/hlo_matcher.h",
         "driver/tools/input_output_aliasing_map.h",

@@ -14,13 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/tools/flags.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/hash.h"
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/compiler/xla/parse_flags_from_env.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/default/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
@@ -132,19 +132,10 @@ PoplarXlaFlags::PoplarXlaFlags() {
   }
 
   // Hash all the flags which affect the graph generation and compilation only.
-  hlo_hash = std::hash<bool>()(use_synthetic_data);
-  hlo_hash = tensorflow::Hash64Combine(
-      hlo_hash, std::hash<std::string>()(synthetic_data_initializer));
-  hlo_hash =
-      tensorflow::Hash64Combine(hlo_hash, std::hash<bool>()(use_ipu_model));
-  hlo_hash = tensorflow::Hash64Combine(
-      hlo_hash, std::hash<bool>()(force_replicated_mode));
-  hlo_hash = tensorflow::Hash64Combine(
-      hlo_hash, std::hash<int64>()(while_loop_brute_force_max_trip_count));
-  hlo_hash = tensorflow::Hash64Combine(
-      hlo_hash, std::hash<std::string>()(executable_cache_path));
-  hlo_hash = tensorflow::Hash64Combine(hlo_hash,
-                                       std::hash<int64>()(fallback_scheduler));
+  hlo_hash = hash_util::hash(use_synthetic_data, synthetic_data_initializer,
+                             use_ipu_model, force_replicated_mode,
+                             while_loop_brute_force_max_trip_count,
+                             executable_cache_path, fallback_scheduler);
 }
 
 const PoplarXlaFlags& PoplarXlaFlags::Get() {

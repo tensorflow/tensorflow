@@ -14,13 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/tools/hlo_hash.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/hash.h"
 
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 
@@ -29,8 +29,6 @@ limitations under the License.
 
 namespace xla {
 namespace poplarplugin {
-
-using tensorflow::Hash64Combine;
 
 uint64 HloHash::GetHash() {
   if (!performed_hash_) HashModule();
@@ -47,15 +45,11 @@ void HloHash::HashModule() {
   SanitizeHloModuleProto(&proto, module_);
 
   tensorflow::SerializeToStringDeterministic(proto, &proto_str_);
-
-  hash_ = std::hash<string>()(proto_str_);
-  hash_ = Hash64Combine(hash_, module_->config().argument_count());
-  hash_ = Hash64Combine(hash_, module_->config().resource_input_count());
-  std::string s_inputs = absl::StrJoin(module_->config().input_mapping(), ",");
-  hash_ = Hash64Combine(hash_, std::hash<string>()(s_inputs));
-  std::string s_resource_update =
-      absl::StrJoin(module_->config().resource_update_to_input_index(), ",");
-  hash_ = Hash64Combine(hash_, std::hash<string>()(s_resource_update));
+  hash_ = hash_util::hash(
+      proto_str_, module_->config().argument_count(),
+      module_->config().resource_input_count(),
+      absl::StrJoin(module_->config().input_mapping(), ","),
+      absl::StrJoin(module_->config().resource_update_to_input_index(), ","));
   performed_hash_ = true;
 }
 

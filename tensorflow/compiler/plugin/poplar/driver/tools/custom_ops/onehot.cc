@@ -29,7 +29,7 @@ HloOneHotInstruction::HloOneHotInstruction(HloInstruction* indices, int64 depth,
     : HloPoplarInstruction(
           shape, {indices, on, off},
           GetPoplibsCustomOpTargetString(PoplibsOp::Popnn, PoplibsOp::OneHot),
-          {}),
+          depth, axis),
       depth_(depth),
       axis_(axis) {}
 

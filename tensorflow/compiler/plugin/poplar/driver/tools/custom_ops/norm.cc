@@ -24,7 +24,8 @@ HloNormInstruction::HloNormInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::string_view custom_call_target, int32 num_groups, float epsilon,
     int feature_index)
-    : HloPoplarInstruction(shape, operands, custom_call_target, {}),
+    : HloPoplarInstruction(shape, operands, custom_call_target, num_groups,
+                           epsilon, feature_index),
       num_groups_(num_groups),
       epsilon_(epsilon),
       feature_index_(feature_index) {}
