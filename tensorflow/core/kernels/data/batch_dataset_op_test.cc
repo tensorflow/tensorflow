@@ -9,6 +9,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/batch_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
@@ -17,7 +18,6 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "batch_dataset_v2";
-constexpr char kOpName[] = "BatchDatasetV2";
 
 class BatchDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -27,10 +27,12 @@ class BatchDatasetOpTest : public DatasetOpsTestBase {
       const std::vector<PartialTensorShape>& output_shapes,
       std::unique_ptr<OpKernel>* batch_dataset_op_kernel) {
     NodeDef node_def = test::function::NDef(
-        kNodeName, kOpName, {"input_dataset", "batch_size", "drop_remainder"},
-        {{"parallel_copy", parallel_copy},
-         {"output_types", output_types},
-         {"output_shapes", output_shapes}});
+        kNodeName, "BatchDatasetV2",
+        {BatchDatasetOp::kInputDataset, BatchDatasetOp::kBatchSize,
+         BatchDatasetOp::kDropRemainder},
+        {{BatchDatasetOp::kParallelCopy, parallel_copy},
+         {BatchDatasetOp::kOutputTypes, output_types},
+         {BatchDatasetOp::kOutputShapes, output_shapes}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, batch_dataset_op_kernel));
     return Status::OK();
   }
@@ -336,7 +338,7 @@ TEST_P(ParameterizedBatchDatasetOpTest, DatasetTypeString) {
                              batch_dataset_context.get(), &batch_dataset));
   core::ScopedUnref scoped_unref_batch_dataset(batch_dataset);
 
-  EXPECT_EQ(batch_dataset->type_string(), kOpName);
+  EXPECT_EQ(batch_dataset->type_string(), "BatchDatasetV2");
 }
 
 TEST_P(ParameterizedBatchDatasetOpTest, DatasetOutputDtypes) {
@@ -611,7 +613,8 @@ TEST_P(ParameterizedBatchDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(
       batch_dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
 
-  EXPECT_EQ(iterator->prefix(), "Iterator::Batch");
+  EXPECT_EQ(iterator->prefix(), name_utils::IteratorPrefix(
+                                    BatchDatasetOp::kDatasetType, "Iterator"));
 }
 
 TEST_P(ParameterizedBatchDatasetOpTest, Roundtrip) {
