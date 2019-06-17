@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/fifo_queue.h"
 #include "tensorflow/core/kernels/function_ops.h"
 #include "tensorflow/core/kernels/identity_op.h"
-#include "tensorflow/core/kernels/queue_op.h"
 #include "tensorflow/core/kernels/resource_variable_ops.h"
 #include "tensorflow/core/kernels/shape_ops.h"
 #include "tensorflow/core/kernels/stack.h"
@@ -140,20 +139,6 @@ class XlaAssignVariableOp : public OpKernel {
       Name("AssignVariableOp").Device(DEVICE).HostMemory("resource"),          \
       XlaAssignVariableOp);                                                    \
                                                                                \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("QueueEnqueueV2").Device(DEVICE).HostMemory("handle"), EnqueueOp);  \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("QueueDequeueV2").Device(DEVICE).HostMemory("handle"), DequeueOp);  \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("QueueCloseV2").Device(DEVICE).HostMemory("handle"), QueueCloseOp); \
-  REGISTER_KERNEL_BUILDER(Name("QueueSizeV2")                                  \
-                              .Device(DEVICE)                                  \
-                              .HostMemory("size")                              \
-                              .HostMemory("handle"),                           \
-                          QueueSizeOp);                                        \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("QueueIsClosedV2").Device(DEVICE).HostMemory("handle"),             \
-      QueueIsClosedOp);                                                        \
                                                                                \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("FIFOQueueV2").Device(DEVICE).HostMemory("handle"), FIFOQueueOp);   \
