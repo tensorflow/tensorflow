@@ -1529,7 +1529,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",
     ],
-    flaky = 1,  # test sporadically fails on cuda
     shard_count = 4,
 )
 
