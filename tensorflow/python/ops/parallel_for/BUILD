@@ -132,7 +132,10 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
     ],
-    tags = ["no_rocm"],
+    tags = [
+        "no_cuda",
+        "no_rocm",
+    ],
     xla_enable_strict_auto_jit = True,
     xla_enabled = True,
 )

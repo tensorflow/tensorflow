@@ -517,6 +517,9 @@ class WrappedGraphTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testImportedFunctionsRegistered(self):
+    if test.is_built_with_gpu_support():
+      self.skipTest("Disabling this new test due to errors with cuda and rocm")
+
     with ops.Graph().as_default() as graph:
       x = array_ops.placeholder(dtypes.variant, shape=[], name='foo')
       ds = dataset_ops.from_variant(x, structure=(

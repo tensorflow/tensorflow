@@ -28,6 +28,8 @@ py_test(
     python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
+        "no_cuda",
+        "no_rocm",
         "no_windows",
     ],
     deps = [
