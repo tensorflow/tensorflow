@@ -519,7 +519,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _update(self, var, fn, args, kwargs, group):
     assert isinstance(var, values.TPUMirroredVariable) or isinstance(
-        var, resource_variable_ops.ResourceVariable)
+        var, resource_variable_ops.BaseResourceVariable)
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
       if group:
         return fn(var, *args, **kwargs)
@@ -540,7 +540,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def read_var(self, var):
     assert isinstance(var, values.TPUMirroredVariable) or isinstance(
-        var, resource_variable_ops.ResourceVariable)
+        var, resource_variable_ops.BaseResourceVariable)
     return var.read_value()
 
   def _local_results(self, val):

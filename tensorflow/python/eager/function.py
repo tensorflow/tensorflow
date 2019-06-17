@@ -598,7 +598,7 @@ class ConcreteFunction(object):
     return self._call_flat(
         (t for t in nest.flatten((args, kwargs), expand_composites=True)
          if isinstance(t, (ops.Tensor,
-                           resource_variable_ops.ResourceVariable))),
+                           resource_variable_ops.BaseResourceVariable))),
         self.captured_inputs)
 
   def _call_flat(self, args, captured_inputs):
@@ -632,7 +632,7 @@ class ConcreteFunction(object):
     tensor_inputs = []
     variables_used = set([])
     for i, arg in enumerate(args):
-      if isinstance(arg, resource_variable_ops.ResourceVariable):
+      if isinstance(arg, resource_variable_ops.BaseResourceVariable):
         # We can pass a variable more than once, and in this case we need to
         # pass its handle only once.
         if arg.handle in variables_used:
