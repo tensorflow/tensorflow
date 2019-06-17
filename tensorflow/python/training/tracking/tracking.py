@@ -74,6 +74,13 @@ class AutoTrackable(base.Trackable):
 
   def __setattr__(self, name, value):
     """Support self.foo = trackable syntax."""
+    try:
+      if getattr(self, name) is value:
+        # Short circuit for `self.$x = self.$x`.
+        return
+    except AttributeError:
+      pass
+
     if getattr(self, "_self_setattr_tracking", True):
       value = data_structures.sticky_attribute_assignment(
           trackable=self, value=value, name=name)
