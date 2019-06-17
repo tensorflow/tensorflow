@@ -1575,20 +1575,8 @@ void FunctionPrinter::printGenericOp(Operation *op) {
   printOptionalAttrDict(attrs);
 
   // Print the type signature of the operation.
-  os << " : (";
-  interleaveComma(properOperands,
-                  [&](Value *value) { printType(value->getType()); });
-  os << ") -> ";
-
-  if (op->getNumResults() == 1 &&
-      !op->getResult(0)->getType().isa<FunctionType>()) {
-    printType(op->getResult(0)->getType());
-  } else {
-    os << '(';
-    interleaveComma(op->getResults(),
-                    [&](Value *result) { printType(result->getType()); });
-    os << ')';
-  }
+  os << " : ";
+  printFunctionalType(op);
 }
 
 void FunctionPrinter::printSuccessorAndUseList(Operation *term,

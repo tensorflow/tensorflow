@@ -98,6 +98,23 @@ public:
       os << ')';
   }
 
+  /// Print the complete type of an operation in functional form.
+  void printFunctionalType(Operation *op) {
+    auto &os = getStream();
+    os << "(";
+    interleaveComma(op->getNonSuccessorOperands(), os,
+                    [&](Value *operand) { printType(operand->getType()); });
+    os << ") -> ";
+    if (op->getNumResults() == 1 &&
+        !op->getResult(0)->getType().isa<FunctionType>()) {
+      printType(op->getResult(0)->getType());
+    } else {
+      os << '(';
+      interleaveComma(op->getResultTypes(), os);
+      os << ')';
+    }
+  }
+
 private:
   OpAsmPrinter(const OpAsmPrinter &) = delete;
   void operator=(const OpAsmPrinter &) = delete;

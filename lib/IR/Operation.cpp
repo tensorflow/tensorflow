@@ -495,7 +495,8 @@ void Operation::setSuccessor(Block *block, unsigned index) {
 
 auto Operation::getNonSuccessorOperands() -> operand_range {
   return {operand_iterator(this, 0),
-          operand_iterator(this, getSuccessorOperandIndex(0))};
+          operand_iterator(this, hasSuccessors() ? getSuccessorOperandIndex(0)
+                                                 : getNumOperands())};
 }
 
 /// Get the index of the first operand of the successor at the provided

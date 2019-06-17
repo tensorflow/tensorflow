@@ -320,6 +320,7 @@ public:
     return getOperand(getSuccessorOperandIndex(succIndex) + opIndex);
   }
 
+  bool hasSuccessors() { return numSuccs != 0; }
   unsigned getNumSuccessors() { return numSuccs; }
   unsigned getNumSuccessorOperands(unsigned index) {
     assert(!isKnownNonTerminator() && "only terminators may have successors");
