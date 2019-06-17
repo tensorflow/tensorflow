@@ -831,7 +831,7 @@ def _QuantizeAndDequantizeV3Grad(_, grad):
 
 @ops.RegisterGradient("ExtractImagePatches")
 def _ExtractImagePatchesGrad(op, grad):
-  input_bhwc = math_ops.cast(array_ops.shape(op.inputs[0]), ops.dtypes.int64)
+  input_bhwc = array_ops.shape(op.inputs[0], out_type=dtypes.int64)
   batch_size, rows_in, cols_in, channels = input_bhwc[0], input_bhwc[1], \
                                            input_bhwc[2], input_bhwc[3]
 
@@ -850,7 +850,7 @@ def _ExtractImagePatchesGrad(op, grad):
       op.get_attr("padding"))
 
   # Create indices matrix for output tensor.
-  output_bhwc = math_ops.cast(array_ops.shape(op.outputs[0]), ops.dtypes.int64)
+  output_bhwc = array_ops.shape(op.outputs[0], out_type=dtypes.int64)
   rows_out, cols_out = output_bhwc[1], output_bhwc[2]
   _, ksize_r, ksize_c, _ = op.get_attr("ksizes")
   # Indices for output start from 0.
