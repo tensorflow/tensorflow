@@ -841,7 +841,7 @@ ENTRY c1 {
   p0 = (s32[20], s32[20], s32[20], s32[20]) parameter(0)
   p0_0 = s32[20] get-tuple-element(p0), index=0
 
-  c = s32[20] custom-call(p0), custom_call_target="Popnn::LstmLayerFwd", opaque="{\"num_channels\":4, \"is_training\":false, \"partials_dtype\":\"DT_FLOAT\"}\n"
+  c = s32[20] custom-call(p0), custom_call_target="Popnn::LstmLayerFwd", backend_config="{\"num_channels\":4, \"is_training\":false, \"partials_dtype\":\"DT_FLOAT\"}\n"
 
   ROOT a = s32[20] add(p0_0, c)
 }
@@ -855,7 +855,7 @@ ENTRY c1 {
   p0 = (s32[20], s32[20], s32[20], s32[20]) parameter(0)
   p0_0 = s32[20] get-tuple-element(p0), index=0
 
-  c = s32[20] custom-call(p0), custom_call_target="Popnn::LstmLayerFwd", opaque="{\"num_channels\":4, \"is_training\":true, \"partials_dtype\":\"DT_FLOAT\"}\n"
+  c = s32[20] custom-call(p0), custom_call_target="Popnn::LstmLayerFwd", backend_config="{\"num_channels\":4, \"is_training\":true, \"partials_dtype\":\"DT_FLOAT\"}\n"
 
   ROOT a = s32[20] add(p0_0, c)
 }

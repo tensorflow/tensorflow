@@ -30,4 +30,6 @@ message PoplarBackendConfig {
   }
 
   bool is_inplace = 3;
+
+  int64 hash_of_custom_attributes = 4;
 };

@@ -332,3 +332,5 @@ PrngTest.PassInGlobalRngSeed POPLAR // disable until poplar CPU random works
 PrngTest.DifferentValuesForIdenticalRngNodesInSameComputation  POPLAR
 
 QrTest POPLAR // No Qr op
+
+ArithmeticTest POPLAR // Requires multi-variate reduction

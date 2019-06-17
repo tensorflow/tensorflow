@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_TOOLS_CUSTOM_OPS_HLO_CUSTOM_OP_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_TOOLS_CUSTOM_OPS_HLO_CUSTOM_OP_H_
 
+#include "tensorflow/compiler/plugin/poplar/driver/backend_config.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/hash.h"
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -36,9 +37,15 @@ class HloPoplarInstruction : public HloCustomCallInstruction {
                        absl::Span<HloInstruction* const> operands,
                        absl::string_view custom_call_target,
                        Args&&... attributes)
-      : HloCustomCallInstruction(shape, operands, custom_call_target,
-                                 std::to_string(hash_util::hash(
-                                     std::forward<Args>(attributes)...))) {}
+      : HloCustomCallInstruction(shape, operands, custom_call_target, "") {
+    // Hash all attributes to prevent
+    int64 hash = hash_util::hash(std::forward<Args>(attributes)...);
+
+    // Poke the hash of the attributes into the backend config
+    PoplarBackendConfig backend_config;
+    backend_config.set_hash_of_custom_attributes(hash);
+    set_backend_config(backend_config);
+  }
 
   // Allocating indexes used by the Allocation Finder - op specific.
   virtual absl::flat_hash_set<int64> AllocatingIndices() const = 0;

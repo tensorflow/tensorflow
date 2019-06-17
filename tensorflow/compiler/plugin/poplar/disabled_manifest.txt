@@ -88,4 +88,5 @@ ResizeBilinearTest.test57x57To456x456 # Too slow
 ResizeBilinearTest.test72x72To456x456 # Too slow
 ResizeBilinearTest.test86x86To456x456 # Too slow
 ResizeBilinearTest.test100x100To456x456 # Too slow
+CategoricalTest.testEmpty # Integer output
 NonMaxSuppressionTest # Complex reductions
