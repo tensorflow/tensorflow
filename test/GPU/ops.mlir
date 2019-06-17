@@ -81,6 +81,9 @@ func @kernel_1(%arg0 : f32, %arg1 : memref<?xf32, 1>)
   return
 }
 
+func @kernel_2(f32, memref<?xf32, 1>)
+    attributes { gpu.kernel }
+
 func @foo() {
   %0 = "op"() : () -> (f32)
   %1 = "op"() : () -> (memref<?xf32, 1>)
@@ -90,5 +93,10 @@ func @foo() {
   // CHECK: "gpu.launch_func"(%c8, %c8, %c8, %c8, %c8, %c8, %0, %1) {kernel: @kernel_1} : (index, index, index, index, index, index, f32, memref<?xf32, 1>) -> ()
   "gpu.launch_func"(%cst, %cst, %cst, %cst, %cst, %cst, %0, %1) { kernel: @kernel_1 }
       : (index, index, index, index, index, index, f32, memref<?xf32, 1>) -> ()
+
+  // CHECK: "gpu.launch_func"(%c8, %c8, %c8, %c8, %c8, %c8, %0, %1) {kernel: @kernel_2} : (index, index, index, index, index, index, f32, memref<?xf32, 1>) -> ()
+  "gpu.launch_func"(%cst, %cst, %cst, %cst, %cst, %cst, %0, %1) { kernel: @kernel_2 }
+      : (index, index, index, index, index, index, f32, memref<?xf32, 1>) -> ()
+
   return
 }

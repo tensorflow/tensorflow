@@ -369,9 +369,9 @@ LogicalResult LaunchFuncOp::verify() {
            << getNumKernelOperands() << " kernel operands but expected "
            << numKernelFuncArgs;
   }
+  auto functionType = kernelFunc->getType();
   for (unsigned i = 0; i < numKernelFuncArgs; ++i) {
-    if (getKernelOperand(i)->getType() !=
-        kernelFunc->getArgument(i)->getType()) {
+    if (getKernelOperand(i)->getType() != functionType.getInput(i)) {
       return emitOpError("type of function argument ")
              << i << " does not match";
     }
