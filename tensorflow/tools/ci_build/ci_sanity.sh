@@ -306,7 +306,7 @@ do_buildifier(){
   if [[ -s ${BUILDIFIER_OUTPUT_FILE} ]]; then
     echo "FAIL: buildifier found errors and/or warnings in above BUILD files."
     echo "buildifier suggested the following changes:"
-    buildifier -v -mode=diff ${BUILD_FILES}
+    buildifier -v -mode=diff -diff_command=diff ${BUILD_FILES}
     echo "Please fix manually or run buildifier <file> to auto-fix."
     return 1
   else
