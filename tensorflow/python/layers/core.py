@@ -112,7 +112,7 @@ class Dense(keras_layers.Dense, base.Layer):
 
 @deprecation.deprecated(
     date=None,
-    instructions='Use keras.layers.dense instead.')
+    instructions='Use keras.layers.Dense instead.')
 @tf_export(v1=['layers.dense'])
 def dense(
     inputs, units,
