@@ -1,7 +1,7 @@
 op {
   graph_op_name: "Tanh"
   summary: "Computes hyperbolic tangent of `x` element-wise."
-  description: << END
+  description: <<END
   Given an input tensor, this function computes hyperbolic tangent of every
   element in the tensor. Input range is `[-inf, inf]` and
   output range is `[-1,1]`.

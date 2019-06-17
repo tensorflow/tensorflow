@@ -1,7 +1,7 @@
 op {
   graph_op_name: "Cos"
   summary: "Computes cos of x element-wise."
-  description: << END
+  description: <<END
   Given an input tensor, this function computes cosine of every
   element in the tensor. Input range is `(-inf, inf)` and
   output range is `[-1,1]`. If input lies outside the boundary, `nan`

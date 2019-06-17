@@ -1,7 +1,7 @@
 op {
   graph_op_name: "Cosh"
   summary: "Computes hyperbolic cosine of x element-wise."
-  description: << END
+  description: <<END
   Given an input tensor, this function computes hyperbolic cosine of every
   element in the tensor. Input range is `[-inf, inf]` and output range
   is `[1, inf]`.
