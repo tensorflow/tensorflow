@@ -192,11 +192,7 @@ gatherLoadsAndStores(AffineForOp forOp,
   return !hasIfOp;
 }
 
-// TODO(andydavis) Add support for the following features in subsequent CLs:
-// *) Compute dependences of unfused src/dst loops.
-// *) Compute dependences of src/dst loop as if they were fused.
-// *) Check for fusion preventing dependences (e.g. a dependence which changes
-//    from loop-independent to backward loop-carried after fusion).
+// TODO(andydavis) Prevent fusion of loop nests with side-effecting operations.
 FusionResult mlir::canFuseLoops(AffineForOp srcForOp, AffineForOp dstForOp,
                                 unsigned dstLoopDepth,
                                 ComputationSliceState *srcSlice) {
@@ -219,24 +215,35 @@ FusionResult mlir::canFuseLoops(AffineForOp srcForOp, AffineForOp dstForOp,
     return FusionResult::FailBlockDependence;
   }
 
-  // Gather all load and store ops in 'srcForOp'.
-  SmallVector<Operation *, 4> srcLoadAndStoreOps;
-  if (!gatherLoadsAndStores(srcForOp, srcLoadAndStoreOps)) {
+  // Check if 'srcForOp' precedeces 'dstForOp' in 'block'.
+  bool isSrcForOpBeforeDstForOp =
+      srcForOp.getOperation()->isBeforeInBlock(dstForOp.getOperation());
+  // 'forOpA' executes before 'forOpB' in 'block'.
+  auto forOpA = isSrcForOpBeforeDstForOp ? srcForOp : dstForOp;
+  auto forOpB = isSrcForOpBeforeDstForOp ? dstForOp : srcForOp;
+
+  // Gather all load and store from 'forOpA' which precedes 'forOpB' in 'block'.
+  SmallVector<Operation *, 4> opsA;
+  if (!gatherLoadsAndStores(forOpA, opsA)) {
     LLVM_DEBUG(llvm::dbgs() << "Fusing loops with affine.if unsupported.\n.");
     return FusionResult::FailPrecondition;
   }
 
-  // Gather all load and store ops in 'dstForOp'.
-  SmallVector<Operation *, 4> dstLoadAndStoreOps;
-  if (!gatherLoadsAndStores(dstForOp, dstLoadAndStoreOps)) {
+  // Gather all load and store from 'forOpB' which succeeds 'forOpA' in 'block'.
+  SmallVector<Operation *, 4> opsB;
+  if (!gatherLoadsAndStores(forOpB, opsB)) {
     LLVM_DEBUG(llvm::dbgs() << "Fusing loops with affine.if unsupported.\n.");
     return FusionResult::FailPrecondition;
   }
 
-  // Compute union of computation slices computed from all pairs in
-  // {'srcLoadAndStoreOps', 'dstLoadAndStoreOps'}.
-  if (failed(mlir::computeSliceUnion(srcLoadAndStoreOps, dstLoadAndStoreOps,
-                                     dstLoopDepth, srcSlice))) {
+  // Calculate the number of common loops surrounding 'srcForOp' and 'dstForOp'.
+  unsigned numCommonLoops = mlir::getNumCommonSurroundingLoops(
+      *srcForOp.getOperation(), *dstForOp.getOperation());
+
+  // Compute union of computation slices computed between all pairs of ops
+  // from 'forOpA' and 'forOpB'.
+  if (failed(mlir::computeSliceUnion(opsA, opsB, dstLoopDepth, numCommonLoops,
+                                     isSrcForOpBeforeDstForOp, srcSlice))) {
     LLVM_DEBUG(llvm::dbgs() << "computeSliceUnion failed\n");
     return FusionResult::FailPrecondition;
   }

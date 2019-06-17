@@ -45,6 +45,11 @@ static llvm::cl::opt<bool> clTestDependenceCheck(
     llvm::cl::desc("Enable testing of loop fusion dependence check"),
     llvm::cl::cat(clOptionsCategory));
 
+static llvm::cl::opt<bool> clTestSliceComputation(
+    "test-loop-fusion-slice-computation",
+    llvm::cl::desc("Enable testing of loop fusion slice computation"),
+    llvm::cl::cat(clOptionsCategory));
+
 namespace {
 
 struct TestLoopFusion : public FunctionPass<TestLoopFusion> {
@@ -70,20 +75,74 @@ gatherLoops(Block *block, unsigned currLoopDepth,
   }
 }
 
-// Run fusion dependence check on 'loops[i]' and 'loops[j]' at 'loopDepth'.
+// Run fusion dependence check on 'loops[i]' and 'loops[j]' at loop depths
+// in range ['loopDepth' + 1, 'maxLoopDepth'].
 // Emits a remark on 'loops[i]' if a fusion-preventing dependence exists.
 static void testDependenceCheck(SmallVector<AffineForOp, 2> &loops, unsigned i,
-                                unsigned j, unsigned loopDepth) {
+                                unsigned j, unsigned loopDepth,
+                                unsigned maxLoopDepth) {
   AffineForOp srcForOp = loops[i];
   AffineForOp dstForOp = loops[j];
   mlir::ComputationSliceState sliceUnion;
-  // TODO(andydavis) Test at deeper loop depths current loop depth + 1.
-  FusionResult result =
-      mlir::canFuseLoops(srcForOp, dstForOp, loopDepth + 1, &sliceUnion);
-  if (result.value == FusionResult::FailBlockDependence) {
-    srcForOp.getOperation()->emitRemark("block-level dependence preventing"
-                                        " fusion of loop nest ")
-        << i << " into loop nest " << j << " at depth " << loopDepth;
+  for (unsigned d = loopDepth + 1; d <= maxLoopDepth; ++d) {
+    FusionResult result =
+        mlir::canFuseLoops(srcForOp, dstForOp, d, &sliceUnion);
+    if (result.value == FusionResult::FailBlockDependence) {
+      srcForOp.getOperation()->emitRemark("block-level dependence preventing"
+                                          " fusion of loop nest ")
+          << i << " into loop nest " << j << " at depth " << loopDepth;
+    }
+  }
+}
+
+// Returns the index of 'op' in its block.
+static unsigned getBlockIndex(Operation &op) {
+  unsigned index = 0;
+  for (auto &opX : *op.getBlock()) {
+    if (&op == &opX)
+      break;
+    ++index;
+  }
+  return index;
+}
+
+// Returns a string representation of 'sliceUnion'.
+static std::string getSliceStr(const mlir::ComputationSliceState &sliceUnion) {
+  std::string result;
+  llvm::raw_string_ostream os(result);
+  // Slice insertion point format [loop-depth, operation-block-index]
+  unsigned ipd = getNestingDepth(*sliceUnion.insertPoint);
+  unsigned ipb = getBlockIndex(*sliceUnion.insertPoint);
+  os << "insert point: (" << std::to_string(ipd) << ", " << std::to_string(ipb)
+     << ")";
+  assert(sliceUnion.lbs.size() == sliceUnion.ubs.size());
+  os << " loop bounds: ";
+  for (unsigned k = 0, e = sliceUnion.lbs.size(); k < e; ++k) {
+    os << '[';
+    sliceUnion.lbs[k].print(os);
+    os << ", ";
+    sliceUnion.ubs[k].print(os);
+    os << "] ";
+  }
+  return os.str();
+}
+
+// Computes fusion slice union on 'loops[i]' and 'loops[j]' at loop depths
+// in range ['loopDepth' + 1, 'maxLoopDepth'].
+// Emits a string represention of the slice union as a remark on 'loops[j]'.
+static void testSliceComputation(SmallVector<AffineForOp, 2> &loops, unsigned i,
+                                 unsigned j, unsigned loopDepth,
+                                 unsigned maxLoopDepth) {
+  AffineForOp forOpA = loops[i];
+  AffineForOp forOpB = loops[j];
+  for (unsigned d = loopDepth + 1; d <= maxLoopDepth; ++d) {
+    mlir::ComputationSliceState sliceUnion;
+    FusionResult result = mlir::canFuseLoops(forOpA, forOpB, d, &sliceUnion);
+    if (result.value == FusionResult::Success) {
+      forOpB.getOperation()->emitRemark("slice (")
+          << " src loop: " << i << ", dst loop: " << j << ", depth: " << d
+          << " : " << getSliceStr(sliceUnion) << ")";
+    }
   }
 }
 
@@ -104,7 +163,9 @@ void TestLoopFusion::runOnFunction() {
         if (j == k)
           continue;
         if (clTestDependenceCheck)
-          testDependenceCheck(loops, j, k, loopDepth);
+          testDependenceCheck(loops, j, k, loopDepth, depthToLoops.size());
+        if (clTestSliceComputation)
+          testSliceComputation(loops, j, k, loopDepth, depthToLoops.size());
       }
     }
   }

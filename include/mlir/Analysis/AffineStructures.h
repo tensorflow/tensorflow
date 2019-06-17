@@ -393,12 +393,12 @@ public:
                                      bool lower = true);
 
   /// Computes the lower and upper bounds of the first 'num' dimensional
-  /// identifiers as an affine map of the remaining identifiers (dimensional and
-  /// symbolic). This method is able to detect identifiers as floordiv's
-  /// and mod's of affine expressions of other identifiers with respect to
-  /// (positive) constants. Sets bound map to a null AffineMap if such a bound
-  /// can't be found (or yet unimplemented).
-  void getSliceBounds(unsigned num, MLIRContext *context,
+  /// identifiers (starting at 'offset') as an affine map of the remaining
+  /// identifiers (dimensional and symbolic). This method is able to detect
+  /// identifiers as floordiv's and mod's of affine expressions of other
+  /// identifiers with respect to (positive) constants. Sets bound map to a
+  /// null AffineMap if such a bound can't be found (or yet unimplemented).
+  void getSliceBounds(unsigned offset, unsigned num, MLIRContext *context,
                       SmallVectorImpl<AffineMap> *lbMaps,
                       SmallVectorImpl<AffineMap> *ubMaps);
 
@@ -648,13 +648,14 @@ public:
   Optional<int64_t> getConstantUpperBound(unsigned pos) const;
 
   /// Gets the lower and upper bound of the pos^th identifier treating
-  /// [dimStartPos, symbStartPos) as dimensions and [symStartPos,
-  /// getNumDimAndSymbolIds) as symbols. The returned multi-dimensional maps
-  /// in the pair represent the max and min of potentially multiple affine
-  /// expressions. The upper bound is exclusive. 'localExprs' holds pre-computed
-  /// AffineExpr's for all local identifiers in the system.
+  /// [0, offset) U [offset + num, symbStartPos) as dimensions and
+  /// [symStartPos, getNumDimAndSymbolIds) as symbols. The returned
+  /// multi-dimensional maps in the pair represent the max and min of
+  /// potentially multiple affine expressions. The upper bound is exclusive.
+  /// 'localExprs' holds pre-computed AffineExpr's for all local identifiers in
+  /// the system.
   std::pair<AffineMap, AffineMap>
-  getLowerAndUpperBound(unsigned pos, unsigned dimStartPos,
+  getLowerAndUpperBound(unsigned pos, unsigned offset, unsigned num,
                         unsigned symStartPos, ArrayRef<AffineExpr> localExprs,
                         MLIRContext *context);
 

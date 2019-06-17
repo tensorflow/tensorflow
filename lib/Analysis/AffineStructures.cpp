@@ -1423,19 +1423,28 @@ void FlatAffineConstraints::removeRedundantInequalities() {
 }
 
 std::pair<AffineMap, AffineMap> FlatAffineConstraints::getLowerAndUpperBound(
-    unsigned pos, unsigned dimStartPos, unsigned symStartPos,
+    unsigned pos, unsigned offset, unsigned num, unsigned symStartPos,
     ArrayRef<AffineExpr> localExprs, MLIRContext *context) {
-  assert(pos < dimStartPos && "invalid dim start pos");
-  assert(symStartPos >= dimStartPos && "invalid sym start pos");
+  assert(pos + offset < getNumDimIds() && "invalid dim start pos");
+  assert(symStartPos >= (pos + offset) && "invalid sym start pos");
   assert(getNumLocalIds() == localExprs.size() &&
          "incorrect local exprs count");
 
   SmallVector<unsigned, 4> lbIndices, ubIndices;
-  getLowerAndUpperBoundIndices(*this, pos, &lbIndices, &ubIndices);
+  getLowerAndUpperBoundIndices(*this, pos + offset, &lbIndices, &ubIndices);
+
+  /// Add to 'b' from 'a' in set [0, offset) U [offset + num, symbStartPos).
+  auto addCoeffs = [&](ArrayRef<int64_t> a, SmallVectorImpl<int64_t> &b) {
+    b.clear();
+    for (unsigned i = 0, e = a.size(); i < e; ++i) {
+      if (i < offset || i >= offset + num)
+        b.push_back(a[i]);
+    }
+  };
 
   SmallVector<int64_t, 8> lb, ub;
   SmallVector<AffineExpr, 4> exprs;
-  unsigned dimCount = symStartPos - dimStartPos;
+  unsigned dimCount = symStartPos - num;
   unsigned symCount = getNumDimAndSymbolIds() - symStartPos;
   exprs.reserve(lbIndices.size());
   // Lower bound expressions.
@@ -1444,7 +1453,7 @@ std::pair<AffineMap, AffineMap> FlatAffineConstraints::getLowerAndUpperBound(
     // Extract the lower bound (in terms of other coeff's + const), i.e., if
     // i - j + 1 >= 0 is the constraint, 'pos' is for i the lower bound is j
     // - 1.
-    lb.assign(ineq.begin() + dimStartPos, ineq.end());
+    addCoeffs(ineq, lb);
     std::transform(lb.begin(), lb.end(), lb.begin(), std::negate<int64_t>());
     auto expr = mlir::toAffineExpr(lb, dimCount, symCount, localExprs, context);
     exprs.push_back(expr);
@@ -1458,7 +1467,7 @@ std::pair<AffineMap, AffineMap> FlatAffineConstraints::getLowerAndUpperBound(
   for (auto idx : ubIndices) {
     auto ineq = getInequality(idx);
     // Extract the upper bound (in terms of other coeff's + const).
-    ub.assign(ineq.begin() + dimStartPos, ineq.end());
+    addCoeffs(ineq, ub);
     auto expr = mlir::toAffineExpr(ub, dimCount, symCount, localExprs, context);
     // Upper bound is exclusive.
     exprs.push_back(expr + 1);
@@ -1470,10 +1479,12 @@ std::pair<AffineMap, AffineMap> FlatAffineConstraints::getLowerAndUpperBound(
 }
 
 /// Computes the lower and upper bounds of the first 'num' dimensional
-/// identifiers as affine maps of the remaining identifiers (dimensional and
-/// symbolic identifiers). Local identifiers are themselves explicitly computed
-/// as affine functions of other identifiers in this process if needed.
-void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
+/// identifiers (starting at 'offset') as affine maps of the remaining
+/// identifiers (dimensional and symbolic identifiers). Local identifiers are
+/// themselves explicitly computed as affine functions of other identifiers in
+/// this process if needed.
+void FlatAffineConstraints::getSliceBounds(unsigned offset, unsigned num,
+                                           MLIRContext *context,
                                            SmallVectorImpl<AffineMap> *lbMaps,
                                            SmallVectorImpl<AffineMap> *ubMaps) {
   assert(num < getNumDimIds() && "invalid range");
@@ -1488,8 +1499,12 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
   // Record computed/detected identifiers.
   SmallVector<AffineExpr, 8> memo(getNumIds());
   // Initialize dimensional and symbolic identifiers.
-  for (unsigned i = num, e = getNumDimIds(); i < e; i++)
-    memo[i] = getAffineDimExpr(i - num, context);
+  for (unsigned i = 0, e = getNumDimIds(); i < e; i++) {
+    if (i < offset)
+      memo[i] = getAffineDimExpr(i, context);
+    else if (i >= offset + num)
+      memo[i] = getAffineDimExpr(i - num, context);
+  }
   for (unsigned i = getNumDimIds(), e = getNumDimAndSymbolIds(); i < e; i++)
     memo[i] = getAffineSymbolExpr(i - getNumDimIds(), context);
 
@@ -1578,7 +1593,7 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
   for (unsigned pos = 0; pos < num; pos++) {
     unsigned numMapDims = getNumDimIds() - num;
     unsigned numMapSymbols = getNumSymbolIds();
-    AffineExpr expr = memo[pos];
+    AffineExpr expr = memo[pos + offset];
     if (expr)
       expr = simplifyAffineExpr(expr, numMapDims, numMapSymbols);
 
@@ -1601,7 +1616,7 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
           tmpClone->removeRedundantInequalities();
         }
         std::tie(lbMap, ubMap) = tmpClone->getLowerAndUpperBound(
-            pos, num, getNumDimIds(), {}, context);
+            pos, offset, num, getNumDimIds(), {}, context);
       }
 
       // If the above fails, we'll just use the constant lower bound and the
@@ -1612,7 +1627,7 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
       if (!lbMap || lbMap.getNumResults() > 1) {
         LLVM_DEBUG(llvm::dbgs()
                    << "WARNING: Potentially over-approximating slice lb\n");
-        auto lbConst = getConstantLowerBound(pos);
+        auto lbConst = getConstantLowerBound(pos + offset);
         if (lbConst.hasValue()) {
           lbMap = AffineMap::get(
               numMapDims, numMapSymbols,
@@ -1622,7 +1637,7 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
       if (!ubMap || ubMap.getNumResults() > 1) {
         LLVM_DEBUG(llvm::dbgs()
                    << "WARNING: Potentially over-approximating slice ub\n");
-        auto ubConst = getConstantUpperBound(pos);
+        auto ubConst = getConstantUpperBound(pos + offset);
         if (ubConst.hasValue()) {
           (ubMap) = AffineMap::get(
               numMapDims, numMapSymbols,
@@ -1630,9 +1645,11 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
         }
       }
     }
-    LLVM_DEBUG(llvm::dbgs() << "lb map for pos = " << Twine(pos) << ", expr: ");
+    LLVM_DEBUG(llvm::dbgs()
+               << "lb map for pos = " << Twine(pos + offset) << ", expr: ");
     LLVM_DEBUG(lbMap.dump(););
-    LLVM_DEBUG(llvm::dbgs() << "ub map for pos = " << Twine(pos) << ", expr: ");
+    LLVM_DEBUG(llvm::dbgs()
+               << "ub map for pos = " << Twine(pos + offset) << ", expr: ");
     LLVM_DEBUG(ubMap.dump(););
   }
 }
