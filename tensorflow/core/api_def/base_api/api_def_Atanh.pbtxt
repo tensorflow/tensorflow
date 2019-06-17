@@ -1,7 +1,7 @@
 op {
   graph_op_name: "Atanh"
   summary: "Computes inverse hyperbolic tangent of x element-wise."
-  description: << END
+  description: <<END
   Given an input tensor, this function computes inverse hyperbolic tangent
   for every element in the tensor. Input range is `[-1,1]` and output range is
   `[-inf, inf]`. If input is `-1`, output will be `-inf` and if the
