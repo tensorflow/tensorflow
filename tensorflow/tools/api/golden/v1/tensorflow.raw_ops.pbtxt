@@ -441,6 +441,14 @@ tf_module {
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "BlockLSTM"
+    argspec: "args=[\'seq_len_max\', \'x\', \'cs_prev\', \'h_prev\', \'w\', \'wci\', \'wcf\', \'wco\', \'b\', \'forget_bias\', \'cell_clip\', \'use_peephole\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'3\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "BlockLSTMGrad"
+    argspec: "args=[\'seq_len_max\', \'x\', \'cs_prev\', \'h_prev\', \'w\', \'wci\', \'wcf\', \'wco\', \'b\', \'i\', \'cs\', \'f\', \'o\', \'ci\', \'co\', \'h\', \'cs_grad\', \'h_grad\', \'use_peephole\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "BoostedTreesAggregateStats"
     argspec: "args=[\'node_ids\', \'gradients\', \'hessians\', \'feature\', \'max_splits\', \'num_buckets\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1445,6 +1453,14 @@ tf_module {
     argspec: "args=[\'input\', \'size\', \'paddings\', \'filter\', \'mode\', \'strides\', \'padding\', \'resize_align_corners\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
+    name: "GRUBlockCell"
+    argspec: "args=[\'x\', \'h_prev\', \'w_ru\', \'w_c\', \'b_ru\', \'b_c\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "GRUBlockCellGrad"
+    argspec: "args=[\'x\', \'h_prev\', \'w_ru\', \'w_c\', \'b_ru\', \'b_c\', \'r\', \'u\', \'c\', \'d_h\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "Gather"
     argspec: "args=[\'params\', \'indices\', \'validate_indices\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
@@ -1727,6 +1743,14 @@ tf_module {
   member_method {
     name: "LRNGrad"
     argspec: "args=[\'input_grads\', \'input_image\', \'output_image\', \'depth_radius\', \'bias\', \'alpha\', \'beta\', \'name\'], varargs=None, keywords=None, defaults=[\'5\', \'1\', \'1\', \'0.5\', \'None\'], "
+  }
+  member_method {
+    name: "LSTMBlockCell"
+    argspec: "args=[\'x\', \'cs_prev\', \'h_prev\', \'w\', \'wci\', \'wcf\', \'wco\', \'b\', \'forget_bias\', \'cell_clip\', \'use_peephole\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'3\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "LSTMBlockCellGrad"
+    argspec: "args=[\'x\', \'cs_prev\', \'h_prev\', \'w\', \'wci\', \'wcf\', \'wco\', \'b\', \'i\', \'cs\', \'f\', \'o\', \'ci\', \'co\', \'cs_grad\', \'h_grad\', \'use_peephole\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "LeakyRelu"
