@@ -24,8 +24,11 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/SPIRV/SPIRVTypes.h"
 
 using namespace mlir;
+
+static constexpr const char kValueAttrName[] = "value";
 
 //===----------------------------------------------------------------------===//
 // Common utility functions
@@ -39,17 +42,78 @@ static ParseResult parseNoIOOp(OpAsmParser *parser, OperationState *state) {
 }
 
 // Prints an op that has no inputs and no outputs.
-static ParseResult printNoIOOp(Operation *op, OpAsmPrinter *printer) {
+static void printNoIOOp(Operation *op, OpAsmPrinter *printer) {
   *printer << op->getName();
-  printer->printOptionalAttrDict(op->getAttrs(),
-                                 /*elidedAttrs=*/{});
-  return success();
+  printer->printOptionalAttrDict(op->getAttrs());
 }
 
 // Verifies that the given op can only be placed in a `spv.module`.
 static LogicalResult verifyModuleOnly(Operation *op) {
   if (!llvm::isa_and_nonnull<spirv::ModuleOp>(op->getParentOp()))
     return op->emitOpError("can only be used in a 'spv.module' block");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.constant
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseConstant(OpAsmParser *parser, OperationState *state) {
+  Attribute value;
+  if (parser->parseAttribute(value, kValueAttrName, state->attributes))
+    return failure();
+
+  Type type;
+  if (value.getType().isa<NoneType>()) {
+    if (parser->parseColonType(type))
+      return failure();
+  } else {
+    type = value.getType();
+  }
+
+  return parser->addTypeToList(type, state->types);
+}
+
+static void printConstant(spirv::ConstantOp constOp, OpAsmPrinter *printer) {
+  *printer << spirv::ConstantOp::getOperationName() << " " << constOp.value()
+           << " : " << constOp.getType();
+}
+
+static LogicalResult verifyConstant(spirv::ConstantOp constOp) {
+  auto opType = constOp.getType();
+  auto value = constOp.value();
+  auto valueType = value.getType();
+
+  // ODS already generates checks to make sure the result type is valid. We just
+  // need to additionally check that the value's attribute type is consistent
+  // with the result type.
+  switch (value.getKind()) {
+  case StandardAttributes::Bool:
+  case StandardAttributes::Integer:
+  case StandardAttributes::Float:
+  case StandardAttributes::DenseElements:
+  case StandardAttributes::SparseElements: {
+    if (valueType != opType)
+      return constOp.emitOpError("result type (")
+             << opType << ") does not match value type (" << valueType << ")";
+    return success();
+  } break;
+  case StandardAttributes::Array: {
+    auto arrayType = opType.dyn_cast<spirv::ArrayType>();
+    if (!arrayType)
+      return constOp.emitOpError(
+          "must have spv.array result type for array value");
+    auto elemType = arrayType.getElementType();
+    for (auto element : value.cast<ArrayAttr>().getValue()) {
+      if (element.getType() != elemType)
+        return constOp.emitOpError(
+            "has array element that are not of result array element type");
+    }
+  } break;
+  default:
+    return constOp.emitOpError("cannot have value of type ") << valueType;
+  }
 
   return success();
 }
@@ -85,16 +149,13 @@ static ParseResult parseModule(OpAsmParser *parser, OperationState *state) {
   return success();
 }
 
-static ParseResult printModule(spirv::ModuleOp moduleOp,
-                               OpAsmPrinter *printer) {
+static void printModule(spirv::ModuleOp moduleOp, OpAsmPrinter *printer) {
   auto *op = moduleOp.getOperation();
   *printer << spirv::ModuleOp::getOperationName();
   printer->printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false,
                        /*printBlockTerminators=*/false);
   *printer << " attributes";
-  printer->printOptionalAttrDict(op->getAttrs(),
-                                 /*elidedAttrs=*/{});
-  return success();
+  printer->printOptionalAttrDict(op->getAttrs());
 }
 
 static LogicalResult verifyModule(spirv::ModuleOp moduleOp) {

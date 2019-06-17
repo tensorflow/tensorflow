@@ -6,6 +6,8 @@ This document defines the SPIR-V dialect in MLIR.
 representing graphics shaders and compute kernels. It is adopted by multiple
 Khronos Group’s APIs, including Vulkan and OpenCL.
 
+## Design Principles
+
 SPIR-V defines a stable binary format for hardware driver consumption.
 Regularity is one of the design goals of SPIR-V. All concepts are represented
 as SPIR-V instructions, including declaring extensions and capabilities,
@@ -20,7 +22,35 @@ format and to facilitate transformations. Therefore, it should
 * Stay as the same semantic level and try to be a mechanical 1:1 mapping;
 * But deviate representationally if possible with MLIR mechanisms.
 
-The namespace for all SPIR-V types and operations are `spv`.
+## Conventions
+
+The SPIR-V dialect has the following conventions:
+
+* The prefix for all SPIR-V types and operations are `spv.`.
+* Ops that directly correspond to instructions in the binary format have
+  `CamelCase` names, for example, `spv.FMul`;
+* Otherwise they have `snake_case` names. These ops are mostly for defining
+  the SPIR-V structure, inclduing module, function, and module-level ops.
+  For example, `spv.module`, `spv.constant`.
+
+## Module
+
+A SPIR-V module is defined via the `spv.module` op, which has one region that
+contains one block. Model-level instructions, including function definitions,
+are all placed inside the block.
+
+Compared to the binary format, we adjust how certain module-level SPIR-V
+instructions are represented in the SPIR-V dialect. Notably,
+
+* Requirements for capabilities, extensions, extended instruction sets,
+  addressing model, and memory model is conveyed using op attributes.
+  This is considered better because these information are for the
+  exexcution environment. It's eaiser to probe them if on the module op
+  itself.
+* Various constant instructions are represented by the same `spv.constant`
+  op. Those instructions are just for constants of different types; using one
+  op to represent them reduces IR verbosity and makes transformations less
+  tedious.
 
 ## Types
 

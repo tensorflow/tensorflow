@@ -43,21 +43,6 @@ def SPV_ModuleOp : SPV_Op<"module", []> {
     the validaty and serializability of a SPIR-V module and thus serves as
     a clear-cut boundary.
 
-    Regularity is one of the design goals of SPIR-V. All concepts are
-    represented as SPIR-V instructions, including declaring extensions and
-    capabilities, defining types and constants, defining functions, attaching
-    additional properties to computation results, etc. This way favors driver
-    consumption but not necessarily compiler transformations. The purpose of
-    the SPIR-V dialect is to serve as the proxy of the binary format and to
-    facilitate transformations. So we adjust how certain module-level SPIR-V
-    instructions are represented in the SPIR-V dialect. Notably,
-
-    * Requirements for capabilities, extensions, extended instruction sets,
-      addressing model, and memory model is conveyed using op attributes.
-      This is considered better because these information are for the
-      exexcution environment. It's eaiser to probe them if on the module op
-      itself.
-
     This op takes no operands and generates no results. This op should not
     implicitly capture values from the enclosing environment.
 
@@ -102,6 +87,55 @@ def SPV_ModuleEndOp : SPV_Op<"_module_end", [Terminator]> {
   let printer = [{ printNoIOOp(getOperation(), p); }];
 
   let verifier = [{ return verifyModuleOnly(*this); }];
+}
+
+def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
+  let summary = "The op that declares a SPIR-V constant";
+
+  let description = [{
+    This op declares a SPIR-V constant. SPIR-V has multiple constant
+    instructions covering different constant types:
+
+    * `OpConstantTrue` and `OpConstantFalse` for boolean constants
+    * `OpConstant` for scalar constants
+    * `OpConstantComposite` for composite constants
+    * `OpConstantNull` for null constants
+    * ...
+
+    Having such a plethora of constant instructions renders IR transformations
+    more tedious. Therefore, we use a single `spv.constant` op to represent
+    them all. Note that conversion between those SPIR-V constant instructions
+    and this op is purely mechanical; so it can be scoped to the binary
+    (de)serialzation process.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    spv-constant-op ::= ssa-id `=` `spv.constant` attribute-value
+                        (`:` spirv-type)?
+    ```
+
+    For example:
+
+    ```
+    %0 = spv.constant true
+    %1 = spv.constant dense<vector<2xf32>, [2, 3]>
+    %2 = spv.constant [dense<vector<2xf32>, 3.0>] : !spv.array<1xvector<2xf32>>
+    ```
+  }];
+
+  let arguments = (ins
+    AnyAttr:$value
+  );
+
+  let results = (outs
+    SPV_Type:$constant
+  );
+
+  let parser = [{ return parseConstant(parser, result); }];
+  let printer = [{ printConstant(*this, p); }];
+
+  let verifier = [{ return verifyConstant(*this); }];
 }
 
 #endif // SPIRV_STRUCTURE_OPS
