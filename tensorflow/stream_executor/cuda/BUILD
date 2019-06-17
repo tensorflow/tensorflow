@@ -101,7 +101,7 @@ cc_library(
 cc_library(
     name = "ptxas_utils",
     srcs = if_cuda_is_configured(["ptxas_utils.cc"]),
-    hdrs = if_cuda_is_configured(["ptxas_utils.h"]),
+    hdrs = ["ptxas_utils.h"],
     deps = if_cuda_is_configured([
         ":cuda_driver",
         ":ptxas_wrapper",
