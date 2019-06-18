@@ -73,7 +73,8 @@ limitations under the License.
 #include <stdint.h>
 #include <stdlib.h>
 
-#include "tensorflow/c/c_api.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
 
 #ifdef SWIG
 #define TF_CAPI_EXPORT

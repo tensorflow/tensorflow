@@ -57,6 +57,13 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
       std::make_tuple(DataLayout::kBatchYXDepth, FilterLayout::kOutputYXInput,
                       DataLayout::kBatchYXDepth);
 
+  const DebugOptions& debug_options =
+      instr->GetModule()->config().debug_options();
+
+  if (debug_options.xla_gpu_force_conv_nchw()) {
+    return kAllNCHW;
+  }
+
   // If we're not Volta or not fp16, or not conv2D, the decision is easy: Use
   // NCHW.
   if (instr->operand(0)->shape().element_type() != xla::PrimitiveType::F16 ||

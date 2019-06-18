@@ -138,6 +138,7 @@ cc_library(
     hdrs = ["grappler_test.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/cc:scope",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session",
@@ -149,6 +150,7 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ],
 )
 

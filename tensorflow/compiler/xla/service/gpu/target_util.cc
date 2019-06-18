@@ -127,10 +127,19 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
 string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
                                 PrimitiveType output_type,
                                 llvm::IRBuilder<>* b) {
+<<<<<<< HEAD
   llvm::Triple target_triple =
       llvm::Triple(b->GetInsertBlock()->getModule()->getTargetTriple());
   struct TargetDeviceFunction gpu_root_names =
       GetDeviceFunctionRoot(func_id);
+=======
+  // The device math functions differentiate between "double" and "float" by
+  // appending a double or float specific suffix to a root name. The suffix and
+  // the root name are specific to the target.
+  llvm::Triple target_triple =
+      llvm::Triple(b->GetInsertBlock()->getModule()->getTargetTriple());
+  struct TargetDeviceFunction gpu_root_names = GetDeviceFunctionRoot(func_id);
+>>>>>>> upstream/master
   if (target_triple.isNVPTX()) {
     if (output_type == F32) {
       return StrCat(gpu_root_names.nvptx_root, "f");
@@ -152,6 +161,7 @@ string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
   }
 }
 
+<<<<<<< HEAD
 unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module) {
   llvm::Triple target_triple = llvm::Triple(module.getTargetTriple());
   if (target_triple.getArch() == llvm::Triple::amdgcn){
@@ -171,6 +181,8 @@ unsigned GetSharedMemoryAddressSpace(const llvm::Module& module) {
   return 0;
 }
 
+=======
+>>>>>>> upstream/master
 llvm::CallInst* EmitCallToTargetIntrinsic(
     TargetIntrinsicID intrinsic_id, absl::Span<llvm::Value* const> operands,
     absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b) {
@@ -178,7 +190,6 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
   struct TargetIntrinsics gpu_intrinsic_id = GetIntrinsic(intrinsic_id);
   llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
   llvm::Intrinsic::ID llvm_intrinsic_id = llvm::Intrinsic::not_intrinsic;
-
   if (target_triple.isNVPTX()) {
     llvm_intrinsic_id = gpu_intrinsic_id.nvptx_intrinsic;
   } else if (target_triple.getArch() == llvm::Triple::amdgcn) {

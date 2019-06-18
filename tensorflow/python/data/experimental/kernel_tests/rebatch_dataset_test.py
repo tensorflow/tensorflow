@@ -18,11 +18,13 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.experimental.ops import scan_ops
+from tensorflow.python.data.experimental.ops import sleep
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
@@ -267,8 +269,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
 
   def testUnsupportedTransformError(self, drop_remainder):
     dataset = dataset_ops.Dataset.range(1024).batch(
-        32, drop_remainder=drop_remainder).apply(
-            scan_ops.scan([0], lambda _, a: ([0], a)))
+        32, drop_remainder=drop_remainder).apply(sleep.sleep(10))
     with self.assertRaises(errors.InvalidArgumentError):
       rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
       next_element = self.getNext(rebatched_dataset)
@@ -377,6 +378,16 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
     pairs.extend([(5, 1), (5, 1)])
     pairs = pairs * 2
     expected_output = [[value] * batch_size for batch_size, value in pairs]
+    self.assertDatasetProduces(dataset, expected_output)
+
+  def testScanAfterBatch(self, drop_remainder):
+    dataset = dataset_ops.Dataset.range(40).batch(10).apply(
+        scan_ops.scan(np.int64(2), lambda state, value: (state, value * state)))
+    dataset = distribute._RebatchDataset(dataset, num_workers=2)
+
+    self.assertEqual([[None]],
+                     [ts.as_list() for ts in _flat_shapes(dataset)])
+    expected_output = [[i * 2 for i in range(j*5, (j+1)*5)] for j in range(8)]  # pylint: disable=g-complex-comprehension
     self.assertDatasetProduces(dataset, expected_output)
 
 

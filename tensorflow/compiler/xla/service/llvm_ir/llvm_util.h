@@ -316,9 +316,17 @@ llvm::GlobalVariable* GetOrCreateVariableForPhiloxRngState(
 // of the Philox RNG algorithm so that calling the same RNG Hlo multiple times
 // should rarely produce the same result.
 void IncrementVariableForPhiloxRngState(int64 value, llvm::Module* module,
+<<<<<<< HEAD
                                         llvm::IRBuilder<>* b, 
                                         unsigned int global_address_space = 0);
 
+=======
+                                        llvm::IRBuilder<>* b);
+
+// Gets the LLVM address space that should be used for global variables (e.g.
+// XLA's rng state).
+unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module);
+>>>>>>> upstream/master
 }  // namespace llvm_ir
 }  // namespace xla
 

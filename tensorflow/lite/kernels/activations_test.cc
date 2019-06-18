@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdarg>
+#include <random>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
@@ -89,7 +90,7 @@ class FloatActivationsOpModel : public BaseActivationsOpModel {
  public:
   using BaseActivationsOpModel::BaseActivationsOpModel;
 
-  void SetInput(std::initializer_list<float> data) {
+  void SetInput(const std::vector<float>& data) {
     PopulateTensor(input_, data);
   }
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
@@ -119,7 +120,7 @@ class QuantizedActivationsOpModel : public BaseActivationsOpModel {
   using BaseActivationsOpModel::BaseActivationsOpModel;
 
   template <typename T>
-  void SetInput(std::initializer_list<float> data) {
+  void SetInput(const std::vector<float>& data) {
     QuantizeAndPopulate<T>(input_, data);
   }
   template <typename T>
@@ -189,6 +190,101 @@ TEST(FloatActivationsOpTest, Relu6) {
                                  0, 0, 2, 4,  //
                                  3, 0, 6, 1,  //
                              }));
+}
+
+void GenerateUniformRandomVector(int size, float min, float max,
+                                 std::minstd_rand* random_engine,
+                                 std::vector<float>* result) {
+  // Never use std::uniform_*_distribution in tests, it's
+  // implementation-defined. Likewise, don't use std::default_random_engine,
+  // implementation-defined. Implementation-defined is bad because it means that
+  // any toolchain update or new platform may run into test failures.
+  // std::minstd_rand is a standard instantiation of
+  // std::linear_congruential_engine, the cheapest generator in c++11 stdlib,
+  // it's good enough here.
+  result->resize(size);
+  for (int i = 0; i < size; i++) {
+    // We don't care whether the `max` value may ever be produced exactly.
+    // It may actually be thanks to rounding, as std::minstd_rand::modulus
+    // is 2^31 - 1 is greater than the inverse float epsilon.
+    float random_value_scaled_0_1 =
+        (*random_engine)() *
+        (1.0f / static_cast<float>(std::minstd_rand::modulus));
+    (*result)[i] = min + (max - min) * random_value_scaled_0_1;
+  }
+}
+
+void EvalTestReferenceHardSwish(int size, const std::vector<float>& input,
+                                std::vector<float>* result) {
+  result->resize(size);
+  for (int i = 0; i < size; i++) {
+    const float in = input[i];
+    (*result)[i] = in * std::min(6.0f, std::max(0.0f, in + 3)) * (1.0f / 6.0f);
+  }
+}
+
+void TestFloatHardSwish(int size, std::minstd_rand* random_engine) {
+  std::vector<float> float_input_values;
+  const float kMin = -10.0f;
+  const float kMax = 10.0f;
+  GenerateUniformRandomVector(size, kMin, kMax, random_engine,
+                              &float_input_values);
+  std::vector<float> float_ref_output_values;
+  EvalTestReferenceHardSwish(size, float_input_values,
+                             &float_ref_output_values);
+  FloatActivationsOpModel m(BuiltinOperator_HARD_SWISH,
+                            /*input=*/{TensorType_FLOAT32, {1, 1, 1, size}},
+                            /*output=*/{TensorType_FLOAT32, {1, 1, 1, size}});
+  m.SetInput(float_input_values);
+
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(float_ref_output_values)));
+}
+
+template <typename QuantizedType>
+void TestQuantizedHardSwish(TensorType tensor_type, int size,
+                            std::minstd_rand* random_engine) {
+  std::vector<float> float_input_values;
+  const float kMin = -10.0f;
+  const float kMax = 10.0f;
+  GenerateUniformRandomVector(size, kMin, kMax, random_engine,
+                              &float_input_values);
+  const float kOutMin = -3;
+  const float kOutMax = kMax;
+  std::vector<float> float_ref_output_values;
+  EvalTestReferenceHardSwish(size, float_input_values,
+                             &float_ref_output_values);
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_HARD_SWISH,
+      /*input=*/{tensor_type, {1, 1, 1, size}, kMin, kMax},
+      /*output=*/{tensor_type, {1, 1, 1, size}, kOutMin, kOutMax});
+  m.SetInput<QuantizedType>(float_input_values);
+
+  m.Invoke();
+  // The numerical error for any 8bit quantized function is at least one half
+  // times the quantization step: 0.5 * (kOutMax - kOutMin) / 256.
+  // To that we add again the quantization step (kOutMax - kOutMin) / 256
+  // to allow for an off-by-one rounding error.
+  const float kTolerance = (kOutMax - kOutMin) * (1.5f / 256.f);
+  EXPECT_THAT(
+      m.GetDequantizedOutput<QuantizedType>(),
+      ElementsAreArray(ArrayFloatNear(float_ref_output_values, kTolerance)));
+}
+
+TEST(FloatActivationsOpTest, HardSwish) {
+  std::minstd_rand random_engine;
+  for (int size : {1, 2, 3, 4, 10, 20, 30, 40, 100}) {
+    TestFloatHardSwish(size, &random_engine);
+  }
+}
+
+TEST(QuantizedActivationsOpTest, HardSwish) {
+  std::minstd_rand random_engine;
+  for (int size : {1, 2, 3, 4, 10, 20, 30, 40, 100}) {
+    TestQuantizedHardSwish<uint8_t>(TensorType_UINT8, size, &random_engine);
+    TestQuantizedHardSwish<int8_t>(TensorType_INT8, size, &random_engine);
+  }
 }
 
 TEST(FloatActivationsOpTest, Tanh) {

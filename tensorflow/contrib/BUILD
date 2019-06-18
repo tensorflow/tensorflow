@@ -1,16 +1,22 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
+load("//third_party/mpi:mpi.bzl", "if_mpi")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
+
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
 )
 
+<<<<<<< HEAD
 load("//third_party/mpi:mpi.bzl", "if_mpi")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
+=======
+>>>>>>> upstream/master
 py_library(
     name = "contrib_py",
     srcs = glob(

@@ -41,7 +41,11 @@ enum class TargetIntrinsicID {
   kBarrierId,
 };
 
+<<<<<<< HEAD
 // Enumeration to get target specific device function.
+=======
+// Enumeration to get target specific device math function.
+>>>>>>> upstream/master
 enum class TargetDeviceFunctionID {
   kPow = 0,
   kErfcinv,
@@ -58,6 +62,7 @@ enum class TargetDeviceFunctionID {
   kRound
 };
 
+<<<<<<< HEAD
 // AMDGCN target address spaces
 constexpr int kAMDGPUGlobalMemoryAddrSpace = 1;
 constexpr int kAMDGPUSharedMemoryAddrSpace = 3;
@@ -65,6 +70,8 @@ constexpr int kAMDGPUSharedMemoryAddrSpace = 3;
 // NVPTX target address spaces
 constexpr int kNVPTXSharedMemoryAddrSpace = 3;
 
+=======
+>>>>>>> upstream/master
 // Emits a call to the specified target intrinsic with the given operands.
 
 // Overloaded intrinsics (for example, "minnum") must include a type

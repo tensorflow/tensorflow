@@ -343,6 +343,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kRng:
       instruction = CreateRng(shape, proto.distribution(), all_operands());
       break;
+    case HloOpcode::kRngGetAndUpdateState:
+      instruction = CreateRngGetAndUpdateState(shape, proto.delta());
+      break;
     case HloOpcode::kParameter:
       instruction =
           CreateParameter(proto.parameter_number(), shape, proto.name());
@@ -685,6 +688,11 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
   return absl::make_unique<HloRngInstruction>(shape, distribution, parameters);
 }
 
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateRngGetAndUpdateState(const Shape& shape, int64 delta) {
+  return absl::make_unique<HloRngGetAndUpdateStateInstruction>(shape, delta);
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateNary(
     const Shape& shape, HloOpcode opcode,
     absl::Span<HloInstruction* const> operands) {
@@ -709,6 +717,8 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kCopy:
+    case HloOpcode::kCopyStart:
+    case HloOpcode::kCopyDone:
     case HloOpcode::kCos:
     case HloOpcode::kClz:
     case HloOpcode::kExp:
@@ -1265,6 +1275,7 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kRng:
+    case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
@@ -1393,6 +1404,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kTrace:
     case HloOpcode::kFusion:
     case HloOpcode::kRng:
+    case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kParameter:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kReducePrecision:
@@ -1425,6 +1437,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kCeil:
     case HloOpcode::kClz:
     case HloOpcode::kCopy:
+    case HloOpcode::kCopyStart:
+    case HloOpcode::kCopyDone:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
@@ -1769,6 +1783,8 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kComplex:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
+    case HloOpcode::kCopyStart:
+    case HloOpcode::kCopyDone:
     case HloOpcode::kCos:
     case HloOpcode::kDivide:
     case HloOpcode::kDynamicUpdateSlice:
@@ -1853,6 +1869,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kTrace:
     case HloOpcode::kFusion:
     case HloOpcode::kRng:
+    case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kParameter:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kReducePrecision:
@@ -2705,6 +2722,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleOutfeed(this);
     case HloOpcode::kRng:
       return visitor->HandleRng(this);
+    case HloOpcode::kRngGetAndUpdateState:
+      return visitor->HandleRngGetAndUpdateState(this);
     case HloOpcode::kWhile:
       return visitor->HandleWhile(this);
     case HloOpcode::kFusion:
@@ -2715,6 +2734,10 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleConditional(this);
     case HloOpcode::kCustomCall:
       return visitor->HandleCustomCall(this);
+    case HloOpcode::kCopyStart:
+      return visitor->HandleCopyStart(this);
+    case HloOpcode::kCopyDone:
+      return visitor->HandleCopyDone(this);
     case HloOpcode::kRecv:
       return visitor->HandleRecv(this);
     case HloOpcode::kRecvDone:
@@ -3006,7 +3029,8 @@ class HloInstruction::FusionReusesParamElements {
   }
 };
 
-HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
+HloInstruction::UseKind HloInstruction::OperandElementUse(
+    int64 operand_num) const {
   switch (opcode_) {
     case HloOpcode::kBitcast:
     case HloOpcode::kConcatenate:
@@ -3017,30 +3041,28 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
       return UseKind::kUsePermutingElements;
     case HloOpcode::kPad:
       // Pad reuses the padding value but not the padded array elements.
-      return i > 0 ? UseKind::kReuse : UseKind::kUsePermutingElements;
+      return operand_num > 0 ? UseKind::kReuse : UseKind::kUsePermutingElements;
     case HloOpcode::kReduce:
       // Reduce reuses the init values but not the operand array elements.
-      return i >= Cast<HloReduceInstruction>(this)->input_count()
+      return operand_num >= Cast<HloReduceInstruction>(this)->input_count()
                  ? UseKind::kReuse
                  : UseKind::kUsePermutingElements;
     case HloOpcode::kFusion:
       // Uses the memoizing, recursive computation defined above.
-      return FusionReusesParamElements::Compute(i, *fused_expression_root());
+      return FusionReusesParamElements::Compute(operand_num,
+                                                *fused_expression_root());
     case HloOpcode::kDot:
-      // Dot operations with inputs [A,B] * [B,1] do not re-use
-      // elements on their left operand.
-      // Dot operations with inputs [1,A] * [A,B] do not re-use
-      // elements on their right operand.
-      if (shape().dimensions_size() == 2) {
-        if ((i == 0 && shape().dimensions(1) == 1) ||
-            (i == 1 && shape().dimensions(0) == 1)) {
+      // Matrix-vector dots do not reuse the matrix operand.
+      if (shape().dimensions_size() <= 1) {
+        if ((operand_num == 0 && operand(1)->shape().rank() <= 1) ||
+            (operand_num == 1 && operand(0)->shape().rank() <= 1)) {
           return UseKind::kUse;
         }
       }
       return UseKind::kReuse;
     case HloOpcode::kDynamicUpdateSlice:
       // Dynamic-update-slice reuses only start_indices.
-      if (i == 0 || i == 1) {
+      if (operand_num == 0 || operand_num == 1) {
         return UseKind::kUse;
       }
       return UseKind::kReuse;

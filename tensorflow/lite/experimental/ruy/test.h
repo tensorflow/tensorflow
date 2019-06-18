@@ -1152,7 +1152,7 @@ bool Agree(const Matrix<Scalar>& matrix1, const Matrix<Scalar>& matrix2,
     tolerated_max_diff = max_abs_val * std::numeric_limits<Scalar>::epsilon() *
                          4 * std::sqrt(static_cast<float>(depth));
     tolerated_mean_diff = tolerated_max_diff / std::sqrt(size);
-  } else if (RUY_OPT_SET & RUY_OPT_NATIVE_ROUNDING) {
+  } else if (RUY_OPT_ENABLED(RUY_OPT_NATIVE_ROUNDING)) {
     tolerated_max_diff = 1;
     // totally empirical
     tolerated_mean_diff = std::min(1.0, 2.0 * std::pow(size, -0.2));

@@ -73,11 +73,12 @@ void AssertOp::Compute(OpKernelContext* ctx) {
 }
 
 REGISTER_KERNEL_BUILDER(Name("Assert")
-                            .Device(DEVICE_CPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("condition")
                             .HostMemory("data"),
                         AssertOp);
 
+<<<<<<< HEAD
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(Name("Assert")
                             .Device(DEVICE_GPU)
@@ -86,6 +87,8 @@ REGISTER_KERNEL_BUILDER(Name("Assert")
                         AssertOp);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+=======
+>>>>>>> upstream/master
 class PrintOp : public OpKernel {
  public:
   explicit PrintOp(OpKernelConstruction* ctx)

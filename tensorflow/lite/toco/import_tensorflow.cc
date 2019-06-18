@@ -1748,7 +1748,7 @@ tensorflow::Status ConvertBatchNormWithGlobalNormalizationOperator(
 tensorflow::Status ConvertFusedBatchNormOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     const ModelFlags& model_flags, Model* model) {
-  CHECK_EQ(node.op(), "FusedBatchNorm");
+  CHECK((node.op() == "FusedBatchNorm") || (node.op() == "FusedBatchNormV3"));
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 5));
 
   // Declare shortcuts for the inputs.
@@ -2135,6 +2135,12 @@ void AddExtraOutputs(Model* model) {
   // Now add operator outputs so that all arrays that are consumed,
   // are produced.
   for (const string& consumed_array : consumed_arrays) {
+    // Test if consumed_array is already the output of some op.
+    // This has occurred in a model where separate nodes had names of the form
+    // foo:$i with the same base name foo.
+    if (GetOpWithOutput(*model, consumed_array)) {
+      continue;
+    }
     // Split the consumed array name into the form name:output_index.
     const std::vector<string>& split = absl::StrSplit(consumed_array, ':');
     // If not of the form name:output_index, then this is not an additional
@@ -2490,6 +2496,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"FloorDiv", ConvertSimpleOperator<FloorDivOperator, 2, 1>},
       {"FloorMod", ConvertSimpleOperator<FloorModOperator, 2, 1>},
       {"FusedBatchNorm", ConvertFusedBatchNormOperator},
+      {"FusedBatchNormV3", ConvertFusedBatchNormOperator},
       {"Gather", ConvertGatherOperator},
       {"GatherV2", ConvertGatherOperator},
       {"GatherNd", ConvertGatherNdOperator},

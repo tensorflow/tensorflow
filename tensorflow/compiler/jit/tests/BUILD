@@ -1,8 +1,8 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//visibility:private"])
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 cc_library(
     name = "auto_clustering_test_helper",

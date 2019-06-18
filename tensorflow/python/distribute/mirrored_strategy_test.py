@@ -342,14 +342,33 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
       self.assertEqual(in_scope, unwrapped[0])
       self.assertEqual(in_scope, originally)
 
-  def testFunctionInCallForEachReplicaNoMergeCall(self, distribution):
+  def testFunctionInCallForEachReplica(self, distribution):
+    traces = []
     @def_function.function
     def model_fn():
-      return 0.
+      traces.append(1)
+      return ds_context.get_replica_context().replica_id_in_sync_group
 
     with distribution.scope():
       result = distribution.extended.call_for_each_replica(model_fn)
-      self.assertEqual((0., 0.), self.evaluate(result.values))
+      self.assertEqual((0, 1), self.evaluate(result.values))
+      self.assertLen(traces, distribution.num_replicas_in_sync)
+
+  def testFunctionInCallForEachReplicaInsideAnotherFunction(self, distribution):
+    traces = []
+    @def_function.function
+    def model_fn():
+      traces.append(1)
+      return ds_context.get_replica_context().replica_id_in_sync_group
+
+    @def_function.function
+    def step():
+      return distribution.extended.call_for_each_replica(model_fn)
+
+    with distribution.scope():
+      result = step()
+      self.assertEqual((0, 1), self.evaluate(result.values))
+      self.assertLen(traces, distribution.num_replicas_in_sync)
 
   def testFunctionInCallForEachReplicaWithMergeCall(self, distribution):
     def merge_fn(_):

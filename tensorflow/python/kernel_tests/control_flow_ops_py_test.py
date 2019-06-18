@@ -1839,6 +1839,20 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       control_flow_ops.while_loop(
           c, b, [i, x], [i.shape, tensor_shape.TensorShape([5])])
 
+  @test_util.run_in_graph_and_eager_modes
+  def testWhileBadBodyReturn(self):
+    x = constant_op.constant([2.0, 4.0], name="values")
+    i = constant_op.constant(0)
+    c = lambda i, *x: math_ops.less(i, 10)
+
+    # body accepts N values and returns N+1 values.
+    b = lambda i, *x: (i, i) + x
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        "The two structures don't have the same nested structure."):
+      control_flow_ops.while_loop(c, b, [i, x])
+
   @test_util.run_deprecated_v1
   def testWhileWithNonTensorInput_Scalar(self):
     with self.cached_session():

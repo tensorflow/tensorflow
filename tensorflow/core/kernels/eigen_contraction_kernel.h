@@ -49,7 +49,10 @@ namespace internal {
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 // Returns `true` iff we can use custom contraction kernels. This is a runtime
 // check, that uses environment variables.
+<<<<<<< HEAD
 //bool UseCustomContractionKernels();
+=======
+>>>>>>> upstream/master
 EIGEN_DEVICE_FUNC EIGEN_DONT_INLINE bool UseCustomContractionKernels();
 
 // Pack a 2D block of a Tensor expression into contiguous block of memory with

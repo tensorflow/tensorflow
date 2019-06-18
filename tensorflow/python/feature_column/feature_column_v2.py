@@ -274,6 +274,10 @@ class _StateManagerImpl(StateManager):
     self._trainable = trainable
     self._layer = layer
     self._cols_to_vars_map = collections.defaultdict(lambda: {})
+    # TODO(vbardiovsky): Make sure the resources are tracked by moving them to
+    # the layer (inheriting from AutoTrackable), e.g.:
+    # self._layer._resources_map = data_structures.Mapping()
+    self._cols_to_resources_map = collections.defaultdict(lambda: {})
 
   def create_variable(self,
                       feature_column,
@@ -304,6 +308,14 @@ class _StateManagerImpl(StateManager):
     if name in self._cols_to_vars_map[feature_column]:
       return self._cols_to_vars_map[feature_column][name]
     raise ValueError('Variable does not exist.')
+
+  def add_resource(self, feature_column, name, resource):
+    self._cols_to_resources_map[feature_column][name] = resource
+
+  def get_resource(self, feature_column, name):
+    if name in self._cols_to_resources_map[feature_column]:
+      return self._cols_to_resources_map[feature_column][name]
+    raise ValueError('Resource does not exist.')
 
 
 class _BaseFeaturesLayer(Layer):
@@ -404,8 +416,8 @@ class DenseFeatures(_BaseFeaturesLayer):
   features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
   dense_tensor = feature_layer(features)
   for units in [128, 64, 32]:
-    dense_tensor = tf.compat.v1.layers.dense(dense_tensor, units, tf.nn.relu)
-  prediction = tf.compat.v1.layers.dense(dense_tensor, 1).
+    dense_tensor = tf.keras.layers.Dense(units, activation='relu')(dense_tensor)
+  prediction = tf.keras.layers.Dense(1)(dense_tensor)
   ```
   """
 
@@ -922,7 +934,7 @@ def embedding_column(categorical_column,
       `tf.embedding_lookup_sparse`.
     initializer: A variable initializer function to be used in embedding
       variable initialization. If not specified, defaults to
-      `tf.compat.v1.truncated_normal_initializer` with mean `0.0` and
+      `truncated_normal_initializer` with mean `0.0` and
       standard deviation `1/sqrt(dimension)`.
     ckpt_to_load_from: String representing checkpoint name/pattern from which to
       restore column weights. Required if `tensor_name_in_ckpt` is not `None`.
@@ -1045,7 +1057,7 @@ def shared_embedding_columns(categorical_columns,
       `tf.embedding_lookup_sparse`.
     initializer: A variable initializer function to be used in embedding
       variable initialization. If not specified, defaults to
-      `tf.compat.v1.truncated_normal_initializer` with mean `0.0` and
+      `truncated_normal_initializer` with mean `0.0` and
       standard deviation `1/sqrt(dimension)`.
     shared_embedding_collection_name: Optional name of the collection where
       shared embedding weights are added. If not given, a reasonable name will
@@ -1218,7 +1230,7 @@ def shared_embedding_columns_v2(categorical_columns,
       `tf.embedding_lookup_sparse`.
     initializer: A variable initializer function to be used in embedding
       variable initialization. If not specified, defaults to
-      `tf.compat.v1.truncated_normal_initializer` with mean `0.0` and standard
+      `truncated_normal_initializer` with mean `0.0` and standard
       deviation `1/sqrt(dimension)`.
     shared_embedding_collection_name: Optional collective name of these columns.
       If not given, a reasonable name will be chosen based on the names of
@@ -2870,18 +2882,10 @@ class NumericColumn(
   def _from_config(cls, config, custom_objects=None, columns_by_name=None):
     """See 'FeatureColumn` base class."""
     _check_config_keys(config, cls._fields)
-    kwargs = config.copy()
+    kwargs = _standardize_and_copy_config(config)
     kwargs['normalizer_fn'] = generic_utils.deserialize_keras_object(
         config['normalizer_fn'], custom_objects=custom_objects)
     kwargs['dtype'] = dtypes.as_dtype(config['dtype'])
-
-    # Keras serialization uses nest to listify everything.
-    # This causes problems with the NumericColumn shape, which becomes
-    # unhashable. We could try to solve this on the Keras side, but that
-    # would require lots of tracking to avoid changing existing behavior.
-    # Instead, we ensure here that we revive correctly.
-    if isinstance(config['shape'], list):
-      kwargs['shape'] = tuple(config['shape'])
 
     return cls(**kwargs)
 
@@ -3035,7 +3039,7 @@ class BucketizedColumn(
     """See 'FeatureColumn` base class."""
     from tensorflow.python.feature_column.serialization import deserialize_feature_column  # pylint: disable=g-import-not-at-top
     _check_config_keys(config, cls._fields)
-    kwargs = config.copy()
+    kwargs = _standardize_and_copy_config(config)
     kwargs['source_column'] = deserialize_feature_column(
         config['source_column'], custom_objects, columns_by_name)
     return cls(**kwargs)
@@ -3265,7 +3269,7 @@ class EmbeddingColumn(
     """See 'FeatureColumn` base class."""
     from tensorflow.python.feature_column.serialization import deserialize_feature_column  # pylint: disable=g-import-not-at-top
     _check_config_keys(config, cls._fields)
-    kwargs = config.copy()
+    kwargs = _standardize_and_copy_config(config)
     kwargs['categorical_column'] = deserialize_feature_column(
         config['categorical_column'], custom_objects, columns_by_name)
     kwargs['initializer'] = initializers.deserialize(
@@ -3572,7 +3576,7 @@ class HashedCategoricalColumn(
   def _from_config(cls, config, custom_objects=None, columns_by_name=None):
     """See 'FeatureColumn` base class."""
     _check_config_keys(config, cls._fields)
-    kwargs = config.copy()
+    kwargs = _standardize_and_copy_config(config)
     kwargs['dtype'] = dtypes.as_dtype(config['dtype'])
     return cls(**kwargs)
 
@@ -3683,7 +3687,7 @@ class VocabularyFileCategoricalColumn(
   def _from_config(cls, config, custom_objects=None, columns_by_name=None):
     """See 'FeatureColumn` base class."""
     _check_config_keys(config, cls._fields)
-    kwargs = config.copy()
+    kwargs = _standardize_and_copy_config(config)
     kwargs['dtype'] = dtypes.as_dtype(config['dtype'])
     return cls(**kwargs)
 
@@ -3794,7 +3798,7 @@ class VocabularyListCategoricalColumn(
   def _from_config(cls, config, custom_objects=None, columns_by_name=None):
     """See 'FeatureColumn` base class."""
     _check_config_keys(config, cls._fields)
-    kwargs = config.copy()
+    kwargs = _standardize_and_copy_config(config)
     kwargs['dtype'] = dtypes.as_dtype(config['dtype'])
     return cls(**kwargs)
 
@@ -3912,7 +3916,8 @@ class IdentityCategoricalColumn(
   def _from_config(cls, config, custom_objects=None, columns_by_name=None):
     """See 'FeatureColumn` base class."""
     _check_config_keys(config, cls._fields)
-    return cls(**config)
+    kwargs = _standardize_and_copy_config(config)
+    return cls(**kwargs)
 
 
 class WeightedCategoricalColumn(
@@ -4031,7 +4036,7 @@ class WeightedCategoricalColumn(
     """See 'FeatureColumn` base class."""
     from tensorflow.python.feature_column.serialization import deserialize_feature_column  # pylint: disable=g-import-not-at-top
     _check_config_keys(config, cls._fields)
-    kwargs = config.copy()
+    kwargs = _standardize_and_copy_config(config)
     kwargs['categorical_column'] = deserialize_feature_column(
         config['categorical_column'], custom_objects, columns_by_name)
     kwargs['dtype'] = dtypes.as_dtype(config['dtype'])
@@ -4173,7 +4178,7 @@ class CrossedColumn(
     """See 'FeatureColumn` base class."""
     from tensorflow.python.feature_column.serialization import deserialize_feature_column  # pylint: disable=g-import-not-at-top
     _check_config_keys(config, cls._fields)
-    kwargs = config.copy()
+    kwargs = _standardize_and_copy_config(config)
     kwargs['keys'] = tuple([
         deserialize_feature_column(c, custom_objects, columns_by_name)
         for c in config['keys']
@@ -4444,7 +4449,7 @@ class IndicatorColumn(
     """See 'FeatureColumn` base class."""
     from tensorflow.python.feature_column.serialization import deserialize_feature_column  # pylint: disable=g-import-not-at-top
     _check_config_keys(config, cls._fields)
-    kwargs = config.copy()
+    kwargs = _standardize_and_copy_config(config)
     kwargs['categorical_column'] = deserialize_feature_column(
         config['categorical_column'], custom_objects, columns_by_name)
     return cls(**kwargs)
@@ -4460,7 +4465,7 @@ def _verify_static_batch_size_equality(tensors, columns):
   Raises:
     ValueError: in case of mismatched batch sizes.
   """
-  # bath_size is a tf.compat.v1.Dimension object.
+  # bath_size is a Dimension object.
   expected_batch_size = None
   for i in range(0, len(tensors)):
     batch_size = tensor_shape.Dimension(tensor_shape.dimension_value(
@@ -4590,7 +4595,7 @@ class SequenceCategoricalColumn(
     """See 'FeatureColumn` base class."""
     from tensorflow.python.feature_column.serialization import deserialize_feature_column  # pylint: disable=g-import-not-at-top
     _check_config_keys(config, cls._fields)
-    kwargs = config.copy()
+    kwargs = _standardize_and_copy_config(config)
     kwargs['categorical_column'] = deserialize_feature_column(
         config['categorical_column'], custom_objects, columns_by_name)
     return cls(**kwargs)
@@ -4601,3 +4606,26 @@ def _check_config_keys(config, expected_keys):
   if set(config.keys()) != set(expected_keys):
     raise ValueError('Invalid config: {}, expected keys: {}'.format(
         config, expected_keys))
+
+
+def _standardize_and_copy_config(config):
+  """Returns a shallow copy of config with lists turned to tuples.
+
+  Keras serialization uses nest to listify everything.
+  This causes problems with the NumericColumn shape, which becomes
+  unhashable. We could try to solve this on the Keras side, but that
+  would require lots of tracking to avoid changing existing behavior.
+  Instead, we ensure here that we revive correctly.
+
+  Args:
+    config: dict that will be used to revive a Feature Column
+
+  Returns:
+    Shallow copy of config with lists turned to tuples.
+  """
+  kwargs = config.copy()
+  for k, v in kwargs.items():
+    if isinstance(v, list):
+      kwargs[k] = tuple(v)
+
+  return kwargs

@@ -41,7 +41,7 @@ __global__ void MatrixBandPartKernel(const int num_threads,
     const int band_start = (num_lower_diags < 0 ? 0 : row - num_lower_diags);
     const int band_end = (num_upper_diags < 0 ? n : row + num_upper_diags + 1);
     if (col < band_start || col >= band_end) {
-      output_ptr[index] = Scalar();
+      output_ptr[index] = Scalar(0);
     } else {
       output_ptr[index] = input_ptr[index];
     }
@@ -59,10 +59,17 @@ struct MatrixBandPartFunctor<GPUDevice, Scalar> {
     const int n = input.dimension(2);
     GpuLaunchConfig config = GetGpuLaunchConfig(batch_size * m * n, device);
     TF_CHECK_OK(GpuLaunchKernel(MatrixBandPartKernel<Scalar>,
+<<<<<<< HEAD
                                  config.block_count, config.thread_per_block, 0,
                                  device.stream(), config.virtual_thread_count,
                                  batch_size, m, n, num_lower_diags,
                                  num_upper_diags, input.data(), output.data()));
+=======
+                                config.block_count, config.thread_per_block, 0,
+                                device.stream(), config.virtual_thread_count,
+                                batch_size, m, n, num_lower_diags,
+                                num_upper_diags, input.data(), output.data()));
+>>>>>>> upstream/master
   }
 };
 

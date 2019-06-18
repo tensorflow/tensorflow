@@ -61,6 +61,30 @@ ENTRY main {
   RunTest(hlo_text, {&lhs, &rhs});
 }
 
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ScalarDotFusion) {
+  const char* hlo_text = R"(
+HloModule ScalarDotFusion
+
+fused_computation {
+  arg0 = s32[2,2]{1,0} parameter(0)
+  reshape.lhs = s32[4]{0} reshape(arg0)
+  arg1 = s32[2,2]{1,0} parameter(1)
+  reshape.rhs = s32[4]{0} reshape(arg1)
+  ROOT dot = s32[] dot(reshape.lhs, reshape.rhs), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+
+ENTRY main {
+  entry_arg0 = s32[2,2]{1,0} parameter(0)
+  entry_arg1 = s32[2,2]{1,0} parameter(1)
+  ROOT fusion = s32[] fusion(entry_arg0, entry_arg1), kind=kLoop, calls=fused_computation
+}
+)";
+
+  Literal lhs = LiteralUtil::CreateR2<int32>({{1, 2}, {3, 4}});
+  Literal rhs = LiteralUtil::CreateR2<int32>({{10, 20}, {30, 40}});
+  RunTest(hlo_text, {&lhs, &rhs});
+}
+
 XLA_TEST_F(ElementalIrEmitterExecutionTest, BatchDot) {
   const char* hlo_text = R"(
 HloModule BatchDot

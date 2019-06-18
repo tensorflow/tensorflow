@@ -4587,6 +4587,65 @@ void ReverseSequence(const TS* seq_lengths, const int seq_dim,
   }
 }
 
+template <typename T>
+inline void HardSwish(const RuntimeShape& input_shape, const T* input_data,
+                      const RuntimeShape& output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("ReferenceHardSwish/Float");
+  auto matching_size = MatchingFlatSize(input_shape, output_shape);
+  const T* in_end = input_data + matching_size;
+  for (; input_data < in_end; input_data++, output_data++) {
+    const float in = *input_data;
+    *output_data =
+        in * std::min(static_cast<T>(6), std::max(static_cast<T>(0), in + 3)) /
+        6;
+  }
+}
+
+template <typename T>
+inline T Saturate(int32_t v) {
+  return static_cast<T>(std::min(
+      static_cast<int32_t>(std::numeric_limits<T>::max()),
+      std::max(static_cast<int32_t>(std::numeric_limits<T>::min()), v)));
+}
+
+template <typename T>
+inline void HardSwish(const HardSwishParams& params,
+                      const RuntimeShape& input_shape, const T* input_data,
+                      const RuntimeShape& output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("ReferenceHardSwish/Quantized");
+  // Goal: (x * relu6(x+3))/6
+  const T* in = input_data;
+  T* out = output_data;
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  const T* in_end = in + flat_size;
+  const int32_t extra_input_shift = params.clip_input_shift;
+  const auto in_zero_point = params.input_zero_point;
+  const auto three_in = params.three_input;
+  const auto six_in = params.six_input;
+  const auto real_shift = params.shift;
+  const auto scale = params.scale;
+  const auto offset = params.output_offset;
+
+  for (; in < in_end; in++, out++) {
+    int32_t v = static_cast<int32>(*in);
+    v -= in_zero_point;  // Make zeros - zero again!
+
+    // Computes x + 3 in input * 2^extra_input_shift scale.
+    //
+    // Note: three_in is in that scale already.
+    const int32_t v3 = (v << extra_input_shift) + three_in;
+
+    // Computes hard-swish up to a final scale
+    v *= std::min(six_in, std::max(0, v3));
+
+    // this converts from x * relu6(x+3) in input into x * relu6(x+3) / 6
+    // in output scale.
+    v = MultiplyByQuantizedMultiplierSmallerThanOneExp(v, scale, real_shift);
+    v += offset;
+    *out = Saturate<uint8>(v);
+  }
+}
+
 }  // namespace reference_ops
 }  // namespace tflite
 

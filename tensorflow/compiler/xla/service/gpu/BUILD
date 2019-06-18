@@ -174,11 +174,10 @@ cc_library(
     srcs = ["target_util.cc"],
     hdrs = ["target_util.h"],
     deps = [
-        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_builder_mixin",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm//:core",
@@ -275,7 +274,10 @@ cc_library(
     srcs = ["elemental_ir_emitter.cc"],
     hdrs = ["elemental_ir_emitter.h"],
     deps = [
+<<<<<<< HEAD
         ":ir_emission_utils",
+=======
+>>>>>>> upstream/master
         ":target_util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -749,6 +751,7 @@ tf_cc_test(
     name = "instruction_fusion_test",
     srcs = ["instruction_fusion_test.cc"],
     deps = [
+        ":gpu_fusible",
         ":instruction_fusion",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -782,6 +785,7 @@ tf_cc_test(
     name = "multi_output_fusion_test",
     srcs = ["multi_output_fusion_test.cc"],
     deps = [
+        ":gpu_fusible",
         ":instruction_fusion",
         ":multi_output_fusion",
         "//tensorflow/compiler/xla:status_macros",
@@ -1256,7 +1260,6 @@ cc_library(
     srcs = ["buffer_comparator.cc"],
     hdrs = ["buffer_comparator.h"],
     deps = [
-        ":gpu_executable",
         ":partition_assignment",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -1282,6 +1285,7 @@ tf_cc_test(
         "//tensorflow/core:core",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
         "//tensorflow/stream_executor:device_memory",
     ],
 )

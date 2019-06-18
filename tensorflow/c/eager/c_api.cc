@@ -476,7 +476,7 @@ TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
   tensorflow::Tensor tensor;
   status->status = tensorflow::TF_TensorToTensor(t, &tensor);
   if (!status->status.ok()) return nullptr;
-  return new TFE_TensorHandle(tensor);
+  return TFE_TensorHandle::CreateLocalHandle(tensor, status);
 }
 
 void TFE_DeleteTensorHandle(TFE_TensorHandle* h) {
@@ -971,8 +971,9 @@ void TFE_ContextDisableRunMetadata(TFE_Context* ctx) {
 
 }  // extern "C"
 
-TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t) {
-  return new TFE_TensorHandle(t);
+TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t,
+                                      TF_Status* status) {
+  return TFE_TensorHandle::CreateLocalHandle(t, status);
 }
 
 const tensorflow::Tensor* TFE_TensorHandleUnderlyingTensorInHostMemory(

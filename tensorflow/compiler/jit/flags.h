@@ -69,6 +69,12 @@ struct MarkForCompilationPassFlags {
   // we do not do deadness related safety checks.  This is unsound in general,
   // but can be used as a debugging aid.
   bool tf_xla_disable_deadness_safety_checks_for_debugging;
+
+  // If tf_xla_disable_resource_variable_safety_checks_for_debugging is set to
+  // true then we do not do safety checks to preserve TensorFlow's resource
+  // variable concurrency semantics.  This is unsound in general, but can be
+  // used as a debugging aid.
+  bool tf_xla_disable_resource_variable_safety_checks_for_debugging;
 };
 
 // Flags associated with the XLA bridge's xla_device module.

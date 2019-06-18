@@ -3843,14 +3843,23 @@ Status IrEmitterUnnested::EmitConstantGlobals() {
     //
     // We may have to be more more clever here in the future if we notice that
     // we're keeping around too many globals because of their linkage.
+<<<<<<< HEAD
     unsigned global_address_space =
         GetGlobalMemoryAddressSpace(*(ir_emitter_context_->llvm_module()));
+=======
+    unsigned global_address_space = llvm_ir::GetGlobalMemoryAddressSpace(
+        *ir_emitter_context_->llvm_module());
+>>>>>>> upstream/master
     llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
         global_type, /*isConstant=*/should_emit_initializer,
         llvm::GlobalValue::ExternalLinkage,
         /*Initializer=*/initializer,
+<<<<<<< HEAD
         llvm_ir::AsStringRef(
             llvm_ir::ConstantBufferAllocationToGlobalName(allocation)),
+=======
+        llvm_ir::ConstantBufferAllocationToGlobalName(allocation),
+>>>>>>> upstream/master
         /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
         /*AddressSpace=*/global_address_space,
         /*isExternallyInitialized=*/false);

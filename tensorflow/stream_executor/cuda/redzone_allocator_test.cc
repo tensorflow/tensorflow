@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifdef GOOGLE_CUDA
+
 #include "tensorflow/stream_executor/cuda/redzone_allocator.h"
 
 <<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/redzone_allocator_test.cc
@@ -148,3 +150,5 @@ TEST(RedzoneAllocatorTest, VeryLargeRedzone) {
 }  // namespace
 }  // namespace cuda
 }  // namespace stream_executor
+
+#endif  // GOOGLE_CUDA

@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cmath>
-#include "absl/base/casts.h"
+
+#include "tensorflow/compiler/xla/bit_cast.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -169,17 +170,17 @@ float HostDigamma(float x) {
 //
 // See https://people.eecs.berkeley.edu/~wkahan/Math128/BinDecBin.pdf.)
 string StringifyNum(float x) {
-  return absl::StrFormat("%0.9g (0x%08x)", x, absl::bit_cast<uint32>(x));
+  return absl::StrFormat("%0.9g (0x%08x)", x, BitCast<uint32>(x));
 }
 
 string StringifyNum(half x) {
   return absl::StrFormat("%0.5g (0x%04x)", static_cast<float>(x),
-                         absl::bit_cast<uint16>(x));
+                         BitCast<uint16>(x));
 }
 
 string StringifyNum(bfloat16 x) {
   return absl::StrFormat("%0.4g (0x%04x)", static_cast<float>(x),
-                         absl::bit_cast<uint16>(x));
+                         BitCast<uint16>(x));
 }
 
 // Test parameter is a tuple containing
@@ -257,7 +258,7 @@ class ExhaustiveOpTest
       if (known_incorrect_fn_ && known_incorrect_fn_(input_val)) {
         input_arr[i] = T{0};
       } else {
-        input_arr[i] = absl::bit_cast<T>(input_val);
+        input_arr[i] = BitCast<T>(input_val);
       }
     }
 
@@ -640,13 +641,12 @@ void ExhaustiveOpTest::SetParamsForSinCosTan() {
     rel_err_ = 0.001;
     abs_err_ = 0.001;
     known_incorrect_fn_ = [](int64 v) {
-      float f = absl::bit_cast<float>(static_cast<uint32>(v));
+      float f = BitCast<float>(static_cast<uint32>(v));
       return std::abs(f) > (1 << 13);
     };
   } else if (ty_ == BF16) {
     known_incorrect_fn_ = [](int64 v) {
-      float f =
-          static_cast<float>(absl::bit_cast<bfloat16>(static_cast<uint16>(v)));
+      float f = static_cast<float>(BitCast<bfloat16>(static_cast<uint16>(v)));
       return std::abs(f) > (1 << 13);
     };
   }
@@ -690,8 +690,8 @@ XLA_TEST_P(ExhaustiveOpTest, Digamma) {
     // the results we get here are very close to MAX_FLOAT.  We just hardcode
     // these results, as this is better than ignoring these inputs altogether.
     auto host_digamma_with_gpu_ftz_errors = +[](float x) {
-      if (absl::bit_cast<uint32>(x) == 0x00200000 ||
-          absl::bit_cast<uint32>(x) == 0x80200000) {
+      if (BitCast<uint32>(x) == 0x00200000 ||
+          BitCast<uint32>(x) == 0x80200000) {
         return std::copysign(std::numeric_limits<float>::max(), -x);
       }
       return HostDigamma(x);
@@ -717,7 +717,7 @@ XLA_TEST_P(ExhaustiveOpTest, Lgamma) {
     // Overflows to inf for input 4.08500343e+36 (0x7c44af8e).
     if (ty_ == F32) {
       host_lgamma = +[](float v) {
-        if (absl::bit_cast<uint32>(v) == 0x7c44af8e) {
+        if (BitCast<uint32>(v) == 0x7c44af8e) {
           return std::numeric_limits<float>::infinity();
         }
         return std::lgamma(v);

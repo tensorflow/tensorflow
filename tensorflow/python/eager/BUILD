@@ -1,7 +1,3 @@
-package(
-    licenses = ["notice"],  # Apache 2.0
-)
-
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load(
@@ -9,6 +5,10 @@ load(
     "tf_py_logged_benchmark",
 )
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "pywrap_tfe_lib",
@@ -545,6 +545,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["memory_test.py"],
     additional_deps = [
+        ":remote",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/keras",
         "//tensorflow/python/eager:test",
@@ -553,6 +554,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "@six_archive//:six",
     ],
+    shard_count = 4,
     tags = [
         "optonly",  # The test is too slow in non-opt mode
     ],

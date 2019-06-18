@@ -80,14 +80,23 @@ using gpuError_t = hipError_t;
 #endif
 
 namespace tensorflow {
+<<<<<<< HEAD
+=======
+
+>>>>>>> upstream/master
 #if GOOGLE_CUDA
 // cudaGetErrorString is available to both host and device
 __host__ __device__ inline const char* GpuGetErrorString(cudaError_t error) {
   return cudaGetErrorString(error);
+<<<<<<< HEAD
+=======
+}
+>>>>>>> upstream/master
 #elif TENSORFLOW_USE_ROCM
 // hipGetErrorString is available on host side only
 inline const char* GpuGetErrorString(hipError_t error) {
   return hipGetErrorString(error);
+<<<<<<< HEAD
 #endif
 }
 
@@ -103,6 +112,12 @@ inline const gpuStream_t& GetGpuStream(OpKernelContext* context) {
   return *ptr;
 }
 
+=======
+}
+#endif
+
+// Launches a GPU kernel through cudaLaunchKernel in CUDA environment, or
+>>>>>>> upstream/master
 // hipLaunchKernel in ROCm environment with the given arguments.
 //
 // The kernel parameters 'Ts' must be constructible from the arguments 'Args'.

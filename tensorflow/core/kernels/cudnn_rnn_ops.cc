@@ -502,20 +502,23 @@ struct CudnnRnnModelShapes {
   int dir_count;
   int max_seq_length;
   int batch_size;
+  int cell_num_units = 0;
   TensorShape input_shape;
   TensorShape output_shape;
   TensorShape hidden_state_shape;
+  TensorShape cell_state_shape;
   // At present only fields related to cached RnnDescriptor are concerned.
   bool IsCompatibleWith(const CudnnRnnModelShapes& rhs) const {
     return num_layers == rhs.num_layers && input_size == rhs.input_size &&
-           num_units == rhs.num_units && dir_count == rhs.dir_count;
+           num_units == rhs.num_units && dir_count == rhs.dir_count &&
+           cell_num_units == rhs.cell_num_units;
   }
   string DebugString() const {
     return strings::Printf(
         "[num_layers, input_size, num_units, dir_count, max_seq_length, "
-        "batch_size]: [%d, %d, %d, %d, %d, %d] ",
+        "batch_size, cell_num_units]: [%d, %d, %d, %d, %d, %d, %d] ",
         num_layers, input_size, num_units, dir_count, max_seq_length,
-        batch_size);
+        batch_size, cell_num_units);
   }
 };
 
@@ -562,6 +565,7 @@ Status ExtractForwardInput(OpKernelContext* context,
                            const CudnnModelTypes& model_types, bool time_major,
                            const Tensor** input, const Tensor** input_h,
                            const Tensor** input_c, const Tensor** params,
+                           const int num_proj,
                            CudnnRnnModelShapes* model_shapes) {
   TF_RETURN_IF_ERROR(context->input("input", input));
   TF_RETURN_IF_ERROR(context->input("input_h", input_h));
@@ -615,12 +619,48 @@ Status ExtractForwardInput(OpKernelContext* context,
         model_shapes->hidden_state_shape.DebugString());
   }
   if (model_types.HasInputC()) {
-    if ((*input_h)->shape() != (*input_c)->shape()) {
-      return errors::InvalidArgument(
-          "input_h and input_c must have the same shape: ",
-          (*input_h)->shape().DebugString(), " ",
-          (*input_c)->shape().DebugString());
+    model_shapes->cell_num_units = (*input_c)->dim_size(2);
+    if (time_major) {
+      model_shapes->cell_state_shape =
+          TensorShape({model_shapes->dir_count * model_shapes->num_layers,
+                       model_shapes->batch_size, model_shapes->cell_num_units});
+    } else {
+      model_shapes->cell_state_shape =
+          TensorShape({model_shapes->batch_size,
+                       model_shapes->dir_count * model_shapes->num_layers,
+                       model_shapes->cell_num_units});
     }
+    if (num_proj == 0) {
+      if ((*input_h)->shape() != (*input_c)->shape()) {
+        return errors::InvalidArgument(
+            "input_h and input_c must have the same shape w/o projection: ",
+            (*input_h)->shape().DebugString(), " ",
+            (*input_c)->shape().DebugString());
+      }
+    } else {
+      if ((*input_h)->dim_size(2) > (*input_c)->dim_size(2) ||
+          num_proj != (*input_h)->dim_size(2) ||
+          (*input_h)->dim_size(0) != (*input_c)->dim_size(0) ||
+          (*input_h)->dim_size(1) != (*input_c)->dim_size(1)) {
+        return errors::InvalidArgument(
+            "Invalid input_h and input_c w/ projection size: ", num_proj, " ",
+            (*input_h)->shape().DebugString(), " ",
+            (*input_c)->shape().DebugString());
+      }
+    }
+  } else {
+    // dummy cell_state_shape TODO(kaixih): remove the time_major branch
+    if (time_major) {
+      model_shapes->cell_state_shape =
+          TensorShape({model_shapes->dir_count * model_shapes->num_layers,
+                       model_shapes->batch_size, model_shapes->num_units});
+    } else {
+      model_shapes->cell_state_shape =
+          TensorShape({model_shapes->batch_size,
+                       model_shapes->dir_count * model_shapes->num_layers,
+                       model_shapes->num_units});
+    }
+    model_shapes->cell_num_units = 0;
   }
   if (time_major) {
     model_shapes->output_shape =
@@ -639,18 +679,19 @@ Status ExtractForwardInput(OpKernelContext* context,
                            const CudnnModelTypes& model_types, bool time_major,
                            const Tensor** input, const Tensor** input_h,
                            const Tensor** input_c, const Tensor** params,
-                           const Tensor** sequence_lengths,
+                           const Tensor** sequence_lengths, const int num_proj,
                            CudnnRnnModelShapes* model_shapes) {
   TF_RETURN_IF_ERROR(context->input("sequence_lengths", sequence_lengths));
   return ExtractForwardInput(context, model_types, time_major, input, input_h,
-                             input_c, params, model_shapes);
+                             input_c, params, num_proj, model_shapes);
 }
 
 template <typename T>
 Status CreateForwardAndBackwardIODescriptors(
     OpKernelContext* context, const CudnnRnnModelShapes& model_shapes,
     std::unique_ptr<RnnSequenceTensorDescriptor>* input_desc,
-    std::unique_ptr<RnnStateTensorDescriptor>* state_desc,
+    std::unique_ptr<RnnStateTensorDescriptor>* h_state_desc,
+    std::unique_ptr<RnnStateTensorDescriptor>* c_state_desc,
     std::unique_ptr<RnnSequenceTensorDescriptor>* output_desc,
     const absl::Span<const int>& seq_lengths, bool time_major) {
   StreamExecutor* executor = context->op_device_context()->stream()->parent();
@@ -658,6 +699,7 @@ Status CreateForwardAndBackwardIODescriptors(
 
   const TensorShape& input_shape = model_shapes.input_shape;
   const TensorShape& hidden_state_shape = model_shapes.hidden_state_shape;
+  const TensorShape& cell_state_shape = model_shapes.cell_state_shape;
   const TensorShape& output_shape = model_shapes.output_shape;
 
   DCHECK_EQ(input_shape.dims(), 3);
@@ -689,13 +731,28 @@ Status CreateForwardAndBackwardIODescriptors(
         hidden_state_shape.dim_size(0), hidden_state_shape.dim_size(1),
         hidden_state_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(hidden_state_desc_s.status());
-    *state_desc = hidden_state_desc_s.ConsumeValueOrDie();
+    *h_state_desc = hidden_state_desc_s.ConsumeValueOrDie();
   } else {
     auto hidden_state_desc_s = executor->createRnnStateTensorDescriptor(
         hidden_state_shape.dim_size(1), hidden_state_shape.dim_size(0),
         hidden_state_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(hidden_state_desc_s.status());
-    *state_desc = hidden_state_desc_s.ConsumeValueOrDie();
+    *h_state_desc = hidden_state_desc_s.ConsumeValueOrDie();
+  }
+
+  DCHECK_EQ(cell_state_shape.dims(), 3);
+  if (time_major) {
+    auto cell_state_desc_s = executor->createRnnStateTensorDescriptor(
+        cell_state_shape.dim_size(0), cell_state_shape.dim_size(1),
+        cell_state_shape.dim_size(2), data_type);
+    TF_RETURN_IF_ERROR(cell_state_desc_s.status());
+    *c_state_desc = cell_state_desc_s.ConsumeValueOrDie();
+  } else {
+    auto cell_state_desc_s = executor->createRnnStateTensorDescriptor(
+        cell_state_shape.dim_size(1), cell_state_shape.dim_size(0),
+        cell_state_shape.dim_size(2), data_type);
+    TF_RETURN_IF_ERROR(cell_state_desc_s.status());
+    *c_state_desc = cell_state_desc_s.ConsumeValueOrDie();
   }
 
   DCHECK_EQ(output_shape.dims(), 3);
@@ -739,7 +796,8 @@ Status DoForward(OpKernelContext* context, const RnnDescriptor& rnn_desc,
                  ScratchAllocator* workspace_allocator,
                  ProfileResult* output_profile_result) {
   std::unique_ptr<RnnSequenceTensorDescriptor> input_desc;
-  std::unique_ptr<RnnStateTensorDescriptor> state_desc;
+  std::unique_ptr<RnnStateTensorDescriptor> h_state_desc;
+  std::unique_ptr<RnnStateTensorDescriptor> c_state_desc;
   std::unique_ptr<RnnSequenceTensorDescriptor> output_desc;
 
   absl::Span<const int> seq_lengths;
@@ -748,8 +806,8 @@ Status DoForward(OpKernelContext* context, const RnnDescriptor& rnn_desc,
         sequence_lengths->template flat<int>().data(), model_shapes.batch_size);
   }
   TF_RETURN_IF_ERROR(CreateForwardAndBackwardIODescriptors<T>(
-      context, model_shapes, &input_desc, &state_desc, &output_desc,
-      seq_lengths, time_major));
+      context, model_shapes, &input_desc, &h_state_desc, &c_state_desc,
+      &output_desc, seq_lengths, time_major));
 
   auto input_data = AsDeviceMemory<T>(input);
   auto input_h_data = AsDeviceMemory<T>(input_h);
@@ -769,11 +827,11 @@ Status DoForward(OpKernelContext* context, const RnnDescriptor& rnn_desc,
   Stream* stream = context->op_device_context()->stream();
   bool launch_success =
       stream
-          ->ThenRnnForward(rnn_desc, *input_desc, input_data, *state_desc,
-                           input_h_data, *state_desc, input_c_data, params_data,
-                           *output_desc, &output_data, *state_desc,
-                           &output_h_data, *state_desc, &output_c_data,
-                           is_training, reserve_space_allocator,
+          ->ThenRnnForward(rnn_desc, *input_desc, input_data, *h_state_desc,
+                           input_h_data, *c_state_desc, input_c_data,
+                           params_data, *output_desc, &output_data,
+                           *h_state_desc, &output_h_data, *c_state_desc,
+                           &output_c_data, is_training, reserve_space_allocator,
                            workspace_allocator, output_profile_result)
           .ok();
   return launch_success
@@ -801,7 +859,8 @@ Status DoBackward(
     ScratchAllocator* workspace_allocator,
     ProfileResult* output_profile_result) {
   std::unique_ptr<RnnSequenceTensorDescriptor> input_desc;
-  std::unique_ptr<RnnStateTensorDescriptor> state_desc;
+  std::unique_ptr<RnnStateTensorDescriptor> h_state_desc;
+  std::unique_ptr<RnnStateTensorDescriptor> c_state_desc;
   std::unique_ptr<RnnSequenceTensorDescriptor> output_desc;
 
   absl::Span<const int> seq_lengths;
@@ -810,8 +869,8 @@ Status DoBackward(
         sequence_lengths->template flat<int>().data(), model_shapes.batch_size);
   }
   TF_RETURN_IF_ERROR(CreateForwardAndBackwardIODescriptors<T>(
-      context, model_shapes, &input_desc, &state_desc, &output_desc,
-      seq_lengths, time_major));
+      context, model_shapes, &input_desc, &h_state_desc, &c_state_desc,
+      &output_desc, seq_lengths, time_major));
 
   auto input_data = AsDeviceMemory<T>(input);
   auto input_h_data = AsDeviceMemory<T>(input_h);
@@ -847,15 +906,15 @@ Status DoBackward(
   Stream* stream = context->op_device_context()->stream();
   bool launch_success =
       stream
-          ->ThenRnnBackward(rnn_desc, *input_desc, input_data, *state_desc,
-                            input_h_data, *state_desc, input_c_data,
-                            params_data, *output_desc, output_data, *state_desc,
-                            output_h_data, *state_desc, output_c_data,
-                            output_backprop_data, output_h_backprop_data,
-                            output_c_backprop_data, &input_backprop_data,
-                            &input_h_backprop_data, &input_c_backprop_data,
-                            &params_backprop_data, &reserve_space_uint8,
-                            workspace_allocator, output_profile_result)
+          ->ThenRnnBackward(
+              rnn_desc, *input_desc, input_data, *h_state_desc, input_h_data,
+              *c_state_desc, input_c_data, params_data, *output_desc,
+              output_data, *h_state_desc, output_h_data, *c_state_desc,
+              output_c_data, output_backprop_data, output_h_backprop_data,
+              output_c_backprop_data, &input_backprop_data,
+              &input_h_backprop_data, &input_c_backprop_data,
+              &params_backprop_data, &reserve_space_uint8, workspace_allocator,
+              output_profile_result)
           .ok();
   return launch_success
              ? Status::OK()
@@ -932,7 +991,7 @@ class CudnnRNNKernelCommon : public OpKernel {
   bool ResetRndGenState() { return reset_rnd_gen_state_; }
 
   template <typename T>
-  Status ExtractCudnnRNNParamsInfo(OpKernelContext* context,
+  Status ExtractCudnnRNNParamsInfo(OpKernelContext* context, int num_proj,
                                    std::unique_ptr<RnnDescriptor>* rnn_desc) {
     const Tensor* num_layers_t = nullptr;
     TF_RETURN_IF_ERROR(context->input("num_layers", &num_layers_t));
@@ -953,6 +1012,9 @@ class CudnnRNNKernelCommon : public OpKernel {
     }
     int input_size = input_size_t->scalar<int>()();
 
+    int h_num_units = (num_proj == 0 ? num_units : num_proj);
+    int c_num_units = (num_proj == 0 ? 0 : num_units);
+
     RnnInputMode input_mode;
     TF_RETURN_IF_ERROR(
         ToRNNInputMode(rnn_input_mode(), num_units, input_size, &input_mode));
@@ -962,9 +1024,10 @@ class CudnnRNNKernelCommon : public OpKernel {
     // random number generator, therefore set state_allocator to nullptr.
     const AlgorithmConfig algo_config;
     auto rnn_desc_s = stream->parent()->createRnnDescriptor(
-        num_layers, num_units, input_size, /*batch_size=*/0, input_mode,
-        rnn_direction_mode(), rnn_mode(), ToDataType<T>::value, algo_config,
-        dropout(), seed(), /* state_allocator=*/nullptr);
+        num_layers, h_num_units, input_size, /*cell_size=*/c_num_units,
+        /*batch_size=*/0, input_mode, rnn_direction_mode(), rnn_mode(),
+        ToDataType<T>::value, algo_config, dropout(), seed(),
+        /* state_allocator=*/nullptr);
     if (!rnn_desc_s.ok()) {
       return FromExecutorStatus(rnn_desc_s);
     }
@@ -983,9 +1046,9 @@ class CudnnRNNKernelCommon : public OpKernel {
     se::dnn::DataType data_type = ToDataType<T>::value;
     auto rnn_desc_s = executor->createRnnDescriptor(
         model_shapes.num_layers, model_shapes.num_units,
-        model_shapes.input_size, model_shapes.batch_size, input_mode,
-        rnn_direction_mode(), rnn_mode(), data_type, algo_config, dropout(),
-        seed(), dropout_state_allocator);
+        model_shapes.input_size, model_shapes.cell_num_units,
+        model_shapes.batch_size, input_mode, rnn_direction_mode(), rnn_mode(),
+        data_type, algo_config, dropout(), seed(), dropout_state_allocator);
     TF_RETURN_IF_ERROR(rnn_desc_s.status());
 
     *rnn_desc = rnn_desc_s.ConsumeValueOrDie();
@@ -1035,11 +1098,18 @@ template <typename T, typename Index>
 class CudnnRNNParamsSizeOp<GPUDevice, T, Index> : public CudnnRNNKernelCommon {
  public:
   explicit CudnnRNNParamsSizeOp(OpKernelConstruction* context)
-      : CudnnRNNKernelCommon(context) {}
+      : CudnnRNNKernelCommon(context) {
+    if (context->HasAttr("num_proj")) {
+      OP_REQUIRES_OK(context, context->GetAttr("num_proj", &num_proj_));
+    } else {
+      num_proj_ = 0;
+    }
+  }
 
   void Compute(OpKernelContext* context) override {
     std::unique_ptr<RnnDescriptor> rnn_desc;
-    OP_REQUIRES_OK(context, ExtractCudnnRNNParamsInfo<T>(context, &rnn_desc));
+    OP_REQUIRES_OK(context,
+                   ExtractCudnnRNNParamsInfo<T>(context, num_proj_, &rnn_desc));
     int64 params_size_in_bytes = rnn_desc->ParamsSizeInBytes();
     CHECK(params_size_in_bytes % sizeof(T) == 0)
         << "params_size_in_bytes must be multiple of element size";
@@ -1049,6 +1119,9 @@ class CudnnRNNParamsSizeOp<GPUDevice, T, Index> : public CudnnRNNKernelCommon {
     OP_REQUIRES_OK(context, context->allocate_output(0, {1}, &output_t));
     *output_t->template flat<Index>().data() = params_size;
   }
+
+ private:
+  int num_proj_;
 };
 
 #define REGISTER_GPU(T)                                    \
@@ -1074,7 +1147,32 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
  public:
   explicit CudnnRNNParamsToCanonical(OpKernelConstruction* context)
       : CudnnRNNKernelCommon(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("num_params", &num_params_));
+    if (context->HasAttr("num_params")) {
+      OP_REQUIRES_OK(context, context->GetAttr("num_params", &num_params_));
+    } else {
+      num_params_ = 0;
+    }
+    if (context->HasAttr("num_params_weights")) {
+      OP_REQUIRES_OK(context, context->GetAttr("num_params_weights",
+                                               &num_params_weights_));
+    } else {
+      num_params_weights_ = 0;
+    }
+    if (context->HasAttr("num_params_biases")) {
+      OP_REQUIRES_OK(
+          context, context->GetAttr("num_params_biases", &num_params_biases_));
+    } else {
+      num_params_biases_ = 0;
+    }
+    if (context->HasAttr("num_proj")) {
+      OP_REQUIRES_OK(context, context->GetAttr("num_proj", &num_proj_));
+    } else {
+      num_proj_ = 0;
+    }
+    if (num_proj_ == 0) {
+      num_params_weights_ = num_params_;
+      num_params_biases_ = num_params_;
+    }
   }
 
   void Compute(OpKernelContext* context) override {
@@ -1083,7 +1181,8 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
     Stream* stream = context->op_device_context()->stream();
 
     std::unique_ptr<RnnDescriptor> rnn_desc;
-    OP_REQUIRES_OK(context, ExtractCudnnRNNParamsInfo<T>(context, &rnn_desc));
+    OP_REQUIRES_OK(context,
+                   ExtractCudnnRNNParamsInfo<T>(context, num_proj_, &rnn_desc));
     int64 params_size_in_bytes = rnn_desc->ParamsSizeInBytes();
     CHECK(params_size_in_bytes % sizeof(T) == 0)
         << "params_size_in_bytes must be multiple of element size";
@@ -1109,25 +1208,46 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
     if (rnn_direction_mode() == RnnDirectionMode::kRnnBidirectional) {
       num_dirs = 2;
     }
-    const int num_params_per_layer = num_params_ / num_layers / num_dirs;
+    const int num_params_weights_per_layer =
+        num_params_weights_ / num_layers / num_dirs;
     // Number of params applied on inputs. The rest are applied on recurrent
     // hidden states.
-    const int num_params_input_state = num_params_per_layer / 2;
-    CHECK(num_params_ % (num_layers * num_dirs) == 0)
-        << "Number of params is not a multiple of num_layers * num_dirs.";
-    CHECK(num_params_per_layer % 2 == 0)
-        << "Number of params per layer is not a even number.";
+    const int num_params_input_state = num_params_weights_per_layer / 2;
+    OP_REQUIRES(
+        context, num_params_weights_ % (num_layers * num_dirs) == 0,
+        errors::InvalidArgument("Number of params (weights) is not a multiple"
+                                "of num_layers * num_dirs."));
+    OP_REQUIRES(
+        context, num_params_biases_ % (num_layers * num_dirs) == 0,
+        errors::InvalidArgument("Number of params (biases) is not a multiple"
+                                "of num_layers * num_dirs."));
+    if (num_proj_ == 0) {
+      OP_REQUIRES(
+          context, num_params_weights_per_layer % 2 == 0,
+          errors::InvalidArgument("Number of params (weights) per layer is not"
+                                  "an even number with no projection."));
+    } else {
+      OP_REQUIRES(
+          context, num_params_weights_per_layer % 2 != 0,
+          errors::InvalidArgument("Number of params (weights) per layer is not"
+                                  "an odl number with projection."));
+    }
 
-    CHECK(num_params_ == rnn_desc->ParamsWeightRegions().size())
-        << "Number of params mismatch. Expected " << num_params_ << ", got "
-        << rnn_desc->ParamsWeightRegions().size();
+    OP_REQUIRES(
+        context, num_params_weights_ == rnn_desc->ParamsWeightRegions().size(),
+        errors::InvalidArgument("C Number of params mismatch. Expected ",
+                                num_params_weights_, ", got ",
+                                rnn_desc->ParamsWeightRegions().size()));
+    int h_num_units = (num_proj_ == 0 ? num_units : num_proj_);
+    int c_num_units = (num_proj_ == 0 ? 0 : num_units);
     for (int i = 0; i < rnn_desc->ParamsWeightRegions().size(); i++) {
       int64 size_in_bytes = rnn_desc->ParamsWeightRegions()[i].size;
       int64 size = size_in_bytes / sizeof(T);
-      const int layer_idx = i / num_params_per_layer;
-      const int index_within_layer = i % num_params_per_layer;
-      int width = 0, height = num_units;
-      // In CuDNN layout, each layer has num_params_per_layer params, with the
+      const int layer_idx = i / num_params_weights_per_layer;
+      const int index_within_layer = i % num_params_weights_per_layer;
+      int width = 0, height = (num_proj_ == 0 ? h_num_units : c_num_units);
+      // In CuDNN layout, each layer has num_params_weights_per_layer params,
+      // with the
       // first half a.k.a num_params_input_state params applied on the inputs,
       // and the second half on the recurrent hidden states.
       bool apply_on_input_state = index_within_layer < num_params_input_state;
@@ -1135,7 +1255,7 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
         if (layer_idx == 0 && apply_on_input_state) {
           width = input_size;
         } else {
-          width = num_units;
+          width = h_num_units;
         }
       } else {
         if (apply_on_input_state) {
@@ -1145,15 +1265,19 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
           } else {
             // Following layers, cell inputs are concatenated outputs of
             // its prior layer.
-            width = 2 * num_units;
+            width = 2 * h_num_units;
           }
         } else {
-          width = num_units;
+          width = h_num_units;
         }
       }
       CHECK(size == width * height) << "Params size mismatch. Expected "
                                     << width * height << ", got " << size;
       Tensor* output = nullptr;
+      int id_in_layer = i % num_params_weights_per_layer;
+      if (num_proj_ != 0 && id_in_layer == num_params_weights_per_layer - 1) {
+        std::swap(height, width);
+      }
       OP_REQUIRES_OK(context, context->allocate_output(
                                   i, TensorShape({height, width}), &output));
       DeviceMemoryBase data_src_ptr = SliceDeviceMemory(
@@ -1162,10 +1286,11 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
       stream->ThenMemcpy(&data_dst_ptr, data_src_ptr, size_in_bytes);
     }
 
-    OP_REQUIRES(context, num_params_ == rnn_desc->ParamsBiasRegions().size(),
-                errors::InvalidArgument("Number of params mismatch. Expected ",
-                                        num_params_, ", got ",
-                                        rnn_desc->ParamsBiasRegions().size()));
+    OP_REQUIRES(
+        context, num_params_biases_ == rnn_desc->ParamsBiasRegions().size(),
+        errors::InvalidArgument("A Number of params mismatch. Expected ",
+                                num_params_biases_, ", got ",
+                                rnn_desc->ParamsBiasRegions().size()));
     for (int i = 0; i < rnn_desc->ParamsBiasRegions().size(); i++) {
       int64 size_in_bytes = rnn_desc->ParamsBiasRegions()[i].size;
       int64 size = size_in_bytes / sizeof(T);
@@ -1175,7 +1300,7 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
 
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context,
-                     context->allocate_output(num_params_ + i,
+                     context->allocate_output(num_params_weights_ + i,
                                               TensorShape({size}), &output));
       DeviceMemoryBase data_src_ptr = SliceDeviceMemory(
           input_ptr, rnn_desc->ParamsBiasRegions()[i].offset, size_in_bytes);
@@ -1186,6 +1311,9 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
 
  private:
   int num_params_;
+  int num_params_weights_;
+  int num_params_biases_;
+  int num_proj_;
 };
 
 #define REGISTER_GPU(T)                                     \
@@ -1201,17 +1329,37 @@ TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
 #undef REGISTER_GPU
 
+#define REGISTER_GPU(T)                                       \
+  REGISTER_KERNEL_BUILDER(Name("CudnnRNNParamsToCanonicalV2") \
+                              .Device(DEVICE_GPU)             \
+                              .HostMemory("num_layers")       \
+                              .HostMemory("num_units")        \
+                              .HostMemory("input_size")       \
+                              .TypeConstraint<T>("T"),        \
+                          CudnnRNNParamsToCanonical<GPUDevice, T>);
+TF_CALL_half(REGISTER_GPU);
+TF_CALL_float(REGISTER_GPU);
+TF_CALL_double(REGISTER_GPU);
+#undef REGISTER_GPU
+
 // Convert weight and bias params from the canonical form to a
 // platform-specific layout.
 template <typename T>
 class CudnnRNNCanonicalToParams<GPUDevice, T> : public CudnnRNNKernelCommon {
  public:
   explicit CudnnRNNCanonicalToParams(OpKernelConstruction* context)
-      : CudnnRNNKernelCommon(context) {}
+      : CudnnRNNKernelCommon(context) {
+    if (context->HasAttr("num_proj")) {
+      OP_REQUIRES_OK(context, context->GetAttr("num_proj", &num_proj_));
+    } else {
+      num_proj_ = 0;
+    }
+  }
 
   void Compute(OpKernelContext* context) override {
     std::unique_ptr<RnnDescriptor> rnn_desc;
-    OP_REQUIRES_OK(context, ExtractCudnnRNNParamsInfo<T>(context, &rnn_desc));
+    OP_REQUIRES_OK(context,
+                   ExtractCudnnRNNParamsInfo<T>(context, num_proj_, &rnn_desc));
     int64 params_size_in_bytes = rnn_desc->ParamsSizeInBytes();
     CHECK(params_size_in_bytes % sizeof(T) == 0)
         << "params_size_in_bytes must be multiple of element size";
@@ -1232,6 +1380,9 @@ class CudnnRNNCanonicalToParams<GPUDevice, T> : public CudnnRNNKernelCommon {
     RestoreParams<T>(biases, rnn_desc->ParamsBiasRegions(), &output_ptr,
                      stream);
   }
+
+ private:
+  int num_proj_;
 };
 
 #define REGISTER_GPU(T)                                     \
@@ -1241,6 +1392,19 @@ class CudnnRNNCanonicalToParams<GPUDevice, T> : public CudnnRNNKernelCommon {
                               .HostMemory("num_units")      \
                               .HostMemory("input_size")     \
                               .TypeConstraint<T>("T"),      \
+                          CudnnRNNCanonicalToParams<GPUDevice, T>);
+TF_CALL_half(REGISTER_GPU);
+TF_CALL_float(REGISTER_GPU);
+TF_CALL_double(REGISTER_GPU);
+#undef REGISTER_GPU
+
+#define REGISTER_GPU(T)                                       \
+  REGISTER_KERNEL_BUILDER(Name("CudnnRNNCanonicalToParamsV2") \
+                              .Device(DEVICE_GPU)             \
+                              .HostMemory("num_layers")       \
+                              .HostMemory("num_units")        \
+                              .HostMemory("input_size")       \
+                              .TypeConstraint<T>("T"),        \
                           CudnnRNNCanonicalToParams<GPUDevice, T>);
 TF_CALL_half(REGISTER_GPU);
 TF_CALL_float(REGISTER_GPU);
@@ -1264,14 +1428,14 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
   void Compute(OpKernelContext* context) override {
     AlgorithmConfig algo_config;
     ComputeAndReturnAlgorithm(context, &algo_config, /*var_seq_lengths=*/false,
-                              /*time_major=*/true);
+                              /*time_major=*/true, /*num_proj=*/0);
   }
 
  protected:
   virtual void ComputeAndReturnAlgorithm(OpKernelContext* context,
                                          AlgorithmConfig* output_algo_config,
-                                         bool var_seq_lengths,
-                                         bool time_major) {
+                                         bool var_seq_lengths, bool time_major,
+                                         int num_proj) {
     CHECK_NE(output_algo_config, nullptr);
 
     const Tensor* input = nullptr;
@@ -1281,14 +1445,15 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     const Tensor* sequence_lengths = nullptr;
     CudnnRnnModelShapes model_shapes;
     if (var_seq_lengths) {
+      OP_REQUIRES_OK(context, ExtractForwardInput(
+                                  context, model_types(), time_major, &input,
+                                  &input_h, &input_c, &params,
+                                  &sequence_lengths, num_proj, &model_shapes));
+    } else {
       OP_REQUIRES_OK(context,
                      ExtractForwardInput(context, model_types(), time_major,
                                          &input, &input_h, &input_c, &params,
-                                         &sequence_lengths, &model_shapes));
-    } else {
-      OP_REQUIRES_OK(context, ExtractForwardInput(
-                                  context, model_types(), time_major, &input,
-                                  &input_h, &input_c, &params, &model_shapes));
+                                         num_proj, &model_shapes));
     }
     RnnInputMode input_mode;
     OP_REQUIRES_OK(context,
@@ -1362,13 +1527,14 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
                          Tensor** output_c) {
     const TensorShape& hidden_state_shape = model_shapes.hidden_state_shape;
     const TensorShape& output_shape = model_shapes.output_shape;
+    const TensorShape& cell_state_shape = model_shapes.cell_state_shape;
 
     TF_RETURN_IF_ERROR(context->allocate_output(0, output_shape, output));
     TF_RETURN_IF_ERROR(
         context->allocate_output(1, hidden_state_shape, output_h));
     if (HasInputC()) {
       TF_RETURN_IF_ERROR(
-          context->allocate_output(2, hidden_state_shape, output_c));
+          context->allocate_output(2, cell_state_shape, output_c));
     } else {
       // Only LSTM uses input_c and output_c. So for all other models, we only
       // need to create dummy outputs.
@@ -1414,7 +1580,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
     AlgorithmConfig best_algo_config;
     CudnnRNNForwardOp<GPUDevice, T>::ComputeAndReturnAlgorithm(
         context, &best_algo_config, /*var_seq_lengths=*/false,
-        /*time_major=*/true);
+        /*time_major=*/true, /*num_proj=*/0);
     if (!context->status().ok()) {
       return;
     }
@@ -1613,13 +1779,18 @@ class CudnnRNNForwardOpV3<GPUDevice, T>
   explicit CudnnRNNForwardOpV3(OpKernelConstruction* context)
       : CudnnRNNForwardOp<GPUDevice, T>(context) {
     OP_REQUIRES_OK(context, context->GetAttr("time_major", &time_major_));
+    if (context->HasAttr("num_proj")) {
+      OP_REQUIRES_OK(context, context->GetAttr("num_proj", &num_proj_));
+    } else {
+      num_proj_ = 0;
+    }
   }
 
   void Compute(OpKernelContext* context) override {
     AlgorithmConfig best_algo_config;
     CudnnRNNForwardOp<GPUDevice, T>::ComputeAndReturnAlgorithm(
         context, &best_algo_config, /*var_seq_lengths=*/true,
-        /*time_major=*/time_major());
+        /*time_major=*/time_major(), num_proj_);
     if (!context->status().ok()) {
       return;
     }
@@ -1631,6 +1802,9 @@ class CudnnRNNForwardOpV3<GPUDevice, T>
     OP_REQUIRES_OK(context,
                    context->allocate_output(4, {}, &output_host_reserved));
   }
+
+ private:
+  int num_proj_;
 };
 
 #define REGISTER_GPU(T)                                       \
@@ -1654,12 +1828,12 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
       : CudnnRNNKernelCommon(context) {}
 
   void Compute(OpKernelContext* context) override {
-    ComputeImpl(context, false, true);
+    ComputeImpl(context, false, true, 0);
   }
 
  protected:
   virtual void ComputeImpl(OpKernelContext* context, bool var_seq_lengths,
-                           bool time_major) {
+                           bool time_major, int num_proj) {
     const Tensor* input = nullptr;
     const Tensor* input_h = nullptr;
     const Tensor* input_c = nullptr;
@@ -1667,14 +1841,15 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     const Tensor* sequence_lengths = nullptr;
     CudnnRnnModelShapes model_shapes;
     if (var_seq_lengths) {
+      OP_REQUIRES_OK(context, ExtractForwardInput(
+                                  context, model_types(), time_major, &input,
+                                  &input_h, &input_c, &params,
+                                  &sequence_lengths, num_proj, &model_shapes));
+    } else {
       OP_REQUIRES_OK(context,
                      ExtractForwardInput(context, model_types(), time_major,
                                          &input, &input_h, &input_c, &params,
-                                         &sequence_lengths, &model_shapes));
-    } else {
-      OP_REQUIRES_OK(context, ExtractForwardInput(
-                                  context, model_types(), time_major, &input,
-                                  &input_h, &input_c, &params, &model_shapes));
+                                         num_proj, &model_shapes));
     }
     RnnInputMode input_mode;
     OP_REQUIRES_OK(context,
@@ -1757,6 +1932,7 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     TF_RETURN_IF_ERROR(context->input("reserve_space", reserve_space));
     const TensorShape& hidden_state_shape = model_shapes.hidden_state_shape;
     const TensorShape& output_shape = model_shapes.output_shape;
+    const TensorShape& cell_state_shape = model_shapes.cell_state_shape;
 
     if (output_shape != (*output)->shape()) {
       return errors::InvalidArgument(
@@ -1782,16 +1958,16 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     }
 
     if (model_types.HasInputC()) {
-      if (hidden_state_shape != (*output_c)->shape()) {
+      if (cell_state_shape != (*output_c)->shape()) {
         return errors::InvalidArgument(
             "Invalid output_c shape: ", (*output_c)->shape().DebugString(), " ",
-            hidden_state_shape.DebugString());
+            cell_state_shape.DebugString());
       }
-      if (hidden_state_shape != (*output_c_backprop)->shape()) {
+      if (cell_state_shape != (*output_c_backprop)->shape()) {
         return errors::InvalidArgument(
             "Invalid output_c_backprop shape: ",
             (*output_c_backprop)->shape().DebugString(), " ",
-            hidden_state_shape.DebugString());
+            cell_state_shape.DebugString());
       }
     }
     return Status::OK();
@@ -1804,6 +1980,7 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
                          Tensor** input_c_backprop, Tensor** params_backprop) {
     const TensorShape& input_shape = model_shapes.input_shape;
     const TensorShape& hidden_state_shape = model_shapes.hidden_state_shape;
+    const TensorShape& cell_state_shape = model_shapes.cell_state_shape;
 
     TF_RETURN_IF_ERROR(
         context->allocate_output(0, input_shape, input_backprop));
@@ -1811,7 +1988,7 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
         context->allocate_output(1, hidden_state_shape, input_h_backprop));
     if (HasInputC()) {
       TF_RETURN_IF_ERROR(
-          context->allocate_output(2, hidden_state_shape, input_c_backprop));
+          context->allocate_output(2, cell_state_shape, input_c_backprop));
     } else {
       // Only LSTM uses input_c and output_c. So for all other models, we only
       // need to create dummy outputs.
@@ -1879,11 +2056,20 @@ class CudnnRNNBackwardOpV3<GPUDevice, T>
   explicit CudnnRNNBackwardOpV3(OpKernelConstruction* context)
       : CudnnRNNBackwardOp<GPUDevice, T>(context) {
     OP_REQUIRES_OK(context, context->GetAttr("time_major", &time_major_));
+    if (context->HasAttr("num_proj")) {
+      OP_REQUIRES_OK(context, context->GetAttr("num_proj", &num_proj_));
+    } else {
+      num_proj_ = 0;
+    }
   }
 
   void Compute(OpKernelContext* context) override {
-    CudnnRNNBackwardOp<GPUDevice, T>::ComputeImpl(context, true, time_major());
+    CudnnRNNBackwardOp<GPUDevice, T>::ComputeImpl(context, true, time_major(),
+                                                  num_proj_);
   }
+
+ private:
+  int num_proj_;
 };
 
 #define REGISTER_GPU(T)                                       \

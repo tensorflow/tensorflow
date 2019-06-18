@@ -2147,6 +2147,7 @@ cc_library(
     copts = llvm_copts,
     deps = [
         ":binary_format",
+        ":bit_reader",
         ":config",
         ":object",
         ":option",

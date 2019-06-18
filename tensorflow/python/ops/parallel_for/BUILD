@@ -1,11 +1,11 @@
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
 package(
     default_visibility = [
         "//tensorflow:internal",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
     name = "parallel_for",
@@ -133,8 +133,15 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     tags = [
+<<<<<<< HEAD
         "no_cuda",
         "no_rocm",
+=======
+        "no_rocm",
+        # XLA is not enabled by default on Mac or Windows.
+        "no_mac",
+        "no_windows",
+>>>>>>> upstream/master
     ],
     xla_enable_strict_auto_jit = True,
     xla_enabled = True,
