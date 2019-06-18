@@ -545,6 +545,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["memory_test.py"],
     additional_deps = [
+        ":remote",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/keras",
         "//tensorflow/python/eager:test",
@@ -553,6 +554,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "@six_archive//:six",
     ],
+    shard_count = 4,
     tags = [
         "optonly",  # The test is too slow in non-opt mode
     ],
