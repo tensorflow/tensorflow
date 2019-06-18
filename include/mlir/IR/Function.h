@@ -88,6 +88,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   Region &getBody() { return body; }
+  void eraseBody() { body.getBlocks().clear(); }
 
   /// This is the list of blocks in the function.
   using RegionType = Region::RegionType;
