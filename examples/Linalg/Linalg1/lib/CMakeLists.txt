@@ -20,6 +20,7 @@ set(LIBS
   MLIRParser
   MLIRPass
   MLIRStandardOps
+  MLIRStandardToLLVM
   MLIRSupport
   MLIRTransforms
 )
