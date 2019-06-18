@@ -63,20 +63,16 @@ message XlaAutoClusteringSummary {
 
 // Listeners listening for auto clustering events get messages of this type.
 //
-// Next ID: 5
+// Next ID: 4
 message XlaAutoClusteringActivity {
-  // xla_activity_listener set this to the global process id, as decided by the
-  // callback registered via `SetGlobalProcessIdMaker.
-  string global_process_id = 1;
-
   // The value of GlobalJitLevel, as determined by `GetGlobalJitLevelForGraph`.
   // This determines if global auto-clustering is enabled.
-  OptimizerOptions.GlobalJitLevel global_jit_level = 2;
+  OptimizerOptions.GlobalJitLevel global_jit_level = 1;
 
   // Whether --tf_xla_cpu_global_jit is enabled in TF_XLA_FLAGS.
-  bool cpu_global_jit_enabled = 3;
+  bool cpu_global_jit_enabled = 2;
 
-  XlaAutoClusteringSummary summary = 4;
+  XlaAutoClusteringSummary summary = 3;
 }
 
 // Listeners listening for JIT compilation events get messages of this type.
@@ -85,20 +81,16 @@ message XlaAutoClusteringActivity {
 // B, and A is compiled 5 times and B is compiled 2 times then we will generate
 // 7 instances of XlaJitCompilationActivity.
 //
-// Next ID: 6
+// Next ID: 5
 message XlaJitCompilationActivity {
-  // xla_activity_listener set this to the global process id, as decided by the
-  // callback registered via `SetGlobalProcessIdMaker.
-  string global_process_id = 1;
-
-  string cluster_name = 2;
+  string cluster_name = 1;
 
   // The number of time this cluster has been compiled.
-  int32 compile_count = 3;
+  int32 compile_count = 2;
 
   // Microseconds spent in the individual compilation being reported.
-  int64 compile_time_us = 4;
+  int64 compile_time_us = 3;
 
   // Total microseconds spent in (re-)compiling this cluster so far.
-  int64 cumulative_compile_time_us = 5;
+  int64 cumulative_compile_time_us = 4;
 }
