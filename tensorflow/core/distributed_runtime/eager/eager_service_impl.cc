@@ -299,7 +299,8 @@ Status EagerServiceImpl::SendTensor(const SendTensorRequest* request,
       return errors::InvalidArgument("Unable to parse tensor proto");
     }
 
-    TensorHandle* tensor_handle = new TensorHandle(tensor);
+    TensorHandle* tensor_handle = nullptr;
+    TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(tensor, &tensor_handle));
     TensorHandle* copied_handle = nullptr;
     TF_RETURN_IF_ERROR(EagerCopyToDevice(tensor_handle, context->Context(),
                                          request->device_name().c_str(),

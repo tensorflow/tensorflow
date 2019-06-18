@@ -125,12 +125,11 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op,
             expected_input_device->name(), " but is actually on ",
             actual_device->name(), " (operation running on ", op_device_name,
             ")",
-            " Tensors can be copied explicitly using .gpu() or .cpu() "
-            "methods,"
-            " or transparently copied by using tf.enable_eager_execution("
-            "device_policy=tfe.DEVICE_PLACEMENT_SILENT). Copying tensors "
-            "between devices"
-            " may slow down your model");
+            " Tensors can be copied explicitly using:"
+            " `with tf.device(device_name): x = tf.identity(x)`"
+            " or transparently copied by using"
+            " tf.config.experimental.set_device_policy('silent')."
+            " Copying tensors between devices may slow down your model");
       case DEVICE_PLACEMENT_WARN:
         LOG(WARNING) << "before computing " << op->Name() << " input #" << i
                      << " was expected to be on "
@@ -641,11 +640,11 @@ Status EagerLocalExecute(EagerOperation* op,
     // performance.
     tensorflow::uint64 id = ctx->NextId();
     for (int i = 0; i < *num_retvals; ++i) {
-      (*retvals)[i] = new TensorHandle(
-          id, /* d= */ kernel->OutputDevice(i),
+      TF_RETURN_IF_ERROR(TensorHandle::CreateAsyncLocalHandle(
+          /* d= */ kernel->OutputDevice(i),
           /* op_device= */ kernel->device(),
           /* resource_device= */ kernel->OutputResourceDevice(i),
-          output_dtypes[i], ctx);
+          output_dtypes[i], ctx, &(*retvals)[i]));
     }
     EagerNode* node = new ExecuteNode(id, ctx, op->Inputs(), std::move(kernel),
                                       maybe_stats.release(), maybe_step_stats,
@@ -719,12 +718,13 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
   n.WaitForNotification();
   if (!status.ok()) return status;
 
-  *result = new TensorHandle(id, 0, tensor->shape(), eager_client, context_id,
-                             tensor->dtype(), recv_device, nullptr, ctx);
+  status = TensorHandle::CreateRemoteHandle(
+      id, 0, tensor->shape(), eager_client, context_id, tensor->dtype(),
+      recv_device, nullptr, ctx, result);
 
   actual_handle->Unref();
 
-  return Status::OK();
+  return status;
 #endif  // !IS_MOBILE_PLATFORM
 }
 
@@ -816,10 +816,10 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
       // remote device here. We just need to know that it is remote. If we need
       // to copy this tensor to this process, the remote end will know the
       // correct device of this handle.
-      retvals[i] = new TensorHandle(
-          id, i, remote_node_id, eager_client, context_id, output_dtypes[i],
-          op_device, output_dtypes[i] == DT_RESOURCE ? op_device : nullptr,
-          ctx);
+      TF_RETURN_IF_ERROR(TensorHandle::CreateUnshapedRemoteHandle(
+          id, i, eager_client, context_id, output_dtypes[i], op_device,
+          output_dtypes[i] == DT_RESOURCE ? op_device : nullptr, ctx,
+          &retvals[i]));
     }
 
     // Copy the output handles, since the container for them might get
@@ -844,9 +844,13 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
             [inputs](const gtl::InlinedVector<TensorHandle*, 2>& retvals,
                      const Status& status,
                      const eager::EnqueueResponse& response) {
-              if (!status.ok()) return;
               for (int i = 0; i < retvals.size(); i++) {
-                retvals[i]->SetRemoteShape(response.queue_response(0).shape(i));
+                if (status.ok()) {
+                  retvals[i]->SetRemoteShape(
+                      response.queue_response(0).shape(i));
+                } else {
+                  retvals[i]->Poison(status);
+                }
                 retvals[i]->Unref();
               }
               for (auto* handle : inputs) {
@@ -869,10 +873,11 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     if (!status.ok()) return status;
 
     for (int i = 0; i < *num_retvals; i++) {
-      retvals[i] = new TensorHandle(
+      TF_RETURN_IF_ERROR(TensorHandle::CreateRemoteHandle(
           id, i, response.queue_response(0).shape(i), eager_client, context_id,
           output_dtypes[i], op_device,
-          output_dtypes[i] == DT_RESOURCE ? op_device : nullptr, ctx);
+          output_dtypes[i] == DT_RESOURCE ? op_device : nullptr, ctx,
+          &retvals[i]));
     }
   }
 
@@ -1122,9 +1127,9 @@ Status EagerKernelExecute(EagerContext* ctx,
   DCHECK_EQ(num_retvals, outputs.size());
   for (int i = 0; i < num_retvals; ++i) {
     if (retvals[i] == nullptr) {
-      retvals[i] =
-          new TensorHandle(outputs[i], /* d= */ kernel->OutputDevice(i),
-                           /* op_device= */ kernel->device(), ctx);
+      TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
+          outputs[i], /* d= */ kernel->OutputDevice(i),
+          /* op_device= */ kernel->device(), ctx, &retvals[i]));
     } else {
       // In the async case, the retval is not a nullptr, and its device is
       // already set since all TensorHandles always have their device set

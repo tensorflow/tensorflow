@@ -51,7 +51,7 @@ TEST(ConcatTest, TwoInputTensorsByUnalignedChannel) {
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 3, 5, 7}));
   ASSERT_TRUE(model.PopulateTensor(1, {2, 4, 6, 8}));
-  ASSERT_TRUE(model.Invoke(*NewConcatNodeShader()));
+  ASSERT_OK(model.Invoke(*NewConcatNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {1, 2, 3, 4, 5, 6, 7, 8}));
 }
@@ -77,7 +77,7 @@ TEST(ConcatTest, TwoInputTensorsByAlignedChannel) {
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
   ASSERT_TRUE(model.PopulateTensor(1, {5, 6, 7, 8}));
-  ASSERT_TRUE(model.Invoke(*NewAlignedConcatNodeShader()));
+  ASSERT_OK(model.Invoke(*NewAlignedConcatNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {1, 2, 3, 4, 5, 6, 7, 8}));
 }
@@ -103,7 +103,7 @@ TEST(ConcatTest, TwoInputTensorsByHeight) {
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2}));
   ASSERT_TRUE(model.PopulateTensor(1, {3, 4, 5, 6}));
-  ASSERT_TRUE(model.Invoke(*NewFlatConcatNodeShader()));
+  ASSERT_OK(model.Invoke(*NewFlatConcatNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {1, 2, 3, 4, 5, 6}));
 }
@@ -129,7 +129,7 @@ TEST(ConcatTest, TwoInputTensorsByWidth) {
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 4}));
   ASSERT_TRUE(model.PopulateTensor(1, {2, 3, 5, 6}));
-  ASSERT_TRUE(model.Invoke(*NewFlatConcatNodeShader()));
+  ASSERT_OK(model.Invoke(*NewFlatConcatNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {1, 2, 3, 4, 5, 6}));
 }

@@ -42,7 +42,8 @@ def keras_modules_injection(base_fun):
 
   def wrapper(*args, **kwargs):
     kwargs['backend'] = backend
-    kwargs['layers'] = layers
+    if 'layers' not in kwargs:
+      kwargs['layers'] = layers
     kwargs['models'] = models
     kwargs['utils'] = utils
     return base_fun(*args, **kwargs)

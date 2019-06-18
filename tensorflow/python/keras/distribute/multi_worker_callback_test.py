@@ -36,6 +36,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import multi_worker_testing_utils
+from tensorflow.python.keras.distribute import multi_worker_training_state as training_state
 from tensorflow.python.platform import test
 
 
@@ -54,8 +55,9 @@ def generate_callback_test_function(custom_callable):
       combinations.combine(
           mode=['graph'],
           strategy_cls=[collective_strategy.CollectiveAllReduceStrategy],
-          required_gpus=[0, 1]))
-  def test_template(self, strategy_cls):
+          required_gpus=[0, 1],
+          file_format=['h5', 'tf']))
+  def test_template(self, strategy_cls, file_format):
     num_workers = 2
     num_epoch = 2
 
@@ -87,7 +89,8 @@ def generate_callback_test_function(custom_callable):
 
     # Pass saving_filepath from the parent thread to ensure every worker has the
     # same fileapth to save.
-    saving_filepath = os.path.join(self.get_temp_dir(), 'checkpoint.h5')
+    saving_filepath = os.path.join(self.get_temp_dir(),
+                                   'checkpoint.' + file_format)
     barrier = dc._Barrier(2)
     threading_local = threading.local()
     threads = self.run_multiple_tasks_in_threads(
@@ -96,8 +99,7 @@ def generate_callback_test_function(custom_callable):
         saving_filepath=saving_filepath,
         barrier=barrier,
         threading_local=threading_local)
-    if os.path.exists(saving_filepath):
-      os.remove(saving_filepath)
+    self.assertFalse(training_state.checkpoint_exists(saving_filepath))
 
     threads_to_join = []
     strategy = get_strategy_object(strategy_cls)
@@ -141,6 +143,11 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
   def callableForTestModelCheckpointSavesOnChiefButNotOtherwise(
       model, test_obj, train_ds, num_epoch, steps, strategy, saving_filepath,
       **kwargs):
+
+    extension = os.path.splitext(saving_filepath)[1]
+    # TODO(rchao): Remove using .h5 once b/134551335 is fixed.
+    extension = '.h5'
+
     # Incorporate type/index information and thread id in saving_filepath to
     # ensure every worker has a unique path. Note that in normal use case the
     # saving_filepath will be the same for all workers, but we use different
@@ -149,11 +156,11 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
     # TODO(b/134551335): Must save to hdf5 until bug with copying
     # MirroredVariables is resolved.
     saving_filepath = os.path.join(
-        test_obj.get_temp_dir(), 'checkpoint_%s_%d.h5' %
-        (test_base.get_task_type(), test_base.get_task_index()))
+        test_obj.get_temp_dir(), 'checkpoint_%s_%d%s' %
+        (test_base.get_task_type(), test_base.get_task_index(), extension))
 
     # The saving_filepath shouldn't exist at the beginning (as it's unique).
-    test_obj.assertFalse(os.path.exists(saving_filepath))
+    test_obj.assertFalse(training_state.checkpoint_exists(saving_filepath))
 
     model.fit(
         x=train_ds,
@@ -162,13 +169,14 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
         callbacks=[callbacks.ModelCheckpoint(filepath=saving_filepath)])
 
     # If it's chief, the model should be saved; if not, the model shouldn't.
-    test_obj.assertEqual(os.path.exists(saving_filepath), test_base.is_chief())
+    test_obj.assertEqual(
+        training_state.checkpoint_exists(saving_filepath), test_base.is_chief())
 
   @staticmethod
   def initialFitting(test_obj, model, train_ds, num_epoch, steps,
                      saving_filepath):
     # The saving_filepath shouldn't exist at the beginning.
-    test_obj.assertFalse(os.path.exists(saving_filepath))
+    test_obj.assertFalse(training_state.checkpoint_exists(saving_filepath))
 
     model.fit(
         x=train_ds,
@@ -182,14 +190,14 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
     # The saving_filepath should exist after fitting with callback. Both chief
     # and non-chief worker should both see it exists (which was saved only by
     # chief).
-    test_obj.assertTrue(os.path.exists(saving_filepath))
+    test_obj.assertTrue(training_state.checkpoint_exists(saving_filepath))
 
     history_after_one_more_epoch = model.fit(
         x=train_ds, epochs=1, steps_per_epoch=steps)
 
     # The saving_filepath should continue to exist (if it did) after fitting
     # without callback.
-    test_obj.assertTrue(os.path.exists(saving_filepath))
+    test_obj.assertTrue(training_state.checkpoint_exists(saving_filepath))
 
     return saving_filepath, history_after_one_more_epoch
 
@@ -224,11 +232,11 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
       test_obj.assertAllClose(
           history_after_one_more_epoch.history,
           history_after_loading_weight_and_one_more_epoch.history,
-          rtol=6e-6)
+          rtol=5e-5)
 
     # Verify the temp files are indeed removed (no trace left behind).
     for filepath in filepaths:
-      assert not os.path.exists(filepath)
+      assert not training_state.checkpoint_exists(filepath)
 
   @staticmethod
   def callableForTestModelRestoreCallback(model, test_obj, train_ds, num_epoch,
@@ -258,7 +266,7 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
     test_obj.assertAllClose(
         history_after_one_more_epoch.history,
         history_after_model_restoring_and_one_more_epoch.history,
-        rtol=5e-6)
+        rtol=5e-5)
 
     history_one_more_epoch_without_model_restoring = model.fit(
         x=train_ds, epochs=1, steps_per_epoch=steps)
@@ -266,7 +274,8 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
     # Ensuring training for another epoch gives different result.
     test_obj.assertNotAllClose(
         history_after_model_restoring_and_one_more_epoch.history,
-        history_one_more_epoch_without_model_restoring.history)
+        history_one_more_epoch_without_model_restoring.history,
+        rtol=5e-5)
 
   @staticmethod
   def callableForTestUnmatchedModelFile(model, test_obj, train_ds, num_epoch,
@@ -274,7 +283,7 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
                                         **kwargs):
 
     # The saving_filepath shouldn't exist at the beginning.
-    test_obj.assertFalse(os.path.exists(saving_filepath))
+    test_obj.assertFalse(training_state.checkpoint_exists(saving_filepath))
 
     model.fit(
         x=train_ds,
@@ -296,7 +305,11 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
       model.compile(
           loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
 
-    test_obj.assertTrue(os.path.exists(saving_filepath))
+    test_obj.assertTrue(training_state.checkpoint_exists(saving_filepath))
+
+    if saving_filepath.endswith('.tf'):
+      test_obj.skipTest('Loading mismatched TF checkpoint would cause Fatal '
+                        'Python error: Aborted. Skipping.')
 
     # Unmatched format. Should raise ValueError.
     with test_obj.assertRaisesRegexp(ValueError, 'Error loading file from'):

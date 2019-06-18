@@ -328,9 +328,9 @@ class FromSavedModelTest(TestModels):
     self.assertIn('This converter can only convert a single ConcreteFunction',
                   str(error.exception))
 
+  @test_util.run_v2_only
   def testKerasSequentialModel(self):
     """Test a simple sequential tf.Keras model."""
-    self.skipTest('b/134660903')
     input_data = constant_op.constant(1., shape=[1, 1])
 
     x = np.array([[1.], [2.]])

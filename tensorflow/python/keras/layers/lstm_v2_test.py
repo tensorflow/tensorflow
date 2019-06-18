@@ -42,7 +42,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import gradient_descent
@@ -308,7 +307,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
 
   # Due to b/120160788.
   @test_util.run_v2_only
-  def test_unified_lstm_feature_parity_with_canonical_lstm(self):
+  def test_lstm_v2_feature_parity_with_canonical_lstm(self):
     input_shape = 10
     rnn_state_size = 8
     timestep = 4
@@ -444,9 +443,9 @@ class LSTMV2Test(keras_parameterized.TestCase):
     y_ref = lstm_model.predict(x_train)
     weights = lstm_model.get_weights()
 
-    unified_lstm_model = build_model(rnn.LSTM)
-    unified_lstm_model.set_weights(weights)
-    y = unified_lstm_model.predict(x_train)
+    lstm_v2_model = build_model(rnn.LSTM)
+    lstm_v2_model.set_weights(weights)
+    y = lstm_v2_model.predict(x_train)
 
     self.assertAllClose(y, y_ref)
 
@@ -482,7 +481,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
       ('no_bias', False, 'zeros'),
       ('random_bias', True, 'random_uniform'),
   )
-  def test_unified_lstm_model_save_load(self, use_bias, bias_initializer):
+  def test_lstm_model_save_load(self, use_bias, bias_initializer):
     temp_dir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, temp_dir)
     h5_path = os.path.join(temp_dir, 'test.h5')
@@ -515,7 +514,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
     self.assertAllClose(y, y_ref)
     self.assertAllClose(layer.get_weights(), new_layer.get_weights())
 
-  def test_unified_lstm_output_on_multiple_kernel(self):
+  def test_lstm_output_on_multiple_kernel(self):
     input_shape = 10
     rnn_state_size = 8
     timestep = 4
@@ -539,7 +538,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
       gpu_model.set_weights(weights)
     y_2 = gpu_model.predict(x_train)
 
-    # Note that CuDNN uses 'sigmoid' as activation, so the unified LSTM uses
+    # Note that CuDNN uses 'sigmoid' as activation, so the LSTM V2 uses
     # 'sigmoid' as default. Construct the canonical LSTM with sigmoid to achieve
     # the same output.
     with test_util.device(use_gpu=True):
@@ -719,114 +718,88 @@ class LSTMV2Test(keras_parameterized.TestCase):
     model.predict(x)
 
 
-class LSTMLayerGraphOnlyTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes(config=_config)
+class LSTMGraphRewriteTest(keras_parameterized.TestCase):
 
-  # Need session for test
-  @test_util.run_deprecated_v1
-  def test_unifiedLSTM(self):
-    input_shape = 10
-    rnn_state_size = 8
-    output_shape = 8
-    timestep = 4
-    batch = 100
-    epoch = 1
+  input_shape = 10
+  output_shape = 8
+  rnn_state_size = 8
+  timestep = 4
+  batch = 100
+  epoch = 1
 
-    with self.cached_session(config=_config, use_gpu=True) as sess:
-      (x_train, y_train), _ = testing_utils.get_test_data(
-          train_samples=batch,
-          test_samples=0,
-          input_shape=(timestep, input_shape),
-          num_classes=output_shape)
-      y_train = keras.utils.to_categorical(y_train, output_shape)
+  def _test_runtime_with_model(self, model):
 
-      layer = rnn.LSTM(rnn_state_size, return_runtime=True)
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=self.batch,
+        test_samples=0,
+        input_shape=(self.timestep, self.input_shape),
+        num_classes=self.output_shape)
+    y_train = keras.utils.to_categorical(y_train, self.output_shape)
 
-      inputs = array_ops.placeholder(
-          dtypes.float32, shape=(None, timestep, input_shape), name='inputs')
-      predict = array_ops.placeholder(
-          dtypes.float32, shape=(None, output_shape), name='predict')
+    model.compile(optimizer='sgd',
+                  loss=['categorical_crossentropy', None])
 
-      outputs, runtime = layer(inputs)
-      loss = losses.softmax_cross_entropy(predict, outputs)
-      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
-      train_op = optimizer.minimize(loss)
+    existing_loss = 0
+    for _ in range(self.epoch):
+      history = model.fit(x_train, y_train)
+      loss_value = history.history['loss'][0]
 
-      sess.run([variables.global_variables_initializer()])
-      existing_loss = 0
-      for _ in range(epoch):
-        loss_value, _, runtime_value = sess.run([loss, train_op, runtime], {
-            inputs: x_train,
-            predict: y_train
-        })
-        if test.is_gpu_available():
-          self.assertEqual(runtime_value, rnn._RUNTIME_GPU)
-        else:
-          self.assertEqual(runtime_value, rnn._RUNTIME_CPU)
-        # Make sure the loss is updated for every epoch
-        # (layer weights properly updated).
-        self.assertNotEqual(existing_loss, loss_value)
-        existing_loss = loss_value
+      self.assertNotEqual(existing_loss, loss_value)
+      existing_loss = loss_value
 
-  # Need session for test
-  @test_util.run_deprecated_v1
-  def test_unifiedLSTM_with_cond(self):
+    _, runtime_value = model.predict(x_train)
+    if test.is_gpu_available():
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_GPU)
+    else:
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
+
+  def test_LSTM_runtime(self):
+    layer = rnn.LSTM(self.rnn_state_size, return_runtime=True)
+
+    inputs = keras.layers.Input(
+        shape=[self.timestep, self.input_shape], dtype=dtypes.float32)
+
+    outputs, runtime = layer(inputs)
+    # Expand the runtime so that it is a 1D tensor instead of scalar.
+    # TF model does not work with scalar model output, specially during
+    # aggregation.
+    runtime = keras.layers.Lambda(
+        lambda x: array_ops.expand_dims(x, axis=-1))(runtime)
+    model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
+    self._test_runtime_with_model(model)
+
+  # Due to b/120160788.
+  @test_util.run_v2_only
+  def test_LSTM_runtime_with_cond(self):
     # This test is to demonstrate the graph rewrite of grappler plugin under
     # the condition that the function returns different number of internal
     # states.
-    input_shape = 10
-    rnn_state_size = 8
-    output_shape = 8
-    timestep = 4
-    batch = 100
-    epoch = 1
+    layer = rnn.LSTM(self.rnn_state_size, return_runtime=True)
 
-    with self.cached_session(config=_config, use_gpu=True) as sess:
-      (x_train, y_train), _ = testing_utils.get_test_data(
-          train_samples=batch,
-          test_samples=0,
-          input_shape=(timestep, input_shape),
-          num_classes=output_shape)
-      y_train = keras.utils.to_categorical(y_train, output_shape)
+    inputs = keras.layers.Input(
+        shape=[self.timestep, self.input_shape], dtype=dtypes.float32)
 
-      layer = rnn.LSTM(rnn_state_size, return_runtime=True)
+    zeros = array_ops.zeros([self.batch, self.output_shape])
+    dummy_runtime = rnn._runtime(rnn._RUNTIME_UNKNOWN)
+    a = constant_op.constant(0)
+    b = constant_op.constant(1)
+    # Will always run the lstm layer.
+    outputs, runtime = control_flow_ops.cond(
+        gen_math_ops.less(a, b),
+        lambda: layer(inputs),
+        lambda: (zeros, dummy_runtime))
 
-      inputs = array_ops.placeholder(
-          dtypes.float32, shape=(None, timestep, input_shape), name='inputs')
-      predict = array_ops.placeholder(
-          dtypes.float32, shape=(None, output_shape), name='predict')
-
-      zeros = array_ops.zeros([batch, output_shape])
-      dummy_runtime = rnn._runtime(rnn._RUNTIME_UNKNOWN)
-      a = constant_op.constant(0)
-      b = constant_op.constant(1)
-      # Will always run the lstm layer.
-      outputs, runtime = control_flow_ops.cond(
-          gen_math_ops.less(a, b),
-          lambda: layer(inputs),
-          lambda: (zeros, dummy_runtime))
-      loss = losses.softmax_cross_entropy(predict, outputs)
-      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
-      train_op = optimizer.minimize(loss)
-
-      sess.run([variables.global_variables_initializer()])
-      existing_loss = 0
-
-      for _ in range(epoch):
-        loss_value, _, runtime_value = sess.run([loss, train_op, runtime], {
-            inputs: x_train,
-            predict: y_train
-        })
-        if test.is_gpu_available():
-          self.assertEqual(runtime_value, rnn._RUNTIME_GPU)
-        else:
-          self.assertEqual(runtime_value, rnn._RUNTIME_CPU)
-        # Make sure the loss is updated for every epoch
-        # (layer weights properly updated).
-        self.assertNotEqual(existing_loss, loss_value)
-        existing_loss = loss_value
+    # Expand the runtime so that it is a 1D tensor instead of scalar.
+    # TF model does not work with scalar model output, specially during
+    # aggregation.
+    runtime = keras.layers.Lambda(
+        lambda x: array_ops.expand_dims(x, axis=-1))(runtime)
+    model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
+    self._test_runtime_with_model(model)
 
 
-class UnifiedLSTMPerformanceTest(test.Benchmark):
+class LSTMPerformanceTest(test.Benchmark):
 
   def _measure_performance(self, test_config, model, x_train, y_train):
     batch = test_config['batch']
@@ -862,7 +835,7 @@ class UnifiedLSTMPerformanceTest(test.Benchmark):
 
   def _time_performance_run_unifed_lstm_gpu(
       self, test_config, x_train, y_train):
-    # Get performance number for Unified_LSTM with grappler swap the impl
+    # Get performance number for lstm_v2 with grappler swap the impl
     input_shape = test_config['input_shape']
     rnn_state_size = test_config['rnn_state_size']
     timestep = test_config['timestep']
@@ -878,7 +851,7 @@ class UnifiedLSTMPerformanceTest(test.Benchmark):
     sec_per_epoch = self._measure_performance(
         test_config, model, x_train, y_train)
     logging.info('Average performance for %s per epoch is: %s',
-                 'Unified LSTM', sec_per_epoch)
+                 'LSTM V2', sec_per_epoch)
     return sec_per_epoch
 
   def _time_performance_run_normal_lstm(
@@ -928,20 +901,20 @@ class UnifiedLSTMPerformanceTest(test.Benchmark):
 
     cudnn_sec_per_epoch = self._time_performance_run_cudnn_lstm(
         test_config, x_train, y_train)
-    unified_lstm_sec_per_epoch = self._time_performance_run_unifed_lstm_gpu(
+    lstm_v2_sec_per_epoch = self._time_performance_run_unifed_lstm_gpu(
         test_config, x_train, y_train)
     normal_lstm_sec_per_epoch = self._time_performance_run_normal_lstm(
         test_config, x_train, y_train)
 
-    cudnn_vs_unified = cudnn_sec_per_epoch / unified_lstm_sec_per_epoch
-    unified_vs_normal = normal_lstm_sec_per_epoch / unified_lstm_sec_per_epoch
+    cudnn_vs_v2 = cudnn_sec_per_epoch / lstm_v2_sec_per_epoch
+    v2_vs_normal = normal_lstm_sec_per_epoch / lstm_v2_sec_per_epoch
 
     self.report_benchmark(name='keras_cudnn_lstm_' + mode,
                           wall_time=cudnn_sec_per_epoch,
                           iters=test_config['epoch'],
                           extras=test_config)
-    self.report_benchmark(name='keras_unified_lstm_' + mode,
-                          wall_time=unified_lstm_sec_per_epoch,
+    self.report_benchmark(name='keras_lstm_v2_' + mode,
+                          wall_time=lstm_v2_sec_per_epoch,
                           iters=test_config['epoch'],
                           extras=test_config)
     self.report_benchmark(name='keras_canonical_lstm_' + mode,
@@ -949,10 +922,10 @@ class UnifiedLSTMPerformanceTest(test.Benchmark):
                           iters=test_config['epoch'],
                           extras=test_config)
 
-    logging.info('Expect the performance of Unified LSTM is within 80% of '
-                 'CuDNN LSTM, got {0:.2f}%'.format(cudnn_vs_unified * 100))
-    logging.info('Expect the performance of Unified LSTM is more than 5 times'
-                 ' of normal LSTM, got {0:.2f}'.format(unified_vs_normal))
+    logging.info('Expect the performance of LSTM V2 is within 80% of '
+                 'CuDNN LSTM, got {0:.2f}%'.format(cudnn_vs_v2 * 100))
+    logging.info('Expect the performance of LSTM V2 is more than 5 times'
+                 ' of normal LSTM, got {0:.2f}'.format(v2_vs_normal))
 
   def benchmark_performance_graph(self):
     with context.graph_mode(), session_lib.Session(config=_config):

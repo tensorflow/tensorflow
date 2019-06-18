@@ -265,9 +265,7 @@ class RuntimeShape {
     int buffer_size = 1;
     const int* dims_data = reinterpret_cast<const int*>(DimsData());
     for (int i = 0; i < size_; i++) {
-      const int dim = dims_data[i];
-      TFLITE_DCHECK_GE(dim, 1);
-      buffer_size *= dim;
+      buffer_size *= dims_data[i];
     }
     return buffer_size;
   }

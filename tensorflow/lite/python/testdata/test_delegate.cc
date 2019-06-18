@@ -36,11 +36,13 @@ TfLiteDelegate* tflite_plugin_create_delegate(char** options_keys,
   num_delegates_created++;
 
   for (int idx = 0; idx < num_options; idx++) {
-    if (std::strncmp("options_counter", options_keys[idx], 15) == 0) {
+    if (std::strcmp("options_counter", options_keys[idx]) == 0) {
       int int_value;
       if (sscanf(options_values[idx], "%d", &int_value) == 1) {
         options_counter += int_value;
       }
+    } else if (std::strcmp("fail", options_keys[idx]) == 0) {
+      return nullptr;
     }
   }
 

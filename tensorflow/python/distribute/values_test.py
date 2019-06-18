@@ -19,11 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import itertools
 import os
 from absl.testing import parameterized
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
@@ -37,6 +39,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.saved_model.model_utils import mode_keys
@@ -883,6 +886,123 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
   def testSaveNormalRestoreReplicaLocalSum(self, distribution):
     save_path = self._save_normal()
     self._restore_replica_local_sum(save_path, distribution)
+
+  def testAssign(self, distribution):
+    def assign(fn, v, update_value, cross_replica):
+      update_fn = lambda: getattr(v, fn)(update_value)
+      if cross_replica:
+        return update_fn()
+      else:
+        return distribution.experimental_local_results(
+            distribution.experimental_run_v2(update_fn))
+    updates = [("assign", 1.), ("assign_add", 1.), ("assign_sub", -1.)]
+    aggregations = [
+        variables_lib.VariableAggregation.NONE,
+        variables_lib.VariableAggregation.SUM,
+        variables_lib.VariableAggregation.MEAN,
+        variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
+    ]
+    options = (  # VariableAggregation.SUM in cross-replica mode is tested below
+        [x for x in itertools.product(updates, aggregations, [True, False])
+         if not(x[1] == variables_lib.VariableAggregation.SUM and x[2])])
+    for update, aggregation, cross_replica in options:
+      with distribution.scope():
+        v = variable_scope.variable(
+            0.,
+            synchronization=variables_lib.VariableSynchronization.ON_READ,
+            aggregation=aggregation)
+      self.evaluate(variables_lib.global_variables_initializer())
+      fn, update_value = update
+      self.evaluate(assign(fn, v, update_value, cross_replica))
+      for component in v._values:
+        self.assertAllEqual(self.evaluate(component.read_value()),
+                            self.evaluate(array_ops.ones_like(component)))
+
+  def testAssignWithAggregationSum(self, distribution):
+    with distribution.scope():
+      v = variable_scope.variable(
+          0.,
+          synchronization=variables_lib.VariableSynchronization.ON_READ,
+          aggregation=variables_lib.VariableAggregation.SUM)
+    self.evaluate(variables_lib.global_variables_initializer())
+    self.evaluate(v.assign(1. * distribution.num_replicas_in_sync))
+    for component in v._values:
+      self.assertAllEqual(self.evaluate(component.read_value()),
+                          self.evaluate(array_ops.ones_like(component)))
+
+  def testAssignAddSubWithAggregationSum(self, distribution):
+    with distribution.scope():
+      v = variable_scope.variable(
+          0.,
+          synchronization=variables_lib.VariableSynchronization.ON_READ,
+          aggregation=variables_lib.VariableAggregation.SUM)
+    self.evaluate(variables_lib.global_variables_initializer())
+    with self.assertRaisesRegex(
+        ValueError, "SyncOnReadVariable does not support "):
+      self.evaluate(v.assign_add(1.))
+    with self.assertRaisesRegex(
+        ValueError, "SyncOnReadVariable does not support "):
+      self.evaluate(v.assign_sub(1.))
+
+  def testReadValueInReplicaContext(self, distribution):
+    aggregations = [
+        variables_lib.VariableAggregation.NONE,
+        variables_lib.VariableAggregation.SUM,
+        variables_lib.VariableAggregation.MEAN,
+        variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
+    ]
+    for aggregation in aggregations:
+      with distribution.scope():
+        v = variable_scope.variable(
+            0.,
+            synchronization=variables_lib.VariableSynchronization.ON_READ,
+            aggregation=aggregation)
+      self.evaluate(variables_lib.global_variables_initializer())
+      results = self.evaluate(distribution.experimental_local_results(
+          distribution.experimental_run_v2(v.read_value)))
+      for component, value in zip(v._values, results):
+        self.assertAllEqual(self.evaluate(component.read_value()), value)
+
+  def testReadValueInCrossReplicaContext(self, distribution):
+    aggregations = [
+        variables_lib.VariableAggregation.SUM,
+        variables_lib.VariableAggregation.MEAN,
+        variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
+    ]
+    for aggregation in aggregations:
+      with distribution.scope():
+        v = variable_scope.variable(
+            0.,
+            synchronization=variables_lib.VariableSynchronization.ON_READ,
+            aggregation=aggregation)
+      self.evaluate(variables_lib.global_variables_initializer())
+      def assign(v=v):
+        ctx = distribution_strategy_context.get_replica_context()
+        replica_id = ctx.replica_id_in_sync_group
+        return v.assign(math_ops.cast(replica_id, dtypes.float32))
+      self.evaluate(distribution.experimental_local_results(
+          distribution.experimental_run_v2(assign)))
+      result = self.evaluate(v.read_value())
+      num_replicas = distribution.num_replicas_in_sync
+      sum_of_replica_values = num_replicas * (num_replicas - 1) / 2.
+      if aggregation == variables_lib.VariableAggregation.SUM:
+        expected = sum_of_replica_values
+      elif aggregation == variables_lib.VariableAggregation.MEAN:
+        expected = sum_of_replica_values / num_replicas
+      else:
+        expected = 0
+      self.assertEqual(expected, result, aggregation)
+
+  def testReadValueWithAggregationNoneInCrossReplicaContext(self, distribution):
+    with distribution.scope():
+      v = variable_scope.variable(
+          0.,
+          synchronization=variables_lib.VariableSynchronization.ON_READ,
+          aggregation=variables_lib.VariableAggregation.NONE)
+    self.evaluate(variables_lib.global_variables_initializer())
+    with self.assertRaisesRegex(
+        ValueError, "Could not convert from .* VariableAggregation\\.NONE"):
+      self.evaluate(v.read_value())
 
 
 class PerReplicaTest(test.TestCase, parameterized.TestCase):

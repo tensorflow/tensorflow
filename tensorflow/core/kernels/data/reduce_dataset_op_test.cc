@@ -94,19 +94,26 @@ TestCase TestCase1() {
           /*output_shapes*/ {PartialTensorShape({})}};
 }
 
-// Test case 2: the input function has two outputs.
+// Test case 2: the reduce function has two inputs and two outputs. As the
+// number of components of initial_state need to match with the reduce function
+// outputs, the initial_state will have two components. It results in that
+// the components of initial_state will be all the inputs for the reduce
+// function, and the input dataset will not be involved in the
+// reduce/aggregation process.
 TestCase TestCase2() {
-  return {/*range_data_param*/ {0, 10, 1},
+  return {/*range_data_param*/ {1, 10, 1},
           /*initial_state*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0})},
+          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
+           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1})},
           /*func*/
           FunctionDefHelper::FunctionRef("XPlusOneXTimesY", {{"T", DT_INT64}}),
           /*func_lib*/ {test::function::XPlusOneXTimesY()},
-          /*t_state*/ {DT_INT64},
+          /*t_state*/ {DT_INT64, DT_INT64},
           /*use_inter_op_parallelism*/ true,
           /*expected_outputs*/
           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {10}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0})},
+           DatasetOpsTestBase::CreateTensor<int64>(
+               TensorShape({}), {1 * 2 * 3 * 4 * 5 * 6 * 7 * 8 * 9})},
           /*output_dtypes*/ {DT_INT64, DT_INT64},
           /*output_shapes*/ {PartialTensorShape({}), PartialTensorShape({})}};
 }

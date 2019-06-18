@@ -9,6 +9,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/take_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
@@ -17,7 +18,6 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "take_dataset";
-constexpr char kOpName[] = "TakeDataset";
 
 class TakeDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -39,8 +39,10 @@ class TakeDatasetOpTest : public DatasetOpsTestBase {
       const std::vector<PartialTensorShape> &output_shapes,
       std::unique_ptr<OpKernel> *op_kernel) {
     NodeDef node_def = test::function::NDef(
-        kNodeName, kOpName, {"input_dataset", "count"},
-        {{"output_types", output_types}, {"output_shapes", output_shapes}});
+        kNodeName, name_utils::OpName(TakeDatasetOp::kDatasetType),
+        {TakeDatasetOp::kInputDataset, TakeDatasetOp::kCount},
+        {{TakeDatasetOp::kOutputTypes, output_types},
+         {TakeDatasetOp::kOutputShapes, output_shapes}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
     return Status::OK();
   }
@@ -253,7 +255,8 @@ TEST_F(TakeDatasetOpTest, DatasetTypeString) {
                              take_dataset_context.get(), &take_dataset));
   core::ScopedUnref scoped_unref(take_dataset);
 
-  EXPECT_EQ(take_dataset->type_string(), kOpName);
+  EXPECT_EQ(take_dataset->type_string(),
+            name_utils::OpName(TakeDatasetOp::kDatasetType));
 }
 
 TEST_P(ParameterizedTakeDatasetOpTest, DatasetOutputDtypes) {
@@ -494,9 +497,11 @@ TEST_P(ParameterizedTakeDatasetOpTest, IteratorOutputPrefix) {
       take_dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
 
   if (test_case.count == 0) {
-    EXPECT_EQ(iterator->prefix(), "Iterator::EmptyTake");
+    EXPECT_EQ(iterator->prefix(),
+              name_utils::IteratorPrefix("EmptyTake", "Iterator"));
   } else {
-    EXPECT_EQ(iterator->prefix(), "Iterator::FiniteTake");
+    EXPECT_EQ(iterator->prefix(),
+              name_utils::IteratorPrefix("FiniteTake", "Iterator"));
   }
 }
 

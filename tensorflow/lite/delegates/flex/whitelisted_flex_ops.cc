@@ -110,6 +110,7 @@ bool IsWhitelistedFlexOp(const std::string& tensorflow_op_name) {
           "EnsureShape",
           "Enter",
           "Equal",
+          "Erf",
           "Exit",
           "Exp",
           "ExpandDims",

@@ -50,7 +50,7 @@ TEST(PReluTest, LinearAlphaNoClip) {
   SingleOpModel model({ToString(OperationType::PRELU), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {-1.0, -2.0, 1.0, 2.0}));
-  ASSERT_TRUE(model.Invoke(*NewPReLUNodeShader()));
+  ASSERT_OK(model.Invoke(*NewPReLUNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {-2, -4, 1, 2}));
 }
 
@@ -76,7 +76,7 @@ TEST(PReluTest, LinearAlphaWithClip) {
   SingleOpModel model({ToString(OperationType::PRELU), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {-1.0, -2.0, 1.0, 2.0}));
-  ASSERT_TRUE(model.Invoke(*NewPReLUNodeShader()));
+  ASSERT_OK(model.Invoke(*NewPReLUNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {-2, -4, 1, 1}));
 }
 
@@ -102,7 +102,7 @@ TEST(PReluTest, 3DAlphaNoClip) {
 
   SingleOpModel model({ToString(op_type), attr}, {input}, {output});
   ASSERT_TRUE(model.PopulateTensor(0, {0.0, -1.0, 2.0, -3.0}));
-  ASSERT_TRUE(model.Invoke(*NewPReLUNodeShader()));
+  ASSERT_OK(model.Invoke(*NewPReLUNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {0, -2, 2, -6}));
 }
 
@@ -128,7 +128,7 @@ TEST(PReluTest, 3DAlphaWithClip) {
 
   SingleOpModel model({ToString(op_type), attr}, {input}, {output});
   ASSERT_TRUE(model.PopulateTensor(0, {0.0, -1.0, 2.0, -3.0}));
-  ASSERT_TRUE(model.Invoke(*NewPReLUNodeShader()));
+  ASSERT_OK(model.Invoke(*NewPReLUNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {0, -2, 1, -6}));
 }
 

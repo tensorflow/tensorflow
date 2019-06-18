@@ -31,10 +31,11 @@ namespace tflite {
 namespace benchmark {
 namespace {
 
-BenchmarkParams CreateParams() {
+BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs) {
   BenchmarkParams params;
-  params.AddParam("num_runs", BenchmarkParam::Create<int32_t>(2));
-  params.AddParam("min_secs", BenchmarkParam::Create<float>(1.0f));
+  params.AddParam("num_runs", BenchmarkParam::Create<int32_t>(num_runs));
+  params.AddParam("min_secs", BenchmarkParam::Create<float>(min_secs));
+  params.AddParam("max_secs", BenchmarkParam::Create<float>(max_secs));
   params.AddParam("run_delay", BenchmarkParam::Create<float>(-1.0f));
   params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(1));
   params.AddParam("benchmark_name", BenchmarkParam::Create<std::string>(""));
@@ -52,6 +53,8 @@ BenchmarkParams CreateParams() {
   return params;
 }
 
+BenchmarkParams CreateParams() { return CreateParams(2, 1.0f, 150.0f); }
+
 class TestBenchmark : public BenchmarkTfLiteModel {
  public:
   explicit TestBenchmark(BenchmarkParams params)
@@ -68,6 +71,25 @@ TEST(BenchmarkTest, DoesntCrash) {
   ASSERT_THAT(g_model_path, testing::NotNull());
 
   BenchmarkTfLiteModel benchmark(CreateParams());
+  benchmark.Run();
+}
+
+class MaxDurationWorksTestListener : public BenchmarkListener {
+  void OnBenchmarkEnd(const BenchmarkResults& results) override {
+    const int64_t num_actul_runs = results.inference_time_us().count();
+    TFLITE_LOG(INFO) << "number of actual runs: " << num_actul_runs;
+    EXPECT_GE(num_actul_runs, 1);
+    EXPECT_LT(num_actul_runs, 100000000);
+  }
+};
+
+TEST(BenchmarkTest, MaxDurationWorks) {
+  ASSERT_THAT(g_model_path, testing::NotNull());
+  BenchmarkTfLiteModel benchmark(CreateParams(100000000 /* num_runs */,
+                                              1000000.0f /* min_secs */,
+                                              0.001f /* max_secs */));
+  MaxDurationWorksTestListener listener;
+  benchmark.AddListener(&listener);
   benchmark.Run();
 }
 

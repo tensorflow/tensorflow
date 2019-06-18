@@ -1346,7 +1346,7 @@ def _check_dtypes(value, dtype):
             "".join(traceback.format_stack())))
 
 
-# TODO(b/133606651) Export this as tf.TensorArraySpec.
+@tf_export("TensorArraySpec")
 class TensorArraySpec(type_spec.TypeSpec):
   """Type specification for a `tf.TensorArray`."""
 

@@ -798,6 +798,24 @@ class NameScopingTest(keras_parameterized.TestCase):
 
 class AutographControlFlowTest(keras_parameterized.TestCase):
 
+  def test_disabling_in_context_is_matched(self):
+
+    test_obj = self
+
+    class MyLayer(keras.layers.Layer):
+
+      def call(self, inputs, training=None):
+        with test_obj.assertRaisesRegex(TypeError, 'Tensor.*as.*bool'):
+          if constant_op.constant(False):
+            return inputs * 1.
+        return inputs * 0.
+
+    @def_function.function(autograph=False)
+    def test_fn():
+      return MyLayer()(constant_op.constant([[1., 2., 3.]]))
+
+    test_fn()
+
   @parameterized.named_parameters(('eager', True),
                                   ('symbolic', False))
   def test_if_training_pattern_output(self, eager):

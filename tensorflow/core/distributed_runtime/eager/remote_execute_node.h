@@ -23,8 +23,8 @@ limitations under the License.
 namespace tensorflow {
 namespace eager {
 
-// EnqueueNode is an implementation of EagerNode which enqueues an operation
-// via RPC in a remote EagerService.
+// RemoteExecuteNode is an implementation of EagerNode which enqueues an
+// operation via RPC in a remote EagerService.
 class RemoteExecuteNode : public tensorflow::EagerNode {
  public:
   RemoteExecuteNode(
@@ -61,6 +61,7 @@ class RemoteExecuteNode : public tensorflow::EagerNode {
 
     return status;
   }
+  void Abort(Status status) override {}
 
  private:
   std::unique_ptr<EnqueueRequest> request_;

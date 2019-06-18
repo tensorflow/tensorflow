@@ -701,12 +701,10 @@ class ReduceDatasetOp : public AsyncOpKernel {
   explicit ReduceDatasetOp(OpKernelConstruction* ctx)
       : AsyncOpKernel(ctx),
         background_worker_(ctx->env(), "tf_data_reduce_dataset") {
-    bool use_inter_op_parallelism;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_inter_op_parallelism",
-                                     &use_inter_op_parallelism));
     FunctionMetadata::Params params;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_inter_op_parallelism",
+                                     &params.use_inter_op_parallelism));
     params.is_multi_device_function = true;
-    params.use_inter_op_parallelism = use_inter_op_parallelism;
     OP_REQUIRES_OK(ctx,
                    FunctionMetadata::Create(ctx, "f", params, &func_metadata_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
@@ -787,6 +785,13 @@ class ReduceDatasetOp : public AsyncOpKernel {
         if (!status.ok()) {
           break;
         }
+        OP_REQUIRES_ASYNC(
+            ctx, reduce_func_output.size() == state.size(),
+            errors::InvalidArgument(
+                "The number of components of the initial state and the reduce "
+                "function output does not match. (initial_state=",
+                state.size(), ", output=", reduce_func_output.size(), ")."),
+            done);
         std::swap(reduce_func_output, state);
       }
 

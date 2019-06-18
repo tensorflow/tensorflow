@@ -41,9 +41,8 @@ ops = LazyLoader(
     "tensorflow.python.framework.ops")
 
 
-# TODO(b/133606651) Export this as "TypeSpec" (or experimental.TypeSpec?) and
-# deprecate the tf.data.experimental.Structure endpoint.
-@tf_export("data.experimental.Structure")
+# TODO(b/133606651) Deprecate the tf.data.experimental.Structure endpoint.
+@tf_export("TypeSpec", "data.experimental.Structure")
 @six.add_metaclass(abc.ABCMeta)
 class TypeSpec(object):
   """Specifies a TensorFlow value type.
@@ -86,7 +85,7 @@ class TypeSpec(object):
     # consider two `TypeSpec`s compatible if they have the same type, and
     # the values returned by `_serialize` are compatible (where
     # `tf.TensorShape`, `tf.TensorSpec`, and `tf.DType` are checked for
-    # compatibility using their `is_comptaible_with` method; and all other
+    # compatibility using their `is_compatible_with` method; and all other
     # types are considered compatible if they are equal).
     if not isinstance(spec_or_value, TypeSpec):
       spec_or_value = type_spec_from_value(spec_or_value)
@@ -362,7 +361,7 @@ class TypeSpec(object):
 
   @staticmethod
   def __most_specific_compatible_type_serialization(a, b):
-    """Helper for most_specific_comptaible_type.
+    """Helper for most_specific_compatible_type.
 
     Combines two type serializations as follows:
 

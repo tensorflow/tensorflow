@@ -347,14 +347,8 @@ bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
   } else {
     LOG(FATAL) << "should not get here.";
   }
-  for (const auto& input : unary_op->inputs) {
-    if (CountOpsWithInput(*model, input) == 1) {
-      model->EraseArray(input);
-    }
-  }
-  AddMessageF("Resolved constant %s to the equivalent constant array",
-              LogName(*unary_op));
-  model->operators.erase(unary_it);
+
+  DeleteOpAndArrays(model, unary_op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

@@ -73,14 +73,12 @@ class SavedModelTest(integration_scripts.TestCase, parameterized.TestCase):
 
   NAMED_PARAMETERS_FOR_TEST_MNIST_CNN = (
       ("", dict()),
-      # TODO(b/134662234): Re-enable this case when fixed.
-      # ("_with_retraining", dict(
-      #     retrain=True,
-      #     regularization_loss_multiplier=2,  # Test impact of b/134528831.
-      # )),
+      ("_with_retraining", dict(
+          retrain=True,
+          regularization_loss_multiplier=2,  # Test impact of b/134528831.
+      )),
       ("_with_mirrored_strategy", dict(
-          # TODO(b/134662234): Add back retrain=True when fixed.
-          # retrain=True,  # That's the relevant case for distribution.
+          retrain=True,  # That's the relevant case for distribution.
           use_mirrored_strategy=True,
       )),
   )

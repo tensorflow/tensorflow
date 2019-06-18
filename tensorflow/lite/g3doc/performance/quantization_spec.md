@@ -223,6 +223,10 @@ MUL
     data_type  : int8
     range      : [-128, 127]
     granularity: per-tensor
+  Input 1:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
   Output 0:
     data_type  : int8
     range      : [-128, 127]

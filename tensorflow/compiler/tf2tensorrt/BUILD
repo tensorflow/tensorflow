@@ -3,13 +3,6 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
-package(
-    default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
-)
-
-exports_files(["LICENSE"])
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_shared_object",
@@ -30,6 +23,27 @@ load(
 )
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 # Placeholder for Google-internal load statements.
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
+
+cc_library(
+    name = "tensorrt_stub",
+    srcs = if_tensorrt([
+        "stub/nvinfer_stub.cc",
+        "stub/nvinfer_plugin_stub.cc",
+    ]),
+    textual_hdrs = glob(["stub/*.inc"]),
+    deps = if_tensorrt([
+        "@local_config_tensorrt//:tensorrt_headers",
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/platform:dso_loader",
+    ]),
+)
 
 tf_cuda_cc_test(
     name = "tensorrt_test_cc",

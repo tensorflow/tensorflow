@@ -558,6 +558,16 @@ def _assign_on_device(device, variable, tensor):
     return variable.assign(array_ops.identity(tensor))
 
 
+def _assign_add_on_device(device, variable, tensor):
+  with ops.device(device):
+    return variable.assign_add(array_ops.identity(tensor))
+
+
+def _assign_sub_on_device(device, variable, tensor):
+  with ops.device(device):
+    return variable.assign_sub(array_ops.identity(tensor))
+
+
 def _assert_strategy(strategy):
   if not distribution_strategy_context.has_strategy():
     raise RuntimeError(
@@ -755,7 +765,8 @@ class DistributedVariable(DistributedDelegate, variables_lib.AbstractVariable):
     return self.primary._in_graph_mode   # pylint: disable=protected-access
 
   def read_value(self):
-    return self._distribute_strategy.extended.read_var(self)
+    with _enter_or_assert_strategy(self._distribute_strategy):
+      return array_ops.identity(self.get())
 
   def value(self):
     return self._get_closest().value()
@@ -1164,26 +1175,44 @@ class SyncOnReadVariable(DistributedVariable, PerReplica):
         strategy, device_map, values, logical_device=logical_device)
 
   def assign_sub(self, *args, **kwargs):
-    _assert_replica_context(self._distribute_strategy)
-    return self.get().assign_sub(*args, **kwargs)
+    with _enter_or_assert_strategy(self._distribute_strategy):
+      if distribution_strategy_context.in_cross_replica_context():
+        if self._aggregation == vs.VariableAggregation.SUM:
+          raise ValueError(
+              "SyncOnReadVariable does not support `assign_sub` in "
+              "cross-replica context when aggregation is set to "
+              "`tf.VariableAggregation.SUM`.")
+        return control_flow_ops.group(tuple(
+            _assign_sub_on_device(v.device, v, args[0]) for v in self._values))
+      else:
+        return self.get().assign_sub(*args, **kwargs)
 
   def assign_add(self, *args, **kwargs):
-    _assert_replica_context(self._distribute_strategy)
-    return self.get().assign_add(*args, **kwargs)
+    with _enter_or_assert_strategy(self._distribute_strategy):
+      if distribution_strategy_context.in_cross_replica_context():
+        if self._aggregation == vs.VariableAggregation.SUM:
+          raise ValueError(
+              "SyncOnReadVariable does not support `assign_add` in "
+              "cross-replica context when aggregation is set to "
+              "`tf.VariableAggregation.SUM`.")
+        return control_flow_ops.group(tuple(
+            _assign_add_on_device(v.device, v, args[0]) for v in self._values))
+      else:
+        return self.get().assign_add(*args, **kwargs)
 
   def assign(self, *args, **kwargs):
-    if distribution_strategy_context.in_cross_replica_context():
-      # To preserve the sum across save and restore, we have to divide the
-      # total across all devices when restoring a variable that was summed
-      # when saving.
-      tensor = args[0]
-      if self._aggregation == vs.VariableAggregation.SUM:
-        tensor *= 1. / len(self.devices)
-      return control_flow_ops.group(tuple(
-          _assign_on_device(v.device, v, tensor) for v in self._values))
-    else:
-      _assert_replica_context(self._distribute_strategy)
-      return self.get().assign(*args, **kwargs)
+    with _enter_or_assert_strategy(self._distribute_strategy):
+      if distribution_strategy_context.in_cross_replica_context():
+        # To preserve the sum across save and restore, we have to divide the
+        # total across all devices when restoring a variable that was summed
+        # when saving.
+        tensor = args[0]
+        if self._aggregation == vs.VariableAggregation.SUM:
+          tensor *= 1. / len(self.devices)
+        return control_flow_ops.group(tuple(
+            _assign_on_device(v.device, v, tensor) for v in self._values))
+      else:
+        return self.get().assign(*args, **kwargs)
 
   @property
   def aggregation(self):

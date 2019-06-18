@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "absl/time/clock.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
@@ -45,11 +46,10 @@ namespace {
 
 enum SnapshotMode { READER = 0, WRITER = 1, PASSTHROUGH = 2 };
 
+// Defaults to 10 GiB per shard.
+const int64 kDefaultShardSizeBytes = 10L * 1024 * 1024 * 1024;
+
 const size_t kHeaderSize = sizeof(uint64);
-
-const uint64 kOneDayInMicroseconds = 24L * 60L * 60L * 1e6L;
-
-const uint64 kNumMBPerShard = 10 * 1024;  // 10 GB per file.
 
 const char kSnapshotFilename[] = "snapshot.metadata";
 
@@ -176,8 +176,9 @@ class SnapshotReader {
 };
 
 string GetCurrentSnapshotDataFilename(uint64 bytes_written,
+                                      uint64 shard_size_bytes,
                                       const string& run_dir) {
-  uint64_t shard_id = bytes_written / (1024 * 1024 * kNumMBPerShard);
+  uint64_t shard_id = bytes_written / shard_size_bytes;
   return absl::StrCat(run_dir, "/", strings::Printf("%08lu", shard_id),
                       ".snapshot");
 }
@@ -217,7 +218,8 @@ Status ReadMetadataFile(const string& fingerprint_dir,
 
 SnapshotMode DetermineOpState(
     const Status& file_status,
-    const experimental::SnapshotMetadataRecord& metadata) {
+    const experimental::SnapshotMetadataRecord& metadata,
+    const uint64 pending_snapshot_expiry_seconds) {
   if (errors::IsNotFound(file_status)) {
     return WRITER;
   }
@@ -228,8 +230,8 @@ SnapshotMode DetermineOpState(
   }
 
   if (metadata.creation_timestamp() >=
-      Env::Default()->NowMicros() - kOneDayInMicroseconds) {
-    // TODO(frankchn): Make this timestamp configurable.
+      (static_cast<int64>(Env::Default()->NowMicros()) -
+       pending_snapshot_expiry_seconds * 1000000)) {
     // Someone else is already writing and time has not expired.
     return PASSTHROUGH;
   } else {
@@ -252,11 +254,30 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                    ctx->GetAttr("writer_path_prefix", &writer_path_prefix_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("compression", &compression_));
 
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("shard_size_bytes", &shard_size_bytes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("pending_snapshot_expiry_seconds",
+                                     &pending_snapshot_expiry_seconds_));
+
+    if (shard_size_bytes_ == -1) shard_size_bytes_ = kDefaultShardSizeBytes;
+
+    // Default to 1 day expiry for snapshots.
+    if (pending_snapshot_expiry_seconds_ == -1) {
+      pending_snapshot_expiry_seconds_ = 86400;
+    }
+
     OP_REQUIRES(
         ctx,
         compression_ == io::compression::kNone ||
             compression_ == io::compression::kGzip,
         errors::InvalidArgument("compression must be either '' or 'GZIP'."));
+
+    OP_REQUIRES(
+        ctx, shard_size_bytes_ >= 1024 * 1024,
+        errors::InvalidArgument("shard_size_bytes must be at least 1 MiB."));
+    OP_REQUIRES(
+        ctx, pending_snapshot_expiry_seconds_ >= 1,
+        errors::InvalidArgument(
+            "pending_snapshot_expiry_seconds must be at least 1 second."));
   }
 
  protected:
@@ -277,7 +298,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
     *output =
         new Dataset(ctx, input, path, graph_fingerprint, reader_path_prefix_,
-                    writer_path_prefix_, compression_);
+                    writer_path_prefix_, compression_, shard_size_bytes_,
+                    pending_snapshot_expiry_seconds_);
   }
 
  private:
@@ -285,14 +307,18 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input, const string& path,
             const string& graph_fingerprint, const string& reader_path_prefix,
-            const string& writer_path_prefix, const string& compression)
+            const string& writer_path_prefix, const string& compression,
+            const uint64 shard_size_bytes,
+            const uint64 pending_snapshot_expiry_seconds)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           dir_(path),
           graph_fingerprint_(graph_fingerprint),
           reader_path_prefix_(reader_path_prefix),
           writer_path_prefix_(writer_path_prefix),
-          compression_(compression) {
+          compression_(compression),
+          shard_size_bytes_(shard_size_bytes),
+          pending_snapshot_expiry_seconds_(pending_snapshot_expiry_seconds) {
       input_->Ref();
     }
 
@@ -335,6 +361,13 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
       AttrValue writer_path_prefix_attr;
       b->BuildAttrValue(writer_path_prefix_, &writer_path_prefix_attr);
 
+      AttrValue shard_size_bytes_attr;
+      b->BuildAttrValue<int64>(shard_size_bytes_, &shard_size_bytes_attr);
+
+      AttrValue pending_snapshot_expiry_seconds_attr;
+      b->BuildAttrValue<int64>(pending_snapshot_expiry_seconds_,
+                               &pending_snapshot_expiry_seconds_attr);
+
       TF_RETURN_IF_ERROR(b->AddDataset(
           this,
           /*inputs=*/
@@ -344,7 +377,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           /*attrs=*/
           {{"compression", compression_attr},
            {"reader_path_prefix", reader_path_prefix_attr},
-           {"writer_path_prefix", writer_path_prefix_attr}},
+           {"writer_path_prefix", writer_path_prefix_attr},
+           {"shard_size_bytes", shard_size_bytes_attr},
+           {"pending_snapshot_expiry_seconds",
+            pending_snapshot_expiry_seconds_attr}},
           output));
       return Status::OK();
     }
@@ -361,7 +397,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
         experimental::SnapshotMetadataRecord metadata;
         Status s = ReadMetadataFile(fingerprint_dir_, &metadata);
-        state_ = DetermineOpState(s, metadata);
+        state_ = DetermineOpState(s, metadata,
+                                  dataset()->pending_snapshot_expiry_seconds_);
 
         switch (state_) {
           case WRITER:
@@ -591,8 +628,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             return Status::OK();
           }
 
-          string snapshot_data_filename =
-              GetCurrentSnapshotDataFilename(bytes_written_, run_dir_);
+          string snapshot_data_filename = GetCurrentSnapshotDataFilename(
+              bytes_written_, dataset()->shard_size_bytes_, run_dir_);
 
           if (current_write_filename_ != snapshot_data_filename) {
             if (current_writer_) TF_RETURN_IF_ERROR(current_writer_->Close());
@@ -691,6 +728,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     const string reader_path_prefix_;
     const string writer_path_prefix_;
     const string compression_;
+
+    const uint64 shard_size_bytes_;
+    const uint64 pending_snapshot_expiry_seconds_;
   };
 
   const int graph_def_version_;
@@ -700,6 +740,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
   string reader_path_prefix_;
   string writer_path_prefix_;
   string compression_;
+
+  int64 shard_size_bytes_;
+  int64 pending_snapshot_expiry_seconds_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("SnapshotDataset").Device(DEVICE_CPU),

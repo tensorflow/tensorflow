@@ -159,7 +159,6 @@ py_library(
     name = "engine",
     srcs = [
         "engine/__init__.py",
-        "engine/base_layer.py",
         "engine/input_layer.py",
         "engine/network.py",
         "engine/node.py",
@@ -180,7 +179,8 @@ py_library(
     deps = [
         ":activations",
         ":backend",
-        ":base_layer_utils",
+        ":base_layer",
+        ":base_preprocessing_layer",
         ":callbacks",
         ":callbacks_v1",
         ":constraints",
@@ -223,6 +223,47 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "base_layer",
+    srcs = ["engine/base_layer.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backend",
+        ":base_layer_utils",
+        ":constraints",
+        ":engine_utils",
+        ":regularizers",
+        "//tensorflow/python/data",
+        "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/keras/distribute",
+        "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
+        "//tensorflow/python/keras/mixed_precision/experimental:loss_scale_optimizer",
+        "//tensorflow/python/keras/mixed_precision/experimental:policy",
+        "//tensorflow/python/module",
+        "//tensorflow/python/training/tracking:data_structures",
+        "//tensorflow/tools/docs:doc_controls",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "base_preprocessing_layer",
+    srcs = ["engine/base_preprocessing_layer.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backend",
+        ":base_layer",
+        "//tensorflow/python:composite_tensor_utils",
+        "//tensorflow/python/data",
+        "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/module",
     ],
 )
 
@@ -650,6 +691,9 @@ tf_py_test(
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
     ],
     shard_count = 3,
 )
@@ -710,6 +754,17 @@ cuda_py_test(
         "no_windows_gpu",
     ],
     xla_enable_strict_auto_jit = True,
+)
+
+tf_py_test(
+    name = "base_preprocessing_layer_test",
+    size = "medium",
+    srcs = ["engine/base_preprocessing_layer_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
 )
 
 tf_py_test(
@@ -1383,7 +1438,10 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    tags = ["notsan"],
+    tags = [
+        "no_oss",  # TODO(b/135021748) reenable
+        "notsan",
+    ],
 )
 
 tf_py_test(

@@ -75,6 +75,8 @@ namespace xla {
   V(kConvert, "convert", 1)                                            \
   V(kConvolution, "convolution", 2)                                    \
   V(kCopy, "copy", 1)                                                  \
+  V(kCopyDone, "copy-done", 1)                                         \
+  V(kCopyStart, "copy-start", 1)                                       \
   V(kCos, "cosine", 1)                                                 \
   V(kCustomCall, "custom-call", kHloOpcodeIsVariadic)                  \
   V(kDivide, "divide", 2)                                              \

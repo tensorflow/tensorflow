@@ -55,16 +55,6 @@ TEST(ModelUtilsTest, HasBuffer) {
   EXPECT_TRUE(HasBuffer(&model, model.subgraphs[0].get(), 0));
 }
 
-TEST(ModelUtilsTest, IsQuantized) {
-  tflite::SubGraphT subgraph;
-  auto tensor = absl::make_unique<tflite::TensorT>();
-  tensor->type = TensorType_UINT8;
-  subgraph.tensors.push_back(std::move(tensor));
-  EXPECT_TRUE(IsQuantized(&subgraph, 0));
-  subgraph.tensors[0]->type = TensorType_FLOAT32;
-  EXPECT_FALSE(IsQuantized(&subgraph, 0));
-}
-
 TEST(ModelUtilsTest, HasMinMax) {
   TensorT tensor;
   tensor.quantization = absl::make_unique<QuantizationParametersT>();

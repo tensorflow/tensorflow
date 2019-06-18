@@ -790,7 +790,7 @@ class _FuncGraph(ops.Graph):
           collections=collections,
           use_resource=use_resource)
       self.extra_vars.append(var)
-      if (isinstance(var, resource_variable_ops.ResourceVariable) and
+      if (isinstance(var, resource_variable_ops.BaseResourceVariable) and
           self._capture_resource_var_by_value):
         # For resource-based variables read the variable outside the function
         # and pass in the value. This ensures that the function is pure and
