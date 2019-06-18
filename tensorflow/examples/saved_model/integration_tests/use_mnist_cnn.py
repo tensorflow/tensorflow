@@ -65,28 +65,10 @@ flags.DEFINE_string('strategy', None,
                     'Name of the distribution strategy to use.')
 
 
-class MaybeDistributionScope(object):
-  """Provides a context allowing no distribution strategy."""
-
-  def __init__(self, distribution):
-    self._distribution = distribution
-    self._scope = None
-
-  def __enter__(self):
-    if self._distribution:
-      self._scope = self._distribution.scope()
-      self._scope.__enter__()
-
-  def __exit__(self, exc_type, value, traceback):
-    if self._distribution:
-      self._scope.__exit__(exc_type, value, traceback)
-      self._scope = None
-
-
 def make_feature_extractor(saved_model_path, trainable,
                            regularization_loss_multiplier):
   """Load a pre-trained feature extractor and wrap it for use in Keras."""
-  if regularization_loss_multiplier:
+  if regularization_loss_multiplier is not None:
     # TODO(b/63257857): Scaling regularization losses requires manual loading
     # and modification of the SavedModel
     obj = tf.saved_model.load(saved_model_path)
@@ -126,11 +108,7 @@ def make_classifier(feature_extractor, l2_strength=0.01, dropout_rate=0.5):
 def main(argv):
   del argv
 
-  named_strategy = (
-      ds_utils.named_strategies.get(FLAGS.strategy) if FLAGS.strategy else None)
-  strategy = named_strategy.strategy if named_strategy else None
-
-  with MaybeDistributionScope(strategy):
+  with ds_utils.MaybeDistributionScope.from_name(FLAGS.strategy):
     feature_extractor = make_feature_extractor(
         FLAGS.input_saved_model_dir,
         FLAGS.retrain,
@@ -154,7 +132,7 @@ def main(argv):
             verbose=1,
             validation_data=(x_test, y_test))
 
-  if FLAGS.output_saved_model_dir and FLAGS.output_saved_model_dir != 'None':
+  if FLAGS.output_saved_model_dir:
     tf.saved_model.save(model, FLAGS.output_saved_model_dir)
 
 

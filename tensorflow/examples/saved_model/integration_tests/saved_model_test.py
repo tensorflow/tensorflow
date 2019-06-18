@@ -73,12 +73,14 @@ class SavedModelTest(scripts.TestCase, parameterized.TestCase):
     self.assertCommandSucceeded(
         "use_text_embedding_in_dataset", model_dir=export_dir)
 
-  @combinations.generate(
-      combinations.combine(
+  TEST_MNIST_CNN_GENERATE_KWARGS = dict(
+      combinations=combinations.combine(
           named_strategy=list(ds_utils.named_strategies.values()),
           retrain_flag_value=["true", "false"],
-          regularization_loss_multiplier=[0, 2]),
+          regularization_loss_multiplier=[None, 2]),  # Test for b/134528831.
       test_combinations=[combinations.NamedGPUCombination()])
+
+  @combinations.generate(**TEST_MNIST_CNN_GENERATE_KWARGS)
   def test_mnist_cnn(self, named_strategy, retrain_flag_value,
                      regularization_loss_multiplier):
 
@@ -99,14 +101,17 @@ class SavedModelTest(scripts.TestCase, parameterized.TestCase):
         fast_test_mode=fast_test_mode,
         export_dir=feature_extrator_dir)
 
-    self.assertCommandSucceeded(
-        "use_mnist_cnn",
-        fast_test_mode=fast_test_mode,
-        input_saved_model_dir=feature_extrator_dir,
-        output_saved_model_dir=full_model_dir,
-        strategy=str(named_strategy),
-        retrain=retrain_flag_value,
-        regularization_loss_multiplier=regularization_loss_multiplier)
+    use_kwargs = dict(fast_test_mode=fast_test_mode,
+                      input_saved_model_dir=feature_extrator_dir,
+                      retrain=retrain_flag_value)
+    if full_model_dir is not None:
+      use_kwargs["output_saved_model_dir"] = full_model_dir
+    if named_strategy:
+      use_kwargs["strategy"] = str(named_strategy)
+    if regularization_loss_multiplier is not None:
+      use_kwargs[
+          "regularization_loss_multiplier"] = regularization_loss_multiplier
+    self.assertCommandSucceeded("use_mnist_cnn", **use_kwargs)
 
     if full_model_dir is not None:
       self.assertCommandSucceeded(

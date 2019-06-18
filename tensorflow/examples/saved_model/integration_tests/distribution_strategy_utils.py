@@ -30,9 +30,29 @@ _strategies = [
     strategy_combinations.mirrored_strategy_with_two_gpus,
 ]
 
-named_strategies = collections.OrderedDict()
-named_strategies[None] = None
+
+named_strategies = collections.OrderedDict(
+    [(None, None)] + [(str(s), s) for s in _strategies])
 
 
-for strategy in _strategies:
-  named_strategies[str(strategy)] = strategy
+class MaybeDistributionScope(object):
+  """Provides a context allowing no distribution strategy."""
+
+  @staticmethod
+  def from_name(name):
+    return MaybeDistributionScope(named_strategies[name].strategy if name
+                                  else None)
+
+  def __init__(self, distribution):
+    self._distribution = distribution
+    self._scope = None
+
+  def __enter__(self):
+    if self._distribution:
+      self._scope = self._distribution.scope()
+      self._scope.__enter__()
+
+  def __exit__(self, exc_type, value, traceback):
+    if self._distribution:
+      self._scope.__exit__(exc_type, value, traceback)
+      self._scope = None
