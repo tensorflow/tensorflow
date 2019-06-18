@@ -736,6 +736,8 @@ namespace functor {
 
 DECLARE_GPU_SPECS(double);
 DECLARE_GPU_SPECS(float);
+DECLARE_GPU_SPECS(complex64);
+DECLARE_GPU_SPECS(complex128);
 #undef DECLARE_GPU_SPEC
 #undef DECLARE_GPU_SPECS
 }  // namespace functor
