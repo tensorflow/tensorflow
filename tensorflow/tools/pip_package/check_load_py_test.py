@@ -52,6 +52,7 @@ def main():
         '//tensorflow/contrib/tensorboard/...)']).strip()
   except subprocess.CalledProcessError as e:
     targets = e.output
+  targets = targets.decode("utf-8") if isinstance(targets, bytes) else targets
 
   # Only keep py_test targets, and filter out targets with 'no_pip' tag.
   valid_targets = []
