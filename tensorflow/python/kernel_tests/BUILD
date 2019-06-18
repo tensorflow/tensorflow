@@ -1272,6 +1272,7 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 10,
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -1374,6 +1375,7 @@ tf_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["no_rocm"],
 )
 
 tf_py_test(
@@ -1811,7 +1813,6 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:nn_ops",
     ],
-    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -2931,7 +2932,6 @@ cuda_py_test(
     ],
     shard_count = 2,
     tags = [
-        "no_rocm",
         "optonly",  # flaky timeouts unless optimized
     ],
     xla_enable_strict_auto_jit = True,
@@ -2973,7 +2973,6 @@ cuda_py_test(
     ],
     shard_count = 4,
     tags = [
-        "no_rocm",
         "optonly",  # times out
     ],
     xla_enable_strict_auto_jit = True,
@@ -3057,7 +3056,6 @@ cuda_py_test(
         "//tensorflow/python:nn_ops_gen",
     ],
     shard_count = 4,
-    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3337,7 +3335,6 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 30,
-    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3477,7 +3474,6 @@ cuda_py_test(
     data = ["//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files"],
     shard_count = 20,
     tags = [
-        "no_rocm",  # flaky test
         "no_windows",
     ],
     # TODO(b/127344411): This test passes because XLA does not actually cluster
@@ -3870,5 +3866,6 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 10,
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )

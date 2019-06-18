@@ -80,7 +80,10 @@ py_test(
     ],
     python_version = "PY2",
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "no_rocm",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:no_contrib",
