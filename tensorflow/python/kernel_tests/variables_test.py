@@ -21,6 +21,7 @@ from __future__ import print_function
 import functools
 import operator
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -43,7 +44,7 @@ from tensorflow.python.training import gradient_descent
 from tensorflow.python.util import compat
 
 
-class VariablesTestCase(test.TestCase):
+class VariablesTestCase(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def testDistributeStrategy(self):
@@ -611,31 +612,21 @@ class VariablesTestCase(test.TestCase):
     with ops.get_default_graph().as_default():
       create_variable()
 
-  def testTrainableVariableV1(self):
-    v1 = variables.VariableV1(1.0)
+  @parameterized.parameters(variables.VariableV1, variables.Variable)
+  def testTrainableVariable(self, cls):
+    v1 = cls(1.0)
     self.assertEqual(True, v1.trainable)
 
-    v2 = variables.VariableV1(
-        1.0, synchronization=variables.VariableSynchronization.ON_READ)
+    v2 = cls(1.0, synchronization=variables.VariableSynchronization.ON_READ)
     self.assertEqual(False, v2.trainable)
 
-    v3 = variables.VariableV1(
-        1.0, synchronization=variables.VariableSynchronization.ON_READ,
-        trainable=True)
+    v3 = cls(1.0, synchronization=variables.VariableSynchronization.ON_READ,
+             trainable=True)
     self.assertEqual(True, v3.trainable)
 
-  def testTrainableVariableV2(self):
-    v1 = variables.Variable(1.0)
-    self.assertEqual(True, v1.trainable)
-
-    v2 = variables.Variable(
-        1.0, synchronization=variables.VariableSynchronization.ON_READ)
-    self.assertEqual(False, v2.trainable)
-
-    v3 = variables.Variable(
-        1.0, synchronization=variables.VariableSynchronization.ON_READ,
-        trainable=True)
-    self.assertEqual(True, v3.trainable)
+    v4 = cls(1.0, synchronization=variables.VariableSynchronization.ON_READ,
+             trainable=False)
+    self.assertEqual(False, v4.trainable)
 
 
 class IsInitializedTest(test.TestCase):
