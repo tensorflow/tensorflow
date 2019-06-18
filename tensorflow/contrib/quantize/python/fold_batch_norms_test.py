@@ -168,7 +168,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldConv2d(self):
-    with compat.forward_compatibility_horizon(2019, 6, 7):
+    with compat.forward_compatibility_horizon(2019, 11, 11):
       self._RunTestOverParameters(self._TestFoldConv2d)
 
   def testMultipleLayerConv2d(self,
@@ -339,7 +339,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldConv2dUnknownShape(self):
-    with compat.forward_compatibility_horizon(2019, 6, 7):
+    with compat.forward_compatibility_horizon(2019, 11, 11):
       self._RunTestOverParameters(self._TestFoldConv2dUnknownShape)
 
   def _TestFoldFullyConnectedLayer(
@@ -435,7 +435,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldFullyConnectedLayer(self):
-    with compat.forward_compatibility_horizon(2019, 6, 7):
+    with compat.forward_compatibility_horizon(2019, 11, 11):
       self._RunTestOverParameters(self._TestFoldFullyConnectedLayer)
 
   def _TestFoldDepthwiseConv2d(self, relu, relu_op_name, with_bypass,
@@ -547,7 +547,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldDepthwiseConv2d(self):
-    with compat.forward_compatibility_horizon(2019, 6, 7):
+    with compat.forward_compatibility_horizon(2019, 11, 11):
       self._RunTestOverParameters(self._TestFoldDepthwiseConv2d)
 
   def _TestFoldAtrousConv2d(self, relu, relu_op_name, with_bypass, has_scaling,
@@ -665,7 +665,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldAtrousConv2d(self):
-    with compat.forward_compatibility_horizon(2019, 6, 7):
+    with compat.forward_compatibility_horizon(2019, 11, 11):
       self._RunTestOverParameters(self._TestFoldAtrousConv2d)
 
   def _TestCompareFoldAndUnfolded(self,
@@ -739,7 +739,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     self.assertAllClose(unfolded_backward, folded_backward, atol=1e-3)
 
   def testCompareFoldAndUnfolded(self):
-    with compat.forward_compatibility_horizon(2019, 6, 7):
+    with compat.forward_compatibility_horizon(2019, 11, 11):
       self._RunTestOverParameters(self._TestCompareFoldAndUnfolded)
 
   def _BatchNormParams(self, scale=True, fused=False):
