@@ -42,14 +42,14 @@ struct alignas(8) LocationStorage {
 };
 
 struct UnknownLocationStorage : public LocationStorage {
-  UnknownLocationStorage() : LocationStorage(Location::Kind::Unknown) {}
+  UnknownLocationStorage() : LocationStorage(Location::Kind::UnknownLocation) {}
 };
 
 struct FileLineColLocationStorage : public LocationStorage {
   FileLineColLocationStorage(Identifier filename, unsigned line,
                              unsigned column)
-      : LocationStorage(Location::Kind::FileLineCol), filename(filename),
-        line(line), column(column) {}
+      : LocationStorage(Location::Kind::FileLineColLocation),
+        filename(filename), line(line), column(column) {}
 
   Identifier filename;
   unsigned line, column;
@@ -57,7 +57,8 @@ struct FileLineColLocationStorage : public LocationStorage {
 
 struct NameLocationStorage : public LocationStorage {
   NameLocationStorage(Identifier name, Location child)
-      : LocationStorage(Location::Kind::Name), name(name), child(child) {}
+      : LocationStorage(Location::Kind::NameLocation), name(name),
+        child(child) {}
 
   Identifier name;
   Location child;
@@ -65,7 +66,7 @@ struct NameLocationStorage : public LocationStorage {
 
 struct CallSiteLocationStorage : public LocationStorage {
   CallSiteLocationStorage(Location callee, Location caller)
-      : LocationStorage(Location::Kind::CallSite), callee(callee),
+      : LocationStorage(Location::Kind::CallSiteLocation), callee(callee),
         caller(caller) {}
 
   Location callee, caller;

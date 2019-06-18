@@ -48,16 +48,16 @@ class Location {
 public:
   enum class Kind : uint8_t {
     /// This represents an unknown location.
-    Unknown,
+    UnknownLocation,
 
     /// This represents a file/line/column location.
-    FileLineCol,
+    FileLineColLocation,
 
     /// This represents an identity name attached to a child location.
-    Name,
+    NameLocation,
 
     /// This represents a location as a call site.
-    CallSite,
+    CallSiteLocation,
 
     // Represents a location as a 'void*' pointer to a front-end's opaque
     // location information, which must live longer than the MLIR objects that
@@ -129,7 +129,7 @@ public:
   static UnknownLoc get(MLIRContext *context);
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::Unknown; }
+  static bool kindof(Kind kind) { return kind == Kind::UnknownLocation; }
 };
 
 /// Represents a location derived from a file/line/column location.  The column
@@ -152,7 +152,7 @@ public:
   unsigned getColumn() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::FileLineCol; }
+  static bool kindof(Kind kind) { return kind == Kind::FileLineColLocation; }
 };
 
 /// Represents an identity name attached to a child location.
@@ -175,7 +175,7 @@ public:
   Location getChildLoc() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::Name; }
+  static bool kindof(Kind kind) { return kind == Kind::NameLocation; }
 };
 
 /// Represents a location as call site. "callee" is the concrete location
@@ -204,7 +204,7 @@ public:
   Location getCaller() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::CallSite; }
+  static bool kindof(Kind kind) { return kind == Kind::CallSiteLocation; }
 };
 
 /// Represents a value composed of multiple source constructs, with an optional

@@ -385,20 +385,20 @@ void ModulePrinter::printTrailingLocation(Location loc) {
 
 void ModulePrinter::printLocationInternal(Location loc, bool pretty) {
   switch (loc.getKind()) {
-  case Location::Kind::Unknown:
+  case Location::Kind::UnknownLocation:
     if (pretty)
       os << "[unknown]";
     else
       os << "unknown";
     break;
-  case Location::Kind::FileLineCol: {
+  case Location::Kind::FileLineColLocation: {
     auto fileLoc = loc.cast<FileLineColLoc>();
     auto mayQuote = pretty ? "" : "\"";
     os << mayQuote << fileLoc.getFilename() << mayQuote << ':'
        << fileLoc.getLine() << ':' << fileLoc.getColumn();
     break;
   }
-  case Location::Kind::Name: {
+  case Location::Kind::NameLocation: {
     auto nameLoc = loc.cast<NameLoc>();
     os << '\"' << nameLoc.getName() << '\"';
 
@@ -411,7 +411,7 @@ void ModulePrinter::printLocationInternal(Location loc, bool pretty) {
     }
     break;
   }
-  case Location::Kind::CallSite: {
+  case Location::Kind::CallSiteLocation: {
     auto callLocation = loc.cast<CallSiteLoc>();
     auto caller = callLocation.getCaller();
     auto callee = callLocation.getCallee();

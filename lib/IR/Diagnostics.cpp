@@ -314,11 +314,11 @@ struct SourceMgrDiagnosticHandlerImpl {
 /// Return a processable FileLineColLoc from the given location.
 static llvm::Optional<FileLineColLoc> getFileLineColLoc(Location loc) {
   switch (loc.getKind()) {
-  case Location::Kind::Name:
+  case Location::Kind::NameLocation:
     return getFileLineColLoc(loc.cast<NameLoc>().getChildLoc());
-  case Location::Kind::FileLineCol:
+  case Location::Kind::FileLineColLocation:
     return loc.cast<FileLineColLoc>();
-  case Location::Kind::CallSite:
+  case Location::Kind::CallSiteLocation:
     // Process the callee of a callsite location.
     return getFileLineColLoc(loc.cast<CallSiteLoc>().getCallee());
   default:
