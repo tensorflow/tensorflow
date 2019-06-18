@@ -101,6 +101,8 @@ import threading
 import weakref
 import six
 
+from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
@@ -716,6 +718,7 @@ class Strategy(object):
       (for example, if running on a single replica).
     """
     with self.scope():
+      fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx())
       return self._extended.call_for_each_replica(fn, args=args, kwargs=kwargs)
 
   def reduce(self, reduce_op, value, axis):

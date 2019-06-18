@@ -201,7 +201,6 @@ def convert(recursive=False, optional_features=None, force_conversion=True):
   def decorator(f):
     """Decorator implementation."""
 
-    @functools.wraps(f)
     def wrapper(*args, **kwargs):
       """Wrapper that calls the converted version of f."""
       with ag_ctx.ControlStatusCtx(
@@ -220,12 +219,15 @@ def convert(recursive=False, optional_features=None, force_conversion=True):
           else:
             raise
 
-    wrapper = tf_decorator.make_decorator(f, wrapper)
+    if inspect.isfunction(f) or inspect.ismethod(f):
+      wrapper = functools.update_wrapper(wrapper, f)
+
+    decorated_wrapper = tf_decorator.make_decorator(f, wrapper)
 
     # Sometimes the decorator is just desugared, making it impossible to detect.
     # This attribute makes detection easier.
-    setattr(wrapper, '__ag_compiled', True)
-    return wrapper
+    setattr(decorated_wrapper, '__ag_compiled', True)
+    return decorated_wrapper
 
   return decorator
 
