@@ -1386,9 +1386,6 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
           keras.backend.eval(last_states[0]), expected_last_state)
 
   def test_rnn_output_num_dim_larger_than_2_masking(self):
-    if test.is_built_with_cuda():
-      self.skipTest("Flaky on cuda")
-
     num_samples = 3
     num_timesteps = 4
     num_features = 5

@@ -1530,6 +1530,7 @@ tf_py_test(
         "//tensorflow/python:util",
     ],
     shard_count = 4,
+    tags = ["no_cuda"],
 )
 
 tf_py_test(
