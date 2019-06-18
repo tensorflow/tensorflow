@@ -434,7 +434,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     ```
 
     NOTE: The current implementation of `Dataset.from_generator()` uses
-    `tf.compat.v1.py_func` and inherits the same constraints. In particular, it
+    `tf.numpy_function` and inherits the same constraints. In particular, it
     requires the `Dataset`- and `Iterator`-related operations to be placed
     on a device in the same process as the Python program that called
     `Dataset.from_generator()`. The body of `generator` will not be
@@ -496,8 +496,8 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
         A `tf.int64` tensor whose value uniquely identifies an iterator in
         `generator_state`.
       """
-      return script_ops.py_func(
-          generator_state.get_next_id, args, dtypes.int64, stateful=True)
+      return script_ops.numpy_function(generator_state.get_next_id, args,
+                                       dtypes.int64)
 
     def generator_next_fn(iterator_id_t):
       """Generates the next element from iterator with ID `iterator_id_t`.
@@ -557,8 +557,8 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
         return ret_arrays
 
-      flat_values = script_ops.py_func(
-          generator_py_func, [iterator_id_t], flattened_types, stateful=True)
+      flat_values = script_ops.numpy_function(generator_py_func,
+                                              [iterator_id_t], flattened_types)
 
       # The `py_func()` op drops the inferred shapes, so we add them back in
       # here.
@@ -580,8 +580,8 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
         # leading to a runtime error.
         return np.array(0, dtype=np.int64)
 
-      return script_ops.py_func(
-          finalize_py_func, [iterator_id_t], dtypes.int64, stateful=True)
+      return script_ops.numpy_function(finalize_py_func, [iterator_id_t],
+                                       dtypes.int64)
 
     # This function associates each traversal of `generator` with a unique
     # iterator ID.
@@ -2579,7 +2579,7 @@ class StructuredFunctionWrapper(object):
       # those tensors into a single tensor, because the customized
       # version of `nest.flatten()` does not recurse into lists. Since
       # it is more likely that the list arose from returning the
-      # result of an operation (such as `tf.compat.v1.py_func()`) that returns a
+      # result of an operation (such as `tf.numpy_function()`) that returns a
       # list of not-necessarily-stackable tensors, we treat the
       # returned value is a `tuple` instead. A user wishing to pack
       # the return value into a single tensor can use an explicit
