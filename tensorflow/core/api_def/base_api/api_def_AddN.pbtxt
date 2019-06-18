@@ -8,4 +8,5 @@ op {
   x = [9, 7, 10]
   tf.math.add_n(x) ==> 26
   ```
+END
 }
