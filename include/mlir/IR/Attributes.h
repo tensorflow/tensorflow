@@ -30,21 +30,23 @@ class Identifier;
 class IntegerSet;
 class Location;
 class MLIRContext;
-class Type;
 class ShapedType;
+class Type;
 
 namespace detail {
 
-struct OpaqueAttributeStorage;
+struct AffineMapAttributeStorage;
+struct ArrayAttributeStorage;
 struct BoolAttributeStorage;
 struct DictionaryAttributeStorage;
 struct IntegerAttributeStorage;
-struct FloatAttributeStorage;
-struct StringAttributeStorage;
-struct ArrayAttributeStorage;
-struct AffineMapAttributeStorage;
 struct IntegerSetAttributeStorage;
+struct FloatAttributeStorage;
+struct OpaqueAttributeStorage;
+struct StringAttributeStorage;
 struct TypeAttributeStorage;
+
+/// Elements Attributes.
 struct DenseElementsAttributeStorage;
 struct OpaqueElementsAttributeStorage;
 struct SparseElementsAttributeStorage;
@@ -137,19 +139,20 @@ inline raw_ostream &operator<<(raw_ostream &os, Attribute attr) {
 
 namespace StandardAttributes {
 enum Kind {
-  Unit = Attribute::FIRST_STANDARD_ATTR,
-  Opaque,
+  AffineMap = Attribute::FIRST_STANDARD_ATTR,
+  Array,
   Bool,
   Dictionary,
-  Integer,
   Float,
+  Function,
+  Integer,
+  IntegerSet,
+  Opaque,
   String,
   Type,
-  Array,
-  AffineMap,
-  IntegerSet,
-  Function,
+  Unit,
 
+  /// Elements Attributes.
   DenseElements,
   OpaqueElements,
   SparseElements,
@@ -158,51 +161,44 @@ enum Kind {
 };
 } // namespace StandardAttributes
 
-/// Unit attributes are attributes that hold no specific value and are given
-/// meaning by their existence.
-class UnitAttr : public Attribute::AttrBase<UnitAttr> {
+class AffineMapAttr
+    : public Attribute::AttrBase<AffineMapAttr, Attribute,
+                                 detail::AffineMapAttributeStorage> {
 public:
   using Base::Base;
+  using ValueType = AffineMap;
 
-  static UnitAttr get(MLIRContext *context) {
-    return Base::get(context, StandardAttributes::Unit);
+  static AffineMapAttr get(AffineMap value);
+
+  AffineMap getValue() const;
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::AffineMap;
   }
-
-  static bool kindof(unsigned kind) { return kind == StandardAttributes::Unit; }
 };
 
-/// Opaque attributes represent attributes of non-registered dialects. These are
-/// attribute represented in their raw string form, and can only usefully be
-/// tested for attribute equality.
-class OpaqueAttr : public Attribute::AttrBase<OpaqueAttr, Attribute,
-                                              detail::OpaqueAttributeStorage> {
+/// Array attributes are lists of other attributes.  They are not necessarily
+/// type homogenous given that attributes don't, in general, carry types.
+class ArrayAttr : public Attribute::AttrBase<ArrayAttr, Attribute,
+                                             detail::ArrayAttributeStorage> {
 public:
   using Base::Base;
+  using ValueType = ArrayRef<Attribute>;
 
-  /// Get or create a new OpaqueAttr with the provided dialect and string data.
-  static OpaqueAttr get(Identifier dialect, StringRef attrData,
-                        MLIRContext *context);
+  static ArrayAttr get(ArrayRef<Attribute> value, MLIRContext *context);
 
-  /// Get or create a new OpaqueAttr with the provided dialect and string data.
-  /// If the given identifier is not a valid namespace for a dialect, then a
-  /// null attribute is returned.
-  static OpaqueAttr getChecked(Identifier dialect, StringRef attrData,
-                               MLIRContext *context, Location location);
+  ArrayRef<Attribute> getValue() const;
 
-  /// Returns the dialect namespace of the opaque attribute.
-  Identifier getDialectNamespace() const;
+  /// Support range iteration.
+  using iterator = llvm::ArrayRef<Attribute>::iterator;
+  iterator begin() const { return getValue().begin(); }
+  iterator end() const { return getValue().end(); }
+  size_t size() const { return getValue().size(); }
 
-  /// Returns the raw attribute data of the opaque attribute.
-  StringRef getAttrData() const;
-
-  /// Verify the construction of an opaque attribute.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, Identifier dialect,
-                               StringRef attrData);
-
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(unsigned kind) {
-    return kind == StandardAttributes::Opaque;
+    return kind == StandardAttributes::Array;
   }
 };
 
@@ -220,23 +216,40 @@ public:
   static bool kindof(unsigned kind) { return kind == StandardAttributes::Bool; }
 };
 
-class IntegerAttr
-    : public Attribute::AttrBase<IntegerAttr, Attribute,
-                                 detail::IntegerAttributeStorage> {
+/// NamedAttribute is used for dictionary attributes, it holds an identifier for
+/// the name and a value for the attribute. The attribute pointer should always
+/// be non-null.
+using NamedAttribute = std::pair<Identifier, Attribute>;
+
+/// Dictionary attribute is an attribute that represents a sorted collection of
+/// named attribute values. The elements are sorted by name, and each name must
+/// be unique within the collection.
+class DictionaryAttr
+    : public Attribute::AttrBase<DictionaryAttr, Attribute,
+                                 detail::DictionaryAttributeStorage> {
 public:
   using Base::Base;
-  using ValueType = APInt;
+  using ValueType = ArrayRef<NamedAttribute>;
 
-  static IntegerAttr get(Type type, int64_t value);
-  static IntegerAttr get(Type type, const APInt &value);
+  static DictionaryAttr get(ArrayRef<NamedAttribute> value,
+                            MLIRContext *context);
 
-  APInt getValue() const;
-  // TODO(jpienaar): Change callers to use getValue instead.
-  int64_t getInt() const;
+  ArrayRef<NamedAttribute> getValue() const;
 
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  /// Return the specified attribute if present, null otherwise.
+  Attribute get(StringRef name) const;
+  Attribute get(Identifier name) const;
+
+  /// Support range iteration.
+  using iterator = llvm::ArrayRef<NamedAttribute>::iterator;
+  iterator begin() const;
+  iterator end() const;
+  bool empty() const { return size() == 0; }
+  size_t size() const;
+
+  /// Methods for supporting type inquiry through isa, cast, and dyn_cast.
   static bool kindof(unsigned kind) {
-    return kind == StandardAttributes::Integer;
+    return kind == StandardAttributes::Dictionary;
   }
 };
 
@@ -277,97 +290,43 @@ public:
                                Type type, const APFloat &value);
 };
 
-class StringAttr : public Attribute::AttrBase<StringAttr, Attribute,
-                                              detail::StringAttributeStorage> {
+/// A function attribute represents a reference to a function object.
+class FunctionAttr
+    : public Attribute::AttrBase<FunctionAttr, Attribute,
+                                 detail::StringAttributeStorage> {
 public:
   using Base::Base;
-  using ValueType = StringRef;
+  using ValueType = Function *;
 
-  static StringAttr get(StringRef bytes, MLIRContext *context);
+  static FunctionAttr get(Function *value);
+  static FunctionAttr get(StringRef value, MLIRContext *ctx);
 
+  /// Returns the name of the held function reference.
   StringRef getValue() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(unsigned kind) {
-    return kind == StandardAttributes::String;
+    return kind == StandardAttributes::Function;
   }
 };
 
-/// Array attributes are lists of other attributes.  They are not necessarily
-/// type homogenous given that attributes don't, in general, carry types.
-class ArrayAttr : public Attribute::AttrBase<ArrayAttr, Attribute,
-                                             detail::ArrayAttributeStorage> {
+class IntegerAttr
+    : public Attribute::AttrBase<IntegerAttr, Attribute,
+                                 detail::IntegerAttributeStorage> {
 public:
   using Base::Base;
-  using ValueType = ArrayRef<Attribute>;
+  using ValueType = APInt;
 
-  static ArrayAttr get(ArrayRef<Attribute> value, MLIRContext *context);
+  static IntegerAttr get(Type type, int64_t value);
+  static IntegerAttr get(Type type, const APInt &value);
 
-  ArrayRef<Attribute> getValue() const;
-
-  /// Support range iteration.
-  using iterator = llvm::ArrayRef<Attribute>::iterator;
-  iterator begin() const { return getValue().begin(); }
-  iterator end() const { return getValue().end(); }
-  size_t size() const { return getValue().size(); }
+  APInt getValue() const;
+  // TODO(jpienaar): Change callers to use getValue instead.
+  int64_t getInt() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(unsigned kind) {
-    return kind == StandardAttributes::Array;
-  }
-};
-
-/// NamedAttribute is used for dictionary attributes, it holds an identifier for
-/// the name and a value for the attribute. The attribute pointer should always
-/// be non-null.
-using NamedAttribute = std::pair<Identifier, Attribute>;
-
-/// Dictionary attribute is an attribute that represents a sorted collection of
-/// named attribute values. The elements are sorted by name, and each name must
-/// be unique within the collection.
-class DictionaryAttr
-    : public Attribute::AttrBase<DictionaryAttr, Attribute,
-                                 detail::DictionaryAttributeStorage> {
-public:
-  using Base::Base;
-  using ValueType = ArrayRef<NamedAttribute>;
-
-  static DictionaryAttr get(ArrayRef<NamedAttribute> value,
-                            MLIRContext *context);
-
-  ArrayRef<NamedAttribute> getValue() const;
-
-  /// Return the specified attribute if present, null otherwise.
-  Attribute get(StringRef name) const;
-  Attribute get(Identifier name) const;
-
-  /// Support range iteration.
-  using iterator = llvm::ArrayRef<NamedAttribute>::iterator;
-  iterator begin() const;
-  iterator end() const;
-  bool empty() const { return size() == 0; }
-  size_t size() const;
-
-  /// Methods for supporting type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(unsigned kind) {
-    return kind == StandardAttributes::Dictionary;
-  }
-};
-
-class AffineMapAttr
-    : public Attribute::AttrBase<AffineMapAttr, Attribute,
-                                 detail::AffineMapAttributeStorage> {
-public:
-  using Base::Base;
-  using ValueType = AffineMap;
-
-  static AffineMapAttr get(AffineMap value);
-
-  AffineMap getValue() const;
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(unsigned kind) {
-    return kind == StandardAttributes::AffineMap;
+    return kind == StandardAttributes::Integer;
   }
 };
 
@@ -388,6 +347,57 @@ public:
   }
 };
 
+/// Opaque attributes represent attributes of non-registered dialects. These are
+/// attribute represented in their raw string form, and can only usefully be
+/// tested for attribute equality.
+class OpaqueAttr : public Attribute::AttrBase<OpaqueAttr, Attribute,
+                                              detail::OpaqueAttributeStorage> {
+public:
+  using Base::Base;
+
+  /// Get or create a new OpaqueAttr with the provided dialect and string data.
+  static OpaqueAttr get(Identifier dialect, StringRef attrData,
+                        MLIRContext *context);
+
+  /// Get or create a new OpaqueAttr with the provided dialect and string data.
+  /// If the given identifier is not a valid namespace for a dialect, then a
+  /// null attribute is returned.
+  static OpaqueAttr getChecked(Identifier dialect, StringRef attrData,
+                               MLIRContext *context, Location location);
+
+  /// Returns the dialect namespace of the opaque attribute.
+  Identifier getDialectNamespace() const;
+
+  /// Returns the raw attribute data of the opaque attribute.
+  StringRef getAttrData() const;
+
+  /// Verify the construction of an opaque attribute.
+  static LogicalResult
+  verifyConstructionInvariants(llvm::Optional<Location> loc,
+                               MLIRContext *context, Identifier dialect,
+                               StringRef attrData);
+
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::Opaque;
+  }
+};
+
+class StringAttr : public Attribute::AttrBase<StringAttr, Attribute,
+                                              detail::StringAttributeStorage> {
+public:
+  using Base::Base;
+  using ValueType = StringRef;
+
+  static StringAttr get(StringRef bytes, MLIRContext *context);
+
+  StringRef getValue() const;
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::String;
+  }
+};
+
 class TypeAttr : public Attribute::AttrBase<TypeAttr, Attribute,
                                             detail::TypeAttributeStorage> {
 public:
@@ -402,25 +412,22 @@ public:
   static bool kindof(unsigned kind) { return kind == StandardAttributes::Type; }
 };
 
-/// A function attribute represents a reference to a function object.
-class FunctionAttr
-    : public Attribute::AttrBase<FunctionAttr, Attribute,
-                                 detail::StringAttributeStorage> {
+/// Unit attributes are attributes that hold no specific value and are given
+/// meaning by their existence.
+class UnitAttr : public Attribute::AttrBase<UnitAttr> {
 public:
   using Base::Base;
-  using ValueType = Function *;
 
-  static FunctionAttr get(Function *value);
-  static FunctionAttr get(StringRef value, MLIRContext *ctx);
-
-  /// Returns the name of the held function reference.
-  StringRef getValue() const;
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(unsigned kind) {
-    return kind == StandardAttributes::Function;
+  static UnitAttr get(MLIRContext *context) {
+    return Base::get(context, StandardAttributes::Unit);
   }
+
+  static bool kindof(unsigned kind) { return kind == StandardAttributes::Unit; }
 };
+
+//===----------------------------------------------------------------------===//
+// Elements Attributes
+//===----------------------------------------------------------------------===//
 
 /// A base attribute that represents a reference to a static shaped tensor or
 /// vector constant.
@@ -686,30 +693,6 @@ protected:
   bool isValidIntOrFloat(int64_t dataEltSize, bool isInt) const;
 };
 
-/// An attribute that represents a reference to a dense integer vector or tensor
-/// object.
-class DenseIntElementsAttr : public DenseElementsAttr {
-public:
-  /// DenseIntElementsAttr iterates on APInt, so we can use the raw element
-  /// iterator directly.
-  using iterator = DenseElementsAttr::IntElementIterator;
-
-  using DenseElementsAttr::DenseElementsAttr;
-
-  /// Generates a new DenseElementsAttr by mapping each value attribute, and
-  /// constructing the DenseElementsAttr given the new element type.
-  DenseElementsAttr
-  mapValues(Type newElementType,
-            llvm::function_ref<APInt(const APInt &)> mapping) const;
-
-  /// Iterator access to the integer element values.
-  iterator begin() const { return raw_int_begin(); }
-  iterator end() const { return raw_int_end(); }
-
-  /// Method for supporting type inquiry through isa, cast and dyn_cast.
-  static bool classof(Attribute attr);
-};
-
 /// An attribute that represents a reference to a dense float vector or tensor
 /// object. Each element is stored as a double.
 class DenseFPElementsAttr : public DenseElementsAttr {
@@ -732,36 +715,28 @@ public:
   static bool classof(Attribute attr);
 };
 
-/// An attribute that represents a reference to a splat vector or tensor
-/// constant, meaning all of the elements have the same value.
-class SplatElementsAttr : public DenseElementsAttr {
+/// An attribute that represents a reference to a dense integer vector or tensor
+/// object.
+class DenseIntElementsAttr : public DenseElementsAttr {
 public:
+  /// DenseIntElementsAttr iterates on APInt, so we can use the raw element
+  /// iterator directly.
+  using iterator = DenseElementsAttr::IntElementIterator;
+
   using DenseElementsAttr::DenseElementsAttr;
-  using ValueType = Attribute;
 
-  /// 'type' must be a vector or tensor with static shape.
-  static SplatElementsAttr get(ShapedType type, Attribute elt);
-  Attribute getValue() const { return getSplatValue(); }
-
-  /// Generates a new SplatElementsAttr by mapping each int value to a new
-  /// underlying APInt. The new values can represent either a integer or float.
-  /// This ElementsAttr should contain integers.
-  SplatElementsAttr
+  /// Generates a new DenseElementsAttr by mapping each value attribute, and
+  /// constructing the DenseElementsAttr given the new element type.
+  DenseElementsAttr
   mapValues(Type newElementType,
             llvm::function_ref<APInt(const APInt &)> mapping) const;
 
-  /// Generates a new SplatElementsAttr by mapping each float value to a new
-  /// underlying APInt. The new values can represent either a integer or float.
-  /// This ElementsAttr should contain floats.
-  SplatElementsAttr
-  mapValues(Type newElementType,
-            llvm::function_ref<APInt(const APFloat &)> mapping) const;
+  /// Iterator access to the integer element values.
+  iterator begin() const { return raw_int_begin(); }
+  iterator end() const { return raw_int_end(); }
 
-  /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool classof(Attribute attr) {
-    auto denseAttr = attr.dyn_cast<DenseElementsAttr>();
-    return denseAttr && denseAttr.isSplat();
-  }
+  /// Method for supporting type inquiry through isa, cast and dyn_cast.
+  static bool classof(Attribute attr);
 };
 
 /// An opaque attribute that represents a reference to a vector or tensor
@@ -837,6 +812,38 @@ public:
   /// Method for support type inquiry through isa, cast and dyn_cast.
   static bool kindof(unsigned kind) {
     return kind == StandardAttributes::SparseElements;
+  }
+};
+
+/// An attribute that represents a reference to a splat vector or tensor
+/// constant, meaning all of the elements have the same value.
+class SplatElementsAttr : public DenseElementsAttr {
+public:
+  using DenseElementsAttr::DenseElementsAttr;
+  using ValueType = Attribute;
+
+  /// 'type' must be a vector or tensor with static shape.
+  static SplatElementsAttr get(ShapedType type, Attribute elt);
+  Attribute getValue() const { return getSplatValue(); }
+
+  /// Generates a new SplatElementsAttr by mapping each int value to a new
+  /// underlying APInt. The new values can represent either a integer or float.
+  /// This ElementsAttr should contain integers.
+  SplatElementsAttr
+  mapValues(Type newElementType,
+            llvm::function_ref<APInt(const APInt &)> mapping) const;
+
+  /// Generates a new SplatElementsAttr by mapping each float value to a new
+  /// underlying APInt. The new values can represent either a integer or float.
+  /// This ElementsAttr should contain floats.
+  SplatElementsAttr
+  mapValues(Type newElementType,
+            llvm::function_ref<APInt(const APFloat &)> mapping) const;
+
+  /// Method for support type inquiry through isa, cast and dyn_cast.
+  static bool classof(Attribute attr) {
+    auto denseAttr = attr.dyn_cast<DenseElementsAttr>();
+    return denseAttr && denseAttr.isSplat();
   }
 };
 

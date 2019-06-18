@@ -57,40 +57,25 @@ MLIRContext *Attribute::getContext() const { return getType().getContext(); }
 Dialect &Attribute::getDialect() const { return impl->getDialect(); }
 
 //===----------------------------------------------------------------------===//
-// OpaqueAttr
+// AffineMapAttr
 //===----------------------------------------------------------------------===//
 
-OpaqueAttr OpaqueAttr::get(Identifier dialect, StringRef attrData,
-                           MLIRContext *context) {
-  return Base::get(context, StandardAttributes::Opaque, dialect, attrData);
+AffineMapAttr AffineMapAttr::get(AffineMap value) {
+  return Base::get(value.getResult(0).getContext(),
+                   StandardAttributes::AffineMap, value);
 }
 
-OpaqueAttr OpaqueAttr::getChecked(Identifier dialect, StringRef attrData,
-                                  MLIRContext *context, Location location) {
-  return Base::getChecked(location, context, StandardAttributes::Opaque,
-                          dialect, attrData);
+AffineMap AffineMapAttr::getValue() const { return getImpl()->value; }
+
+//===----------------------------------------------------------------------===//
+// ArrayAttr
+//===----------------------------------------------------------------------===//
+
+ArrayAttr ArrayAttr::get(ArrayRef<Attribute> value, MLIRContext *context) {
+  return Base::get(context, StandardAttributes::Array, value);
 }
 
-/// Returns the dialect namespace of the opaque attribute.
-Identifier OpaqueAttr::getDialectNamespace() const {
-  return getImpl()->dialectNamespace;
-}
-
-/// Returns the raw attribute data of the opaque attribute.
-StringRef OpaqueAttr::getAttrData() const { return getImpl()->attrData; }
-
-/// Verify the construction of an opaque attribute.
-LogicalResult OpaqueAttr::verifyConstructionInvariants(
-    llvm::Optional<Location> loc, MLIRContext *context, Identifier dialect,
-    StringRef attrData) {
-  if (!Dialect::isValidNamespace(dialect.strref())) {
-    if (loc)
-      context->emitError(*loc)
-          << "invalid dialect namespace '" << dialect << "'";
-    return failure();
-  }
-  return success();
-}
+ArrayRef<Attribute> ArrayAttr::getValue() const { return getImpl()->value; }
 
 //===----------------------------------------------------------------------===//
 // BoolAttr
@@ -196,27 +181,6 @@ DictionaryAttr::iterator DictionaryAttr::end() const {
 size_t DictionaryAttr::size() const { return getValue().size(); }
 
 //===----------------------------------------------------------------------===//
-// IntegerAttr
-//===----------------------------------------------------------------------===//
-
-IntegerAttr IntegerAttr::get(Type type, const APInt &value) {
-  return Base::get(type.getContext(), StandardAttributes::Integer, type, value);
-}
-
-IntegerAttr IntegerAttr::get(Type type, int64_t value) {
-  // This uses 64 bit APInts by default for index type.
-  if (type.isIndex())
-    return get(type, APInt(64, value));
-
-  auto intType = type.cast<IntegerType>();
-  return get(type, APInt(intType.getWidth(), value));
-}
-
-APInt IntegerAttr::getValue() const { return getImpl()->getValue(); }
-
-int64_t IntegerAttr::getInt() const { return getValue().getSExtValue(); }
-
-//===----------------------------------------------------------------------===//
 // FloatAttr
 //===----------------------------------------------------------------------===//
 
@@ -287,58 +251,6 @@ FloatAttr::verifyConstructionInvariants(llvm::Optional<Location> loc,
 }
 
 //===----------------------------------------------------------------------===//
-// StringAttr
-//===----------------------------------------------------------------------===//
-
-StringAttr StringAttr::get(StringRef bytes, MLIRContext *context) {
-  return Base::get(context, StandardAttributes::String, bytes);
-}
-
-StringRef StringAttr::getValue() const { return getImpl()->value; }
-
-//===----------------------------------------------------------------------===//
-// ArrayAttr
-//===----------------------------------------------------------------------===//
-
-ArrayAttr ArrayAttr::get(ArrayRef<Attribute> value, MLIRContext *context) {
-  return Base::get(context, StandardAttributes::Array, value);
-}
-
-ArrayRef<Attribute> ArrayAttr::getValue() const { return getImpl()->value; }
-
-//===----------------------------------------------------------------------===//
-// AffineMapAttr
-//===----------------------------------------------------------------------===//
-
-AffineMapAttr AffineMapAttr::get(AffineMap value) {
-  return Base::get(value.getResult(0).getContext(),
-                   StandardAttributes::AffineMap, value);
-}
-
-AffineMap AffineMapAttr::getValue() const { return getImpl()->value; }
-
-//===----------------------------------------------------------------------===//
-// IntegerSetAttr
-//===----------------------------------------------------------------------===//
-
-IntegerSetAttr IntegerSetAttr::get(IntegerSet value) {
-  return Base::get(value.getConstraint(0).getContext(),
-                   StandardAttributes::IntegerSet, value);
-}
-
-IntegerSet IntegerSetAttr::getValue() const { return getImpl()->value; }
-
-//===----------------------------------------------------------------------===//
-// TypeAttr
-//===----------------------------------------------------------------------===//
-
-TypeAttr TypeAttr::get(Type value) {
-  return Base::get(value.getContext(), StandardAttributes::Type, value);
-}
-
-Type TypeAttr::getValue() const { return getImpl()->value; }
-
-//===----------------------------------------------------------------------===//
 // FunctionAttr
 //===----------------------------------------------------------------------===//
 
@@ -352,6 +264,94 @@ FunctionAttr FunctionAttr::get(StringRef value, MLIRContext *ctx) {
 }
 
 StringRef FunctionAttr::getValue() const { return getImpl()->value; }
+
+//===----------------------------------------------------------------------===//
+// IntegerAttr
+//===----------------------------------------------------------------------===//
+
+IntegerAttr IntegerAttr::get(Type type, const APInt &value) {
+  return Base::get(type.getContext(), StandardAttributes::Integer, type, value);
+}
+
+IntegerAttr IntegerAttr::get(Type type, int64_t value) {
+  // This uses 64 bit APInts by default for index type.
+  if (type.isIndex())
+    return get(type, APInt(64, value));
+
+  auto intType = type.cast<IntegerType>();
+  return get(type, APInt(intType.getWidth(), value));
+}
+
+APInt IntegerAttr::getValue() const { return getImpl()->getValue(); }
+
+int64_t IntegerAttr::getInt() const { return getValue().getSExtValue(); }
+
+//===----------------------------------------------------------------------===//
+// IntegerSetAttr
+//===----------------------------------------------------------------------===//
+
+IntegerSetAttr IntegerSetAttr::get(IntegerSet value) {
+  return Base::get(value.getConstraint(0).getContext(),
+                   StandardAttributes::IntegerSet, value);
+}
+
+IntegerSet IntegerSetAttr::getValue() const { return getImpl()->value; }
+
+//===----------------------------------------------------------------------===//
+// OpaqueAttr
+//===----------------------------------------------------------------------===//
+
+OpaqueAttr OpaqueAttr::get(Identifier dialect, StringRef attrData,
+                           MLIRContext *context) {
+  return Base::get(context, StandardAttributes::Opaque, dialect, attrData);
+}
+
+OpaqueAttr OpaqueAttr::getChecked(Identifier dialect, StringRef attrData,
+                                  MLIRContext *context, Location location) {
+  return Base::getChecked(location, context, StandardAttributes::Opaque,
+                          dialect, attrData);
+}
+
+/// Returns the dialect namespace of the opaque attribute.
+Identifier OpaqueAttr::getDialectNamespace() const {
+  return getImpl()->dialectNamespace;
+}
+
+/// Returns the raw attribute data of the opaque attribute.
+StringRef OpaqueAttr::getAttrData() const { return getImpl()->attrData; }
+
+/// Verify the construction of an opaque attribute.
+LogicalResult OpaqueAttr::verifyConstructionInvariants(
+    llvm::Optional<Location> loc, MLIRContext *context, Identifier dialect,
+    StringRef attrData) {
+  if (!Dialect::isValidNamespace(dialect.strref())) {
+    if (loc)
+      context->emitError(*loc)
+          << "invalid dialect namespace '" << dialect << "'";
+    return failure();
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// StringAttr
+//===----------------------------------------------------------------------===//
+
+StringAttr StringAttr::get(StringRef bytes, MLIRContext *context) {
+  return Base::get(context, StandardAttributes::String, bytes);
+}
+
+StringRef StringAttr::getValue() const { return getImpl()->value; }
+
+//===----------------------------------------------------------------------===//
+// TypeAttr
+//===----------------------------------------------------------------------===//
+
+TypeAttr TypeAttr::get(Type value) {
+  return Base::get(value.getContext(), StandardAttributes::Type, value);
+}
+
+Type TypeAttr::getValue() const { return getImpl()->value; }
 
 //===----------------------------------------------------------------------===//
 // ElementsAttr
@@ -396,28 +396,6 @@ ElementsAttr ElementsAttr::mapValues(
   default:
     llvm_unreachable("unsupported ElementsAttr subtype");
   }
-}
-
-//===----------------------------------------------------------------------===//
-// SplatElementsAttr
-//===----------------------------------------------------------------------===//
-
-SplatElementsAttr SplatElementsAttr::get(ShapedType type, Attribute elt) {
-  return DenseElementsAttr::get(type, elt).cast<SplatElementsAttr>();
-}
-
-SplatElementsAttr SplatElementsAttr::mapValues(
-    Type newElementType,
-    llvm::function_ref<APInt(const APInt &)> mapping) const {
-  return DenseElementsAttr::mapValues(newElementType, mapping)
-      .cast<SplatElementsAttr>();
-}
-
-SplatElementsAttr SplatElementsAttr::mapValues(
-    Type newElementType,
-    llvm::function_ref<APInt(const APFloat &)> mapping) const {
-  return DenseElementsAttr::mapValues(newElementType, mapping)
-      .cast<SplatElementsAttr>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -787,7 +765,7 @@ DenseElementsAttr DenseElementsAttr::mapValues(
 }
 
 //===----------------------------------------------------------------------===//
-// DenseIntElementsAttr
+// DenseFPElementsAttr
 //===----------------------------------------------------------------------===//
 
 template <typename Fn, typename Attr>
@@ -820,26 +798,6 @@ static ShapedType mappingHelper(Fn mapping, Attr &attr, ShapedType inType,
   return newArrayType;
 }
 
-DenseElementsAttr DenseIntElementsAttr::mapValues(
-    Type newElementType,
-    llvm::function_ref<APInt(const APInt &)> mapping) const {
-  llvm::SmallVector<char, 8> elementData;
-  auto newArrayType =
-      mappingHelper(mapping, *this, getType(), newElementType, elementData);
-
-  return getRaw(newArrayType, elementData, isSplat());
-}
-
-/// Method for supporting type inquiry through isa, cast and dyn_cast.
-bool DenseIntElementsAttr::classof(Attribute attr) {
-  return attr.isa<DenseElementsAttr>() &&
-         attr.getType().cast<ShapedType>().getElementType().isa<IntegerType>();
-}
-
-//===----------------------------------------------------------------------===//
-// DenseFPElementsAttr
-//===----------------------------------------------------------------------===//
-
 DenseElementsAttr DenseFPElementsAttr::mapValues(
     Type newElementType,
     llvm::function_ref<APInt(const APFloat &)> mapping) const {
@@ -854,6 +812,26 @@ DenseElementsAttr DenseFPElementsAttr::mapValues(
 bool DenseFPElementsAttr::classof(Attribute attr) {
   return attr.isa<DenseElementsAttr>() &&
          attr.getType().cast<ShapedType>().getElementType().isa<FloatType>();
+}
+
+//===----------------------------------------------------------------------===//
+// DenseIntElementsAttr
+//===----------------------------------------------------------------------===//
+
+DenseElementsAttr DenseIntElementsAttr::mapValues(
+    Type newElementType,
+    llvm::function_ref<APInt(const APInt &)> mapping) const {
+  llvm::SmallVector<char, 8> elementData;
+  auto newArrayType =
+      mappingHelper(mapping, *this, getType(), newElementType, elementData);
+
+  return getRaw(newArrayType, elementData, isSplat());
+}
+
+/// Method for supporting type inquiry through isa, cast and dyn_cast.
+bool DenseIntElementsAttr::classof(Attribute attr) {
+  return attr.isa<DenseElementsAttr>() &&
+         attr.getType().cast<ShapedType>().getElementType().isa<IntegerType>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -960,6 +938,28 @@ Attribute SparseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
 
   // Otherwise, return the held sparse value element.
   return getValues().getValue(it->second);
+}
+
+//===----------------------------------------------------------------------===//
+// SplatElementsAttr
+//===----------------------------------------------------------------------===//
+
+SplatElementsAttr SplatElementsAttr::get(ShapedType type, Attribute elt) {
+  return DenseElementsAttr::get(type, elt).cast<SplatElementsAttr>();
+}
+
+SplatElementsAttr SplatElementsAttr::mapValues(
+    Type newElementType,
+    llvm::function_ref<APInt(const APInt &)> mapping) const {
+  return DenseElementsAttr::mapValues(newElementType, mapping)
+      .cast<SplatElementsAttr>();
+}
+
+SplatElementsAttr SplatElementsAttr::mapValues(
+    Type newElementType,
+    llvm::function_ref<APInt(const APFloat &)> mapping) const {
+  return DenseElementsAttr::mapValues(newElementType, mapping)
+      .cast<SplatElementsAttr>();
 }
 
 //===----------------------------------------------------------------------===//

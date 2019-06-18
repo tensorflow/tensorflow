@@ -24,7 +24,6 @@
 
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/Function.h"
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
@@ -36,28 +35,43 @@
 
 namespace mlir {
 namespace detail {
-/// Opaque Attribute Storage and Uniquing.
-struct OpaqueAttributeStorage : public AttributeStorage {
-  OpaqueAttributeStorage(Identifier dialectNamespace, StringRef attrData)
-      : dialectNamespace(dialectNamespace), attrData(attrData) {}
+// An attribute representing a reference to an affine map.
+struct AffineMapAttributeStorage : public AttributeStorage {
+  using KeyTy = AffineMap;
 
-  /// The hash key used for uniquing.
-  using KeyTy = std::pair<Identifier, StringRef>;
-  bool operator==(const KeyTy &key) const {
-    return key == KeyTy(dialectNamespace, attrData);
+  AffineMapAttributeStorage(AffineMap value)
+      : AttributeStorage(IndexType::get(value.getContext())), value(value) {}
+
+  /// Key equality function.
+  bool operator==(const KeyTy &key) const { return key == value; }
+
+  /// Construct a new storage instance.
+  static AffineMapAttributeStorage *
+  construct(AttributeStorageAllocator &allocator, KeyTy key) {
+    return new (allocator.allocate<AffineMapAttributeStorage>())
+        AffineMapAttributeStorage(key);
   }
 
-  static OpaqueAttributeStorage *construct(AttributeStorageAllocator &allocator,
-                                           const KeyTy &key) {
-    return new (allocator.allocate<OpaqueAttributeStorage>())
-        OpaqueAttributeStorage(key.first, allocator.copyInto(key.second));
+  AffineMap value;
+};
+
+/// An attribute representing an array of other attributes.
+struct ArrayAttributeStorage : public AttributeStorage {
+  using KeyTy = ArrayRef<Attribute>;
+
+  ArrayAttributeStorage(ArrayRef<Attribute> value) : value(value) {}
+
+  /// Key equality function.
+  bool operator==(const KeyTy &key) const { return key == value; }
+
+  /// Construct a new storage instance.
+  static ArrayAttributeStorage *construct(AttributeStorageAllocator &allocator,
+                                          const KeyTy &key) {
+    return new (allocator.allocate<ArrayAttributeStorage>())
+        ArrayAttributeStorage(allocator.copyInto(key));
   }
 
-  // The dialect namespace.
-  Identifier dialectNamespace;
-
-  // The parser attribute data for this opaque attribute.
-  StringRef attrData;
+  ArrayRef<Attribute> value;
 };
 
 /// An attribute representing a boolean value.
@@ -82,51 +96,51 @@ struct BoolAttributeStorage : public AttributeStorage {
   bool value;
 };
 
-/// An attribute representing a integral value.
-struct IntegerAttributeStorage final
+/// An attribute representing a dictionary of sorted named attributes.
+struct DictionaryAttributeStorage final
     : public AttributeStorage,
-      public llvm::TrailingObjects<IntegerAttributeStorage, uint64_t> {
-  using KeyTy = std::pair<Type, APInt>;
+      private llvm::TrailingObjects<DictionaryAttributeStorage,
+                                    NamedAttribute> {
+  using KeyTy = ArrayRef<NamedAttribute>;
 
-  IntegerAttributeStorage(Type type, size_t numObjects)
-      : AttributeStorage(type), numObjects(numObjects) {
-    assert((type.isIndex() || type.isa<IntegerType>()) && "invalid type");
-  }
+  /// Given a list of NamedAttribute's, canonicalize the list (sorting
+  /// by name) and return the unique'd result.
+  static DictionaryAttributeStorage *get(ArrayRef<NamedAttribute> attrs);
 
-  /// Key equality and hash functions.
-  bool operator==(const KeyTy &key) const {
-    return key == KeyTy(getType(), getValue());
-  }
-  static unsigned hashKey(const KeyTy &key) {
-    return llvm::hash_combine(key.first, llvm::hash_value(key.second));
-  }
+  /// Key equality function.
+  bool operator==(const KeyTy &key) const { return key == getElements(); }
 
   /// Construct a new storage instance.
-  static IntegerAttributeStorage *
+  static DictionaryAttributeStorage *
   construct(AttributeStorageAllocator &allocator, const KeyTy &key) {
-    Type type;
-    APInt value;
-    std::tie(type, value) = key;
+    auto size = DictionaryAttributeStorage::totalSizeToAlloc<NamedAttribute>(
+        key.size());
+    auto rawMem = allocator.allocate(size, alignof(NamedAttribute));
 
-    auto elements = ArrayRef<uint64_t>(value.getRawData(), value.getNumWords());
-    auto size =
-        IntegerAttributeStorage::totalSizeToAlloc<uint64_t>(elements.size());
-    auto rawMem = allocator.allocate(size, alignof(IntegerAttributeStorage));
-    auto result = ::new (rawMem) IntegerAttributeStorage(type, elements.size());
-    std::uninitialized_copy(elements.begin(), elements.end(),
-                            result->getTrailingObjects<uint64_t>());
+    // Initialize the storage and trailing attribute list.
+    auto result = ::new (rawMem) DictionaryAttributeStorage(key.size());
+    std::uninitialized_copy(key.begin(), key.end(),
+                            result->getTrailingObjects<NamedAttribute>());
     return result;
   }
 
-  /// Returns an APInt representing the stored value.
-  APInt getValue() const {
-    if (getType().isIndex())
-      return APInt(64, {getTrailingObjects<uint64_t>(), numObjects});
-    return APInt(getType().getIntOrFloatBitWidth(),
-                 {getTrailingObjects<uint64_t>(), numObjects});
+  /// Return the elements of this dictionary attribute.
+  ArrayRef<NamedAttribute> getElements() const {
+    return {getTrailingObjects<NamedAttribute>(), numElements};
   }
 
-  size_t numObjects;
+private:
+  friend class llvm::TrailingObjects<DictionaryAttributeStorage,
+                                     NamedAttribute>;
+
+  // This is used by the llvm::TrailingObjects base class.
+  size_t numTrailingObjects(OverloadToken<NamedAttribute>) const {
+    return numElements;
+  }
+  DictionaryAttributeStorage(unsigned numElements) : numElements(numElements) {}
+
+  /// This is the number of attributes.
+  const unsigned numElements;
 };
 
 /// An attribute representing a floating point value.
@@ -191,109 +205,51 @@ struct FloatAttributeStorage final
   size_t numObjects;
 };
 
-/// An attribute representing a string value.
-struct StringAttributeStorage : public AttributeStorage {
-  using KeyTy = StringRef;
-
-  StringAttributeStorage(StringRef value) : value(value) {}
-
-  /// Key equality function.
-  bool operator==(const KeyTy &key) const { return key == value; }
-
-  /// Construct a new storage instance.
-  static StringAttributeStorage *construct(AttributeStorageAllocator &allocator,
-                                           const KeyTy &key) {
-    return new (allocator.allocate<StringAttributeStorage>())
-        StringAttributeStorage(allocator.copyInto(key));
-  }
-
-  StringRef value;
-};
-
-/// An attribute representing an array of other attributes.
-struct ArrayAttributeStorage : public AttributeStorage {
-  using KeyTy = ArrayRef<Attribute>;
-
-  ArrayAttributeStorage(ArrayRef<Attribute> value) : value(value) {}
-
-  /// Key equality function.
-  bool operator==(const KeyTy &key) const { return key == value; }
-
-  /// Construct a new storage instance.
-  static ArrayAttributeStorage *construct(AttributeStorageAllocator &allocator,
-                                          const KeyTy &key) {
-    return new (allocator.allocate<ArrayAttributeStorage>())
-        ArrayAttributeStorage(allocator.copyInto(key));
-  }
-
-  ArrayRef<Attribute> value;
-};
-
-/// An attribute representing a dictionary of sorted named attributes.
-struct DictionaryAttributeStorage final
+/// An attribute representing a integral value.
+struct IntegerAttributeStorage final
     : public AttributeStorage,
-      private llvm::TrailingObjects<DictionaryAttributeStorage,
-                                    NamedAttribute> {
-  using KeyTy = ArrayRef<NamedAttribute>;
+      public llvm::TrailingObjects<IntegerAttributeStorage, uint64_t> {
+  using KeyTy = std::pair<Type, APInt>;
 
-  /// Given a list of NamedAttribute's, canonicalize the list (sorting
-  /// by name) and return the unique'd result.
-  static DictionaryAttributeStorage *get(ArrayRef<NamedAttribute> attrs);
+  IntegerAttributeStorage(Type type, size_t numObjects)
+      : AttributeStorage(type), numObjects(numObjects) {
+    assert((type.isIndex() || type.isa<IntegerType>()) && "invalid type");
+  }
 
-  /// Key equality function.
-  bool operator==(const KeyTy &key) const { return key == getElements(); }
+  /// Key equality and hash functions.
+  bool operator==(const KeyTy &key) const {
+    return key == KeyTy(getType(), getValue());
+  }
+  static unsigned hashKey(const KeyTy &key) {
+    return llvm::hash_combine(key.first, llvm::hash_value(key.second));
+  }
 
   /// Construct a new storage instance.
-  static DictionaryAttributeStorage *
+  static IntegerAttributeStorage *
   construct(AttributeStorageAllocator &allocator, const KeyTy &key) {
-    auto size = DictionaryAttributeStorage::totalSizeToAlloc<NamedAttribute>(
-        key.size());
-    auto rawMem = allocator.allocate(size, alignof(NamedAttribute));
+    Type type;
+    APInt value;
+    std::tie(type, value) = key;
 
-    // Initialize the storage and trailing attribute list.
-    auto result = ::new (rawMem) DictionaryAttributeStorage(key.size());
-    std::uninitialized_copy(key.begin(), key.end(),
-                            result->getTrailingObjects<NamedAttribute>());
+    auto elements = ArrayRef<uint64_t>(value.getRawData(), value.getNumWords());
+    auto size =
+        IntegerAttributeStorage::totalSizeToAlloc<uint64_t>(elements.size());
+    auto rawMem = allocator.allocate(size, alignof(IntegerAttributeStorage));
+    auto result = ::new (rawMem) IntegerAttributeStorage(type, elements.size());
+    std::uninitialized_copy(elements.begin(), elements.end(),
+                            result->getTrailingObjects<uint64_t>());
     return result;
   }
 
-  /// Return the elements of this dictionary attribute.
-  ArrayRef<NamedAttribute> getElements() const {
-    return {getTrailingObjects<NamedAttribute>(), numElements};
+  /// Returns an APInt representing the stored value.
+  APInt getValue() const {
+    if (getType().isIndex())
+      return APInt(64, {getTrailingObjects<uint64_t>(), numObjects});
+    return APInt(getType().getIntOrFloatBitWidth(),
+                 {getTrailingObjects<uint64_t>(), numObjects});
   }
 
-private:
-  friend class llvm::TrailingObjects<DictionaryAttributeStorage,
-                                     NamedAttribute>;
-
-  // This is used by the llvm::TrailingObjects base class.
-  size_t numTrailingObjects(OverloadToken<NamedAttribute>) const {
-    return numElements;
-  }
-  DictionaryAttributeStorage(unsigned numElements) : numElements(numElements) {}
-
-  /// This is the number of attributes.
-  const unsigned numElements;
-};
-
-// An attribute representing a reference to an affine map.
-struct AffineMapAttributeStorage : public AttributeStorage {
-  using KeyTy = AffineMap;
-
-  AffineMapAttributeStorage(AffineMap value)
-      : AttributeStorage(IndexType::get(value.getContext())), value(value) {}
-
-  /// Key equality function.
-  bool operator==(const KeyTy &key) const { return key == value; }
-
-  /// Construct a new storage instance.
-  static AffineMapAttributeStorage *
-  construct(AttributeStorageAllocator &allocator, KeyTy key) {
-    return new (allocator.allocate<AffineMapAttributeStorage>())
-        AffineMapAttributeStorage(key);
-  }
-
-  AffineMap value;
+  size_t numObjects;
 };
 
 // An attribute representing a reference to an integer set.
@@ -315,6 +271,49 @@ struct IntegerSetAttributeStorage : public AttributeStorage {
   IntegerSet value;
 };
 
+/// Opaque Attribute Storage and Uniquing.
+struct OpaqueAttributeStorage : public AttributeStorage {
+  OpaqueAttributeStorage(Identifier dialectNamespace, StringRef attrData)
+      : dialectNamespace(dialectNamespace), attrData(attrData) {}
+
+  /// The hash key used for uniquing.
+  using KeyTy = std::pair<Identifier, StringRef>;
+  bool operator==(const KeyTy &key) const {
+    return key == KeyTy(dialectNamespace, attrData);
+  }
+
+  static OpaqueAttributeStorage *construct(AttributeStorageAllocator &allocator,
+                                           const KeyTy &key) {
+    return new (allocator.allocate<OpaqueAttributeStorage>())
+        OpaqueAttributeStorage(key.first, allocator.copyInto(key.second));
+  }
+
+  // The dialect namespace.
+  Identifier dialectNamespace;
+
+  // The parser attribute data for this opaque attribute.
+  StringRef attrData;
+};
+
+/// An attribute representing a string value.
+struct StringAttributeStorage : public AttributeStorage {
+  using KeyTy = StringRef;
+
+  StringAttributeStorage(StringRef value) : value(value) {}
+
+  /// Key equality function.
+  bool operator==(const KeyTy &key) const { return key == value; }
+
+  /// Construct a new storage instance.
+  static StringAttributeStorage *construct(AttributeStorageAllocator &allocator,
+                                           const KeyTy &key) {
+    return new (allocator.allocate<StringAttributeStorage>())
+        StringAttributeStorage(allocator.copyInto(key));
+  }
+
+  StringRef value;
+};
+
 /// An attribute representing a reference to a type.
 struct TypeAttributeStorage : public AttributeStorage {
   using KeyTy = Type;
@@ -334,28 +333,9 @@ struct TypeAttributeStorage : public AttributeStorage {
   Type value;
 };
 
-/// An attribute representing a reference to a vector or tensor constant,
-/// inwhich all elements have the same value.
-struct SplatElementsAttributeStorage : public AttributeStorage {
-  using KeyTy = std::pair<Type, Attribute>;
-
-  SplatElementsAttributeStorage(Type type, Attribute elt)
-      : AttributeStorage(type), elt(elt) {}
-
-  /// Key equality and hash functions.
-  bool operator==(const KeyTy &key) const {
-    return key == std::make_pair(getType(), elt);
-  }
-
-  /// Construct a new storage instance.
-  static SplatElementsAttributeStorage *
-  construct(AttributeStorageAllocator &allocator, KeyTy key) {
-    return new (allocator.allocate<SplatElementsAttributeStorage>())
-        SplatElementsAttributeStorage(key.first, key.second);
-  }
-
-  Attribute elt;
-};
+//===----------------------------------------------------------------------===//
+// Elements Attributes
+//===----------------------------------------------------------------------===//
 
 /// An attribute representing a reference to a dense vector or tensor object.
 struct DenseElementsAttributeStorage : public AttributeStorage {
