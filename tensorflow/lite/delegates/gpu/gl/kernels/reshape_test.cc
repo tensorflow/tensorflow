@@ -31,12 +31,12 @@ namespace gl {
 namespace {
 
 TEST(Reshape, 1x2x3To3x2x1) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 2, 3);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 3, 2, 1);
@@ -53,12 +53,12 @@ TEST(Reshape, 1x2x3To3x2x1) {
 }
 
 TEST(Reshape, 3x1x2To2x1x3) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 3, 1, 2);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 2, 1, 3);
@@ -75,12 +75,12 @@ TEST(Reshape, 3x1x2To2x1x3) {
 }
 
 TEST(Reshape, 1x1x4To2x2x1) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 1, 4);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 2, 2, 1);
@@ -96,12 +96,12 @@ TEST(Reshape, 1x1x4To2x2x1) {
 }
 
 TEST(Reshape, BatchIsUnsupported) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(4, 1, 1, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 2, 2, 1);

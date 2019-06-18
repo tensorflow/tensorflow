@@ -41,8 +41,8 @@ class SingleOpModel {
  public:
   SingleOpModel() = delete;
   SingleOpModel(Operation&& operation,
-                const std::vector<TensorRefFloat32>& inputs,
-                const std::vector<TensorRefFloat32>& outputs);
+                const std::vector<TensorRef<BHWC>>& inputs,
+                const std::vector<TensorRef<BHWC>>& outputs);
 
   virtual ~SingleOpModel() = default;
 

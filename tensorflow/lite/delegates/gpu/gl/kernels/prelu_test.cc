@@ -29,7 +29,7 @@ namespace gl {
 namespace {
 
 TEST(PReluTest, LinearAlphaNoClip) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
@@ -42,7 +42,7 @@ TEST(PReluTest, LinearAlphaNoClip) {
   alpha.data = {2};
   attr.alpha = std::move(alpha);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 2;
   output.shape = BHWC(1, 2, 2, 1);
@@ -55,7 +55,7 @@ TEST(PReluTest, LinearAlphaNoClip) {
 }
 
 TEST(PReluTest, LinearAlphaWithClip) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
@@ -68,7 +68,7 @@ TEST(PReluTest, LinearAlphaWithClip) {
   alpha.data = {2};
   attr.alpha = std::move(alpha);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 2;
   output.shape = BHWC(1, 2, 2, 1);
@@ -81,7 +81,7 @@ TEST(PReluTest, LinearAlphaWithClip) {
 }
 
 TEST(PReluTest, 3DAlphaNoClip) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
@@ -95,7 +95,7 @@ TEST(PReluTest, 3DAlphaNoClip) {
   alpha.data = {1, 2, 2, 2};
   attr.alpha = std::move(alpha);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 2;
   output.shape = BHWC(1, 2, 2, 1);
@@ -107,7 +107,7 @@ TEST(PReluTest, 3DAlphaNoClip) {
 }
 
 TEST(PReluTest, 3DAlphaWithClip) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
@@ -121,7 +121,7 @@ TEST(PReluTest, 3DAlphaWithClip) {
   alpha.data = {1, 2, 2, 2};
   attr.alpha = std::move(alpha);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 2;
   output.shape = BHWC(1, 2, 2, 1);

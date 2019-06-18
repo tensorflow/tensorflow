@@ -34,12 +34,12 @@ namespace {
 
 void TestPadOperation(const HWC& prepend, const HWC& append,
                       const BHWC& output_shape, std::vector<float>&& expected) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 1, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = output_shape;
