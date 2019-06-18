@@ -400,7 +400,7 @@ class Reshape(Layer):
 
   # also supports shape inference using `-1` as dimension
   model.add(Reshape((-1, 2, 2)))
-  # now: model.output_shape == (None, 3, 2, 2)
+  # now: model.output_shape == (None, None, 2, 2)
   ```
   """
 
