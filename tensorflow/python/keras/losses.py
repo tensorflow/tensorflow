@@ -173,7 +173,8 @@ class Loss(object):
       return losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE
     return self.reduction
 
-
+  
+@keras_export('keras.losses.LossFunctionWrapper')
 class LossFunctionWrapper(Loss):
   """Wraps a loss function in the `Loss` class.
 
