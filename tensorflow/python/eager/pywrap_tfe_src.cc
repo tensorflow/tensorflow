@@ -1947,7 +1947,13 @@ PyObject* TFE_Py_ForwardAccumulatorNew() {
   if (PyType_Ready(&TFE_Py_ForwardAccumulator_Type) < 0) return nullptr;
   TFE_Py_ForwardAccumulator* accumulator =
       PyObject_NEW(TFE_Py_ForwardAccumulator, &TFE_Py_ForwardAccumulator_Type);
-  accumulator->accumulator = new ForwardAccumulator(py_vspace);
+  if (py_vspace == nullptr) {
+    MaybeRaiseExceptionFromStatus(
+        tensorflow::errors::Internal(
+            "ForwardAccumulator requires a PyVSpace to be registered."),
+        nullptr);
+  }
+  accumulator->accumulator = new ForwardAccumulator(*py_vspace);
   Py_INCREF(accumulator);
   GetAccumulatorSet()->insert(
       reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator));
