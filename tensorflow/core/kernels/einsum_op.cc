@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #define EIGEN_USE_THREADS
+#if GOOGLE_CUDA
+#define EIGEN_USE_GPU
+#endif  // GOOGLE_CUDA
+
+#include "tensorflow/core/kernels/einsum_op.h"
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_split.h"
@@ -34,9 +39,14 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/einsum_op_util.h"
 
+#if GOOGLE_CUDA
+#include "tensorflow/core/kernels/reduction_ops_common_gpu.h"
+#endif  // GOOGLE_CUDA
+
 namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
+using GPUDevice = Eigen::GpuDevice;
 
 namespace {
 
@@ -368,17 +378,21 @@ Status StrideOrInflate(OpKernelContext* ctx, const Tensor& input,
       ctx->allocate_temp(DataTypeToEnum<T>::value, output_shape, output));
   const Device& device = ctx->eigen_device<Device>();
   switch (reshape.size()) {
-#define NDIMS_CASE(N)                                         \
-  case N: {                                                   \
-    if (should_inflate) {                                     \
-      auto output_map = output->shaped<T, N>(reshape);        \
-      auto input_map = input.shaped<T, N>(strided_shape);     \
-      output_map.device(device) = input_map.inflate(strides); \
-    } else {                                                  \
-      auto input_map = input.shaped<T, N>(reshape);           \
-      auto output_map = output->shaped<T, N>(strided_shape);  \
-      output_map.device(device) = input_map.stride(strides);  \
-    }                                                         \
+#define NDIMS_CASE(N)                                                 \
+  case N: {                                                           \
+    if (should_inflate) {                                             \
+      auto output_map = output->shaped<T, N>(reshape);                \
+      auto input_map = input.shaped<T, N>(strided_shape);             \
+      functor::InflateFunctor<Device, T, N>()(                        \
+          device, input_map, TensorShape(strides).AsEigenDSizes<N>(), \
+          output_map);                                                \
+    } else {                                                          \
+      auto input_map = input.shaped<T, N>(reshape);                   \
+      auto output_map = output->shaped<T, N>(strided_shape);          \
+      functor::StrideFunctor<Device, T, N>()(                         \
+          device, input_map, TensorShape(strides).AsEigenDSizes<N>(), \
+          output_map);                                                \
+    }                                                                 \
   } break;
     NDIMS_CASE(1);
     NDIMS_CASE(2);
@@ -695,18 +709,59 @@ class EinsumOp : public OpKernel {
   bool output_has_ellipsis_ = false;
 };
 
+#if GOOGLE_CUDA
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T, N)                                      \
+  template <>                                                       \
+  void StrideFunctor<GPUDevice, T, N>::operator()(                  \
+      const GPUDevice& d, typename TTypes<T, N>::ConstTensor input, \
+      const Eigen::DSizes<Eigen::DenseIndex, N>& strides,           \
+      typename TTypes<T, N>::Tensor output);                        \
+  extern template struct StrideFunctor<GPUDevice, T, N>;            \
+  template <>                                                       \
+  void InflateFunctor<GPUDevice, T, N>::operator()(                 \
+      const GPUDevice& d, typename TTypes<T, N>::ConstTensor input, \
+      const Eigen::DSizes<Eigen::DenseIndex, N>& strides,           \
+      typename TTypes<T, N>::Tensor output);                        \
+  extern template struct InflateFunctor<GPUDevice, T, N>;
+
+#define DECLARE_GPU_SPECS(T) \
+  DECLARE_GPU_SPEC(T, 1);    \
+  DECLARE_GPU_SPEC(T, 2);    \
+  DECLARE_GPU_SPEC(T, 3);    \
+  DECLARE_GPU_SPEC(T, 4);    \
+  DECLARE_GPU_SPEC(T, 5);    \
+  DECLARE_GPU_SPEC(T, 6);
+
+DECLARE_GPU_SPECS(double);
+DECLARE_GPU_SPECS(float);
+#undef DECLARE_GPU_SPEC
+#undef DECLARE_GPU_SPECS
+}  // namespace functor
+#endif  // GOOGLE_CUDA
+
 #define REGISTER_EINSUM(D, TYPE)                                   \
   REGISTER_KERNEL_BUILDER(                                         \
       Name("Einsum").Device(DEVICE_##D).TypeConstraint<TYPE>("T"), \
       EinsumOp<D##Device, TYPE>);
 
-// TODO(anudhyan): Also register GPU kernels for Einsum.
 #define REGISTER_CPU(TYPE) REGISTER_EINSUM(CPU, TYPE)
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
 TF_CALL_complex64(REGISTER_CPU);
 TF_CALL_complex128(REGISTER_CPU);
 #undef REGISTER_CPU
+
+#if GOOGLE_CUDA
+#define REGISTER_GPU(TYPE) REGISTER_EINSUM(GPU, TYPE)
+TF_CALL_float(REGISTER_GPU);
+TF_CALL_double(REGISTER_GPU);
+TF_CALL_complex64(REGISTER_GPU);
+TF_CALL_complex128(REGISTER_GPU);
+#undef REGISTER_GPU
+#endif  // GOOGLE_CUDA
+
 #undef REGISTER_EINSUM
 
 }  // namespace tensorflow
