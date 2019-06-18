@@ -441,6 +441,25 @@ class ApiTest(test.TestCase):
         TypeError, 'Using a `tf.Tensor` as a Python `bool`'):
       tc.test_method()
 
+  def test_converted_call_mangled_properties(self):
+
+    class TestClass(object):
+
+      def __init__(self, x):
+        self.__private = x
+
+      def test_method(self):
+        if self.__private < 0:
+          return self.__private
+        return self.__private
+
+    tc = TestClass(constant_op.constant(-1))
+    # The error below is specific to the `if` statement not being converted.
+    with self.assertRaisesRegex(NotImplementedError, 'Mangled names'):
+      api.converted_call('test_method', tc,
+                         converter.ConversionOptions(recursive=True), (), {})
+      tc.test_method()
+
   def test_converted_call_already_converted(self):
 
     def f(x):
