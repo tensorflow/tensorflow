@@ -31,6 +31,7 @@ from absl import flags
 import tensorflow.compat.v2 as tf
 import tensorflow_hub as hub
 
+from tensorflow.examples.saved_model.integration_tests import distribution_strategy_utils as ds_utils
 from tensorflow.examples.saved_model.integration_tests import mnist_util
 
 FLAGS = flags.FLAGS
@@ -57,12 +58,29 @@ flags.DEFINE_bool(
 flags.DEFINE_bool(
     'fast_test_mode', False,
     'Shortcut training for running in unit tests.')
-flags.DEFINE_bool(
-    'use_mirrored_strategy', False,
-    'Whether to use mirrored distribution strategy.')
 flags.DEFINE_string(
     'output_saved_model_dir', None,
     'Directory of the SavedModel that was exported for reuse.')
+flags.DEFINE_string('strategy', None,
+                    'Name of the distribution strategy to use.')
+
+
+class MaybeDistributionScope(object):
+  """Provides a context allowing no distribution strategy."""
+
+  def __init__(self, distribution):
+    self._distribution = distribution
+    self._scope = None
+
+  def __enter__(self):
+    if self._distribution:
+      self._scope = self._distribution.scope()
+      self._scope.__enter__()
+
+  def __exit__(self, exc_type, value, traceback):
+    if self._distribution:
+      self._scope.__exit__(exc_type, value, traceback)
+      self._scope = None
 
 
 def make_feature_extractor(saved_model_path, trainable,
@@ -108,12 +126,11 @@ def make_classifier(feature_extractor, l2_strength=0.01, dropout_rate=0.5):
 def main(argv):
   del argv
 
-  if FLAGS.use_mirrored_strategy:
-    strategy = tf.distribute.MirroredStrategy()
-  else:
-    strategy = tf.distribute.get_strategy()
+  named_strategy = (
+      ds_utils.named_strategies.get(FLAGS.strategy) if FLAGS.strategy else None)
+  strategy = named_strategy.strategy if named_strategy else None
 
-  with strategy.scope():
+  with MaybeDistributionScope(strategy):
     feature_extractor = make_feature_extractor(
         FLAGS.input_saved_model_dir,
         FLAGS.retrain,
@@ -137,7 +154,7 @@ def main(argv):
             verbose=1,
             validation_data=(x_test, y_test))
 
-  if FLAGS.output_saved_model_dir:
+  if FLAGS.output_saved_model_dir and FLAGS.output_saved_model_dir != 'None':
     tf.saved_model.save(model, FLAGS.output_saved_model_dir)
 
 
