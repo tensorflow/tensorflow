@@ -391,6 +391,8 @@ def converted_call(f, owner, options, args, kwargs):
                 composite_desc, args, kwargs)
 
   if inspect_utils.isbuiltin(f):
+    if f is eval:
+      return py_builtins.eval_in_original_context(f, args, 1)
     if kwargs:
       return py_builtins.overload_of(f)(*args, **kwargs)
     else:
