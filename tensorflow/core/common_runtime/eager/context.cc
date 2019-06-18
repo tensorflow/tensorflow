@@ -37,6 +37,7 @@ limitations under the License.
 #endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/monitoring.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -50,6 +51,10 @@ bool ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val) {
   }
   return default_val;
 }
+
+auto* eager_context_created =
+    monitoring::Gauge<bool, 0>::New("/tensorflow/core/eager_context_created",
+                                    "True if an eager context was created.");
 
 }  // namespace
 
@@ -81,6 +86,7 @@ EagerContext::EagerContext(
   // Starts exporting metrics through a platform-specific monitoring API (if
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
+  eager_context_created->GetCell()->Set(true);
   monitoring::StartExporter();
   if (device_mgr_owned) {
     local_device_manager_.reset(device_mgr);

@@ -14,11 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/monitoring.h"
 
 namespace tensorflow {
 
 namespace {
+
+auto* session_created = monitoring::Gauge<bool, 0>::New(
+    "/tensorflow/core/session_created", "True if a session was created.");
 
 // A private cache that wraps worker_cache and allows reuse of
 // WorkerInterface objects.
@@ -113,6 +117,7 @@ WorkerSession::WorkerSession(const string& session_name,
   // Starts exporting metrics through a platform-specific monitoring API (if
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
+  session_created->GetCell()->Set(true);
   monitoring::StartExporter();
 }
 
@@ -145,6 +150,7 @@ WorkerSession::WorkerSession(const string& session_name,
   // Starts exporting metrics through a platform-specific monitoring API (if
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
+  session_created->GetCell()->Set(true);
   monitoring::StartExporter();
 }
 
