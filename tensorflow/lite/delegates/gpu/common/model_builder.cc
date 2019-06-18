@@ -25,6 +25,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include <fp16.h>
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -50,6 +51,14 @@ namespace {
 using ::absl::make_unique;
 using ::absl::StrCat;
 
+int64_t DimensionsProduct(const TfLiteIntArray& dims) {
+  int64_t product = 1;
+  for (int i = 0; i < dims.size; i++) {
+    product *= dims.data[i];
+  }
+  return product;
+}
+
 // Creates a node that consumes output from the given node. Because output need
 // to stay the same, newly created node will inherit the output from the given
 // node, which will in turn get newly created copy of output. This is necessary
@@ -73,15 +82,39 @@ Status NewPassthroughNode(GraphFloat32* graph, Node* node,
 }
 
 template <typename T>
-Status CreateVectorCopyData(const TfLiteTensor& tensor,
-                            std::vector<T>* tensor_data) {
+Status CreateVectorCopyData(const TfLiteTensor& tensor, T* tensor_data) {
   if (tensor.bytes % sizeof(T) != 0) {
     return InvalidArgumentError(
         StrCat("Input data size ", tensor.bytes,
                " is not aligned to expected type: ", sizeof(T)));
   }
-  tensor_data->resize(tensor.bytes / sizeof(T));
-  std::memcpy(&(*tensor_data)[0], tensor.data.uint8, tensor.bytes);
+  std::memcpy(tensor_data, tensor.data.uint8, tensor.bytes);
+  return OkStatus();
+}
+
+void ConvertFloat16ToFloat32(size_t num_elements, const uint16_t* src,
+                             float* dst) {
+  for (size_t i = 0; i < num_elements; i++) {
+    *dst++ = fp16_ieee_to_fp32_value(*src++);
+  }
+}
+
+template <>
+Status CreateVectorCopyData<float>(const TfLiteTensor& tensor,
+                                   float* tensor_data) {
+  switch (tensor.type) {
+    case kTfLiteFloat32:
+      std::memcpy(tensor_data, tensor.data.uint8, tensor.bytes);
+      break;
+    case kTfLiteFloat16:
+      ConvertFloat16ToFloat32(
+          DimensionsProduct(*tensor.dims),
+          reinterpret_cast<uint16_t const*>(tensor.data.raw_const),
+          tensor_data);
+      break;
+    default:
+      return InvalidArgumentError("Unsupported data type for float32 tensor");
+  }
   return OkStatus();
 }
 
@@ -269,7 +302,9 @@ class ObjectReader {
     RETURN_IF_ERROR(CheckTensorIsAvailable(context_, tflite_node_, idx));
     int32_t tensor_idx = tflite_node_->inputs->data[idx];
     const TfLiteTensor& tflite_tensor = context_->tensors[tensor_idx];
-    RETURN_IF_ERROR(CreateVectorCopyData(tflite_tensor, &t->data));
+    int64_t num_elements = DimensionsProduct(*tflite_tensor.dims);
+    t->data.resize(num_elements);
+    RETURN_IF_ERROR(CreateVectorCopyData(tflite_tensor, &t->data[0]));
 
     // Axis and data layout depend on operation this tensor is used in. So,
     // postpone resolutions until operations are parsed.
@@ -1125,9 +1160,9 @@ class LstmOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(graph->SetProducer(fc_node->id, activ_temp->id));
 
     RETURN_IF_ERROR(graph->AddConsumer(lstm_node->id, activ_temp->id));
-    RETURN_IF_ERROR(reader->AddInput(lstm_node, 4));       // prev_state
-    RETURN_IF_ERROR(reader->AddOutput(lstm_node, 1));      // new_state
-    RETURN_IF_ERROR(reader->AddOutput(lstm_node, 0));      // activation
+    RETURN_IF_ERROR(reader->AddInput(lstm_node, 4));   // prev_state
+    RETURN_IF_ERROR(reader->AddOutput(lstm_node, 1));  // new_state
+    RETURN_IF_ERROR(reader->AddOutput(lstm_node, 0));  // activation
 
     return OkStatus();
   }

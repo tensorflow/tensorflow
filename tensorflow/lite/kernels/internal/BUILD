@@ -291,9 +291,6 @@ cc_library(
         "optimized/eigen_spatial_convolutions.h",
         "optimized/eigen_tensor_reduced_instantiations_oss.h",
         "optimized/multithreaded_conv.h",
-        # FIXME(petewarden) - This should be removed, since it's a header from the
-        # :tensor dependency below.
-        "tensor.h",
     ],
     deps = [
         ":common",
@@ -479,6 +476,7 @@ cc_library(
     ],
     hdrs = [
         "reference/portable_tensor_utils.h",
+        "reference/portable_tensor_utils_impl.h",
     ],
     deps = [
         ":compatibility",
@@ -494,19 +492,17 @@ cc_library(
     name = "neon_tensor_utils",
     srcs = [
         "optimized/neon_tensor_utils.cc",
-        "reference/portable_tensor_utils.cc",
-        "reference/portable_tensor_utils.h",
     ],
     hdrs = [
-        "optimized/cpu_check.h",
         "optimized/neon_tensor_utils.h",
-        "optimized/tensor_utils_impl.h",
+        "optimized/neon_tensor_utils_impl.h",
     ],
     copts = NEON_FLAGS_IF_APPLICABLE + HARD_FP_FLAGS_IF_APPLICABLE,
     deps = [
         ":common",
         ":compatibility",
         ":cpu_check",
+        ":portable_tensor_utils",
         ":round",
         ":types",
         "//tensorflow/lite/c:c_api_internal",
@@ -555,18 +551,14 @@ cc_library(
         "tensor_utils.cc",
     ],
     hdrs = [
-        "optimized/cpu_check.h",
-        "optimized/neon_tensor_utils.h",
-        "optimized/tensor_utils_impl.h",
-        "reference/portable_tensor_utils.h",
         "tensor_utils.h",
-        "types.h",
     ],
     copts = NEON_FLAGS_IF_APPLICABLE,
     deps = [
         ":common",
         ":compatibility",
         ":cpu_check",
+        ":types",
         "//tensorflow/lite/c:c_api_internal",
         "@arm_neon_2_x86_sse",
         "//tensorflow/lite/kernels:cpu_backend_context",

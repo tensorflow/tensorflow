@@ -33,6 +33,11 @@ string GetCudaVersion() { return TF_CUDA_VERSION; }
 string GetCudaLibVersion() { return TF_CUDA_LIB_VERSION; }
 string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 
+// TODO(laigd): populate the version string during configuration process. For
+// now hardcoded version 5 since 4.0 is not supported anyway.
+#define TF_TENSORRT_VERSION "5"
+string GetTensorRTVersion() { return TF_TENSORRT_VERSION; }
+
 port::StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
   auto filename = port::Env::Default()->FormatLibraryFileName(name, version);
   void* dso_handle;
@@ -106,6 +111,14 @@ port::StatusOr<void*> GetCuptiDsoHandle() {
 
 port::StatusOr<void*> GetCudnnDsoHandle() {
   return GetDsoHandle("cudnn", GetCudnnVersion());
+}
+
+port::StatusOr<void*> GetNvInferDsoHandle() {
+  return GetDsoHandle("nvinfer", GetTensorRTVersion());
+}
+
+port::StatusOr<void*> GetNvInferPluginDsoHandle() {
+  return GetDsoHandle("nvinfer_plugin", GetTensorRTVersion());
 }
 
 port::StatusOr<void*> GetRocblasDsoHandle() {

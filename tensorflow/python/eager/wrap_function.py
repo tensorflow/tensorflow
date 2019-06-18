@@ -156,7 +156,7 @@ def _lift_unlifted_variables(graph, variable_holder):
     def _should_lift_variable(v):
       return ((v._in_graph_mode  # pylint: disable=protected-access
                and v.graph.building_function)
-              and isinstance(v, resource_variable_ops.ResourceVariable)
+              and isinstance(v, resource_variable_ops.BaseResourceVariable)
               and v.handle not in existing_captures)
 
     for old_variable in global_collection_variables:

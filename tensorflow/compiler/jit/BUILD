@@ -196,7 +196,6 @@ cc_library(
         "//tensorflow/core/kernels:fifo_queue",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:identity_op",
-        "//tensorflow/core/kernels:queue_op",
         "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core/kernels:shape_ops",
         "//tensorflow/core/kernels:stack",

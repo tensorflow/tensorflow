@@ -155,6 +155,27 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
         tmpdir, compression=compression))
     self.assertDatasetProduces(dataset2, expected)
 
+  def testSameFingerprintWithDifferentInitializationOrder(self):
+    tmpdir = self.makeSnapshotDirectory()
+
+    dataset1 = dataset_ops.Dataset.range(0, 100)
+    dataset2 = dataset_ops.Dataset.range(100, 200)
+    dataset3 = dataset_ops.Dataset.range(200, 300)
+
+    dataset = dataset1.concatenate(dataset2).concatenate(dataset3)
+    dataset = dataset.apply(snapshot.snapshot(tmpdir))
+    self.assertDatasetProduces(dataset, list(range(300)))
+
+    dataset4 = dataset_ops.Dataset.range(200, 300)
+    dataset5 = dataset_ops.Dataset.range(100, 200)
+    dataset6 = dataset_ops.Dataset.range(0, 100)
+
+    dataset = dataset6.concatenate(dataset5).concatenate(dataset4)
+    dataset = dataset.apply(snapshot.snapshot(tmpdir))
+    self.assertDatasetProduces(dataset, list(range(300)))
+
+    self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
+
   def testExpiredSnapshotRewrite(self):
     tmpdir = self.makeSnapshotDirectory()
 

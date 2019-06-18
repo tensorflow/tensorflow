@@ -3840,6 +3840,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["critical_section_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:prefetching_ops",
         "//tensorflow/python:array_ops",

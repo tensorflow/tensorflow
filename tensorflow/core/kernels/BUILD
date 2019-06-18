@@ -242,7 +242,7 @@ tf_kernel_library(
         "concat_lib_cpu.h",
     ],
     gpu_copts = [
-        "-Wno-pass-failed",  # clang misses #pragma loop optimizations
+        "-Xclang-only=-Wno-pass-failed",  # clang misses #pragma loop optimizations
     ],
     gpu_srcs = [
         "concat_lib_gpu_impl.cu.cc",
@@ -272,7 +272,7 @@ tf_kernel_library(
     name = "conv_2d",
     hdrs = ["conv_2d.h"],
     gpu_copts = [
-        "-Wno-pass-failed",  # clang misses #pragma loop optimizations
+        "-Xclang-only=-Wno-pass-failed",  # clang misses #pragma loop optimizations
     ],
     gpu_srcs = [
         "conv_2d.h",
@@ -4181,7 +4181,7 @@ tf_kernel_library(
     srcs = ["depthwise_conv_op.cc"],
     hdrs = ["depthwise_conv_op.h"],
     gpu_copts = [
-        "-Wno-pass-failed",  # clang misses #pragma loop optimizations
+        "-Xclang-only=-Wno-pass-failed",  # clang misses #pragma loop optimizations
     ],
     gpu_srcs = [
         "depthwise_conv_op.h",
@@ -5192,7 +5192,7 @@ tf_kernel_library(
         "scatter_nd_op_cpu_impl.h",
     ],
     gpu_copts = [
-        "-Wno-pass-failed",  # clang misses #pragma loop optimizations
+        "-Xclang-only=-Wno-pass-failed",  # clang misses #pragma loop optimizations
     ],
     gpu_srcs = [
         "scatter_nd_op.h",
@@ -5551,7 +5551,7 @@ tf_cuda_cc_test(
 tf_kernel_library(
     name = "parameterized_truncated_normal_op",
     gpu_copts = [
-        "-Wno-pass-failed",  # clang misses #pragma loop optimizations
+        "-Xclang-only=-Wno-pass-failed",  # clang misses #pragma loop optimizations
     ],
     prefix = "parameterized_truncated_normal_op",
     deps = [

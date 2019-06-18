@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -682,6 +683,9 @@ class OpKernelContext {
     // Unique session identifier. Can be empty.
     string session_handle;
 
+    // Metadata about the session. Can be nullptr.
+    const SessionMetadata* session_metadata = nullptr;
+
     // The tensor store for this op.
     TensorStore* tensor_store = nullptr;
 
@@ -1120,6 +1124,11 @@ class OpKernelContext {
 
   // Unique identifier of the session it belongs to. Can be empty.
   string session_handle() const { return params_->session_handle; }
+
+  // Metadata about the session. Can be nullptr.
+  const SessionMetadata* session_metadata() const {
+    return params_->session_metadata;
+  }
 
   // An op kernel can access the tensor store of the run it belongs to.
   TensorStore* tensor_store() const { return params_->tensor_store; }

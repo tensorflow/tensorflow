@@ -53,14 +53,6 @@ bool ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val) {
 
 }  // namespace
 
-EagerContext::EagerContext(const SessionOptions& opts,
-                           ContextDevicePlacementPolicy default_policy,
-                           bool async,
-                           std::unique_ptr<const DeviceMgr> device_mgr,
-                           Rendezvous* rendezvous)
-    : EagerContext(opts, default_policy, async, device_mgr.release(),
-                   /*device_mgr_owned*/ true, rendezvous, nullptr) {}
-
 EagerContext::EagerContext(
     const SessionOptions& opts, ContextDevicePlacementPolicy default_policy,
     bool async, const DeviceMgr* device_mgr, bool device_mgr_owned,

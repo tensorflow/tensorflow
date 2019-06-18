@@ -555,6 +555,10 @@ def _get_input_from_iterator(iterator, model):
   """Get elements from the iterator and verify the input shape and type."""
   next_element = iterator.get_next()
 
+  # `len(nest.flatten(x))` is going to not count empty elements such as {}.
+  # len(nest.flatten([[0,1,2], {}])) is 3 and not 4.   The `next_element` is
+  # going to get flattened in `_prepare_feed_values` to work around that. Empty
+  # elements are going to get filtered out as part of the flattening.
   if len(nest.flatten(next_element)) == len(model.inputs):
     x = next_element
     y = None
@@ -604,6 +608,8 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
     # main flow.
     inputs, targets = nest.map_structure(
         training_utils.standardize_single_array, (inputs, targets))
+  else:
+    inputs = training_utils.ModelInputs(inputs).as_list()
 
   if mode == ModeKeys.PREDICT:
     sample_weights = []

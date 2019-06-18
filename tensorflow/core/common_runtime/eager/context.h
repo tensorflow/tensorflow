@@ -83,12 +83,6 @@ class RunMetadataListener {
 
 class EagerContext : public core::RefCounted {
  public:
-  // TODO: remove this constructor once we migrate all callers to the next one.
-  EagerContext(const SessionOptions& opts,
-               ContextDevicePlacementPolicy default_policy, bool async,
-               std::unique_ptr<const DeviceMgr> device_mgr,
-               Rendezvous* rendezvous);
-
   EagerContext(
       const SessionOptions& opts, ContextDevicePlacementPolicy default_policy,
       bool async, const DeviceMgr* device_mgr, bool device_mgr_owned,
@@ -97,7 +91,7 @@ class EagerContext : public core::RefCounted {
       std::function<Rendezvous*(const int64)> rendezvous_creator = nullptr,
       const DeviceMgr* remote_device_mgr = nullptr);
 
-  ~EagerContext();
+  ~EagerContext() override;
 
   // Returns the function library runtime for the given device.
   FunctionLibraryRuntime* func_lib(const Device* d) const {

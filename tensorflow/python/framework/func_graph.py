@@ -794,7 +794,7 @@ def func_graph_from_py_func(name,
     inputs = []
     for arg in (nest.flatten(func_args, expand_composites=True) +
                 nest.flatten(func_kwargs, expand_composites=True)):
-      if isinstance(arg, resource_variable_ops.ResourceVariable):
+      if isinstance(arg, resource_variable_ops.BaseResourceVariable):
         # Even if an argument variable was not used in the function, we've
         # already manually captured the resource Tensor when creating argument
         # placeholders.
@@ -1003,7 +1003,7 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
               "_user_specified_name",
               attr_value_pb2.AttrValue(s=compat.as_bytes(requested_name)))
         function_inputs.append(placeholder)
-      elif isinstance(arg, resource_variable_ops.ResourceVariable):
+      elif isinstance(arg, resource_variable_ops.BaseResourceVariable):
         # Capture arg variables to create placeholders for them. These will be
         # removed as captures after the function is traced (since otherwise we'd
         # just add it back with a new placeholder when the variable was
