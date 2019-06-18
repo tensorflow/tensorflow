@@ -31,8 +31,14 @@ Location::Kind Location::getKind() const { return loc->kind; }
 // FileLineColLoc
 //===----------------------------------------------------------------------===//
 
+FileLineColLoc FileLineColLoc::get(StringRef filename, unsigned line,
+                                   unsigned column, MLIRContext *context) {
+  return get(Identifier::get(filename.empty() ? "-" : filename, context), line,
+             column, context);
+}
+
 StringRef FileLineColLoc::getFilename() const {
-  return static_cast<ImplType *>(loc)->filename.getRef();
+  return static_cast<ImplType *>(loc)->filename;
 }
 unsigned FileLineColLoc::getLine() const {
   return static_cast<ImplType *>(loc)->line;

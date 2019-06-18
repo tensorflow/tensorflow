@@ -27,7 +27,6 @@ class AffineExpr;
 class BlockAndValueMapping;
 class Module;
 class UnknownLoc;
-class UniquedFilename;
 class FileLineColLoc;
 class Type;
 class PrimitiveType;
@@ -67,8 +66,7 @@ public:
 
   // Locations.
   UnknownLoc getUnknownLoc();
-  UniquedFilename getUniquedFilename(StringRef filename);
-  FileLineColLoc getFileLineColLoc(UniquedFilename filename, unsigned line,
+  FileLineColLoc getFileLineColLoc(Identifier filename, unsigned line,
                                    unsigned column);
   Location getFusedLoc(ArrayRef<Location> locs,
                        Attribute metadata = Attribute());

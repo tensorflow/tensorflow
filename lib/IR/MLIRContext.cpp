@@ -261,9 +261,6 @@ public:
   /// The singleton for UnknownLoc.
   UnknownLocationStorage theUnknownLoc;
 
-  /// These are filename locations uniqued into this MLIRContext.
-  llvm::StringMap<char, llvm::BumpPtrAllocator &> filenames;
-
   /// FileLineColLoc uniquing.
   DenseMap<std::tuple<const char *, unsigned, unsigned>,
            FileLineColLocationStorage *>
@@ -345,8 +342,7 @@ public:
   StorageUniquer attributeUniquer;
 
 public:
-  MLIRContextImpl()
-      : filenames(locationAllocator), identifiers(identifierAllocator) {}
+  MLIRContextImpl() : identifiers(identifierAllocator) {}
 };
 } // end namespace mlir
 
@@ -561,16 +557,7 @@ UnknownLoc UnknownLoc::get(MLIRContext *context) {
   return &context->getImpl().theUnknownLoc;
 }
 
-UniquedFilename UniquedFilename::get(StringRef filename, MLIRContext *context) {
-  auto &impl = context->getImpl();
-
-  // Aquire a writer-lock so that we can safely create the new instance.
-  llvm::sys::SmartScopedWriter<true> locationLock(impl.locationMutex);
-  auto it = impl.filenames.insert({filename, char()}).first;
-  return UniquedFilename(it->getKeyData());
-}
-
-FileLineColLoc FileLineColLoc::get(UniquedFilename filename, unsigned line,
+FileLineColLoc FileLineColLoc::get(Identifier filename, unsigned line,
                                    unsigned column, MLIRContext *context) {
   auto &impl = context->getImpl();
 

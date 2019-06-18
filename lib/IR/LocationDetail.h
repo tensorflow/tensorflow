@@ -46,12 +46,12 @@ struct UnknownLocationStorage : public LocationStorage {
 };
 
 struct FileLineColLocationStorage : public LocationStorage {
-  FileLineColLocationStorage(UniquedFilename filename, unsigned line,
+  FileLineColLocationStorage(Identifier filename, unsigned line,
                              unsigned column)
       : LocationStorage(Location::Kind::FileLineCol), filename(filename),
         line(line), column(column) {}
 
-  UniquedFilename filename;
+  Identifier filename;
   unsigned line, column;
 };
 

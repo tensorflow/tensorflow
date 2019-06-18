@@ -132,23 +132,6 @@ public:
   static bool kindof(Kind kind) { return kind == Kind::Unknown; }
 };
 
-/// This class is used to represent a uniqued filename in an MLIRContext.  It is
-/// a simple wrapper around a const char* to uniqued string memory.
-class UniquedFilename {
-public:
-  /// Unique the specified filename and return a stable pointer owned by the
-  /// specified context.  The filename is not allowed to contain embedded ASCII
-  /// nul (\0) characters.
-  static UniquedFilename get(StringRef filename, MLIRContext *context);
-
-  StringRef getRef() const { return string; }
-  const char *data() const { return string; }
-
-private:
-  explicit UniquedFilename(const char *string) : string(string) {}
-  const char *string;
-};
-
 /// Represents a location derived from a file/line/column location.  The column
 /// and line may be zero to represent unknown column and/or unknown line/column
 /// information.
@@ -158,8 +141,10 @@ public:
   using Location::Location;
 
   /// Return a uniqued FileLineCol location object.
-  static FileLineColLoc get(UniquedFilename filename, unsigned line,
-                            unsigned column, MLIRContext *context);
+  static FileLineColLoc get(Identifier filename, unsigned line, unsigned column,
+                            MLIRContext *context);
+  static FileLineColLoc get(StringRef filename, unsigned line, unsigned column,
+                            MLIRContext *context);
 
   StringRef getFilename() const;
 

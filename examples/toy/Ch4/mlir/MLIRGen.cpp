@@ -115,9 +115,8 @@ private:
 
   /// Helper conversion for a Toy AST location to an MLIR location.
   mlir::FileLineColLoc loc(Location loc) {
-    return mlir::FileLineColLoc::get(
-        mlir::UniquedFilename::get(*loc.file, &context), loc.line, loc.col,
-        &context);
+    return mlir::FileLineColLoc::get(mlir::Identifier::get(*loc.file, &context),
+                                     loc.line, loc.col, &context);
   }
 
   /// Declare a variable in the current scope, return true if the variable

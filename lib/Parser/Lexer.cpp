@@ -21,6 +21,7 @@
 
 #include "Lexer.h"
 #include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/Identifier.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "llvm/Support/SourceMgr.h"
@@ -49,9 +50,8 @@ Location Lexer::getEncodedSourceLocation(llvm::SMLoc loc) {
   unsigned mainFileID = sourceMgr.getMainFileID();
   auto lineAndColumn = sourceMgr.getLineAndColumn(loc, mainFileID);
   auto *buffer = sourceMgr.getMemoryBuffer(mainFileID);
-  auto filename = UniquedFilename::get(buffer->getBufferIdentifier(), context);
 
-  return FileLineColLoc::get(filename, lineAndColumn.first,
+  return FileLineColLoc::get(buffer->getBufferIdentifier(), lineAndColumn.first,
                              lineAndColumn.second, context);
 }
 

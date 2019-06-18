@@ -1522,7 +1522,7 @@ ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
         return emitError("expected integer column number in FileLineColLoc");
       consumeToken(Token::integer);
 
-      auto file = UniquedFilename::get(str, ctx);
+      auto file = Identifier::get(str, ctx);
       *loc = FileLineColLoc::get(file, line.getValue(), column.getValue(), ctx);
       return success();
     }
@@ -3894,8 +3894,9 @@ Module *mlir::parseSourceString(StringRef moduleStr, MLIRContext *context) {
 
 Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context) {
   SourceMgr sourceMgr;
-  auto memBuffer = MemoryBuffer::getMemBuffer(typeStr, /*BufferName=*/"",
-                                              /*RequiresNullTerminator=*/false);
+  auto memBuffer =
+      MemoryBuffer::getMemBuffer(typeStr, /*BufferName=*/"<mlir_type_buffer>",
+                                 /*RequiresNullTerminator=*/false);
   sourceMgr.AddNewSourceBuffer(std::move(memBuffer), SMLoc());
   SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, context);
   ParserState state(sourceMgr, context);

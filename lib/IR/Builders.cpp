@@ -40,12 +40,8 @@ Module *Builder::createModule() { return new Module(context); }
 
 UnknownLoc Builder::getUnknownLoc() { return UnknownLoc::get(context); }
 
-UniquedFilename Builder::getUniquedFilename(StringRef filename) {
-  return UniquedFilename::get(filename, context);
-}
-
-FileLineColLoc Builder::getFileLineColLoc(UniquedFilename filename,
-                                          unsigned line, unsigned column) {
+FileLineColLoc Builder::getFileLineColLoc(Identifier filename, unsigned line,
+                                          unsigned column) {
   return FileLineColLoc::get(filename, line, column, context);
 }
 
