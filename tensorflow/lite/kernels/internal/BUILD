@@ -607,6 +607,9 @@ cc_library(
         ":darwin_x86_64": [
             ":neon_tensor_utils",
         ],
+        ":freebsd": [
+            ":neon_tensor_utils",
+        ],
         "//conditions:default": [
             ":portable_tensor_utils",
         ],
