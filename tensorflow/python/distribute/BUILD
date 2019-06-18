@@ -1095,6 +1095,17 @@ distribute_py_test(
 )
 
 distribute_py_test(
+    name = "keras_save_load_test",
+    size = "medium",
+    srcs = ["keras_save_load_test.py"],
+    main = "keras_save_load_test.py",
+    deps = [
+        ":saved_model_test_base",
+        "//tensorflow/python/keras:saving",
+    ],
+)
+
+distribute_py_test(
     name = "saved_model_mixed_api_test",
     size = "medium",
     srcs = ["saved_model_mixed_api_test.py"],
