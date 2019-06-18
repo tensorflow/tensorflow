@@ -100,8 +100,6 @@ class ExtractImagePatchesGradTest(test.TestCase):
 
           err = gradient_checker.compute_gradient_error(in_val, in_shape,
                                                         out_val, out_shape)
-
-          print('extract_image_patches gradient err: %.4e' % err)
           self.assertLess(err, 1e-4)
 
   @test_util.run_deprecated_v1
@@ -152,8 +150,6 @@ class ExtractImagePatchesGradTest(test.TestCase):
 
           err = gradient_checker.compute_gradient_error(in_val, in_shape,
                                                         out_val, out_shape)
-
-          print('extract_image_patches gradient err: %.4e' % err)
           self.assertLess(err, 1e-4)
 
   @test_util.run_deprecated_v1
