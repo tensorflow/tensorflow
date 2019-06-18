@@ -264,7 +264,7 @@ tf_proto_library(
     name = "protos_all",
     srcs = [],
     cc_api_version = 2,
-    default_header = True,
+    make_default_target_header_only = True,
     protodeps = [
         ":protos_all_proto",
         ":error_codes_proto",
@@ -2312,7 +2312,7 @@ tf_proto_library(
     name = "autotuning_proto",
     srcs = ["protobuf/autotuning.proto"],
     cc_api_version = 2,
-    default_header = True,
+    make_default_target_header_only = True,
     provide_cc_alias = True,
     visibility = [
         "//tensorflow:internal",
@@ -2323,7 +2323,7 @@ tf_proto_library(
     name = "conv_autotuning_proto",
     srcs = ["protobuf/conv_autotuning.proto"],
     cc_api_version = 2,
-    default_header = True,
+    make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/stream_executor:dnn_proto",
     ],
@@ -2753,7 +2753,7 @@ tf_proto_library(
     name = "error_codes_proto",
     srcs = ERROR_CODES_PROTO_SRCS,
     cc_api_version = 2,
-    default_header = True,
+    make_default_target_header_only = True,
     provide_cc_alias = True,
 )
 
@@ -2772,7 +2772,7 @@ tf_proto_library(
     name = "protos_all_proto",
     srcs = COMMON_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
-    default_header = True,
+    make_default_target_header_only = True,
     protodeps = [
         ":error_codes_proto",
     ],
