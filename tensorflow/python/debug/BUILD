@@ -1123,6 +1123,7 @@ py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )
