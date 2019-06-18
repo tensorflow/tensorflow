@@ -276,7 +276,7 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
       self.assertEqual(graph_def_before, graph_def_after)
 
   def testIdentityNode(self):
-    with compat.forward_compatibility_horizon(2019, 6, 7):
+    with compat.forward_compatibility_horizon(2019, 11, 11):
       self._RunTestOverAllRewrites(self._TestIdentityNode)
 
   def _TestIdentityNode(self, rewrite_fn):
@@ -298,7 +298,7 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
                                 ['test/BatchNorm/FusedBatchNormV3'])
 
   def testActivationQuantization(self):
-    with compat.forward_compatibility_horizon(2019, 6, 7):
+    with compat.forward_compatibility_horizon(2019, 11, 11):
       self._RunTestOverAllRewrites(self._TestActivationQuantization)
 
   def _TestActivationQuantization(self, rewrite_fn):
