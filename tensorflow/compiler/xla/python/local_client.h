@@ -153,6 +153,12 @@ struct AllocatorConfig {
   // Only used if kind == kBFC. The maximum fraction of available memory to
   // allocate.
   double memory_fraction = 1.0;
+
+  // Only used if kind == kBFC. If true, the allocator will immediately allocate
+  // the maximum amount allowed by `memory_fraction`. This reduces
+  // fragmentation, allowing more of the total memory to be used. If false, the
+  // allocator will allocate more memory as allocations are requested.
+  bool preallocate = true;
 };
 
 // Encapsulates the state of Python session with XLA.
