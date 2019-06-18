@@ -107,7 +107,7 @@ public:
 
 } // anonymous namespace
 
-FunctionPassBase *createLowerGpuOpsToNNVMOpsPass() {
+FunctionPassBase *createLowerGpuOpsToNVVMOpsPass() {
   return new LowerGpuOpsToNVVMOpsPass();
 }
 

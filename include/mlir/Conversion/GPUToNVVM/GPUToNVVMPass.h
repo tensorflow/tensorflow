@@ -21,7 +21,7 @@ namespace mlir {
 struct FunctionPassBase;
 
 /// Creates a pass that lowers GPU dialect operations to NVVM counterparts.
-FunctionPassBase *createLowerGpuOpsToNNVMOpsPass();
+FunctionPassBase *createLowerGpuOpsToNVVMOpsPass();
 
 } // namespace mlir
 
