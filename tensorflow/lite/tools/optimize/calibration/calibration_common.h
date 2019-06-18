@@ -25,15 +25,27 @@ namespace optimize {
 namespace calibration {
 using BuiltinOperatorKey = std::pair<BuiltinOperator, int>;
 
+using CustomOperatorKey = std::pair<std::string, int>;
+
 using BuiltinOpsSet = std::unordered_set<
     BuiltinOperatorKey,
     op_resolver_hasher::OperatorKeyHasher<BuiltinOperatorKey>>;
+
+using CustomOpsSet = std::unordered_set<
+    CustomOperatorKey,
+    op_resolver_hasher::OperatorKeyHasher<CustomOperatorKey>>;
 
 template <typename T>
 class BuiltinOpsMap
     : public std::unordered_map<
           BuiltinOperatorKey, T,
           op_resolver_hasher::OperatorKeyHasher<BuiltinOperatorKey>> {};
+
+template <typename T>
+class CustomOpsMap
+    : public std::unordered_map<
+          CustomOperatorKey, T,
+          op_resolver_hasher::OperatorKeyHasher<CustomOperatorKey>> {};
 
 // An alias for |TfLiteRegistration.invoke|.
 using KernelEvalFuncPtr = TfLiteStatus (*)(TfLiteContext*, TfLiteNode*);
@@ -53,6 +65,7 @@ struct OperatorInfo {
   // Outputs that need to be logged.
   std::vector<int> loggable_outputs;
   const TfLiteRegistration* registration;
+  int version;
 };
 
 }  // namespace calibration

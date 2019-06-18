@@ -156,10 +156,7 @@ tf_py_test(
     data = [
         ":test_data",
     ],
-    tags = [
-        "manual",
-        "notap",
-    ],
+    tags = ["manual"],
 )
 
 py_library(

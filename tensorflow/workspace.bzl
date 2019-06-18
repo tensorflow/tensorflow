@@ -138,22 +138,22 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "com_google_absl",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
-        sha256 = "0322e3a15fd119fcc8b03033e7011bb1beb7d6c4111f9e57272b7be78d56045a",
-        strip_prefix = "abseil-cpp-2f76a9bf50046e396138cc8eeb3cdc17b7a5ac24",
+        sha256 = "700ad2f65fe00f7b0d293016d2ac865af9ad038b64a334433a0931c691223a85",
+        strip_prefix = "abseil-cpp-0238ab0a831f179518c1a814f9584e99da2d75a3",
         urls = [
-            "http://mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/2f76a9bf50046e396138cc8eeb3cdc17b7a5ac24.tar.gz",
-            "https://github.com/abseil/abseil-cpp/archive/2f76a9bf50046e396138cc8eeb3cdc17b7a5ac24.tar.gz",
+            "http://mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/0238ab0a831f179518c1a814f9584e99da2d75a3.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/0238ab0a831f179518c1a814f9584e99da2d75a3.tar.gz",
         ],
     )
     tf_http_archive(
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "0dde8fb87f5dad2e409c9f4ea1bebc54e694cf4f3b633081b0d51a55c00f9c9f",
-        strip_prefix = "eigen-eigen-a0d250e79c79",
+        sha256 = "48322e45a15aeee5414e8908fa0c48178091de71dd4624ead58c68c66e6554bc",
+        strip_prefix = "eigen-eigen-0cd24954b8a5",
         urls = [
-            "http://mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/a0d250e79c79.tar.gz",
-            "https://bitbucket.org/eigen/eigen/get/a0d250e79c79.tar.gz",
+            "http://mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/0cd24954b8a5.tar.gz",
+            "https://bitbucket.org/eigen/eigen/get/0cd24954b8a5.tar.gz",
         ],
     )
     tf_http_archive(

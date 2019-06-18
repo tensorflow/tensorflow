@@ -24,8 +24,15 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import tensor_array_ops
+
+
+def is_dense_tensor(t):
+  # TODO(mdan): Resolve this inconsistency.
+  return (tensor_util.is_tensor(t) and
+          not isinstance(t, sparse_tensor.SparseTensor))
 
 
 def is_tensor_array(t):

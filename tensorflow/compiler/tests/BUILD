@@ -1,4 +1,17 @@
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test", "tf_gpu_tests_tags")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
+load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites")
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags","tf_gpu_tests_tags",
+)
+
+package(
+    default_visibility = [":internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "internal",
@@ -12,20 +25,6 @@ package_group(
     includes = [
         "//tensorflow/compiler/tf2xla:friends",
     ],
-)
-
-package(
-    default_visibility = [":internal"],
-)
-
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test", "tf_gpu_tests_tags")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
-load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites")
-load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags","tf_gpu_tests_tags",
 )
 
 generate_backend_suites()
@@ -267,7 +266,6 @@ tf_xla_py_test(
     name = "cond_test",
     size = "small",
     srcs = ["cond_test.py"],
-    disabled_backends = ["cpu_ondemand"],  # b/129021699
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -1154,6 +1152,10 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 5,
+    tags = [
+        # TODO(b/134780716): Re-enable this test.
+        "notap",
+    ],
 )
 
 cuda_py_test(
@@ -1203,6 +1205,26 @@ tf_cuda_cc_test(
         "notap",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
+)
+
+tf_cuda_cc_test(
+    name = "unary_ops_composition_test",
+    srcs = ["unary_ops_composition_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/compiler/jit",
+        "//tensorflow/compiler/jit:common",
+        "//tensorflow/compiler/jit:xla_kernel_creator",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/kernels:ops_util",
+    ],
 )
 
 py_library(

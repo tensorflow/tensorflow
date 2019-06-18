@@ -109,36 +109,6 @@ Status RegisterCpuCustomCallTarget(const std::string& fn_name,
   return Status::OK();
 }
 
-PythonRefManager::ManagedPyObjects::ManagedPyObjects(
-    PythonRefManager* manager, absl::Span<pybind11::object> objects)
-    : manager_(manager) {
-  objects_.reserve(objects.size());
-  for (pybind11::object& object : objects) {
-    objects_.push_back(std::move(object));
-  }
-}
-
-PythonRefManager::ManagedPyObjects::~ManagedPyObjects() {
-  if (manager_) {
-    absl::MutexLock lock(&manager_->mu_);
-    for (pybind11::object& object : objects_) {
-      manager_->python_garbage_.push_back(std::move(object));
-    }
-  }
-}
-
-PythonRefManager::ManagedPyObjects PythonRefManager::ManageReferences(
-    absl::Span<py::object> objects) {
-  return ManagedPyObjects(this, objects);
-}
-
-void PythonRefManager::CollectGarbage() {
-  // TODO(phawkins): ideally we would assert that the GIL is held, but there is
-  // no API to do this across all Python versions.
-  absl::MutexLock lock(&mu_);
-  python_garbage_.clear();
-}
-
 Device::Device(se::StreamExecutor* executor, bool use_multiple_streams,
                bool synchronous_deallocation, bool asynchronous)
     : use_multiple_streams_(use_multiple_streams),

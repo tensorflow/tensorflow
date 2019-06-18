@@ -51,7 +51,8 @@ void HloToIrBindings::EmitBasePointersForHlos(
   absl::flat_hash_set<const HloInstruction*> already_bound_for_this_function;
   auto arg_iter = function->arg_begin();
   for (const HloInstruction* io_hlo : io_hlos) {
-    CHECK(!absl::c_count(non_io_hlos, io_hlo))
+    CHECK(io_hlo == io_hlo->parent()->root_instruction() ||
+          !absl::c_count(non_io_hlos, io_hlo))
         << "IO HLOs and non-IO HLOs should be disjoint";
     if (!already_bound_for_this_function.contains(io_hlo)) {
       if (!is_nested_ && io_hlo->opcode() == HloOpcode::kGetTupleElement) {

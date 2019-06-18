@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import json
 import numpy as np
 
 from tensorflow.python import tf2
@@ -26,6 +27,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
@@ -55,6 +57,7 @@ from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
+from tensorflow.python.util import serialization
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -401,7 +404,9 @@ class Model(network.Network):
                        'is enabled.')
     if not self.dynamic:
       if self._run_eagerly is None:
-        return False
+        # Respect `tf.config.experimental_run_functions_eagerly` unless
+        # `run_eagerly` was explicitly passed to `compile`.
+        return def_function.RUN_FUNCTIONS_EAGERLY
       else:
         return self._run_eagerly
     else:
@@ -1707,26 +1712,6 @@ class Model(network.Network):
       batch_size = 32
     return batch_size
 
-  def _list_functions_for_serialization(self):
-    """If available, saves a trace of call using self.inputs."""
-    all_functions = super(Model, self)._list_functions_for_serialization()
-    try:
-      # pylint:disable=pointless-statement
-      self.inputs
-      self.input_names
-      # pylint:enable=pointless-statement
-    except AttributeError:
-      # If the model does not have inputs set, because it was not called or its
-      # input shapes were not recorded, we won't have a signature so can't trace
-      # a function. But the user may still save an object with this Model
-      # attached; we won't fail the whole tf.saved_model.save.
-      pass
-    else:
-      if '_default_save_signature' not in all_functions:
-        all_functions['_default_save_signature'] = (
-            saving_utils.trace_model_call(self))
-    return all_functions
-
   def _prepare_sample_weights(self, sample_weights=None):
     """Sets sample weight attribute on the model."""
     # List with the same length as model outputs.
@@ -2332,10 +2317,13 @@ class Model(network.Network):
            ):
           # TODO(b/132691975): Document subclass-model CT input handling.
           raise ValueError(
-              'All implicitly derived inputs to subclassed Models must be '
-              'tf.Tensors (found %s). To add non-tf.Tensor inputs, please call '
-              'self._add_inputs(tf.keras.Input/SparseInput/RaggedInput (etc)) '
-              'in your subclassed Model object.' % (input_tensor,))
+              'All SparseTensor and RaggedTensor inputs must be explicitly '
+              'declared using a keras.Input() with sparse=True or ragged=True. '
+              'We found an undeclared input %s. For Sequential models, please '
+              'add a keras.Input() as your first Layer. For subclassed models, '
+              'please call self._add_inputs() on your input set, which you can '
+              'create using keras.Input() for each input to your model.' %
+              (input_tensor,))
 
       # Build the model using the retrieved inputs (value or symbolic).
       # If values or generated from a dataset, then in symbolic-mode
@@ -2566,7 +2554,17 @@ class Model(network.Network):
     inputs = self._set_input_attrs(inputs)
 
     if outputs is None:
-      kwargs = {'training': training} if self._expects_training_arg else {}
+      kwargs = {}
+      if self._expects_training_arg:
+        # In V2 mode, feeding `training=None` is not allowed because any value
+        # explicitly passed by the user is respected, even `None`, and in this
+        # case if the user has not passed a value in V2 we need to replace
+        # `None` with the `learning_phase()`. In V1, `training=None` is needed
+        # so that `Dropout` and `BatchNormalization` replace `None` values with
+        # the `learning_phase()` in their `call`.
+        if (training is not None or
+            not ops.executing_eagerly_outside_functions()):
+          kwargs['training'] = training
       try:
         outputs = self(inputs, **kwargs)
       except NotImplementedError:
@@ -2713,6 +2711,17 @@ class Model(network.Network):
       return self._training_state.maybe_load_initial_epoch_from_ckpt(
           initial_epoch, mode)
     return initial_epoch
+
+  @property
+  def _object_identifier(self):
+    return '_tf_keras_model'
+
+  @property
+  def _tracking_metadata(self):
+    metadata = json.loads(super(Model, self)._tracking_metadata)
+    metadata.update(saving_utils.model_metadata(
+        self, include_optimizer=True, require_config=False))
+    return json.dumps(metadata, default=serialization.get_json_type)
 
   def _assert_compile_was_called(self):
     # Checks whether `compile` has been called. If it has been called,

@@ -388,11 +388,11 @@ renames = {
     'tf.fixed_size_partitioner':
         'tf.compat.v1.fixed_size_partitioner',
     'tf.floor_div':
+        'tf.compat.v1.floor_div',
+    'tf.floordiv':
         'tf.math.floordiv',
     'tf.floormod':
         'tf.math.floormod',
-    'tf.floordiv':
-        'tf.math.floordiv',
     'tf.get_collection':
         'tf.compat.v1.get_collection',
     'tf.get_collection_ref':
@@ -505,6 +505,8 @@ renames = {
         'tf.compat.v1.is_variable_initialized',
     'tf.keras.backend.get_session':
         'tf.compat.v1.keras.backend.get_session',
+    'tf.keras.backend.set_session':
+        'tf.compat.v1.keras.backend.set_session',
     'tf.keras.layers.CuDNNGRU':
         'tf.compat.v1.keras.layers.CuDNNGRU',
     'tf.keras.layers.CuDNNLSTM':
@@ -1551,10 +1553,8 @@ renames = {
         'tf.compat.v1.variables_initializer',
     'tf.verify_tensor_all_finite':
         'tf.compat.v1.verify_tensor_all_finite',
-    'tf.where':
-        'tf.compat.v1.where',
     'tf.where_v2':
-        'tf.compat.v2.where',
+        'tf.where',
     'tf.wrap_function':
         'tf.compat.v1.wrap_function',
     'tf.write_file':

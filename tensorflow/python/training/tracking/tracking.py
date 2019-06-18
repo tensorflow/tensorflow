@@ -81,20 +81,14 @@ class AutoTrackable(base.Trackable):
 
   def __delattr__(self, name):
     self._maybe_initialize_trackable()
-    if name in self._unconditional_dependency_names:
-      del self._unconditional_dependency_names[name]
-      for index, (dep_name, _) in enumerate(
-          self._unconditional_checkpoint_dependencies):
-        if dep_name == name:
-          del self._unconditional_checkpoint_dependencies[index]
-          break
+    delete_tracking(self, name)
     super(AutoTrackable, self).__delattr__(name)
 
   def _no_dependency(self, value):
     """Override to allow TrackableBase to disable dependency tracking."""
     return data_structures.NoDependency(value)
 
-  def _list_functions_for_serialization(self):
+  def _list_functions_for_serialization(self, unused_serialization_cache):
     """Return a dict of `Function`s of a trackable."""
     functions = {}
     for attribute_name in dir(self):
@@ -108,6 +102,19 @@ class AutoTrackable(base.Trackable):
                                       defun.ConcreteFunction)):
         functions[attribute_name] = attribute_value
     return functions
+
+
+def delete_tracking(obj, name):
+  """Removes the tracking of name from object."""
+  # pylint: disable=protected-access
+  if name in obj._unconditional_dependency_names:
+    del obj._unconditional_dependency_names[name]
+    for index, (dep_name, _) in enumerate(
+        obj._unconditional_checkpoint_dependencies):
+      if dep_name == name:
+        del obj._unconditional_checkpoint_dependencies[index]
+        break
+  # pylint: enable=protected-access
 
 
 class ResourceTracker(object):
@@ -192,7 +199,7 @@ class CapturableResource(base.Trackable):
         self._resource_handle = self._create_resource()
     return self._resource_handle
 
-  def _list_functions_for_serialization(self):
+  def _list_functions_for_serialization(self, unused_functions):
     @def_function.function(input_signature=[], autograph=False)
     def _creator():
       resource = self._create_resource()

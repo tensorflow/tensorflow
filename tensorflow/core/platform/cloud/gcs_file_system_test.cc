@@ -986,6 +986,12 @@ TEST(GcsFileSystemTest, NewAppendableFile) {
        new FakeHttpRequest(
            "Uri: https://storage.googleapis.com/bucket/path%2Fappendable\n"
            "Auth Token: fake_token\n"
+           "Range: 0-1048575\n"
+           "Timeouts: 5 1 20\n",
+           "content1,"),
+       new FakeHttpRequest(
+           "Uri: https://storage.googleapis.com/bucket/path%2Fappendable\n"
+           "Auth Token: fake_token\n"
            "Range: 0-31\n"
            "Timeouts: 5 1 20\n",
            "content1,"),

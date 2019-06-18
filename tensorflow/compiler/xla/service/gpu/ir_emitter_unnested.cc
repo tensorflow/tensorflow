@@ -43,6 +43,7 @@ limitations under the License.
 #ifndef TENSORFLOW_USE_ROCM
   #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #endif
+#include "tensorflow/compiler/xla/service/gpu/collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
@@ -63,6 +64,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/replica_id_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
@@ -227,6 +229,8 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
       fn_arg->setName(StrCat("alloc", alloc->index()));
     }
   }
+
+  AnnotateFunctionAsGpuKernel(module, kernel, &b_);
 
   // TODO(b/65380986): Investigate if adding fast math flags for generated
   // kernels makes sense.
@@ -1389,6 +1393,18 @@ Status IrEmitterUnnested::HandleTupleSelect(HloInstruction* tuple_select) {
   AddThunkToThunkSequence(
       BuildKernelThunk(tuple_select, /*implements_whole_instruction=*/true));
   return IrEmitter::HandleTupleSelect(tuple_select);
+}
+
+Status IrEmitterUnnested::HandleReplicaId(HloInstruction* hlo) {
+  AddThunkToThunkSequence(
+      absl::make_unique<ReplicaIdThunk>(GetAllocationSlice(*hlo), hlo));
+  return Status::OK();
+}
+
+Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {
+  AddThunkToThunkSequence(absl::make_unique<CollectivePermuteThunk>(
+      GetAllocationSlice(*hlo->operand(0)), GetAllocationSlice(*hlo), hlo));
+  return Status::OK();
 }
 
 namespace {

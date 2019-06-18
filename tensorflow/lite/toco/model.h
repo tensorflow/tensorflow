@@ -2335,6 +2335,14 @@ class Model {
 
   int64 ArithmeticOpsCount() const { return ops_count; }
 
+  void AddInvalidInputArray(string invalid_input_array) {
+    invalid_input_arrays_.insert(invalid_input_array);
+  }
+
+  const std::unordered_set<string>& GetInvalidInputArrays() const {
+    return invalid_input_arrays_;
+  }
+
   // Optional arrays are used for optional tensors,
   // these tensors do not have data, but with reserved names as op inputs.
   std::set<string> optional_arrays;
@@ -2361,6 +2369,9 @@ class Model {
   // The Operator's refer to these Array's by their name strings, not by their
   // addresses. See Operator::inputs, Operator::outputs.
   std::unordered_map<string, std::unique_ptr<Array>> arrays;
+
+  // Invalid input arrays.
+  std::unordered_set<string> invalid_input_arrays_;
 };
 
 // OperatorSignature contains the information required to making versioning

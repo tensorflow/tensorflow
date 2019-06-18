@@ -232,9 +232,9 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
   constexpr int ReadRowPerPass = NumThreads / TileSizeJ;
   constexpr int WriteRowPerPass = NumThreads / TileSizeI;
   // One extra line in the inner dimension to avoid share memory bank conflict.
-#if GOOGLE_CUDA || TENSORFLOW_COMPILER_IS_HIP_CLANG
   // This is to mimic the following, but no constructor of T can be invoked.
   //     __shared__ T shared_memory_tile[TileSizeI][TileSizeJ + 1];
+#if GOOGLE_CUDA || TENSORFLOW_COMPILER_IS_HIP_CLANG
   __shared__ __align__(
       alignof(T)) char shared_mem_raw[TileSizeI * (TileSizeJ + 1) * sizeof(T)];
   typedef T(*SharedMemoryTile)[TileSizeJ + 1];
@@ -442,15 +442,16 @@ struct TransformFilter<GPUDevice, T, int, NDIMS> {
 
     if (dst_filter_format == FORMAT_OIHW) {
       TF_CHECK_OK(GpuLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0>,
-                                   config.block_count, config.thread_per_block,
-                                   0, d.stream(), config.virtual_thread_count,
-                                   in.data(), combined_dims, out.data()));
+                                  config.block_count, config.thread_per_block,
+                                  0, d.stream(), config.virtual_thread_count,
+                                  in.data(), combined_dims, out.data()));
 
     } else if (dst_filter_format == FORMAT_OHWI) {
       TF_CHECK_OK(GpuLaunchKernel(ShuffleInTensor3Simple<T, 1, 2, 0>,
-                                   config.block_count, config.thread_per_block,
-                                   0, d.stream(), config.virtual_thread_count,
-                                   in.data(), combined_dims, out.data()));
+                                  config.block_count, config.thread_per_block,
+                                  0, d.stream(), config.virtual_thread_count,
+                                  in.data(), combined_dims, out.data()));
+
     } else {
       LOG(ERROR) << "Unsupported filter format: "
                  << ToString(dst_filter_format);
@@ -969,9 +970,9 @@ void RunSwapDimension1And2InTensor3(const GPUDevice& d, const T* input,
     int total_element_count = input_dims[0] * input_dims[1] * input_dims[2];
     GpuLaunchConfig config = GetGpuLaunchConfig(total_element_count, d);
     TF_CHECK_OK(GpuLaunchKernel(ShuffleInTensor3Simple<T, 0, 2, 1, conjugate>,
-                                 config.block_count, config.thread_per_block, 0,
-                                 d.stream(), config.virtual_thread_count, input,
-                                 input_dims, output));
+                                config.block_count, config.thread_per_block, 0,
+                                d.stream(), config.virtual_thread_count, input,
+                                input_dims, output));
   }
 }
 
@@ -1002,9 +1003,9 @@ struct SwapDimension0And2InTensor3<GPUDevice, T, conjugate> {
     size_t total_size = combined_dims[0] * combined_dims[1] * combined_dims[2];
     GpuLaunchConfig config = GetGpuLaunchConfig(total_size, d);
     TF_CHECK_OK(GpuLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0, conjugate>,
-                                 config.block_count, config.thread_per_block, 0,
-                                 d.stream(), config.virtual_thread_count, in,
-                                 input_dims, out));
+                                config.block_count, config.thread_per_block, 0,
+                                d.stream(), config.virtual_thread_count, in,
+                                input_dims, out));
   }
 };
 

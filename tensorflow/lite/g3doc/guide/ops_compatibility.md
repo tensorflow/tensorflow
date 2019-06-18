@@ -268,7 +268,7 @@ Options {
 }
 ```
 
-**CONV_2D_TRANSPOSE**
+**TRANSPOSE_CONV**
 
 ```
 Inputs {

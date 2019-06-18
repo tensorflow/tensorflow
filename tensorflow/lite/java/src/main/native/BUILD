@@ -66,6 +66,7 @@ cc_library(
 
 exports_files(
     [
+        "exported_symbols.lds",
         "version_script.lds",
     ],
 )

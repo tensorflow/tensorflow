@@ -9,8 +9,6 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
-licenses(["notice"])  # Apache 2.0
-
 package(
     default_visibility = [
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
@@ -22,6 +20,7 @@ package(
         "//tensorflow:__subpackages__",
         "//vr/perception:__subpackages__",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 py_library(

@@ -53,6 +53,26 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "concat_test",
+    srcs = ["concat_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":concat",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "conv",
     srcs = ["conv.cc"],
@@ -71,6 +91,26 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "conv_test",
+    srcs = ["conv_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":conv",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "depthwise_conv",
     srcs = ["depthwise_conv.cc"],
@@ -85,6 +125,26 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
         "//tensorflow/lite/delegates/gpu/gl/workgroups:ideal_workgroup_picker",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_test(
+    name = "depthwise_conv_test",
+    srcs = ["depthwise_conv_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":depthwise_conv",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -135,6 +195,26 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "fully_connected_test",
+    srcs = ["fully_connected_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":fully_connected",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "lstm",
     srcs = ["lstm.cc"],
@@ -161,6 +241,26 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "max_unpooling_test",
+    srcs = ["max_unpooling_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":max_unpooling",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "mul",
     srcs = ["mul.cc"],
@@ -172,6 +272,26 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_test(
+    name = "mul_test",
+    srcs = ["mul_test.cc"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":mul",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

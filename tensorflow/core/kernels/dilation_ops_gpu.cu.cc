@@ -230,8 +230,8 @@ struct DilationBackpropInput<GPUDevice, T> {
     total_count = batch * input_rows * input_cols * depth;
     config = GetGpuLaunchConfig(total_count, d);
     TF_CHECK_OK(GpuLaunchKernel(SetZero<T>, config.block_count,
-                                 config.thread_per_block, 0, d.stream(),
-                                 total_count, in_backprop.data()));
+                                config.thread_per_block, 0, d.stream(),
+                                total_count, in_backprop.data()));
 
     // Accumulate.
     total_count = batch * output_rows * output_cols * depth;
@@ -272,8 +272,8 @@ struct DilationBackpropFilter<GPUDevice, T> {
     total_count = filter_rows * filter_cols * depth;
     config = GetGpuLaunchConfig(total_count, d);
     TF_CHECK_OK(GpuLaunchKernel(SetZero<T>, config.block_count,
-                                 config.thread_per_block, 0, d.stream(),
-                                 total_count, filter_backprop.data()));
+                                config.thread_per_block, 0, d.stream(),
+                                total_count, filter_backprop.data()));
 
     // Accumulate.
     total_count = batch * output_rows * output_cols * depth;

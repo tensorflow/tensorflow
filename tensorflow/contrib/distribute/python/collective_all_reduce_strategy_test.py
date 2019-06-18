@@ -115,7 +115,7 @@ class CollectiveAllReduceStrategyTestBase(
   def setUp(self):
     # We use a different key_base for each test so that collective keys won't be
     # reused.
-    # TODO(yuefengz, tucker): enable it to reuse collective keys in different
+    # TODO(yuefengz, ayushd): enable it to reuse collective keys in different
     # tests.
     CollectiveAllReduceStrategyTestBase.collective_key_base += 100000
     super(CollectiveAllReduceStrategyTestBase, self).setUp()
@@ -133,11 +133,11 @@ class CollectiveAllReduceStrategyTestBase(
         use_core_strategy=use_core_strategy)
 
     collective_keys = cross_device_utils.CollectiveKeys(
-        group_key_start=10 * num_gpus +
+        group_key_start=10 +
         CollectiveAllReduceStrategyTestBase.collective_key_base,
-        instance_key_start=num_gpus * 100 +
+        op_instance_key_start=100 +
         CollectiveAllReduceStrategyTestBase.collective_key_base,
-        instance_key_with_id_start=num_gpus * 10000 +
+        variable_instance_key_start=10000 +
         CollectiveAllReduceStrategyTestBase.collective_key_base)
     strategy.extended._collective_keys = collective_keys
     strategy.extended._cross_device_ops._collective_keys = (collective_keys)

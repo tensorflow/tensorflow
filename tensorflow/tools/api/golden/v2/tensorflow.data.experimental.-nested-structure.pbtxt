@@ -1,8 +1,13 @@
 path: "tensorflow.data.experimental.NestedStructure"
 tf_class {
   is_instance: "<class \'tensorflow.python.data.util.structure.NestedStructure\'>"
-  is_instance: "<class \'tensorflow.python.data.util.structure.Structure\'>"
+  is_instance: "<class \'tensorflow.python.framework.type_spec.BatchableTypeSpec\'>"
+  is_instance: "<class \'tensorflow.python.framework.type_spec.TypeSpec\'>"
   is_instance: "<type \'object\'>"
+  member {
+    name: "value_type"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'nested_structure\'], varargs=None, keywords=None, defaults=None"
@@ -13,6 +18,10 @@ tf_class {
   }
   member_method {
     name: "is_compatible_with"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "most_specific_compatible_type"
     argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
   }
 }

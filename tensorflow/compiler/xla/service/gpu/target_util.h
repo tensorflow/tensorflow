@@ -80,7 +80,7 @@ unsigned GetSharedMemoryAddressSpace(const llvm::Module& module);
 
 // Annotate the kernel as GPU kernel according to the GPU target.
 void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
-                           llvm::IRBuilder<>* b);
+                                 llvm::IRBuilder<>* b);
 
 std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
                                      PrimitiveType output_type,

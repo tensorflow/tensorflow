@@ -90,6 +90,11 @@ def initialize_tpu_system(cluster_resolver=None):
 
     with ops.device(tpu_system_device):
       output = _tpu_init_fn()
+
+    # Clear out the eager context caches since the memory is invalid now.
+    logging.info("Clearing out eager caches")
+    context.context()._clear_caches()  # pylint: disable=protected-access
+
     serialized_topology = output.numpy()
   else:
     master = cluster_resolver.master()
