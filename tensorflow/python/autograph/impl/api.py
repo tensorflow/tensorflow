@@ -130,7 +130,7 @@ class StackTraceMapper(tf_stack.StackTraceMapper):
     return origin.loc.filename, origin.loc.lineno, origin.function_name
 
 
-def tf_convert(f, ctx, convert_by_default=True):
+def tf_convert(f, ctx, convert_by_default=True, force_conversion=False):
   """Decorator that applies AutoGraph to a function.
 
   Use in internal APIs.
@@ -147,6 +147,8 @@ def tf_convert(f, ctx, convert_by_default=True):
     ctx: ag_ctx.ControlStatusCtx, the Autograph context in which `f` is used.
     convert_by_default: bool, whether to use AutoGraph when the context doesn't
       specify.
+    force_conversion: bool, whether to ignore the conversion whitelist. See
+      ConversionOptions.force_conversion.
 
   Returns:
     Either `f or the converted version of `f`.
@@ -162,7 +164,7 @@ def tf_convert(f, ctx, convert_by_default=True):
                       ctx.status == ag_ctx.Status.UNSPECIFIED))
   if apply_autograph:
     # TODO(mdan): Grab features from context.
-    wrapper = convert(recursive=True)(f)
+    wrapper = convert(recursive=True, force_conversion=force_conversion)(f)
   else:
     wrapper = do_not_convert(f)
 
@@ -174,7 +176,7 @@ def tf_convert(f, ctx, convert_by_default=True):
 
 
 # TODO(mdan): Make private.
-def convert(recursive=False, optional_features=None):
+def convert(recursive=False, optional_features=None, force_conversion=True):
   """Decorator that compiles a function to use TensorFlow ops.
 
   The decorator is dynamic - it recompiles the target whenever the decorated
@@ -188,6 +190,8 @@ def convert(recursive=False, optional_features=None):
     optional_features: converted.Feature, allows toggling optional or
       experimental features. When set to None, only the core features are
       enabled.
+    force_conversion: bool, whether to ignore the conversion whitelist. See
+      ConversionOptions.force_conversion.
 
   Returns:
     Callable, a decorator that converts the given function into an equivalent
@@ -207,7 +211,7 @@ def convert(recursive=False, optional_features=None):
               f, None,
               converter.ConversionOptions(
                   recursive=recursive,
-                  force_conversion=True,
+                  force_conversion=force_conversion,
                   optional_features=optional_features,
               ), args, kwargs)
         except Exception as e:  # pylint:disable=broad-except
