@@ -341,7 +341,7 @@ class AutoMixedPrecisionTest(test.TestCase):
   @test_util.run_deprecated_v1
   def test_conv_bn(self):
     """Test graph with convolution followed by batch norm."""
-    with compat.forward_compatibility_horizon(2019, 6, 7):
+    with compat.forward_compatibility_horizon(2019, 11, 11):
       if test.is_gpu_available(cuda_only=True):
         random_seed.set_random_seed(0)
         x = _input([2, 8, 8, 1])
@@ -363,7 +363,7 @@ class AutoMixedPrecisionTest(test.TestCase):
   @test_util.run_deprecated_v1
   def test_conv_bn_dropout(self):
     """Test dropout precision of convolution batch norm graph."""
-    with compat.forward_compatibility_horizon(2019, 6, 7):
+    with compat.forward_compatibility_horizon(2019, 11, 11):
       if test.is_gpu_available(cuda_only=True):
         random_seed.set_random_seed(0)
         x = _input([2, 8, 8, 1])

@@ -1457,7 +1457,7 @@ class LayoutOptimizerTest(test.TestCase):
 
   @test_util.deprecated_graph_mode_only
   def testBinaryOpSecondPort(self):
-    with compat.forward_compatibility_horizon(2019, 6, 7):
+    with compat.forward_compatibility_horizon(2019, 11, 11):
       if test.is_gpu_available(cuda_only=True):
         output = _model_with_second_port()
 
