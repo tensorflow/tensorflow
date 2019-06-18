@@ -88,6 +88,9 @@ struct DividesBy {
   __host__ __device__ outT operator()(const T& x) const { return x / divisor; }
 };
 
+#if GOOGLE_CUDA
+// TODO(rocm) : enable this once ROCm platform has support for complex datatypes
+//
 // needed to work around a compiler bug in nvcc - it doesn't seem to like
 // the overloaded ops for std::complex
 template <>
@@ -119,6 +122,7 @@ struct DividesBy<std::complex<double>> {
     return std::complex<double>(result.x, result.y);
   }
 };
+#endif  // GOOGLE_CUDA
 
 template <>
 struct DividesBy<float, Eigen::half> {
