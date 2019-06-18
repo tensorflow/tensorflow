@@ -27,6 +27,8 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
 
+#include "llvm/ADT/StringSwitch.h"
+
 namespace mlir {
 namespace {
 
@@ -41,15 +43,11 @@ private:
   enum dimension { X = 0, Y = 1, Z = 2, invalid };
 
   template <typename T> dimension dimensionToIndex(T op) {
-    StringRef dim = op.dimension();
-    if (dim.equals("x"))
-      return X;
-    if (dim.equals("y"))
-      return Y;
-    if (dim.equals("z"))
-      return Z;
-    op.emitError("Illegal dimension: " + dim);
-    return invalid;
+    return llvm::StringSwitch<dimension>(op.dimension())
+        .Case("x", X)
+        .Case("y", Y)
+        .Case("z", Z)
+        .Default(invalid);
   }
 
   // Helper that replaces Op with XOp, YOp, or ZOp dependeing on the dimension
@@ -70,6 +68,7 @@ private:
       newOp = builder.create<ZOp>(loc, LLVM::LLVMType::getInt32Ty(dialect));
       break;
     default:
+      operation.emitError("Illegal dimension: " + operation.dimension());
       signalPassFailure();
       return;
     }
