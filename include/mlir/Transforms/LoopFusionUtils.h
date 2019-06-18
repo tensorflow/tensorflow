@@ -24,9 +24,13 @@
 #ifndef MLIR_TRANSFORMS_LOOP_FUSION_UTILS_H
 #define MLIR_TRANSFORMS_LOOP_FUSION_UTILS_H
 
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
+
 namespace mlir {
 class AffineForOp;
 struct ComputationSliceState;
+class Operation;
 
 // TODO(andydavis) Extend this module to include utility functions for querying
 // fusion cost/storage reduction, and for performing the loop fusion
@@ -54,6 +58,43 @@ struct FusionResult {
 FusionResult canFuseLoops(AffineForOp srcForOp, AffineForOp dstForOp,
                           unsigned dstLoopDepth,
                           ComputationSliceState *srcSlice);
+
+/// LoopNestStats aggregates various per-loop statistics (eg. loop trip count
+/// and operation count) for a loop nest up until (and including) the innermost
+/// loop body.
+struct LoopNestStats {
+  /// Map from AffineForOp to immediate child AffineForOps in its loop body.
+  llvm::DenseMap<Operation *, llvm::SmallVector<AffineForOp, 2>> loopMap;
+  /// Map from AffineForOp to count of operations in its loop body.
+  llvm::DenseMap<Operation *, uint64_t> opCountMap;
+  /// Map from AffineForOp to its constant trip count.
+  llvm::DenseMap<Operation *, uint64_t> tripCountMap;
+};
+
+/// Collect loop nest statistics (eg. loop trip count and operation count)
+/// in 'stats' for loop nest rooted at 'forOp'. Returns true on success,
+/// returns false otherwise.
+// TODO(andydavis) Consider moving this to LoopUtils.
+bool getLoopNestStats(AffineForOp forOp, LoopNestStats *stats);
+
+/// Computes the total cost of the loop nest rooted at 'forOp' using 'stats'.
+/// Currently, the total cost is computed by counting the total operation
+/// instance count (i.e. total number of operations in the loop body * loop
+/// trip count) for the entire loop nest.
+// TODO(andydavis) Improve this cost model.
+int64_t getComputeCost(AffineForOp forOp, LoopNestStats &stats);
+
+/// Computes and returns in 'computeCost', the total compute cost of fusing the
+/// 'slice' of the loop nest rooted at 'srcForOp' into 'dstForOp'. Currently,
+/// the total cost is computed by counting the total operation instance count
+/// (i.e. total number of operations in the loop body * loop trip count) for
+/// the entire loop nest.
+/// Returns true on success, failure otherwise (e.g. non-constant trip counts).
+// TODO(andydavis) Improve this cost model.
+bool getFusionComputeCost(AffineForOp srcForOp, LoopNestStats &srcStats,
+                          AffineForOp dstForOp, LoopNestStats &dstStats,
+                          ComputationSliceState *slice, int64_t *computeCost);
+
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_LOOP_FUSION_UTILS_H
