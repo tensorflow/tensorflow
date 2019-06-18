@@ -257,6 +257,11 @@ public:
   /// Return the internal attribute list on this operation.
   NamedAttributeList &getAttrList() { return attrs; }
 
+  /// Set the attribute list on this operation.
+  /// Using a NamedAttributeList is more efficient as it does not require new
+  /// uniquing in the MLIRContext.
+  void setAttrList(NamedAttributeList newAttrs) { attrs = newAttrs; }
+
   /// Return the specified attribute if present, null otherwise.
   Attribute getAttr(Identifier name) { return attrs.get(name); }
   Attribute getAttr(StringRef name) { return attrs.get(name); }
