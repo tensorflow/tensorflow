@@ -2899,6 +2899,44 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "hlo_rematerialization_test_utils",
+    testonly = 1,
+    hdrs = ["hlo_rematerialization_test_utils.h"],
+    deps = [
+        ":hlo",
+        ":hlo_matchers",
+        ":hlo_ordering",
+        ":hlo_rematerialization",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/flags:flag",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_rematerialization_test_utils_test",
+    srcs = ["hlo_rematerialization_test_utils_test.cc"],
+    deps = [
+        ":flatten_call_graph",
+        ":hlo",
+        ":hlo_matchers",
+        ":hlo_ordering",
+        ":hlo_rematerialization_test_utils",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
 tf_cc_test(
     name = "hlo_rematerialization_test",
     srcs = ["hlo_rematerialization_test.cc"],
@@ -2908,6 +2946,7 @@ tf_cc_test(
         ":hlo_matchers",
         ":hlo_ordering",
         ":hlo_rematerialization",
+        ":hlo_rematerialization_test_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
