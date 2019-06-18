@@ -406,28 +406,10 @@ class BatchNormalizationBase(Layer):
           experimental_autocast=False)
 
       if self.renorm:
-        # In batch renormalization we track the inference moving stddev instead
-        # of the moving variance to more closely align with the paper.
-        def moving_stddev_initializer(*args, **kwargs):
-          return math_ops.sqrt(
-              self.moving_variance_initializer(*args, **kwargs))
-
-        with distribution_strategy_context.get_strategy(
-        ).extended.colocate_vars_with(self.moving_variance):
-          self.moving_stddev = self.add_weight(
-              name='moving_stddev',
-              shape=param_shape,
-              dtype=self._param_dtype,
-              initializer=moving_stddev_initializer,
-              synchronization=tf_variables.VariableSynchronization.ON_READ,
-              trainable=False,
-              aggregation=tf_variables.VariableAggregation.MEAN,
-              experimental_autocast=False)
-
         # Create variables to maintain the moving mean and standard deviation.
         # These are used in training and thus are different from the moving
         # averages above. The renorm variables are colocated with moving_mean
-        # and moving_stddev.
+        # and moving_variance.
         # NOTE: below, the outer `with device` block causes the current device
         # stack to be cleared. The nested ones use a `lambda` to set the desired
         # device and ignore any devices that may be set by the custom getter.
@@ -450,10 +432,17 @@ class BatchNormalizationBase(Layer):
         ).extended.colocate_vars_with(self.moving_mean):
           self.renorm_mean = _renorm_variable('renorm_mean', param_shape,
                                               self.moving_mean_initializer)
+          self.renorm_mean_weight = _renorm_variable('renorm_mean_weight', ())
+        # We initialize renorm_stddev to 0, and maintain the (0-initialized)
+        # renorm_stddev_weight. This allows us to (1) mix the average
+        # stddev with the minibatch stddev early in training, and (2) compute
+        # the unbiased average stddev by dividing renorm_stddev by the weight.
         with distribution_strategy_context.get_strategy(
-        ).extended.colocate_vars_with(self.moving_stddev):
-          self.renorm_stddev = _renorm_variable('renorm_stddev', param_shape,
-                                                moving_stddev_initializer)
+        ).extended.colocate_vars_with(self.moving_variance):
+          self.renorm_stddev = _renorm_variable(
+              'renorm_stddev', param_shape, self.moving_variance_initializer)
+          self.renorm_stddev_weight = _renorm_variable('renorm_stddev_weight',
+                                                       ())
     finally:
       if partitioner:
         self._scope.set_partitioner(partitioner)
@@ -471,11 +460,6 @@ class BatchNormalizationBase(Layer):
           update_delta = array_ops.where(inputs_size > 0, update_delta,
                                          K.zeros_like(update_delta))
         return state_ops.assign_sub(variable, update_delta, name=scope)
-
-  def _assign_new_value(self, variable, value):
-    with K.name_scope('AssignNewValue') as scope:
-      with ops.colocate_with(variable):
-        return state_ops.assign(variable, value, name=scope)
 
   def _fused_batch_norm(self, inputs, training):
     """Returns the output of fused batch norm."""
@@ -534,21 +518,8 @@ class BatchNormalizationBase(Layer):
                                            inputs_size)
 
       def variance_update():
-        """Update self.moving_variance with the most recent data point."""
-        if self.renorm:
-          # We apply epsilon as part of the moving_stddev to mirror the training
-          # code path.
-          moving_stddev = self._assign_moving_average(
-              self.moving_stddev, math_ops.sqrt(variance + self.epsilon),
-              momentum, inputs_size)
-          return self._assign_new_value(
-              self.moving_variance,
-              # Apply relu in case floating point rounding causes it to go
-              # negative.
-              K.relu(moving_stddev * moving_stddev - self.epsilon))
-        else:
-          return self._assign_moving_average(self.moving_variance, variance,
-                                             momentum, inputs_size)
+        return self._assign_moving_average(self.moving_variance, variance,
+                                           momentum, inputs_size)
 
       self.add_update(mean_update)
       self.add_update(variance_update)
@@ -563,8 +534,7 @@ class BatchNormalizationBase(Layer):
     # initialized with this batch's moments.
     renorm_mean = self.renorm_mean
     # Avoid divide by zero early on in training.
-    renorm_stddev = math_ops.maximum(self.renorm_stddev,
-                                     math_ops.sqrt(self.epsilon))
+    renorm_stddev = math_ops.maximum(self.renorm_stddev, self.epsilon)
     # Compute the corrections for batch renorm.
     r = stddev / renorm_stddev
     d = (mean - renorm_mean) / renorm_stddev
@@ -587,24 +557,40 @@ class BatchNormalizationBase(Layer):
                             lambda: d,
                             lambda: array_ops.zeros_like(d))
 
-    def _update_renorm_variable(var, value, inputs_size):
+    def _update_renorm_variable(var, weight, value, inputs_size):
       """Updates a moving average and weight, returns the unbiased value."""
       value = array_ops.identity(value)
       def _do_update():
-        """Updates the var, returns the updated value."""
+        """Updates the var and weight, returns their updated ratio."""
+        # Update the variables without zero debiasing. The debiasing will be
+        # accomplished by dividing the exponential moving average by the weight.
+        # For example, after a single update, the moving average would be
+        # (1-decay) * value. and the weight will be 1-decay, with their ratio
+        # giving the value.
+        # Make sure the weight is not updated until before r and d computation.
+        with ops.control_dependencies([value]):
+          weight_value = array_ops.constant(1., dtype=weight.dtype)
         new_var = self._assign_moving_average(var, value, self.renorm_momentum,
                                               inputs_size)
-        return new_var
+        new_weight = self._assign_moving_average(weight, weight_value,
+                                                 self.renorm_momentum,
+                                                 inputs_size)
+        # TODO(yuefengz): the updates to var and weighted can not be batched
+        # together if we fetch their updated values here. Consider calculating
+        # new values and delaying the updates.
+        return new_var / new_weight
 
       def _fake_update():
         return array_ops.identity(var)
       return tf_utils.smart_cond(training, _do_update, _fake_update)
 
     # TODO(yuefengz): colocate the operations
-    update_new_mean = _update_renorm_variable(self.renorm_mean, mean,
+    update_new_mean = _update_renorm_variable(self.renorm_mean,
+                                              self.renorm_mean_weight, mean,
                                               inputs_size)
-    update_new_stddev = _update_renorm_variable(self.renorm_stddev, stddev,
-                                                inputs_size)
+    update_new_stddev = _update_renorm_variable(self.renorm_stddev,
+                                                self.renorm_stddev_weight,
+                                                stddev, inputs_size)
 
     # Update the inference mode moving averages with the batch value.
     with ops.control_dependencies([update_new_mean, update_new_stddev]):
@@ -761,24 +747,7 @@ class BatchNormalizationBase(Layer):
         return tf_utils.smart_cond(training, true_branch, false_branch)
 
       def variance_update():
-        """Update the moving variance."""
-
-        def true_branch_renorm():
-          # We apply epsilon as part of the moving_stddev to mirror the training
-          # code path.
-          moving_stddev = _do_update(self.moving_stddev,
-                                     math_ops.sqrt(new_variance + self.epsilon))
-          return self._assign_new_value(
-              self.moving_variance,
-              # Apply relu in case floating point rounding causes it to go
-              # negative.
-              K.relu(moving_stddev * moving_stddev - self.epsilon))
-
-        if self.renorm:
-          true_branch = true_branch_renorm
-        else:
-          true_branch = lambda: _do_update(self.moving_variance, new_variance)
-
+        true_branch = lambda: _do_update(self.moving_variance, new_variance)
         false_branch = lambda: self.moving_variance
         return tf_utils.smart_cond(training, true_branch, false_branch)
 

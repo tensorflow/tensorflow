@@ -29,9 +29,9 @@ from tensorflow.python import keras
 from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_coordinator as dc
-from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base as test_base
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import testing_utils
@@ -130,7 +130,7 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
         self.filtered_correctly = True
 
       def on_train_begin(self, logs):
-        if not dc_context.get_current_worker_context().is_chief:
+        if not multi_worker_util.is_chief():
           # Non-chief workers shouldn't run this callback.
           self.filtered_correctly = False
 

@@ -26,6 +26,7 @@ from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
@@ -435,7 +436,7 @@ class Model(network.Network):
     """Select training loop for fit/eval/predict based on the inputs."""
     # Case 1: distribution strategy.
     if self._distribution_strategy:
-      if K.in_multi_worker_mode():
+      if multi_worker_util.in_multi_worker_mode():
         return training_distributed.DistributionMultiWorkerTrainingLoop()
       else:
         return training_distributed.DistributionSingleWorkerTrainingLoop()
