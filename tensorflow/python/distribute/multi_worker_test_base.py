@@ -183,7 +183,8 @@ def create_in_process_cluster(num_workers,
       protocol='grpc')
 
 
-def create_cluster_spec(has_chief=False,
+def create_cluster_spec(test_obj,
+                        has_chief=False,
                         num_workers=1,
                         num_ps=0,
                         has_eval=False):
@@ -192,18 +193,22 @@ def create_cluster_spec(has_chief=False,
     raise _portpicker_import_error  # pylint: disable=raising-bad-type
 
   cluster_spec = {}
-  if has_chief:
-    cluster_spec['chief'] = ['localhost:%s' % pick_unused_port()]
-  if num_workers:
-    cluster_spec['worker'] = [
-        'localhost:%s' % pick_unused_port() for _ in range(num_workers)
-    ]
-  if num_ps:
-    cluster_spec['ps'] = [
-        'localhost:%s' % pick_unused_port() for _ in range(num_ps)
-    ]
-  if has_eval:
-    cluster_spec['evaluator'] = ['localhost:%s' % pick_unused_port()]
+  try:
+    if has_chief:
+      cluster_spec['chief'] = ['localhost:%s' % pick_unused_port()]
+    if num_workers:
+      cluster_spec['worker'] = [
+          'localhost:%s' % pick_unused_port() for _ in range(num_workers)
+      ]
+    if num_ps:
+      cluster_spec['ps'] = [
+          'localhost:%s' % pick_unused_port() for _ in range(num_ps)
+      ]
+    if has_eval:
+      cluster_spec['evaluator'] = ['localhost:%s' % pick_unused_port()]
+  except portpicker.NoFreePortFoundError:
+    test_obj.skipTest('Flakes in portpicker library do not represent '
+                      'TensorFlow errors.')
   return cluster_spec
 
 

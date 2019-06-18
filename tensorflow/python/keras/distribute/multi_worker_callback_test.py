@@ -61,7 +61,8 @@ def generate_callback_test_function(custom_callable):
     num_workers = 2
     num_epoch = 2
 
-    cluster_spec = test_base.create_cluster_spec(num_workers=num_workers)
+    cluster_spec = test_base.create_cluster_spec(
+        num_workers=num_workers, test_obj=self)
     self._barrier = dc._Barrier(2)
 
     def _independent_worker_fn(*args, **kwargs):  # pylint: disable=unused-argument
