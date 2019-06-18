@@ -345,7 +345,7 @@ class NNTest(PForTestCase):
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
 
   def test_fused_batch_norm(self):
-    with compat.forward_compatibility_horizon(2019, 6, 7):
+    with compat.forward_compatibility_horizon(2019, 11, 11):
       data_formats = ["NHWC"]
       if test.is_gpu_available():
         data_formats.append("NCHW")

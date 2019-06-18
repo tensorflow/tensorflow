@@ -37,7 +37,7 @@ from tensorflow.python.platform import googletest
 class GraphMatcherTest(test_util.TensorFlowTestCase):
 
   def test_conv_layer(self):
-    with compat.forward_compatibility_horizon(2019, 6, 7):
+    with compat.forward_compatibility_horizon(2019, 11, 11):
       g = ops.Graph()
       with g.as_default():
         inputs = array_ops.placeholder(dtypes.float32, shape=[8, 5, 5, 3])
