@@ -23,18 +23,28 @@ limitations under the License.
 #include <sstream>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#if GOOGLE_CUDA
 #include "third_party/cub/device/device_reduce.cuh"
 #include "third_party/cub/device/device_segmented_reduce.cuh"
 #include "third_party/cub/iterator/counting_input_iterator.cuh"
 #include "third_party/cub/iterator/transform_input_iterator.cuh"
 #include "third_party/cub/warp/warp_reduce.cuh"
 #include "third_party/gpus/cuda/include/cuComplex.h"
+#elif TENSORFLOW_USE_ROCM
+#include "external/rocprim_archive/hipcub/include/hipcub/hipcub.hpp"
+#endif
 #include "tensorflow/core/kernels/reduction_ops.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/permutation_input_iterator.h"
 #include "tensorflow/core/util/transform_output_iterator.h"
+
+#if GOOGLE_CUDA
+namespace gpuprim = ::cub;
+#elif TENSORFLOW_USE_ROCM
+namespace gpuprim = ::hipcub;
+#endif
 
 namespace tensorflow {
 namespace functor {
@@ -167,7 +177,7 @@ __global__ void BlockReduceKernel(
     }
   }
 
-  typedef cub::BlockReduce<value_type, num_threads> BlockReduce;
+  typedef gpuprim::BlockReduce<value_type, num_threads> BlockReduce;
 
   __shared__ typename BlockReduce::TempStorage temp_storage;
 
@@ -213,7 +223,7 @@ __global__ void RowReduceKernel(
     }
   }
 
-  typedef cub::WarpReduce<value_type> WarpReduce;
+  typedef gpuprim::WarpReduce<value_type> WarpReduce;
 
   __shared__ typename WarpReduce::TempStorage temp_storage;
 
@@ -289,7 +299,7 @@ __global__ void ColumnReduceMax16ColumnsKernel(
   const int rows_in_this_warp = min(rows_per_warp, num_rows - start_row_warp);
   // not the most efficient way to do this sum
   for (int i = 1; i < rows_in_this_warp; ++i) {
-    value_type tmp = cub::ShuffleIndex<32, value_type>(
+    value_type tmp = gpuprim::ShuffleIndex<32, value_type>(
         sum, static_cast<int>(threadIdx.x + i * num_cols), 0xffffffff);
     if (lane < num_cols) sum = op(sum, tmp);
   }
@@ -382,7 +392,7 @@ __global__ void CleanupSegments(
   value_type val = initVal;
   if (tid < segment_size * num_cols) val = partial_sums[tid];
 
-  typedef cub::WarpReduce<value_type> WarpReduce;
+  typedef gpuprim::WarpReduce<value_type> WarpReduce;
 
   __shared__ typename WarpReduce::TempStorage temp_storage;
 
@@ -508,8 +518,8 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
   size_t temp_storage_bytes = 0;
   auto reduce = [&](void* temp_storage_ptr) {
     auto success =
-        cub::DeviceReduce::Reduce(temp_storage_ptr, temp_storage_bytes, in, out,
-                                  in_size, op, init, cu_stream);
+        gpuprim::DeviceReduce::Reduce(temp_storage_ptr, temp_storage_bytes, in,
+                                      out, in_size, op, init, cu_stream);
 
     OP_REQUIRES(
         ctx, success == 0,
@@ -544,13 +554,14 @@ void LaunchRowReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int num_rows,
 
   // setup segment offsets with counting and transform iterator
   RowOffset row_offset_op(num_cols);
-  cub::CountingInputIterator<int> counting_iter(0);
-  cub::TransformInputIterator<int, RowOffset, cub::CountingInputIterator<int>>
+  gpuprim::CountingInputIterator<int> counting_iter(0);
+  gpuprim::TransformInputIterator<int, RowOffset,
+                                  gpuprim::CountingInputIterator<int>>
       transform_iter(counting_iter, row_offset_op);
 
   size_t temp_storage_bytes = 0;
   auto reduce = [&](void* temp_storage_ptr) {
-    auto success = cub::DeviceSegmentedReduce::Reduce(
+    auto success = gpuprim::DeviceSegmentedReduce::Reduce(
         temp_storage_ptr, temp_storage_bytes, in, out, num_rows, transform_iter,
         transform_iter + 1, op, init, cu_stream);
 
@@ -692,13 +703,14 @@ void Launch3DXZReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int extent_x,
                          const gpuStream_t& cu_stream) {
   // setup segment offsets with counting and transform iterator
   RowOffset row_offset_op(extent_x * extent_z);
-  cub::CountingInputIterator<int> counting_iter(0);
-  cub::TransformInputIterator<int, RowOffset, cub::CountingInputIterator<int>>
+  gpuprim::CountingInputIterator<int> counting_iter(0);
+  gpuprim::TransformInputIterator<int, RowOffset,
+                                  gpuprim::CountingInputIterator<int>>
       transform_iter(counting_iter, row_offset_op);
 
   GatherOp gather_op(extent_x, extent_y, extent_z, false);
-  typedef cub::TransformInputIterator<int, GatherOp,
-                                      cub::CountingInputIterator<int>>
+  typedef gpuprim::TransformInputIterator<int, GatherOp,
+                                          gpuprim::CountingInputIterator<int>>
       gatherIterType;
   gatherIterType gather_iter(counting_iter, gather_op);
 
@@ -707,7 +719,7 @@ void Launch3DXZReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int extent_x,
 
   std::size_t temp_storage_bytes = 0;
   auto reduce = [&](void* temp_storage_ptr) {
-    auto success = cub::DeviceSegmentedReduce::Reduce(
+    auto success = gpuprim::DeviceSegmentedReduce::Reduce(
         temp_storage_ptr, temp_storage_bytes, permute_iter, out, extent_y,
         transform_iter, transform_iter + 1, op, init, cu_stream);
 
@@ -732,7 +744,7 @@ namespace reduction_op_helper {
 template <typename T, typename Op>
 struct IsSum {
   constexpr static bool value =
-      (std::is_same<Op, cub::Sum>::value ||
+      (std::is_same<Op, gpuprim::Sum>::value ||
        std::is_same<Op, Eigen::internal::SumReducer<T>>::value ||
        std::is_same<Op, Sum<T>>::value);
 };
@@ -740,14 +752,14 @@ struct IsSum {
 template <typename T, typename Op>
 struct IsMax {
   constexpr static bool value =
-      (std::is_same<Op, cub::Max>::value ||
+      (std::is_same<Op, gpuprim::Max>::value ||
        std::is_same<Op, Eigen::internal::MaxReducer<T>>::value);
 };
 
 template <typename T, typename Op>
 struct IsMin {
   constexpr static bool value =
-      (std::is_same<Op, cub::Min>::value ||
+      (std::is_same<Op, gpuprim::Min>::value ||
        std::is_same<Op, Eigen::internal::MinReducer<T>>::value);
 };
 
@@ -872,7 +884,7 @@ struct ReduceFunctor<GPUDevice, functor::EuclideanNormReducer<T>> {
   static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
                      const ReductionAxes& reduction_axes,
                      const functor::EuclideanNormReducer<T>& reducer) {
-    typedef cub::TransformInputIterator<T, Square<T>, T*> inputIterType;
+    typedef gpuprim::TransformInputIterator<T, Square<T>, T*> inputIterType;
     inputIterType input_itr((T*)in.data(), Square<T>());
     typedef TransformOutputIterator<T, T, SqrtOfReal<T>> outputIterType;
     outputIterType output_itr((T*)out.data(), SqrtOfReal<T>());
@@ -946,7 +958,7 @@ struct ReduceFunctor<GPUDevice, functor::MeanReducer<Eigen::half>> {
       divisor = in.dimension(1);
     DividesBy<float, Eigen::half> div_op(divisor);
 
-    typedef cub::TransformInputIterator<float, HalfToFloat, Eigen::half*>
+    typedef gpuprim::TransformInputIterator<float, HalfToFloat, Eigen::half*>
         inputIterType;
     inputIterType input_itr((Eigen::half*)in.data(), HalfToFloat());
 
@@ -955,11 +967,11 @@ struct ReduceFunctor<GPUDevice, functor::MeanReducer<Eigen::half>> {
         outputIterType;
     outputIterType itr((Eigen::half*)out.data(), div_op);
 
-    ReduceImpl<float, cub::Sum, outputIterType, inputIterType, ReductionAxes>(
-        ctx, itr, input_itr, in.rank(), in.dimension(0),
-        in.rank() >= 2 ? in.dimension(1) : 1,
-        in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
-        cub::Sum());
+    ReduceImpl<float, gpuprim::Sum, outputIterType, inputIterType,
+               ReductionAxes>(ctx, itr, input_itr, in.rank(), in.dimension(0),
+                              in.rank() >= 2 ? in.dimension(1) : 1,
+                              in.rank() >= 3 ? in.dimension(2) : 1, out.rank(),
+                              reduction_axes, gpuprim::Sum());
   }
 
   template <typename OUT_T>
@@ -975,11 +987,11 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::MaxReducer<T>> {
   static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
                      const ReductionAxes& reduction_axes,
                      const Eigen::internal::MaxReducer<T>& reducer) {
-    ReduceImpl<T, cub::Max, T*, T*, ReductionAxes>(
+    ReduceImpl<T, gpuprim::Max, T*, T*, ReductionAxes>(
         ctx, (T*)out.data(), (T*)in.data(), in.rank(), in.dimension(0),
         in.rank() >= 2 ? in.dimension(1) : 1,
         in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
-        cub::Max());
+        gpuprim::Max());
   }
 
   template <typename OUT_T>
@@ -995,11 +1007,11 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::MinReducer<T>> {
   static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
                      const ReductionAxes& reduction_axes,
                      const Eigen::internal::MinReducer<T>& reducer) {
-    ReduceImpl<T, cub::Min, T*, T*, ReductionAxes>(
+    ReduceImpl<T, gpuprim::Min, T*, T*, ReductionAxes>(
         ctx, (T*)out.data(), (T*)in.data(), in.rank(), in.dimension(0),
         in.rank() >= 2 ? in.dimension(1) : 1,
         in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
-        cub::Min());
+        gpuprim::Min());
   }
 
   template <typename OUT_T>
