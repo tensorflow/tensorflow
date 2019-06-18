@@ -25,6 +25,7 @@ target_link_libraries(Linalg3
     MLIRLLVMIR
     MLIRParser
     MLIRPass
+    MLIRStandardToLLVM
     MLIRTransforms
     Linalg2
     )
