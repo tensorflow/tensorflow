@@ -58,6 +58,7 @@ py_library(
         ":def_function",
         ":execute",
         ":execution_callbacks",
+        ":forwardprop",
         ":function",
         ":graph_only_ops",
         ":monitoring",
@@ -217,6 +218,16 @@ cuda_py_test(
         "//tensorflow/python:training",
     ],
     tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "forwardprop_test",
+    srcs = ["forwardprop_test.py"],
+    additional_deps = [
+        ":forwardprop",
+        ":test",
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -445,6 +456,18 @@ py_library(
         "//tensorflow/python/eager:tape",
         "//tensorflow/python/ops/parallel_for:control_flow_ops",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "forwardprop",
+    srcs = ["forwardprop.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:platform",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:util",
     ],
 )
 
