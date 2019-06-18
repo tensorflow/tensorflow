@@ -67,12 +67,26 @@ GpuExecutable::GpuExecutable(
   CHECK(has_module() && assignment_);
   GpuDebugInfoManager::Get()->RegisterModule(module().name(), shared_module(),
                                              assignment_);
+  ComputeThunkAnnotations();
 }
 
 GpuExecutable::~GpuExecutable() {
   CHECK(has_module() && assignment_);
   GpuDebugInfoManager::Get()->UnregisterModule(module().name(), shared_module(),
                                                assignment_);
+}
+
+void GpuExecutable::ComputeThunkAnnotations() {
+  CanonicalNameMap canonical_name_map;
+  for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
+    const HloInstruction* hlo = thunk->hlo_instruction();
+    CHECK(hlo);
+    thunk_annotations_[thunk] = absl::StrFormat(
+        "%s:#tf_op=%s,hlo_op=%s,hlo_module=%s#",
+        hlo->ToStringWithCanonicalNameMap(HloPrintOptions::Canonical(),
+                                          &canonical_name_map),
+        hlo->metadata().op_name(), hlo->name(), hlo->GetModule()->name());
+  }
 }
 
 Status GpuExecutable::ExecuteThunks(
@@ -124,18 +138,10 @@ Status GpuExecutable::ExecuteThunks(
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
     // module, we won't get any data, but that's probably an OK trade-off.
-    //
-    // TODO(jlebar): Should we cache the results of HloInstruction::ToString(),
-    // since we expect it to be an expensive call?
     absl::optional<ScopedAnnotation> op_annotation;
     CHECK(thunk->hlo_instruction());
     if (scoped_annotation_enabled) {
-      auto hlo = thunk->hlo_instruction();
-      op_annotation.emplace(
-          thunk->hlo_instruction()->ToString(HloPrintOptions::Canonical()),
-          absl::StrCat("#tf_op=", hlo->metadata().op_name(),
-                       ",hlo_op=", hlo->name(),
-                       ",hlo_module=", hlo->GetModule()->name(), "#"));
+      op_annotation.emplace(FindOrDie(thunk_annotations_, thunk));
     }
 
     TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
