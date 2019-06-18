@@ -46,25 +46,6 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
   class Dataset;
 };
 
-// Creates a dataset representing an eagerly-collected window of elements.
-//
-// The `elements` argument defines the elements of the resulting
-// dataset, which is stored in `out_dataset`.
-//
-// This dataset is constructed internally for use in datasets that
-// build nested dataset expressions (e.g. the reducer function for
-// GroupByWindowDataset). It efficiently supports multiple iterators on
-// the same window without recomputation.
-//
-// REQUIRES: `output_types` must match the types of the respective
-// element components in `elements`.
-// REQUIRES: `output_shapes` must be compatible with the shapes of the
-// respective element components in `elements`.a
-Status NewWindowDataset(std::vector<std::vector<Tensor>> elements,
-                        DataTypeVector output_types,
-                        std::vector<PartialTensorShape> output_shapes,
-                        DatasetBase** out_dataset);
-
 }  // namespace data
 }  // namespace tensorflow
 
