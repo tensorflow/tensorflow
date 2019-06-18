@@ -84,6 +84,17 @@ TEST(DenseSplatTest, LargeBoolSplat) {
   EXPECT_EQ(detectedSplat, falseSplat);
 }
 
+TEST(DenseSplatTest, BoolNonSplat) {
+  MLIRContext context;
+  IntegerType boolTy = IntegerType::get(1, &context);
+  VectorType shape = VectorType::get({6}, boolTy);
+
+  // Check that we properly handle non-splat values.
+  DenseElementsAttr nonSplat =
+      DenseElementsAttr::get(shape, {false, false, true, false, false, true});
+  EXPECT_FALSE(nonSplat.isSplat());
+}
+
 TEST(DenseSplatTest, OddIntSplat) {
   // Test detecting a splat with an odd(non 8-bit) integer bitwidth.
   MLIRContext context;

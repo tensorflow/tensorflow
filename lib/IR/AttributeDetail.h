@@ -478,9 +478,11 @@ struct DenseElementsAttributeStorage : public AttributeStorage {
       splatData = splatData.drop_back();
     }
 
-    // Check that the data buffer corresponds to a splat.
-    return llvm::is_splat(splatData) ? generateSplatKey()
-                                     : KeyTy(ty, data, llvm::hash_value(data));
+    // Check that the data buffer corresponds to a splat of the proper mask.
+    char mask = splatValue ? ~0 : 0;
+    return llvm::all_of(splatData, [mask](char c) { return c == mask; })
+               ? generateSplatKey()
+               : KeyTy(ty, data, llvm::hash_value(data));
   }
 
   /// Hash the key for the storage.
