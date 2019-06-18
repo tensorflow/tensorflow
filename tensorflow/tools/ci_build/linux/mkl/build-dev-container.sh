@@ -45,7 +45,11 @@ WORKSPACE="${WORKSPACE:-$(upsearch WORKSPACE)}"
 
 ROOT_CONTAINER=${ROOT_CONTAINER:-tensorflow/tensorflow}
 TF_ROOT_CONTAINER_TAG=${ROOT_CONTAINER_TAG:-devel}
+
+# TF_BUILD_VERSION can be either a tag, branch, commit ID or PR number.
+# For a PR, set TF_BUILD_VERSION_IS_PR="yes"
 TF_BUILD_VERSION=${TF_DOCKER_BUILD_DEVEL_BRANCH:-master}
+TF_BUILD_VERSION_IS_PR=${TF_DOCKER_BUILD_DEVEL_BRANCH_IS_PR:-no}
 TF_REPO=${TF_REPO:-https://github.com/tensorflow/tensorflow}
 FINAL_IMAGE_NAME=${TF_DOCKER_BUILD_IMAGE_NAME:-intel-mkl/tensorflow}
 TF_DOCKER_BUILD_VERSION=${TF_DOCKER_BUILD_VERSION:-nightly}
@@ -60,6 +64,7 @@ ENABLE_SECURE_BUILD=${ENABLE_SECURE_BUILD:-no}
 debug "ROOT_CONTAINER=${ROOT_CONTAINER}"
 debug "TF_ROOT_CONTAINER_TAG=${TF_ROOT_CONTAINER_TAG}"
 debug "TF_BUILD_VERSION=${TF_BUILD_VERSION}"
+debug "TF_BUILD_VERSION_IS_PR=${TF_BUILD_VERSION_IS_PR}"
 debug "FINAL_IMAGE_NAME=${FINAL_IMAGE_NAME}"
 debug "TF_DOCKER_BUILD_VERSION=${TF_DOCKER_BUILD_VERSION}"
 debug "BUILD_AVX_CONTAINERS=${BUILD_AVX_CONTAINERS}"
@@ -161,12 +166,13 @@ function test_container()
 
 function checkout_tensorflow()
 {
-  if [[ "$#" != "2" ]]; then
-    die "Usage: ${FUNCNAME} <REPO_URL> <BRANCH/TAG/COMMIT-ID>"
+  if [[ "$#" != "3" ]]; then
+    die "Usage: ${FUNCNAME} <REPO_URL> <BRANCH/TAG/COMMIT-ID/PR-ID> <TF_BUILD_VERSION_IS_PR>"
   fi
 
   TF_REPO="${1}"
   TF_BUILD_VERSION="${2}"
+  TF_BUILD_VERSION_IS_PR="${3}"
   TENSORFLOW_DIR="tensorflow"
 
   debug "Checking out ${TF_REPO}:${TF_BUILD_VERSION} into ${TENSORFLOW_DIR}"
@@ -174,10 +180,15 @@ function checkout_tensorflow()
   # Clean any existing tensorflow sources
   rm -rf "${TENSORFLOW_DIR}"
 
-  # Let's make this simeple for now; we can be more fancy later
   git clone ${TF_REPO} ${TENSORFLOW_DIR}
   cd ${TENSORFLOW_DIR}
-  git checkout ${TF_BUILD_VERSION}
+  if [[ "${TF_BUILD_VERSION_IS_PR}" == "yes" ]]; then
+    # If TF_BUILD_VERSION is a PR number, then fetch first
+    git fetch origin pull/${TF_BUILD_VERSION}/head:pr-${TF_BUILD_VERSION}
+    git checkout pr-${TF_BUILD_VERSION}
+  else
+    git checkout ${TF_BUILD_VERSION}
+  fi
   if [ $? -ne 0 ]; then
     die "Unable to find ${TF_BUILD_VERSION} on ${TF_REPO}"
   fi
@@ -228,7 +239,7 @@ if [[ ${BUILD_CLX_CONTAINERS} == "yes" ]]; then
 fi
 
 # Checking out sources needs to be done only once
-checkout_tensorflow "${TF_REPO}" "${TF_BUILD_VERSION}"
+checkout_tensorflow "${TF_REPO}" "${TF_BUILD_VERSION}" "${TF_BUILD_VERSION_IS_PR}"
 
 for PLATFORM in "${PLATFORMS[@]}"
 do
