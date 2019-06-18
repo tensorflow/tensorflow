@@ -58,6 +58,9 @@ def SPV_FMulOp : SPV_Op<"FMul", [NoSideEffect, SameOperandsAndResultType]> {
 
   let parser = [{ return impl::parseBinaryOp(parser, result); }];
   let printer = [{ return impl::printBinaryOp(getOperation(), p); }];
+
+  // No additional verification needed in addition to the ODS-generated ones.
+  let verifier = [{ return success(); }];
 }
 
 def SPV_ReturnOp : SPV_Op<"Return", [Terminator]> {
@@ -75,6 +78,57 @@ def SPV_ReturnOp : SPV_Op<"Return", [Terminator]> {
   let printer = [{ printNoIOOp(getOperation(), p); }];
 
   let verifier = [{ return verifyReturn(*this); }];
+}
+
+def SPV_VariableOp : SPV_Op<"Variable"> {
+  let summary = [{
+    Allocate an object in memory, resulting in a pointer to it, which can be
+    used with OpLoad and OpStore
+  }];
+
+  let description = [{
+    Result Type must be an OpTypePointer. Its Type operand is the type of object
+    in memory.
+
+    Storage Class is the Storage Class of the memory holding the object. It
+    cannot be Generic. It must be the same as the Storage Class operand of the
+    Result Type.
+
+    Initializer is optional. If Initializer is present, it will be the initial
+    value of the variable’s memory content. Initializer must be an <id> from a
+    constant instruction or a global (module scope) OpVariable instruction.
+    Initializer must have the same type as the type pointed to by Result Type.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    variable-op ::= ssa-id `=` `spv.Variable` (`init(` ssa-use `)`)?
+                    (`bind(` integer-literal, integer-literal `)`)?
+                    attribute-dict? `:` spirv-pointer-type
+    ```
+
+    where `init` specifies initializer and `bind` specifies the descriptor set
+    and binding number.
+
+    For example:
+
+    ```
+    %0 = spv.constant ...
+
+    %1 = spv.Variable : !spv.ptr<f32, Function>
+    %2 = spv.Variable init(%0): !spv.ptr<f32, Private>
+    %3 = spv.Variable init(%0) bind(1, 2): !spv.ptr<f32, Uniform>
+    ```
+  }];
+
+  let arguments = (ins
+    SPV_StorageClassAttr:$storage_class,
+    SPV_Optional<AnyType>:$initializer
+  );
+
+  let results = (outs
+    SPV_AnyPtr:$pointer
+  );
 }
 
 #endif // SPIRV_OPS

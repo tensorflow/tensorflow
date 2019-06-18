@@ -61,12 +61,6 @@ def SPV_ModuleOp : SPV_Op<"module", []> {
   let results = (outs);
 
   let regions = (region SizedRegion<1>:$body);
-
-  // Custom parser and printer implemented by static functions in SPVOps.cpp
-  let parser = [{ return parseModule(parser, result); }];
-  let printer = [{ printModule(*this, p); }];
-
-  let verifier = [{ return verifyModule(*this); }];
 }
 
 def SPV_ModuleEndOp : SPV_Op<"_module_end", [Terminator]> {
@@ -131,11 +125,6 @@ def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
   let results = (outs
     SPV_Type:$constant
   );
-
-  let parser = [{ return parseConstant(parser, result); }];
-  let printer = [{ printConstant(*this, p); }];
-
-  let verifier = [{ return verifyConstant(*this); }];
 }
 
 #endif // SPIRV_STRUCTURE_OPS

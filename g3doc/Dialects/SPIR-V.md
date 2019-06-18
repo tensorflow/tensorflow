@@ -43,10 +43,14 @@ Compared to the binary format, we adjust how certain module-level SPIR-V
 instructions are represented in the SPIR-V dialect. Notably,
 
 * Requirements for capabilities, extensions, extended instruction sets,
-  addressing model, and memory model is conveyed using op attributes.
+  addressing model, and memory model is conveyed using `spv.module` attributes.
   This is considered better because these information are for the
   exexcution environment. It's eaiser to probe them if on the module op
   itself.
+* Annotations/decoration instrutions are "folded" into the instructions they
+  decorate and represented as attributes on those ops. This elimiates potential
+  forward references of SSA values, improves IR readability, and makes
+  querying the annotations more direct.
 * Various constant instructions are represented by the same `spv.constant`
   op. Those instructions are just for constants of different types; using one
   op to represent them reduces IR verbosity and makes transformations less

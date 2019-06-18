@@ -28,6 +28,9 @@
 
 using namespace mlir;
 
+static constexpr const char kBindingAttrName[] = "binding";
+static constexpr const char kDescriptorSetAttrName[] = "descriptor_set";
+static constexpr const char kStorageClassAttrName[] = "storage_class";
 static constexpr const char kValueAttrName[] = "value";
 
 //===----------------------------------------------------------------------===//
@@ -59,7 +62,7 @@ static LogicalResult verifyModuleOnly(Operation *op) {
 // spv.constant
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseConstant(OpAsmParser *parser, OperationState *state) {
+static ParseResult parseConstantOp(OpAsmParser *parser, OperationState *state) {
   Attribute value;
   if (parser->parseAttribute(value, kValueAttrName, state->attributes))
     return failure();
@@ -75,12 +78,12 @@ static ParseResult parseConstant(OpAsmParser *parser, OperationState *state) {
   return parser->addTypeToList(type, state->types);
 }
 
-static void printConstant(spirv::ConstantOp constOp, OpAsmPrinter *printer) {
+static void print(spirv::ConstantOp constOp, OpAsmPrinter *printer) {
   *printer << spirv::ConstantOp::getOperationName() << " " << constOp.value()
            << " : " << constOp.getType();
 }
 
-static LogicalResult verifyConstant(spirv::ConstantOp constOp) {
+static LogicalResult verify(spirv::ConstantOp constOp) {
   auto opType = constOp.getType();
   auto value = constOp.value();
   auto valueType = value.getType();
@@ -136,7 +139,7 @@ static void ensureModuleEnd(Region *region, Builder builder, Location loc) {
   block.push_back(Operation::create(state));
 }
 
-static ParseResult parseModule(OpAsmParser *parser, OperationState *state) {
+static ParseResult parseModuleOp(OpAsmParser *parser, OperationState *state) {
   Region *body = state->addRegion();
 
   if (parser->parseRegion(*body, /*arguments=*/{}, /*argTypes=*/{}) ||
@@ -149,7 +152,7 @@ static ParseResult parseModule(OpAsmParser *parser, OperationState *state) {
   return success();
 }
 
-static void printModule(spirv::ModuleOp moduleOp, OpAsmPrinter *printer) {
+static void print(spirv::ModuleOp moduleOp, OpAsmPrinter *printer) {
   auto *op = moduleOp.getOperation();
   *printer << spirv::ModuleOp::getOperationName();
   printer->printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false,
@@ -158,7 +161,7 @@ static void printModule(spirv::ModuleOp moduleOp, OpAsmPrinter *printer) {
   printer->printOptionalAttrDict(op->getAttrs());
 }
 
-static LogicalResult verifyModule(spirv::ModuleOp moduleOp) {
+static LogicalResult verify(spirv::ModuleOp moduleOp) {
   auto &op = *moduleOp.getOperation();
   auto *dialect = op.getDialect();
   auto &body = op.getRegion(0).front();
@@ -203,6 +206,123 @@ static LogicalResult verifyReturn(spirv::ReturnOp returnOp) {
   if (numOutputs != 0)
     return returnOp.emitOpError("cannot be used in functions returning value")
            << (numOutputs > 1 ? "s" : "");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.Variable
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseVariableOp(OpAsmParser *parser, OperationState *state) {
+  // Parse optional initializer
+  Optional<OpAsmParser::OperandType> initInfo;
+  if (succeeded(parser->parseOptionalKeyword("init"))) {
+    initInfo = OpAsmParser::OperandType();
+    if (parser->parseLParen() || parser->parseOperand(*initInfo) ||
+        parser->parseRParen())
+      return failure();
+  }
+
+  // Parse optional descriptor binding
+  Attribute set, binding;
+  if (succeeded(parser->parseOptionalKeyword("bind"))) {
+    Type i32Type = parser->getBuilder().getIntegerType(32);
+    if (parser->parseLParen() ||
+        parser->parseAttribute(set, i32Type, kDescriptorSetAttrName,
+                               state->attributes) ||
+        parser->parseComma() ||
+        parser->parseAttribute(binding, i32Type, kBindingAttrName,
+                               state->attributes) ||
+        parser->parseRParen())
+      return failure();
+  }
+
+  // Parse other attributes
+  if (parser->parseOptionalAttributeDict(state->attributes))
+    return failure();
+
+  // Parse result pointer type
+  Type type;
+  if (parser->parseColon())
+    return failure();
+  auto loc = parser->getCurrentLocation();
+  if (parser->parseType(type))
+    return failure();
+
+  auto ptrType = type.dyn_cast<spirv::PointerType>();
+  if (!ptrType)
+    return parser->emitError(loc, "expected spv.ptr type");
+  state->addTypes(ptrType);
+
+  // Resolve the initializer operand
+  SmallVector<Value *, 1> init;
+  if (initInfo) {
+    if (parser->resolveOperand(*initInfo, ptrType.getPointeeType(), init))
+      return failure();
+    state->addOperands(init);
+  }
+
+  // TODO(antiagainst): The enum attribute should be integer backed so we don't
+  // have these excessive string conversions.
+  auto attr = parser->getBuilder().getStringAttr(ptrType.getStorageClassStr());
+  state->addAttribute(kStorageClassAttrName, attr);
+
+  return success();
+}
+
+static void print(spirv::VariableOp varOp, OpAsmPrinter *printer) {
+  auto *op = varOp.getOperation();
+  SmallVector<StringRef, 4> elidedAttrs{kStorageClassAttrName};
+  *printer << spirv::VariableOp::getOperationName();
+
+  // Print optional initializer
+  if (op->getNumOperands() > 0) {
+    *printer << " init(";
+    printer->printOperands(varOp.initializer());
+    *printer << ")";
+  }
+
+  // Print optional descriptor binding
+  auto set = varOp.getAttr(kDescriptorSetAttrName);
+  auto binding = varOp.getAttr(kBindingAttrName);
+  if (set && binding) {
+    elidedAttrs.push_back(kDescriptorSetAttrName);
+    elidedAttrs.push_back(kBindingAttrName);
+    *printer << " bind(" << set << ", " << binding << ")";
+  }
+
+  printer->printOptionalAttrDict(op->getAttrs(), elidedAttrs);
+  *printer << " : " << varOp.getType();
+}
+
+static LogicalResult verify(spirv::VariableOp varOp) {
+  // SPIR-V spec: "Storage Class is the Storage Class of the memory holding the
+  // object. It cannot be Generic. It must be the same as the Storage Class
+  // operand of the Result Type."
+  if (varOp.storage_class() == "Generic")
+    return varOp.emitOpError("storage class cannot be 'Generic'");
+
+  auto pointerType = varOp.pointer()->getType().cast<spirv::PointerType>();
+  if (varOp.storage_class() != pointerType.getStorageClassStr())
+    return varOp.emitOpError(
+        "storage class must match result pointer's storage class");
+
+  if (varOp.getNumOperands() != 0) {
+    // SPIR-V spec: "Initializer must be an <id> from a constant instruction or
+    // a global (module scope) OpVariable instruction".
+    bool valid = false;
+    if (auto *initOp = varOp.getOperand(0)->getDefiningOp()) {
+      if (llvm::isa<spirv::ConstantOp>(initOp)) {
+        valid = true;
+      } else if (llvm::isa<spirv::VariableOp>(initOp)) {
+        valid = llvm::isa_and_nonnull<spirv::ModuleOp>(initOp->getParentOp());
+      }
+    }
+    if (!valid)
+      return varOp.emitOpError("initializer must be the result of a "
+                               "spv.Constant or module-level spv.Variable op");
+  }
 
   return success();
 }

@@ -65,3 +65,68 @@ func @return_mismatch_func_signature() -> () {
   }
   return
 }
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// spv.Variable
+//===----------------------------------------------------------------------===//
+
+func @variable_no_init(%arg0: f32) -> () {
+  // CHECK: spv.Variable : !spv.ptr<f32, Function>
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  return
+}
+
+func @variable_init() -> () {
+  %0 = spv.constant 4.0 : f32
+  // CHECK: spv.Variable init(%0) : !spv.ptr<f32, Private>
+  %1 = spv.Variable init(%0) : !spv.ptr<f32, Private>
+  return
+}
+
+func @variable_bind() -> () {
+  // CHECK: spv.Variable bind(1, 2) : !spv.ptr<f32, Uniform>
+  %0 = spv.Variable bind(1, 2) : !spv.ptr<f32, Uniform>
+  return
+}
+
+func @variable_init_bind() -> () {
+  %0 = spv.constant 4.0 : f32
+  // CHECK: spv.Variable init(%0) {binding: 5 : i32} : !spv.ptr<f32, Private>
+  %1 = spv.Variable init(%0) {binding: 5 : i32} : !spv.ptr<f32, Private>
+  return
+}
+
+// -----
+
+func @expect_ptr_result_type(%arg0: f32) -> () {
+  // expected-error @+1 {{expected spv.ptr type}}
+  %0 = spv.Variable : f32
+  return
+}
+
+// -----
+
+func @variable_init(%arg0: f32) -> () {
+  // expected-error @+1 {{op initializer must be the result of a spv.Constant or module-level spv.Variable op}}
+  %0 = spv.Variable init(%arg0) : !spv.ptr<f32, Private>
+  return
+}
+
+// -----
+
+func @storage_class_mismatch() -> () {
+  %0 = spv.constant 5.0 : f32
+  // expected-error @+1 {{storage class must match result pointer's storage class}}
+  %1 = "spv.Variable"(%0) {storage_class : "Uniform"} : (f32) -> !spv.ptr<f32, Function>
+  return
+}
+
+// -----
+
+func @cannot_be_generic_storage_class(%arg0: f32) -> () {
+  // expected-error @+1 {{storage class cannot be 'Generic'}}
+  %0 = spv.Variable : !spv.ptr<f32, Generic>
+  return
+}
