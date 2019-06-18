@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/GPU/GPUDialect.h"
+#include "mlir/GPU/Passes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
@@ -107,7 +108,7 @@ public:
   }
 };
 
-ModulePassBase *createGpuKernelOutliningPass() {
+ModulePassBase *mlir::createGpuKernelOutliningPass() {
   return new GpuKernelOutliningPass();
 }
 
