@@ -2567,13 +2567,10 @@ class Model(network.Network):
       kwargs = {}
       if self._expects_training_arg:
         # In V2 mode, feeding `training=None` is not allowed because any value
-        # explicitly passed by the user is respected, even `None`, and in this
-        # case if the user has not passed a value in V2 we need to replace
-        # `None` with the `learning_phase()`. In V1, `training=None` is needed
-        # so that `Dropout` and `BatchNormalization` replace `None` values with
-        # the `learning_phase()` in their `call`.
-        if (training is not None or
-            not ops.executing_eagerly_outside_functions()):
+        # explicitly passed by the user is respected, even `None`.`
+        if training is None and not ops.executing_eagerly_outside_functions():
+          training = K.learning_phase()
+        if training is not None:
           kwargs['training'] = training
       try:
         outputs = self(inputs, **kwargs)
