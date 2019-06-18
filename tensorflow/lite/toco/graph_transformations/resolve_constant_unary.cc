@@ -231,6 +231,9 @@ bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
       } else if (input_array.buffer->type == ArrayDataType::kInt64) {
         outval = static_cast<float>(
             input_array.GetBuffer<ArrayDataType::kInt64>().data[i]);
+      } else if (input_array.buffer->type == ArrayDataType::kBool) {
+        outval = static_cast<float>(
+            input_array.GetBuffer<ArrayDataType::kBool>().data[i]);
       } else {
         LOG(FATAL) << "Unsupported cast op input type";
       }
