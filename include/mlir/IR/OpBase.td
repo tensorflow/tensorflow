@@ -1120,6 +1120,18 @@ class TCresVTEtIsSameAsOp<int i, int j> : And<[
     CPred<"getElementTypeOrSelf($_op.getResult(" # i # ")) == "
           "getElementTypeOrSelf($_op.getOperand(" # j # "))">]>;
 
+// Predicate to verify that the opId'th operand can be broadcasted to the type
+// of the resId'th result.
+class TCOpIsBroadcastableToRes<int opId, int resId> : And<[
+    CPred<"$_op.getNumOperands() > " # opId>,
+    CPred<"$_op.getNumResults() > " # resId>,
+    SubstLeaves<"$_self", "$_op.getOperand(" # opId # ")->getType()",
+      IsShapedTypePred>,
+    SubstLeaves<"$_self", "$_op.getResult(" # resId # ")->getType()",
+      IsShapedTypePred>,
+    CPred<"OpTrait::util::getBroadcastedType($_op.getOperand(" # opId # "), "
+                                            "$_op.getResult(" # resId # "))">]>;
+
 // Predicate to verify that all the operands at the given `indices`
 // have the same element type.
 // Type Constraint operands' Element type are all Same At the given `indices`.
