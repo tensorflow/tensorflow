@@ -44,7 +44,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-#include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -59,6 +60,17 @@ limitations under the License.
 #include <poplar/Tensor.hpp>
 
 namespace se = stream_executor;
+
+namespace tensorflow {
+class TensorBuffer;
+class FunctionLibraryDefinition;
+class ProcessFunctionLibraryRuntime;
+namespace data {
+class IteratorBase;
+class IteratorContext;
+class FunctionHandleCache;
+}  // namespace data
+}  // namespace tensorflow
 
 namespace xla {
 
@@ -112,7 +124,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   void* Allocate(uint64 size) override;
   void* GetSubBuffer(se::DeviceMemoryBase* mem, uint64 offset_bytes,
-                          uint64 size_bytes) override;
+                     uint64 size_bytes) override;
   void Deallocate(se::DeviceMemoryBase* mem) override;
 
   void* HostMemoryAllocate(uint64 size) override { return new char[size]; }
@@ -203,8 +215,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     return false;
   }
 
-  StatusOr<std::unique_ptr<se::DeviceDescription>>
-  CreateDeviceDescription() const override;
+  StatusOr<std::unique_ptr<se::DeviceDescription>> CreateDeviceDescription()
+      const override;
 
   Status EnablePeerAccessTo(StreamExecutorInterface* other) override {
     return Status::OK();
@@ -364,8 +376,11 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   static poplar::DeviceManager& GetDeviceManager();
 
   void CreateInfeedDatasetIterator(
-      const std::string&, std::unique_ptr<tensorflow::data::IteratorBase>,
-      std::unique_ptr<tensorflow::data::IteratorContext>,
+      const std::string&, std::unique_ptr<tensorflow::data::IteratorBase>&,
+      std::unique_ptr<tensorflow::data::IteratorContext>&,
+      std::unique_ptr<tensorflow::data::FunctionHandleCache>&,
+      std::unique_ptr<tensorflow::FunctionLibraryDefinition>&,
+      std::unique_ptr<tensorflow::ProcessFunctionLibraryRuntime>&,
       const std::vector<xla::Shape>&);
 
   Status RegisterOutfeeds(const OutfeedInfos& outfeed_infos);
@@ -584,33 +599,25 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   tensorflow::thread::ThreadPool thread_pool_;
 
   struct InfeedDatasetIterator {
+    InfeedDatasetIterator(
+        std::unique_ptr<tensorflow::data::IteratorBase> iterator,
+        std::unique_ptr<tensorflow::data::IteratorContext> iterator_ctx,
+        std::unique_ptr<tensorflow::data::FunctionHandleCache> handle_cache,
+        std::unique_ptr<tensorflow::FunctionLibraryDefinition> flib_def,
+        std::unique_ptr<tensorflow::ProcessFunctionLibraryRuntime> process_flib,
+        const std::vector<xla::Shape>& shapes);
+    ~InfeedDatasetIterator();
+
     std::unique_ptr<tensorflow::data::IteratorBase> iterator;
     std::unique_ptr<tensorflow::data::IteratorContext> iterator_ctx;
+    std::unique_ptr<tensorflow::data::FunctionHandleCache> handle_cache;
+    std::unique_ptr<tensorflow::FunctionLibraryDefinition> flib_def;
+    std::unique_ptr<tensorflow::ProcessFunctionLibraryRuntime> process_flib;
     const std::vector<xla::Shape> shapes;
 
     using QueueType = SPSCQueue<tensorflow::TensorBuffer*, 2048>;
 
     std::vector<std::unique_ptr<QueueType>> tensor_queues;
-
-    InfeedDatasetIterator(
-        std::unique_ptr<tensorflow::data::IteratorBase> iterator,
-        std::unique_ptr<tensorflow::data::IteratorContext> iterator_ctx,
-        const std::vector<xla::Shape>& shapes)
-        : iterator(std::move(iterator)),
-          iterator_ctx(std::move(iterator_ctx)),
-          shapes(std::move(shapes)) {
-      for (uint64 i = 0; i < shapes.size(); i++) {
-        void* ptr = tensorflow::port::AlignedMalloc(sizeof(QueueType), 64);
-
-        tensor_queues.emplace_back(
-            new (ptr) QueueType(nullptr, [](tensorflow::TensorBuffer*& buffer) {
-              if (buffer) {
-                buffer->Unref();
-                buffer = nullptr;
-              }
-            }));
-      }
-    }
   };
 
   absl::flat_hash_map<std::string, std::unique_ptr<InfeedDatasetIterator>>

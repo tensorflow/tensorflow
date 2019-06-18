@@ -36,6 +36,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -211,6 +213,34 @@ PoplarExecutor::TensorControl::TensorControl(size_t size_) {
 
 PoplarExecutor::TensorControl::~TensorControl() { delete[] data; }
 
+PoplarExecutor::InfeedDatasetIterator::InfeedDatasetIterator(
+    std::unique_ptr<tensorflow::data::IteratorBase> iterator,
+    std::unique_ptr<tensorflow::data::IteratorContext> iterator_ctx,
+    std::unique_ptr<tensorflow::data::FunctionHandleCache> handle_cache,
+    std::unique_ptr<tensorflow::FunctionLibraryDefinition> flib_def,
+    std::unique_ptr<tensorflow::ProcessFunctionLibraryRuntime> process_flib,
+    const std::vector<xla::Shape>& shapes)
+    : iterator(std::move(iterator)),
+      iterator_ctx(std::move(iterator_ctx)),
+      flib_def(std::move(flib_def)),
+      process_flib(std::move(process_flib)),
+      handle_cache(std::move(handle_cache)),
+      shapes(std::move(shapes)) {
+  for (uint64 i = 0; i < shapes.size(); i++) {
+    void* ptr = tensorflow::port::AlignedMalloc(sizeof(QueueType), 64);
+
+    tensor_queues.emplace_back(
+        new (ptr) QueueType(nullptr, [](tensorflow::TensorBuffer*& buffer) {
+          if (buffer) {
+            buffer->Unref();
+            buffer = nullptr;
+          }
+        }));
+  }
+}
+
+PoplarExecutor::InfeedDatasetIterator::~InfeedDatasetIterator() {}
+
 PoplarExecutor::PoplarExecutor()
     : ordinal_(0),
       current_engine_(nullptr),
@@ -236,8 +266,7 @@ void* PoplarExecutor::Allocate(uint64 size) {
 }
 
 void* PoplarExecutor::GetSubBuffer(se::DeviceMemoryBase* parent,
-                                   uint64 offset_bytes,
-                                   uint64 size_bytes) {
+                                   uint64 offset_bytes, uint64 size_bytes) {
   TensorControl* tc = reinterpret_cast<TensorControl*>(parent->opaque());
   return tc->data + offset_bytes;
 }
@@ -1093,9 +1122,9 @@ se::DeviceMemoryBase PoplarExecutor::HandleOutputBuffer(
     return buf;
   } else {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape, sizeof(void*)));
-    se::DeviceMemoryBase allocated =
-        allocator->Allocate(ordinal_, size, false)
-            .ConsumeValueOrDie().Release();
+    se::DeviceMemoryBase allocated = allocator->Allocate(ordinal_, size, false)
+                                         .ConsumeValueOrDie()
+                                         .Release();
     TensorControl* tc = reinterpret_cast<TensorControl*>(allocated.opaque());
 
     void** buf = reinterpret_cast<void**>(tc->data);
@@ -1144,9 +1173,9 @@ se::DeviceMemoryBase PoplarExecutor::GetOutputBuffer(
     ptrs.push_back(out.opaque());
   }
   if (shape.IsTuple()) {
-    se::DeviceMemoryBase allocated =
-        allocator->Allocate(ordinal_, size, false)
-            .ConsumeValueOrDie().Release();
+    se::DeviceMemoryBase allocated = allocator->Allocate(ordinal_, size, false)
+                                         .ConsumeValueOrDie()
+                                         .Release();
     TensorControl* tc = reinterpret_cast<TensorControl*>(allocated.opaque());
     void** buf = reinterpret_cast<void**>(tc->data);
     for (void* ptr : ptrs) {
@@ -1401,8 +1430,11 @@ poplar::DeviceManager& PoplarExecutor::GetDeviceManager() {
 
 void PoplarExecutor::CreateInfeedDatasetIterator(
     const std::string& id,
-    std::unique_ptr<tensorflow::data::IteratorBase> iterator,
-    std::unique_ptr<tensorflow::data::IteratorContext> iterator_ctx,
+    std::unique_ptr<tensorflow::data::IteratorBase>& iterator,
+    std::unique_ptr<tensorflow::data::IteratorContext>& iterator_ctx,
+    std::unique_ptr<tensorflow::data::FunctionHandleCache>& handle_cache,
+    std::unique_ptr<tensorflow::FunctionLibraryDefinition>& flib_def,
+    std::unique_ptr<tensorflow::ProcessFunctionLibraryRuntime>& process_lib,
     const std::vector<xla::Shape>& shapes) {
   if (infeed_dataset_iterators_.contains(id)) {
     LOG(FATAL) << "Infeed with id='" << id
@@ -1411,7 +1443,8 @@ void PoplarExecutor::CreateInfeedDatasetIterator(
                   "the same TensorFlow device to have unique names.";
   } else {
     infeed_dataset_iterators_[id] = absl::make_unique<InfeedDatasetIterator>(
-        std::move(iterator), std::move(iterator_ctx), shapes);
+        std::move(iterator), std::move(iterator_ctx), std::move(handle_cache),
+        std::move(flib_def), std::move(process_lib), shapes);
   }
 }
 

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/kernels/ipu_kernels_common.h"
 
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -118,15 +119,32 @@ class IPUConsumeDatasetOp : public OpKernel {
   ~IPUConsumeDatasetOp() override{};
 
   void Compute(OpKernelContext* ctx) override {
-    // Create a dataset iterator.
+    // Create a function library to allow Map datasets to create operations
+    // and execute them.
+    FunctionLibraryRuntime* flr;
+    std::unique_ptr<FunctionLibraryDefinition> flib_def(nullptr);
+    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
+    OP_REQUIRES_OK(
+        ctx, ctx->function_library()->Clone(&flib_def, &pflr, &flr, true));
+
+    auto fhc = absl::make_unique<data::FunctionHandleCache>(flr);
+
+    // Set up IteratorContext for iterator initialization
+    IteratorContext::Params params(ctx);
+    params.resource_mgr = ctx->resource_manager();
+    params.function_handle_cache = fhc.get();
+    params.flr = flr;
+    auto iter_ctx = absl::make_unique<IteratorContext>(params);
+
+    // Create a dataset
     DatasetBase* dataset;
     OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
-    std::unique_ptr<IteratorContext> iterator_ctx =
-        absl::make_unique<IteratorContext>(ctx);
+
+    // Create a dataset iterator
     std::unique_ptr<IteratorBase> iterator;
-    OP_REQUIRES_OK(ctx, dataset->MakeIterator(iterator_ctx.get(),
+    OP_REQUIRES_OK(ctx, dataset->MakeIterator(iter_ctx.get(),
                                               "IPUDatasetIterator", &iterator));
-    // Pass to the correct executor.
+    // Pass to the correct executor
     auto platform = se::MultiPlatformManager::PlatformWithName("Poplar");
     OP_REQUIRES(ctx, platform.ok(), platform.status());
     auto* p =
@@ -134,8 +152,8 @@ class IPUConsumeDatasetOp : public OpKernel {
     auto stream_executor = p->ExecutorForDevice(device_ordinal_).ValueOrDie();
     auto* poplar_executor = static_cast<xla::poplarplugin::PoplarExecutor*>(
         stream_executor->implementation());
-    poplar_executor->CreateInfeedDatasetIterator(
-        id_, std::move(iterator), std::move(iterator_ctx), xla_shapes_);
+    poplar_executor->CreateInfeedDatasetIterator(id_, iterator, iter_ctx, fhc,
+                                                 flib_def, pflr, xla_shapes_);
   }
 
  private:
