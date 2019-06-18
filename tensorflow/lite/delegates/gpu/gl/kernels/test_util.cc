@@ -37,8 +37,8 @@ namespace gpu {
 namespace gl {
 
 SingleOpModel::SingleOpModel(Operation&& operation,
-                             const std::vector<TensorRefFloat32>& inputs,
-                             const std::vector<TensorRefFloat32>& outputs) {
+                             const std::vector<TensorRef<BHWC>>& inputs,
+                             const std::vector<TensorRef<BHWC>>& outputs) {
   auto node = graph_.NewNode();
   node->operation = std::move(operation);
 

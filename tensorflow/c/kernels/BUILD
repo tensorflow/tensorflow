@@ -14,8 +14,12 @@ tf_kernel_library(
     prefix = "bitcast_op",
     deps = [
         "//tensorflow/c:kernels",
+        "//tensorflow/c:ops",
+        "//tensorflow/c:tf_datatype",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/core:framework",
-        "//tensorflow/core:ops",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -28,6 +32,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 

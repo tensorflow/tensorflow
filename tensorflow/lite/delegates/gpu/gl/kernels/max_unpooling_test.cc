@@ -31,17 +31,17 @@ namespace gl {
 namespace {
 
 TEST(MaxUnpoolingTest, Kernel2x2Stride2x2) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
 
-  TensorRefFloat32 indices;
+  TensorRef<BHWC> indices;
   indices.type = DataType::INT32;
   indices.ref = 1;
   indices.shape = BHWC(1, 2, 2, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 2;
   output.shape = BHWC(1, 4, 4, 1);

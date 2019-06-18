@@ -135,9 +135,11 @@ run_configure_for_cpu_build
 
 bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS}  \
   --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu \
+  --output_filter=^$ \
   tensorflow/lite:framework tensorflow/lite/examples/minimal:minimal || exit $?
 
 bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS} \
+  --output_filter=^$ \
   tensorflow/tools/pip_package:build_pip_package || exit $?
 
 if [[ "$SKIP_TEST" == 1 ]]; then

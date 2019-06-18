@@ -38,8 +38,6 @@ class RemoteTensorHandleData : public TensorHandleData {
   Status Dim(int dim_index, int64* dim) const override;
   Status NumElements(int64* num_elements) const override;
 
-  Status WaitReady() override { return Status::OK(); }
-
   string DebugString() const override;
 
   int64 op_id() const { return op_id_; }
@@ -60,7 +58,6 @@ class RemoteTensorHandleData : public TensorHandleData {
 class UnshapedRemoteTensorHandleData : public TensorHandleData {
  public:
   UnshapedRemoteTensorHandleData(int64 op_id, int32 output_num,
-                                 uint64 shape_node_id,
                                  eager::EagerClient* eager_client,
                                  uint64 context_id, EagerContext* ctx);
   ~UnshapedRemoteTensorHandleData() override;
@@ -74,11 +71,6 @@ class UnshapedRemoteTensorHandleData : public TensorHandleData {
   Status Dim(int dim_index, int64* dim) const override;
   Status NumElements(int64* num_elements) const override;
 
-  // If the remote TensorShape for this handle is yet to be computed by an
-  // EagerNode, this function will block till that computation is  done and the
-  // handle is ready.
-  Status WaitReady() override;
-
   string DebugString() const override;
 
   int64 op_id() const { return op_id_; }
@@ -86,11 +78,20 @@ class UnshapedRemoteTensorHandleData : public TensorHandleData {
   eager::EagerClient* eager_client() const { return eager_client_; }
   uint64 context_id() const { return context_id_; }
 
+  // When constructed, UnshapedRemoteTensorHandleData owns the remote
+  // TensorHandle and should delete it by issuing an RPC. Once the remote
+  // shape has been learned, the ownership is transferred to
+  // RemoteTensorHandleData. This method must be called to let `this` know
+  // that it no longer owns the remote handle.
+  // TODO(iga): Add a factory method here that will create a new
+  // RemoteTensorHandleData from this and transfer ownership in the process.
+  void ReleaseRemoteTensorHandle() { delete_remote_tensor_ = false; }
+
  private:
   // IDs required when this class is representing a remote tensor handle.
   const int64 op_id_;
   const int32 output_num_;
-  const uint64 shape_node_id_;
+  bool delete_remote_tensor_;
   eager::EagerClient* eager_client_;
   uint64 context_id_;
   EagerContext* const ctx_;

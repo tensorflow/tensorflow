@@ -869,6 +869,16 @@ class ApiTest(test.TestCase):
       # The code in `f` is only valid with AutoGraph.
       test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED))
 
+  def test_tf_convert_whitelisted_method(self):
+
+    model = sequential.Sequential([
+        core.Dense(2)
+    ])
+    converted_call = api.tf_convert(
+        model.call, ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED))
+    _, converted_target = tf_decorator.unwrap(converted_call)
+    self.assertIs(converted_target.__func__, model.call.__func__)
+
   def test_tf_convert_wrapped(self):
 
     def f():

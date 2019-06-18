@@ -133,11 +133,14 @@ void EagerExecutor::Run() {
     node_queue_.pop();
     if (!ok) {
       status_ = status;
-      // TODO(agarwal): mark all affected handles as corrupted before clearing
-      // this queue.
       // We remove any pending ops so that we don't try to execute them if
       // ClearError is called.
+      errors::AppendToMessage(&status,
+                              ". Encountered when executing an operation using "
+                              "EagerExecutor. This error cancels all future "
+                              "operations and poisons their output tensors.");
       for (int i = 0; i < node_queue_.size(); ++i) {
+        node_queue_.front()->Abort(status);
         delete node_queue_.front();
         node_queue_.pop();
       }

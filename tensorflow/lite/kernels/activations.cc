@@ -144,13 +144,21 @@ TfLiteStatus HardSwishPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_STATUS(GenericPrepare(context, node));
   TfLiteTensor* output = GetOutput(context, node, 0);
 
-  if (output->type == kTfLiteUInt8) {
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
     HardSwishData* data = static_cast<HardSwishData*>(node->user_data);
     HardSwishParams* params = &data->params;
     const TfLiteTensor* input = GetInput(context, node, 0);
     // TODO(131260336): Maybe pick a better way to select the denominator shift.
     // Include input shift into the shift.
-    const int32_t extra_input_shift = 3;
+    static constexpr int32_t extra_input_shift = 3;
+    // Note: optimized implementations will rely on the ability to perform this
+    // left shift within int16 without overflow. The values being left-shifted
+    // range in [-255, 255] i.e. just under 2^8 in absolute value, and after the
+    // left shift they will still be added the 'three_input' value, which is
+    // safe if they're not greater than 2^14 in absolute value (since 2^15 is
+    // the magnitude of the boundaries of int16 range). 14-8 == 6, so we
+    // require extra_input_shift to be no greater than 6.
+    static_assert(extra_input_shift <= 6, "");
     const auto in_scale = input->params.scale;
     params->input_zero_point = input->params.zero_point;
     const auto out_scale = output->params.scale;
@@ -492,6 +500,7 @@ TfLiteStatus Relu1Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
+template <KernelType kernel_type>
 TfLiteStatus HardSwishEval(TfLiteContext* context, TfLiteNode* node) {
   HardSwishData* data = static_cast<HardSwishData*>(node->user_data);
 
@@ -499,22 +508,47 @@ TfLiteStatus HardSwishEval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   switch (input->type) {
     case kTfLiteFloat32: {
-      reference_ops::HardSwish(
-          GetTensorShape(input), GetTensorData<float>(input),
-          GetTensorShape(output), GetTensorData<float>(output));
+      if (kernel_type == kReference) {
+        reference_ops::HardSwish(
+            GetTensorShape(input), GetTensorData<float>(input),
+            GetTensorShape(output), GetTensorData<float>(output));
+      } else {
+        optimized_ops::HardSwish(
+            GetTensorShape(input), GetTensorData<float>(input),
+            GetTensorShape(output), GetTensorData<float>(output));
+      }
       return kTfLiteOk;
     } break;
     case kTfLiteUInt8: {
       HardSwishParams& params = data->params;
-
-      reference_ops::HardSwish<uint8_t>(
-          params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-          GetTensorShape(output), GetTensorData<uint8_t>(output));
+      if (kernel_type == kReference) {
+        reference_ops::HardSwish(
+            params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+            GetTensorShape(output), GetTensorData<uint8_t>(output));
+      } else {
+        optimized_ops::HardSwish(
+            params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+            GetTensorShape(output), GetTensorData<uint8_t>(output));
+      }
+      return kTfLiteOk;
+    } break;
+    case kTfLiteInt8: {
+      HardSwishParams& params = data->params;
+      if (kernel_type == kReference) {
+        reference_ops::HardSwish(
+            params, GetTensorShape(input), GetTensorData<int8_t>(input),
+            GetTensorShape(output), GetTensorData<int8_t>(output));
+      } else {
+        optimized_ops::HardSwish(
+            params, GetTensorShape(input), GetTensorData<int8_t>(input),
+            GetTensorShape(output), GetTensorData<int8_t>(output));
+      }
       return kTfLiteOk;
     } break;
     default:
       context->ReportError(
-          context, "Only float32, uint8 are supported currently, got %s.",
+          context,
+          "Only float32, uint8 and int8 are supported currently, got %s.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
@@ -1070,9 +1104,19 @@ TfLiteRegistration* Register_LEAKY_RELU() {
 TfLiteRegistration* Register_HARD_SWISH() {
   static TfLiteRegistration r = {
       activations::HardSwishInit, activations::HardSwishFree,
-      activations::HardSwishPrepare, activations::HardSwishEval};
+      activations::HardSwishPrepare,
+      activations::HardSwishEval<activations::kGenericOptimized>};
   return &r;
 }
+
+TfLiteRegistration* Register_HARD_SWISH_REF() {
+  static TfLiteRegistration r = {
+      activations::HardSwishInit, activations::HardSwishFree,
+      activations::HardSwishPrepare,
+      activations::HardSwishEval<activations::kReference>};
+  return &r;
+}
+
 }  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

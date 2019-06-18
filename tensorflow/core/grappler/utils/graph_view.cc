@@ -1371,7 +1371,7 @@ const char kMutableGraphViewSortTopologicallyError[] =
 
 // TraversalState is an enum representing the state of a node when it is being
 // traversed via DFS.
-enum TraversalState : uint8_t { NOT_VISITED, PENDING, PROCESSING, PROCESSED };
+enum TraversalState : uint8_t { PENDING, PROCESSING, PROCESSED };
 
 // RecursionStackState is an enum representing the recursion stack state
 // when using DFS iteratively. `ENTER` is the state representing entering into
@@ -1426,7 +1426,7 @@ Status MutableGraphView::SortTopologically(
 
   // Reversed colored post-order DFS traversal. This does not fail on cycles,
   // but there are no guarantees on ordering within a cycle.
-  std::vector<TraversalState> traversal_state(num_nodes, NOT_VISITED);
+  std::vector<TraversalState> traversal_state(num_nodes, PENDING);
   int curr_pos = num_nodes - 1;
   std::vector<int> order(num_nodes);
   std::vector<Edge> edges_in_cycle;
@@ -1436,17 +1436,17 @@ Status MutableGraphView::SortTopologically(
                              std::vector<RecursionStackEntry>* recursion_stack,
                              std::vector<TraversalState>* traversal_state,
                              std::vector<Edge>* edges_in_cycle) {
+    // Ignore NextIteration -> Merge connections to break control flow cycles.
+    if (IsNextIteration(graph_->node(curr_index)) &&
+        IsMerge(graph_->node(fanout_index))) {
+      return;
+    }
     auto& fanout_traversal_state = (*traversal_state)[fanout_index];
     if (fanout_traversal_state == PROCESSING) {
-      // Ignore NextIteration -> Merge cycles.
-      if (!IsNextIteration(graph_->node(curr_index)) ||
-          !IsMerge(graph_->node(fanout_index))) {
-        // Cycle detected.
-        edges_in_cycle->push_back({curr_index, fanout_index});
-      }
-    } else if (fanout_traversal_state == NOT_VISITED) {
+      // Cycle detected.
+      edges_in_cycle->push_back({curr_index, fanout_index});
+    } else if (fanout_traversal_state == PENDING) {
       // Unvisited node, simply add to stack for future traversal.
-      fanout_traversal_state = PENDING;
       recursion_stack->push_back({fanout_index, ENTER});
     }
   };
@@ -1489,19 +1489,18 @@ Status MutableGraphView::SortTopologically(
         // Add the root to stack to start the traversal.
         const int root_index = root_node_view.node_index_;
         auto& root_traversal_state = (*traversal_state)[root_index];
-        if (root_traversal_state == NOT_VISITED) {
-          root_traversal_state = PENDING;
+        if (root_traversal_state == PENDING) {
           recursion_stack.push_back({root_index, ENTER});
         }
         while (!recursion_stack.empty()) {
-          auto curr_pair = recursion_stack.back();
+          auto curr_entry = recursion_stack.back();
           recursion_stack.pop_back();
-          const int curr_index = curr_pair.node_index;
+          const int curr_index = curr_entry.node_index;
           auto& curr_traversal_state = (*traversal_state)[curr_index];
           if (curr_traversal_state == PROCESSED) {
             // Node already processed which can be ignored.
             continue;
-          } else if (curr_pair.recursion_state == EXIT) {
+          } else if (curr_entry.recursion_state == EXIT) {
             // Node from recursion stack where all fanouts were visited.
             // Instead of adding node index to a vector, simply set what its
             // index would be, so there will not be a need for inversion later
@@ -1522,7 +1521,8 @@ Status MutableGraphView::SortTopologically(
 
   // Determine sources to start DFS (nodes with no inputs) and unique fanout
   // nodes.
-  for (const auto& node : nodes_) {
+  for (int i = num_nodes - 1; i >= 0; --i) {
+    auto& node = nodes_[i];
     if (node.NumRegularFanins() + node.NumControllingFanins() == 0) {
       reversed_postorder_dfs(node, &order, &traversal_state, &curr_pos,
                              &edges_in_cycle);

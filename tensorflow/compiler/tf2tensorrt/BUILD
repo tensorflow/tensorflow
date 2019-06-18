@@ -24,12 +24,41 @@ load(
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 # Placeholder for Google-internal load statements.
 
+# NOTE: we always assume that if_static returns "otherwise" list in open source.
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "if_static",
+)
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
+
+cc_library(
+    name = "tensorrt_stub",
+    srcs = if_tensorrt([
+        "stub/nvinfer_stub.cc",
+        "stub/nvinfer_plugin_stub.cc",
+    ]),
+    textual_hdrs = glob(["stub/*.inc"]),
+    deps = if_tensorrt([
+        "@local_config_tensorrt//:tensorrt_headers",
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/platform:dso_loader",
+    ]),
+)
+
+alias(
+    name = "tensorrt_lib",
+    actual = if_static(
+        "@local_config_tensorrt//:tensorrt",
+        ":tensorrt_stub",
+    ),
+    visibility = ["//visibility:private"],
+)
 
 tf_cuda_cc_test(
     name = "tensorrt_test_cc",
@@ -46,8 +75,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ] + if_tensorrt([
+        ":tensorrt_lib",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_tensorrt//:tensorrt",
     ]),
 )
 
@@ -72,9 +101,7 @@ cc_library(
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:stream_executor_headers_lib",
         "//tensorflow/core/grappler/costs:graph_properties",
-    ] + if_tensorrt([
-        "@local_config_tensorrt//:tensorrt",
-    ]) + tf_custom_op_library_additional_deps(),
+    ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps(),
     alwayslink = 1,
 )
 
@@ -82,7 +109,7 @@ cc_library(
     name = "trt_engine_resource_op_kernels",
     srcs = ["kernels/trt_engine_resource_ops.cc"],
     copts = tf_copts(),
-    visibility = ["//visibility:private"],
+    visibility = ["//tensorflow/core:__subpackages__"],
     deps = [
         ":trt_allocator",
         ":trt_engine_instance_proto_cc",
@@ -96,9 +123,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:lib_proto_parsing",
-    ] + if_tensorrt([
-        "@local_config_tensorrt//:tensorrt",
-    ]) + tf_custom_op_library_additional_deps(),
+    ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps(),
     alwayslink = 1,
 )
 
@@ -128,21 +153,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:resource_variable_ops",
         "@com_google_absl//absl/memory",
     ],
-)
-
-tf_cc_shared_object(
-    name = "python/ops/libtftrt.so",
-    copts = tf_copts(is_external = True),
-    linkopts = ["-lm"],
-    deps = [
-        ":trt_op_kernels",
-        ":trt_engine_resource_op_kernels",
-        ":trt_op_libs",
-        ":trt_engine_resource_ops_op_lib",
-        "//tensorflow/core:lib_proto_parsing",
-    ] + if_tensorrt([
-        "@local_config_tensorrt//:tensorrt",
-    ]) + tf_custom_op_library_additional_deps(),
 )
 
 tf_cuda_cc_test(
@@ -197,9 +207,7 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib_proto_parsing",
-    ] + if_tensorrt([
-        "@local_config_tensorrt//:tensorrt",
-    ]),
+    ] + if_tensorrt([":tensorrt_lib"]),
 )
 
 tf_gen_op_wrapper_py(
@@ -212,18 +220,6 @@ tf_gen_op_wrapper_py(
 
 tf_custom_op_py_library(
     name = "trt_ops_loader",
-    srcs = ["python/ops/trt_ops.py"],
-    dso = [
-        "python/ops/libtftrt.so",
-    ] + if_tensorrt([
-        "@local_config_tensorrt//:tensorrt",
-    ]),
-    kernels = [
-        ":trt_op_kernels",
-        ":trt_engine_resource_op_kernels",
-        ":trt_op_libs",
-        ":trt_engine_resource_ops_op_lib",
-    ],
     srcs_version = "PY2AND3",
     deps = [
         ":trt_ops",
@@ -254,9 +250,7 @@ tf_cuda_library(
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_proto_parsing",
-    ] + if_tensorrt([
-        "@local_config_tensorrt//:tensorrt",
-    ]),
+    ] + if_tensorrt([":tensorrt_lib"]),
 )
 
 tf_cuda_library(
@@ -267,9 +261,7 @@ tf_cuda_library(
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_proto_parsing",
-    ] + if_tensorrt([
-        "@local_config_tensorrt//:tensorrt",
-    ]),
+    ] + if_tensorrt([":tensorrt_lib"]),
 )
 
 tf_cc_test(
@@ -338,9 +330,7 @@ tf_cuda_library(
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
-    ] + if_tensorrt([
-        "@local_config_tensorrt//:tensorrt",
-    ]) + tf_custom_op_library_additional_deps(),
+    ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps(),
     alwayslink = 1,
 )
 
@@ -373,9 +363,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-    ] + if_tensorrt([
-        "@local_config_tensorrt//:tensorrt",
-    ]),
+    ] + if_tensorrt([":tensorrt_lib"]),
 )
 
 tf_cuda_cc_test(
@@ -409,8 +397,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ] + if_tensorrt([
+        ":tensorrt_lib",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_tensorrt//:tensorrt",
     ]),
 )
 
@@ -463,9 +451,7 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_proto_parsing",
-    ] + if_tensorrt([
-        "@local_config_tensorrt//:tensorrt",
-    ]),
+    ] + if_tensorrt([":tensorrt_lib"]),
 )
 
 cc_library(
@@ -491,9 +477,7 @@ cc_library(
     srcs = ["utils/py_utils.cc"],
     hdrs = ["utils/py_utils.h"],
     copts = tf_copts(),
-    deps = if_tensorrt([
-        "@local_config_tensorrt//:tensorrt",
-    ]),
+    deps = if_tensorrt([":tensorrt_lib"]),
 )
 
 tf_py_wrap_cc(

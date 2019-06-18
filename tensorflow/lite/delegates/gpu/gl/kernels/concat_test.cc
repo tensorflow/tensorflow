@@ -31,7 +31,7 @@ namespace gl {
 namespace {
 
 TEST(ConcatTest, TwoInputTensorsByUnalignedChannel) {
-  TensorRefFloat32 input1, input2, output;
+  TensorRef<BHWC> input1, input2, output;
   input1.type = DataType::FLOAT32;
   input1.ref = 0;
   input1.shape = BHWC(1, 2, 2, 1);
@@ -57,7 +57,7 @@ TEST(ConcatTest, TwoInputTensorsByUnalignedChannel) {
 }
 
 TEST(ConcatTest, TwoInputTensorsByAlignedChannel) {
-  TensorRefFloat32 input1, input2, output;
+  TensorRef<BHWC> input1, input2, output;
   input1.type = DataType::FLOAT32;
   input1.ref = 0;
   input1.shape = BHWC(1, 1, 1, 4);
@@ -83,7 +83,7 @@ TEST(ConcatTest, TwoInputTensorsByAlignedChannel) {
 }
 
 TEST(ConcatTest, TwoInputTensorsByHeight) {
-  TensorRefFloat32 input1, input2, output;
+  TensorRef<BHWC> input1, input2, output;
   input1.type = DataType::FLOAT32;
   input1.ref = 0;
   input1.shape = BHWC(1, 1, 2, 1);
@@ -109,7 +109,7 @@ TEST(ConcatTest, TwoInputTensorsByHeight) {
 }
 
 TEST(ConcatTest, TwoInputTensorsByWidth) {
-  TensorRefFloat32 input1, input2, output;
+  TensorRef<BHWC> input1, input2, output;
   input1.type = DataType::FLOAT32;
   input1.ref = 0;
   input1.shape = BHWC(1, 2, 1, 1);

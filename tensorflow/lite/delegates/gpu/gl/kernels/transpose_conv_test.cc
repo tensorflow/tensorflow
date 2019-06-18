@@ -31,7 +31,7 @@ namespace gl {
 namespace {
 
 TEST(TransposeConvTest, O2H2W1I1Stride1x1DAdjacent1x1) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
@@ -54,7 +54,7 @@ TEST(TransposeConvTest, O2H2W1I1Stride1x1DAdjacent1x1) {
   attr.adjacent = HW(1, 1);
   attr.stride = HW(1, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 3;
   output.shape = BHWC(1, 2, 2, 2);
@@ -69,7 +69,7 @@ TEST(TransposeConvTest, O2H2W1I1Stride1x1DAdjacent1x1) {
 }
 
 TEST(TransposeConvTest, O1H2W2I1Stride1x1Adjacent2x2) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 3, 3, 1);
@@ -92,7 +92,7 @@ TEST(TransposeConvTest, O1H2W2I1Stride1x1Adjacent2x2) {
   attr.padding.appended = HW(0, 0);
   attr.stride = HW(1, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 3;
   output.shape = BHWC(1, 1, 1, 1);
@@ -106,7 +106,7 @@ TEST(TransposeConvTest, O1H2W2I1Stride1x1Adjacent2x2) {
 }
 
 TEST(TransposeConvTest, O1H3W3I1Stride1x1Adjacent1x1) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
@@ -129,7 +129,7 @@ TEST(TransposeConvTest, O1H3W3I1Stride1x1Adjacent1x1) {
   attr.padding.appended = HW(0, 0);
   attr.stride = HW(1, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 3;
   output.shape = BHWC(1, 1, 1, 1);
@@ -143,7 +143,7 @@ TEST(TransposeConvTest, O1H3W3I1Stride1x1Adjacent1x1) {
 }
 
 TEST(TransposeConvTest, O2H1W1I2Stride1x1Dilation1x1) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 1, 2);
@@ -166,7 +166,7 @@ TEST(TransposeConvTest, O2H1W1I2Stride1x1Dilation1x1) {
   attr.padding.appended = HW(0, 0);
   attr.stride = HW(1, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 3;
   output.shape = BHWC(1, 2, 1, 2);
@@ -180,7 +180,7 @@ TEST(TransposeConvTest, O2H1W1I2Stride1x1Dilation1x1) {
 }
 
 TEST(TransposeConvTest, O1H1W1I1Stride2x2Dilation1x1) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 3, 3, 1);
@@ -204,7 +204,7 @@ TEST(TransposeConvTest, O1H1W1I1Stride2x2Dilation1x1) {
   attr.padding.appended = HW(0, 0);
   attr.stride = HW(2, 2);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 3;
   output.shape = BHWC(1, 1, 1, 1);

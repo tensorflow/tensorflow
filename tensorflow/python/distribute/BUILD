@@ -808,10 +808,12 @@ distribute_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
@@ -1083,6 +1085,9 @@ distribute_py_test(
     size = "medium",
     srcs = ["keras_experimental_saved_model_test.py"],
     main = "keras_experimental_saved_model_test.py",
+    tags = [
+        "no_oss",  # TODO(b/135287893) reenable
+    ],
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras:saving",

@@ -25,6 +25,8 @@ import weakref
 
 import numpy as np
 
+from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -160,8 +162,8 @@ class TPUStrategy(distribute_lib.Strategy):
   # This implementation runs a single step. It does not use infeed or outfeed.
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """See base class."""
+    fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx())
     return self.extended.tpu_run(fn, args, kwargs)
-
 
 
 @tf_export(v1=["distribute.experimental.TPUStrategy"])
@@ -199,6 +201,7 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
   # This implementation runs a single step. It does not use infeed or outfeed.
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """See base class."""
+    fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx())
     return self.extended.tpu_run(fn, args, kwargs)
 
 
@@ -519,7 +522,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _update(self, var, fn, args, kwargs, group):
     assert isinstance(var, values.TPUMirroredVariable) or isinstance(
-        var, resource_variable_ops.ResourceVariable)
+        var, resource_variable_ops.BaseResourceVariable)
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
       if group:
         return fn(var, *args, **kwargs)
@@ -540,7 +543,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def read_var(self, var):
     assert isinstance(var, values.TPUMirroredVariable) or isinstance(
-        var, resource_variable_ops.ResourceVariable)
+        var, resource_variable_ops.BaseResourceVariable)
     return var.read_value()
 
   def _local_results(self, val):

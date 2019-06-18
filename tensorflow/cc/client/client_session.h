@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
-#include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {

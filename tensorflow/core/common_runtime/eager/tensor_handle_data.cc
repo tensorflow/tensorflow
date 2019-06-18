@@ -58,12 +58,6 @@ Status LocalTensorHandleData::NumElements(int64* num_elements) const {
   return Status::OK();
 }
 
-AsyncLocalTensorHandleData::AsyncLocalTensorHandleData(uint64 node_id,
-                                                       EagerContext* ctx)
-    : node_id_(node_id), ctx_(ctx) {
-  DCHECK_GT(node_id_, 0);
-}
-
 Status AsyncLocalTensorHandleData::Tensor(const tensorflow::Tensor** t) const {
   return errors::Unavailable(
       "Unable to get a tensor for an async handle. "
@@ -100,16 +94,8 @@ Status AsyncLocalTensorHandleData::NumElements(int64* num_elements) const {
       "Please wait until it is ready");
 }
 
-Status AsyncLocalTensorHandleData::WaitReady() {
-  EagerExecutor* executor = nullptr;
-  executor = ctx_->Executor();
-  TF_RETURN_IF_ERROR(executor->WaitFor(node_id_));
-
-  return Status::OK();
-}
-
 string AsyncLocalTensorHandleData::DebugString() const {
-  return strings::StrCat("AsyncLocalTensorHandleData:", " node_id: ", node_id_);
+  return "AsyncLocalTensorHandleData";
 }
 
 }  // namespace tensorflow

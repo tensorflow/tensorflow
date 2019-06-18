@@ -42,6 +42,19 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<PartialTensorShape>& received);
 
+// Returns a stable hash of the portion of the graph `g` rooted at
+// `node`, by creating a Merkle tree-like structure.
+//
+// Specifically, this function recursively walks the graph from `node` by
+// following its inputs.
+//
+// The hash is computed by hashing its op name, device, attributes, and hashes
+// of its inputs (if applicable).
+//
+// There is currently no guarantee that the hash of a subgraph will stay the
+// same between TensorFlow builds.
+uint64 HashSubgraph(const GraphDef& g, const NodeDef* node);
+
 // Helper class for reading data from a VariantTensorData object.
 class VariantTensorDataReader : public IteratorStateReader {
  public:

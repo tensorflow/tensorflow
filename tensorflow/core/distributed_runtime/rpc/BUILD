@@ -64,15 +64,17 @@ cc_library(
 
 cc_library(
     name = "grpc_state",
-    srcs = [],
+    srcs = ["grpc_state.cc"],
     hdrs = ["grpc_state.h"],
     deps = [
         ":grpc_client_cq_tag",
         ":grpc_util",
         "//tensorflow:grpc++",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:tensor_coding",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

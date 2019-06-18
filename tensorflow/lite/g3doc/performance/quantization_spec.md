@@ -73,14 +73,16 @@ $$a_j \cdot b_k = \sum_{i=0}^{n} a_{j}^{(i)} b_{k}^{(i)} =
 \sum_{i=0}^{n} q_{a}^{(i)} q_{b}^{(i)} - \sum_{i=0}^{n} q_{a}^{(i)} z_b -
 \sum_{i=0}^{n} q_{b}^{(i)} z_a + \sum_{i=0}^{n} z_a z_b$$
 
-The $\sum_{i=0}^{n} q_{a}^{(i)} q_{b}^{(i)}$ term is unavoidable since it’s
+<!-- Don't change these `\\(` `\\)` to `$`. mathjax fails here with `$`-->
+
+The \\(\sum_{i=0}^{n} q_{a}^{(i)} q_{b}^{(i)}\\) term is unavoidable since it’s
 performing the dot product of the input value and the weight value.
 
-The $\sum_{i=0}^{n} q_{b}^{(i)} z_a + \sum_{i=0}^{n} z_a z_b$ terms are made up
+The \\(\sum_{i=0}^{n} q_{b}^{(i)} z_a + \sum_{i=0}^{n} z_a z_b\\) terms are made up
 of constants that remain the same per inference invocation, and thus can be
 pre-calculated.
 
-The $\sum_{i=0}^{n} q_{a}^{(i)} z_b$ term needs to be computed every inference
+The \\(\sum_{i=0}^{n} q_{a}^{(i)} z_b\\) term needs to be computed every inference
 since the activation changes every inference. By enforcing weights to be
 symmetric we can remove the cost of this term.
 

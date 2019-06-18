@@ -101,6 +101,8 @@ import threading
 import weakref
 import six
 
+from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
@@ -500,6 +502,17 @@ class Strategy(object):
     # when using v1 optimizer with estimator.
     self._scale_loss_for_estimator = False
 
+    if not hasattr(extended, "_retrace_functions_for_each_device"):
+      # pylint: disable=protected-access
+      try:
+        extended._retrace_functions_for_each_device = (
+            len(extended.worker_devices) > 1)
+      except:  # pylint: disable=bare-except
+        # Default for the case where extended.worker_devices can't return
+        # a sensible value.
+        extended._retrace_functions_for_each_device = True
+      # pylint: enable=protected-access
+
   @property
   def extended(self):
     """`tf.distribute.StrategyExtended` with additional methods."""
@@ -705,6 +718,7 @@ class Strategy(object):
       (for example, if running on a single replica).
     """
     with self.scope():
+      fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx())
       return self._extended.call_for_each_replica(fn, args=args, kwargs=kwargs)
 
   def reduce(self, reduce_op, value, axis):
@@ -1935,12 +1949,23 @@ def _batch_reduce_destination(x):
 # ------------------------------------------------------------------------------
 
 
+_creating_default_strategy_singleton = False
+
+
 class _DefaultDistributionStrategy(StrategyV1):
   """Default `tf.distribute.Strategy` if none is explicitly selected."""
 
   def __init__(self):
+    if not _creating_default_strategy_singleton:
+      raise RuntimeError("Should only create a single instance of "
+                         "_DefaultDistributionStrategy")
     super(_DefaultDistributionStrategy, self).__init__(
         _DefaultDistributionExtended(self))
+
+  def __deepcopy__(self, memo):
+    del memo
+    raise RuntimeError("Should only create a single instance of "
+                       "_DefaultDistributionStrategy")
 
 
 class _DefaultDistributionContext(object):
@@ -1980,6 +2005,10 @@ class _DefaultDistributionContext(object):
 
 class _DefaultDistributionExtended(StrategyExtendedV1):
   """Implementation of _DefaultDistributionStrategy."""
+
+  def __init__(self, container_strategy):
+    super(_DefaultDistributionExtended, self).__init__(container_strategy)
+    self._retrace_functions_for_each_device = False
 
   def _scope(self, strategy):
     """Context manager setting a variable creator and `self` as current."""

@@ -96,8 +96,9 @@ class MultiWorkersTest(test.TestCase):
   def setUp(self):
     super(MultiWorkersTest, self).setUp()
 
-    workers, _ = test_util.create_local_cluster(2, 0)
-    remote.connect_to_remote_host([workers[0].target, workers[1].target])
+    workers, _ = test_util.create_local_cluster(3, 0)
+    remote.connect_to_remote_host(
+        [workers[0].target, workers[1].target, workers[2].target])
 
   def testMultiDeviceFunctionOnRemoteDevice(self):
     with ops.device('/job:worker/replica:0/task:1'):
@@ -112,6 +113,24 @@ class MultiWorkersTest(test.TestCase):
 
     with ops.device('/job:worker/replica:0/task:0'):
       self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
+
+  def testSimpleParameterServer(self):
+
+    with ops.device('/job:worker/task:2/device:CPU:0'):
+      v1 = variables.Variable(initial_value=0)
+      v2 = variables.Variable(initial_value=10)
+
+    @def_function.function
+    def worker_fn():
+      v1.assign_add(1)
+      v2.assign_sub(2)
+      return v1.read_value() + v2.read_value()
+
+    with ops.device('/job:worker/task:0/device:CPU:0'):
+      self.assertAllEqual(worker_fn(), 9)
+
+    with ops.device('/job:worker/task:1/device:CPU:0'):
+      self.assertAllEqual(worker_fn(), 8)
 
 
 if __name__ == '__main__':

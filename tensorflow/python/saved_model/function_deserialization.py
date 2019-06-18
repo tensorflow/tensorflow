@@ -38,7 +38,7 @@ from tensorflow.python.util import tf_inspect
 
 
 def _is_tensor(t):
-  return isinstance(t, (ops.Tensor, resource_variable_ops.ResourceVariable))
+  return isinstance(t, (ops.Tensor, resource_variable_ops.BaseResourceVariable))
 
 
 def _call_concrete_function(function, inputs):

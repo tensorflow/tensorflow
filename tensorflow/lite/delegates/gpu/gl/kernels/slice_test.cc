@@ -31,12 +31,12 @@ namespace gl {
 namespace {
 
 TEST(SliceTest, Identity) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 2, 2);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 1, 2, 2);
@@ -54,12 +54,12 @@ TEST(SliceTest, Identity) {
 }
 
 TEST(SliceTest, NegativeEnds) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 2, 2);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 1, 2, 2);
@@ -77,12 +77,12 @@ TEST(SliceTest, NegativeEnds) {
 }
 
 TEST(SliceTest, NegativeEndsNonZeroStarts) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 2, 2);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 1, 1, 1);
@@ -100,12 +100,12 @@ TEST(SliceTest, NegativeEndsNonZeroStarts) {
 }
 
 TEST(SliceTest, StridesByHeight) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 4, 1, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 2, 1, 1);
@@ -123,12 +123,12 @@ TEST(SliceTest, StridesByHeight) {
 }
 
 TEST(SliceTest, StridesByWidth) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 4, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 1, 2, 1);
@@ -146,12 +146,12 @@ TEST(SliceTest, StridesByWidth) {
 }
 
 TEST(SliceTest, StridesByChannels) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 1, 4);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 1, 1, 1);

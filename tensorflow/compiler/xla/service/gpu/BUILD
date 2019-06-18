@@ -1194,7 +1194,6 @@ cc_library(
     srcs = ["buffer_comparator.cc"],
     hdrs = ["buffer_comparator.h"],
     deps = [
-        ":gpu_executable",
         ":partition_assignment",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -1217,6 +1216,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
         "//tensorflow/stream_executor:device_memory",
     ],
 )

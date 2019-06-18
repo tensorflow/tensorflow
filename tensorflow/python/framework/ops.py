@@ -3269,11 +3269,55 @@ class Graph(object):
       An `Operation` object.
     """
     del compute_shapes
-
-    self._check_not_finalized()
     for idx, a in enumerate(inputs):
       if not isinstance(a, Tensor):
         raise TypeError("Input #%d is not a tensor: %s" % (idx, a))
+    return self._create_op_internal(op_type, inputs, dtypes, input_types, name,
+                                    attrs, op_def, compute_device)
+
+  def _create_op_internal(
+      self,
+      op_type,
+      inputs,
+      dtypes=None,  # pylint: disable=redefined-outer-name
+      input_types=None,
+      name=None,
+      attrs=None,
+      op_def=None,
+      compute_device=True):
+    """Creates an `Operation` in this graph.
+
+    Implements `Graph.create_op()` without the overhead of the deprecation
+    wrapper.
+
+    Args:
+      op_type: The `Operation` type to create. This corresponds to the
+        `OpDef.name` field for the proto that defines the operation.
+      inputs: A list of `Tensor` objects that will be inputs to the `Operation`.
+      dtypes: (Optional) A list of `DType` objects that will be the types of the
+        tensors that the operation produces.
+      input_types: (Optional.) A list of `DType`s that will be the types of the
+        tensors that the operation consumes. By default, uses the base `DType`
+        of each input in `inputs`. Operations that expect reference-typed inputs
+        must specify `input_types` explicitly.
+      name: (Optional.) A string name for the operation. If not specified, a
+        name is generated based on `op_type`.
+      attrs: (Optional.) A dictionary where the key is the attribute name (a
+        string) and the value is the respective `attr` attribute of the
+        `NodeDef` proto that will represent the operation (an `AttrValue`
+        proto).
+      op_def: (Optional.) The `OpDef` proto that describes the `op_type` that
+        the operation will have.
+      compute_device: (Optional.) If True, device functions will be executed to
+        compute the device property of the Operation.
+
+    Raises:
+      ValueError: if colocation conflicts with existing device assignment.
+
+    Returns:
+      An `Operation` object.
+    """
+    self._check_not_finalized()
     if name is None:
       name = op_type
     # If a names ends with a '/' it is a "name scope" and we use it as-is,
@@ -4991,7 +5035,7 @@ def device(device_name_or_function):
           "tf.device does not support functions when eager execution "
           "is enabled.")
     return context.device(device_name_or_function)
-  elif inside_function():
+  elif executing_eagerly_outside_functions():
     @tf_contextlib.contextmanager
     def combined(device_name_or_function):
       with get_default_graph().device(device_name_or_function):
@@ -5351,6 +5395,46 @@ class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
 _default_graph_stack = _DefaultGraphStack()
 
 
+# Shared helper used in init_scope and executing_eagerly_outside_functions
+# to obtain the outermost context that is not building a function, and the
+# innermost non empty device stack.
+def _get_outer_context_and_inner_device_stack():
+  """Get the outermost context not building a function."""
+  default_graph = get_default_graph()
+  outer_context = None
+  innermost_nonempty_device_stack = default_graph._device_function_stack  # pylint: disable=protected-access
+
+  if not _default_graph_stack.stack:
+    # If the default graph stack is empty, then we cannot be building a
+    # function. Install the global graph (which, in this case, is also the
+    # default graph) as the outer context.
+    if default_graph.building_function:
+      raise RuntimeError("The global graph is building a function.")
+    outer_context = default_graph.as_default
+  else:
+    # Find a context that is not building a function.
+    for stack_entry in reversed(context.context().context_switches.stack):
+      if not innermost_nonempty_device_stack:
+        innermost_nonempty_device_stack = stack_entry.device_stack
+      if not stack_entry.is_building_function:
+        outer_context = stack_entry.enter_context_fn
+        break
+
+    if outer_context is None:
+      # As a last resort, obtain the global default graph; this graph doesn't
+      # necessarily live on the graph stack (and hence it doesn't necessarily
+      # live on the context stack), but it is stored in the graph stack's
+      # encapsulating object.
+      outer_context = _default_graph_stack._GetGlobalDefaultGraph().as_default  # pylint: disable=protected-access
+
+  if outer_context is None:
+    # Sanity check; this shouldn't be triggered.
+    raise RuntimeError("All graphs are building functions, and no "
+                       "eager context was previously active.")
+
+  return outer_context, innermost_nonempty_device_stack
+
+
 # pylint: disable=g-doc-return-or-yield,line-too-long
 @tf_export("init_scope")
 @tf_contextlib.contextmanager
@@ -5411,42 +5495,14 @@ def init_scope():
   else:
     # Retrieve the active name scope: entering an `init_scope` preserves
     # the name scope of the current context.
-    default_graph = get_default_graph()
-    scope = default_graph.get_name_scope()
+    scope = get_default_graph().get_name_scope()
     if scope and scope[-1] != "/":
       # Names that end with trailing slashes are treated by `name_scope` as
       # absolute.
       scope = scope + "/"
-    innermost_nonempty_device_stack = default_graph._device_function_stack  # pylint: disable=protected-access
 
-    outer_context = None
-    if not _default_graph_stack.stack:
-      # If the default graph stack is empty, then we cannot be building a
-      # function. Install the global graph (which, in this case, is also the
-      # default graph) as the outer context.
-      if default_graph.building_function:
-        raise RuntimeError("The global graph is building a function.")
-      outer_context = default_graph.as_default
-    else:
-      # Find a context that is not building a function.
-      for stack_entry in reversed(context.context().context_switches.stack):
-        if not innermost_nonempty_device_stack:
-          innermost_nonempty_device_stack = stack_entry.device_stack
-        if not stack_entry.is_building_function:
-          outer_context = stack_entry.enter_context_fn
-          break
-
-      if outer_context is None:
-        # As a last resort, obtain the global default graph; this graph doesn't
-        # necessarily live on the graph stack (and hence it doesn't necessarily
-        # live on the context stack), but it is stored in the graph stack's
-        # encapsulating object.
-        outer_context = _default_graph_stack._GetGlobalDefaultGraph().as_default  # pylint: disable=protected-access
-
-    if outer_context is None:
-      # Sanity check; this shouldn't be triggered.
-      raise RuntimeError("All graphs are building functions, and no "
-                         "eager context was previously active.")
+    outer_context, innermost_nonempty_device_stack = (
+        _get_outer_context_and_inner_device_stack())
 
     outer_graph = None
     outer_device_stack = None
@@ -5487,12 +5543,12 @@ def init_scope():
 
 def executing_eagerly_outside_functions():
   """Returns True if executing eagerly, even if inside a graph function."""
-  # Fastpath for when this is called eagerly (its not necessary to init_scope).
   if context.executing_eagerly():
     return True
-
-  with init_scope():
-    return context.executing_eagerly()
+  else:
+    outer_context, _ = _get_outer_context_and_inner_device_stack()
+    with outer_context():
+      return context.executing_eagerly()
 
 
 def inside_function():

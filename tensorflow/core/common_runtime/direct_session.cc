@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/constant_folding.h"
@@ -71,6 +72,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -160,6 +162,23 @@ class DirectSessionFactory : public SessionFactory {
 
   Status NewSession(const SessionOptions& options,
                     Session** out_session) override {
+    const auto& experimental_config = options.config.experimental();
+    if (experimental_config.has_session_metadata()) {
+      if (experimental_config.session_metadata().version() < 0) {
+        return errors::InvalidArgument(
+            "Session version shouldn't be negative: ",
+            experimental_config.session_metadata().DebugString());
+      }
+      const string key = GetMetadataKey(experimental_config.session_metadata());
+      mutex_lock l(sessions_lock_);
+      if (!session_metadata_keys_.insert(key).second) {
+        return errors::InvalidArgument(
+            "A session with the same name and version has already been "
+            "created: ",
+            experimental_config.session_metadata().DebugString());
+      }
+    }
+
     // Must do this before the CPU allocator is created.
     if (options.config.graph_options().build_cost_model() > 0) {
       EnableCPUAllocatorFullStats(true);
@@ -204,11 +223,20 @@ class DirectSessionFactory : public SessionFactory {
     mutex_lock l(sessions_lock_);
     sessions_.erase(std::remove(sessions_.begin(), sessions_.end(), session),
                     sessions_.end());
+    if (session->options().config.experimental().has_session_metadata()) {
+      session_metadata_keys_.erase(GetMetadataKey(
+          session->options().config.experimental().session_metadata()));
+    }
   }
 
  private:
+  static string GetMetadataKey(const SessionMetadata& metadata) {
+    return absl::StrCat(metadata.name(), "/", metadata.version());
+  }
+
   mutex sessions_lock_;
   std::vector<DirectSession*> sessions_ GUARDED_BY(sessions_lock_);
+  absl::flat_hash_set<string> session_metadata_keys_ GUARDED_BY(sessions_lock_);
 };
 
 class DirectSessionRegistrar {
@@ -1247,6 +1275,10 @@ Status DirectSession::CreateExecutors(
 
     LocalExecutorParams params;
     params.device = device;
+    params.session_metadata =
+        options_.config.experimental().has_session_metadata()
+            ? &options_.config.experimental().session_metadata()
+            : nullptr;
     params.function_library = lib;
     auto opseg = device->op_segment();
     params.create_kernel = [this, lib, opseg](const NodeDef& ndef,
