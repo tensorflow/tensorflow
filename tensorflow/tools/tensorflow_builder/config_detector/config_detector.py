@@ -71,7 +71,7 @@ import sys
 from absl import app
 from absl import flags
 
-from tensorflow.tools.tensorflow_builder.data import cuda_compute_capability
+from tensorflow.tools.tensorflow_builder.config_detector.data import cuda_compute_capability
 
 FLAGS = flags.FLAGS
 # Define all flags
@@ -126,7 +126,7 @@ cmds_all = {
 # Global variable(s).
 PLATFORM = None
 GPU_TYPE = None
-PATH_TO_DIR = "tensorflow/tools/tensorflow_builder"
+PATH_TO_DIR = "tensorflow/tools/tensorflow_builder/config_detector"
 
 
 def run_shell_cmd(args):
