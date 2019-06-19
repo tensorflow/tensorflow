@@ -186,7 +186,7 @@ filegroup(
         "@pasta//:LICENSE",
         "@pcre//:LICENCE",
         "@png_archive//:LICENSE",
-        "@protobuf_archive//:LICENSE",
+        "@com_google_protobuf//:LICENSE",
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
         "@swig//:LICENSE",

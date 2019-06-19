@@ -521,7 +521,7 @@ tf_cc_shared_object(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@protobuf_archive//:protobuf_headers",
+        "@com_google_protobuf//:protobuf_headers",
     ],
 )
 
@@ -4413,8 +4413,8 @@ py_library(
     deps = [
         "//tensorflow/tools/compatibility:all_renames_v2",
         "//third_party/py/numpy",
+        "@com_google_protobuf//:protobuf_python",
         "@org_python_pypi_backports_weakref",
-        "@protobuf_archive//:protobuf_python",
         "@six_archive//:six",
     ],
 )

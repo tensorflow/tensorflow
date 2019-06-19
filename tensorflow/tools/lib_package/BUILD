@@ -160,7 +160,7 @@ genrule(
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
         "@png_archive//:LICENSE",
-        "@protobuf_archive//:LICENSE",
+        "@com_google_protobuf//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
     ] + select({
@@ -231,7 +231,7 @@ genrule(
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
         "@png_archive//:LICENSE",
-        "@protobuf_archive//:LICENSE",
+        "@com_google_protobuf//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
         "@grpc//:LICENSE",

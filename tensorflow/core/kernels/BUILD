@@ -6479,9 +6479,9 @@ cc_library(
         "//tensorflow/core:protos_all_cc_impl",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
+        "@com_google_protobuf//:protobuf",
         "@fft2d",
         "@gemmlowp",
-        "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
 )
