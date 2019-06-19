@@ -85,14 +85,18 @@ function build_container()
   shift
   TF_DOCKER_BUILD_ARGS=("${@}")
 
-  # Add the proxy info build args
+  # Add the proxy info build args. This will be later on passed to docker as
+  # --build-arg so that users behind corporate proxy can build the images
   TF_DOCKER_BUILD_ARGS+=("--build-arg http_proxy=${http_proxy}")
   TF_DOCKER_BUILD_ARGS+=("--build-arg https_proxy=${https_proxy}")
   TF_DOCKER_BUILD_ARGS+=("--build-arg socks_proxy=${socks_proxy}")
   TF_DOCKER_BUILD_ARGS+=("--build-arg no_proxy=${no_proxy}")
-  TF_DOCKER_BUILD_ARGS+=("--build-arg HTTP_PROXY=${http_proxy}")
-  TF_DOCKER_BUILD_ARGS+=("--build-arg SOCKS_PROXY=${socks_proxy}")
-  TF_DOCKER_BUILD_ARGS+=("--build-arg NO_PROXY=${no_proxy}")
+  # In general having uppercase proxies is a good idea because different
+  # applications running inside Docker may only honor uppercase proxies
+  TF_DOCKER_BUILD_ARGS+=("--build-arg HTTP_PROXY=${HTTP_PROXY}")
+  TF_DOCKER_BUILD_ARGS+=("--build-arg HTTPS_PROXY=${HTTPS_PROXY}")
+  TF_DOCKER_BUILD_ARGS+=("--build-arg SOCKS_PROXY=${SOCKS_PROXY}")
+  TF_DOCKER_BUILD_ARGS+=("--build-arg NO_PROXY=${NO_PROXY}")
 
   #Add --config=v2 build arg for TF v2
   if [[ ${BUILD_TF_V2_CONTAINERS} == "no" ]]; then
