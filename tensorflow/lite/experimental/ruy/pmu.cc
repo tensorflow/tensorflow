@@ -150,15 +150,14 @@ constexpr std::uint16_t L3D_CACHE_REFILL_RD = 0xA2;
 
 class PmuEventsPrivate {
   friend class PmuEvents;
-  PerfEvent l1d_cache;
   PerfEvent l1d_cache_refill;
   PerfEvent l2d_cache_refill;
   PerfEvent l3d_cache_refill;
+  PerfEvent l1d_tlb_refill;
+  PerfEvent l2d_tlb_refill;
   PerfEvent ll_cache_miss;
-  PerfEvent cpu_cycles;
   PerfEvent stall_frontend;
   PerfEvent stall_backend;
-  PerfEvent br_pred;
   PerfEvent br_mis_pred;
 };
 
@@ -166,51 +165,39 @@ PmuEvents::PmuEvents() : priv(new PmuEventsPrivate) {}
 PmuEvents::~PmuEvents() { delete priv; }
 
 void PmuEvents::StartRecording() {
-  priv->l1d_cache.Start(PERF_TYPE_RAW, arm_pmuv3::L1D_CACHE);
   priv->l1d_cache_refill.Start(PERF_TYPE_RAW, arm_pmuv3::L1D_CACHE_REFILL);
   priv->l2d_cache_refill.Start(PERF_TYPE_RAW, arm_pmuv3::L2D_CACHE_REFILL);
   priv->l3d_cache_refill.Start(PERF_TYPE_RAW, arm_pmuv3::L3D_CACHE_REFILL);
   priv->ll_cache_miss.Start(PERF_TYPE_RAW, arm_pmuv3::LL_CACHE_MISS);
-  priv->cpu_cycles.Start(PERF_TYPE_RAW, arm_pmuv3::CPU_CYCLES);
+  priv->l1d_tlb_refill.Start(PERF_TYPE_RAW, arm_pmuv3::L1D_TLB_REFILL);
+  priv->l2d_tlb_refill.Start(PERF_TYPE_RAW, arm_pmuv3::L2D_TLB_REFILL);
   priv->stall_frontend.Start(PERF_TYPE_RAW, arm_pmuv3::STALL_FRONTEND);
   priv->stall_backend.Start(PERF_TYPE_RAW, arm_pmuv3::STALL_BACKEND);
-  priv->br_pred.Start(PERF_TYPE_RAW, arm_pmuv3::BR_PRED);
   priv->br_mis_pred.Start(PERF_TYPE_RAW, arm_pmuv3::BR_MIS_PRED);
 }
 
 void PmuEvents::StopRecording() {
-  priv->l1d_cache.Stop();
   priv->l1d_cache_refill.Stop();
   priv->l2d_cache_refill.Stop();
   priv->l3d_cache_refill.Stop();
   priv->ll_cache_miss.Stop();
-  priv->cpu_cycles.Stop();
+  priv->l1d_tlb_refill.Stop();
+  priv->l2d_tlb_refill.Stop();
   priv->stall_frontend.Stop();
   priv->stall_backend.Stop();
-  priv->br_pred.Stop();
   priv->br_mis_pred.Stop();
 }
 
-float PmuEvents::BranchMispredictionRate() const {
-  std::int64_t br_pred = priv->br_pred.Count();
-  std::int64_t br_mis_pred = priv->br_mis_pred.Count();
-  return static_cast<float>(br_mis_pred) / br_pred;
+float PmuEvents::BranchMispredictionCount() const {
+  return static_cast<float>(priv->br_mis_pred.Count());
 }
 
-float PmuEvents::FrontendStallRate() const {
-  std::int64_t cpu_cycles = priv->cpu_cycles.Count();
-  std::int64_t stall_frontend = priv->stall_frontend.Count();
-  return static_cast<float>(stall_frontend) / cpu_cycles;
+float PmuEvents::FrontendStallCount() const {
+  return static_cast<float>(priv->stall_frontend.Count());
 }
 
-float PmuEvents::BackendStallRate() const {
-  std::int64_t cpu_cycles = priv->cpu_cycles.Count();
-  std::int64_t stall_backend = priv->stall_backend.Count();
-  return static_cast<float>(stall_backend) / cpu_cycles;
-}
-
-float PmuEvents::L1AccessCount() const {
-  return static_cast<float>(priv->l1d_cache.Count());
+float PmuEvents::BackendStallCount() const {
+  return static_cast<float>(priv->stall_backend.Count());
 }
 
 float PmuEvents::L1RefillCount() const {
@@ -233,6 +220,14 @@ float PmuEvents::L3RefillCount() const {
   // CPUs.
   return static_cast<float>(
       std::max(priv->l3d_cache_refill.Count(), priv->ll_cache_miss.Count()));
+}
+
+float PmuEvents::L1TLBRefillCount() const {
+  return static_cast<float>(priv->l1d_tlb_refill.Count());
+}
+
+float PmuEvents::L2TLBRefillCount() const {
+  return static_cast<float>(priv->l2d_tlb_refill.Count());
 }
 
 }  // namespace ruy
