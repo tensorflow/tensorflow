@@ -48,6 +48,8 @@ uint64 HloDropoutInstruction::NumberOfInplaceOperands() const { return 0; }
 
 bool HloDropoutInstruction::IsPopOpsElementwise() const { return true; }
 
+bool HloDropoutInstruction::HasSideEffectNoRecurse() const { return true; }
+
 std::unique_ptr<HloInstruction> HloDropoutInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext*) const {
