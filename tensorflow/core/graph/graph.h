@@ -480,7 +480,7 @@ class Graph {
   // Adds a new node to this graph, and returns it. Infers the Op and
   // input/output types for the node. *this owns the returned instance.
   // Returns nullptr and sets *status on error.
-  Node* AddNode(const NodeDef& node_def, Status* status);
+  Node* AddNode(NodeDef node_def, Status* status);
 
   // Copies *node, which may belong to another graph, to a new node,
   // which is returned.  Does not copy any edges.  *this owns the
