@@ -323,8 +323,8 @@ class ActivationV2IntegrationTest(keras_parameterized.TestCase):
               verbose=2)
 
     output_path = os.path.join(self.get_temp_dir(), 'tf_keras_saved_model')
-    keras.saving.saved_model.export_saved_model(model, output_path)
-    loaded_model = keras.saving.saved_model.load_from_saved_model(output_path)
+    model.save(output_path, save_format='tf')
+    loaded_model = keras.models.load_model(output_path)
     self.assertEqual(model.summary(), loaded_model.summary())
 
 if __name__ == '__main__':

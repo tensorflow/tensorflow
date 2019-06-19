@@ -50,7 +50,7 @@ from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
 from tensorflow.python.keras.mixed_precision.experimental import policy
-from tensorflow.python.keras.saving import saved_model
+from tensorflow.python.keras.saving.saved_model import save as saved_model
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.

@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,15 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# pylint: disable=protected-access
-"""Utility functions to save/load keras Model to/from SavedModel."""
+"""Constants for Keras SavedModel serialization."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras.saving import saved_model_experimental
-
-
-# TODO(kathywu): Remove all contrib callers, switch to tf.keras.
-save_keras_model = saved_model_experimental.export_saved_model
-load_keras_model = saved_model_experimental.load_from_saved_model
+# Namespace used to store all attributes added during serialization.
+# e.g. the list of layers can be accessed using `loaded.keras_api.layers`, in an
+# object loaded from `tf.saved_model.load()`.
+KERAS_ATTR = 'keras_api'
