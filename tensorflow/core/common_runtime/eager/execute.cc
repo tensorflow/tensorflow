@@ -655,10 +655,10 @@ Status EagerLocalExecute(EagerOperation* op,
           /* resource_device= */ kernel->OutputResourceDevice(i),
           output_dtypes[i], ctx, &(*retvals)[i]));
     }
-    EagerNode* node = new ExecuteNode(id, ctx, op->Inputs(), std::move(kernel),
-                                      maybe_stats.release(), maybe_step_stats,
-                                      graph_collector, output_dtypes, *retvals);
-    ctx->ExecutorAdd(node);
+    std::unique_ptr<EagerNode> node(new ExecuteNode(
+        id, ctx, op->Inputs(), std::move(kernel), maybe_stats.release(),
+        maybe_step_stats, graph_collector, output_dtypes, *retvals));
+    ctx->ExecutorAdd(std::move(node));
   } else {
     // Execute checks if retvals[i] is nullptr or not to figure if it needs to
     // allocate it.
@@ -873,7 +873,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     // TODO(gjn): If the retval TensorHandle is simply going to be used as a
     // mirror then there should be no need to call SetRemoteShape
     // Unable to capture via std::move, so bind instead.
-    auto* node = new eager::RemoteExecuteNode(
+    std::unique_ptr<EagerNode> node(new eager::RemoteExecuteNode(
         remote_node_id, std::move(request), eager_client,
         std::bind(
             [inputs](const gtl::InlinedVector<TensorHandle*, 2>& retvals,
@@ -896,8 +896,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
               }
             },
             std::move(retvals_copy), std::placeholders::_1,
-            std::placeholders::_2));
-    op->EagerContext()->ExecutorAdd(node);
+            std::placeholders::_2)));
+    op->EagerContext()->ExecutorAdd(std::move(node));
   } else {
     Notification n;
     Status status;
@@ -1191,10 +1191,11 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx, Device* dstd,
         dstd, dstd, nullptr, h->dtype, ctx, result));
     // Note that `h` may not be currently ready. However execution order will
     // make sure that `h` is ready before the copy is actually done.
-    CopyToDeviceNode* node = new CopyToDeviceNode(h, *result, dstd, ctx);
+    std::unique_ptr<EagerNode> node(
+        new CopyToDeviceNode(h, *result, dstd, ctx));
     // Note that calling Add makes `node` accessible by the EagerExecutor
     // thread. So further accesses need to be thread-safe.
-    ctx->ExecutorAdd(node);
+    ctx->ExecutorAdd(std::move(node));
     return Status::OK();
   } else {
     tensorflow::Tensor tensor;

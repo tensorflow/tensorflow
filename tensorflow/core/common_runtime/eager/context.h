@@ -175,7 +175,9 @@ class EagerContext : public core::RefCounted {
 
   uint64 NextId() { return executor_.NextId(); }
 
-  void ExecutorAdd(EagerNode* node) { executor_.Add(node); }
+  void ExecutorAdd(std::unique_ptr<EagerNode> node) {
+    executor_.Add(std::move(node));
+  }
 
   Status AddFunctionDef(const FunctionDef& fdef);
 

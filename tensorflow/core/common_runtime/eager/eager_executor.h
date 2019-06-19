@@ -84,10 +84,8 @@ class EagerExecutor {
   uint64 NextId();
 
   // Schedules `node` for execution.
-  // Takes ownership of `node`.
-  // TODO(iga): take a unique_ptr instead.
   // Note that Add must be called in monotonically increasing order of node->id.
-  void Add(EagerNode* node);
+  void Add(std::unique_ptr<EagerNode> node);
 
   // Causes the caller to block till node with id `node_id` has finished
   // execution.
@@ -120,7 +118,8 @@ class EagerExecutor {
   condition_variable nodes_pending_ GUARDED_BY(node_queue_mutex_);
 
   // Queue of pending EagerNodes.
-  std::queue<EagerNode*> node_queue_ GUARDED_BY(node_queue_mutex_);
+  std::queue<std::unique_ptr<EagerNode>> node_queue_
+      GUARDED_BY(node_queue_mutex_);
 
   // `status_` is set based on any errors raised during execution of a
   // EagerNode.  It remains set until ClearError is called.
