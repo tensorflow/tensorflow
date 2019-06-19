@@ -55,6 +55,9 @@ py_library(
         "multi_worker_training_state.py",
     ],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/distribute:multi_worker_util",
+    ],
 )
 
 cuda_py_test(

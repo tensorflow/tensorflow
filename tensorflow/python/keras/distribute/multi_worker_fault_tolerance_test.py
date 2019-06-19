@@ -253,7 +253,8 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
       return saving_dir, saving_filepath
 
     # Case 1: Training for `num_epoch` without preemptions.
-    cluster_spec = test_base.create_cluster_spec(num_workers=num_workers)
+    cluster_spec = test_base.create_cluster_spec(
+        num_workers=num_workers, test_obj=self)
     self._barrier = dc._Barrier(2)
     self._successful_thread_ends = 0
     # Get a new temporary filepath to save the checkpoint to.
@@ -280,7 +281,8 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
 
     # Case 2: Training for `num_epoch` epoch with preemptions.
     # The preemption is simulated at both epoch boundary and batch boundary.
-    cluster_spec = test_base.create_cluster_spec(num_workers=num_workers)
+    cluster_spec = test_base.create_cluster_spec(
+        num_workers=num_workers, test_obj=self)
     cv = threading.Condition()
     self._barrier = dc._Barrier(2)
     # Ports reserved for new threads simulating recovery.

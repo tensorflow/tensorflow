@@ -72,8 +72,9 @@ BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 
 
 CacheKey = collections.namedtuple("CacheKey", [
-    "input_signature", "parent_graph", "device_functions",
-    "colocation_stack"])
+    "input_signature", "parent_graph", "device_functions", "colocation_stack",
+    "in_cross_replica_context"
+])
 
 CacheKey.replace = CacheKey._replace  # pylint: disable=protected-access
 
@@ -1562,9 +1563,15 @@ class Function(object):
         device_functions = tuple(default_graph._device_functions_outer_to_inner)
       else:
         device_functions = ()
-    # pylint: enable=protected-access
+
+    in_cross_replica_context = False
+    try:
+      in_cross_replica_context = (strategy_stack[-1].replica_context is None)  # pylint: disable=protected-access
+    except (AttributeError, IndexError):
+      pass
+
     return CacheKey(input_signature, parent_graph, device_functions,
-                    colocation_stack)
+                    colocation_stack, in_cross_replica_context)
 
   def _create_graph_function(self, args, kwargs, override_flat_arg_shapes=None):
     """Create a `ConcreteFunction` from `args` and `kwargs`."""
@@ -1664,6 +1671,7 @@ class Function(object):
     if self.input_signature is None or args is not None or kwargs is not None:
       args, kwargs = self._function_spec.canonicalize_function_inputs(
           *args, **kwargs)
+
     cache_key = self._cache_key(args, kwargs)
 
     try:

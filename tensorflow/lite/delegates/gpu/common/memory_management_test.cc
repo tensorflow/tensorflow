@@ -25,7 +25,7 @@ namespace {
 using ::testing::ElementsAre;
 
 TEST(Model, EmptyRecords) {
-  ObjectsAssignment assignment;
+  ObjectsAssignment<size_t> assignment;
   ASSERT_TRUE(
       AssignObjectsToTensors({}, MemoryStrategy::NAIVE, &assignment).ok());
   EXPECT_TRUE(assignment.object_ids.empty());
@@ -42,9 +42,9 @@ TEST(Model, EmptyRecords) {
 }
 
 TEST(Model, OneRecord) {
-  std::vector<TensorUsageRecord> usage_records{
+  std::vector<TensorUsageRecord<size_t>> usage_records{
       {/*size=*/16, /*first=*/0, /*last=*/1}};
-  ObjectsAssignment assignment;
+  ObjectsAssignment<size_t> assignment;
   ASSERT_TRUE(
       AssignObjectsToTensors(usage_records, MemoryStrategy::NAIVE, &assignment)
           .ok());
@@ -63,14 +63,14 @@ TEST(Model, OneRecord) {
 }
 
 TEST(Model, ChainRecords) {
-  std::vector<TensorUsageRecord> usage_records{
+  std::vector<TensorUsageRecord<size_t>> usage_records{
       {/*size=*/16, /*first=*/0, /*last=*/1},
       {/*size=*/8, /*first=*/1, /*last=*/2},
       {/*size=*/64, /*first=*/2, /*last=*/3},
       {/*size=*/32, /*first=*/3, /*last=*/4},
       {/*size=*/8, /*first=*/4, /*last=*/5},
   };
-  ObjectsAssignment assignment;
+  ObjectsAssignment<size_t> assignment;
   ASSERT_TRUE(
       AssignObjectsToTensors(usage_records, MemoryStrategy::NAIVE, &assignment)
           .ok());
@@ -89,7 +89,7 @@ TEST(Model, ChainRecords) {
 }
 
 TEST(Model, ComplexRecords) {
-  std::vector<TensorUsageRecord> usage_records{
+  std::vector<TensorUsageRecord<size_t>> usage_records{
       {/*size=*/32, /*first=*/0, /*last=*/1},
       {/*size=*/32, /*first=*/1, /*last=*/4},
       {/*size=*/8, /*first=*/2, /*last=*/5},
@@ -99,7 +99,7 @@ TEST(Model, ComplexRecords) {
       {/*size=*/8, /*first=*/6, /*last=*/8},
       {/*size=*/8, /*first=*/7, /*last=*/8},
       {/*size=*/16, /*first=*/8, /*last=*/9}};
-  ObjectsAssignment assignment;
+  ObjectsAssignment<size_t> assignment;
   ASSERT_TRUE(
       AssignObjectsToTensors(usage_records, MemoryStrategy::NAIVE, &assignment)
           .ok());
@@ -111,6 +111,7 @@ TEST(Model, ComplexRecords) {
           .ok());
   EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 0, 2, 3, 1, 3, 2, 0));
   EXPECT_THAT(assignment.object_sizes, ElementsAre(32, 64, 16, 8));
+
   ASSERT_TRUE(AssignObjectsToTensors(usage_records, MemoryStrategy::MINCOSTFLOW,
                                      &assignment)
                   .ok());

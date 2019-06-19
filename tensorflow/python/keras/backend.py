@@ -36,6 +36,7 @@ from tensorflow.python.client import session as session_module
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.eager import function as eager_function
@@ -70,7 +71,6 @@ from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-im
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
@@ -5649,15 +5649,6 @@ if not os.path.exists(_config_path):
     pass
 
 
-def in_multi_worker_mode():
-  """Whether we are operating in a Multi-Worker setting."""
-  # TODO(rchao): Consider a warning if user uses multiple `model` method
-  # calls in multi-worker setting.
-  tf_config = json.loads(os.environ.get('TF_CONFIG', '{}'))
-  cluster_spec = server_lib.ClusterSpec(tf_config.get('cluster', {}))
-  return tf_config and 'master' not in cluster_spec.jobs
-
-
 def configure_and_create_distributed_session(distribution_strategy):
   """Configure session config and create a session with it."""
 
@@ -5694,7 +5685,7 @@ def configure_and_create_distributed_session(distribution_strategy):
 
     set_session(session)
 
-  if in_multi_worker_mode():
+  if multi_worker_util.in_multi_worker_mode():
     dc.run_distribute_coordinator(
         _create_session,
         distribution_strategy,

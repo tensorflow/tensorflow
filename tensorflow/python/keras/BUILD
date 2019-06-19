@@ -125,6 +125,7 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:multi_worker_util",
     ],
 )
 
@@ -709,6 +710,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
+    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -881,7 +883,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
-    tags = ["notsan"],
+    tags = [
+        "no_rocm",
+        "notsan",
+    ],
 )
 
 tf_py_test(
@@ -1352,7 +1357,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 20,
-    tags = ["notsan"],
+    tags = [
+        "no_rocm",
+        "notsan",
+    ],
 )
 
 tf_py_test(
@@ -1381,6 +1389,7 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["no_rocm"],
 )
 
 tf_py_test(
@@ -1425,7 +1434,10 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    tags = ["notsan"],
+    tags = [
+        "no_rocm",
+        "notsan",
+    ],
 )
 
 tf_py_test(

@@ -235,6 +235,23 @@ class CompileTest(keras_parameterized.TestCase):
 
 class TrainingTest(keras_parameterized.TestCase):
 
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_fit_training_arg(self):
+
+    class ReturnTraining(keras.layers.Layer):
+
+      def call(self, inputs, training):
+        if training:
+          return inputs + array_ops.constant([100], 'float32')
+        else:
+          return inputs + array_ops.constant([0], 'float32')
+
+    model = keras.Sequential([ReturnTraining()])
+    model.compile('sgd', 'mse')
+    hist = model.fit(x=np.array([0.]), y=np.array([0.]))
+    self.assertAllClose(hist.history['loss'][0], (10000,))
+
   @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
   @keras_parameterized.run_all_keras_modes
   def test_fit_on_arrays(self):

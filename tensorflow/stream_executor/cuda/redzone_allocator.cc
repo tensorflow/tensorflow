@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/redzone_allocator.h"
 
+#include "absl/container/fixed_array.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -175,8 +176,7 @@ using ComparisonKernelT =
 // Slower, but gives a more useful error message.
 static port::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
     DeviceMemoryBase redzone, DeviceMemoryBase user_allocation,
-    absl::string_view name, Stream* stream, uint8 redzone_pattern,
-    int64 redzone_size) {
+    absl::string_view name, Stream* stream, uint8 redzone_pattern) {
   uint64 size = redzone.size();
   auto redzone_data = absl::make_unique<uint8[]>(size);
   TF_RETURN_IF_ERROR(stream->ThenMemcpy(redzone_data.get(), redzone, size)
@@ -230,6 +230,20 @@ static void RunRedzoneChecker(Stream* stream,
                      redzone.size(), out_param);
 }
 
+// Since we reuse the same buffer for multiple checks, we re-initialize redzone
+// with a NaN pattern after a failed check.
+//
+// This function is blocking, since redzone failing is a rare event.
+static port::Status ReinitializeRedzone(Stream* stream,
+                                        DeviceMemoryBase redzone,
+                                        uint8 redzone_pattern) {
+  absl::FixedArray<uint8> redzone_array(redzone.size());
+  redzone_array.fill(redzone_pattern);
+  stream->ThenMemcpy(&redzone, redzone_array.data(), redzone.size());
+  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  return port::Status::OK();
+}
+
 // Check redzones around the user allocation.
 //
 // Precondition: the memory pointed out by out_param is zeroed.
@@ -246,12 +260,14 @@ static port::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
 
   DeviceMemory<uint8> buffer_uint8(memory);
   DeviceMemory<uint8> lhs_redzone =
-      executor->GetSubBuffer(&buffer_uint8, 0, redzone_size);
+      executor->GetSubBuffer(&buffer_uint8, 0,
+                             /*element_count=*/redzone_size);
   DeviceMemory<uint8> user_allocation =
-      executor->GetSubBuffer(&buffer_uint8, redzone_size, user_allocation_size);
+      executor->GetSubBuffer(&buffer_uint8, redzone_size,
+                             /*element_count=*/user_allocation_size);
   DeviceMemory<uint8> rhs_redzone =
       executor->GetSubBuffer(&buffer_uint8, redzone_size + user_allocation_size,
-                             redzone_size + rhs_slop);
+                             /*element_count=*/redzone_size + rhs_slop);
 
   RunRedzoneChecker(stream, lhs_redzone, redzone_pattern, out_param,
                     comparison_kernel);
@@ -263,17 +279,20 @@ static port::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   if (result != 0) {
-    TF_ASSIGN_OR_RETURN(
-        RedzoneCheckStatus lhs_check,
-        CheckRedzoneHost(lhs_redzone, user_allocation, "LHS", stream,
-                         redzone_pattern, redzone_size));
-    TF_ASSIGN_OR_RETURN(
-        RedzoneCheckStatus rhs_check,
-        CheckRedzoneHost(rhs_redzone, user_allocation, "RHS", stream,
-                         redzone_pattern, redzone_size));
+    TF_ASSIGN_OR_RETURN(RedzoneCheckStatus lhs_check,
+                        CheckRedzoneHost(lhs_redzone, user_allocation, "LHS",
+                                         stream, redzone_pattern));
+    TF_ASSIGN_OR_RETURN(RedzoneCheckStatus rhs_check,
+                        CheckRedzoneHost(rhs_redzone, user_allocation, "RHS",
+                                         stream, redzone_pattern));
 
     CHECK(!lhs_check.ok() || !rhs_check.ok())
         << "Mismatched results with host and device comparison";
+
+    TF_RETURN_IF_ERROR(
+        ReinitializeRedzone(stream, lhs_redzone, redzone_pattern));
+    TF_RETURN_IF_ERROR(
+        ReinitializeRedzone(stream, rhs_redzone, redzone_pattern));
     return !lhs_check.ok() ? lhs_check : rhs_check;
   }
 

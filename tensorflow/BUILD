@@ -529,6 +529,10 @@ tf_cc_shared_object(
     linkopts = select({
         "//tensorflow:macos": [],
         "//tensorflow:windows": [],
+        "//tensorflow:freebsd": [
+            "-Wl,--version-script,$(location //tensorflow:tf_framework_version_script.lds)",
+            "-lexecinfo",
+        ],
         "//conditions:default": [
             "-Wl,--version-script,$(location //tensorflow:tf_framework_version_script.lds)",
         ],

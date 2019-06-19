@@ -26,6 +26,7 @@ from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
@@ -435,7 +436,7 @@ class Model(network.Network):
     """Select training loop for fit/eval/predict based on the inputs."""
     # Case 1: distribution strategy.
     if self._distribution_strategy:
-      if K.in_multi_worker_mode():
+      if multi_worker_util.in_multi_worker_mode():
         return training_distributed.DistributionMultiWorkerTrainingLoop()
       else:
         return training_distributed.DistributionSingleWorkerTrainingLoop()
@@ -2567,13 +2568,10 @@ class Model(network.Network):
       kwargs = {}
       if self._expects_training_arg:
         # In V2 mode, feeding `training=None` is not allowed because any value
-        # explicitly passed by the user is respected, even `None`, and in this
-        # case if the user has not passed a value in V2 we need to replace
-        # `None` with the `learning_phase()`. In V1, `training=None` is needed
-        # so that `Dropout` and `BatchNormalization` replace `None` values with
-        # the `learning_phase()` in their `call`.
-        if (training is not None or
-            not ops.executing_eagerly_outside_functions()):
+        # explicitly passed by the user is respected, even `None`.`
+        if training is None and not ops.executing_eagerly_outside_functions():
+          training = K.learning_phase()
+        if training is not None:
           kwargs['training'] = training
       try:
         outputs = self(inputs, **kwargs)

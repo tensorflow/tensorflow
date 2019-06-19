@@ -1146,6 +1146,15 @@ class HloInstruction {
   // As ToString, but returns a shorter string.
   string ToShortString() const;
 
+  // Prints an instruction to a string.
+  //
+  // The canonical string representation needs to name operands and instruction
+  // names in a consistent way. This is implemented through the
+  // canonical_name_map.
+  string ToStringWithCanonicalNameMap(
+      const HloPrintOptions& options,
+      CanonicalNameMap* canonical_name_map) const;
+
   // Returns a serialized representation of this instruction.
   virtual HloInstructionProto ToProto() const;
 
@@ -1729,14 +1738,6 @@ class HloInstruction {
   // the operands is equivalent to being elementwise on all the operands.
   virtual bool IsElementwiseImpl(
       const absl::optional<int64>& operand_idx) const;
-  // Prints an instruction to a string.
-  //
-  // The canonical string representation needs to name operands and instruction
-  // names in a consistent way. This is implemented through the
-  // canonical_name_map.
-  string ToStringWithCanonicalNameMap(
-      const HloPrintOptions& options,
-      CanonicalNameMap* canonical_name_map) const;
 
   // Prints an operand to a string.
   virtual string OperandsToStringWithCanonicalNameMap(

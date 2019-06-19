@@ -46,7 +46,7 @@ filegroup(
             "*test*",
         ],
     ) + [
-        "//tensorflow/cc:srcs",
+        "//tensorflow/cc:srcs_no_runtime",
         "//tensorflow/core/distributed_runtime:server_lib.h",
     ],
     visibility = ["//visibility:public"],

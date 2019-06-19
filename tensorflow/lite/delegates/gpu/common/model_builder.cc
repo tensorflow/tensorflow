@@ -68,12 +68,12 @@ int64_t DimensionsProduct(const TfLiteIntArray& dims) {
 // will turn into:
 //   node(copy(output)) <- passthrough_node(output)
 Status NewPassthroughNode(GraphFloat32* graph, Node* node,
-                          const Value<TensorRefFloat32>* output,
+                          const Value<TensorRef<BHWC>>* output,
                           Node** passthru_node) {
   *passthru_node = graph->NewNode();
   // Make copies for every output in the original node.
   RETURN_IF_ERROR(graph->SetProducer((*passthru_node)->id, output->id));
-  Value<TensorRefFloat32>* copy_output = graph->NewValue();
+  Value<TensorRef<BHWC>>* copy_output = graph->NewValue();
   RETURN_IF_ERROR(graph->SetProducer(node->id, copy_output->id));
   RETURN_IF_ERROR(graph->AddConsumer((*passthru_node)->id, copy_output->id));
   copy_output->tensor = output->tensor;
@@ -265,13 +265,13 @@ class ObjectReader {
  public:
   ObjectReader(GraphFloat32* graph, TfLiteContext* context,
                const TfLiteNode* tflite_node,
-               std::vector<Value<TensorRefFloat32>*>* tensor_to_value)
+               std::vector<Value<TensorRef<BHWC>>*>* tensor_to_value)
       : graph_(graph),
         context_(context),
         tflite_node_(tflite_node),
         tensor_to_value_(tensor_to_value) {}
 
-  Status ReadValue(uint32_t idx, Value<TensorRefFloat32>** value) {
+  Status ReadValue(uint32_t idx, Value<TensorRef<BHWC>>** value) {
     if (idx >= tflite_node_->inputs->size) {
       return OutOfRangeError(StrCat("ReadValue: input tensor index: ", idx));
     }
@@ -319,7 +319,7 @@ class ObjectReader {
                  tflite_node_->outputs->size));
     }
     int output_tensor_idx = tflite_node_->outputs->data[id];
-    Value<TensorRefFloat32>* value;
+    Value<TensorRef<BHWC>>* value;
     RETURN_IF_ERROR(ReadValueByTensorIdx(output_tensor_idx, &value));
     RETURN_IF_ERROR(graph_->SetProducer(node->id, value->id));
     return OkStatus();
@@ -333,13 +333,13 @@ class ObjectReader {
   }
 
   Status AddInput(const Node* node, uint32_t idx) {
-    Value<TensorRefFloat32>* input;
+    Value<TensorRef<BHWC>>* input;
     RETURN_IF_ERROR(ReadValue(idx, &input));
     return graph_->AddConsumer(node->id, input->id);
   }
 
   Status ReadValueByTensorIdx(uint32_t tensor_idx,
-                              Value<TensorRefFloat32>** value) {
+                              Value<TensorRef<BHWC>>** value) {
     if (tensor_idx >= tensor_to_value_->size()) {
       return OutOfRangeError(
           StrCat("ReadValue: input tensor index: ", tensor_idx));
@@ -350,7 +350,7 @@ class ObjectReader {
         return NotFoundError(
             StrCat("ReadValue: value is a constant tensor: ", tensor_idx));
       }
-      Value<TensorRefFloat32>* value = graph_->NewValue();
+      Value<TensorRef<BHWC>>* value = graph_->NewValue();
       RETURN_IF_ERROR(
           ConvertTfLiteTensorToTensorRef(tflite_tensor, &value->tensor));
       value->tensor.ref = tensor_idx;
@@ -364,7 +364,7 @@ class ObjectReader {
   GraphFloat32* graph_ = nullptr;
   const TfLiteContext* context_ = nullptr;
   const TfLiteNode* tflite_node_ = nullptr;
-  std::vector<Value<TensorRefFloat32>*>* tensor_to_value_;
+  std::vector<Value<TensorRef<BHWC>>*>* tensor_to_value_;
 };
 
 Status CheckInputsOutputs(const TfLiteContext* context,
@@ -639,7 +639,7 @@ class Conv2DOperationParser : public TFLiteOperationParser {
 
 // Creates a simple node that holds tensor value.
 Status NewConstNode(TensorFloat32 t, GraphFloat32* graph,
-                    Value<TensorRefFloat32>** value) {
+                    Value<TensorRef<BHWC>>** value) {
   ConstTensorAttributes attr;
   attr.tensor = std::move(t);
   Node* node = graph->NewNode();
@@ -677,16 +677,16 @@ class ConcatenationOperationParser : public TFLiteOperationParser {
     ConcatAttributes attr;
     // Read inputs first to make sure const node is added to a graph before
     // concat node to ensure topological order.
-    std::vector<const Value<TensorRefFloat32>*> inputs;
+    std::vector<const Value<TensorRef<BHWC>>*> inputs;
     for (uint32_t idx = 0; idx < tflite_node->inputs->size; ++idx) {
-      Value<TensorRefFloat32>* value;
+      Value<TensorRef<BHWC>>* value;
       const auto status = reader->ReadValue(idx, &value);
       if (status.ok()) {
         inputs.push_back(value);
       } else {
         TensorFloat32 tensor;
         RETURN_IF_ERROR(reader->ReadTensor(idx, &tensor));
-        Value<TensorRefFloat32>* value;
+        Value<TensorRef<BHWC>>* value;
         RETURN_IF_ERROR(NewConstNode(std::move(tensor), graph, &value));
         inputs.push_back(value);
       }
@@ -695,7 +695,7 @@ class ConcatenationOperationParser : public TFLiteOperationParser {
     Node* node = graph->NewNode();
     node->operation.type = ToString(OperationType::CONCAT);
     RETURN_IF_ERROR(reader->AddOutputs(node));
-    for (const Value<TensorRefFloat32>* input : inputs) {
+    for (const Value<TensorRef<BHWC>>* input : inputs) {
       RETURN_IF_ERROR(graph->AddConsumer(node->id, input->id));
     }
 
@@ -1143,11 +1143,11 @@ class LstmOperationParser : public TFLiteOperationParser {
     lstm_attr.kernel_type = LstmKernelType::BASIC;
     lstm_node->operation.attributes = lstm_attr;
 
-    Value<TensorRefFloat32>* concat_temp;
+    Value<TensorRef<BHWC>>* concat_temp;
     int concat_tensor_idx = tflite_node->outputs->data[2];
     RETURN_IF_ERROR(
         reader->ReadValueByTensorIdx(concat_tensor_idx, &concat_temp));
-    Value<TensorRefFloat32>* activ_temp;
+    Value<TensorRef<BHWC>>* activ_temp;
     int activ_tensor_idx = tflite_node->outputs->data[3];
     RETURN_IF_ERROR(
         reader->ReadValueByTensorIdx(activ_tensor_idx, &activ_temp));
@@ -1521,7 +1521,7 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
     if (input->tensor.shape.h != 1 || input->tensor.shape.w != 1) {
       auto& reshape = node;
       conv = graph->NewNode();  // reset conv pointer!
-      Value<TensorRefFloat32>* reshaped_value = graph->NewValue();
+      Value<TensorRef<BHWC>>* reshaped_value = graph->NewValue();
       reshaped_value->tensor.shape = BHWC(1, 1, 1, weights.shape.w);
       RETURN_IF_ERROR(graph->SetProducer(reshape->id, reshaped_value->id));
       reshape->operation.type = ToString(OperationType::RESHAPE);
@@ -1558,7 +1558,7 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
     Node* node = graph->NewNode();
     node->operation.type = ToString(OperationType::SLICE);
     RETURN_IF_ERROR(reader->AddOutputs(node));
-    Value<TensorRefFloat32>* input;
+    Value<TensorRef<BHWC>>* input;
     RETURN_IF_ERROR(reader->ReadValue(0, &input));
     RETURN_IF_ERROR(graph->AddConsumer(node->id, input->id));
 
@@ -1721,7 +1721,7 @@ class TransposeConvOperationParser : public TFLiteOperationParser {
                ObjectReader* reader) final {
     auto* node = graph->NewNode();
     node->operation.type = ToString(OperationType::CONVOLUTION_TRANSPOSED);
-    Value<TensorRefFloat32>* input;
+    Value<TensorRef<BHWC>>* input;
     RETURN_IF_ERROR(reader->ReadValue(2, &input));
     RETURN_IF_ERROR(graph->AddConsumer(node->id, input->id));
     RETURN_IF_ERROR(reader->AddOutputs(node));
@@ -1970,7 +1970,7 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
 }  // namespace
 
 Status ConvertTfLiteTensorToTensorRef(const TfLiteTensor& tflite_tensor,
-                                      TensorRefFloat32* tensor_ref) {
+                                      TensorRef<BHWC>* tensor_ref) {
   tensor_ref->type = ToDataType(tflite_tensor.type);
   const TfLiteIntArray* dims = tflite_tensor.dims;
   switch (dims->size) {
@@ -2128,8 +2128,8 @@ Status BuildModel(TfLiteContext* context,
     }
     operations.push_back(std::move(op_parser));
   }
-  std::vector<Value<TensorRefFloat32>*> tensor_to_value(context->tensors_size,
-                                                        nullptr);
+  std::vector<Value<TensorRef<BHWC>>*> tensor_to_value(context->tensors_size,
+                                                       nullptr);
   for (int i = 0; i < delegate_params->nodes_to_replace->size; ++i) {
     TfLiteNode* tflite_node = nullptr;
     TfLiteRegistration* registration = nullptr;

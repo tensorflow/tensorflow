@@ -774,5 +774,30 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.assertAllEqual(input_arr_1, outputs[0])
     self.assertAllEqual(input_arr_2, outputs[1])
 
+  def test_revived_sequential(self):
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(5, input_shape=(3,),
+                                 kernel_regularizer=regularizers.get('l2')))
+    model.add(keras.layers.Dense(2, kernel_regularizer=regularizers.get('l2')))
+
+    self.evaluate(variables.variables_initializer(model.variables))
+
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+    loaded = keras_saved_model.load_from_saved_model_v2(saved_model_dir)
+
+    self.assertLen(loaded.layers, 2)
+    self.assertLen(loaded.losses, 2)
+
+    loaded.pop()
+
+    self.assertLen(loaded.layers, 1)
+    self.assertLen(loaded.losses, 1)
+
+    loaded.add(keras.layers.Dense(2, kernel_regularizer=regularizers.get('l2')))
+
+    self.assertLen(loaded.layers, 2)
+    self.assertLen(loaded.losses, 2)
+
 if __name__ == '__main__':
   test.main()

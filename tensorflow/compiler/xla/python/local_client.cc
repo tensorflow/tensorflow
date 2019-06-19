@@ -160,7 +160,8 @@ void Device::ThenExecuteOnWorkerThread(se::Stream* stream,
 }
 
 static StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
-    se::Platform* platform, LocalClient* client, double memory_fraction) {
+    se::Platform* platform, LocalClient* client, double memory_fraction,
+    bool preallocate) {
   CHECK_GT(client->backend().device_count(), 0);
   std::vector<std::unique_ptr<tensorflow::Allocator>> allocators;
   for (se::StreamExecutor* executor : client->backend().stream_executors()) {
@@ -178,11 +179,18 @@ static StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
                          device_ordinal);
     }
     size_t allocator_memory = free_memory * memory_fraction;
-    LOG(INFO) << "XLA backend will use up to " << allocator_memory
-              << " bytes on device " << device_ordinal << " for BFCAllocator.";
-
+    if (preallocate) {
+      LOG(INFO) << "XLA backend allocating " << allocator_memory
+                << " bytes on device " << device_ordinal
+                << " for BFCAllocator.";
+    } else {
+      LOG(INFO) << "XLA backend will use up to " << allocator_memory
+                << " bytes on device " << device_ordinal
+                << " for BFCAllocator.";
+    }
     auto gpu_bfc_allocator = absl::make_unique<tensorflow::BFCAllocator>(
-        sub_allocator.release(), allocator_memory, /*allow_growth=*/true,
+        sub_allocator.release(), allocator_memory,
+        /*allow_growth=*/!preallocate,
         absl::StrCat("GPU_", device_ordinal, "_bfc"));
     allocators.emplace_back(std::move(gpu_bfc_allocator));
   }
@@ -212,7 +220,8 @@ StatusOr<std::shared_ptr<PyLocalClient>> PyLocalClient::Get(
     }
     TF_ASSIGN_OR_RETURN(
         auto bfc_allocator,
-        CreateBFCAllocator(platform, client, allocator_config.memory_fraction));
+        CreateBFCAllocator(platform, client, allocator_config.memory_fraction,
+                           allocator_config.preallocate));
     allocator = std::move(bfc_allocator);
   }
   return std::make_shared<PyLocalClient>(platform_name, client,

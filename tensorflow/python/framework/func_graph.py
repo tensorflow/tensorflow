@@ -430,7 +430,7 @@ class FuncGraph(ops.Graph):
             compat.as_bytes(op_type), 1, uncaptured_inputs, attr_list,
             context.context())
       else:
-        op = ops.get_default_graph().create_op(
+        op = ops.get_default_graph()._create_op_internal(  # pylint: disable=protected-access
             op_type,
             uncaptured_inputs,
             dtypes,
@@ -438,7 +438,7 @@ class FuncGraph(ops.Graph):
             name,
             attrs,
             op_def,
-            compute_device=compute_device)
+            compute_device)
         value = op.outputs[0]
     captured_value = self.capture(value)
     return captured_value.op
@@ -510,9 +510,9 @@ class FuncGraph(ops.Graph):
         inp = ctxt.AddValue(inp)
       inp = self.capture(inp)
       inputs[i] = inp
-    return super(FuncGraph, self).create_op(
+    return super(FuncGraph, self)._create_op_internal(  # pylint: disable=protected-access
         op_type, inputs, dtypes, input_types, name, attrs, op_def,
-        compute_device=compute_device)
+        compute_device)
 
   def capture(self, tensor, name=None):
     """Captures `tensor` if it's external to this graph.

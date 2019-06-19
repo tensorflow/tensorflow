@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
@@ -49,6 +50,8 @@ struct OpData {
   int input_left_shift = 0;
   int32_t input_range_radius = 0;
   int diff_min = 0;
+  uint8_t table[256] = {0};
+  uint8_t* table_zero = nullptr;
 };
 
 struct LogSoftmaxOpData : public OpData {
@@ -83,6 +86,41 @@ TfLiteStatus CheckOutputQuantParams(TfLiteContext* context,
   }
   return kTfLiteOk;
 }
+
+template <typename T>
+void PopulateLookupTable(struct OpData* data, const TfLiteTensor* input,
+                         TfLiteTensor* output,
+                         const std::function<float(float)>& transform) {
+  static_assert(sizeof(T) == 1, "Lookup table valid only for 8bit");
+  const float inverse_scale = 1 / output->params.scale;
+  int32_t maxval = std::numeric_limits<T>::max();
+  int32_t minval = std::numeric_limits<T>::min();
+  data->table_zero = &data->table[-minval];
+  for (int32_t val = minval; val <= maxval; ++val) {
+    const float dequantized =
+        input->params.scale * (val - input->params.zero_point);
+    const float transformed = transform(dequantized);
+    const float rescaled = std::round(transformed * inverse_scale);
+    const int32_t quantized =
+        static_cast<int32_t>(rescaled + output->params.zero_point);
+    data->table_zero[val] =
+        static_cast<uint8_t>(std::max(std::min(maxval, quantized), minval));
+  }
+}
+
+template <typename T>
+void EvalUsingLookupTable(struct OpData* data, const TfLiteTensor* input,
+                          TfLiteTensor* output) {
+  static_assert(sizeof(T) == 1, "Lookup table valid only for 8bit");
+  const int size =
+      MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
+  T* output_data = GetTensorData<T>(output);
+  const T* input_data = GetTensorData<T>(input);
+  for (int i = 0; i < size; ++i) {
+    *output_data++ = static_cast<T>(data->table_zero[*input_data++]);
+  }
+}
+
 }  // namespace
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -144,13 +182,21 @@ TfLiteStatus HardSwishPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_STATUS(GenericPrepare(context, node));
   TfLiteTensor* output = GetOutput(context, node, 0);
 
-  if (output->type == kTfLiteUInt8) {
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
     HardSwishData* data = static_cast<HardSwishData*>(node->user_data);
     HardSwishParams* params = &data->params;
     const TfLiteTensor* input = GetInput(context, node, 0);
     // TODO(131260336): Maybe pick a better way to select the denominator shift.
     // Include input shift into the shift.
-    const int32_t extra_input_shift = 3;
+    static constexpr int32_t extra_input_shift = 3;
+    // Note: optimized implementations will rely on the ability to perform this
+    // left shift within int16 without overflow. The values being left-shifted
+    // range in [-255, 255] i.e. just under 2^8 in absolute value, and after the
+    // left shift they will still be added the 'three_input' value, which is
+    // safe if they're not greater than 2^14 in absolute value (since 2^15 is
+    // the magnitude of the boundaries of int16 range). 14-8 == 6, so we
+    // require extra_input_shift to be no greater than 6.
+    static_assert(extra_input_shift <= 6, "");
     const auto in_scale = input->params.scale;
     params->input_zero_point = input->params.zero_point;
     const auto out_scale = output->params.scale;
@@ -215,18 +261,12 @@ TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
 
-  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
-    static constexpr int kInputIntegerBits = 4;
-
-    const double input_real_multiplier =
-        input->params.scale *
-        static_cast<double>(1 << (31 - kInputIntegerBits));
-
-    QuantizeMultiplierGreaterThanOne(input_real_multiplier,
-                                     &data->input_multiplier,
-                                     &data->input_left_shift);
-    data->input_range_radius =
-        CalculateInputRadius(kInputIntegerBits, data->input_left_shift);
+  if (input->type == kTfLiteUInt8) {
+    PopulateLookupTable<uint8_t>(data, input, output,
+                                 [](float value) { return std::tanh(value); });
+  } else if (input->type == kTfLiteInt8) {
+    PopulateLookupTable<int8_t>(data, input, output,
+                                [](float value) { return std::tanh(value); });
   } else if (input->type == kTfLiteInt16) {
     static constexpr int kInputIntegerBits = 3;
     static constexpr int kOutputFractionalBits = 15;
@@ -274,28 +314,16 @@ TfLiteStatus SigmoidPrepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
 
-  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
-    if (input->type == kTfLiteUInt8) {
-      TF_LITE_ENSURE_EQ(context, output->params.zero_point,
-                        std::numeric_limits<uint8_t>::min());
-    }
-    if (input->type == kTfLiteInt8) {
-      TF_LITE_ENSURE_EQ(context, output->params.zero_point,
-                        std::numeric_limits<int8_t>::min());
-    }
+  if (input->type == kTfLiteUInt8) {
     TF_LITE_ENSURE(context, output->params.scale == 1. / 256);
-
-    static constexpr int kInputIntegerBits = 4;
-
-    const double input_real_multiplier =
-        input->params.scale *
-        static_cast<double>(1 << (31 - kInputIntegerBits));
-
-    QuantizeMultiplierGreaterThanOne(input_real_multiplier,
-                                     &data->input_multiplier,
-                                     &data->input_left_shift);
-    data->input_range_radius =
-        CalculateInputRadius(kInputIntegerBits, data->input_left_shift);
+    PopulateLookupTable<uint8_t>(data, input, output, [](float value) {
+      return 1.0f / (1.0f + std::exp(-value));
+    });
+  } else if (input->type == kTfLiteInt8) {
+    TF_LITE_ENSURE(context, output->params.scale == 1. / 256);
+    PopulateLookupTable<int8_t>(data, input, output, [](float value) {
+      return 1.0f / (1.0f + std::exp(-value));
+    });
   } else if (input->type == kTfLiteInt16) {
     static constexpr int kInputIntegerBits = 3;
     static constexpr int kOutputFractionalBits = 15;
@@ -492,6 +520,7 @@ TfLiteStatus Relu1Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
+template <KernelType kernel_type>
 TfLiteStatus HardSwishEval(TfLiteContext* context, TfLiteNode* node) {
   HardSwishData* data = static_cast<HardSwishData*>(node->user_data);
 
@@ -499,22 +528,47 @@ TfLiteStatus HardSwishEval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   switch (input->type) {
     case kTfLiteFloat32: {
-      reference_ops::HardSwish(
-          GetTensorShape(input), GetTensorData<float>(input),
-          GetTensorShape(output), GetTensorData<float>(output));
+      if (kernel_type == kReference) {
+        reference_ops::HardSwish(
+            GetTensorShape(input), GetTensorData<float>(input),
+            GetTensorShape(output), GetTensorData<float>(output));
+      } else {
+        optimized_ops::HardSwish(
+            GetTensorShape(input), GetTensorData<float>(input),
+            GetTensorShape(output), GetTensorData<float>(output));
+      }
       return kTfLiteOk;
     } break;
     case kTfLiteUInt8: {
       HardSwishParams& params = data->params;
-
-      reference_ops::HardSwish<uint8_t>(
-          params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-          GetTensorShape(output), GetTensorData<uint8_t>(output));
+      if (kernel_type == kReference) {
+        reference_ops::HardSwish(
+            params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+            GetTensorShape(output), GetTensorData<uint8_t>(output));
+      } else {
+        optimized_ops::HardSwish(
+            params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+            GetTensorShape(output), GetTensorData<uint8_t>(output));
+      }
+      return kTfLiteOk;
+    } break;
+    case kTfLiteInt8: {
+      HardSwishParams& params = data->params;
+      if (kernel_type == kReference) {
+        reference_ops::HardSwish(
+            params, GetTensorShape(input), GetTensorData<int8_t>(input),
+            GetTensorShape(output), GetTensorData<int8_t>(output));
+      } else {
+        optimized_ops::HardSwish(
+            params, GetTensorShape(input), GetTensorData<int8_t>(input),
+            GetTensorShape(output), GetTensorData<int8_t>(output));
+      }
       return kTfLiteOk;
     } break;
     default:
       context->ReportError(
-          context, "Only float32, uint8 are supported currently, got %s.",
+          context,
+          "Only float32, uint8 and int8 are supported currently, got %s.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
@@ -599,30 +653,11 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     case kTfLiteUInt8: {
-      TanhParams params;
-      params.input_zero_point = input->params.zero_point;
-      params.input_range_radius = data->input_range_radius;
-      params.input_multiplier = data->input_multiplier;
-      params.input_left_shift = data->input_left_shift;
-      if (kernel_type == kGenericOptimized) {
-        optimized_ops::Tanh(
-            params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-            GetTensorShape(output), GetTensorData<uint8_t>(output));
-      } else {
-        reference_ops::Tanh(
-            params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-            GetTensorShape(output), GetTensorData<uint8_t>(output));
-      }
+      EvalUsingLookupTable<uint8_t>(data, input, output);
       return kTfLiteOk;
     } break;
     case kTfLiteInt8: {
-      const auto input_shape = GetTensorShape(input);
-      const auto output_shape = GetTensorShape(output);
-      const int size = MatchingFlatSize(input_shape, output_shape);
-      reference_integer_ops::Tanh(
-          input->params.zero_point, data->input_range_radius,
-          data->input_multiplier, data->input_left_shift, size,
-          GetTensorData<int8_t>(input), GetTensorData<int8_t>(output));
+      EvalUsingLookupTable<int8_t>(data, input, output);
       return kTfLiteOk;
     } break;
     default:
@@ -668,29 +703,11 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     case kTfLiteUInt8: {
-      LogisticParams params;
-      params.input_zero_point = input->params.zero_point;
-      params.input_range_radius = data->input_range_radius;
-      params.input_multiplier = data->input_multiplier;
-      params.input_left_shift = data->input_left_shift;
-      if (kernel_type == kGenericOptimized) {
-        optimized_ops::Logistic(
-            params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-            GetTensorShape(output), GetTensorData<uint8_t>(output));
-      } else {
-        reference_ops::Logistic(
-            params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-            GetTensorShape(output), GetTensorData<uint8_t>(output));
-      }
+      EvalUsingLookupTable<uint8_t>(data, input, output);
       break;
     }
     case kTfLiteInt8: {
-      const int input_size =
-          MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
-      reference_integer_ops::Logistic(
-          input->params.zero_point, data->input_range_radius,
-          data->input_multiplier, data->input_left_shift, input_size,
-          GetTensorData<int8_t>(input), GetTensorData<int8_t>(output));
+      EvalUsingLookupTable<int8_t>(data, input, output);
       break;
     }
     default:
@@ -1070,9 +1087,19 @@ TfLiteRegistration* Register_LEAKY_RELU() {
 TfLiteRegistration* Register_HARD_SWISH() {
   static TfLiteRegistration r = {
       activations::HardSwishInit, activations::HardSwishFree,
-      activations::HardSwishPrepare, activations::HardSwishEval};
+      activations::HardSwishPrepare,
+      activations::HardSwishEval<activations::kGenericOptimized>};
   return &r;
 }
+
+TfLiteRegistration* Register_HARD_SWISH_REF() {
+  static TfLiteRegistration r = {
+      activations::HardSwishInit, activations::HardSwishFree,
+      activations::HardSwishPrepare,
+      activations::HardSwishEval<activations::kReference>};
+  return &r;
+}
+
 }  // namespace builtin
 }  // namespace ops
 }  // namespace tflite
