@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -memref-dataflow-opt -verify-diagnostics | FileCheck %s
+// RUN: mlir-opt %s -memref-dataflow-opt | FileCheck %s
 
 // CHECK-DAG: [[MAP0:#map[0-9]+]] = (d0, d1) -> (d1 + 1)
 // CHECK-DAG: [[MAP1:#map[0-9]+]] = (d0, d1) -> (d0)

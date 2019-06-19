@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -quantizer-remove-instrumentation -verify-diagnostics -split-input-file | FileCheck %s
+// RUN: mlir-opt %s -quantizer-remove-instrumentation -split-input-file | FileCheck %s
 
 // -----
 // CHECK-LABEL: remove_ops
