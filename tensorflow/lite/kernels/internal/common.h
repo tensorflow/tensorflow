@@ -21,31 +21,8 @@ limitations under the License.
 #endif
 #endif
 
-#ifndef USE_NEON
-#if defined(__ARM_NEON__) || defined(__ARM_NEON)
-#define USE_NEON
-#include <arm_neon.h>
-#endif
-
-#if defined __GNUC__ && defined __SSE4_1__ && !defined TF_LITE_DISABLE_X86_NEON
-#define USE_NEON
-
-#define OPTIMIZED_OPS_H__IGNORE_DEPRECATED_DECLARATIONS
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#pragma GCC diagnostic ignored "-Wattributes"
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wnarrowing"
-#pragma GCC diagnostic ignored "-Wsequence-point"
-
-#include "NEON_2_SSE.h"
-
-#pragma GCC diagnostic pop
-#endif
-#endif
-
 #include "fixedpoint/fixedpoint.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
