@@ -2797,96 +2797,55 @@ Status ConvertRelu6(OpConverterParams* params) {
 Status ConvertBiasAdd(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(
-      CheckInputsWeights(*params, {{"value", false}, {"bias", true}}));
+
+  if (inputs.size() != 2) {
+    return errors::InvalidArgument(
+        "BiasAdd expects exactly 2 inputs, but received ", inputs.size());
+  }
+
+  if (inputs[0].is_weights() && inputs[1].is_weights()) {
+    return errors::InvalidArgument(
+        "All inputs are weights, but Grappler is expected to fold them.");
+  }
+
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+
+  TFAttrs attrs(node_def);
+  const string& data_format = attrs.get<string>("data_format");
+
+  nvinfer1::Dims input_shape = inputs.at(0).GetTrtDims();
+  nvinfer1::Dims bias_shape = inputs.at(1).GetTrtDims();
+  // If the input is NCHW, then we need to unsqueeze the bias such that its last
+  // dimensions are 1s (and the first dimension is C).
+  if (data_format == "NCHW") {
+    bias_shape.nbDims = input_shape.nbDims;
+    std::fill(bias_shape.d + 1, bias_shape.d + bias_shape.nbDims, 1);
+  } else {
+    // Next, broadcast the bias across the input.
+    TF_RETURN_IF_ERROR(GetTrtBroadcastShape(inputs.at(0), inputs.at(1),
+                                            &input_shape, &bias_shape));
+  }
+
+  // Convert input to a TRT tensor
+  nvinfer1::ITensor* input_tensor{nullptr};
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      inputs.at(0), input_shape, params->validation_only, &input_tensor));
+
+  // Finally, reshape bias. Since the bias is usually a constant, this will
+  // normally happen at conversion-time.
+  nvinfer1::ITensor* bias_tensor{nullptr};
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      inputs.at(1), bias_shape, params->validation_only, &bias_tensor));
+  VLOG(2) << "Bias shape adjusted to " << DebugString(bias_shape);
+
   if (params->validation_only) return Status::OK();
 
-  nvinfer1::ITensor* tensor = inputs.at(0).tensor();
-  const nvinfer1::Dims original_dims = tensor->getDimensions();
-  TFAttrs attrs(node_def);
-  const string data_format = attrs.get<string>("data_format");
-  const int channel_index =
-      (data_format == "NHWC" ? original_dims.nbDims - 1 : 0);
-
-  nvinfer1::Permutation permutation;
-  if (channel_index != 0) {
-    // Permute the dimensions so that the channel dimension is the first
-    // dimension.
-    for (int i = 0; i < original_dims.nbDims; ++i) {
-      permutation.order[i] = i;
-    }
-    permutation.order[0] = channel_index;
-    permutation.order[channel_index] = 0;
-    VLOG(1) << "ConvertBiasAdd permutation: "
-            << DebugString(permutation, original_dims.nbDims);
-  }
-
-  // TensorRT addScale requires input to be of rank 3, we need to apply
-  // transpose as well as reshape.
-  // TODO(laigd): this doesn't match what the TRT doc says, fix the doc?
-  if (channel_index != 0 || original_dims.nbDims != 3) {
-    nvinfer1::IShuffleLayer* shuffle_layer =
-        params->converter->network()->addShuffle(*tensor);
-    TFTRT_RETURN_ERROR_IF_NULLPTR(shuffle_layer, node_def.name());
-    params->converter->MarkQuantizationRangesAsInferrable(
-        tensor, shuffle_layer->getOutput(0));
-
-    // NOTE(laigd): for some reason we need to apply the reshape
-    // unconditionally. The default shape has nbDims==-1 and it seems the
-    // behavior is undefined in some cases.
-    nvinfer1::Dims reshape_dims;
-    reshape_dims.nbDims = 3;
-    // 0 means copying from input; -1 means inferring from the rest.
-    reshape_dims.d[0] = 0;
-    reshape_dims.d[1] = original_dims.nbDims >= 2 ? 0 : 1;
-    reshape_dims.d[2] = original_dims.nbDims >= 3 ? -1 : 1;
-    shuffle_layer->setReshapeDimensions(reshape_dims);
-
-    if (channel_index != 0) {
-      shuffle_layer->setFirstTranspose(permutation);
-    }
-    tensor = shuffle_layer->getOutput(0);
-  }
-
-  TRT_ShapedWeights weights = inputs.at(1).weights();
-  nvinfer1::ScaleMode mode = nvinfer1::ScaleMode::kCHANNEL;
-  if (weights.shape_.d[0] == 1) {
-    mode = nvinfer1::ScaleMode::kUNIFORM;
-  }
-
-  TRT_ShapedWeights empty_weights(weights.TrtDType());
-  nvinfer1::IScaleLayer* layer = params->converter->network()->addScale(
-      *tensor, mode, weights.GetTrtWeights(), empty_weights.GetTrtWeights(),
-      empty_weights.GetTrtWeights());
+  nvinfer1::IElementWiseLayer* layer =
+      params->converter->network()->addElementWise(
+          *input_tensor, *bias_tensor, nvinfer1::ElementWiseOperation::kSUM);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
-
-  // Restore transpose & reshape.
-  if (channel_index != 0 || original_dims.nbDims != 3) {
-    nvinfer1::IShuffleLayer* shuffle_layer =
-        params->converter->network()->addShuffle(*output_tensor);
-    TFTRT_RETURN_ERROR_IF_NULLPTR(shuffle_layer, node_def.name());
-    // NOTE: for same reason as mentioned above we need to apply the reshape
-    // unconditionally.
-    nvinfer1::Dims reshape_dims = original_dims;
-    if (channel_index != 0) {
-      // NOTE: according to NVIDIA dimension types are deprecated, so we don't
-      // need to copy them back.
-      reshape_dims.d[channel_index] = original_dims.d[0];
-      reshape_dims.d[0] = original_dims.d[channel_index];
-    }
-    shuffle_layer->setReshapeDimensions(reshape_dims);
-
-    if (channel_index != 0) {
-      shuffle_layer->setSecondTranspose(permutation);
-    }
-    params->converter->MarkQuantizationRangesAsInferrable(
-        output_tensor, shuffle_layer->getOutput(0));
-    output_tensor = shuffle_layer->getOutput(0);
-  }
 
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
