@@ -805,7 +805,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
 
     tensorflow::int64 op_id;
     int32 output_num;
-    TF_RETURN_IF_ERROR(input->RemoteAddress(op->Device(), &op_id, &output_num));
+    TF_RETURN_IF_ERROR(
+        input->RemoteAddress(input->device(), &op_id, &output_num));
 
     auto* remote_op_input = remote_op->add_inputs();
     remote_op_input->set_op_id(op_id);
