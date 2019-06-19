@@ -41,6 +41,12 @@ class XlaActivityListener {
   virtual Status Listen(
       const XlaJitCompilationActivity& jit_compilation_activity) = 0;
 
+  // Called at program exit in best-effort manner to give listeners a chance to
+  // flush their state.
+  //
+  // Default implementation is a no-op.
+  virtual void Flush();
+
   virtual ~XlaActivityListener();
 };
 
