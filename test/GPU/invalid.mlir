@@ -1,4 +1,4 @@
-// RUN: mlir-opt -split-input-file -verify %s
+// RUN: mlir-opt -split-input-file -verify-diagnostics %s
 
 func @not_enough_sizes(%sz : index) {
   // expected-error@+1 {{expected 6 or more operands}}

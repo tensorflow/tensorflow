@@ -208,7 +208,7 @@ simple pass that checks dependencies and emits them as "notes", allowing him to
 write tests like this:
 
 ```mlir {.mlir}
-  // RUN: mlir-opt %s -memref-dependence-check -verify
+  // RUN: mlir-opt %s -memref-dependence-check -verify-diagnostics
   func @different_memrefs() {
     %m.a = alloc() : memref<100xf32>
     %m.b = alloc() : memref<100xf32>

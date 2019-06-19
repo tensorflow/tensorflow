@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -test-loop-fusion -test-loop-fusion-slice-computation -split-input-file -verify | FileCheck %s
+// RUN: mlir-opt %s -test-loop-fusion -test-loop-fusion-slice-computation -split-input-file -verify-diagnostics | FileCheck %s
 
 // -----
 

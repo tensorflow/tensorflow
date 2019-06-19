@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -split-input-file -fxpmath-lower-uniform-real-math -canonicalize -verify | FileCheck %s --dump-input=always
+// RUN: mlir-opt %s -split-input-file -fxpmath-lower-uniform-real-math -canonicalize -verify-diagnostics | FileCheck %s --dump-input=always
 
 // -----
 // Verify lowering when operands and result have the same fixedpoint scale.

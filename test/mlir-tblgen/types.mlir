@@ -1,4 +1,4 @@
-// RUN: mlir-test-opt %s -split-input-file -verify | FileCheck %s
+// RUN: mlir-test-opt %s -split-input-file -verify-diagnostics | FileCheck %s
 
 // -----
 

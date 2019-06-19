@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -split-input-file -verify
+// RUN: mlir-opt %s -split-input-file -verify-diagnostics
 
 // -----
 // Unrecognized token: missing storage type maximum

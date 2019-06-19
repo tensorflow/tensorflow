@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -test-detect-parallel -split-input-file -verify | FileCheck %s
+// RUN: mlir-opt %s -test-detect-parallel -split-input-file -verify-diagnostics | FileCheck %s
 
 // CHECK-LABEL: func @loop_nest_3d_outer_two_parallel
 func @loop_nest_3d_outer_two_parallel(%N : index) {

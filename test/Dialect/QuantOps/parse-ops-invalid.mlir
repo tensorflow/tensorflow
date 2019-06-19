@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -split-input-file -verify
+// RUN: mlir-opt %s -split-input-file -verify-diagnostics
 
 // -----
 func @invalidStatisticsMismatchedLayerType(%arg0: tensor<8x4x3xf32>) ->

@@ -1,4 +1,4 @@
-// RUN: mlir-opt -split-input-file -verify %s | FileCheck %s
+// RUN: mlir-opt -split-input-file -verify-diagnostics %s | FileCheck %s
 
 // TODO(antiagainst): Remove the wrapping functions once MLIR is moved to
 // be generally region-based.

@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -split-input-file -verify -quant-convert-simulated-quantization
+// RUN: mlir-opt %s -split-input-file -verify-diagnostics -quant-convert-simulated-quantization
 
 // -----
 // Verify that a mismatched range errors.

@@ -1,4 +1,4 @@
-// RUN: mlir-opt -split-input-file -verify %s | FileCheck %s
+// RUN: mlir-opt -split-input-file -verify-diagnostics %s | FileCheck %s
 
 //===----------------------------------------------------------------------===//
 // spv.FMul

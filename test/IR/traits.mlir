@@ -1,4 +1,4 @@
-// RUN: mlir-test-opt %s -split-input-file -verify | FileCheck %s
+// RUN: mlir-test-opt %s -split-input-file -verify-diagnostics | FileCheck %s
 
 // CHECK: succeededSameOperandAndResultElementType
 func @succeededSameOperandAndResultElementType(%t10x10 : tensor<10x10xf32>, %t1: tensor<1xf32>, %v1: vector<1xf32>, %t1i: tensor<1xi32>) {

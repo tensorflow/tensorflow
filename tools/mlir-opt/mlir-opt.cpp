@@ -59,7 +59,7 @@ static cl::opt<bool>
                    cl::init(false));
 
 static cl::opt<bool>
-    verifyDiagnostics("verify",
+    verifyDiagnostics("verify-diagnostics",
                       cl::desc("Check that emitted diagnostics match "
                                "expected-* lines on the corresponding line"),
                       cl::init(false));
@@ -119,8 +119,8 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
   // Parse the input file.
   MLIRContext context;
 
-  // If we are in verify mode then we have a lot of work to do, otherwise just
-  // perform the actions without worrying about it.
+  // If we are in verify diagnostics mode then we have a lot of work to do,
+  // otherwise just perform the actions without worrying about it.
   if (!verifyDiagnostics) {
     SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, &context);
     return performActions(sourceMgr, &context);

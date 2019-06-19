@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -verify | mlir-opt -verify | FileCheck %s
+// RUN: mlir-opt %s -verify-diagnostics | mlir-opt -verify-diagnostics | FileCheck %s
 
 // CHECK: #[[map0:.*]] = (d0, d1, d2) -> (d0, d2, d1)
 // CHECK: #[[map1:.*]] = (d0, d1, d2) -> (d2, d1, d0)

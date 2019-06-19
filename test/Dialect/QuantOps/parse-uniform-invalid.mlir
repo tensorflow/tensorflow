@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -split-input-file -verify
+// RUN: mlir-opt %s -split-input-file -verify-diagnostics
 
 // -----
 // Invalid type.

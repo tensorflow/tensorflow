@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -split-input-file -verify
+// RUN: mlir-opt %s -split-input-file -verify-diagnostics
 
 func @dim(tensor<1xf32>) {
 ^bb(%0: tensor<1xf32>):

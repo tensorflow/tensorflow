@@ -1,5 +1,5 @@
-// RUN: linalg1-opt %s -verify | FileCheck %s
-// RUN: linalg1-opt %s -lower-linalg-to-llvm -verify | FileCheck %s -check-prefix=LLVM
+// RUN: linalg1-opt %s -verify-diagnostics | FileCheck %s
+// RUN: linalg1-opt %s -lower-linalg-to-llvm -verify-diagnostics | FileCheck %s -check-prefix=LLVM
 
 func @view_op(%arg0: memref<f32>, %arg1: memref<?xf32>, %arg2: memref<?x?xf32>) {
   %c3 = constant 3 : index
