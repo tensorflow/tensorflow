@@ -71,6 +71,9 @@ public:
   using value_iterator = NamedTypeConstraint *;
   using value_range = llvm::iterator_range<value_iterator>;
 
+  // Returns true if this op has variadic operands or results.
+  bool isVariadic() const;
+
   // Op result iterators.
   value_iterator result_begin();
   value_iterator result_end();

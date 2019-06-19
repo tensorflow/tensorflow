@@ -262,6 +262,12 @@ std::string PatternEmitter::handleConstantAttr(Attribute attr,
 // Helper function to match patterns.
 void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
   Operator &op = tree.getDialectOp(opMap);
+  if (op.isVariadic()) {
+    PrintFatalError(loc, formatv("matching op '{0}' with variadic "
+                                 "operands/results is unsupported right now",
+                                 op.getOperationName()));
+  }
+
   int indent = 4 + 2 * depth;
   // Skip the operand matching at depth 0 as the pattern rewriter already does.
   if (depth != 0) {
@@ -473,10 +479,6 @@ void PatternEmitter::emit(StringRef rewriteName) {
   const Operator &rootOp = pattern.getSourceRootOp();
   auto rootName = rootOp.getOperationName();
 
-  if (rootOp.getNumVariadicResults() != 0)
-    PrintFatalError(
-        loc, "replacing op with variadic results not supported right now");
-
   // Collect the set of result operations.
   llvm::SmallPtrSet<const Operator *, 4> results;
   for (unsigned i = 0, e = pattern.getNumResults(); i != e; ++i)
@@ -675,17 +677,22 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
   Operator &resultOp = tree.getDialectOp(opMap);
   auto numOpArgs = resultOp.getNumArgs();
 
+  if (resultOp.getNumResults() > 1) {
+    PrintFatalError(
+        loc, formatv("generating multiple-result op '{0}' is unsupported now",
+                     resultOp.getOperationName()));
+  }
+  if (resultOp.isVariadic()) {
+    PrintFatalError(loc, formatv("generating op '{0}' with variadic "
+                                 "operands/results is unsupported now",
+                                 resultOp.getOperationName()));
+  }
+
   if (numOpArgs != tree.getNumArgs()) {
     PrintFatalError(loc, formatv("resultant op '{0}' argument number mismatch: "
                                  "{1} in pattern vs. {2} in definition",
                                  resultOp.getOperationName(), tree.getNumArgs(),
                                  numOpArgs));
-  }
-
-  if (resultOp.getNumResults() > 1) {
-    PrintFatalError(
-        loc, formatv("generating multiple-result op '{0}' is unsupported now",
-                     resultOp.getOperationName()));
   }
 
   // A map to collect all nested DAG child nodes' names, with operand index as

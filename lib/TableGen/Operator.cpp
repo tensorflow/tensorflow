@@ -89,6 +89,10 @@ StringRef tblgen::Operator::getExtraClassDeclaration() const {
 
 const llvm::Record &tblgen::Operator::getDef() const { return def; }
 
+bool tblgen::Operator::isVariadic() const {
+  return getNumVariadicOperands() != 0 || getNumVariadicResults() != 0;
+}
+
 auto tblgen::Operator::result_begin() -> value_iterator {
   return results.begin();
 }
