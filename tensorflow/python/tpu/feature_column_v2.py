@@ -502,7 +502,7 @@ class _TPUSharedEmbeddingColumnV2(_TPUBaseEmbeddingColumn,
     # Note that in Feature Column V2, shared embeddings have no scope.
     _record_variable_scope_and_name(
         self.get_embedding_var_name(),
-        'embedding_weights',
+        self.shared_embedding_column_creator._name,
         is_shared_embedding=True)
     return tensor
 
