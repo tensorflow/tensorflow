@@ -183,11 +183,11 @@ def create_in_process_cluster(num_workers,
       protocol='grpc')
 
 
-def create_cluster_spec(test_obj,
-                        has_chief=False,
+def create_cluster_spec(has_chief=False,
                         num_workers=1,
                         num_ps=0,
-                        has_eval=False):
+                        has_eval=False,
+                        test_obj=None):
   """Create a cluster spec with tasks with unused local ports."""
   if _portpicker_import_error:
     raise _portpicker_import_error  # pylint: disable=raising-bad-type
@@ -207,6 +207,8 @@ def create_cluster_spec(test_obj,
     if has_eval:
       cluster_spec['evaluator'] = ['localhost:%s' % pick_unused_port()]
   except portpicker.NoFreePortFoundError:
+    if test_obj is None:
+      raise
     test_obj.skipTest('Flakes in portpicker library do not represent '
                       'TensorFlow errors.')
   return cluster_spec
