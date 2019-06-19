@@ -137,7 +137,7 @@ Status RunCudnnConvForwardActivation(CudnnConvParams params,
 }
 
 template <typename ElementType, typename BiasType, typename OutputType,
-          typename std::enable_if<!std::is_integral<ElementType>::value>* = nullptr>
+          typename std::enable_if<!std::is_integral<ElementType>::value>::type* = nullptr>
 Status RunCudnnConvInternalImpl(
     CudnnConvParams params, se::ScratchAllocator* scratch_allocator,
     se::Stream* stream, RunConvOptions options,
@@ -178,19 +178,20 @@ Status RunCudnnConvInternalImpl(
   return Status::OK();
 }
 
-template <>
-Status RunCudnnConvInternalImpl<int8, float, float>(
+template <typename ElementType, typename BiasType, typename OutputType,
+          typename std::enable_if<std::is_integral<ElementType>::value>::type* = nullptr>
+Status RunCudnnConvInternalImpl(
     CudnnConvParams params, se::ScratchAllocator* scratch_allocator,
     se::Stream* stream, RunConvOptions options,
-    DeviceMemory<int8> input_buf, DeviceMemory<int8> filter_buf,
-    DeviceMemory<float> output_buf, AlgorithmConfig algorithm) {
+    DeviceMemory<ElementType> input_buf, DeviceMemory<ElementType> filter_buf,
+    DeviceMemory<OutputType> output_buf, AlgorithmConfig algorithm) {
   switch (params.kind) {
     case CudnnConvKind::kForward:
       return RunCudnnConvForward(params, scratch_allocator, stream, options,
                                  input_buf, filter_buf, output_buf, algorithm);
       break;
     case CudnnConvKind::kForwardActivation: {
-      return RunCudnnConvForwardActivation<int8, float, float>(params, scratch_allocator, stream,
+      return RunCudnnConvForwardActivation<ElementType, BiasType, OutputType>(params, scratch_allocator, stream,
                                            options, input_buf, filter_buf,
                                            output_buf, algorithm);
     }
@@ -454,9 +455,20 @@ Status RunCudnnConv(const HloCustomCallInstruction* conv,
     case F64:
       return RunCudnnConvImpl<double, double, double>(params, scratch_allocator, stream,
                                       options);
-    case S8:
-      return RunCudnnConvImpl<int8, float, float>(params, scratch_allocator,
-                                                  stream, options);
+    case S8: {
+      PrimitiveType output_primitive_type =
+          conv->shape().tuple_shapes(0).element_type();
+      switch (output_primitive_type) {
+        case F32:
+          return RunCudnnConvImpl<int8, float, float>(params, scratch_allocator,
+                                                      stream, options);
+        case S8:
+          return RunCudnnConvImpl<int8, float, int8>(params, scratch_allocator,
+                                                     stream, options);
+        default:
+          LOG(FATAL) << conv->ToString();
+      }
+    }
     default:
       LOG(FATAL) << conv->ToString();
   }

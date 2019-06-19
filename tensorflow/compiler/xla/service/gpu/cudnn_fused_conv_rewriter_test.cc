@@ -65,6 +65,19 @@ class CudnnFusedConvRewriterTest : public HloTestBase {
     }
   }
 
+  void TestClamp(absl::string_view hlo_string) {
+    string alpha_conv_scalar, alpha_side_input_scalar;
+    string elementwise_type;
+
+    string optimized_hlo_string = GetOptimizedHlo(hlo_string);
+    EXPECT_THAT(optimized_hlo_string,
+                Not(HasSubstr("Convert")));
+    EXPECT_THAT(optimized_hlo_string,
+                HasSubstr("__cudnn$conv"));
+    EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.01}))
+        << hlo_string;
+  }
+
   void TestNotMatchWithAllTypes(absl::string_view hlo_string) {
     for (absl::string_view type : {"f16", "f32", "f64"}) {
       string hlo_resolved_string =
@@ -315,6 +328,62 @@ TEST_F(CudnnFusedConvRewriterTest, PreservesMetadata) {
   EXPECT_THAT(
       optimized_hlo_string,
       ::testing::ContainsRegex(R"(custom-call.*metadata=\{op_type="foo"\})"));
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestConvClamp) {
+  // max(0, convert(conv(x, w)));
+  TestClamp(R"(
+    HloModule Test
+
+    ENTRY Test {
+      zero = s8[] constant(0)
+      zeros = s8[1,32,9,9] broadcast(zero), dimensions={}
+
+      input = s8[1,17,9,9] parameter(0)
+      filter = s8[3,3,17,32] parameter(1)
+
+      conv = f32[1,32,9,9] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+
+      lower = f32[] constant(-128)
+      lowers = f32[1,32,9,9] broadcast(lower), dimensions={}
+      upper = f32[] constant(127)
+      uppers = f32[1,32,9,9] broadcast(upper), dimensions={}
+
+      clamp = f32[1,32,9,9] clamp(lowers, conv, uppers)
+
+      convert = s8[1,32,9,9] convert(clamp)
+      ROOT relu = s8[1,32,9,9] maximum(zeros, convert)
+    })");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestFusedConvClamp) {
+  // max(0, convert(conv(x, w)));
+  TestClamp(R"(
+    HloModule Test
+
+    ENTRY Test {
+      zero = f32[] constant(0)
+      zeros = f32[1,3,3,64] broadcast(zero), dimensions={}
+
+      input = s8[1,3,3,64] parameter(0)
+      filter = s8[3,3,64,64] parameter(1)
+      bias = f32[64] parameter(2)
+
+      conv = f32[1,3,3,64] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, feature_group_count=1
+      broadcasted_bias = f32[1,3,3,64] broadcast(bias), dimensions={3}
+      add1 = f32[1,3,3,64] add(conv, broadcasted_bias)
+      relu = f32[1,3,3,64] maximum(zeros, add1)
+
+
+      lower = f32[] constant(-128)
+      lowers = f32[1,3,3,64] broadcast(lower), dimensions={}
+      upper = f32[] constant(127)
+      uppers = f32[1,3,3,64] broadcast(upper), dimensions={}
+
+      clamp = f32[1,3,3,64] clamp(lowers, relu, uppers)
+
+      ROOT convert = s8[1,3,3,64] convert(clamp)      
+    })");
 }
 
 }  // namespace
