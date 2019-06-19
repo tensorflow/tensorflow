@@ -501,7 +501,6 @@ HloInstructionDescription::HloInstructionDescription(
     // Inplace read-only ops.
     // These ops are implemented as inplace ops on operand 0.
     case HloOpcode::kAddDependency:
-    case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
@@ -570,6 +569,7 @@ HloInstructionDescription::HloInstructionDescription(
     }
 
     // Unimplemented ops.
+    case HloOpcode::kBitcast:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kFft:
     case HloOpcode::kRecv:

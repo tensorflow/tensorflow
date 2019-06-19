@@ -46,8 +46,6 @@ class FullVisitor : public BaseVisitor {
 
   Status HandleReduce(HloInstruction* inst) override;
 
-  Status HandleBitcast(HloInstruction* inst) override;
-
   Status HandleBroadcast(HloInstruction* inst) override;
 
   Status HandleReshape(HloInstruction* inst) override;

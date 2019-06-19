@@ -121,10 +121,6 @@ Status FullVisitor::HandleReduce(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status FullVisitor::HandleBitcast(HloInstruction* inst) {
-  return HandleReshape(inst);
-}
-
 Status FullVisitor::HandleBroadcast(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   TF_ASSIGN_OR_RETURN(
