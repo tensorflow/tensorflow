@@ -2819,7 +2819,7 @@ Status ConvertBiasAdd(OpConverterParams* params) {
   // If the input is NCHW, then we need to unsqueeze the bias such that its last
   // dimensions are 1s (and the first dimension is C).
   if (data_format == "NCHW") {
-    bias_shape.nbDims = inputs.at(0).GetTrtDims().nbDims;
+    bias_shape.nbDims = input_shape.nbDims;
     std::fill(bias_shape.d + 1, bias_shape.d + bias_shape.nbDims, 1);
   } else {
     // Next, broadcast the bias across the input.
@@ -2830,7 +2830,7 @@ Status ConvertBiasAdd(OpConverterParams* params) {
   // Convert input to a TRT tensor
   nvinfer1::ITensor* input_tensor{nullptr};
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      inputs.at(0), inputs.at(0).GetTrtDims(), params->validation_only,
+      inputs.at(0), input_shape, params->validation_only,
       &input_tensor));
 
   // Finally, reshape bias. Since the bias is usually a constant, this will
