@@ -498,7 +498,7 @@ TfLiteStatus NonMaxSuppressionMultiClassRegularHelper(TfLiteContext* context,
 
   int size_of_sorted_indices = 0;
   std::vector<int> sorted_indices;
-  sorted_indices.resize(max_detections);
+  sorted_indices.resize(num_boxes + max_detections);
   std::vector<float> sorted_values;
   sorted_values.resize(max_detections);
 
