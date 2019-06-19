@@ -29,7 +29,7 @@ namespace gpu {
 namespace {
 
 struct PoolRecord {
-  PoolRecord(uint32_t size, size_t obj_id)
+  PoolRecord(size_t size, size_t obj_id)
       : object_size(size), object_id(obj_id) {}
 
   // Objects in pool are ordered by size.
@@ -38,7 +38,7 @@ struct PoolRecord {
            (object_size == other.object_size && object_id < other.object_id);
   }
 
-  uint32_t object_size;
+  size_t object_size;
   size_t object_id;
 };
 
@@ -61,8 +61,10 @@ struct QueueRecord {
 //
 // The problem of memory management is NP-complete. This implements a
 // naive algorithm that assigns each tensor to a separate object in memory.
-Status NaiveAssignment(const std::vector<TensorUsageRecord>& usage_records,
-                       ObjectsAssignment* assignment) {
+template <typename TensorSizeT>
+Status NaiveAssignment(
+    const std::vector<TensorUsageRecord<TensorSizeT>>& usage_records,
+    ObjectsAssignment<TensorSizeT>* assignment) {
   assignment->object_sizes.resize(usage_records.size());
   assignment->object_ids.resize(usage_records.size());
   for (size_t i = 0; i < usage_records.size(); i++) {
@@ -79,7 +81,8 @@ Status NaiveAssignment(const std::vector<TensorUsageRecord>& usage_records,
 // greedy algorithm that approximates an optimal solution with following
 // heuristic:
 //
-//   1. Iterates through all tensor usage records and for every object reference
+//   1. Iterates through all tensor usage records and for every object
+//   reference
 //      assigns shared object from the pool. When object reference is used
 //      for the last time, corresponding shared object is returned back to
 //      the pool.
@@ -88,8 +91,9 @@ Status NaiveAssignment(const std::vector<TensorUsageRecord>& usage_records,
 //      available.
 //
 //   3. Shared object size may increase when tensor requests larger size.
-Status GreedyAssignment(const std::vector<TensorUsageRecord>& usage_records,
-                        ObjectsAssignment* assignment) {
+Status GreedyAssignment(
+    const std::vector<TensorUsageRecord<size_t>>& usage_records,
+    ObjectsAssignment<size_t>* assignment) {
   assignment->object_sizes.clear();
   assignment->object_ids.resize(usage_records.size());
 
@@ -108,7 +112,7 @@ Status GreedyAssignment(const std::vector<TensorUsageRecord>& usage_records,
       pool.insert({assignment->object_sizes[object_id], object_id});
       objects_in_use.pop();
     }
-    uint32_t tensor_size = usage_records[i].tensor_size;
+    size_t tensor_size = usage_records[i].tensor_size;
     if (pool.empty()) {
       // No free shared object, creating a new one, assign i-th tensor to
       // it and add to the queue of objects in use.
@@ -121,7 +125,7 @@ Status GreedyAssignment(const std::vector<TensorUsageRecord>& usage_records,
       // Find shared object from pool, that will waste the least possible
       // amount of memory when reused for current tensor.
       auto pool_it = pool.lower_bound({tensor_size, 0});
-      uint32_t size_diff = 0;
+      size_t size_diff = 0;
       if (pool_it != pool.end()) {
         // Try smallest shared object from pool with size >= tensor_size.
         size_diff = pool_it->object_size - tensor_size;
@@ -139,7 +143,8 @@ Status GreedyAssignment(const std::vector<TensorUsageRecord>& usage_records,
       // best_it can't be equal to pool.end(), because pool is not empty
       if (best_it == pool.end()) {
         return InternalError(
-            "No shared object is found in non-empty pool in GreedyAssignment.");
+            "No shared object is found in non-empty pool in "
+            "GreedyAssignment.");
       }
       size_t shared_id = best_it->object_id;
       pool.erase(best_it);
@@ -158,7 +163,7 @@ class MinCostFlowSolver {
  public:
   // Build auxiliary flow graph, based on information about intermediate
   // tensors.
-  void Build(const std::vector<TensorUsageRecord>& usage_records) {
+  void Build(const std::vector<TensorUsageRecord<size_t>>& usage_records) {
     usage_records_ = &usage_records;
     num_tensors_ = usage_records.size();
     source_ = 2 * num_tensors_;
@@ -167,8 +172,8 @@ class MinCostFlowSolver {
     std::vector<size_t> old_record_ids;
     std::priority_queue<QueueRecord> objects_in_use;
     for (size_t i = 0; i < usage_records.size(); i++) {
-      // Pop from the queue all objects that are no longer in use at the time of
-      // execution of the first_task of i-th intermediate tensor.
+      // Pop from the queue all objects that are no longer in use at the time
+      // of execution of the first_task of i-th intermediate tensor.
       while (!objects_in_use.empty() &&
              objects_in_use.top().last_task < usage_records[i].first_task) {
         old_record_ids.push_back(objects_in_use.top().object_id);
@@ -186,8 +191,8 @@ class MinCostFlowSolver {
       // Edges from vertices of the left part of flow graph, corresponding to
       // old_record_ids, to i-th vertex in the right part of flow graph are
       // added for the case of reusing previously created shared objects for
-      // i-th tensor. Cost of these edges is an approximation of the size of new
-      // allocated memory.
+      // i-th tensor. Cost of these edges is an approximation of the size of
+      // new allocated memory.
       for (auto record_id : old_record_ids) {
         int cost = 0;
         if (usage_records[i].tensor_size >
@@ -251,7 +256,7 @@ class MinCostFlowSolver {
     }
   }
 
-  void CalculateAssignment(ObjectsAssignment* assignment) {
+  void CalculateAssignment(ObjectsAssignment<size_t>* assignment) {
     assignment->object_sizes.clear();
     assignment->object_ids.resize(num_tensors_);
     is_tensor_assigned_.resize(num_tensors_);
@@ -273,9 +278,9 @@ class MinCostFlowSolver {
     int cost;
   };
 
-  // Add edge from vertex src to vertex dst with given capacity and cost and its
-  // reversed edge to the flow graph. If some edge has index idx, its reversed
-  // edge has index idx^1.
+  // Add edge from vertex src to vertex dst with given capacity and cost and
+  // its reversed edge to the flow graph. If some edge has index idx, its
+  // reversed edge has index idx^1.
   void AddEdge(size_t src, size_t dst, int cap, int cost) {
     edges_from_[src].push_back(edges_.size());
     edges_.emplace_back(dst, cap, cost);
@@ -288,8 +293,8 @@ class MinCostFlowSolver {
     return vertex_id >= num_tensors_ && vertex_id < 2 * num_tensors_;
   }
 
-  // Return vertex from another part of the graph, that corresponds to the same
-  // intermediate tensor.
+  // Return vertex from another part of the graph, that corresponds to the
+  // same intermediate tensor.
   size_t LeftPartTwin(size_t vertex_id) const {
     return vertex_id - num_tensors_;
   }
@@ -299,13 +304,13 @@ class MinCostFlowSolver {
 
   // This function uses recursive implementation of depth-first search and
   // returns maximum size from tensor tensor_id and all tensors, that will be
-  // allocated at the same place with it after all operations that use tensor_id
-  // are executed. Next tensor to be allocated at the same place with tensor_id
-  // is a left part twin of such vertex v, that the edge tensor_id->v is
-  // saturated (has zero residual capacity).
-  uint32_t AssignTensorsToNewSharedObject(size_t tensor_id,
-                                          ObjectsAssignment* assignment) {
-    uint32_t cost = (*usage_records_)[tensor_id].tensor_size;
+  // allocated at the same place with it after all operations that use
+  // tensor_id are executed. Next tensor to be allocated at the same place
+  // with tensor_id is a left part twin of such vertex v, that the edge
+  // tensor_id->v is saturated (has zero residual capacity).
+  size_t AssignTensorsToNewSharedObject(size_t tensor_id,
+                                        ObjectsAssignment<size_t>* assignment) {
+    size_t cost = (*usage_records_)[tensor_id].tensor_size;
     is_tensor_assigned_[tensor_id] = true;
     assignment->object_ids[tensor_id] = assignment->object_sizes.size();
     for (const auto& edge_id : edges_from_[tensor_id]) {
@@ -324,7 +329,7 @@ class MinCostFlowSolver {
   size_t source_;
   size_t sink_;
   size_t num_tensors_;
-  const std::vector<TensorUsageRecord>* usage_records_;
+  const std::vector<TensorUsageRecord<size_t>>* usage_records_;
   std::vector<Edge> edges_;
   std::vector<std::vector<size_t>> edges_from_;
   std::vector<bool> is_tensor_assigned_;
@@ -337,8 +342,8 @@ class MinCostFlowSolver {
 // assignment of shared objects to tensors, using the result of the flow
 // algorithm.
 Status MinCostFlowAssignment(
-    const std::vector<TensorUsageRecord>& usage_records,
-    ObjectsAssignment* assignment) {
+    const std::vector<TensorUsageRecord<size_t>>& usage_records,
+    ObjectsAssignment<size_t>* assignment) {
   MinCostFlowSolver solver;
   solver.Build(usage_records);
   solver.Solve();
@@ -349,11 +354,11 @@ Status MinCostFlowAssignment(
 }  // namespace
 
 Status AssignObjectsToTensors(
-    const std::vector<TensorUsageRecord>& usage_records,
-    const MemoryStrategy& strategy, ObjectsAssignment* assignment) {
+    const std::vector<TensorUsageRecord<size_t>>& usage_records,
+    const MemoryStrategy& strategy, ObjectsAssignment<size_t>* assignment) {
   switch (strategy) {
     case MemoryStrategy::NAIVE:
-      return NaiveAssignment(usage_records, assignment);
+      return NaiveAssignment<size_t>(usage_records, assignment);
     case MemoryStrategy::GREEDY:
       return GreedyAssignment(usage_records, assignment);
     case MemoryStrategy::MINCOSTFLOW:
