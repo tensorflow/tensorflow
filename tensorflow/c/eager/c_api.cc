@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/platform.h"  // NOLINT
@@ -571,14 +572,15 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
         "The passed in handle is a nullptr");
     return nullptr;
   }
-  // TODO(agarwal): move this implementation inside TFE_TensorHandle.
-  const tensorflow::Tensor* t = nullptr;
-  tensorflow::TensorHandle* h_cpu = nullptr;
+  tensorflow::TensorHandle* handle = h->handle;
 
-  if (h->handle->IsRemote()) {
+  // TODO(agarwal): move this implementation inside TFE_TensorHandle.
+  if (handle->IsRemote()) {
+    const tensorflow::Tensor* t = nullptr;
+    tensorflow::TensorHandle* h_cpu = nullptr;
     status->status = EagerCopyToDevice(
-        h->handle, h->handle->Context(),
-        h->handle->Context()->HostCPU()->name().c_str(), false, &h_cpu);
+        handle, handle->Context(), handle->Context()->HostCPU()->name().c_str(),
+        false, &h_cpu);
     if (!status->status.ok()) {
       return nullptr;
     }
@@ -587,28 +589,23 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
       h_cpu->Unref();
       return nullptr;
     }
-  } else {
-    status->status = h->handle->Tensor(&t);
-    if (!status->status.ok()) return nullptr;
-
-    if (!IsCPU(h->handle->device())) {
-      status->status = h->handle->CopyToDevice(
-          h->handle->Context(), h->handle->Context()->HostCPU(), &h_cpu);
-      if (!status->status.ok()) {
-        return nullptr;
-      }
-      status->status = h_cpu->Tensor(&t);
-      if (!status->status.ok()) {
-        h_cpu->Unref();
-        return nullptr;
-      }
-    }
-  }
-  TF_Tensor* retval = tensorflow::TF_TensorFromTensor(*t, status);
-  if (h_cpu != nullptr) {
+    TF_Tensor* retval = tensorflow::TF_TensorFromTensor(*t, status);
     h_cpu->Unref();
+    return retval;
+  } else {
+    tensorflow::Tensor tensor;
+    if (IsCPU(handle->device())) {
+      const tensorflow::Tensor* src = nullptr;
+      status->status = handle->Tensor(&src);
+      if (!status->status.ok()) return nullptr;
+      tensor = *src;
+    } else {
+      tensorflow::EagerContext* ctx = handle->Context();
+      status->status = h->handle->CopyToDevice(ctx, ctx->HostCPU(), &tensor);
+      if (!status->status.ok()) return nullptr;
+    }
+    return tensorflow::TF_TensorFromTensor(tensor, status);
   }
-  return retval;
 }
 
 TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,

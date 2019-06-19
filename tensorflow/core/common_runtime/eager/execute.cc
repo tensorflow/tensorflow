@@ -713,7 +713,10 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
   TensorHandle* actual_handle;
   if (tensor_handle_device != nullptr &&
       tensor_handle_device->device_type() != "CPU") {
-    TF_RETURN_IF_ERROR(h->CopyToDevice(ctx, ctx->HostCPU(), &actual_handle));
+    Tensor tensor;
+    TF_RETURN_IF_ERROR(h->CopyToDevice(ctx, ctx->HostCPU(), &tensor));
+    TF_RETURN_IF_ERROR(
+        TensorHandle::CreateLocalHandle(tensor, nullptr, ctx, &actual_handle));
   } else {
     actual_handle = h;
     actual_handle->Ref();
@@ -1172,7 +1175,7 @@ Status EagerKernelExecute(EagerContext* ctx,
       DCHECK_EQ(kernel->device(), retvals[i]->op_device());
       DCHECK_EQ(kernel->OutputDevice(i), retvals[i]->device());
 
-      retvals[i]->SetTensor(outputs[i]);
+      TF_RETURN_IF_ERROR(retvals[i]->SetTensor(outputs[i]));
     }
   }
   return Status::OK();
@@ -1184,17 +1187,21 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx, Device* dstd,
                               TensorHandle** result) {
   TF_RETURN_IF_ERROR(ctx->GetStatus());
   if (ctx->Async()) {
+    TF_RETURN_IF_ERROR(TensorHandle::CreateAsyncLocalHandle(
+        dstd, dstd, nullptr, h->dtype, ctx, result));
     // Note that `h` may not be currently ready. However execution order will
     // make sure that `h` is ready before the copy is actually done.
-    CopyToDeviceNode* node = new CopyToDeviceNode(h, dstd, ctx);
-    TensorHandle* output = node->dst();
+    CopyToDeviceNode* node = new CopyToDeviceNode(h, *result, dstd, ctx);
     // Note that calling Add makes `node` accessible by the EagerExecutor
     // thread. So further accesses need to be thread-safe.
     ctx->ExecutorAdd(node);
-    *result = output;
     return Status::OK();
   } else {
-    TF_RETURN_IF_ERROR(h->CopyToDevice(ctx, dstd, result));
+    tensorflow::Tensor tensor;
+    TF_RETURN_IF_ERROR(h->CopyToDevice(ctx, dstd, &tensor));
+    const bool dst_cpu = dstd->tensorflow_gpu_device_info() == nullptr;
+    return TensorHandle::CreateLocalHandle(tensor, dst_cpu ? nullptr : dstd,
+                                           ctx, result);
     return Status::OK();
   }
 }

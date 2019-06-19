@@ -382,7 +382,7 @@ Status TensorHandle::SetRemoteShape(const TensorShape& shape) {
 }
 #endif
 
-void TensorHandle::SetTensor(const tensorflow::Tensor& tensor) {
+Status TensorHandle::SetTensor(const tensorflow::Tensor& tensor) {
   DCHECK(!is_remote_) << "SetTensor is not called on remote handles.";
   DCHECK(!is_ready_notification_.HasBeenNotified())
       << "SetTensor is only called on non-ready handles.";
@@ -390,6 +390,7 @@ void TensorHandle::SetTensor(const tensorflow::Tensor& tensor) {
   tensor_handle_data_ = absl::make_unique<LocalTensorHandleData>(tensor);
   is_poisoned_ = Status::OK();
   is_ready_notification_.Notify();
+  return Status::OK();
 }
 
 void TensorHandle::Poison(Status status) {
@@ -400,15 +401,17 @@ void TensorHandle::Poison(Status status) {
 }
 
 Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
-                                  TensorHandle** output) {
-  const tensorflow::Tensor* src = nullptr;
-  TF_RETURN_IF_ERROR(Tensor(&src));
+                                  tensorflow::Tensor* output) {
   tensorflow::Device* srcd = (device_ == nullptr) ? ctx->HostCPU() : device_;
   bool is_same_device = (srcd == dstd) || (srcd->name() == dstd->name());
   const bool dst_cpu = dstd->tensorflow_gpu_device_info() == nullptr;
   const bool src_cpu = srcd->tensorflow_gpu_device_info() == nullptr;
+
+  const tensorflow::Tensor* src = nullptr;
+  TF_RETURN_IF_ERROR(Tensor(&src));
   if (is_same_device) {
-    return CreateLocalHandle(*src, dstd, ctx, output);
+    *output = *src;
+    return Status::OK();
   }
   if (!dst_cpu && (src->dtype() != tensorflow::DT_VARIANT &&
                    !tensorflow::DataTypeCanUseMemcpy(src->dtype()))) {
@@ -423,8 +426,8 @@ Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
   }
   tensorflow::Tensor dst(dstd->GetAllocator(attr), src->dtype(), src->shape());
   if (src->shape().num_elements() == 0) {
-    dstd = dst_cpu ? nullptr : dstd;
-    return CreateLocalHandle(dst, dstd, ctx, output);
+    *output = dst;
+    return Status::OK();
   }
   tensorflow::DeviceContext* src_device_context = nullptr;
   if (!src_cpu) {
@@ -454,8 +457,8 @@ Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
                                  });
   n.WaitForNotification();
   if (status.ok()) {
-    dstd = dst_cpu ? nullptr : dstd;
-    return TensorHandle::CreateLocalHandle(dst, dstd, ctx, output);
+    *output = dst;
+    return Status::OK();
   }
   return status;
 }

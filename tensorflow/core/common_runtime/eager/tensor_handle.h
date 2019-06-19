@@ -156,7 +156,7 @@ class TensorHandle : public core::RefCounted {
   // Sets the `tensor` for this async non-ready handle making it ready.
   // This method or Poison must be called exactly once for non-ready async
   // handles to make them ready.
-  void SetTensor(const tensorflow::Tensor& tensor);
+  Status SetTensor(const tensorflow::Tensor& tensor);
 
   // Poisons this non-ready handle with an error `status`.
   // Poisoning means that the handle will become ready and methods trying
@@ -166,7 +166,7 @@ class TensorHandle : public core::RefCounted {
   void Poison(Status status);
 
   Status CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
-                      TensorHandle** output);
+                      tensorflow::Tensor* output);
 
   // Warning: can return nullptr for CPU tensors.
   EagerContext* Context() { return ctx_; }
