@@ -117,13 +117,8 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   // Emits IR to call a device function of type [T] -> T.  Adjusts
   // callee_name according to T.  Returns the IR value that represents the
   // return value of the function.
-<<<<<<< HEAD
-  StatusOr<llvm::Value*> EmitLibdeviceMathCall(
-      TargetDeviceFunctionID func_id, absl::Span<llvm::Value* const> operands,
-=======
   StatusOr<llvm::Value*> EmitDeviceMathCall(
       TargetDeviceFunctionID funcid, absl::Span<llvm::Value* const> operands,
->>>>>>> upstream/master
       absl::Span<const PrimitiveType> input_types, PrimitiveType output_type);
 
   // Emits IR to call a function of type [T] -> T.  Does not munge callee_name.

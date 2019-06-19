@@ -1,36 +1,3 @@
-<<<<<<< HEAD
-# Description:
-# Op kernel implementations for TensorFlow.
-#
-# Note: Any test that uses GPU support and which we would like to
-# benchmark should be linked statically so that it can be executed
-# from a py_binary or gpu_py_test test logger.  For such a test,
-# append "_gpu" to the test name to invoke the GPU benchmarks.  Example:
-#
-#   # for CPU tests
-#   $ bazel test --config opt //third_party/tensorflow/core/kernels:my_op_test
-#   # for GPU benchmarks
-#   $ bazel run --config opt --config=cuda //third_party/tensorflow/core/kernels:my_op_test_gpu -- --benchmarks=..
-#
-package(
-    default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
-)
-
-package_group(
-    name = "friends",
-    packages = [
-        "//learning/brain/contrib/...",
-        "//learning/brain/research/sparse_matrix/...",
-        "//learning/faster_training/...",
-        "//tensorflow/...",
-        "//tensorflow_text/...",
-        "//third_party/car/...",
-    ],
-)
-
-=======
->>>>>>> upstream/master
 load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
@@ -71,16 +38,15 @@ load(
     "if_mkl_ml",
     "mkl_deps",
 )
-<<<<<<< HEAD
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda", "if_cuda_is_configured")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm", "if_rocm_is_configured")
-load("//tensorflow:tensorflow.bzl", "if_nccl")
-=======
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
->>>>>>> upstream/master
+load(
+    "@local_config_cuda//cuda:build_defs.bzl",
+    "if_cuda",
+    "if_cuda_is_configured",
+)
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
+    "if_rocm_is_configured",
 )
 
 # Description:

@@ -842,13 +842,9 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
 DECLARE_GPU_SPEC(float, float);
 DECLARE_GPU_SPEC(Eigen::half, float);
 
-<<<<<<< HEAD
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-=======
 #undef DECLARE_GPU_SPEC
 
-#endif  // GOOGLE_CUDA
->>>>>>> upstream/master
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }  // namespace functor
 
 template <typename Device, typename T, typename U>

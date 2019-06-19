@@ -1108,16 +1108,11 @@ distribute_py_test(
 distribute_py_test(
     name = "saved_model_mixed_api_test",
     size = "medium",
-<<<<<<< HEAD
-    srcs = ["keras_saved_model_test.py"],
-    main = "keras_saved_model_test.py",
+    srcs = ["saved_model_mixed_api_test.py"],
+    main = "saved_model_mixed_api_test.py",
     tags = [
         "no_rocm",
     ],
-=======
-    srcs = ["saved_model_mixed_api_test.py"],
-    main = "saved_model_mixed_api_test.py",
->>>>>>> upstream/master
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras:saving",

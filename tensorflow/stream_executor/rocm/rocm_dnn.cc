@@ -2299,18 +2299,6 @@ MIOpenRnnParamsDescriptor::MIOpenRnnParamsDescriptor(
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
-<<<<<<< HEAD
-MIOpenSupport::createRnnDescriptor(int num_layers, int hidden_size,
-                                  int input_size, int batch_size,
-                                  dnn::RnnInputMode input_mode,
-                                  dnn::RnnDirectionMode direction_mode,
-                                  dnn::RnnMode rnn_mode,
-                                  dnn::DataType data_type,
-                                  const dnn::AlgorithmConfig& algorithm_config,
-                                  float dropout,
-                                  uint64 seed,
-                                  ScratchAllocator* state_allocator) {
-=======
 MIOpenSupport::createRnnDescriptor(
     int num_layers, int hidden_size, int input_size, int cell_size,
     int batch_size, dnn::RnnInputMode input_mode,
@@ -2318,7 +2306,6 @@ MIOpenSupport::createRnnDescriptor(
     dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
     float dropout, uint64 seed, ScratchAllocator* state_allocator) {
   // ROCM TODO: cell_size is ignored for now
->>>>>>> upstream/master
   // ROCM TODO: batch_size is ignored for now
 
   auto miopen = miopen_->GetHandle(parent_, nullptr);

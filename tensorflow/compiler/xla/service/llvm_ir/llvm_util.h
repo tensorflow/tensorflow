@@ -159,9 +159,9 @@ llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
                                            llvm::Module* module);
 
 // Allocates a tile of shared memory.
-llvm::GlobalVariable* AllocateSharedMemoryTile(
-    llvm::Module* module, llvm::Type* tile_type, absl::string_view name,
-    unsigned int shared_memory_address_space);
+llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
+                                               llvm::Type* tile_type,
+                                               absl::string_view name);
 
 // Inserts an allocate of the requested type at the entry point of the
 // function that the builder is currently building. The insert point
@@ -308,25 +308,18 @@ std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
 // state passed between RNG calls implemented with Philox algorithm. If not,
 // creates such a variable. Returns the global variable.
 llvm::GlobalVariable* GetOrCreateVariableForPhiloxRngState(
-    llvm::Module* module, llvm::IRBuilder<>* b, 
-    unsigned int global_address_space = 0);
+    llvm::Module* module, llvm::IRBuilder<>* b);
 
 // Adds a value to the global state variable each time when a RNG hlo is
 // executed. The value of this global state variable is added to the seed
 // of the Philox RNG algorithm so that calling the same RNG Hlo multiple times
 // should rarely produce the same result.
 void IncrementVariableForPhiloxRngState(int64 value, llvm::Module* module,
-<<<<<<< HEAD
-                                        llvm::IRBuilder<>* b, 
-                                        unsigned int global_address_space = 0);
-
-=======
                                         llvm::IRBuilder<>* b);
 
 // Gets the LLVM address space that should be used for global variables (e.g.
 // XLA's rng state).
 unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module);
->>>>>>> upstream/master
 }  // namespace llvm_ir
 }  // namespace xla
 

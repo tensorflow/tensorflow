@@ -78,17 +78,6 @@ REGISTER_KERNEL_BUILDER(Name("Assert")
                             .HostMemory("data"),
                         AssertOp);
 
-<<<<<<< HEAD
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-REGISTER_KERNEL_BUILDER(Name("Assert")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("condition")
-                            .HostMemory("data"),
-                        AssertOp);
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-=======
->>>>>>> upstream/master
 class PrintOp : public OpKernel {
  public:
   explicit PrintOp(OpKernelConstruction* ctx)

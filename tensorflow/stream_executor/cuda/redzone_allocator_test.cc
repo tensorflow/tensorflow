@@ -17,13 +17,6 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/redzone_allocator.h"
 
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/redzone_allocator_test.cc
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
-=======
->>>>>>> upstream/master:tensorflow/stream_executor/cuda/redzone_allocator_test.cc
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/stream_executor/cuda/ptxas_utils.h"

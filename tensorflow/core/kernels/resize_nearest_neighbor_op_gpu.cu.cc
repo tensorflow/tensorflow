@@ -220,13 +220,8 @@ struct ResizeNearestNeighborGrad<GPUDevice, T, half_pixel_centers,
 
     GpuLaunchConfig output_config = GetGpuLaunchConfig(output_size, d);
     TF_CHECK_OK(GpuLaunchKernel(SetZero<T>, output_config.block_count,
-<<<<<<< HEAD
-                                 output_config.thread_per_block, 0, d.stream(),
-                                 output_size, output.data()));
-=======
                                 output_config.thread_per_block, 0, d.stream(),
                                 output_size, output.data()));
->>>>>>> upstream/master
     if (!d.ok()) return false;
 
     const int input_size = batch_size * channels * in_height * in_width;

@@ -138,17 +138,10 @@ struct ScatterNdFunctor<GPUDevice, T, Index, op, IXDIM> {
     GpuLaunchConfig config = GetGpuLaunchConfig(Toutput.size(), d);
 
     TF_CHECK_OK(GpuLaunchKernel(ScatterNdOpKernel<T, Index, op, IXDIM>,
-<<<<<<< HEAD
-                                 config.block_count, config.thread_per_block, 0,
-                                 d.stream(), Tindices.data(), Tupdates.data(),
-                                 Toutput.data(), output_shape_prefix,
-                                 batch_strides, batch_size, slice_size));
-=======
                                 config.block_count, config.thread_per_block, 0,
                                 d.stream(), Tindices.data(), Tupdates.data(),
                                 Toutput.data(), output_shape_prefix,
                                 batch_strides, batch_size, slice_size));
->>>>>>> upstream/master
 
     return -1;
   }

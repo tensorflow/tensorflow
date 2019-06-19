@@ -82,40 +82,26 @@ Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
 
 Status FusedIrEmitter::HandleConstant(HloInstruction* constant) {
   unsigned global_address_space =
-<<<<<<< HEAD
-      gpu::GetGlobalMemoryAddressSpace(*module_);
-=======
       llvm_ir::GetGlobalMemoryAddressSpace(*module_);
->>>>>>> upstream/master
   indexed_generators_[constant] = [=](const IrArray::Index& index) {
     const Literal& literal = constant->literal();
     llvm::Constant* initializer =
         llvm_ir::ConvertLiteralToIrConstant(literal, module_);
     llvm::GlobalVariable* global = new llvm::GlobalVariable(
         *b_->GetInsertBlock()->getModule(), initializer->getType(),
-<<<<<<< HEAD
-        /*isConstant=*/true, llvm::GlobalValue::ExternalLinkage, initializer,
-=======
         /*isConstant=*/true,
         /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
         /*Initializer=*/initializer,
->>>>>>> upstream/master
         /*Name=*/"", /*InsertBefore=*/nullptr,
         /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
         /*AddressSpace=*/global_address_space,
         /*isExternallyInitialized=*/false);
-<<<<<<< HEAD
-    llvm::Constant* shape_constant = llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(
-        global,
-        llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
-=======
 
     global->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
     llvm::Constant* shape_constant =
         llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(
             global,
             llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
->>>>>>> upstream/master
     return IrArray(shape_constant, constant->shape())
         .EmitReadArrayElement(index, b_);
   };

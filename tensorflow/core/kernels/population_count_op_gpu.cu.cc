@@ -62,19 +62,6 @@ __global__ void PopulationCountKernel<int64>(const int size, const int64* input,
   GPU_1D_KERNEL_LOOP(i, size) { output[i] = __popcll(ldg(input + i)); }
 }
 
-<<<<<<< HEAD
-#define DEFINE_GPU_SPECS(T)                                                    \
-  template <>                                                                  \
-  void PopulationCount<GPUDevice, T>::operator()(                              \
-      OpKernelContext* c, typename TTypes<T>::ConstFlat input,                 \
-      TTypes<uint8>::Flat output) {                                            \
-    const GPUDevice& d = c->eigen_device<GPUDevice>();                         \
-    int64 total_count = input.size();                                          \
-    GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);              \
-    TF_CHECK_OK(GpuLaunchKernel(PopulationCountKernel<T>, config.block_count, \
-                                 config.thread_per_block, 0, d.stream(),       \
-                                 total_count, input.data(), output.data()));   \
-=======
 #define DEFINE_GPU_SPECS(T)                                                   \
   template <>                                                                 \
   void PopulationCount<GPUDevice, T>::operator()(                             \
@@ -86,7 +73,6 @@ __global__ void PopulationCountKernel<int64>(const int size, const int64* input,
     TF_CHECK_OK(GpuLaunchKernel(PopulationCountKernel<T>, config.block_count, \
                                 config.thread_per_block, 0, d.stream(),       \
                                 total_count, input.data(), output.data()));   \
->>>>>>> upstream/master
   }
 
 TF_CALL_uint8(DEFINE_GPU_SPECS);

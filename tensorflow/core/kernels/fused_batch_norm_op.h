@@ -25,9 +25,6 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
-<<<<<<< HEAD
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-=======
 // FusedBatchNormEx op supports side inputs and activations:
 //   (1) batch_norm + activation
 //   (2) batch norm + side input + activation
@@ -38,8 +35,7 @@ string ToString(FusedBatchNormActivationMode activation_mode);
 Status ParseActivationMode(OpKernelConstruction* context,
                            FusedBatchNormActivationMode* activation_mode);
 
-#if GOOGLE_CUDA
->>>>>>> upstream/master
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // There is a behavior difference between cuDNN v4 and v5 with regard to the
 // scaling factor for function cudnnBatchNormalizationForwardInference.
@@ -71,9 +67,6 @@ struct SetNanFunctor {
   void operator()(const Eigen::GpuDevice& d, typename TTypes<T>::Flat out);
 };
 
-<<<<<<< HEAD
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-=======
 // This is a functor to launch custom CUDA kernel for FusedBatchNorm with side
 // input and activation when 'is_training=False'. In training we rely on cuDNN.
 template <typename Device, typename T, typename U>
@@ -89,8 +82,7 @@ struct FusedBatchNormInferenceFunctor {
                   typename TTypes<T, 4>::Tensor out);
 };
 
-#endif  // GOOGLE_CUDA
->>>>>>> upstream/master
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Functor used by FusedBatchNormGradOp to do the computations when
 // is_training=False. Both CPU and GPU will use this functor.

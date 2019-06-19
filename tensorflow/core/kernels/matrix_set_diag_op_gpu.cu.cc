@@ -34,11 +34,6 @@ __global__ void MatrixSetDiagKernel(const int num_threads, const int m,
                                     const Scalar* diag_ptr,
                                     Scalar* output_ptr) {
   GPU_1D_KERNEL_LOOP(index, num_threads) {
-<<<<<<< HEAD
-    const int batch = index / minsize;
-    const int col = index - batch * minsize;
-    const int out_index = batch * m * n + (n + 1) * col;
-=======
     const int batch_and_diag_index = index / max_diag_len;
     const int index_in_the_diagonal =
         index - batch_and_diag_index * max_diag_len;
@@ -48,26 +43,12 @@ __global__ void MatrixSetDiagKernel(const int num_threads, const int m,
     const int y_index = index_in_the_diagonal + max(0, -diag_index);
     const int x_index = index_in_the_diagonal + max(0, diag_index);
     const int out_index = batch * m * n + y_index * n + x_index;
->>>>>>> upstream/master
     output_ptr[out_index] = diag_ptr[index];
   }
 }
 
 template <typename Scalar>
 __global__ void MatrixCopyInputAndSetDiagKernel(
-<<<<<<< HEAD
-    const int num_threads, const int m, const int n, const int minsize,
-    const Scalar* input_ptr, const Scalar* diag_ptr, Scalar* output_ptr) {
-  GPU_1D_KERNEL_LOOP(index, num_threads) {
-    const int global_row = index / n;
-    const int col = index - global_row * n;
-    const int batch = global_row / m;
-    const int row = global_row - batch * m;
-    if (col == row) {
-      // Because col = index % n, and row = (index / n) % m,
-      // we know that col==row => col < minsize, so the following is safe:
-      output_ptr[index] = diag_ptr[batch * minsize + col];
-=======
     const int num_threads, const int m, const int n, const int num_diags,
     const int max_diag_len, const int lower_diag_index,
     const int upper_diag_index, const Scalar* input_ptr, const Scalar* diag_ptr,
@@ -84,7 +65,6 @@ __global__ void MatrixCopyInputAndSetDiagKernel(
       output_ptr[index] =
           diag_ptr[batch * num_diags * max_diag_len +
                    diag_index_in_input * max_diag_len + index_in_the_diagonal];
->>>>>>> upstream/master
     } else {
       output_ptr[index] = input_ptr[index];
     }
@@ -107,21 +87,6 @@ struct MatrixSetDiag<GPUDevice, Scalar> {
 
     if (batch_size == 0 || max_diag_len == 0 || m == 0 || n == 0) return;
     if (input.data() == output.data()) {
-<<<<<<< HEAD
-      GpuLaunchConfig config = GetGpuLaunchConfig(batch_size * minsize, device);
-      TF_CHECK_OK(GpuLaunchKernel(MatrixSetDiagKernel<Scalar>,
-                                   config.block_count, config.thread_per_block,
-                                   0, device.stream(),
-                                   config.virtual_thread_count, m, n, minsize,
-                                   diag.data(), output.data()));
-    } else {
-      GpuLaunchConfig config = GetGpuLaunchConfig(batch_size * m * n, device);
-      TF_CHECK_OK(GpuLaunchKernel(MatrixCopyInputAndSetDiagKernel<Scalar>,
-                                   config.block_count, config.thread_per_block,
-                                   0, device.stream(),
-                                   config.virtual_thread_count, m, n, minsize,
-                                   input.data(), diag.data(), output.data()));
-=======
       GpuLaunchConfig config =
           GetGpuLaunchConfig(batch_size * num_diags * max_diag_len, device);
       TF_CHECK_OK(GpuLaunchKernel(
@@ -137,7 +102,6 @@ struct MatrixSetDiag<GPUDevice, Scalar> {
           config.virtual_thread_count, m, n, num_diags, max_diag_len,
           lower_diag_index, upper_diag_index, input.data(), diag.data(),
           output.data()));
->>>>>>> upstream/master
     }
   }
 };

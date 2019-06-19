@@ -284,13 +284,13 @@ struct FusedBatchNormInferenceFunctor<GPUDevice, T, U> {
                INNER_DIM_SIZE)                                                 \
   launched = true;                                                             \
                                                                                \
-  GpuLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(                  \
+  GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(                   \
       std::is_same<T, Eigen::half>::value ? Eigen::divup(count, 2) : count, d, \
       FusedBatchNormInferenceMetaKernel<T, U, DATA_FORMAT, ADD_SIDE_INPUT,     \
                                         ACTIVATION>,                           \
       0, kThreadInBlock);                                                      \
                                                                                \
-  TF_CHECK_OK(CudaLaunchKernel(                                                \
+  TF_CHECK_OK(GpuLaunchKernel(                                                 \
       FusedBatchNormInferenceMetaKernel<T, U, DATA_FORMAT, ADD_SIDE_INPUT,     \
                                         ACTIVATION>,                           \
       config.block_count, config.thread_per_block, 0, d.stream(), count,       \

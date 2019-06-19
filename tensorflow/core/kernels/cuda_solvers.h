@@ -330,11 +330,7 @@ class CudaSolver {
 
   TF_DISALLOW_COPY_AND_ASSIGN(CudaSolver);
 };
-<<<<<<< HEAD
-#endif // GOOGLE_CUDA
-=======
 #endif  // GOOGLE_CUDA
->>>>>>> upstream/master
 
 // Helper class to allocate scratch memory and keep track of debug info.
 // Mostly a thin wrapper around Tensor & allocate_temp.
@@ -447,11 +443,7 @@ inline DeviceLapackInfo CudaSolver::GetDeviceLapackInfo(
   scratch_tensor_refs_.emplace_back(new_dev_info.tensor());
   return new_dev_info;
 }
-<<<<<<< HEAD
-#endif // GOOGLE_CUDA
-=======
 #endif  // GOOGLE_CUDA
->>>>>>> upstream/master
 
 }  // namespace tensorflow
 
