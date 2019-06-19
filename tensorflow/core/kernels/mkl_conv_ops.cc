@@ -1677,10 +1677,6 @@ private:
     }
 
     // Otherwise, cache bias
-    // bias.SetUsrMem(bias_md, &bias_tensor);
-    // bias.CheckReorderToOpMem(conv_fwd_pd.get()->bias_primitive_desc());
-    // bias_data = static_cast<Tbias*>(bias.GetOpMem().get_data_handle());
-
     Tensor* bias_tensor_ptr = nullptr;
     AllocatePersistentTensor(context, *conv_fwd_pd, &bias_tensor_ptr);
     void* cached_bias_data = const_cast<void*>(static_cast<const void*>(bias_tensor_ptr->flat<Tbias>().data()));
