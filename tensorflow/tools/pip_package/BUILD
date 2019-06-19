@@ -181,6 +181,7 @@ filegroup(
         "@keras_applications_archive//:LICENSE",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
+        "@local_config_tensorrt//:LICENSE",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
         "@pasta//:LICENSE",
