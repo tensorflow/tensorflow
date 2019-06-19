@@ -371,16 +371,21 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         },
     )
 
-    # 5902e759108d14ee8e6b0b07653dac2f4e70ac73 is based on 3.7.1 with a fix for BUILD file.
+    # 310ba5ee72661c081129eb878c1bbcec936b20f0 is based on 3.8.0 with a fix for protobuf.bzl.
     PROTOBUF_URLS = [
-        "http://mirror.tensorflow.org/github.com/protocolbuffers/protobuf/archive/5902e759108d14ee8e6b0b07653dac2f4e70ac73.tar.gz",
-        "https://github.com/protocolbuffers/protobuf/archive/5902e759108d14ee8e6b0b07653dac2f4e70ac73.tar.gz",
+        "http://mirror.tensorflow.org/github.com/protocolbuffers/protobuf/archive/310ba5ee72661c081129eb878c1bbcec936b20f0.tar.gz",
+        "https://github.com/protocolbuffers/protobuf/archive/310ba5ee72661c081129eb878c1bbcec936b20f0.tar.gz",
     ]
-    PROTOBUF_SHA256 = "1c020fafc84acd235ec81c6aac22d73f23e85a700871466052ff231d69c1b17a"
-    PROTOBUF_STRIP_PREFIX = "protobuf-5902e759108d14ee8e6b0b07653dac2f4e70ac73"
+    PROTOBUF_SHA256 = "b9e92f9af8819bbbc514e2902aec860415b70209f31dfc8c4fa72515a5df9d59"
+    PROTOBUF_STRIP_PREFIX = "protobuf-310ba5ee72661c081129eb878c1bbcec936b20f0"
+
+    # protobuf depends on @zlib, it has to be renamed to @zlib_archive because "zlib" is already
+    # defined using bind for grpc.
+    PROTOBUF_PATCH = "//third_party/protobuf:protobuf.patch"
 
     tf_http_archive(
         name = "protobuf_archive",
+        patch_file = PROTOBUF_PATCH,
         sha256 = PROTOBUF_SHA256,
         strip_prefix = PROTOBUF_STRIP_PREFIX,
         system_build_file = clean_dep("//third_party/systemlibs:protobuf.BUILD"),
@@ -395,6 +400,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     # Unfortunately there is no way to alias http_archives at the moment.
     tf_http_archive(
         name = "com_google_protobuf",
+        patch_file = PROTOBUF_PATCH,
         sha256 = PROTOBUF_SHA256,
         strip_prefix = PROTOBUF_STRIP_PREFIX,
         system_build_file = clean_dep("//third_party/systemlibs:protobuf.BUILD"),
@@ -406,6 +412,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "com_google_protobuf_cc",
+        patch_file = PROTOBUF_PATCH,
         sha256 = PROTOBUF_SHA256,
         strip_prefix = PROTOBUF_STRIP_PREFIX,
         system_build_file = clean_dep("//third_party/systemlibs:protobuf.BUILD"),
@@ -920,6 +927,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         ],
     )
 
+def tf_bind():
+    """Bind targets for some external repositories"""
     ##############################################################################
     # BIND DEFINITIONS
     #

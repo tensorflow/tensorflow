@@ -12,6 +12,12 @@ http_archive(
     ],
 )
 
+# Load tf_workspace() before loading dependencies for other repository so that
+# dependencies like com_google_protobuf won't be overridden.
+load("//tensorflow:workspace.bzl", "tf_workspace")
+# Please add all new TensorFlow dependencies in workspace.bzl.
+tf_workspace()
+
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
 
 closure_repositories()
@@ -83,15 +89,15 @@ swift_rules_dependencies()
 load("//tensorflow:version_check.bzl", "check_bazel_version_at_least")
 check_bazel_version_at_least("0.19.0")
 
-load("//tensorflow:workspace.bzl", "tf_workspace")
-
 load("//third_party/android:android_configure.bzl", "android_configure")
 android_configure(name="local_config_android")
 load("@local_config_android//:android.bzl", "android_workspace")
 android_workspace()
 
-# Please add all new TensorFlow dependencies in workspace.bzl.
-tf_workspace()
+# If a target is bound twice, the later one wins, so we have to do tf bindings
+# at the end of the WORKSPACE file.
+load("//tensorflow:workspace.bzl", "tf_bind")
+tf_bind()
 
 http_archive(
     name = "inception_v1",
