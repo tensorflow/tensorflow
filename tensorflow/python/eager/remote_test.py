@@ -100,6 +100,19 @@ class MultiWorkersTest(test.TestCase):
     remote.connect_to_remote_host(
         [workers[0].target, workers[1].target, workers[2].target])
 
+  def testMultiDeviceFunctionOnLocalDevice(self):
+    with ops.device('/job:worker/replica:0/task:1'):
+      variable_b = variables.Variable(1.0)
+
+    @def_function.function
+    def remote_function(i):
+      with ops.device('/job:worker/replica:0/task:0'):
+        a = i + variable_b
+      c = a + 1.0
+      return c
+
+    self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
+
   def testMultiDeviceFunctionOnRemoteDevice(self):
     with ops.device('/job:worker/replica:0/task:1'):
       variable_b = variables.Variable(1.0)

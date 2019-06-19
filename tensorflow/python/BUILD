@@ -3569,6 +3569,16 @@ py_library(
 )
 
 py_library(
+    name = "rnn_grad",
+    srcs = ["ops/rnn_grad.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_for_generated_wrappers",
+        "//tensorflow/python:rnn_ops_gen",
+    ],
+)
+
+py_library(
     name = "standard_ops",
     srcs = ["ops/standard_ops.py"],
     srcs_version = "PY2AND3",
@@ -3602,6 +3612,7 @@ py_library(
         ":partitioned_variables",
         ":proto_ops",
         ":random_ops",
+        ":rnn_grad",
         ":script_ops",
         ":session_ops",
         ":sort_ops",

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/platform.h"  // NOLINT
@@ -369,7 +370,7 @@ void TFE_ContextOptionsSetAsync(TFE_ContextOptions* options,
 
 void TFE_ContextOptionsSetDevicePlacementPolicy(
     TFE_ContextOptions* options, TFE_ContextDevicePlacementPolicy policy) {
-  options->policy = policy;
+  options->device_placement_policy = policy;
 }
 
 TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context* ctx,
@@ -392,7 +393,8 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   tensorflow::Rendezvous* r =
       new tensorflow::IntraProcessRendezvous(device_mgr.get());
 
-  return new TFE_Context(opts->session_options.options, opts->policy,
+  return new TFE_Context(opts->session_options.options,
+                         opts->device_placement_policy, opts->mirroring_policy,
                          opts->async, device_mgr.release(),
                          /*device_mgr_owned*/ true, r,
                          tensorflow::GetDefaultCustomKernelCreator());
@@ -406,7 +408,8 @@ TFE_Context* TFE_NewContextFromSession(const TFE_ContextOptions* opts,
   tensorflow::Rendezvous* r =
       new tensorflow::IntraProcessRendezvous(device_mgr);
 
-  return new TFE_Context(opts->session_options.options, opts->policy,
+  return new TFE_Context(opts->session_options.options,
+                         opts->device_placement_policy, opts->mirroring_policy,
                          opts->async, device_mgr, /*device_mgr_owned*/ false, r,
                          tensorflow::GetDefaultCustomKernelCreator());
 }
@@ -569,14 +572,15 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
         "The passed in handle is a nullptr");
     return nullptr;
   }
-  // TODO(agarwal): move this implementation inside TFE_TensorHandle.
-  const tensorflow::Tensor* t = nullptr;
-  tensorflow::TensorHandle* h_cpu = nullptr;
+  tensorflow::TensorHandle* handle = h->handle;
 
-  if (h->handle->IsRemote()) {
+  // TODO(agarwal): move this implementation inside TFE_TensorHandle.
+  if (handle->IsRemote()) {
+    const tensorflow::Tensor* t = nullptr;
+    tensorflow::TensorHandle* h_cpu = nullptr;
     status->status = EagerCopyToDevice(
-        h->handle, h->handle->Context(),
-        h->handle->Context()->HostCPU()->name().c_str(), &h_cpu);
+        handle, handle->Context(), handle->Context()->HostCPU()->name().c_str(),
+        false, &h_cpu);
     if (!status->status.ok()) {
       return nullptr;
     }
@@ -585,28 +589,23 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
       h_cpu->Unref();
       return nullptr;
     }
-  } else {
-    status->status = h->handle->Tensor(&t);
-    if (!status->status.ok()) return nullptr;
-
-    if (!IsCPU(h->handle->device())) {
-      status->status = h->handle->CopyToDevice(
-          h->handle->Context(), h->handle->Context()->HostCPU(), &h_cpu);
-      if (!status->status.ok()) {
-        return nullptr;
-      }
-      status->status = h_cpu->Tensor(&t);
-      if (!status->status.ok()) {
-        h_cpu->Unref();
-        return nullptr;
-      }
-    }
-  }
-  TF_Tensor* retval = tensorflow::TF_TensorFromTensor(*t, status);
-  if (h_cpu != nullptr) {
+    TF_Tensor* retval = tensorflow::TF_TensorFromTensor(*t, status);
     h_cpu->Unref();
+    return retval;
+  } else {
+    tensorflow::Tensor tensor;
+    if (IsCPU(handle->device())) {
+      const tensorflow::Tensor* src = nullptr;
+      status->status = handle->Tensor(&src);
+      if (!status->status.ok()) return nullptr;
+      tensor = *src;
+    } else {
+      tensorflow::EagerContext* ctx = handle->Context();
+      status->status = h->handle->CopyToDevice(ctx, ctx->HostCPU(), &tensor);
+      if (!status->status.ok()) return nullptr;
+    }
+    return tensorflow::TF_TensorFromTensor(tensor, status);
   }
-  return retval;
 }
 
 TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
@@ -924,9 +923,9 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
                                                TFE_Context* ctx,
                                                const char* device_name,
                                                TF_Status* status) {
-  tensorflow::TensorHandle* handle;
+  tensorflow::TensorHandle* handle = nullptr;
   status->status = tensorflow::EagerCopyToDevice(h->handle, ctx->context,
-                                                 device_name, &handle);
+                                                 device_name, false, &handle);
   if (status->status.ok()) {
     return new TFE_TensorHandle(handle);
   }
@@ -997,9 +996,9 @@ TFE_TensorHandle* TFE_TensorHandleMaybeCopyToHostCPU(TFE_TensorHandle* h,
   // TensorHandles created by PyFuncOp lack context and therefore could
   // not be copied.
   if (!h->handle->OnHostCPU() && h->handle->Context() != nullptr) {
-    tensorflow::TensorHandle* handle;
+    tensorflow::TensorHandle* handle = nullptr;
     status->status = tensorflow::EagerCopyToDevice(
-        h->handle, h->handle->Context(), "CPU:0", &handle);
+        h->handle, h->handle->Context(), "CPU:0", false, &handle);
     if (status->status.ok()) {
       return new TFE_TensorHandle(handle);
     } else {
