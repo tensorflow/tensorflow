@@ -87,6 +87,35 @@ For example,
 !spv.array<16 x vector<4 x f32>>
 ```
 
+### Image type
+
+This corresponds to SPIR-V [image_type][ImageType]. Its syntax is
+
+``` {.ebnf}
+dim ::= `1D` | `2D` | `3D` | `Cube` | <and other SPIR-V Dim specifiers...>
+
+depth-info ::= `NoDepth` | `IsDepth` | `DepthUnknown`
+
+arrayed-info ::= `NonArrayed` | `Arrayed`
+
+sampling-info ::= `SingleSampled` | `MultiSampled`
+
+sampler-use-info ::= `SamplerUnknown` | `NeedSampler` | `NoSampler`
+
+format ::= `Unknown` | `Rgba32f` | <and other SPIR-V Image Formats...>
+
+image-type ::= `!spv.image<` element-type `,` dim `,` depth-info `,`
+                           arrayed-info `,` sampling-info `,`
+                           sampler-use-info `,` format `>`
+```
+
+For example,
+
+``` {.mlir}
+!spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>
+!spv.image<f32, Cube, IsDepth, Arrayed, MultiSampled, NeedSampler, Rgba32f>
+```
+
 ### Pointer type
 
 This corresponds to SPIR-V [pointer type][PointerType]. Its syntax is
@@ -122,8 +151,8 @@ For example,
 !spv.rtarray<vector<4 x f32>>
 ```
 
-
 [SPIR-V]: https://www.khronos.org/registry/spir-v/
 [ArrayType]: https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#OpTypeArray
 [PointerType]: https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#OpTypePointer
 [RuntimeArrayType]: https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#OpTypeRuntimeArray
+[ImageType]: https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#OpTypeImage

@@ -51,6 +51,9 @@ private:
 
   /// Parses `spec` as a SPIR-V run-time array type.
   Type parseRuntimeArrayType(StringRef spec, Location loc) const;
+
+  /// Parses `spec` as a SPIR-V image type
+  Type parseImageType(StringRef spec, Location loc) const;
 };
 
 } // end namespace spirv

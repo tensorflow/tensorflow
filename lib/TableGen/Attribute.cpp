@@ -178,6 +178,10 @@ StringRef tblgen::EnumAttr::getSymbolToStringFnName() const {
   return def->getValueAsString("symbolToStringFnName");
 }
 
+StringRef tblgen::EnumAttr::getMaxEnumValFnName() const {
+  return def->getValueAsString("maxEnumValFnName");
+}
+
 std::vector<tblgen::EnumAttrCase> tblgen::EnumAttr::getAllCases() const {
   const auto *inits = def->getValueAsListInit("enumerants");
 

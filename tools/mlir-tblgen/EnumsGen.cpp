@@ -30,12 +30,21 @@
 #include "llvm/TableGen/TableGenBackend.h"
 
 using llvm::formatv;
+using llvm::isDigit;
 using llvm::raw_ostream;
 using llvm::Record;
 using llvm::RecordKeeper;
 using llvm::StringRef;
 using mlir::tblgen::EnumAttr;
 using mlir::tblgen::EnumAttrCase;
+
+static std::string makeIdentifier(StringRef str) {
+  if (!str.empty() && isDigit(static_cast<unsigned char>(str.front()))) {
+    std::string newStr = std::string("_") + str.str();
+    return newStr;
+  }
+  return str.str();
+}
 
 static void emitEnumClass(const Record &enumDef, StringRef enumName,
                           StringRef underlyingType, StringRef description,
@@ -49,7 +58,7 @@ static void emitEnumClass(const Record &enumDef, StringRef enumName,
   os << " {\n";
 
   for (const auto &enumerant : enumerants) {
-    auto symbol = enumerant.getSymbol();
+    auto symbol = makeIdentifier(enumerant.getSymbol());
     auto value = enumerant.getValue();
     if (value < 0) {
       llvm::PrintFatalError(enumDef.getLoc(),
@@ -100,6 +109,7 @@ static void emitEnumDecl(const Record &enumDef, raw_ostream &os) {
   StringRef description = enumAttr.getDescription();
   StringRef strToSymFnName = enumAttr.getStringToSymbolFnName();
   StringRef symToStrFnName = enumAttr.getSymbolToStringFnName();
+  StringRef maxEnumValFnName = enumAttr.getMaxEnumValFnName();
   auto enumerants = enumAttr.getAllCases();
 
   llvm::SmallVector<StringRef, 2> namespaces;
@@ -118,6 +128,17 @@ static void emitEnumDecl(const Record &enumDef, raw_ostream &os) {
 
   for (auto ns : llvm::reverse(namespaces))
     os << "} // namespace " << ns << "\n";
+
+  // Emit the function to return the max enum value
+  unsigned maxEnumVal = 0;
+  for (const auto &enumerant : enumerants) {
+    auto value = enumerant.getValue();
+    // Already checked that the value is non-negetive.
+    maxEnumVal = std::max(maxEnumVal, static_cast<unsigned>(value));
+  }
+  os << formatv("inline constexpr unsigned {0}() {{\n", maxEnumValFnName);
+  os << formatv("  return {0};\n", maxEnumVal);
+  os << "}\n\n";
 
   // Emit DenseMapInfo for this enum class
   emitDenseMapInfo(enumName, underlyingType, cppNamespace, os);
@@ -151,7 +172,8 @@ static void emitEnumDef(const Record &enumDef, raw_ostream &os) {
   os << "  switch (val) {\n";
   for (const auto &enumerant : enumerants) {
     auto symbol = enumerant.getSymbol();
-    os << formatv("    case {0}::{1}: return \"{1}\";\n", enumName, symbol);
+    os << formatv("    case {0}::{1}: return \"{2}\";\n", enumName,
+                  makeIdentifier(symbol), symbol);
   }
   os << "  }\n";
   os << "  return \"\";\n";
@@ -163,7 +185,8 @@ static void emitEnumDef(const Record &enumDef, raw_ostream &os) {
                 enumName);
   for (const auto &enumerant : enumerants) {
     auto symbol = enumerant.getSymbol();
-    os << formatv("      .Case(\"{1}\", {0}::{1})\n", enumName, symbol);
+    os << formatv("      .Case(\"{1}\", {0}::{2})\n", enumName, symbol,
+                  makeIdentifier(symbol));
   }
   os << "      .Default(llvm::None);\n";
   os << "}\n";

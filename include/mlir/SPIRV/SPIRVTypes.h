@@ -27,11 +27,14 @@
 // Pull in all enum type definitions and utility function declarations
 #include "mlir/SPIRV/SPIRVEnums.h.inc"
 
+#include <tuple>
+
 namespace mlir {
 namespace spirv {
 
 namespace detail {
 struct ArrayTypeStorage;
+struct ImageTypeStorage;
 struct PointerTypeStorage;
 struct RuntimeArrayTypeStorage;
 } // namespace detail
@@ -39,6 +42,7 @@ struct RuntimeArrayTypeStorage;
 namespace TypeKind {
 enum Kind {
   Array = Type::FIRST_SPIRV_TYPE,
+  ImageType,
   Pointer,
   RuntimeArray,
 };
@@ -87,6 +91,42 @@ public:
   static RuntimeArrayType get(Type elementType);
 
   Type getElementType();
+};
+
+// SPIR-V image type
+class ImageType
+    : public Type::TypeBase<ImageType, Type, detail::ImageTypeStorage> {
+public:
+  using Base::Base;
+
+  static bool kindof(unsigned kind) { return kind == TypeKind::ImageType; }
+
+  static ImageType
+  get(Type elementType, Dim dim,
+      ImageDepthInfo depth = ImageDepthInfo::DepthUnknown,
+      ImageArrayedInfo arrayed = ImageArrayedInfo::NonArrayed,
+      ImageSamplingInfo samplingInfo = ImageSamplingInfo::SingleSampled,
+      ImageSamplerUseInfo samplerUse = ImageSamplerUseInfo::SamplerUnknown,
+      ImageFormat format = ImageFormat::Unknown) {
+    return ImageType::get(
+        std::tuple<Type, Dim, ImageDepthInfo, ImageArrayedInfo,
+                   ImageSamplingInfo, ImageSamplerUseInfo, ImageFormat>(
+            elementType, dim, depth, arrayed, samplingInfo, samplerUse,
+            format));
+  }
+
+  static ImageType
+      get(std::tuple<Type, Dim, ImageDepthInfo, ImageArrayedInfo,
+                     ImageSamplingInfo, ImageSamplerUseInfo, ImageFormat>);
+
+  Type getElementType();
+  Dim getDim();
+  ImageDepthInfo getDepthInfo();
+  ImageArrayedInfo getArrayedInfo();
+  ImageSamplingInfo getSamplingInfo();
+  ImageSamplerUseInfo getSamplerUseInfo();
+  ImageFormat getImageFormat();
+  // TODO(ravishankarm): Add support for Access qualifier
 };
 
 } // end namespace spirv

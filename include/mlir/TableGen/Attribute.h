@@ -160,6 +160,10 @@ public:
   // corresponding string.
   StringRef getSymbolToStringFnName() const;
 
+  // Returns the name of the utilit function that returns the max enum value
+  // used within the enum class.
+  StringRef getMaxEnumValFnName() const;
+
   // Returns all allowed cases for this enum attribute.
   std::vector<EnumAttrCase> getAllCases() const;
 };

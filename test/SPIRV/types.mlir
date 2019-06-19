@@ -130,3 +130,73 @@ func @missing_element_type(!spv.rtarray<>) -> ()
 
 // expected-error @+1 {{cannot parse type: 4xf32}}
 func @redundant_count(!spv.rtarray<4xf32>) -> ()
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// ImageType
+//===----------------------------------------------------------------------===//
+
+// CHECK: func @image_parameters_1D(!spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>)
+func @image_parameters_1D(!spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>) -> ()
+
+// -----
+
+// expected-error @+1 {{expected more parameters for image type 'f32'}}
+func @image_parameters_one_element(!spv.image<f32>) -> ()
+
+// -----
+
+// expected-error @+1 {{expected more parameters for image type '1D'}}
+func @image_parameters_two_elements(!spv.image<f32, 1D>) -> ()
+
+// -----
+
+// expected-error @+1 {{expected more parameters for image type 'NoDepth'}}
+func @image_parameters_three_elements(!spv.image<f32, 1D, NoDepth>) -> ()
+
+// -----
+
+// expected-error @+1 {{expected more parameters for image type 'NonArrayed'}}
+func @image_parameters_four_elements(!spv.image<f32, 1D, NoDepth, NonArrayed>) -> ()
+
+// -----
+
+// expected-error @+1 {{expected more parameters for image type 'SingleSampled'}}
+func @image_parameters_five_elements(!spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled>) -> ()
+
+// -----
+
+// expected-error @+1 {{expected more parameters for image type 'SamplerUnknown'}}
+func @image_parameters_six_elements(!spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown>) -> ()
+
+// -----
+
+// expected-error @+1 {{spv.image delimiter <...> mismatch}}
+func @image_parameters_delimiter(!spv.image f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unkown>) -> ()
+
+// -----
+
+// expected-error @+1 {{unknown Dim in Image type: '1D NoDepth'}}
+func @image_parameters_nocomma_1(!spv.image<f32, 1D NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>) -> ()
+
+// -----
+
+// expected-error @+1 {{unknown ImageDepthInfo in Image type: 'NoDepth NonArrayed'}}
+func @image_parameters_nocomma_2(!spv.image<f32, 1D, NoDepth NonArrayed, SingleSampled, SamplerUnknown, Unknown>) -> ()
+
+// -----
+
+// expected-error @+1 {{unknown ImageArrayedInfo in Image type: 'NonArrayed SingleSampled'}}
+func @image_parameters_nocomma_3(!spv.image<f32, 1D, NoDepth, NonArrayed SingleSampled, SamplerUnknown, Unknown>) -> ()
+
+// -----
+
+// expected-error @+1 {{unknown ImageSamplingInfo in Image type: 'SingleSampled SamplerUnknown'}}
+func @image_parameters_nocomma_4(!spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled SamplerUnknown, Unknown>) -> ()
+
+// -----
+
+// expected-error @+1 {{expected more parameters for image type 'SamplerUnknown Unknown'}}
+func @image_parameters_nocomma_5(!spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown Unknown>) -> ()
+

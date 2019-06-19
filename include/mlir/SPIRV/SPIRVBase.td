@@ -116,6 +116,80 @@ def SPV_AddressingModelAttr :
   let underlyingType = "uint32_t";
 }
 
+def SPV_D_1D          : EnumAttrCase<"1D", 0>;
+def SPV_D_2D          : EnumAttrCase<"2D", 1>;
+def SPV_D_3D          : EnumAttrCase<"3D", 2>;
+def SPV_D_Cube        : EnumAttrCase<"Cube", 3>;
+def SPV_D_Rect        : EnumAttrCase<"Rect", 4>;
+def SPV_D_Buffer      : EnumAttrCase<"Buffer", 5>;
+def SPV_D_SubpassData : EnumAttrCase<"SubpassData", 6>;
+
+def SPV_DimAttr :
+    EnumAttr<"Dim", "valid SPIR-V Dim", [
+      SPV_D_1D, SPV_D_2D, SPV_D_3D, SPV_D_Cube, SPV_D_Rect, SPV_D_Buffer,
+      SPV_D_SubpassData
+    ]> {
+  let cppNamespace = "::mlir::spirv";
+  let underlyingType = "uint32_t";
+}
+
+def SPV_IF_Unknown      : EnumAttrCase<"Unknown", 0>;
+def SPV_IF_Rgba32f      : EnumAttrCase<"Rgba32f", 1>;
+def SPV_IF_Rgba16f      : EnumAttrCase<"Rgba16f", 2>;
+def SPV_IF_R32f         : EnumAttrCase<"R32f", 3>;
+def SPV_IF_Rgba8        : EnumAttrCase<"Rgba8", 4>;
+def SPV_IF_Rgba8Snorm   : EnumAttrCase<"Rgba8Snorm", 5>;
+def SPV_IF_Rg32f        : EnumAttrCase<"Rg32f", 6>;
+def SPV_IF_Rg16f        : EnumAttrCase<"Rg16f", 7>;
+def SPV_IF_R11fG11fB10f : EnumAttrCase<"R11fG11fB10f", 8>;
+def SPV_IF_R16f         : EnumAttrCase<"R16f", 9>;
+def SPV_IF_Rgba16       : EnumAttrCase<"Rgba16", 10>;
+def SPV_IF_Rgb10A2      : EnumAttrCase<"Rgb10A2", 11>;
+def SPV_IF_Rg16         : EnumAttrCase<"Rg16", 12>;
+def SPV_IF_Rg8          : EnumAttrCase<"Rg8", 13>;
+def SPV_IF_R16          : EnumAttrCase<"R16", 14>;
+def SPV_IF_R8           : EnumAttrCase<"R8", 15>;
+def SPV_IF_Rgba16Snorm  : EnumAttrCase<"Rgba16Snorm", 16>;
+def SPV_IF_Rg16Snorm    : EnumAttrCase<"Rg16Snorm", 17>;
+def SPV_IF_Rg8Snorm     : EnumAttrCase<"Rg8Snorm", 18>;
+def SPV_IF_R16Snorm     : EnumAttrCase<"R16Snorm", 19>;
+def SPV_IF_R8Snorm      : EnumAttrCase<"R8Snorm", 20>;
+def SPV_IF_Rgba32i      : EnumAttrCase<"Rgba32i", 21>;
+def SPV_IF_Rgba16i      : EnumAttrCase<"Rgba16i", 22>;
+def SPV_IF_Rgba8i       : EnumAttrCase<"Rgba8i", 23>;
+def SPV_IF_R32i         : EnumAttrCase<"R32i", 24>;
+def SPV_IF_Rg32i        : EnumAttrCase<"Rg32i", 25>;
+def SPV_IF_Rg16i        : EnumAttrCase<"Rg16i", 26>;
+def SPV_IF_Rg8i         : EnumAttrCase<"Rg8i", 27>;
+def SPV_IF_R16i         : EnumAttrCase<"R16i", 28>;
+def SPV_IF_R8i          : EnumAttrCase<"R8i", 29>;
+def SPV_IF_Rgba32ui     : EnumAttrCase<"Rgba32ui", 30>;
+def SPV_IF_Rgba16ui     : EnumAttrCase<"Rgba16ui", 31>;
+def SPV_IF_Rgba8ui      : EnumAttrCase<"Rgba8ui", 32>;
+def SPV_IF_R32ui        : EnumAttrCase<"R32ui", 33>;
+def SPV_IF_Rgb10a2ui    : EnumAttrCase<"Rgb10a2ui", 34>;
+def SPV_IF_Rg32ui       : EnumAttrCase<"Rg32ui", 35>;
+def SPV_IF_Rg16ui       : EnumAttrCase<"Rg16ui", 36>;
+def SPV_IF_Rg8ui        : EnumAttrCase<"Rg8ui", 37>;
+def SPV_IF_R16ui        : EnumAttrCase<"R16ui", 38>;
+def SPV_IF_R8ui         : EnumAttrCase<"R8ui", 39>;
+
+def SPV_ImageFormatAttr :
+    EnumAttr<"ImageFormat", "valid SPIR-V ImageFormat", [
+      SPV_IF_Unknown, SPV_IF_Rgba32f, SPV_IF_Rgba16f, SPV_IF_R32f, SPV_IF_Rgba8,
+      SPV_IF_Rgba8Snorm, SPV_IF_Rg32f, SPV_IF_Rg16f, SPV_IF_R11fG11fB10f,
+      SPV_IF_R16f, SPV_IF_Rgba16, SPV_IF_Rgb10A2, SPV_IF_Rg16, SPV_IF_Rg8,
+      SPV_IF_R16, SPV_IF_R8, SPV_IF_Rgba16Snorm, SPV_IF_Rg16Snorm, SPV_IF_Rg8Snorm,
+      SPV_IF_R16Snorm, SPV_IF_R8Snorm, SPV_IF_Rgba32i, SPV_IF_Rgba16i, SPV_IF_Rgba8i,
+      SPV_IF_R32i, SPV_IF_Rg32i, SPV_IF_Rg16i, SPV_IF_Rg8i, SPV_IF_R16i, SPV_IF_R8i,
+      SPV_IF_Rgba32ui, SPV_IF_Rgba16ui, SPV_IF_Rgba8ui, SPV_IF_R32ui,
+      SPV_IF_Rgb10a2ui, SPV_IF_Rg32ui, SPV_IF_Rg16ui, SPV_IF_Rg8ui, SPV_IF_R16ui,
+      SPV_IF_R8ui
+    ]> {
+  let cppNamespace = "::mlir::spirv";
+  let underlyingType = "uint32_t";
+}
+
 def SPV_MM_Simple    : EnumAttrCase<"Simple", 0>;
 def SPV_MM_GLSL450   : EnumAttrCase<"GLSL450", 1>;
 def SPV_MM_OpenCL    : EnumAttrCase<"OpenCL", 2>;
@@ -164,6 +238,50 @@ def SPV_StorageClassAttr :
 }
 
 // End enum section. Generated from SPIR-V spec; DO NOT MODIFY!
+
+// Enums added manually that are not part of SPIRV spec
+
+def SPV_IDI_NoDepth    : EnumAttrCase<"NoDepth", 0>;
+def SPV_IDI_IsDepth   : EnumAttrCase<"IsDepth", 1>;
+def SPV_IDI_DepthUnknown : EnumAttrCase<"DepthUnknown", 2>;
+
+def SPV_DepthAttr :
+    EnumAttr<"ImageDepthInfo", "valid SPIR-V Image Depth specification",[
+    SPV_IDI_NoDepth, SPV_IDI_IsDepth, SPV_IDI_DepthUnknown]> {
+  let cppNamespace = "::mlir::spirv";
+  let underlyingType = "uint32_t";
+}
+
+def SPV_IAI_NonArrayed : EnumAttrCase<"NonArrayed", 0>;
+def SPV_IAI_Arrayed     : EnumAttrCase<"Arrayed", 1>;
+
+def SPV_ArrayedAttr :
+    EnumAttr<"ImageArrayedInfo", "valid SPIR-V Image Arrayed specification", [
+    SPV_IAI_NonArrayed, SPV_IAI_Arrayed]> {
+  let cppNamespace = "::mlir::spirv";
+  let underlyingType = "uint32_t";
+}
+
+def SPV_ISI_SingleSampled : EnumAttrCase<"SingleSampled", 0>;
+def SPV_ISI_MultiSampled  : EnumAttrCase<"MultiSampled", 1>;
+
+def SPV_SamplingAttr:
+    EnumAttr<"ImageSamplingInfo", "valid SPIR-V Image Sampling specification", [
+    SPV_ISI_SingleSampled, SPV_ISI_MultiSampled]> {
+  let cppNamespace = "::mlir::spirv";
+  let underlyingType = "uint32_t";
+}
+
+def SPV_ISUI_SamplerUnknown : EnumAttrCase<"SamplerUnknown", 0>;
+def SPV_ISUI_NeedSampler    : EnumAttrCase<"NeedSampler", 1>;
+def SPV_ISUI_NoSampler      : EnumAttrCase<"NoSampler", 2>;
+
+def SPV_SamplerUseAttr:
+    EnumAttr<"ImageSamplerUseInfo", "valid SPIR-V Sampler Use specification", [
+    SPV_ISUI_SamplerUnknown, SPV_ISUI_NeedSampler, SPV_ISUI_NoSampler]> {
+  let cppNamespace = "::mlir::spirv";
+  let underlyingType = "uint32_t";
+}
 
 //===----------------------------------------------------------------------===//
 // SPIR-V op definitions
