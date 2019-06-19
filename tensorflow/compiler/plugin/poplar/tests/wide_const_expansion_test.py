@@ -55,7 +55,7 @@ class WideConstExpansionTest(test_util.TensorFlowTestCase):
       result = sess.run(report)
       s = tu.extract_all_strings_from_event_trace(result)
       max_tile_size = tu.get_maximum_tile_size_from_events(s)
-      print(max_tile_size)
+
       self.assertTrue(max_tile_size < 41000)
 
   def testWideConstantWithAllocationTarget(self):

@@ -38,7 +38,7 @@ class HloPoplarInstruction : public HloCustomCallInstruction {
                        absl::string_view custom_call_target,
                        Args&&... attributes)
       : HloCustomCallInstruction(shape, operands, custom_call_target, "") {
-    // Hash all attributes to prevent
+    // Hash all attributes to prevent comparisons of ops from false positives
     int64 hash = hash_util::hash(std::forward<Args>(attributes)...);
 
     // Poke the hash of the attributes into the backend config
