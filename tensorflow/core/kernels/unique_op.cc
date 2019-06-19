@@ -237,6 +237,7 @@ class UniqueOp : public OpKernel {
                           UniqueOp<type, int64>)
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_UNIQUE);
 REGISTER_UNIQUE(string)
+REGISTER_UNIQUE(bool)
 #undef REGISTER_UNIQUE
 
 // Fake integer GPU kernels so that the use of Unique in optimizers (to
