@@ -217,6 +217,11 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.outputs = {{0, {}}};
       property.version = 2;
       break;
+    case BuiltinOperator_SUM:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
+      break;
     case BuiltinOperator_TANH: {
       property.inputs = {{0, {}}};
       // Tanh requires output with 1/128 as scale and 0 as zero point.
