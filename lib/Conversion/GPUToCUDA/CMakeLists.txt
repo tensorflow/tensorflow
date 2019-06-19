@@ -7,6 +7,7 @@ if(CMAKE_CUDA_COMPILER)
 enable_language(CUDA)
 add_llvm_library(MLIRGPUtoCUDATransforms
   ConvertKernelFuncToCubin.cpp
+  ConvertLaunchFuncToCudaCalls.cpp
   )
 target_include_directories(MLIRGPUtoCUDATransforms
   PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}

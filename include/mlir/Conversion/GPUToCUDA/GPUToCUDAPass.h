@@ -32,6 +32,14 @@ class ModulePassBase;
 /// it is turned into a declaration).
 ModulePassBase *createConvertGPUKernelToCubinPass();
 
+/// Creates a pass to convert a gpu.launch_func operation into a sequence of
+/// CUDA calls.
+///
+/// This pass does not generate code to call CUDA directly but instead uses a
+/// small wrapper library that exports a stable and conveniently typed ABI
+/// ontop of CUDA.
+ModulePassBase *createConvertGpuLaunchFuncToCudaCallsPass();
+
 } // namespace mlir
 
 #endif // MLIR_CONVERSION_GPUTOCUDA_GPUTOCUDAPASS_H_
