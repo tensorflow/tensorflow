@@ -36,6 +36,7 @@ cc_library(
     hdrs = ["memory_management.h"],
     deps = [
         ":status",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -173,19 +174,19 @@ cc_library(
 )
 
 cc_test(
-    name = "util_test",
-    srcs = ["util_test.cc"],
+    name = "memory_management_test",
+    srcs = ["memory_management_test.cc"],
     deps = [
-        ":util",
+        ":memory_management",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
 cc_test(
-    name = "memory_management_test",
-    srcs = ["memory_management_test.cc"],
+    name = "util_test",
+    srcs = ["util_test.cc"],
     deps = [
-        ":memory_management",
+        ":util",
         "@com_google_googletest//:gtest_main",
     ],
 )
