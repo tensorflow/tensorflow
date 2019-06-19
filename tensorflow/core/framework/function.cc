@@ -40,6 +40,17 @@ limitations under the License.
 
 namespace tensorflow {
 
+/* static */ constexpr const char* const FunctionLibraryDefinition::kArgOp;
+/* static */ constexpr const char* const
+    FunctionLibraryDefinition::kDeviceArgOp;
+/* static */ constexpr const char* const FunctionLibraryDefinition::kRetOp;
+/* static */ constexpr const char* const
+    FunctionLibraryDefinition::kDeviceRetOp;
+/* static */ constexpr const char* const
+    FunctionLibraryDefinition::kIntsOnDeviceAttr;
+/* static */ constexpr const char* const FunctionLibraryDefinition::kGradientOp;
+/* static */ constexpr const char* const FunctionLibraryDefinition::kFuncAttr;
+
 // Extracts the actual type from "attr_values" based on its definition
 // "arg_def".
 //
