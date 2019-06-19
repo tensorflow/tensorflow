@@ -941,28 +941,6 @@ Attribute SparseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
 }
 
 //===----------------------------------------------------------------------===//
-// SplatElementsAttr
-//===----------------------------------------------------------------------===//
-
-SplatElementsAttr SplatElementsAttr::get(ShapedType type, Attribute elt) {
-  return DenseElementsAttr::get(type, elt).cast<SplatElementsAttr>();
-}
-
-SplatElementsAttr SplatElementsAttr::mapValues(
-    Type newElementType,
-    llvm::function_ref<APInt(const APInt &)> mapping) const {
-  return DenseElementsAttr::mapValues(newElementType, mapping)
-      .cast<SplatElementsAttr>();
-}
-
-SplatElementsAttr SplatElementsAttr::mapValues(
-    Type newElementType,
-    llvm::function_ref<APInt(const APFloat &)> mapping) const {
-  return DenseElementsAttr::mapValues(newElementType, mapping)
-      .cast<SplatElementsAttr>();
-}
-
-//===----------------------------------------------------------------------===//
 // NamedAttributeList
 //===----------------------------------------------------------------------===//
 

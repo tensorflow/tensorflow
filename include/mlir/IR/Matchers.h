@@ -104,7 +104,7 @@ struct constant_int_op_binder {
     if (type.isa<VectorType>() || type.isa<RankedTensorType>()) {
       if (auto splatAttr = attr.dyn_cast<SplatElementsAttr>()) {
         return attr_value_binder<IntegerAttr>(bind_value)
-            .match(splatAttr.getValue());
+            .match(splatAttr.getSplatValue());
       }
     }
     return false;

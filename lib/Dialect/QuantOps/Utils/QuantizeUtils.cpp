@@ -69,36 +69,6 @@ convertDenseFPElementsAttr(DenseFPElementsAttr realFPElementsAttr,
 /// Converts a real expressed SplatElementsAttr to a corresponding
 /// SplatElementsAttr containing quantized storage values assuming the given
 /// quantizedElementType and converter.
-static SplatElementsAttr
-convertSplatElementsAttr(SplatElementsAttr realSplatAttr,
-                         QuantizedType quantizedElementType,
-                         const UniformQuantizedValueConverter &converter) {
-  // Since the splat just references a single primitive value, use the
-  // function for converting primitives.
-  // NOTE: When implementing per-channel, we will need to promote the
-  // splat to a dense and handle channels individually.
-  Type unusedPrimitiveType;
-  auto elementAttr =
-      convertPrimitiveValueAttr(realSplatAttr.getValue(), quantizedElementType,
-                                converter, unusedPrimitiveType);
-  if (!elementAttr) {
-    return nullptr;
-  }
-
-  // Cast from an expressed-type-based type to storage-type-based type,
-  // preserving the splat shape (i.e. tensor<4xf32> -> tensor<4xi8>).
-  ShapedType newSplatType =
-      quantizedElementType.castExpressedToStorageType(realSplatAttr.getType())
-          .dyn_cast_or_null<ShapedType>();
-  if (!newSplatType) {
-    return nullptr;
-  }
-  return SplatElementsAttr::get(newSplatType, elementAttr);
-}
-
-/// Converts a real expressed SplatElementsAttr to a corresponding
-/// SplatElementsAttr containing quantized storage values assuming the given
-/// quantizedElementType and converter.
 static SparseElementsAttr
 convertSparseElementsAttr(SparseElementsAttr realSparseAttr,
                           QuantizedType quantizedElementType,
@@ -134,13 +104,7 @@ Attribute quantizeAttrUniform(Attribute realValue,
                               const UniformQuantizedValueConverter &converter,
                               Type &outConvertedType) {
   // Fork to handle different variants of constants supported.
-  if (realValue.isa<SplatElementsAttr>()) {
-    // Splatted tensor or vector constant.
-    auto converted = convertSplatElementsAttr(
-        realValue.cast<SplatElementsAttr>(), quantizedElementType, converter);
-    outConvertedType = converted.getType();
-    return converted;
-  } else if (realValue.isa<DenseFPElementsAttr>()) {
+  if (realValue.isa<DenseFPElementsAttr>()) {
     // Dense tensor or vector constant.
     auto converted = convertDenseFPElementsAttr(
         realValue.cast<DenseFPElementsAttr>(), quantizedElementType, converter);

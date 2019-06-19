@@ -388,7 +388,7 @@ materializeAttributes(Operation *opInst, VectorType hwVectorType) {
   SmallVector<NamedAttribute, 1> res;
   for (auto a : opInst->getAttrs()) {
     if (auto splat = a.second.dyn_cast<SplatElementsAttr>()) {
-      auto attr = SplatElementsAttr::get(hwVectorType, splat.getValue());
+      auto attr = SplatElementsAttr::get(hwVectorType, splat.getSplatValue());
       res.push_back(NamedAttribute(a.first, attr));
     } else {
       res.push_back(a);

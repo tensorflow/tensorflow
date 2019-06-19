@@ -182,11 +182,11 @@ Attribute constFoldBinaryOp(ArrayRef<Attribute> operands,
       return {};
 
     auto elementResult = constFoldBinaryOp<AttrElementT>(
-        {lhs.getValue(), rhs.getValue()}, calculate);
+        {lhs.getSplatValue(), rhs.getSplatValue()}, calculate);
     if (!elementResult)
       return {};
 
-    return SplatElementsAttr::get(lhs.getType(), elementResult);
+    return DenseElementsAttr::get(lhs.getType(), elementResult);
   }
   return {};
 }
@@ -1614,7 +1614,7 @@ OpFoldResult ExtractElementOp::fold(ArrayRef<Attribute> operands) {
   // If this is a splat elements attribute, simply return the value. All of the
   // elements of a splat attribute are the same.
   if (auto splatAggregate = aggregate.dyn_cast<SplatElementsAttr>())
-    return splatAggregate.getValue();
+    return splatAggregate.getSplatValue();
 
   // Otherwise, collect the constant indices into the aggregate.
   SmallVector<uint64_t, 8> indices;

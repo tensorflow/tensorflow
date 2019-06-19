@@ -128,7 +128,7 @@ TEST(QuantizationUtilsTest, convertRankedSplatAttrUniform) {
   IntegerType convertedType = IntegerType::get(8, &ctx);
   auto quantizedType = getTestQuantizedType(convertedType, &ctx);
   TestUniformQuantizedValueConverter converter(quantizedType);
-  auto realValue = getTestElementsAttr<SplatElementsAttr, Attribute>(
+  auto realValue = getTestElementsAttr<DenseElementsAttr, Attribute>(
       &ctx, {1, 2}, getTestFloatAttr(1.0, &ctx));
 
   Type returnedType;

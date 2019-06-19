@@ -180,10 +180,6 @@ FunctionAttr Builder::getFunctionAttr(StringRef value) {
   return FunctionAttr::get(value, getContext());
 }
 
-ElementsAttr Builder::getSplatElementsAttr(ShapedType type, Attribute elt) {
-  return SplatElementsAttr::get(type, elt);
-}
-
 ElementsAttr Builder::getDenseElementsAttr(ShapedType type,
                                            ArrayRef<Attribute> values) {
   return DenseElementsAttr::get(type, values);
@@ -255,7 +251,7 @@ Attribute Builder::getZeroAttr(Type type) {
     auto element = getZeroAttr(vtType.getElementType());
     if (!element)
       return {};
-    return getSplatElementsAttr(vtType, element);
+    return getDenseElementsAttr(vtType, element);
   }
   default:
     break;

@@ -73,7 +73,6 @@ public:
 ///   DenseFPElementsAttr
 ///   OpaqueElementsAttr (with Float based type)
 ///   SparseElementAttr  (with Float based type)
-///   SplatElementsAttr
 class AttributeTensorStatistics : public AbstractTensorStatistics {
 public:
   AttributeTensorStatistics(Attribute attr) : attr(attr) {}
