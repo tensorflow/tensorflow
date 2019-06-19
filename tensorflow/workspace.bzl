@@ -385,7 +385,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "com_google_protobuf",
-        patch_file = PROTOBUF_PATCH,
+        patch_file = clean_dep(PROTOBUF_PATCH),
         sha256 = PROTOBUF_SHA256,
         strip_prefix = PROTOBUF_STRIP_PREFIX,
         system_build_file = clean_dep("//third_party/systemlibs:protobuf.BUILD"),
