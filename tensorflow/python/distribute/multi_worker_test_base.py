@@ -212,6 +212,17 @@ def create_cluster_spec(test_obj,
   return cluster_spec
 
 
+@contextlib.contextmanager
+def skip_if_grpc_server_cant_be_started(test_obj):
+  try:
+    yield
+  except errors.UnknownError as e:
+    if 'Could not start gRPC server' in e.message:
+      test_obj.skipTest('Cannot start std servers.')
+    else:
+      raise
+
+
 class MultiWorkerTestBase(test.TestCase):
   """Base class for testing multi node strategy and dataset."""
 
@@ -386,7 +397,9 @@ class IndependentWorkerTestBase(test.TestCase):
   def _make_mock_run_std_server(self):
 
     def _mock_run_std_server(*args, **kwargs):
-      ret = original_run_std_server(*args, **kwargs)
+      """Returns the std server once all threads have started it."""
+      with skip_if_grpc_server_cant_be_started(self):
+        ret = original_run_std_server(*args, **kwargs)
       # Wait for all std servers to be brought up in order to reduce the chance
       # of remote sessions taking local ports that have been assigned to std
       # servers. Only call this barrier the first time this function is run for
@@ -480,13 +493,8 @@ class IndependentWorkerTestBase(test.TestCase):
     return threads
 
   def join_independent_workers(self, worker_threads):
-    try:
+    with skip_if_grpc_server_cant_be_started(self):
       self._coord.join(worker_threads)
-    except errors.UnknownError as e:
-      if 'Could not start gRPC server' in e.message:
-        self.skipTest('Cannot start std servers.')
-      else:
-        raise
 
 
 class MultiWorkerMultiProcessTest(test.TestCase):
