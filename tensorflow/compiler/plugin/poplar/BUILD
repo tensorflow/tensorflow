@@ -28,7 +28,7 @@ tf_proto_library(
       "driver/trace.proto",
     ],
     cc_api_version = 2,
-    default_header = True,
+    make_default_target_header_only = True,
     j2objc_api_version = 1,
 )
 
@@ -48,7 +48,7 @@ tf_proto_library(
     name = "poplibs_ops",
     srcs = ["kernels/poplibs_ops.proto"],
     cc_api_version = 2,
-    default_header = True,
+    make_default_target_header_only = True,
     j2objc_api_version = 1,
 )
 
