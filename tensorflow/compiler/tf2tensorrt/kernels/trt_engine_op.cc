@@ -160,6 +160,7 @@ void* GetTensorAddress(const Tensor* tensor_ptr) {
     TYPECASE(DT_FLOAT, tensor_ptr, dest_ptr);
     TYPECASE(DT_HALF, tensor_ptr, dest_ptr);
     TYPECASE(DT_INT8, tensor_ptr, dest_ptr);
+    TYPECASE(DT_INT32, tensor_ptr, dest_ptr);
     default: {
       LOG(ERROR) << "Unsupported Data type " << DataTypeString(tensor_type);
       return nullptr;
