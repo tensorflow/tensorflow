@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <queue>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -56,9 +55,12 @@ class EagerNode {
   // it should poison the corresponding tensor handles in this method.
   virtual void Abort(Status status) = 0;
 
+  uint64 Id() const { return id_; }
+
+ private:
   // An id unique to the TFE_Context under which this node is created. Allocated
   // monotonically.
-  const uint64 id;
+  const uint64 id_;
 };
 
 // A class for handling async execution (see TFE_ContextSetAsync).

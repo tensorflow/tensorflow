@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <queue>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "tensorflow/c/c_api.h"
@@ -112,7 +111,7 @@ struct TFE_TensorHandle {
 };
 
 struct TFE_TensorDebugInfo {
-  TFE_TensorDebugInfo(const std::vector<tensorflow::int64>& dims)
+  explicit TFE_TensorDebugInfo(const std::vector<tensorflow::int64>& dims)
       : dev_dims(dims) {}
 
   // Fully-padded, minor-to-major.
@@ -144,7 +143,7 @@ struct TFE_ProfilerContext {
 };
 
 struct TFE_Profiler {
-  TFE_Profiler(TFE_ProfilerContext* ctx) {
+  explicit TFE_Profiler(TFE_ProfilerContext* ctx) {
     profiler = tensorflow::ProfilerSession::Create(&ctx->profiler_context);
   }
 
@@ -231,7 +230,7 @@ struct TFE_MonitoringBoolGauge2 : TFE_MonitoringGauge<bool, 2> {
 };
 
 struct TFE_MonitoringBuckets {
-  TFE_MonitoringBuckets(
+  explicit TFE_MonitoringBuckets(
       std::function<std::unique_ptr<tensorflow::monitoring::Buckets>(void)>
           fn) {
     create_buckets = fn;
@@ -286,7 +285,7 @@ struct TFE_TraceContext {
   std::vector<std::pair<tensorflow::TensorHandle*, TF_Output>>* input_tensors =
       nullptr;
 
-  TFE_TraceContext(TF_Graph* graph) : graph(graph) {}
+  explicit TFE_TraceContext(TF_Graph* graph) : graph(graph) {}
 
   ~TFE_TraceContext() {
     delete input_tensors;

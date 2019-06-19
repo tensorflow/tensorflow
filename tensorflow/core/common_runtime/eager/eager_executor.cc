@@ -17,7 +17,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-EagerNode::EagerNode(tensorflow::uint64 id) : id(id) {}
+EagerNode::EagerNode(tensorflow::uint64 id) : id_(id) {}
 
 EagerExecutor::~EagerExecutor() {
   tensorflow::mutex_lock l(node_queue_mutex_);
@@ -48,10 +48,10 @@ void EagerExecutor::Add(std::unique_ptr<EagerNode> node) {
   }
   int64 qlen = node_queue_.size();
   if (qlen > 0) {
-    if (node_queue_.back()->id >= node->id) {
+    if (node_queue_.back()->Id() >= node->Id()) {
       status_ = tensorflow::errors::InvalidArgument(
           "Inserting EagerNode with non-increasing ids:",
-          node_queue_.back()->id, " vs ", node->id);
+          node_queue_.back()->Id(), " vs ", node->Id());
       // node will be automatically deleted
       return;
     }
@@ -78,8 +78,8 @@ tensorflow::Status EagerExecutor::WaitImpl(bool wait_all,
   if (!status_.ok()) return status_;
   if (node_queue_.empty()) return tensorflow::Status::OK();
   if (wait_all) {
-    node_id = node_queue_.back()->id;
-  } else if (node_id < node_queue_.front()->id) {
+    node_id = node_queue_.back()->Id();
+  } else if (node_id < node_queue_.front()->Id()) {
     // Note that we are relying on the ops being dispatched sequentially from
     // the queue.
     return tensorflow::Status::OK();
@@ -127,7 +127,7 @@ void EagerExecutor::Run() {
       curr_node = node_queue_.front().get();
       // We update the last_node_id_ before calling Run() to ensure the value
       // is updated before the response callback.
-      last_node_id_ = curr_node->id;
+      last_node_id_ = curr_node->Id();
     }
     tensorflow::Status status = curr_node->Run();
     const bool ok = status.ok();
