@@ -88,6 +88,28 @@ class UniqueTest(test.TestCase):
     for i in range(len(x)):
       self.assertEqual(x[i], tf_y[tf_idx[i]])
 
+  def testBool(self):
+    x = np.random.choice([True, False], size=7000)
+    with self.cached_session() as sess:
+      y, idx = array_ops.unique(x)
+      tf_y, tf_idx = self.evaluate([y, idx])
+
+    self.assertEqual(len(x), len(tf_idx))
+    self.assertEqual(len(tf_y), len(np.unique(x)))
+    for i in range(len(x)):
+      self.assertEqual(x[i], tf_y[tf_idx[i]])
+
+  def testBoolV2(self):
+    x = np.random.choice([True, False], size=7000)
+    with self.cached_session() as sess:
+      y, idx = gen_array_ops.unique_v2(x, axis=np.array([], np.int32))
+      tf_y, tf_idx = self.evaluate([y, idx])
+
+    self.assertEqual(len(x), len(tf_idx))
+    self.assertEqual(len(tf_y), len(np.unique(x)))
+    for i in range(len(x)):
+      self.assertEqual(x[i], tf_y[tf_idx[i]])
+
 
 class UniqueWithCountsTest(test.TestCase):
 
@@ -154,6 +176,33 @@ class UniqueWithCountsTest(test.TestCase):
     # This test is only temporary, once V2 is used
     # by default, the axis will be wrapped to allow `axis=None`.
     x = np.random.randint(2, high=10, size=7000)
+    with self.cached_session() as sess:
+      y, idx, count = gen_array_ops.unique_with_counts_v2(
+          x, axis=np.array([], np.int32))
+      tf_y, tf_idx, tf_count = self.evaluate([y, idx, count])
+
+    self.assertEqual(len(x), len(tf_idx))
+    self.assertEqual(len(tf_y), len(np.unique(x)))
+    for i in range(len(x)):
+      self.assertEqual(x[i], tf_y[tf_idx[i]])
+    for value, count in zip(tf_y, tf_count):
+      self.assertEqual(count, np.sum(x == value))
+
+  def testBool(self):
+    x = np.random.choice([True, False], size=7000)
+    with self.cached_session() as sess:
+      y, idx, count = array_ops.unique_with_counts(x)
+      tf_y, tf_idx, tf_count = self.evaluate([y, idx, count])
+
+    self.assertEqual(len(x), len(tf_idx))
+    self.assertEqual(len(tf_y), len(np.unique(x)))
+    for i in range(len(x)):
+      self.assertEqual(x[i], tf_y[tf_idx[i]])
+    for value, count in zip(tf_y, tf_count):
+      self.assertEqual(count, np.sum(x == value))
+
+  def testBoolV2(self):
+    x = np.random.choice([True, False], size=7000)
     with self.cached_session() as sess:
       y, idx, count = gen_array_ops.unique_with_counts_v2(
           x, axis=np.array([], np.int32))
