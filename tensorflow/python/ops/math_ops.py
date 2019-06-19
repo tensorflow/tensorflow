@@ -1349,9 +1349,28 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
     start, limit = 0, start
 
   with ops.name_scope(name, "Range", [start, limit, delta]) as name:
-    start = ops.convert_to_tensor(start, dtype=dtype, name="start")
-    limit = ops.convert_to_tensor(limit, dtype=dtype, name="limit")
-    delta = ops.convert_to_tensor(delta, dtype=dtype, name="delta")
+    # In case start, limit, or delta is already a tensor and have different
+    # dtype with the specified dtype, try to do a cast to see if the dtype is
+    # compatible. Otherwise pass to convert_to_tensor. This is to handle
+    # the situation with:
+    #   tf.range(tf.constant(5), dtype=tf.float32)
+    # which is comparable with:
+    #   np.arange(np.int(5), dtype=np.float32)
+    if (isinstance(start, ops.Tensor) and
+        dtype is not None and dtype != start.dtype):
+      start = cast(start, dtype=dtype)
+    else:
+      start = ops.convert_to_tensor(start, dtype=dtype, name="start")
+    if (isinstance(limit, ops.Tensor) and
+        dtype is not None and dtype != limit.dtype):
+      limit = cast(limit, dtype=dtype)
+    else:
+      limit = ops.convert_to_tensor(limit, dtype=dtype, name="limit")
+    if (isinstance(delta, ops.Tensor) and
+        dtype is not None and dtype != delta.dtype):
+      delta = cast(delta, dtype=dtype)
+    else:
+      delta = ops.convert_to_tensor(delta, dtype=dtype, name="delta")
 
     # infer dtype if not explicitly provided
     if dtype is None:
