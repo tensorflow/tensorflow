@@ -565,8 +565,7 @@ def experimental_tpu_predict_loop(model,
     prediction_result = np.concatenate(unconcatenated_outs[0], axis=0)
   else:
     prediction_result = [
-        np.concatenate(unconcatenated_outs[i], axis=0)
-        for i in range(len(unconcatenated_outs))
+        np.concatenate(out, axis=0) for out in unconcatenated_outs
     ]
 
   if padding_handler:
@@ -797,4 +796,3 @@ class DistributionMultiWorkerTrainingLoop(DistributionSingleWorkerTrainingLoop):
   evaluate = train_with_multi_worker(
       DistributionSingleWorkerTrainingLoop.evaluate)
   # Currently predict is still using the single worker implementation.
-
