@@ -836,7 +836,7 @@ def hinge(y_true, y_pred):
 
   Args:
     y_true: The ground truth values. `y_true` values are expected to be -1 or 1.
-      If binary (0 or 1) labels are provided they will converted to -1 or 1.
+      If binary (0 or 1) labels are provided they will be converted to -1 or 1.
     y_pred: The predicted values.
 
   Returns:
