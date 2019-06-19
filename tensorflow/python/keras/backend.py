@@ -1212,24 +1212,30 @@ def zeros(shape, dtype=None, name=None):
   """Instantiates an all-zeros variable and returns it.
 
   Arguments:
-      shape: Tuple of integers, shape of returned Keras variable
-      dtype: String, data type of returned Keras variable
-      name: String, name of returned Keras variable
+      shape: Tuple or list of integers, shape of returned Keras variable
+      dtype: data type of returned Keras variable
+      name : name of returned Keras variable
 
   Returns:
       A variable (including Keras metadata), filled with `0.0`.
       Note that if `shape` was symbolic, we cannot return a variable,
       and will return a dynamically-shaped tensor instead.
 
-  Example:
+  For Example:
+  
   ```python
-      >>> from keras import backend as K
-      >>> kvar = K.zeros((3,4))
-      >>> K.eval(kvar)
-      array([[ 0.,  0.,  0.,  0.],
-             [ 0.,  0.,  0.,  0.],
-             [ 0.,  0.,  0.,  0.]], dtype=float32)
+  from tensorflow.keras import backend as K
+  kvar = K.zeros((3,4))
+  K.eval(kvar)
+  array([[ 0.,  0.,  0.,  0.],
+         [ 0.,  0.,  0.,  0.],
+         [ 0.,  0.,  0.,  0.]], dtype=float32)
+  A = tf.constant([1,2,3])
+  kvar2 = K.zeros(A.shape) # [0., 0., 0.] float32 by default
+  kvar3 = K.zeros(A.shape,dtype=tf.int32) # [0, 0, 0] with int32 dtype
+  kvar4 = K.zeros([2,3]) # [[0., 0., 0.], [0., 0., 0.]]
   ```
+  
   """
   with ops.init_scope():
     if dtype is None:
@@ -1311,23 +1317,25 @@ def zeros_like(x, dtype=None, name=None):
   """Instantiates an all-zeros variable of the same shape as another tensor.
 
   Arguments:
-      x: Keras variable or Keras tensor.
-      dtype: String, dtype of returned Keras variable.
-           None uses the dtype of x.
-      name: String, name for the variable to create.
+      x    : Keras variable or Keras tensor.
+      dtype: dtype of returned Keras variable.
+             None uses the dtype of `x`.
+      name : name for the variable to create.
 
   Returns:
-      A Keras variable with the shape of x filled with zeros.
+      A Keras variable with the shape of `x` filled with zeros.
 
-  Example:
+  For Example:
+  
   ```python
-      >>> from keras import backend as K
-      >>> kvar = K.variable(np.random.random((2,3)))
-      >>> kvar_zeros = K.zeros_like(kvar)
-      >>> K.eval(kvar_zeros)
-      array([[ 0.,  0.,  0.],
-             [ 0.,  0.,  0.]], dtype=float32)
+  from tensorflow.keras import backend as K
+  kvar = K.variable(np.random.random((2,3)))
+  kvar_zeros = K.zeros_like(kvar)
+  K.eval(kvar_zeros)
+  # array([[ 0.,  0.,  0.],
+  #        [ 0.,  0.,  0.]], dtype=float32)
   ```
+  
   """
   return array_ops.zeros_like(x, dtype=dtype, name=name)
 
