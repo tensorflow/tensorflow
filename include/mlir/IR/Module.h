@@ -23,18 +23,16 @@
 #define MLIR_IR_MODULE_H
 
 #include "mlir/IR/Function.h"
-#include "llvm/ADT/DenseMap.h"
+#include "mlir/IR/SymbolTable.h"
 #include "llvm/ADT/ilist.h"
 
 namespace mlir {
 
-class AffineMap;
-
 class Module {
 public:
-  explicit Module(MLIRContext *context);
+  explicit Module(MLIRContext *context) : symbolTable(context) {}
 
-  MLIRContext *getContext() { return context; }
+  MLIRContext *getContext() { return symbolTable.getContext(); }
 
   /// This is the list of functions in the module.
   using FunctionListType = llvm::iplist<Function>;
@@ -53,11 +51,15 @@ public:
 
   /// Look up a function with the specified name, returning null if no such
   /// name exists.  Function names never include the @ on them.
-  Function *getNamedFunction(StringRef name);
+  Function *getNamedFunction(StringRef name) {
+    return symbolTable.lookup(name);
+  }
 
   /// Look up a function with the specified name, returning null if no such
   /// name exists.  Function names never include the @ on them.
-  Function *getNamedFunction(Identifier name);
+  Function *getNamedFunction(Identifier name) {
+    return symbolTable.lookup(name);
+  }
 
   /// Perform (potentially expensive) checks of invariants, used to detect
   /// compiler bugs.  On error, this reports the error through the MLIRContext
@@ -76,17 +78,12 @@ private:
     return &Module::functions;
   }
 
-  MLIRContext *context;
-
-  /// This is a mapping from a name to the function with that name.
-  llvm::DenseMap<Identifier, Function *> symbolTable;
-
-  /// This is used when name conflicts are detected.
-  unsigned uniquingCounter = 0;
+  /// The symbol table used for functions.
+  SymbolTable symbolTable;
 
   /// This is the actual list of functions the module contains.
   FunctionListType functions;
 };
 } // end namespace mlir
 
-#endif  // MLIR_IR_FUNCTION_H
+#endif // MLIR_IR_MODULE_H

@@ -50,11 +50,6 @@ public:
   /// Return the name of this function, without the @.
   Identifier getName() { return name; }
 
-  /// Swap the name of the given function with this one. The caller must ensure
-  /// that all existing references to the current name of each function have
-  /// been properly updated.
-  void takeName(Function &rhs);
-
   /// Return the type of this function.
   FunctionType getType() { return type; }
 
@@ -295,6 +290,9 @@ public:
   void cloneInto(Function *dest, BlockAndValueMapping &mapper);
 
 private:
+  /// Set the name of this function.
+  void setName(Identifier newName) { name = newName; }
+
   /// The name of the function.
   Identifier name;
 
@@ -318,6 +316,9 @@ private:
 
   void operator=(Function &) = delete;
   friend struct llvm::ilist_traits<Function>;
+
+  // Allow access to 'setName'.
+  friend class SymbolTable;
 };
 
 //===--------------------------------------------------------------------===//

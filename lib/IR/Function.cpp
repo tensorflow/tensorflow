@@ -41,14 +41,6 @@ Function::Function(Location location, StringRef name, FunctionType type,
 
 MLIRContext *Function::getContext() { return getType().getContext(); }
 
-/// Swap the name of the given function with this one.
-void Function::takeName(Function &rhs) {
-  auto *module = getModule();
-  assert(module && module == rhs.getModule() && "expected same parent module");
-  std::swap(module->symbolTable[name], module->symbolTable[rhs.getName()]);
-  std::swap(name, rhs.name);
-}
-
 Module *llvm::ilist_traits<Function>::getContainingModule() {
   size_t Offset(
       size_t(&((Module *)nullptr->*Module::getSublistAccess(nullptr))));
@@ -63,25 +55,8 @@ void llvm::ilist_traits<Function>::addNodeToList(Function *function) {
   auto *module = getContainingModule();
   function->module = module;
 
-  // Add this function to the symbol table of the module, uniquing the name if
-  // a conflict is detected.
-  if (!module->symbolTable.insert({function->getName(), function}).second) {
-    // If a conflict was detected, then the function will not have been added to
-    // the symbol table.  Try suffixes until we get to a unique name that works.
-    SmallString<128> nameBuffer(function->getName().begin(),
-                                function->getName().end());
-    unsigned originalLength = nameBuffer.size();
-
-    // Iteratively try suffixes until we find one that isn't used.  We use a
-    // module level uniquing counter to avoid N^2 behavior.
-    do {
-      nameBuffer.resize(originalLength);
-      nameBuffer += '_';
-      nameBuffer += std::to_string(module->uniquingCounter++);
-      function->name = Identifier::get(nameBuffer, module->getContext());
-    } while (
-        !module->symbolTable.insert({function->getName(), function}).second);
-  }
+  // Add this function to the symbol table of the module.
+  module->symbolTable.insert(function);
 }
 
 /// This is a trait method invoked when a Function is removed from a Module.
@@ -90,7 +65,7 @@ void llvm::ilist_traits<Function>::removeNodeFromList(Function *function) {
   assert(function->module && "not already in a module!");
 
   // Remove the symbol table entry.
-  function->module->symbolTable.erase(function->getName());
+  function->module->symbolTable.erase(function);
   function->module = nullptr;
 }
 
