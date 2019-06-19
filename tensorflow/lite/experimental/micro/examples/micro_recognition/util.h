@@ -17,6 +17,13 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MICRO_RECOGNITION_UTIL_H_
 
 #include <stdint.h>
+#include <string.h>
+
+#define IMAGE_SIZE 3072
+#define CHANNEL_SIZE 1024
+#define R_CHANNEL_OFFSET 0
+#define G_CHANNEL_OFFSET CHANNEL_SIZE
+#define B_CHANNEL_OFFSET (CHANNEL_SIZE * 2)
 
 int get_top_prediction(uint8_t* predictions) {
   int max_score = 0;
@@ -31,6 +38,26 @@ int get_top_prediction(uint8_t* predictions) {
   }
 
   return guess;
+}
+
+void reshape_cifar_image(uint8_t* image_data, int num_bytes) {
+  uint8_t temp_data[IMAGE_SIZE];
+
+  memcpy(temp_data, image_data, num_bytes);
+
+  int k = 0;
+  for (int i = 0; i < CHANNEL_SIZE; i++) {
+    int r_ind = R_CHANNEL_OFFSET + i;
+    int g_ind = G_CHANNEL_OFFSET + i;
+    int b_ind = B_CHANNEL_OFFSET + i;
+
+    image_data[k] = temp_data[r_ind];
+    k++;
+    image_data[k] = temp_data[g_ind];
+    k++;
+    image_data[k] = temp_data[b_ind];
+    k++;
+  }
 }
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MICRO_RECOGNITION_UTIL_H_

@@ -25,6 +25,7 @@ tensorflow/contrib/cmake/_build/
 /api_init_files_list.txt
 /estimator_api_init_files_list.txt
 *.whl
+/tensorflow/lite/experimental/micro/examples/micro_recognition/first_10_cifar_images.h
 
 # Android
 .gradle

@@ -68,6 +68,12 @@ patch_kissfft() {
   echo "Finished patching kissfft"
 }
 
+# Create a header file containing an array with the first 10 images from the
+# CIFAR10 test dataset.
+patch_cifar10_dataset() {
+  xxd -l 30730 -i ${1}/test_batch.bin ${1}/../../../../examples/micro_recognition/first_10_cifar_images.h
+}
+
 # Main function handling the download, verify, extract, and patch process.
 download_and_extract() {
   local usage="Usage: download_and_extract URL MD5 DIR [ACTION]"
@@ -136,6 +142,8 @@ download_and_extract() {
     patch_am_sdk ${dir}
   elif [[ ${action} == "patch_kissfft" ]]; then
     patch_kissfft ${dir}
+  elif [[ ${action} == "patch_cifar10_dataset" ]]; then
+    patch_cifar10_dataset ${dir}
   elif [[ ${action} ]]; then
     echo "Unknown action '${action}'"
     exit 1
