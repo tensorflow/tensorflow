@@ -1214,7 +1214,7 @@ def zeros(shape, dtype=None, name=None):
   Arguments:
       shape: Tuple or list of integers, shape of returned Keras variable
       dtype: data type of returned Keras variable
-      name : name of returned Keras variable
+      name: name of returned Keras variable
 
   Returns:
       A variable (including Keras metadata), filled with `0.0`.
@@ -1227,9 +1227,8 @@ def zeros(shape, dtype=None, name=None):
   from tensorflow.keras import backend as K
   kvar = K.zeros((3,4))
   K.eval(kvar)
-  array([[ 0.,  0.,  0.,  0.],
-         [ 0.,  0.,  0.,  0.],
-         [ 0.,  0.,  0.,  0.]], dtype=float32)
+  # array([[ 0.,  0.,  0.,  0.], [ 0.,  0.,  0.,  0.],
+  #       [ 0.,  0.,  0.,  0.]], dtype=float32)
   A = tf.constant([1,2,3])
   kvar2 = K.zeros(A.shape) # [0., 0., 0.] float32 by default
   kvar3 = K.zeros(A.shape,dtype=tf.int32) # [0, 0, 0] with int32 dtype
@@ -1317,10 +1316,10 @@ def zeros_like(x, dtype=None, name=None):
   """Instantiates an all-zeros variable of the same shape as another tensor.
 
   Arguments:
-      x    : Keras variable or Keras tensor.
+      x: Keras variable or Keras tensor.
       dtype: dtype of returned Keras variable.
              None uses the dtype of `x`.
-      name : name for the variable to create.
+      name: name for the variable to create.
 
   Returns:
       A Keras variable with the shape of `x` filled with zeros.
@@ -1332,8 +1331,7 @@ def zeros_like(x, dtype=None, name=None):
   kvar = K.variable(np.random.random((2,3)))
   kvar_zeros = K.zeros_like(kvar)
   K.eval(kvar_zeros)
-  # array([[ 0.,  0.,  0.],
-  #        [ 0.,  0.,  0.]], dtype=float32)
+  # array([[ 0.,  0.,  0.], [ 0.,  0.,  0.]], dtype=float32)
   ```
   
   """
