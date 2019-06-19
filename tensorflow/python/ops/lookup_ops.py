@@ -239,8 +239,7 @@ class InitializableLookupTableBaseV1(InitializableLookupTableBase):
 
 @tf_export("lookup.StaticHashTable", v1=[])
 class StaticHashTable(InitializableLookupTableBase):
-  """A generic hash table implementation. The table is immutable once
-  initialized.
+  """A generic hash table that is immutable once initialized.
 
   Example usage:
 
@@ -316,8 +315,7 @@ class StaticHashTable(InitializableLookupTableBase):
 
 @tf_export(v1=["lookup.StaticHashTable"])
 class StaticHashTableV1(StaticHashTable):
-  """A generic hash table implementation. The table is immutable once
-  initialized.
+  """A generic hash table that is immutable once initialized.
 
   When running in graph mode, you must evaluate the tensor returned by
   `tf.tables_initializer()` before evaluating the tensor returned by 
