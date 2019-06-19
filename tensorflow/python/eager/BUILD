@@ -480,6 +480,7 @@ cuda_py_test(
         ":function",
         ":test",
         ":profiler",
+        ":remote",
         "//third_party/py/numpy",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",

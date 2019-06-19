@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/execute.h"
 #include "tensorflow/core/common_runtime/process_util.h"
@@ -121,9 +122,9 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      request->async(), device_mgr, false, r, nullptr,
-      worker_session->cluster_flr.get(), std::move(rendezvous_creator),
-      worker_session->remote_device_mgr());
+      tensorflow::ContextMirroringPolicy::MIRRORING_NONE, request->async(),
+      device_mgr, false, r, nullptr, worker_session->cluster_flr.get(),
+      std::move(rendezvous_creator), worker_session->remote_device_mgr());
 
   std::vector<DeviceAttributes> device_attributes;
   device_mgr->ListDeviceAttributes(&device_attributes);
@@ -303,7 +304,7 @@ Status EagerServiceImpl::SendTensor(const SendTensorRequest* request,
     TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(tensor, &tensor_handle));
     TensorHandle* copied_handle = nullptr;
     TF_RETURN_IF_ERROR(EagerCopyToDevice(tensor_handle, context->Context(),
-                                         request->device_name().c_str(),
+                                         request->device_name().c_str(), false,
                                          &copied_handle));
     tensors.push_back(copied_handle);
     tensor_handle->Unref();

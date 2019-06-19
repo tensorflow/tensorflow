@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -54,19 +55,24 @@ struct TFE_ContextOptions {
   TF_SessionOptions session_options;
   // true if async execution is enabled.
   bool async = false;
-  TFE_ContextDevicePlacementPolicy policy{TFE_DEVICE_PLACEMENT_SILENT};
+  TFE_ContextDevicePlacementPolicy device_placement_policy{
+      TFE_DEVICE_PLACEMENT_SILENT};
+  TFE_ContextMirroringPolicy mirroring_policy{TFE_MIRRORING_NONE};
 };
 
 struct TFE_Context {
   TFE_Context(const tensorflow::SessionOptions& opts,
-              TFE_ContextDevicePlacementPolicy default_policy, bool async,
+              TFE_ContextDevicePlacementPolicy default_device_placement_policy,
+              TFE_ContextMirroringPolicy default_mirroring_policy, bool async,
               const tensorflow::DeviceMgr* device_mgr, bool device_mgr_owned,
               tensorflow::Rendezvous* rendezvous,
               const tensorflow::CustomKernelCreator* custom_kernel_creator)
       : context(new tensorflow::EagerContext(
             opts,
             static_cast<tensorflow::ContextDevicePlacementPolicy>(
-                default_policy),
+                default_device_placement_policy),
+            static_cast<tensorflow::ContextMirroringPolicy>(
+                default_mirroring_policy),
             async, device_mgr, device_mgr_owned, rendezvous,
             custom_kernel_creator)) {}
 

@@ -150,8 +150,9 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op,
   // trigger a copy.
   auto pre_time_nanos = Env::Default()->NowNanos();
   TensorHandle* result_handle = nullptr;
-  Status status = EagerCopyToDevice(
-      handle, ctx, expected_input_device->name().c_str(), &result_handle);
+  Status status =
+      EagerCopyToDevice(handle, ctx, expected_input_device->name().c_str(),
+                        ctx->MirrorTensors(), &result_handle);
   if (run_metadata != nullptr) {
     auto* step_stats = run_metadata->mutable_step_stats();
     MaybeInitializeStepStats(step_stats, ctx);
@@ -510,7 +511,7 @@ Status EagerLocalExecute(EagerOperation* op,
         TensorHandle* handle = nullptr;
         TF_RETURN_IF_ERROR(EagerCopyToDevice(
             input, ctx, device == nullptr ? "" : device->name().c_str(),
-            &handle));
+            ctx->MirrorTensors(), &handle));
         op->UpdateInput(i, handle);
         // Unref handle since it has a ref as an input now
         handle->Unref();
@@ -677,11 +678,20 @@ Status EagerLocalExecute(EagerOperation* op,
 // this function enables sending tensors using the EagerService.SendTensor RPC
 // *on the receiver*.
 Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
-                             Device* recv_device, TensorHandle** result) {
+                             Device* recv_device, bool mirror,
+                             TensorHandle** result) {
 #if defined(IS_MOBILE_PLATFORM)
   return errors::Unimplemented(
       "Eager's remote execution is not available on mobile devices.");
 #else   // !IS_MOBILE_PLATFORM
+  if (mirror) {
+    if (h->HasRemoteMirror(recv_device)) {
+      h->Ref();
+      *result = h;
+      return Status::OK();
+    }
+  }
+
   eager::EagerClient* eager_client;
   uint64 context_id;
   TF_RETURN_IF_ERROR(
@@ -726,9 +736,17 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
   n.WaitForNotification();
   if (!status.ok()) return status;
 
-  status = TensorHandle::CreateRemoteHandle(
-      id, 0, tensor->shape(), eager_client, context_id, tensor->dtype(),
-      recv_device, nullptr, ctx, result);
+  auto tensor_handle_data = absl::make_unique<RemoteTensorHandleData>(
+      id, 0, tensor->shape(), eager_client, context_id, ctx);
+  if (mirror) {
+    status = h->AddRemoteMirror(std::move(tensor_handle_data), recv_device);
+    h->Ref();
+    *result = h;
+  } else {
+    status = TensorHandle::CreateRemoteHandle(std::move(tensor_handle_data),
+                                              tensor->dtype(), recv_device,
+                                              nullptr, ctx, result);
+  }
 
   actual_handle->Unref();
 
@@ -757,6 +775,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   auto* remote_op = request->add_queue()->mutable_operation();
 
   for (int i = 0; i < op->Inputs().size(); i++) {
+    tensorflow::TensorHandle* input = op->Inputs()[i];
     tensorflow::Device* input_device = op->Inputs()[i]->device();
     if (op->Device() != input_device &&
         // If the expected and actual devices are on the same task, don't
@@ -776,15 +795,14 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
           op, op->Device()->name(), i, remote_cpu_device,
           /* run_metadata= */ nullptr, &handle));
       op->UpdateInput(i, handle);
+      input = handle;
       // Unref handle since it has a ref as an input now
       handle->Unref();
     }
 
-    tensorflow::TensorHandle* input = op->Inputs()[i];
-
     tensorflow::int64 op_id;
     int32 output_num;
-    TF_RETURN_IF_ERROR(input->RemoteAddress(&op_id, &output_num));
+    TF_RETURN_IF_ERROR(input->RemoteAddress(op->Device(), &op_id, &output_num));
 
     auto* remote_op_input = remote_op->add_inputs();
     remote_op_input->set_op_id(op_id);
@@ -849,6 +867,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
       handle->Ref();
     }
 
+    // TODO(gjn): If the retval TensorHandle is simply going to be used as a
+    // mirror then there should be no need to call SetRemoteShape
     // Unable to capture via std::move, so bind instead.
     auto* node = new eager::RemoteExecuteNode(
         remote_node_id, std::move(request), eager_client,
@@ -858,8 +878,11 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
                      const eager::EnqueueResponse& response) {
               for (int i = 0; i < retvals.size(); i++) {
                 if (status.ok()) {
-                  retvals[i]->SetRemoteShape(
+                  Status s = retvals[i]->SetRemoteShape(
                       response.queue_response(0).shape(i));
+                  if (!s.ok()) {
+                    retvals[i]->Poison(s);
+                  }
                 } else {
                   retvals[i]->Poison(status);
                 }
@@ -1250,7 +1273,8 @@ string GetUniqueWireID() {
 }  // namespace
 
 Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
-                         const char* device_name, TensorHandle** result) {
+                         const char* device_name, bool mirror,
+                         TensorHandle** result) {
   tensorflow::Device* send_device = h->device();
 
   if (send_device == nullptr) {
@@ -1267,7 +1291,7 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
   if (sender_is_local && recver_is_local) {
     return LocalEagerCopyToDevice(h, ctx, recv_device, result);
   } else if (ctx->UseSendTensorRPC() && sender_is_local && !recver_is_local) {
-    return EagerRemoteSendTensor(ctx, h, recv_device, result);
+    return EagerRemoteSendTensor(ctx, h, recv_device, mirror, result);
   } else {
     string wire_id = GetUniqueWireID();
 

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tflite {
@@ -45,6 +46,7 @@ tensorflow::Status DelegateData::Prepare(
   eager_context_ = new tensorflow::EagerContext(
       session_options,
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
+      tensorflow::ContextMirroringPolicy::MIRRORING_NONE,
       /*async=*/false, device_mgr.release(), /*device_mgr_owned*/ true,
       rendezvous, nullptr);
   return tensorflow::Status();

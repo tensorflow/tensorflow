@@ -59,13 +59,16 @@ auto* eager_context_created =
 }  // namespace
 
 EagerContext::EagerContext(
-    const SessionOptions& opts, ContextDevicePlacementPolicy default_policy,
-    bool async, const DeviceMgr* device_mgr, bool device_mgr_owned,
-    Rendezvous* rendezvous, const CustomKernelCreator* custom_kernel_creator,
+    const SessionOptions& opts,
+    ContextDevicePlacementPolicy default_device_placement_policy,
+    ContextMirroringPolicy default_mirroring_policy, bool async,
+    const DeviceMgr* device_mgr, bool device_mgr_owned, Rendezvous* rendezvous,
+    const CustomKernelCreator* custom_kernel_creator,
     DistributedFunctionLibraryRuntime* cluster_flr,
     std::function<Rendezvous*(const int64)> rendezvous_creator,
     const DeviceMgr* remote_device_mgr)
-    : policy_(default_policy),
+    : default_device_placement_policy_(default_device_placement_policy),
+      default_mirroring_policy_(default_mirroring_policy),
       remote_unowned_device_manager_(remote_device_mgr),
       devices_(device_mgr->ListDevices()),
       rendezvous_(rendezvous),
@@ -171,16 +174,36 @@ void EagerContext::ClearCaches() {
 void EagerContext::SetThreadLocalDevicePlacementPolicy(
     ContextDevicePlacementPolicy policy) {
   mutex_lock ml(policy_map_mu_);
-  thread_local_policies_[std::this_thread::get_id()] = policy;
+  device_placement_policy_[std::this_thread::get_id()] = policy;
 }
 
-ContextDevicePlacementPolicy EagerContext::GetDevicePlacementPolicy() {
-  mutex_lock ml(policy_map_mu_);
-  auto policy_map_it = thread_local_policies_.find(std::this_thread::get_id());
-  if (policy_map_it != thread_local_policies_.end()) {
+ContextDevicePlacementPolicy EagerContext::GetDevicePlacementPolicy() const {
+  tf_shared_lock l(policy_map_mu_);
+  auto policy_map_it =
+      device_placement_policy_.find(std::this_thread::get_id());
+  if (policy_map_it != device_placement_policy_.end()) {
     return policy_map_it->second;
   }
-  return policy_;
+  return default_device_placement_policy_;
+}
+
+void EagerContext::SetThreadLocalMirroringPolicy(
+    ContextMirroringPolicy policy) {
+  mutex_lock ml(policy_map_mu_);
+  mirroring_policy_[std::this_thread::get_id()] = policy;
+}
+
+ContextMirroringPolicy EagerContext::GetMirroringPolicy() const {
+  tf_shared_lock l(policy_map_mu_);
+  auto policy_map_it = mirroring_policy_.find(std::this_thread::get_id());
+  if (policy_map_it != mirroring_policy_.end()) {
+    return policy_map_it->second;
+  }
+  return default_mirroring_policy_;
+}
+
+bool EagerContext::MirrorTensors() const {
+  return GetMirroringPolicy() == MIRRORING_ALL;
 }
 
 #if !defined(IS_MOBILE_PLATFORM)

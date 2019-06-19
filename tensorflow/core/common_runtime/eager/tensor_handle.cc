@@ -140,6 +140,7 @@ TensorHandle::TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
       ctx_(ctx),
       is_remote_(false),
       tensor_handle_data_(std::move(t)) {
+  VLOG(3) << "Creating Local TensorHandle: " << this << " device: " << device_;
   // Notify immediately since this handle is already ready.
   is_ready_notification_.Notify();
 }
@@ -160,6 +161,7 @@ TensorHandle::TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
       resource_handle_container_(resource_handle.container()),
       resource_handle_name_(resource_handle.name()),
       tensor_handle_data_(std::move(t)) {
+  VLOG(3) << "Creating Local TensorHandle: " << this << " device: " << device_;
   // Notify immediately since this handle is already ready.
   is_ready_notification_.Notify();
 }
@@ -189,9 +191,19 @@ TensorHandle::TensorHandle(std::unique_ptr<AsyncLocalTensorHandleData> t,
       ctx_(ctx),
       is_remote_(false),
       tensor_handle_data_(std::move(t)) {
+  VLOG(3) << "Creating Async Local TensorHandle: " << this
+          << " device: " << device_;
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
+Status TensorHandle::CreateRemoteHandle(
+    std::unique_ptr<RemoteTensorHandleData> t, DataType dtype, Device* d,
+    Device* resource_device, EagerContext* ctx, TensorHandle** h) {
+  *h = new TensorHandle(std::move(t), dtype, d, resource_device, ctx);
+
+  return Status::OK();
+}
+
 Status TensorHandle::CreateRemoteHandle(int64 op_id, int output_num,
                                         const TensorShape& shape,
                                         eager::EagerClient* eager_client,
@@ -217,6 +229,7 @@ TensorHandle::TensorHandle(std::unique_ptr<RemoteTensorHandleData> t,
       ctx_(ctx),
       is_remote_(true),
       tensor_handle_data_(std::move(t)) {
+  VLOG(3) << "Creating Remote TensorHandle: " << this << " device: " << device_;
   // Notify immediately since this handle is already ready.
   is_ready_notification_.Notify();
 }
@@ -247,7 +260,10 @@ TensorHandle::TensorHandle(std::unique_ptr<UnshapedRemoteTensorHandleData> t,
       remote_context_id_(t->context_id()),
       ctx_(ctx),
       is_remote_(true),
-      tensor_handle_data_(std::move(t)) {}
+      tensor_handle_data_(std::move(t)) {
+  VLOG(3) << "Creating Unshaped Remote TensorHandle: " << this
+          << " device: " << device_;
+}
 #endif
 
 TensorHandle::TensorHandle(OutputGraphNode symbolic_tensor, DataType dtype)
@@ -262,6 +278,7 @@ TensorHandle::TensorHandle(OutputGraphNode symbolic_tensor, DataType dtype)
       ctx_(nullptr),
       is_remote_(false),
       symbolic_tensor_(new OutputGraphNode(symbolic_tensor)) {
+  VLOG(3) << "Creating Symbolic TensorHandle: " << this;
   // Notify immediately since this handle is already ready.
   is_ready_notification_.Notify();
 }
@@ -305,10 +322,19 @@ Status TensorHandle::NumElements(int64* num_elements) {
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
-Status TensorHandle::RemoteAddress(int64* op_id, int32* output_num) const {
-  if (!is_remote_) {
+Status TensorHandle::RemoteAddress(Device* d, int64* op_id,
+                                   int32* output_num) const {
+  if (d != device_) {
+    mutex_lock l(remote_mirrors_mutex_);
+    auto mirror = remote_mirrors_.find(d);
+    if (mirror != remote_mirrors_.end()) {
+      *op_id = mirror->second->op_id();
+      *output_num = mirror->second->output_num();
+      return Status::OK();
+    }
+
     return errors::FailedPrecondition(
-        "This TensorHandle refers to a local tensor handle");
+        "Could not find remote mirror for specified device");
   }
 
   *op_id = remote_op_id_;
@@ -316,7 +342,28 @@ Status TensorHandle::RemoteAddress(int64* op_id, int32* output_num) const {
   return Status::OK();
 }
 
-void TensorHandle::SetRemoteShape(const TensorShape& shape) {
+bool TensorHandle::HasRemoteMirror(Device* d) {
+  mutex_lock l(remote_mirrors_mutex_);
+  auto mirror = remote_mirrors_.find(d);
+  if (mirror != remote_mirrors_.end()) {
+    return true;
+  }
+
+  return false;
+}
+
+Status TensorHandle::AddRemoteMirror(std::unique_ptr<RemoteTensorHandleData> t,
+                                     Device* d) {
+  mutex_lock l(remote_mirrors_mutex_);
+  auto ret = remote_mirrors_.insert(std::make_pair(d, std::move(t)));
+  if (!ret.second) {
+    return errors::Internal("Attempted to duplicate a remote mirror.");
+  }
+
+  return Status::OK();
+}
+
+Status TensorHandle::SetRemoteShape(const TensorShape& shape) {
   DCHECK(is_remote_) << "SeRemoteShape is only called on remote handles.";
   DCHECK(!is_ready_notification_.HasBeenNotified())
       << "SetRemoteShape is only called on non-ready handles.";
@@ -330,6 +377,8 @@ void TensorHandle::SetRemoteShape(const TensorShape& shape) {
       remote_context_id_, ctx_);
   is_poisoned_ = Status::OK();
   is_ready_notification_.Notify();
+
+  return Status::OK();
 }
 #endif
 
