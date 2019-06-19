@@ -31,6 +31,7 @@ TestDialect::TestDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "TestOps.cpp.inc"
       >();
+  allowUnknownOperations();
 }
 
 // Static initialization for Test dialect registration.

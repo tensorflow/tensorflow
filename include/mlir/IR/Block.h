@@ -134,8 +134,10 @@ public:
   /// Add one argument to the argument list for each type specified in the list.
   llvm::iterator_range<args_iterator> addArguments(ArrayRef<Type> types);
 
-  /// Erase the argument at 'index' and remove it from the argument list.
-  void eraseArgument(unsigned index);
+  /// Erase the argument at 'index' and remove it from the argument list. If
+  /// 'updatePredTerms' is set to true, this argument is also removed from the
+  /// terminators of each predecessor to this block.
+  void eraseArgument(unsigned index, bool updatePredTerms = true);
 
   unsigned getNumArguments() { return arguments.size(); }
   BlockArgument *getArgument(unsigned i) { return arguments[i]; }

@@ -49,17 +49,70 @@ static mlir::PassRegistration<TestPatternDriver>
 //===----------------------------------------------------------------------===//
 // Legalization Driver.
 //===----------------------------------------------------------------------===//
+namespace {
+/// This pattern is a simple pattern that inlines the first region of a given
+/// operation into the parent region.
+struct TestRegionRewriteBlockMovement : public ConversionPattern {
+  TestRegionRewriteBlockMovement(MLIRContext *ctx)
+      : ConversionPattern("test.region", 1, ctx) {}
+
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const final {
+    // Inline this region into the parent region.
+    auto &parentRegion = *op->getContainingRegion();
+    rewriter.inlineRegionBefore(op->getRegion(0), parentRegion.end());
+
+    // Drop this operation.
+    rewriter.replaceOp(op, llvm::None);
+    return matchSuccess();
+  }
+};
+/// This pattern simply erases the given operation.
+struct TestDropOp : public ConversionPattern {
+  TestDropOp(MLIRContext *ctx) : ConversionPattern("test.drop_op", 1, ctx) {}
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const final {
+    rewriter.replaceOp(op, llvm::None);
+    return matchSuccess();
+  }
+};
+} // namespace
 
 namespace {
+struct TestTypeConverter : public TypeConverter {
+  using TypeConverter::TypeConverter;
+
+  LogicalResult convertType(Type t, SmallVectorImpl<Type> &results) override {
+    // Drop I16 types.
+    if (t.isInteger(16))
+      return success();
+
+    // Convert I64 to F64.
+    if (t.isInteger(64)) {
+      results.push_back(FloatType::getF64(t.getContext()));
+      return success();
+    }
+
+    // Otherwise, convert the type directly.
+    results.push_back(t);
+    return success();
+  }
+};
+
 struct TestLegalizePatternDriver
-    : public FunctionPass<TestLegalizePatternDriver> {
-  void runOnFunction() override {
+    : public ModulePass<TestLegalizePatternDriver> {
+  void runOnModule() override {
     mlir::OwningRewritePatternList patterns;
     populateWithGenerated(&getContext(), &patterns);
+    RewriteListBuilder<TestRegionRewriteBlockMovement, TestDropOp>::build(
+        patterns, &getContext());
 
+    TestTypeConverter converter;
     ConversionTarget target(getContext());
     target.addLegalOp<LegalOpA>();
-    (void)applyConversionPatterns(getFunction(), target, std::move(patterns));
+    if (failed(applyConversionPatterns(getModule(), target, converter,
+                                       std::move(patterns))))
+      signalPassFailure();
   }
 };
 } // end anonymous namespace

@@ -113,39 +113,109 @@ class TypeConverter {
 public:
   virtual ~TypeConverter() = default;
 
-  /// Derived classes must reimplement this hook if they need to convert
-  /// block or function argument types or function result types.  If the target
-  /// dialect has support for custom first-class function types, convertType
-  /// should create those types for arguments of MLIR function type.  It can be
-  /// used for values (constant, operands, results) of function type but not for
-  /// the function signatures.  For the latter, convertFunctionSignatureType is
-  /// used instead.
-  ///
-  /// For block attribute types, this function will be called for each attribute
-  /// individually.
-  ///
-  /// If type conversion can fail, this function should return a
-  /// default-constructed Type.  The failure will be then propagated to trigger
-  /// the pass failure.
+  /// This class provides all of the information necessary to convert a
+  /// FunctionType signature.
+  class SignatureConversion {
+  public:
+    SignatureConversion(unsigned numOrigInputs)
+        : remappedInputs(numOrigInputs) {}
+
+    /// This struct represents a range of new types that remap an existing
+    /// signature input.
+    struct InputMapping {
+      size_t inputNo, size;
+    };
+
+    /// Return the converted type signature.
+    FunctionType getConvertedType(MLIRContext *ctx) const {
+      return FunctionType::get(argTypes, resultTypes, ctx);
+    }
+
+    /// Return the argument types for the new signature.
+    ArrayRef<Type> getConvertedArgTypes() const { return argTypes; }
+
+    /// Return the result types for the new signature.
+    ArrayRef<Type> getConvertedResultTypes() const { return resultTypes; }
+
+    /// Returns the attributes for the arguments of the new signature.
+    ArrayRef<NamedAttributeList> getConvertedArgAttrs() const {
+      return argAttrs;
+    }
+
+    /// Get the input mapping for the given argument.
+    llvm::Optional<InputMapping> getInputMapping(unsigned input) const {
+      return remappedInputs[input];
+    }
+
+    //===------------------------------------------------------------------===//
+    // Conversion Hooks
+    //===------------------------------------------------------------------===//
+
+    /// Append new result types to the signature conversion.
+    void addResults(ArrayRef<Type> results);
+
+    /// Remap an input of the original signature with a new set of types. The
+    /// new types are appended to the new signature conversion.
+    void addInputs(unsigned origInputNo, ArrayRef<Type> types,
+                   ArrayRef<NamedAttributeList> attrs = llvm::None);
+
+    /// Append new input types to the signature conversion, this should only be
+    /// used if the new types are not intended to remap an existing input.
+    void addInputs(ArrayRef<Type> types,
+                   ArrayRef<NamedAttributeList> attrs = llvm::None);
+
+    /// Remap an input of the original signature with a range of types in the
+    /// new signature.
+    void remapInput(unsigned origInputNo, unsigned newInputNo,
+                    unsigned newInputCount = 1);
+
+  private:
+    /// The remapping information for each of the original arguments.
+    SmallVector<llvm::Optional<InputMapping>, 4> remappedInputs;
+
+    /// The set of argument and results types.
+    SmallVector<Type, 4> argTypes, resultTypes;
+
+    /// The set of attributes for each new argument type.
+    SmallVector<NamedAttributeList, 4> argAttrs;
+  };
+
+  /// This hooks allows for converting a type. This function should return
+  /// failure if no valid conversion exists, success otherwise. If the new set
+  /// of types is empty, the type is removed and any usages of the existing
+  /// value are expected to be removed during conversion.
+  virtual LogicalResult convertType(Type t, SmallVectorImpl<Type> &results);
+
+  /// This hook simplifies defining 1-1 type conversions. This function returns
+  /// the type convert to on success, and a null type on failure.
   virtual Type convertType(Type t) { return t; }
 
-  /// Derived classes must reimplement this hook if they need to change the
-  /// function signature during conversion.  This function will be called on
-  /// a function type corresponding to a function signature and must produce the
-  /// converted MLIR function type.
+  /// Convert the given FunctionType signature. This functions returns a valid
+  /// SignatureConversion on success, None otherwise.
+  llvm::Optional<SignatureConversion>
+  convertSignature(FunctionType type, ArrayRef<NamedAttributeList> argAttrs);
+  llvm::Optional<SignatureConversion> convertSignature(FunctionType type) {
+    SmallVector<NamedAttributeList, 4> argAttrs(type.getNumInputs());
+    return convertSignature(type, argAttrs);
+  }
+
+  /// This hook allows for changing a FunctionType signature. This function
+  /// should populate 'result' with the new arguments and result on success,
+  /// otherwise return failure.
   ///
-  /// Note: even if some target dialects have first-class function types, they
-  /// cannot be used at the top level of MLIR function signature.
-  ///
-  /// The default behavior of this function is to call convertType on individual
-  /// function operands and results, and then create a new MLIR function type
-  /// from those.
-  ///
-  /// Post-condition: if the returned optional attribute list does not have
-  /// a value then no argument attribute conversion happened.
-  virtual FunctionType convertFunctionSignatureType(
-      FunctionType t, ArrayRef<NamedAttributeList> argAttrs,
-      SmallVectorImpl<NamedAttributeList> &convertedArgAttrs);
+  /// The default behavior of this function is to call 'convertType' on
+  /// individual function operands and results. Any argument attributes are
+  /// dropped if the resultant conversion is not a 1->1 mapping.
+  virtual LogicalResult convertSignature(FunctionType type,
+                                         ArrayRef<NamedAttributeList> argAttrs,
+                                         SignatureConversion &result);
+
+  /// This hook allows for converting a specific argument of a signature. It
+  /// takes as inputs the original argument input number, type, and attributes.
+  /// On success, this function should populate 'result' with any new mappings.
+  virtual LogicalResult convertSignatureArg(unsigned inputNo, Type type,
+                                            NamedAttributeList attrs,
+                                            SignatureConversion &result);
 };
 
 /// This class describes a specific conversion target.
@@ -253,16 +323,15 @@ private:
 };
 
 /// Convert the given module with the provided conversion patterns and type
-/// conversion object. If conversion fails for specific functions, those
-/// functions remains unmodified.
+/// conversion object. This function returns failure if a type conversion
+/// failed, potentially leaving the IR in an invalid state.
 LLVM_NODISCARD LogicalResult applyConversionPatterns(
     Module &module, ConversionTarget &target, TypeConverter &converter,
     OwningRewritePatternList &&patterns);
 
-/// Convert the given functions with the provided conversion patterns. This will
-/// convert as many of the operations within each function as possible given the
-/// set of patterns. If conversion fails for specific functions, those functions
-/// remains unmodified.
+/// Convert the given functions with the provided conversion patterns. This
+/// function returns failure if a type conversion failed, potentially leaving
+/// the IR in an invalid state.
 LLVM_NODISCARD
 LogicalResult applyConversionPatterns(ArrayRef<Function *> fns,
                                       ConversionTarget &target,

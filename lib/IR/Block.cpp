@@ -182,12 +182,16 @@ auto Block::addArguments(ArrayRef<Type> types)
   return {arguments.data() + initialSize, arguments.data() + arguments.size()};
 }
 
-void Block::eraseArgument(unsigned index) {
+void Block::eraseArgument(unsigned index, bool updatePredTerms) {
   assert(index < arguments.size());
 
   // Delete the argument.
   delete arguments[index];
   arguments.erase(arguments.begin() + index);
+
+  // If we aren't updating predecessors, there is nothing left to do.
+  if (!updatePredTerms)
+    return;
 
   // Erase this argument from each of the predecessor's terminator.
   for (auto predIt = pred_begin(), predE = pred_end(); predIt != predE;

@@ -985,31 +985,26 @@ Type LLVMTypeConverter::packFunctionResults(ArrayRef<Type> types) {
 }
 
 // Convert function signatures using the stored LLVM IR module.
-FunctionType LLVMTypeConverter::convertFunctionSignatureType(
-    FunctionType type, ArrayRef<NamedAttributeList> argAttrs,
-    SmallVectorImpl<NamedAttributeList> &convertedArgAttrs) {
-
-  convertedArgAttrs.reserve(argAttrs.size());
-  for (auto attr : argAttrs)
-    convertedArgAttrs.push_back(attr);
-
-  SmallVector<Type, 8> argTypes;
-  for (auto t : type.getInputs()) {
-    auto converted = convertType(t);
-    if (!converted)
-      return {};
-    argTypes.push_back(converted);
-  }
+LogicalResult
+LLVMTypeConverter::convertSignature(FunctionType type,
+                                    ArrayRef<NamedAttributeList> argAttrs,
+                                    SignatureConversion &result) {
+  // Convert the original function arguments.
+  for (unsigned i = 0, e = type.getNumInputs(); i != e; ++i)
+    if (failed(convertSignatureArg(i, type.getInput(i), argAttrs[i], result)))
+      return failure();
 
   // If function does not return anything, return immediately.
   if (type.getNumResults() == 0)
-    return FunctionType::get(argTypes, {}, type.getContext());
+    return success();
 
   // Otherwise pack the result types into a struct.
-  if (auto result = packFunctionResults(type.getResults()))
-    return FunctionType::get(argTypes, result, result.getContext());
+  if (auto packedRet = packFunctionResults(type.getResults())) {
+    result.addResults(packedRet);
+    return success();
+  }
 
-  return {};
+  return failure();
 }
 
 namespace {

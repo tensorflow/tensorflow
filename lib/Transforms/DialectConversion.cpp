@@ -16,6 +16,7 @@
 // =============================================================================
 
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
@@ -35,43 +36,187 @@ using namespace mlir;
 //===----------------------------------------------------------------------===//
 namespace {
 /// This class provides a simple interface for converting the types of block
-/// arguments. This is done by inserting fake cast operations for the illegal
-/// type that allow for updating the real type to return the correct type.
+/// arguments. This is done by inserting fake cast operations that map from the
+/// illegal type to the original type to allow for undoing pending rewrites in
+/// the case of failure.
 struct ArgConverter {
   ArgConverter(MLIRContext *ctx)
       : castOpName(kCastName, ctx), loc(UnknownLoc::get(ctx)) {}
 
+  /// Erase any rewrites registered for arguments to blocks within the given
+  /// region. This function is called when the given region is to be destroyed.
+  void cancelPendingRewrites(Region &region) {
+    for (auto &block : region) {
+      auto it = argMapping.find(&block);
+      if (it == argMapping.end())
+        continue;
+      for (auto *op : it->second) {
+        op->dropAllDefinedValueUses();
+        op->destroy();
+      }
+      argMapping.erase(it);
+    }
+  }
+
   /// Cleanup and undo any generated conversion values.
   void discardRewrites() {
-    // On failure drop all uses of the cast operation and destroy it.
-    for (auto *op : castOps) {
-      op->getResult(0)->dropAllUses();
-      op->destroy();
+    // On failure reinstate all of the original block arguments.
+    Block *block;
+    ArrayRef<Operation *> argOps;
+    for (auto &mapping : argMapping) {
+      std::tie(block, argOps) = mapping;
+
+      // Erase all of the new arguments.
+      for (int i = block->getNumArguments() - 1; i >= 0; --i) {
+        block->getArgument(i)->dropAllUses();
+        block->eraseArgument(i, /*updatePredTerms=*/false);
+      }
+
+      // Re-instate the old arguments.
+      for (unsigned i = 0, e = argOps.size(); i != e; ++i) {
+        auto *op = argOps[i];
+        auto *arg = block->addArgument(op->getResult(0)->getType());
+        op->getResult(0)->replaceAllUsesWith(arg);
+        op->destroy();
+      }
     }
-    castOps.clear();
+    argMapping.clear();
   }
 
   /// Replace usages of the cast operations with the argument directly.
-  void applyRewrites() {
-    // On success, we update the type of the block argument and replace uses of
-    // the cast.
-    for (auto *op : castOps) {
-      op->getOperand(0)->setType(op->getResult(0)->getType());
-      op->getResult(0)->replaceAllUsesWith(op->getOperand(0));
-      op->destroy();
+  LogicalResult applyRewrites() {
+    Block *block;
+    ArrayRef<Operation *> argOps;
+
+    LogicalResult result = success();
+    for (auto &mapping : argMapping) {
+      std::tie(block, argOps) = mapping;
+
+      // Process the remapping for each of the original arguments.
+      for (unsigned i = 0, e = argOps.size(); i != e; ++i) {
+        auto *op = argOps[i];
+
+        // Handle the case of a 1->N value mapping.
+        if (op->getNumOperands() > 1)
+          llvm_unreachable("1->N argument mappings are currently not handled");
+
+        // Handle the case where this argument had a direct mapping.
+        if (op->getNumOperands() == 1) {
+          op->getResult(0)->replaceAllUsesWith(op->getOperand(0));
+          // Otherwise, this argument was expected to be dropped.
+        } else if (!op->getResult(0)->use_empty()) {
+          // Don't emit another error if we already have one.
+          if (!failed(result)) {
+            auto *parent = block->getParent();
+            auto diag = parent->getContext()->emitError(parent->getLoc())
+                        << "block argument #" << i << " with type "
+                        << op->getResult(0)->getType()
+                        << " has unexpected remaining uses";
+            auto *user = *op->getResult(0)->user_begin();
+            diag.attachNote(user->getLoc())
+                << "unexpected user defined here : " << *user;
+            result = failure();
+          }
+          // Move this fake producer to the beginning of the parent block, we
+          // can't recover from this failure and we want to make sure the
+          // operations get cleaned up. Recovering from this would require
+          // detecting that an argument would be unused before applying all of
+          // the operation rewrites, which can get quite expensive.
+          block->push_front(op);
+          continue;
+        }
+        op->destroy();
+      }
     }
+    return result;
   }
 
-  /// Generate a cast operation for 'arg' that produces the new, legal, type.
-  void castArgument(BlockArgument *arg, Type newType,
-                    BlockAndValueMapping &mapping) {
-    // Otherwise, generate a new cast operation for the given value type.
-    auto *cast = Operation::create(loc, castOpName, arg, newType, llvm::None,
-                                   llvm::None, 0, false, arg->getContext());
+  /// Converts the signature of the given entry block.
+  void convertSignature(Block *block,
+                        TypeConverter::SignatureConversion &signatureConversion,
+                        BlockAndValueMapping &mapping) {
+    unsigned origArgCount = block->getNumArguments();
+    auto convertedTypes = signatureConversion.getConvertedArgTypes();
+    if (origArgCount == 0 && convertedTypes.empty())
+      return;
 
-    // Replace the uses of the argument and record the mapping.
-    mapping.map(arg, cast->getResult(0));
-    castOps.push_back(cast);
+    SmallVector<Value *, 4> newArgRange(block->addArguments(convertedTypes));
+    ArrayRef<Value *> newArgRef(newArgRange);
+
+    // Remap each of the original arguments as determined by the signature
+    // conversion.
+    auto &newArgMapping = argMapping[block];
+    for (unsigned i = 0; i != origArgCount; ++i) {
+      ArrayRef<Value *> remappedValues;
+      if (auto inputMap = signatureConversion.getInputMapping(i))
+        remappedValues = newArgRef.slice(inputMap->inputNo, inputMap->size);
+
+      BlockArgument *arg = block->getArgument(i);
+      newArgMapping.push_back(convertArgument(arg, remappedValues, mapping));
+    }
+
+    // Erase all of the original arguments.
+    for (unsigned i = 0; i != origArgCount; ++i)
+      block->eraseArgument(0, /*updatePredTerms=*/false);
+  }
+
+  /// Converts the arguments of the given block.
+  LogicalResult convertArguments(Block *block, TypeConverter &converter,
+                                 BlockAndValueMapping &mapping) {
+    unsigned origArgCount = block->getNumArguments();
+    if (origArgCount == 0)
+      return success();
+
+    // Convert the types of each of the block arguments.
+    SmallVector<SmallVector<Type, 1>, 4> newArgTypes(origArgCount);
+    for (unsigned i = 0; i != origArgCount; ++i) {
+      auto *arg = block->getArgument(i);
+      if (failed(converter.convertType(arg->getType(), newArgTypes[i])))
+        return arg->getContext()->emitError(block->getParent()->getLoc())
+               << "could not convert block argument of type " << arg->getType();
+    }
+
+    // Remap all of the original argument values.
+    auto &newArgMapping = argMapping[block];
+    for (unsigned i = 0; i != origArgCount; ++i) {
+      SmallVector<Value *, 1> newArgs(block->addArguments(newArgTypes[i]));
+      newArgMapping.push_back(
+          convertArgument(block->getArgument(i), newArgs, mapping));
+    }
+
+    // Erase all of the original arguments.
+    for (unsigned i = 0; i != origArgCount; ++i)
+      block->eraseArgument(0, /*updatePredTerms=*/false);
+    return success();
+  }
+
+  /// Convert the given block argument given the provided set of new argument
+  /// values that are to replace it. This function returns the operation used
+  /// to perform the conversion.
+  Operation *convertArgument(BlockArgument *origArg,
+                             ArrayRef<Value *> newValues,
+                             BlockAndValueMapping &mapping) {
+    // Handle the cases of 1->0 or 1->1 mappings.
+    if (newValues.size() < 2) {
+      // Create a temporary producer for the argument during the conversion
+      // process.
+      auto *cast = createCast(newValues, origArg->getType());
+      origArg->replaceAllUsesWith(cast->getResult(0));
+
+      // Insert a mapping between this argument and the one that is replacing
+      // it.
+      if (!newValues.empty())
+        mapping.map(cast->getResult(0), newValues[0]);
+      return cast;
+    }
+    llvm_unreachable("1->N argument mappings are currently not handled");
+  }
+
+  /// A utility function used to create a conversion cast operation with the
+  /// given input and result types.
+  Operation *createCast(ArrayRef<Value *> inputs, Type outputType) {
+    return Operation::create(loc, castOpName, inputs, outputType, llvm::None,
+                             llvm::None, 0, false, outputType.getContext());
   }
 
   /// This is an operation name for a fake operation that is inserted during the
@@ -80,9 +225,9 @@ struct ArgConverter {
   static constexpr StringLiteral kCastName = "__mlir_conversion.cast";
   OperationName castOpName;
 
-  /// This is a collection of cast values that were generated during the
-  /// conversion process.
-  std::vector<Operation *> castOps;
+  /// This is a collection of cast operations that were generated during the
+  /// conversion process when converting the types of block arguments.
+  llvm::MapVector<Block *, SmallVector<Operation *, 4>> argMapping;
 
   /// An instance of the unknown location that is used when generating
   /// producers.
@@ -225,15 +370,23 @@ struct DialectConversionRewriter final : public PatternRewriter {
 
   /// Apply all requested operation rewrites. This method is invoked when the
   /// conversion process succeeds.
-  void applyRewrites() {
+  LogicalResult applyRewrites() {
     // Apply all of the rewrites replacements requested during conversion.
     for (auto &repl : replacements) {
       for (unsigned i = 0, e = repl.newValues.size(); i != e; ++i)
         repl.op->getResult(i)->replaceAllUsesWith(repl.newValues[i]);
+
+      // if this operation defines any regions, drop any pending argument
+      // rewrites.
+      if (repl.op->getNumRegions() && !argConverter.argMapping.empty()) {
+        for (auto &region : repl.op->getRegions())
+          argConverter.cancelPendingRewrites(region);
+      }
+
       repl.op->erase();
     }
 
-    argConverter.applyRewrites();
+    return argConverter.applyRewrites();
   }
 
   /// PatternRewriter hook for replacing the results of an operation.
@@ -634,15 +787,18 @@ struct FunctionConverter {
                              TypeConverter *conversion = nullptr)
       : typeConverter(conversion), opLegalizer(target, patterns) {}
 
-  /// Converts the given function to the dialect using hooks defined in
-  /// `typeConverter`. Returns failure on error, success otherwise.
-  LogicalResult convertFunction(Function *f);
+  /// Converts the given function to the conversion target. Returns failure on
+  /// error, success otherwise. If 'signatureConversion' is provided, the
+  /// arguments of the entry block are updated accordingly.
+  LogicalResult
+  convertFunction(Function *f,
+                  TypeConverter::SignatureConversion *signatureConversion);
 
   /// Converts the given region starting from the entry block and following the
   /// block successors. Returns failure on error, success otherwise. Prints
   /// error messages at `loc`.
   LogicalResult convertRegion(DialectConversionRewriter &rewriter,
-                              Region &region, Location loc);
+                              Region &region, bool convertEntryTypes = true);
 
   /// Converts a block by traversing its operations sequentially, attempting to
   /// match a pattern. If there is no match, recurses the operations regions if
@@ -653,11 +809,6 @@ struct FunctionConverter {
   LogicalResult convertBlock(DialectConversionRewriter &rewriter, Block *block,
                              DenseSet<Block *> &visitedBlocks);
 
-  /// Converts the type of the given block argument. Returns success if the
-  /// argument type could be successfully converted, failure otherwise.
-  LogicalResult convertArgument(DialectConversionRewriter &rewriter,
-                                BlockArgument *arg, Location loc);
-
   /// Pointer to a specific dialect conversion info.
   TypeConverter *typeConverter;
 
@@ -665,20 +816,6 @@ struct FunctionConverter {
   OperationLegalizer opLegalizer;
 };
 } // end anonymous namespace
-
-LogicalResult
-FunctionConverter::convertArgument(DialectConversionRewriter &rewriter,
-                                   BlockArgument *arg, Location loc) {
-  auto convertedType = typeConverter->convertType(arg->getType());
-  if (!convertedType)
-    return arg->getContext()->emitError(loc)
-           << "could not convert block argument of type : " << arg->getType();
-
-  // Generate a replacement value, with the new type, for this argument.
-  if (convertedType != arg->getType())
-    rewriter.argConverter.castArgument(arg, convertedType, rewriter.mapping);
-  return success();
-}
 
 LogicalResult
 FunctionConverter::convertBlock(DialectConversionRewriter &rewriter,
@@ -709,8 +846,7 @@ FunctionConverter::convertBlock(DialectConversionRewriter &rewriter,
     next = current->getNextNode();
     // Traverse any held regions.
     for (auto &region : current->getRegions())
-      if (!region.empty() &&
-          failed(convertRegion(rewriter, region, current->getLoc())))
+      if (!region.empty() && failed(convertRegion(rewriter, region)))
         return failure();
 
     // Legalize the current operation.
@@ -729,17 +865,18 @@ FunctionConverter::convertBlock(DialectConversionRewriter &rewriter,
 
 LogicalResult
 FunctionConverter::convertRegion(DialectConversionRewriter &rewriter,
-                                 Region &region, Location loc) {
+                                 Region &region, bool convertEntryTypes) {
   assert(!region.empty() && "expected non-empty region");
 
   // Create the arguments of each of the blocks in the region. If a type
   // converter was not provided, then we don't need to change any of the block
   // types.
   if (typeConverter) {
-    for (Block &block : region)
-      for (auto *arg : block.getArguments())
-        if (failed(convertArgument(rewriter, arg, loc)))
-          return failure();
+    for (Block &block :
+         llvm::drop_begin(region.getBlocks(), convertEntryTypes ? 0 : 1))
+      if (failed(rewriter.argConverter.convertArguments(&block, *typeConverter,
+                                                        rewriter.mapping)))
+        return failure();
   }
 
   // Store the number of blocks before conversion (new blocks may be added due
@@ -756,56 +893,141 @@ FunctionConverter::convertRegion(DialectConversionRewriter &rewriter,
   // If some blocks are not reachable through successor chains, they should have
   // been removed by the DCE before this.
   if (visitedBlocks.size() != numBlocks)
-    return rewriter.getContext()->emitError(loc)
+    return rewriter.getContext()->emitError(region.getLoc())
            << "unreachable blocks were not converted";
   return success();
 }
 
-LogicalResult FunctionConverter::convertFunction(Function *f) {
+LogicalResult FunctionConverter::convertFunction(
+    Function *f, TypeConverter::SignatureConversion *signatureConversion) {
   // If this is an external function, there is nothing else to do.
   if (f->isExternal())
     return success();
 
-  // Rewrite the function body.
   DialectConversionRewriter rewriter(f->getBody());
-  if (failed(convertRegion(rewriter, f->getBody(), f->getLoc()))) {
+
+  // Update the signature of the entry block.
+  if (signatureConversion) {
+    rewriter.argConverter.convertSignature(
+        &f->getBody().front(), *signatureConversion, rewriter.mapping);
+  }
+
+  // Rewrite the function body.
+  if (failed(
+          convertRegion(rewriter, f->getBody(), /*convertEntryTypes=*/false))) {
     // Reset any of the generated rewrites.
     rewriter.discardRewrites();
     return failure();
   }
 
-  // Otherwise the conversion succeeded, so apply all rewrites.
-  rewriter.applyRewrites();
-  return success();
+  // Otherwise the body conversion succeeded, so try to apply all rewrites.
+  return rewriter.applyRewrites();
 }
 
 //===----------------------------------------------------------------------===//
 // TypeConverter
 //===----------------------------------------------------------------------===//
 
-// Create a function type with arguments and results converted, and argument
-// attributes passed through.
-FunctionType TypeConverter::convertFunctionSignatureType(
-    FunctionType type, ArrayRef<NamedAttributeList> argAttrs,
-    SmallVectorImpl<NamedAttributeList> &convertedArgAttrs) {
-  SmallVector<Type, 8> arguments;
-  SmallVector<Type, 4> results;
+/// Append new result types to the signature conversion.
+void TypeConverter::SignatureConversion::addResults(ArrayRef<Type> results) {
+  resultTypes.append(results.begin(), results.end());
+}
 
-  arguments.reserve(type.getNumInputs());
-  for (auto t : type.getInputs())
-    arguments.push_back(convertType(t));
+/// Remap an input of the original signature with a new set of types. The
+/// new types are appended to the new signature conversion.
+void TypeConverter::SignatureConversion::addInputs(
+    unsigned origInputNo, ArrayRef<Type> types,
+    ArrayRef<NamedAttributeList> attrs) {
+  assert(!types.empty() && "expected valid types");
+  remapInput(origInputNo, /*newInputNo=*/argTypes.size(), types.size());
+  addInputs(types, attrs);
+}
 
-  results.reserve(type.getNumResults());
-  for (auto t : type.getResults())
-    results.push_back(convertType(t));
+/// Append new input types to the signature conversion, this should only be
+/// used if the new types are not intended to remap an existing input.
+void TypeConverter::SignatureConversion::addInputs(
+    ArrayRef<Type> types, ArrayRef<NamedAttributeList> attrs) {
+  assert(!types.empty() &&
+         "1->0 type remappings don't need to be added explicitly");
+  assert(attrs.empty() || types.size() == attrs.size());
 
-  // Note this will cause an extra allocation only if we need
-  // to grow the caller-provided resulting attribute vector.
-  convertedArgAttrs.reserve(arguments.size());
-  for (auto attr : argAttrs)
-    convertedArgAttrs.push_back(attr);
+  argTypes.append(types.begin(), types.end());
+  if (attrs.empty())
+    argAttrs.resize(argTypes.size());
+  else
+    argAttrs.append(attrs.begin(), attrs.end());
+}
 
-  return FunctionType::get(arguments, results, type.getContext());
+/// Remap an input of the original signature with a range of types in the
+/// new signature.
+void TypeConverter::SignatureConversion::remapInput(unsigned origInputNo,
+                                                    unsigned newInputNo,
+                                                    unsigned newInputCount) {
+  assert(!remappedInputs[origInputNo] && "input has already been remapped");
+  assert(newInputCount != 0 && "expected valid input count");
+  remappedInputs[origInputNo] = InputMapping{newInputNo, newInputCount};
+}
+
+/// This hooks allows for converting a type.
+LogicalResult TypeConverter::convertType(Type t,
+                                         SmallVectorImpl<Type> &results) {
+  if (auto newT = convertType(t)) {
+    results.push_back(newT);
+    return success();
+  }
+  return failure();
+}
+
+/// Convert the given FunctionType signature.
+auto TypeConverter::convertSignature(FunctionType type,
+                                     ArrayRef<NamedAttributeList> argAttrs)
+    -> llvm::Optional<SignatureConversion> {
+  SignatureConversion result(type.getNumInputs());
+  if (failed(convertSignature(type, argAttrs, result)))
+    return llvm::None;
+  return result;
+}
+
+/// This hook allows for changing a FunctionType signature.
+LogicalResult
+TypeConverter::convertSignature(FunctionType type,
+                                ArrayRef<NamedAttributeList> argAttrs,
+                                SignatureConversion &result) {
+  // Convert the original function arguments.
+  for (unsigned i = 0, e = type.getNumInputs(); i != e; ++i)
+    if (failed(convertSignatureArg(i, type.getInput(i), argAttrs[i], result)))
+      return failure();
+
+  // Convert the original function results.
+  SmallVector<Type, 1> convertedTypes;
+  for (auto t : type.getResults()) {
+    convertedTypes.clear();
+    if (failed(convertType(t, convertedTypes)))
+      return failure();
+    result.addResults(convertedTypes);
+  }
+
+  return success();
+}
+
+/// This hook allows for converting a specific argument of a signature.
+LogicalResult TypeConverter::convertSignatureArg(unsigned inputNo, Type type,
+                                                 NamedAttributeList attrs,
+                                                 SignatureConversion &result) {
+  // Try to convert the given input type.
+  SmallVector<Type, 1> convertedTypes;
+  if (failed(convertType(type, convertedTypes)))
+    return failure();
+
+  // If this argument is being dropped, there is nothing left to do.
+  if (convertedTypes.empty())
+    return success();
+
+  // Otherwise, add the new inputs.
+  auto convertedAttrs =
+      convertedTypes.size() == 1 ? llvm::makeArrayRef(attrs) : llvm::None;
+  result.addInputs(inputNo, convertedTypes, convertedAttrs);
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -876,10 +1098,7 @@ mlir::applyConversionPatterns(Module &module, ConversionTarget &target,
                                  std::move(patterns));
 }
 
-/// Convert the given functions with the provided conversion patterns. This will
-/// convert as many of the operations within each function as possible given the
-/// set of patterns. If conversion fails for specific functions, those functions
-// remains unmodified.
+/// Convert the given functions with the provided conversion patterns.
 LogicalResult mlir::applyConversionPatterns(
     ArrayRef<Function *> fns, ConversionTarget &target,
     TypeConverter &converter, OwningRewritePatternList &&patterns) {
@@ -890,34 +1109,22 @@ LogicalResult mlir::applyConversionPatterns(
   FunctionConverter funcConverter(fns.front()->getContext(), target, patterns,
                                   &converter);
 
-  // Try to convert each of the functions within the module. Defer updating the
-  // signatures of the functions until after all of the bodies have been
-  // converted. This allows for the conversion patterns to still rely on the
-  // public signatures of the functions within the module before they are
-  // updated.
-  std::vector<ConvertedFunction> toConvert;
-  toConvert.reserve(fns.size());
+  // Try to convert each of the functions within the module.
+  auto *ctx = fns.front()->getContext();
   for (auto *func : fns) {
-    // Convert the function type using the dialect converter.
-    SmallVector<NamedAttributeList, 4> newFunctionArgAttrs;
-    FunctionType newType = converter.convertFunctionSignatureType(
-        func->getType(), func->getAllArgAttrs(), newFunctionArgAttrs);
-    if (!newType || !newType.isa<FunctionType>())
-      return func->emitError("could not convert function type");
-
-    // Convert the body of this function.
-    if (failed(funcConverter.convertFunction(func)))
+    // Convert the function type using the type converter.
+    auto conversion =
+        converter.convertSignature(func->getType(), func->getAllArgAttrs());
+    if (!conversion)
       return failure();
 
-    // Add function signature to be updated.
-    toConvert.emplace_back(func, newType.cast<FunctionType>(),
-                           newFunctionArgAttrs);
-  }
+    // Update the function signature.
+    func->setType(conversion->getConvertedType(ctx));
+    func->setAllArgAttrs(conversion->getConvertedArgAttrs());
 
-  // Finally, update the signatures of all of the converted functions.
-  for (auto &it : toConvert) {
-    it.fn->setType(it.newType);
-    it.fn->setAllArgAttrs(it.newFunctionArgAttrs);
+    // Convert the body of this function.
+    if (failed(funcConverter.convertFunction(func, &*conversion)))
+      return failure();
   }
 
   return success();
@@ -931,5 +1138,5 @@ mlir::applyConversionPatterns(Function &fn, ConversionTarget &target,
                               OwningRewritePatternList &&patterns) {
   // Convert the body of this function.
   FunctionConverter converter(fn.getContext(), target, patterns);
-  return converter.convertFunction(&fn);
+  return converter.convertFunction(&fn, /*signatureConversion=*/nullptr);
 }

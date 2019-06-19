@@ -42,6 +42,8 @@ class LLVMType;
 /// Conversion from types in the Standard dialect to the LLVM IR dialect.
 class LLVMTypeConverter : public TypeConverter {
 public:
+  using TypeConverter::convertType;
+
   LLVMTypeConverter(MLIRContext *ctx);
 
   /// Convert types to LLVM IR.  This calls `convertAdditionalType` to convert
@@ -64,9 +66,9 @@ protected:
   /// Convert function signatures to LLVM IR.  In particular, convert functions
   /// with multiple results into functions returning LLVM IR's structure type.
   /// Use `convertType` to convert individual argument and result types.
-  FunctionType convertFunctionSignatureType(
-      FunctionType t, ArrayRef<NamedAttributeList> argAttrs,
-      SmallVectorImpl<NamedAttributeList> &convertedArgAttrs) override final;
+  LogicalResult convertSignature(FunctionType t,
+                                 ArrayRef<NamedAttributeList> argAttrs,
+                                 SignatureConversion &result) final;
 
   /// LLVM IR module used to parse/create types.
   llvm::Module *module;
