@@ -155,7 +155,8 @@ def get_pruning_hparams():
       the global step at which to terminate pruning. Defaults to -1 implying
       that pruning continues till the training stops
     weight_sparsity_map: list of strings
-       comma separed list of weight variable name regex:target sparsity pairs.
+       comma separed list of {weight_variable_name:target sparsity} or
+       {regex:target sparsity} pairs.
        For layers/weights not in this list, sparsity as specified by the
        target_sparsity hyperparameter is used.
        Eg. [conv1:0.9,conv2/kernel:0.8]
@@ -358,7 +359,7 @@ class Pruning(object):
     """Return target sparsity for the given layer/weight name."""
     target_sparsity = [
         sparsity for regexp, sparsity in self._weight_sparsity_map.items()
-        if re.match(regexp, weight_name)
+        if re.search(regexp, weight_name)
     ]
     if not target_sparsity:
       return self._sparsity
