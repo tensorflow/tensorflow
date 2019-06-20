@@ -183,17 +183,17 @@ As a temporary workaround, if your workload runs out of device memory, you can e
 ### How do I test out the latest tensorflow-rocm commit?
 We build ROCm docker images for every tensorflow-rocm commit. Those docker images have latest tensorflow-rocm installed, and are aimed for testing.
 
-Docker image name: rocm<version>-<commit hash>
+Docker image name: `rocm<version>-<commit hash>`
 
-Latest docker image name: rocm<version>-latest and latest
+Latest docker image name: `rocm<version>-latest and latest`
 
 Pull instructions: $ docker pull rocm/tensorflow-autobuilds:latest
 
 ### How do I build latest tensorflow-rocm commit?
 We build dev builds for every dependency change. Those docker images that have latest dependencies for the purpose of building tensorflow-rocm, and are aimed for development.
 
-Docker image name: dev-<commit hash>
+Docker image name: `dev-<commit hash>`
 
-Latest docker image name: dev-latest
+Latest docker image name: `dev-latest`
 
 Pull instructions: $ docker pull rocm/tensorflow-autobuilds:dev-latest
