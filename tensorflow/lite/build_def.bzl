@@ -20,9 +20,6 @@ def tflite_copts():
             "-mfloat-abi=softfp",
             "-O3",
         ],
-        str(Label("//tensorflow:android_x86")): [
-            "-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK",
-        ],
         str(Label("//tensorflow:ios_x86_64")): [
             "-msse4.1",
         ],
@@ -33,9 +30,6 @@ def tflite_copts():
         "//conditions:default": [
             "-Wno-sign-compare",
         ],
-    }) + select({
-        str(Label("//tensorflow:with_default_optimizations")): [],
-        "//conditions:default": ["-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK"],
     })
 
     return copts
