@@ -22,6 +22,7 @@ from __future__ import print_function
 # pylint: disable=wildcard-import,unused-import
 from tensorflow.contrib.ipu.python import autoshard
 from tensorflow.contrib.ipu.python import autoshard_cnn
+from tensorflow.contrib.ipu.python import gradient_accumulation_optimizer
 from tensorflow.contrib.ipu.python import internal
 from tensorflow.contrib.ipu.python import ipu_compiler
 from tensorflow.contrib.ipu.python import ipu_infeed_queue

@@ -126,6 +126,7 @@ cc_library(
         "driver/tools/custom_ops/remap.cc",
         "driver/tools/custom_ops/replication_factor.cc",
         "driver/tools/custom_ops/sigmoid.cc",
+        "driver/tools/custom_ops/stateful_gradient_accumulate.cc",
         "driver/tools/custom_ops/stateless_random.cc",
         "driver/tools/custom_ops/tanh.cc",
         "driver/tools/custom_ops/truncated_normal.cc",
@@ -188,6 +189,7 @@ cc_library(
         "driver/tools/custom_ops/remap.h",
         "driver/tools/custom_ops/replication_factor.h",
         "driver/tools/custom_ops/sigmoid.h",
+        "driver/tools/custom_ops/stateful_gradient_accumulate.h",
         "driver/tools/custom_ops/stateless_random.h",
         "driver/tools/custom_ops/tanh.h",
         "driver/tools/custom_ops/truncated_normal.h",
@@ -255,6 +257,7 @@ cc_library(
         "driver/ops/custom_ops/poputil/print_tensor.cc",
         "driver/ops/custom_ops/poputil/remap.cc",
         "driver/ops/custom_ops/poputil/replication_factor.cc",
+        "driver/ops/custom_ops/poputil/stateful_gradient_accumulate.cc",
         "driver/ops/dot_graph_caching.cc",
         "driver/ops/graph_caching_util.cc",
         "driver/ops/gather_ops.cc",
@@ -275,7 +278,7 @@ cc_library(
         "driver/ops/scatter_ops.cc",
         "driver/tensor.cc",
         "driver/tools/conversions.cc",
-        "driver/tools/convolution_preplanning.cc",        
+        "driver/tools/convolution_preplanning.cc",
         "driver/tools/data_initializer.cc",
         "driver/tools/mapping_helper.cc",
         "driver/tools/poplar_util.cc",
@@ -381,6 +384,7 @@ cc_library(
         "kernels/poputil/print_tensor.cc",
         "kernels/poputil/remap.cc",
         "kernels/poputil/replication_factor.cc",
+        "kernels/poputil/stateful_gradient_accumulate.cc",
     ],
     hdrs = [
         "kernels/ipu_kernels_common.h",
@@ -495,6 +499,7 @@ cc_library(
         "ops/poputil/print_tensor.cc",
         "ops/poputil/remap.cc",
         "ops/poputil/replication_factor.cc",
+        "ops/poputil/stateful_gradient_accumulate.cc",
     ],
     deps = ["//tensorflow/core:framework"],
     alwayslink = True,
@@ -1602,6 +1607,37 @@ py_test(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "stateful_gradient_accumulate_test",
+    size = "medium",
+    srcs = ["tests/stateful_gradient_accumulate_test.py"],
+    deps = [
+        ":test_utils_py",
+        ":ipu_ops_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "replicated_stateful_gradient_accumulate_test",
+    size = "large",
+    srcs = ["tests/replicated_stateful_gradient_accumulate_test.py"],
+    deps = [
+        ":test_utils_py",
+        ":ipu_ops_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+)
 
 
 test_suite(
@@ -1656,11 +1692,13 @@ test_suite(
         "pop_datastream_test",
         "popops_custom_ops_test",
         "reduce_test",
+        "replicated_stateful_gradient_accumulate_test",
         "root_token_replacer_test",
         "scheduler_test",
         "sharding_pass_test",
         "simple_network_test",
         "sort_op_test",
+        "stateful_gradient_accumulate_test",
         "sync_list_scheduler_test",
         "synthetic_data_test",
         "tensor_array_test",

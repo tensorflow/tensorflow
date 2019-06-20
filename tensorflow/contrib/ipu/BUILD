@@ -14,6 +14,7 @@ py_library(
       "__init__.py",
       "python/autoshard.py",
       "python/autoshard_cnn.py",
+      "python/gradient_accumulation_optimizer.py",
       "python/internal.py",
       "python/ipu_compiler.py",
       "python/ipu_infeed_queue.py",
