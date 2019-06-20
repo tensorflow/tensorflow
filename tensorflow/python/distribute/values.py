@@ -1366,27 +1366,38 @@ def select_device_mirrored(device, structured):
 
 def update_regroup(extended, device_map, updates, group):
   """Regroup for an update, with dependencies to ensure all updates execute."""
-  # TODO(josh11b): Replace "Mirrored" here with a function that does the following
-  # so we can avoid all these nest operations.
-  regrouped = regroup(device_map, updates, Mirrored)
   if not group:
+    regrouped = regroup(device_map, updates, Mirrored)
     return nest.map_structure(extended._local_results, regrouped)  # pylint: disable=protected-access
-  grouped_flat = []
-  for u in nest.flatten(regrouped):
-    if isinstance(u, DistributedValues):
-      g = extended._group(u)  # pylint: disable=protected-access
-      if u.is_tensor_like:
-        # Make sure we run all updates. Without this, something like
-        # session.run(extended.update(...)) may only update one replica.
-        values = []
-        for d in u.devices:
-          with ops.device(d), ops.control_dependencies([g]):
-            values.append(array_ops.identity(u.get(d)))
-        g = Mirrored(u.device_map, values)
-    else:
-      g = u
-    grouped_flat.append(g)
-  return nest.pack_sequence_as(regrouped, grouped_flat)
+
+  def _make_grouped_mirrored(device_map, values):
+    """Convert per-replica list `values` into Mirrored type with grouping."""
+    if len(values) == 1:
+      return Mirrored(device_map, values)
+
+    # Make sure we run all updates. Without this, something like
+    # session.run(extended.update(...)) may only update one replica.
+    g = control_flow_ops.group(values)
+
+    # If values is just ops, the grouping is enough. Everything in values
+    # should have the same type, since we expect every replica to be performing
+    # the same computation.
+    if not all(tensor_util.is_tensor(v) for v in values):
+      return g
+
+    # Otherwise we need tensors with the same values as `values`, but
+    # that have a dependency on `g`.
+    devices = device_map.logical_to_actual_devices(
+        device_map.logical_device_from_values(values))
+    assert len(values) == len(devices)
+    with_dep = []
+    for v, d in zip(values, devices):
+      with ops.device(d), ops.control_dependencies([g]):
+        with_dep.append(array_ops.identity(v))
+
+    return Mirrored(device_map, with_dep)
+
+  return regroup(device_map, updates, _make_grouped_mirrored)
 
 
 def value_container(val):

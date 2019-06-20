@@ -656,8 +656,8 @@ cc_library(
     deps = [
         ":cusolver_context",
         ":ir_emission_utils",
-        ":scratch_allocator",
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo",

@@ -19,7 +19,7 @@ from __future__ import print_function
 
 import contextlib
 import os
-import tempfile
+import uuid
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -76,7 +76,8 @@ class MultiWorkerTrainingState(object):
     # training), create a temporary directory to write to (that will be
     # removed later).
     if not multi_worker_util.should_save_checkpoint():
-      self._temp_dir, self._temp_filepath = self._get_temp_filepath()
+      self._temp_dir, self._temp_filepath = self._get_temp_filepath(
+          original_filepath)
 
     # The epoch at which the checkpoint is saved. Used for fault-tolerance.
     # GPU device only has int64 dtype registered VarHandleOp.
@@ -212,9 +213,11 @@ class MultiWorkerTrainingState(object):
     backup_dir = os.path.join(os.path.dirname(original_filepath), 'backup')
     return backup_dir, os.path.join(backup_dir, 'training_state')
 
-  def _get_temp_filepath(self):
-    temp_dir = tempfile.mkdtemp()
-    return temp_dir, os.path.join(temp_dir, 'temp_training_state')
+  def _get_temp_filepath(self, original_filepath):
+    temp_dir = os.path.join(
+        os.path.dirname(original_filepath), 'temp_training_states',
+        str(uuid.uuid4()))
+    return temp_dir, os.path.join(temp_dir, 'training_state')
 
   def _assert_in_multi_worker_mode(self):
     if not multi_worker_util.in_multi_worker_mode():

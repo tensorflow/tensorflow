@@ -263,38 +263,54 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::Execute(
   BufferAllocations::Builder buffer_allocations_builder;
   se::StreamExecutor* executor = run_options->stream()->parent();
 
-  TF_ASSIGN_OR_RETURN(auto* const globals, ResolveConstantGlobals(executor));
+  const GpuExecutable::BufferAllocToDeviceMemoryMap* globals;
+  {
+    tensorflow::profiler::TraceMe hlo_module_activity(
+        [&] { return std::string("Resolve constant globals"); },
+        tensorflow::profiler::TraceMeLevel::kInfo);
 
-  for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
-       ++i) {
-    const BufferAllocation& allocation = assignment_->GetAllocation(i);
-    if (allocation.is_entry_computation_parameter()) {
-      auto param_no = allocation.parameter_number();
-      se::DeviceMemoryBase buffer =
-          arguments[param_no]->buffer(allocation.param_shape_index());
-
-      // All top-level buffers and sub-buffers must have an explicit, non-null
-      // pointer, except for zero-sized buffers, which may be null.
-      if (buffer.is_null() && buffer.size() > 0) {
-        return FailedPrecondition(
-            "Cannot run XLA computation because pointer to (sub-)buffer at "
-            "index %s of parameter %d was null.  All pointers to (sub-)buffers "
-            "must not be null, unless the (sub-)buffer has zero elements.",
-            allocation.param_shape_index().ToString(), param_no);
-      }
-
-      buffer_allocations_builder.RegisterBuffer(i, buffer);
-    }
-
-    if (allocation.is_constant()) {
-      buffer_allocations_builder.RegisterBuffer(i, FindOrDie(*globals, i));
-    }
+    TF_ASSIGN_OR_RETURN(globals, ResolveConstantGlobals(executor));
   }
 
-  TF_ASSIGN_OR_RETURN(
-      auto buffer_allocations,
-      buffer_allocations_builder.Build(
-          assignment_.get(), executor->device_ordinal(), memory_allocator));
+  std::unique_ptr<BufferAllocations> buffer_allocations;
+
+  {
+    tensorflow::profiler::TraceMe hlo_module_activity(
+        [&] { return std::string("Build buffer allocations"); },
+        tensorflow::profiler::TraceMeLevel::kInfo);
+
+    for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
+         ++i) {
+      const BufferAllocation& allocation = assignment_->GetAllocation(i);
+      if (allocation.is_entry_computation_parameter()) {
+        auto param_no = allocation.parameter_number();
+        se::DeviceMemoryBase buffer =
+            arguments[param_no]->buffer(allocation.param_shape_index());
+
+        // All top-level buffers and sub-buffers must have an explicit, non-null
+        // pointer, except for zero-sized buffers, which may be null.
+        if (buffer.is_null() && buffer.size() > 0) {
+          return FailedPrecondition(
+              "Cannot run XLA computation because pointer to (sub-)buffer at "
+              "index %s of parameter %d was null.  All pointers to "
+              "(sub-)buffers must not be null, unless the (sub-)buffer has "
+              "zero elements.",
+              allocation.param_shape_index().ToString(), param_no);
+        }
+
+        buffer_allocations_builder.RegisterBuffer(i, buffer);
+      }
+
+      if (allocation.is_constant()) {
+        buffer_allocations_builder.RegisterBuffer(i, FindOrDie(*globals, i));
+      }
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        buffer_allocations,
+        buffer_allocations_builder.Build(
+            assignment_.get(), executor->device_ordinal(), memory_allocator));
+  }
 
   TF_RETURN_IF_ERROR(ExecuteThunks(run_options, *buffer_allocations,
                                    block_host_until_done,

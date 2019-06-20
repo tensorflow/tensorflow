@@ -26,8 +26,12 @@ struct XlaActivityListenerList {
   std::vector<std::unique_ptr<XlaActivityListener>> listeners GUARDED_BY(mutex);
 };
 
+void FlushAllListeners();
+
 XlaActivityListenerList* GetXlaActivityListenerList() {
   static XlaActivityListenerList* listener_list = new XlaActivityListenerList;
+  static int unused = std::atexit(FlushAllListeners);
+  (void)unused;
   return listener_list;
 }
 
@@ -42,6 +46,14 @@ Status ForEachListener(FnTy fn) {
   }
 
   return Status::OK();
+}
+
+void FlushAllListeners() {
+  Status s = ForEachListener([](XlaActivityListener* listener) {
+    listener->Flush();
+    return Status::OK();
+  });
+  CHECK(s.ok());
 }
 }  // namespace
 
@@ -66,6 +78,8 @@ void RegisterXlaActivityListener(
 
   listener_list->listeners.push_back(std::move(listener));
 }
+
+void XlaActivityListener::Flush() {}
 
 XlaActivityListener::~XlaActivityListener() {}
 

@@ -17,6 +17,27 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 
+#ifndef USE_NEON
+#if defined(__ARM_NEON__) || defined(__ARM_NEON)
+#define USE_NEON
+#include <arm_neon.h>
+#endif
+
+#if defined __GNUC__ && defined __SSE4_1__ && !defined TF_LITE_DISABLE_X86_NEON
+#define USE_NEON
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#pragma GCC diagnostic ignored "-Wattributes"
+#pragma GCC diagnostic ignored "-Wnarrowing"
+#pragma GCC diagnostic ignored "-Wsequence-point"
+
+#include "NEON_2_SSE.h"
+
+#pragma GCC diagnostic pop
+#endif
+#endif
+
 #if !defined(NEON_OR_PORTABLE_USE_PORTABLE) && \
     !defined(NEON_OR_PORTABLE_USE_NEON)
 // If neither is defined, figure out if we can use NEON_OR_PORTABLE_USE_PORTABLE

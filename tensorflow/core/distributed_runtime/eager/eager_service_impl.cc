@@ -180,12 +180,16 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
 
   TF_RETURN_IF_ERROR(op->SetDevice(operation.device().c_str()));
 
-  for (const auto& remote_handle : operation.inputs()) {
-    tensorflow::TensorHandle* handle;
-    TF_RETURN_IF_ERROR(server_context->GetTensorHandle(
-        RemoteTensorHandleInternal(remote_handle), &handle));
+  {
+    profiler::TraceMe activity("EagerService:RemoteTensorHandleInternal",
+                               profiler::TraceMeLevel::kVerbose);
+    for (const auto& remote_handle : operation.inputs()) {
+      tensorflow::TensorHandle* handle;
+      TF_RETURN_IF_ERROR(server_context->GetTensorHandle(
+          RemoteTensorHandleInternal(remote_handle), &handle));
 
-    op->AddInput(handle);
+      op->AddInput(handle);
+    }
   }
 
   for (const auto& attr : operation.attrs()) {

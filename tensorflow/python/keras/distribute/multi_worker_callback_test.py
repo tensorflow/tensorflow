@@ -146,16 +146,12 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
       **kwargs):
 
     extension = os.path.splitext(saving_filepath)[1]
-    # TODO(rchao): Remove using .h5 once b/134551335 is fixed.
-    extension = '.h5'
 
     # Incorporate type/index information and thread id in saving_filepath to
     # ensure every worker has a unique path. Note that in normal use case the
     # saving_filepath will be the same for all workers, but we use different
     # ones here just to test out chief saves checkpoint but non-chief doesn't.
 
-    # TODO(b/134551335): Must save to hdf5 until bug with copying
-    # MirroredVariables is resolved.
     saving_filepath = os.path.join(
         test_obj.get_temp_dir(), 'checkpoint_%s_%d%s' %
         (test_base.get_task_type(), test_base.get_task_index(), extension))

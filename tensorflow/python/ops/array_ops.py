@@ -3727,14 +3727,19 @@ def gather(params,
 
   In the general case, produces an output tensor where:
 
-  > `output`$$[p_0,             ..., p_{axis-1},     \hspace{1.2em}
-  >            i_{batch\_dims}, ..., i_{M-1},        \hspace{1.3em}
-  >            p_{axis + 1},    ..., p_{N-1}]$$ =\
-  > `params`$$[p_0,             ..., p_{axis-1},     \hspace{1em}
-  >            indices[i_0,     ..., i_{M-1}],       \hspace{1em}
-  >            p_{axis + 1},    ..., p_{N-1}]$$.
+  $$\begin{align*}
+  output[p_0,             &..., p_{axis-1},                       &
+       &i_{B},           ..., i_{M-1},                          &
+       p_{axis + 1},    &..., p_{N-1}]                          = \\
+  params[p_0,             &..., p_{axis-1},                       &
+       indices[p_0, ..., p_{B-1}, &i_{B}, ..., i_{M-1}],        &
+       p_{axis + 1},    &..., p_{N-1}]
+  \end{align*}$$
 
-  Where $$N$$=`ndims(params)` and $$M$$=`ndims(indices)`.
+  Where $$N$$=`ndims(params)`, $$M$$=`ndims(indices)`, and $$B$$=`batch_dims`.
+  Note that params.shape[:batch_dims] must be identical to
+  indices.shape[:batch_dims].
+
   The shape of the output tensor is:
 
   > `output.shape = params.shape[:axis] + indices.shape[batch_dims:] +

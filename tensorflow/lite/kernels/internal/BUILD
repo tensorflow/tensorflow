@@ -173,19 +173,10 @@ cc_library(
     hdrs = ["common.h"],
     copts = tflite_copts(),
     deps = [
+        ":cpu_check",
         ":types",
         "@gemmlowp//:fixedpoint",
-    ] + select({
-        ":haswell": tflite_deps_intel,
-        ":ios_x86_64": tflite_deps_intel,
-        ":k8": tflite_deps_intel,
-        ":x86": tflite_deps_intel,
-        ":x86_64": tflite_deps_intel,
-        ":darwin": tflite_deps_intel,
-        ":darwin_x86_64": tflite_deps_intel,
-        ":freebsd": tflite_deps_intel,
-        "//conditions:default": [],
-    }),
+    ],
 )
 
 cc_library(
@@ -669,8 +660,8 @@ cc_test(
     ],
     shard_count = 2,
     deps = [
-        ":common",
         ":compatibility",
+        ":cpu_check",
         ":optimized_base",
         ":reference_base",
         ":test_util",
@@ -825,7 +816,17 @@ cc_library(
             ],
             "//conditions:default": [],
         },
-    ),
+    ) + select({
+        ":haswell": tflite_deps_intel,
+        ":ios_x86_64": tflite_deps_intel,
+        ":k8": tflite_deps_intel,
+        ":x86": tflite_deps_intel,
+        ":x86_64": tflite_deps_intel,
+        ":darwin": tflite_deps_intel,
+        ":darwin_x86_64": tflite_deps_intel,
+        ":freebsd": tflite_deps_intel,
+        "//conditions:default": [],
+    }),
 )
 
 cc_test(

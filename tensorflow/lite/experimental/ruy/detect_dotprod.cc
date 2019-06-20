@@ -85,6 +85,13 @@ bool try_asm_snippet(bool (*asm_snippet)()) {
 
 #include <mutex>
 
+// Intentionally keep checking for __linux__ here in case we want to
+// extend RUY_IMPLEMENT_DETECT_DOTPROD outside of linux in the future.
+#ifdef __linux__
+#include <sys/auxv.h>
+#include <sys/utsname.h>
+#endif
+
 #endif
 
 namespace ruy {
@@ -168,9 +175,45 @@ bool dotprod_asm_snippet() {
   return result == 40100;
 };
 
+bool DetectDotprodBySigIllMethod() {
+  return try_asm_snippet(dotprod_asm_snippet);
+}
+
+// Intentionally keep checking for __linux__ here in case we want to
+// extend RUY_IMPLEMENT_DETECT_DOTPROD outside of linux in the future.
+#ifdef __linux__
+bool IsLinuxAuxvMethodAvailable() {
+  struct utsname utsbuf;
+  uname(&utsbuf);
+  int major, minor, patch;
+  if (3 != sscanf(utsbuf.release, "%d.%d.%d", &major, &minor, &patch)) {
+    return false;
+  }
+  // This is implemented in linux 4.14.111, not in 4.14.105.
+  return major > 4 ||
+         (major == 4 && (minor > 14 || (minor == 14 && patch >= 111)));
+}
+
+bool DetectDotprodByLinuxAuxvMethod() {
+  // This is the value of HWCAP_ASIMDDP in sufficiently recent Linux headers,
+  // however we need to support building against older headers for the time
+  // being.
+  const int kLocalHwcapAsimddp = 1 << 20;
+  return getauxval(AT_HWCAP) & kLocalHwcapAsimddp;
+}
+#endif
+
 }  // namespace
 
-bool DetectDotprod() { return try_asm_snippet(dotprod_asm_snippet); }
+bool DetectDotprod() {
+#ifdef __linux__
+  if (IsLinuxAuxvMethodAvailable()) {
+    return DetectDotprodByLinuxAuxvMethod();
+  }
+#endif
+
+  return DetectDotprodBySigIllMethod();
+}
 
 #else
 bool DetectDotprod() { return false; }
