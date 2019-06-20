@@ -38,6 +38,7 @@ message PoplibsOp {
     ArgMin = 26;
     ArgMax = 27;
     PrintTensor = 28;
+    StatefulGradientAccumulate = 29;
   }
   required Op op = 2;
 }
