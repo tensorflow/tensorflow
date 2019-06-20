@@ -69,41 +69,9 @@ Basic Graph
 
 We begin with the most humble of aspirations: the ability to add.
 
-.. code-block:: python
+.. literalinclude:: tutorial_basic.py
+    :language: python
     :linenos:
-
-    import tensorflow as tf
-    import numpy as np
-    from tensorflow.contrib import ipu
-    from tensorflow.contrib.ipu.python.ops import ipu_scope
-
-    # Configure arguments for targeting the IPU
-    cfg = ipu.utils.create_ipu_config(profiling=True, use_poplar_text_report=True)
-    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    cfg = ipu.utils.auto_select_ipus(cfg, 1)
-    ipu.utils.configure_ipu_system(cfg)
-
-    with tf.device("cpu"):
-        pa = tf.placeholder(np.float32, [2], name="a")
-        pb = tf.placeholder(np.float32, [2], name="b")
-        pc = tf.placeholder(np.float32, [2], name="c")
-
-
-    def basic_graph(pa, pb, pc):
-        # Do basic addition with tensors
-        o1 = pa + pb
-        o2 = pa + pc
-        simple_graph_output = o1 + o2
-        return simple_graph_output
-
-
-    with ipu_scope("/device:IPU:0"):
-        result = basic_graph(pa, pb, pc)
-
-    with tf.Session() as sess:
-        # Run the graph through the session feeding it an arbitrary dictionary
-        result = sess.run(result, feed_dict={pa: [1., 1.], pb: [0., 1.], pc: [1., 5.]})
-        print(result)
 
 Let's review the various key sections of the code as they are presented. In
 lines *1-4* are the basic import statements, two of which pertain to the IPU
@@ -112,7 +80,12 @@ to set configuration options for the IPU session run. *ipu_scope* is a helper
 function that insures the device and resource scopes are set, (i.e. the hardware
 is properly initiated when called by the script).
 
-In lines *7-10*, basic configuration options are being defined. In line *7*,
+.. literalinclude:: tutorial_basic.py
+    :language: python
+    :start-at: # Configure arguments for targeting the IPU
+    :end-at: ipu.utils.configure_ipu_system
+
+In this section of the code basic configuration options are being defined.
 Boolean flags are passed to *create_ipu_config*, which results in turning on
 *profiling* and *use_poplar_text_report*. *profiling* enables trace event
 logging on the IPU, which will monitor operations on the tile architecture of
@@ -121,9 +94,9 @@ hardware . (Greater details of this trace event report will be discussed in the
 OOM-debugging section.) *use_poplar_text_report* configures the textual nature
 of the generated report, making it more readable for debugging purposes.
 
-In line 8, we are setting options for *set_ipu_model_options*, which consists of
-one Boolean flag: *compile_ipu_code*. If set to true, Poplar will compile code
-that will emulate IPU hardware, which will then be deployed to run on host; i.e.
+The options to the function *set_ipu_model_options* consist of one Boolean
+flag: *compile_ipu_code*. If set to true, Poplar will compile code that will
+emulate IPU hardware, which will then be deployed to run on host; i.e.
 the CPU. When using *IPU_Model* over actual IPU hardware, the runtime operations
 will behave exactly as they would on hardware, with the pivotal exception of
 ignoring the actual memory limitations of the IPU and run on the host's
@@ -136,29 +109,38 @@ as in
 
 ::
 
-
     # Using IPU model vs IPU hardware
     if self.base_dictionary['ipu_model']:
         os.environ['TF_POPLAR_FLAGS'] = '--use_ipu_model'
 
 
-In line 9, the *auto_select_ipus* interface allows for selection of available
-IPUs on a server. In this instance, the number of IPUs selected is 1, but can
-be changed to any number between 1 and 16 since in a Cauldron-based system,
-there are 8 C2 cards installed, each with 2 IPUs. This option will be more
-critical when we explore sharding, in which a single graph is segregated into
-separate sections, each section targeting a distinct IPU.
+The *auto_select_ipus* function allows for selection of available IPUs on a
+server. In this instance, the number of IPUs selected is 1, but can be changed
+to any number between 1 and 16 since in a Cauldron-based system, there are 8 C2
+cards installed, each with 2 IPUs. This option will be more critical when we
+explore sharding, in which a single graph is segregated into separate sections,
+each section targeting a distinct IPU.
 
-In line *12*, the CPU is being prescribed the tasks of setting tensor
-placeholders for our graph, which in this case are three vectors of dimension
-*2*.
+.. literalinclude:: tutorial_basic.py
+    :language: python
+    :start-at: with tf.device("cpu"):
+    :end-at: pc = tf.placeholder
 
-In line *18*, the graph is defined, which returns a tensor representing the
-specified sum.
+In this section, TensorFlow placeholders are being placed into the CPU part of
+the graph.  These will be used to feed data using a feed dictionary when
+executing `session.run()`.
 
-Line *26* uses the IPU helper function to build the graph on the IPU, and so
-when the TensorFlow session is initiated and the graph is processed, it will
-run on hardware. The result gives
+.. literalinclude:: tutorial_basic.py
+    :language: python
+    :start-at: def basic_graph(pa, pb, pc):
+    :end-at: result = basic_graph(pa, pb, pc)
+
+In this section, a graph of operations is created to do simple arithmetic on
+three input tensors.  The `ipu_scope` directive is used to ensure that these
+operations are placed on the IPU system.
+
+Then the graph is executed by using `session.run()`, the following output can
+be seen in the console log.
 
 ::
 
@@ -217,52 +199,16 @@ https://www.tensorflow.org/xla/tutorials/xla_compile
 Let's now build on our previous TensorFlow script by adding
 *ipu.ipu_compiler.compile* to the session definition.
 
-.. code-block:: python
+.. literalinclude:: tutorial_xla_compile.py
+    :language: python
     :linenos:
-
-
-    import tensorflow as tf
-    import numpy as np
-    from tensorflow.contrib import ipu
-    from tensorflow.contrib.ipu.python.ops import ipu_scope
-
-    # Configure argument for targetting the IPU
-    cfg = ipu.utils.create_ipu_config(profiling=True, use_poplar_text_report=True)
-    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    cfg = ipu.utils.auto_select_ipus(cfg, 1)
-    ipu.utils.configure_ipu_system(cfg)
-
-    with tf.device("cpu"):
-        pa = tf.placeholder(np.float32, [2], name="a")
-        pb = tf.placeholder(np.float32, [2], name="b")
-        pc = tf.placeholder(np.float32, [2], name="c")
-
-
-    def basic_graph(pa, pb, pc):
-        # Do basic addition on tensors
-        o1 = pa + pb
-        o2 = pa + pc
-        simple_graph_output = o1 + o2
-        return simple_graph_output
-
-
-    with ipu_scope("/device:IPU:0"):
-        xla_result = ipu.ipu_compiler.compile(basic_graph, [pa, pb, pc])
-
-
-    with tf.Session() as sess:
-        # Base run
-        result = sess.run(xla_result, feed_dict={pa: [1., 1.], pb: [0., 1.], pc: [1., 5.]})
-
-        print(result)
 
 The script has now gone from calling *basic_graph* directly, to feeding it as
 the graph input to *ipu.ipu_compiler.compile*, which takes the graph along with
-the corresponding placeholders as input. It is noted that at line *28*,
-placeholders are being fed to *ipu.ipu_compiler.compile* whose dimensions have
-been defined on the CPU in lines *14* through *16*, but the actual values of
-these tensors are not defined until the *session.run* at line 33. i.e., the
-*dimensions* of the placeholders are the critical component to
+the corresponding placeholders as input. Note that placeholders are being fed
+to *ipu.ipu_compiler.compile* whose dimensions have been defined on the CPU but
+the actual values of these tensors are not defined until the *session.run* call.
+i.e., the *dimensions* of the placeholders are the critical component to
 *ipu.ipu_compiler.compile* so that the graph can be parsed correctly at compile
 time.
 
@@ -318,62 +264,17 @@ distinct portions of the graph live on different IPUs, as illustrated below:
 Let's now return to our basic script and add the sharding component.
 
 
-.. code-block:: python
+.. literalinclude:: tutorial_sharding.py
+    :language: python
     :linenos:
 
-    import tensorflow as tf
-    import numpy as np
-    from tensorflow.contrib import ipu
-    from tensorflow.contrib.ipu.python.ops import ipu_scope
-    from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
-
-    cfg = ipu.utils.create_ipu_config(profiling=True, use_poplar_text_report=True)
-    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    # Request 4 IPUs to run the model
-    cfg = ipu.utils.auto_select_ipus(cfg, 4)
-    ipu.utils.configure_ipu_system(cfg)
-
-    with tf.device("cpu"):
-        pa = tf.placeholder(np.float32, [2], name="a")
-        pb = tf.placeholder(np.float32, [2], name="b")
-        pc = tf.placeholder(np.float32, [2], name="c")
-
-
-    # Define a trace event
-    with tf.device('cpu'):
-        report = gen_ipu_ops.ipu_event_trace()
-
-
-    # Distribute the computation across four shards
-    def sharded_graph(pa, pb, pc):
-        with ipu.ops.ipu_shard(0):
-            o1 = pa + pb
-        with ipu.ops.ipu_shard(1):
-            o2 = pa + pc
-        with ipu.ops.ipu_shard(2):
-            o3 = pb + pc
-        with ipu.ops.ipu_shard(3):
-            out = o1 + o2 + o3
-            return out
-
-
-    with ipu_scope("/device:IPU:0"):
-        result = ipu.ipu_compiler.compile(sharded_graph, [pa, pb, pc])
-
-    with tf.Session() as sess:
-        # sharded run
-        result = sess.run(result, feed_dict={pa: [1., 1.], pb: [0., 1.], pc: [1., 5.]})
-
-        print(result)
-
-
-Focusing on the sharding facets of this new script, line *11* uses
+Focusing on the sharding facets of this new script, line *13* uses
 *auto_select_ipus* to select 4 separate IPUs for the task. This will allow the
 script to go through the IPUs currently available to the host, determine which
 are being utilised and which are free, and then subscribe to those IPUs that are
 available.
 
-In lines *26-35*, the standard sum graph is defined, (with the addition of one
+In lines *31-39*, the standard sum graph is defined, (with the addition of one
 more sum for shard *2*), and now each portion of the sum is performed on a
 distinct shard, using
 
@@ -383,7 +284,7 @@ distinct shard, using
 
 
 As a result, shards *0* through *2* perform independent tensor sums, while shard
-*3* performs an accumulated sum from the other respective shards. In line *39*
+*3* performs an accumulated sum from the other respective shards. In line *44*
 we are using *xla.compile* to parse the graph, but it is noted that sharding can
 be performed without running through the *XLA* library.
 

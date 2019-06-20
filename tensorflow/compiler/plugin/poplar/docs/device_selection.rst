@@ -6,42 +6,19 @@ The name of the Poplar XLA devices are ``/device:IPU:X``.
 A python context handler is available for setting up all appropriate scoping
 while creating the graph:
 
-::
-
-  from tensorflow.contrib.ipu import ops
-
-  with ops.ipu_scope("/device:IPU:0"):
-    ...
+.. literalinclude:: tutorial_sharding.py
+  :language: python
+  :start-at: # Create the IPU section of the graph
+  :end-at: result = ipu.ipu_compiler.compile
 
 For very simple graphs, it is sufficient to use the IPU scope to define the
 parts of the graph which will be compiled.  For most graphs, the function
 ``ipu_compiler.compile()`` must be used.  This must be placed inside an IPU
 device scope.
 
-::
-
-  from tensorflow.contrib import ipu
-  ...
-
-  def my_net(x):
-    # Forward pass
-    logits = RNN(X)
-
-    # Loss and training
-    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=Y))
-    train = tf.train.GradientDescentOptimizer(0.01).minimize(loss)
-
-    return [loss, train]
-
-  X = tf.placeholder(dataType, [1, timesteps, num_input])
-
-  with ipu.ops.ipu_scope("/device:IPU:0"):
-    out = ipu.ipu_compiler.compile(my_net, [X])
-
-  ...
-
-  result = sess.run(out[0], ...)
-
+The function ``ipu_compiler.compile()`` will cause all operations created by the
+python function passed into its first argument to be placed on the IPU system,
+and be compiled together into a single Poplar executable.
 
 Supported types
 ~~~~~~~~~~~~~~~
@@ -86,11 +63,11 @@ Once the hardware configuration stucture has been configured, the API call
 ``ipu.utils.configure_ipu_system`` must be used to attach and to configure the
 hardware.
 
-::
+.. literalinclude:: tutorial_sharding.py
+  :language: python
+  :start-at: # Configure the IPU system
+  :end-at: ipu.utils.configure_ipu_system
 
-    cfg = tf.contrib.ipu.utils.create_ipu_config(profiling=False)
-    cfg = tf.contrib.ipu.utils.auto_select_ipus(cfg, 2)
-    tf.contrib.ipu.utils.configure_ipu_system(cfg)
 
 
 Configuring compilation options
@@ -134,8 +111,8 @@ without the overhead of data transfer.
 
 ``--synthetic_data_initializer`` when used in combination with the
 ``--use_synthetic_data`` flag, all the inputs to the graph will be initialized
- directly on the IPU either randomly (synthetic_data_initializer=random) or to a
- constant value X (synthetic_data_initializer=X)
+directly on the IPU either randomly (synthetic_data_initializer=random) or to a
+constant value X (synthetic_data_initializer=X)
 
 ``--force_replicated_mode`` allows graphs without ``AllReduce`` operations in
 them to be executed in replicated mode.  This might be required if replicated
