@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
@@ -124,8 +125,23 @@ class MultiWorkersTest(test.TestCase):
       c = a + 1.0
       return c
 
+    context.context().mirroring_policy = context.MIRRORING_NONE
+
     with ops.device('/job:worker/replica:0/task:0'):
       self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
+
+    if test_util.is_gpu_available():
+      with ops.device('/job:worker/replica:0/task:0/device:GPU:0'):
+        self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
+
+    context.context().mirroring_policy = context.MIRRORING_ALL
+
+    with ops.device('/job:worker/replica:0/task:0'):
+      self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
+
+    if test_util.is_gpu_available():
+      with ops.device('/job:worker/replica:0/task:0/device:GPU:0'):
+        self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
 
   def testSimpleParameterServer(self):
 
