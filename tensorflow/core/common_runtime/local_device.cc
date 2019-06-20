@@ -95,13 +95,7 @@ struct LocalDevice::EigenThreadPoolInfo {
       intra_op_parallelism_threads = env_num_threads;
       // If no session setting or environment, compute a reasonable default.
       if (intra_op_parallelism_threads == 0) {
-        intra_op_parallelism_threads = port::NumSchedulableCPUs();
-        if (numa_node != port::kNUMANoAffinity) {
-          // Assume that CPUs are equally distributed over available NUMA nodes.
-          // This may not be true, but there isn't currently a better way of
-          // determining the number of CPUs specific to the requested node.
-          intra_op_parallelism_threads /= port::NUMANumNodes();
-        }
+        intra_op_parallelism_threads = port::MaxParallelism(numa_node);
       }
     }
     ThreadOptions thread_opts;
