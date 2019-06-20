@@ -98,10 +98,11 @@ class PaddedBatchDatasetOpTest : public DatasetOpsTestBase {
     }
     inputs.push_back(PaddedBatchDatasetOp::kDropRemainder);
 
+    name_utils::OpNameParams params;
+    params.op_version = kOpVersion;
     NodeDef node_def = test::function::NDef(
         kNodeName,
-        name_utils::OpName(PaddedBatchDatasetOp::kDatasetType,
-                           name_utils::OpNameParams(kOpVersion)),
+        name_utils::OpName(PaddedBatchDatasetOp::kDatasetType, params),
         inputs,
         {{PaddedBatchDatasetOp::kParallelCopy, parallel_copy},
          {PaddedBatchDatasetOp::kToutputTypes, output_types},
@@ -691,9 +692,10 @@ TEST_F(PaddedBatchDatasetOpTest, DatasetTypeString) {
                              &padded_batch_dataset));
   core::ScopedUnref scoped_unref(padded_batch_dataset);
 
+  name_utils::OpNameParams params;
+  params.op_version = kOpVersion;
   EXPECT_EQ(padded_batch_dataset->type_string(),
-            name_utils::OpName(PaddedBatchDatasetOp::kDatasetType,
-                               name_utils::OpNameParams(kOpVersion)));
+            name_utils::OpName(PaddedBatchDatasetOp::kDatasetType, params));
 }
 
 TEST_P(ParameterizedPaddedBatchDatasetOpTest, DatasetOutputDtypes) {

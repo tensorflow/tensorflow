@@ -36,7 +36,6 @@ namespace data {
 
 constexpr char kInputImplEmpty[] = "input_impl_empty";
 constexpr char kNextIndex[] = "next_index";
-constexpr int kOpVersion = 1;
 
 class ShardDatasetOp::Dataset : public DatasetBase {
  public:
@@ -67,11 +66,10 @@ class ShardDatasetOp::Dataset : public DatasetBase {
   }
 
   string DebugString() const override {
-    return name_utils::DatasetDebugString(
-        kDatasetType,
-        name_utils::DatasetDebugStringParams(
-            kOpVersion, name_utils::kDefaultDatasetDebugStringPrefix,
-            num_shards_, index_));
+    name_utils::DatasetDebugStringParams params;
+    params.args.emplace_back(std::to_string(num_shards_));
+    params.args.emplace_back(std::to_string(index_));
+    return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
   int64 Cardinality() const override {

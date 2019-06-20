@@ -50,7 +50,6 @@ namespace data {
 const int64 kLogIntervalMicros = 10 * 1000000;  // 10 seconds.
 const int64 kMaxEpochsInBuffer = 3;
 
-constexpr int kOpVersion = 1;
 constexpr char kNumRandomSamples[] = "num_random_samples";
 constexpr char kEndOfInputSequence[] = "end_of_input_sequence";
 constexpr char kEpoch[] = "epoch";
@@ -401,10 +400,12 @@ class ShuffleDatasetOp::ReshufflingDataset : public ShuffleDatasetBase {
         seed2_(seed2) {}
 
   string DebugString() const override {
-    return name_utils::DatasetDebugString(
-        kDatasetType, name_utils::DatasetDebugStringParams(
-                          kOpVersion, kReshufflingDatasetPrefix, buffer_size_,
-                          seed_, seed2_));
+    name_utils::DatasetDebugStringParams params;
+    params.dataset_prefix = kReshufflingDatasetPrefix;
+    params.args.emplace_back(std::to_string(buffer_size_));
+    params.args.emplace_back(std::to_string(seed_));
+    params.args.emplace_back(std::to_string(seed2_));
+    return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
@@ -585,10 +586,12 @@ class ShuffleDatasetOp::FixedSeedDataset : public ShuffleDatasetBase {
         seed2_(seed2) {}
 
   string DebugString() const override {
-    return name_utils::DatasetDebugString(
-        kDatasetType,
-        name_utils::DatasetDebugStringParams(
-            kOpVersion, kFixedSeedDatasetPrefix, buffer_size_, seed_, seed2_));
+    name_utils::DatasetDebugStringParams params;
+    params.dataset_prefix = kFixedSeedDatasetPrefix;
+    params.args.emplace_back(std::to_string(buffer_size_));
+    params.args.emplace_back(std::to_string(seed_));
+    params.args.emplace_back(std::to_string(seed2_));
+    return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
@@ -667,11 +670,11 @@ class ShuffleAndRepeatDatasetOp::Dataset : public ShuffleDatasetBase {
         seed2_(seed2) {}
 
   string DebugString() const override {
-    return name_utils::DatasetDebugString(
-        kDatasetType,
-        name_utils::DatasetDebugStringParams(
-            kOpVersion, name_utils::kDefaultDatasetDebugStringPrefix,
-            buffer_size_, seed_, seed2_));
+    name_utils::DatasetDebugStringParams params;
+    params.args.emplace_back(std::to_string(buffer_size_));
+    params.args.emplace_back(std::to_string(seed_));
+    params.args.emplace_back(std::to_string(seed2_));
+    return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(

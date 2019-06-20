@@ -33,20 +33,29 @@ TEST(DeviceNameUtils, ArgsToString) {
 TEST(NameUtilsTest, DatasetDebugString) {
   EXPECT_EQ(name_utils::DatasetDebugString(ConcatenateDatasetOp::kDatasetType),
             "ConcatenateDatasetOp::Dataset");
-  EXPECT_EQ(name_utils::DatasetDebugString(
-                RangeDatasetOp::kDatasetType,
-                name_utils::DatasetDebugStringParams(
-                    1, name_utils::kDefaultDatasetDebugStringPrefix, 0, 10, 3)),
+  name_utils::DatasetDebugStringParams range_params;
+  range_params.args.emplace_back(std::to_string(0));
+  range_params.args.emplace_back(std::to_string(10));
+  range_params.args.emplace_back(std::to_string(3));
+  EXPECT_EQ(name_utils::DatasetDebugString(RangeDatasetOp::kDatasetType,
+                                           range_params),
             "RangeDatasetOp(0, 10, 3)::Dataset");
-  EXPECT_EQ(name_utils::DatasetDebugString(
-                ShuffleDatasetOp::kDatasetType,
-                name_utils::DatasetDebugStringParams(1, "FixedSeed", 10, 1, 2)),
+
+  name_utils::DatasetDebugStringParams shuffle_params;
+  shuffle_params.dataset_prefix = "FixedSeed";
+  shuffle_params.args.emplace_back(std::to_string(10));
+  shuffle_params.args.emplace_back(std::to_string(1));
+  shuffle_params.args.emplace_back(std::to_string(2));
+  EXPECT_EQ(name_utils::DatasetDebugString(ShuffleDatasetOp::kDatasetType,
+                                           shuffle_params),
             "ShuffleDatasetOp(10, 1, 2)::FixedSeedDataset");
-  EXPECT_EQ(name_utils::DatasetDebugString(
-                ParallelInterleaveDatasetOp::kDatasetType,
-                name_utils::DatasetDebugStringParams(
-                    2, name_utils::kDefaultDatasetDebugStringPrefix)),
-            "ParallelInterleaveDatasetV2Op::Dataset");
+
+  name_utils::DatasetDebugStringParams parallel_interleave_params;
+  parallel_interleave_params.op_version = 2;
+  EXPECT_EQ(
+      name_utils::DatasetDebugString(ParallelInterleaveDatasetOp::kDatasetType,
+                                     parallel_interleave_params),
+      "ParallelInterleaveDatasetV2Op::Dataset");
 }
 
 TEST(NameUtilsTest, OpName) {
@@ -54,9 +63,11 @@ TEST(NameUtilsTest, OpName) {
   EXPECT_EQ(name_utils::OpName(ConcatenateDatasetOp::kDatasetType,
                                name_utils::OpNameParams()),
             "ConcatenateDataset");
-  EXPECT_EQ(name_utils::OpName(ParallelInterleaveDatasetOp::kDatasetType,
-                               name_utils::OpNameParams(2)),
-            "ParallelInterleaveDatasetV2");
+  name_utils::OpNameParams params;
+  params.op_version = 2;
+  EXPECT_EQ(
+      name_utils::OpName(ParallelInterleaveDatasetOp::kDatasetType, params),
+      "ParallelInterleaveDatasetV2");
 }
 
 }  // namespace

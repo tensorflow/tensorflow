@@ -34,17 +34,15 @@ string OpName(const string& dataset_type) {
 string OpName(const string& dataset_type, const OpNameParams& params) {
   if (params.op_version == 1) {
     return strings::StrCat(dataset_type, kDataset);
-  } else {
-    return strings::StrCat(dataset_type, kDataset, kVersion, params.op_version);
   }
+  return strings::StrCat(dataset_type, kDataset, kVersion, params.op_version);
 }
 
 string ArgsToString(const std::vector<string>& args) {
   if (args.empty()) {
     return "";
-  } else {
-    return strings::StrCat("(", absl::StrJoin(args, ", "), ")");
   }
+  return strings::StrCat("(", absl::StrJoin(args, ", "), ")");
 }
 
 string DatasetDebugString(const string& dataset_type) {
@@ -53,7 +51,9 @@ string DatasetDebugString(const string& dataset_type) {
 
 string DatasetDebugString(const string& dataset_type,
                           const DatasetDebugStringParams& params) {
-  string op_name = OpName(dataset_type, OpNameParams(params.op_version));
+  OpNameParams op_name_params;
+  op_name_params.op_version = params.op_version;
+  string op_name = OpName(dataset_type, op_name_params);
   return strings::StrCat(op_name, kOp, ArgsToString(params.args), kDelimiter,
                          params.dataset_prefix, kDataset);
 }

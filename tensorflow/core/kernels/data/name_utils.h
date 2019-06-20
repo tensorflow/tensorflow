@@ -28,23 +28,10 @@ extern const char kDelimiter[];
 extern const char kDefaultDatasetDebugStringPrefix[];
 
 struct OpNameParams {
-  OpNameParams() = default;
-
-  explicit OpNameParams(int op_version) : op_version(op_version){};
-
   int op_version = 1;
 };
 
 struct DatasetDebugStringParams {
-  DatasetDebugStringParams() = default;
-
-  template <typename... T>
-  explicit DatasetDebugStringParams(int op_version, string dataset_prefix,
-                                    const T&... args)
-      : op_version(op_version),
-        dataset_prefix(std::move(dataset_prefix)),
-        args({static_cast<const strings::AlphaNum&>(args).data()...}){};
-
   int op_version = 1;
   string dataset_prefix = "";
   std::vector<string> args;
@@ -65,7 +52,9 @@ string OpName(const string& dataset_type);
 // e.g. OpName(ConcatenateDatasetOp::kDatasetType, OpNameParams())
 // -> "ConcatenateDataset"
 //
-// OpName(ParallelInterleaveDatasetOp::kDatasetType, OpNameParams(2)),
+// OpNameParams params;
+// params.op_version = 2;
+// OpName(ParallelInterleaveDatasetOp::kDatasetType, params)
 // -> "ParallelInterleaveDatasetV2"
 string OpName(const string& dataset_type, const OpNameParams& params);
 
@@ -78,12 +67,13 @@ string DatasetDebugString(const string& dataset_type);
 // Returns a human-readable debug string for this dataset in the format of
 // "FooDatasetOp(arg1, arg2, ...)::Dataset".
 //
-// e.g. DatasetDebugString(
-// "Shuffle", DatasetDebugStringParams(1, "FixedSeed", 10, 1, 2))
-// -> "ShuffleDatasetOp(10, 1, 2)::FixedSeedDataset";
-//
-// DatasetDebugString("ParallelInterleave", DatasetDebugStringParams(2, ""))
-// -> "ParallelInterleaveDatasetV2Op::Dataset").
+// e.g.
+//  DatasetDebugStringParams range_params;
+//  range_params.args.emplace_back(std::to_string(0));
+//  range_params.args.emplace_back(std::to_string(10));
+//  range_params.args.emplace_back(std::to_string(3));
+//  DatasetDebugString(RangeDatasetOp::kDatasetType, range_params)
+//  -> "RangeDatasetOp(0, 10, 3)::Dataset");
 string DatasetDebugString(const string& dataset_type,
                           const DatasetDebugStringParams& params);
 

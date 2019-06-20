@@ -133,10 +133,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
   }
 
   string DebugString() const override {
+    name_utils::DatasetDebugStringParams params;
+    params.op_version = op_version_;
     return name_utils::DatasetDebugString(
-        ParallelInterleaveDatasetOp::kDatasetType,
-        name_utils::DatasetDebugStringParams(
-            op_version_, name_utils::kDefaultDatasetDebugStringPrefix));
+        ParallelInterleaveDatasetOp::kDatasetType, params);
   }
 
  protected:

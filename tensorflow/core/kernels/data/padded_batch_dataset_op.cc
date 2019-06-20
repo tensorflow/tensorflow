@@ -98,11 +98,10 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
   }
 
   string DebugString() const override {
-    return name_utils::DatasetDebugString(
-        kDatasetType,
-        name_utils::DatasetDebugStringParams(
-            op_version_, name_utils::kDefaultDatasetDebugStringPrefix,
-            batch_size_));
+    name_utils::DatasetDebugStringParams params;
+    params.op_version = op_version_;
+    params.args.emplace_back(std::to_string(batch_size_));
+    return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
   int64 Cardinality() const override {
