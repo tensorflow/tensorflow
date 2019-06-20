@@ -33,8 +33,8 @@ class ElementwiseOneArgumentTest : public ::testing::Test {
   ElementwiseOneArgumentTest() = default;
   ~ElementwiseOneArgumentTest() override = default;
 
-  TensorRefFloat32 GetTensorRef(int ref) {
-    TensorRefFloat32 tensor_ref;
+  TensorRef<BHWC> GetTensorRef(int ref) {
+    TensorRef<BHWC> tensor_ref;
     tensor_ref.type = DataType::FLOAT32;
     tensor_ref.ref = ref;
     tensor_ref.shape = BHWC(1, 2, 2, 1);
@@ -137,8 +137,8 @@ class ElementwiseTwoArgumentsTest : public ::testing::Test {
   ElementwiseTwoArgumentsTest() = default;
   ~ElementwiseTwoArgumentsTest() override = default;
 
-  TensorRefFloat32 GetTensorRef(int ref) {
-    TensorRefFloat32 tensor_ref;
+  TensorRef<BHWC> GetTensorRef(int ref) {
+    TensorRef<BHWC> tensor_ref;
     tensor_ref.type = DataType::FLOAT32;
     tensor_ref.ref = ref;
     tensor_ref.shape = BHWC(1, 2, 2, 1);

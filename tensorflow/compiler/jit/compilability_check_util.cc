@@ -72,7 +72,7 @@ void LogNotCompilable(const Node& node, absl::string_view reason = "") {
 
 }  // anonymous namespace
 
-bool RecursiveCompilabilityChecker::HasXLAKernel(const Node& node) {
+bool RecursiveCompilabilityChecker::HasXLAKernel(const Node& node) const {
   // There is a SymbolicGradient kernel on the XLA_JIT device, but the gradient
   // is really a kind of function call and will be handled by
   // IsCompilableCall().
@@ -104,7 +104,7 @@ bool RecursiveCompilabilityChecker::HasXLAKernel(const Node& node) {
 bool RecursiveCompilabilityChecker::IsCompilableWhile(
     const Node& while_node, FunctionLibraryRuntime* lib_runtime,
     std::vector<StackFrameView>* stack_trace,
-    std::vector<UncompilableNodeInfo>* uncompilable_nodes) {
+    std::vector<UncompilableNodeInfo>* uncompilable_nodes) const {
   const NameAttrList* name_attr;
   NodeDef call;
   Status status;
@@ -155,7 +155,7 @@ bool RecursiveCompilabilityChecker::IsCompilableWhile(
 bool RecursiveCompilabilityChecker::IsCompilableCall(
     const NodeDef& call_def, FunctionLibraryRuntime* lib_runtime,
     std::vector<StackFrameView>* stack_trace,
-    std::vector<UncompilableNodeInfo>* uncompilable_nodes) {
+    std::vector<UncompilableNodeInfo>* uncompilable_nodes) const {
   if (stack_trace->size() > kMaxRecursionDepth) {
     std::string uncompilable_reason = "function depth limit exceeded";
     MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
@@ -191,13 +191,13 @@ bool RecursiveCompilabilityChecker::IsCompilableCall(
   return is_compilable;
 }
 
-bool RecursiveCompilabilityChecker::OpIsInaccurate(const Node& node) {
+bool RecursiveCompilabilityChecker::OpIsInaccurate(const Node& node) const {
   // b/127344411: SelfAdjointEigV2 and Svd precision issues.
   return node.type_string() == "SelfAdjointEigV2" ||
          node.type_string() == "Svd";
 }
 
-bool RecursiveCompilabilityChecker::OpIsSlow(const Node& node) {
+bool RecursiveCompilabilityChecker::OpIsSlow(const Node& node) const {
   // b/128001705: SelfAdjointEigV2 and Svd performance issues.
   return node.type_string() == "SelfAdjointEigV2" ||
          node.type_string() == "Svd" || node.type_string() == "Qr";
@@ -206,7 +206,7 @@ bool RecursiveCompilabilityChecker::OpIsSlow(const Node& node) {
 bool RecursiveCompilabilityChecker::IsCompilableNode(
     const Node& node, FunctionLibraryRuntime* lib_runtime,
     std::vector<StackFrameView>* stack_trace,
-    std::vector<UncompilableNodeInfo>* uncompilable_nodes) {
+    std::vector<UncompilableNodeInfo>* uncompilable_nodes) const {
   auto stack_depth = stack_trace->size();
   if (node.IsSource() || node.IsSink()) {
     absl::string_view uncompilable_reason = "source or sink node";
@@ -358,7 +358,7 @@ RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
   return op_filter;
 }
 
-void RecursiveCompilabilityChecker::MaybeMarkUncompilableNode(
+/*static*/ void RecursiveCompilabilityChecker::MaybeMarkUncompilableNode(
     const absl::string_view reason,
     const std::vector<StackFrameView>& stack_trace,
     std::vector<UncompilableNodeInfo>* uncompilable_node_list) {

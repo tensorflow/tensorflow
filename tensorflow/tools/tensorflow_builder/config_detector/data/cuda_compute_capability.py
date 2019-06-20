@@ -15,9 +15,6 @@
 # ==============================================================================
 """Retrieves CUDA compute capability from NVIDIA webpage and creates a `.csv`.
 
-This script should be run in the root directory of `tensorflow_builder/`
-(or relatively `../data/`).
-
 This module is mainly written to supplement for `../config_detector.py`
 which retrieves CUDA compute capability from existing golden file.
 
@@ -48,7 +45,7 @@ from absl import flags
 import six.moves.urllib.request as urllib
 
 FLAGS = flags.FLAGS
-PATH_TO_DIR = "tensorflow/tools/tensorflow_builder"
+PATH_TO_DIR = "tensorflow/tools/tensorflow_builder/config_detector"
 CUDA_CC_GOLDEN_DIR = PATH_TO_DIR + "/data/golden/compute_capability_golden.csv"
 
 

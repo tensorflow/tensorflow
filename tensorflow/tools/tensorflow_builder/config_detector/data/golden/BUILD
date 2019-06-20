@@ -2,7 +2,7 @@
 
 package(
     default_visibility = [
-        "//tensorflow/tools/tensorflow_builder:__subpackages__",
+        "//tensorflow/tools/tensorflow_builder/config_detector:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )

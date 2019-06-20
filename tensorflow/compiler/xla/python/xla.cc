@@ -280,7 +280,8 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<AllocatorConfig> alloc_config(m, "AllocatorConfig");
   alloc_config.def(py::init<>())
       .def_readwrite("kind", &AllocatorConfig::kind)
-      .def_readwrite("memory_fraction", &AllocatorConfig::memory_fraction);
+      .def_readwrite("memory_fraction", &AllocatorConfig::memory_fraction)
+      .def_readwrite("preallocate", &AllocatorConfig::preallocate);
   py::enum_<AllocatorConfig::Kind>(alloc_config, "Kind")
       .value("DEFAULT", AllocatorConfig::Kind::kDefault)
       .value("PLATFORM", AllocatorConfig::Kind::kPlatform)

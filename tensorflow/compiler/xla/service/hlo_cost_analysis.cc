@@ -18,6 +18,7 @@ limitations under the License.
 #include <cmath>
 
 #include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -868,20 +869,25 @@ float HloCostAnalysis::optimal_seconds(const HloInstruction& hlo) const {
 
 StatusOr<HloCostAnalysis::Properties>
 HloCostAnalysis::ProcessNestedSubcomputation(HloComputation* computation) {
-  HloCostAnalysis visitor(shape_size_, per_second_rates_);
-  visitor.ReserveVisitStates(computation->instruction_count());
-  TF_RETURN_IF_ERROR(computation->Accept(&visitor));
-  return visitor.properties();
+  auto visitor = CreateNestedCostAnalysis(shape_size_, per_second_rates_);
+  visitor->ReserveVisitStates(computation->instruction_count());
+  TF_RETURN_IF_ERROR(computation->Accept(visitor.get()));
+  return visitor->properties();
 }
 
 StatusOr<HloCostAnalysis::Properties>
 HloCostAnalysis::ProcessUnnestedSubcomputation(HloComputation* computation) {
-  HloCostAnalysis visitor(shape_size_, per_second_rates_);
-  visitor.ReserveVisitStates(computation->instruction_count());
-  TF_RETURN_IF_ERROR(computation->Accept(&visitor));
-  hlo_properties_.insert(visitor.hlo_properties_.begin(),
-                         visitor.hlo_properties_.end());
-  return visitor.properties();
+  auto visitor = CreateNestedCostAnalysis(shape_size_, per_second_rates_);
+  visitor->ReserveVisitStates(computation->instruction_count());
+  TF_RETURN_IF_ERROR(computation->Accept(visitor.get()));
+  hlo_properties_.insert(visitor->hlo_properties_.begin(),
+                         visitor->hlo_properties_.end());
+  return visitor->properties();
+}
+
+std::unique_ptr<HloCostAnalysis> HloCostAnalysis::CreateNestedCostAnalysis(
+    const ShapeSizeFunction& shape_size, const Properties& per_second_rates) {
+  return absl::WrapUnique(new HloCostAnalysis(shape_size, per_second_rates));
 }
 
 }  // namespace xla

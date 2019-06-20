@@ -744,11 +744,11 @@ class HloFusionInstruction : public HloInstruction {
     return FuseInstructionInternal(instruction_to_fuse);
   }
 
-  // Fuses the given instruction in this fusion instruction and generate
+  // Fuses the given instruction in this fusion instruction and generates a
   // multioutput fusion instruction. A clone of the instruction_to_fuse will
   // be part of the output of fusion instructions. The users of
   // instruction_to_fuse will be redirected to this fusion instructions.
-  // instruction_to_fuse will be removed from its parent computation.
+  // instruction_to_fuse is unchanged otherwise.
   HloInstruction* FuseInstructionIntoMultiOutput(
       HloInstruction* instruction_to_fuse) {
     return FuseInstructionInternal(instruction_to_fuse, /* add_output */ true);
@@ -795,15 +795,12 @@ class HloFusionInstruction : public HloInstruction {
   Status DeduplicateFusionOperands();
 
  private:
-  // Fuses the given instruction into this fusion instruction. When add_output
-  // is false (which is the default), instruction_to_fuse is cloned and the
-  // clone is placed in the fusion instruction. instruction_to_fuse is
-  // unchanged.
-  //
-  // When add_output is true, a clone of the instruction_to_fuse will be part
-  // of the output of fusion instructions. The users of instruction_to_fuse
-  // will be redirected to this fusion instructions. instruction_to_fuse will
-  // be removed from its parent computation.
+  // Fuses the given instruction into this fusion instruction.
+  // instruction_to_fuse is cloned and the clone is placed in the fusion
+  // instruction.  The users of instruction_to_fuse will be redirected to this
+  // fusion instruction. instruction_to_fuse is unchanged otherwise. When
+  // add_output is true, a clone of the instruction_to_fuse will be added as
+  // additional output resulting in a multi-output fusion.
   HloInstruction* FuseInstructionInternal(HloInstruction* instruction_to_fuse,
                                           bool add_output = false);
   // Clones the given instruction_to_fuse and insert the clone into this fusion

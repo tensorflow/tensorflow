@@ -32,9 +32,9 @@ from tensorflow.python import keras
 from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_coordinator as dc
-from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_test_base as test_base
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.framework import ops
@@ -222,11 +222,11 @@ def _run_standalone_client(test_obj, strategy, cluster_spec):
 
         # Workaround for the metrics issue (b/122928955) in async training. This
         # can only be used in standalone client mode.
-        dc_context.get_current_worker_context().wait_for_other_workers()
+        multi_worker_util.wait_for_other_workers()
 
         model.fit(x=train_ds, epochs=2, steps_per_epoch=steps)
 
-        dc_context.get_current_worker_context().wait_for_other_workers()
+        multi_worker_util.wait_for_other_workers()
 
         trained_loss, trained_acc = model.evaluate(train_ds, steps=steps)
 
@@ -286,7 +286,8 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
     num_workers = 2
     num_epoch = 2
 
-    cluster_spec = test_base.create_cluster_spec(num_workers=num_workers)
+    cluster_spec = test_base.create_cluster_spec(
+        num_workers=num_workers, test_obj=self)
     self._barrier = dc._Barrier(2)
 
     # The verification callback will be shared by multiple threads.
@@ -342,7 +343,7 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
     num_workers = 2
     num_epoch = 2
     cluster_spec = test_base.create_cluster_spec(
-        num_workers=num_workers, num_ps=2)
+        num_workers=num_workers, num_ps=2, test_obj=self)
     self._barrier = dc._Barrier(4)
 
     # The verification callback will be shared by multiple threads.

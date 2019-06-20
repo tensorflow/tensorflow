@@ -20,8 +20,7 @@ from __future__ import print_function
 import contextlib
 import os
 import tempfile
-
-from tensorflow.python.distribute import distribute_coordinator_context as dc_context
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend as K
@@ -76,7 +75,7 @@ class MultiWorkerTrainingState(object):
     # For those who should not checkpoint (e.g. non-chief worker in sync
     # training), create a temporary directory to write to (that will be
     # removed later).
-    if not dc_context.get_current_worker_context().should_checkpoint:
+    if not multi_worker_util.should_save_checkpoint():
       self._temp_dir, self._temp_filepath = self._get_temp_filepath()
 
     # The epoch at which the checkpoint is saved. Used for fault-tolerance.
@@ -114,7 +113,7 @@ class MultiWorkerTrainingState(object):
     # call. This is because the SyncOnReadVariable needs to be synced across
     # all the workers in order to be read, and all workers need to initiate
     # that.
-    if dc_context.get_current_worker_context().should_checkpoint:
+    if multi_worker_util.should_save_checkpoint():
       save_filepath = self._backup_filepath
     else:
       save_filepath = self._temp_filepath
@@ -122,7 +121,7 @@ class MultiWorkerTrainingState(object):
     # Save the weights plus CKPT_SAVED_EPOCH variable.
     self._model.save_weights(save_filepath, overwrite=True)
 
-    if not dc_context.get_current_worker_context().should_checkpoint:
+    if not multi_worker_util.should_save_checkpoint():
       # Remove the file in multi-worker training where this worker should
       # not checkpoint. It is a dummy file previously saved for sync distributed
       # training.
@@ -136,7 +135,7 @@ class MultiWorkerTrainingState(object):
       state doesn't need to be restored, or error occurred so it can't.
     """
     self._assert_in_multi_worker_mode()
-    if not dc_context.get_current_worker_context().experimental_should_init:
+    if not multi_worker_util.should_load_checkpoint():
       # For multi-worker training, it should not restore a model in certain
       # worker setting (e.g. non-chief worker in ParameterServerStrategy).
       return False
@@ -159,7 +158,7 @@ class MultiWorkerTrainingState(object):
     """
     self._assert_in_multi_worker_mode()
     tracking.AutoTrackable.__delattr__(self._model, CKPT_SAVED_EPOCH)
-    if dc_context.get_current_worker_context().should_checkpoint:
+    if multi_worker_util.should_save_checkpoint():
       _remove_dir(self._backup_dir)
     else:
       assert not file_io.file_exists(self._temp_dir)
@@ -218,7 +217,7 @@ class MultiWorkerTrainingState(object):
     return temp_dir, os.path.join(temp_dir, 'temp_training_state')
 
   def _assert_in_multi_worker_mode(self):
-    if not K.in_multi_worker_mode():
+    if not multi_worker_util.in_multi_worker_mode():
       raise ValueError('MultiWorkerTrainingState is only supposed to be used '
                        'in multi-worker training. This indicates some error '
                        'that needs to be fixed. Please submit a bug issue to '

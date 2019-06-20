@@ -441,6 +441,25 @@ class ApiTest(test.TestCase):
         TypeError, 'Using a `tf.Tensor` as a Python `bool`'):
       tc.test_method()
 
+  def test_converted_call_mangled_properties(self):
+
+    class TestClass(object):
+
+      def __init__(self, x):
+        self.__private = x
+
+      def test_method(self):
+        if self.__private < 0:
+          return self.__private
+        return self.__private
+
+    tc = TestClass(constant_op.constant(-1))
+    # The error below is specific to the `if` statement not being converted.
+    with self.assertRaisesRegex(NotImplementedError, 'Mangled names'):
+      api.converted_call('test_method', tc,
+                         converter.ConversionOptions(recursive=True), (), {})
+      tc.test_method()
+
   def test_converted_call_already_converted(self):
 
     def f(x):
@@ -868,6 +887,16 @@ class ApiTest(test.TestCase):
     with self.assertRaisesRegex(TypeError, 'tf.Tensor.*bool'):
       # The code in `f` is only valid with AutoGraph.
       test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED))
+
+  def test_tf_convert_whitelisted_method(self):
+
+    model = sequential.Sequential([
+        core.Dense(2)
+    ])
+    converted_call = api.tf_convert(
+        model.call, ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED))
+    _, converted_target = tf_decorator.unwrap(converted_call)
+    self.assertIs(converted_target.__func__, model.call.__func__)
 
   def test_tf_convert_wrapped(self):
 

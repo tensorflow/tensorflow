@@ -59,6 +59,9 @@ namespace tensorflow {
 namespace grappler {
 using TensorVector = gtl::InlinedVector<TensorValue, 4>;
 
+// We only fold/materialize constants smaller than 10 MiB.
+static const int64 kMaxConstantSize = 10 * 1024 * 1024;
+
 namespace {
 template <typename T>
 bool AllValuesAre(const TensorProto& proto, const T& value) {
@@ -867,7 +870,8 @@ Status ConstantFolding::MaterializeOutputValues(
     NodeDef* node, const GraphProperties& properties) {
   const std::vector<OpInfo::TensorProperties>& output =
       properties.GetOutputProperties(node->name());
-  if (output.size() != 1 || !output[0].has_value() || !IsFoldable(*node)) {
+  if (output.size() != 1 || !output[0].has_value() ||
+      !IsFoldable(*node, &properties)) {
     return Status::OK();
   }
 
@@ -908,7 +912,8 @@ Status ConstantFolding::MaterializeConstants(
   return Status::OK();
 }
 
-bool ConstantFolding::IsFoldable(const NodeDef& node) const {
+bool ConstantFolding::IsFoldable(const NodeDef& node,
+                                 const GraphProperties* properties) const {
   // Folding not applicable to ops with no inputs.
   if (node.input().empty()) {
     return false;
@@ -1024,6 +1029,27 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
       return false;
     }
   }
+
+  // If we know the output shapes, make sure that the outputs are small enough
+  // to materialize.
+  if (properties != nullptr && properties->HasOutputProperties(node.name())) {
+    const std::vector<OpInfo::TensorProperties>& output_props =
+        properties->GetOutputProperties(node.name());
+    for (const auto& output_prop : output_props) {
+      const PartialTensorShape output_shape(output_prop.shape());
+      if (output_shape.IsFullyDefined()) {
+        const int64 num_bytes =
+            output_shape.num_elements() * DataTypeSize(output_prop.dtype());
+        if (num_bytes > kMaxConstantSize) {
+          // Do not fold nodes if the in-memory size of output is too large.
+          // Notice that this is not exactly the same check used in
+          // CreateNodeDef() where the actual encoded size is checked.
+          return false;
+        }
+      }
+    }
+  }
+
   return !is_merge || merge_has_constant_input;
 }
 
@@ -1145,28 +1171,28 @@ Status ConstantFolding::CreateNodeDef(const string& name,
   // Use the packed representation whenever possible to avoid generating large
   // graphdefs. Moreover, avoid repeating the last values if they're equal.
   if (tensor->NumElements() > 4) {
-#define POPULATE_TENSOR_PROTO(tensor, t, TYPE, NAME)                      \
-  {                                                                       \
-    const auto* val_ptr = tensor->flat<TYPE>().data();                    \
-    auto last = *val_ptr;                                                 \
-    int64 last_index = 0;                                                 \
-    for (int64 i = 0; i < tensor->NumElements(); ++i) {                   \
-      TYPE cur = *val_ptr++;                                              \
-      if (PackedValuesNotEqual(cur, last)) {                              \
-        last = cur;                                                       \
-        last_index = i;                                                   \
-      }                                                                   \
-    }                                                                     \
-    if (last_index < kint32max) {                                         \
-      optimized = true;                                                   \
-      encoded_size = (last_index + 1) * sizeof(NAME);                     \
-      t->mutable_##NAME##_val()->Reserve(last_index + 1);                 \
-      const auto* src_ptr = tensor->flat<TYPE>().data();                  \
-      auto* dst_ptr =                                                     \
-          t->mutable_##NAME##_val()->AddNAlreadyReserved(last_index + 1); \
-      std::copy(src_ptr, src_ptr + last_index + 1, dst_ptr);              \
-    }                                                                     \
-  }                                                                       \
+#define POPULATE_TENSOR_PROTO(tensor, t, TYPE, FIELDTYPE)                      \
+  {                                                                            \
+    const auto* val_ptr = tensor->flat<TYPE>().data();                         \
+    auto last = *val_ptr;                                                      \
+    int64 last_index = 0;                                                      \
+    for (int64 i = 0; i < tensor->NumElements(); ++i) {                        \
+      TYPE cur = *val_ptr++;                                                   \
+      if (PackedValuesNotEqual(cur, last)) {                                   \
+        last = cur;                                                            \
+        last_index = i;                                                        \
+      }                                                                        \
+    }                                                                          \
+    encoded_size = (last_index + 1) * sizeof(FIELDTYPE);                       \
+    if (encoded_size < kint32max) {                                            \
+      optimized = true;                                                        \
+      t->mutable_##FIELDTYPE##_val()->Reserve(last_index + 1);                 \
+      const auto* src_ptr = tensor->flat<TYPE>().data();                       \
+      auto* dst_ptr =                                                          \
+          t->mutable_##FIELDTYPE##_val()->AddNAlreadyReserved(last_index + 1); \
+      std::copy(src_ptr, src_ptr + last_index + 1, dst_ptr);                   \
+    }                                                                          \
+  }                                                                            \
   break
 
     switch (tensor->dtype()) {
@@ -1209,10 +1235,10 @@ Status ConstantFolding::CreateNodeDef(const string& name,
   }
   node->mutable_attr()->insert({"value", attr_tensor});
 
-  if (encoded_size > original_size && encoded_size >= 10 * 1024 * 1024) {
+  if (encoded_size > original_size && encoded_size >= kMaxConstantSize) {
     return errors::InvalidArgument(
         strings::StrCat("Can't fold ", name, ", its size would be too large (",
-                        encoded_size, " >= ", 10 * 1024 * 1024, " bytes)"));
+                        encoded_size, " >= ", kMaxConstantSize, " bytes)"));
   }
   return Status::OK();
 }
@@ -1497,11 +1523,12 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
 }
 
 Status ConstantFolding::FoldGraph(
-    GraphDef* output, absl::flat_hash_set<string>* nodes_to_not_simplify) {
+    const GraphProperties& properties, GraphDef* output,
+    absl::flat_hash_set<string>* nodes_to_not_simplify) {
   std::unordered_set<string> processed_nodes;
   std::deque<NodeDef*> queue;
   for (int i = 0; i < graph_->node_size(); i++) {
-    if (IsFoldable(graph_->node(i))) {
+    if (IsFoldable(graph_->node(i), &properties)) {
       queue.push_back(graph_->mutable_node(i));
     }
   }
@@ -1531,7 +1558,7 @@ Status ConstantFolding::FoldGraph(
       }
     } else {
       for (auto& output : fanout) {
-        if (IsFoldable(*output)) {
+        if (IsFoldable(*output, &properties)) {
           queue.push_back(output);
         }
       }
@@ -3371,7 +3398,8 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
     TF_RETURN_IF_ERROR(MaterializeConstants(properties));
   }
   absl::flat_hash_set<string> nodes_to_not_simplify;
-  TF_RETURN_IF_ERROR(FoldGraph(optimized_graph, &nodes_to_not_simplify));
+  TF_RETURN_IF_ERROR(
+      FoldGraph(properties, optimized_graph, &nodes_to_not_simplify));
   node_map_.reset(new NodeMap(optimized_graph));
   TF_RETURN_IF_ERROR(SimplifyGraph(can_use_shape_info, optimized_graph,
                                    &properties, &nodes_to_not_simplify));

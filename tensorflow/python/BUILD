@@ -154,6 +154,7 @@ py_library(
         ":platform",
         ":proto_ops",
         ":pywrap_tensorflow",
+        ":rnn_ops_gen",
         ":saver_test_utils",
         ":script_ops",
         ":session_ops",
@@ -1900,6 +1901,10 @@ tf_gen_op_wrapper_private_py(
         "//tensorflow/contrib/quantization:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
     ],
+    deps = [
+        "//tensorflow/c/kernels:bitcast_op_lib",
+        "//tensorflow/core:array_ops_op_lib",
+    ],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -3056,6 +3061,9 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    tags = [
+        "no_rocm",
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3561,6 +3569,16 @@ py_library(
 )
 
 py_library(
+    name = "rnn_grad",
+    srcs = ["ops/rnn_grad.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_for_generated_wrappers",
+        "//tensorflow/python:rnn_ops_gen",
+    ],
+)
+
+py_library(
     name = "standard_ops",
     srcs = ["ops/standard_ops.py"],
     srcs_version = "PY2AND3",
@@ -3594,6 +3612,7 @@ py_library(
         ":partitioned_variables",
         ":proto_ops",
         ":random_ops",
+        ":rnn_grad",
         ":script_ops",
         ":session_ops",
         ":sort_ops",
@@ -6553,6 +6572,7 @@ cuda_py_test(
     ],
     tags = [
         "grappler",
+        "no_rocm",
     ],
     # This test analyzes the graph, but XLA changes the names of nodes.
     xla_enable_strict_auto_jit = False,
@@ -6650,6 +6670,18 @@ py_library(
     name = "tf2",
     srcs = ["tf2.py"],
     srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "tf2_test",
+    srcs = ["tf2_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":tf2",
+        "//tensorflow/python/distribute:combinations",
+    ],
 )
 
 cuda_py_test(

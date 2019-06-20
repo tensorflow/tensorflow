@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #define EIGEN_USE_THREADS
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -88,7 +88,7 @@ class ScanOp : public OpKernel {
   bool exclusive_;
 };
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace functor {
 
 // Forward declarations of GPU functors
@@ -112,7 +112,7 @@ DECLARE_FOR_ALL_REDUCERS(int64);
 #undef DECLARE
 
 }  // namespace functor
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Register Cumsum kernels
 #define REGISTER_CPU_KERNELS(type)                                       \
@@ -131,7 +131,7 @@ DECLARE_FOR_ALL_REDUCERS(int64);
 TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GPU_KERNELS(type)                                       \
   REGISTER_KERNEL_BUILDER(                                               \
       Name("Cumsum")                                                     \
@@ -151,7 +151,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS)
 REGISTER_GPU_KERNELS(int32);
 REGISTER_GPU_KERNELS(int64);
 #undef REGISTER_GPU_KERNELS
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Register Cumprod kernels
 #define REGISTER_CPU_KERNELS(type)                                        \
@@ -170,7 +170,7 @@ REGISTER_GPU_KERNELS(int64);
 TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GPU_KERNELS(type)                                        \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("Cumprod")                                                     \
@@ -190,6 +190,6 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS)
 REGISTER_GPU_KERNELS(int32);
 REGISTER_GPU_KERNELS(int64);
 #undef REGISTER_GPU_KERNELS
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

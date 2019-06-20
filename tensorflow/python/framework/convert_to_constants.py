@@ -92,6 +92,107 @@ def _get_tensors_from_graph(graph, tensors):
   return new_tensors
 
 
+def _get_tensor_name(name):
+  """Returns the name of the input tensor.
+
+  Args:
+    name: str
+
+  Returns:
+    str
+  """
+  return name.split(":")[0]
+
+
+def _get_tensor_data(func):
+  """Gets the tensor data for all Placeholders in the model.
+
+  Returns a dictionary that maps the tensor name to a dictionary containing:
+    data: numpy data
+    index: int index in func.graph.captures
+    is_variable: bool indicating whether the tensor is a variable or not
+
+  Args:
+    func: ConcreteFunction.
+
+  Returns:
+    Dict
+  """
+  tensor_data = {}
+  map_index_to_variable = {
+      func.captured_inputs.index(var.handle): var
+      for var in func.graph.variables
+  }
+
+  # Iterates through all captures which are represented as Placeholders.
+  for idx, (val_tensor, name_tensor) in enumerate(func.graph.captures.items()):
+    tensor_name = _get_tensor_name(name_tensor.name)
+    is_variable = idx in map_index_to_variable
+    if is_variable:
+      data = map_index_to_variable[idx].numpy()
+    else:
+      data = val_tensor.numpy()
+    tensor_data[tensor_name] = {
+        "data": data,
+        "index": idx,
+        "is_variable": is_variable,
+    }
+  return tensor_data
+
+
+def _populate_const_op(output_node, node_name, dtype, data, data_shape):
+  """Creates a Const op.
+
+  Args:
+    output_node: TensorFlow NodeDef.
+    node_name: str node name.
+    dtype: AttrValue with a populated .type field.
+    data: numpy data value.
+    data_shape: Tuple of integers containing data shape.
+  """
+  output_node.op = "Const"
+  output_node.name = node_name
+  output_node.attr["dtype"].CopyFrom(dtype)
+  tensor = tensor_util.make_tensor_proto(
+      data, dtype=dtype.type, shape=data_shape)
+  output_node.attr["value"].tensor.CopyFrom(tensor)
+
+
+def _construct_concrete_function(func, output_graph_def,
+                                 converted_input_indices):
+  """Constructs a concrete function from the `output_graph_def`.
+
+  Args:
+    func: ConcreteFunction
+    output_graph_def: GraphDef proto.
+    converted_input_indices: Set of integers of input indices that were
+      converted to constants.
+
+  Returns:
+    ConcreteFunction.
+  """
+  # Create a ConcreteFunction from the new GraphDef.
+  input_tensors = func.graph.captures.values()
+  converted_inputs = set(
+      [input_tensors[index] for index in converted_input_indices])
+  not_converted_inputs = set(func.inputs).difference(converted_inputs)
+  not_converted_inputs_map = {
+      tensor.name: tensor for tensor in not_converted_inputs
+  }
+
+  new_input_names = [tensor.name for tensor in not_converted_inputs]
+  new_output_names = [tensor.name for tensor in func.outputs]
+  new_func = wrap_function.function_from_graph_def(output_graph_def,
+                                                   new_input_names,
+                                                   new_output_names)
+
+  # Manually propagate shape for input tensors where the shape is not correctly
+  # propagated. Scalars shapes are lost when wrapping the function.
+  for input_tensor in new_func.inputs:
+    input_tensor.set_shape(not_converted_inputs_map[input_tensor.name].shape)
+  return new_func
+
+
 def convert_variables_to_constants_v2(func):
   """Replaces all the variables in a graph with constants of the same values.
 
@@ -114,117 +215,74 @@ def convert_variables_to_constants_v2(func):
   # TODO(nupurgarg): Change attr for Variables in control flow and functions.
   graph_def = _run_inline_graph_optimization(func)
 
-  # Identify the ReadVariableOps.
-  get_name = lambda name: name.split(":")[0]
-  map_name_to_node = {get_name(node.name): node for node in graph_def.node}
+  # Get mapping from node name to node.
+  name_to_node = {_get_tensor_name(node.name): node for node in graph_def.node}
 
-  # TODO(b/125838789): Use `func.graph.captures`.
-  # Get mapping from input name to variable value.
-  tensor_data = {}
-  map_name_to_handle = {}
-  input_tensors = func.inputs[-len(func.captured_inputs):]
-  for var in func.graph.variables:
-    index = func.captured_inputs.index(var.handle)
-    tensor_name = get_name(input_tensors[index].name)
-    tensor_data[tensor_name] = var.numpy()
-    map_name_to_handle[tensor_name] = var.handle
+  # Get mapping from node name to variable value.
+  tensor_data = _get_tensor_data(func)
 
-  # Get mapping from input name to value for non-variable placeholders.
-  map_name_to_value = {}
-  for name_tensor, value_tensor in zip(input_tensors, func.captured_inputs):
-    tensor_name = get_name(name_tensor.name)
-    if tensor_name not in map_name_to_handle:
-      map_name_to_value[tensor_name] = value_tensor
-
+  # Get variable data.
+  reference_variables = {}
   resource_identities = {}
   placeholders = {}
   converted_input_indices = set()
-  reference_variables = []
+
+  def _save_placeholder(node_name, dtype):
+    placeholders[node_name] = {
+        "dtype": dtype,
+        "data": tensor_data[node_name]["data"],
+    }
+    converted_input_indices.add(tensor_data[node_name]["index"])
+
   for node in graph_def.node:
-    if node.name in map_name_to_value:
-      # Get the dtype and data for the Placeholders whose values are stored as
-      # Tensors. This is the case for values that were originally Const ops.
-      tensor = map_name_to_value[node.name]
-      placeholders[node.name] = {
-          "dtype": node.attr["dtype"],
-          "data": tensor.numpy(),
-      }
-      converted_input_indices.add(
-          func.captured_inputs.index(map_name_to_value[node.name]))
-    # Collect the reference variables that cannot be lifted.
     if node.op == "VariableV2":
-      reference_variables.append(node)
-    if node.op == "ReadVariableOp":
-      # Get name of Placeholder op associated with ReadVariableOp. There can be
-      # an Identity in between the ReadVariableOp and Placeholder. Store the
-      # Identity ops with the associated dtypes.
-      input_name = get_name(node.input[0])
-      while map_name_to_node[input_name].op == "Identity":
+      # Get data for VariableV2 ops (reference variables) that cannot be lifted.
+      with func.graph.as_default():
+        identity_node = array_ops.identity(
+            func.graph.as_graph_element(node.name + ":0"))
+      reference_variables[node.name] = (
+          func.prune([], [identity_node.name])()[0])
+    elif node.name in tensor_data and not tensor_data[node.name]["is_variable"]:
+      # Get dtype and data for non-variable Placeholders (ex. values for 1.X
+      # Const ops that are loaded as Placeholders in 2.0)
+      _save_placeholder(node.name, node.attr["dtype"])
+    elif node.op == "ReadVariableOp":
+      # Get dtype and data for Placeholder ops associated with ReadVariableOp.
+      # There can be an Identity in between the ReadVariableOp and Placeholder.
+      # Store the dtype for the Identity ops.
+      input_name = _get_tensor_name(node.input[0])
+      while name_to_node[input_name].op == "Identity":
         resource_identities[input_name] = node.attr["dtype"]
-        input_name = get_name(map_name_to_node[input_name].input[0])
-      if map_name_to_node[input_name].op != "Placeholder":
+        input_name = _get_tensor_name(name_to_node[input_name].input[0])
+      if name_to_node[input_name].op != "Placeholder":
         raise ValueError("Cannot find the Placeholder op that is an input "
                          "to the ReadVariableOp.")
-      # Build a map of Placeholder ops that are inputs to ReadVariableOps to the
-      # variable's dtype and data.
-      placeholders[input_name] = {
-          "dtype": node.attr["dtype"],
-          "data": tensor_data[input_name],
-      }
-      converted_input_indices.add(
-          func.captured_inputs.index(map_name_to_handle[input_name]))
+      _save_placeholder(input_name, node.attr["dtype"])
 
   # Reconstruct the graph with constants in place of variables.
   output_graph_def = graph_pb2.GraphDef()
   how_many_converted = 0
 
-  # Add identity node after the reference variable and get the tensor values
-  # for them.
-  if reference_variables:
-    reference_variable_tensors = []
-    with func.graph.as_default():
-      for node in reference_variables:
-        identity_node = array_ops.identity(
-            func.graph.as_graph_element(node.name + ":0"))
-        reference_variable_tensors.append(identity_node.name)
-
-    reference_variable_values = func.prune([], reference_variable_tensors)()
-
-    # Add values of reference variables as constant nodes.
-    for node, value in zip(reference_variables, reference_variable_values):
-      output_node = output_graph_def.node.add()
-      dtype = attr_value_pb2.AttrValue()
-      dtype.type = value.dtype.as_datatype_enum
-
-      output_node.op = "Const"
-      output_node.name = node.name
-      output_node.attr["dtype"].CopyFrom(dtype)
-      output_node.attr["value"].tensor.CopyFrom(
-          tensor_util.make_tensor_proto(value))
-      how_many_converted += 1
-
   for input_node in graph_def.node:
-    # Skip VariableV2 node, since their values are added by the identity nodes.
-    if input_node.op == "VariableV2":
-      continue
     output_node = output_graph_def.node.add()
+    # Convert VariableV2 ops to Const ops.
+    if input_node.name in reference_variables:
+      data = reference_variables[input_node.name]
+      dtype = attr_value_pb2.AttrValue(type=data.dtype.as_datatype_enum)
+      _populate_const_op(output_node, input_node.name, dtype, data.numpy(),
+                         data.shape)
+      how_many_converted += 1
     # Convert Placeholder ops to Const ops.
-    if input_node.name in placeholders:
-      dtype = placeholders[input_node.name]["dtype"]
+    elif input_node.name in placeholders:
       data = placeholders[input_node.name]["data"]
-
-      output_node.op = "Const"
-      output_node.name = input_node.name
-      output_node.attr["dtype"].CopyFrom(dtype)
-      output_node.attr["value"].tensor.CopyFrom(
-          tensor_util.make_tensor_proto(
-              data, dtype=dtype.type, shape=data.shape))
+      dtype = placeholders[input_node.name]["dtype"]
+      _populate_const_op(output_node, input_node.name, dtype, data, data.shape)
       how_many_converted += 1
     # Change the dtype for Identity ops that are inputs to ReadVariableOps.
     elif input_node.name in resource_identities:
       output_node.CopyFrom(input_node)
       output_node.attr["T"].CopyFrom(resource_identities[input_node.name])
-    # Convert ReadVariableOps into Identity ops.
+    # Convert ReadVariableOps to Identity ops.
     elif input_node.op == "ReadVariableOp":
       output_node.op = "Identity"
       output_node.name = input_node.name
@@ -236,23 +294,5 @@ def convert_variables_to_constants_v2(func):
       output_node.CopyFrom(input_node)
 
   logging.info("Converted %d variables to const ops.", how_many_converted)
-
-  # Create a ConcreteFunction from the new GraphDef.
-  converted_inputs = set(
-      [input_tensors[index] for index in converted_input_indices])
-  not_converted_inputs = set(func.inputs).difference(converted_inputs)
-  not_converted_inputs_map = {
-      tensor.name: tensor for tensor in not_converted_inputs
-  }
-
-  new_input_names = [tensor.name for tensor in not_converted_inputs]
-  new_output_names = [tensor.name for tensor in func.outputs]
-  new_func = wrap_function.function_from_graph_def(output_graph_def,
-                                                   new_input_names,
-                                                   new_output_names)
-
-  # Manually propagate shape for input tensors where the shape is not correctly
-  # propagated. Scalars shapes are lost when wrapping the function.
-  for input_tensor in new_func.inputs:
-    input_tensor.set_shape(not_converted_inputs_map[input_tensor.name].shape)
-  return new_func
+  return _construct_concrete_function(func, output_graph_def,
+                                      converted_input_indices)

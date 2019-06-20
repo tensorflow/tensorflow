@@ -31,7 +31,7 @@ namespace gl {
 namespace {
 
 TEST(AddTest, TwoInputTensorsOfTheSameShape) {
-  TensorRefFloat32 augend, addend, output;
+  TensorRef<BHWC> augend, addend, output;
   augend.type = DataType::FLOAT32;
   augend.ref = 0;
   augend.shape = BHWC(1, 2, 2, 1);
@@ -57,7 +57,7 @@ TEST(AddTest, TwoInputTensorsOfTheSameShape) {
 TEST(AddTest, InputTensorAndScalar) {
   AddAttributes attr;
   attr.param = 0.1f;
-  TensorRefFloat32 input, output;
+  TensorRef<BHWC> input, output;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 3, 1, 2);
@@ -75,7 +75,7 @@ TEST(AddTest, InputTensorAndScalar) {
 }
 
 TEST(AddTest, InputTensorWithConstandBroadcast) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 2);
@@ -88,7 +88,7 @@ TEST(AddTest, InputTensorWithConstandBroadcast) {
   tensor.data.push_back(20.0);
   attr.param = std::move(tensor);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 2;
   output.shape = BHWC(1, 2, 2, 2);
@@ -104,19 +104,19 @@ TEST(AddTest, InputTensorWithConstandBroadcast) {
 }
 
 TEST(AddTest, InputTensorWithRuntimeBroadcast) {
-  TensorRefFloat32 input1;
+  TensorRef<BHWC> input1;
   input1.type = DataType::FLOAT32;
   input1.ref = 0;
   input1.shape = BHWC(1, 2, 2, 2);
 
-  TensorRefFloat32 input2;
+  TensorRef<BHWC> input2;
   input2.type = DataType::FLOAT32;
   input2.ref = 1;
   input2.shape = BHWC(1, 1, 1, 2);
 
   AddAttributes attr;
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 2;
   output.shape = BHWC(1, 2, 2, 2);

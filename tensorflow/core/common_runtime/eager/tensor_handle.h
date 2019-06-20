@@ -105,6 +105,10 @@ class TensorHandle : public core::RefCounted {
                                    uint64 context_id, DataType dtype, Device* d,
                                    Device* resource_device, EagerContext* ctx,
                                    TensorHandle** h);
+  static Status CreateRemoteHandle(std::unique_ptr<RemoteTensorHandleData> t,
+                                   DataType dtype, Device* d,
+                                   Device* resource_device, EagerContext* ctx,
+                                   TensorHandle** h);
   static Status CreateUnshapedRemoteHandle(int64 op_id, int32 output_num,
                                            eager::EagerClient* eager_client,
                                            uint64 context_id, DataType dtype,
@@ -115,9 +119,7 @@ class TensorHandle : public core::RefCounted {
   // Symbolic tensor constructor.
   TensorHandle(OutputGraphNode symbolic_tensor, DataType dtype);
 
-  ~TensorHandle() override {
-    VLOG(3) << "Deleting internal TensorHandle " << this;
-  }
+  ~TensorHandle() override { VLOG(3) << "Deleting TensorHandle " << this; }
 
   Status Tensor(const tensorflow::Tensor** t);
 
@@ -134,8 +136,13 @@ class TensorHandle : public core::RefCounted {
   Status NumElements(int64* num_elements);
 
 #if !defined(IS_MOBILE_PLATFORM)
+  bool HasRemoteMirror(Device* d);
+  // TODO(gjn): Add Unshaped remote mirrors once EagerRemoteSendTensor supports
+  // async execution and EagerRemoteExecute is mirror-aware.
+  Status AddRemoteMirror(std::unique_ptr<RemoteTensorHandleData> t, Device* d);
+
   // Return the op_id and output num if the handle refers to a remote tensor.
-  Status RemoteAddress(int64* op_id, int32* output_num) const;
+  Status RemoteAddress(Device* d, int64* op_id, int32* output_num) const;
 
   // Called on an async remote tensor once it's shape has been determined. This
   // transitions the tensor handle from a non-ready to a ready state by
@@ -143,13 +150,13 @@ class TensorHandle : public core::RefCounted {
   // queried.
   // This method or Poison must be called exactly once for remote tensors that
   // were created without a known shape.
-  void SetRemoteShape(const TensorShape& shape);
+  Status SetRemoteShape(const TensorShape& shape);
 #endif
 
   // Sets the `tensor` for this async non-ready handle making it ready.
   // This method or Poison must be called exactly once for non-ready async
   // handles to make them ready.
-  void SetTensor(const tensorflow::Tensor& tensor);
+  Status SetTensor(const tensorflow::Tensor& tensor);
 
   // Poisons this non-ready handle with an error `status`.
   // Poisoning means that the handle will become ready and methods trying
@@ -159,7 +166,7 @@ class TensorHandle : public core::RefCounted {
   void Poison(Status status);
 
   Status CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
-                      TensorHandle** output);
+                      tensorflow::Tensor* output);
 
   // Warning: can return nullptr for CPU tensors.
   EagerContext* Context() { return ctx_; }
@@ -212,6 +219,10 @@ class TensorHandle : public core::RefCounted {
   tensorflow::Device* const resource_device_;
 
 #if !defined(IS_MOBILE_PLATFORM)
+  mutable mutex remote_mirrors_mutex_;
+  std::map<tensorflow::Device*, std::unique_ptr<RemoteTensorHandleData>>
+      remote_mirrors_ GUARDED_BY(remote_mirrors_mutex_);
+
   // IDs required when this class is representing a remote tensor handle.
   const int64 remote_op_id_;
   const int32 remote_output_num_;

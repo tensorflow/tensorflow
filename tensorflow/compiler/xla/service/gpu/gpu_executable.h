@@ -118,6 +118,9 @@ class GpuExecutable : public Executable {
   StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
       stream_executor::StreamExecutor* executor);
 
+  // Computes annotations for each thunk and store them in thunk_annotations_.
+  void ComputeThunkAnnotations();
+
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // GpuExecutable. We save a string instead of an llvm::Module* because leaving
   // llvm::Module* in a singleton can cause the heap checker to emit false
@@ -145,6 +148,10 @@ class GpuExecutable : public Executable {
   // Owns the buffer data at runtime. It provides information to allocate
   // memory for every output/temp buffers.
   const std::shared_ptr<const BufferAssignment> assignment_;
+
+  // Maps a thunk to a string describing the thunk.  This is useful when
+  // constructing ScopeAnnotation objects.
+  absl::flat_hash_map<Thunk*, string> thunk_annotations_;
 
   // Cache of module handles and constant buffer allocation maps used by
   // `ResolveConstantGlobals`.

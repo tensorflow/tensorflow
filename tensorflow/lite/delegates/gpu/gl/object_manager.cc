@@ -32,7 +32,7 @@ Status CreatePHWC4BufferFromTensor(const TensorFloat32& tensor,
   return CreateReadOnlyShaderStorageBuffer<float>(transposed, gl_buffer);
 }
 
-Status CreatePHWC4BufferFromTensorRef(const TensorRefFloat32& tensor_ref,
+Status CreatePHWC4BufferFromTensorRef(const TensorRef<BHWC>& tensor_ref,
                                       GlBuffer* gl_buffer) {
   return CreateReadWriteShaderStorageBuffer<float>(
       GetElementsSizeForPHWC4(tensor_ref.shape), gl_buffer);

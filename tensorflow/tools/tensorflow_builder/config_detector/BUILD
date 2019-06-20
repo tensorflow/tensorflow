@@ -3,7 +3,7 @@
 
 package(
     default_visibility = [
-        "//tensorflow/tools/tensorflow_builder:__subpackages__",
+        "//tensorflow/tools/tensorflow_builder/config_detector:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -12,7 +12,7 @@ py_binary(
     name = "config_detector",
     srcs = ["config_detector.py"],
     data = [
-        "//tensorflow/tools/tensorflow_builder/data/golden:cuda_cc_golden",
+        "//tensorflow/tools/tensorflow_builder/config_detector/data/golden:cuda_cc_golden",
     ],
     python_version = "PY2",
     srcs_version = "PY2AND3",

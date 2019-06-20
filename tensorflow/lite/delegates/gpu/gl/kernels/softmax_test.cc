@@ -32,12 +32,12 @@ namespace gl {
 namespace {
 
 TEST(SoftmaxTest, WorksForChannelsAxis) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 2, 2, 1);
@@ -53,12 +53,12 @@ TEST(SoftmaxTest, WorksForChannelsAxis) {
 }
 
 TEST(SoftmaxTest, DoesNotWorkForHeightAxis) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 2, 2, 1);
@@ -75,12 +75,12 @@ TEST(SoftmaxTest, DoesNotWorkForHeightAxis) {
 }
 
 TEST(SoftmaxTest, DoesNotWorkForWidthAxis) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 2, 2, 1);

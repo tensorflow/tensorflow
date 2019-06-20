@@ -128,6 +128,7 @@ def _gpu_backend_factory():
   """Returns a GPU backend. BFC allocator is used by default."""
   allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
   memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
+  preallocate = os.getenv('XLA_PYTHON_CLIENT_PREALLOCATE')
   if allocator not in ('default', 'platform', 'bfc'):
     raise ValueError(
         'XLA_PYTHON_CLIENT_ALLOCATOR env var must be "default", "platform", or '
@@ -141,6 +142,7 @@ def _gpu_backend_factory():
     config.kind = _xla.AllocatorConfig.Kind.BFC
   if memory_fraction:
     config.memory_fraction = float(memory_fraction)
+  config.preallocate = preallocate not in ('0', 'false', 'False')
 
   client = _xla.LocalClient.Get(
       platform='gpu', xla_platform_id='CUDA', asynchronous=True,

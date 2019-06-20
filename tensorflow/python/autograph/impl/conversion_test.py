@@ -19,11 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 import imp
+import sys
 import threading
 
 import gast
+import six
 
 from tensorflow.python.autograph import utils
+from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import api
 from tensorflow.python.autograph.impl import conversion
@@ -58,6 +61,41 @@ class ConversionTest(test.TestCase):
     test_fn.__module__ = tf_like
 
     self.assertFalse(conversion.is_whitelisted_for_graph(tf_like.test_fn))
+
+  def test_is_whitelisted_for_graph_callable_whitelisted_call(self):
+
+    whitelisted_mod = imp.new_module('test_whitelisted_call')
+    sys.modules['test_whitelisted_call'] = whitelisted_mod
+    config.CONVERSION_RULES = ((config.DoNotConvert('test_whitelisted_call'),) +
+                               config.CONVERSION_RULES)
+
+    class TestClass(object):
+
+      def __call__(self):
+        pass
+
+      def whitelisted_method(self):
+        pass
+
+    TestClass.__module__ = 'test_whitelisted_call'
+    if six.PY2:
+      TestClass.__call__.__func__.__module__ = 'test_whitelisted_call'
+    else:
+      TestClass.__call__.__module__ = 'test_whitelisted_call'
+
+    class Subclass(TestClass):
+
+      def converted_method(self):
+        pass
+
+    tc = Subclass()
+
+    self.assertTrue(conversion.is_whitelisted_for_graph(TestClass.__call__))
+    self.assertTrue(conversion.is_whitelisted_for_graph(tc))
+    self.assertTrue(conversion.is_whitelisted_for_graph(tc.__call__))
+    self.assertTrue(conversion.is_whitelisted_for_graph(tc.whitelisted_method))
+    self.assertFalse(conversion.is_whitelisted_for_graph(Subclass))
+    self.assertFalse(conversion.is_whitelisted_for_graph(tc.converted_method))
 
   def test_convert_entity_to_ast_unsupported_types(self):
     with self.assertRaises(NotImplementedError):

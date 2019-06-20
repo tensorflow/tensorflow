@@ -123,6 +123,8 @@ class DirectSession : public Session {
 
   ::tensorflow::Status ReleaseCallable(CallableHandle handle) override;
 
+  const SessionOptions& options() const { return options_; }
+
  private:
   // For access to collective_graph_key_.
   friend class DirectSessionCollectiveTest;

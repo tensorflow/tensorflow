@@ -160,6 +160,9 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   HloCostAnalysis(const ShapeSizeFunction& shape_size,
                   const Properties& per_second_rates);
 
+  virtual std::unique_ptr<HloCostAnalysis> CreateNestedCostAnalysis(
+      const ShapeSizeFunction& shape_size, const Properties& per_second_rates);
+
   // Returns the properties computed from visiting the computation rooted at the
   // given hlo.
   //

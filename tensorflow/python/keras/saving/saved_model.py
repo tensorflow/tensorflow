@@ -669,7 +669,8 @@ class CommonEndpoints(SerializedAttributes.with_attributes(
 
 class LayerAttributes(SerializedAttributes.with_attributes(
     'LayerAttributes',
-    checkpointable_objects=['non_trainable_variables', 'layers', 'metrics'],
+    checkpointable_objects=['non_trainable_variables', 'layers', 'metrics',
+                            'layer_regularization_losses'],
     functions=['call_and_return_conditional_losses', 'activity_regularizer_fn'],
     copy_from=[CommonEndpoints]
     )):
@@ -687,6 +688,7 @@ class LayerAttributes(SerializedAttributes.with_attributes(
       separate to allow the deserialized Layer object to define a different
       activity regularizer.
     activity_regularizer_fn: Callable that returns the activity regularizer loss
+    layer_regularization_losses: List of losses owned only by this layer.
   """
 
 
@@ -792,20 +794,22 @@ def _wrap_layer_objects(layer, serialization_cache):
   # Wrap all regularization losses as tf.functions.
   # First, generate list of all regularization losses in this layer and
   # sublayers.
-  regularization_losses = layer._callable_losses[:]  # pylint: disable=protected-access
+  all_losses = layer._callable_losses[:]  # pylint: disable=protected-access
   for child_layer in _list_all_layers(layer):
-    regularization_losses.extend(child_layer._callable_losses)  # pylint: disable=protected-access
+    all_losses.extend(child_layer._callable_losses)  # pylint: disable=protected-access
   # Next, wrap all loss functions as tf.functions. Use the serialization cache
   # to store already-wrapped functions.
   keras_loss_cache = serialization_cache.setdefault('keras_losses', {})
   wrapped_loss_functions = []
-  for loss_fn in regularization_losses:
+  for loss_fn in all_losses:
     if loss_fn in keras_loss_cache:
       wrapped_loss_functions.append(keras_loss_cache[loss_fn])
     else:
       wrapped_loss = _wrap_unconditional_loss(loss_fn, len(keras_loss_cache))
-      keras_loss_cache[wrapped_loss] = wrapped_loss
+      keras_loss_cache[loss_fn] = wrapped_loss
       wrapped_loss_functions.append(wrapped_loss)
+  wrapped_layer_losses = [keras_loss_cache[fn]
+                          for fn in layer._callable_losses[:]]  # pylint: disable=protected-access
   return dict(
       variables=data_structures.ListWrapper(layer.variables),
       trainable_variables=data_structures.ListWrapper(
@@ -815,7 +819,9 @@ def _wrap_layer_objects(layer, serialization_cache):
       layers=data_structures.ListWrapper(_list_all_layers(layer)),
       metrics=data_structures.ListWrapper(layer.metrics),
       regularization_losses=data_structures.ListWrapper(
-          wrapped_loss_functions))
+          wrapped_loss_functions),
+      layer_regularization_losses=data_structures.ListWrapper(
+          wrapped_layer_losses))
 
 
 def _wrap_layer_functions(layer, serialization_cache):
@@ -944,8 +950,12 @@ def _replace_child_layer_functions(layer, serialization_cache):
         'activity_regularizer': child_layer.activity_regularizer
     }
     with trackable.no_automatic_dependency_tracking_scope(child_layer):
-      child_layer.activity_regularizer = layer_fns.get(
-          'activity_regularizer_fn')
+      try:
+        child_layer.activity_regularizer = layer_fns.get(
+            'activity_regularizer_fn')
+      except AttributeError:
+        # Some layers have an unsettable activity regularizer.
+        pass
       child_layer.call = _use_wrapped_call(
           child_layer, layer_fns['call_and_return_conditional_losses'])
   return original_fns
@@ -957,7 +967,10 @@ def _restore_child_layer_functions(original_fns):
   for child_layer, fns in original_fns.items():
     with trackable.no_automatic_dependency_tracking_scope(child_layer):
       child_layer.call = fns['call']
-      child_layer.activity_regularizer = fns['activity_regularizer']
+      try:
+        child_layer.activity_regularizer = fns['activity_regularizer']
+      except AttributeError:
+        pass
 
 
 # pylint: disable=protected-access
@@ -1267,7 +1280,13 @@ class KerasObjectLoader(load.Loader):
           # the original model is functional/sequential), inputs should be set.
           node._set_inputs(inputs)
       if isinstance(node, RevivedLayer):
-        losses = node._serialized_attributes.get('regularization_losses', [])
+        if hasattr(node.keras_api, 'layer_regularization_losses'):
+          losses = getattr(node.keras_api, 'layer_regularization_losses', [])
+        else:
+          # Some earlier SavedModels may not have layer_regularization_losses
+          # serialized separately. Fall back to using the regularization_losses
+          # list if it does not exist.
+          losses = node._serialized_attributes.get('regularization_losses', [])
         for loss in losses:
           node.add_loss(loss)
 

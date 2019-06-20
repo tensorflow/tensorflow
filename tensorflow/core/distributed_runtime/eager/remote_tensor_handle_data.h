@@ -77,6 +77,7 @@ class UnshapedRemoteTensorHandleData : public TensorHandleData {
   int32 output_num() const { return output_num_; }
   eager::EagerClient* eager_client() const { return eager_client_; }
   uint64 context_id() const { return context_id_; }
+  EagerContext* ctx() const { return ctx_; }
 
   // When constructed, UnshapedRemoteTensorHandleData owns the remote
   // TensorHandle and should delete it by issuing an RPC. Once the remote

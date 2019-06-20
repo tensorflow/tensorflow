@@ -31,7 +31,7 @@ namespace gl {
 namespace {
 
 TEST(FullyConnectedTest, MatrixByVectorMultiplication) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 1, 2);
@@ -50,7 +50,7 @@ TEST(FullyConnectedTest, MatrixByVectorMultiplication) {
   weights.data = {1, 2, 3, 4, 5, 6, 7, 8};
   attr.weights = std::move(weights);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 2;
   output.shape = BHWC(1, 1, 1, 4);

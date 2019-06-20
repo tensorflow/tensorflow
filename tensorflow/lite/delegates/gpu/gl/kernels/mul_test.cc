@@ -31,12 +31,12 @@ namespace gl {
 namespace {
 
 TEST(MulTest, Scalar) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 2, 2, 1);
@@ -51,12 +51,12 @@ TEST(MulTest, Scalar) {
 }
 
 TEST(MulTest, Linear) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 2, 2);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 1, 2, 2);
@@ -75,17 +75,17 @@ TEST(MulTest, Linear) {
 }
 
 TEST(ApplyMaskTest, MaskChannel1) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 2, 2);
 
-  TensorRefFloat32 mask;
+  TensorRef<BHWC> mask;
   mask.type = DataType::FLOAT32;
   mask.ref = 1;
   mask.shape = BHWC(1, 1, 2, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 2;
   output.shape = BHWC(1, 1, 2, 2);
@@ -99,17 +99,17 @@ TEST(ApplyMaskTest, MaskChannel1) {
 }
 
 TEST(ApplyMaskTest, MaskChannelEqualsToInputChannel) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 2, 2);
 
-  TensorRefFloat32 mask;
+  TensorRef<BHWC> mask;
   mask.type = DataType::FLOAT32;
   mask.ref = 1;
   mask.shape = BHWC(1, 1, 2, 2);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 2;
   output.shape = BHWC(1, 1, 2, 2);

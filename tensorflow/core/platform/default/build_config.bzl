@@ -136,7 +136,7 @@ def cc_proto_library(
         internal_bootstrap_hack = False,
         use_grpc_plugin = False,
         use_grpc_namespace = False,
-        default_header = False,
+        make_default_target_header_only = False,
         **kargs):
     """Bazel rule to create a C++ protobuf library from proto source files.
 
@@ -154,10 +154,10 @@ def cc_proto_library(
           cc_proto_library can depend on it.
       use_grpc_plugin: a flag to indicate whether to call the grpc C++ plugin
           when processing the proto files.
-      default_header: Controls the naming of generated rules. If True, the `name`
-          rule will be header-only, and an _impl rule will contain the
-          implementation. Otherwise the header-only rule (name + "_headers_only")
-          must be referred to explicitly.
+      make_default_target_header_only: Controls the naming of generated
+          rules. If True, the `name` rule will be header-only, and an _impl rule
+          will contain the implementation. Otherwise the header-only rule (name
+          + "_headers_only") must be referred to explicitly.
       **kargs: other keyword arguments that are passed to cc_library.
     """
 
@@ -215,7 +215,7 @@ def cc_proto_library(
             "//conditions:default": ["//external:grpc_lib"],
         })
 
-    if default_header:
+    if make_default_target_header_only:
         header_only_name = name
         impl_name = name + "_impl"
     else:
@@ -325,7 +325,7 @@ def tf_proto_library_cc(
         j2objc_api_version = 1,
         cc_api_version = 2,
         js_codegen = "jspb",
-        default_header = False):
+        make_default_target_header_only = False):
     js_codegen = js_codegen  # unused argument
     native.filegroup(
         name = name + "_proto_srcs",
@@ -375,7 +375,7 @@ def tf_proto_library_cc(
             "-Wno-unused-but-set-variable",
             "-Wno-sign-compare",
         ]),
-        default_header = default_header,
+        make_default_target_header_only = make_default_target_header_only,
         protoc = "@protobuf_archive//:protoc",
         use_grpc_plugin = use_grpc_plugin,
         visibility = visibility,
@@ -441,7 +441,7 @@ def tf_proto_library(
         j2objc_api_version = 1,
         js_codegen = "jspb",
         provide_cc_alias = False,
-        default_header = False):
+        make_default_target_header_only = False):
     """Make a proto library, possibly depending on other proto libraries."""
     _ignore = (js_codegen, provide_cc_alias)
 
@@ -451,7 +451,7 @@ def tf_proto_library(
         srcs = srcs,
         cc_grpc_version = cc_grpc_version,
         cc_libs = cc_libs,
-        default_header = default_header,
+        make_default_target_header_only = make_default_target_header_only,
         protodeps = protodeps,
         visibility = visibility,
     )

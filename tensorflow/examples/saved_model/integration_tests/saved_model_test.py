@@ -23,10 +23,12 @@ import os
 from absl.testing import parameterized
 import tensorflow.compat.v2 as tf
 
-from tensorflow.examples.saved_model.integration_tests import integration_scripts
+from tensorflow.examples.saved_model.integration_tests import distribution_strategy_utils as ds_utils
+from tensorflow.examples.saved_model.integration_tests import integration_scripts as scripts
+from tensorflow.python.distribute import combinations
 
 
-class SavedModelTest(integration_scripts.TestCase, parameterized.TestCase):
+class SavedModelTest(scripts.TestCase, parameterized.TestCase):
 
   def __init__(self, method_name="runTest", has_extra_deps=False):
     super(SavedModelTest, self).__init__(method_name)
@@ -71,40 +73,53 @@ class SavedModelTest(integration_scripts.TestCase, parameterized.TestCase):
     self.assertCommandSucceeded(
         "use_text_embedding_in_dataset", model_dir=export_dir)
 
-  NAMED_PARAMETERS_FOR_TEST_MNIST_CNN = (
-      ("", dict()),
-      ("_with_retraining", dict(
-          retrain=True,
-          regularization_loss_multiplier=2,  # Test impact of b/134528831.
-      )),
-      ("_with_mirrored_strategy", dict(
-          retrain=True,  # That's the relevant case for distribution.
-          use_mirrored_strategy=True,
-      )),
-  )
+  TEST_MNIST_CNN_GENERATE_KWARGS = dict(
+      combinations=combinations.combine(
+          named_strategy=list(ds_utils.named_strategies.values()),
+          retrain_flag_value=["true", "false"],
+          regularization_loss_multiplier=[None, 2]),  # Test for b/134528831.
+      test_combinations=[combinations.NamedGPUCombination()])
 
-  @parameterized.named_parameters(*NAMED_PARAMETERS_FOR_TEST_MNIST_CNN)
-  def test_mnist_cnn(self, use_kwargs):
+  @combinations.generate(**TEST_MNIST_CNN_GENERATE_KWARGS)
+  def test_mnist_cnn(self, named_strategy, retrain_flag_value,
+                     regularization_loss_multiplier):
+
     self.skipIfMissingExtraDeps()
-    if use_kwargs.get("use_mirrored_strategy", None):
-      self.skipTest(
-          "b/129134185 - saved model and distribution strategy integration")
+
     fast_test_mode = True
     temp_dir = self.get_temp_dir()
     feature_extrator_dir = os.path.join(temp_dir, "mnist_feature_extractor")
-    full_model_dir = os.path.join(temp_dir, "full_model")
+
+    # TODO(b/135043074): remove this if-else.
+    if named_strategy is None:
+      full_model_dir = os.path.join(temp_dir, "full_model")
+    else:
+      full_model_dir = None
+
     self.assertCommandSucceeded(
-        "export_mnist_cnn", fast_test_mode=fast_test_mode,
+        "export_mnist_cnn",
+        fast_test_mode=fast_test_mode,
         export_dir=feature_extrator_dir)
-    self.assertCommandSucceeded(
-        "use_mnist_cnn", fast_test_mode=fast_test_mode,
-        input_saved_model_dir=feature_extrator_dir,
-        output_saved_model_dir=full_model_dir, **use_kwargs)
-    self.assertCommandSucceeded(
-        "deploy_mnist_cnn", fast_test_mode=fast_test_mode,
-        saved_model_dir=full_model_dir)
+
+    use_kwargs = dict(fast_test_mode=fast_test_mode,
+                      input_saved_model_dir=feature_extrator_dir,
+                      retrain=retrain_flag_value)
+    if full_model_dir is not None:
+      use_kwargs["output_saved_model_dir"] = full_model_dir
+    if named_strategy:
+      use_kwargs["strategy"] = str(named_strategy)
+    if regularization_loss_multiplier is not None:
+      use_kwargs[
+          "regularization_loss_multiplier"] = regularization_loss_multiplier
+    self.assertCommandSucceeded("use_mnist_cnn", **use_kwargs)
+
+    if full_model_dir is not None:
+      self.assertCommandSucceeded(
+          "deploy_mnist_cnn",
+          fast_test_mode=fast_test_mode,
+          saved_model_dir=full_model_dir)
 
 
 if __name__ == "__main__":
-  integration_scripts.MaybeRunScriptInstead()
+  scripts.MaybeRunScriptInstead()
   tf.test.main()

@@ -31,12 +31,12 @@ namespace gl {
 namespace {
 
 TEST(UpsamplingBilinearTest, 1x1x2To2x2x2) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 1, 2);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 2, 2, 2);
@@ -56,12 +56,12 @@ TEST(UpsamplingBilinearTest, 1x1x2To2x2x2) {
 }
 
 TEST(UpsamplingBilinearTest, 1x2x1To1x4x1) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 2, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 1, 4, 1);
@@ -80,12 +80,12 @@ TEST(UpsamplingBilinearTest, 1x2x1To1x4x1) {
 }
 
 TEST(UpsamplingBilinearTest, 2x2x1To4x4x1) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 4, 4, 1);
