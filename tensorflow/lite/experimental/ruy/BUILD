@@ -29,6 +29,22 @@ cc_library(
 )
 
 cc_library(
+    name = "wait",
+    srcs = ["wait.cc"],
+    hdrs = ["wait.h"],
+    deps = [":time"],
+)
+
+cc_test(
+    name = "wait_test",
+    srcs = ["wait_test.cc"],
+    deps = [
+        ":wait",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "spec",
     hdrs = ["spec.h"],
 )
@@ -119,7 +135,7 @@ cc_library(
     ],
     deps = [
         ":check_macros",
-        ":time",
+        ":wait",
     ],
 )
 
@@ -135,7 +151,7 @@ cc_library(
     deps = [
         ":blocking_counter",
         ":check_macros",
-        ":time",
+        ":wait",
     ],
 )
 
