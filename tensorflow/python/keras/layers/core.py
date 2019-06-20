@@ -659,8 +659,8 @@ class Lambda(Layer):
   `Lambda` layer is saving and inspecting a Model. `Lambda` layers 
   are saved by serializing the Python bytecode, whereas subclassed 
   Layers can be saved via overriding their `get_config` method. Overriding 
-  `get_config` improves the portability of and the ability to inspect,
-  visualize and reason about them.
+  `get_config` improves the portability of Models. Models that rely on 
+  subclassed Layers are also often easier to visualize and reason about.
 
   Examples:
 
