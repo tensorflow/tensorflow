@@ -2245,19 +2245,7 @@ def maximum(x, y):
       y: Tensor or variable.
 
   Returns:
-      A tensor with the element wise maximum value(s) of `x` and `y.
-
-  Examples:
-  ```python
-      # maximum of two tensors
-      >>> x = tf.Variable([[1, 2], [3, 4]])
-      >>> y = tf.Variable([[2, 1], [0, -1]])
-      >>> m = tf.keras.backend.maximum(x, y)
-      >>> m
-      <tf.Tensor: id=42, shape=(2, 2), dtype=int32, numpy=
-      array([[2, 2],
-             [3, 4]], dtype=int32)>
-  ```
+      A tensor.
   """
   return math_ops.maximum(x, y)
 
@@ -2506,6 +2494,17 @@ def concatenate(tensors, axis=-1):
 
   Returns:
       A tensor.
+
+  Example:
+      ```python
+      >>> a = tf.constant([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+      >>> b = tf.constant([[10, 20, 30], [40, 50, 60], [70, 80, 90]])
+      >>> tf.keras.backend.concatenate((a, b), axis=1)
+      <tf.Tensor: id=14, shape=(3, 6), dtype=int32, numpy=
+      array([[ 1,  2,  3, 10, 20, 30],
+             [ 4,  5,  6, 40, 50, 60],
+             [ 7,  8,  9, 70, 80, 90]], dtype=int32)>
+      ```
   """
   if axis < 0:
     rank = ndim(tensors[0])
@@ -2530,6 +2529,21 @@ def reshape(x, shape):
 
   Returns:
       A tensor.
+
+  Example:
+    ```python
+      >>> a = tf.constant([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]])
+      >>> a
+      <tf.Tensor: id=32, shape=(4, 3), dtype=int32, numpy=
+      array([[ 1,  2,  3],
+             [ 4,  5,  6],
+             [ 7,  8,  9],
+             [10, 11, 12]], dtype=int32)>
+      >>> tf.keras.backend.reshape(a, shape=(2, 6))
+      <tf.Tensor: id=35, shape=(2, 6), dtype=int32, numpy=
+      array([[ 1,  2,  3,  4,  5,  6],
+             [ 7,  8,  9, 10, 11, 12]], dtype=int32)>
+    ```
   """
   return array_ops.reshape(x, shape)
 
@@ -2545,6 +2559,22 @@ def permute_dimensions(x, pattern):
 
   Returns:
       A tensor.
+
+  Example:
+    ```python
+      >>> a = tf.constant([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]])
+      >>> a
+      <tf.Tensor: id=49, shape=(4, 3), dtype=int32, numpy=
+      array([[ 1,  2,  3],
+             [ 4,  5,  6],
+             [ 7,  8,  9],
+             [10, 11, 12]], dtype=int32)>
+      >>> tf.keras.backend.permute_dimensions(a, pattern=(1, 0))
+      <tf.Tensor: id=52, shape=(3, 4), dtype=int32, numpy=
+      array([[ 1,  4,  7, 10],
+             [ 2,  5,  8, 11],
+             [ 3,  6,  9, 12]], dtype=int32)>
+    ```
   """
   return array_ops.transpose(x, perm=pattern)
 
@@ -2656,6 +2686,13 @@ def repeat_elements(x, rep, axis):
 
   Returns:
       A tensor.
+
+  Example:
+      ```python
+        >>> b = tf.constant([1, 2, 3])
+        >>> tf.keras.backend.repeat_elements(b, rep=2, axis=0)
+        <tf.Tensor: id=70, shape=(6,), dtype=int32, numpy=array([1, 1, 2, 2, 3, 3], dtype=int32)>
+      ```
   """
   x_shape = x.shape.as_list()
   # For static axis
@@ -2708,6 +2745,22 @@ def repeat(x, n):
 
   Returns:
       A tensor.
+
+  Example:
+      ```python
+        >>> b = tf.constant([[1, 2], [3, 4]])
+        >>> b
+        <tf.Tensor: id=78, shape=(2, 2), dtype=int32, numpy=
+        array([[1, 2],
+               [3, 4]], dtype=int32)>
+        >>> tf.keras.backend.repeat(b, n=2)
+        <tf.Tensor: id=82, shape=(2, 2, 2), dtype=int32, numpy=
+        array([[[1, 2],
+                [1, 2]],
+
+               [[3, 4],
+                [3, 4]]], dtype=int32)>
+      ```
   """
   assert ndim(x) == 2
   x = array_ops.expand_dims(x, 1)
@@ -2734,6 +2787,13 @@ def arange(start, stop=None, step=1, dtype='int32'):
 
   Returns:
       An integer tensor.
+
+  Example:
+      ```python
+        >>> tf.keras.backend.arange(start=0, stop=10, step=1.5)
+        <tf.Tensor: id=96, shape=(7,), dtype=float32, numpy=array([0. , 1.5, 3. , 4.5, 6. , 7.5, 9. ], dtype=float32)>
+
+      ```
 
   """
   # Match the behavior of numpy and Theano by returning an empty sequence.
