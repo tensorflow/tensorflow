@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/schedulers/look_ahead_scheduler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/schedulers/sync_list_scheduler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/convolution_preplanning.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/flags.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitors/entry_visitor.h"
@@ -613,10 +614,13 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   std::string map_json;
   std::vector<uint64> remaped_output;
   bool is_remap_graph = false;
+
   if (is_constant_graph) {
     VLOG(1) << "Skip engine compilation - output is constant";
   } else {
     try {
+      ConvolutionPreplanning convolution_preplanning;
+      TF_RETURN_IF_ERROR(convolution_preplanning.Plan(module.get(), resources));
       auto order = module->schedule().sequence(entry).instructions();
 
       TF_RETURN_IF_ERROR(entry->AcceptOrdered(&visitor, order));
