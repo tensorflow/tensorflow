@@ -3190,6 +3190,11 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
   TF_CHECK_OK(nb.Finalize(&**g, &new_node));
   CHECK_NOTNULL(new_node);
 
+  // In the following code of this function, an unsorted set is used to make
+  // sure no duplicated edges be added into the new node. Therefore, we can
+  // pass allow_duplicates = true in AddControlEdge call to skip the O(#edges)
+  // check in the routine. 
+
   // Incoming data edges from 'pred' node and 'succ' node to new 'new_node'
   // node are already copied in BuildNode. We handle control edges now.
   std::unordered_set<Node*> unique_node;
@@ -3197,7 +3202,7 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
     if (e->IsControlEdge()) {
       auto result = unique_node.insert(e->src());
       if (result.second) {
-        (*g)->AddControlEdge(e->src(), new_node, false);
+        (*g)->AddControlEdge(e->src(), new_node, true);
       }
     }
   }
@@ -3207,7 +3212,7 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
     if (e->IsControlEdge()) {
       auto result = unique_node.insert(e->src());
       if (result.second) {
-        (*g)->AddControlEdge(e->src(), new_node, false);
+        (*g)->AddControlEdge(e->src(), new_node, true);
       }
     }
   }
@@ -3219,7 +3224,7 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
     if (e->IsControlEdge()) {
       auto result = unique_node.insert(e->dst());
       if (result.second) {
-        (*g)->AddControlEdge(new_node, e->dst(), false);
+        (*g)->AddControlEdge(new_node, e->dst(), true);
       }
     }
   }
@@ -3230,7 +3235,7 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
     if (e->IsControlEdge()) {
       auto result = unique_node.insert(e->dst());
       if (result.second) {
-        (*g)->AddControlEdge(new_node, e->dst(), false);
+        (*g)->AddControlEdge(new_node, e->dst(), true);
       }
     } else {
       // BiasAdd has only 1 output (at slot 0) and merged node also has only 1
@@ -3485,6 +3490,11 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
   TF_CHECK_OK(nb.Finalize(&**g, &new_node));
   CHECK_NOTNULL(new_node);
 
+  // In the following code of this function, an unsorted set is used to make
+  // sure no duplicated edges be added into the new node. Therefore, we can
+  // pass allow_duplicates = true in AddControlEdge call to skip the O(#edges)
+  // check in the routine.
+
   // Incoming data edges from BiasAddGrad node and Conv2DBackpropFilter node to
   // new 'new_node' node are already copied in BuildNode. We handle control
   // edges now.
@@ -3493,7 +3503,7 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
     if (e->IsControlEdge()) {
       auto result = unique_node.insert(e->src());
       if (result.second) {
-        (*g)->AddControlEdge(e->src(), new_node, false);
+        (*g)->AddControlEdge(e->src(), new_node, true);
       }
     }
   }
@@ -3502,7 +3512,7 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
     if (e->IsControlEdge()) {
       auto result = unique_node.insert(e->src());
       if (result.second) {
-        (*g)->AddControlEdge(e->src(), new_node, false);
+        (*g)->AddControlEdge(e->src(), new_node, true);
       }
     }
   }
@@ -3522,7 +3532,7 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
     if (e->IsControlEdge()) {
       auto result = unique_node.insert(e->dst());
       if (result.second) {
-        (*g)->AddControlEdge(new_node, e->dst(), false);
+        (*g)->AddControlEdge(new_node, e->dst(), true);
       }
     } else {
       CHECK_NOTNULL((*g)->AddEdge(new_node, kMergedNodeBiasGradOutputIdx,
@@ -3536,7 +3546,7 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
     if (e->IsControlEdge()) {
       auto result = unique_node.insert(e->dst());
       if (result.second) {
-        (*g)->AddControlEdge(new_node, e->dst(), false);
+        (*g)->AddControlEdge(new_node, e->dst(), true);
       }
     } else {
       CHECK_NOTNULL((*g)->AddEdge(new_node, kMergedNodeFilterGradOutputIdx,
@@ -3637,6 +3647,11 @@ Status MklLayoutRewritePass::RewriteNodeForLayoutPropagation(
   }
   CHECK_NOTNULL(*new_node);
 
+  // In the following code of this function, an unsorted set is used to make
+  // sure no duplicated edges be added into the new node. Therefore, we can
+  // pass allow_duplicates = true in AddControlEdge call to skip the O(#edges)
+  // check in the routine.
+
   // Incoming data edges from 'orig_node' node to new 'new_node' node are
   // already copied in BuildNode. We need to handle control edges now.
   std::unordered_set<Node*> unique_node;
@@ -3644,7 +3659,7 @@ Status MklLayoutRewritePass::RewriteNodeForLayoutPropagation(
     if (e->IsControlEdge()) {
       auto result = unique_node.insert(e->src());
       if (result.second) {
-        (*g)->AddControlEdge(e->src(), *new_node, false);
+        (*g)->AddControlEdge(e->src(), *new_node, true);
       }
     }
   }
@@ -3661,7 +3676,7 @@ Status MklLayoutRewritePass::RewriteNodeForLayoutPropagation(
     if (e->IsControlEdge()) {
       auto result = unique_node.insert(e->dst());
       if (result.second) {
-        (*g)->AddControlEdge(*new_node, e->dst(), false);
+        (*g)->AddControlEdge(*new_node, e->dst(), true);
       }
     } else {
       CHECK_NOTNULL((*g)->AddEdge(
@@ -3708,6 +3723,11 @@ Status MklLayoutRewritePass::RewriteNodeForJustOpNameChange(
   }
   CHECK_NOTNULL(*new_node);
 
+  // In the following code of this function, an unsorted set is used to make
+  // sure no duplicated edges be added into the new node. Therefore, we can
+  // pass allow_duplicates = true in AddControlEdge call to skip the O(#edges)
+  // check in the routine.
+
   // Incoming data edges from 'orig_node' node to new 'new_node' node are
   // already copied in BuildNode. We need to handle control edges now.
   std::unordered_set<Node*> unique_node;
@@ -3715,7 +3735,7 @@ Status MklLayoutRewritePass::RewriteNodeForJustOpNameChange(
     if (e->IsControlEdge()) {
       auto result = unique_node.insert(e->src());
       if (result.second) {
-        (*g)->AddControlEdge(e->src(), *new_node, false);
+        (*g)->AddControlEdge(e->src(), *new_node, true);
       }
     }
   }
@@ -3726,7 +3746,7 @@ Status MklLayoutRewritePass::RewriteNodeForJustOpNameChange(
     if (e->IsControlEdge()) {
       auto result = unique_node.insert(e->dst());
       if (result.second) {
-        (*g)->AddControlEdge(*new_node, e->dst(), false);
+        (*g)->AddControlEdge(*new_node, e->dst(), true);
       }
     } else {
       CHECK_NOTNULL((*g)->AddEdge(*new_node, e->src_output(),
