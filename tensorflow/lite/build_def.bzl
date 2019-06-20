@@ -418,7 +418,7 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
         name = "zip_%s" % test_name,
         file = "%s.zip" % test_name,
         toco = toco,
-        flags = flags,
+        flags = flags + " --save_graphdefs",
     )
     tf_cc_test(name, **kwargs)
 

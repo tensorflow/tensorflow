@@ -227,7 +227,10 @@ tf_cc_test(
 xla_test(
     name = "gpu_convolution_regression_test",
     srcs = ["gpu_convolution_regression_test.cc"],
-    backend_args = {"gpu": ["--xla_gpu_crash_on_verification_failures"]},
+    backend_args = {"gpu": [
+        "--xla_enable_hlo_passes_only=layout-assignment,cudnn-conv-algorithm-picker",
+        "--xla_gpu_crash_on_verification_failures",
+    ]},
     backends = ["gpu"],
     tags = [
         "manual",

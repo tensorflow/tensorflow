@@ -221,7 +221,7 @@ Status XRTTupleAllocation::StoreToLiteral(xla::Backend* backend,
   TF_ASSIGN_OR_RETURN(auto stream, backend->BorrowStream(device_ordinal()));
   TF_ASSIGN_OR_RETURN(xla::ShapedBuffer shaped_buffer, ToShapedBuffer());
   return transfer_manager->TransferLiteralFromDevice(stream.get(),
-                                                     shaped_buffer, *literal);
+                                                     shaped_buffer, literal);
 }
 
 Status XRTTupleAllocation::WriteLiteral(xla::Backend* backend,

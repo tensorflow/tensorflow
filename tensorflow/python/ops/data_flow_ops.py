@@ -2426,8 +2426,7 @@ class RecordInput(object):
       with ops.name_scope(self._name):
         batch_list = [[] for _ in six.moves.range(self._batches)]
         records = array_ops.split(records, self._batch_size, 0)
-        records = [array_ops.reshape(record, []) for record in records]
-        for index, protobuf in zip(six.moves.range(len(records)), records):
+        for index, protobuf in enumerate(records):
           batch_index = index % self._batches
-          batch_list[batch_index].append(protobuf)
+          batch_list[batch_index].append(array_ops.reshape(protobuf, []))
         return batch_list

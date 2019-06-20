@@ -18,19 +18,16 @@ limitations under the License.
 // TODO(ghodrat): Remove this header file and the dependency to internal data
 // structure.
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 
 #if defined(_MSC_VER)
 #define __restrict__ __restrict
 #endif
 
-#ifndef USE_NEON
-#if defined(__ARM_NEON__) || defined(__ARM_NEON)
-#define USE_NEON
-#endif  //  defined(__ARM_NEON__) || defined(__ARM_NEON)
-#endif  //  USE_NEON
-
 namespace tflite {
 namespace tensor_utils {
+
+#ifdef USE_NEON
 
 // Multiply a matrix by a batch vector, and store results in a batch-size
 // vector.
@@ -123,6 +120,8 @@ void NeonVectorShiftLeft(float* vector, int v_size, float shift_value);
 // added to get one element of output.
 void NeonReductionSumVector(const float* input_vector, float* output_vector,
                             int output_size, int reduction_size);
+
+#endif  // USE_NEON
 
 }  // namespace tensor_utils
 }  // namespace tflite

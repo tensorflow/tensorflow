@@ -38,7 +38,7 @@ cc_binary(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":gen_proto_text_functions_lib",
-        "@protobuf_archive//:protobuf",
+        "@com_google_protobuf//:protobuf",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:lib_proto_compiler",
     ] + if_ios(["//tensorflow/core/platform/default/build_config:logging"]),

@@ -99,6 +99,8 @@ class Options(object):
     self.save_graphdefs = False
     # Whether the TFLite Flex converter is being used.
     self.run_with_flex = False
+    # Whether to generate test cases for edgetpu.
+    self.make_edgetpu_tests = False
     # The function to convert a TensorFLow model to TFLite model.
     # See the document for `toco_convert` function for its required signature.
     # TODO(ycling): Decouple `toco_convert` function from this module, and
@@ -145,6 +147,10 @@ class ExtraTocoOptions(object):
     self.rnn_states = None
     # Split the LSTM inputs from 5 inoputs to 18 inputs for TFLite.
     self.split_tflite_lstm_inputs = None
+    # The inference input type passed to TFLiteConvert.
+    self.inference_input_type = None
+    # The inference output type passed to TFLiteConvert.
+    self.inference_output_type = None
 
 
 def toco_options(data_types,
@@ -403,6 +409,12 @@ def toco_convert(options, graph_def, input_tensors, output_tensors, **kwargs):
           tf.lite.OpsSet.TFLITE_BUILTINS_INT8
       ]
       converter.representative_dataset = representative_dataset_gen
+      if extra_toco_options.inference_input_type:
+        converter.inference_input_type = (
+            extra_toco_options.inference_input_type)
+      if extra_toco_options.inference_output_type:
+        converter.inference_output_type = (
+            extra_toco_options.inference_output_type)
 
       try:
         tflite_model = converter.convert()
@@ -532,6 +544,11 @@ def make_zip_of_tests(options,
   toco_errors = 0
 
   processed_labels = set()
+
+  if options.make_edgetpu_tests:
+    extra_toco_options.inference_input_type = tf.lite.constants.QUANTIZED_UINT8
+    extra_toco_options.inference_output_type = tf.lite.constants.QUANTIZED_UINT8
+
   for parameters in test_parameters:
     keys = parameters.keys()
     for curr in itertools.product(*parameters.values()):
@@ -546,6 +563,36 @@ def make_zip_of_tests(options,
       processed_labels.add(label)
 
       param_dict = dict(zip(keys, curr))
+
+      if options.make_edgetpu_tests and not param_dict.get(
+          "fully_quantize", False):
+        continue
+
+      def build_tflite_inputs(tflite_model_binary):
+        # Build input values and output values of the given tflite model.
+        interpreter = tf.lite.Interpreter(model_content=tflite_model_binary)
+        interpreter.allocate_tensors()
+
+        input_details = interpreter.get_input_details()
+        input_values = []
+        for input_detail in input_details:
+          # TODO(yunluli): Set proper min max value according to dtype.
+          input_value = create_tensor_data(
+              input_detail["dtype"],
+              input_detail["shape"],
+              min_value=0,
+              max_value=255)
+          interpreter.set_tensor(input_detail["index"], input_value)
+          input_values.append(input_value)
+
+        interpreter.invoke()
+
+        output_details = interpreter.get_output_details()
+        output_values = []
+        for output_detail in output_details:
+          output_values.append(interpreter.get_tensor(output_detail["index"]))
+
+        return input_values, output_values
 
       def build_example(label, param_dict_real):
         """Build the model with parameter values set in param_dict_real.
@@ -612,12 +659,15 @@ def make_zip_of_tests(options,
                           else report_lib.FAILED)
         report["toco_log"] = toco_log
 
-        if True or options.save_graphdefs:
+        if options.save_graphdefs:
           archive.writestr(label + ".pbtxt",
                            text_format.MessageToString(graph_def),
                            zipfile.ZIP_DEFLATED)
 
         if tflite_model_binary:
+          if options.make_edgetpu_tests:
+            baseline_inputs, baseline_outputs = build_tflite_inputs(
+                tflite_model_binary)
           archive.writestr(label + ".bin", tflite_model_binary,
                            zipfile.ZIP_DEFLATED)
           example = {"inputs": baseline_inputs, "outputs": baseline_outputs}
@@ -678,7 +728,7 @@ def make_zip_of_tests(options,
                         "TensorFlow fails in %d percent of the cases.") %
                        (zip_path, int(100 * tf_failures / parameter_count)))
 
-  if tf_failures != expected_tf_failures:
+  if not options.make_edgetpu_tests and tf_failures != expected_tf_failures:
     raise RuntimeError(("Expected TF to fail %d times while generating '%s', "
                         "but that happened %d times") % (expected_tf_failures,
                                                          zip_path, tf_failures))
@@ -686,7 +736,6 @@ def make_zip_of_tests(options,
   if not options.ignore_converter_errors and toco_errors > 0:
     raise RuntimeError(
         "Found %d errors while generating toco models" % toco_errors)
-
 
 def make_pool_tests(pool_op_in):
   """Make a set of tests to do average pooling.

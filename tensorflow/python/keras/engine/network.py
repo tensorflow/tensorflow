@@ -1796,12 +1796,15 @@ def _map_graph_network(inputs, outputs):
       nodes_depths[inbound_node] = max(depth + 1, previous_depth)
 
   # Handle inputs that are not connected to outputs.
+  # We do not error out here because the inputs may be used to compute losses
+  # and metrics.
   for input_t in inputs:
     input_layer = input_t._keras_history[0]
     if input_layer not in layers_depths:
       layers_depths[input_layer] = 0
       layer_indices[input_layer] = -1
       nodes_depths[input_layer._inbound_nodes[0]] = 0
+      network_nodes.add(_make_node_key(input_layer.name, 0))
 
   # Build a dict {depth: list of nodes with this depth}
   nodes_by_depth = collections.defaultdict(list)

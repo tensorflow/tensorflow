@@ -506,7 +506,7 @@ Status PyLocalBuffer::CopyToHostAsync() {
   host_value->value = std::make_shared<Literal>(on_host_shape_);
   TF_ASSIGN_OR_RETURN(ShapedBuffer shaped_buffer, AsShapedBuffer());
   client_->client()->backend().transfer_manager()->TransferLiteralFromDevice(
-      stream, shaped_buffer, *host_value->value,
+      stream, shaped_buffer, host_value->value.get(),
       [host_value](Status done_status) {
         host_value->status = done_status;
         host_value->ready.Notify();

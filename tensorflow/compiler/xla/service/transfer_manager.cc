@@ -58,7 +58,7 @@ StatusOr<Literal> TransferManager::TransferLiteralFromDevice(
   Status s;
   Literal literal(device_buffer.on_host_shape());
   TransferLiteralFromDevice(
-      substream, device_buffer, literal,
+      substream, device_buffer, &literal,
       [&](Status status) {
         s = status;
         n.Notify();
@@ -123,7 +123,7 @@ StatusOr<Literal> TransferManager::TransferArrayFromDevice(
   Literal literal(shape);
   Status s;
   TransferArrayFromDevice(
-      substream, shape, source, literal,
+      substream, shape, source, &literal,
       [&](Status status) {
         s = status;
         n.Notify();

@@ -23,6 +23,7 @@ limitations under the License.
 // clang-format on
 
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
@@ -293,6 +295,8 @@ Status AddInputDevicesToCacheKey(const EagerContext* ctx,
                                  const EagerOperation* op,
                                  std::vector<Device*>* input_dev_ptrs,
                                  Fprint128* cache_key) {
+  profiler::TraceMe activity("AddInputDevicesToCacheKey",
+                             profiler::TraceMeLevel::kVerbose);
   input_dev_ptrs->reserve(op->Inputs().size());
   Device* cpu_device = ctx->HostCPU();
   for (TensorHandle* tensor_handle : op->Inputs()) {
@@ -347,6 +351,8 @@ Status AddInputTensorShapesToCacheKey(
     const EagerContext* ctx, const EagerOperation* op,
     std::unordered_map<int, TensorShape>* input_tensor_shapes,
     Fprint128* cache_key) {
+  profiler::TraceMe activity("AddInputTensorShapesToCacheKey",
+                             profiler::TraceMeLevel::kVerbose);
   for (int i = 0; i < op->Inputs().size(); i++) {
     TensorHandle* tensor_handle = op->Inputs()[i];
 
@@ -382,6 +388,8 @@ Status AddInputResourceDtypesAndShapesToCacheKey(
     std::unordered_map<int, std::pair<DataType, TensorShape>>*
         input_resource_dtypes_shapes,
     Fprint128* cache_key) {
+  profiler::TraceMe activity("AddInputResourceDtypesAndShapesToCacheKey",
+                             profiler::TraceMeLevel::kVerbose);
   for (int i = 0; i < op->Inputs().size(); i++) {
     TensorHandle* tensor_handle = op->Inputs()[i];
 
@@ -475,6 +483,9 @@ Status ShouldCompileWithXLA(const EagerOperation* op, const Device* device,
 Status EagerLocalExecute(EagerOperation* op,
                          gtl::InlinedVector<TensorHandle*, 2>* retvals,
                          int* num_retvals) {
+  profiler::TraceMe activity(
+      [&] { return absl::StrCat("EagerLocalExecute: ", op->Name()); },
+      profiler::TraceMeLevel::kInfo);
   const string unspecified_device_name("<unspecified>");
   EagerContext* ctx = op->EagerContext();
   auto status = ctx->GetStatus();
@@ -505,16 +516,20 @@ Status EagerLocalExecute(EagerOperation* op,
     // Once that is the case, we will be able to write a thin wrapper layer over
     // the EagerService that behaves similar to the current
     // ClusterFunctionLibraryRuntime/DistributedFunctionLibraryRuntime.
-    for (int i = 0; i < op->Inputs().size(); i++) {
-      TensorHandle* input = op->Inputs()[i];
-      if (input->IsRemote()) {
-        TensorHandle* handle = nullptr;
-        TF_RETURN_IF_ERROR(EagerCopyToDevice(
-            input, ctx, device == nullptr ? "" : device->name().c_str(),
-            ctx->MirrorTensors(), &handle));
-        op->UpdateInput(i, handle);
-        // Unref handle since it has a ref as an input now
-        handle->Unref();
+    {
+      profiler::TraceMe activity("EagerCopyToDevice",
+                                 profiler::TraceMeLevel::kInfo);
+      for (int i = 0; i < op->Inputs().size(); i++) {
+        TensorHandle* input = op->Inputs()[i];
+        if (input->IsRemote()) {
+          TensorHandle* handle = nullptr;
+          TF_RETURN_IF_ERROR(EagerCopyToDevice(
+              input, ctx, device == nullptr ? "" : device->name().c_str(),
+              ctx->MirrorTensors(), &handle));
+          op->UpdateInput(i, handle);
+          // Unref handle since it has a ref as an input now
+          handle->Unref();
+        }
       }
     }
     TF_RETURN_IF_ERROR(
@@ -805,7 +820,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
 
     tensorflow::int64 op_id;
     int32 output_num;
-    TF_RETURN_IF_ERROR(input->RemoteAddress(op->Device(), &op_id, &output_num));
+    TF_RETURN_IF_ERROR(
+        input->RemoteAddress(input->device(), &op_id, &output_num));
 
     auto* remote_op_input = remote_op->add_inputs();
     remote_op_input->set_op_id(op_id);
@@ -1037,6 +1053,9 @@ Status MaybeUpdateOpDevice(EagerOperation* op) {
 Status EagerExecute(EagerOperation* op,
                     gtl::InlinedVector<TensorHandle*, 2>* retvals,
                     int* num_retvals) {
+  profiler::TraceMe activity(
+      [&] { return absl::StrCat("EagerExecute: ", op->Name()); },
+      profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(MaybeUpdateOpDevice(op));
 
   bool op_is_local = op->EagerContext()->IsLocal(op->Device());
@@ -1062,6 +1081,8 @@ Status EagerKernelExecute(EagerContext* ctx,
                           StepStats* maybe_step_stats,
                           GraphCollector* graph_collector,
                           TensorHandle** retvals, int num_retvals) {
+  profiler::TraceMe activity("EagerKernelExecute",
+                             profiler::TraceMeLevel::kInfo);
   std::vector<Tensor> outputs(1);
 
   // If there are multiple references to a TensorHandle in 'op_inputs' we must

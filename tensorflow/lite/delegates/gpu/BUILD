@@ -89,7 +89,9 @@ objc_library(
 # build -c opt --config android_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=hidden --linkopt -s --strip always :libtensorflowlite_gpu_gl.so
 cc_binary(
     name = "libtensorflowlite_gpu_gl.so",
-    linkopts = select({
+    linkopts = [
+        "-Wl,-soname=libtensorflowlite_gpu_gl.so",
+    ] + select({
         "//tensorflow:android": [
             "-lEGL",
             "-lGLESv3",

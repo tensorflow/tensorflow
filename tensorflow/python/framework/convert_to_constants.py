@@ -172,7 +172,7 @@ def _construct_concrete_function(func, output_graph_def,
     ConcreteFunction.
   """
   # Create a ConcreteFunction from the new GraphDef.
-  input_tensors = func.graph.captures.values()
+  input_tensors = list(func.graph.captures.values())
   converted_inputs = set(
       [input_tensors[index] for index in converted_input_indices])
   not_converted_inputs = set(func.inputs).difference(converted_inputs)

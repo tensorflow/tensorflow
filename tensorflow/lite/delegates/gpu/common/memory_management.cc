@@ -22,11 +22,14 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
 namespace gpu {
 namespace {
+
+const size_t kNotAssigned = std::numeric_limits<size_t>::max();
 
 struct PoolRecord {
   PoolRecord(size_t size, size_t obj_id)
@@ -66,11 +69,55 @@ Status NaiveAssignment(
     const std::vector<TensorUsageRecord<TensorSizeT>>& usage_records,
     ObjectsAssignment<TensorSizeT>* assignment) {
   assignment->object_sizes.resize(usage_records.size());
-  assignment->object_ids.resize(usage_records.size());
+  assignment->object_ids.assign(usage_records.size(), kNotAssigned);
   for (size_t i = 0; i < usage_records.size(); i++) {
     auto& record = usage_records[i];
     assignment->object_ids[i] = i;
     assignment->object_sizes[i] = record.tensor_size;
+  }
+  return OkStatus();
+}
+
+template <typename TensorSizeT>
+Status EqualityAssignment(
+    const std::vector<TensorUsageRecord<TensorSizeT>>& usage_records,
+    ObjectsAssignment<TensorSizeT>* assignment) {
+  size_t num_records = usage_records.size();
+  assignment->object_sizes.clear();
+  assignment->object_ids.assign(num_records, kNotAssigned);
+
+  // Pool is a map with size as a key and vector with ids of free shared objects
+  // of this size as a value.
+  absl::flat_hash_map<TensorSizeT, std::vector<size_t>> pool;
+  std::priority_queue<QueueRecord> objects_in_use;
+  for (size_t i = 0; i < num_records; ++i) {
+    // Pop from the queue and add to the pool all objects that are no longer
+    // in use at the time of execution of the first_task of i-th intermediate
+    // tensor.
+    while (!objects_in_use.empty() &&
+           objects_in_use.top().last_task < usage_records[i].first_task) {
+      auto object_id = objects_in_use.top().object_id;
+      pool[assignment->object_sizes[object_id]].push_back(object_id);
+      objects_in_use.pop();
+    }
+
+    TensorSizeT tensor_size = usage_records[i].tensor_size;
+    auto pool_it = pool.find(tensor_size);
+    if (pool_it == pool.end() || pool_it->second.empty()) {
+      // No free shared object with size equal to tensor_size. Create a new one,
+      // assign i-th tensor to it and add to the queue of objects in use.
+      assignment->object_ids[i] = assignment->object_sizes.size();
+      assignment->object_sizes.push_back(tensor_size);
+      objects_in_use.push(
+          {usage_records[i].last_task, assignment->object_ids[i]});
+    } else {
+      // Share object with id it->second has size equal to tensor_size. Reuse
+      // this object: erase it from pool and add to the queue of objects in use.
+      assignment->object_ids[i] = pool_it->second.back();
+      pool_it->second.pop_back();
+      objects_in_use.push(
+          {usage_records[i].last_task, assignment->object_ids[i]});
+    }
   }
   return OkStatus();
 }
@@ -94,15 +141,16 @@ Status NaiveAssignment(
 Status GreedyAssignment(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
     ObjectsAssignment<size_t>* assignment) {
+  size_t num_records = usage_records.size();
   assignment->object_sizes.clear();
-  assignment->object_ids.resize(usage_records.size());
+  assignment->object_ids.assign(num_records, kNotAssigned);
 
   // Pool of free shared objects is ordered by object size, because we perform
   // lower_bound search in it.
   std::set<PoolRecord> pool;
   // Queue of shared objects in use, ordered by their last_task.
   std::priority_queue<QueueRecord> objects_in_use;
-  for (size_t i = 0; i < usage_records.size(); i++) {
+  for (size_t i = 0; i < num_records; i++) {
     // Pop from the queue and add to the pool all objects that are no longer
     // in use at the time of execution of the first_task of i-th intermediate
     // tensor.
@@ -258,7 +306,7 @@ class MinCostFlowSolver {
 
   void CalculateAssignment(ObjectsAssignment<size_t>* assignment) {
     assignment->object_sizes.clear();
-    assignment->object_ids.resize(num_tensors_);
+    assignment->object_ids.assign(num_tensors_, kNotAssigned);
     is_tensor_assigned_.resize(num_tensors_);
     for (const auto& edge_id : edges_from_[source_]) {
       const Edge& edge = edges_[edge_id];
@@ -359,6 +407,8 @@ Status AssignObjectsToTensors(
   switch (strategy) {
     case MemoryStrategy::NAIVE:
       return NaiveAssignment<size_t>(usage_records, assignment);
+    case MemoryStrategy::EQUALITY:
+      return EqualityAssignment<size_t>(usage_records, assignment);
     case MemoryStrategy::GREEDY:
       return GreedyAssignment(usage_records, assignment);
     case MemoryStrategy::MINCOSTFLOW:

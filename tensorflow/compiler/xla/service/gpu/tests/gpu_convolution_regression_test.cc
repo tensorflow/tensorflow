@@ -26,8 +26,7 @@ class GpuConvolutionRegressionTest : public HloTestBase {
   // correctness cross-checking.
   void CheckForHloText(absl::string_view hlo_string) {
     (void)backend().compiler()->RunHloPasses(
-        ParseHloString(hlo_string, GetModuleConfigForTest())
-            .ConsumeValueOrDie(),
+        ParseHloString(hlo_string, HloModuleConfig()).ConsumeValueOrDie(),
         backend().default_stream_executor(), backend().memory_allocator());
   }
 };
@@ -91,6 +90,18 @@ ENTRY %TestComputation {
   %param_0 = f16[7680,96,6,6]{1,3,2,0} parameter(0)
   %param_1 = f16[7680,64,4,4]{1,3,2,0} parameter(1)
   ROOT %custom-call.1 = (f16[64,96,3,3]{1,3,2,0}, u8[0]{0}) custom-call(f16[7680,96,6,6]{1,3,2,0} %param_0, f16[7680,64,4,4]{1,3,2,0} %param_1), window={size=3x3}, dim_labels=bf01_oi01->bf01, custom_call_target="__cudnn$convBackwardFilter", backend_config="{conv_result_scale:1}"
+})");
+}
+
+// See b/135429938.
+TEST_F(GpuConvolutionRegressionTest, RedzoneCheckerFailure1) {
+  CheckForHloText(R"(
+HloModule TestModule
+
+ENTRY %TestComputation {
+  %param_0 = f32[2,128,1,378]{3,2,1,0} parameter(0)
+  %param_1 = f32[1,5,128,128]{1,0,2,3} parameter(1)
+  ROOT %custom-call.1 = (f32[2,128,1,378]{3,2,1,0}, u8[0]{0}) custom-call(%param_0, %param_1), window={size=1x5 pad=0_0x2_2}, dim_labels=bf01_01io->bf01, custom_call_target="__cudnn$convForward", backend_config="{conv_result_scale:1}"
 })");
 }
 

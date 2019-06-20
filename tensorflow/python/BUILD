@@ -521,7 +521,7 @@ tf_cc_shared_object(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@protobuf_archive//:protobuf_headers",
+        "@com_google_protobuf//:protobuf_headers",
     ],
 )
 
@@ -1900,10 +1900,6 @@ tf_gen_op_wrapper_private_py(
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/quantization:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
-    ],
-    deps = [
-        "//tensorflow/c/kernels:bitcast_op_lib",
-        "//tensorflow/core:array_ops_op_lib",
     ],
 )
 
@@ -4413,8 +4409,8 @@ py_library(
     deps = [
         "//tensorflow/tools/compatibility:all_renames_v2",
         "//third_party/py/numpy",
+        "@com_google_protobuf//:protobuf_python",
         "@org_python_pypi_backports_weakref",
-        "@protobuf_archive//:protobuf_python",
         "@six_archive//:six",
     ],
 )
@@ -6670,18 +6666,6 @@ py_library(
     name = "tf2",
     srcs = ["tf2.py"],
     srcs_version = "PY2AND3",
-)
-
-py_test(
-    name = "tf2_test",
-    srcs = ["tf2_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":client_testlib",
-        ":tf2",
-        "//tensorflow/python/distribute:combinations",
-    ],
 )
 
 cuda_py_test(

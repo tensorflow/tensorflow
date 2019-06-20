@@ -28,32 +28,52 @@ from tensorflow.python.tpu.feature_column import _is_running_on_cpu
 from tensorflow.python.tpu.feature_column import _record_variable_scope_and_name
 from tensorflow.python.tpu.feature_column import _SUPPORTED_CATEGORICAL_COLUMNS_V2
 from tensorflow.python.tpu.feature_column import _TPUBaseEmbeddingColumn
+from tensorflow.python.util.tf_export import tf_export
 # pylint: disable=protected-access
 
 
+@tf_export(v1=['tpu.experimental.embedding_column'])
 def embedding_column_v2(categorical_column,
                         dimension,
                         combiner='mean',
                         initializer=None,
-                        ckpt_to_load_from=None,
-                        tensor_name_in_ckpt=None,
-                        max_norm=None,
-                        trainable=True,
                         max_sequence_length=0):
-  """TPU embedding_column for `tf.feature_column.embedding_column`.
+  """TPU version of `tf.compat.v1.feature_column.embedding_column`.
 
-  Note that the interface for TPU embedding_column is different from the non-TPU
-  version. The following args available for the non-TPU version are NOT
-  supported: ckpt_to_load_from, tensor_name_in_ckp, max_norm and trainable.
+  Note that the interface for `tf.tpu.experimental.embedding_column` is
+  different from that of `tf.compat.v1.feature_column.embedding_column`: The
+  following arguments are NOT supported: `ckpt_to_load_from`,
+  `tensor_name_in_ckpt`, `max_norm` and `trainable`.
+
+  Use this function in place of `tf.compat.v1.feature_column.embedding_column`
+  when you want to use the TPU to accelerate your embedding lookups via TPU
+  embeddings.
+
+  ```
+  column = tf.feature_column.categorical_column_with_identity(...)
+  tpu_column = tf.tpu.experimental.embedding_column(column, 10)
+  ...
+  def model_fn(features):
+    dense_feature = tf.keras.layers.DenseFeature(tpu_column)
+    embedded_feature = dense_feature(features)
+    ...
+
+  estimator = tf.estimator.tpu.TPUEstimator(
+      model_fn=model_fn,
+      ...
+      embedding_config_spec=tf.estimator.tpu.experimental.EmbeddingConfigSpec(
+        column=[tpu_column],
+        ...))
+  ```
 
   Args:
-    categorical_column: A categorical_column returned from
-        categorical_column_with_identity, weighted_categorical_column,
-        categorical_column_with_vocabulary_file,
-        categorical_column_with_vocabulary_list,
-        sequence_categorical_column_with_identity,
-        sequence_categorical_column_with_vocabulary_file,
-        sequence_categorical_column_with_vocabulary_list
+    categorical_column: A categorical column returned from
+        `categorical_column_with_identity`, `weighted_categorical_column`,
+        `categorical_column_with_vocabulary_file`,
+        `categorical_column_with_vocabulary_list`,
+        `sequence_categorical_column_with_identity`,
+        `sequence_categorical_column_with_vocabulary_file`,
+        `sequence_categorical_column_with_vocabulary_list`
     dimension: An integer specifying dimension of the embedding, must be > 0.
     combiner: A string specifying how to reduce if there are multiple entries
       in a single row for a non-sequence column. For more information, see
@@ -62,31 +82,18 @@ def embedding_column_v2(categorical_column,
       variable initialization. If not specified, defaults to
       `tf.compat.v1.truncated_normal_initializer` with mean `0.0` and
       standard deviation `1/sqrt(dimension)`.
-    ckpt_to_load_from: Argument not used for TPU.
-    tensor_name_in_ckpt: Argument not used for TPU.
-    max_norm: Argument not used for TPU.
-    trainable:  Argument not used for TPU.
     max_sequence_length: An non-negative integer specifying the max sequence
       length. Any sequence shorter then this will be padded with 0 embeddings
       and any sequence longer will be truncated. This must be positive for
       sequence features and 0 for non-sequence features.
 
   Returns:
-    A  _TPUEmbeddingColumnV2.
+    A  `_TPUEmbeddingColumnV2`.
 
   Raises:
     ValueError: if `dimension` not > 0.
     ValueError: if `initializer` is specified but not callable.
   """
-  if not (ckpt_to_load_from is None and tensor_name_in_ckpt is None):
-    raise ValueError('ckpt_to_load_from, tensor_name_in_ckpt are not '
-                     'supported for TPU Embeddings. To load a embedding '
-                     'table from a different checkpoint, use a scaffold_fn '
-                     'and tf.train.init_from_checkpoint.')
-  if max_norm is not None:
-    raise ValueError('max_norm is not support for TPU Embeddings.')
-  if not trainable:
-    raise ValueError('TPU Embeddings do not support non-trainable weights.')
 
   if not isinstance(categorical_column, _SUPPORTED_CATEGORICAL_COLUMNS_V2):
     raise TypeError(
@@ -114,30 +121,51 @@ def embedding_column_v2(categorical_column,
   return column
 
 
+@tf_export(v1=['tpu.experimental.shared_embedding_columns'])
 def shared_embedding_columns_v2(categorical_columns,
                                 dimension,
                                 combiner='mean',
                                 initializer=None,
                                 shared_embedding_collection_name=None,
-                                ckpt_to_load_from=None,
-                                tensor_name_in_ckpt=None,
-                                max_norm=None,
-                                trainable=True,
                                 max_sequence_lengths=None):
-  """List of dense columns that convert from sparse, categorical input.
+  """TPU version of `tf.compat.v1.feature_column.shared_embedding_columns`.
 
-  Note that the interface for TPU embedding_column is different from the non-TPU
-  version. The following args available for the non-TPU version are NOT
-  supported: ckpt_to_load_from, tensor_name_in_ckp, max_norm and trainable.
+  Note that the interface for `tf.tpu.experimental.shared_embedding_columns` is
+  different from that of `tf.compat.v1.feature_column.shared_embedding_columns`:
+  The following arguments are NOT supported: `ckpt_to_load_from`,
+  `tensor_name_in_ckpt`, `max_norm` and `trainable`.
+
+  Use this function in place of
+  tf.compat.v1.feature_column.shared_embedding_columns` when you want to use the
+  TPU to accelerate your embedding lookups via TPU embeddings.
+
+  ```
+  column_a = tf.feature_column.categorical_column_with_identity(...)
+  column_b = tf.feature_column.categorical_column_with_identity(...)
+  tpu_columns = tf.tpu.experimental.shared_embedding_columns(
+      [column_a, column_b], 10)
+  ...
+  def model_fn(features):
+    dense_feature = tf.keras.layers.DenseFeature(tpu_columns)
+    embedded_feature = dense_feature(features)
+    ...
+
+  estimator = tf.estimator.tpu.TPUEstimator(
+      model_fn=model_fn,
+      ...
+      embedding_config_spec=tf.estimator.tpu.experimental.EmbeddingConfigSpec(
+          column=tpu_columns,
+          ...))
+  ```
 
   Args:
-    categorical_columns: A list of categorical_columns returned from
-        categorical_column_with_identity, weighted_categorical_column,
-        categorical_column_with_vocabulary_file,
-        categorical_column_with_vocabulary_list,
-        sequence_categorical_column_with_identity,
-        sequence_categorical_column_with_vocabulary_file,
-        sequence_categorical_column_with_vocabulary_list
+    categorical_columns: A list of categorical columns returned from
+        `categorical_column_with_identity`, `weighted_categorical_column`,
+        `categorical_column_with_vocabulary_file`,
+        `categorical_column_with_vocabulary_list`,
+        `sequence_categorical_column_with_identity`,
+        `sequence_categorical_column_with_vocabulary_file`,
+        `sequence_categorical_column_with_vocabulary_list`
     dimension: An integer specifying dimension of the embedding, must be > 0.
     combiner: A string specifying how to reduce if there are multiple entries
       in a single row for a non-sequence column. For more information, see
@@ -150,10 +178,6 @@ def shared_embedding_columns_v2(categorical_columns,
       shared embedding weights are added. If not given, a reasonable name will
       be chosen based on the names of `categorical_columns`. This is also used
       in `variable_scope` when creating shared embedding weights.
-    ckpt_to_load_from: Argument not used for TPU.
-    tensor_name_in_ckpt: Argument not used for TPU.
-    max_norm: Argument not used for TPU.
-    trainable:  Argument not used for TPU.
     max_sequence_lengths: An list of non-negative integers, either None or
       empty or the same length as the argument categorical_columns. Entries
       corresponding to non-sequence columns must be 0 and entries corresponding
@@ -162,7 +186,7 @@ def shared_embedding_columns_v2(categorical_columns,
       sequence longer will be truncated.
 
   Returns:
-    A  _TPUSharedEmbeddingColumnV2.
+    A  list of `_TPUSharedEmbeddingColumnV2`.
 
   Raises:
     ValueError: if `dimension` not > 0.
@@ -172,15 +196,6 @@ def shared_embedding_columns_v2(categorical_columns,
     ValueError: if `max_sequence_lengths` is positive for a non sequence column
       or 0 for a sequence column.
   """
-  if not (ckpt_to_load_from is None and tensor_name_in_ckpt is None):
-    raise ValueError('ckpt_to_load_from, tensor_name_in_ckpt are not '
-                     'supported for TPU Embeddings. To load a embedding '
-                     'table from a different checkpoint, use a scaffold_fn '
-                     'and tf.train.init_from_checkpoint.')
-  if max_norm is not None:
-    raise ValueError('max_norm is not support for TPU Embeddings.')
-  if not trainable:
-    raise ValueError('TPU Embeddings do not support non-trainable weights.')
 
   for categorical_column in categorical_columns:
     if not isinstance(categorical_column, _SUPPORTED_CATEGORICAL_COLUMNS_V2):
@@ -227,8 +242,9 @@ def shared_embedding_columns_v2(categorical_columns,
   tpu_columns = []
 
   column_creator = fc_lib.SharedEmbeddingColumnCreator(
-      dimension, initializer, ckpt_to_load_from, tensor_name_in_ckpt,
-      num_buckets, trainable, shared_embedding_collection_name)
+      dimension=dimension, initializer=initializer, ckpt_to_load_from=None,
+      tensor_name_in_ckpt=None, num_buckets=num_buckets, trainable=None,
+      name=shared_embedding_collection_name)
 
   # Create the state (_SharedEmbeddingColumnLayer) here.
   for categorical_column, max_sequence_length in zip(
@@ -502,7 +518,7 @@ class _TPUSharedEmbeddingColumnV2(_TPUBaseEmbeddingColumn,
     # Note that in Feature Column V2, shared embeddings have no scope.
     _record_variable_scope_and_name(
         self.get_embedding_var_name(),
-        'embedding_weights',
+        self.shared_embedding_column_creator._name,
         is_shared_embedding=True)
     return tensor
 

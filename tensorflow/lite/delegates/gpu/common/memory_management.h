@@ -61,6 +61,10 @@ enum class MemoryStrategy {
   // Can be useful for debugging to see all intermediate outputs.
   NAIVE,
 
+  // Equality strategy allows to reuse the same part of memory for several
+  // tensors with the same size, but non-intersecting usage intervals.
+  EQUALITY,
+
   // Greedy strategy uses greedy algorithm to reuse memory from tensors, that
   // won't be used anymore, for new ones.
   GREEDY,

@@ -455,7 +455,7 @@ cc_library(
         ":platform_base",
         ":platform_port",
         "//tensorflow/core/platform/default/build_config:protobuf",
-        "@protobuf_archive//:protobuf",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -1436,7 +1436,6 @@ cc_library(
         ":training_ops_op_lib",
         ":user_ops_op_lib",
         ":word2vec_ops",
-        "//tensorflow/c/kernels:bitcast_op_lib",
     ] + if_mkl([
         ":mkl_array_ops_op_lib",
         ":mkl_nn_ops_op_lib",
@@ -1456,7 +1455,6 @@ cc_library(
         ":array_ops_op_lib",
         ":framework",
         ":lib",
-        "//tensorflow/c/kernels:bitcast_op_lib",
     ],
     alwayslink = 1,
 )
@@ -1930,10 +1928,10 @@ cc_library(
         ":protos_all_cc_impl",
         ":stats_calculator_portable",
         "//third_party/eigen3",
+        "@com_google_protobuf//:protobuf",
         "@double_conversion//:double-conversion",
         "@farmhash_archive//:farmhash",
         "@nsync//:nsync_cpp",
-        "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
 )
@@ -1955,10 +1953,10 @@ cc_library(
         ":protos_all_cc_impl",
         ":stats_calculator_portable",
         "//third_party/eigen3",
+        "@com_google_protobuf//:protobuf",
         "@double_conversion//:double-conversion",
         "@farmhash_archive//:farmhash",
         "@nsync//:nsync_cpp",
-        "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
 )
@@ -2014,9 +2012,9 @@ cc_library(
         ":protos_all_cc_impl",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
+        "@com_google_protobuf//:protobuf",
         "@fft2d",
         "@gemmlowp",
-        "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
 )
@@ -2031,10 +2029,10 @@ cc_library(
         ":protos_all_cc_impl",
         ":stats_calculator_portable",
         "//third_party/eigen3",
+        "@com_google_protobuf//:protobuf",
         "@double_conversion//:double-conversion",
         "@farmhash_archive//:farmhash",
         "@nsync//:nsync_cpp",
-        "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
 )
@@ -2073,7 +2071,7 @@ cc_library(
         ":protos_all_cc_impl",
         "//tensorflow/core/kernels:android_tensorflow_kernels",
         "//third_party/eigen3",
-        "@protobuf_archive//:protobuf",
+        "@com_google_protobuf//:protobuf",
     ],
     alwayslink = 1,
 )
@@ -2551,7 +2549,7 @@ cc_library(
                "@snappy",
                "@zlib_archive//:zlib",
                "@double_conversion//:double-conversion",
-               "@protobuf_archive//:protobuf",
+               "@com_google_protobuf//:protobuf",
            ] + tf_protos_all_impl() + tf_protos_grappler_impl() +
            tf_additional_numa_deps(),
 )
@@ -2880,10 +2878,10 @@ tf_cuda_library(
     ] + if_static(
         extra_deps = [
             ":framework_internal_impl",
-            "@protobuf_archive//:protobuf",
+            "@com_google_protobuf//:protobuf",
         ],
         otherwise = [
-            "@protobuf_archive//:protobuf_headers",
+            "@com_google_protobuf//:protobuf_headers",
         ],
     ),
     alwayslink = 1,
@@ -2987,8 +2985,8 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//third_party/eigen3",
     ] + if_static(
-        extra_deps = ["@protobuf_archive//:protobuf"],
-        otherwise = ["@protobuf_archive//:protobuf_headers"],
+        extra_deps = ["@com_google_protobuf//:protobuf"],
+        otherwise = ["@com_google_protobuf//:protobuf_headers"],
     ) + mkl_deps(),
     alwayslink = 1,
 )
@@ -3141,20 +3139,6 @@ CORE_CPU_BASE_HDRS = GRAPH_HDRS + [
 
 tf_cuda_library(
     name = "core_cpu_base",
-    hdrs = CORE_CPU_BASE_HDRS + ["public/session.h"],
-    copts = tf_copts(),
-    deps = [":core_cpu_base_no_ops"] + if_static([
-        ":function_ops_op_lib",
-        ":functional_grad",
-        ":functional_ops_op_lib",
-        "//tensorflow/core/kernels:bounds_check",
-        "//tensorflow/core/kernels:required",
-    ]),
-    alwayslink = 1,
-)
-
-tf_cuda_library(
-    name = "core_cpu_base_no_ops",
     srcs = [
         "common_runtime/eval_const_tensor.cc",
         "common_runtime/scoped_allocator.cc",
@@ -3163,10 +3147,11 @@ tf_cuda_library(
         "common_runtime/graph_optimizer.h",
         "graph/graph_constructor.cc",  # Depends on common_runtime.
         "graph/graph_def_builder_util.cc",  # Depends on common_runtime.
+        "public/session.h",
         "public/session_options.h",
         "public/version.h",
     ] + CORE_CPU_BASE_HDRS,
-    hdrs = CORE_CPU_BASE_HDRS + ["public/session.h"],
+    hdrs = CORE_CPU_BASE_HDRS,
     copts = tf_copts(),
     deps = [
         ":graph",
@@ -3179,8 +3164,14 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "//third_party/eigen3",
     ] + if_static([
+        ":function_ops_op_lib",
+        ":functional_grad",
+        ":functional_ops_op_lib",
         "@com_google_absl//absl/algorithm:container",
+        "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/kernels:required",
     ]),
+    alwayslink = 1,
 )
 
 CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
@@ -3344,16 +3335,6 @@ tf_cuda_library(
         ":proto_text",
         "//tensorflow/core/grappler:grappler_item",
     ] + if_static([":core_cpu_impl"]) + tf_protos_all() + tf_protos_grappler(),
-)
-
-tf_cuda_library(
-    name = "core_cpu_lib_no_ops",
-    hdrs = CORE_CPU_LIB_HEADERS,
-    deps = [
-        ":core_cpu_base_no_ops",
-        ":proto_text",
-        "//tensorflow/core/grappler:grappler_item",
-    ] + tf_protos_all() + tf_protos_grappler(),
 )
 
 tf_cuda_library(
@@ -4923,7 +4904,6 @@ tf_cc_test(
         ":test",
         ":test_main",
         ":testlib",
-        "//tensorflow/c/kernels:bitcast_op_lib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core/kernels:cwise_op",
@@ -5566,7 +5546,7 @@ tf_portable_proto_library(
     prefix_dir = "emscripten_proto_no_rtti",
     proto_deps = [
         ":protos_all_cc",
-        "@protobuf_archive//:protobuf",
+        "@com_google_protobuf//:protobuf",
     ],
     visibility = ["//visibility:public"],
 )

@@ -61,6 +61,9 @@ flags.DEFINE_bool(
 flags.DEFINE_string(
     'output_saved_model_dir', None,
     'Directory of the SavedModel that was exported for reuse.')
+flags.DEFINE_bool(
+    'use_keras_save_api', False,
+    'Uses tf.keras.models.save_model() instead of tf.saved_model.save().')
 flags.DEFINE_string('strategy', None,
                     'Name of the distribution strategy to use.')
 
@@ -133,7 +136,10 @@ def main(argv):
             validation_data=(x_test, y_test))
 
   if FLAGS.output_saved_model_dir:
-    tf.saved_model.save(model, FLAGS.output_saved_model_dir)
+    if FLAGS.use_keras_save_api:
+      tf.keras.models.save_model(model, FLAGS.output_saved_model_dir)
+    else:
+      tf.saved_model.save(model, FLAGS.output_saved_model_dir)
 
 
 if __name__ == '__main__':
