@@ -533,6 +533,10 @@ tf_module {
     argspec: "args=[\'node_ids\', \'gradients\', \'hessians\', \'feature_indices\', \'feature_values\', \'feature_shape\', \'max_splits\', \'num_buckets\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "BoostedTreesSparseCalculateBestFeatureSplit"
+    argspec: "args=[\'node_id_range\', \'stats_summary_indices\', \'stats_summary_values\', \'stats_summary_shape\', \'l1\', \'l2\', \'tree_complexity\', \'min_node_weight\', \'logits_dimension\', \'split_type\', \'name\'], varargs=None, keywords=None, defaults=[\'inequality\', \'None\'], "
+  }
+  member_method {
     name: "BoostedTreesTrainingPredict"
     argspec: "args=[\'tree_ensemble_handle\', \'cached_tree_ids\', \'cached_node_ids\', \'bucketized_features\', \'logits_dimension\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
