@@ -46,11 +46,6 @@ int NumSchedulableCPUs();
 // called during initialization, i.e., before before main() has started.
 int MaxParallelism();
 
-// Returns an estimate for the maximum parallelism for this process on the
-// provided numa node, or any numa node if `numa_node` is kNUMANoAffinity.
-// See MaxParallelism() for more information.
-int MaxParallelism(int numa_node);
-
 // Returns the total number of CPUs on the system.  This number should
 // not change even if the underlying cluster management software may
 // change the number of schedulable CPUs.  Unlike `NumSchedulableCPUs`, if the
