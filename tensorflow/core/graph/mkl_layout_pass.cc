@@ -1915,9 +1915,8 @@ void MklLayoutRewritePass::GetDummyMklTensorNode(std::unique_ptr<Graph>* g,
     Node* orig_input0 = nullptr;
     TF_CHECK_OK(
         orig_node->input_node(0, const_cast<const Node**>(&orig_input0)));
-    if (!DoesControlEdgeExist(orig_input0, *out)) {
-      (*g)->AddControlEdge(orig_input0, *out, false);
-    }
+    auto edge = (*g)->AddControlEdge(orig_input0, *out, false);
+    DCHECK(edge != nullptr || DoesControlEdgeExist(orig_input0, *out));
   }
 
   (*out)->set_assigned_device_name(orig_node->assigned_device_name());
@@ -2216,7 +2215,7 @@ Status MklLayoutRewritePass::CopyInputs(
   // of Input slots because inputs of type list could be unfolded.
   CHECK_GE(old_node_inputs.size(), old_node_input_slots);
 
-   // Let's copy all inputs of old node to new node.
+  // Let's copy all inputs of old node to new node.
   int iidx = 0;
   for (int on_slot_idx = 0; on_slot_idx < old_node_input_slots; on_slot_idx++) {
     // An input slot could be a single tensor or a list. We need
@@ -3009,43 +3008,43 @@ void MklLayoutRewritePass::CopyAttrsMatMul(const Node* orig_node,
   DataType T;
   bool transpose_a, transpose_b;
 
-   // Get all attributes from old node.
+  // Get all attributes from old node.
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "transpose_a", &transpose_a));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "transpose_b", &transpose_b));
 
-   // Add attributes to new node.
+  // Add attributes to new node.
   nb->Attr("T", T);
   nb->Attr("transpose_a", transpose_a);
   nb->Attr("transpose_b", transpose_b);
 }
 
- void MklLayoutRewritePass::CopyAttrsTranspose(const Node* orig_node,
+void MklLayoutRewritePass::CopyAttrsTranspose(const Node* orig_node,
                                               NodeBuilder* nb,
                                               bool change_format) {
   DataType T, Tperm;
 
-   // Get all attributes from old node.
+  // Get all attributes from old node.
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Tperm", &Tperm));
 
-   // Add attributes to new node.
+  // Add attributes to new node.
   nb->Attr("T", T);
   nb->Attr("Tperm", Tperm);
 }
 
- void MklLayoutRewritePass::CopyAttrsBatchMatMul(const Node* orig_node,
+void MklLayoutRewritePass::CopyAttrsBatchMatMul(const Node* orig_node,
                                                 NodeBuilder* nb,
                                                 bool change_format) {
   DataType T;
   bool adj_x, adj_y;
 
-   // Get all attributes from old node.
+  // Get all attributes from old node.
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "adj_x", &adj_x));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "adj_y", &adj_y));
 
-   // Add attributes to new node.
+  // Add attributes to new node.
   nb->Attr("T", T);
   nb->Attr("adj_x", adj_x);
   nb->Attr("adj_y", adj_y);
@@ -3193,35 +3192,44 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
 
   // Incoming data edges from 'pred' node and 'succ' node to new 'new_node'
   // node are already copied in BuildNode. We handle control edges now.
+  std::unordered_set<Node*> unique_node;
   for (const Edge* e : pred->in_edges()) {
     if (e->IsControlEdge()) {
-      if (!DoesControlEdgeExist(e->src(), new_node)) {
+      auto result = unique_node.insert(e->src());
+      if (result.second) {
         (*g)->AddControlEdge(e->src(), new_node, false);
       }
     }
   }
+  unique_node.clear();
+
   for (const Edge* e : succ->in_edges()) {
     if (e->IsControlEdge()) {
-      if (!DoesControlEdgeExist(e->src(), new_node)) {
+      auto result = unique_node.insert(e->src());
+      if (result.second) {
         (*g)->AddControlEdge(e->src(), new_node, false);
       }
     }
   }
+  unique_node.clear();
 
   // Incoming edges are fixed, we will fix the outgoing edges now.
   // First, we will fix outgoing control edges from 'pred' node.
   for (const Edge* e : pred->out_edges()) {
     if (e->IsControlEdge()) {
-      if (!DoesControlEdgeExist(new_node, e->dst())) {
+      auto result = unique_node.insert(e->dst());
+      if (result.second) {
         (*g)->AddControlEdge(new_node, e->dst(), false);
       }
     }
   }
+  unique_node.clear();
 
   // Second, we will fix outgoing control and data edges from 'succ' node.
   for (const Edge* e : succ->out_edges()) {
     if (e->IsControlEdge()) {
-      if (!DoesControlEdgeExist(new_node, e->dst())) {
+      auto result = unique_node.insert(e->dst());
+      if (result.second) {
         (*g)->AddControlEdge(new_node, e->dst(), false);
       }
     } else {
@@ -3480,20 +3488,25 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
   // Incoming data edges from BiasAddGrad node and Conv2DBackpropFilter node to
   // new 'new_node' node are already copied in BuildNode. We handle control
   // edges now.
+  std::unordered_set<Node*> unique_node;
   for (const Edge* e : badd->in_edges()) {
     if (e->IsControlEdge()) {
-      if (!DoesControlEdgeExist(e->src(), new_node)) {
+      auto result = unique_node.insert(e->src());
+      if (result.second) {
         (*g)->AddControlEdge(e->src(), new_node, false);
       }
     }
   }
+  unique_node.clear();
   for (const Edge* e : fltr->in_edges()) {
     if (e->IsControlEdge()) {
-      if (!DoesControlEdgeExist(e->src(), new_node)) {
+      auto result = unique_node.insert(e->src());
+      if (result.second) {
         (*g)->AddControlEdge(e->src(), new_node, false);
       }
     }
   }
+  unique_node.clear();
 
   // Incoming edges are fixed, we will fix the outgoing edges now.
   // First, we will fix outgoing control edges from 'badd' node.
@@ -3507,7 +3520,8 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
 
   for (const Edge* e : badd->out_edges()) {
     if (e->IsControlEdge()) {
-      if (!DoesControlEdgeExist(new_node, e->dst())) {
+      auto result = unique_node.insert(e->dst());
+      if (result.second) {
         (*g)->AddControlEdge(new_node, e->dst(), false);
       }
     } else {
@@ -3515,11 +3529,13 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
                                   e->dst(), e->dst_input()));
     }
   }
+  unique_node.clear();
 
   // Second, we will fix outgoing control and data edges from 'fltr' node.
   for (const Edge* e : fltr->out_edges()) {
     if (e->IsControlEdge()) {
-      if (!DoesControlEdgeExist(new_node, e->dst())) {
+      auto result = unique_node.insert(e->dst());
+      if (result.second) {
         (*g)->AddControlEdge(new_node, e->dst(), false);
       }
     } else {
@@ -3623,13 +3639,16 @@ Status MklLayoutRewritePass::RewriteNodeForLayoutPropagation(
 
   // Incoming data edges from 'orig_node' node to new 'new_node' node are
   // already copied in BuildNode. We need to handle control edges now.
+  std::unordered_set<Node*> unique_node;
   for (const Edge* e : orig_node->in_edges()) {
     if (e->IsControlEdge()) {
-      if (!DoesControlEdgeExist(e->src(), *new_node)) {
+      auto result = unique_node.insert(e->src());
+      if (result.second) {
         (*g)->AddControlEdge(e->src(), *new_node, false);
       }
     }
   }
+  unique_node.clear();
 
   // Copy outgoing edges from 'orig_node' node to new
   // 'new_node' node, since the output also follows same ordering among
@@ -3640,7 +3659,8 @@ Status MklLayoutRewritePass::RewriteNodeForLayoutPropagation(
   // GetTensorDataIndex provides this mapping function.
   for (const Edge* e : orig_node->out_edges()) {
     if (e->IsControlEdge()) {
-      if (!DoesControlEdgeExist(*new_node, e->dst())) {
+      auto result = unique_node.insert(e->dst());
+      if (result.second) {
         (*g)->AddControlEdge(*new_node, e->dst(), false);
       }
     } else {
@@ -3690,18 +3710,22 @@ Status MklLayoutRewritePass::RewriteNodeForJustOpNameChange(
 
   // Incoming data edges from 'orig_node' node to new 'new_node' node are
   // already copied in BuildNode. We need to handle control edges now.
+  std::unordered_set<Node*> unique_node;
   for (const Edge* e : orig_node->in_edges()) {
     if (e->IsControlEdge()) {
-      if (!DoesControlEdgeExist(e->src(), *new_node)) {
+      auto result = unique_node.insert(e->src());
+      if (result.second) {
         (*g)->AddControlEdge(e->src(), *new_node, false);
       }
     }
   }
+  unique_node.clear();
 
   // Transfer outgoing edges from 'orig_node' node to new 'new_node' node.
   for (const Edge* e : orig_node->out_edges()) {
     if (e->IsControlEdge()) {
-      if (!DoesControlEdgeExist(*new_node, e->dst())) {
+      auto result = unique_node.insert(e->dst());
+      if (result.second) {
         (*g)->AddControlEdge(*new_node, e->dst(), false);
       }
     } else {
