@@ -582,7 +582,7 @@ OperationLegalizer::legalize(Operation *op,
 
     // Otherwise, handle dynamic legalization.
     LLVM_DEBUG(llvm::dbgs() << "- Trying dynamic legalization.\n");
-    if (target.isLegal(op))
+    if (target.isDynamicallyLegal(op))
       return success();
 
     // Fallthough to see if a pattern can convert this into a legal operation.

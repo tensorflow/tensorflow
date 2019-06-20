@@ -240,9 +240,9 @@ public:
 
   /// Runs a custom legalization query for the given operation. This should
   /// return true if the given operation is legal, otherwise false.
-  virtual bool isLegal(Operation *op) const {
+  virtual bool isDynamicallyLegal(Operation *op) const {
     llvm_unreachable(
-        "targets with custom legalization must override 'isLegal'");
+        "targets with custom legalization must override 'isDynamicallyLegal'");
   }
 
   //===--------------------------------------------------------------------===//
@@ -265,7 +265,7 @@ public:
   }
 
   /// Register the given operation as dynamically legal, i.e. requiring custom
-  /// handling by the target via 'isLegal'.
+  /// handling by the target via 'isDynamicallyLegal'.
   template <typename OpT> void addDynamicallyLegalOp() {
     setOpAction<OpT>(LegalizationAction::Dynamic);
   }
@@ -291,7 +291,7 @@ public:
   }
 
   /// Register the operations of the given dialects as dynamically legal, i.e.
-  /// requiring custom handling by the target via 'isLegal'.
+  /// requiring custom handling by the target via 'isDynamicallyLegal'.
   template <typename... Names>
   void addDynamicallyLegalDialect(StringRef name, Names... names) {
     SmallVector<StringRef, 2> dialectNames({name, names...});
