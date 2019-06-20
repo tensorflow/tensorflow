@@ -1221,7 +1221,7 @@ def zeros(shape, dtype=None, name=None):
       Note that if `shape` was symbolic, we cannot return a variable,
       and will return a dynamically-shaped tensor instead.
 
-  For Example:
+  Example:
   
   ```python
   from tensorflow.keras import backend as K
@@ -1318,13 +1318,13 @@ def zeros_like(x, dtype=None, name=None):
   Arguments:
       x: Keras variable or Keras tensor.
       dtype: dtype of returned Keras variable.
-             None uses the dtype of `x`.
+             `None` uses the dtype of `x`.
       name: name for the variable to create.
 
   Returns:
       A Keras variable with the shape of `x` filled with zeros.
 
-  For Example:
+  Example:
   
   ```python
   from tensorflow.keras import backend as K
