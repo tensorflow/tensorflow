@@ -1241,8 +1241,8 @@ TEST_F(LayoutOptimizerTest, PermConstWithDevice) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   const string worker0_gpu0 = "/job:w/replica:0/task:0/device:gpu:0";
   const string worker1_gpu1 = "/job:w/replica:0/task:1/device:gpu:1";
-  const string worker0_node_prefix = "_job_w_replica_0_task_0_device_gpu_0-";
-  const string worker1_node_prefix = "_job_w_replica_0_task_1_device_gpu_1-";
+  const string worker0_node_prefix = "job_w_replica_0_task_0_device_gpu_0-";
+  const string worker1_node_prefix = "job_w_replica_0_task_1_device_gpu_1-";
   const string perm_nchw2nhwc_str = "PermConstNCHWToNHWC-LayoutOptimizer";
   const string perm_nhwc2nchw_str = "PermConstNHWCToNCHW-LayoutOptimizer";
   auto conv_0 = SimpleConv2D(&s, 4, 2, "VALID", worker0_gpu0);

@@ -18,6 +18,7 @@ limitations under the License.
 #include <deque>
 #include <unordered_set>
 
+#include "absl/strings/strip.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -42,6 +43,7 @@ namespace grappler {
 namespace {
 
 const char kSuffix[] = "LayoutOptimizer";
+const char kDefaultDevice[] = "DefaultDevice";
 const char kPermNHWCToNCHW[] = "PermConstNHWCToNCHW";
 const char kPermNCHWToNHWC[] = "PermConstNCHWToNHWC";
 const char kTransposeNHWCToNCHW[] = "TransposeNHWCToNCHW";
@@ -744,10 +746,11 @@ class NodeProcessor : public GraphProcessor {
 
  private:
   string CompliantDeviceName(const string& device) {
+    if (device.empty()) return string(kDefaultDevice);
     string ret(device);
     std::replace(ret.begin(), ret.end(), '/', '_');
     std::replace(ret.begin(), ret.end(), ':', '_');
-    return ret;
+    return string(absl::StripPrefix(ret, "_"));
   }
 
   void UpdateAttrKSize() {
@@ -923,11 +926,7 @@ class NodeProcessor : public GraphProcessor {
   // connections and no redundant nodes would be existed.
   void AddNodePermConstOnDevice(const string& device) {
     string compliant_device_prefix;
-    if (device.empty()) {
-      compliant_device_prefix = "_default_device";
-    } else {
-      compliant_device_prefix = CompliantDeviceName(device);
-    }
+    compliant_device_prefix = CompliantDeviceName(device);
     string node_name;
     // Permutation const for NHWCToNCHW
     node_name = strings::StrCat(compliant_device_prefix, "-",
