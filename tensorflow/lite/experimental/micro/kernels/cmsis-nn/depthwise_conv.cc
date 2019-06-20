@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
+#include "arm_nnfunctions.h"
 
 namespace tflite {
 namespace ops {
@@ -145,22 +146,58 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
   op_params.output_shift = -data->output_shift;
 
-  tflite::reference_ops::DepthwiseConv(
-      op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-      GetTensorShape(filter), GetTensorData<uint8_t>(filter),
-      GetTensorShape(bias), GetTensorData<int32_t>(bias),
-      GetTensorShape(output), GetTensorData<uint8_t>(output));
+
+#if defined(ARM_MATH_DSP)
+  // optimizations utilize loop unrolling which requires the following power
+  // of two kernel dimensions
+  RuntimeShape filter_shape = GetTensorShape(filter);
+  const int filter_height = filter_shape.Dims(1);
+  const int filter_width = filter_shape.Dims(2);
+  if (0 == op_params.depth_multiplier % 2 && 0 == filter_width % 2) {
+    RuntimeShape input_shape = GetTensorShape(input);
+    const int input_height = input_shape.Dims(1);
+    const int input_width = input_shape.Dims(2);
+    const int input_depth = input_shape.Dims(3);
+    RuntimeShape output_shape = GetTensorShape(output);
+    const int output_height = output_shape.Dims(1);
+    const int output_width = output_shape.Dims(2);
+    arm_depthwise_conv_u8_basic_ver1(GetTensorData<uint8_t>(input),
+                                      input_width,
+                                      input_height,
+                                      input_depth,
+                                      GetTensorData<uint8_t>(filter),
+                                      filter_width,
+                                      filter_height,
+                                      op_params.depth_multiplier,
+                                      op_params.padding_values.width,
+                                      op_params.padding_values.height,
+                                      op_params.stride_width,
+                                      op_params.stride_height,
+                                      op_params.dilation_width_factor,
+                                      op_params.dilation_height_factor,
+                                      GetTensorData<int32_t>(bias),
+                                      op_params.input_offset,
+                                      op_params.weights_offset,
+                                      op_params.output_offset,
+                                      GetTensorData<uint8_t>(output),
+                                      output_width,
+                                      output_height,
+                                      op_params.quantized_activation_min,
+                                      op_params.quantized_activation_max,
+                                      op_params.output_shift,
+                                      op_params.output_multiplier);
+  } else
+#endif
+ {
+    tflite::reference_ops::DepthwiseConv(
+        op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+        GetTensorShape(filter), GetTensorData<uint8_t>(filter),
+        GetTensorShape(bias), GetTensorData<int32_t>(bias),
+        GetTensorShape(output), GetTensorData<uint8_t>(output));
+  }
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-#ifdef ARM_CMSIS_NN_M3
-  return kTfLiteError;
-#elif ARM_CMSIS_NN_M4
-  // Todo: call cmsis ops
-  return kTfLiteError;
-#elif ARM_CMSIS_NN_M7
-  return kTfLiteError;
-#else
   auto* params =
       reinterpret_cast<TfLiteDepthwiseConvParams*>(node->builtin_data);
 
@@ -200,7 +237,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteError;
   }
   return kTfLiteOk;
-#endif
 }
 
 }  // namespace depthwise_conv
