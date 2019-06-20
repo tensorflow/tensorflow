@@ -71,8 +71,8 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   Raises:
     ValueError: If the clip tensors would trigger array broadcasting
       that would make the returned tensor larger than the input.
-    TypeError: If dtype of the input is `int32` and dtype of the `clip_value_min'
-    or `clip_value_max` is `float32`  
+    TypeError: If dtype of the input is `int32` and dtype of 
+    the `clip_value_min' or `clip_value_max` is `float32`  
   """
   with ops.name_scope(name, "clip_by_value",
                       [t, clip_value_min, clip_value_max]) as name:
