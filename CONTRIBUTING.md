@@ -168,8 +168,8 @@ There are two ways to run TensorFlow unit tests.
     [GPU developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/dockerfiles/dockerfiles/devel-gpu.Dockerfile)
     for the required packages. Alternatively, use the said
     [Docker images](https://hub.docker.com/r/tensorflow/tensorflow/tags/), e.g.,
-    `tensorflow/tensorflow:nightly-devel` and
-    `tensorflow/tensorflow:nightly-devel-gpu` for development to avoid
+    `tensorflow/tensorflow:devel` and
+    `tensorflow/tensorflow:devel-gpu` for development to avoid
     installing the packages directly on your system (in which case remember to
     change directory from `/root` to `/tensorflow` once you get into the running
     container so `bazel` can find the `tensorflow` workspace).
