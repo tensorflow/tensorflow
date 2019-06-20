@@ -111,7 +111,7 @@ StatusOr<bool> InterIpuCopyInserter::Run(HloModule* module) {
             IsPopOpsFusion(inst, "wide_const")) {
           new_inst = comp->AddInstruction(inst->Clone());
         } else {
-          new_inst = comp->AddInstruction(CreateIpuInterCopy(inst));
+          new_inst = comp->AddInstruction(CreateIpuInterCopy({inst}));
         }
 
         new_inst->set_sharding(sharding_map.at(s));

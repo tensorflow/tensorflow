@@ -76,7 +76,7 @@ cc_library(
     srcs = [
         "driver/passes/allocation_finder.cc",
         "driver/passes/casts_elimination.cc",
-        "driver/passes/combine_all_reduce.cc",
+        "driver/passes/combine_instructions.cc",
         "driver/passes/commutative_instruction_reorder_operands.cc",
         "driver/passes/computation_flattener.cc",
         "driver/passes/constant_slice_folding.cc",
@@ -134,6 +134,7 @@ cc_library(
         "driver/tools/hlo_hash.cc",
         "driver/tools/hlo_matcher.cc",
         "driver/tools/input_output_aliasing_map.cc",
+        "driver/tools/instruction_colocator_helper.cc",
         "driver/tools/matcher_predicates.cc",
         "driver/tools/single_hlo_matcher.cc",
         "driver/tools/util.cc",
@@ -143,9 +144,10 @@ cc_library(
     ],
     hdrs = [
         "driver/compiler_annotations.h",
+        "driver/compiler_information.h",
         "driver/passes/allocation_finder.h",
         "driver/passes/casts_elimination.h",
-        "driver/passes/combine_all_reduce.h",
+        "driver/passes/combine_instructions.h",
         "driver/passes/commutative_instruction_reorder_operands.h",
         "driver/passes/computation_flattener.h",
         "driver/passes/constant_slice_folding.h",
@@ -195,6 +197,7 @@ cc_library(
         "driver/tools/hlo_hash.h",
         "driver/tools/hlo_matcher.h",
         "driver/tools/input_output_aliasing_map.h",
+        "driver/tools/instruction_colocator_helper.h",
         "driver/tools/matcher_predicates.h",
         "driver/tools/meta_graph.h",
         "driver/tools/single_hlo_matcher.h",
@@ -815,8 +818,8 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "combine_all_reduce_test",
-    srcs = ["tests/combine_all_reduce_test.cc"],
+    name = "combine_instructions_test",
+    srcs = ["tests/combine_instructions_test.cc"],
     size = "small",
     deps = [
         ":optimizers",
@@ -1608,7 +1611,7 @@ test_suite(
         "allocation_finder_test",
         "batch_norm_test",
         "casts_elimination_test",
-        "combine_all_reduce_test",
+        "combine_instructions_test",
         "commutative_instruction_reorder_operands_test",
         "constant_slice_folding_test",
         "conv3d_test",

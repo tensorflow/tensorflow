@@ -186,6 +186,29 @@ std::vector<size_t> PoplarShapeFromXlaShape(const xla::Shape& xla_shape) {
   return shape;
 }
 
+poplar::Tensor FlattenAndConcatenteTensors(
+    const std::vector<poplar::Tensor>& tensors) {
+  std::vector<poplar::Tensor> flat_tensors(tensors.size());
+  absl::c_transform(
+      tensors, flat_tensors.begin(),
+      [&](const poplar::Tensor& tensor) { return tensor.flatten(); });
+  return poplar::concat(flat_tensors);
+}
+
+std::vector<poplar::Tensor> SliceTensorIntoTensorsLike(
+    poplar::Tensor tensor_to_slice,
+    const std::vector<poplar::Tensor>& like_tensors) {
+  std::vector<poplar::Tensor> output_tensors(like_tensors.size());
+  for (int64 i = 0; i < like_tensors.size(); ++i) {
+    auto tensor = like_tensors[i];
+    auto output_tensor = tensor_to_slice.slice(0, tensor.numElements(), 0);
+    tensor_to_slice = tensor_to_slice.slice(tensor.numElements(),
+                                            tensor_to_slice.numElements(), 0);
+    output_tensors[i] = output_tensor.reshape(tensor.shape());
+  }
+  return output_tensors;
+}
+
 xla::Shape XlaShapeFromPoplarShape(PrimitiveType element_type,
                                    const std::vector<size_t>& poplar_shape) {
   xla::Shape shape;

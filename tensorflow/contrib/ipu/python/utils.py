@@ -65,7 +65,8 @@ def create_ipu_config(profiling=False,
                       merge_infeed_io_copies=False,
                       disable_graph_convolution_caching=False,
                       retain_control_dependencies=False,
-                      max_cross_replica_sum_buffer_size=0):
+                      max_cross_replica_sum_buffer_size=0,
+                      max_inter_ipu_copies_buffer_size=0):
   """Create an empty IPU session configuration structure.
 
   Args:
@@ -102,6 +103,8 @@ def create_ipu_config(profiling=False,
       scheduler.
     max_cross_replica_sum_buffer_size: The maximum number of bytes that can be
       waiting before a cross replica sum op is scheduled.
+    max_inter_ipu_copies_buffer_size: The maximum number of bytes that can be
+      waiting before a inter IPU copy between IPUs is scheduled.
 
   Returns:
     An IpuOptions configuration protobuf, suitable for passing to
@@ -134,6 +137,7 @@ def create_ipu_config(profiling=False,
 
   opts.retain_control_dependencies = retain_control_dependencies
   opts.max_cross_replica_sum_buffer_size = max_cross_replica_sum_buffer_size
+  opts.max_inter_ipu_copies_buffer_size = max_inter_ipu_copies_buffer_size
 
   return opts
 

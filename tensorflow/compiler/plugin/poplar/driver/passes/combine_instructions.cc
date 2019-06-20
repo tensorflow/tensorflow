@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/passes/combine_all_reduce.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/combine_instructions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/backend_config.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/instruction_colocator_helper.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 
 #include "tensorflow/core/lib/core/errors.h"
@@ -47,21 +48,15 @@ bool CanCombine(Iter begin, Iter end) {
   return true;
 }
 
-// Partition the all-reduce ops into regions where the computation and sharding
-// information matches
+// Partition the ops into regions where they colocate and have the same type.
 template <typename Iter>
 std::vector<std::pair<Iter, Iter>> Partition(Iter begin, Iter end) {
   std::vector<std::pair<Iter, Iter>> result;
 
   while (begin != end) {
     auto pred = [&](const HloInstruction* inst) {
-      auto comp1 = (*begin)->to_apply();
-      auto comp2 = inst->to_apply();
-
-      return *comp1 == *comp2 &&
-             (*begin)->has_sharding() == inst->has_sharding() &&
-             (!inst->has_sharding() ||
-              (*begin)->sharding() == inst->sharding());
+      return CanColocate(*begin, inst) &&
+             ((*begin)->shape().element_type() == inst->shape().element_type());
     };
 
     auto itr = std::stable_partition(begin, end, pred);
@@ -76,8 +71,7 @@ std::vector<std::pair<Iter, Iter>> Partition(Iter begin, Iter end) {
 template <typename Iter>
 HloInstruction* Combine(HloComputation* comp, Iter begin, Iter end) {
   auto dist = std::distance(begin, end);
-
-  // We only have a single all reduce, so nothing to combine
+  // We only have a single instruction, so nothing to combine
   if (dist == 1) {
     return *begin;
   }
@@ -99,10 +93,14 @@ HloInstruction* Combine(HloComputation* comp, Iter begin, Iter end) {
         return accum;
       });
 
-  // Add the new all reduce to the computation
-  return comp->AddInstruction(
-      HloInstruction::CreateAllReduce(shape, operands, (*begin)->to_apply(), {},
-                                      (*begin)->all_reduce_barrier(), {}));
+  // Add the new instruction.
+  auto new_inst =
+      comp->AddInstruction((*begin)->CloneWithNewOperands(shape, operands));
+  // Copy the sharding information if there was any.
+  if ((*begin)->has_sharding()) {
+    new_inst->set_sharding((*begin)->sharding());
+  }
+  return new_inst;
 }
 
 template <typename Iter>
@@ -134,41 +132,42 @@ StatusOr<std::vector<HloInstruction*>> Replace(HloComputation* comp, Iter begin,
 }
 }  // namespace
 
-StatusOr<HloInstructionSequence> CombineAllReduce::CombineAllReduces(
+StatusOr<HloInstructionSequence>
+CombineInstructions::CombineInstructionsInComputation(
     HloComputation* comp, const HloInstructionSequence& sequence) {
   auto instructions = sequence.instructions();
 
   std::vector<const HloInstruction*> result;
   result.reserve(instructions.size());
 
-  const auto is_all_reduce_pred = [](HloInstruction* inst) {
-    return inst->opcode() == HloOpcode::kAllReduce;
+  // Find the first region of consecutive instructions with colocators to merge
+  // together. First find the first instruction with a colocator.
+  const auto has_colocator = [](HloInstruction* inst) {
+    return GetInstructionColocatorHelper(inst).has_value();
   };
-
-  const auto is_not_all_reduce_pred = [&](HloInstruction* inst) {
-    return !is_all_reduce_pred(inst);
-  };
-
-  // Find the first region of consecutive all reduce instructions
   //       v beg
   // [a,b,c|r,r,r,r,r|d,e,f,g,r,r,r]
-  auto region_begin = std::find_if(instructions.begin(), instructions.end(),
-                                   is_all_reduce_pred);
+  auto region_begin =
+      std::find_if(instructions.begin(), instructions.end(), has_colocator);
+  // Then find the next instruction which can't be colocated with the begining.
+  const auto can_not_colocate = [&](HloInstruction* inst) {
+    return !CanColocate(*region_begin, inst);
+  };
   //       v beg     v end
   // [a,b,c|r,r,r,r,r|d,e,f,g,r,r,r]
   auto region_end =
-      std::find_if(region_begin, instructions.end(), is_not_all_reduce_pred);
+      std::find_if(region_begin, instructions.end(), can_not_colocate);
 
   // While we have a region to process
   while (region_begin != instructions.end()) {
-    // If all of the all reduce instructions can be combined
+    // If all of the instructions can be combined
     if (CanCombine(region_begin, region_end)) {
-      // Partition the all reduce instructions into combinable groups
+      // Partition the instructions into combinable groups
       auto subregions = Partition(region_begin, region_end);
 
       std::vector<HloInstruction*> replacements;
 
-      // Create the combined all reduce instructions
+      // Create the combined instructions
       for (auto& subregion : subregions) {
         replacements.push_back(
             Combine(comp, subregion.first, subregion.second));
@@ -180,7 +179,7 @@ StatusOr<HloInstructionSequence> CombineAllReduce::CombineAllReduces(
         replacements.insert(replacements.end(), ops.begin(), ops.end());
       }
 
-      // Replace the previous all reduce instruction in the schedule
+      // Replace the previous instruction in the schedule
       //       v beg     v end
       // [a,b,c|r,r,r,r,r|d,e,f,g,r,r,r]
       // becomes
@@ -194,25 +193,24 @@ StatusOr<HloInstructionSequence> CombineAllReduce::CombineAllReduces(
                    replacements.size();
     }
 
-    // Find the next region of consecutive all reduce instructions
+    // Find the next region of consecutive colocated instructions
     //               v end   v beg
     // [a,b,c,r,t,t,t|d,e,f,g|r,r,r]
-    region_begin =
-        std::find_if(region_end, instructions.end(), is_all_reduce_pred);
+    region_begin = std::find_if(region_end, instructions.end(), has_colocator);
     //                       v beg v end
     // [a,b,c,r,t,t,t,d,e,f,g|r,r,r|]
     region_end =
-        std::find_if(region_begin, instructions.end(), is_not_all_reduce_pred);
+        std::find_if(region_begin, instructions.end(), can_not_colocate);
   }
 
   // Return the new schedule
   return HloInstructionSequence(instructions);
 }
 
-StatusOr<bool> CombineAllReduce::Run(HloModule* module) {
+StatusOr<bool> CombineInstructions::Run(HloModule* module) {
   if (!module->has_schedule()) {
     return tensorflow::errors::FailedPrecondition(
-        "CombineAllReduce: module doesn't have a schedule");
+        "CombineInstructions: module doesn't have a schedule");
   }
 
   const auto& schedule = module->schedule();
@@ -227,7 +225,8 @@ StatusOr<bool> CombineAllReduce::Run(HloModule* module) {
   HloSchedule new_schedule(module);
   for (auto& pair : sequences) {
     auto comp = computations[pair.first];
-    TF_ASSIGN_OR_RETURN(auto sched, CombineAllReduces(comp, pair.second));
+    TF_ASSIGN_OR_RETURN(auto sched,
+                        CombineInstructionsInComputation(comp, pair.second));
     new_schedule.set_sequence(comp, sched);
   }
 

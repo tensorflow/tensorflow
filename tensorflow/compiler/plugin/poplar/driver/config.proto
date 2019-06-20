@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package xla.poplarplugin;
-
+// NEXT ID 12
 message IpuOptions {
 
   // Structure for setting an idividual Poplar OptionFlag for OptionFlags
@@ -114,4 +114,8 @@ message IpuOptions {
     bool nanoo = 6;
   }
   FloatingPointBehaviour floating_point_behaviour = 10;
+
+  // The maximum number of bytes to wait before a inter IPU copy between IPUs is
+  // scheduled.
+  int64 max_inter_ipu_copies_buffer_size = 11;
 };

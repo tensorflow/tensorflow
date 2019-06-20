@@ -59,7 +59,7 @@ std::unique_ptr<CompilerResources> GetMockResources(HloModule* module,
                                                     bool merge_infeeds) {
   auto resources = absl::make_unique<CompilerResources>(
       poplar::Device::createCPUDevice(), poplar::OptionFlags(),
-      poplar::OptionFlags(), false, 1, merge_infeeds, module);
+      poplar::OptionFlags(), false, 1, merge_infeeds, 0, 0, module);
   poplin::addCodelets(resources->main_graph);
   popnn::addCodelets(resources->main_graph);
   popops::addCodelets(resources->main_graph);

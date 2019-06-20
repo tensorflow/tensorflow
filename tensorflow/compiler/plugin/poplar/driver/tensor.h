@@ -38,6 +38,14 @@ poplar::Tensor ConvertFromDeviceLayout(const Shape& shape,
 bool PoplarShapeMatchesXLAShape(const poplar::Tensor& tensor,
                                 const xla::Shape& shape);
 
+// Concatante all tensors into a single tensor.
+poplar::Tensor FlattenAndConcatenteTensors(
+    const std::vector<poplar::Tensor>& tensors);
+// Slice tensor into tensors with shapes like the tensors.
+std::vector<poplar::Tensor> SliceTensorIntoTensorsLike(
+    poplar::Tensor tensor_to_slice,
+    const std::vector<poplar::Tensor>& like_tensors);
+
 StatusOr<poplar::Tensor> AddDynamicSliceTensor(
     poplar::Graph& graph, const std::string& debug_name,
     const xla::Shape& shape_xla, const xla::Shape& slice_shape_xla);

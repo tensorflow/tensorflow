@@ -28,39 +28,70 @@ StatusOr<poplar::program::Program> IpuInterCopyOp::Creator(
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::program::Sequence seq;
 
-  TF_ASSIGN_OR_RETURN(poplar::Tensor out,
-                      FindInstructionInput(tensor_map, res, inst, 0, seq));
-
-  const auto src = inst->operand(0);
-
   if (!inst->has_sharding()) {
     return xla::FailedPrecondition("Missing shard information on %s",
                                    inst->name());
   }
-  if (!src->has_sharding()) {
-    return xla::FailedPrecondition("Missing shard information on %s",
-                                   src->name());
-  }
-
-  const auto& src_sharding = GetShardingDeviceIdVector(src->sharding());
   const auto& dst_sharding = GetShardingDeviceIdVector(inst->sharding());
-  if (src_sharding.size() != dst_sharding.size()) {
-    return xla::FailedPrecondition("Mismatched sharding info on %s",
-                                   inst->name());
-  }
 
-  // Should this be done by flattening, concatenating and copying a single
-  // tensor?
-  for (int index = 0; index < src_sharding.size(); index++) {
-    if (src_sharding[index] != dst_sharding[index]) {
-      out = poputil::copyToIpu(
-          GetReplicatedGraph(res), out, seq, dst_sharding[index],
-          GetDebugName(inst),
-          poplar::TensorCloneMethod::PRESERVE_ORDER_AND_ALIASES);
-
-      TF_CHECK_OK(AddOutputTensor(tensor_map, inst, index, out));
+  absl::flat_hash_set<int64> dst_devices;
+  ArgVector tensors;
+  // Go over all the operands and find all the tensors to copy.
+  std::vector<poplar::Tensor> tensors_to_copy;
+  // Keep track of indexes these tensors are in the tuples.
+  std::vector<int64> tensors_to_copy_indexes;
+  for (int64 i = 0; i < inst->operand_count(); ++i) {
+    const auto src = inst->operand(i);
+    if (!src->has_sharding()) {
+      return xla::FailedPrecondition("Missing shard information on %s",
+                                     src->name());
     }
+    const auto& src_sharding = GetShardingDeviceIdVector(src->sharding());
+
+    if (src_sharding.size() != dst_sharding.size()) {
+      return xla::FailedPrecondition("Mismatched sharding info on %s",
+                                     inst->name());
+    }
+
+    auto operand_tensors =
+        FindInstructionInputs(tensor_map, res, inst, i, seq, false);
+    // Only copy the tensors where the sharding doesn't match.
+    for (int index = 0; index < src_sharding.size(); ++index) {
+      if (src_sharding[index] != dst_sharding[index]) {
+        tensors_to_copy_indexes.push_back(tensors.size() + index);
+        tensors_to_copy.push_back(operand_tensors[index]);
+        dst_devices.insert(dst_sharding[index]);
+      }
+    }
+    tensors.insert(tensors.end(), operand_tensors.begin(),
+                   operand_tensors.end());
   }
+
+  // Make sure there is only one destination device.
+  if (dst_devices.size() != 1) {
+    return xla::InternalErrorStrCat(
+        "Unsupported inter IPU copy - trying to copy to ", dst_devices.size(),
+        " devices.");
+  }
+
+  // Create a concatenated and flattened tensor of the input tensors.
+  auto t = FlattenAndConcatenteTensors(tensors_to_copy);
+
+  t = poputil::copyToIpu(GetReplicatedGraph(res), t, seq,
+                         *std::begin(dst_devices), GetDebugName(inst),
+                         poplar::TensorCloneMethod::PRESERVE_ORDER_AND_ALIASES);
+
+  auto copied_tensors = SliceTensorIntoTensorsLike(t, tensors_to_copy);
+  // Move the copied tensors into the right indexes.
+  for (int64 i = 0; i < tensors_to_copy_indexes.size(); ++i) {
+    tensors[tensors_to_copy_indexes[i]] = copied_tensors[i];
+  }
+
+  for (int64 tensor_idx = 0; tensor_idx < tensors.size(); ++tensor_idx) {
+    TF_CHECK_OK(
+        AddOutputTensor(tensor_map, inst, tensor_idx, tensors[tensor_idx]));
+  }
+
   return seq;
 }
 

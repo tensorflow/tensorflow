@@ -8,8 +8,10 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_information.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/custom_ops/ipu_inter_copy.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/flags.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/instruction_colocator_helper.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -65,9 +67,9 @@ class LookAheadScheduler {
       const LogicalBuffer::SizeFunction& size_function,
       const absl::flat_hash_map<const HloComputation*, int64>&
           memory_by_computation,
-      int64 max_syncs) {
+      const CompilerInformation& information) {
     LookAheadScheduler scheduler(computation, points_to_analysis, size_function,
-                                 memory_by_computation, max_syncs);
+                                 memory_by_computation, information);
     return scheduler.CreateSchedule();
   }
 
@@ -102,12 +104,7 @@ class LookAheadScheduler {
     // instructions in nodes.
     int64 net_memory_usage;
 
-    bool is_all_reduce;
-
-    // If this cluster is just an IPU copy, we put IPU copy into their own
-    // cluster so we can schedule them ASAP without messing up the rest of the
-    // schedule.
-    bool is_ipu_copy;
+    absl::optional<const InstructionColocatorHelper*> colocator;
   };
 
   // Compare only the two IDs of the cluster. To be used when we want to sort
@@ -128,11 +125,6 @@ class LookAheadScheduler {
   // that needs a custom comparitor.
   struct ClusterComparitor {
     bool operator()(const Cluster::Ref& lhs, const Cluster::Ref& rhs) const {
-      // Schedule IPU copies first always.
-      if (lhs->is_ipu_copy) {
-        return false;
-      }
-
       if (lhs->net_memory_usage != rhs->net_memory_usage) {
         return lhs->net_memory_usage < rhs->net_memory_usage;
       }
@@ -182,13 +174,17 @@ class LookAheadScheduler {
                      const LogicalBuffer::SizeFunction& size_function,
                      const absl::flat_hash_map<const HloComputation*, int64>&
                          memory_by_computation,
-                     int64 max_syncs_)
+                     const CompilerInformation& information)
       : computation_(computation),
         points_to_analysis_(points_to_analysis),
         size_function_(size_function),
-        memory_by_computation_(memory_by_computation),
-        max_syncs(max_syncs_),
-        pending_syncs_in_bytes(0) {}
+        memory_by_computation_(memory_by_computation) {
+    // Create colocator queues.
+    for (auto colocator : GetAllInstructionColocatorHelpers()) {
+      colocator_queues.insert(std::make_pair(
+          colocator, ColocatorCluster<Cluster::Ref>(colocator, information)));
+    }
+  }
 
   // Returns whether the memory used by the given buffer should be ignored by
   // the scheduling heuristic.
@@ -218,9 +214,12 @@ class LookAheadScheduler {
   // Add to the ready or sync list queues.
   void AddToReady(Cluster::Ref node);
 
-  // Pop the next instruction either from the ready queue or from the all reduce
-  // list.
-  Cluster::Ref PopFromQueue(bool& should_all_reduce);
+  // Pop the next instructions which are ready to be scheduled.
+  std::vector<Cluster::Ref> PopFromQueue();
+
+  // Pop the next instructions from a colocator queue.
+  std::vector<Cluster::Ref> PopFromColocatorQueue(
+      const InstructionColocatorHelper* colocator);
 
   HloInstructionSequence CreateSchedule();
 
@@ -247,21 +246,25 @@ class LookAheadScheduler {
                       ClusterComparitor>
       ready_queue;
 
-  // We want all the AllReduce operations to be at the back of the queue
-  // until we decide to schedule them once the size of sync_queue (in bytes)
-  // is greater than max_syncs or if we have to due to ready queue being empty.
-  std::list<Cluster::Ref> sync_queue;
+  // Queues for all the colocators such that the instructions which can be
+  // colocated are scheduled together.
+  std::map<const InstructionColocatorHelper*, ColocatorCluster<Cluster::Ref>,
+           InstructionColocatorHelperPtrComparator>
+      colocator_queues;
+  // Indicator which shows colocation clusters that are ready to be scheduled.
+  std::set<const InstructionColocatorHelper*,
+           InstructionColocatorHelperPtrComparator>
+      colocators_ready_to_schedule;
+  // Indicator which shows colocation clusters which have nodes that can be
+  // scheduled.
+  std::set<const InstructionColocatorHelper*,
+           InstructionColocatorHelperPtrComparator>
+      colocators_with_nodes;
 
   // Map of nodes waiting to be scheduled to their dependencies which have not
   // been scheduled.
   absl::flat_hash_map<Cluster::Ref, absl::flat_hash_set<Cluster::Ref>>
       wait_queue;
-
-  // Maximum number of AllReduces we should keep at the back of the queue.
-  int64 max_syncs;
-
-  // Total size of syncs that we have pending in the sync_queue .
-  int64 pending_syncs_in_bytes;
 };
 
 int64 LookAheadScheduler::GetBufferMemoryFreed(const HloInstruction* parent,
@@ -370,24 +373,19 @@ void LookAheadScheduler::ClusterHelper::GroupChainsOfInstructions() {
     ref->net_memory_usage += parent->BytesFreedIfScheduled(instruction);
 
     // We mark these so they can be added to their own seperately managed queue.
-    ref->is_all_reduce = instruction->opcode() == HloOpcode::kAllReduce;
-
-    // Likewise for IPU copies, keep them in their own cluster but these
-    // clusters will go into the normal queue.
-    ref->is_ipu_copy = DynCast<HloIpuInterCopy>(instruction) != nullptr;
-
+    ref->colocator = GetInstructionColocatorHelper(instruction);
     // Add the child nodes to the cluster.
     HloInstruction* current_instruction = instruction;
     while (current_instruction && current_instruction->user_count() == 1 &&
            current_instruction->control_successors().empty() &&
-           !ref->is_all_reduce && !ref->is_ipu_copy) {
+           !ref->colocator) {
       HloInstruction* user = current_instruction->users()[0];
-      // Check the child hasn't already been added to a cluster. We want all
-      // reduce instructions to be in their own cluster.
+      // Check the child hasn't already been added to a cluster. We want
+      // instructions with colocation in their own clusters as well.
       if (previously_clustered_node.count(user) != 0 ||
-          user->opcode() == HloOpcode::kAllReduce ||
-          nullptr != DynCast<HloIpuInterCopy>(user))
+          GetInstructionColocatorHelper(user)) {
         break;
+      }
 
       // Add the child.
       ref->nodes.push_back(user);
@@ -460,40 +458,45 @@ void LookAheadScheduler::ClusterHelper::ClusterNodes() {
 }
 
 void LookAheadScheduler::AddToReady(Cluster::Ref node_to_add) {
-  if (node_to_add->is_all_reduce) {
-    sync_queue.push_back(node_to_add);
-    pending_syncs_in_bytes +=
-        ShapeUtil::ByteSizeOf((*node_to_add->nodes.begin())->shape());
+  if (node_to_add->colocator) {
+    auto colocator = *node_to_add->colocator;
+    int64 size = ShapeUtil::ByteSizeOf((*node_to_add->nodes.begin())->shape());
+    // Add the cluster so that it is colocated, making sure to indicate if the
+    // cluster is ready to be scheduled.
+    if (colocator_queues.at(colocator).Add(node_to_add, size)) {
+      colocators_ready_to_schedule.insert(colocator);
+    }
+    // Keep track of colocators with clusters.
+    colocators_with_nodes.insert(colocator);
   } else {
     ready_queue.push(node_to_add);
   }
 }
+std::vector<LookAheadScheduler::Cluster::Ref>
+LookAheadScheduler::PopFromColocatorQueue(
+    const InstructionColocatorHelper* colocator) {
+  // Once we get all the instruction, this queue is no longer ready to be
+  // scheduled/has any nodes.
+  colocators_with_nodes.erase(colocator);
+  colocators_ready_to_schedule.erase(colocator);
+  return colocator_queues.at(colocator).GetAll();
+}
 
-LookAheadScheduler::Cluster::Ref LookAheadScheduler::PopFromQueue(
-    bool& should_all_reduce) {
-  if (sync_queue.empty()) should_all_reduce = false;
-
-  // If the ready queue is empty at any point or we exceede the maximum number
-  // of pending AllReduce ops, empty the list. We maintain the bool
-  // should_all_reduce to ensure once we start queueing all reduce we don't stop
-  // until the list is empty.
-  if (ready_queue.empty() || pending_syncs_in_bytes > max_syncs ||
-      should_all_reduce) {
-    should_all_reduce = true;
-
-    Cluster::Ref r = sync_queue.front();
-    sync_queue.pop_front();
-
-    pending_syncs_in_bytes -=
-        ShapeUtil::ByteSizeOf((*r->nodes.begin())->shape());
-
-    return r;
-  } else {
-    // The normal path is to just take from the top of the priority queue.
+std::vector<LookAheadScheduler::Cluster::Ref>
+LookAheadScheduler::PopFromQueue() {
+  // First try and schedule instructions from a ready colocator.
+  if (colocators_ready_to_schedule.size()) {
+    return PopFromColocatorQueue(*std::begin(colocators_ready_to_schedule));
+  }
+  // Otherwise try to schedule an instruction from the ready queue.
+  if (!ready_queue.empty()) {
     Cluster::Ref r = ready_queue.top();
     ready_queue.pop();
-    return r;
+    return {r};
   }
+  // Otherwise force a colocator with clusters to be scheduled.
+  CHECK(colocators_with_nodes.size());
+  return PopFromColocatorQueue(*std::begin(colocators_with_nodes));
 }
 
 // Add a cluster node to the wait queue or if it has no dependencies, straight
@@ -506,7 +509,7 @@ void LookAheadScheduler::AddClusterWaitOrReadyQueue(Cluster::Ref node_to_add) {
   // Check if the parents have been scheduled.
   for (Cluster::Ref parent_dependency : node_to_add->dependencies) {
     // If the parent hasn't been scheduled add it to the set of
-    // dependences that are pending.
+    // dependencies that are pending.
     if (scheduled_clusters.count(parent_dependency) == 0) {
       wait_queue[node_to_add].insert(parent_dependency);
       canJustSchedule = false;
@@ -549,7 +552,7 @@ HloInstructionSequence LookAheadScheduler::CreateSchedule() {
   // instructions.
   size_t number_of_instructions_added = 0;
 
-  // A debug structure to indentify the scheduled order that each node has been
+  // A debug structure to identify the scheduled order that each node has been
   // inserted in.
   absl::flat_hash_map<Cluster::Ref, uint32_t> order;
 
@@ -562,28 +565,30 @@ HloInstructionSequence LookAheadScheduler::CreateSchedule() {
     AddToReady(ref);
   }
 
-  bool should_all_reduce = false;
-
-  while (!ready_queue.empty() || !sync_queue.empty()) {
+  while (!ready_queue.empty() || !colocators_with_nodes.empty()) {
     // Deque.
-    Cluster::Ref r = PopFromQueue(should_all_reduce);
-    if (scheduled_clusters.count(r) != 0) continue;
+    auto clusters = PopFromQueue();
+    for (auto cluster : clusters) {
+      if (scheduled_clusters.contains(cluster)) {
+        continue;
+      }
 
-    // Schedule each instruction.
-    for (HloInstruction* instruction : r->nodes) {
-      schedule.push_back(instruction);
+      // Schedule each instruction.
+      for (HloInstruction* instruction : cluster->nodes) {
+        schedule.push_back(instruction);
 
-      number_of_instructions_added++;
+        number_of_instructions_added++;
+      }
+
+      if (should_dump_dot) {
+        order.insert({cluster, order.size()});
+      }
+
+      scheduled_clusters.insert(cluster);
+
+      // Add the dependencies of the last cluster to the ready queue.
+      AddDepsToWaitOrReadyQueue(cluster);
     }
-
-    if (should_dump_dot) {
-      order.insert({r, order.size()});
-    }
-
-    scheduled_clusters.insert(r);
-
-    // Add the dependencies of the last cluster to the ready queue.
-    AddDepsToWaitOrReadyQueue(r);
   }
 
   if (should_dump_dot) {
@@ -602,21 +607,22 @@ StatusOr<HloInstructionSequence> LookAheadScheduler(
     const LogicalBuffer::SizeFunction& size_function,
     const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation,
-    int64 max_syncs) {
+    const CompilerInformation& information) {
   return LookAheadScheduler::Run(computation, points_to_analysis, size_function,
-                                 memory_by_computation, max_syncs);
+                                 memory_by_computation, information);
 }
 }  // namespace
 
 // Create a functor which performs the look-ahead scheduling.
-MemorySchedulerAlgorithm CreateLookAheadMemoryScheduler(int64 max_syncs) {
+MemorySchedulerAlgorithm CreateLookAheadMemoryScheduler(
+    const CompilerInformation& information) {
   return [=](HloComputation* computation,
              const TuplePointsToAnalysis& points_to_analysis,
              const LogicalBuffer::SizeFunction& size_function,
              const absl::flat_hash_map<const HloComputation*, int64>&
                  memory_by_computation) {
     return LookAheadScheduler(computation, points_to_analysis, size_function,
-                              memory_by_computation, max_syncs);
+                              memory_by_computation, information);
   };
 }
 

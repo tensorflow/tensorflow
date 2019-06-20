@@ -76,6 +76,40 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
       # Test that the output is just the input
       self.assertAllClose(result[0], 4 * data)
 
+  def testCrossReplicaSumDifferentTypes(self):
+    def my_graph(x, y):
+      with ops.device("/device:IPU:0"):
+        x = x + x
+        y = y + y + 1
+        return [
+            popops_cross_replica_sum.cross_replica_sum(x),
+            popops_cross_replica_sum.cross_replica_sum(y)
+        ]
+
+    with ops.device('cpu'):
+      x = array_ops.placeholder(np.float32, [4], name="data")
+      y = array_ops.placeholder(np.int32, [4], name="data")
+
+    out = ipu_compiler.compile(my_graph, [x, y])
+
+    cfg = ipu.utils.create_ipu_config(
+        profiling=False, max_cross_replica_sum_buffer_size=10000)
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    cfg = ipu.utils.auto_select_ipus(cfg, 2)
+    ipu.utils.configure_ipu_system(cfg)
+
+    with sl.Session() as sess:
+      sess.run(variables.global_variables_initializer())
+
+      ones = np.ones([4])
+      fd = {x: ones, y: ones}
+
+      result = sess.run(out, fd)
+
+      # Test that the output is just the input
+      self.assertAllClose(result[0], 4 * ones)
+      self.assertAllClose(result[1], 6 * ones)
+
   def testCreateSimpleReplicatedGraphVariable(self):
     def my_graph():
       with ops.device("/device:IPU:0"):

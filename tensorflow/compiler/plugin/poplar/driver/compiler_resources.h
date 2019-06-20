@@ -20,6 +20,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_RESOURCES_H_
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_information.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops/conv_graph_caching.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops/dot_graph_caching.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops/norm_graph_caching.h"
@@ -51,6 +52,8 @@ struct CompilerResources {
   ComputationMap computation_map;
 
   CompilerAnnotations annotations;
+
+  CompilerInformation information;
 
   poplin::PlanningCache convolution_cache;
 
@@ -94,9 +97,12 @@ struct CompilerResources {
                     const poplar::OptionFlags& pooling_options,
                     bool disable_graph_convolution_caching,
                     bool merge_infeed_io_copies, uint32 replication_factor,
-                    HloModule* module)
+                    int64 max_all_reduce_buffer_size,
+                    int64 max_inter_ipu_copies_buffer_size, HloModule* module)
       : main_graph(dev),
         annotations(module),
+        information(max_all_reduce_buffer_size,
+                    max_inter_ipu_copies_buffer_size),
         default_conv_options(conv_options),
         default_pooling_options(pooling_options),
         disable_graph_convolution_caching(disable_graph_convolution_caching),
