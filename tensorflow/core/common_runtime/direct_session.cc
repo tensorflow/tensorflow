@@ -548,6 +548,7 @@ Status DirectSession::RunInternal(
   args.tensor_store = &run_state.tensor_store;
   args.step_container = &run_state.step_container;
   args.sync_on_finish = sync_on_finish_;
+  args.user_intra_op_threadpool = threadpool_options.intra_op_threadpool;
 
   const bool do_trace = (run_options.trace_level() > RunOptions::NO_TRACE);
 
