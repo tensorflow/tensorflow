@@ -14,13 +14,13 @@
 # limitations under the License.
 # ==============================================================================
 
-cd /usr/src
-wget https://www.python.org/ftp/python/3.6.8/Python-3.6.8.tgz
-tar xzf Python-3.6.8.tgz
-cd Python-3.6.8
-./configure --enable-optimizations
-make altinstall
-rm /usr/src/Python-3.6.8.tgz
+set -ex
 
-# Link the pip3.6 executable to pip3.
-ln -s /usr/local/bin/pip3.6 /usr/local/bin/pip3
+GOLANG_URL="https://dl.google.com/go/go1.12.6.linux-amd64.tar.gz"
+
+
+cd /usr/src
+wget "${GOLANG_URL}"
+tar -xzf go1.12.6.linux-amd64.tar.gz
+mv go /usr/local
+rm /usr/src/go1.12.6.linux-amd64.tar.gz
