@@ -136,9 +136,7 @@ class ExtractImagePatchesGradTest(test.TestCase):
         in_shape = test_case['in_shape']
         test_shape = [x if x is None else y
                       for x, y in zip(test_shape_pattern, in_shape)]
-        in_val = array_ops.placeholder(
-          shape=test_shape,
-          dtype=dtypes.float32)
+        in_val = array_ops.placeholder(shape=test_shape, dtype=dtypes.float32)
 
         feed_dict = {in_val: np.random.random(in_shape)}
         for padding in ['VALID', 'SAME']:
