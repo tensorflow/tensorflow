@@ -3080,6 +3080,13 @@ py_library(
 )
 
 py_library(
+    name = "op_selector",
+    srcs = ["ops/op_selector.py"],
+    srcs_version = "PY2AND3",
+    deps = [":framework_ops"],
+)
+
+py_library(
     name = "math_ops",
     srcs = ["ops/math_ops.py"],
     srcs_version = "PY2AND3",
@@ -3876,6 +3883,20 @@ cuda_py_test(
         "//third_party/py/numpy",
     ],
     xla_enable_strict_auto_jit = True,
+)
+
+py_test(
+    name = "op_selector_test",
+    srcs = ["ops/op_selector_test.py"],
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":constant_op",
+        ":framework_ops",
+        ":math_ops",
+        ":op_selector",
+    ],
 )
 
 cuda_py_test(
