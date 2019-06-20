@@ -101,12 +101,12 @@ private:
   /// Define a bit-field struct to pack the enum values
   union EnumPack {
     struct {
-      Dim dim : getNumBits<Dim>();
-      ImageDepthInfo depthInfo : getNumBits<ImageDepthInfo>();
-      ImageArrayedInfo arrayedInfo : getNumBits<ImageArrayedInfo>();
-      ImageSamplingInfo samplingInfo : getNumBits<ImageSamplingInfo>();
-      ImageSamplerUseInfo samplerUseInfo : getNumBits<ImageSamplerUseInfo>();
-      ImageFormat format : getNumBits<ImageFormat>();
+      unsigned dimEncoding : getNumBits<Dim>();
+      unsigned depthInfoEncoding : getNumBits<ImageDepthInfo>();
+      unsigned arrayedInfoEncoding : getNumBits<ImageArrayedInfo>();
+      unsigned samplingInfoEncoding : getNumBits<ImageSamplingInfo>();
+      unsigned samplerUseInfoEncoding : getNumBits<ImageSamplerUseInfo>();
+      unsigned formatEncoding : getNumBits<ImageFormat>();
     } data;
     unsigned storage;
   };
@@ -129,72 +129,72 @@ public:
   Dim getDim() const {
     EnumPack v;
     v.storage = getSubclassData();
-    return v.data.dim;
+    return static_cast<Dim>(v.data.dimEncoding);
   }
   void setDim(Dim dim) {
     EnumPack v;
     v.storage = getSubclassData();
-    v.data.dim = dim;
+    v.data.dimEncoding = static_cast<unsigned>(dim);
     setSubclassData(v.storage);
   }
 
   ImageDepthInfo getDepthInfo() const {
     EnumPack v;
     v.storage = getSubclassData();
-    return v.data.depthInfo;
+    return static_cast<ImageDepthInfo>(v.data.depthInfoEncoding);
   }
   void setDepthInfo(ImageDepthInfo depthInfo) {
     EnumPack v;
     v.storage = getSubclassData();
-    v.data.depthInfo = depthInfo;
+    v.data.depthInfoEncoding = static_cast<unsigned>(depthInfo);
     setSubclassData(v.storage);
   }
 
   ImageArrayedInfo getArrayedInfo() const {
     EnumPack v;
     v.storage = getSubclassData();
-    return v.data.arrayedInfo;
+    return static_cast<ImageArrayedInfo>(v.data.arrayedInfoEncoding);
   }
   void setArrayedInfo(ImageArrayedInfo arrayedInfo) {
     EnumPack v;
     v.storage = getSubclassData();
-    v.data.arrayedInfo = arrayedInfo;
+    v.data.arrayedInfoEncoding = static_cast<unsigned>(arrayedInfo);
     setSubclassData(v.storage);
   }
 
   ImageSamplingInfo getSamplingInfo() const {
     EnumPack v;
     v.storage = getSubclassData();
-    return v.data.samplingInfo;
+    return static_cast<ImageSamplingInfo>(v.data.samplingInfoEncoding);
   }
   void setSamplingInfo(ImageSamplingInfo samplingInfo) {
     EnumPack v;
     v.storage = getSubclassData();
-    v.data.samplingInfo = samplingInfo;
+    v.data.samplingInfoEncoding = static_cast<unsigned>(samplingInfo);
     setSubclassData(v.storage);
   }
 
   ImageSamplerUseInfo getSamplerUseInfo() const {
     EnumPack v;
     v.storage = getSubclassData();
-    return v.data.samplerUseInfo;
+    return static_cast<ImageSamplerUseInfo>(v.data.samplerUseInfoEncoding);
   }
   void setSamplerUseInfo(ImageSamplerUseInfo samplerUseInfo) {
     EnumPack v;
     v.storage = getSubclassData();
-    v.data.samplerUseInfo = samplerUseInfo;
+    v.data.samplerUseInfoEncoding = static_cast<unsigned>(samplerUseInfo);
     setSubclassData(v.storage);
   }
 
   ImageFormat getImageFormat() const {
     EnumPack v;
     v.storage = getSubclassData();
-    return v.data.format;
+    return static_cast<ImageFormat>(v.data.formatEncoding);
   }
   void setImageFormat(ImageFormat format) {
     EnumPack v;
     v.storage = getSubclassData();
-    v.data.format = format;
+    v.data.formatEncoding = static_cast<unsigned>(format);
     setSubclassData(v.storage);
   }
 
