@@ -943,6 +943,26 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
 
     self.assertEqual(queue.size().numpy(), 2)
 
+  @test_util.run_v2_only
+  def testLimitedRetracing(self):
+    trace_count = [0]
+
+    @def_function.function
+    def f(iterator):
+      trace_count[0] += 1
+      counter = np.int64(0)
+      for elem in iterator:
+        counter += elem
+      return counter
+
+    dataset = dataset_ops.Dataset.range(5)
+    dataset2 = dataset_ops.Dataset.range(10)
+
+    for _ in range(10):
+      self.assertEqual(self.evaluate(f(iter(dataset))), 10)
+      self.assertEqual(self.evaluate(f(iter(dataset2))), 45)
+      self.assertEqual(trace_count[0], 1)
+
 
 if __name__ == "__main__":
   test.main()
