@@ -1,11 +1,12 @@
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//tensorflow:internal"])
-
 load("//tensorflow/core:platform/default/build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_python_default_plugins")
 load("//tensorflow:tensorflow.bzl", "tf_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 py_library(
     name = "xla_client",
@@ -133,8 +134,14 @@ tf_cc_test(
 
 cc_library(
     name = "local_client",
-    srcs = ["local_client.cc"],
-    hdrs = ["local_client.h"],
+    srcs = [
+        "local_client.cc",
+        "python_ref_manager.cc",
+        "python_ref_manager.h",
+    ],
+    hdrs = [
+        "local_client.h",
+    ],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -161,8 +168,12 @@ cc_library(
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/core:bfc_allocator",
+        "//tensorflow/core:gpu_mem_allocator",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/stream_executor:tf_allocator_adapter",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -214,8 +225,8 @@ tf_pybind_extension(
         "//tensorflow/compiler/xla/client/lib:self_adjoint_eig",
         "//tensorflow/compiler/xla/client/lib:svd",
         "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/compiler/xla/service:platform_util",
@@ -229,6 +240,7 @@ tf_pybind_extension(
         # without any TF dependencies as "jaxlib" on Pypi, and "jaxlib" does
         # not require Tensorflow.
         "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
+        "//tensorflow/stream_executor:device_memory_allocator",
     ] + xla_python_default_plugins(),
 )
 

@@ -142,7 +142,8 @@ typedef enum {
   kTfLiteBuiltinQuantize = 114,
   kTfLiteBuiltinMatrixSetDiag = 115,
   kTfLiteBuiltinRound = 116,
-  kTfLiteBuiltinReciprocal = 117,
+  kTfLiteBuiltinHardSwish = 117,
+  kTfLiteBuiltinReciprocal = 118,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

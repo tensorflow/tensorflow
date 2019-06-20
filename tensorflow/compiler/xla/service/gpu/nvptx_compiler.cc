@@ -63,6 +63,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
+#include "tensorflow/compiler/xla/service/gpu/nvptx_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
@@ -108,25 +109,27 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
+#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
 
 namespace xla {
 namespace gpu {
-
-/* static */ const char* NVPTXCompiler::kTargetTriple = "nvptx64-nvidia-cuda";
-/* static */ const char* NVPTXCompiler::kDataLayout =
-    "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
 
 namespace {
 
 namespace tracing = tensorflow::tracing;
 
+static std::vector<std::string> CandidateCudaRoots(
+    const HloModuleConfig& config) {
+  return tensorflow::CandidateCudaRoots(
+      config.debug_options().xla_gpu_cuda_data_dir());
+}
+
 void PrintCantFindCudaMessage(absl::string_view msg,
                               const HloModuleConfig& hlo_module_config) {
   LOG(WARNING) << msg;
-  LOG(WARNING) << "Searched in the following directories:";
+  LOG(WARNING) << "Searched for CUDA in the following directories:";
 
-  for (const auto& dir :
-       GetCudaRootCandidates(PtxCompilationOptions(hlo_module_config))) {
+  for (const auto& dir : CandidateCudaRoots(hlo_module_config)) {
     LOG(WARNING) << "  " << dir;
   }
   LOG(WARNING)
@@ -137,9 +140,7 @@ void PrintCantFindCudaMessage(absl::string_view msg,
 
 // Returns the directory containing nvvm libdevice files.
 string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
-  const auto& candidate_dirs =
-      GetCudaRootCandidates(PtxCompilationOptions(hlo_module_config));
-  for (const string& cuda_root : candidate_dirs) {
+  for (const string& cuda_root : CandidateCudaRoots(hlo_module_config)) {
     string libdevice_dir =
         tensorflow::io::JoinPath(cuda_root, "nvvm", "libdevice");
     VLOG(2) << "Looking for libdevice at " << libdevice_dir;
@@ -149,23 +150,19 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
     }
   }
   PrintCantFindCudaMessage(
-      "Can't find directory containing CUDA libdevice.  This may result in "
-      "compilation or runtime failures, if the program we try to run uses "
-      "routines from libdevice.",
+      "Can't find libdevice directory ${CUDA_DIR}/nvvm/libdevice. This may "
+      "result in compilation or runtime failures, if the program we try to run "
+      "uses routines from libdevice.",
       hlo_module_config);
 
-  // GetCudaRotCandidates always inclues ".", but but if everything fails, we
+  // GetCudaRootCandidates always inclues ".", but but if everything fails, we
   // return it anyway.  Better than returning the empty string.
   return ".";
 }
 
 // Runs optimization passes on the given HLO module.
-//
-// It takes a compiler pointer, as passes may compile and execute HLOs on the
-// fly for cuDNN verification or other purposes.
 Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
-                         se::DeviceMemoryAllocator* device_allocator,
-                         Compiler* compiler) {
+                         se::DeviceMemoryAllocator* device_allocator) {
   {
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
@@ -226,7 +223,10 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       pass.AddPass<TupleSimplifier>();
       pass.AddPass<WhileLoopConstantSinking>();
       pass.AddPass<WhileLoopSimplifier>();
-      pass.AddPass<SliceSinker>();
+
+      // TODO(b/134075051): Re-enable after b/134075051 is fixed.
+      // pass.AddPass<SliceSinker>();
+
       pass.AddPass<HloDCE>();
       pass.AddPass<ReshapeMover>();
       pass.AddPass<HloConstantFolding>();
@@ -262,7 +262,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     HloPassPipeline pipeline("conv_canonicalization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
-    pipeline.AddPass<CusolverRewriter>(stream_exec, device_allocator);
+    pipeline.AddPass<CusolverRewriter>();
     pipeline.AddPass<CudnnConvRewriter>();
     pipeline.AddPass<CudnnFusedConvRewriter>();
     pipeline.AddPass<CudnnConvPaddingLegalization>();
@@ -333,8 +333,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // the gte(customcall, 0) would probably already be into a fusion node.  We
     // can't simplify across HloComputation boundaries, so in this case we
     // wouldn't be able to simplify away the new_tuple bits.
-    pipeline.AddPass<CudnnConvAlgorithmPicker>(stream_exec, device_allocator,
-                                               compiler);
+    pipeline.AddPass<CudnnConvAlgorithmPicker>(stream_exec, device_allocator);
 
     // Clean up new_tuple described above.
     pipeline.AddPass<TupleSimplifier>();
@@ -470,7 +469,7 @@ StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
       [&] { return absl::StrCat("HLO Transforms:", module->name()); },
       tensorflow::profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(
-      OptimizeHloModule(module.get(), stream_exec, device_allocator, this));
+      OptimizeHloModule(module.get(), stream_exec, device_allocator));
 
   TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
 
@@ -517,7 +516,6 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
           BufferSizeBytesFunction(),
           /*color_alignment=*/
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
-          /*allow_input_output_aliasing=*/false,
           /*allocate_buffers_for_constants=*/true));
   DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
 
@@ -674,8 +672,9 @@ std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(
     if (inserted) {
       CHECK(!cache_value->compilation_done);
       if (!ptx.empty()) {
-        StatusOr<std::vector<uint8>> maybe_cubin = CompilePtx(
-            stream_exec, *cache_ptx, PtxCompilationOptions(hlo_module_config));
+        StatusOr<std::vector<uint8>> maybe_cubin = se::cuda::CompilePtx(
+            stream_exec->device_ordinal(), cache_ptx->c_str(),
+            PtxOptsFromConfig(hlo_module_config));
         if (maybe_cubin.ok()) {
           cache_value->cubin_data = std::move(maybe_cubin).ValueOrDie();
           VLOG(2) << "Compiled PTX size:" << ptx.size()
@@ -695,9 +694,10 @@ std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(
           }
           if (log_warning) {
             PrintCantFindCudaMessage(
-                "Can't find ptxas binary.  Will back to the GPU driver "
-                "for PTX -> sass compilation.  This is OK so long as you don't "
-                "see a warning below about an out-of-date driver version.",
+                "Can't find ptxas binary in ${CUDA_DIR}/bin.  Will back to the "
+                "GPU driver for PTX -> sass compilation.  This is OK so long "
+                "as you don't see a warning below about an out-of-date driver "
+                "version.",
                 hlo_module_config);
           }
 

@@ -142,10 +142,12 @@ inline GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
   config.block_count = block_count;
   return config;
 }
+#ifndef TENSORFLOW_USE_ROCM
 inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
                                             const Eigen::GpuDevice& d) {
   return GetGpuLaunchConfig(work_element_count, d);
 }
+#endif
 
 // Calculate the GPU launch config we should use for a kernel launch. This
 // variant takes the resource limits of func into account to maximize occupancy.
@@ -193,14 +195,7 @@ GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
   config.block_count = block_count;
   return config;
 }
-template <typename DeviceFunc>
-CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
-                                     const Eigen::GpuDevice& d, DeviceFunc func,
-                                     size_t dynamic_shared_memory_size,
-                                     int block_size_limit) {
-  return GetGpuLaunchConfig(work_element_count, d, func,
-                            dynamic_shared_memory_size, block_size_limit);
-}
+CREATE_CUDA_HOST_FUNCTION_ALIAS(GetGpuLaunchConfig, GetCudaLaunchConfig);
 
 // Calculate the GPU launch config we should use for a kernel launch. This
 // variant takes the resource limits of func into account to maximize occupancy.
@@ -245,14 +240,8 @@ GpuLaunchConfig GetGpuLaunchConfigFixedBlockSize(
   config.block_count = block_count;
   return config;
 }
-template <typename DeviceFunc>
-CudaLaunchConfig GetCudaLaunchConfigFixedBlockSize(
-    int work_element_count, const Eigen::GpuDevice& d, DeviceFunc func,
-    size_t dynamic_shared_memory_size, int fixed_block_size) {
-  return GetGpuLaunchConfigFixedBlockSize(work_element_count, d, func,
-                                          dynamic_shared_memory_size,
-                                          fixed_block_size);
-}
+CREATE_CUDA_HOST_FUNCTION_ALIAS(GetGpuLaunchConfigFixedBlockSize,
+                                GetCudaLaunchConfigFixedBlockSize);
 
 struct Gpu2DLaunchConfig {
   dim3 virtual_thread_count = dim3(0, 0, 0);
@@ -288,10 +277,12 @@ inline Gpu2DLaunchConfig GetGpu2DLaunchConfig(int xdim, int ydim,
       grid_x, std::min(max_blocks / grid_x, std::max(ydim / block_rows, 1)), 1);
   return config;
 }
+#ifndef TENSORFLOW_USE_ROCM
 inline Cuda2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
                                                 const Eigen::GpuDevice& d) {
   return GetGpu2DLaunchConfig(xdim, ydim, d);
 }
+#endif
 
 // Calculate the GPU 2D and 3D launch config we should use for a kernel launch.
 // This variant takes the resource limits of func into account to maximize
@@ -300,11 +291,11 @@ using Gpu3DLaunchConfig = Gpu2DLaunchConfig;
 CREATE_CUDA_TYPE_ALIAS(Gpu3DLaunchConfig, Cuda3DLaunchConfig);
 
 template <typename DeviceFunc>
-Cuda3DLaunchConfig GetGpu3DLaunchConfig(int xdim, int ydim, int zdim,
-                                        const Eigen::GpuDevice& d,
-                                        DeviceFunc func,
-                                        size_t dynamic_shared_memory_size,
-                                        int block_size_limit) {
+Gpu3DLaunchConfig GetGpu3DLaunchConfig(int xdim, int ydim, int zdim,
+                                       const Eigen::GpuDevice& d,
+                                       DeviceFunc func,
+                                       size_t dynamic_shared_memory_size,
+                                       int block_size_limit) {
   Gpu3DLaunchConfig config;
 
   if (xdim <= 0 || ydim <= 0 || zdim <= 0) {
@@ -369,15 +360,7 @@ Cuda3DLaunchConfig GetGpu3DLaunchConfig(int xdim, int ydim, int zdim,
   config.block_count = dim3(blocksx, blocksy, blocksz);
   return config;
 }
-template <typename DeviceFunc>
-Cuda3DLaunchConfig GetCuda3DLaunchConfig(int xdim, int ydim, int zdim,
-                                         const Eigen::GpuDevice& d,
-                                         DeviceFunc func,
-                                         size_t dynamic_shared_memory_size,
-                                         int block_size_limit) {
-  return GetGpu3DLaunchConfig(xdim, ydim, zdim, d, func,
-                              dynamic_shared_memory_size, block_size_limit);
-}
+CREATE_CUDA_HOST_FUNCTION_ALIAS(GetGpu3DLaunchConfig, GetCuda3DLaunchConfig);
 
 template <typename DeviceFunc>
 Gpu2DLaunchConfig GetGpu2DLaunchConfig(int xdim, int ydim,
@@ -388,6 +371,7 @@ Gpu2DLaunchConfig GetGpu2DLaunchConfig(int xdim, int ydim,
   return GetGpu3DLaunchConfig(xdim, ydim, 1, d, func,
                               dynamic_shared_memory_size, block_size_limit);
 }
+CREATE_CUDA_HOST_FUNCTION_ALIAS(GetGpu2DLaunchConfig, GetCuda2DLaunchConfig);
 
 #if GOOGLE_CUDA
 // Returns a raw reference to the current cuda stream.  Required by a
@@ -436,32 +420,6 @@ constexpr bool NoneIsReference() {
   return NoneTrue<(std::is_reference<Ts>::value)...>::value;
 }
 }  // namespace detail
-
-#if GOOGLE_CUDA
-// Launches a CUDA kernel through cudaLaunchKernel with the given arguments.
-//
-// The kernel parameters 'Ts' must be constructible from the arguments 'Args'.
-template <typename... Ts, typename... Args>
-Status CudaLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
-                        size_t shared_memory_size_bytes, cudaStream_t stream,
-                        Args... arguments) {
-  static_assert(detail::NoneIsReference<Ts...>(),
-                "Kernels with reference arguments have undefined behaviour.");
-  // Cast arguments and forward them as an array of pointers.
-  auto args_tuple = std::tuple<Ts...>(arguments...);
-  auto arg_ptrs = detail::GetArrayOfElementPointers(&args_tuple);
-  auto func_ptr = absl::bit_cast<const void*>(function);
-  auto result = cudaLaunchKernel(func_ptr, grid_dim, block_dim, arg_ptrs.data(),
-                                 shared_memory_size_bytes, stream);
-  if (result != cudaSuccess) {
-    return errors::Internal(cudaGetErrorString(result));
-  }
-  return Status::OK();
-}
-#endif  // GOOGLE_CUDA
-
 }  // namespace tensorflow
-
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 #endif  // TENSORFLOW_CORE_UTIL_GPU_LAUNCH_CONFIG_H_

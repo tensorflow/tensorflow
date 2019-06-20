@@ -1,9 +1,11 @@
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_protos_grappler",
+)
+
+package(
+    licenses = ["notice"],  # Apache 2.0
 )
 
 cc_library(
@@ -76,10 +78,10 @@ cc_library(
     hdrs = ["frame.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":graph_view",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler:op_types",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
@@ -91,6 +93,8 @@ tf_cc_test(
     srcs = ["frame_test.cc"],
     deps = [
         ":frame",
+        ":graph_view",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -134,6 +138,7 @@ cc_library(
     hdrs = ["grappler_test.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/cc:scope",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session",
@@ -145,6 +150,7 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -301,5 +307,75 @@ tf_cc_test(
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "graph_view_internal",
+    hdrs = ["graph_view_internal.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "graph_view_internal_test",
+    srcs = ["graph_view_internal_test.cc"],
+    deps = [
+        ":graph_view",
+        ":graph_view_internal",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "graph_view",
+    srcs = ["graph_view.cc"],
+    hdrs = ["graph_view.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_view_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "graph_view_test",
+    srcs = ["graph_view_test.cc"],
+    deps = [
+        ":graph_view",
+        ":grappler_test",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )

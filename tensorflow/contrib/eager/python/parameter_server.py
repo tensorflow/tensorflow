@@ -63,7 +63,7 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
   return handle
 
 
-class SharedVariable(resource_variable_ops.ResourceVariable):
+class SharedVariable(resource_variable_ops.BaseResourceVariable):
   """Experimental Variable designed for parameter server training.
 
   A SharedVariable has a name and two instances of SharedVariable with the
@@ -231,7 +231,7 @@ class SharedVariable(resource_variable_ops.ResourceVariable):
           self._graph_element = None
           self._cached_value = None
 
-    self._handle_deleter = None
+    self._handle_deleter = object()
     self._cached_shape_as_list = None
 
 

@@ -61,6 +61,7 @@ tensorflow/core/kernels/cwise_op_cosh.cc
 tensorflow/core/kernels/cwise_op_div.cc
 tensorflow/core/kernels/cwise_op_equal_to_1.cc
 tensorflow/core/kernels/cwise_op_equal_to_2.cc
+tensorflow/core/kernels/cwise_op_erf.cc
 tensorflow/core/kernels/cwise_op_exp.cc
 tensorflow/core/kernels/cwise_op_floor.cc
 tensorflow/core/kernels/cwise_op_floor_div.cc

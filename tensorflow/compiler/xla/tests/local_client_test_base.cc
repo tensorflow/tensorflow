@@ -117,8 +117,10 @@ LocalClientTestBase::LocalClientTestBase(se::Platform* platform)
     : local_client_(
           ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie()),
       thread_pool_wrapper_(new EigenThreadPoolWrapper()) {
+  // Take the first executor, since it's the default one.
   stream_executor_ = PlatformUtil::GetStreamExecutors(local_client_->platform())
-                         .ValueOrDie()[local_client_->default_device_ordinal()];
+                         .ValueOrDie()
+                         .front();
   transfer_manager_ =
       TransferManager::GetForPlatform(local_client_->platform()).ValueOrDie();
 }

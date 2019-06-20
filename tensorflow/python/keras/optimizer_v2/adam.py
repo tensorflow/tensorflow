@@ -33,14 +33,14 @@ class Adam(optimizer_v2.OptimizerV2):
 
   Adam optimization is a stochastic gradient descent method that is based on
   adaptive estimation of first-order and second-order moments.
-  According to the paper 
-  [Adam: A Method for Stochastic Optimization. Kingma et al., 
+  According to the paper
+  [Adam: A Method for Stochastic Optimization. Kingma et al.,
   2014](http://arxiv.org/abs/1412.6980),
    the method is "*computationally efficient, has little memory
   requirement, invariant to diagonal rescaling of gradients, and is well suited
   for problems that are large in terms of data/parameters*".
 
-  For AMSGrad see [On The Convergence Of Adam And Beyond. 
+  For AMSGrad see [On The Convergence Of Adam And Beyond.
   Reddi et al., 5-8](https://openreview.net/pdf?id=ryQu7f-RZ).
   """
 
@@ -130,14 +130,12 @@ class Adam(optimizer_v2.OptimizerV2):
         compatibility, recommended to use `learning_rate` instead.
     """
 
-    if epsilon is None:
-      epsilon = backend_config.epsilon()
     super(Adam, self).__init__(name, **kwargs)
     self._set_hyper('learning_rate', kwargs.get('lr', learning_rate))
     self._set_hyper('decay', self._initial_decay)
     self._set_hyper('beta_1', beta_1)
     self._set_hyper('beta_2', beta_2)
-    self._set_hyper('epsilon', epsilon)
+    self.epsilon = epsilon or backend_config.epsilon()
     self.amsgrad = amsgrad
 
   def _create_slots(self, var_list):
@@ -163,12 +161,12 @@ class Adam(optimizer_v2.OptimizerV2):
 
   def _resource_apply_dense(self, grad, var):
     var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
+    lr_t = self._decayed_lr_t[var_dtype]
     m = self.get_slot(var, 'm')
     v = self.get_slot(var, 'v')
     beta_1_t = self._get_hyper('beta_1', var_dtype)
     beta_2_t = self._get_hyper('beta_2', var_dtype)
-    epsilon = self._get_hyper('epsilon', var_dtype)
+    epsilon_t = ops.convert_to_tensor(self.epsilon, var_dtype)
     local_step = math_ops.cast(self.iterations + 1, var_dtype)
     beta_1_power = math_ops.pow(beta_1_t, local_step)
     beta_2_power = math_ops.pow(beta_2_t, local_step)
@@ -182,7 +180,7 @@ class Adam(optimizer_v2.OptimizerV2):
           lr_t,
           beta_1_t,
           beta_2_t,
-          epsilon,
+          epsilon_t,
           grad,
           use_locking=self._use_locking)
     else:
@@ -197,19 +195,19 @@ class Adam(optimizer_v2.OptimizerV2):
           lr_t,
           beta_1_t,
           beta_2_t,
-          epsilon,
+          epsilon_t,
           grad,
           use_locking=self._use_locking)
 
   def _resource_apply_sparse(self, grad, var, indices):
     var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
+    lr_t = self._decayed_lr_t[var_dtype]
     beta_1_t = self._get_hyper('beta_1', var_dtype)
     beta_2_t = self._get_hyper('beta_2', var_dtype)
     local_step = math_ops.cast(self.iterations + 1, var_dtype)
     beta_1_power = math_ops.pow(beta_1_t, local_step)
     beta_2_power = math_ops.pow(beta_2_t, local_step)
-    epsilon_t = self._get_hyper('epsilon', var_dtype)
+    epsilon_t = ops.convert_to_tensor(self.epsilon, var_dtype)
     lr = (lr_t * math_ops.sqrt(1 - beta_2_power) / (1 - beta_1_power))
 
     # m_t = beta1 * m + (1 - beta1) * g_t
@@ -251,7 +249,7 @@ class Adam(optimizer_v2.OptimizerV2):
         'decay': self._serialize_hyperparameter('decay'),
         'beta_1': self._serialize_hyperparameter('beta_1'),
         'beta_2': self._serialize_hyperparameter('beta_2'),
-        'epsilon': self._serialize_hyperparameter('epsilon'),
+        'epsilon': self.epsilon,
         'amsgrad': self.amsgrad,
     })
     return config

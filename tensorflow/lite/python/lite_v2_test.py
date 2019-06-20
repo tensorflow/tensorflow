@@ -83,6 +83,16 @@ class TestModels(test_util.TensorFlowTestCase):
 
     return BasicModel()
 
+  def _assertValidDebugInfo(self, debug_info):
+    """Verify the DebugInfo is valid."""
+    file_names = set()
+    for file_path in debug_info.files:
+      file_names.add(os.path.basename(file_path))
+    # To make the test independent on how the nodes are created, we only assert
+    # the name of this test file.
+    self.assertIn('lite_v2_test.py', file_names)
+    self.assertNotIn('lite_test.py', file_names)
+
 
 class FromConcreteFunctionTest(TestModels):
 
@@ -239,6 +249,20 @@ class FromConcreteFunctionTest(TestModels):
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite), len(float_tflite))
 
+  @test_util.run_v2_only
+  def testGraphDebugInfo(self):
+    """Test a concrete function has debug info captured."""
+    root = tracking.AutoTrackable()
+    root.v1 = variables.Variable(3.)
+    root.f = def_function.function(lambda x: root.v1 * x)
+    input_data = constant_op.constant(1., shape=[1])
+    concrete_func = root.f.get_concrete_function(input_data)
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    converter.convert()
+    self._assertValidDebugInfo(converter._debug_info)
+
 
 class FromSavedModelTest(TestModels):
 
@@ -328,6 +352,49 @@ class FromSavedModelTest(TestModels):
     self.assertIn('This converter can only convert a single ConcreteFunction',
                   str(error.exception))
 
+  @test_util.run_v2_only
+  def testKerasSequentialModel(self):
+    """Test a simple sequential tf.Keras model."""
+    input_data = constant_op.constant(1., shape=[1, 1])
+
+    x = np.array([[1.], [2.]])
+    y = np.array([[2.], [4.]])
+
+    model = keras.models.Sequential([
+        keras.layers.Dropout(0.2),
+        keras.layers.Dense(1),
+    ])
+    model.compile(optimizer='sgd', loss='mean_squared_error')
+    model.fit(x, y, epochs=1)
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save(model, save_dir)
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = model.predict(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    self.assertEqual(expected_value, actual_value)
+
+  @test_util.run_v2_only
+  def testGraphDebugInfo(self):
+    """Test a SavedModel has debug info captured."""
+    input_data = constant_op.constant(1., shape=[1])
+    root = tracking.AutoTrackable()
+    root.f = def_function.function(lambda x: 2. * x)
+    to_save = root.f.get_concrete_function(input_data)
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save(root, save_dir, to_save)
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
+    converter.convert()
+    self._assertValidDebugInfo(converter._debug_info)
+
 
 class FromKerasModelTest(TestModels):
 
@@ -337,11 +404,13 @@ class FromKerasModelTest(TestModels):
     input_data = constant_op.constant(1., shape=[1, 1])
 
     # Create a simple Keras model.
-    x = [-1, 0, 1, 2, 3, 4]
-    y = [-3, -1, 1, 3, 5, 7]
+    x = np.array([[1.], [2.]])
+    y = np.array([[2.], [4.]])
 
-    model = keras.models.Sequential(
-        [keras.layers.Dense(units=1, input_shape=[1])])
+    model = keras.models.Sequential([
+        keras.layers.Dropout(0.2),
+        keras.layers.Dense(units=1, input_shape=[1])
+    ])
     model.compile(optimizer='sgd', loss='mean_squared_error')
     model.fit(x, y, epochs=1)
 
@@ -396,6 +465,20 @@ class FromKerasModelTest(TestModels):
     actual_value = self._evaluateTFLiteModel(tflite_model, input_data)
     for tf_result, tflite_result in zip(expected_value, actual_value):
       np.testing.assert_almost_equal(tf_result[0], tflite_result, 5)
+
+  @test_util.run_v2_only
+  def testGraphDebugInfo(self):
+    """Test a tf.Keras model has debug info captured."""
+    # Create a simple Keras model.
+    x = [-1, 0, 1, 2, 3, 4]
+    y = [-3, -1, 1, 3, 5, 7]
+    model = keras.models.Sequential(
+        [keras.layers.Dense(units=1, input_shape=[1])])
+    model.compile(optimizer='sgd', loss='mean_squared_error')
+    model.fit(x, y, epochs=1)
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+    converter.convert()
+    self._assertValidDebugInfo(converter._debug_info)
 
 
 class GrapplerTest(TestModels):

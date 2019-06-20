@@ -22,8 +22,8 @@ import copy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
-from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.tracking import base as trackable
@@ -64,7 +64,7 @@ def keras_style_scope():
   class RNNModel(tf.keras.Model):
 
     def __init__(self, name):
-      super(RNNModel, self.).__init__(name=name)
+      super(RNNModel, self).__init__(name=name)
       self.rnn = tf.compat.v1.nn.rnn_cell.MultiRNNCell(
         [tf.compat.v1.nn.rnn_cell.LSTMCell(64) for _ in range(2)])
 
@@ -250,11 +250,12 @@ class Layer(base_layer.Layer):
   def _make_unique_name(self, name_uid_map=None, avoid_names=None,
                         namespace='', zero_based=False):
     base_name = base_layer.to_snake_case(self.__class__.__name__)
-    name = base_layer_utils.unique_layer_name(base_name,
-                                              name_uid_map=name_uid_map,
-                                              avoid_names=avoid_names,
-                                              namespace=namespace,
-                                              zero_based=zero_based)
+    name = backend.unique_object_name(
+        base_name,
+        name_uid_map=name_uid_map,
+        avoid_names=avoid_names,
+        namespace=namespace,
+        zero_based=zero_based)
     return (name, base_name)
 
   @property
@@ -357,7 +358,7 @@ class Layer(base_layer.Layer):
       instance is returned.
 
     Raises:
-      RuntimeError: If called with partioned variable regularization and
+      RuntimeError: If called with partitioned variable regularization and
         eager execution is enabled.
       ValueError: When trainable has been set to True with synchronization
         set as `ON_READ`.

@@ -1,10 +1,11 @@
-package(default_visibility = [
-    "//visibility:public",
-])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 # ctc support classes imported directly from TensorFlow.
 cc_library(
@@ -18,7 +19,7 @@ cc_library(
     ],
     deps = [
         ":top_n",
-        "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//third_party/eigen3",
     ],
 )
@@ -30,7 +31,7 @@ cc_library(
         "top_n.h",
     ],
     deps = [
-        "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/kernels/internal:compatibility",
     ],
 )
 

@@ -30,10 +30,13 @@ namespace runtime {
 
 const char* const kTanhV4F32SymbolName = "__xla_cpu_runtime_TanhV4F32";
 const char* const kTanhV8F32SymbolName = "__xla_cpu_runtime_TanhV8F32";
+const char* const kTanhV16F32SymbolName = "__xla_cpu_runtime_TanhV16F32";
 const char* const kExpV4F32SymbolName = "__xla_cpu_runtime_ExpV4F32";
 const char* const kExpV8F32SymbolName = "__xla_cpu_runtime_ExpV8F32";
+const char* const kExpV16F32SymbolName = "__xla_cpu_runtime_ExpV16F32";
 const char* const kLogV4F32SymbolName = "__xla_cpu_runtime_LogV4F32AVX";
 const char* const kLogV8F32SymbolName = "__xla_cpu_runtime_LogV8F32AVX";
+const char* const kLogV16F32SymbolName = "__xla_cpu_runtime_LogV16F32AVX";
 
 namespace {
 
@@ -325,16 +328,19 @@ void RewriteIRRuntimeFunctions(llvm::Module* module, bool enable_fast_math) {
   rewrite_calls("llvm.tanh.f32", GenerateVF32Tanh, /*vector_width=*/1);
   rewrite_calls(kTanhV4F32SymbolName, GenerateVF32Tanh, /*vector_width=*/4);
   rewrite_calls(kTanhV8F32SymbolName, GenerateVF32Tanh, /*vector_width=*/8);
+  rewrite_calls(kTanhV16F32SymbolName, GenerateVF32Tanh, /*vector_width=*/16);
 
   rewrite_calls("expf", GenerateVF32Exp, /*vector_width=*/1);
   rewrite_calls("llvm.exp.f32", GenerateVF32Exp, /*vector_width=*/1);
   rewrite_calls(kExpV4F32SymbolName, GenerateVF32Exp, /*vector_width=*/4);
   rewrite_calls(kExpV8F32SymbolName, GenerateVF32Exp, /*vector_width=*/8);
+  rewrite_calls(kExpV16F32SymbolName, GenerateVF32Exp, /*vector_width=*/16);
 
   rewrite_calls("logf", GenerateVF32Log, /*vector_width=*/1);
   rewrite_calls("llvm.log.f32", GenerateVF32Log, /*vector_width=*/1);
   rewrite_calls(kLogV4F32SymbolName, GenerateVF32Log, /*vector_width=*/4);
   rewrite_calls(kLogV8F32SymbolName, GenerateVF32Log, /*vector_width=*/8);
+  rewrite_calls(kLogV16F32SymbolName, GenerateVF32Log, /*vector_width=*/16);
 }
 
 }  // namespace runtime

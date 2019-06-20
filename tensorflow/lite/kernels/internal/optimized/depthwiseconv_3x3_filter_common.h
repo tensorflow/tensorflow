@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_3X3_FILTER_COMMON_H_
 
 #include "profiling/instrumentation.h"
-#include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -412,7 +412,7 @@ inline bool Fast3x3FilterKernelSupported(
 
   if (quantization_type == QuantizationType::kPerChannelInt8) {
     for (int i = 0; i < output_depth; ++i) {
-      if (output_shift_ptr[i] <= 0) {
+      if (output_shift_ptr[i] > 0) {
         return false;
       }
     }
@@ -526,7 +526,7 @@ inline void PreloadInputBlock(
     const T* ptr = row_ptr;
     for (int j = 0; j < total_width; ++j) {
       // Input data is loaded once.
-      asm volatile("prfm pldl1keep, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
+      optimized_ops_preload_l1_keep(ptr);
       ptr += input_depth;
     }
     row_ptr += input_height_stride;

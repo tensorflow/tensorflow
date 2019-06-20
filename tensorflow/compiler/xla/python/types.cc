@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/stream_executor/owning_device_memory.h"
 
 namespace xla {
 
@@ -137,7 +136,7 @@ std::vector<ssize_t> StridesForShape(const Shape& shape) {
   return strides;
 }
 
-StatusOr<py::object> LiteralToPython(std::unique_ptr<xla::Literal> literal) {
+StatusOr<py::object> LiteralToPython(std::shared_ptr<xla::Literal> literal) {
   xla::Literal& m = *literal;
   if (m.shape().IsTuple()) {
     std::vector<Literal> elems = m.DecomposeTuple();
@@ -155,9 +154,7 @@ StatusOr<py::object> LiteralToPython(std::unique_ptr<xla::Literal> literal) {
   }
   TF_RET_CHECK(m.shape().IsArray());
 
-  auto capsule = py::capsule(literal.release(), [](void* ptr) {
-    delete reinterpret_cast<xla::Literal*>(ptr);
-  });
+  py::object literal_object = py::cast(literal);
   TF_ASSIGN_OR_RETURN(std::string format, FormatDescriptorForPrimitiveType(
                                               m.shape().element_type()));
   py::buffer_info info(
@@ -170,7 +167,7 @@ StatusOr<py::object> LiteralToPython(std::unique_ptr<xla::Literal> literal) {
       StridesForShape(m.shape())      // Strides (in bytes) for each index
   );
   return py::array(pybind11::dtype(info), info.shape, info.strides, info.ptr,
-                   capsule);
+                   literal_object);
 }
 
 StatusOr<PythonBufferTree> GetPythonBufferTree(const py::object& argument) {
@@ -188,7 +185,12 @@ StatusOr<PythonBufferTree> GetPythonBufferTree(const py::object& argument) {
     }
     tree.shape = ShapeUtil::MakeTupleShape(host_shapes);
   } else {
-    tree.leaves.push_back(py::cast<xla::BorrowingLiteral>(argument));
+    pybind11::detail::type_caster<BorrowingLiteral> caster;
+    if (!caster.load(argument, /*convert=*/true)) {
+      return InvalidArgument("Invalid array value.");
+    }
+    tree.arrays.push_back(std::move(caster.array));
+    tree.leaves.push_back(std::move(*caster));
     tree.shape = tree.leaves.front().shape();
   }
   return tree;

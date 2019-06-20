@@ -53,49 +53,6 @@ def preload_check():
             "Visual C++ 2015 Redistributable Update 3 from this URL: "
             "https://www.microsoft.com/en-us/download/details.aspx?id=53587"
             % build_info.msvcp_dll_name)
-
-    if build_info.is_cuda_build:
-      # Attempt to check that the necessary CUDA DLLs are loadable.
-
-      if hasattr(build_info, "nvcuda_dll_name"):
-        try:
-          ctypes.WinDLL(build_info.nvcuda_dll_name)
-        except OSError:
-          raise ImportError(
-              "Could not find %r. TensorFlow requires that this DLL "
-              "be installed in a directory that is named in your %%PATH%% "
-              "environment variable. Typically it is installed in "
-              "'C:\\Windows\\System32'. If it is not present, ensure that you "
-              "have a CUDA-capable GPU with the correct driver installed."
-              % build_info.nvcuda_dll_name)
-
-      if hasattr(build_info, "cudart_dll_name") and hasattr(
-          build_info, "cuda_version_number"):
-        try:
-          ctypes.WinDLL(build_info.cudart_dll_name)
-        except OSError:
-          raise ImportError(
-              "Could not find %r. TensorFlow requires that this DLL be "
-              "installed in a directory that is named in your %%PATH%% "
-              "environment variable. Download and install CUDA %s from "
-              "this URL: https://developer.nvidia.com/cuda-90-download-archive"
-              % (build_info.cudart_dll_name, build_info.cuda_version_number))
-
-      if hasattr(build_info, "cudnn_dll_name") and hasattr(
-          build_info, "cudnn_version_number"):
-        try:
-          ctypes.WinDLL(build_info.cudnn_dll_name)
-        except OSError:
-          raise ImportError(
-              "Could not find %r. TensorFlow requires that this DLL be "
-              "installed in a directory that is named in your %%PATH%% "
-              "environment variable. Note that installing cuDNN is a separate "
-              "step from installing CUDA, and this DLL is often found in a "
-              "different directory from the CUDA DLLs. You may install the "
-              "necessary DLL by downloading cuDNN %s from this URL: "
-              "https://developer.nvidia.com/cudnn"
-              % (build_info.cudnn_dll_name, build_info.cudnn_version_number))
-
   else:
     # TODO(mrry): Consider adding checks for the Linux and Mac OS X builds.
     pass

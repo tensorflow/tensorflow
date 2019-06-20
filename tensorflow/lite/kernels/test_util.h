@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_
 
+#include <cmath>
 #include <complex>
 #include <vector>
 
@@ -251,7 +252,11 @@ class SingleOpModel {
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                         bool allow_fp32_relax_to_fp16 = false);
 
+  // Executes inference, asserting success.
   void Invoke();
+
+  // Executes inference *without* asserting success.
+  TfLiteStatus InvokeUnchecked();
 
   void PopulateStringTensor(int index, const std::vector<string>& content) {
     auto tensor = interpreter_->tensor(index);
@@ -334,6 +339,9 @@ class SingleOpModel {
     resolver_ = std::move(resolver);
   }
 
+  // Enables NNAPI delegate application during interpreter creation.
+  static void SetForceUseNnapi(bool use_nnapi);
+
  protected:
   int32_t GetTensorSize(int index) const;
 
@@ -400,7 +408,7 @@ class SingleOpModel {
     } else if (zero_point_double > qmax_double) {
       nudged_zero_point = qmax;
     } else {
-      nudged_zero_point = static_cast<T>(round(zero_point_double));
+      nudged_zero_point = static_cast<T>(std::round(zero_point_double));
     }
 
     // The zero point should always be in the range of quantized value,
@@ -569,7 +577,9 @@ TensorType GetTensorType() {
   if (std::is_same<T, float>::value) return TensorType_FLOAT32;
   if (std::is_same<T, TfLiteFloat16>::value) return TensorType_FLOAT16;
   if (std::is_same<T, int32_t>::value) return TensorType_INT32;
+  if (std::is_same<T, int64_t>::value) return TensorType_INT64;
   if (std::is_same<T, uint8_t>::value) return TensorType_UINT8;
+  if (std::is_same<T, int8_t>::value) return TensorType_INT8;
   if (std::is_same<T, string>::value) return TensorType_STRING;
   return TensorType_MIN;  // default value
 }

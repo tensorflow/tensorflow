@@ -32,6 +32,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 _INITIALIZED_TPU_SYSTEMS = {}
+_LOCAL_MASTERS = ("", "local")
 
 
 @tf_export("tpu.experimental.initialize_tpu_system")
@@ -57,7 +58,7 @@ def initialize_tpu_system(cluster_resolver=None):
                     "Reinitializing the TPU can cause previously created "
                     "variables on TPU to be lost.")
 
-  logging.info("Initializing the TPU system.")
+  logging.info("Initializing the TPU system: %s", tpu_name)
 
   if context.executing_eagerly():
     # This function looks as it is for the following non-intuitive reasons.
@@ -65,24 +66,26 @@ def initialize_tpu_system(cluster_resolver=None):
     # DistributedTPURewritePass. This pass actually adds real ops that
     # initialize the TPU system. Thus, we can't simply run tpu.initialize_system
     # eagerly. We need to wrap it in defun and trigger the rewrite passes on it.
+    job = None
+    if tpu_name not in _LOCAL_MASTERS:
+      # Explicitly place the tpu.initialize_system in the first worker to
+      # avoid the output node match multiple devices error.
+      job = "{}/replica:0/task:0".format(cluster_resolver.get_job_name())
+
     @function.defun
     def _tpu_init_fn():
-      return tpu.initialize_system()
+      return tpu.initialize_system(job=job)
 
-    tpu_devices = sorted(
-        [x for x in context.list_devices() if "device:TPU:" in x])
-
-    if not tpu_devices:
-      raise RuntimeError("Could not find any TPU devices")
-
-    # Replace the remote TPU device with the remote TPU_SYSTEM system device. As
-    # in the remote TPU device case, we will try to compile it instead of
-    # running through optimization passes and TF Executor, but TPU_SYSTEM should
-    # work.
-    tpu_system_device = tpu_devices[0].replace("TPU", "TPU_SYSTEM")
-
-    with ops.device(tpu_system_device):
+    # The TPU_SYSTEM device must match the device used in tpu.initialize_system
+    # exactly, otherwise you can get errors if there are multiple TPU_SYSTEM
+    # devices available.
+    with ops.device(tpu._tpu_system_device_name(job)):  # pylint: disable=protected-access
       output = _tpu_init_fn()
+
+    # Clear out the eager context caches since the memory is invalid now.
+    logging.info("Clearing out eager caches")
+    context.context()._clear_caches()  # pylint: disable=protected-access
+
     serialized_topology = output.numpy()
   else:
     master = cluster_resolver.master()

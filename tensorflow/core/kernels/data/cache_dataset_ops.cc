@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
@@ -164,10 +165,9 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
           LOG(WARNING)
               << "It looks like the cache was already completely written("
               << MetaFilename(dataset()->filename_)
-              << ") after the last checkpoint was saved. "
-              << "Attempting to read the cache instead of continuing to "
-              << "write. If this is a mistake, please remove the above file "
-              << "and try running again.";
+              << ") after the last checkpoint was saved. Attempting to read "
+              << "the cache instead of continuing to write. If this is a "
+              << "mistake, please remove the above file and try running again.";
           mode_ = Mode::read;
         }
         InitializeIterator();
@@ -212,8 +212,9 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
                                std::vector<Tensor>* out_tensors,
                                bool* end_of_sequence) override {
           mutex_lock l(mu_);
-          TF_RETURN_IF_ERROR(EnsureLockFileExists());
-          TF_RETURN_IF_ERROR(writer_->status());
+          TF_RETURN_IF_ERROR(
+              HandleEOF(EnsureLockFileExists(), end_of_sequence));
+          TF_RETURN_IF_ERROR(HandleEOF(writer_->status(), end_of_sequence));
           if (cur_index_ >= kMaxItems) {
             // As a courtesy, close the [truncated] cache file.
             Status s = Finish();
@@ -364,32 +365,29 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
                 "cache lockfile already exists ('",
                 lockfile_,
                 "'). If you are sure no other running TF computations are "
-                "using "
-                "this cache prefix, delete the lockfile and re-initialize the "
-                "iterator. Lockfile contents: ",
+                "using this cache prefix, delete the lockfile and "
+                "re-initialize the iterator. Lockfile contents: ",
                 contents);
-          } else {
-            // Create the file, and write some basic contents.
-            std::unique_ptr<WritableFile> lockfile;
-            TF_RETURN_IF_ERROR(
-                dataset()->env_->NewWritableFile(lockfile_, &lockfile));
-            TF_RETURN_IF_ERROR(lockfile->Append(strings::StrCat(
-                "Created at: ", dataset()->env_->NowSeconds())));
-
-            // At this point we know that
-            // 1. There is no conflicting checkpoint with prefix `filename_`.
-            // 2. There is no concurrent session that is trying to write a ckpt
-            //    to filename.
-            // So it is safe to create a BundleWriter here. Note that it is
-            // unsafe to initialize the BundleWriter anywhere the above
-            // conditions are not met since BundleWriter's constructor creates
-            // new temp files which can delete the temp files created by a
-            // BundleWriter in another Session.
-            writer_ =
-                absl::make_unique<BundleWriter>(dataset()->env_, filename_);
-            lockfile_created_ = true;
-            return Status::OK();
           }
+          // Create the file, and write some basic contents.
+          std::unique_ptr<WritableFile> lockfile;
+          TF_RETURN_IF_ERROR(
+              dataset()->env_->NewWritableFile(lockfile_, &lockfile));
+          TF_RETURN_IF_ERROR(lockfile->Append(
+              strings::StrCat("Created at: ", dataset()->env_->NowSeconds())));
+
+          // At this point we know that
+          // 1. There is no conflicting checkpoint with prefix `filename_`.
+          // 2. There is no concurrent session that is trying to write a ckpt
+          //    to filename.
+          // So it is safe to create a BundleWriter here. Note that it is
+          // unsafe to initialize the BundleWriter anywhere the above
+          // conditions are not met since BundleWriter's constructor creates
+          // new temp files which can delete the temp files created by a
+          // BundleWriter in another Session.
+          writer_ = absl::make_unique<BundleWriter>(dataset()->env_, filename_);
+          lockfile_created_ = true;
+          return Status::OK();
         }
 
         Status Finish() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -419,6 +417,13 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
                 strings::StrCat(dataset()->filename_, "_", i, ".lockfile")));
           }
           return Status::OK();
+        }
+
+        Status HandleEOF(Status s, bool* end_of_sequence) {
+          if (errors::IsOutOfRange(s)) {
+            *end_of_sequence = true;
+          }
+          return s;
         }
 
         mutex mu_;
@@ -451,10 +456,8 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
           *end_of_sequence = false;
           TF_RETURN_IF_ERROR(reader_.status());
           if (!reader_.Valid()) {
-            return errors::Internal(
-                "Cache iterator is in an invalid state. (Perhaps GetNext "
-                "called "
-                "after end_of_sequence?)");
+            *end_of_sequence = true;
+            return Status::OK();
           }
           out_tensors->clear();
           out_tensors->resize(dataset()->num_tensors_);
@@ -464,8 +467,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
             // already pointing at `key` so we do not need to skip the header
             // entry.
             if (!iterator_restored_) {
-              reader_
-                  .Next();  // The first entry in the table is a header entry.
+              reader_.Next();  // The first entry in the table is a header.
             } else {
               iterator_restored_ = false;
             }

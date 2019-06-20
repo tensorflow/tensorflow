@@ -1,8 +1,9 @@
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "preprocessor",

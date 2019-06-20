@@ -263,12 +263,18 @@ PlatformUtil::GetStreamExecutors(
     // Block here in thread_pool destructor until all devices are initialized.
   }
   VLOG(1) << "Device initialization complete";
-  if (absl::c_all_of(stream_executors,
-                     [](se::StreamExecutor* s) { return s == nullptr; })) {
+
+  std::vector<se::StreamExecutor*> out;
+  for (se::StreamExecutor* executor : stream_executors) {
+    if (executor != nullptr) {
+      out.push_back(executor);
+    }
+  }
+  if (out.empty()) {
     return InternalError("no supported devices found for platform %s",
                          platform->Name());
   }
-  return stream_executors;
+  return out;
 }
 
 }  // namespace xla

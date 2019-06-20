@@ -150,7 +150,7 @@ class XlaBuilder {
   // result, OpMetadata is set on the Computation Builder. All subsequent
   // instructions generated via this Computation Builder will have the same
   // OpMetadata attached until a call to ClearOpMetadata.
-  void SetOpMetadata(const OpMetadata& metadata) { metadata_ = metadata; }
+  void SetOpMetadata(OpMetadata metadata) { metadata_ = std::move(metadata); }
 
   // Clears the HloMetadata state.
   void ClearOpMetadata() { metadata_.Clear(); }
@@ -1381,8 +1381,7 @@ XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
 // triangle. The data returned in the other output triangle is arbitrary and
 // implementation-defined.
 //
-// The value returned if `a` is not Hermitian positive definite is
-// implementation-defined.
+// If `a` is not Hermitian positive definite, returns an array full of NaNs.
 XlaOp Cholesky(XlaOp a, bool lower);
 
 // Enqueues an infeed instruction onto the computation, which writes data of

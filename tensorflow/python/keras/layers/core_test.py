@@ -22,10 +22,13 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -144,6 +147,11 @@ class LambdaLayerTest(keras_parameterized.TestCase):
     l = keras.layers.Lambda(lambda_fn)
     output_shape = l.compute_output_shape([(10, 10), (10, 20)])
     self.assertAllEqual((10, 20), output_shape)
+    output_signature = l.compute_output_signature([
+        tensor_spec.TensorSpec(dtype=dtypes.float64, shape=(10, 10)),
+        tensor_spec.TensorSpec(dtype=dtypes.float64, shape=(10, 20))])
+    self.assertAllEqual((10, 20), output_signature.shape)
+    self.assertAllEqual(dtypes.float64, output_signature.dtype)
 
   def test_lambda_output_shape_list_multiple_outputs(self):
 
@@ -291,6 +299,25 @@ class CoreLayersTest(keras_parameterized.TestCase):
     self.assertTrue(y._keras_mask is not None)
     self.assertAllClose(self.evaluate(y._keras_mask), np.zeros((10,)))
 
+  def test_compute_mask_with_positional_mask_arg(self):
+
+    class MyLayer(keras.layers.Layer):
+
+      def call(self, inputs, mask=None):
+        return inputs
+
+      def compute_mask(self, inputs, mask=None):
+        if mask is not None:
+          return array_ops.ones(())
+        else:
+          return array_ops.zeros(())
+
+    x, mask = array_ops.ones((1, 1)), array_ops.ones((1, 1))
+    layer = MyLayer()
+    y = layer(x, mask)
+    # Check that `mask` was correctly sent to `compute_mask`.
+    self.assertEqual(keras.backend.get_value(y._keras_mask), 1)
+
   def test_activation(self):
     # with string argument
     testing_utils.layer_test(
@@ -397,6 +424,10 @@ class CoreLayersTest(keras_parameterized.TestCase):
         np.random.randint(low=0, high=7, size=(2, 2)), dtype='float16')
     layer = keras.layers.Dense(5, dtype=policy.Policy('infer_float32_vars'))
     outputs = layer(inputs)
+    output_signature = layer.compute_output_signature(
+        tensor_spec.TensorSpec(dtype='float16', shape=(2, 2)))
+    self.assertEqual(output_signature.dtype, dtypes.float16)
+    self.assertEqual(output_signature.shape, (2, 5))
     self.assertEqual(outputs.dtype, 'float16')
     self.assertEqual(layer.kernel.dtype, 'float32')
 

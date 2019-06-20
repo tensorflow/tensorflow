@@ -67,6 +67,7 @@ struct MklConvFwdParams {
   string dtypes = string("");
   struct PostOpParam {
     string name;
+    mkldnn::algorithm alg;
     std::vector<float> param;
   };
   std::vector<PostOpParam> post_op_params;
@@ -240,12 +241,12 @@ class MklConvFwdPrimitive : public MklPrimitive {
     mkldnn::post_ops post_ops;
     if (!post_op_params.empty()) {
       for (auto const& post_op_param : post_op_params) {
-        if (post_op_param.name == "relu") {
+        if (post_op_param.name == "activation") {
           DCHECK_EQ(post_op_param.param.size(), 3);
           float op_scale = post_op_param.param[0];
           float op_alpha = post_op_param.param[1];
           float op_beta = post_op_param.param[2];
-          post_ops.append_eltwise(op_scale, mkldnn::eltwise_relu, op_alpha,
+          post_ops.append_eltwise(op_scale, post_op_param.alg, op_alpha,
                                   op_beta);
         } else if (post_op_param.name == "sum") {
           DCHECK_EQ(post_op_param.param.size(), 1);
@@ -258,7 +259,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
             post_ops_attr.set_output_scales(2, post_op_param.param);
           }
         } else {
-          DCHECK((post_op_param.name == "relu") ||
+          DCHECK((post_op_param.name == "activation") ||
                  (post_op_param.name == "sum") ||
                  (post_op_param.name == "output_scale"));
         }
@@ -368,7 +369,7 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<float> {
 
     // Generate keys for post-ops
     for (auto const& post_op_param : convFwdDims.post_op_params) {
-      if (post_op_param.name == "relu") {
+      if (post_op_param.name == "activation") {
         DCHECK_EQ(post_op_param.param.size(), 3);
       } else if (post_op_param.name == "sum") {
         DCHECK_EQ(post_op_param.param.size(), 1);
@@ -629,6 +630,7 @@ class MklConvOp : public OpKernel {
       std::shared_ptr<ConvFwdPd> conv_fwd_pd = conv_fwd->GetPrimitiveDesc();
       AllocateOutputTensor(context, *conv_fwd_pd, dst_dims_mkl_order, tf_fmt,
                            &dst_tensor);
+
       Tensor* filter_out_tensor = nullptr;
       if (emit_filter_output) {
         AllocateFilterOutputTensor(context, *conv_fwd_pd,
@@ -756,12 +758,19 @@ class MklConvOp : public OpKernel {
 
  protected:
   void set_fuse_biasadd(bool fuse_biasadd) { fuse_biasadd_ = fuse_biasadd; }
-  void set_fuse_relu(bool fuse_relu) { fuse_relu_ = fuse_relu; }
+  void set_fuse_activation(bool fuse_activation,
+                           mkldnn::algorithm activation_alg,
+                           float relu_up_bound = 0.0) {
+    fuse_activation_ = fuse_activation;
+    activation_alg_ = activation_alg;
+    relu_up_bound_ = relu_up_bound;
+  }
   void set_fuse_pad(bool fuse_pad) {
     fuse_pad_ = fuse_pad;
     // In PadwithFusedConv OP, pad is the fourth index.
     input_index_pad_ = 3;
   }
+  void set_fuse_add(bool fuse_add) { fuse_add_ = fuse_add; }
 
   // This method is for the base class MklConvOp, which handles the
   // floating point implementation of Conv. The quantized conv implementations
@@ -777,7 +786,13 @@ class MklConvOp : public OpKernel {
     // Add fusions as post ops
     // NOTE: Fusion of BiasAdd is handled directly inside MklConvOp by
     // checking `fuse_biasadd_` flag.
-    if (fuse_relu_) params.post_op_params.push_back({"relu", {1.0, 0.0, 0.0}});
+    if (fuse_add_) {
+      params.post_op_params.push_back({"sum", mkldnn::algorithm_undef, {1.0}});
+    }
+    if (fuse_activation_) {
+      params.post_op_params.push_back(
+          {"activation", activation_alg_, {1.0, relu_up_bound_, 0.0}});
+    }
   }
 
   virtual Tbias* GetBiasHandle(OpKernelContext* context,
@@ -818,6 +833,34 @@ class MklConvOp : public OpKernel {
 
     AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
                               output_tf_shape, output_mkl_shape);
+    if (fuse_add_) {
+      const Tensor& add_tensor = MklGetInput(context, kInputIndex_Add);
+      MklDnnShape add_mkl_shape;
+      GetMklShape(context, kInputIndex_Add, &add_mkl_shape);
+
+      // Check if need reorder
+      if (add_mkl_shape == output_mkl_shape) {
+        CHECK((*output_tensor)->CopyFrom(add_tensor, output_tf_shape));
+      } else {
+        auto add_md =
+            add_mkl_shape.IsMklTensor()
+                ? add_mkl_shape.GetMklLayout()
+                : memory::desc(output_dims_mkl_order, MklDnnType<Toutput>(),
+                               output_mkl_shape.GetTfDataFormat());
+        auto add_pd = memory::primitive_desc(add_md, this->cpu_engine_);
+        void* add_buf = static_cast<void*>(
+            const_cast<Toutput*>(add_tensor.flat<Toutput>().data()));
+        void* dst_buf =
+            static_cast<void*>((*output_tensor)->flat<Ttemp_output>().data());
+        auto add = new memory(add_pd, add_buf);
+        auto dst = new memory(dst_pd, dst_buf);
+        auto reorder_desc = mkldnn::reorder::primitive_desc(add_pd, dst_pd);
+
+        std::vector<mkldnn::primitive> net;
+        net.push_back(mkldnn::reorder(reorder_desc, *add, *dst));
+        stream(stream::kind::eager).submit(net).wait();
+      }
+    }
   }
 
   engine cpu_engine_ = engine(engine::cpu, 0);
@@ -835,12 +878,17 @@ class MklConvOp : public OpKernel {
 
   // Initialize to values the template is instantiated with
   bool fuse_biasadd_ = bias_enabled;
-  bool fuse_relu_ = false;
+  bool fuse_activation_ = false;
   bool fuse_pad_ = pad_enabled;
+  bool fuse_add_ = false;
+
+  float relu_up_bound_ = 0.0;
+  mkldnn::algorithm activation_alg_ = mkldnn::algorithm_undef;
 
   int input_index_pad_ = 2;
 
   const int kInputIndex_Src = 0, kInputIndex_Filter = 1, kInputIndex_Bias = 2;
+  const int kInputIndex_Add = 3;
   const int kOutputIndex_Dst = 0, kOutputIndex_Filter = 1;
   const int kDilationH = 0, kDilationW = 1;
 
@@ -1021,17 +1069,64 @@ class MklFusedConvOp
                   errors::InvalidArgument(
                       "Fused Conv2D must have one extra argument: bias."));
     } else if (fused_ops == std::vector<string>{"Relu"}) {
-      this->set_fuse_relu(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_relu);
+    } else if (fused_ops == std::vector<string>{"Relu6"}) {
+      this->set_fuse_activation(true, mkldnn::eltwise_bounded_relu, 6.0);
+    } else if (fused_ops == std::vector<string>{"Elu"}) {
+      this->set_fuse_activation(true, mkldnn::eltwise_elu);
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu"}) {
       this->set_fuse_biasadd(true);
-      this->set_fuse_relu(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_relu);
       OP_REQUIRES(context, num_args == 1,
                   errors::InvalidArgument(
                       "Fused Conv2D must have one extra argument: bias."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu6"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_bounded_relu, 6.0);
+      OP_REQUIRES(context, num_args == 1,
+                  errors::InvalidArgument(
+                      "Fused Conv2D must have one extra argument: bias."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Elu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_elu);
+      OP_REQUIRES(context, num_args == 1,
+                  errors::InvalidArgument(
+                      "Fused Conv2D must have one extra argument: bias."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      OP_REQUIRES(
+          context, num_args == 2,
+          errors::InvalidArgument(
+              "Fused Conv2D must have two extra arguments: bias and add."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_relu);
+      OP_REQUIRES(
+          context, num_args == 2,
+          errors::InvalidArgument(
+              "Fused Conv2D must have two extra arguments: bias and add."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu6"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_bounded_relu, 6.0);
+      OP_REQUIRES(
+          context, num_args == 2,
+          errors::InvalidArgument(
+              "Fused Conv2D must have two extra arguments: bias and add."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Elu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_elu);
+      OP_REQUIRES(
+          context, num_args == 2,
+          errors::InvalidArgument(
+              "Fused Conv2D must have two extra arguments: bias and add."));
     } else {
       OP_REQUIRES(context, false,
                   errors::Unimplemented("Fusion is not implemented: [",
-                                        str_util::Join(fused_ops, ","), "]"));
+                                        absl::StrJoin(fused_ops, ","), "]"));
     }
 
     if (pad_enabled) {
@@ -1178,7 +1273,8 @@ class MklQuantizedConv2DOp
         scales[i] = factor * input_range * filter_range /
                     (255.0f * 127.0f * output_range);
       }
-      params.post_op_params.push_back({"output_scale", scales});
+      params.post_op_params.push_back(
+          {"output_scale", mkldnn::algorithm_undef, scales});
     }
   }
 
@@ -1261,7 +1357,8 @@ class MklQuantizedConv2DReluOp
                            MklConvFwdParams& params) override {
     MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output, bias_enabled,
                          is_depthwise>::ExtendConvFwdParams(context, params);
-    params.post_op_params.push_back({"relu", {1.0, 0.0, 0.0}});
+    params.post_op_params.push_back(
+        {"activation", mkldnn::eltwise_relu, {1.0, 0.0, 0.0}});
   }
 };
 
@@ -1318,14 +1415,17 @@ class MklQuantizedConv2DSumReluOp
       // If it is not then  it is DT_INT8 and is scaled appropriately.
       if (summand_type == DT_QUINT8)
         params.post_op_params.push_back(
-            {"sum", {scale_summand / scale_output}});
+            {"sum", mkldnn::algorithm_undef, {scale_summand / scale_output}});
       else
         params.post_op_params.push_back(
-            {"sum", {255.0f * scale_summand / (scale_output * 127.0f)}});
+            {"sum",
+             mkldnn::algorithm_undef,
+             {255.0f * scale_summand / (scale_output * 127.0f)}});
     } else {
-      params.post_op_params.push_back({"sum", {1.0}});
+      params.post_op_params.push_back({"sum", mkldnn::algorithm_undef, {1.0}});
     }
-    params.post_op_params.push_back({"relu", {1.0, 0.0, 0.0}});
+    params.post_op_params.push_back(
+        {"activation", mkldnn::eltwise_relu, {1.0, 0.0, 0.0}});
   }
 
   void AllocateOutputTensor(OpKernelContext* context,

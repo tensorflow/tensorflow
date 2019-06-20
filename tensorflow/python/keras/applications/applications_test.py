@@ -26,6 +26,11 @@ from tensorflow.python.platform import test
 
 MODEL_LIST = [
     (applications.ResNet50, 2048),
+    (applications.ResNet101, 2048),
+    (applications.ResNet152, 2048),
+    (applications.ResNet50V2, 2048),
+    (applications.ResNet101V2, 2048),
+    (applications.ResNet152V2, 2048),
     (applications.VGG16, 512),
     (applications.VGG19, 512),
     (applications.Xception, 2048),

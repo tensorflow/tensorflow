@@ -1,18 +1,15 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_py_test")
+
 package(
     default_visibility = [
         "//visibility:public",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files([
     "LICENSE",
 ])
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 py_library(
     name = "models",
@@ -70,6 +67,7 @@ tf_py_test(
 py_binary(
     name = "train",
     srcs = ["train.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [":train_main_lib"],
 )
@@ -94,7 +92,7 @@ tf_py_test(
     size = "small",
     srcs = ["train_test.py"],
     additional_deps = [
-        ":train",
+        ":train_main_lib",
         "//tensorflow/python:client_testlib",
     ],
     tags = [
@@ -105,6 +103,7 @@ tf_py_test(
 py_binary(
     name = "freeze",
     srcs = ["freeze.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [":freeze_main_lib"],
 )
@@ -150,6 +149,7 @@ tf_py_test(
 py_binary(
     name = "wav_to_features",
     srcs = ["wav_to_features.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [":wav_to_features_main_lib"],
 )
@@ -192,6 +192,7 @@ tf_py_test(
 py_binary(
     name = "generate_streaming_test_wav",
     srcs = ["generate_streaming_test_wav.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [":generate_streaming_test_wav_main_lib"],
 )
@@ -249,6 +250,7 @@ tf_cc_binary(
 py_binary(
     name = "label_wav",
     srcs = ["label_wav.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [":label_wav_main_lib"],
 )

@@ -50,25 +50,29 @@ class NcclAllReduceThunk : public Thunk {
 
   // TODO(b/125951860): Plumb more datatypes / reduction operators. Initial
   // implementation is simply F32 summation.
+  //
+  // TODO(b/125951860): Support all-reduces with replica groups, i.e.
+  // all-reduces that compute multiple sums across subsets of all replicas.
   NcclAllReduceThunk(int64 replica_count, int64 element_count,
                      const BufferAllocation::Slice& source_buffer,
                      const BufferAllocation::Slice& destination_buffer,
                      const HloInstruction* all_reduce);
   ~NcclAllReduceThunk() override;
 
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
-                         HloExecutionProfiler* profiler) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
+  // Extra data stored in NcclAllReduceThunk whose types we don't want exposed
+  // in the header file.  (This is mainly because the implementation of
+  // NcclAllReduceThunk is different depending on whether CUDA is enabled in the
+  // build, and we don't want to expose *that* mess in the header.)
+  struct AuxData;
+
   const int64 replica_count_;
   const int64 element_count_;
   const BufferAllocation::Slice source_buffer_;
   const BufferAllocation::Slice destination_buffer_;
-
-  tensorflow::mutex mu_;
-  // Set of GPUs that ExecuteOnStream has been called on.
-  absl::flat_hash_set<int> devices_seen_ GUARDED_BY(mu_);
+  std::unique_ptr<AuxData> aux_data_;
 };
 
 }  // namespace gpu

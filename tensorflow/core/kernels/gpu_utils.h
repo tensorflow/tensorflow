@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_GPU_UTILS_H_
 #define TENSORFLOW_CORE_KERNELS_GPU_UTILS_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <unordered_map>
 
@@ -214,6 +214,6 @@ Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_GPU_UTILS_H_

@@ -179,7 +179,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     # Calling get_concrete_function wraps in a second call operation; we want to
     # inspect the original function body for the control output; digging into
     # graph.as_graph_def() and its FunctionDefLibrary is another option.
-    imported_concrete, = imported.f._concrete_functions
+    imported_concrete, = imported.f.concrete_functions
     imported_graph = imported_concrete.graph
     self.assertIn(
         imported_graph.get_operation_by_name("should_be_control_output"),
@@ -724,8 +724,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   def test_load_in_graph_mode(self, cycles):
     root = tracking.AutoTrackable()
-    root.v1 = variables.Variable(1.)
-    root.v2 = variables.Variable(2.)
+    root.v1 = variables.Variable(1., name="v_one", trainable=False)
+    root.v2 = variables.Variable(2., name="v_two", trainable=True)
     root.f = def_function.function(
         lambda x: root.v2 * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
@@ -735,13 +735,22 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())
     save.save(root, path)
 
-    with ops.Graph().as_default():
+    with ops.Graph().as_default() as g:
       imported = load.load(path)
       var_v1 = imported.v1
+      self.assertFalse(var_v1.trainable)
+      var_v2 = imported.v2
+      self.assertTrue(var_v2.trainable)
       output = imported.f(constant_op.constant(2.))
       with monitored_session.MonitoredSession() as sess:
         self.assertEqual(1.0, sess.run(var_v1))
         self.assertEqual(4.0, sess.run(output))
+      self.assertCountEqual([var_v1, var_v2],
+                            g.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
+      # load() should not add to TRAINABLE_VARIABLES. Higher levels of model
+      # building control retraining or frozen use of imported SavedModels.
+      self.assertCountEqual([],
+                            g.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
 
   def test_load_in_func_graph(self, cycles):
     root = tracking.AutoTrackable()
@@ -1644,6 +1653,20 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(versions.__version__, root.tensorflow_version)
     self.assertEqual(versions.__git_version__, root.tensorflow_git_version)
 
+  def test_load_grad_save(self, cycles):
+    root = util.Checkpoint()
+    root.v = variables.Variable(2.)
+    root.f = def_function.function(lambda x: root.v * x)
+    root.g = def_function.function(root.f)
+    for _ in range(cycles):
+      with backprop.GradientTape() as tape:
+        inp = constant_op.constant(2.)
+        tape.watch(inp)
+        output = root.g(inp)
+        self.assertAllClose(4., output)
+      self.assertAllClose(2., tape.gradient(output, inp))
+      root = self.cycle(root, 1)
+
   def test_functional_model_with_conv(self, cycles):
     x = input_layer.Input(name="x", shape=(None, None, 3), dtype=dtypes.float32)
     conved = convolutional.Conv2D(filters=3, kernel_size=3, dilation_rate=2)(x)
@@ -1686,6 +1709,27 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         [[-3.]],
         f(x=constant_op.constant([[-1.]]))["output_0"].numpy())
+
+
+  def test_object_with_extra_dependencies(self):
+
+    class Extra(tracking.AutoTrackable):
+
+      def _list_extra_dependencies_for_serialization(self, cache):
+        if self not in cache:
+          cache[self] = {"a": variables.Variable(5.)}
+        return cache[self]
+    root = Extra()
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    save.save(root, path)
+    imported = load.load(path)
+    self.assertEqual(5, self.evaluate(imported.a))
+
+    root.a = variables.Variable(3.)
+    with self.assertRaisesRegexp(
+        ValueError,
+        "object has an attribute named a, which is reserved."):
+      save.save(root, path)
 
 
 if __name__ == "__main__":

@@ -9,9 +9,10 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = [":friends"])
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "friends",
@@ -402,6 +403,27 @@ tf_cc_test(
     ],
 )
 
+xla_test(
+    name = "dynamic_update_slice_test",
+    srcs = ["dynamic_update_slice_test.cc"],
+    backends = [
+        "cpu",
+        "gpu",
+    ],
+    deps = [
+        ":hlo_parser",
+        "//tensorflow/compiler/xla:execution_options_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/service/cpu:cpu_executable",
+        "//tensorflow/compiler/xla/service/cpu:parallel_task_assignment",
+        "//tensorflow/compiler/xla/service/cpu:target_machine_features",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 tf_cc_test(
     name = "dfs_hlo_visitor_with_default_test",
     srcs = ["dfs_hlo_visitor_with_default_test.cc"],
@@ -533,6 +555,7 @@ tf_cc_test(
     srcs = ["hlo_instruction_test.cc"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_parser",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:protobuf_util",
@@ -857,6 +880,7 @@ cc_library(
     name = "shaped_buffer",
     srcs = ["shaped_buffer.cc"],
     hdrs = ["shaped_buffer.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
@@ -1127,6 +1151,9 @@ cc_library(
         ":buffer_value_containers",
         ":heap_simulator",
         ":hlo",
+        ":hlo_alias_analysis",
+        ":hlo_buffer",
+        ":hlo_dataflow_analysis",
         ":hlo_proto",
         ":logical_buffer",
         ":tuple_points_to_analysis",
@@ -1444,6 +1471,7 @@ cc_library(
         ":hlo",
         ":hlo_pass",
         ":hlo_reachability",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
@@ -1473,6 +1501,7 @@ cc_library(
         ":hlo",
         ":hlo_pass",
         ":hlo_reachability",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:lib",
@@ -1621,7 +1650,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:loops",
         "//tensorflow/compiler/xla/client/lib:math",
@@ -1815,6 +1844,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -2192,6 +2222,7 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
     alwayslink = True,  # Contains per-platform computation placer registration
 )
@@ -2244,6 +2275,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -2867,6 +2899,44 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "hlo_rematerialization_test_utils",
+    testonly = 1,
+    hdrs = ["hlo_rematerialization_test_utils.h"],
+    deps = [
+        ":hlo",
+        ":hlo_matchers",
+        ":hlo_ordering",
+        ":hlo_rematerialization",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/flags:flag",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_rematerialization_test_utils_test",
+    srcs = ["hlo_rematerialization_test_utils_test.cc"],
+    deps = [
+        ":flatten_call_graph",
+        ":hlo",
+        ":hlo_matchers",
+        ":hlo_ordering",
+        ":hlo_rematerialization_test_utils",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
 tf_cc_test(
     name = "hlo_rematerialization_test",
     srcs = ["hlo_rematerialization_test.cc"],
@@ -2876,6 +2946,7 @@ tf_cc_test(
         ":hlo_matchers",
         ":hlo_ordering",
         ":hlo_rematerialization",
+        ":hlo_rematerialization_test_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -2890,6 +2961,7 @@ tf_cc_test(
     srcs = ["hlo_dce_test.cc"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_dce",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
@@ -3830,6 +3902,7 @@ cc_library(
     hdrs = ["hlo_parser.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_lexer",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",

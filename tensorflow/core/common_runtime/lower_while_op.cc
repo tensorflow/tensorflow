@@ -375,6 +375,7 @@ Status LowerWhileHelper::CreateNextIterationNodes() {
     TF_RETURN_IF_ERROR(NodeBuilder(NewName("next_iteration"), "NextIteration",
                                    graph_->op_registry(), &debug_info_)
                            .Input(NodeOut(body_call_node_, i))
+                           .ControlInput(body_call_node_)
                            .Device(while_op_->requested_device())
                            .Finalize(graph_, &next_iteration));
     next_iterations_nodes_.emplace_back(next_iteration);

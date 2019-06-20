@@ -19,15 +19,22 @@ from __future__ import division
 from __future__ import print_function
 
 import gast
+import six
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import transformer
-from tensorflow.python.autograph.pyct.qual_names import QN
 from tensorflow.python.autograph.pyct.static_analysis import activity
-from tensorflow.python.autograph.pyct.static_analysis.annos import NodeAnno
+from tensorflow.python.autograph.pyct.static_analysis import annos
 from tensorflow.python.platform import test
+
+
+QN = qual_names.QN
+NodeAnno = annos.NodeAnno
+
+global_a = 7
+global_b = 17
 
 
 class ScopeTest(test.TestCase):
@@ -109,7 +116,7 @@ class ScopeTest(test.TestCase):
     self.assertFalse(QN('a') in child.referenced)
 
 
-class ActivityAnalyzerTest(test.TestCase):
+class ActivityAnalyzerTestBase(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
     node, source = parser.parse_entity(test_fn, future_features=())
@@ -135,6 +142,9 @@ class ActivityAnalyzerTest(test.TestCase):
     """Assert the scope contains specific used, modified & created variables."""
     self.assertSymbolSetsAre(used, scope.read, 'read')
     self.assertSymbolSetsAre(modified, scope.modified, 'modified')
+
+
+class ActivityAnalyzerTest(ActivityAnalyzerTestBase):
 
   def test_print_statement(self):
 
@@ -469,6 +479,44 @@ class ActivityAnalyzerTest(test.TestCase):
     body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
     self.assertScopeIs(body_scope, ('c', 'd'), ('a',))
     self.assertSymbolSetsAre((), body_scope.params.keys(), 'params')
+
+  def test_comprehension_targets_are_isolated(self):
+
+    def test_fn(a):
+      b = [c for c in a]  # pylint:disable=unused-variable
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    if six.PY2:
+      self.assertScopeIs(body_scope, ('a',), ('b', 'c'))
+    else:
+      self.assertScopeIs(body_scope, ('a',), ('b',))
+
+  def test_comprehension_targets_are_isolated_in_augassign(self):
+
+    def test_fn(a, b):
+      b += [c for c in a]  # pylint:disable=unused-variable
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    if six.PY2:
+      self.assertScopeIs(body_scope, ('a', 'b'), ('b', 'c'))
+    else:
+      self.assertScopeIs(body_scope, ('a', 'b'), ('b',))
+
+  def test_global_symbol(self):
+
+    def test_fn(c):
+      global global_a
+      global global_b
+      global_a = global_b + c
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(body_scope, ('global_b', 'c'), ('global_a',))
 
 
 if __name__ == '__main__':

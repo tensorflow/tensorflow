@@ -1,13 +1,14 @@
 # TensorFlow code for training hybrid neural network / decision tree models.
 
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -76,7 +77,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@protobuf_archive//:protobuf_headers",
+        "@com_google_protobuf//:protobuf_headers",
     ],
 )
 

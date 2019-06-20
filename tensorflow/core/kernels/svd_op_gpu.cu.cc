@@ -59,7 +59,7 @@ namespace {
 // The result is stored in V[batch] and has the same sign as the
 // real value of V (which should be computed)
 template <class Scalar>
-__global__ void ComputeValueOfVKernel(Cuda2DLaunchConfig config, int64 m,
+__global__ void ComputeValueOfVKernel(Gpu2DLaunchConfig config, int64 m,
                                       int64 ldu, const Scalar* M,
                                       const Scalar* U, const Scalar* S,
                                       Scalar* V) {
@@ -195,7 +195,7 @@ class SvdOpGpu : public AsyncOpKernel {
       // 1. compute the (batched) sum
       const GPUDevice& d = context->eigen_device<GPUDevice>();
       d.memset(outputV_ptr, 0, batch_size * sizeof(Scalar));
-      Cuda2DLaunchConfig cfg2D = GetCuda2DLaunchConfig(batch_size, m, d);
+      Gpu2DLaunchConfig cfg2D = GetCuda2DLaunchConfig(batch_size, m, d);
       TF_CHECK_OK(CudaLaunchKernel(ComputeValueOfVKernel<Scalar>,
                                    cfg2D.block_count, cfg2D.thread_per_block, 0,
                                    d.stream(), cfg2D, m, full_matrices_ ? m : p,

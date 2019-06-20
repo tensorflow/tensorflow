@@ -185,7 +185,7 @@ def _FindFusedBatchNorms(graph):
               graph_matcher.OpTypePattern('*')])
 
   batch_norm_pattern = graph_matcher.OpTypePattern(
-      'FusedBatchNorm',
+      'FusedBatchNorm|FusedBatchNormV3',
       inputs=[
           graph_matcher.OneofPattern(
               [matmul_reshape_pattern, layer_output_pattern]), gamma_pattern,
@@ -489,8 +489,14 @@ def _CloneWithNewOperands(layer_op, input_tensor, weight_tensor,
 
 
 @ops.RegisterGradient('FoldFusedBatchNormGrad')
-def _FoldFusedBatchNormGrad(op, unused_grad_y, grad_mean, grad_var, unused_1,
-                            unused_2):
+def _FoldFusedBatchNormGrad(op,
+                            unused_grad_y,
+                            grad_mean,
+                            grad_var,
+                            unused_1,
+                            unused_2,
+                            unused_3=None):
+  """Gradient function for the FusedBatchNorm ops matched by _GetLayerMatch."""
   x = op.inputs[0]
   n = math_ops.cast(
       array_ops.size(x) / array_ops.size(grad_mean), dtypes.float32)
@@ -556,7 +562,7 @@ def _FoldUnfusedBatchNorms(graph, is_training, freeze_batch_norm_delay):
     if add_bypass_ctx:
       add_bypass_ctx = add_bypass_ctx + '/'
 
-    add_bypass = graph.get_operation_by_name(add_bypass_ctx + 'Add')
+    add_bypass = graph.get_operation_by_name(add_bypass_ctx + 'AddV2')
     nodes_modified_count = common.RerouteTensor(
         folded_op.outputs[0], original_op.outputs[0], can_modify=[add_bypass])
     if nodes_modified_count != 1:
@@ -844,6 +850,7 @@ class _OpCloner(object):
     self.op_type_to_action = {
         'Mul': self._CloneMul,
         'Add': self._CloneAdd,
+        'AddV2': self._CloneAdd,
         'Conv2D': self._CloneConv2d,
         'DepthwiseConv2dNative': self._CloneDepthwiseConv2d,
         'MatMul': self._CloneMatMul,

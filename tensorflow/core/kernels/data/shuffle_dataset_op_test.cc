@@ -9,6 +9,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/shuffle_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
@@ -17,9 +18,7 @@ namespace data {
 namespace {
 
 constexpr char kShuffleNodeName[] = "shuffle_dataset";
-constexpr char kShuffleOpName[] = "ShuffleDataset";
 constexpr char kShuffleAndRepeatNodeName[] = "shuffle_and_repeat_dataset";
-constexpr char kShuffleAndRepeatOpName[] = "ShuffleAndRepeatDataset";
 
 class ShuffleDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -32,16 +31,23 @@ class ShuffleDatasetOpTest : public DatasetOpsTestBase {
     NodeDef node_def;
     if (count == 1) {
       node_def = test::function::NDef(
-          kShuffleNodeName, kShuffleOpName,
-          {"input_dataset", "buffer_size", "seed", "seed2"},
-          {{"reshuffle_each_iteration", reshuffle_each_iteration},
-           {"output_types", output_types},
-           {"output_shapes", output_shapes}});
+          kShuffleNodeName, name_utils::OpName(ShuffleDatasetOp::kDatasetType),
+          {ShuffleDatasetOp::kInputDataset, ShuffleDatasetOp::kBufferSize,
+           ShuffleDatasetOp::kSeed, ShuffleDatasetOp::kSeed2},
+          {{ShuffleDatasetOp::kReshuffleEachIteration,
+            reshuffle_each_iteration},
+           {ShuffleDatasetOp::kOutputTypes, output_types},
+           {ShuffleDatasetOp::kOutputShapes, output_shapes}});
     } else {
       node_def = test::function::NDef(
-          kShuffleAndRepeatNodeName, kShuffleAndRepeatOpName,
-          {"input_dataset", "buffer_size", "seed", "seed2", "count"},
-          {{"output_types", output_types}, {"output_shapes", output_shapes}});
+          kShuffleAndRepeatNodeName,
+          name_utils::OpName(ShuffleAndRepeatDatasetOp::kDatasetType),
+          {ShuffleAndRepeatDatasetOp::kInputDataset,
+           ShuffleAndRepeatDatasetOp::kBufferSize,
+           ShuffleAndRepeatDatasetOp::kSeed, ShuffleAndRepeatDatasetOp::kSeed2,
+           ShuffleAndRepeatDatasetOp::kCount},
+          {{ShuffleAndRepeatDatasetOp::kOutputTypes, output_types},
+           {ShuffleAndRepeatDatasetOp::kOutputShapes, output_shapes}});
     }
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, shuffle_dataset_kernel));
     return Status::OK();
@@ -339,8 +345,9 @@ TEST_P(ParameterizedShuffleDatasetOpTest, GetNext) {
   Tensor seed = test_case.seed;
   Tensor seed2 = test_case.seed2;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &buffer_size, &seed, &seed2});
-  if (count_value != 1) inputs.push_back(&count);
+      {TensorValue(&range_dataset_tensor), TensorValue(&buffer_size),
+       TensorValue(&seed), TensorValue(&seed2)});
+  if (count_value != 1) inputs.push_back(TensorValue(&count));
 
   std::unique_ptr<OpKernelContext> dataset_context;
   TF_ASSERT_OK(
@@ -424,8 +431,9 @@ TEST_P(ParameterizedShuffleDatasetOpTest, DatasetNodeName) {
   Tensor seed = test_case.seed;
   Tensor seed2 = test_case.seed2;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &buffer_size, &seed, &seed2});
-  if (count_value != 1) inputs.push_back(&count);
+      {TensorValue(&range_dataset_tensor), TensorValue(&buffer_size),
+       TensorValue(&seed), TensorValue(&seed2)});
+  if (count_value != 1) inputs.push_back(TensorValue(&count));
 
   std::unique_ptr<OpKernelContext> dataset_context;
   TF_ASSERT_OK(
@@ -467,8 +475,9 @@ TEST_P(ParameterizedShuffleDatasetOpTest, DatasetTypeString) {
   Tensor seed = test_case.seed;
   Tensor seed2 = test_case.seed2;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &buffer_size, &seed, &seed2});
-  if (count_value != 1) inputs.push_back(&count);
+      {TensorValue(&range_dataset_tensor), TensorValue(&buffer_size),
+       TensorValue(&seed), TensorValue(&seed2)});
+  if (count_value != 1) inputs.push_back(TensorValue(&count));
 
   std::unique_ptr<OpKernelContext> dataset_context;
   TF_ASSERT_OK(
@@ -479,9 +488,11 @@ TEST_P(ParameterizedShuffleDatasetOpTest, DatasetTypeString) {
   core::ScopedUnref scoped_unref_dataset(dataset);
 
   if (count_value == 1) {
-    EXPECT_EQ(dataset->type_string(), kShuffleOpName);
+    EXPECT_EQ(dataset->type_string(),
+              name_utils::OpName(ShuffleDatasetOp::kDatasetType));
   } else {
-    EXPECT_EQ(dataset->type_string(), kShuffleAndRepeatOpName);
+    EXPECT_EQ(dataset->type_string(),
+              name_utils::OpName(ShuffleAndRepeatDatasetOp::kDatasetType));
   }
 }
 
@@ -510,8 +521,9 @@ TEST_P(ParameterizedShuffleDatasetOpTest, DatasetOutputDtypes) {
   Tensor seed = test_case.seed;
   Tensor seed2 = test_case.seed2;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &buffer_size, &seed, &seed2});
-  if (count_value != 1) inputs.push_back(&count);
+      {TensorValue(&range_dataset_tensor), TensorValue(&buffer_size),
+       TensorValue(&seed), TensorValue(&seed2)});
+  if (count_value != 1) inputs.push_back(TensorValue(&count));
 
   std::unique_ptr<OpKernelContext> dataset_context;
   TF_ASSERT_OK(
@@ -550,8 +562,9 @@ TEST_P(ParameterizedShuffleDatasetOpTest, DatasetOutputShapes) {
   Tensor seed = test_case.seed;
   Tensor seed2 = test_case.seed2;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &buffer_size, &seed, &seed2});
-  if (count_value != 1) inputs.push_back(&count);
+      {TensorValue(&range_dataset_tensor), TensorValue(&buffer_size),
+       TensorValue(&seed), TensorValue(&seed2)});
+  if (count_value != 1) inputs.push_back(TensorValue(&count));
 
   std::unique_ptr<OpKernelContext> dataset_context;
   TF_ASSERT_OK(
@@ -590,8 +603,9 @@ TEST_P(ParameterizedShuffleDatasetOpTest, Cardinality) {
   Tensor seed = test_case.seed;
   Tensor seed2 = test_case.seed2;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &buffer_size, &seed, &seed2});
-  if (count_value != 1) inputs.push_back(&count);
+      {TensorValue(&range_dataset_tensor), TensorValue(&buffer_size),
+       TensorValue(&seed), TensorValue(&seed2)});
+  if (count_value != 1) inputs.push_back(TensorValue(&count));
 
   std::unique_ptr<OpKernelContext> dataset_context;
   TF_ASSERT_OK(
@@ -629,8 +643,9 @@ TEST_P(ParameterizedShuffleDatasetOpTest, DatasetSave) {
   Tensor seed = test_case.seed;
   Tensor seed2 = test_case.seed2;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &buffer_size, &seed, &seed2});
-  if (count_value != 1) inputs.push_back(&count);
+      {TensorValue(&range_dataset_tensor), TensorValue(&buffer_size),
+       TensorValue(&seed), TensorValue(&seed2)});
+  if (count_value != 1) inputs.push_back(TensorValue(&count));
 
   std::unique_ptr<OpKernelContext> dataset_context;
   TF_ASSERT_OK(
@@ -673,8 +688,9 @@ TEST_P(ParameterizedShuffleDatasetOpTest, IteratorOutputDtypes) {
   Tensor seed = test_case.seed;
   Tensor seed2 = test_case.seed2;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &buffer_size, &seed, &seed2});
-  if (count_value != 1) inputs.push_back(&count);
+      {TensorValue(&range_dataset_tensor), TensorValue(&buffer_size),
+       TensorValue(&seed), TensorValue(&seed2)});
+  if (count_value != 1) inputs.push_back(TensorValue(&count));
 
   std::unique_ptr<OpKernelContext> dataset_context;
   TF_ASSERT_OK(
@@ -719,8 +735,9 @@ TEST_P(ParameterizedShuffleDatasetOpTest, IteratorOutputShapes) {
   Tensor seed = test_case.seed;
   Tensor seed2 = test_case.seed2;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &buffer_size, &seed, &seed2});
-  if (count_value != 1) inputs.push_back(&count);
+      {TensorValue(&range_dataset_tensor), TensorValue(&buffer_size),
+       TensorValue(&seed), TensorValue(&seed2)});
+  if (count_value != 1) inputs.push_back(TensorValue(&count));
 
   std::unique_ptr<OpKernelContext> dataset_context;
   TF_ASSERT_OK(
@@ -765,8 +782,9 @@ TEST_P(ParameterizedShuffleDatasetOpTest, IteratorOutputPrefix) {
   Tensor seed = test_case.seed;
   Tensor seed2 = test_case.seed2;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &buffer_size, &seed, &seed2});
-  if (count_value != 1) inputs.push_back(&count);
+      {TensorValue(&range_dataset_tensor), TensorValue(&buffer_size),
+       TensorValue(&seed), TensorValue(&seed2)});
+  if (count_value != 1) inputs.push_back(TensorValue(&count));
 
   std::unique_ptr<OpKernelContext> dataset_context;
   TF_ASSERT_OK(
@@ -783,9 +801,13 @@ TEST_P(ParameterizedShuffleDatasetOpTest, IteratorOutputPrefix) {
       dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
 
   if (count_value == 1) {
-    EXPECT_EQ(iterator->prefix(), "Iterator::Shuffle");
+    EXPECT_EQ(
+        iterator->prefix(),
+        name_utils::IteratorPrefix(ShuffleDatasetOp::kDatasetType, "Iterator"));
   } else {
-    EXPECT_EQ(iterator->prefix(), "Iterator::ShuffleAndRepeat");
+    EXPECT_EQ(iterator->prefix(),
+              name_utils::IteratorPrefix(
+                  ShuffleAndRepeatDatasetOp::kDatasetType, "Iterator"));
   }
 }
 
@@ -814,8 +836,9 @@ TEST_P(ParameterizedShuffleDatasetOpTest, Roundtrip) {
   Tensor seed = test_case.seed;
   Tensor seed2 = test_case.seed2;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &buffer_size, &seed, &seed2});
-  if (count_value != 1) inputs.push_back(&count);
+      {TensorValue(&range_dataset_tensor), TensorValue(&buffer_size),
+       TensorValue(&seed), TensorValue(&seed2)});
+  if (count_value != 1) inputs.push_back(TensorValue(&count));
 
   std::unique_ptr<OpKernelContext> dataset_context;
   TF_ASSERT_OK(
@@ -896,8 +919,9 @@ TEST_F(ShuffleDatasetOpTest, InvalidArguments) {
     Tensor seed = test_case.seed;
     Tensor seed2 = test_case.seed2;
     gtl::InlinedVector<TensorValue, 4> inputs(
-        {&range_dataset_tensor, &buffer_size, &seed, &seed2});
-    if (count_value != 1) inputs.push_back(&count);
+        {TensorValue(&range_dataset_tensor), TensorValue(&buffer_size),
+         TensorValue(&seed), TensorValue(&seed2)});
+    if (count_value != 1) inputs.push_back(TensorValue(&count));
 
     std::unique_ptr<OpKernelContext> dataset_context;
     TF_ASSERT_OK(

@@ -34,5 +34,21 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.function_transformers = {}
     self.module_deprecations = module_deprecations_v2.MODULE_DEPRECATIONS
 
+    # List module renames. Right now, we just support renames from a module
+    # names that don't contain '.'.
+    self.import_renames = {
+        "tensorflow": ast_edits.ImportRename(
+            "tensorflow.compat.v1",
+            excluded_prefixes=["tensorflow.contrib",
+                               "tensorflow.flags",
+                               "tensorflow.compat.v1",
+                               "tensorflow.compat.v2"])
+    }
+
+    self.inserts_after_imports = {
+        ("tensorflow", None): ["tensorflow.disable_v2_behavior()"],
+        ("tensorflow", "tf"): ["tf.disable_v2_behavior()"],
+    }
+
     # TODO(kaftan,annarev): specify replacement from TensorFlow import to
     # compat.v1 import.

@@ -36,6 +36,30 @@ namespace {
 
 using CholeskyTest = ClientLibraryTestBase;
 
+XLA_TEST_F(CholeskyTest, NonPSDInput) {
+  XlaBuilder builder(TestName());
+
+  Array2D<float> a_vals({
+      {1, 1, 1},
+      {1, 1, 1},
+      {1, 1, 1},
+  });
+
+  XlaOp a;
+  auto a_data = CreateR2Parameter<float>(a_vals, 0, "a", &builder, &a);
+  Cholesky(a, /*lower=*/true);
+
+  float nan = std::numeric_limits<float>::quiet_NaN();
+  Array2D<float> expected({
+      {nan, nan, nan},
+      {nan, nan, nan},
+      {nan, nan, nan},
+  });
+
+  ComputeAndCompareR2<float>(&builder, expected, {a_data.get()},
+                             ErrorSpec(1e-4, 1e-4));
+}
+
 XLA_TEST_F(CholeskyTest, Lower) {
   XlaBuilder builder(TestName());
 

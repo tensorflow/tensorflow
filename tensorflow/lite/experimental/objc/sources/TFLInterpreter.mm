@@ -24,6 +24,9 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+FOUNDATION_EXPORT NSString *const TFLVersion =
+    TFL_Version() == NULL ? @"" : [NSString stringWithUTF8String:TFL_Version()];
+
 /**
  * Error reporter for TFLInterpreter.
  *

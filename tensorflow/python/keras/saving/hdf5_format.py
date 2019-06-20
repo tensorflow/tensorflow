@@ -28,6 +28,7 @@ from six.moves import zip  # pylint: disable=redefined-builtin
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.saving import model_config as model_config_lib
+from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.platform import tf_logging as logging
@@ -71,8 +72,6 @@ def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
   if h5py is None:
     raise ImportError('`save_model` requires h5py.')
 
-  from tensorflow.python.keras import __version__ as keras_version  # pylint: disable=g-import-not-at-top
-
   # TODO(psv) Add warning when we save models that contain non-serializable
   # entities like metrics added using `add_metric` and losses added using
   # `add_loss.`
@@ -91,48 +90,24 @@ def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
     opened_new_file = False
 
   try:
-    f.attrs['keras_version'] = str(keras_version).encode('utf8')
-    f.attrs['backend'] = K.backend().encode('utf8')
-    f.attrs['model_config'] = json.dumps(
-        {
-            'class_name': model.__class__.__name__,
-            'config': model.get_config()
-        },
-        default=serialization.get_json_type).encode('utf8')
+    model_metadata = saving_utils.model_metadata(model, include_optimizer)
+    for k, v in model_metadata.items():
+      if isinstance(v, (dict, list, tuple)):
+        f.attrs[k] = json.dumps(
+            v, default=serialization.get_json_type).encode('utf8')
+      else:
+        f.attrs[k] = v
 
     model_weights_group = f.create_group('model_weights')
     model_layers = model.layers
     save_weights_to_hdf5_group(model_weights_group, model_layers)
 
-    if include_optimizer and model.optimizer:
-      if isinstance(model.optimizer, optimizers.TFOptimizer):
-        logging.warning(
-            'TensorFlow optimizers do not '
-            'make it possible to access '
-            'optimizer attributes or optimizer state '
-            'after instantiation. '
-            'As a result, we cannot save the optimizer '
-            'as part of the model save file. '
-            'You will have to compile your model again after loading it. '
-            'Prefer using a Keras optimizer instead '
-            '(see keras.io/optimizers).')
-      else:
-        f.attrs['training_config'] = json.dumps(
-            {
-                'optimizer_config': {
-                    'class_name': model.optimizer.__class__.__name__,
-                    'config': model.optimizer.get_config()
-                },
-                'loss': model.loss,
-                'metrics': model._compile_metrics,
-                'weighted_metrics': model._compile_weighted_metrics,
-                'sample_weight_mode': model.sample_weight_mode,
-                'loss_weights': model.loss_weights,
-            },
-            default=serialization.get_json_type).encode('utf8')
+    # TODO(b/128683857): Add integration tests between tf.keras and external
+    # Keras, to avoid breaking TF.js users.
+    if (include_optimizer and model.optimizer and
+        not isinstance(model.optimizer, optimizers.TFOptimizer)):
+      save_optimizer_weights_to_hdf5_group(f, model.optimizer)
 
-        # Save optimizer weights.
-        save_optimizer_weights_to_hdf5_group(f, model.optimizer)
     f.flush()
   finally:
     if opened_new_file:
@@ -170,31 +145,6 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
   if not custom_objects:
     custom_objects = {}
 
-  def convert_custom_objects(obj):
-    """Handles custom object lookup.
-
-    Arguments:
-        obj: object, dict, or list.
-
-    Returns:
-        The same structure, where occurrences
-            of a custom object name have been replaced
-            with the custom object.
-    """
-    if isinstance(obj, list):
-      deserialized = []
-      for value in obj:
-        deserialized.append(convert_custom_objects(value))
-      return deserialized
-    if isinstance(obj, dict):
-      deserialized = {}
-      for key, value in obj.items():
-        deserialized[key] = convert_custom_objects(value)
-      return deserialized
-    if obj in custom_objects:
-      return custom_objects[obj]
-    return obj
-
   opened_new_file = not isinstance(filepath, h5py.File)
   if opened_new_file:
     f = h5py.File(filepath, mode='r')
@@ -222,26 +172,10 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
                         'the model was *not* compiled. Compile it manually.')
         return model
       training_config = json.loads(training_config.decode('utf-8'))
-      optimizer_config = training_config['optimizer_config']
-      optimizer = optimizers.deserialize(
-          optimizer_config, custom_objects=custom_objects)
-
-      # Recover loss functions and metrics.
-      loss = convert_custom_objects(training_config['loss'])
-      metrics = convert_custom_objects(training_config['metrics'])
-      weighted_metrics = convert_custom_objects(
-          training_config.get('weighted_metrics', None))
-      sample_weight_mode = training_config['sample_weight_mode']
-      loss_weights = training_config['loss_weights']
 
       # Compile model.
-      model.compile(
-          optimizer=optimizer,
-          loss=loss,
-          metrics=metrics,
-          weighted_metrics=weighted_metrics,
-          loss_weights=loss_weights,
-          sample_weight_mode=sample_weight_mode)
+      model.compile(**saving_utils.compile_args_from_training_config(
+          training_config, custom_objects))
 
       # Set optimizer weights.
       if 'optimizer_weights' in f:

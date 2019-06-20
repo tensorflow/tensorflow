@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TYPES_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_TYPES_H_
 
+#include <memory>
 #include <vector>
 
 #include "absl/types/optional.h"
@@ -53,13 +54,16 @@ StatusOr<pybind11::dtype> PrimitiveTypeToDtype(PrimitiveType type);
 // buffers with the literals. Takes ownership of `literal` and keeps the
 // necessary pieces alive using Python reference counting.
 // Requires the GIL.
-StatusOr<pybind11::object> LiteralToPython(std::unique_ptr<Literal> literal);
+StatusOr<pybind11::object> LiteralToPython(std::shared_ptr<Literal> literal);
 
 // Converts a Python object into an XLA shape and a vector of leaf buffers.
 // The leaf buffers correspond to a depth-first, left-to-right traversal of
 // the Python value.
 // Requires the GIL.
 struct PythonBufferTree {
+  // Holds a reference to the arrays pointed to by `leaves`, since we may
+  // need to make a copy if the array is not in a C-style layout.
+  absl::InlinedVector<pybind11::object, 1> arrays;
   absl::InlinedVector<BorrowingLiteral, 1> leaves;
   Shape shape;
 };
@@ -170,9 +174,13 @@ struct type_caster<xla::BorrowingLiteral> {
  public:
   PYBIND11_TYPE_CASTER(xla::BorrowingLiteral, _("xla::BorrowingLiteral"));
 
+  // Pybind appears to keep type_casters alive until the callee has run.
+  pybind11::array array;
+
   bool load(handle handle, bool) {
-    pybind11::array array = pybind11::array::ensure(
-        handle, pybind11::array::c_style | pybind11::array::forcecast);
+    array = pybind11::array::ensure(
+        handle, pybind11::array::c_style |
+                    pybind11::detail::npy_api::NPY_ARRAY_ALIGNED_);
     if (!array) return false;
     pybind11::buffer_info buffer_info = array.request();
 

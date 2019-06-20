@@ -131,6 +131,8 @@ class Executor {
 struct LocalExecutorParams {
   Device* device;
 
+  const SessionMetadata* session_metadata = nullptr;
+
   // The library runtime support.
   FunctionLibraryRuntime* function_library = nullptr;
 
@@ -195,6 +197,11 @@ class ExecutorBarrier {
       if (status_group_.ok() && !s.ok()) {
         error_rendez = rendez_;
         error_rendez->Ref();
+      }
+
+      if (!s.ok() && !StatusGroup::IsDerived(s) &&
+          !status_group_.HasLogMessages()) {
+        status_group_.AttachLogMessages();
       }
 
       status_group_.Update(s);

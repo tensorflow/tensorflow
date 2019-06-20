@@ -319,8 +319,9 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     timesteps = input_shape[0] if self.time_major else input_shape[1]
 
     if not self.could_use_cudnn:
-      # CuDNN does not support masking, fall back to use the normal GRU.
       kwargs = {'training': training}
+      self.cell.reset_dropout_mask()
+      self.cell.reset_recurrent_dropout_mask()
 
       def step(cell_inputs, cell_states):
         return self.cell.call(cell_inputs, cell_states, **kwargs)
@@ -344,7 +345,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
 
     if self.stateful:
       updates = [state_ops.assign(self.states[0], states[0])]
-      self.add_update(updates, inputs)
+      self.add_update(updates)
 
     if self.return_sequences:
       output = outputs
@@ -366,7 +367,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     self.reset_dropout_mask()
     dropout_mask = self.get_dropout_mask_for_cell(inputs, training, count=3)
     if dropout_mask is not None:
-      inputs *= dropout_mask[0]
+      inputs = inputs * dropout_mask[0]
 
     cudnn_gru_kwargs = {
         'inputs': inputs,
@@ -398,28 +399,23 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
       else:
         last_output, outputs, new_h, runtime = standard_gru(**normal_gru_kwargs)
     else:
-      api_name = 'gru_' + str(uuid.uuid4())
-      defun_standard_gru = _generate_defun_backend(
-          api_name, _CPU_DEVICE_NAME, standard_gru)
-      defun_cudnn_gru = _generate_defun_backend(
-          api_name, _GPU_DEVICE_NAME, cudnn_gru)
-      # Call the normal GRU impl and register the CuDNN impl function. The
-      # grappler will kick in during session execution to optimize the graph.
-      last_output, outputs, new_h, runtime = defun_standard_gru(
-          **normal_gru_kwargs)
-
-      def register_cudnn_defun():
-        function.register(defun_cudnn_gru, **cudnn_gru_kwargs)
-        # return some dummy value since the tf.cond require some return value.
-        return 0
       if mask is None:
-        register_cudnn_defun()
+        last_output, outputs, new_h, runtime = gru_with_backend_selection(
+            normal_gru_kwargs, cudnn_gru_kwargs)
       else:
-        # Only when seq_right_padded=True, CuDNN kernel can support that
-        # properly.
-        control_flow_ops.cond(is_sequence_right_padded(mask, self.time_major),
-                              true_fn=register_cudnn_defun,
-                              false_fn=lambda: 0)
+        def with_mask_support():
+          # TODO(b/134702514): Change to use backend selection.
+          # return gru_with_backend_selection(normal_gru_kwargs,
+          #                                   cudnn_gru_kwargs)
+          return standard_gru(**normal_gru_kwargs)
+        def without_mask_support():
+          return standard_gru(**normal_gru_kwargs)
+
+        last_output, outputs, new_h, runtime = control_flow_ops.cond(
+            is_sequence_right_padded(mask, self.time_major),
+            true_fn=with_mask_support,
+            false_fn=without_mask_support)
+
     states = [new_h]
     return last_output, outputs, runtime, states
 
@@ -532,22 +528,20 @@ def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
 
   if mask is not None:
     sequence_length = calculate_sequence_by_mask(mask, time_major)
+    if go_backwards:
+      inputs = array_ops.reverse_sequence_v2(inputs, sequence_length,
+                                             seq_axis=0, batch_axis=1)
+    outputs, h, _, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(
+        inputs, input_h=init_h, input_c=0, params=params, is_training=True,
+        rnn_mode='gru', sequence_lengths=sequence_length)
   else:
-    # Fill the array with shape [batch] with value of max timesteps.
-    sequence_length = array_ops.fill([array_ops.shape(inputs)[1]],
-                                     array_ops.shape(inputs)[0])
-  if go_backwards:
-    inputs = array_ops.reverse_sequence_v2(inputs, sequence_length, seq_axis=0,
-                                           batch_axis=1)
+    if go_backwards:
+      # Reverse axis 0 since the input is already convert to time major.
+      inputs = array_ops.reverse(inputs, axis=[0])
+    outputs, h, _, _ = gen_cudnn_rnn_ops.cudnn_rnn(
+        inputs, input_h=init_h, input_c=0, params=params, is_training=True,
+        rnn_mode='gru')
 
-  outputs, h, _, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(
-      inputs,
-      input_h=init_h,
-      input_c=0,
-      params=params,
-      is_training=True,
-      rnn_mode='gru',
-      sequence_lengths=sequence_length)
   last_output = outputs[-1]
   if not time_major:
     outputs = array_ops.transpose(outputs, perm=[1, 0, 2])
@@ -563,6 +557,44 @@ def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
     last_output = h
 
   return last_output, outputs, h, _runtime(_RUNTIME_GPU)
+
+
+def gru_with_backend_selection(normal_gru_params, cudnn_gru_params):
+  """Call the GRU with optimized backend kernel selection.
+
+  Under the hood, this function will create two TF function, one with the most
+  generic kernel and can run on all device condition, and the second one with
+  CuDNN specific kernel, which can only run on GPU.
+
+  The first function will be called with normal_lstm_params, while the second
+  function is not called, but only registered in the graph. The Grappler will
+  do the proper graph rewrite and swap the optimized TF function based on the
+  device placement.
+
+  Args:
+    normal_gru_params: Dict, parameters for the generic TF function.
+    cudnn_gru_params: Dict, parameters for the CuDNN specific TF function.
+
+  Returns:
+    List of output tensors, same as standard_gru.
+  """
+  # Each time a `tf.function` is called, we will give it a unique
+  # identifiable API name, so that Grappler won't get confused when it
+  # sees multiple GRU layers added into same graph, and it will be able
+  # to pair up the different implementations across them.
+  api_name = 'gru_' + str(uuid.uuid4())
+  defun_standard_gru = _generate_defun_backend(
+      api_name, _CPU_DEVICE_NAME, standard_gru)
+  defun_cudnn_gru = _generate_defun_backend(
+      api_name, _GPU_DEVICE_NAME, cudnn_gru)
+
+  # Call the normal GRU impl and register the CuDNN impl function. The
+  # grappler will kick in during session execution to optimize the graph.
+  last_output, outputs, new_h, runtime = defun_standard_gru(
+      **normal_gru_params)
+
+  function.register(defun_cudnn_gru, **cudnn_gru_params)
+  return last_output, outputs, new_h, runtime
 
 
 @keras_export('keras.layers.LSTMCell', v1=[])
@@ -816,6 +848,8 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     if not self.could_use_cudnn:
       # Fall back to use the normal LSTM.
       kwargs = {'training': training}
+      self.cell.reset_dropout_mask()
+      self.cell.reset_recurrent_dropout_mask()
 
       def step(inputs, states):
         return self.cell.call(inputs, states, **kwargs)
@@ -841,7 +875,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       self.reset_dropout_mask()
       dropout_mask = self.get_dropout_mask_for_cell(inputs, training, count=4)
       if dropout_mask is not None:
-        inputs *= dropout_mask[0]
+        inputs = inputs * dropout_mask[0]
       cudnn_lstm_kwargs = {
           'inputs': inputs,
           'init_h': initial_state[0],
@@ -876,40 +910,32 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
           last_output, outputs, new_h, new_c, runtime = standard_lstm(
               **normal_lstm_kwargs)
       else:
-        # Each time a `tf.function` is called, we will give it a unique
-        # identifiable API name, so that Grappler won't get confused when it
-        # sees multiple LSTM layers added into same graph, and it will be able
-        # to pair up the different implementations across them.
-        api_name = 'lstm_' + str(uuid.uuid4())
-        defun_standard_lstm = _generate_defun_backend(
-            api_name, _CPU_DEVICE_NAME, standard_lstm)
-        defun_cudnn_lstm = _generate_defun_backend(
-            api_name, _GPU_DEVICE_NAME, cudnn_lstm)
-
-        # Call the normal LSTM impl and register the CuDNN impl function. The
-        # grappler will kick in during session execution to optimize the graph.
-        last_output, outputs, new_h, new_c, runtime = defun_standard_lstm(
-            **normal_lstm_kwargs)
-
-        def register_cudnn_defun():
-          function.register(defun_cudnn_lstm, **cudnn_lstm_kwargs)
-          # return some dummy value since the tf.cond require some return value.
-          return 0
         if mask is None:
-          register_cudnn_defun()
+          (last_output, outputs,
+           new_h, new_c, runtime) = lstm_with_backend_selection(
+               normal_lstm_kwargs, cudnn_lstm_kwargs)
         else:
-          # Only when seq_right_padded=True, CuDNN kernel can support that
-          # properly.
-          control_flow_ops.cond(is_sequence_right_padded(mask, self.time_major),
-                                true_fn=register_cudnn_defun,
-                                false_fn=lambda: 0)
+          def with_mask_support():
+            # TODO(b/134702514): Change to use backend selection.
+            # return lstm_with_backend_selection(normal_lstm_kwargs,
+            #                                    cudnn_lstm_kwargs)
+            return standard_lstm(**normal_lstm_kwargs)
+          def without_mask_support():
+            return standard_lstm(**normal_lstm_kwargs)
+
+          (last_output, outputs,
+           new_h, new_c, runtime) = control_flow_ops.cond(
+               is_sequence_right_padded(mask, self.time_major),
+               true_fn=with_mask_support,
+               false_fn=without_mask_support)
+
       states = [new_h, new_c]
 
     if self.stateful:
       updates = []
       for i in range(len(states)):
         updates.append(state_ops.assign(self.states[i], states[i]))
-      self.add_update(updates, inputs)
+      self.add_update(updates)
 
     if self.return_sequences:
       output = outputs
@@ -1076,25 +1102,31 @@ def cudnn_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
   # so that mathematically it is same as the canonical LSTM implementation.
   full_bias = array_ops.concat((array_ops.zeros_like(bias), bias), 0)
 
-  if mask is not None:
-    sequence_length = calculate_sequence_by_mask(mask, time_major)
-  else:
-    # Fill the array with shape [batch] with value of max timesteps.
-    sequence_length = array_ops.fill([array_ops.shape(inputs)[1]],
-                                     array_ops.shape(inputs)[0])
-  if go_backwards:
-    inputs = array_ops.reverse_sequence_v2(inputs, sequence_length, seq_axis=0,
-                                           batch_axis=1)
-
   params = _canonical_to_params(
       weights=weights,
       biases=array_ops.split(full_bias, 8),
       shape=constant_op.constant([-1]),
       transpose_weights=True)
 
-  outputs, h, c, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(
-      inputs, input_h=init_h, input_c=init_c, params=params, is_training=True,
-      rnn_mode='lstm', sequence_lengths=sequence_length)
+  if mask is not None:
+    sequence_length = calculate_sequence_by_mask(mask, time_major)
+    if go_backwards:
+      inputs = array_ops.reverse_sequence_v2(inputs, sequence_length,
+                                             seq_axis=0, batch_axis=1)
+    outputs, h, c, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(
+        inputs, input_h=init_h, input_c=init_c, params=params, is_training=True,
+        rnn_mode='lstm', sequence_lengths=sequence_length)
+  else:
+    # # Fill the array with shape [batch] with value of max timesteps.
+    # sequence_length = array_ops.fill([array_ops.shape(inputs)[1]],
+    #                                  array_ops.shape(inputs)[0])
+    if go_backwards:
+      # Reverse axis 0 since the input is already convert to time major.
+      inputs = array_ops.reverse(inputs, axis=[0])
+    outputs, h, c, _ = gen_cudnn_rnn_ops.cudnn_rnn(
+        inputs, input_h=init_h, input_c=init_c, params=params, is_training=True,
+        rnn_mode='lstm')
+
   last_output = outputs[-1]
   if not time_major:
     outputs = array_ops.transpose(outputs, perm=[1, 0, 2])
@@ -1110,6 +1142,44 @@ def cudnn_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
   if mask is not None:
     last_output = h
   return last_output, outputs, h, c, _runtime(_RUNTIME_GPU)
+
+
+def lstm_with_backend_selection(normal_lstm_params, cudnn_lstm_params):
+  """Call the LSTM with optimized backend kernel selection.
+
+  Under the hood, this function will create two TF function, one with the most
+  generic kernel and can run on all device condition, and the second one with
+  CuDNN specific kernel, which can only run on GPU.
+
+  The first function will be called with normal_lstm_params, while the second
+  function is not called, but only registered in the graph. The Grappler will
+  do the proper graph rewrite and swap the optimized TF function based on the
+  device placement.
+
+  Args:
+    normal_lstm_params: Dict, parameters for the generic TF function.
+    cudnn_lstm_params: Dict, parameters for the CuDNN specific TF function.
+
+  Returns:
+    List of output tensors, same as standard_lstm.
+  """
+  # Each time a `tf.function` is called, we will give it a unique
+  # identifiable API name, so that Grappler won't get confused when it
+  # sees multiple LSTM layers added into same graph, and it will be able
+  # to pair up the different implementations across them.
+  api_name = 'lstm_' + str(uuid.uuid4())
+  defun_standard_lstm = _generate_defun_backend(
+      api_name, _CPU_DEVICE_NAME, standard_lstm)
+  defun_cudnn_lstm = _generate_defun_backend(
+      api_name, _GPU_DEVICE_NAME, cudnn_lstm)
+
+  # Call the normal LSTM impl and register the CuDNN impl function. The
+  # grappler will kick in during session execution to optimize the graph.
+  last_output, outputs, new_h, new_c, runtime = defun_standard_lstm(
+      **normal_lstm_params)
+
+  function.register(defun_cudnn_lstm, **cudnn_lstm_params)
+  return last_output, outputs, new_h, new_c, runtime
 
 
 def is_sequence_right_padded(mask, time_major):
@@ -1186,6 +1256,9 @@ def _generate_defun_backend(unique_api_name, preferred_device, func):
   function_attributes = {
       _DEFUN_API_NAME_ATTRIBUTE: unique_api_name,
       _DEFUN_DEVICE_ATTRIBUTE: preferred_device,
+      # TODO(b/133178886): The function is auto inlined in eager context, which
+      # make grappler fail to do the optimization. Force it to not inline here.
+      '_noinline': True,
   }
   return function.defun_with_attributes(func=func,
                                         attributes=function_attributes)

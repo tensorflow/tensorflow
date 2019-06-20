@@ -1,14 +1,12 @@
 # Tests of TensorFlow kernels written using the Python API.
 
-package(
-    default_visibility = ["//tensorflow:internal"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "sycl_py_test")
+
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 # CPU only tests should use tf_py_test, GPU tests use cuda_py_test
 # Please avoid the py_tests and cuda_py_tests (plural) while we
@@ -187,4 +185,5 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )

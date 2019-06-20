@@ -58,7 +58,7 @@ StatusOr<Literal> TransferManager::TransferLiteralFromDevice(
   Status s;
   Literal literal(device_buffer.on_host_shape());
   TransferLiteralFromDevice(
-      substream, device_buffer, literal,
+      substream, device_buffer, &literal,
       [&](Status status) {
         s = status;
         n.Notify();
@@ -123,7 +123,7 @@ StatusOr<Literal> TransferManager::TransferArrayFromDevice(
   Literal literal(shape);
   Status s;
   TransferArrayFromDevice(
-      substream, shape, source, literal,
+      substream, shape, source, &literal,
       [&](Status status) {
         s = status;
         n.Notify();
@@ -331,7 +331,7 @@ StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
                         allocator->Allocate(shaped_buffer.device_ordinal(),
                                             GetByteSizeRequirement(subshape)));
     // Move the allocated buffer into the ScopedShapedBuffer, which owns it.
-    memory_base = memory.Forget();
+    memory_base = memory.Release();
   }
 
   return std::move(shaped_buffer);

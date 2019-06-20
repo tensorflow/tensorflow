@@ -32,7 +32,7 @@ Compile:
 ```
 
 This should compile a static library in:
-`tensorflow/lite/gen/gen/aarch64_armv8-a/lib/libtensorflow-lite.a`.
+`tensorflow/lite/tools/make/gen/aarch64_armv8-a/lib/libtensorflow-lite.a`.
 
 ## Native compiling
 
@@ -59,4 +59,4 @@ Compile:
 ```
 
 This should compile a static library in:
-`tensorflow/lite/gen/gen/aarch64_armv8-a/lib/libtensorflow-lite.a`.
+`tensorflow/lite/tools/make/gen/aarch64_armv8-a/lib/libtensorflow-lite.a`.

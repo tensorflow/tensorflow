@@ -846,7 +846,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
   """A regressor for TensorFlow Linear and DNN joined training models.
 
   THIS CLASS IS DEPRECATED. See
-  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  [contrib/learn/README.md](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/learn/README.md)
   for general migration instructions.
 
   Note: New users must set `fix_global_step_increment_bug=True` when creating an

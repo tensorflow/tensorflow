@@ -267,12 +267,13 @@ llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
 llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
                                                llvm::Type* tile_type,
                                                absl::string_view name) {
-  const int kNVPTXSharedMemoryAddrSpace = 3;
+  // Both AMDGPU and NVPTX use the same address space for shared memory.
+  const int kGPUSharedMemoryAddrSpace = 3;
   return new llvm::GlobalVariable(
       *module, tile_type,
       /*isConstant=*/false, llvm::GlobalValue::PrivateLinkage,
       llvm::UndefValue::get(tile_type), AsStringRef(name), nullptr,
-      llvm::GlobalValue::NotThreadLocal, kNVPTXSharedMemoryAddrSpace);
+      llvm::GlobalValue::NotThreadLocal, kGPUSharedMemoryAddrSpace);
 }
 
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
@@ -689,11 +690,22 @@ std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
   return std::make_pair(low_32bits, high_32bits);
 }
 
+unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module) {
+  const unsigned kAMDGPUGlobalMemoryAddrSpace = 1;
+  llvm::Triple target_triple = llvm::Triple(module.getTargetTriple());
+  if (target_triple.getArch() == llvm::Triple::amdgcn) {
+    // AMDGPU uses 1 for global memory address space.
+    return kAMDGPUGlobalMemoryAddrSpace;
+  }
+  return 0;
+}
+
 llvm::GlobalVariable* GetOrCreateVariableForPhiloxRngState(
     llvm::Module* module, llvm::IRBuilder<>* b) {
   static const char* kPhiloxRngStateVariableName = "philox_rng_state";
   llvm::GlobalVariable* state_ptr =
       module->getNamedGlobal(kPhiloxRngStateVariableName);
+  unsigned global_address_space = GetGlobalMemoryAddressSpace(*module);
   if (!state_ptr) {
     state_ptr = new llvm::GlobalVariable(
         /*M=*/*module,
@@ -701,7 +713,11 @@ llvm::GlobalVariable* GetOrCreateVariableForPhiloxRngState(
         /*isConstant=*/false,
         /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
         /*Initializer=*/b->getInt64(0),
-        /*Name=*/kPhiloxRngStateVariableName);
+        /*Name=*/kPhiloxRngStateVariableName,
+        /*InsertBefore=*/nullptr,
+        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+        /*AddressSpace=*/global_address_space,
+        /*isExternallyInitialized=*/false);
   }
   return state_ptr;
 }

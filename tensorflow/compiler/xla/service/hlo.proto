@@ -35,7 +35,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 64
+// Next ID: 67
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -49,6 +49,9 @@ message HloInstructionProto {
   reserved "called_computation_names";
   reserved 44;
   reserved "replica_group_ids";
+  // Use backend_config instead for custom_call_opaque.
+  reserved 53;
+  reserved "custom_call_opaque";
 
   string name = 1;
   string opcode = 2;
@@ -131,9 +134,6 @@ message HloInstructionProto {
   // kCustomCall.
   string custom_call_target = 28;
 
-  // Opaque string, only present for kCustomCall.
-  string custom_call_opaque = 53;
-
   // Shape of outfeed request.
   xla.ShapeProto outfeed_shape = 29;
 
@@ -209,6 +209,22 @@ message HloInstructionProto {
 
   // Describes how parameters behave with regards to replicas.
   xla.ParameterReplication parameter_replication = 61;
+
+  // If set, the given instruction is run in parallel on e.g. multiple CPU
+  // cores.  The outermost dimension gets split up into
+  // outer_dimension_partitions[0] pieces, the next-outermost dim gets split
+  // into outer_dimension_partitions[1] pieces, etc.
+  //
+  // It's illegal to partition a dimension into more shards than there are
+  // elements in that dimension.
+  repeated int64 outer_dimension_partitions = 64;
+
+  // Whether the kCustomCall instruction has side-effects, only present for
+  // kCustomCall.
+  bool custom_call_has_side_effect = 65;
+
+  // The delta value for kRngGetAndUpdateState.
+  int64 delta = 66;
 }
 
 // Serialization of HloComputation.

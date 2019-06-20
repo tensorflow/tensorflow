@@ -38,6 +38,7 @@ from tensorflow.python.keras.layers.noise import *
 from tensorflow.python.keras.layers.normalization import *
 from tensorflow.python.keras.layers.pooling import *
 from tensorflow.python.keras.layers.recurrent import *
+from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import *
 from tensorflow.python.keras.layers.wrappers import *
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.util.tf_export import keras_export
@@ -73,11 +74,18 @@ def deserialize(config, custom_objects=None):
   Returns:
       Layer instance (may be Model, Sequential, Network, Layer...)
   """
+  # Prevent circular dependencies.
   from tensorflow.python.keras import models  # pylint: disable=g-import-not-at-top
+  from tensorflow.python.feature_column import feature_column_v2  # pylint: disable=g-import-not-at-top
+
   globs = globals()  # All layers.
   globs['Network'] = models.Network
   globs['Model'] = models.Model
   globs['Sequential'] = models.Sequential
+
+  # Prevent circular dependencies with FeatureColumn serialization.
+  globs['DenseFeatures'] = feature_column_v2.DenseFeatures
+
   layer_class_name = config['class_name']
   if layer_class_name in _DESERIALIZATION_TABLE:
     config['class_name'] = _DESERIALIZATION_TABLE[layer_class_name]

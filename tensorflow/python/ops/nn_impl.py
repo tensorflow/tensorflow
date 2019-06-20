@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import math
 
+from tensorflow.python.compat import compat
+from tensorflow.python.distribute import distribution_strategy_context as ds
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -34,6 +36,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.losses import util as losses_util
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
@@ -365,6 +368,100 @@ def weighted_cross_entropy_with_logits(labels=None,
   """
   labels = deprecated_argument_lookup("labels", labels, "targets", targets)
   return weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight, name)
+
+
+@tf_export("nn.compute_average_loss")
+def compute_average_loss(per_example_loss,
+                         sample_weight=None,
+                         global_batch_size=None):
+  """Scales per-example losses with sample_weights and computes their average.
+
+  Usage with distribution strategy and custom training loop:
+
+  ```python
+  with strategy.scope():
+    def compute_loss(labels, predictions, sample_weight=None):
+
+      # If you are using a `Loss` class instead, set reduction to `NONE` so that
+      # we can do the reduction afterwards and divide by global batch size.
+      per_example_loss = tf.keras.losses.sparse_categorical_crossentropy(
+          labels, predictions)
+
+      # Compute loss that is scaled by sample_weight and by global batch size.
+      return tf.compute_average_loss(
+          per_example_loss,
+          sample_weight=sample_weight,
+          global_batch_size=GLOBAL_BATCH_SIZE)
+  ```
+
+  Args:
+    per_example_loss: Per-example loss.
+    sample_weight: Optional weighting for each example.
+    global_batch_size: Optional global batch size value. Defaults to (size of
+      first dimension of `losses`) * (number of replicas).
+
+  Returns:
+    Scalar loss value.
+  """  # pylint: disable=g-doc-exception
+  per_example_loss = ops.convert_to_tensor(per_example_loss)
+  input_dtype = per_example_loss.dtype
+
+  with losses_util.check_per_example_loss_rank(per_example_loss):
+    if sample_weight is not None:
+      per_example_loss = losses_util.scale_losses_by_sample_weight(
+          per_example_loss, sample_weight)
+    per_example_loss = math_ops.cast(per_example_loss, input_dtype)
+
+    if global_batch_size is None:
+      if ds.has_strategy() and ds.in_cross_replica_context():
+        raise RuntimeError(
+            "You are calling `compute_average_loss` in cross replica context, "
+            "while it was expected to be called in replica context.")
+
+      num_replicas = ds.get_strategy().num_replicas_in_sync
+      per_replica_batch_size = array_ops.shape_v2(per_example_loss)[0]
+      global_batch_size = per_replica_batch_size * num_replicas
+      global_batch_size = math_ops.cast(global_batch_size, input_dtype)
+
+    return math_ops.reduce_sum(per_example_loss) / global_batch_size
+
+
+@tf_export("nn.scale_regularization_loss")
+def scale_regularization_loss(regularization_loss):
+  """Scales the sum of the given regularization losses by number of replicas.
+
+  Usage with distribution strategy and custom training loop:
+
+  ```python
+  with strategy.scope():
+    def compute_loss(self, label, predictions):
+      per_example_loss = tf.keras.losses.sparse_categorical_crossentropy(
+          labels, predictions)
+
+      # Compute loss that is scaled by sample_weight and by global batch size.
+      loss = tf.compute_average_loss(
+          per_example_loss,
+          sample_weight=sample_weight,
+          global_batch_size=GLOBAL_BATCH_SIZE)
+
+      # Add scaled regularization losses.
+      loss += tf.scale_regularization_loss(tf.nn.l2_loss(weights))
+      return loss
+  ```
+
+  Args:
+    regularization_loss: Regularization loss.
+
+  Returns:
+    Scalar loss value.
+  """  # pylint: disable=g-doc-exception
+  if ds.has_strategy() and ds.in_cross_replica_context():
+    raise RuntimeError(
+        "You are calling `scale_regularization_loss` in cross replica context, "
+        "while it was expected to be called in replica context.")
+
+  num_replicas = ds.get_strategy().num_replicas_in_sync
+  return math_ops.reduce_sum(regularization_loss) / num_replicas
 
 
 @tf_export(v1=["nn.relu_layer"])
@@ -1298,9 +1395,20 @@ def fused_batch_norm(
   # prevent exception (see cudnn.h).
   min_epsilon = 1.001e-5
   epsilon = epsilon if epsilon > min_epsilon else min_epsilon
-  # TODO(reedwm): In a few weeks, switch to using the V2 version exclusively. We
-  # currently only use the V2 version for float16 inputs, which is not supported
-  # by the V1 version.
+
+  if compat.forward_compatible(2019, 6, 6):
+    y, batch_mean, batch_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
+        x,
+        scale,
+        offset,
+        mean,
+        variance,
+        epsilon=epsilon,
+        data_format=data_format,
+        is_training=is_training,
+        name=name)
+    return y, batch_mean, batch_var
+
   if x.dtype == dtypes.float16 or x.dtype == dtypes.bfloat16:
     fused_batch_norm_func = gen_nn_ops.fused_batch_norm_v2
   else:

@@ -14,8 +14,8 @@
 # ==============================================================================
 """XLA backend that runs XRT operators via TensorFlow remote eager.
 
-This module implements the Python XLA client's `Backend` abstraction using XRT
-, which embeds XLA's compiler/runtime operations as TensorFlow
+This module implements the Python XLA client's `Backend` abstraction using XRT,
+which embeds XLA's compiler/runtime operations as TensorFlow
 operations. The module uses TensorFlow's remote eager RPC API to invoke XRT
 operations.
 """
@@ -27,7 +27,6 @@ from __future__ import print_function
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.compiler.xla.python import xla_client
 from tensorflow.compiler.xla.python import xla_extension as _xla
-
 # pylint: enable=g-direct-tensorflow-import
 
 
@@ -66,7 +65,7 @@ class XrtBackend(xla_client.Backend):
     return _xla.xrt.XrtBuffer.from_literal(self.context, device, pyval)
 
   def make_tuple(self, buffers, device_ordinal):
-    return _xla.xrt.XrtBuffer.make_tuple(self.context, buffers)
+    return _xla.xrt.XrtBuffer.make_tuple(self.context, buffers, device_ordinal)
 
   def compile(self, computation, compile_options):
     # pylint: disable=protected-access
@@ -83,14 +82,3 @@ class XrtBackend(xla_client.Backend):
     device_assignment = _xla.xrt.AssignDevices(compile_options.num_replicas, 1)
     return _xla.xrt.XrtExecutable.Compile(self.context, proto, arg_shapes,
                                           result_shape, device_assignment)
-
-  def delete_executable(self, executable):
-    executable.Delete()
-
-  def execute(self, executable, args):
-    return executable.Execute(args)
-
-  def execute_replicated(self, executable, per_replica_args):
-    # The extra list packing and unpacking is to handle multiple
-    # computations per replica, which we don't support yet.
-    return executable.ExecuteReplicated([per_replica_args])[0]

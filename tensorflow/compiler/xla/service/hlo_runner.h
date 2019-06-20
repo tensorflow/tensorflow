@@ -206,7 +206,8 @@ class HloRunner {
   // will be used to configure the replication parameters. Replicated executions
   // should pass the device_assignment parameter.
   ServiceExecutableRunOptions GetServiceRunOptionsForDevice(
-      int64 device, se::Stream* stream, DeviceAssignment* device_assignment);
+      int64 device, se::Stream* stream, DeviceAssignment* device_assignment,
+      RunId run_id);
 
   std::unique_ptr<Backend> backend_;
 };

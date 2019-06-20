@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
-#include "tensorflow/core/kernels/data/parallel_map_iterator.h"
+#include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
 

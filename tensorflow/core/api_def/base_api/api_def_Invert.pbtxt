@@ -1,8 +1,8 @@
 op {
   graph_op_name: "Invert"
-  summary: "Flips all bits elementwise."
+  summary: "Invert (flip) each bit of supported types; for example, type `uint8` value 01010101 becomes 10101010."
   description: <<END
-The result will have exactly those bits set, that are not set in `x`. The
-computation is performed on the underlying representation of x.
+Flip each bit of supported types.  For example, type `int8` (decimal 2) binary 00000010 becomes (decimal -3) binary 11111101.
+This operation is performed on each element of the tensor argument `x`.
 END
 }

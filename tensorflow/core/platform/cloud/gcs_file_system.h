@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_CLOUD_GCS_FILE_SYSTEM_H_
 
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -98,8 +99,7 @@ class GcsFileSystem : public FileSystem {
                 std::pair<const string, const string>* additional_header);
 
   Status NewRandomAccessFile(
-      const string& filename,
-      std::unique_ptr<RandomAccessFile>* result) override;
+      const string& fname, std::unique_ptr<RandomAccessFile>* result) override;
 
   Status NewWritableFile(const string& fname,
                          std::unique_ptr<WritableFile>* result) override;
@@ -108,7 +108,7 @@ class GcsFileSystem : public FileSystem {
                            std::unique_ptr<WritableFile>* result) override;
 
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& filename,
+      const string& fname,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
   Status FileExists(const string& fname) override;
@@ -298,7 +298,7 @@ class GcsFileSystem : public FileSystem {
                                                      uint64 max_staleness);
 
   /// Loads file contents from GCS for a given filename, offset, and length.
-  Status LoadBufferFromGCS(const string& filename, size_t offset, size_t n,
+  Status LoadBufferFromGCS(const string& fname, size_t offset, size_t n,
                            char* buffer, size_t* bytes_transferred);
 
   // Clear all the caches related to the file with name `filename`.

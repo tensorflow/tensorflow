@@ -19,6 +19,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/op.h"
@@ -80,6 +82,18 @@ string AttrSlice::SummarizeNode() const {
   return ndef_ ? SummarizeNodeDef(*ndef_)
                : strings::StrCat(
                      "[", SummarizeAttrsHelper(*this, StringPiece()), "]");
+}
+
+string AttrSlice::DebugString() const {
+  std::vector<string> attr_key_vals;
+  attr_key_vals.reserve(attrs_->size());
+  for (const auto& it : *this) {
+    const string& name = it.first;
+    const AttrValue& attr_value = it.second;
+    attr_key_vals.push_back(
+        absl::StrCat(name, "=", SummarizeAttrValue(attr_value)));
+  }
+  return absl::StrJoin(attr_key_vals, ", ");
 }
 
 string SummarizeNode(const Node& node) { return SummarizeNodeDef(node.def()); }
@@ -189,7 +203,7 @@ Status AttrSlice::Find(StringPiece attr_name,
   // Skip AttachDef for internal attrs since it is a little bit
   // expensive and it is common for them to correctly not be included
   // in a NodeDef.
-  if (!str_util::StartsWith(attr_name, "_") && ndef_ != nullptr) {
+  if (!absl::StartsWith(attr_name, "_") && ndef_ != nullptr) {
     s = AttachDef(s, *ndef_);
   }
   return s;
@@ -486,7 +500,7 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
   size_t num_inputs = 0;
   // TODO(josh11b): Unify the input field validation.
   for (const string& input : node_def.input()) {
-    if (str_util::StartsWith(input, "^")) {
+    if (absl::StartsWith(input, "^")) {
       seen_control = true;
       if (input.find(':') != string::npos) {
         return errors::InvalidArgument("Control input '", input,
@@ -512,7 +526,7 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
   }
   for (const auto& attr : node_def.attr()) {
     // Allow internal optional attributes with names starting with "_".
-    if (str_util::StartsWith(attr.first, "_")) {
+    if (absl::StartsWith(attr.first, "_")) {
       continue;
     }
     auto iter = op_attrs.find(attr.first);
