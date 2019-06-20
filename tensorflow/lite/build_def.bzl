@@ -13,13 +13,11 @@ def tflite_copts():
         "-DFARMHASH_NO_CXX_STRING",
     ] + select({
         str(Label("//tensorflow:android_arm64")): [
-            "-std=c++11",
             "-O3",
         ],
         str(Label("//tensorflow:android_arm")): [
             "-mfpu=neon",
             "-mfloat-abi=softfp",
-            "-std=c++11",
             "-O3",
         ],
         str(Label("//tensorflow:android_x86")): [
