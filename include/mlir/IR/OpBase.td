@@ -1137,8 +1137,9 @@ class TCOpIsBroadcastableToRes<int opId, int resId> : And<[
       IsShapedTypePred>,
     SubstLeaves<"$_self", "$_op.getResult(" # resId # ")->getType()",
       IsShapedTypePred>,
-    CPred<"OpTrait::util::getBroadcastedType($_op.getOperand(" # opId # "), "
-                                            "$_op.getResult(" # resId # "))">]>;
+    CPred<"OpTrait::util::getBroadcastedType("
+              "$_op.getOperand(" # opId # ")->getType(), "
+              "$_op.getResult(" # resId # ")->getType())">]>;
 
 // Predicate to verify that all the operands at the given `indices`
 // have the same element type.
