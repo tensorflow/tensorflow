@@ -340,7 +340,7 @@ cc_library(
         "//tensorflow/lite/toco/tflite:export",
         "//tensorflow/lite/toco/tflite:import",
     ] + select({
-        "//tensorflow:macos": ["//third_party/protobuf:protobuf_legacy"],
+        # Placeholder for internal macOS rule.
         "//conditions:default": [],
     }),
 )
