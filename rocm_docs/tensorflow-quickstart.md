@@ -185,9 +185,9 @@ We build ROCm docker images for every tensorflow-rocm commit. Those docker image
 
 Docker image name: `rocm<version>-<commit hash>`
 
-Latest docker image name: `rocm<version>-latest and latest`
+Latest docker image name: `rocm<version>-latest` and `latest`
 
-Pull instructions: $ docker pull rocm/tensorflow-autobuilds:latest
+Pull instructions: `$ docker pull rocm/tensorflow-autobuilds:latest`
 
 ### How do I build latest tensorflow-rocm commit?
 We build dev builds for every dependency change. Those docker images that have latest dependencies for the purpose of building tensorflow-rocm, and are aimed for development.
@@ -196,4 +196,4 @@ Docker image name: `dev-<commit hash>`
 
 Latest docker image name: `dev-latest`
 
-Pull instructions: $ docker pull rocm/tensorflow-autobuilds:dev-latest
+Pull instructions: `$ docker pull rocm/tensorflow-autobuilds:dev-latest`
