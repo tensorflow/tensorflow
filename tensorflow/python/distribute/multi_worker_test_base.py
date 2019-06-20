@@ -140,7 +140,8 @@ def _create_cluster(num_workers,
 def create_in_process_cluster(num_workers,
                               num_ps,
                               has_chief=False,
-                              has_eval=False):
+                              has_eval=False,
+                              rpc_layer='grpc'):
   """Create an in-process cluster that consists of only standard server."""
   # Leave some memory for cuda runtime.
   gpu_mem_frac = 0.7 / (num_workers + int(has_chief) + int(has_eval))
@@ -180,7 +181,7 @@ def create_in_process_cluster(num_workers,
       worker_config=worker_config,
       ps_config=ps_config,
       eval_config=eval_config,
-      protocol='grpc')
+      protocol=rpc_layer)
 
 
 def create_cluster_spec(test_obj,
