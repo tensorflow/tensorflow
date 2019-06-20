@@ -182,10 +182,9 @@ def get_dependent_variables(input_ops, output_ops):
 
   # avoids the edge-case when input_ops == output_ops.
   output_ops = nest.map_structure(gen_array_ops.identity, output_ops)
-
   inbetween_ops = op_selector.get_backward_walk_ops(
-      seed_ops=output_ops,
-      stop_at_ts=input_ops,
+      seed_ops=nest.flatten(output_ops),
+      stop_at_ts=nest.flatten(input_ops),
       inclusive=False,
       only_differentiable=True)
   var_ops = (op for op in inbetween_ops if op.type in VAR_OP_TYPES)

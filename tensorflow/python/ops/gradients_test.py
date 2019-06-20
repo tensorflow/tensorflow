@@ -930,6 +930,29 @@ class GetDependentVariablesTest(test_util.TensorFlowTestCase):
           [input_t], [result_t])
       self.assertEqual(dependent_vars, [])
 
+  def testNesting(self):
+    with ops.Graph().as_default():
+      init = constant_op.constant(100.0, shape=(5,))
+      var = variables.Variable(init, shape=(5,))
+
+      def _Func(inputs):
+        x = inputs["x"]
+        result = array_ops.identity(x) + 5.0 + var
+        return {
+            "y": result
+        }
+
+      input_t = constant_op.constant(2.0)
+      func_inputs = {
+          "x": input_t
+      }
+      result_t = _Func(func_inputs)
+
+      # Ensure we can deal with dictionary input and output.
+      dependent_vars = custom_gradient.get_dependent_variables(
+          func_inputs, result_t)
+      self.assertEqual(dependent_vars, [var])
+
   def testVariablesOutsideAndCustomGradient(self):
     with ops.Graph().as_default():
       init = constant_op.constant(100.0, shape=(5,))
