@@ -219,7 +219,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@protobuf_archive//:protobuf_headers",
+        "@com_google_protobuf//:protobuf_headers",
     ],
 )
 
@@ -354,7 +354,7 @@ cc_library(
         "@jsoncpp_git//:jsoncpp",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_poplar//poplar:poplar_headers",
-        "@protobuf_archive//:protobuf_headers",
+        "@com_google_protobuf//:protobuf_headers",
     ],
     alwayslink = True,
 )
@@ -391,7 +391,7 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:pooling",
         "//third_party/eigen3",
         "@jsoncpp_git//:jsoncpp",
-        "@protobuf_archive//:protobuf_headers",
+        "@com_google_protobuf//:protobuf_headers",
     ],
     alwayslink = True,
 )
@@ -582,7 +582,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@protobuf_archive//:protobuf_headers",
+        "@com_google_protobuf//:protobuf_headers",
     ],
     linkstatic=1,
     alwayslink = True,
