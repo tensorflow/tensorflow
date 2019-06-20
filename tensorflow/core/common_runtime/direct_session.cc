@@ -66,6 +66,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/byte_order.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
@@ -251,8 +252,38 @@ std::atomic_int_fast64_t DirectSession::step_id_counter_(1);
 
 static RunHandlerPool* GetOrCreateRunHandlerPool(
     const SessionOptions& options) {
+  int num_inter_threads = 0;
+  int num_intra_threads = 0;
+  static const int env_num_inter_threads = NumInterOpThreadsFromEnvironment();
+  static const int env_num_intra_threads = NumIntraOpThreadsFromEnvironment();
+  if (env_num_inter_threads > 0) {
+    num_inter_threads = env_num_inter_threads;
+  }
+  if (env_num_intra_threads > 0) {
+    num_intra_threads = env_num_intra_threads;
+  }
+
+  if (num_inter_threads == 0) {
+    if (options.config.session_inter_op_thread_pool_size() > 0) {
+      // Note due to ShouldUseRunHandler we are guaranteed that
+      // run_options.inter_op_thread_pool() == 0
+      num_inter_threads =
+          options.config.session_inter_op_thread_pool(0).num_threads();
+    }
+    if (num_inter_threads == 0) {
+      num_inter_threads = NumInterOpThreadsFromSessionOptions(options);
+    }
+  }
+
+  if (num_intra_threads == 0) {
+    num_intra_threads = options.config.intra_op_parallelism_threads();
+    if (num_intra_threads == 0) {
+      num_intra_threads = port::NumSchedulableCPUs();
+    }
+  }
+
   static RunHandlerPool* pool =
-      new RunHandlerPool(NumInterOpThreadsFromSessionOptions(options));
+      new RunHandlerPool(num_inter_threads, num_intra_threads);
   return pool;
 }
 
@@ -630,7 +661,7 @@ Status DirectSession::RunInternal(
   if (ShouldUseRunHandlerPool(run_options) &&
       run_options.experimental().use_run_handler_pool()) {
     VLOG(1) << "Using RunHandler to scheduler inter-op closures.";
-    handler = GetOrCreateRunHandlerPool(options_)->Get();
+    handler = GetOrCreateRunHandlerPool(options_)->Get(step_id);
   }
   auto* handler_ptr = handler.get();
 
@@ -663,6 +694,10 @@ Status DirectSession::RunInternal(
         device_thread_pool->Schedule(std::move(c));
       };
     }
+    if (handler != nullptr) {
+      args.user_intra_op_threadpool = handler->AsIntraThreadPoolInterface();
+    }
+
     item.executor->RunAsync(args, barrier->Get());
   }
 

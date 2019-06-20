@@ -4744,6 +4744,23 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "framework_run_handler_test",
+    size = "small",
+    srcs = ["framework/run_handler_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":test",
+        ":test_main",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cc_test(
     name = "common_runtime_partitioning_utils_test",
     size = "small",
     srcs = ["common_runtime/partitioning_utils_test.cc"],
