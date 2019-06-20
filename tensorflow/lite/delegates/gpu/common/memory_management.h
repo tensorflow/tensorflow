@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -28,7 +29,7 @@ namespace gpu {
 
 using TaskId = size_t;
 
-// Record, containing tensor size and IDs of the first and the last task,
+// Record, containing tensor size/shape and IDs of the first and the last task,
 // that use this tensor as input or output. For example: tensor #3 with size
 // tensor_size=65536 is first introduced in program #2 (first_task=2) and used
 // for the last time in program #7 (last_task=7).
@@ -81,6 +82,13 @@ enum class MemoryStrategy {
 Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
     const MemoryStrategy& strategy, ObjectsAssignment<size_t>* assignment);
+
+// Calculates the assignement of shared objects to given tensors, including
+// objects' sizes. Initial tensor sizes are given as BHWC. This function is
+// intended to use with GPU textures.
+Status AssignObjectsToTensors(
+    const std::vector<TensorUsageRecord<BHWC>>& usage_records,
+    const MemoryStrategy& strategy, ObjectsAssignment<BHWC>* assignment);
 
 }  // namespace gpu
 }  // namespace tflite
