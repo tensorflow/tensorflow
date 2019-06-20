@@ -35,6 +35,7 @@ cc_library(
     srcs = ["memory_management.cc"],
     hdrs = ["memory_management.h"],
     deps = [
+        ":shape",
         ":status",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
@@ -130,6 +131,7 @@ cc_library(
     srcs = ["shape.cc"],
     hdrs = ["shape.h"],
     deps = [
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
     ],
 )

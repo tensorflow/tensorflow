@@ -417,5 +417,20 @@ Status AssignObjectsToTensors(
   return OkStatus();
 }
 
+Status AssignObjectsToTensors(
+    const std::vector<TensorUsageRecord<BHWC>>& usage_records,
+    const MemoryStrategy& strategy, ObjectsAssignment<BHWC>* assignment) {
+  switch (strategy) {
+    case MemoryStrategy::NAIVE:
+      return NaiveAssignment<BHWC>(usage_records, assignment);
+    case MemoryStrategy::EQUALITY:
+      return EqualityAssignment<BHWC>(usage_records, assignment);
+    default:
+      return InternalError(
+          "MemoryStrategy is not supported with current tensor size type.");
+  }
+  return OkStatus();
+}
+
 }  // namespace gpu
 }  // namespace tflite

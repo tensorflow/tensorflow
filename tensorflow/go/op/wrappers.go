@@ -27779,6 +27779,62 @@ func DecodeBase64(scope *Scope, input tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
+// BoostedTreesSparseCalculateBestFeatureSplitAttr is an optional argument to BoostedTreesSparseCalculateBestFeatureSplit.
+type BoostedTreesSparseCalculateBestFeatureSplitAttr func(optionalAttr)
+
+// BoostedTreesSparseCalculateBestFeatureSplitSplitType sets the optional split_type attribute to value.
+//
+// value: A string indicating if this Op should perform inequality split or equality split.
+// If not specified, defaults to "inequality"
+func BoostedTreesSparseCalculateBestFeatureSplitSplitType(value string) BoostedTreesSparseCalculateBestFeatureSplitAttr {
+	return func(m optionalAttr) {
+		m["split_type"] = value
+	}
+}
+
+// Calculates gains for each feature and returns the best possible split information for the feature.
+//
+// The split information is the best threshold (bucket id), gains and left/right node contributions per node for each feature.
+//
+// It is possible that not all nodes can be split on each feature. Hence, the list of possible nodes can differ between the features. Therefore, we return `node_ids_list` for each feature, containing the list of nodes that this feature can be used to split.
+//
+// In this manner, the output is the best split per features and per node, so that it needs to be combined later to produce the best split for each node (among all possible features).
+//
+// The output shapes are compatible in a way that the first dimension of all tensors are the same and equal to the number of possible split nodes for each feature.
+//
+// Arguments:
+//	node_id_range: A Rank 1 tensor (shape=[2]) to specify the range [first, last) of node ids to process within `stats_summary_list`. The nodes are iterated between the two nodes specified by the tensor, as like `for node_id in range(node_id_range[0], node_id_range[1])` (Note that the last index node_id_range[1] is exclusive).
+//	stats_summary_indices: A Rank 2 int64 tensor of dense shape [N, 4] (N specifies the number of non-zero values) for accumulated stats summary (gradient/hessian) per node per bucket for each feature. The second dimension contains node id, feature dimension, bucket id, and stats dim.
+// stats dim is the sum of logits dimension and hessian dimension, hessian dimension can either be logits dimension if diagonal hessian is used, or logits dimension^2 if full hessian is used.
+//	stats_summary_values: A Rank 1 float tensor of dense shape [N] (N specifies the number of non-zero values), which supplies the values for each element in summary_indices.
+//	stats_summary_shape: A Rank 1 float tensor of dense shape [4], which specifies the dense shape of the sparse tensor, which is [num tree nodes, feature dimensions, num buckets, stats dim].
+//	l1: l1 regularization factor on leaf weights, per instance based.
+//	l2: l2 regularization factor on leaf weights, per instance based.
+//	tree_complexity: adjustment to the gain, per leaf based.
+//	min_node_weight: mininum avg of hessians in a node before required for the node to be considered for splitting.
+//	logits_dimension: The dimension of logit, i.e., number of classes.
+//
+// Returns A Rank 1 tensor indicating possible node ids that can be split.A Rank 1 tensor indicating the best gains to split each node.A Rank 1 tensor indicating the best feature dimension for each feature to split for each node.A Rank 1 tensor indicating the bucket id to compare with (as a threshold) for split in each node.A Rank 2 tensor indicating the contribution of the left nodes when branching from parent nodes to the left direction by the given threshold for each feature.
+// This value will be used to make the left node value by adding to the parent node value. Second dimension size is logits dimension.A Rank 2 tensor, with the same shape/conditions as left_node_contribs_list, but just that the value is for the right node.A Rank 1 tensor indicating which direction to go if data is missing.
+func BoostedTreesSparseCalculateBestFeatureSplit(scope *Scope, node_id_range tf.Output, stats_summary_indices tf.Output, stats_summary_values tf.Output, stats_summary_shape tf.Output, l1 tf.Output, l2 tf.Output, tree_complexity tf.Output, min_node_weight tf.Output, logits_dimension int64, optional ...BoostedTreesSparseCalculateBestFeatureSplitAttr) (node_ids tf.Output, gains tf.Output, feature_dimensions tf.Output, thresholds tf.Output, left_node_contribs tf.Output, right_node_contribs tf.Output, split_with_default_directions tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"logits_dimension": logits_dimension}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "BoostedTreesSparseCalculateBestFeatureSplit",
+		Input: []tf.Input{
+			node_id_range, stats_summary_indices, stats_summary_values, stats_summary_shape, l1, l2, tree_complexity, min_node_weight,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2), op.Output(3), op.Output(4), op.Output(5), op.Output(6)
+}
+
 // Returns an element-wise indication of the sign of a number.
 //
 // `y = sign(x) = -1` if `x < 0`; 0 if `x == 0`; 1 if `x > 0`.

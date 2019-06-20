@@ -197,6 +197,8 @@ TEST_F(HloRematerializationTest, RematerializeNestedComputations) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
   HloComputation* while_cond =
       module->AddEmbeddedComputation(cond_builder.Build());
+  HloComputation* while_cond_copy =
+      module->AddEmbeddedComputation(while_cond->Clone());
 
   HloComputation* inner_computation = module->AddEmbeddedComputation(
       MakeRematerializableComputation(/*suffix=*/".inner"));
@@ -206,7 +208,7 @@ TEST_F(HloRematerializationTest, RematerializeNestedComputations) {
           /*suffix=*/".middle"));
   HloComputation* entry_computation =
       module->AddEntryComputation(MakeRematerializableWhileComputation(
-          while_cond, /*while_body=*/middle_computation));
+          while_cond_copy, /*while_body=*/middle_computation));
 
   EXPECT_EQ(entry_computation->instruction_count(), 7);
   EXPECT_EQ(middle_computation->instruction_count(), 7);

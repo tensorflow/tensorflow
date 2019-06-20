@@ -78,7 +78,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_RESOURCE_HANDLE_KERNEL(Var);
 REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp").Device(DEVICE_CPU),
                         ResourceHandlesOp<Var>);
 
@@ -220,6 +219,47 @@ REGISTER_KERNEL_BUILDER(Name("ReadVariableOp").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("_ReadVariablesOp").Device(DEVICE_CPU),
                         ReadVariablesOp);
 
+VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
+  OP_REQUIRES_OK(context, context->GetAttr("container", &container_));
+  OP_REQUIRES_OK(context, context->GetAttr("shared_name", &name_));
+
+  OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_and_shape_.dtype));
+  PartialTensorShape shape;
+  OP_REQUIRES_OK(context, context->GetAttr("shape", &dtype_and_shape_.shape));
+}
+
+void VarHandleOp::Compute(OpKernelContext* ctx) {
+  if (name_ == ResourceHandle::ANONYMOUS_NAME) {
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    Tensor handle;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &handle, attr));
+    handle.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
+        ctx, container_, name_,
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
+    ctx->set_output(0, handle);
+  } else {
+    if (!initialized_.load()) {
+      mutex_lock ml(mutex_);
+      // Checking again to see if another thread has initialized the resource.
+      if (!initialized_.load()) {
+        AllocatorAttributes attr;
+        attr.set_on_host(true);
+        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}),
+                                               &resource_, attr));
+        resource_.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
+            ctx, container_, name_,
+            std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
+        initialized_.store(true);
+      }
+    }
+    ctx->set_output(0, resource_);
+  }
+}
+
+REGISTER_KERNEL_BUILDER(Name("VarHandleOp").Device(DEVICE_CPU), VarHandleOp);
+
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(
     Name("ReadVariableOp").Device(DEVICE_GPU).HostMemory("resource"),
@@ -240,7 +280,7 @@ REGISTER_KERNEL_BUILDER(
                               .Device(DEVICE_GPU)              \
                               .HostMemory("resource")          \
                               .TypeConstraint<type>("dtype"),  \
-                          ResourceHandleOp<Var>)
+                          VarHandleOp)
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);

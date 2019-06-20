@@ -40,7 +40,8 @@ cc_library(
     hdrs = ["tf2xla_supported_ops.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":tf2xla",
+        ":xla_compiler",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -108,7 +109,6 @@ cc_library(
         ":tf2xla_util",
         ":xla_compiler",
         "//tensorflow/compiler/plugin:plugin_backend",
-        "//tensorflow/compiler/tf2xla/kernels:xla_cpu_only_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:xla_computation",

@@ -38,7 +38,6 @@ from tensorflow.python.distribute import distribute_coordinator_context as dc_co
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
-from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import composite_tensor
@@ -70,6 +69,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
@@ -958,7 +958,12 @@ def is_keras_tensor(x):
 
 
 @keras_export('keras.backend.placeholder')
-def placeholder(shape=None, ndim=None, dtype=None, sparse=False, name=None):
+def placeholder(shape=None,
+                ndim=None,
+                dtype=None,
+                sparse=False,
+                name=None,
+                ragged=False):
   """Instantiates a placeholder tensor and returns it.
 
   Arguments:
@@ -970,9 +975,14 @@ def placeholder(shape=None, ndim=None, dtype=None, sparse=False, name=None):
       dtype: Placeholder type.
       sparse: Boolean, whether the placeholder should have a sparse type.
       name: Optional name string for the placeholder.
+      ragged: Boolean, whether the placeholder should have a ragged type.
+          In this case, values of 'None' in the 'shape' argument represent
+          ragged dimensions. For more information about RaggedTensors, see this
+          [guide](https://www.tensorflow.org/guide/ragged_tensors).
 
   Raises:
-      ValueError: If called with eager execution.
+      ValueError: If called with eager execution
+      ValueError: If called with sparse = True and ragged = True.
 
   Returns:
       Tensor instance (with Keras metadata included).
@@ -985,6 +995,11 @@ def placeholder(shape=None, ndim=None, dtype=None, sparse=False, name=None):
       <tf.Tensor 'Placeholder_4:0' shape=(2, 4, 5) dtype=float32>
   ```
   """
+  if sparse and ragged:
+    raise ValueError(
+        'Cannot set both sparse and ragged to True when creating a placeholder.'
+    )
+
   if dtype is None:
     dtype = floatx()
   if not shape:
@@ -993,6 +1008,20 @@ def placeholder(shape=None, ndim=None, dtype=None, sparse=False, name=None):
   with get_graph().as_default():
     if sparse:
       x = array_ops.sparse_placeholder(dtype, shape=shape, name=name)
+    elif ragged:
+      ragged_rank = 0
+      for i in range(1, len(shape)):
+        if shape[i] is None:
+          ragged_rank += 1
+        else:
+          break
+      value_shape = shape[(ragged_rank + 1):]
+
+      x = ragged_factory_ops.placeholder(
+          dtype=dtype,
+          ragged_rank=ragged_rank,
+          value_shape=value_shape,
+          name=name)
     else:
       x = array_ops.placeholder(dtype, shape=shape, name=name)
   return x
@@ -1008,7 +1037,11 @@ def is_placeholder(x):
       Boolean.
   """
   try:
-    return x.op.type == 'Placeholder'
+    if isinstance(x, composite_tensor.CompositeTensor):
+      flat_components = nest.flatten(x, expand_composites=True)
+      return py_any(is_placeholder(c) for c in flat_components)
+    else:
+      return x.op.type == 'Placeholder'
   except AttributeError:
     return False
 
@@ -1212,9 +1245,9 @@ def zeros(shape, dtype=None, name=None):
   """Instantiates an all-zeros variable and returns it.
 
   Arguments:
-      shape: Tuple of integers, shape of returned Keras variable
-      dtype: String, data type of returned Keras variable
-      name: String, name of returned Keras variable
+      shape: Tuple or list of integers, shape of returned Keras variable
+      dtype: data type of returned Keras variable
+      name: name of returned Keras variable
 
   Returns:
       A variable (including Keras metadata), filled with `0.0`.
@@ -1222,14 +1255,19 @@ def zeros(shape, dtype=None, name=None):
       and will return a dynamically-shaped tensor instead.
 
   Example:
+  
   ```python
-      >>> from keras import backend as K
-      >>> kvar = K.zeros((3,4))
-      >>> K.eval(kvar)
-      array([[ 0.,  0.,  0.,  0.],
-             [ 0.,  0.,  0.,  0.],
-             [ 0.,  0.,  0.,  0.]], dtype=float32)
+  from tensorflow.keras import backend as K
+  kvar = K.zeros((3,4))
+  K.eval(kvar)
+  # array([[ 0.,  0.,  0.,  0.], [ 0.,  0.,  0.,  0.],
+  #       [ 0.,  0.,  0.,  0.]], dtype=float32)
+  A = tf.constant([1,2,3])
+  kvar2 = K.zeros(A.shape) # [0., 0., 0.] float32 by default
+  kvar3 = K.zeros(A.shape,dtype=tf.int32) # [0, 0, 0] with int32 dtype
+  kvar4 = K.zeros([2,3]) # [[0., 0., 0.], [0., 0., 0.]]
   ```
+  
   """
   with ops.init_scope():
     if dtype is None:
@@ -1312,22 +1350,23 @@ def zeros_like(x, dtype=None, name=None):
 
   Arguments:
       x: Keras variable or Keras tensor.
-      dtype: String, dtype of returned Keras variable.
-           None uses the dtype of x.
-      name: String, name for the variable to create.
+      dtype: dtype of returned Keras variable.
+             `None` uses the dtype of `x`.
+      name: name for the variable to create.
 
   Returns:
-      A Keras variable with the shape of x filled with zeros.
+      A Keras variable with the shape of `x` filled with zeros.
 
   Example:
+  
   ```python
-      >>> from keras import backend as K
-      >>> kvar = K.variable(np.random.random((2,3)))
-      >>> kvar_zeros = K.zeros_like(kvar)
-      >>> K.eval(kvar_zeros)
-      array([[ 0.,  0.,  0.],
-             [ 0.,  0.,  0.]], dtype=float32)
+  from tensorflow.keras import backend as K
+  kvar = K.variable(np.random.random((2,3)))
+  kvar_zeros = K.zeros_like(kvar)
+  K.eval(kvar_zeros)
+  # array([[ 0.,  0.,  0.], [ 0.,  0.,  0.]], dtype=float32)
   ```
+  
   """
   return array_ops.zeros_like(x, dtype=dtype, name=name)
 
@@ -3102,63 +3141,6 @@ def print_tensor(x, message=''):
     logging_ops.print_v2(message, x, output_stream=sys.stdout)
     return x
 
-
-def is_tensor_or_composite_tensor(value):
-  """Test if a passed value object is a tensor-like or composite tensor."""
-  return (tensor_util.is_tensor(value) or isinstance(value, np.ndarray) or
-          composite_tensor_utils.is_composite_or_composite_value(value))
-
-
-def _try_process_scipy_sparse_input(value):
-  """Converts 'value' to a SparseTensor if it is a scipy sparse matrix.
-
-  Arguments:
-    value: An object that may have the attributes of a scipy sparse matrix.
-
-  Returns:
-    Either a SparseTensor based off of 'value' or 'value' itself.
-  """
-  try:
-    sparse_coo = value.tocoo()
-    row, col = sparse_coo.row, sparse_coo.col
-    data, shape = sparse_coo.data, sparse_coo.shape
-  except AttributeError:
-    # If we can't convert this object, it could be either a single data
-    # element (ie, a bool/int/float) which is OK to pass on, or something
-    # that we don't understand (which may or may not be OK). In either
-    # case, don't die here: the data standardization code will catch
-    # those issues.
-    return value
-
-  indices = np.concatenate((np.expand_dims(row, 1), np.expand_dims(col, 1)), 1)
-  return sparse_tensor.SparseTensor(indices, data, shape)
-
-
-def try_convert_scipy_to_sparse(values):
-  """Converts scipy sparse matrices in 'values' to SparseTensors, if possible.
-
-  Arguments:
-    values: An input or list of inputs to convert. These may be TensorLikes,
-      ndarrays, composite tensors, or scipy sparse values.
-
-  Returns:
-    An input or list of inputs where scipy sparse tensors have been converted
-    to tf.SparseTensors.
-
-  Raises:
-    ValueError: If input cannot be converted to a SparseTensor.
-  """
-  # Convert scipy sparse data into sparse tensors.
-  value_structure = values
-  values = nest.flatten(values)
-  for idx, value in enumerate(values):
-    if not is_tensor_or_composite_tensor(value):
-      values[idx] = _try_process_scipy_sparse_input(value)
-  values = nest.pack_sequence_as(value_structure, values)
-
-  return values
-
-
 # GRAPH MANIPULATION
 
 
@@ -3188,6 +3170,7 @@ class GraphExecutionFunction(object):
     if not isinstance(updates, (list, tuple)):
       raise TypeError('`updates` in a Keras backend function '
                       'should be a list or tuple.')
+
     self._inputs_structure = inputs
     self.inputs = nest.flatten(inputs, expand_composites=True)
     self._outputs_structure = outputs
@@ -3305,10 +3288,6 @@ class GraphExecutionFunction(object):
       return tensor
 
   def __call__(self, inputs):
-    inputs = try_convert_scipy_to_sparse(inputs)
-
-    # Ensure that input value types match any expected composite tensor types.
-    # TODO(momernick): Once TensorSpecs are implemented for CTs, use that here.
     inputs = nest.flatten(inputs, expand_composites=True)
 
     session = get_session(inputs)
@@ -3482,10 +3461,8 @@ class EagerExecutionFunction(object):
               x.op.inputs[0])
 
   def __call__(self, inputs):
-    # Convert scipy sparse data into sparse tensors.
-    inputs = try_convert_scipy_to_sparse(inputs)
-
     input_values = nest.flatten(inputs, expand_composites=True)
+
     if self._freezable_vars_values:
       input_values = input_values + self._freezable_vars_values
     converted_inputs = []

@@ -27,8 +27,6 @@ limitations under the License.
 namespace tflite {
 namespace tensor_utils {
 
-#ifdef USE_NEON
-
 // Multiply a matrix by a batch vector, and store results in a batch-size
 // vector.
 void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
@@ -120,8 +118,6 @@ void NeonVectorShiftLeft(float* vector, int v_size, float shift_value);
 // added to get one element of output.
 void NeonReductionSumVector(const float* input_vector, float* output_vector,
                             int output_size, int reduction_size);
-
-#endif  // USE_NEON
 
 }  // namespace tensor_utils
 }  // namespace tflite

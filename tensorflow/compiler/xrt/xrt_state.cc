@@ -194,6 +194,29 @@ void XRTTupleAllocation::ReleaseBuffers() {
   return Status::OK();
 }
 
+/*static*/ Status XRTTupleAllocation::CreateUninitialized(
+    const xla::Shape& shape, XRTMemoryManager* memory_manager,
+    xla::Backend* backend, int device_ordinal,
+    XRTTupleAllocation** allocation) {
+  std::unique_ptr<xla::ScopedShapedBuffer> scoped_buffer;
+  TF_RETURN_IF_ERROR(AllocateScopedShapedBuffer(
+      memory_manager, backend, device_ordinal, shape, &scoped_buffer));
+
+  // By releasing the ScopedShapedBuffer we ensure that the underlying storage
+  // won't be freed when the buffer goes out of scope at the end of this
+  // call. To avoid a leak, there must be no error-case returns from here until
+  // the end of the method.
+  auto shaped_buffer = scoped_buffer->release();
+  *allocation = new XRTTupleAllocation(
+      device_ordinal, backend->memory_allocator(),
+      shaped_buffer.on_host_shape(), shaped_buffer.on_device_shape());
+  (*allocation)
+      ->InitializeFromShapedBuffer(shaped_buffer, backend->memory_allocator(),
+                                   device_ordinal);
+  (*allocation)->SetDeviceMemorySize();
+  return Status::OK();
+}
+
 /*static*/ Status XRTTupleAllocation::CreateFromBuffer(
     const xla::ShapedBuffer& shaped_buffer, xla::Backend* backend,
     int device_ordinal, XRTTupleAllocation** allocation) {

@@ -284,6 +284,19 @@ HloValue& HloDataflowAnalysis::GetValue(HloValue::Id value_id) {
   return values_.at(value_id);
 }
 
+HloValueSet HloDataflowAnalysis::GetFlattenedValueSet(
+    const HloInstruction* instruction) {
+  HloValueSet value_set;
+
+  const InstructionValueSet& value_set_tree =
+      GetInstructionValueSet(instruction);
+
+  for (auto pair : value_set_tree) {
+    value_set.AssignUnionOf({&pair.second});
+  }
+  return value_set;
+}
+
 const HloValueSet& HloDataflowAnalysis::GetValueSet(
     const HloInstruction* instruction, const ShapeIndex& index) const {
   return GetInstructionValueSet(instruction).element(index);

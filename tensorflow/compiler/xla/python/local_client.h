@@ -62,7 +62,7 @@ class Device {
   // each execution or transfer. This is intended for debugging only.
   Device(se::StreamExecutor* executor, bool use_multiple_streams,
          bool synchronous_deallocation, bool asynchronous);
-  ~Device();
+  virtual ~Device();
 
   bool use_multiple_streams() const { return use_multiple_streams_; }
   bool synchronous_deallocation() const { return synchronous_deallocation_; }
@@ -74,6 +74,16 @@ class Device {
   se::Stream* device_to_host_stream() const {
     return device_to_host_stream_.get();
   }
+
+  // Returns a device to device stream. Allocates streams in a round-robin
+  // fashion amongst the available streams.
+  se::Stream* GetDeviceToDeviceStream();
+
+  // Enqueues a copy of `src_buffer` to `dst_buffer` onto `src_stream`.
+  virtual Status ThenMemcpyDeviceToDevice(se::Stream* src_stream,
+                                          se::Stream* dst_stream,
+                                          se::DeviceMemoryBase src_buffer,
+                                          se::DeviceMemoryBase dst_buffer);
 
   // A worker thread, used for replicated computation launches and callbacks.
   WorkerThread* worker_thread() const { return worker_thread_.get(); }
@@ -132,6 +142,13 @@ class Device {
   std::shared_ptr<se::Stream> compute_stream_;
   std::shared_ptr<se::Stream> host_to_device_stream_;
   std::shared_ptr<se::Stream> device_to_host_stream_;
+  std::vector<std::shared_ptr<se::Stream>> device_to_device_streams_;
+
+  // Number of device-to-device streams to create in the multistream case.
+  static constexpr int kNumDeviceToDeviceStreams = 4;
+
+  absl::Mutex mu_;
+  int next_device_to_device_stream_ GUARDED_BY(mu_) = 0;
 
   // Callback stream is used for running short host-side callbacks after device
   // side events, without preventing the device-side stream from doing useful
@@ -172,6 +189,7 @@ class PyLocalClient {
 
   // `allocator` may null, in which case the platform default allocator is used.
   explicit PyLocalClient(std::string platform_name, LocalClient* client,
+                         std::vector<std::unique_ptr<Device>> devices,
                          std::unique_ptr<se::DeviceMemoryAllocator> allocator,
                          bool asynchronous);
   virtual ~PyLocalClient() = default;
@@ -181,7 +199,7 @@ class PyLocalClient {
                                                  int device_ordinal);
 
   int device_count() const { return client_->device_count(); }
-  const Device& device(int device_ordinal) const {
+  Device& device(int device_ordinal) const {
     return *devices_.at(device_ordinal);
   }
   LocalClient* client() const { return client_; }
@@ -266,6 +284,9 @@ class PyLocalBuffer {
 
   // Destructures a tuple-valued PyLocalBuffer into its constituent elements.
   StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> DestructureTuple();
+
+  // Copies the buffer to device `dst_device_ordinal`.
+  StatusOr<std::unique_ptr<PyLocalBuffer>> CopyToDevice(int dst_device_ordinal);
 
   // Blocks the host until the buffer's value has been computed and is ready for
   // immediate use on the device. Useful in particular for timing benchmarks.
