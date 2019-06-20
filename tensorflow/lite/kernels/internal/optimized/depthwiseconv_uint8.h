@@ -18,8 +18,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "profiling/instrumentation.h"
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -1986,8 +1985,8 @@ inline void DepthwiseConvWithRounding(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, CpuBackendContext* cpu_backend_context,
-    int thread_start, int thread_end, int thread_dim) {
+    uint8* output_data, const CpuFlags& cpu_flags, int thread_start,
+    int thread_end, int thread_dim) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConv/8bit");
   const int depth_multiplier = params.depth_multiplier;
   const int32 output_activation_min = params.quantized_activation_min;
@@ -2009,12 +2008,7 @@ inline void DepthwiseConvWithRounding(
 // Jetson TX-2. This compiler does not support the offsetof() macro.
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
   // Dispatch to dot-product 3x3 kernels when supported.
-
-  ruy::Context* ruy_context = cpu_backend_context->ruy_context();
-  const bool has_dot_product_instructions =
-      ruy_context != nullptr && (ruy_context->GetRuntimeEnabledPaths() &
-                                 ruy::Path::kNeonDotprod) != ruy::Path::kNone;
-  if (has_dot_product_instructions) {
+  if (cpu_flags.neon_dotprod) {
     using optimized_ops::depthwise_conv::DotProduct3x3KernelType;
     DotProduct3x3KernelType kernel_type =
         optimized_ops::depthwise_conv::CategorizeDotProductKernel(
@@ -2025,7 +2019,8 @@ inline void DepthwiseConvWithRounding(
       optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
           DepthwiseConvImplementation::kUseNeon3x3DotProduct>(
           params, input_shape, input_data, filter_shape, filter_data,
-          bias_shape, bias_data, output_shape, output_data);
+          bias_shape, bias_data, output_shape, output_data, thread_start,
+          thread_end, thread_dim);
       return;
     }
   }
@@ -2066,12 +2061,12 @@ inline void DepthwiseConvImpl(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, CpuBackendContext* cpu_backend_context,
-    int thread_start, int thread_end, int thread_dim) {
-  return DepthwiseConvWithRounding<DepthwiseConvOutputRounding::kAwayFromZero>(
+    uint8* output_data, const CpuFlags& cpu_flags, int thread_start,
+    int thread_end, int thread_dim) {
+  return DepthwiseConvWithRounding<DepthwiseConvOutputRounding::kUpward>(
       params, input_shape, input_data, filter_shape, filter_data, bias_shape,
-      bias_data, output_shape, output_data, cpu_backend_context, thread_start,
-      thread_end, thread_dim);
+      bias_data, output_shape, output_data, cpu_flags, thread_start, thread_end,
+      thread_dim);
 }
 
 void DepthwiseConv(const DepthwiseParams& params,
@@ -2079,7 +2074,7 @@ void DepthwiseConv(const DepthwiseParams& params,
                    const RuntimeShape& filter_shape, const uint8* filter_data,
                    const RuntimeShape& bias_shape, const int32* bias_data,
                    const RuntimeShape& output_shape, uint8* output_data,
-                   CpuBackendContext* cpu_backend_context);
+                   const CpuFlags& cpu_flags);
 
 }  // namespace optimized_ops
 }  // namespace tflite

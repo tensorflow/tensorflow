@@ -36,7 +36,12 @@ die() {
 
 num_cpus() {
   # Get the number of CPUs
-  N_CPUS=$(grep -c ^processor /proc/cpuinfo)
+  if [[ -f /proc/cpuinfo ]]; then
+    N_CPUS=$(grep -c ^processor /proc/cpuinfo)
+  else
+    # Fallback method
+    N_CPUS=`getconf _NPROCESSORS_ONLN`
+  fi
   if [[ -z ${N_CPUS} ]]; then
     die "ERROR: Unable to determine the number of CPUs"
   fi
@@ -105,7 +110,8 @@ do_pylint() {
 "^tensorflow/python/keras/engine/base_layer.py.*\[E0203.*access-member-before-definition "\
 "^tensorflow/python/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition "\
 "^tensorflow/python/kernel_tests/constant_op_eager_test.py.*\[E0303.*invalid-length-returned "\
-"^tensorflow/python/keras/utils/data_utils.py.*\[E1102.*not-callable"
+"^tensorflow/python/keras/utils/data_utils.py.*\[E1102.*not-callable "\
+"^tensorflow/python/autograph/.*_py3_test\.py.*\[E0001.*syntax-error "
 
   echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""
 
@@ -305,7 +311,7 @@ do_buildifier(){
   if [[ -s ${BUILDIFIER_OUTPUT_FILE} ]]; then
     echo "FAIL: buildifier found errors and/or warnings in above BUILD files."
     echo "buildifier suggested the following changes:"
-    buildifier -v -mode=diff ${BUILD_FILES}
+    buildifier -v -mode=diff -diff_command=diff ${BUILD_FILES}
     echo "Please fix manually or run buildifier <file> to auto-fix."
     return 1
   else

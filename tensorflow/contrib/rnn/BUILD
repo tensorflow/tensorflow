@@ -2,6 +2,13 @@
 #   Contains ops to train linear models on top of TensorFlow.
 #   APIs here are meant to evolve over time.
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_kernel_library",
+    "tf_py_test",
+)
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -9,53 +16,15 @@ package(
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
-    "tf_custom_op_library",
-    "tf_gen_op_libs",
-    "tf_gen_op_wrapper_py",
-    "tf_kernel_library",
-    "tf_py_test",
-)
-
-cc_library(
-    name = "all_ops",
-    deps = [
-        ":gru_ops_op_lib",
-        ":lstm_ops_op_lib",
-    ],
-)
-
-cc_library(
-    name = "all_kernels",
-    deps = [
-        ":gru_ops_kernels",
-        ":lstm_ops_kernels",
-    ],
-)
-
-tf_custom_op_py_library(
+py_library(
     name = "rnn_py",
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]) + [
         "python/tools/checkpoint_convert.py",
-    ],
-    dso = [
-        ":python/ops/_gru_ops.so",
-        ":python/ops/_lstm_ops.so",
-    ],
-    kernels = [
-        ":all_ops",
-        ":all_kernels",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
         ":benchmarking",
-        ":gru_ops",
-        ":lstm_ops",
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/util:util_py",
@@ -72,6 +41,7 @@ tf_custom_op_py_library(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:rnn",
         "//tensorflow/python:rnn_cell",
+        "//tensorflow/python:rnn_ops_gen",
         "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
@@ -80,7 +50,7 @@ tf_custom_op_py_library(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "rnn_cell_test",
     size = "medium",
     srcs = ["python/kernel_tests/rnn_cell_test.py"],
@@ -104,7 +74,7 @@ cuda_py_tests(
     xla_enabled = True,
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "rnn_test",
     size = "medium",
     srcs = ["python/kernel_tests/rnn_test.py"],
@@ -147,7 +117,7 @@ tf_py_test(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "lstm_ops_test",
     size = "medium",
     srcs = ["python/kernel_tests/lstm_ops_test.py"],
@@ -169,61 +139,7 @@ cuda_py_tests(
     tags = ["noasan"],
 )
 
-tf_custom_op_library(
-    name = "python/ops/_lstm_ops.so",
-    srcs = [
-        "kernels/blas_gemm.cc",
-        "kernels/blas_gemm.h",
-        "kernels/lstm_ops.cc",
-        "kernels/lstm_ops.h",
-        "ops/lstm_ops.cc",
-    ],
-    gpu_srcs = [
-        "kernels/blas_gemm.h",
-        "kernels/lstm_ops_gpu.cu.cc",
-        "kernels/lstm_ops.h",
-    ],
-    deps = [
-        # _lstm_ops.so and _gru_ops.so cannot both be linked to MKL-DNN,
-        # or there will be duplicate thread_local symbols, which can cause
-        # problems in TensorFlow Transform.
-        "//tensorflow/core/kernels:eigen_helpers_no_mkl",
-    ],
-)
-
-tf_gen_op_wrapper_py(
-    name = "lstm_ops",
-    deps = [":lstm_ops_op_lib"],
-)
-
-tf_custom_op_library(
-    name = "python/ops/_gru_ops.so",
-    srcs = [
-        "kernels/blas_gemm.cc",
-        "kernels/blas_gemm.h",
-        "kernels/gru_ops.cc",
-        "kernels/gru_ops.h",
-        "ops/gru_ops.cc",
-    ],
-    gpu_srcs = [
-        "kernels/blas_gemm.h",
-        "kernels/gru_ops_gpu.cu.cc",
-        "kernels/gru_ops.h",
-    ],
-    deps = [
-        # _lstm_ops.so and _gru_ops.so cannot both be linked to MKL-DNN,
-        # or there will be duplicate thread_local symbols, which can cause
-        # problems in TensorFlow Transform.
-        "//tensorflow/core/kernels:eigen_helpers_no_mkl",
-    ],
-)
-
-tf_gen_op_wrapper_py(
-    name = "gru_ops",
-    deps = [":gru_ops_op_lib"],
-)
-
-cuda_py_tests(
+cuda_py_test(
     name = "gru_ops_test",
     size = "small",
     srcs = ["python/kernel_tests/gru_ops_test.py"],
@@ -247,100 +163,6 @@ cuda_py_tests(
     tags = [
         "no_oss",
         "noasan",
-    ],
-)
-
-tf_cc_test(
-    name = "ops/gru_ops_test",
-    size = "small",
-    srcs = ["ops/gru_ops_test.cc"],
-    kernels = [":gru_ops_kernels"],
-    tags = ["noasan"],
-    # We must ensure that the dependencies can be dynamically linked since
-    # the shared library must be able to use core:framework.
-    # linkstatic = tf_kernel_tests_linkstatic(),
-    deps = [
-        "//tensorflow/c:c_api",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cc_test(
-    name = "ops/lstm_ops_test",
-    size = "small",
-    srcs = ["ops/lstm_ops_test.cc"],
-    kernels = [
-        ":lstm_ops_kernels",
-    ],
-    tags = ["noasan"],
-    # We must ensure that the dependencies can be dynamically linked since
-    # the shared library must be able to use core:framework.
-    # linkstatic = tf_kernel_tests_linkstatic(),
-    deps = [
-        "//tensorflow/c:c_api",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_gen_op_libs(
-    op_lib_names = [
-        "lstm_ops",
-        "gru_ops",
-    ],
-)
-
-tf_kernel_library(
-    name = "blas_gemm",
-    srcs = [
-        "kernels/blas_gemm.cc",
-    ],
-    hdrs = ["kernels/blas_gemm.h"],
-    gpu_srcs = [
-        "kernels/blas_gemm.h",
-    ],
-    visibility = ["//visibility:private"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/kernels:eigen_contraction_kernel",
-        "//tensorflow/core/kernels:eigen_helpers",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_kernel_library(
-    name = "gru_ops_kernels",
-    prefix = "kernels/gru_ops",
-    deps = [
-        ":blas_gemm",
-        ":gru_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/kernels:eigen_helpers",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_kernel_library(
-    name = "lstm_ops_kernels",
-    prefix = "kernels/lstm_ops",
-    deps = [
-        ":blas_gemm",
-        ":lstm_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/kernels:eigen_helpers",
-        "//third_party/eigen3",
     ],
 )
 
@@ -389,4 +211,58 @@ py_library(
     srcs = ["python/kernel_tests/benchmarking.py"],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow/python:framework_ops"],
+)
+
+# These are compatibility re-exports. Remove once there are
+# no usages left.
+
+USE_CORE_TF = "contrib/rnn kernels and ops are now part of core TensorFlow"
+
+cc_library(
+    name = "all_ops",
+    deprecation = USE_CORE_TF,
+    deps = [
+        "//tensorflow/core:rnn_ops_op_lib",
+    ],
+)
+
+cc_library(
+    name = "all_kernels",
+    deprecation = USE_CORE_TF,
+    deps = [
+        ":gru_ops_kernels",
+        ":lstm_ops_kernels",
+    ],
+)
+
+cc_library(
+    name = "gru_ops_op_lib",
+    deprecation = USE_CORE_TF,
+    deps = [
+        "//tensorflow/core:rnn_ops_op_lib",
+    ],
+)
+
+cc_library(
+    name = "lstm_ops_op_lib",
+    deprecation = USE_CORE_TF,
+    deps = [
+        "//tensorflow/core:rnn_ops_op_lib",
+    ],
+)
+
+tf_kernel_library(
+    name = "gru_ops_kernels",
+    deprecation = USE_CORE_TF,
+    deps = [
+        "//tensorflow/core/kernels/rnn:gru_ops",
+    ],
+)
+
+tf_kernel_library(
+    name = "lstm_ops_kernels",
+    deprecation = USE_CORE_TF,
+    deps = [
+        "//tensorflow/core/kernels/rnn:lstm_ops",
+    ],
 )

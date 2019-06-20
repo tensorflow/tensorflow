@@ -1,12 +1,11 @@
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_test(
     name = "autotune_benchmark",
@@ -17,7 +16,38 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
-        "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "choose_fastest_benchmark",
+    srcs = ["choose_fastest_benchmark.py"],
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "choose_fastest_branch_benchmark",
+    srcs = ["choose_fastest_branch_benchmark.py"],
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python/data/benchmarks:benchmark_base",
+        "//tensorflow/python/data/experimental/ops:sleep",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -117,38 +147,6 @@ py_test(
 )
 
 py_test(
-    name = "choose_fastest_benchmark",
-    srcs = ["choose_fastest_benchmark.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:session",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "choose_fastest_branch_benchmark",
-    srcs = ["choose_fastest_branch_benchmark.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:session",
-        "//tensorflow/python/data/benchmarks:benchmark_base",
-        "//tensorflow/python/data/experimental/ops:sleep",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
     name = "optimize_benchmark",
     srcs = ["optimize_benchmark.py"],
     python_version = "PY2",
@@ -173,7 +171,6 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
         "//tensorflow/python/data/experimental/ops:interleave_ops",
-        "//tensorflow/python/data/experimental/ops:optimization",
         "//tensorflow/python/data/experimental/ops:sleep",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",

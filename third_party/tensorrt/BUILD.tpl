@@ -11,7 +11,10 @@ exports_files(["LICENSE"])
 
 cc_library(
     name = "tensorrt_headers",
-    hdrs = [":tensorrt_include"],
+    hdrs = [
+        "tensorrt/include/tensorrt_config.h",
+        ":tensorrt_include"
+    ],
     include_prefix = "third_party/tensorrt",
     strip_include_prefix = "tensorrt/include",
 )

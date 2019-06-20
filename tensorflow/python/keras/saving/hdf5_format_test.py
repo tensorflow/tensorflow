@@ -662,7 +662,8 @@ class TestWholeModelSaving(test.TestCase):
       for i in range(4):
         f = keras.layers.Dense(2, name='dense_%d' % (i,))(f)
       model = keras.Model(inputs=[x], outputs=[f])
-      model.compile(loss='mse', optimizer='adam', metrics=['acc'])
+      model.compile(
+          'adam', loss=keras.losses.MeanSquaredError(), metrics=['acc'])
 
       x = np.random.random((1, 2))
       y = np.random.random((1, 2))
@@ -792,6 +793,19 @@ class TestWholeModelSaving(test.TestCase):
       model = keras.models.load_model(fname)
       os.close(fd)
       os.remove(fname)
+
+  def test_primitive_attrs_contain_no_extraneous_strings(self):
+    if h5py is None:
+      self.skipTest('h5py required to run this test')
+
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(1, input_shape=[2]))
+    fname = os.path.join(self.get_temp_dir(), 'model.h5')
+    model.save(fname)
+
+    h5file = h5py.File(fname, 'r')
+    self.assertRegexpMatches(
+        h5file.attrs['keras_version'], r'^[\d]+\.[\d]+\.[\S]+$')
 
 
 class SubclassedModel(training.Model):

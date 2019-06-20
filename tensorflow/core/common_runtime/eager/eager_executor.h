@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <queue>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -50,9 +49,18 @@ class EagerNode {
   // execution is done.
   virtual Status Run() = 0;
 
+  // Called when this node will not be run due to some error contained in
+  // `status`. `status` must not be OK.
+  // For example, if the node would have computed some tensors in the Run(),
+  // it should poison the corresponding tensor handles in this method.
+  virtual void Abort(Status status) = 0;
+
+  uint64 Id() const { return id_; }
+
+ private:
   // An id unique to the TFE_Context under which this node is created. Allocated
   // monotonically.
-  const uint64 id;
+  const uint64 id_;
 };
 
 // A class for handling async execution (see TFE_ContextSetAsync).
@@ -79,7 +87,7 @@ class EagerExecutor {
 
   // Schedules `node` for execution.
   // Note that Add must be called in monotonically increasing order of node->id.
-  void Add(EagerNode* node);
+  void Add(std::unique_ptr<EagerNode> node);
 
   // Causes the caller to block till node with id `node_id` has finished
   // execution.
@@ -88,11 +96,14 @@ class EagerExecutor {
   // Blocks till all currently pending ops are done.
   Status WaitForAllPendingNodes();
 
+  // Checks if the specific node_id is queued.
+  bool IsQueued(uint64 node_id) const;
+
   // Clears all currently set errors which re-enables async execution.
   void ClearError();
 
   // Returns Status based on any errors that occurred during async execution.
-  Status status();
+  Status status() const;
 
  private:
   // Starts execution of pending EagerNodes. This function loops till
@@ -103,13 +114,14 @@ class EagerExecutor {
 
   Status WaitImpl(bool wait_all, uint64 node_id);
 
-  mutex node_queue_mutex_;
+  mutable mutex node_queue_mutex_;
 
   // Used to signal that some EagerNodes are pending execution.
   condition_variable nodes_pending_ GUARDED_BY(node_queue_mutex_);
 
   // Queue of pending EagerNodes.
-  std::queue<EagerNode*> node_queue_ GUARDED_BY(node_queue_mutex_);
+  std::queue<std::unique_ptr<EagerNode>> node_queue_
+      GUARDED_BY(node_queue_mutex_);
 
   // `status_` is set based on any errors raised during execution of a
   // EagerNode.  It remains set until ClearError is called.
@@ -128,6 +140,9 @@ class EagerExecutor {
   // Indicates that `thread_` should stop as soon as it is done executing the
   // current EagerNode.
   bool thread_done_ GUARDED_BY(node_queue_mutex_) = false;
+
+  // Indicates the id of last successfully or unsuccessfully executed node.
+  uint64 last_node_id_ GUARDED_BY(node_queue_mutex_) = 0;
 
   mutex next_id_mutex_;
   uint64 next_id_ GUARDED_BY(next_id_mutex_) = 1;

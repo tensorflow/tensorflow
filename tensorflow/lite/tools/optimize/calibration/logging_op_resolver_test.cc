@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/calibration/logging_op_resolver.h"
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/mutable_op_resolver.h"
@@ -38,6 +39,14 @@ TfLiteStatus AddEval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+TfLiteStatus CustomPrepare(TfLiteContext* context, TfLiteNode* node) {
+  return kTfLiteOk;
+}
+
+TfLiteStatus CustomEval(TfLiteContext* context, TfLiteNode* node) {
+  return kTfLiteOk;
+}
+
 TfLiteStatus WrappingInvoke(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
@@ -60,7 +69,8 @@ TEST(LoggingOpResolverTest, KernelInvokesAreReplaced) {
       {BuiltinOperator_ADD, /*version*/ 1},
   };
 
-  LoggingOpResolver resolver(ops_to_replace, base_resolver, WrappingInvoke);
+  LoggingOpResolver resolver(ops_to_replace, CustomOpsSet(), base_resolver,
+                             WrappingInvoke);
 
   auto reg = resolver.FindOp(BuiltinOperator_CONV_2D, 1);
 
@@ -93,7 +103,8 @@ TEST(LoggingOpResolverTest, OriginalKernelInvokesAreRetained) {
       {BuiltinOperator_ADD, /*version*/ 1},
   };
 
-  LoggingOpResolver resolver(ops_to_replace, base_resolver, WrappingInvoke);
+  LoggingOpResolver resolver(ops_to_replace, CustomOpsSet(), base_resolver,
+                             WrappingInvoke);
   auto kernel_invoke =
       resolver.GetWrappedKernelInvoke(BuiltinOperator_CONV_2D, 1);
   EXPECT_TRUE(kernel_invoke == ConvEval);
@@ -119,7 +130,8 @@ TEST(LoggingOpResolverTest, OnlyOpsInReplacementSetAreReplaces) {
       {BuiltinOperator_CONV_2D, /*version*/ 1},
   };
 
-  LoggingOpResolver resolver(ops_to_replace, base_resolver, WrappingInvoke);
+  LoggingOpResolver resolver(ops_to_replace, CustomOpsSet(), base_resolver,
+                             WrappingInvoke);
   auto reg = resolver.FindOp(BuiltinOperator_CONV_2D, 1);
   EXPECT_EQ(reg->builtin_code, BuiltinOperator_CONV_2D);
   EXPECT_TRUE(reg->prepare == ConvPrepare);
@@ -127,6 +139,30 @@ TEST(LoggingOpResolverTest, OnlyOpsInReplacementSetAreReplaces) {
 
   reg = resolver.FindOp(BuiltinOperator_ADD, 1);
   EXPECT_EQ(nullptr, reg);
+}
+
+TEST(LoggingOpResolverTest, CustomOps) {
+  MutableOpResolver base_resolver;
+  TfLiteRegistration custom_registration = {};
+  custom_registration.prepare = CustomPrepare;
+  custom_registration.invoke = CustomEval;
+
+  std::string custom_op_name = "custom";
+  base_resolver.AddCustom(custom_op_name.c_str(), &custom_registration);
+
+  CustomOpsSet ops_to_replace = {
+      {custom_op_name, /*version*/ 1},
+  };
+
+  LoggingOpResolver resolver(BuiltinOpsSet(), ops_to_replace, base_resolver,
+                             WrappingInvoke);
+
+  auto reg = resolver.FindOp(custom_op_name.c_str(), 1);
+
+  EXPECT_EQ(reg->builtin_code, BuiltinOperator_CUSTOM);
+  EXPECT_EQ(reg->custom_name, custom_op_name.c_str());
+  EXPECT_TRUE(reg->prepare == CustomPrepare);
+  EXPECT_TRUE(reg->invoke == WrappingInvoke);
 }
 
 }  // namespace

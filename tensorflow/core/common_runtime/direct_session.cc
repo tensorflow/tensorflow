@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/constant_folding.h"
@@ -56,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/core/threadpool_options.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
@@ -70,6 +72,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -159,6 +162,23 @@ class DirectSessionFactory : public SessionFactory {
 
   Status NewSession(const SessionOptions& options,
                     Session** out_session) override {
+    const auto& experimental_config = options.config.experimental();
+    if (experimental_config.has_session_metadata()) {
+      if (experimental_config.session_metadata().version() < 0) {
+        return errors::InvalidArgument(
+            "Session version shouldn't be negative: ",
+            experimental_config.session_metadata().DebugString());
+      }
+      const string key = GetMetadataKey(experimental_config.session_metadata());
+      mutex_lock l(sessions_lock_);
+      if (!session_metadata_keys_.insert(key).second) {
+        return errors::InvalidArgument(
+            "A session with the same name and version has already been "
+            "created: ",
+            experimental_config.session_metadata().DebugString());
+      }
+    }
+
     // Must do this before the CPU allocator is created.
     if (options.config.graph_options().build_cost_model() > 0) {
       EnableCPUAllocatorFullStats(true);
@@ -203,11 +223,20 @@ class DirectSessionFactory : public SessionFactory {
     mutex_lock l(sessions_lock_);
     sessions_.erase(std::remove(sessions_.begin(), sessions_.end(), session),
                     sessions_.end());
+    if (session->options().config.experimental().has_session_metadata()) {
+      session_metadata_keys_.erase(GetMetadataKey(
+          session->options().config.experimental().session_metadata()));
+    }
   }
 
  private:
+  static string GetMetadataKey(const SessionMetadata& metadata) {
+    return absl::StrCat(metadata.name(), "/", metadata.version());
+  }
+
   mutex sessions_lock_;
   std::vector<DirectSession*> sessions_ GUARDED_BY(sessions_lock_);
+  absl::flat_hash_set<string> session_metadata_keys_ GUARDED_BY(sessions_lock_);
 };
 
 class DirectSessionRegistrar {
@@ -439,10 +468,11 @@ Status DirectSession::DecorateAndPublishGraphForDebug(
   return Status::OK();
 }
 
-Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
-                                  CallFrameInterface* call_frame,
-                                  ExecutorsAndKeys* executors_and_keys,
-                                  RunMetadata* run_metadata) {
+Status DirectSession::RunInternal(
+    int64 step_id, const RunOptions& run_options,
+    CallFrameInterface* call_frame, ExecutorsAndKeys* executors_and_keys,
+    RunMetadata* run_metadata,
+    const thread::ThreadPoolOptions& threadpool_options) {
   const uint64 start_time_usecs = options_.env->NowMicros();
   profiler::TraceMe activity(
       [&] { return strings::StrCat("SessionRun #id=", step_id, "#"); },
@@ -571,12 +601,18 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
     return errors::Cancelled("Run call was cancelled");
   }
 
-  thread::ThreadPool* pool =
-      run_options.inter_op_thread_pool() >= 0
-          ? thread_pools_[run_options.inter_op_thread_pool()].first
-          : nullptr;
+  // Use std::unique_ptr to ensure garbage collection
+  std::unique_ptr<thread::ThreadPool> threadpool_wrapper;
+  thread::ThreadPool* pool = nullptr;
+
   if (run_in_caller_thread_) {
     pool = nullptr;
+  } else if (threadpool_options.inter_op_threadpool != nullptr) {
+    threadpool_wrapper = absl::make_unique<thread::ThreadPool>(
+        threadpool_options.inter_op_threadpool);
+    pool = threadpool_wrapper.get();
+  } else if (run_options.inter_op_thread_pool() >= 0) {
+    pool = thread_pools_[run_options.inter_op_thread_pool()].first;
   }
 
   if (pool == nullptr) {
@@ -763,7 +799,8 @@ Status DirectSession::Run(const RunOptions& run_options,
   }
 
   TF_RETURN_IF_ERROR(RunInternal(step_id, run_options, &call_frame,
-                                 executors_and_keys, run_metadata));
+                                 executors_and_keys, run_metadata,
+                                 thread::ThreadPoolOptions()));
 
   // Receive outputs.
   if (outputs) {
@@ -1238,6 +1275,10 @@ Status DirectSession::CreateExecutors(
 
     LocalExecutorParams params;
     params.device = device;
+    params.session_metadata =
+        options_.config.experimental().has_session_metadata()
+            ? &options_.config.experimental().session_metadata()
+            : nullptr;
     params.function_library = lib;
     auto opseg = device->op_segment();
     params.create_kernel = [this, lib, opseg](const NodeDef& ndef,
@@ -1769,6 +1810,14 @@ class DirectSession::RunCallableCallFrame : public CallFrameInterface {
 ::tensorflow::Status DirectSession::RunCallable(
     CallableHandle handle, const std::vector<Tensor>& feed_tensors,
     std::vector<Tensor>* fetch_tensors, RunMetadata* run_metadata) {
+  return RunCallable(handle, feed_tensors, fetch_tensors, run_metadata,
+                     thread::ThreadPoolOptions());
+}
+
+::tensorflow::Status DirectSession::RunCallable(
+    CallableHandle handle, const std::vector<Tensor>& feed_tensors,
+    std::vector<Tensor>* fetch_tensors, RunMetadata* run_metadata,
+    const thread::ThreadPoolOptions& threadpool_options) {
   TF_RETURN_IF_ERROR(CheckNotClosed());
   TF_RETURN_IF_ERROR(CheckGraphCreated("RunCallable()"));
   direct_session_runs->GetCell()->IncrementBy(1);
@@ -1826,9 +1875,9 @@ class DirectSession::RunCallableCallFrame : public CallFrameInterface {
     LogMemory::RecordStep(step_id, run_state_args.handle);
   }
 
-  TF_RETURN_IF_ERROR(
-      RunInternal(step_id, executors_and_keys->callable_options.run_options(),
-                  &call_frame, executors_and_keys.get(), run_metadata));
+  TF_RETURN_IF_ERROR(RunInternal(
+      step_id, executors_and_keys->callable_options.run_options(), &call_frame,
+      executors_and_keys.get(), run_metadata, threadpool_options));
 
   if (fetch_tensors != nullptr) {
     size_t output_size = 0;

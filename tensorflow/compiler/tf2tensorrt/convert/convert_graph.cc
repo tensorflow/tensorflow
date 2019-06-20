@@ -27,9 +27,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/segment/segment.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
@@ -200,10 +199,12 @@ Status GetEngineInfo(const Graph* g,
         continue;
       }
       if (edge->IsControlEdge()) {
-        // Control input.
-        info->connections.emplace_back(input_node->name(), input_node->id(),
-                                       node_name, node_id,
-                                       /*input_edge=*/true);
+        if (input_node->type_string() != "Const") {
+          // Non-Const control input.
+          info->connections.emplace_back(input_node->name(), input_node->id(),
+                                         node_name, node_id,
+                                         /*input_edge=*/true);
+        }
       } else if (input_node->type_string() == "Const") {
         // Add constant data input nodes into the segment graphdef (thus also in
         // the engine). We don't care if it has other output edges going into
@@ -218,12 +219,6 @@ Status GetEngineInfo(const Graph* g,
           continue;
         }
         VLOG(1) << "Adding const node " << input_node->name();
-        // Since we already add (duplicate) the const input node to the segment
-        // graphdef, it's now not a data dependency any more, but to make the
-        // dependency correct we still add a control dependency.
-        info->connections.emplace_back(input_node->name(), input_node->id(),
-                                       node_name, node_id,
-                                       /*input_edge=*/true);
       } else {
         // Non-const data input.
         int port = Graph::kControlSlot - 1;

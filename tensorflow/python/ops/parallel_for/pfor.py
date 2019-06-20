@@ -1664,6 +1664,7 @@ def _convert_softmax(pfor_input, op_type, op_func):
 
 @RegisterPForWithArgs("Identity", array_ops.identity)
 @RegisterPForWithArgs("StopGradient", array_ops.stop_gradient)
+@RegisterPForWithArgs("MatrixDiag", array_ops.matrix_diag)
 @RegisterPForWithArgs("MatrixDiagPart", array_ops.matrix_diag_part)
 def _convert_identity(pfor_input, op_type, op_func):
   del op_type
@@ -1733,7 +1734,14 @@ def _convert_matrix_band_part(pfor_input):
       t, num_lower=num_lower, num_upper=num_upper), True)
 
 
+@RegisterPFor("MatrixDiagPartV2")
+def _convert_matrix_diag_part_v2(pfor_input):
+  t = pfor_input.stacked_input(0)
+  return wrap(array_ops.matrix_diag_part(t), True)
+
+
 @RegisterPFor("MatrixSetDiag")
+@RegisterPFor("MatrixSetDiagV2")
 def _convert_matrix_set_diag(pfor_input):
   pfor_input.stack_inputs()
   t = pfor_input.stacked_input(0)
@@ -2263,10 +2271,10 @@ def _convert_cast(pfor_input):
 @RegisterPForWithArgs("Xlogy", math_ops.xlogy)
 @RegisterPForWithArgs("Zeta", math_ops.zeta)
 def _convert_cwise(pfor_input, op_type, op_func):
-  # Note that ops handled here do not have attributes except "T" and "Tout", and
-  # hence don't need extra arguments passed to the cwise_op call below.
+  # Note that ops handled here do not have attributes except those listed below
+  # and hence don't need extra arguments passed to the cwise_op call below.
   for attr in pfor_input.op.node_def.attr.keys():
-    assert attr in [u"T", u"Tout"], (op_type, attr)
+    assert attr in [u"T", u"Tout", u"_xla_compile_id"], (op_type, attr)
   pfor_input.expanddim_inputs_for_broadcast()
   return wrap(op_func(*[x.t for x in pfor_input.inputs]), True)
 
@@ -2378,6 +2386,16 @@ def _convert_select(pfor_input):
                               lambda: _unflatten_first_dim(outputs[0], n),
                               lambda: outputs[0])
   return [wrap(out, True) for x in outputs]
+
+
+@RegisterPFor("SelectV2")
+def _convert_selectv2(pfor_input):
+  pfor_input.expanddim_inputs_for_broadcast()
+  cond = pfor_input.input(0)[0]
+  t = pfor_input.input(1)[0]
+  e = pfor_input.input(2)[0]
+  out = array_ops.where_v2(cond, t, e)
+  return wrap(out, True)
 
 
 # random_ops

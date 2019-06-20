@@ -29,7 +29,8 @@ py_library(
         "applications/mobilenet.py",
         "applications/mobilenet_v2.py",
         "applications/nasnet.py",
-        "applications/resnet50.py",
+        "applications/resnet.py",
+        "applications/resnet_v2.py",
         "applications/vgg16.py",
         "applications/vgg19.py",
         "applications/xception.py",
@@ -124,6 +125,7 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:multi_worker_util",
     ],
 )
 
@@ -158,10 +160,9 @@ py_library(
     name = "engine",
     srcs = [
         "engine/__init__.py",
-        "engine/base_layer.py",
         "engine/input_layer.py",
-        "engine/input_spec.py",
         "engine/network.py",
+        "engine/node.py",
         "engine/partial_batch_padding_handler.py",
         "engine/saving.py",
         "engine/sequential.py",
@@ -179,18 +180,63 @@ py_library(
     deps = [
         ":activations",
         ":backend",
-        ":base_layer_utils",
+        ":base_layer",
+        ":base_preprocessing_layer",
         ":callbacks",
         ":callbacks_v1",
         ":constraints",
         ":engine_utils",
         ":initializers",
+        ":input_spec",
         ":losses",
         ":mode_keys",
         ":optimizers",
         ":regularizers",
         ":saving",
         "//tensorflow/python:composite_tensor_utils",
+        "//tensorflow/python/data",
+        "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/keras/distribute",
+        "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
+        "//tensorflow/python/keras/mixed_precision/experimental:loss_scale_optimizer",
+        "//tensorflow/python/keras/mixed_precision/experimental:policy",
+        "//tensorflow/python/module",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/ops/ragged:ragged_util",
+        "//tensorflow/python/training/tracking:data_structures",
+        "//tensorflow/tools/docs:doc_controls",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "input_spec",
+    srcs = ["engine/input_spec.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backend",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "base_layer",
+    srcs = ["engine/base_layer.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backend",
+        ":base_layer_utils",
+        ":constraints",
+        ":engine_utils",
+        ":regularizers",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
@@ -209,25 +255,50 @@ py_library(
 )
 
 py_library(
+    name = "base_preprocessing_layer",
+    srcs = ["engine/base_preprocessing_layer.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backend",
+        ":base_layer",
+        "//tensorflow/python:composite_tensor_utils",
+        "//tensorflow/python/data",
+        "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/module",
+    ],
+)
+
+py_library(
     name = "saving",
     srcs = [
         "saving/__init__.py",
         "saving/hdf5_format.py",
         "saving/model_config.py",
         "saving/save.py",
-        "saving/saved_model.py",
+        "saving/saved_model/constants.py",
+        "saving/saved_model/load.py",
+        "saving/saved_model/save.py",
+        "saving/saved_model/serialized_attributes.py",
+        "saving/saved_model/utils.py",
+        "saving/saved_model_experimental.py",
         "saving/saving_utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
         ":engine_utils",
+        ":input_spec",
         ":mode_keys",
         ":optimizers",
+        ":regularizers",
         "//tensorflow/python:lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:saver",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/saved_model/model_utils",
+        "//tensorflow/python/training/tracking",
     ],
 )
 
@@ -253,6 +324,7 @@ py_library(
         ":backend",
         ":engine_utils",
         ":mode_keys",
+        "//tensorflow/python/keras/distribute:multi_worker_training_state",
     ],
 )
 
@@ -364,8 +436,10 @@ py_library(
     ],
 )
 
+# A separate build for layers without serialization to avoid circular deps
+# with feature column.
 py_library(
-    name = "layers",
+    name = "layers_base",
     srcs = [
         "layers/__init__.py",
         "layers/advanced_activations.py",
@@ -384,7 +458,7 @@ py_library(
         "layers/pooling.py",
         "layers/recurrent.py",
         "layers/recurrent_v2.py",
-        "layers/serialization.py",
+        "layers/rnn_cell_wrapper_v2.py",
         "layers/wrappers.py",
         "utils/kernelized_utils.py",
         "utils/layer_utils.py",
@@ -412,6 +486,19 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "layers",
+    srcs = [
+        "layers/serialization.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers_base",
+        ":tf_utils",
+        "//tensorflow/python/feature_column:feature_column_py",
     ],
 )
 
@@ -610,6 +697,9 @@ tf_py_test(
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
     ],
     shard_count = 3,
 )
@@ -625,6 +715,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
+    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -670,6 +761,17 @@ cuda_py_test(
         "no_windows_gpu",
     ],
     xla_enable_strict_auto_jit = True,
+)
+
+tf_py_test(
+    name = "base_preprocessing_layer_test",
+    size = "medium",
+    srcs = ["engine/base_preprocessing_layer_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
 )
 
 tf_py_test(
@@ -785,8 +887,11 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 3,
-    tags = ["notsan"],
+    shard_count = 4,
+    tags = [
+        "no_rocm",
+        "notsan",
+    ],
 )
 
 tf_py_test(
@@ -951,9 +1056,25 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 4,
+    shard_count = 6,
     tags = [
         "noasan",  # http://b/78599823
+        "notsan",
+    ],
+)
+
+tf_py_test(
+    name = "rnn_cell_wrapper_v2_test",
+    size = "medium",
+    srcs = ["layers/rnn_cell_wrapper_v2_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 4,
+    tags = [
         "notsan",
     ],
 )
@@ -1220,6 +1341,17 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "input_spec_test",
+    size = "small",
+    srcs = ["engine/input_spec_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+tf_py_test(
     name = "training_test",
     size = "medium",
     srcs = ["engine/training_test.py"],
@@ -1230,7 +1362,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 20,
-    tags = ["notsan"],
+    tags = [
+        "no_rocm",
+        "notsan",
+    ],
 )
 
 tf_py_test(
@@ -1259,6 +1394,7 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["no_rocm"],
 )
 
 tf_py_test(
@@ -1303,7 +1439,10 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    tags = ["notsan"],
+    tags = [
+        "no_rocm",
+        "notsan",
+    ],
 )
 
 tf_py_test(
@@ -1316,7 +1455,10 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    tags = ["notsan"],
+    tags = [
+        "no_oss",  # TODO(b/135021748) reenable
+        "notsan",
+    ],
 )
 
 tf_py_test(
@@ -1442,7 +1584,6 @@ tf_py_test(
         "//tensorflow/python:util",
     ],
     shard_count = 4,
-    tags = ["no_oss"],
 )
 
 tf_py_test(
@@ -1472,28 +1613,46 @@ tf_py_test(
 
 tf_py_test(
     name = "save_test",
-    size = "small",
+    size = "medium",
     srcs = ["saving/save_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/feature_column:feature_column_v2",
     ],
 )
 
 tf_py_test(
-    name = "saved_model_test",
+    name = "saved_model_experimental_test",
     size = "medium",
-    srcs = ["saving/saved_model_test.py"],
+    srcs = ["saving/saved_model_experimental_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    shard_count = 4,
     tags = [
         "no_oss",  # TODO(b/119349471): Re-enable
+        "no_windows",
+    ],
+)
+
+tf_py_test(
+    name = "saved_model_test",
+    size = "medium",
+    srcs = ["saving/saved_model/saved_model_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 4,
+    tags = [
         "no_windows",
     ],
 )
@@ -1509,4 +1668,20 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = ["notsan"],
+)
+
+tf_py_test(
+    name = "metrics_utils_test",
+    size = "small",
+    srcs = ["utils/metrics_utils_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_test_util",
+    ],
 )

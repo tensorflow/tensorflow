@@ -38,6 +38,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -290,7 +291,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   )
   def testDatasetStructure(self, tf_value_fn, expected_element_structure):
     dataset = dataset_ops.Dataset.from_tensors(0).map(lambda _: tf_value_fn())
-    dataset_structure = structure.Structure.from_value(dataset)
+    dataset_structure = type_spec.type_spec_from_value(dataset)
     self.assertIsInstance(dataset_structure, dataset_ops.DatasetStructure)
 
     # TODO(b/110122868): Add a public API to `tf.data.Dataset` for accessing
@@ -384,7 +385,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           _uses_dataset.get_concrete_function(
               dataset_ops.Dataset.zip((first_dataset, second_dataset))))
 
-  def testLimitedRetracingWithCompositeTensors(self):
+  def testLimitedRetracing(self):
     trace_count = [0]
 
     @def_function.function

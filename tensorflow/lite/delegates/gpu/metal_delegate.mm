@@ -234,7 +234,7 @@ class Delegate {
 
     // TODO(impjdi): Remove code duplication.
     auto values = graph.values();
-    auto find_value = [&](int tensor_index) -> Value<TensorRefFloat32>* {
+    auto find_value = [&](int tensor_index) -> Value<TensorRef<BHWC>>* {
       for (auto value : values) {
         if (value->tensor.ref == tensor_index) return value;
       }

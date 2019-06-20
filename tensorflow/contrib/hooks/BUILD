@@ -9,8 +9,6 @@ package(
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "py_test")
-
 py_library(
     name = "hooks",
     srcs = [

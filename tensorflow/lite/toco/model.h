@@ -75,6 +75,7 @@ enum class OperatorType : uint8 {
   kRelu1,
   kRelu6,
   kPRelu,
+  kHardSwish,
   kSoftmax,
   kLogSoftmax,
   kSub,
@@ -691,9 +692,20 @@ struct MulOperator : Operator {
 // Inputs:
 //   inputs[0]: required: the input array
 //
-// TensorFlow equivalent: Relu
+// TensorFlow equivalent: abs
 struct AbsOperator : Operator {
   AbsOperator() : Operator(OperatorType::kAbs) {}
+};
+
+// Element-wise HardSwish operator:
+//   x -> x * relu6(x+3)/6
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: hard_swish
+struct HardSwishOperator : Operator {
+  HardSwishOperator() : Operator(OperatorType::kHardSwish) {}
 };
 
 // Elu
@@ -1129,6 +1141,7 @@ struct StridedSliceOperator : Operator {
 //
 // Inputs:
 //   inputs[0]: required: the input array
+//   inputs[1]: optional: the output tensor shape
 //
 // TensorFlow equivalent: Reshape --- except that we only support a special case
 // here, where the output shape is a matrix (2D) shape.
@@ -2334,6 +2347,14 @@ class Model {
 
   int64 ArithmeticOpsCount() const { return ops_count; }
 
+  void AddInvalidInputArray(string invalid_input_array) {
+    invalid_input_arrays_.insert(invalid_input_array);
+  }
+
+  const std::unordered_set<string>& GetInvalidInputArrays() const {
+    return invalid_input_arrays_;
+  }
+
   // Optional arrays are used for optional tensors,
   // these tensors do not have data, but with reserved names as op inputs.
   std::set<string> optional_arrays;
@@ -2360,6 +2381,9 @@ class Model {
   // The Operator's refer to these Array's by their name strings, not by their
   // addresses. See Operator::inputs, Operator::outputs.
   std::unordered_map<string, std::unique_ptr<Array>> arrays;
+
+  // Invalid input arrays.
+  std::unordered_set<string> invalid_input_arrays_;
 };
 
 // OperatorSignature contains the information required to making versioning

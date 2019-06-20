@@ -378,3 +378,11 @@ def CheckInputFromValidContext(op, input_op):
         input_op.name, "".join(traceback.format_list(input_op.traceback)))
     logging.info(log_msg)
     raise ValueError(error_msg + " See info log for more details.")
+
+
+def GetWhileContext(op):
+  """Get the WhileContext to which this op belongs."""
+  ctxt = op._get_control_flow_context()  # pylint: disable=protected-access
+  if ctxt:
+    ctxt = ctxt.GetWhileContext()
+  return ctxt

@@ -84,7 +84,9 @@ static constexpr int kMaxAuxiliaryParameterCount = 3;
 // not no-ops on zero gradients, so we need to distinguish an accumulated
 // gradient of zero from one that has been cleared after its gradients have
 // already been applied to the parameters and accumulators.
-const float kGradientAccumulatorInitialValue = absl::bit_cast<float, uint32>(1);
+inline float GradientAccumulatorInitialValue() {
+  return absl::bit_cast<float, uint32>(1);
+}
 
 // Computes registration data for per table load Op. Each load Op transfers
 // the embedding parameters from the host memory to the TPU memory.

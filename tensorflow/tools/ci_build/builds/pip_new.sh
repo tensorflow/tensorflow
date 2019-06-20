@@ -442,7 +442,7 @@ install_tensorflow_pip() {
   # Force tensorflow reinstallation. Otherwise it may not get installed from
   # last build if it had the same version number as previous build.
   PIP_FLAGS="--upgrade --force-reinstall"
-  ${PIP_BIN_PATH} install -v ${PIP_FLAGS} ${WHL_PATH} || \
+  ${PIP_BIN_PATH} install ${PIP_FLAGS} ${WHL_PATH} || \
     die "pip install (forcing to reinstall tensorflow) FAILED"
   echo "Successfully installed pip package ${WHL_PATH}"
 

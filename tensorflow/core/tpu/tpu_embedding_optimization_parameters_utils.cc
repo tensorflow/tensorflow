@@ -252,7 +252,7 @@ Status GetOptimizationAlgorithmStateVariables(
     StateVariableSpecification gradient_acc;
     gradient_acc.set_name("gradient_accumulators");
     gradient_acc.mutable_fill_with_constant()->set_initial_value(
-        kGradientAccumulatorInitialValue);
+        GradientAccumulatorInitialValue());
     state_variables->push_back(std::move(gradient_acc));
   }
   if (state_variables->size() > kMaxAuxiliaryParameterCount + 1) {

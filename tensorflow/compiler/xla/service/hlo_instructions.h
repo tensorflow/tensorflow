@@ -744,11 +744,11 @@ class HloFusionInstruction : public HloInstruction {
     return FuseInstructionInternal(instruction_to_fuse);
   }
 
-  // Fuses the given instruction in this fusion instruction and generate
+  // Fuses the given instruction in this fusion instruction and generates a
   // multioutput fusion instruction. A clone of the instruction_to_fuse will
   // be part of the output of fusion instructions. The users of
   // instruction_to_fuse will be redirected to this fusion instructions.
-  // instruction_to_fuse will be removed from its parent computation.
+  // instruction_to_fuse is unchanged otherwise.
   HloInstruction* FuseInstructionIntoMultiOutput(
       HloInstruction* instruction_to_fuse) {
     return FuseInstructionInternal(instruction_to_fuse, /* add_output */ true);
@@ -795,15 +795,12 @@ class HloFusionInstruction : public HloInstruction {
   Status DeduplicateFusionOperands();
 
  private:
-  // Fuses the given instruction into this fusion instruction. When add_output
-  // is false (which is the default), instruction_to_fuse is cloned and the
-  // clone is placed in the fusion instruction. instruction_to_fuse is
-  // unchanged.
-  //
-  // When add_output is true, a clone of the instruction_to_fuse will be part
-  // of the output of fusion instructions. The users of instruction_to_fuse
-  // will be redirected to this fusion instructions. instruction_to_fuse will
-  // be removed from its parent computation.
+  // Fuses the given instruction into this fusion instruction.
+  // instruction_to_fuse is cloned and the clone is placed in the fusion
+  // instruction.  The users of instruction_to_fuse will be redirected to this
+  // fusion instruction. instruction_to_fuse is unchanged otherwise. When
+  // add_output is true, a clone of the instruction_to_fuse will be added as
+  // additional output resulting in a multi-output fusion.
   HloInstruction* FuseInstructionInternal(HloInstruction* instruction_to_fuse,
                                           bool add_output = false);
   // Clones the given instruction_to_fuse and insert the clone into this fusion
@@ -1217,8 +1214,16 @@ class HloCustomCallInstruction : public HloInstruction {
   void set_batch_group_count(int64 batch_group_count) {
     batch_group_count_ = batch_group_count;
   }
+  // Sets whether this custom call has a side-effect - by default a custom call
+  // has no side-effects.
+  void set_custom_call_has_side_effect(bool custom_call_has_side_effect) {
+    custom_call_has_side_effect_ = custom_call_has_side_effect;
+  }
   int64 feature_group_count() const { return feature_group_count_; }
   int64 batch_group_count() const { return batch_group_count_; }
+  bool custom_call_has_side_effect() const {
+    return custom_call_has_side_effect_;
+  }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1257,6 +1262,8 @@ class HloCustomCallInstruction : public HloInstruction {
   // For layout-constrained custom calls, this vector holds the shape with
   // layout for each operand.
   std::vector<Shape> operand_shapes_with_layout_;
+  // Whether this custom call has a side-effect.
+  bool custom_call_has_side_effect_;
 };
 
 class HloPadInstruction : public HloInstruction {
@@ -1576,6 +1583,31 @@ class HloGetDimensionSizeInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   int64 dimension_;
+};
+
+class HloRngGetAndUpdateStateInstruction : public HloInstruction {
+ public:
+  explicit HloRngGetAndUpdateStateInstruction(const Shape& shape, int64 delta);
+
+  // Returns the delta value.
+  int64 delta() const { return delta_; }
+  void set_delta(int64 delta) { delta_ = delta; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  int64 delta_;
 };
 
 }  // namespace xla

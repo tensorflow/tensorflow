@@ -110,6 +110,7 @@ def _is_namedtuple(instance, strict=False):
 _is_mapping = _pywrap_tensorflow.IsMapping
 _is_attrs = _pywrap_tensorflow.IsAttrs
 _is_composite_tensor = _pywrap_tensorflow.IsCompositeTensor
+_is_type_spec = _pywrap_tensorflow.IsTypeSpec
 
 
 def _sequence_like(instance, args):
@@ -117,7 +118,8 @@ def _sequence_like(instance, args):
 
   Args:
     instance: an instance of `tuple`, `list`, `namedtuple`, `dict`,
-        `collections.OrderedDict`, or `composite_tensor.Composite_Tensor`.
+        `collections.OrderedDict`, or `composite_tensor.Composite_Tensor`
+        or `type_spec.TypeSpec`.
     args: elements to be converted to the `instance` type.
 
   Returns:
@@ -135,8 +137,14 @@ def _sequence_like(instance, args):
     return type(instance)(*args)
   elif _is_composite_tensor(instance):
     assert len(args) == 1
-    metadata = instance._component_metadata()  # pylint: disable=protected-access
-    return type(instance)._from_components(args[0], metadata)  # pylint: disable=protected-access
+    spec = instance._type_spec  # pylint: disable=protected-access
+    return spec._from_components(args[0])  # pylint: disable=protected-access
+  elif _is_type_spec(instance):
+    # Pack a CompositeTensor's components according to a TypeSpec.
+    assert len(args) == 1
+    if args[0] and _is_type_spec(args[0][0]):
+      raise ValueError("Can not pack TypeSpec into a TypeSpec.")
+    return instance._from_components(args[0])  # pylint: disable=protected-access
   elif isinstance(instance, _six.moves.range):
     return _sequence_like(list(instance), args)
   else:
@@ -180,6 +188,10 @@ def _yield_sorted_items(iterable):
       yield field, getattr(iterable, field)
   elif _is_composite_tensor(iterable):
     yield type(iterable).__name__, iterable._to_components()  # pylint: disable=protected-access
+  elif _is_type_spec(iterable):
+    # Note: to allow CompositeTensors and their TypeSpecs to have matching
+    # structures, we need to use the same key string here.
+    yield iterable.value_type.__name__, iterable._component_specs  # pylint: disable=protected-access
   else:
     for item in enumerate(iterable):
       yield item
@@ -700,17 +712,40 @@ def assert_shallow_structure(shallow_tree,
               input_type=type(input_tree),
               shallow_type=type(shallow_tree)))
 
+      elif ((_is_composite_tensor(shallow_tree) or
+             _is_composite_tensor(input_tree)) and
+            (_is_type_spec(shallow_tree) or _is_type_spec(input_tree))):
+        pass  # Compatibility will be checked below.
+
       elif not (isinstance(shallow_tree, _collections.Mapping)
                 and isinstance(input_tree, _collections.Mapping)):
         raise TypeError(_STRUCTURES_HAVE_MISMATCHING_TYPES.format(
             input_type=type(input_tree),
             shallow_type=type(shallow_tree)))
 
-    if _is_composite_tensor(shallow_tree):
-      if not _is_composite_tensor(input_tree):
-        raise TypeError("If shallow structure is a CompositeTensor, input "
-                        "must also be a CompositeTensor.  Input has type: %s." %
-                        type(input_tree))
+    if _is_composite_tensor(shallow_tree) or _is_composite_tensor(input_tree):
+      if not (
+          (_is_composite_tensor(input_tree) or _is_type_spec(input_tree)) and
+          (_is_composite_tensor(shallow_tree) or _is_type_spec(shallow_tree))):
+        raise TypeError(_STRUCTURES_HAVE_MISMATCHING_TYPES.format(
+            input_type=type(input_tree),
+            shallow_type=type(shallow_tree)))
+      type_spec_1 = (shallow_tree if _is_type_spec(shallow_tree) else
+                     shallow_tree._type_spec)  # pylint: disable=protected-access
+      type_spec_2 = (input_tree if _is_type_spec(input_tree) else
+                     input_tree._type_spec)  # pylint: disable=protected-access
+      try:
+        _ = type_spec_1.most_specific_compatible_type(type_spec_2)
+      except (TypeError, ValueError) as e:
+        raise ValueError(
+            "Incompatible CompositeTensor TypeSpecs: %s vs. %s -- %s" %
+            (type_spec_1, type_spec_2, e))
+
+    elif _is_type_spec(shallow_tree):
+      if not _is_type_spec(input_tree):
+        raise TypeError("If shallow structure is a TypeSpec, input must also "
+                        "be a TypeSpec.  Input has type: %s."
+                        % type(input_tree))
     else:
       if check_subtrees_length and len(input_tree) != len(shallow_tree):
         raise ValueError(

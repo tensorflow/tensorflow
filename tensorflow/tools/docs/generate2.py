@@ -52,21 +52,21 @@ parser.tf_inspect = tf_inspect
 tf.__all__ = [item_name for item_name, value in tf_inspect.getmembers(tf)]
 
 tf.__doc__ = """
-## Tensorflow 2.0 Preview
+## TensorFlow 2.0 Beta
 
 Caution:  This is a developer preview.  You will likely find some bugs,
 performance issues, and more, and we encourage you to tell us about them.
 We value your feedback!
 
-These docs were generated from a nightly build of tensorflow 2.0.
+These docs were generated from the beta build of TensorFlow 2.0.
 
 You can install the exact version that was used to generate these docs
 with:
 
 ```
-pip install tf-nightly-2.0-preview=={version}",
+pip install tensorflow==2.0.0-beta1
 ```
-""".format(version=tf.__version__)
+"""
 
 FLAGS = flags.FLAGS
 
@@ -142,7 +142,7 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
   except AttributeError:
     pass
 
-  base_dir = path.normpath(path.join(path.dirname(tf.__file__), "../.."))
+  base_dir = path.dirname(tf.__file__)
 
   base_dirs = (
       base_dir,

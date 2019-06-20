@@ -179,7 +179,7 @@ def saveable_objects_for_op(op, name):
     # pylint: enable=protected-access
   else:
     # A variable or tensor.
-    if isinstance(op, resource_variable_ops.ResourceVariable):
+    if isinstance(op, resource_variable_ops.BaseResourceVariable):
       # pylint: disable=protected-access
       if op._in_graph_mode:
         variable = op._graph_element
@@ -233,7 +233,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
   # pylint: disable=protected-access
   for var in op_list:
     resource_or_ref_variable = (
-        isinstance(var, resource_variable_ops.ResourceVariable) or
+        isinstance(var, resource_variable_ops.BaseResourceVariable) or
         isinstance(var, variables.RefVariable))
 
     if isinstance(var, saveable_object.SaveableObject):
@@ -263,7 +263,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
       # indicating whether they were created in a graph building context. We
       # also get Tensors when graph building, which do not have this property.
       if not getattr(var, "_in_graph_mode", True):
-        if not isinstance(var, resource_variable_ops.ResourceVariable):
+        if not isinstance(var, resource_variable_ops.BaseResourceVariable):
           raise ValueError(
               "Can only save/restore ResourceVariables when eager execution "
               "is enabled, type: %s." % type(var))
@@ -277,7 +277,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
               (var._shared_name,))
       else:
         if convert_variable_to_tensor:
-          if isinstance(var, resource_variable_ops.ResourceVariable):
+          if isinstance(var, resource_variable_ops.BaseResourceVariable):
             var = var._graph_element  # pylint: disable=protected-access
           else:
             var = ops.internal_convert_to_tensor(var, as_ref=True)

@@ -15,14 +15,15 @@ limitations under the License.
 
 #include "tensorflow/c/ops.h"
 
-#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
 using ::tensorflow::DataType;
 using ::tensorflow::OpDef;
+using ::tensorflow::OpDefBuilder;
 using ::tensorflow::OpDeprecation;
 using ::tensorflow::OpShapeInferenceFn;
 using ::tensorflow::Set_TF_Status_from_Status;
@@ -31,111 +32,53 @@ using ::tensorflow::shape_inference::DimensionHandle;
 using ::tensorflow::shape_inference::InferenceContext;
 using ::tensorflow::shape_inference::ShapeHandle;
 
-typedef struct TF_OpDefinitionBuilder {
-  // The op definition proto representing the op.
-  tensorflow::OpDef op_def;
-
-  // The shape inference function, or nullptr if none is provided for this op.
-  OpShapeInferenceFn shape_inference_func;
-} TF_OpDefinitionBuilder;
-
 TF_OpDefinitionBuilder* TF_NewOpDefinitionBuilder(const char* op_name) {
-  auto* result = new TF_OpDefinitionBuilder;
-  result->op_def.set_name(op_name);
-  return result;
+  auto* result = new OpDefBuilder(op_name);
+  return reinterpret_cast<TF_OpDefinitionBuilder*>(result);
 }
 
 void TF_DeleteOpDefinitionBuilder(TF_OpDefinitionBuilder* builder) {
-  delete builder;
-}
-
-static void PopulateArg(OpDef::ArgDef* arg, const char* name,
-                        TF_DataType type) {
-  arg->set_name(name);
-  arg->set_type(static_cast<DataType>(type));
+  delete reinterpret_cast<OpDefBuilder*>(builder);
 }
 
 void TF_OpDefinitionBuilderAddInput(TF_OpDefinitionBuilder* builder,
-                                    const char* name, TF_DataType type) {
-  PopulateArg(builder->op_def.add_input_arg(), name, type);
+                                    const char* input_spec) {
+  reinterpret_cast<OpDefBuilder*>(builder)->Input(input_spec);
 }
 
 void TF_OpDefinitionBuilderAddOutput(TF_OpDefinitionBuilder* builder,
-                                     const char* name, TF_DataType type) {
-  PopulateArg(builder->op_def.add_output_arg(), name, type);
+                                     const char* output_spec) {
+  reinterpret_cast<OpDefBuilder*>(builder)->Output(output_spec);
 }
 
-#define DEFINE_BUILDER_BOOL_SETTER(func_name, builder_setter_name, arg_name) \
-  void TF_OpDefinitionBuilder##func_name(TF_OpDefinitionBuilder* builder,    \
-                                         bool arg_name) {                    \
-    builder->op_def.builder_setter_name(arg_name);                           \
+#define DEFINE_BUILDER_BOOL_SETTER(func_name)                             \
+  void TF_OpDefinitionBuilder##func_name(TF_OpDefinitionBuilder* builder, \
+                                         bool arg_name) {                 \
+    reinterpret_cast<OpDefBuilder*>(builder)->func_name();                \
   }
 
-DEFINE_BUILDER_BOOL_SETTER(SetIsCommutative, set_is_commutative, is_commutative)
-DEFINE_BUILDER_BOOL_SETTER(SetIsAggregate, set_is_aggregate, is_aggregate)
-DEFINE_BUILDER_BOOL_SETTER(SetIsStateful, set_is_stateful, is_stateful)
-DEFINE_BUILDER_BOOL_SETTER(SetAllowsUninitializedInput,
-                           set_allows_uninitialized_input,
-                           allows_unintialized_input)
+DEFINE_BUILDER_BOOL_SETTER(SetIsCommutative)
+DEFINE_BUILDER_BOOL_SETTER(SetIsAggregate)
+DEFINE_BUILDER_BOOL_SETTER(SetIsStateful)
+DEFINE_BUILDER_BOOL_SETTER(SetAllowsUninitializedInput)
 
-static OpDef::AttrDef* AddAttribute(TF_OpDefinitionBuilder* builder,
-                                    const char* name, const char* type_name) {
-  OpDef::AttrDef* attr = builder->op_def.add_attr();
-  attr->set_name(name);
-  attr->set_type(type_name);
-  return attr;
+void TF_OpDefinitionBuilderAddAttr(TF_OpDefinitionBuilder* builder,
+                                   const char* attr_spec) {
+  reinterpret_cast<OpDefBuilder*>(builder)->Attr(attr_spec);
 }
-
-#define DEFINE_ATTR_SETTER(attr_type, type_name, field_c_type, field_name)     \
-  void TF_OpDefinitionBuilderAdd##attr_type##Attr(                             \
-      TF_OpDefinitionBuilder* builder, const char* name) {                     \
-    AddAttribute(builder, name, type_name);                                    \
-  }                                                                            \
-                                                                               \
-  void TF_OpDefinitionBuilderAdd##attr_type##AttrWithDefaultValue(             \
-      TF_OpDefinitionBuilder* builder, const char* name,                       \
-      field_c_type field_name) {                                               \
-    OpDef::AttrDef* attr = AddAttribute(builder, name, type_name);             \
-    attr->mutable_default_value()->set_##field_name(field_name);               \
-  }                                                                            \
-                                                                               \
-  void TF_OpDefinitionBuilderAdd##attr_type##ListAttrWithDefaultValues(        \
-      TF_OpDefinitionBuilder* builder, const char* name,                       \
-      field_c_type field_name[], size_t n) {                                   \
-    OpDef::AttrDef* attr = AddAttribute(builder, name, "list(" type_name ")"); \
-    for (int _i = 0; _i < n; ++_i) {                                           \
-      attr->mutable_default_value()->mutable_list()->add_##field_name(         \
-          field_name[_i]);                                                     \
-    }                                                                          \
-  }                                                                            \
-                                                                               \
-  void TF_OpDefinitionBuilderAdd##attr_type##ListAttr(                         \
-      TF_OpDefinitionBuilder* builder, const char* name) {                     \
-    TF_OpDefinitionBuilderAdd##attr_type##ListAttrWithDefaultValues(           \
-        builder, name, NULL, 0);                                               \
-  }
-
-DEFINE_ATTR_SETTER(String, "string", const char*, s)
-DEFINE_ATTR_SETTER(Int, "int", int64_t, i)
-DEFINE_ATTR_SETTER(Float, "float", float, f)
-DEFINE_ATTR_SETTER(Bool, "bool", bool, b)
 
 void TF_OpDefinitionBuilderDeprecated(TF_OpDefinitionBuilder* builder,
                                       int version, const char* explanation) {
-  OpDeprecation* dep = builder->op_def.mutable_deprecation();
-  dep->set_version(version);
-  dep->set_explanation(explanation);
+  reinterpret_cast<OpDefBuilder*>(builder)->Deprecated(version, explanation);
 }
 
 void TF_RegisterOpDefinition(TF_OpDefinitionBuilder* builder,
                              TF_Status* status) {
+  auto* cc_builder = reinterpret_cast<OpDefBuilder*>(builder);
   TF_SetStatus(status, TF_OK, "");
   ::tensorflow::OpRegistry::Global()->Register(
-      [builder](::tensorflow::OpRegistrationData* op_reg_data) -> Status {
-        op_reg_data->op_def.Clear();
-        op_reg_data->op_def.MergeFrom(builder->op_def);
-        op_reg_data->shape_inference_fn = builder->shape_inference_func;
-        return Status::OK();
+      [cc_builder](::tensorflow::OpRegistrationData* op_reg_data) -> Status {
+        return cc_builder->Finalize(op_reg_data);
       });
 
   // Calling ProcessRegistrations ensures that the cc_builder's finalize method
@@ -143,22 +86,23 @@ void TF_RegisterOpDefinition(TF_OpDefinitionBuilder* builder,
   Set_TF_Status_from_Status(
       status, ::tensorflow::OpRegistry::Global()->ProcessRegistrations());
 
-  delete builder;
+  delete cc_builder;
 }
 
 void TF_OpDefinitionBuilderSetShapeInferenceFunction(
     TF_OpDefinitionBuilder* builder,
     void (*shape_inference_func)(TF_ShapeInferenceContext* ctx,
                                  TF_Status* status)) {
-  builder->shape_inference_func =
+  auto* cc_builder = reinterpret_cast<OpDefBuilder*>(builder);
+  cc_builder->SetShapeFn(
       [shape_inference_func](InferenceContext* ctx) -> tensorflow::Status {
-    TF_Status* c_status = TF_NewStatus();
-    auto c_ctx = reinterpret_cast<TF_ShapeInferenceContext*>(ctx);
-    shape_inference_func(c_ctx, c_status);
-    tensorflow::Status result = ::tensorflow::StatusFromTF_Status(c_status);
-    TF_DeleteStatus(c_status);
-    return result;
-  };
+        TF_Status* c_status = TF_NewStatus();
+        auto c_ctx = reinterpret_cast<TF_ShapeInferenceContext*>(ctx);
+        shape_inference_func(c_ctx, c_status);
+        tensorflow::Status result = ::tensorflow::StatusFromTF_Status(c_status);
+        TF_DeleteStatus(c_status);
+        return result;
+      });
 }
 
 TF_ShapeHandle* TF_NewShapeHandle() {

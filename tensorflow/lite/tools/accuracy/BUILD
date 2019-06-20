@@ -1,11 +1,11 @@
+load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+
 package(
     default_visibility = [
         "//visibility:public",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 
 cc_library(
     name = "android_required_build_flags",

@@ -67,7 +67,8 @@ MicroInterpreter::MicroInterpreter(const Model* model,
       op_resolver_(op_resolver),
       tensor_allocator_(tensor_allocator),
       error_reporter_(error_reporter),
-      initialization_status_(kTfLiteOk) {
+      initialization_status_(kTfLiteOk),
+      context_() {
   auto* subgraphs = model->subgraphs();
   if (subgraphs->size() != 1) {
     error_reporter->Report("Only 1 subgraph is currently supported.\n");
@@ -82,22 +83,14 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   context_.tensors =
       reinterpret_cast<TfLiteTensor*>(tensor_allocator_->AllocateMemory(
           sizeof(TfLiteTensor) * context_.tensors_size, 4));
+  context_.impl_ = static_cast<void*>(this);
+  context_.ReportError = ReportOpError;
+  context_.recommended_num_threads = 1;
 
   initialization_status_ = AllocateInputAndActTensors();
   if (initialization_status_ != kTfLiteOk) {
     return;
   }
-
-  context_.impl_ = static_cast<void*>(this);
-  context_.GetExecutionPlan = nullptr;
-  context_.ResizeTensor = nullptr;
-  context_.ReportError = ReportOpError;
-  context_.AddTensors = nullptr;
-  context_.GetNodeAndRegistration = nullptr;
-  context_.ReplaceNodeSubsetsWithDelegateKernels = nullptr;
-  context_.recommended_num_threads = 1;
-  context_.GetExternalContext = nullptr;
-  context_.SetExternalContext = nullptr;
 
   initialization_status_ = AllocateTemporaryTensors();
   if (initialization_status_ != kTfLiteOk) {
@@ -238,31 +231,11 @@ TfLiteStatus MicroInterpreter::Invoke() {
       user_data = registration->init(&context_, init_data, init_data_size);
     }
 
-    const int kMaxInputs = 16;
-    int inputs_data[kMaxInputs + 1];
-    TfLiteIntArray* inputs_array =
-        reinterpret_cast<TfLiteIntArray*>(inputs_data);
-    if (op->inputs()->size() >= kMaxInputs) {
-      error_reporter_->Report("Too many inputs (%d)\n", op->inputs()->size());
-      return kTfLiteError;
-    }
-    inputs_array->size = op->inputs()->size();
-    for (int n = 0; n < op->inputs()->size(); ++n) {
-      inputs_array->data[n] = op->inputs()->Get(n);
-    }
-
-    const int kMaxOutputs = 16;
-    int outputs_data[kMaxOutputs + 1];
-    TfLiteIntArray* outputs_array =
-        reinterpret_cast<TfLiteIntArray*>(outputs_data);
-    if (op->outputs()->size() >= kMaxOutputs) {
-      error_reporter_->Report("Too many outputs (%d)\n", op->outputs()->size());
-      return kTfLiteError;
-    }
-    outputs_array->size = op->outputs()->size();
-    for (int n = 0; n < op->outputs()->size(); ++n) {
-      outputs_array->data[n] = op->outputs()->Get(n);
-    }
+    // Disregard const qualifier to workaround with existing API.
+    TfLiteIntArray* inputs_array = const_cast<TfLiteIntArray*>(
+        reinterpret_cast<const TfLiteIntArray*>(op->inputs()));
+    TfLiteIntArray* outputs_array = const_cast<TfLiteIntArray*>(
+        reinterpret_cast<const TfLiteIntArray*>(op->outputs()));
 
     const int kMaxTemporaries = 16;
     int temporaries_data[kMaxTemporaries + 1];

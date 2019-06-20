@@ -22,14 +22,13 @@ namespace data {
 
 class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
  public:
-  static constexpr const char kDatasetType[] = "Concatenate";
-  static constexpr const char kInputDataset[] = "input_dataset";
-  static constexpr const char kAnotherDataset[] = "another_dataset";
-  static constexpr const char kOutputTypes[] = "output_types";
-  static constexpr const char kOutputShapes[] = "output_shapes";
+  static constexpr const char* const kDatasetType = "Concatenate";
+  static constexpr const char* const kInputDataset = "input_dataset";
+  static constexpr const char* const kAnotherDataset = "another_dataset";
+  static constexpr const char* const kOutputTypes = "output_types";
+  static constexpr const char* const kOutputShapes = "output_shapes";
 
-  explicit ConcatenateDatasetOp(OpKernelConstruction* ctx)
-      : BinaryDatasetOpKernel(ctx) {}
+  explicit ConcatenateDatasetOp(OpKernelConstruction* ctx);
 
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,

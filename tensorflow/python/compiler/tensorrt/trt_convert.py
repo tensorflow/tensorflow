@@ -20,13 +20,12 @@ from __future__ import print_function
 
 import collections
 import os
+import platform
 import tempfile
 
 import six as _six
 
-from tensorflow.compiler.tf2tensorrt.python.ops import trt_ops
-from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_linked_tensorrt_version
-from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_loaded_tensorrt_version
+from tensorflow.compiler.tf2tensorrt import wrap_py_utils
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -53,21 +52,24 @@ from tensorflow.python.training import saver
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util.lazy_loader import LazyLoader
 
-# Import TRT library. This is fine since we don't import TF-TRT in
-# tensorflow/python/compiler/__init__.py, and `import tensorflow` won't trigger
-# importing of TF-TRT. Note that TF-TRT is still included in GPU build since
-# tensorflow/python/BUILD depends on it.
-#
-# We need this import so that when users import this module, they can execute a
-# TRT-converted graph without calling any of the methods in this module.
-trt_ops.load_trt_ops()
-
 # Lazily load the op, since it's not available in cpu-only builds. Importing
 # this at top will cause tests that imports TF-TRT fail when they're built
 # and run without CUDA/GPU.
 gen_trt_ops = LazyLoader(
     "gen_trt_ops", globals(),
     "tensorflow.compiler.tf2tensorrt.ops.gen_trt_ops")
+
+# Register TRT ops in python, so that when users import this module they can
+# execute a TRT-converted graph without calling any of the methods in this
+# module.
+if wrap_py_utils.is_tensorrt_enabled():
+  if platform.system() == "Windows":
+    raise RuntimeError("Windows platform is not supported")
+
+  # This will call register_op_list() in
+  # tensorflow/python/framework/op_def_registry.py, but it doesn't register
+  # the op or the op kernel in C++ runtime.
+  gen_trt_ops.trt_engine_op  # pylint: disable=pointless-statement
 
 
 def _to_bytes(s):
@@ -532,7 +534,6 @@ DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams(
     max_batch_size=1,
     cached_engine_batches=None)
 
-_TRT_CALIBRATION_RESOURCE_CONTAINER_NAME = "TF-TRT-Calibration"
 _TRT_ENGINE_CACHE_CONTAINER_NAME = "TF-TRT-Engine-Cache"
 _TRT_ENGINE_OP_NAME = "TRTEngineOp"
 
@@ -568,8 +569,8 @@ def _check_trt_version_compatibility():
   Raises:
     RuntimeError: if the TensorRT library version is incompatible.
   """
-  compiled_version = get_linked_tensorrt_version()
-  loaded_version = get_loaded_tensorrt_version()
+  compiled_version = wrap_py_utils.get_linked_tensorrt_version()
+  loaded_version = wrap_py_utils.get_loaded_tensorrt_version()
   tf_logging.info("Linked TensorRT version: %s" % str(compiled_version))
   tf_logging.info("Loaded TensorRT version: %s" % str(loaded_version))
   version_mismatch = False
@@ -630,6 +631,9 @@ def get_tensorrt_rewriter_config(
         conversion_params.rewriter_config_template)
 
   optimizer = rewriter_config_with_trt.custom_optimizers.add()
+  # Add a constfold optimizer to cleanup the unused Const nodes.
+  rewriter_config_with_trt.custom_optimizers.add().name = "constfold"
+
   optimizer.name = "TensorRTOptimizer"
   optimizer.parameter_map[
       "minimum_segment_size"].i = conversion_params.minimum_segment_size
@@ -784,37 +788,32 @@ class TrtGraphConverter(GraphConverter):
     assert not self._calibration_data_collected
 
     # TODO(laigd): a better way would be to use self._calibration_sess to list
-    # all the devices, add one get_serialized_resource_op for each device, and
+    # all the devices, add one get_calibration_data for each device, and
     # fetch each such op for every resource until its found. This can work
     # even when the device of the TRTEngineOp is empty or not fully specified.
 
-    # Maps device name to the corresponding get_serialized_resource_op.
+    # Maps device name to the corresponding get_calibration_data.
     device_to_get_resource_op_map = {}
 
     with self._calibration_graph.as_default():
-      container_input = array_ops.placeholder(dtypes.string)
       resource_name_input = array_ops.placeholder(dtypes.string)
 
       for node in self._converted_graph_def.node:
         if node.op == _TRT_ENGINE_OP_NAME:
-          # Adds the get_serialized_resource_op for the device if not done
-          # before. We only add one such op for each device.
+          # Adds the get_calibration_data op for the device if not done before.
+          # We only add one such op for each device.
           # TODO(laigd): What if the device is empty?????
           if node.device not in device_to_get_resource_op_map:
             with self._calibration_graph.device(node.device):
               serialized_resources_output = (
-                  gen_trt_ops.get_serialized_resource_op(
-                      container_input, resource_name_input))
+                  gen_trt_ops.get_calibration_data_op(resource_name_input))
             device_to_get_resource_op_map[node.device] = (
                 serialized_resources_output)
 
           # Get the calibration resource.
           calibration_result = self._calibration_sess.run(
               device_to_get_resource_op_map[node.device],
-              feed_dict={
-                  container_input: _TRT_CALIBRATION_RESOURCE_CONTAINER_NAME,
-                  resource_name_input: node.name
-              })
+              feed_dict={resource_name_input: node.name})
           node.attr["calibration_data"].s = calibration_result
 
     self._calibration_data_collected = True

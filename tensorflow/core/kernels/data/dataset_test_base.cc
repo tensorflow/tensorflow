@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
+#include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/versions.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -286,6 +288,64 @@ Status DatasetOpsTestBase::RunOpKernel(OpKernel* op_kernel,
                                        OpKernelContext* context) {
   device_->Compute(op_kernel, context);
   return context->status();
+}
+
+Status DatasetOpsTestBase::RunFunction(
+    const FunctionDef& fdef, test::function::Attrs attrs,
+    const std::vector<Tensor>& args,
+    const GraphConstructorOptions& graph_options, std::vector<Tensor*> rets) {
+  std::unique_ptr<Executor> exec;
+  InstantiationResult result;
+  auto GetOpSig = [](const string& op, const OpDef** sig) {
+    return OpRegistry::Global()->LookUpOpDef(op, sig);
+  };
+  TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, GetOpSig, &result));
+
+  DataTypeVector arg_types = result.arg_types;
+  DataTypeVector ret_types = result.ret_types;
+
+  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  TF_RETURN_IF_ERROR(
+      ConvertNodeDefsToGraph(graph_options, result.nodes, g.get()));
+
+  const int version = g->versions().producer();
+  LocalExecutorParams params;
+  params.function_library = flr_;
+  params.device = device_.get();
+  params.create_kernel = [this, version](const NodeDef& ndef,
+                                         OpKernel** kernel) {
+    return CreateNonCachedKernel(device_.get(), this->flr_, ndef, version,
+                                 kernel);
+  };
+  params.delete_kernel = [](OpKernel* kernel) {
+    DeleteNonCachedKernel(kernel);
+  };
+  params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
+                                 Rendezvous** r) {
+    *r = new IntraProcessRendezvous(device_mgr);
+    return Status::OK();
+  };
+
+  Executor* cur_exec;
+  TF_RETURN_IF_ERROR(NewLocalExecutor(params, std::move(g), &cur_exec));
+  exec.reset(cur_exec);
+  FunctionCallFrame frame(arg_types, ret_types);
+  TF_RETURN_IF_ERROR(frame.SetArgs(args));
+  Executor::Args exec_args;
+  exec_args.call_frame = &frame;
+  exec_args.runner = runner_;
+  TF_RETURN_IF_ERROR(exec->Run(exec_args));
+  std::vector<Tensor> computed;
+  TF_RETURN_IF_ERROR(frame.GetRetvals(&computed));
+  if (computed.size() != rets.size()) {
+    return errors::InvalidArgument(
+        "The result does not match the expected number of return outpus",
+        ". Expected: ", rets.size(), ". Actual: ", computed.size());
+  }
+  for (int i = 0; i < rets.size(); ++i) {
+    *(rets[i]) = computed[i];
+  }
+  return Status::OK();
 }
 
 Status DatasetOpsTestBase::CreateOpKernelContext(

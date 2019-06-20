@@ -97,7 +97,7 @@ void DeviceResolverDistributed::RefreshRemoteAttributes(
     const string& device, const string& task, const StatusCallback& done) {
   GetStatusRequest* req = new GetStatusRequest;
   GetStatusResponse* resp = new GetStatusResponse;
-  WorkerInterface* worker = worker_cache_->CreateWorker(task);
+  WorkerInterface* worker = worker_cache_->GetOrCreateWorker(task);
   CHECK(worker) << "Failed to get worker for " << task;
   worker->GetStatusAsync(
       req, resp, [this, device, task, req, resp, worker, done](Status s) {

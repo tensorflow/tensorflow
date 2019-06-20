@@ -426,6 +426,23 @@ class DistributionTestBase(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         run_and_concatenate(strategy, i)
 
+  def _test_trainable_variable(self, strategy):
+    for cls in [variables.VariableV1, variables.Variable]:
+      with strategy.scope():
+        v1 = cls(1.0)
+        self.assertEqual(True, v1.trainable)
+
+        v2 = cls(1.0, synchronization=variables.VariableSynchronization.ON_READ)
+        self.assertEqual(False, v2.trainable)
+
+        v3 = cls(1.0, synchronization=variables.VariableSynchronization.ON_READ,
+                 trainable=True)
+        self.assertEqual(True, v3.trainable)
+
+        v4 = cls(1.0, synchronization=variables.VariableSynchronization.ON_READ,
+                 trainable=False)
+        self.assertEqual(False, v4.trainable)
+
 
 class OneDeviceDistributionTestBase(test.TestCase):
   """Some tests that should work with any one-device DistributionStrategy."""

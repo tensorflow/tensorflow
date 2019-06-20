@@ -30,6 +30,6 @@ from tensorflow.python.keras.saving.model_config import model_from_json
 from tensorflow.python.keras.saving.model_config import model_from_yaml
 from tensorflow.python.keras.saving.save import load_model
 from tensorflow.python.keras.saving.save import save_model
-from tensorflow.python.keras.saving.saved_model import export_saved_model
-from tensorflow.python.keras.saving.saved_model import load_from_saved_model
+from tensorflow.python.keras.saving.saved_model_experimental import export_saved_model
+from tensorflow.python.keras.saving.saved_model_experimental import load_from_saved_model
 from tensorflow.python.keras.saving.saving_utils import trace_model_call

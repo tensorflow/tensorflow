@@ -313,9 +313,8 @@ inline void LeakyRelu(const tflite::LeakyReluParams& params,
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const float val = input_data[i];
-    // Note that this implementation matches that of TensorFlow, and corresponds
-    // to the traditional LeakyRelu equation only for alpha <= 1.
-    output_data[i] = std::max(val, val * params.alpha);
+    // Note that alpha might be > 1 or < 0, so we don't use std::max here.
+    output_data[i] = val > 0 ? val : val * params.alpha;
   }
 }
 
@@ -2321,47 +2320,6 @@ inline void Logistic(const LogisticParams&, const RuntimeShape& input_shape,
 }
 
 inline void Logistic(const LogisticParams& params,
-                     const RuntimeShape& input_shape, const uint8* input_data,
-                     const RuntimeShape& output_shape, uint8* output_data) {
-  const int32 input_zero_point = params.input_zero_point;
-  const int32 input_range_radius = params.input_range_radius;
-  const int32 input_multiplier = params.input_multiplier;
-  const int input_left_shift = params.input_left_shift;
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    const uint8 input_val_u8 = input_data[i];
-    const int32 input_val_centered =
-        static_cast<int32>(input_val_u8) - input_zero_point;
-    uint8 output_val;
-    if (input_val_centered <= -input_range_radius) {
-      output_val = 0;
-    } else if (input_val_centered >= input_range_radius) {
-      output_val = 255;
-    } else {
-      const int32 input_val_rescaled =
-          MultiplyByQuantizedMultiplierGreaterThanOne(
-              input_val_centered, input_multiplier, input_left_shift);
-      using FixedPoint4 = gemmlowp::FixedPoint<int32, 4>;
-      using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
-      const FixedPoint4 input_val_f4 = FixedPoint4::FromRaw(input_val_rescaled);
-      const FixedPoint0 output_val_f0 = gemmlowp::logistic(input_val_f4);
-      // Convert from Q0.31 to Q23.8.
-      using gemmlowp::RoundingDivideByPOT;
-      int32 output_val_s32 = RoundingDivideByPOT(output_val_f0.raw(), 23);
-      if (output_val_s32 == 256) {
-        output_val_s32 = 255;
-      }
-      // Reinterpret as U0.8.
-      TFLITE_DCHECK_GE(output_val_s32, 0);
-      TFLITE_DCHECK_LE(output_val_s32, 255);
-      output_val = static_cast<uint8>(output_val_s32);
-    }
-    output_data[i] = output_val;
-  }
-}
-
-inline void Logistic(const LogisticParams& params,
                      const RuntimeShape& input_shape, const int16* input_data,
                      const RuntimeShape& output_shape, int16* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
@@ -2400,48 +2358,6 @@ inline void Tanh(const TanhParams&, const RuntimeShape& input_shape,
   Tanh(input_shape, input_data, output_shape, output_data);
 }
 
-inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
-                 const uint8* input_data, const RuntimeShape& output_shape,
-                 uint8* output_data) {
-  const int32 input_zero_point = params.input_zero_point;
-  const int32 input_range_radius = params.input_range_radius;
-  const int32 input_multiplier = params.input_multiplier;
-  const int input_left_shift = params.input_left_shift;
-  const int32 output_zero_point = 128;
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    const uint8 input_val_u8 = input_data[i];
-    const int32 input_val_centered =
-        static_cast<int32>(input_val_u8) - input_zero_point;
-    uint8 output_val;
-    if (input_val_centered <= -input_range_radius) {
-      output_val = 0;
-    } else if (input_val_centered >= input_range_radius) {
-      output_val = 255;
-    } else {
-      const int32 input_val_rescaled =
-          MultiplyByQuantizedMultiplierGreaterThanOne(
-              input_val_centered, input_multiplier, input_left_shift);
-      using FixedPoint4 = gemmlowp::FixedPoint<int32, 4>;
-      using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
-      const FixedPoint4 input_val_f4 = FixedPoint4::FromRaw(input_val_rescaled);
-      const FixedPoint0 output_val_f0 = gemmlowp::tanh(input_val_f4);
-      // Convert from Q0.31 to Q24.7.
-      using gemmlowp::RoundingDivideByPOT;
-      int32 output_val_s32 = RoundingDivideByPOT(output_val_f0.raw(), 24);
-      output_val_s32 += output_zero_point;
-      if (output_val_s32 == 256) {
-        output_val_s32 = 255;
-      }
-      // Reinterpret as Q0.7, encoded in uint8.
-      TFLITE_DCHECK_GE(output_val_s32, 0);
-      TFLITE_DCHECK_LE(output_val_s32, 255);
-      output_val = static_cast<uint8>(output_val_s32);
-    }
-    output_data[i] = output_val;
-  }
-}
 
 inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
                  const int16* input_data, const RuntimeShape& output_shape,
@@ -4585,6 +4501,65 @@ void ReverseSequence(const TS* seq_lengths, const int seq_dim,
         }
       }
     }
+  }
+}
+
+template <typename T>
+inline void HardSwish(const RuntimeShape& input_shape, const T* input_data,
+                      const RuntimeShape& output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("ReferenceHardSwish/Float");
+  auto matching_size = MatchingFlatSize(input_shape, output_shape);
+  const T* in_end = input_data + matching_size;
+  for (; input_data < in_end; input_data++, output_data++) {
+    const float in = *input_data;
+    *output_data =
+        in * std::min(static_cast<T>(6), std::max(static_cast<T>(0), in + 3)) /
+        6;
+  }
+}
+
+template <typename T>
+inline T Saturate(int32_t v) {
+  return static_cast<T>(std::min(
+      static_cast<int32_t>(std::numeric_limits<T>::max()),
+      std::max(static_cast<int32_t>(std::numeric_limits<T>::min()), v)));
+}
+
+template <typename T>
+inline void HardSwish(const HardSwishParams& params,
+                      const RuntimeShape& input_shape, const T* input_data,
+                      const RuntimeShape& output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("ReferenceHardSwish/Quantized");
+  // Goal: (x * relu6(x+3))/6
+  const T* in = input_data;
+  T* out = output_data;
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  const T* in_end = in + flat_size;
+  const int32_t extra_input_shift = params.clip_input_shift;
+  const auto in_zero_point = params.input_zero_point;
+  const auto three_in = params.three_input;
+  const auto six_in = params.six_input;
+  const auto real_shift = params.shift;
+  const auto scale = params.scale;
+  const auto offset = params.output_offset;
+
+  for (; in < in_end; in++, out++) {
+    int32_t v = static_cast<int32>(*in);
+    v -= in_zero_point;  // Make zeros - zero again!
+
+    // Computes x + 3 in input * 2^extra_input_shift scale.
+    //
+    // Note: three_in is in that scale already.
+    const int32_t v3 = (v << extra_input_shift) + three_in;
+
+    // Computes hard-swish up to a final scale
+    v *= std::min(six_in, std::max(0, v3));
+
+    // this converts from x * relu6(x+3) in input into x * relu6(x+3) / 6
+    // in output scale.
+    v = MultiplyByQuantizedMultiplierSmallerThanOneExp(v, scale, real_shift);
+    v += offset;
+    *out = Saturate<uint8>(v);
   }
 }
 

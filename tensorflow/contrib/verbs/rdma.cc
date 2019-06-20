@@ -1622,8 +1622,6 @@ void RdmaTensorRequest::RecvTensorContent() {
               << ": Received tensor content #" << index_ << ": " << key_
               << " (Size: 0x" << std::hex << message_size << ")";
 
-  Tensor val;
-
 #if GOOGLE_CUDA
   if (proxy_tensor_ != nullptr) {
     CountCopies(key_, (void*)DMAHelper::base(proxy_tensor_),

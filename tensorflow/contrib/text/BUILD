@@ -2,14 +2,6 @@
 #   contains parts of TensorFlow that are experimental or unstable and which
 #   are not supported.
 
-package(
-    default_visibility = [
-        "//learning/brain:__subpackages__",
-        "//tensorflow:__subpackages__",
-    ],
-    licenses = ["notice"],  # Apache 2.0
-)
-
 load(
     "//tensorflow:tensorflow.bzl",
     "py_test",
@@ -19,6 +11,14 @@ load(
     "tf_kernel_library",
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+
+package(
+    default_visibility = [
+        "//learning/brain:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 tf_custom_op_py_library(
     name = "text_py",
