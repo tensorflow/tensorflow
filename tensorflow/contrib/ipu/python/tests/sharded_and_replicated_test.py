@@ -71,14 +71,16 @@ class ShardedAndReplicatedTest(test_util.TensorFlowTestCase):
     def body(v, x):
       with ipu.ops.ipu_shard(0):
         z = v + x
+        y = x * x
       with ipu.ops.ipu_shard(1):
-        z = popops_cross_replica_sum.cross_replica_sum(z)
+        z = popops_cross_replica_sum.cross_replica_sum(
+            z) + popops_cross_replica_sum.cross_replica_sum(y)
         outfeed = outfeed_queue.enqueue(z)
       return (z, outfeed)
 
     def my_net():
       v = constant_op.constant(0.0, shape=shape, dtype=np.float32)
-      r = loops.repeat(5, body, [v], infeed_queue)
+      r = loops.repeat(2, body, [v], infeed_queue)
       return r
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
@@ -87,7 +89,9 @@ class ShardedAndReplicatedTest(test_util.TensorFlowTestCase):
     outfed = outfeed_queue.dequeue()
 
     cfg = ipu.utils.create_ipu_config(
-        profiling=True, max_cross_replica_sum_buffer_size=10000)
+        profiling=True,
+        max_cross_replica_sum_buffer_size=10000,
+        max_inter_ipu_copies_buffer_size=10000)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     cfg = ipu.utils.auto_select_ipus(cfg, 4)
     ipu.utils.configure_ipu_system(cfg)
@@ -95,24 +99,15 @@ class ShardedAndReplicatedTest(test_util.TensorFlowTestCase):
     with sl.Session() as sess:
       sess.run(infeed_queue.initializer)
       result = sess.run(res)
-      self.assertAllClose(result[0], np.broadcast_to(48, shape))
+      self.assertAllClose(result[0], np.broadcast_to(10, shape))
       outfed_result = sess.run(outfed)
 
       self.assertTrue(outfed_result.shape[0], 2)
       self.assertAllClose(outfed_result[0][0], outfed_result[0][1])
-      self.assertAllClose(outfed_result[0][0], np.broadcast_to(1, shape))
+      self.assertAllClose(outfed_result[0][0], np.broadcast_to(2, shape))
 
       self.assertAllClose(outfed_result[1][0], outfed_result[1][1])
-      self.assertAllClose(outfed_result[1][0], np.broadcast_to(4, shape))
-
-      self.assertAllClose(outfed_result[2][0], outfed_result[2][1])
-      self.assertAllClose(outfed_result[2][0], np.broadcast_to(11, shape))
-
-      self.assertAllClose(outfed_result[3][0], outfed_result[3][1])
-      self.assertAllClose(outfed_result[3][0], np.broadcast_to(23, shape))
-
-      self.assertAllClose(outfed_result[4][0], outfed_result[4][1])
-      self.assertAllClose(outfed_result[4][0], np.broadcast_to(48, shape))
+      self.assertAllClose(outfed_result[1][0], np.broadcast_to(10, shape))
 
   def testShardedAndReplicatedTraining(self):
     def my_graph(inp, lab):
@@ -143,7 +138,9 @@ class ShardedAndReplicatedTest(test_util.TensorFlowTestCase):
     out = ipu_compiler.compile(my_graph, [inp, lab])
 
     cfg = ipu.utils.create_ipu_config(
-        profiling=True, max_cross_replica_sum_buffer_size=10000)
+        profiling=True,
+        max_cross_replica_sum_buffer_size=10000,
+        max_inter_ipu_copies_buffer_size=10000)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     cfg = ipu.utils.auto_select_ipus(cfg, 4)
     ipu.utils.configure_ipu_system(cfg)

@@ -338,6 +338,10 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     return current_config_.max_cross_replica_sum_buffer_size();
   }
 
+  int64 GetMaxInterIpuCopyBufferSize() const {
+    return current_config_.max_inter_ipu_copies_buffer_size();
+  }
+
   void AddCompileBeginEventRecord(const std::string& module_name);
 
   void AddCompileEndEventRecord(const std::string& module_name,

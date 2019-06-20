@@ -13,30 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_PASSES_COMBINE_ALL_REDUCE_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_PASSES_COMBINE_ALL_REDUCE_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_INFORMATION_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_INFORMATION_H_
 
-#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 namespace poplarplugin {
 
-struct CompilerAnnotations;
+// This structure contains all information which is used during the
+// modifications/optimisation of the XLA graph.
+struct CompilerInformation {
+  CompilerInformation(int64 max_all_reduce_buffer_size,
+                      int64 max_inter_ipu_copies_buffer_size)
+      : max_all_reduce_buffer_size(max_all_reduce_buffer_size),
+        max_inter_ipu_copies_buffer_size(max_inter_ipu_copies_buffer_size) {}
 
-class CombineAllReduce : public HloModulePass {
- public:
-  absl::string_view name() const override { return "combine-all-reduce"; };
+  const int64 max_all_reduce_buffer_size;
 
-  // Run the pass on the given HLO module.  Returns whether it modified the
-  // module.
-  StatusOr<bool> Run(HloModule* module) override;
-
- private:
-  StatusOr<HloInstructionSequence> CombineAllReduces(
-      HloComputation* comp, const HloInstructionSequence& sequence);
+  const int64 max_inter_ipu_copies_buffer_size;
 };
 
 }  // namespace poplarplugin
 }  // namespace xla
 
-#endif
+#endif  // TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_INFORMATION_H_

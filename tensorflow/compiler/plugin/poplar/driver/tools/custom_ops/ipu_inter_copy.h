@@ -23,9 +23,7 @@ namespace poplarplugin {
 
 class HloIpuInterCopy : public HloPoplarInstruction {
  public:
-  explicit HloIpuInterCopy(HloInstruction* operand);
-
-  const HloInstruction* input() const;
+  explicit HloIpuInterCopy(absl::Span<HloInstruction* const> operands);
 
   absl::flat_hash_set<int64> AllocatingIndices() const override;
   absl::flat_hash_map<int64, int64> LayoutDependencies() const override;
@@ -39,7 +37,8 @@ class HloIpuInterCopy : public HloPoplarInstruction {
       HloCloneContext*) const override;
 };
 
-std::unique_ptr<HloInstruction> CreateIpuInterCopy(HloInstruction* operand);
+std::unique_ptr<HloInstruction> CreateIpuInterCopy(
+    absl::Span<HloInstruction* const> operands);
 
 }  // namespace poplarplugin
 }  // namespace xla

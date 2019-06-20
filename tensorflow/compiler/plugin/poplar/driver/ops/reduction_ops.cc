@@ -925,49 +925,18 @@ StatusOr<poplar::program::Program> CreateReplicatedAllReduce(
                           FindInstructionInput(tensor_map, res, inst, i, seq));
     }
 
-    // Keep track of the permutation
-    std::vector<unsigned> input_tensors_perm(input_tensors.size());
-    std::iota(input_tensors_perm.begin(), input_tensors_perm.end(), 0);
+    // Create a concatenated and flattened tensor of the input tensors.
+    auto t = FlattenAndConcatenteTensors(input_tensors);
 
-    // Iteratively partition the tensors by element type
-    //  v itr
-    // [|i32,f16,f32,i32,f16,f32,i32,f16,f32]
-    auto itr = input_tensors_perm.begin();
-    while (itr != input_tensors_perm.end()) {
-      auto pred = [&](unsigned idx) {
-        return input_tensors[*itr].elementType() ==
-               input_tensors[idx].elementType();
-      };
+    // Replicated sum the concatenated tensor
+    auto out = popops::replicatedAllReduce(
+        res.replicated_graph.value(), res.main_graph, t, popops::Operation::ADD,
+        seq, GetDebugName(inst));
 
-      // Partition the input tensor indices by element type
-      //  v itr       v p
-      // [|i32,i32,i32|f16,f32,f16,f32,f16,f32]
-      auto p = std::partition(itr, input_tensors_perm.end(), pred);
-      // Create a concatenated and flattened tensor of the partitioned inputs
-      std::vector<poplar::Tensor> flat_tensors(std::distance(itr, p));
-      std::transform(itr, p, flat_tensors.begin(), [&](const uint32 idx) {
-        return input_tensors[idx].flatten();
-      });
-      auto t = poplar::concat(flat_tensors);
-
-      // Replicated sum the concatenated tensor
-      auto out = popops::replicatedAllReduce(
-          res.replicated_graph.value(), res.main_graph, t,
-          popops::Operation::ADD, seq, GetDebugName(inst));
-
-      // Unconcat the result and unflatten
-      for (auto i = itr; i != p; ++i) {
-        auto a = out.slice(0, input_tensors[*i].numElements(), 0);
-        out = out.slice(input_tensors[*i].numElements(), out.numElements(), 0);
-
-        a = a.reshape(input_tensors[*i].shape());
-        TF_CHECK_OK(AddOutputTensor(tensor_map, inst, *i, a));
-      }
-
-      // Continue from the current partition point
-      //             v itr
-      // [i32,i32,i32|f16,f32,f16,f32,f16,f32]
-      itr = p;
+    // Unconcat the result and unflatten
+    auto output_tensors = SliceTensorIntoTensorsLike(out, input_tensors);
+    for (int64 i = 0; i != output_tensors.size(); ++i) {
+      TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, output_tensors[i]));
     }
   }
 

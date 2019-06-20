@@ -12,22 +12,31 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_SCHEDULERS_LOOK_AHEAD_SCHEDULER_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_SCHEDULERS_LOOK_AHEAD_SCHEDULER_H_
 
-#include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_PASSES_COMBINE_INSTRUCTIONS_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_PASSES_COMBINE_INSTRUCTIONS_H_
+
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 namespace poplarplugin {
 
-struct CompilerInformation;
+struct CompilerAnnotations;
 
-// Scheduler which will look ahead and queue large chunks of the graph at a
-// time.
-MemorySchedulerAlgorithm CreateLookAheadMemoryScheduler(
-    const CompilerInformation& information);
+class CombineInstructions : public HloModulePass {
+ public:
+  absl::string_view name() const override { return "combine-instructions"; };
+
+  // Run the pass on the given HLO module.  Returns whether it modified the
+  // module.
+  StatusOr<bool> Run(HloModule* module) override;
+
+ private:
+  StatusOr<HloInstructionSequence> CombineInstructionsInComputation(
+      HloComputation* comp, const HloInstructionSequence& sequence);
+};
 
 }  // namespace poplarplugin
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_SCHEDULERS_LOOK_AHEAD_SCHEDULER_H_
+#endif
