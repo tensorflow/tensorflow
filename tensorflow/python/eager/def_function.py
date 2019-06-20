@@ -97,8 +97,7 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
-        when to synchronize. If `synchronization` is set to `ON_READ`,
-        `trainable` must not be set to `True`.
+        when to synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
@@ -112,6 +111,8 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         shape and `validate_shape` is `True`.
       RuntimeError: If called outside of a function definition.
     """
+    with ops.init_scope():
+      self._in_graph_mode = not context.executing_eagerly()
     if not ops.inside_function():
       # If we've been init_scope()d out of the function definition nothing to do
       # here; we can't really do the capturing or conditional logic.

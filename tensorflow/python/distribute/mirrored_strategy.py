@@ -43,6 +43,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -217,7 +218,6 @@ def _create_mirrored_variable(strategy, device_map, logical_device,  # pylint: d
   elif synchronization == variable_scope.VariableSynchronization.ON_READ:
     # Variables that are to be synced on read are replica local.
     is_sync_on_read = True
-    kwargs["trainable"] = False
   elif (synchronization == variable_scope.VariableSynchronization.ON_WRITE or
         synchronization == variable_scope.VariableSynchronization.AUTO):
     # `AUTO` synchronization for `MirroredStrategy` is `ON_WRITE`.
@@ -533,6 +533,30 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       # containing job names.
       self._inferred_cross_device_ops = cross_device_ops_lib.NcclAllReduce()
 
+  def _get_variable_creator_initial_value(self,
+                                          replica_id=0,
+                                          device=None,
+                                          primary_var=None,
+                                          **kwargs):
+    """Return the initial value for variables on a replica."""
+    if replica_id == 0:
+      return kwargs["initial_value"]
+    else:
+      assert primary_var is not None
+      assert device is not None
+      assert kwargs is not None
+
+      def initial_value_fn():
+        if context.executing_eagerly() or ops.inside_function():
+          init_value = primary_var.value()
+          return array_ops.identity(init_value)
+        else:
+          with ops.device(device):
+            init_value = primary_var.initial_value
+            return array_ops.identity(init_value)
+
+      return initial_value_fn
+
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a mirrored variable. See `DistributionStrategy.scope`."""
     colocate_with = kwargs.pop("colocate_with", None)
@@ -550,6 +574,11 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       value_list = []
       for i, d in enumerate(devices):
         with ops.device(d):
+          kwargs["initial_value"] = self._get_variable_creator_initial_value(
+              replica_id=i,
+              device=d,
+              primary_var=value_list[0] if value_list else None,
+              **kwargs)
           if i > 0:
             # Give replicas meaningful distinct names:
             var0name = value_list[0].name.split(":")[0]
@@ -557,16 +586,6 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
             # ensure that we ignore the name scope and instead use the given
             # name as the absolute name of the variable.
             kwargs["name"] = "%s/replica_%d/" % (var0name, i)
-            # Initialize replicas with the same value:
-            def initial_value_fn(device=d):
-              if context.executing_eagerly() or ops.inside_function():
-                init_value = value_list[0].value()
-                return array_ops.identity(init_value)
-              else:
-                with ops.device(device):
-                  init_value = value_list[0].initial_value
-                  return array_ops.identity(init_value)
-            kwargs["initial_value"] = initial_value_fn
           with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
             # Don't record operations (e.g. other variable reads) during
             # variable creation.
@@ -704,6 +723,14 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     return self._get_cross_device_ops().broadcast(tensor, destinations)
 
   def _call_for_each_replica(self, fn, args, kwargs):
+    if context.executing_eagerly():
+      logging.log_first_n(logging.WARN, "Using %s eagerly has significant "
+                          "overhead currently. We will be working on improving "
+                          "this in the future, but for now please wrap "
+                          "`call_for_each_replica` or `experimental_run` or "
+                          "`experimental_run_v2` inside a tf.function to get "
+                          "the best performance." %
+                          self._container_strategy().__class__.__name__, 5)
     return _call_for_each_replica(self._container_strategy(), self._device_map,
                                   fn, args, kwargs)
 
@@ -750,8 +777,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         reduce_op, value, destinations=destinations)
 
   def _batch_reduce_to(self, reduce_op, value_destination_pairs):
-    return self._get_cross_device_ops().batch_reduce(
-        reduce_op, value_destination_pairs)
+    return self._get_cross_device_ops().batch_reduce(reduce_op,
+                                                     value_destination_pairs)
 
   def _update(self, var, fn, args, kwargs, group):
     # TODO(josh11b): In eager mode, use one thread per device.

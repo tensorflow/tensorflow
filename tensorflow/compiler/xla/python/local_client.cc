@@ -109,36 +109,6 @@ Status RegisterCpuCustomCallTarget(const std::string& fn_name,
   return Status::OK();
 }
 
-PythonRefManager::ManagedPyObjects::ManagedPyObjects(
-    PythonRefManager* manager, absl::Span<pybind11::object> objects)
-    : manager_(manager) {
-  objects_.reserve(objects.size());
-  for (pybind11::object& object : objects) {
-    objects_.push_back(std::move(object));
-  }
-}
-
-PythonRefManager::ManagedPyObjects::~ManagedPyObjects() {
-  if (manager_) {
-    absl::MutexLock lock(&manager_->mu_);
-    for (pybind11::object& object : objects_) {
-      manager_->python_garbage_.push_back(std::move(object));
-    }
-  }
-}
-
-PythonRefManager::ManagedPyObjects PythonRefManager::ManageReferences(
-    absl::Span<py::object> objects) {
-  return ManagedPyObjects(this, objects);
-}
-
-void PythonRefManager::CollectGarbage() {
-  // TODO(phawkins): ideally we would assert that the GIL is held, but there is
-  // no API to do this across all Python versions.
-  absl::MutexLock lock(&mu_);
-  python_garbage_.clear();
-}
-
 Device::Device(se::StreamExecutor* executor, bool use_multiple_streams,
                bool synchronous_deallocation, bool asynchronous)
     : use_multiple_streams_(use_multiple_streams),
@@ -190,7 +160,8 @@ void Device::ThenExecuteOnWorkerThread(se::Stream* stream,
 }
 
 static StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
-    se::Platform* platform, LocalClient* client, double memory_fraction) {
+    se::Platform* platform, LocalClient* client, double memory_fraction,
+    bool preallocate) {
   CHECK_GT(client->backend().device_count(), 0);
   std::vector<std::unique_ptr<tensorflow::Allocator>> allocators;
   for (se::StreamExecutor* executor : client->backend().stream_executors()) {
@@ -208,12 +179,18 @@ static StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
                          device_ordinal);
     }
     size_t allocator_memory = free_memory * memory_fraction;
-    LOG(INFO) << "XLA backend reserving " << allocator_memory << " out of "
-              << total_memory << " bytes on device " << device_ordinal
-              << " for BFCAllocator.";
-
+    if (preallocate) {
+      LOG(INFO) << "XLA backend allocating " << allocator_memory
+                << " bytes on device " << device_ordinal
+                << " for BFCAllocator.";
+    } else {
+      LOG(INFO) << "XLA backend will use up to " << allocator_memory
+                << " bytes on device " << device_ordinal
+                << " for BFCAllocator.";
+    }
     auto gpu_bfc_allocator = absl::make_unique<tensorflow::BFCAllocator>(
-        sub_allocator.release(), allocator_memory, /*allow_growth=*/false,
+        sub_allocator.release(), allocator_memory,
+        /*allow_growth=*/!preallocate,
         absl::StrCat("GPU_", device_ordinal, "_bfc"));
     allocators.emplace_back(std::move(gpu_bfc_allocator));
   }
@@ -243,7 +220,8 @@ StatusOr<std::shared_ptr<PyLocalClient>> PyLocalClient::Get(
     }
     TF_ASSIGN_OR_RETURN(
         auto bfc_allocator,
-        CreateBFCAllocator(platform, client, allocator_config.memory_fraction));
+        CreateBFCAllocator(platform, client, allocator_config.memory_fraction,
+                           allocator_config.preallocate));
     allocator = std::move(bfc_allocator);
   }
   return std::make_shared<PyLocalClient>(platform_name, client,
@@ -291,7 +269,7 @@ StatusOr<pybind11::object> PyLocalClient::TransferFromOutfeed(
     TF_ASSIGN_OR_RETURN(
         literal, client_->TransferFromOutfeedLocal(shape, device_ordinal));
   }
-  return LiteralToPython(absl::make_unique<Literal>(std::move(literal)));
+  return LiteralToPython(std::make_shared<Literal>(std::move(literal)));
 }
 
 static StatusOr<std::unique_ptr<PyLocalBuffer>> TransferHostToDeviceAsync(
@@ -504,32 +482,60 @@ PyLocalBuffer::PyLocalBuffer(
 void PyLocalBuffer::Delete() {
   absl::MutexLock lock(&mu_);
   device_buffer_ = nullptr;
+  host_value_ = nullptr;
 }
 
-StatusOr<py::object> PyLocalBuffer::ToPython() const {
+Status PyLocalBuffer::CopyToHostAsync() {
+  std::shared_ptr<PySharedDeviceBuffer> device_buffer;
+  std::shared_ptr<HostValue> host_value;
+  {
+    absl::MutexLock lock(&mu_);
+    if (!device_buffer_) {
+      return InvalidArgument("CopyToHostAsync() called on invalid buffer.");
+    }
+    device_buffer = device_buffer_;
+
+    if (host_value_) {
+      // The host value has already been requested or is available.
+      return Status::OK();
+    }
+    host_value = host_value_ = std::make_shared<HostValue>();
+  }
+  se::Stream* stream = client_->device(device_ordinal_).device_to_host_stream();
+  WaitForBufferDefinitionEventsOnStream(*device_buffer, stream);
+  host_value->value = std::make_shared<Literal>(on_host_shape_);
+  TF_ASSIGN_OR_RETURN(ShapedBuffer shaped_buffer, AsShapedBuffer());
+  client_->client()->backend().transfer_manager()->TransferLiteralFromDevice(
+      stream, shaped_buffer, host_value->value.get(),
+      [host_value](Status done_status) {
+        host_value->status = done_status;
+        host_value->ready.Notify();
+      });
+  return Status::OK();
+}
+
+StatusOr<py::object> PyLocalBuffer::ToPython() {
   tensorflow::profiler::TraceMe traceme("PyLocalBuffer::ToPython");
   std::shared_ptr<PySharedDeviceBuffer> device_buffer = DeviceBuffer();
   if (!device_buffer) {
     return InvalidArgument("ToPython() called on invalid buffer.");
   }
 
-  auto literal = absl::make_unique<Literal>(on_host_shape_);
   client_->py_ref_manager().CollectGarbage();
+  std::shared_ptr<Literal> literal;
   {
     py::gil_scoped_release gil_release;
-    se::Stream* stream = client_->device(device_buffer->device_ordinal())
-                             .device_to_host_stream();
-    WaitForBufferDefinitionEventsOnStream(*device_buffer, stream);
-    absl::Notification done;
-    Status status;
-    TF_ASSIGN_OR_RETURN(ShapedBuffer shaped_buffer, AsShapedBuffer());
-    client_->client()->backend().transfer_manager()->TransferLiteralFromDevice(
-        stream, shaped_buffer, *literal, [&](Status done_status) {
-          status = done_status;
-          done.Notify();
-        });
-    done.WaitForNotification();
+    TF_RETURN_IF_ERROR(CopyToHostAsync());
+    std::shared_ptr<HostValue> host_value;
+    {
+      absl::MutexLock lock(&mu_);
+      host_value = host_value_;
+    }
+    host_value->ready.WaitForNotification();
+    TF_RETURN_IF_ERROR(host_value->status);
+    literal = host_value->value;
   }
+
   return LiteralToPython(std::move(literal));
 }
 
@@ -609,7 +615,8 @@ std::vector<int> PyLocalExecutable::DeviceOrdinals() const {
 }
 
 StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
-    absl::Span<PyLocalBuffer* const> argument_handles, int replica) {
+    absl::Span<PyLocalBuffer* const> argument_handles, int replica,
+    const RunId& run_id) {
   const int device_ordinal = device_assignment_(replica, 0);
   tensorflow::profiler::TraceMe traceme("LocalExecutable::Execute");
   VLOG(3) << "Replica " << replica
@@ -666,6 +673,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
   options.set_intra_op_thread_pool(
       client_->client()->backend().eigen_intra_op_thread_pool_device());
   options.set_device_assignment(&device_assignment_);
+  options.set_run_id(run_id);
 
   StatusOr<ScopedShapedBuffer> result_buffer =
       executable_->RunAsync(argument_buffer_ptrs, options);
@@ -706,7 +714,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::Execute(
         "Attempted to execute computation with %d replicas using Execute()",
         num_replicas());
   }
-  return ExecuteHelper(argument_handles, /*replica=*/0);
+  return ExecuteHelper(argument_handles, /*replica=*/0, RunId());
 }
 
 StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>
@@ -732,8 +740,9 @@ PyLocalExecutable::ExecutePerReplica(
   if (num_replicas() == 1) {
     // Fast-path if there is only one replica — run the computation on the
     // current thread.
-    results[0] = ExecuteHelper(argument_handles[0], /*replica=*/0);
+    results[0] = ExecuteHelper(argument_handles[0], /*replica=*/0, RunId());
   } else {
+    RunId run_id;
     absl::Mutex mu;
     int running GUARDED_BY(mu) = num_replicas();
     int failed GUARDED_BY(mu) = 0;
@@ -743,7 +752,8 @@ PyLocalExecutable::ExecutePerReplica(
       const int device_ordinal = device_assignment_(replica, 0);
       const Device& device = client_->device(device_ordinal);
       device.worker_thread()->Schedule([&, replica] {
-        results[replica] = ExecuteHelper(argument_handles[replica], replica);
+        results[replica] =
+            ExecuteHelper(argument_handles[replica], replica, run_id);
 
         absl::MutexLock lock(&mu);
         --running;
@@ -811,6 +821,10 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
   ExecutableBuildOptions options;
   if (build_options != nullptr) {
     options = *build_options;
+  }
+
+  if (!options.device_allocator()) {
+    options.set_device_allocator(client->allocator());
   }
 
   if (device_assignment) {

@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/macros.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -288,6 +289,12 @@ class DeviceBase {
   Eigen::SyclDevice* eigen_sycl_device_ = nullptr;
 #endif
 };
+
+// Methods to create and check for Symbolic execution devices.
+// Such devices are mostly used for TF-XLA bridge. TF should not treat these as
+// normal devices.
+void AddSymbolicExecutionDevice(absl::string_view device_name);
+bool IsSymbolicExecutionDevice(absl::string_view device_name);
 
 }  // namespace tensorflow
 

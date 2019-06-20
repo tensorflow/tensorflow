@@ -25,6 +25,9 @@ limitations under the License.
 namespace tensorflow {
 
 EIGEN_STRONG_INLINE void argmax_float_1d_xla_impl(void* out, void** data) {
+  // Data is managed by the JIT code so msan can't tell it's initialized.
+  TF_ANNOTATE_MEMORY_IS_INITIALIZED(data, 2 * sizeof(void*));
+
   float* input = static_cast<float*>(data[0]);
   int64 input_size = *static_cast<int64*>(data[1]);
 

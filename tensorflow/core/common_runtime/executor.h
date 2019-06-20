@@ -131,6 +131,8 @@ class Executor {
 struct LocalExecutorParams {
   Device* device;
 
+  const SessionMetadata* session_metadata = nullptr;
+
   // The library runtime support.
   FunctionLibraryRuntime* function_library = nullptr;
 

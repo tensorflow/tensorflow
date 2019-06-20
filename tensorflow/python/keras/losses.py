@@ -623,8 +623,8 @@ class Poisson(LossFunctionWrapper):
 
   ```python
   p = tf.keras.losses.Poisson()
-  loss = p([1, 9, 2], [4, 8, 12])
-  print('Loss: ', loss.numpy())  # Loss: -4.63
+  loss = p([1., 9., 2.], [4., 8., 12.])
+  print('Loss: ', loss.numpy())  # Loss: -0.35702705
   ```
 
   Usage with tf.keras API:
@@ -667,16 +667,18 @@ class LogCosh(LossFunctionWrapper):
 
 @keras_export('keras.losses.KLDivergence')
 class KLDivergence(LossFunctionWrapper):
-  """Computes Kullback Leibler divergence loss between `y_true` and `y_pred`.
+  """Computes Kullback-Leibler divergence loss between `y_true` and `y_pred`.
 
   `loss = y_true * log(y_true / y_pred)`
+
+  See: https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence
 
   Usage:
 
   ```python
   k = tf.keras.losses.KLDivergence()
   loss = k([.4, .9, .2], [.5, .8, .12])
-  print('Loss: ', loss.numpy())  # Loss: -0.043
+  print('Loss: ', loss.numpy())  # Loss: 0.11891246
   ```
 
   Usage with tf.keras API:
@@ -836,7 +838,7 @@ def hinge(y_true, y_pred):
 
   Args:
     y_true: The ground truth values. `y_true` values are expected to be -1 or 1.
-      If binary (0 or 1) labels are provided we will convert them to -1 or 1.
+      If binary (0 or 1) labels are provided they will be converted to -1 or 1.
     y_pred: The predicted values.
 
   Returns:
@@ -850,6 +852,16 @@ def hinge(y_true, y_pred):
 
 @keras_export('keras.losses.categorical_hinge')
 def categorical_hinge(y_true, y_pred):
+  """Computes the categorical hinge loss between `y_true` and `y_pred`.
+
+  Args:
+    y_true: The ground truth values. `y_true` values are expected to be -1 or 1.
+      If binary (0 or 1) labels are provided they will be converted to -1 or 1.
+    y_pred: The predicted values.
+
+  Returns:
+    A tensor.
+  """
   y_pred = ops.convert_to_tensor(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   pos = math_ops.reduce_sum(y_true * y_pred, axis=-1)
@@ -975,7 +987,31 @@ def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):  
               'keras.losses.kullback_leibler_divergence',
               'keras.losses.kld',
               'keras.losses.KLD')
-def kullback_leibler_divergence(y_true, y_pred):  # pylint: disable=missing-docstring
+def kullback_leibler_divergence(y_true, y_pred):
+  """Computes Kullback-Leibler divergence loss between `y_true` and `y_pred`.
+
+  `loss = y_true * log(y_true / y_pred)`
+
+  See: https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence
+
+  Usage:
+
+  ```python
+  loss = tf.keras.losses.KLD([.4, .9, .2], [.5, .8, .12])
+  print('Loss: ', loss.numpy())  # Loss: 0.11891246
+  ```
+
+  Args:
+    y_true: Tensor of true targets.
+    y_pred: Tensor of predicted targets.
+
+  Returns:
+    A `Tensor` with loss.
+
+  Raises:
+      TypeError: If `y_true` cannot be cast to the `y_pred.dtype`.
+
+  """
   y_pred = ops.convert_to_tensor(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   y_true = K.clip(y_true, K.epsilon(), 1)

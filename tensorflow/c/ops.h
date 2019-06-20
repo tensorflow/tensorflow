@@ -73,7 +73,8 @@ limitations under the License.
 #include <stdint.h>
 #include <stdlib.h>
 
-#include "tensorflow/c/c_api.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
 
 #ifdef SWIG
 #define TF_CAPI_EXPORT
@@ -125,97 +126,65 @@ TF_CAPI_EXPORT extern void TF_DeleteOpDefinitionBuilder(
 //----------------------------------------------------
 // Attribute functions.
 
-// Adds a string attribute with the given name to the builder.
-TF_CAPI_EXPORT extern void TF_OpDefinitionBuilderAddStringAttr(
-    TF_OpDefinitionBuilder* builder, const char* name);
+// Adds an attr to the given TF_OpDefinitionBuilder. The spec has
+// format "<name>:<type>" or "<name>:<type>=<default>"
+// where <name> matches regexp [a-zA-Z][a-zA-Z0-9_]*.
+// By convention, names containing only capital letters are reserved for
+// attributes whose values can be inferred by the operator implementation if not
+// supplied by the user. If the attribute name contains characters other than
+// capital letters, the operator expects the user to provide the attribute value
+// at operation runtime.
+//
+// <type> can be:
+//   "string", "int", "float", "bool", "type", "shape", or "tensor"
+//   "numbertype", "realnumbertype", "quantizedtype"
+//       (meaning "type" with a restriction on valid values)
+//   "{int32,int64}" or {realnumbertype,quantizedtype,string}"
+//       (meaning "type" with a restriction containing unions of value types)
+//   "{\"foo\", \"bar\n baz\"}", or "{'foo', 'bar\n baz'}"
+//       (meaning "string" with a restriction on valid values)
+//   "list(string)", ..., "list(tensor)", "list(numbertype)", ...
+//       (meaning lists of the above types)
+//   "int >= 2" (meaning "int" with a restriction on valid values)
+//   "list(string) >= 2", "list(int) >= 2"
+//       (meaning "list(string)" / "list(int)" with length at least 2)
+// <default>, if included, should use the Proto text format
+// of <type>.  For lists use [a, b, c] format.
+//
+// Note that any attr specifying the length of an input or output will
+// get a default minimum of 1 unless the >= # syntax is used.
+TF_CAPI_EXPORT extern void TF_OpDefinitionBuilderAddAttr(
+    TF_OpDefinitionBuilder* builder, const char* attr_spec);
 
-// Adds a string attribute with the given name and default value to the builder.
-TF_CAPI_EXPORT extern void TF_OpDefinitionBuilderAddStringAttrWithDefaultValue(
-    TF_OpDefinitionBuilder* builder, const char* name, const char* value);
-
-// Adds a string list attribute with the given name and no default value to the
-// builder.
-TF_CAPI_EXPORT extern void TF_OpDefinitionBuilderAddStringListAttr(
-    TF_OpDefinitionBuilder* builder, const char* name);
-
-// Adds a string list attribute with the given default values to the builder.
-// `values` must contain at least `n` elements.
-TF_CAPI_EXPORT extern void
-TF_OpDefinitionBuilderAddStringListAttrWithDefaultValues(
-    TF_OpDefinitionBuilder* builder, const char* name, const char* values[],
-    size_t n);
-
-// Adds an integer attribute with the given name and no default value to the
-// builder.
-TF_CAPI_EXPORT extern void TF_OpDefinitionBuilderAddIntAttr(
-    TF_OpDefinitionBuilder* builder, const char* name);
-
-// Adds an integer attribute with the given name and default value to the
-// builder.
-TF_CAPI_EXPORT extern void TF_OpDefinitionBuilderAddIntAttrWithDefaultValue(
-    TF_OpDefinitionBuilder* builder, const char* name, int64_t value);
-
-// Adds an integer list attribute with the given name and no default value to
-// the builder.
-TF_CAPI_EXPORT extern void TF_OpDefinitionBuilderAddIntListAttr(
-    TF_OpDefinitionBuilder* builder, const char* name);
-
-// Adds an integer list attribute with the given name and default values to the
-// builder. `values` must contain at least `n` elements.
-TF_CAPI_EXPORT extern void
-TF_OpDefinitionBuilderAddIntListAttrWithDefaultValues(
-    TF_OpDefinitionBuilder* builder, const char* name, int64_t values[],
-    size_t n);
-
-// Adds a float attribute with the given name and no default value to the
-// builder.
-TF_CAPI_EXPORT extern void TF_OpDefinitionBuilderAddFloatAttr(
-    TF_OpDefinitionBuilder* builder, const char* name);
-
-// Adds a float attribute with the given name and default value to the builder.
-TF_CAPI_EXPORT extern void TF_OpDefinitionBuilderAddFloatAttrWithDefaultValue(
-    TF_OpDefinitionBuilder* builder, const char* name, float value);
-
-// Adds a float list attribute with the given name and no default value to the
-// builder.
-TF_CAPI_EXPORT extern void TF_OpDefinitionBuilderAddFloatListAttr(
-    TF_OpDefinitionBuilder* builder, const char* name);
-
-// Adds a float list attribute with the given name and default values to the
-// builder. `values` must contain at least `n` elements.
-TF_CAPI_EXPORT extern void
-TF_OpDefinitionBuilderAddFloatListAttrWithDefaultValues(
-    TF_OpDefinitionBuilder* builder, const char* name, float values[],
-    size_t n);
-
-// Adds a boolean attribute with the given name and no default value to the
-// builder.
-TF_CAPI_EXPORT extern void TF_OpDefinitionBuilderAddBoolAttr(
-    TF_OpDefinitionBuilder* builder, const char* name);
-
-// Adds a boolean attribute with the given name and default value to the
-// builder.
-TF_CAPI_EXPORT extern void TF_OpDefinitionBuilderAddBoolAttrWithDefaultValue(
-    TF_OpDefinitionBuilder* builder, const char* name, bool value);
-
-// Adds a boolean list attribute with the given name and no default value to the
-// builder.
-TF_CAPI_EXPORT extern void TF_OpDefinitionBuilderAddBoolListAttr(
-    TF_OpDefinitionBuilder* builder, const char* name);
-
-// Adds a boolean list attribute with the given name and default values to the
-// builder. `values` must contain at least `n` elements.
-TF_CAPI_EXPORT extern void
-TF_OpDefinitionBuilderAddBoolListAttrWithDefaultValues(
-    TF_OpDefinitionBuilder* builder, const char* name, bool values[], size_t n);
-
-// Adds the input with the given name and type to the op.
+// Adds an input to this TF_OpDefinitionBuilder.
+// The spec has form "<name>:<type-expr>" or "<name>:Ref(<type-expr>)"
+// where <name> matches regexp [a-z][a-z0-9_]* and <type-expr> can be:
+// * For a single tensor: <type>
+// * For a sequence of tensors with the same type: <number>*<type>
+// * For a sequence of tensors with different types: <type-list>
+// Where:
+//   <type> is either one of "float", "int32", "string", ...
+//          or the name of an attr (see TF_OpDefinitionBuilderAddAttr)
+//          with type "type".
+//   <number> is the name of an attr with type "int".
+//   <type-list> is the name of an attr with type "list(type)".
 TF_CAPI_EXPORT extern void TF_OpDefinitionBuilderAddInput(
-    TF_OpDefinitionBuilder* builder, const char* name, TF_DataType type);
+    TF_OpDefinitionBuilder* builder, const char* input_spec);
 
-// Adds the output with the given name and type to the op.
+// Adds an output to this TF_OpDefinitionBuilder.
+// The spec has form "<name>:<type-expr>" or "<name>:Ref(<type-expr>)"
+// where <name> matches regexp [a-z][a-z0-9_]* and <type-expr> can be:
+// * For a single tensor: <type>
+// * For a sequence of tensors with the same type: <number>*<type>
+// * For a sequence of tensors with different types: <type-list>
+// Where:
+//   <type> is either one of "float", "int32", "string", ...
+//          or the name of an attr (see TF_OpDefinitionBuilderAddAttr)
+//          with type "type".
+//   <number> is the name of an attr with type "int".
+//   <type-list> is the name of an attr with type "list(type)".
 TF_CAPI_EXPORT extern void TF_OpDefinitionBuilderAddOutput(
-    TF_OpDefinitionBuilder* builder, const char* output, TF_DataType type);
+    TF_OpDefinitionBuilder* builder, const char* output_spec);
 
 // Sets the commutative property for the op built by the given builder.
 TF_CAPI_EXPORT extern void TF_OpDefinitionBuilderSetIsCommutative(
@@ -362,10 +331,6 @@ TF_CAPI_EXPORT extern void TF_ShapeInferenceContextWithRankAtMost(
 TF_CAPI_EXPORT extern void TF_ShapeInferenceContextDim(
     TF_ShapeInferenceContext* ctx, TF_ShapeHandle* shape_handle, int64_t i,
     TF_DimensionHandle* result);
-
-// Returns 1 if the given handle represents a known dimension.
-TF_CAPI_EXPORT extern int TF_ShapeInferenceContextDimValueKnown(
-    TF_ShapeInferenceContext* ctx, TF_DimensionHandle* handle);
 
 // Returns in <*result> a sub-shape of <shape_handle>, with dimensions
 // [start:end]. <start> and <end> can be negative, to index from the end of the

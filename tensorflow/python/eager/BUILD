@@ -1,7 +1,3 @@
-package(
-    licenses = ["notice"],  # Apache 2.0
-)
-
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load(
@@ -9,6 +5,10 @@ load(
     "tf_py_logged_benchmark",
 )
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "pywrap_tfe_lib",
@@ -58,6 +58,7 @@ py_library(
         ":def_function",
         ":execute",
         ":execution_callbacks",
+        ":forwardprop",
         ":function",
         ":graph_only_ops",
         ":monitoring",
@@ -88,6 +89,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":monitoring",
         "//tensorflow/python:device",
         "//tensorflow/python:device_spec",
         "//tensorflow/python:errors",
@@ -165,6 +167,18 @@ py_library(
     ],
 )
 
+py_test(
+    name = "profiler_client_test",
+    srcs = ["profiler_client_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":profiler_client",
+        ":test",
+    ],
+)
+
 py_library(
     name = "tape",
     srcs = ["tape.py"],
@@ -204,6 +218,16 @@ cuda_py_test(
         "//tensorflow/python:training",
     ],
     tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "forwardprop_test",
+    srcs = ["forwardprop_test.py"],
+    additional_deps = [
+        ":forwardprop",
+        ":test",
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -435,6 +459,18 @@ py_library(
     ],
 )
 
+py_library(
+    name = "forwardprop",
+    srcs = ["forwardprop.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:platform",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:util",
+    ],
+)
+
 cuda_py_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
@@ -444,6 +480,7 @@ cuda_py_test(
         ":function",
         ":test",
         ":profiler",
+        ":remote",
         "//third_party/py/numpy",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
@@ -532,6 +569,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["memory_test.py"],
     additional_deps = [
+        ":remote",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/keras",
         "//tensorflow/python/eager:test",
@@ -540,6 +578,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "@six_archive//:six",
     ],
+    shard_count = 4,
     tags = [
         "optonly",  # The test is too slow in non-opt mode
     ],
@@ -607,7 +646,6 @@ tf_xla_py_test(
     srcs = ["def_function_xla_test.py"],
     tags = [
         "no_pip",
-        "no_rocm",
         "no_windows",
         "nomac",
     ],
@@ -644,6 +682,9 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
     ],
+    tags = [
+        "no_windows",  # TODO(b/135556470) reenable.
+    ],
 )
 
 py_library(
@@ -658,7 +699,7 @@ py_library(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "remote_test",
     size = "medium",
     srcs = ["remote_test.py"],
@@ -669,6 +710,7 @@ tf_py_test(
         ":remote",
         "//tensorflow/python:resource_variable_ops",
     ],
+    grpc_enabled = True,
     tags = [
         "no_oss",  # This test launches local server.
         "optonly",  # times out

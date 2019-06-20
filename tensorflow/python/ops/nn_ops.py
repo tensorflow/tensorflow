@@ -23,8 +23,8 @@ import numbers
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import graph_util
@@ -52,6 +52,10 @@ from tensorflow.python.util.tf_export import tf_export
 local_response_normalization = gen_nn_ops.lrn
 
 # pylint: disable=protected-access
+
+_ops_counter = monitoring.Counter("/tensorflow/api/ops/nn",
+                                  "number of neural net ops in the graph.",
+                                  "op_name")
 
 
 def _get_sequence(value, n, channel_index, name):
@@ -961,6 +965,7 @@ def convolution_internal(
     if all(i == 1 for i in dilations):
       # fast path if no dilation as gradient only supported on GPU for dilations
       op = conv_ops[n]
+      _ops_counter.get_cell("conv{}d".format(n)).increase_by(1)
       return op(
           input,
           filters,
@@ -2636,7 +2641,7 @@ def bias_add(value, bias, data_format=None, name=None):
   Args:
     value: A `Tensor` with type `float`, `double`, `int64`, `int32`, `uint8`,
       `int16`, `int8`, `complex64`, or `complex128`.
-    bias: A 1-D `Tensor` with size matching the last dimension of `value`.
+    bias: A 1-D `Tensor` with size matching the channel dimension of `value`.
       Must be the same type as `value` unless `value` is a quantized type,
       in which case a different quantized type may be used.
     data_format: A string. 'N...C' and 'NC...' are supported.
@@ -2759,12 +2764,9 @@ def leaky_relu(features, alpha=0.2, name=None):
     features = ops.convert_to_tensor(features, name="features")
     if features.dtype.is_integer:
       features = math_ops.cast(features, dtypes.float32)
-    if compat.forward_compatible(2018, 11, 1):
-      if isinstance(alpha, np.ndarray):
-        alpha = alpha.item()
-      return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
-    alpha = ops.convert_to_tensor(alpha, dtype=features.dtype, name="alpha")
-    return math_ops.maximum(alpha * features, features, name=name)
+    if isinstance(alpha, np.ndarray):
+      alpha = alpha.item()
+    return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
 
 
 def _flatten_outer_dims(logits):
@@ -3746,6 +3748,10 @@ def max_pool(value,
 
     ksize = _get_sequence(ksize, 2, channel_index, "ksize")
     strides = _get_sequence(strides, 2, channel_index, "strides")
+    if ((np.isscalar(ksize) and ksize == 0) or
+        (isinstance(ksize,
+                    (list, tuple, np.ndarray)) and any(v == 0 for v in ksize))):
+      raise ValueError("ksize cannot be zero.")
 
     return gen_nn_ops.max_pool(
         value,

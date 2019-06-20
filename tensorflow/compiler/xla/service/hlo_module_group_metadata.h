@@ -195,7 +195,8 @@ class HloModuleGroupMetadata {
     return companion_set_index_.at(instruction);
   }
 
-  // Returns the list of all companion sets in the HLO module group.
+  // Returns the list of all companion sets in the HLO module group. Each
+  // returned set contains at least one HloInstruction.
   const std::vector<std::unique_ptr<std::vector<HloInstruction*>>>&
   companion_sets() const {
     return companion_sets_;

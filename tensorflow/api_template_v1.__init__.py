@@ -78,6 +78,8 @@ if '__all__' in vars():
 from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
 # The 'app' module will be imported as part of the placeholder section above.
 app.flags = flags  # pylint: disable=undefined-variable
+if '__all__' in vars():
+  vars()['__all__'].append('flags')
 
 # Load all plugin libraries from site-packages/tensorflow-plugins if we are
 # running under pip.

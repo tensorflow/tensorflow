@@ -63,6 +63,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
+#include "tensorflow/compiler/xla/service/gpu/nvptx_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
@@ -113,10 +114,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-/* static */ const char* NVPTXCompiler::kTargetTriple = "nvptx64-nvidia-cuda";
-/* static */ const char* NVPTXCompiler::kDataLayout =
-    "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
-
 namespace {
 
 namespace tracing = tensorflow::tracing;
@@ -164,12 +161,8 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
 }
 
 // Runs optimization passes on the given HLO module.
-//
-// It takes a compiler pointer, as passes may compile and execute HLOs on the
-// fly for cuDNN verification or other purposes.
 Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
-                         se::DeviceMemoryAllocator* device_allocator,
-                         Compiler* compiler) {
+                         se::DeviceMemoryAllocator* device_allocator) {
   {
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
@@ -230,7 +223,10 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       pass.AddPass<TupleSimplifier>();
       pass.AddPass<WhileLoopConstantSinking>();
       pass.AddPass<WhileLoopSimplifier>();
-      pass.AddPass<SliceSinker>();
+
+      // TODO(b/134075051): Re-enable after b/134075051 is fixed.
+      // pass.AddPass<SliceSinker>();
+
       pass.AddPass<HloDCE>();
       pass.AddPass<ReshapeMover>();
       pass.AddPass<HloConstantFolding>();
@@ -337,8 +333,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // the gte(customcall, 0) would probably already be into a fusion node.  We
     // can't simplify across HloComputation boundaries, so in this case we
     // wouldn't be able to simplify away the new_tuple bits.
-    pipeline.AddPass<CudnnConvAlgorithmPicker>(stream_exec, device_allocator,
-                                               compiler);
+    pipeline.AddPass<CudnnConvAlgorithmPicker>(stream_exec, device_allocator);
 
     // Clean up new_tuple described above.
     pipeline.AddPass<TupleSimplifier>();
@@ -474,7 +469,7 @@ StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
       [&] { return absl::StrCat("HLO Transforms:", module->name()); },
       tensorflow::profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(
-      OptimizeHloModule(module.get(), stream_exec, device_allocator, this));
+      OptimizeHloModule(module.get(), stream_exec, device_allocator));
 
   TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
 

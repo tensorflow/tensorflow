@@ -1,14 +1,14 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "graph_editor_py",
@@ -22,6 +22,7 @@ py_library(
         "util.py",
     ],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],  # b/133250576,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -44,6 +45,7 @@ py_library(
     name = "match",
     srcs = ["tests/match.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],  # b/133250576,
     deps = [
         ":graph_editor_py",
         "//tensorflow/python:framework_ops",
@@ -56,6 +58,7 @@ py_test(
     srcs = ["tests/util_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],  # b/133250576,
     deps = [
         ":graph_editor_py",
         "//tensorflow/python:client_testlib",
@@ -69,6 +72,7 @@ py_test(
     srcs = ["tests/select_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],  # b/133250576,
     deps = [
         ":graph_editor_py",
         "//tensorflow/python:client_testlib",
@@ -82,6 +86,7 @@ py_test(
     srcs = ["tests/match_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],  # b/133250576,
     deps = [
         ":match",
         "//tensorflow/python:client_testlib",
@@ -95,6 +100,7 @@ py_test(
     srcs = ["tests/subgraph_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],  # b/133250576,
     deps = [
         ":graph_editor_py",
         "//tensorflow/python:client_testlib",
@@ -108,6 +114,7 @@ py_test(
     srcs = ["tests/reroute_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],  # b/133250576,
     deps = [
         ":graph_editor_py",
         ":match",
@@ -122,6 +129,7 @@ py_test(
     srcs = ["tests/edit_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],  # b/133250576,
     deps = [
         ":graph_editor_py",
         ":match",
@@ -136,6 +144,7 @@ py_test(
     srcs = ["tests/transform_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],  # b/133250576,
     deps = [
         ":graph_editor_py",
         ":match",

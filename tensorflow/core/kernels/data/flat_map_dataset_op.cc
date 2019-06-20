@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/flat_map_dataset_op.h"
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
@@ -27,13 +28,13 @@ namespace data {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-constexpr const char FlatMapDatasetOp::kDatasetType[];
-constexpr const char FlatMapDatasetOp::kInputDataset[];
-constexpr const char FlatMapDatasetOp::kOtherArguments[];
-constexpr const char FlatMapDatasetOp::kF[];
-constexpr const char FlatMapDatasetOp::kTarguments[];
-constexpr const char FlatMapDatasetOp::kOutputTypes[];
-constexpr const char FlatMapDatasetOp::kOutputShapes[];
+/* static */ constexpr const char* const FlatMapDatasetOp::kDatasetType;
+/* static */ constexpr const char* const FlatMapDatasetOp::kInputDataset;
+/* static */ constexpr const char* const FlatMapDatasetOp::kOtherArguments;
+/* static */ constexpr const char* const FlatMapDatasetOp::kFunc;
+/* static */ constexpr const char* const FlatMapDatasetOp::kTarguments;
+/* static */ constexpr const char* const FlatMapDatasetOp::kOutputTypes;
+/* static */ constexpr const char* const FlatMapDatasetOp::kOutputShapes;
 
 constexpr char kElementIndex[] = "element_index";
 constexpr char kCapturedFuncInputsSize[] = "captured_func_inputs_size";
@@ -92,7 +93,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {std::make_pair(0, input_graph_node)},  // Single tensor inputs.
         {std::make_pair(1, other_arguments)},         // Tensor list inputs.
-        {std::make_pair(kF, f),
+        {std::make_pair(kFunc, f),
          std::make_pair(kTarguments, other_arguments_types_attr)},  // Attrs
         output));
     return Status::OK();
@@ -246,6 +247,16 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
   const std::vector<PartialTensorShape> output_shapes_;
 };
 
+FlatMapDatasetOp::FlatMapDatasetOp(OpKernelConstruction* ctx)
+    : UnaryDatasetOpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {
+  FunctionMetadata::Params params;
+  params.is_multi_device_function = true;
+  OP_REQUIRES_OK(ctx,
+                 FunctionMetadata::Create(ctx, kFunc, params, &func_metadata_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+}
+
 void FlatMapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                    DatasetBase** output) {
   std::unique_ptr<CapturedFunction> captured_func;
@@ -257,8 +268,11 @@ void FlatMapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 }
 
 namespace {
+
 REGISTER_KERNEL_BUILDER(Name("FlatMapDataset").Device(DEVICE_CPU),
                         FlatMapDatasetOp);
+REGISTER_INPUT_COLOCATION_EXEMPTION("FlatMapDataset");
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

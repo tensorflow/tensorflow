@@ -28,10 +28,11 @@ import traceback
 
 import six
 from six import iteritems
-from six.moves import xrange  # pylint: disable=redefined-builtin
+from six.moves import xrange, zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -51,6 +52,10 @@ __all__ = [
     "get_local_variable", "variable_scope", "variable_op_scope",
     "no_regularizer", "VariableSynchronization", "VariableAggregation"
 ]
+
+_api_usage_gauge = monitoring.BoolGauge(
+    "/tensorflow/api/resource_variables",
+    "Whether variable_scope.enable_resource_variables() is called.")
 
 
 class _PartitionInfo(object):
@@ -88,9 +93,7 @@ class _PartitionInfo(object):
           "full_shape is of length {}.".format(
               len(var_offset), len(full_shape)))
 
-    for i in xrange(len(full_shape)):
-      offset = var_offset[i]
-      shape = full_shape[i]
+    for offset, shape in zip(var_offset, full_shape):
       if offset < 0 or offset >= shape:
         raise ValueError(
             "Expected 0 <= offset < shape but found offset={}, shape={} for "
@@ -226,6 +229,7 @@ def enable_resource_variables():
   """
   global _DEFAULT_USE_RESOURCE
   _DEFAULT_USE_RESOURCE = True
+  _api_usage_gauge.get_cell().set(True)
 
 
 @tf_export(v1=["resource_variables_enabled"])
@@ -259,6 +263,7 @@ def disable_resource_variables():
   """
   global _DEFAULT_USE_RESOURCE
   _DEFAULT_USE_RESOURCE = False
+  _api_usage_gauge.get_cell().set(False)
 
 
 class _VariableStore(object):
@@ -330,7 +335,8 @@ class _VariableStore(object):
         forced to be False.
       trainable: If `True` also add the variable to the graph collection
         `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`). `trainable`
-        defaults to `True` unless `synchronization` is set to `ON_READ`.
+        defaults to `True`, unless `synchronization` is set to `ON_READ`, in
+        which case it defaults to `False`.
       collections: List of graph collections keys to add the `Variable` to.
         Defaults to `[GraphKeys.GLOBAL_VARIABLES]` (see `tf.Variable`).
       caching_device: Optional device string or function describing where the
@@ -370,8 +376,7 @@ class _VariableStore(object):
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses when to
-        synchronize. If `synchronization` is set to `ON_READ`, `trainable` must
-        not be set to `True`.
+        synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
@@ -646,8 +651,7 @@ class _VariableStore(object):
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses when to
-        synchronize. If `synchronization` is set to `ON_READ`, `trainable` must
-        not be set to `True`.
+        synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
@@ -1581,8 +1585,7 @@ Args:
     aggregated. Accepted values are constants defined in the class
     `tf.VariableSynchronization`. By default the synchronization is set to
     `AUTO` and the current `DistributionStrategy` chooses
-    when to synchronize. If `synchronization` is set to `ON_READ`,
-    `trainable` must not be set to `True`.
+    when to synchronize.
   aggregation: Indicates how a distributed variable will be aggregated.
     Accepted values are constants defined in the class
     `tf.VariableAggregation`.
@@ -1726,8 +1729,6 @@ def _get_partitioned_variable(name,
       Accepted values are constants defined in the class
       `tf.VariableSynchronization`. By default the synchronization is set to
       `AUTO` and the current `DistributionStrategy` chooses when to synchronize.
-      If `synchronization` is set to `ON_READ`, `trainable` must not be set to
-      `True`.
     aggregation: Indicates how a distributed variable will be aggregated.
       Accepted values are constants defined in the class
       `tf.VariableAggregation`.
@@ -2589,8 +2590,8 @@ def variable_creator_scope_v1(variable_creator):
       trainable: If `True`, the default, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
-        `trainable` defaults to `True` unless `synchronization` is
-        set to `ON_READ`.
+        `trainable` defaults to `True`, unless `synchronization` is
+        set to `ON_READ`, in which case it defaults to `False`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       validate_shape: If `False`, allows the variable to be initialized with a
@@ -2613,8 +2614,7 @@ def variable_creator_scope_v1(variable_creator):
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
-        when to synchronize. If `synchronization` is set to `ON_READ`,
-        `trainable` must not be set to `True`.
+        when to synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
@@ -2683,8 +2683,7 @@ def variable_creator_scope(variable_creator):
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
-        when to synchronize. If `synchronization` is set to `ON_READ`,
-        `trainable` must not be set to `True`.
+        when to synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.

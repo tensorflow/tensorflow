@@ -100,6 +100,17 @@ def _make_int64_tensor(value, name):
   return math_ops.cast(value, dtypes.int64)
 
 
+@tf_export("sparse.from_dense")
+def from_dense(tensor, name=None):
+  with ops.name_scope(name, "dense_to_sparse"):
+    tensor = ops.convert_to_tensor(tensor)
+    indices = array_ops.where(
+        math_ops.not_equal(tensor, array_ops.constant(0, tensor.dtype)))
+    values = array_ops.gather_nd(tensor, indices)
+    shape = array_ops.shape(tensor, out_type=dtypes.int64)
+    return sparse_tensor.SparseTensor(indices, values, shape)
+
+
 @tf_export("sparse.expand_dims")
 def sparse_expand_dims(sp_input, axis=None, name=None):
   """Inserts a dimension of 1 into a tensor's shape.

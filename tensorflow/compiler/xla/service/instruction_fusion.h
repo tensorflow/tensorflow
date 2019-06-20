@@ -36,8 +36,10 @@ class InstructionFusion : public HloModulePass {
  public:
   explicit InstructionFusion(
       std::function<bool(const HloInstruction& instruction)> is_expensive,
-      bool may_duplicate = true)
-      : is_expensive_(is_expensive), may_duplicate_(may_duplicate) {}
+      bool may_duplicate = true, bool main_fusion = false)
+      : is_expensive_(is_expensive),
+        may_duplicate_(may_duplicate),
+        is_main_fusion_(main_fusion) {}
   ~InstructionFusion() override = default;
   absl::string_view name() const override { return "fusion"; }
 
@@ -121,6 +123,8 @@ class InstructionFusion : public HloModulePass {
   // Reachability information for the current computation.
   std::unique_ptr<HloReachabilityMap> reachability_;
 
+  bool is_main_fusion() { return is_main_fusion_; }
+
  private:
   // The set of producers whose consumers we cannot fuse into.
   using HloInstructionSet = std::unordered_set<HloInstruction*>;
@@ -151,6 +155,9 @@ class InstructionFusion : public HloModulePass {
 
   // Returns whether we may duplicate an instruction if we want to fuse it.
   bool may_duplicate_;
+
+  // Main fusion pass.
+  bool is_main_fusion_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(InstructionFusion);
 };

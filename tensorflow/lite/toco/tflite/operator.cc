@@ -35,6 +35,8 @@ namespace toco {
 
 namespace tflite {
 
+// LINT.IfChange
+
 class AveragePool
     : public BuiltinOperator<AveragePoolOperator, ::tflite::Pool2DOptions,
                              ::tflite::BuiltinOptions_Pool2DOptions> {
@@ -2368,6 +2370,8 @@ class FloorDiv : public SimpleOperator<FloorDivOperator> {
   }
 };
 
+// LINT.ThenChange(//tensorflow/lite/toco/tflite/op_version.cc")
+
 namespace {
 // Build a vector containing all the known operators.
 std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
@@ -2594,6 +2598,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       "ZEROS_LIKE", OperatorType::kZerosLike));
   ops.push_back(
       MakeUnique<SimpleOperator<AbsOperator>>("ABS", OperatorType::kAbs));
+  ops.push_back(MakeUnique<SimpleOperator<HardSwishOperator>>(
+      "HARD_SWISH", OperatorType::kHardSwish));
   ops.push_back(
       MakeUnique<SimpleOperator<FillOperator>>("FILL", OperatorType::kFill));
   ops.push_back(MakeUnique<SimpleOperator<ReverseV2Operator>>(

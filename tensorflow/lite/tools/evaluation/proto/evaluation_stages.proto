@@ -36,7 +36,7 @@ message ProcessSpecification {
 // Latency numbers in microseconds, based on all EvaluationStage::Run() calls so
 // far.
 //
-// Next ID: 6
+// Next ID: 7
 message LatencyMetrics {
   // Latency for the last Run.
   optional int64 last_us = 1;
@@ -48,12 +48,28 @@ message LatencyMetrics {
   optional int64 sum_us = 4;
   // Average latency across all Runs.
   optional double avg_us = 5;
+  // Standard deviation for latency across all Runs.
+  optional int64 std_deviation_us = 6;
+}
+
+// Statistics for an accuracy value over multiple runs of evaluation.
+//
+// Next ID: 5
+message AccuracyMetrics {
+  // Maximum value observed for any Run.
+  optional float max_value = 1;
+  // Minimum value observed for any Run.
+  optional float min_value = 2;
+  // Average value across all Runs.
+  optional double avg_value = 3;
+  // Standard deviation across all Runs.
+  optional float std_deviation = 4;
 }
 
 // Contains process-specific metrics, which may differ based on what an
 // EvaluationStage does.
 //
-// Next ID: 5
+// Next ID: 6
 message ProcessMetrics {
   optional LatencyMetrics total_latency = 1;
 
@@ -61,6 +77,7 @@ message ProcessMetrics {
     TopkAccuracyEvalMetrics topk_accuracy_metrics = 2;
     TfliteInferenceMetrics tflite_inference_metrics = 3;
     ImageClassificationMetrics image_classification_metrics = 4;
+    InferenceProfilerMetrics inference_profiler_metrics = 5;
   }
 }
 
@@ -159,4 +176,21 @@ message ImageClassificationMetrics {
   // Not set if topk_accuracy_eval_params was not populated in
   // ImageClassificationParams.
   optional TopkAccuracyEvalMetrics topk_accuracy_metrics = 4;
+}
+
+// Metrics computed from comparing TFLite execution in two settings:
+// 1. User-defined TfliteInferenceParams (The 'test' setting)
+// 2. Default TfliteInferenceParams (The 'reference' setting)
+//
+// Next ID: 4
+message InferenceProfilerMetrics {
+  // Latency metrics from Single-thread CPU inference.
+  optional LatencyMetrics reference_latency = 1;
+  // Latency from TfliteInferenceParams under test.
+  optional LatencyMetrics test_latency = 2;
+  // For reference & test output vectors {R, T}, the error is computed as:
+  // Mean([Abs(R[i] - T[i]) for i in num_elements])
+  // output_errors[v] : statistics for the error value of the vth output vector
+  //   across all Runs.
+  repeated AccuracyMetrics output_errors = 3;
 }

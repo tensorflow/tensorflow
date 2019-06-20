@@ -336,11 +336,13 @@ void RewireBidirectionalSequenceSequenceOpsConnections(
   string cur_fw_input = input_array_name;
   string cur_bw_input = input_array_name;
   for (size_t i = 0; i < bidirectional_sequence_ops.size(); ++i) {
-    DeleteArrayIfUsedOnce(bidirectional_sequence_ops[i]->inputs[0], model);
+    DeleteArrayIfUnusedOutsideOfOp(bidirectional_sequence_ops[i]->inputs[0],
+                                   bidirectional_sequence_ops[i], model);
     bidirectional_sequence_ops[i]->inputs[0] = cur_fw_input;
     if (i != 0) {
-      DeleteArrayIfUsedOnce(
-          bidirectional_sequence_ops[i]->inputs[aux_input_index], model);
+      DeleteArrayIfUnusedOutsideOfOp(
+          bidirectional_sequence_ops[i]->inputs[aux_input_index],
+          bidirectional_sequence_ops[i], model);
       bidirectional_sequence_ops[i]->inputs[aux_input_index] = cur_bw_input;
     }
     cur_fw_input = bidirectional_sequence_ops[i]->outputs[0];
@@ -383,24 +385,16 @@ void RewireFinalUnpackOutputs(const UnpackOperator& original_unpack_operator,
         (*final_unpack_operator)->outputs[i] = concat_output;
       }
       // Remove the concat op.
-      model->operators.erase(FindOperator(model, *unpack_following_op));
+      DeleteOpAndArrays(model, unpack_following_op);
     }
   }
-}
-
-void RemoveUnpackOperator(const Operator& unpack_op, Model* model) {
-  for (const string& output_array_name : unpack_op.outputs) {
-    DeleteArrayIfUnused(output_array_name, model);
-  }
-  model->operators.erase(FindOperator(model, unpack_op));
 }
 
 void RemoveUnidirectionalSequenceOps(std::stack<Operator*> uni_sequence_ops,
                                      Model* model) {
   while (!uni_sequence_ops.empty()) {
     Operator* uni_sequence_op = uni_sequence_ops.top();
-    DeleteArrayIfUnused(uni_sequence_op->outputs[0], model);
-    model->operators.erase(FindOperator(model, *uni_sequence_op));
+    DeleteOpAndArrays(model, uni_sequence_op);
     uni_sequence_ops.pop();
   }
 }
@@ -471,14 +465,9 @@ template <typename T>
   // Delete unused ops.
   RemoveUnidirectionalSequenceOps(fw_unidirectional_sequence_ops, model);
   RemoveUnidirectionalSequenceOps(bw_unidirectional_sequence_ops, model);
-
-  DeleteArrayIfUnused(final_concat_op->inputs[0], model);
-  DeleteArrayIfUnused(final_concat_op->inputs[1], model);
-  model->operators.erase(FindOperator(model, *final_concat_op));
-
+  DeleteOpAndArrays(model, final_concat_op);
   // Only keep the fw lstm's input.
-  DeleteArrayIfUnused(first_bw_sequence_input->outputs[0], model);
-  model->operators.erase(FindOperator(model, *first_bw_sequence_input));
+  DeleteOpAndArrays(model, first_bw_sequence_input);
   *modified = true;
   return ::tensorflow::Status::OK();
 }
@@ -552,13 +541,12 @@ template <typename T>
   model->operators.emplace(op_it, unpack_operator);
 
   // Delete unused ops.
-  RemoveUnpackOperator(*fw_lstm_output, model);
-  RemoveUnpackOperator(*bw_lstm_output, model);
+  DeleteOpAndArrays(model, fw_lstm_output);
+  DeleteOpAndArrays(model, bw_lstm_output);
   RemoveUnidirectionalSequenceOps(fw_unidirectional_sequence_lstm_ops, model);
   RemoveUnidirectionalSequenceOps(bw_unidirectional_sequence_lstm_ops, model);
   // Only keep the fw lstm's pack input.
-  DeleteArrayIfUnused(first_bw_lstm_input->outputs[0], model);
-  model->operators.erase(FindOperator(model, *first_bw_lstm_input));
+  DeleteOpAndArrays(model, first_bw_lstm_input);
   *modified = true;
   return ::tensorflow::Status::OK();
 }
@@ -628,13 +616,12 @@ template <typename T>
   model->operators.emplace(op_it, unpack_operator);
 
   // Delete unused ops.
-  RemoveUnpackOperator(*fw_rnn_output, model);
-  RemoveUnpackOperator(*bw_rnn_output, model);
+  DeleteOpAndArrays(model, fw_rnn_output);
+  DeleteOpAndArrays(model, bw_rnn_output);
   RemoveUnidirectionalSequenceOps(fw_unidirectional_sequence_rnn_ops, model);
   RemoveUnidirectionalSequenceOps(bw_unidirectional_sequence_rnn_ops, model);
   // Only keep the fw rnn's pack input.
-  DeleteArrayIfUnused(first_bw_rnn_input->outputs[0], model);
-  model->operators.erase(FindOperator(model, *first_bw_rnn_input));
+  DeleteOpAndArrays(model, first_bw_rnn_input);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

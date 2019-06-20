@@ -1563,5 +1563,50 @@ class BatchJacobianTest(test.TestCase):
     self.assertAllClose(g.batch_jacobian(y, x, parallel_iterations=2),
                         g.batch_jacobian(y, x, parallel_iterations=3))
 
+
+class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
+
+  def _assert_indexed_slices_equal(self, left, right):
+    self.assertAllEqual(
+        self.evaluate(ops.convert_to_tensor(left)),
+        self.evaluate(ops.convert_to_tensor(right)))
+
+  def testNoGradients(self):
+    self.assertIsNone(backprop.aggregate_indexed_slices_gradients([]))
+
+  def testOneGradient(self):
+    t = math_ops._as_indexed_slices(
+        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
+    result = backprop.aggregate_indexed_slices_gradients([t])
+    self._assert_indexed_slices_equal(t, result)
+
+  def testMultipleGradients(self):
+    t0 = math_ops._as_indexed_slices(
+        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
+    t1 = math_ops._as_indexed_slices(
+        constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
+    total = constant_op.constant([[1., 2.], [5, 6], [10., 12.]])
+    result = backprop.aggregate_indexed_slices_gradients([t0, t1])
+    self._assert_indexed_slices_equal(total, result)
+
+  def testMultipleGradientsWithNones(self):
+    t0 = math_ops._as_indexed_slices(
+        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
+    t1 = math_ops._as_indexed_slices(
+        constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
+    t3 = None
+    total = constant_op.constant([[1., 2.], [5, 6], [10., 12.]])
+    result = backprop.aggregate_indexed_slices_gradients([t0, t1, t3])
+    self._assert_indexed_slices_equal(total, result)
+
+  def testMixedTensorAndIndexedSlices(self):
+    t0 = math_ops._as_indexed_slices(
+        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
+    t1 = constant_op.constant([[0., 0.], [5, 6], [7., 8.]])
+    total = constant_op.constant([[1., 2.], [5, 6], [10., 12.]])
+    result = backprop.aggregate_indexed_slices_gradients([t0, t1])
+    self._assert_indexed_slices_equal(total, result)
+
+
 if __name__ == '__main__':
   test.main()

@@ -56,10 +56,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/conditional_to_select.h"
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
+#include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
@@ -317,7 +317,10 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pass.AddPass<TupleSimplifier>();
     pass.AddPass<WhileLoopConstantSinking>();
     pass.AddPass<WhileLoopSimplifier>();
-    pass.AddPass<SliceSinker>();
+
+    // TODO(b/134075051): Re-enable after b/134075051 is fixed.
+    // pass.AddPass<SliceSinker>();
+
     pass.AddPass<HloDCE>();
     pass.AddPass<ReshapeMover>();
     pass.AddPass<HloConstantFolding>();
@@ -399,7 +402,7 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // interfering with the rewrites.
   pipeline.AddPass<HloDCE>();
   pipeline.AddPass<FlattenCallGraph>();
-  pipeline.AddPass<CpuCopyInsertion>();
+  pipeline.AddPass<CopyInsertion>();
   pipeline.AddPass<HloDCE>();
   return pipeline.Run(module).status();
 }

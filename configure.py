@@ -49,6 +49,8 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
+_TF_MIN_BAZEL_VERSION = '0.24.1'
+_TF_MAX_BAZEL_VERSION = '0.26.1'
 
 NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
@@ -1391,7 +1393,8 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  current_bazel_version = check_bazel_version('0.24.1', '0.25.3')
+  current_bazel_version = check_bazel_version(_TF_MIN_BAZEL_VERSION,
+                                              _TF_MAX_BAZEL_VERSION)
   _TF_CURRENT_BAZEL_VERSION = convert_version_to_int(current_bazel_version)
 
   reset_tf_configure_bazelrc()
@@ -1582,6 +1585,7 @@ def main():
   config_info_line(
       'dynamic_kernels',
       '(Experimental) Build kernels into separate shared objects.')
+  config_info_line('v2', 'Build TensorFlow 2.x instead of 1.x.')
 
   print('Preconfigured Bazel build configs to DISABLE default on features:')
   config_info_line('noaws', 'Disable AWS S3 filesystem support.')

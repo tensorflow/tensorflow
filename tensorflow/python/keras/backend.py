@@ -36,6 +36,7 @@ from tensorflow.python.client import session as session_module
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.eager import function as eager_function
@@ -69,7 +70,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
-from tensorflow.python.training import server_lib
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
@@ -77,6 +78,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 py_all = all
 py_sum = sum
+py_any = any
 
 # INTERNAL UTILS
 
@@ -156,7 +158,7 @@ def cast_to_floatx(x):
 
   Example:
   ```python
-      >>> from keras import backend as K
+      >>> from tensorflow.keras import backend as K
       >>> K.floatx()
       'float32'
       >>> arr = numpy.array([1.0, 2.0], dtype='float64')
@@ -209,10 +211,8 @@ def get_uid(prefix=''):
 def reset_uids():
   """Resets graph identifiers.
   """
-  per_graph_object_name_uids = PER_GRAPH_OBJECT_NAME_UIDS
-  keys = list(per_graph_object_name_uids.keys())
-  for key in keys:
-    del per_graph_object_name_uids[key]
+
+  PER_GRAPH_OBJECT_NAME_UIDS.clear()
 
 
 @keras_export('keras.backend.clear_session')
@@ -291,6 +291,10 @@ def learning_phase():
     return symbolic_learning_phase()
 
 
+def global_learning_phase_is_set():
+  return _DUMMY_EAGER_GRAPH in _GRAPH_LEARNING_PHASES
+
+
 def symbolic_learning_phase():
   graph = get_graph()
   with graph.as_default():
@@ -321,18 +325,6 @@ def set_learning_phase(value):
       # context and the internal Keras graph.
       _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
     _GRAPH_LEARNING_PHASES[get_graph()] = value
-
-
-def set_eager_learning_phase(value):
-  """Internal utility that sets the learning phase in eager execution only.
-
-  Arguments:
-      value: Learning phase value, either 0 or 1 (integers).
-  """
-  global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
-  assert value in {0, 1}
-  assert context.executing_eagerly()
-  _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
 
 
 @keras_export('keras.backend.learning_phase_scope')
@@ -379,9 +371,10 @@ def learning_phase_scope(value):
       elif graph in _GRAPH_LEARNING_PHASES:
         del _GRAPH_LEARNING_PHASES[graph]
 
+
 @tf_contextlib.contextmanager
 def eager_learning_phase_scope(value):
-  """Internal scope that sets the learning phase in eager execution only.
+  """Internal scope that sets the learning phase in eager / tf.function only.
 
   Arguments:
       value: Learning phase value, either 0 or 1 (integers).
@@ -395,13 +388,18 @@ def eager_learning_phase_scope(value):
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   assert value in {0, 1}
   assert ops.executing_eagerly_outside_functions()
-  previous_value = learning_phase()
+  global_learning_phase_was_set = global_learning_phase_is_set()
+  if global_learning_phase_was_set:
+    previous_value = learning_phase()
   try:
     _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
     yield
   finally:
-    # Restore learning phase to initial value.
-    _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
+    # Restore learning phase to initial value or unset.
+    if global_learning_phase_was_set:
+      _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
+    else:
+      del _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
 
 
 def _current_graph(op_input_list):
@@ -508,7 +506,7 @@ def _scratch_graph(graph=None):
     _CURRENT_SCRATCH_GRAPH = None
 
 
-@keras_export('keras.backend.set_session')
+@keras_export(v1=['keras.backend.set_session'])
 def set_session(session):
   """Sets the global TensorFlow session.
 
@@ -520,14 +518,14 @@ def set_session(session):
 
 
 def get_default_session_config():
-  if not os.environ.get('OMP_NUM_THREADS'):
-    config = config_pb2.ConfigProto(allow_soft_placement=True)
-  else:
-    num_thread = int(os.environ.get('OMP_NUM_THREADS'))
-    config = config_pb2.ConfigProto(
-        intra_op_parallelism_threads=num_thread,
-        inter_op_parallelism_threads=num_thread,
-        allow_soft_placement=True)
+  if os.environ.get('OMP_NUM_THREADS'):
+    logging.warning(
+        'OMP_NUM_THREADS is no longer used by the default Keras config. '
+        'To configure the number of threads, use tf.config.threading APIs.')
+
+  config = context.context().config
+  config.allow_soft_placement = True
+
   return config
 
 
@@ -3578,8 +3576,15 @@ class EagerExecutionFunction(object):
         value = math_ops.cast(value, tensor.dtype)
       converted_inputs.append(value)
     outputs = self._graph_fn(*converted_inputs)
+
+    # EagerTensor.numpy() will often make a copy to ensure memory safety.
+    # However in this case `outputs` is not directly returned, so it is always
+    # safe to reuse the underlying buffer without checking. In such a case the
+    # private numpy conversion method is preferred to guarantee performance. We
+    # also have to call `_cpu_nograd()` since the Tensor may not be on the CPU.
+    # (otherwise it's just a no-op.)
     return nest.pack_sequence_as(
-        self._outputs_structure, [x.numpy() for x in outputs],
+        self._outputs_structure, [x._cpu_nograd()._numpy() for x in outputs],  # pylint: disable=protected-access
         expand_composites=True)
 
 
@@ -4273,11 +4278,24 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
 
   Raises:
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
+      
+  Example:
+  ```python:
+      import tensorflow as tf
+      from tensorflow.keras import backend as K
+      a = tf.constant([1., 0., 0., 0., 1., 0., 0., 0., 1.], shape=[3,3])
+      print("a: ", a)
+      b = tf.constant([.9, .05, .05, .5, .89, .6, .05, .01, .94], shape=[3,3])
+      print("b: ", b)
+      loss = K.categorical_crossentropy(a, b)
+      print('Loss: ', loss) #Loss: tf.Tensor([0.10536055 0.8046684  0.06187541], shape=(3,), dtype=float32)
+      loss = K.categorical_crossentropy(a, a)
+      print('Loss: ', loss) #Loss:  tf.Tensor([1.1920929e-07 1.1920929e-07 1.1920929e-07], shape=(3,), dtype=float32)
+  ```
   """
   if not from_logits:
     if (isinstance(output, (ops.EagerTensor, variables_module.Variable)) or
         output.op.type != 'Softmax'):
-      axis = axis % len(output.shape)
       # scale preds so that the class probas of each sample sum to 1
       output = output / math_ops.reduce_sum(output, axis, True)
       # Compute cross entropy from probabilities.
@@ -4291,7 +4309,8 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
       # See b/117284466
       assert len(output.op.inputs) == 1
       output = output.op.inputs[0]
-  return nn.softmax_cross_entropy_with_logits_v2(labels=target, logits=output)
+  return nn.softmax_cross_entropy_with_logits_v2(
+      labels=target, logits=output, axis=axis)
 
 
 @keras_export('keras.backend.sparse_categorical_crossentropy')
@@ -4329,20 +4348,45 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
       assert len(output.op.inputs) == 1
       output = output.op.inputs[0]
 
-  rank = len(output.shape)
-  axis = axis % rank
-  if axis != rank - 1:
-    permutation = list(range(axis)) + list(range(axis + 1, rank)) + [axis]
-    output = array_ops.transpose(output, perm=permutation)
+  if isinstance(output.shape, (tuple, list)):
+    output_rank = len(output.shape)
+  else:
+    output_rank = output.shape.ndims
+  if output_rank is not None:
+    axis %= output_rank
+    if axis != output_rank - 1:
+      permutation = list(
+          itertools.chain(range(axis), range(axis + 1, output_rank), [axis]))
+      output = array_ops.transpose(output, perm=permutation)
+  elif axis != -1:
+    raise ValueError(
+        'Cannot compute sparse categorical crossentropy with `axis={}` on an '
+        'output tensor with unknown rank'.format(axis))
 
-  output_shape = output.shape
-  targets = cast(flatten(target), 'int64')
-  logits = array_ops.reshape(output, [-1, int(output_shape[-1])])
-  res = nn.sparse_softmax_cross_entropy_with_logits(
-      labels=targets, logits=logits)
-  if len(output_shape) >= 3:
+  target = cast(target, 'int64')
+
+  # Try to adjust the shape so that rank of labels = 1 - rank of logits.
+  output_shape = array_ops.shape_v2(output)
+  target_rank = target.shape.ndims
+
+  update_shape = (
+      target_rank is not None and output_rank is not None and
+      target_rank != output_rank - 1)
+  if update_shape:
+    target = flatten(target)
+    output = array_ops.reshape(output, [-1, output_shape[-1]])
+
+  if py_any([_is_symbolic_tensor(v) for v in [target, output]]):
+    with get_graph().as_default():
+      res = nn.sparse_softmax_cross_entropy_with_logits_v2(
+          labels=target, logits=output)
+  else:
+    res = nn.sparse_softmax_cross_entropy_with_logits_v2(
+        labels=target, logits=output)
+
+  if update_shape and output_rank >= 3:
     # If our output includes timesteps or spatial dimensions we need to reshape
-    return array_ops.reshape(res, array_ops.shape(output)[:-1])
+    return array_ops.reshape(res, output_shape[:-1])
   else:
     return res
 
@@ -5677,15 +5721,6 @@ if not os.path.exists(_config_path):
     pass
 
 
-def in_multi_worker_mode():
-  """Whether we are operating in a Multi-Worker setting."""
-  # TODO(rchao): Consider a warning if user uses multiple `model` method
-  # calls in multi-worker setting.
-  tf_config = json.loads(os.environ.get('TF_CONFIG', '{}'))
-  cluster_spec = server_lib.ClusterSpec(tf_config.get('cluster', {}))
-  return tf_config and 'master' not in cluster_spec.jobs
-
-
 def configure_and_create_distributed_session(distribution_strategy):
   """Configure session config and create a session with it."""
 
@@ -5722,7 +5757,7 @@ def configure_and_create_distributed_session(distribution_strategy):
 
     set_session(session)
 
-  if in_multi_worker_mode():
+  if multi_worker_util.in_multi_worker_mode():
     dc.run_distribute_coordinator(
         _create_session,
         distribution_strategy,
@@ -5745,3 +5780,7 @@ def cast_variables_to_tensor(tensors):
     return tensor
 
   return nest.map_structure(_cast_variables_to_tensor, tensors)
+
+
+def _is_symbolic_tensor(x):
+  return tensor_util.is_tensor(x) and not isinstance(x, ops.EagerTensor)

@@ -312,6 +312,10 @@ llvm::GlobalVariable* GetOrCreateVariableForPhiloxRngState(
 // should rarely produce the same result.
 void IncrementVariableForPhiloxRngState(int64 value, llvm::Module* module,
                                         llvm::IRBuilder<>* b);
+
+// Gets the LLVM address space that should be used for global variables (e.g.
+// XLA's rng state).
+unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module);
 }  // namespace llvm_ir
 }  // namespace xla
 

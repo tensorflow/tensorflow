@@ -2,13 +2,6 @@
 #   Contains ops to train linear models on top of TensorFlow.
 #   APIs here are meant to evolve over time.
 
-package(
-    default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
-)
-
-exports_files(["LICENSE"])
-
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -19,6 +12,13 @@ load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_kernel_tests_linkstatic",
 )
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 py_library(
     name = "sparsemax_py",

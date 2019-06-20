@@ -30,6 +30,12 @@ limitations under the License.
 namespace tensorflow {
 class DeviceMgr;
 
+namespace thread {
+
+struct ThreadPoolOptions;
+
+}
+
 /// \brief A Session instance lets a caller drive a TensorFlow graph
 /// computation.
 ///
@@ -221,6 +227,21 @@ class Session {
                              RunMetadata* run_metadata) {
     return errors::Unimplemented(
         "RunCallable is not supported for this session.");
+  }
+
+  /// \brief Invokes the subgraph named by `handle` with the given options and
+  /// input tensors.
+  ///
+  /// The order of tensors in `feed_tensors` must and `fetch_tensors` will
+  /// match the order of names in `CallableOptions::feed()` and
+  /// `CallableOptions::fetch()` when this subgraph was created.
+  /// NOTE: This API is still experimental and may change.
+  virtual Status RunCallable(
+      CallableHandle handle, const std::vector<Tensor>& feed_tensors,
+      std::vector<Tensor>* fetch_tensors, RunMetadata* run_metadata,
+      const thread::ThreadPoolOptions& threadpool_options) {
+    return errors::Unimplemented(
+        "RunCallable with threadpool is not supported for this session.");
   }
 
   /// \brief Releases resources associated with the given `handle` in this

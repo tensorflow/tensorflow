@@ -210,7 +210,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:functional_ops_op_lib",
-        "//tensorflow/core/kernels/data:parallel_map_iterator",
+        "//tensorflow/core/kernels/data:parallel_map_dataset_op",
         "//tensorflow/core/kernels/data:stats_utils",
     ],
 )
@@ -318,6 +318,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/kernels/data:dataset_utils",
         "@com_google_absl//absl/time",
     ],
 )
@@ -342,6 +344,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:summary_interface",
     ],
@@ -380,6 +383,7 @@ tf_kernel_library(
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//third_party/eigen3",
     ],

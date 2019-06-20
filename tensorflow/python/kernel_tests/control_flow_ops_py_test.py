@@ -25,6 +25,7 @@ import math
 import sys
 import time
 
+from absl.testing import parameterized
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -74,6 +75,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_v2  # pylint: disable=unused-import
 # pylint: disable=unused-import
 from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 import tensorflow.python.ops.tensor_array_grad
 # pylint: enable=unused-import
 from tensorflow.python.platform import test
@@ -147,7 +149,7 @@ def filter_test_messages(s):
 
 
 @test_util.with_control_flow_v2
-class ControlFlowTest(test.TestCase):
+class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testRefIdentity(self):
@@ -660,6 +662,22 @@ class ControlFlowTest(test.TestCase):
       fn2 = lambda: [y, y]
       r = control_flow_ops.cond(pred, fn1, fn2)
       self.assertAllEqual([11, 12], self.evaluate(r))
+
+  @parameterized.parameters(dtypes.float32, dtypes.float64)
+  @test_util.run_v1_only("Uses tf.gradients")
+  def testCondResourceGrad(self, dtype):
+    init = constant_op.constant([7.], dtype=dtype)
+    v1 = variables.Variable(init)
+
+    age = constant_op.constant(3., dtype=dtype)
+    pred = math_ops.greater(age, 4.)
+    fn1 = lambda: age
+    fn2 = lambda: v1
+    r = control_flow_ops.cond(pred, fn1, fn2)
+
+    grad = gradients_impl.gradients(r, v1)[0]
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(grad, [1.])
 
   @test_util.run_gpu_only
   @test_util.run_deprecated_v1
@@ -1821,6 +1839,20 @@ class ControlFlowTest(test.TestCase):
       control_flow_ops.while_loop(
           c, b, [i, x], [i.shape, tensor_shape.TensorShape([5])])
 
+  @test_util.run_in_graph_and_eager_modes
+  def testWhileBadBodyReturn(self):
+    x = constant_op.constant([2.0, 4.0], name="values")
+    i = constant_op.constant(0)
+    c = lambda i, *x: math_ops.less(i, 10)
+
+    # body accepts N values and returns N+1 values.
+    b = lambda i, *x: (i, i) + x
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        "The two structures don't have the same nested structure."):
+      control_flow_ops.while_loop(c, b, [i, x])
+
   @test_util.run_deprecated_v1
   def testWhileWithNonTensorInput_Scalar(self):
     with self.cached_session():
@@ -2050,15 +2082,24 @@ class ControlFlowTest(test.TestCase):
         _, r = control_flow_ops.while_loop(c, b2, [i, x])
 
     # Explicit shape invariant; b1 adds new values to rows.
+    # (deprecated: use TensorShape instead of RaggedTensorSpec)
     _, r = control_flow_ops.while_loop(
         c, b1, [i, x],
         [i.get_shape(), tensor_shape.TensorShape([None, None])])
     check_shapes(r, values=[None], splits=[None])
 
+    # Explicit shape invariant; b1 adds new values to rows.
+    _, r = control_flow_ops.while_loop(
+        c, b1, [i, x],
+        [i.get_shape(), ragged_tensor.RaggedTensorSpec([None, None],
+                                                       dtypes.int32)])
+    check_shapes(r, values=[None], splits=[None])
+
     # Explicit shape invariant; b2 adds new rows.
     _, r = control_flow_ops.while_loop(
         c, b2, [i, x],
-        [i.get_shape(), tensor_shape.TensorShape([None, None])])
+        [i.get_shape(), ragged_tensor.RaggedTensorSpec([None, None],
+                                                       dtypes.int32)])
     check_shapes(r, values=[None], splits=[None])
 
   def testWhileShapeInferenceRaggedTensorRaggedRank2(self):

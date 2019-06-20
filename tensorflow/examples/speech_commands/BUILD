@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_py_test")
+
 package(
     default_visibility = [
         "//visibility:public",
@@ -8,10 +10,6 @@ package(
 exports_files([
     "LICENSE",
 ])
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 py_library(
     name = "models",

@@ -20,11 +20,14 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "include/pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/shared_device_buffer.h"
 #include "tensorflow/compiler/xla/python/worker_thread.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -40,54 +43,6 @@ namespace xla {
 // "xla._CPU_CUSTOM_CALL_TARGET".
 Status RegisterCpuCustomCallTarget(const std::string& fn_name,
                                    pybind11::capsule capsule);
-
-// Class that manages destruction of Python objects.
-//
-// We must not destroy Python objects without holding the GIL. However, we
-// frequently want to hold references to Python objects for the duration of
-// an asynchronous transfer on a Stream, and release our reference when the
-// transfer completes.
-//
-// This class holds references to Python objects outside a GIL scope, that can
-// be collected later when the GIL is held by calling CollectGarbage().
-class PythonRefManager {
- public:
-  PythonRefManager() = default;
-
-  // Holds references to a set of pybind11::objects, adding the references to
-  // the PythonRefManager on destruction.
-  class ManagedPyObjects {
-   public:
-    ManagedPyObjects() = default;
-    ManagedPyObjects(PythonRefManager* manager,
-                     absl::Span<pybind11::object> objects);
-
-    ~ManagedPyObjects();
-
-    ManagedPyObjects(const ManagedPyObjects& other) = default;
-    ManagedPyObjects(ManagedPyObjects&& other) = default;
-    ManagedPyObjects& operator=(const ManagedPyObjects& other) = default;
-    ManagedPyObjects& operator=(ManagedPyObjects&& other) = default;
-
-   private:
-    PythonRefManager* manager_ = nullptr;
-    absl::InlinedVector<pybind11::object, 1> objects_;
-  };
-
-  // Creates a managed std::shared_ptr to an object. When the shared_ptr is
-  // destroyed, the reference to 'object' will be added to python_garbage_,
-  // and collected next time CollectGarbage() is called.
-  ManagedPyObjects ManageReferences(absl::Span<pybind11::object> objects);
-
-  // Releases the contents of python_garbage_. Requires that the GIL is held.
-  // The client calls this method during API entry points where the GIL is held
-  // to free any garbage that has accumulated.
-  void CollectGarbage();
-
- private:
-  absl::Mutex mu_;
-  std::deque<pybind11::object> python_garbage_ GUARDED_BY(mu_);
-};
 
 // Class that encapsulates state relating to a device (e.g., a GPU) on which we
 // can perform computation and transfers.
@@ -195,8 +150,15 @@ struct AllocatorConfig {
   };
   Kind kind = Kind::kDefault;
 
-  // Only used if kind == kBFC. Fraction of available memory to allocate.
-  double memory_fraction = .9;
+  // Only used if kind == kBFC. The maximum fraction of available memory to
+  // allocate.
+  double memory_fraction = 0.9;
+
+  // Only used if kind == kBFC. If true, the allocator will immediately allocate
+  // the maximum amount allowed by `memory_fraction`. This reduces
+  // fragmentation, allowing more of the total memory to be used. If false, the
+  // allocator will allocate more memory as allocations are requested.
+  bool preallocate = true;
 };
 
 // Encapsulates the state of Python session with XLA.
@@ -276,9 +238,19 @@ class PyLocalBuffer {
   PyLocalBuffer& operator=(const PyLocalBuffer&) = delete;
   PyLocalBuffer& operator=(PyLocalBuffer&&) = delete;
 
-  StatusOr<pybind11::object> ToPython() const;
   const Shape& on_host_shape() const { return on_host_shape_; }
   int device_ordinal() const { return device_ordinal_; }
+
+  // Returns the buffer's value as a tuple DAG of Python arrays. If the value
+  // has previously been prefetched to the host, then returns the prefetched
+  // version, otherwise copies the buffer to the host. Blocks until the
+  // value is ready.
+  StatusOr<pybind11::object> ToPython();
+
+  // Initiates a copy of the buffer to the host. Does not block waiting for
+  // the transfer to complete. The value can be retrieved by a later call to
+  // ToPython().
+  Status CopyToHostAsync();
 
   // Returns the associated device buffer. Returns a nullptr if the buffer is
   // invalid.
@@ -305,6 +277,18 @@ class PyLocalBuffer {
   const int device_ordinal_;
   mutable absl::Mutex mu_;
   std::shared_ptr<PySharedDeviceBuffer> device_buffer_ GUARDED_BY(mu_);
+
+  // The cached value of the buffer on the host, produced either from a call to
+  // CopyToHost or from a call to ToPython. Once a value has been fetched to
+  // the host, it persists Delete() is called or the PyLocalBuffer is destroyed.
+  struct HostValue {
+    absl::Notification ready;
+    // status and value are valid for reading only after `ready` has been
+    // notified.
+    Status status;
+    std::shared_ptr<xla::Literal> value;
+  };
+  std::shared_ptr<HostValue> host_value_ GUARDED_BY(mu_);
 };
 
 // Represents a compiled computation that can be executed given handles to
@@ -347,7 +331,8 @@ class PyLocalExecutable {
 
  private:
   StatusOr<std::unique_ptr<PyLocalBuffer>> ExecuteHelper(
-      absl::Span<PyLocalBuffer* const> argument_handles, int replica);
+      absl::Span<PyLocalBuffer* const> argument_handles, int replica,
+      const RunId& run_id);
 
   std::shared_ptr<PyLocalClient> const client_;
   std::shared_ptr<LocalExecutable> executable_;

@@ -36,6 +36,7 @@ cc_library(
     hdrs = ["memory_management.h"],
     deps = [
         ":status",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -75,8 +76,10 @@ cc_library(
         ":tensor",
         "//tensorflow/lite:context",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/schema:schema_fbs",
+        "@FP16",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -88,6 +91,8 @@ cc_test(
     srcs = ["model_builder_test.cc"],
     deps = [
         ":model_builder",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:c_api_internal",
         "@com_google_googletest//:gtest_main",
     ],
@@ -169,19 +174,19 @@ cc_library(
 )
 
 cc_test(
-    name = "util_test",
-    srcs = ["util_test.cc"],
+    name = "memory_management_test",
+    srcs = ["memory_management_test.cc"],
     deps = [
-        ":util",
+        ":memory_management",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
 cc_test(
-    name = "memory_management_test",
-    srcs = ["memory_management_test.cc"],
+    name = "util_test",
+    srcs = ["util_test.cc"],
     deps = [
-        ":memory_management",
+        ":util",
         "@com_google_googletest//:gtest_main",
     ],
 )

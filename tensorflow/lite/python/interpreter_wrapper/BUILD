@@ -25,6 +25,7 @@ cc_library(
         ":python_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:builtin_ops",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",

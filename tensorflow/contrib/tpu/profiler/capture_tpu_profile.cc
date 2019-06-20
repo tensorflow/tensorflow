@@ -19,9 +19,32 @@ limitations under the License.
 // receives and dumps the profile data to a tensorboard log directory.
 
 #include "tensorflow/contrib/tpu/profiler/version.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 #include "tensorflow/core/util/command_line_flags.h"
+
+namespace tensorflow {
+namespace {
+
+Status MonitoringHelper(const string& service_addr, int duration_ms,
+                        int monitoring_level, bool display_timestamp,
+                        int num_queries) {
+  for (int query = 0; query < num_queries; ++query) {
+    string result;
+    TF_RETURN_IF_ERROR(tensorflow::profiler::client::Monitor(
+        service_addr, duration_ms, monitoring_level, display_timestamp,
+        &result));
+    std::cout << "Cloud TPU Monitoring Results (Sample " << query + 1
+              << "):\n\n"
+              << result << std::flush;
+  }
+  return Status::OK();
+}
+
+}  // namespace
+}  // namespace tensorflow
 
 int main(int argc, char** argv) {
   tensorflow::string FLAGS_service_addr;
@@ -31,7 +54,7 @@ int main(int argc, char** argv) {
   int FLAGS_num_tracing_attempts = 3;
   bool FLAGS_include_dataset_ops = true;
   int FLAGS_monitoring_level = 0;
-  bool FLAGS_timestamp = false;
+  bool FLAGS_display_timestamp = false;
   int FLAGS_num_queries = 100;
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("service_addr", &FLAGS_service_addr,
@@ -55,7 +78,7 @@ int main(int argc, char** argv) {
                        "Choose a monitoring level between 1 and 2 to monitor "
                        "your TPU job continuously. Level 2 is more verbose "
                        "than level 1 and shows more metrics."),
-      tensorflow::Flag("timestamp", &FLAGS_timestamp,
+      tensorflow::Flag("display_timestamp", &FLAGS_display_timestamp,
                        "Set to true to display timestamp in monitoring "
                        "results."),
       tensorflow::Flag("num_queries", &FLAGS_num_queries,
@@ -105,18 +128,19 @@ int main(int argc, char** argv) {
               << FLAGS_service_addr << " for " << duration_ms
               << "ms and show metrics for " << num_queries << " time(s)."
               << std::endl;
-    tensorflow::profiler::client::StartMonitoring(
-        FLAGS_service_addr, duration_ms, FLAGS_monitoring_level,
-        FLAGS_timestamp, num_queries);
+    status = tensorflow::MonitoringHelper(FLAGS_service_addr, duration_ms,
+                                          FLAGS_monitoring_level,
+                                          FLAGS_display_timestamp, num_queries);
   } else {
     status = tensorflow::profiler::client::StartTracing(
         FLAGS_service_addr, FLAGS_logdir, FLAGS_workers_list,
         FLAGS_include_dataset_ops, duration_ms, num_tracing_attempts);
-    if (!status.ok() && status.code() != tensorflow::error::Code::UNAVAILABLE) {
-      std::cout << status.error_message() << std::endl;
-      std::cout << usage.c_str() << std::endl;
-      return 2;
-    }
+  }
+
+  if (!status.ok() && status.code() != tensorflow::error::Code::UNAVAILABLE) {
+    std::cout << status.error_message() << std::endl;
+    std::cout << usage.c_str() << std::endl;
+    return 2;
   }
   return 0;
 }

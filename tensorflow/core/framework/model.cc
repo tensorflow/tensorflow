@@ -23,13 +23,6 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 namespace model {
-
-std::shared_ptr<Parameter> MakeParameter(const string& name,
-                                         std::shared_ptr<SharedState> state,
-                                         int64 min, int64 max) {
-  return std::make_shared<Parameter>(name, state, min, max);
-}
-
 namespace {
 
 // Given the average time between output events (`output_time`), the average
@@ -43,19 +36,19 @@ namespace {
 // problem as an M/M/1/K queue
 // (https://en.wikipedia.org/wiki/Birth%E2%80%93death_process#M/M/1/K_queue).
 double ComputeWaitTime(double output_time, double input_time,
-                       int64 buffer_size) {
+                       double buffer_size) {
   if (output_time == 0 || input_time == 0) {
     return output_time;
   }
   if (input_time == output_time) {
-    const double p_buffer_empty = 1.0L / static_cast<double>(buffer_size + 1);
+    const double p_buffer_empty = 1.0L / (buffer_size + 1.0L);
     return p_buffer_empty * output_time;
   }
-  const double alpha = 1.0L / static_cast<double>(input_time);
-  const double beta = 1.0L / static_cast<double>(output_time);
+  const double alpha = 1.0L / input_time;
+  const double beta = 1.0L / output_time;
   const double p_buffer_empty =
       (1.0L - beta / alpha) /
-      (1.0L - std::pow((beta / alpha), static_cast<double>(buffer_size + 1)));
+      (1.0L - std::pow((beta / alpha), (buffer_size + 1.0L)));
   return p_buffer_empty * output_time;
 }
 
@@ -81,28 +74,28 @@ class InterleaveMany : public Node {
   // output time of inputs comprising the interleave "cycle".
   double OutputTimeLocked(std::vector<double>* input_times) const override
       SHARED_LOCKS_REQUIRED(mu_) {
-    if (inputs_.size() <= 1) {
+    if (num_inputs() <= 1) {
       return SelfProcessingTimeLocked();
     }
-    double delta = SelfProcessingTimeLocked() * (inputs_.size() - 1);
+    double delta = SelfProcessingTimeLocked() * (num_inputs() - 1);
     input_times->back() += delta;
     auto cleanup = gtl::MakeCleanup(
         [input_times, delta]() { input_times->back() -= delta; });
     double output_time = (OutputTimeForInputs(input_times) -
                           inputs_.front()->OutputTime(input_times)) /
-                         static_cast<double>(inputs_.size() - 1);
+                         static_cast<double>(num_inputs() - 1);
     return SelfProcessingTimeLocked() + output_time;
   }
 
   // The processing time is the sum of the self processing time and the average
   // processing time of inputs comprising the interleave "cycle".
-  double TotalProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
-    if (inputs_.size() <= 1) {
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
+    if (num_inputs() <= 1) {
       return SelfProcessingTimeLocked();
     }
     double processing_time =
         (ProcessingTimeForInputs() - inputs_.front()->TotalProcessingTime()) /
-        static_cast<double>(inputs_.size() - 1);
+        static_cast<double>(num_inputs() - 1);
     return SelfProcessingTimeLocked() + processing_time;
   }
 };
@@ -142,16 +135,16 @@ class AsyncInterleaveMany : public Node {
   // `buffer_size` is derived from parallelism.
   double OutputTimeLocked(std::vector<double>* input_times) const override
       SHARED_LOCKS_REQUIRED(mu_) {
-    if (inputs_.size() <= 1) {
+    if (num_inputs() <= 1) {
       return SelfProcessingTimeLocked();
     }
     double old_input_time = input_times->back();
     double new_input_time =
-        SelfProcessingTimeLocked() * static_cast<double>(inputs_.size() - 1);
+        SelfProcessingTimeLocked() * static_cast<double>(num_inputs() - 1);
     input_times->push_back(new_input_time);
     auto cleanup =
         gtl::MakeCleanup([input_times]() { input_times->pop_back(); });
-    double parallelism = inputs_.size() - 1;  // default to cycle length
+    double parallelism = num_inputs() - 1;  // default to cycle length
     if (auto* parameter = gtl::FindOrNull(parameters_, "parallelism")) {
       parallelism = std::min(static_cast<int>(parallelism),
                              static_cast<int>((*parameter)->value));
@@ -165,8 +158,8 @@ class AsyncInterleaveMany : public Node {
 
   // The processing time is the sum of the self processing time and the average
   // processing time of inputs comprising the interleave "cycle".
-  double TotalProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
-    if (inputs_.size() <= 1) {
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
+    if (num_inputs() <= 1) {
       return SelfProcessingTimeLocked();
     }
     double processing_time =
@@ -208,7 +201,7 @@ class KnownRatio : public Node {
 
   // The processing time is the sum of the self processing time and the product
   // of `ratio_` and the sum of processing times of inputs.
-  double TotalProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
     return SelfProcessingTimeLocked() + ratio_ * ProcessingTimeForInputs();
   }
 
@@ -266,7 +259,7 @@ class AsyncKnownRatio : public Node {
 
   // The processing time is the sum of the self processing time and the product
   // of `ratio_` and the sum of processing times of inputs.
-  double TotalProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
     return SelfProcessingTimeLocked() + ratio_ * ProcessingTimeForInputs();
   }
 
@@ -310,7 +303,7 @@ class UnknownRatio : public Node {
 
   // The processing time is the sum of the self processing time and the product
   // of the ratio estimate and the sum of processing times of inputs.
-  double TotalProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
     if (inputs_.empty() || num_elements_ == 0) {
       return SelfProcessingTimeLocked();
     }
@@ -342,12 +335,18 @@ class Unknown : public Node {
   }
 
   // The processing time is the sum of processing times of inputs.
-  double TotalProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
     return ProcessingTimeForInputs();
   }
 };
 
 }  // namespace
+
+std::shared_ptr<Parameter> MakeParameter(const string& name,
+                                         std::shared_ptr<SharedState> state,
+                                         double min, double max) {
+  return std::make_shared<Parameter>(name, state, min, max);
+}
 
 std::shared_ptr<Node> MakeInterleaveManyNode(Node::Args args) {
   return std::make_shared<InterleaveMany>(std::move(args));

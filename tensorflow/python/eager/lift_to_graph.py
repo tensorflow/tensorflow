@@ -204,13 +204,20 @@ def _copy_non_source(op, graph, op_map):
                            old_graph_op=original_control_input))
     else:
       copied_control_inputs.append(copied_control_input)
+
+  # Don't copy over nodes with _tpu_replicate attribute. This attributed is used
+  # to signal that the op was built inside a tpu_replicate context; if we're
+  # lifting it to another graph we're similarly lifting it into another context.
   with ops.control_dependencies(copied_control_inputs), ops.device(op.device):
     copied_op = graph.create_op(
         op_type=op.type,
         inputs=copied_inputs,
         dtypes=[x.dtype for x in op.outputs],
-        attrs={key: value for key, value in op.node_def.attr.items()
-               if not key.startswith("_class")},  # b/128981532.
+        attrs={
+            key: value for key, value in op.node_def.attr.items()
+            if not key.startswith("_class") and
+            not key.startswith("_tpu_replicate")
+        },  # b/128981532.
         name=op.name)
   op_map[op] = copied_op
   for i, o in enumerate(op.outputs):
@@ -339,6 +346,10 @@ def lift_to_graph(init_tensors, graph, sources=None,
       marked_ops.add(op)
       ops_to_copy.append(op)
       for inp in _graph_inputs(op):
+        # Don't lift the TPUReplicateMetadata nodes out of the function, because
+        # it has no registered kernels.
+        if inp.name == "TPUReplicateMetadata":
+          continue
         unvisited_ops.add(inp)
         if (all(x in marked_ops for x in op_outputs[inp]) and
             inp not in sources):
@@ -403,6 +414,10 @@ def lift_to_graph(init_tensors, graph, sources=None,
         mutation.copied_op._update_input(
             mutation.input_index, op_map[mutation.old_graph_tensor])
       for mutation in control_mutations:
+        # Don't lift the TPUReplicateMetadata nodes out of the function, because
+        # it has no registered kernels.
+        if mutation.old_graph_op.name == "TPUReplicateMetadata":
+          continue
         mutation.copied_op._add_control_input(op_map[mutation.old_graph_op])
     # pylint: enable=protected-access
 

@@ -1494,6 +1494,27 @@ Status ValidateNoInline(const FunctionBody* fbody) {
 
 using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
 
+// Propagate the debug info of `nodes` in function `func` to the `target` node.
+// If the debug info of any node is missing, its node name and function name
+// is used.
+void PropagateDebugInfoToNode(const string& func,
+                              const std::vector<const Node*>& nodes,
+                              NodeDef* target) {
+  if (nodes.empty() || target->has_experimental_debug_info()) {
+    return;
+  }
+  for (const Node* node : nodes) {
+    const auto& node_def = node->def();
+    if (node_def.has_experimental_debug_info()) {
+      target->mutable_experimental_debug_info()->MergeFrom(
+          node_def.experimental_debug_info());
+    } else {
+      target->mutable_experimental_debug_info()->add_original_node_names(
+          node_def.name());
+      target->mutable_experimental_debug_info()->add_original_func_names(func);
+    }
+  }
+}
 }  // namespace
 
 string InlineFunctionBodyOptions::DebugString() const {
@@ -1719,6 +1740,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     if (options.initialize_empty_device && ndef.device().empty()) {
       ndef.set_device(caller->def().device());
     }
+    PropagateDebugInfoToNode(fbody->fdef.signature().name(), {n}, &ndef);
 
     // Add the function node name as a prefix:
     //  1) to node name to avoid collisions

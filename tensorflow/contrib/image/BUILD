@@ -1,13 +1,6 @@
 # Description:
 #   Contains ops for image manipulation.
 
-package(
-    default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
-)
-
-exports_files(["LICENSE"])
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -19,6 +12,13 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 tf_custom_op_library(
     name = "python/ops/_image_ops.so",
@@ -354,7 +354,7 @@ tf_custom_op_library(
         "ops/single_image_random_dot_stereograms_ops.cc",
     ],
     deps = [
-        "@protobuf_archive//:protobuf",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 

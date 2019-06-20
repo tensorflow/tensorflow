@@ -108,6 +108,9 @@ void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
     if (s_copy_init.ok()) {
       *output = std::move(copy);
     }
+  } else if (input->dtype() == DT_RESOURCE) {
+    *output = *input;
+    done(Status::OK());
   } else {
     recv_dev_context->CopyCPUTensorToDevice(input, dst, output, std::move(done),
                                             sync_dst_compute);
@@ -174,6 +177,9 @@ void CopyDeviceToDevice(CopyTensor::CopyFunction copy_function,
     if (s_copy_init.ok()) {
       *output = std::move(copy);
     }
+  } else if (input->dtype() == DT_RESOURCE) {
+    *output = *input;
+    done(Status::OK());
   } else {
     copy_function(send_dev_context, recv_dev_context, src, dst, src_alloc_attr,
                   dst_alloc_attr, input, output, dev_to_dev_stream_index,
@@ -385,6 +391,9 @@ void CopyDeviceToHost(const Tensor* input, Allocator* cpu_allocator,
     if (s_copy_init.ok()) {
       *output = std::move(copy);
     }
+  } else if (input->dtype() == DT_RESOURCE) {
+    *output = *input;
+    done(Status::OK());
   } else {
     send_dev_context->CopyDeviceTensorToCPU(input, edge_name, src, output,
                                             std::move(done));

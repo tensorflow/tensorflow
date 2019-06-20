@@ -61,6 +61,8 @@ GLOBAL_ITERATORS = "iterators"
 
 
 def _device_stack_is_empty():
+  if context.executing_eagerly():
+    return context.context().device_name is None
   # pylint: disable=protected-access
   device_stack = ops.get_default_graph()._device_functions_outer_to_inner
   # pylint: enable=protected-access
@@ -559,25 +561,31 @@ class IteratorV2(trackable.Trackable):
     """
 
     self._device = context.context().device_name
-    with ops.device("/cpu:0"):
-      # pylint: disable=protected-access
-      dataset = dataset._apply_options()
-      ds_variant = dataset._variant_tensor
-      self._structure = dataset._element_structure
-      self._flat_output_types = self._structure._flat_types
-      self._flat_output_shapes = self._structure._flat_shapes
-      with ops.colocate_with(ds_variant):
-        self._iterator_resource, self._deleter = (
-            gen_dataset_ops.anonymous_iterator_v2(
-                output_types=self._flat_output_types,
-                output_shapes=self._flat_output_shapes))
-        gen_dataset_ops.make_iterator(ds_variant, self._iterator_resource)
-        # Delete the resource when this object is deleted
-        self._resource_deleter = IteratorResourceDeleter(
-            handle=self._iterator_resource,
-            device=self._device,
-            deleter=self._deleter)
-      # pylint: enable=protected-access
+    if (_device_stack_is_empty() or
+        context.context().device_spec.device_type != "CPU"):
+      with ops.device("/cpu:0"):
+        self._create_iterator(dataset)
+    else:
+      self._create_iterator(dataset)
+
+  def _create_iterator(self, dataset):
+    # pylint: disable=protected-access
+    dataset = dataset._apply_options()
+    ds_variant = dataset._variant_tensor
+    self._structure = dataset._element_structure
+    self._flat_output_types = self._structure._flat_types
+    self._flat_output_shapes = self._structure._flat_shapes
+    with ops.colocate_with(ds_variant):
+      self._iterator_resource, self._deleter = (
+          gen_dataset_ops.anonymous_iterator_v2(
+              output_types=self._flat_output_types,
+              output_shapes=self._flat_output_shapes))
+      gen_dataset_ops.make_iterator(ds_variant, self._iterator_resource)
+      # Delete the resource when this object is deleted
+      self._resource_deleter = IteratorResourceDeleter(
+          handle=self._iterator_resource,
+          device=self._device,
+          deleter=self._deleter)
 
   def __iter__(self):
     return self

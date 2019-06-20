@@ -176,6 +176,14 @@ service EagerService {
   // future calls to Enqueue.
   rpc Enqueue(EnqueueRequest) returns (EnqueueResponse);
 
+  // A streaming version of Enqueue.
+  // Current server implementation sends one response per received request.
+  // The benefit for using a streaming version is that subsequent requests
+  // can be sent without waiting for a response to the previous request. This
+  // synchronization is required in the regular Enqueue call because gRPC does
+  // not guarantee to preserve request order.
+  rpc StreamingEnqueue(stream EnqueueRequest) returns (stream EnqueueResponse);
+
   // Takes a set of op IDs and waits until those ops are done. Returns any error
   // in the stream so far.
   rpc WaitQueueDone(WaitQueueDoneRequest) returns (WaitQueueDoneResponse);

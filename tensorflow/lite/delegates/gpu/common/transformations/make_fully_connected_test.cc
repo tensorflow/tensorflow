@@ -68,16 +68,16 @@ TEST(MakeFullyConnected, Smoke) {
 
   ASSERT_TRUE(graph.AddConsumer(conv1x1_node0->id, input->id).ok());
 
-  Value<TensorRefFloat32>* output;
+  Value<TensorRef<BHWC>>* output;
   ASSERT_TRUE(AddOutput(&graph, conv1x1_node2, &output).ok());
   output->tensor.shape = BHWC(1, 1, 1, 32);
 
-  Value<TensorRefFloat32>* link1;
+  Value<TensorRef<BHWC>>* link1;
   ASSERT_TRUE(
       ConnectTwoNodes(&graph, conv1x1_node0, conv4x4_node1, &link1).ok());
   link1->tensor.shape = BHWC(1, 4, 4, 16);
 
-  Value<TensorRefFloat32>* link2;
+  Value<TensorRef<BHWC>>* link2;
   ASSERT_TRUE(
       ConnectTwoNodes(&graph, conv4x4_node1, conv1x1_node2, &link2).ok());
   link2->tensor.shape = BHWC(1, 1, 1, 16);

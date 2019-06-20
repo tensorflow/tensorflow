@@ -2,19 +2,18 @@
 # For keeping the history of OpDefs for every major version of TensorFlow,
 # to validate that we don't make backwards-incompatible changes.
 
-package(
-    default_visibility = ["//visibility:private"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
     "tf_cc_test",
 )
+
+package(
+    default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 cc_library(
     name = "op_compatibility_lib",

@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/redzone_allocator.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
 
 namespace xla {
 namespace gpu {
@@ -135,13 +135,13 @@ void PrintPlatformInfo(const se::Stream* stream) {
 //
 // `name` is a user-friendly name for the set of redzones being checked, e.g.
 // "input/output" or "scratch".
-StatusOr<bool> CheckRedzones(const RedzoneAllocator& allocator,
+StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
                              se::Stream* stream, absl::string_view name,
                              const HloInstruction* instr,
                              AutotuneResult* result) {
   XLA_SCOPED_LOGGING_TIMER_LEVEL("CudnnConvAlgorithmPicker checking redzones",
                                  2);
-  using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
+  using RedzoneCheckStatus = se::cuda::RedzoneAllocator::RedzoneCheckStatus;
 
   TF_ASSIGN_OR_RETURN(RedzoneCheckStatus redzone_check,
                       allocator.CheckRedzones(stream));
@@ -243,6 +243,64 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
   return result_or;
 }
 
+// Unimplemented for integers yet.
+template <typename T, typename Generator>
+typename std::enable_if<std::is_integral<T>::value, T>::type
+UniformDistribution(T lhs, T rhs, Generator* gen) = delete;
+
+template <typename T, typename Generator>
+typename std::enable_if<std::is_floating_point<T>::value, T>::type
+UniformDistribution(T lhs, T rhs, Generator* gen) {
+  return std::uniform_real_distribution<T>(lhs, rhs)(*gen);
+}
+
+template <typename T>
+void InitializeTypedBuffer(se::Stream* stream, se::DeviceMemory<T> buffer,
+                           int64* rng_state) {
+  static_assert(
+      std::is_floating_point<T>::value || std::is_same<T, Eigen::half>::value,
+      "Unimplemented for integers yet.");
+
+  // Accesses to static variables are not locked, since the caller is already
+  // in a critical section.
+  static std::vector<T>* host_buffer = [] {
+    // Use a large prime number to fragment the accesses.
+    auto* ret = new std::vector<T>(10069);
+    // Default-seeded random numbers.
+    std::mt19937 gen;
+    for (auto& element : *ret) {
+      using RandomType =
+          typename std::conditional<std::is_same<T, Eigen::half>::value, float,
+                                    T>::type;
+      // Scale down the values for fp16 to have less overflows.
+      auto upper_bound =
+          RandomType(std::is_same<T, Eigen::half>::value ? 0.1 : 1.0);
+      element = T(UniformDistribution(RandomType(0), upper_bound, &gen));
+    }
+    return ret;
+  }();
+
+  int64& host_index = *rng_state;
+
+  char* current_addr = static_cast<char*>(buffer.opaque());
+  CHECK_EQ(0, buffer.size() % sizeof(T));
+  int64 elements_left = buffer.size() / sizeof(T);
+  while (elements_left > 0) {
+    CHECK_LE(host_index, host_buffer->size());
+    if (host_buffer->size() == host_index) {
+      host_index = 0;
+    }
+    int64 elements_copied =
+        std::min<int64>(host_buffer->size() - host_index, elements_left);
+    DeviceMemoryBase mem(current_addr, elements_copied * sizeof(T));
+    stream->ThenMemcpy(&mem, host_buffer->data() + host_index,
+                       elements_copied * sizeof(T));
+    current_addr += elements_copied * sizeof(T);
+    elements_left -= elements_copied;
+    host_index += elements_copied;
+  }
+}
+
 StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     const HloCustomCallInstruction* instr) {
   XLA_SCOPED_LOGGING_TIMER(
@@ -273,43 +331,23 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     allocator = &*se_allocator;
   }
 
-  const auto initialize_buffer = [&stream,
-                                  &result_shape](DeviceMemoryBase buffer) {
-    constexpr float kBroadcastedConstant = 0.1f;
+  int64 rng_state = 0;
+
+  const auto initialize_buffer = [&stream, &result_shape,
+                                  &rng_state](DeviceMemoryBase buffer) {
     switch (result_shape.element_type()) {
-      case xla::F16: {
-        // Broadcast a constant to the buffer, instead of zeroing the buffer. A
-        // non-zero constant is useful for the cross checking, because
-        // zero-inputs may not always reveal the bugs.
-        CHECK_EQ(0, (uintptr_t)buffer.opaque() % 4);
-        size_t left_over_bytes = buffer.size() % 4;
-        CHECK_EQ(0, left_over_bytes % 2);
-
-        static const Eigen::half halfs[2] = {Eigen::half(kBroadcastedConstant),
-                                             Eigen::half(kBroadcastedConstant)};
-        uint32 bits;
-        static_assert(sizeof(bits) == sizeof(halfs), "");
-        memcpy(&bits, halfs, sizeof(bits));
-
-        size_t aligned_size = buffer.size() / 4 * 4;
-        stream.ThenMemset32(&buffer, bits, aligned_size);
-
-        DeviceMemoryBase left_over(
-            static_cast<char*>(buffer.opaque()) + aligned_size,
-            left_over_bytes);
-        stream.ThenMemcpy(&left_over, halfs, left_over_bytes);
+      case xla::F16:
+        InitializeTypedBuffer(&stream, se::DeviceMemory<Eigen::half>(buffer),
+                              &rng_state);
         break;
-      }
-      case xla::F32: {
-        se::DeviceMemory<float> typed_buffer(buffer);
-        stream.ThenPopulateRandUniform(&typed_buffer);
+      case xla::F32:
+        InitializeTypedBuffer(&stream, se::DeviceMemory<float>(buffer),
+                              &rng_state);
         break;
-      }
-      case xla::F64: {
-        se::DeviceMemory<double> typed_buffer(buffer);
-        stream.ThenPopulateRandUniform(&typed_buffer);
+      case xla::F64:
+        InitializeTypedBuffer(&stream, se::DeviceMemory<double>(buffer),
+                              &rng_state);
         break;
-      }
       default:
         stream.ThenMemZero(&buffer, buffer.size());
     }
@@ -318,8 +356,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
 
   // Allocate space for the input, filter, and output of the convolution.
-  RedzoneAllocator input_output_allocator(device_ordinal, allocator,
-                                          hlo_module_config);
+  se::cuda::RedzoneAllocator input_output_allocator(
+      device_ordinal, allocator, PtxOptsFromConfig(hlo_module_config));
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr->operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
@@ -358,8 +396,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
                      AlgorithmToString(alg)),
         2);
 
-    RedzoneAllocator scratch_allocator(device_ordinal, allocator,
-                                       hlo_module_config);
+    se::cuda::RedzoneAllocator scratch_allocator(
+        device_ordinal, allocator, PtxOptsFromConfig(hlo_module_config));
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr->ToString();
@@ -482,13 +520,17 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     }
   }
 
-  // Choose the fastest convolution that doesn't produce a REDZONE_MODIFIED
-  // error.
-  //
   // For now, we ignore WRONG_RESULT failures because false-positives are
   // possible (e.g. perhaps the reference algorithm is the one that's
   // incorrect!).  But we don't ignore REDZONE_MODIFIED failures because they're
   // quite severe and can be detected with high accuracy.
+  auto has_failure = [](const AutotuneResult& r) {
+    return r.has_failure() &&
+           r.failure().kind() != AutotuneResult::WRONG_RESULT;
+  };
+
+  // Choose the fastest convolution that doesn't produce a REDZONE_MODIFIED
+  // error.
   //
   // TODO(jlebar): We ought to be able to detect redzone reads by noticing NaNs
   // in the output of the conv and skip those.
@@ -496,9 +538,9 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
   // The successful one should have a smaller key, since we are doing
   // min_element. If they are both unsuccessful, keep the earlier one in
   // the vector by comparing pointers.
-  auto result_comparison_key = [](const AutotuneResult& r) {
+  auto result_comparison_key = [&has_failure](const AutotuneResult& r) {
     return std::make_tuple(
-        r.has_failure() && r.failure().kind() != AutotuneResult::WRONG_RESULT,
+        has_failure(r),
         tensorflow::proto_utils::FromDurationProto(r.run_time()));
   };
   const auto& best_result = absl::c_min_element(
@@ -507,7 +549,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
         return result_comparison_key(lhs) < result_comparison_key(rhs);
       });
 
-  if (best_result != profile_results.end() && !best_result->has_failure()) {
+  if (best_result != profile_results.end() && !has_failure(*best_result)) {
     return *best_result;
   }
 

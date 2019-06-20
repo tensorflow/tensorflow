@@ -1,12 +1,12 @@
 # Tests of TensorFlow kernels written using the Python API.
 
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 tf_py_test(
     name = "batch_test",
@@ -100,6 +100,9 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:script_ops",
         "//tensorflow/python:sparse_tensor",
+    ],
+    tags = [
+        "no_rocm",
     ],
 )
 
@@ -461,7 +464,6 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
     ],
     tags = [
-        "no_oss",  # TODO(b/117920141): Investigate breakage and re-enable.
         "no_windows_gpu",
     ],
     xla_enable_strict_auto_jit = True,
