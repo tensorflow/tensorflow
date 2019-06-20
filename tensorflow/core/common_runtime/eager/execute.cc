@@ -19,6 +19,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
@@ -291,40 +292,32 @@ bool IsMultiDevice(const FunctionDef* fdef, const string& op_device) {
   //    special nodes and attributes)
 }
 
-Status AddInputDevicesToCacheKey(const EagerContext* ctx,
-                                 const EagerOperation* op,
-                                 std::vector<Device*>* input_dev_ptrs,
-                                 Fprint128* cache_key) {
-  profiler::TraceMe activity("AddInputDevicesToCacheKey",
-                             profiler::TraceMeLevel::kVerbose);
-  input_dev_ptrs->reserve(op->Inputs().size());
+Status GetDeviceForInput(const EagerContext* ctx, TensorHandle* tensor_handle,
+                         Device** result) {
   Device* cpu_device = ctx->HostCPU();
-  for (TensorHandle* tensor_handle : op->Inputs()) {
-    string device_name;
-    if (tensor_handle->IsRemote()) {
-      Device* device = tensor_handle->device();
-      device_name = device != nullptr ? device->name() : cpu_device->name();
-      input_dev_ptrs->push_back(device == nullptr ? cpu_device : device);
-    } else if (tensor_handle->dtype == DT_RESOURCE) {
-      // Use the resource's actual device because it is the device that will
-      // influence partitioning the multi-device function.
-      const Tensor* tensor;
-      TF_RETURN_IF_ERROR(tensor_handle->Tensor(&tensor));
-      const ResourceHandle& handle = tensor->flat<ResourceHandle>()(0);
-      device_name = handle.device();
+  string device_name;
+  if (tensor_handle->IsRemote()) {
+    Device* device = tensor_handle->device();
+    device_name = device != nullptr ? device->name() : cpu_device->name();
+    *result = (device == nullptr ? cpu_device : device);
+  } else if (tensor_handle->dtype == DT_RESOURCE) {
+    // Use the resource's actual device because it is the device that will
+    // influence partitioning the multi-device function.
+    const Tensor* tensor;
+    TF_RETURN_IF_ERROR(tensor_handle->Tensor(&tensor));
+    const ResourceHandle& handle = tensor->flat<ResourceHandle>()(0);
+    device_name = handle.device();
 
-      Device* input_device;
-      TF_RETURN_IF_ERROR(
-          ctx->FindDeviceFromName(device_name.c_str(), &input_device));
-      input_dev_ptrs->push_back(input_device);
-    } else if (MTypeFromDType(tensor_handle->dtype) == HOST_MEMORY) {
-      input_dev_ptrs->push_back(cpu_device);
-    } else {
-      Device* device = tensor_handle->device();
-      device_name = device != nullptr ? device->name() : cpu_device->name();
-      input_dev_ptrs->push_back(device == nullptr ? cpu_device : device);
-    }
-    *cache_key = FingerprintCat128(*cache_key, Fingerprint128(device_name));
+    Device* input_device;
+    TF_RETURN_IF_ERROR(
+        ctx->FindDeviceFromName(device_name.c_str(), &input_device));
+    *result = input_device;
+  } else if (MTypeFromDType(tensor_handle->dtype) == HOST_MEMORY) {
+    *result = cpu_device;
+  } else {
+    Device* device = tensor_handle->device();
+    device_name = device != nullptr ? device->name() : cpu_device->name();
+    *result = (device == nullptr ? cpu_device : device);
   }
   return Status::OK();
 }
@@ -334,7 +327,7 @@ Status AddInputDevicesToCacheKey(const EagerContext* ctx,
 // this function.
 // If "shape" has unknown rank, we attach "?" to hashed content; otherwise we
 // attach every dim size to hashed content.
-void AppendTensorShapeToFingerprint(const TensorShape& shape,
+void AppendTensorShapeToFingerprint(const PartialTensorShape& shape,
                                     Fprint128* fingerprint) {
   if (shape.unknown_rank()) {
     char c = '?';
@@ -345,80 +338,6 @@ void AppendTensorShapeToFingerprint(const TensorShape& shape,
       *fingerprint = FingerprintCat128(*fingerprint, dim);
     }
   }
-}
-
-Status AddInputTensorShapesToCacheKey(
-    const EagerContext* ctx, const EagerOperation* op,
-    std::unordered_map<int, TensorShape>* input_tensor_shapes,
-    Fprint128* cache_key) {
-  profiler::TraceMe activity("AddInputTensorShapesToCacheKey",
-                             profiler::TraceMeLevel::kVerbose);
-  for (int i = 0; i < op->Inputs().size(); i++) {
-    TensorHandle* tensor_handle = op->Inputs()[i];
-
-    // Remote tensor is not supported yet.
-    if (tensor_handle->IsRemote()) {
-      return errors::Unimplemented("Remote tensor is not supported yet.");
-    }
-
-    // Skip resource input.
-    if (tensor_handle->dtype == DT_RESOURCE) {
-      continue;
-    }
-
-    TensorShape shape;
-    Status s = tensor_handle->Shape(&shape);
-    if (!s.ok()) {
-      return errors::Internal("Can not get shape from input TensorHandle: ",
-                              s.error_message());
-    }
-
-    // Save tensor shape to "input_tensor_shapes".
-    (*input_tensor_shapes)[i] = shape;
-
-    // Add both _Arg index and shape to "cache_key".
-    *cache_key = FingerprintCat128(*cache_key, i);
-    AppendTensorShapeToFingerprint(shape, cache_key);
-  }
-  return Status::OK();
-}
-
-Status AddInputResourceDtypesAndShapesToCacheKey(
-    const EagerContext* ctx, const EagerOperation* op,
-    std::unordered_map<int, std::pair<DataType, TensorShape>>*
-        input_resource_dtypes_shapes,
-    Fprint128* cache_key) {
-  profiler::TraceMe activity("AddInputResourceDtypesAndShapesToCacheKey",
-                             profiler::TraceMeLevel::kVerbose);
-  for (int i = 0; i < op->Inputs().size(); i++) {
-    TensorHandle* tensor_handle = op->Inputs()[i];
-
-    // Remote tensor is not supported yet.
-    if (tensor_handle->IsRemote()) {
-      return errors::Unimplemented("Remote tensor is not supported yet.");
-    }
-
-    // Skip non-resource input.
-    if (tensor_handle->dtype != DT_RESOURCE) {
-      continue;
-    }
-
-    std::pair<DataType, TensorShape> resource_dtype_and_shape;
-    if (!tensor_handle
-             ->GetResourceVariableDtypeAndShape(&resource_dtype_and_shape)
-             .ok()) {
-      continue;
-    }
-
-    (*input_resource_dtypes_shapes)[i] = resource_dtype_and_shape;
-
-    // Add _Arg index, dtype and shape to "cache_key".
-    *cache_key = FingerprintCat128(*cache_key, i);
-    DataType dtype = resource_dtype_and_shape.first;
-    *cache_key = FingerprintCat128(*cache_key, dtype);
-    AppendTensorShapeToFingerprint(resource_dtype_and_shape.second, cache_key);
-  }
-  return Status::OK();
 }
 
 Status ShouldCompileWithXLA(const EagerOperation* op, const Device* device,
@@ -505,9 +424,10 @@ Status EagerLocalExecute(EagerOperation* op,
   // arguments, and `input_resource_variable_dtypes_and_shapes` contains shapes
   // and underlying types for (potentially a subset) of DT_RESOURCE arguments.
   std::unordered_map<int, TensorShape> input_tensor_shapes;
-  std::unordered_map<int, std::pair<DataType, TensorShape>>
+  std::unordered_map<int, DtypeAndPartialTensorShape>
       input_resource_variable_dtypes_and_shapes;
   if (is_multi_device_function) {
+    input_dev_ptrs.reserve(op->Inputs().size());
     // All inputs need to be on local devices.
     // TODO(nareshmodi): This is a limitation of the current code base (but
     // should be possible to get around).
@@ -516,28 +436,59 @@ Status EagerLocalExecute(EagerOperation* op,
     // Once that is the case, we will be able to write a thin wrapper layer over
     // the EagerService that behaves similar to the current
     // ClusterFunctionLibraryRuntime/DistributedFunctionLibraryRuntime.
-    {
-      profiler::TraceMe activity("EagerCopyToDevice",
-                                 profiler::TraceMeLevel::kInfo);
-      for (int i = 0; i < op->Inputs().size(); i++) {
-        TensorHandle* input = op->Inputs()[i];
-        if (input->IsRemote()) {
-          TensorHandle* handle = nullptr;
-          TF_RETURN_IF_ERROR(EagerCopyToDevice(
-              input, ctx, device == nullptr ? "" : device->name().c_str(),
-              ctx->MirrorTensors(), &handle));
-          op->UpdateInput(i, handle);
-          // Unref handle since it has a ref as an input now
-          handle->Unref();
+    for (int i = 0; i < op->Inputs().size(); i++) {
+      TensorHandle* input = op->Inputs()[i];
+      if (input->IsRemote()) {
+        TensorHandle* handle = nullptr;
+        TF_RETURN_IF_ERROR(EagerCopyToDevice(
+            input, ctx, device == nullptr ? "" : device->name().c_str(),
+            ctx->MirrorTensors(), &handle));
+        op->UpdateInput(i, handle);
+        // Unref handle since it has a ref as an input now
+        handle->Unref();
+        input = handle;
+      }
+
+      // Get device for this input, and add it to 'cache_key'.
+      Device* device;
+      TF_RETURN_IF_ERROR(GetDeviceForInput(ctx, input, &device));
+      input_dev_ptrs.push_back(device);
+      cache_key = FingerprintCat128(cache_key, Fingerprint128(device->name()));
+
+      // If input is normal tensor, get its shape and add it to 'cache_key';
+      // If input is a ResourceHandle, get its resource handle dtypes and shapes
+      // and add them to 'cache_key'.
+      if (input->dtype != DT_RESOURCE) {
+        TensorShape shape;
+        TF_RETURN_IF_ERROR(input->Shape(&shape));
+
+        input_tensor_shapes[i] = shape;
+
+        // Add both _Arg index and shape to "cache_key".
+        cache_key = FingerprintCat128(cache_key, i);
+        AppendTensorShapeToFingerprint(shape, &cache_key);
+      } else {
+        // We only care about data type and shape for resource variable inputs.
+        // But we have no way to tell if input is resource variable (other than
+        // looking it up in ResourceMgr, which is slow). So we just get
+        // resource_dtypes_and_shapes for all DT_RESOURCE inputs. If
+        // resource_dtypes_and_shapes is not empty, take the first element.
+        std::vector<DtypeAndPartialTensorShape> resource_dtypes_and_shapes;
+        TF_RETURN_IF_ERROR(input->GetResourceHandleDtypesAndShapes(
+            &resource_dtypes_and_shapes));
+        if (!resource_dtypes_and_shapes.empty()) {
+          const DtypeAndPartialTensorShape& dtype_and_shape =
+              resource_dtypes_and_shapes.at(0);
+          input_resource_variable_dtypes_and_shapes[i] = dtype_and_shape;
+
+          // Add _Arg index, dtype and shape to "cache_key".
+          cache_key = FingerprintCat128(cache_key, i);
+          DataType dtype = dtype_and_shape.dtype;
+          cache_key = FingerprintCat128(cache_key, dtype);
+          AppendTensorShapeToFingerprint(dtype_and_shape.shape, &cache_key);
         }
       }
     }
-    TF_RETURN_IF_ERROR(
-        AddInputDevicesToCacheKey(ctx, op, &input_dev_ptrs, &cache_key));
-    TF_RETURN_IF_ERROR(AddInputTensorShapesToCacheKey(
-        ctx, op, &input_tensor_shapes, &cache_key));
-    TF_RETURN_IF_ERROR(AddInputResourceDtypesAndShapesToCacheKey(
-        ctx, op, &input_resource_variable_dtypes_and_shapes, &cache_key));
   }
 
   core::RefCountPtr<KernelAndDevice> kernel = ctx->GetCachedKernel(cache_key);
@@ -1304,6 +1255,8 @@ string GetUniqueWireID() {
 Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
                          const char* device_name, bool mirror,
                          TensorHandle** result) {
+  profiler::TraceMe activity("EagerCopyToDevice",
+                             profiler::TraceMeLevel::kInfo);
   tensorflow::Device* send_device = h->device();
 
   if (send_device == nullptr) {

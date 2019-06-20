@@ -53,8 +53,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status TensorHandle::GetResourceVariableDtypeAndShape(
-    std::pair<DataType, TensorShape>* result) {
+Status TensorHandle::GetResourceHandleDtypesAndShapes(
+    std::vector<DtypeAndPartialTensorShape>* result) {
   if (IsRemote()) {
     return errors::Unimplemented(
         "Getting resource data type and shape for a remote tensor is not "
@@ -71,33 +71,7 @@ Status TensorHandle::GetResourceVariableDtypeAndShape(
   // Wait for this TensorHandle to be ready.
   TF_RETURN_IF_ERROR(WaitReady());
 
-  // Try to get resource data type and shape from ResourceMgr.
-  if (!resource_device_) {
-    return errors::Internal("Cannot get resource device for tensor ",
-                            tensor_handle_data_->DebugString());
-  }
-  ResourceMgr* resource_mgr = resource_device_->resource_manager();
-  if (!resource_mgr) {
-    return errors::Internal("Cannot get ResourceMgr for device ",
-                            resource_device_->DebugString());
-  }
-  Var* resource_var;
-  // Here we do not differentiate between "resource does not exist" and
-  // "resource is not a resource variable".
-  // ResourceMgr uses resource's C++ class name as part of lookup key, so we
-  // must provide the correct C++ class when calling Lookup().
-  Status s = resource_mgr->Lookup(resource_handle_container_,
-                                  resource_handle_name_, &resource_var);
-  if (!s.ok()) {
-    return errors::InvalidArgument(
-        "ResourceHandle does not exist, or is not a resource variable: ",
-        resource_handle_container_, resource_handle_name_);
-  }
-  core::ScopedUnref unref(resource_var);
-
-  // Return the result.
-  *result = std::make_pair(resource_var->tensor()->dtype(),
-                           resource_var->tensor()->shape());
+  *result = handle_dtypes_and_shapes_;
   return Status::OK();
 }
 
@@ -158,8 +132,7 @@ TensorHandle::TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
 #endif
       ctx_(ctx),
       is_remote_(false),
-      resource_handle_container_(resource_handle.container()),
-      resource_handle_name_(resource_handle.name()),
+      handle_dtypes_and_shapes_(resource_handle.dtypes_and_shapes()),
       tensor_handle_data_(std::move(t)) {
   VLOG(3) << "Creating Local TensorHandle: " << this << " device: " << device_;
   // Notify immediately since this handle is already ready.

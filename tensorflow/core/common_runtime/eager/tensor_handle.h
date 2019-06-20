@@ -186,10 +186,10 @@ class TensorHandle : public core::RefCounted {
 
   string DebugString() const;
 
-  // If this TensorHandle is 1) a local tensor, and 2) a resource variable,
-  // return data type and shape of the resource variable.
-  Status GetResourceVariableDtypeAndShape(
-      std::pair<DataType, TensorShape>* result);
+  // If this TensorHandle is 1) a local tensor, and 2) a resource handle,
+  // return data types and shapes of the underlying resource.
+  Status GetResourceHandleDtypesAndShapes(
+      std::vector<DtypeAndPartialTensorShape>* result);
 
  private:
   // If the contents of the Tensor pointed to by this handle is yet to be
@@ -250,10 +250,8 @@ class TensorHandle : public core::RefCounted {
   std::unique_ptr<OutputGraphNode> symbolic_tensor_;
 
   // If this TensorHandle is 1) a local tensor, and 2) a resource handle, we
-  // we store the container and name to be able to get the data type and shape
-  // in a call to GetResourceVariableDtypeAndShape.
-  string resource_handle_container_;
-  string resource_handle_name_;
+  // store data types and shapes for the underlying resource.
+  std::vector<DtypeAndPartialTensorShape> handle_dtypes_and_shapes_;
 
   // The TensorHandleData can either represent a local or remote tensor handle.
   // Further, it can be in a non-ready state. It would become ready with a call

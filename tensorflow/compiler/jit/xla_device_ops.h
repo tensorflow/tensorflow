@@ -81,8 +81,7 @@ class XlaAssignVariableOp : public OpKernel {
       Name("Identity").Device(DEVICE).TypeConstraint("T", TYPES), IdentityOp); \
                                                                                \
   REGISTER_KERNEL_BUILDER(                                                     \
-      Name("VarHandleOp").Device(DEVICE).HostMemory("resource"),               \
-      ResourceHandleOp<Var>);                                                  \
+      Name("VarHandleOp").Device(DEVICE).HostMemory("resource"), VarHandleOp); \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("_VarHandlesOp").Device(DEVICE).HostMemory("resources"),            \
       ResourceHandlesOp<Var>);                                                 \
@@ -138,7 +137,6 @@ class XlaAssignVariableOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("AssignVariableOp").Device(DEVICE).HostMemory("resource"),          \
       XlaAssignVariableOp);                                                    \
-                                                                               \
                                                                                \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("FIFOQueueV2").Device(DEVICE).HostMemory("handle"), FIFOQueueOp);   \
