@@ -42,18 +42,18 @@ namespace edsc {
 /// ```
 struct IndexHandle : public ValueHandle {
   explicit IndexHandle()
-      : ValueHandle(ScopedContext::getBuilder()->getIndexType()) {}
+      : ValueHandle(ScopedContext::getBuilder().getIndexType()) {}
   explicit IndexHandle(index_t v) : ValueHandle(v) {}
   explicit IndexHandle(Value *v) : ValueHandle(v) {
-    assert(v->getType() == ScopedContext::getBuilder()->getIndexType() &&
+    assert(v->getType() == ScopedContext::getBuilder().getIndexType() &&
            "Expected index type");
   }
   explicit IndexHandle(ValueHandle v) : ValueHandle(v) {
-    assert(v.getType() == ScopedContext::getBuilder()->getIndexType() &&
+    assert(v.getType() == ScopedContext::getBuilder().getIndexType() &&
            "Expected index type");
   }
   IndexHandle &operator=(const ValueHandle &v) {
-    assert(v.getType() == ScopedContext::getBuilder()->getIndexType() &&
+    assert(v.getType() == ScopedContext::getBuilder().getIndexType() &&
            "Expected index type");
     /// Creating a new IndexHandle(v) and then std::swap rightly complains the
     /// binding has already occurred and that we should use another name.

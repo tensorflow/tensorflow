@@ -123,7 +123,7 @@ generation through a simple depth-first search traversal of the Toy AST. Here is
 how we create a `toy.transpose` operation:
 
 ```
-mlir::Operation *createTransposeOp(OpBuilder *builder,
+mlir::Operation *createTransposeOp(OpBuilder &builder,
                                    mlir::Value *input_array) {
   // We bundle our custom type in a `toy` dialect.
   auto toyDialect = mlir::Identifier::get("toy", builder->getContext());

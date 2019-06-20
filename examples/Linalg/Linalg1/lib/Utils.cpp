@@ -46,6 +46,6 @@ ViewOp linalg::emitAndReturnViewOpFromMemRef(Value *memRef) {
   for (unsigned i = 0; i < v.rank(); ++i) {
     indices[i] = range(v.lb(i), v.ub(i), constant_index(v.step(i)));
   }
-  return ScopedContext::getBuilder()->create<ViewOp>(
+  return ScopedContext::getBuilder().create<ViewOp>(
       ScopedContext::getLocation(), memRef, indices);
 }

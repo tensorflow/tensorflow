@@ -63,7 +63,7 @@ static bool isZero(Value *v) {
 // The returned ranges correspond to the loop ranges, in the proper order, that
 // are tiled and for which new loops will be created.
 static SmallVector<Value *, 4>
-makeTiledLoopRanges(OpBuilder *b, Location loc, AffineMap map,
+makeTiledLoopRanges(OpBuilder &b, Location loc, AffineMap map,
                     ArrayRef<Value *> allViewSizes,
                     ArrayRef<Value *> allTileSizes, OperationFolder &state) {
   assert(allTileSizes.size() == map.getNumResults());
@@ -82,9 +82,9 @@ makeTiledLoopRanges(OpBuilder *b, Location loc, AffineMap map,
   // Create a new range with the applied tile sizes.
   SmallVector<Value *, 4> res;
   for (unsigned idx = 0, e = tileSizes.size(); idx < e; ++idx) {
-    res.push_back(b->create<RangeOp>(loc,
-                                     state.create<ConstantIndexOp>(*b, loc, 0),
-                                     viewSizes[idx], tileSizes[idx]));
+    res.push_back(b.create<RangeOp>(loc,
+                                    state.create<ConstantIndexOp>(b, loc, 0),
+                                    viewSizes[idx], tileSizes[idx]));
   }
   return res;
 }
@@ -133,7 +133,7 @@ static Value *foldRange(Value *view, unsigned dim) {
   return nullptr;
 }
 
-static SmallVector<Value *, 4> makeTiledViews(OpBuilder *b, Location loc,
+static SmallVector<Value *, 4> makeTiledViews(OpBuilder &b, Location loc,
                                               LinalgOp linalgOp,
                                               ArrayRef<Value *> ivs,
                                               ArrayRef<Value *> tileSizes,
@@ -173,9 +173,9 @@ static SmallVector<Value *, 4> makeTiledViews(OpBuilder *b, Location loc,
         auto *foldedRange = foldRange(view, r);
         foldedRange ? newRanges.push_back(foldedRange)
                     : newRanges.push_back(
-                          range(state.create<ConstantIndexOp>(*b, loc, 0),
+                          range(state.create<ConstantIndexOp>(b, loc, 0),
                                 linalg::intrinsics::dim(view, r),
-                                state.create<ConstantIndexOp>(*b, loc, 1)));
+                                state.create<ConstantIndexOp>(b, loc, 1)));
         continue;
       }
 
@@ -186,7 +186,7 @@ static SmallVector<Value *, 4> makeTiledViews(OpBuilder *b, Location loc,
           [](Value *v) { return isZero(v); });
       auto iv = ivs[pos - count];
 
-      ScopedContext scope(*b, loc);
+      ScopedContext scope(b, loc);
       // TODO(ntv): lb = iv is a poor man's folding of max(0, i) == i which is
       // generally wrong but correct in the specific case of tiling linalg ops.
       // Tie this loose end in the future.
@@ -198,10 +198,10 @@ static SmallVector<Value *, 4> makeTiledViews(OpBuilder *b, Location loc,
       // Tiling creates a new slice at the proper index, the slice step is 1
       // (i.e. the slice view does not subsample, stepping occurs in the loop).
       newRanges.push_back(
-          range(lb, ub, state.create<ConstantIndexOp>(*b, loc, 1)));
+          range(lb, ub, state.create<ConstantIndexOp>(b, loc, 1)));
     }
     // res.push_back(createOrReturnView(b, loc, viewDefiningOp, newRanges));
-    res.push_back(b->create<SliceOp>(loc, view, newRanges));
+    res.push_back(b.create<SliceOp>(loc, view, newRanges));
   }
   return res;
 }
@@ -230,14 +230,14 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
   SmallVector<IndexHandle, 4> ivs(loopRanges.size());
   auto pivs = IndexHandle::makeIndexHandlePointers(ivs);
   LoopNestRangeBuilder(pivs, loopRanges)([&op, &tileSizes, &ivs, &res, &state] {
-    auto *b = ScopedContext::getBuilder();
+    auto b = ScopedContext::getBuilder();
     auto loc = ScopedContext::getLocation();
     SmallVector<Value *, 4> ivValues(ivs.begin(), ivs.end());
     // If/when the assertion below becomes false, we will have to templatize
     // `makeTiledViews`.
     assert(op.getNumInputsAndOutputs() == op.getOperation()->getNumOperands());
     auto views = makeTiledViews(b, loc, op, ivValues, tileSizes, state);
-    res = op.create(*b, loc, views);
+    res = op.create(b, loc, views);
   });
 
   SmallVector<ForOp, 8> loops;

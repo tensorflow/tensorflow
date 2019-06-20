@@ -58,10 +58,10 @@ ScopedContext *&mlir::edsc::ScopedContext::getCurrentScopedContext() {
   return context;
 }
 
-OpBuilder *mlir::edsc::ScopedContext::getBuilder() {
+OpBuilder &mlir::edsc::ScopedContext::getBuilder() {
   assert(ScopedContext::getCurrentScopedContext() &&
          "Unexpected Null ScopedContext");
-  return &ScopedContext::getCurrentScopedContext()->builder;
+  return ScopedContext::getCurrentScopedContext()->builder;
 }
 
 Location mlir::edsc::ScopedContext::getLocation() {
@@ -71,14 +71,13 @@ Location mlir::edsc::ScopedContext::getLocation() {
 }
 
 MLIRContext *mlir::edsc::ScopedContext::getContext() {
-  assert(getBuilder() && "Unexpected null builder");
-  return getBuilder()->getContext();
+  return getBuilder().getContext();
 }
 
 mlir::edsc::ValueHandle::ValueHandle(index_t cst) {
-  auto *b = ScopedContext::getBuilder();
+  auto &b = ScopedContext::getBuilder();
   auto loc = ScopedContext::getLocation();
-  v = b->create<ConstantIndexOp>(loc, cst.v).getResult();
+  v = b.create<ConstantIndexOp>(loc, cst.v).getResult();
   t = v->getType();
 }
 
@@ -92,7 +91,6 @@ ValueHandle &mlir::edsc::ValueHandle::operator=(const ValueHandle &other) {
 ValueHandle
 mlir::edsc::ValueHandle::createComposedAffineApply(AffineMap map,
                                                    ArrayRef<Value *> operands) {
-  assert(ScopedContext::getBuilder() && "Unexpected null builder");
   Operation *op =
       makeComposedAffineApply(ScopedContext::getBuilder(),
                               ScopedContext::getLocation(), map, operands)
@@ -127,18 +125,18 @@ OperationHandle OperationHandle::create(StringRef name,
   for (const auto &attr : attributes) {
     state.addAttribute(attr.first, attr.second);
   }
-  return OperationHandle(ScopedContext::getBuilder()->createOperation(state));
+  return OperationHandle(ScopedContext::getBuilder().createOperation(state));
 }
 
 BlockHandle mlir::edsc::BlockHandle::create(ArrayRef<Type> argTypes) {
-  auto *currentB = ScopedContext::getBuilder();
-  auto *ib = currentB->getInsertionBlock();
-  auto ip = currentB->getInsertionPoint();
+  auto &currentB = ScopedContext::getBuilder();
+  auto *ib = currentB.getInsertionBlock();
+  auto ip = currentB.getInsertionPoint();
   BlockHandle res;
-  res.block = ScopedContext::getBuilder()->createBlock();
+  res.block = ScopedContext::getBuilder().createBlock();
   // createBlock sets the insertion point inside the block.
   // We do not want this behavior when using declarative builders with nesting.
-  currentB->setInsertionPoint(ib, ip);
+  currentB.setInsertionPoint(ib, ip);
   for (auto t : argTypes) {
     res.block->addArgument(t);
   }
@@ -175,8 +173,8 @@ mlir::edsc::LoopBuilder::LoopBuilder(ValueHandle *iv,
     SmallVector<Value *, 4> lbs(lbHandles.begin(), lbHandles.end());
     SmallVector<Value *, 4> ubs(ubHandles.begin(), ubHandles.end());
     *iv = ValueHandle::create<AffineForOp>(
-        lbs, ScopedContext::getBuilder()->getMultiDimIdentityMap(lbs.size()),
-        ubs, ScopedContext::getBuilder()->getMultiDimIdentityMap(ubs.size()),
+        lbs, ScopedContext::getBuilder().getMultiDimIdentityMap(lbs.size()),
+        ubs, ScopedContext::getBuilder().getMultiDimIdentityMap(ubs.size()),
         step);
   }
   auto *body = getForInductionVarOwner(iv->getValue()).getBody();
@@ -402,7 +400,7 @@ static ValueHandle createComparisonExpr(CmpIPredicate predicate,
   assert((lhsType.isa<IndexType>() || lhsType.isa<IntegerType>()) &&
          "only integer comparisons are supported");
 
-  auto op = ScopedContext::getBuilder()->create<CmpIOp>(
+  auto op = ScopedContext::getBuilder().create<CmpIOp>(
       ScopedContext::getLocation(), predicate, lhs.getValue(), rhs.getValue());
   return ValueHandle(op.getResult());
 }

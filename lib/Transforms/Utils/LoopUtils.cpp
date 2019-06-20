@@ -46,7 +46,7 @@ using namespace mlir;
 void mlir::getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
                                     AffineMap *map,
                                     SmallVectorImpl<Value *> *operands,
-                                    OpBuilder *b) {
+                                    OpBuilder &b) {
   auto lbMap = forOp.getLowerBoundMap();
 
   // Single result lower bound map only.
@@ -68,7 +68,7 @@ void mlir::getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
   unsigned step = forOp.getStep();
 
   SmallVector<Value *, 4> lbOperands(forOp.getLowerBoundOperands());
-  auto lb = b->create<AffineApplyOp>(forOp.getLoc(), lbMap, lbOperands);
+  auto lb = b.create<AffineApplyOp>(forOp.getLoc(), lbMap, lbOperands);
 
   // For each upper bound expr, get the range.
   // Eg: affine.for %i = lb to min (ub1, ub2),
@@ -80,20 +80,20 @@ void mlir::getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
   for (unsigned i = 0, e = tripCountMap.getNumResults(); i < e; i++) {
     auto tripCountExpr = tripCountMap.getResult(i);
     bumpExprs[i] = (tripCountExpr - tripCountExpr % unrollFactor) * step;
-    auto bumpMap = b->getAffineMap(tripCountMap.getNumDims(),
-                                   tripCountMap.getNumSymbols(), bumpExprs[i]);
+    auto bumpMap = b.getAffineMap(tripCountMap.getNumDims(),
+                                  tripCountMap.getNumSymbols(), bumpExprs[i]);
     bumpValues[i] =
-        b->create<AffineApplyOp>(forOp.getLoc(), bumpMap, tripCountOperands);
+        b.create<AffineApplyOp>(forOp.getLoc(), bumpMap, tripCountOperands);
   }
 
   SmallVector<AffineExpr, 4> newUbExprs(tripCountMap.getNumResults());
   for (unsigned i = 0, e = bumpExprs.size(); i < e; i++)
-    newUbExprs[i] = b->getAffineDimExpr(0) + b->getAffineDimExpr(i + 1);
+    newUbExprs[i] = b.getAffineDimExpr(0) + b.getAffineDimExpr(i + 1);
 
   operands->clear();
   operands->push_back(lb);
   operands->append(bumpValues.begin(), bumpValues.end());
-  *map = b->getAffineMap(1 + tripCountMap.getNumResults(), 0, newUbExprs);
+  *map = b.getAffineMap(1 + tripCountMap.getNumResults(), 0, newUbExprs);
   // Simplify the map + operands.
   fullyComposeAffineMapAndOperands(map, operands);
   *map = simplifyAffineMap(*map);
@@ -172,7 +172,7 @@ static AffineForOp
 generateLoop(AffineMap lbMap, AffineMap ubMap,
              const std::vector<std::pair<uint64_t, ArrayRef<Operation *>>>
                  &instGroupQueue,
-             unsigned offset, AffineForOp srcForInst, OpBuilder *b) {
+             unsigned offset, AffineForOp srcForInst, OpBuilder b) {
   SmallVector<Value *, 4> lbOperands(srcForInst.getLowerBoundOperands());
   SmallVector<Value *, 4> ubOperands(srcForInst.getUpperBoundOperands());
 
@@ -180,8 +180,8 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
   assert(ubMap.getNumInputs() == ubOperands.size());
 
   auto loopChunk =
-      b->create<AffineForOp>(srcForInst.getLoc(), lbOperands, lbMap, ubOperands,
-                             ubMap, srcForInst.getStep());
+      b.create<AffineForOp>(srcForInst.getLoc(), lbOperands, lbMap, ubOperands,
+                            ubMap, srcForInst.getStep());
   auto *loopChunkIV = loopChunk.getInductionVar();
   auto *srcIV = srcForInst.getInductionVar();
 
@@ -306,14 +306,14 @@ LogicalResult mlir::instBodySkew(AffineForOp forOp, ArrayRef<uint64_t> shifts,
         res = generateLoop(
             b.getShiftedAffineMap(origLbMap, lbShift),
             b.getShiftedAffineMap(origLbMap, lbShift + tripCount * step),
-            instGroupQueue, 0, forOp, &b);
+            instGroupQueue, 0, forOp, b);
         // Entire loop for the queued op groups generated, empty it.
         instGroupQueue.clear();
         lbShift += tripCount * step;
       } else {
         res = generateLoop(b.getShiftedAffineMap(origLbMap, lbShift),
                            b.getShiftedAffineMap(origLbMap, d), instGroupQueue,
-                           0, forOp, &b);
+                           0, forOp, b);
         lbShift = d * step;
       }
       if (!prologue && res)
@@ -333,7 +333,7 @@ LogicalResult mlir::instBodySkew(AffineForOp forOp, ArrayRef<uint64_t> shifts,
     uint64_t ubShift = (instGroupQueue[i].first + tripCount) * step;
     epilogue = generateLoop(b.getShiftedAffineMap(origLbMap, lbShift),
                             b.getShiftedAffineMap(origLbMap, ubShift),
-                            instGroupQueue, i, forOp, &b);
+                            instGroupQueue, i, forOp, b);
     lbShift = ubShift;
     if (!prologue)
       prologue = epilogue;
@@ -428,7 +428,7 @@ LogicalResult mlir::loopUnrollByFactor(AffineForOp forOp,
     AffineMap cleanupMap;
     SmallVector<Value *, 4> cleanupOperands;
     getCleanupLoopLowerBound(forOp, unrollFactor, &cleanupMap, &cleanupOperands,
-                             &builder);
+                             builder);
     assert(cleanupMap &&
            "cleanup loop lower bound map for single result lower bound maps "
            "can always be determined");
@@ -646,13 +646,13 @@ void mlir::sinkLoop(AffineForOp forOp, unsigned loopDepth) {
 //      ...
 //    }
 // ```
-static void augmentMapAndBounds(OpBuilder *b, Value *iv, AffineMap *map,
+static void augmentMapAndBounds(OpBuilder &b, Value *iv, AffineMap *map,
                                 SmallVector<Value *, 4> *operands,
                                 int64_t offset = 0) {
   auto bounds = llvm::to_vector<4>(map->getResults());
-  bounds.push_back(b->getAffineDimExpr(map->getNumDims()) + offset);
+  bounds.push_back(b.getAffineDimExpr(map->getNumDims()) + offset);
   operands->insert(operands->begin() + map->getNumDims(), iv);
-  *map = b->getAffineMap(map->getNumDims() + 1, map->getNumSymbols(), bounds);
+  *map = b.getAffineMap(map->getNumDims() + 1, map->getNumSymbols(), bounds);
   canonicalizeMapAndOperands(map, operands);
 }
 
@@ -708,12 +708,12 @@ stripmineSink(AffineForOp forOp, uint64_t factor,
   // Lower-bound map creation.
   auto lbMap = forOp.getLowerBoundMap();
   SmallVector<Value *, 4> lbOperands(forOp.getLowerBoundOperands());
-  augmentMapAndBounds(&b, forOp.getInductionVar(), &lbMap, &lbOperands);
+  augmentMapAndBounds(b, forOp.getInductionVar(), &lbMap, &lbOperands);
 
   // Upper-bound map creation.
   auto ubMap = forOp.getUpperBoundMap();
   SmallVector<Value *, 4> ubOperands(forOp.getUpperBoundOperands());
-  augmentMapAndBounds(&b, forOp.getInductionVar(), &ubMap, &ubOperands,
+  augmentMapAndBounds(b, forOp.getInductionVar(), &ubMap, &ubOperands,
                       /*offset=*/scaledStep);
 
   SmallVector<AffineForOp, 8> innerLoops;

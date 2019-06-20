@@ -161,7 +161,7 @@ writeContractionAsTiledViews(TensorContractionBase<ConcreteOp> &contraction,
     [&contraction, &tileSizes, &ivs]() {
       SmallVector<Value *, 4> ivValues(ivs.begin(), ivs.end());
       auto views = makeTiledViews(contraction, ivValues, tileSizes);
-      ScopedContext::getBuilder()->create<ConcreteOp>(
+      ScopedContext::getBuilder().create<ConcreteOp>(
           ScopedContext::getLocation(), views);
     });
   // clang-format on

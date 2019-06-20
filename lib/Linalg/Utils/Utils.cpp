@@ -95,16 +95,16 @@ SmallVector<Value *, 8> mlir::linalg::getViewSizes(LinalgOp &linalgOp) {
   return res;
 }
 
-static Value *emitOrFoldComposedAffineApply(OpBuilder *b, Location loc,
+static Value *emitOrFoldComposedAffineApply(OpBuilder &b, Location loc,
                                             AffineMap map,
                                             ArrayRef<Value *> operandsRef,
                                             OperationFolder &state) {
   SmallVector<Value *, 4> operands(operandsRef.begin(), operandsRef.end());
   fullyComposeAffineMapAndOperands(&map, &operands);
-  return state.create<AffineApplyOp>(*b, loc, map, operands);
+  return state.create<AffineApplyOp>(b, loc, map, operands);
 }
 
-SmallVector<Value *, 4> mlir::linalg::applyMapToValues(OpBuilder *b,
+SmallVector<Value *, 4> mlir::linalg::applyMapToValues(OpBuilder &b,
                                                        Location loc,
                                                        AffineMap map,
                                                        ArrayRef<Value *> values,

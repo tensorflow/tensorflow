@@ -361,7 +361,7 @@ void canonicalizeMapAndOperands(AffineMap *map,
 /// Returns a composed AffineApplyOp by composing `map` and `operands` with
 /// other AffineApplyOps supplying those operands. The operands of the resulting
 /// AffineApplyOp do not change the length of  AffineApplyOp chains.
-AffineApplyOp makeComposedAffineApply(OpBuilder *b, Location loc, AffineMap map,
+AffineApplyOp makeComposedAffineApply(OpBuilder &b, Location loc, AffineMap map,
                                       llvm::ArrayRef<Value *> operands);
 
 /// Given an affine map `map` and its input `operands`, this method composes

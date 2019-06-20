@@ -78,9 +78,9 @@ Value *linalg::makeFoldedComposedAffineApply(AffineMap map,
   if (auto *v = tryFold(map, operands)) {
     return v;
   }
-  auto *b = ScopedContext::getBuilder();
+  auto &b = ScopedContext::getBuilder();
   auto loc = ScopedContext::getLocation();
-  return b->create<AffineApplyOp>(loc, map, operands).getResult();
+  return b.create<AffineApplyOp>(loc, map, operands).getResult();
 }
 
 linalg::RangeParts::RangeParts(unsigned reserved) {

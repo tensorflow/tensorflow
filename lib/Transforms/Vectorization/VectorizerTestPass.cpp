@@ -242,7 +242,7 @@ void VectorizerTestPass::testNormalizeMaps() {
       auto app = cast<AffineApplyOp>(m.getMatchedOperation());
       OpBuilder b(m.getMatchedOperation());
       SmallVector<Value *, 8> operands(app.getOperands());
-      makeComposedAffineApply(&b, app.getLoc(), app.getAffineMap(), operands);
+      makeComposedAffineApply(b, app.getLoc(), app.getAffineMap(), operands);
     }
   }
   // We should now be able to erase everything in reverse order in this test.

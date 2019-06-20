@@ -44,9 +44,9 @@ class AffineApplyExpander
 public:
   // This internal class expects arguments to be non-null, checks must be
   // performed at the call site.
-  AffineApplyExpander(OpBuilder *builder, ArrayRef<Value *> dimValues,
+  AffineApplyExpander(OpBuilder &builder, ArrayRef<Value *> dimValues,
                       ArrayRef<Value *> symbolValues, Location loc)
-      : builder(*builder), dimValues(dimValues), symbolValues(symbolValues),
+      : builder(builder), dimValues(dimValues), symbolValues(symbolValues),
         loc(loc) {}
 
   template <typename OpTy> Value *buildBinaryExpr(AffineBinaryOpExpr expr) {
@@ -223,19 +223,18 @@ mlir::Value *mlir::expandAffineExpr(OpBuilder &builder, Location loc,
                                     AffineExpr expr,
                                     ArrayRef<Value *> dimValues,
                                     ArrayRef<Value *> symbolValues) {
-  return AffineApplyExpander(&builder, dimValues, symbolValues, loc)
-      .visit(expr);
+  return AffineApplyExpander(builder, dimValues, symbolValues, loc).visit(expr);
 }
 
 // Create a sequence of operations that implement the `affineMap` applied to
 // the given `operands` (as it it were an AffineApplyOp).
 Optional<SmallVector<Value *, 8>> static expandAffineMap(
-    OpBuilder *builder, Location loc, AffineMap affineMap,
+    OpBuilder &builder, Location loc, AffineMap affineMap,
     ArrayRef<Value *> operands) {
   auto numDims = affineMap.getNumDims();
   auto expanded = functional::map(
-      [numDims, builder, loc, operands](AffineExpr expr) {
-        return expandAffineExpr(*builder, loc, expr,
+      [numDims, &builder, loc, operands](AffineExpr expr) {
+        return expandAffineExpr(builder, loc, expr,
                                 operands.take_front(numDims),
                                 operands.drop_front(numDims));
       },
@@ -276,7 +275,7 @@ static Value *buildMinMaxReductionSeq(Location loc, CmpIPredicate predicate,
 // the results.
 Value *mlir::lowerAffineLowerBound(AffineForOp op, OpBuilder &builder) {
   SmallVector<Value *, 8> boundOperands(op.getLowerBoundOperands());
-  auto lbValues = expandAffineMap(&builder, op.getLoc(), op.getLowerBoundMap(),
+  auto lbValues = expandAffineMap(builder, op.getLoc(), op.getLowerBoundMap(),
                                   boundOperands);
   if (!lbValues)
     return nullptr;
@@ -289,7 +288,7 @@ Value *mlir::lowerAffineLowerBound(AffineForOp op, OpBuilder &builder) {
 // the results.
 Value *mlir::lowerAffineUpperBound(AffineForOp op, OpBuilder &builder) {
   SmallVector<Value *, 8> boundOperands(op.getUpperBoundOperands());
-  auto ubValues = expandAffineMap(&builder, op.getLoc(), op.getUpperBoundMap(),
+  auto ubValues = expandAffineMap(builder, op.getLoc(), op.getUpperBoundMap(),
                                   boundOperands);
   if (!ubValues)
     return nullptr;
@@ -597,7 +596,7 @@ public:
                   PatternRewriter &rewriter) const override {
     auto affineApplyOp = cast<AffineApplyOp>(op);
     auto maybeExpandedMap = expandAffineMap(
-        &rewriter, op->getLoc(), affineApplyOp.getAffineMap(), operands);
+        rewriter, op->getLoc(), affineApplyOp.getAffineMap(), operands);
     if (!maybeExpandedMap)
       return matchFailure();
     rewriter.replaceOp(op, *maybeExpandedMap);

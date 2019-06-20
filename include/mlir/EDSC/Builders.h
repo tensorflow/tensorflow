@@ -60,7 +60,7 @@ public:
   ~ScopedContext();
 
   static MLIRContext *getContext();
-  static OpBuilder *getBuilder();
+  static OpBuilder &getBuilder();
   static Location getLocation();
 
 private:
@@ -122,7 +122,7 @@ protected:
   /// point, which is useful for non-empty blocks.
   void enter(mlir::Block *block, int prev = 0) {
     bodyScope = new ScopedContext(
-        *ScopedContext::getBuilder(),
+        ScopedContext::getBuilder(),
         OpBuilder::InsertPoint(block, std::prev(block->end(), prev)),
         ScopedContext::getLocation());
     bodyScope->nestedBuilder = this;
@@ -432,7 +432,7 @@ private:
 template <typename Op, typename... Args>
 OperationHandle OperationHandle::create(Args... args) {
   return OperationHandle(ScopedContext::getBuilder()
-                             ->create<Op>(ScopedContext::getLocation(), args...)
+                             .create<Op>(ScopedContext::getLocation(), args...)
                              .getOperation());
 }
 
@@ -440,7 +440,7 @@ template <typename Op, typename... Args>
 Op OperationHandle::createOp(Args... args) {
   return cast<Op>(
       OperationHandle(ScopedContext::getBuilder()
-                          ->create<Op>(ScopedContext::getLocation(), args...)
+                          .create<Op>(ScopedContext::getLocation(), args...)
                           .getOperation())
           .getOperation());
 }
@@ -448,7 +448,7 @@ Op OperationHandle::createOp(Args... args) {
 template <typename Op, typename... Args>
 ValueHandle ValueHandle::create(Args... args) {
   Operation *op = ScopedContext::getBuilder()
-                      ->create<Op>(ScopedContext::getLocation(), args...)
+                      .create<Op>(ScopedContext::getLocation(), args...)
                       .getOperation();
   if (op->getNumResults() == 1) {
     return ValueHandle(op->getResult(0));

@@ -238,7 +238,7 @@ static SmallVector<unsigned, 8> delinearize(unsigned linearIndex,
   return res;
 }
 
-static Operation *instantiate(OpBuilder *b, Operation *opInst,
+static Operation *instantiate(OpBuilder b, Operation *opInst,
                               VectorType hwVectorType,
                               DenseMap<Value *, Value *> *substitutionsMap);
 
@@ -258,7 +258,7 @@ static Value *substitute(Value *v, VectorType hwVectorType,
     auto *opInst = v->getDefiningOp();
     if (isa<ConstantOp>(opInst)) {
       OpBuilder b(opInst);
-      auto *op = instantiate(&b, opInst, hwVectorType, substitutionsMap);
+      auto *op = instantiate(b, opInst, hwVectorType, substitutionsMap);
       auto res = substitutionsMap->insert(std::make_pair(v, op->getResult(0)));
       assert(res.second && "Insertion failed");
       return res.first->second;
@@ -331,7 +331,7 @@ static Value *substitute(Value *v, VectorType hwVectorType,
 /// TODO(ntv): these implementation details should be captured in a
 /// vectorization trait at the op level directly.
 static SmallVector<mlir::Value *, 8>
-reindexAffineIndices(OpBuilder *b, VectorType hwVectorType,
+reindexAffineIndices(OpBuilder b, VectorType hwVectorType,
                      ArrayRef<unsigned> hwVectorInstance,
                      ArrayRef<Value *> memrefIndices) {
   auto vectorShape = hwVectorType.getShape();
@@ -347,14 +347,14 @@ reindexAffineIndices(OpBuilder *b, VectorType hwVectorType,
   // The first numMemRefIndices correspond to AffineForOp that have not been
   // vectorized, the transformation is the identity on those.
   for (i = 0; i < numMemRefIndices; ++i) {
-    auto d_i = b->getAffineDimExpr(i);
+    auto d_i = b.getAffineDimExpr(i);
     affineExprs.push_back(d_i);
   }
   // The next numVectorIndices correspond to super-vector dimensions that
   // do not have a hardware vector dimension counterpart. For those we only
   // need to increment the index by the corresponding hwVectorInstance.
   for (i = numMemRefIndices; i < numMemRefIndices + numVectorIndices; ++i) {
-    auto d_i = b->getAffineDimExpr(i);
+    auto d_i = b.getAffineDimExpr(i);
     auto offset = hwVectorInstance[i - numMemRefIndices];
     affineExprs.push_back(d_i + offset);
   }
@@ -363,7 +363,7 @@ reindexAffineIndices(OpBuilder *b, VectorType hwVectorType,
   // index by "hwVectorInstance" multiples of the corresponding hardware
   // vector size.
   for (; i < numIndices; ++i) {
-    auto d_i = b->getAffineDimExpr(i);
+    auto d_i = b.getAffineDimExpr(i);
     auto offset = hwVectorInstance[i - numMemRefIndices];
     auto stride = vectorShape[i - numMemRefIndices - numVectorIndices];
     affineExprs.push_back(d_i + offset * stride);
@@ -374,7 +374,7 @@ reindexAffineIndices(OpBuilder *b, VectorType hwVectorType,
   res.reserve(affineExprs.size());
   for (auto expr : affineExprs) {
     auto map = AffineMap::get(numIndices, 0, expr);
-    res.push_back(makeComposedAffineApply(b, b->getInsertionPoint()->getLoc(),
+    res.push_back(makeComposedAffineApply(b, b.getInsertionPoint()->getLoc(),
                                           map, memrefIndices));
   }
   return res;
@@ -404,7 +404,7 @@ materializeAttributes(Operation *opInst, VectorType hwVectorType) {
 /// substitutionsMap.
 ///
 /// If the underlying substitution fails, this fails too and returns nullptr.
-static Operation *instantiate(OpBuilder *b, Operation *opInst,
+static Operation *instantiate(OpBuilder b, Operation *opInst,
                               VectorType hwVectorType,
                               DenseMap<Value *, Value *> *substitutionsMap) {
   assert(!isa<VectorTransferReadOp>(opInst) &&
@@ -428,10 +428,10 @@ static Operation *instantiate(OpBuilder *b, Operation *opInst,
 
   auto attrs = materializeAttributes(opInst, hwVectorType);
 
-  OperationState state(b->getContext(), opInst->getLoc(),
+  OperationState state(b.getContext(), opInst->getLoc(),
                        opInst->getName().getStringRef(), operands,
                        {hwVectorType}, attrs);
-  return b->createOperation(state);
+  return b.createOperation(state);
 }
 
 /// Computes the permutationMap required for a VectorTransferOp from the memref
@@ -481,7 +481,7 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy transfer,
 /// `hwVectorType` int the covering of the super-vector type. For a more
 /// detailed description of the problem, see the description of
 /// reindexAffineIndices.
-static Operation *instantiate(OpBuilder *b, VectorTransferReadOp read,
+static Operation *instantiate(OpBuilder b, VectorTransferReadOp read,
                               VectorType hwVectorType,
                               ArrayRef<unsigned> hwVectorInstance,
                               DenseMap<Value *, Value *> *substitutionsMap) {
@@ -493,9 +493,9 @@ static Operation *instantiate(OpBuilder *b, VectorTransferReadOp read,
   if (!map) {
     return nullptr;
   }
-  auto cloned = b->create<VectorTransferReadOp>(read.getLoc(), hwVectorType,
-                                                read.getMemRef(), affineIndices,
-                                                map, read.getPaddingValue());
+  auto cloned = b.create<VectorTransferReadOp>(read.getLoc(), hwVectorType,
+                                               read.getMemRef(), affineIndices,
+                                               map, read.getPaddingValue());
   return cloned.getOperation();
 }
 
@@ -505,7 +505,7 @@ static Operation *instantiate(OpBuilder *b, VectorTransferReadOp read,
 /// `hwVectorType` int the covering of th3e super-vector type. For a more
 /// detailed description of the problem, see the description of
 /// reindexAffineIndices.
-static Operation *instantiate(OpBuilder *b, VectorTransferWriteOp write,
+static Operation *instantiate(OpBuilder b, VectorTransferWriteOp write,
                               VectorType hwVectorType,
                               ArrayRef<unsigned> hwVectorInstance,
                               DenseMap<Value *, Value *> *substitutionsMap) {
@@ -513,7 +513,7 @@ static Operation *instantiate(OpBuilder *b, VectorTransferWriteOp write,
       map(makePtrDynCaster<Value>(), write.getIndices());
   auto affineIndices =
       reindexAffineIndices(b, hwVectorType, hwVectorInstance, indices);
-  auto cloned = b->create<VectorTransferWriteOp>(
+  auto cloned = b.create<VectorTransferWriteOp>(
       write.getLoc(),
       substitute(write.getVector(), hwVectorType, substitutionsMap),
       write.getMemRef(), affineIndices,
@@ -557,12 +557,12 @@ static bool instantiateMaterialization(Operation *op,
     return op->emitError("NYI path Op with region"), true;
 
   if (auto write = dyn_cast<VectorTransferWriteOp>(op)) {
-    auto *clone = instantiate(&b, write, state->hwVectorType,
+    auto *clone = instantiate(b, write, state->hwVectorType,
                               state->hwVectorInstance, state->substitutionsMap);
     return clone == nullptr;
   }
   if (auto read = dyn_cast<VectorTransferReadOp>(op)) {
-    auto *clone = instantiate(&b, read, state->hwVectorType,
+    auto *clone = instantiate(b, read, state->hwVectorType,
                               state->hwVectorInstance, state->substitutionsMap);
     if (!clone) {
       return true;
@@ -581,7 +581,7 @@ static bool instantiateMaterialization(Operation *op,
     return op->emitError("Op does not return a supervector."), true;
   }
   auto *clone =
-      instantiate(&b, op, state->hwVectorType, state->substitutionsMap);
+      instantiate(b, op, state->hwVectorType, state->substitutionsMap);
   if (!clone) {
     return true;
   }

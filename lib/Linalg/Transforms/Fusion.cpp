@@ -76,10 +76,10 @@ static llvm::cl::list<unsigned> clTileSizes(
 // a subset of the original loop ranges of `op`.
 // This is achieved by applying the `loopToOperandRangesMaps` permutation maps
 // to the `loopRanges` in order to obtain view ranges.
-static LinalgOp cloneWithLoopRanges(OpBuilder *b, Location loc, LinalgOp op,
+static LinalgOp cloneWithLoopRanges(OpBuilder &b, Location loc, LinalgOp op,
                                     ArrayRef<Value *> loopRanges,
                                     OperationFolder &state) {
-  ScopedContext scope(*b, loc);
+  ScopedContext scope(b, loc);
 
   auto maps = loopToOperandRangesMaps(op);
   SmallVector<Value *, 8> clonedViews;
@@ -105,7 +105,7 @@ static LinalgOp cloneWithLoopRanges(OpBuilder *b, Location loc, LinalgOp op,
     // IR (i.e. if dim folds away and the ranges are the same).
     clonedViews.push_back(slice(view, viewRanges));
   }
-  return op.create(*b, loc, clonedViews);
+  return op.create(b, loc, clonedViews);
 }
 
 struct ViewDimension {
@@ -192,7 +192,7 @@ static Optional<LinalgOp> fuse(Value *producedView, LinalgOp producer,
     }
   }
 
-  return cloneWithLoopRanges(&b, loc, producer, loopRanges, state);
+  return cloneWithLoopRanges(b, loc, producer, loopRanges, state);
 }
 
 // Encode structural fusion safety preconditions.

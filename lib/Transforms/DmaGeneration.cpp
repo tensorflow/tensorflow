@@ -243,7 +243,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
   OpBuilder prologue(block, begin);
   // DMAs for write regions are going to be inserted just after the for loop.
   OpBuilder epilogue(block, end);
-  OpBuilder *b = region.isWrite() ? &epilogue : &prologue;
+  OpBuilder &b = region.isWrite() ? epilogue : prologue;
 
   // Builder to create constants at the top level.
   auto *func = block->getFunction();
@@ -327,7 +327,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
       // corresponding dimension on the memory region (stored in 'offset').
       auto map = top.getAffineMap(
           cst->getNumDimIds() + cst->getNumSymbolIds() - rank, 0, offset);
-      memIndices.push_back(b->create<AffineApplyOp>(loc, map, regionSymbols));
+      memIndices.push_back(b.create<AffineApplyOp>(loc, map, regionSymbols));
     }
     // The fast buffer is DMAed into at location zero; addressing is relative.
     bufIndices.push_back(zeroIndex);
@@ -395,21 +395,21 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
 
   if (!region.isWrite()) {
     // DMA non-blocking read from original buffer to fast buffer.
-    b->create<DmaStartOp>(loc, memref, memIndices, fastMemRef, bufIndices,
-                          numElementsSSA, tagMemRef, zeroIndex, stride,
-                          numEltPerStride);
+    b.create<DmaStartOp>(loc, memref, memIndices, fastMemRef, bufIndices,
+                         numElementsSSA, tagMemRef, zeroIndex, stride,
+                         numEltPerStride);
   } else {
     // DMA non-blocking write from fast buffer to the original memref.
-    auto op = b->create<DmaStartOp>(loc, fastMemRef, bufIndices, memref,
-                                    memIndices, numElementsSSA, tagMemRef,
-                                    zeroIndex, stride, numEltPerStride);
+    auto op = b.create<DmaStartOp>(loc, fastMemRef, bufIndices, memref,
+                                   memIndices, numElementsSSA, tagMemRef,
+                                   zeroIndex, stride, numEltPerStride);
     // Since new ops are being appended (for outgoing DMAs), adjust the end to
     // mark end of range of the original.
     *nEnd = Block::iterator(op.getOperation());
   }
 
   // Matching DMA wait to block on completion; tag always has a 0 index.
-  b->create<DmaWaitOp>(loc, tagMemRef, zeroIndex, numElementsSSA);
+  b.create<DmaWaitOp>(loc, tagMemRef, zeroIndex, numElementsSSA);
 
   // Generate dealloc for the tag.
   auto tagDeallocOp = epilogue.create<DeallocOp>(loc, tagMemRef);
@@ -435,10 +435,10 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
     // The starting operands of indexRemap will be regionSymbols (the symbols on
     // which the memref region is parametric); then those corresponding to
     // the memref's original indices follow.
-    auto dimExpr = b->getAffineDimExpr(regionSymbols.size() + i);
+    auto dimExpr = b.getAffineDimExpr(regionSymbols.size() + i);
     remapExprs.push_back(dimExpr - offsets[i]);
   }
-  auto indexRemap = b->getAffineMap(regionSymbols.size() + rank, 0, remapExprs);
+  auto indexRemap = b.getAffineMap(regionSymbols.size() + rank, 0, remapExprs);
 
   // Record the begin since it may be invalidated by memref replacement.
   Block::iterator prev;

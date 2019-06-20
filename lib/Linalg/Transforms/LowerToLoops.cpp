@@ -37,7 +37,7 @@ using namespace mlir::linalg;
 // Creates a number of ranges equal to the number of results in `map`.
 // The returned ranges correspond to the loop ranges, in the proper order, for
 // which new loops will be created.
-static SmallVector<Value *, 4> emitLoopRanges(OpBuilder *b, Location loc,
+static SmallVector<Value *, 4> emitLoopRanges(OpBuilder &b, Location loc,
                                               AffineMap map,
                                               ArrayRef<Value *> allViewSizes,
                                               OperationFolder &state) {
@@ -46,9 +46,9 @@ static SmallVector<Value *, 4> emitLoopRanges(OpBuilder *b, Location loc,
   // Create a new range with the applied tile sizes.
   SmallVector<Value *, 4> res;
   for (unsigned idx = 0, e = map.getNumResults(); idx < e; ++idx) {
-    res.push_back(b->create<RangeOp>(
-        loc, state.create<ConstantIndexOp>(*b, loc, 0), sizes[idx],
-        state.create<ConstantIndexOp>(*b, loc, 1)));
+    res.push_back(b.create<RangeOp>(
+        loc, state.create<ConstantIndexOp>(b, loc, 0), sizes[idx],
+        state.create<ConstantIndexOp>(b, loc, 1)));
   }
   return res;
 }

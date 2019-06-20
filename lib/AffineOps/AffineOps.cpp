@@ -553,14 +553,14 @@ void mlir::fullyComposeAffineMapAndOperands(
   }
 }
 
-AffineApplyOp mlir::makeComposedAffineApply(OpBuilder *b, Location loc,
+AffineApplyOp mlir::makeComposedAffineApply(OpBuilder &b, Location loc,
                                             AffineMap map,
                                             ArrayRef<Value *> operands) {
   AffineMap normalizedMap = map;
   SmallVector<Value *, 8> normalizedOperands(operands.begin(), operands.end());
   composeAffineMapAndOperands(&normalizedMap, &normalizedOperands);
   assert(normalizedMap);
-  return b->create<AffineApplyOp>(loc, normalizedMap, normalizedOperands);
+  return b.create<AffineApplyOp>(loc, normalizedMap, normalizedOperands);
 }
 
 // A symbol may appear as a dim in affine.apply operations. This function

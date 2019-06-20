@@ -192,7 +192,7 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
     AffineMap cleanupMap;
     SmallVector<Value *, 4> cleanupOperands;
     getCleanupLoopLowerBound(forOp, unrollJamFactor, &cleanupMap,
-                             &cleanupOperands, &builder);
+                             &cleanupOperands, builder);
     cleanupAffineForOp.setLowerBound(cleanupOperands, cleanupMap);
 
     // Promote the cleanup loop if it has turned into a single iteration loop.
