@@ -1,3 +1,7 @@
+# Release 1.12.3
+
+<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+
 # Release 1.12.2
 
 ## Bug Fixes and Other Changes
