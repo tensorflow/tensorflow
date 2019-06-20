@@ -310,8 +310,12 @@ port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones(
   if (compiled_ptx_or.ok()) {
     compiled_ptx = compiled_ptx_or.ValueOrDie();
   } else {
-    LOG(WARNING) << compiled_ptx_or.status().ToString()
-                 << "\nRelying on driver to perform ptx compilation";
+    static std::once_flag ptxas_not_found_logged;
+    std::call_once(ptxas_not_found_logged, [&]() {
+      LOG(WARNING) << compiled_ptx_or.status().ToString()
+                   << "\nRelying on driver to perform ptx compilation. "
+                   << "This message will be only logged once.";
+    });
   }
 
   ScopedDeviceMemory<uint64> out_param =
