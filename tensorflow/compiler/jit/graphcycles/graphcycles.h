@@ -118,8 +118,17 @@ class GraphCycles {
   // Expensive: should only be called from graphcycles_test.cc.
   bool CheckInvariants() const;
 
+  // Warning: Do not use these if iterating over the span and modifying the
+  // GraphCycles at the same time. Instead use SuccessorsCopy/PredecessorsCopy.
   absl::Span<const int32> Successors(int32 node) const;
   absl::Span<const int32> Predecessors(int32 node) const;
+
+  // Return a copy of the sucessors set. This is needed for code using the
+  // collection while modifying the GraphCycles.
+  std::vector<int32> SuccessorsCopy(int32 node) const;
+  // Return a copy of the predecessors set. This is needed for code using the
+  // collection while modifying the GraphCycles.
+  std::vector<int32> PredecessorsCopy(int32 node) const;
 
   // Returns all nodes in post order.
   //

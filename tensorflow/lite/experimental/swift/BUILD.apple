@@ -1,12 +1,13 @@
 # TensorFlow Lite for Swift
 
-package(default_visibility = ["//visibility:private"])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZER_TAGS", "TFL_MINIMUM_OS_VERSION")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
+
+package(
+    default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 swift_library(
     name = "TensorFlowLite",
@@ -19,37 +20,17 @@ swift_library(
 )
 
 ios_unit_test(
-    name = "TensorFlowLiteTests",
+    name = "Tests",
     size = "small",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
     tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS,
     deps = [
-        ":TestsLib",
-    ],
-)
-
-ios_application(
-    name = "TensorFlowLiteApp",
-    app_icons = glob(["TestApps/TensorFlowLiteApp/TensorFlowLiteApp/Assets.xcassets/AppIcon.appiconset/**"]),
-    bundle_id = "com.tensorflow.lite.swift.TensorFlowLite",
-    families = [
-        "ipad",
-        "iphone",
-    ],
-    infoplists = ["TestApps/TensorFlowLiteApp/TensorFlowLiteApp/Info.plist"],
-    launch_storyboard = "TestApps/TensorFlowLiteApp/TensorFlowLiteApp/Base.lproj/LaunchScreen.storyboard",
-    minimum_os_version = TFL_MINIMUM_OS_VERSION,
-    sdk_frameworks = [
-        "CoreGraphics",
-    ],
-    tags = TFL_DEFAULT_TAGS,
-    deps = [
-        ":AppLib",
+        ":TestsLibrary",
     ],
 )
 
 swift_library(
-    name = "TestsLib",
+    name = "TestsLibrary",
     testonly = 1,
     srcs = glob(["Tests/*.swift"]),
     tags = TFL_DEFAULT_TAGS,
@@ -59,13 +40,33 @@ swift_library(
     ],
 )
 
+ios_application(
+    name = "TestApp",
+    app_icons = glob(["TestApp/TestApp/Assets.xcassets/AppIcon.appiconset/**"]),
+    bundle_id = "com.tensorflow.lite.swift.TestApp",
+    families = [
+        "ipad",
+        "iphone",
+    ],
+    infoplists = ["TestApp/TestApp/Info.plist"],
+    minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    sdk_frameworks = [
+        "CoreGraphics",
+    ],
+    tags = TFL_DEFAULT_TAGS,
+    deps = [
+        ":TestAppLibrary",
+    ],
+)
+
 swift_library(
-    name = "AppLib",
-    srcs = glob(["TestApps/TensorFlowLiteApp/TensorFlowLiteApp/*.swift"]),
-    module_name = "AppLib",
+    name = "TestAppLibrary",
+    srcs = glob(["TestApp/TestApp/*.swift"]),
+    data = glob(["TestApp/TestApp/Base.lproj/*.storyboard"]),
+    module_name = "TestApp",
     tags = TFL_DEFAULT_TAGS + ["manual"],
     deps = [
-        ":AppResources",
+        ":Resources",
         ":TensorFlowLite",
     ],
 )
@@ -78,15 +79,4 @@ objc_library(
         "//tensorflow/lite:testdata/multi_add.bin",
     ],
     tags = TFL_DEFAULT_TAGS,
-)
-
-objc_library(
-    name = "AppResources",
-    data = glob([
-        "TestApps/TensorFlowLiteApp/TensorFlowLiteApp/Base.lproj/*.storyboard",
-    ]),
-    tags = TFL_DEFAULT_TAGS + ["manual"],
-    deps = [
-        ":Resources",
-    ],
 )

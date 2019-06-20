@@ -104,22 +104,24 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
 
 Status RunShortCircuit(const ShortCircuitInfo& info,
                        const std::vector<Tensor>& args,
-                       const std::vector<Tensor>& captured_inputs,
+                       const CapturedFunction* const func,
                        std::vector<Tensor>* rets) {
+  VLOG(3) << "Running function " << func->func().name() << " short circuit";
   size_t num_args = args.size();
   for (size_t i = 0; i < info.indices.size(); ++i) {
     if (info.indices[i] < num_args) {
       rets->push_back(args[info.indices[i]]);
     } else {
-      rets->push_back(captured_inputs[info.indices[i] - num_args]);
+      rets->push_back(func->captured_inputs()[info.indices[i] - num_args]);
     }
   }
   return Status::OK();
 }
 
 Status RunShortCircuit(const ShortCircuitInfo& info, std::vector<Tensor>&& args,
-                       const std::vector<Tensor>& captured_inputs,
+                       const CapturedFunction* const func,
                        std::vector<Tensor>* rets) {
+  VLOG(3) << "Running function " << func->func().name() << " short circuit";
   size_t num_args = args.size();
   for (size_t i = 0; i < info.indices.size(); ++i) {
     if (info.indices[i] < num_args) {
@@ -129,7 +131,7 @@ Status RunShortCircuit(const ShortCircuitInfo& info, std::vector<Tensor>&& args,
         rets->push_back(args[info.indices[i]]);
       }
     } else {
-      rets->push_back(captured_inputs[info.indices[i] - num_args]);
+      rets->push_back(func->captured_inputs()[info.indices[i] - num_args]);
     }
   }
   return Status::OK();
@@ -254,7 +256,36 @@ Status FunctionMetadata::Create(
       (*out_metadata)->func_.name(), &(*out_metadata)->lib_def_));
   TF_RETURN_IF_ERROR(CreateShortCircuitInfo(
       ctx, (*out_metadata)->func_, &(*out_metadata)->short_circuit_info_));
+  (*out_metadata)->ValidateMultiDevice();
   return Status::OK();
+}
+
+void FunctionMetadata::ValidateMultiDevice() {
+  const FunctionDef* fdef = lib_def_->Find(func_.name());
+  if (is_multi_device_function_) {
+    auto attr = fdef->attr().find(FunctionLibraryDefinition::kIntsOnDeviceAttr);
+    if (attr != fdef->attr().end() && attr->second.b()) {
+      LOG(WARNING)
+          << "Disabling multi-device execution for a function that uses the "
+          << FunctionLibraryDefinition::kIntsOnDeviceAttr << " attribute.";
+      is_multi_device_function_ = false;
+      return;
+    }
+    auto validate_arg = [this](const OpDef::ArgDef& arg) {
+      if (!arg.number_attr().empty() || !arg.type_list_attr().empty()) {
+        LOG(WARNING) << "Disabling multi-device execution for a function with "
+                        "a vector argument "
+                     << arg.name() << ".";
+        is_multi_device_function_ = false;
+      }
+    };
+    for (const auto& arg : fdef->signature().input_arg()) {
+      validate_arg(arg);
+    }
+    for (const auto& arg : fdef->signature().output_arg()) {
+      validate_arg(arg);
+    }
+  }
 }
 
 /* static */
@@ -511,8 +542,7 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
                                          std::vector<Tensor>* rets) const {
   auto& info = captured_func_->short_circuit_info();
   if (!info.indices.empty()) {
-    return RunShortCircuit(info, std::move(args),
-                           captured_func_->captured_inputs(), rets);
+    return RunShortCircuit(info, std::move(args), captured_func_, rets);
   }
 
   FunctionLibraryRuntime::Options f_opts;
@@ -553,7 +583,7 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
     std::vector<Tensor>* rets) const {
   auto& info = captured_func_->short_circuit_info();
   if (!info.indices.empty()) {
-    return RunShortCircuit(info, args, captured_func_->captured_inputs(), rets);
+    return RunShortCircuit(info, args, captured_func_, rets);
   }
 
   FunctionLibraryRuntime::Options f_opts;
@@ -593,7 +623,7 @@ Status InstantiatedCapturedFunction::RunInstantiated(
     const std::vector<Tensor>& args, std::vector<Tensor>* rets) {
   auto& info = captured_func_->short_circuit_info();
   if (!info.indices.empty()) {
-    return RunShortCircuit(info, args, captured_func_->captured_inputs(), rets);
+    return RunShortCircuit(info, args, captured_func_, rets);
   }
 
   FunctionLibraryRuntime::Options f_opts;
@@ -637,8 +667,7 @@ void InstantiatedCapturedFunction::RunAsync(
     // Run the `done` callback on a threadpool thread, because it will
     // potentially do a non-trivial amount of (e.g. copying) work, and we may
     // want to run that concurrently with the next invocation.
-    Status s = RunShortCircuit(info, std::move(args),
-                               captured_func_->captured_inputs(), rets);
+    Status s = RunShortCircuit(info, std::move(args), captured_func_, rets);
     (*ctx->runner())(
         std::bind([s](FunctionLibraryRuntime::DoneCallback& done) { done(s); },
                   std::move(done)));

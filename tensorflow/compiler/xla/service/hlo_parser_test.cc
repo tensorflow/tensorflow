@@ -364,6 +364,18 @@ ENTRY %CallR0F32IdentityScalar.v2 () -> f32[] {
 
 )"
 },
+// CustomCall with backend_config.
+{
+"CustomCallWithOpaque",
+R"(HloModule custom_call
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar", backend_config="this string is opaque"
+}
+
+)"
+},
 // reduce window
 {
 "ReduceWindow",
@@ -933,6 +945,19 @@ ENTRY %CustomCallWithLayoutConstraints (p0: (f32[2,2], f32[42,2,3]), p1: f32[123
 
 )"
 },
+// CustomCallWithHasSideEffect
+{
+"CustomCallWithHasSideEffect",
+R"(HloModule CustomCallWithHasSideEffect
+
+ENTRY %CustomCallWithHasSideEffect (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4]) -> (f32[1,2,3], f32[1,2,3]) {
+  %p0 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
+  %p1 = f32[123,4]{0,1} parameter(1)
+  ROOT %custom-call = (f32[1,2,3]{0,2,1}, f32[1,2,3]{1,2,0}) custom-call((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) %p0, f32[123,4]{0,1} %p1), custom_call_target="baz", custom_call_has_side_effect=true
+}
+
+)"
+},
 // Parse c64 literal
 {
 "ParseC64Literal",
@@ -1288,18 +1313,6 @@ ENTRY CustomCall {
 
 )"
 },
-// CustomCall with opaque value.
-{
-"CustomCallWithOpaque",
-R"(HloModule custom_call
-
-ENTRY CustomCall {
-  constant = f32[1]{0} constant({12345})
-  ROOT custom-call = f32[1,2,3]{0,2,1} custom-call(constant), custom_call_target="foo\"bar", opaque="this string is opaque"
-}
-
-)"
-},
 // Variables with non-default names
 {
 "NonDefaultNames",
@@ -1559,7 +1572,17 @@ ENTRY BitcastConvertUsage {
 }
 
 )"
+},
+{
+"OuterDimensionPartitions",
+R"(HloModule OuterDimensionPartitions
+
+ENTRY Test {
+  ROOT foo = f32[100]{0} parameter(0), outer_dimension_partitions={0,10,20}
 }
+
+)"
+},
 });
   // clang-format on
 }
@@ -2806,6 +2829,33 @@ TEST_F(HloParserTest, ParseShapeStringWithSparseLayout) {
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual: " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
+  // Tile, element size, and memory space.
+  string shape_string = "pred[123,456]{1,0:T(2,128)E(1)S(3)}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0},
+                                                  {Tile({2, 128})}, 1, 3);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Element size and memory space.
+  shape_string = "pred[123,456]{1,0:E(1)S(3)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, 1, 3);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Memory space only.
+  shape_string = "pred[123,456]{1,0:S(3)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, 0, 3);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
 }
 
 TEST_F(HloParserTest, ParseOpaqueType) {

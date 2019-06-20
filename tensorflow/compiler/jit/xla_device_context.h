@@ -71,7 +71,7 @@ class XlaDeviceContext : public DeviceContext {
                               StatusCallback done) const override;
 
   xla::LocalClient* client() const { return client_; }
-  se::Stream* stream() const { return stream_.get(); }
+  se::Stream* stream() const override { return stream_.get(); }
   se::Stream* host_to_device_stream() const {
     return host_to_device_stream_.get();
   }

@@ -22,7 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -87,16 +87,11 @@ TYPED_TEST(TRTEngineOpTest, Basic) {
   TF_ASSERT_OK(OpsTestBase::RunOpKernel());
 
   // Verify the result.
-  // TODO(laigd): OpsTestBase::GetOutput() doesn't work.
-  Tensor* output = OpsTestBase::context_->mutable_output(0);
-  const auto& tensor_map = output->flat<TypeParam>();
-  std::vector<TypeParam> output_data(tensor_map.size());
-  ASSERT_EQ(0, cudaDeviceSynchronize());
-  ASSERT_EQ(0, cudaMemcpy(output_data.data(), tensor_map.data(),
-                          sizeof(TypeParam) * tensor_map.size(),
-                          cudaMemcpyDeviceToHost));
-  EXPECT_THAT(absl::Span<const TypeParam>(output_data),
-              ElementsAre(TypeParam(0.0f), TypeParam(2.0f)));
+  Tensor* output = OpsTestBase::GetOutput(0);
+  EXPECT_THAT(
+      absl::Span<const TypeParam>(output->template flat<TypeParam>().data(),
+                                  output->NumElements()),
+      ElementsAre(TypeParam(0.0f), TypeParam(2.0f)));
 }
 
 }  // namespace tensorrt

@@ -1,13 +1,14 @@
 # Description:
 # Package for TensorFlow.
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0 License
-
 load("//tensorflow/python/tools/api/generator:api_gen.bzl", "gen_api_init_files")
 load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "KERAS_API_INIT_FILES")
 load("//tensorflow/python/tools/api/generator:api_init_files_v1.bzl", "KERAS_API_INIT_FILES_V1")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0 License
+)
 
 gen_api_init_files(
     name = "keras_python_api_gen",

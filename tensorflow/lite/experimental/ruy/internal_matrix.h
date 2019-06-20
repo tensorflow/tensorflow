@@ -44,7 +44,7 @@ limitations under the License.
 // RunKernel and RunPack, often in assembly code, which are the building blocks
 // that Ruy calls to perform matrix multiplication.  These are templated so that
 // only the requested types/Path's are actually emitted by the compiler.
-// - "middle-end" (impl.h) - this is the part of Ruy that orchestrates the
+// - "middle-end" (trmul.h) - this is the part of Ruy that orchestrates the
 // calls to the "back-end" optimized building blocks. This layer has to deal
 // with issues like cache locality and low-overhead multi-threading.
 //

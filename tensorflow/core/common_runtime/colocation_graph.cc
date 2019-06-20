@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/inspecting_placer.h"
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -64,7 +65,12 @@ std::vector<Device*> FilterSupportedDevices(
     for (Device* device : devices) {
       if (DeviceType(device->attributes().device_type()) ==
           supported_device_type.first) {
-        if (device == default_device) {
+        if (default_device &&
+            (device == default_device ||
+             // TODO(nareshmodi, fishx): At times the device pointer in the
+             // device set is different to the one passed in as the default
+             // device. Figure out why this might be.
+             device->name() == default_device->name())) {
           filtered_default_device = device;
         } else {
           prioritized_filtered_devices.emplace_back(
@@ -145,8 +151,8 @@ bool IsExemptFromResourceInputColocation(const Node* node) {
   // ref inputs to operations that are appropriately placed, instead of
   // dereferencing them.
   const string& op_type = node->op_def().name();
-  return op_type == "PartitionedCall" || op_type == "StatefulPartitionedCall" ||
-         op_type == "ReduceDataset" || op_type == "ExperimentalScanDataset";
+  auto exempt_ops = InputColocationExemptionRegistry::Global()->Get();
+  return exempt_ops.find(op_type) != exempt_ops.end();
 }
 
 bool HasPriorities(const PrioritizedDeviceTypeVector& device_types) {
@@ -640,7 +646,7 @@ Status ColocationGraph::ColocateAllNodes() {
     if (attr_value != nullptr && attr_value->has_list()) {
       for (const string& class_spec : attr_value->list().s()) {
         StringPiece spec(class_spec);
-        if (str_util::ConsumePrefix(&spec, kColocationGroupPrefixStringPiece)) {
+        if (absl::ConsumePrefix(&spec, kColocationGroupPrefixStringPiece)) {
           found_spec = true;
           TF_RETURN_IF_ERROR(
               ColocateNodeToGroup(&colocation_group_root, node, spec));
@@ -1093,7 +1099,7 @@ Status ColocationGraph::GetDevicesForNode(
 
           string gpu_msg = "";
           if (!IsGoogleCudaEnabled() &&
-              str_util::Lowercase(specified_device_name.type) == "gpu") {
+              absl::AsciiStrToLower(specified_device_name.type) == "gpu") {
             gpu_msg =
                 " The requested device appears to be a GPU, but CUDA is not "
                 "enabled.";
@@ -1103,13 +1109,15 @@ Status ColocationGraph::GetDevicesForNode(
               errors::FormatNodeNameForError(node->name()),
               "was explicitly assigned to ", node->requested_device(),
               " but available devices are [ ",
-              str_util::Join(device_names, ", "), " ]. Make sure ",
+              absl::StrJoin(device_names, ", "), " ]. Make sure ",
               "the device specification refers to a valid device.", gpu_msg);
         } else if (specified_device_name.has_type) {
           return errors::InvalidArgument(
               "Could not satisfy explicit device specification '",
               node->requested_device(), "' because no supported kernel for ",
               specified_device_name.type, " devices is available.", debug_info,
+              "\nOp: ", node->type_string(),
+              "\nNode attrs: ", node->attrs().DebugString(),
               "\nRegistered kernels:\n",
               KernelsRegisteredForOp(node->type_string()));
         } else {
@@ -1302,20 +1310,13 @@ Status ColocationGraph::InitializeMember(const Node& node, Member* member) {
       for (Device* d : device_set_.devices()) {
         registered_device_types.insert(d->device_type());
       }
-      std::vector<string> attr_key_vals;
-      for (const auto& it : node.attrs()) {
-        const string& name = it.first;
-        const AttrValue& attr_value = it.second;
-        attr_key_vals.push_back(
-            strings::StrCat(name, "=", SummarizeAttrValue(attr_value)));
-      }
       return errors::InvalidArgument(
           "No OpKernel was registered to support Op '", node.type_string(),
           "' used by ", errors::FormatNodeNameForError(node.name()),
-          "with these attrs: [", str_util::Join(attr_key_vals, ", "),
+          "with these attrs: [", node.attrs().DebugString(),
           "]\n"
           "Registered devices: [",
-          str_util::Join(registered_device_types, ", "), "]\n",
+          absl::StrJoin(registered_device_types, ", "), "]\n",
           "Registered kernels:\n", KernelsRegisteredForOp(node.type_string()));
     }
 

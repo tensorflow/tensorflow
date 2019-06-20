@@ -9,8 +9,9 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
-licenses(["notice"])  # Apache 2.0
-
+# Do not add anymore paths here. You do not need to be in the visibility list
+# to use TPU symbols. They are accessible from tf.contrib.tpu in TF 1.x and
+# tf.tpu and tf.compat.v1.tpu in TF 2.x.
 package(
     default_visibility = [
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
@@ -22,6 +23,7 @@ package(
         "//tensorflow:__subpackages__",
         "//vr/perception:__subpackages__",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 py_library(
@@ -154,6 +156,8 @@ py_library(
         "device_assignment.py",
         "session_support.py",
         "tensor_tracer.py",
+        "tensor_tracer_flags.py",
+        "tensor_tracer_report.py",
         "topology.py",
         "tpu.py",
         "tpu_feed.py",

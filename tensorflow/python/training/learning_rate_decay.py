@@ -20,6 +20,8 @@ from __future__ import print_function
 import functools
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
@@ -145,6 +147,29 @@ def piecewise_constant(x, boundaries, values, name=None):
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
+  boundaries = ops.convert_n_to_tensor(boundaries)
+  values = ops.convert_n_to_tensor(values)
+  x_recomp = ops.convert_to_tensor(x)
+  # Avoid explicit conversion to x's dtype. This could result in faulty
+  # comparisons, for example if floats are converted to integers.
+  for i, b in enumerate(boundaries):
+    if b.dtype.base_dtype != x_recomp.dtype.base_dtype:
+      # We can promote int32 boundaries to int64 without loss of precision.
+      # This covers the most common case where the user passes in boundaries
+      # as an array of Python integers.
+      if (b.dtype.base_dtype == dtypes.int32 and
+          x_recomp.dtype.base_dtype == dtypes.int64):
+        b = math_ops.cast(b, x_recomp.dtype.base_dtype)
+        boundaries[i] = b
+      else:
+        raise ValueError(
+            "Boundaries (%s) must have the same dtype as x (%s)." %
+            (b.dtype.base_dtype, x_recomp.dtype.base_dtype))
+  for v in values[1:]:
+    if v.dtype.base_dtype != values[0].dtype.base_dtype:
+      raise ValueError(
+          "Values must have elements all with the same dtype (%s vs %s)." %
+          (values[0].dtype.base_dtype, v.dtype.base_dtype))
   decayed_lr = learning_rate_schedule.PiecewiseConstantDecay(
       boundaries, values, name=name)
   if not context.executing_eagerly():

@@ -30,10 +30,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
-#include "tensorflow/stream_executor/owning_device_memory.h"
 
 namespace tensorflow {
-class XlaAllocator;
 
 // Struct that represents a possibly-absent Tensor.
 struct OptionalTensor {
@@ -104,30 +102,6 @@ class VariableInfo {
 // variable (i.e. variables[i].var() can be null for some i).
 Status LockVariables(absl::Span<VariableInfo> variables)
     EXCLUSIVE_LOCK_FUNCTION();
-
-// Adapter class that wraps a Tensorflow allocator as an XLA allocator.
-// Assumes that the Tensorflow allocator permits asynchronous deallocation:
-// see comment on `AllowsAsynchronousDeallocation()`.
-class XlaAllocator : public se::DeviceMemoryAllocator {
- public:
-  XlaAllocator(const se::Platform* platform, Allocator* wrapped);
-  ~XlaAllocator() override;
-  xla::StatusOr<se::OwningDeviceMemory> Allocate(
-      int device_ordinal, uint64 size, bool retry_on_failure) override;
-  Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;
-
-  // The Tensorflow BFC allocator used on GPU allows host-side deallocation
-  // before GPU execution takes place. Tensorflow uses the ordering of the main
-  // compute stream to enforce a happens-before relationship between a memory
-  // allocation and code that reuses the same memory. If Tensorflow adds
-  // support for multiple GPU streams or allocators with different ordering
-  // requirements, this code may need to change.
-  // (This attribute has no effect on CPU.)
-  bool AllowsAsynchronousDeallocation() const override { return true; }
-
- private:
-  Allocator* wrapped_;
-};
 
 // Helper class to perform the marshalling of TensorFlow inputs and outputs to
 // ShapedBuffers suitable for passing to an XLA computation.

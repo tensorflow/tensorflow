@@ -363,16 +363,17 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
   se::DeviceMemory<ElementT> rhs_typed(rhs);
   uint64 buffer_size = lhs_typed.ElementCount();
 
-  PtxCompilationOptions opts(config);
-  TF_ASSIGN_OR_RETURN(
-      absl::Span<const uint8> compiled_ptx,
-      CompilePtxOrGetCached(executor, buffer_compare_ptx, opts));
+  TF_ASSIGN_OR_RETURN(absl::Span<const uint8> compiled_ptx,
+                      se::cuda::CompilePtxOrGetCached(
+                          executor->device_ordinal(), buffer_compare_ptx,
+                          PtxOptsFromConfig(config)));
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ComparisonKernelT<ElementT>> comparison_kernel,
-      (CreateTypedKernel<se::DeviceMemory<ElementT>, se::DeviceMemory<ElementT>,
-                         float, uint64, se::DeviceMemory<uint64>>(
-          kernel_name, buffer_compare_ptx, compiled_ptx, executor)));
+      (executor->CreateTypedKernel<se::DeviceMemory<ElementT>,
+                                   se::DeviceMemory<ElementT>, float, uint64,
+                                   se::DeviceMemory<uint64>>(
+          kernel_name, buffer_compare_ptx, compiled_ptx)));
 
   LaunchDimensions dim =
       CalculateLaunchDimensions(buffer_shape, executor->GetDeviceDescription());

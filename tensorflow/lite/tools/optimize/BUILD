@@ -1,11 +1,12 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
-package(default_visibility = [
-    "//visibility:public",
-])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(glob([
     "testdata/*.bin",
@@ -18,10 +19,12 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:round",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
+        "//third_party/eigen3",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -104,6 +107,7 @@ cc_library(
         ":quantization_utils",
         ":model_utils",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@flatbuffers",
         "//tensorflow/lite:framework",
         # TODO(suharshs): Move the relevant quantization utils to a non-internal location.

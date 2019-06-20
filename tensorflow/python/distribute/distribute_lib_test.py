@@ -83,8 +83,9 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
       self,
       input_fn,
       replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
-    return input_lib.InputFunctionIterator(
-        input_fn, self._input_workers, [distribute_lib.InputContext()])
+    return input_lib.InputFunctionIterator(input_fn, self._input_workers,
+                                           [distribute_lib.InputContext()],
+                                           self._container_strategy())
 
   def _local_results(self, value):
     return (value,)
@@ -388,6 +389,20 @@ class TestStrategyTest(test.TestCase):
     self.assertEqual(len(update_calls), 1)
 
 
+# _TestStrategy2 is like _TestStrategy, except it doesn't change variable
+# creation.
+class _TestStrategy2(distribute_lib.Strategy):
+
+  def __init__(self):
+    super(_TestStrategy2, self).__init__(_TestExtended2(self))
+
+
+class _TestExtended2(_TestExtended):
+
+  def _create_variable(self, next_creator, *args, **kwargs):
+    return next_creator(*args, **kwargs)
+
+
 class DefaultDistributionStrategyTest(test.TestCase):
 
   def testMergeCall(self):
@@ -406,6 +421,49 @@ class DefaultDistributionStrategyTest(test.TestCase):
     self.assertIs(ds_context._get_default_replica_context(), replica_ctx)
     self.assertEqual("foo_bar", replica_ctx.merge_call(merge_fn, args=("bar",)))
     _assert_in_default_state(self)
+
+  def testScopeMostlyNoOp(self):
+    _assert_in_default_state(self)
+
+    test_strategy = _TestStrategy2()
+    with test_strategy.scope():
+      variable_scope.variable(1.0, name="before")
+
+    default_strategy = ds_context._get_default_strategy()
+    scope = default_strategy.scope()
+    with scope:
+      _assert_in_default_state(self)
+
+      with test_strategy.scope():
+        with self.assertRaisesRegexp(
+            RuntimeError, "Mixing different tf.distribute.Strategy objects"):
+          variable_scope.variable(1.0, name="error")
+
+      with scope:
+        _assert_in_default_state(self)
+
+        with test_strategy.scope():
+          with self.assertRaisesRegexp(
+              RuntimeError, "Mixing different tf.distribute.Strategy objects"):
+            variable_scope.variable(1.0, name="also_error")
+
+      _assert_in_default_state(self)
+
+    _assert_in_default_state(self)
+    with test_strategy.scope():
+      variable_scope.variable(1.0, name="after")
+
+  def testExperimentalRunV2(self):
+    default_strategy = ds_context._get_default_strategy()
+    dataset = dataset_ops.Dataset.range(10).batch(2)
+    iterator = default_strategy.extended._make_dataset_iterator(dataset)
+    next_val = iterator.get_next()
+
+    def train_step(input_data):
+      return input_data
+
+    for _ in range(2):
+      default_strategy.experimental_run_v2(train_step, args=(next_val,))
 
 
 class InputContextTest(test.TestCase):

@@ -60,14 +60,14 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
   """Test cases for stateful random-number generator operators."""
 
   _ints = INTS
-  _floats = [dtypes.bfloat16, dtypes.float32]
+  _floats = [dtypes.bfloat16, dtypes.float32, dtypes.float64]
 
   @parameterized.parameters(ALGS)
   @test_util.run_v2_only
   def testSimple(self, alg):
     """A simple test."""
     with ops.device(xla_device_name()):
-      gen = random.Generator(seed=0, algorithm=alg)
+      gen = random.Generator.from_seed(seed=0, alg=alg)
       gen.normal(shape=(3,))
       gen.uniform(shape=(3,), minval=0, maxval=10, dtype=dtypes.uint32)
       gen.uniform_full_int(shape=(3,))
@@ -77,7 +77,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
   def testDefun(self, alg):
     """Test for defun."""
     with ops.device(xla_device_name()):
-      gen = random.Generator(seed=0, algorithm=alg)
+      gen = random.Generator.from_seed(seed=0, alg=alg)
       @def_function.function
       def f():
         x = gen.normal(shape=(3,))
@@ -86,7 +86,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         return (x, y, z)
       f()
 
-  def _compareToKnownOutputs(self, counter, key, expect):
+  def _compareToKnownOutputs(self, g, counter, key, expect):
     """Compares against known outputs for specific counter and key inputs."""
     def uint32s_to_uint64(a, b):
       return b << 32 | a
@@ -99,13 +99,11 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     counter = uint32s_to_uint64s(counter)
     key = uint32s_to_uint64s(key)
     state = counter + key
-    random.get_global_generator().reset(state)
-    got = random.get_global_generator().uniform_full_int(
-        shape=(ctr_len,), dtype=dtypes.uint32)
+    g.reset(state)
+    got = g.uniform_full_int(shape=(ctr_len,), dtype=dtypes.uint32)
     self.assertAllEqual(expect, got)
-    random.get_global_generator().reset(state)
-    got = random.get_global_generator().uniform_full_int(
-        shape=(ctr_len // 2,), dtype=dtypes.uint64)
+    g.reset(state)
+    got = g.uniform_full_int(shape=(ctr_len // 2,), dtype=dtypes.uint64)
     self.assertAllEqual(uint32s_to_uint64s(expect), got)
 
   @test_util.run_v2_only
@@ -118,14 +116,17 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     # https://github.com/DEShawResearch/Random123-Boost/blob/65e3d874b67aa7b3e02d5ad8306462f52d2079c0/libs/random/test/test_threefry.cpp#L30-L32
 
     with ops.device(xla_device_name()):
-      random.reset_global_generator(seed=0, algorithm=random.RNG_ALG_THREEFRY)
+      g = random.Generator.from_seed(seed=0, alg=random.RNG_ALG_THREEFRY)
       self._compareToKnownOutputs(
+          g,
           [0x00000000, 0x00000000], [0x00000000, 0x00000000],
           [0x6b200159, 0x99ba4efe])
       self._compareToKnownOutputs(
+          g,
           [0xffffffff, 0xffffffff], [0xffffffff, 0xffffffff],
           [0x1cb996fc, 0xbb002be7])
       self._compareToKnownOutputs(
+          g,
           [0x243f6a88, 0x85a308d3], [0x13198a2e, 0x03707344],
           [0xc4923a9c, 0x483df7a0])
 
@@ -137,16 +138,19 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     # https://github.com/DEShawResearch/Random123-Boost/blob/65e3d874b67aa7b3e02d5ad8306462f52d2079c0/libs/random/test/test_philox.cpp#L50-L52
 
     with ops.device(xla_device_name()):
-      random.reset_global_generator(seed=0, algorithm=random.RNG_ALG_PHILOX)
+      g = random.Generator.from_seed(seed=0, alg=random.RNG_ALG_PHILOX)
       self._compareToKnownOutputs(
+          g,
           [0x00000000, 0x00000000, 0x00000000, 0x00000000],
           [0x00000000, 0x00000000],
           [0x6627e8d5, 0xe169c58d, 0xbc57ac4c, 0x9b00dbd8])
       self._compareToKnownOutputs(
+          g,
           [0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff],
           [0xffffffff, 0xffffffff],
           [0x408f276d, 0x41c83b0e, 0xa20bc7c6, 0x6d5451fd])
       self._compareToKnownOutputs(
+          g,
           [0x243f6a88, 0x85a308d3, 0x13198a2e, 0x03707344],
           [0xa4093822, 0x299f31d0],
           [0xd16cfe09, 0x94fdcceb, 0x5001e420, 0x24126ea1])
@@ -159,12 +163,11 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       counter = 57
       key = 0x1234
       size = 46
-      seed = [counter, key]
-      gen = random.Generator(
-          seed=seed, algorithm=random.RNG_ALG_THREEFRY)
+      state = [counter, key]
+      gen = random.Generator(state=state, alg=random.RNG_ALG_THREEFRY)
       gen.uniform_full_int(shape=(size,), dtype=dtypes.uint32)
       self.assertAllEqual([counter+(size+1)//2, key], gen.state.read_value())
-      gen.reset(seed=seed)
+      gen.reset(state)
       gen.uniform_full_int(shape=(size,), dtype=dtypes.uint64)
       self.assertAllEqual([counter+size, key], gen.state.read_value())
 
@@ -177,13 +180,12 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       counter_high = 283
       key = 0x1234
       size = 47
-      seed = [counter_low, counter_high, key]
-      gen = random.Generator(
-          seed=seed, algorithm=random.RNG_ALG_PHILOX)
+      state = [counter_low, counter_high, key]
+      gen = random.Generator(state=state, alg=random.RNG_ALG_PHILOX)
       gen.uniform_full_int(shape=(size,), dtype=dtypes.uint32)
       self.assertAllEqual([counter_low+(size+3)//4, counter_high, key],
                           gen.state.read_value())
-      gen.reset(seed=seed)
+      gen.reset(state)
       gen.uniform_full_int(shape=(size,), dtype=dtypes.uint64)
       self.assertAllEqual([counter_low+(size+1)//2, counter_high, key],
                           gen.state.read_value())
@@ -191,13 +193,12 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       counter_low = -1  # same as 0xffffffffffffffff
       counter_high = 283
       size = 47
-      seed = [counter_low, counter_high, key]
-      gen = random.Generator(
-          seed=seed, algorithm=random.RNG_ALG_PHILOX)
+      state = [counter_low, counter_high, key]
+      gen = random.Generator(state=state, alg=random.RNG_ALG_PHILOX)
       gen.uniform_full_int(shape=(size,), dtype=dtypes.uint32)
       self.assertAllEqual([(size+3)//4-1, counter_high+1, key],
                           gen.state.read_value())
-      gen.reset(seed=seed)
+      gen.reset(state)
       gen.uniform_full_int(shape=(size,), dtype=dtypes.uint64)
       self.assertAllEqual([(size+1)//2-1, counter_high+1, key],
                           gen.state.read_value())
@@ -209,10 +210,10 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     seed = 1234
     shape = [315, 49]
     with ops.device("/device:CPU:0"):
-      cpu = (random.Generator(seed=seed, algorithm=random.RNG_ALG_PHILOX)
+      cpu = (random.Generator.from_seed(seed=seed, alg=random.RNG_ALG_PHILOX)
              .uniform_full_int(shape=shape, dtype=dtype))
     with ops.device(xla_device_name()):
-      xla = (random.Generator(seed=seed, algorithm=random.RNG_ALG_PHILOX)
+      xla = (random.Generator.from_seed(seed=seed, alg=random.RNG_ALG_PHILOX)
              .uniform_full_int(shape=shape, dtype=dtype))
     self.assertAllEqual(cpu, xla)
 
@@ -228,7 +229,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testUniformIsNotConstant(self, alg):
     with ops.device(xla_device_name()):
-      gen = random.Generator(seed=1234, algorithm=alg)
+      gen = random.Generator.from_seed(seed=1234, alg=alg)
       def rng(dtype):
         maxval = dtype.max
         # Workaround for b/125364959
@@ -243,7 +244,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testNormalIsNotConstant(self, alg):
     with ops.device(xla_device_name()):
-      gen = random.Generator(seed=1234, algorithm=alg)
+      gen = random.Generator.from_seed(seed=1234, alg=alg)
       def rng(dtype):
         return gen.normal(shape=[2], dtype=dtype)
 
@@ -258,7 +259,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     size = 1000
     with ops.device(xla_device_name()):
       for dtype in self._ints + self._floats:
-        gen = random.Generator(seed=1234, algorithm=alg)
+        gen = random.Generator.from_seed(seed=1234, alg=alg)
         x = gen.uniform(
             shape=[size], dtype=dtype, minval=minval, maxval=maxval).numpy()
         self.assertTrue(np.all(x >= minval))
@@ -268,7 +269,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testNormalIsFinite(self, alg):
     with ops.device(xla_device_name()):
-      gen = random.Generator(seed=1234, algorithm=alg)
+      gen = random.Generator.from_seed(seed=1234, alg=alg)
       for dtype in self._floats:
         x = gen.normal(shape=[10000], dtype=dtype).numpy()
         self.assertTrue(np.all(np.isfinite(x)))
@@ -281,7 +282,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       n = 1000
       seed = 12
       for dtype in self._ints + self._floats:
-        gen = random.Generator(seed=seed, algorithm=alg)
+        gen = random.Generator.from_seed(seed=seed, alg=alg)
         maxval = 1
         if dtype.is_integer:
           maxval = 100
@@ -303,7 +304,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     with ops.device(xla_device_name()):
       n = 1000
       for dtype in self._floats:
-        gen = random.Generator(seed=1234, algorithm=alg)
+        gen = random.Generator.from_seed(seed=1234, alg=alg)
         x = gen.normal(shape=[n], dtype=dtype).numpy()
         # The constant 2.492 is the 5% critical value for the Anderson-Darling
         # test where the mean and variance are known. This test is probabilistic
@@ -316,7 +317,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
   def testTruncatedNormal(self, alg):
     with ops.device(xla_device_name()):
       for dtype in self._floats:
-        gen = random.Generator(seed=123, algorithm=alg)
+        gen = random.Generator.from_seed(seed=123, alg=alg)
         n = 10000000
         y = gen.truncated_normal(shape=[n], dtype=dtype).numpy()
         random_test_util.test_truncated_normal(
@@ -328,7 +329,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     """
     shape = [2, 3]
     with ops.device(xla_device_name()):
-      gen = random.Generator(seed=1234, algorithm=random.RNG_ALG_THREEFRY)
+      gen = random.Generator.from_seed(seed=1234, alg=random.RNG_ALG_THREEFRY)
       with self.assertRaisesWithPredicateMatch(
           errors_impl.InvalidArgumentError,
           r"algorithm must be of shape \[\], not"):

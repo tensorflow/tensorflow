@@ -21,7 +21,7 @@ else
 	endif
 endif
 
-HOST_ARCH := $(shell if [[ $(shell uname -m) =~ i[345678]86 ]]; then echo x86_32; else echo $(shell uname -m); fi)
+HOST_ARCH := $(shell if uname -m | grep -q i[345678]86; then echo x86_32; else uname -m; fi)
 
 # Override these on the make command line to target a specific architecture. For example:
 # make -f tensorflow/lite/tools/make/Makefile TARGET=rpi TARGET_ARCH=armv7l
@@ -66,6 +66,10 @@ ARFLAGS := -r
 TARGET_TOOLCHAIN_PREFIX :=
 CC_PREFIX :=
 
+ifeq ($(HOST_OS),windows)
+CXXFLAGS += -fext-numeric-literals -D__LITTLE_ENDIAN__
+endif
+
 # This library is the main target for this makefile. It will contain a minimal
 # runtime that can be linked in to other programs.
 LIB_NAME := libtensorflow-lite.a
@@ -108,6 +112,7 @@ $(wildcard tensorflow/lite/experimental/ruy/pack.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/pmu.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/thread_pool.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/trace.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/trmul.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/tune.cc)
 ifneq ($(BUILD_TYPE),micro)
 CORE_CC_ALL_SRCS += \
@@ -120,6 +125,7 @@ $(wildcard tensorflow/lite/kernels/*.c) \
 $(wildcard tensorflow/lite/kernels/internal/*.c) \
 $(wildcard tensorflow/lite/kernels/internal/optimized/*.c) \
 $(wildcard tensorflow/lite/kernels/internal/reference/*.c) \
+$(wildcard tensorflow/lite/tools/make/downloads/flatbuffers/src/util.cpp) \
 $(wildcard tensorflow/lite/tools/make/downloads/farmhash/src/farmhash.cc) \
 $(wildcard tensorflow/lite/tools/make/downloads/fft2d/fftsg.c)
 endif
@@ -130,10 +136,18 @@ $(wildcard tensorflow/lite/*test.cc) \
 $(wildcard tensorflow/lite/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*/*test.cc) \
+$(wildcard tensorflow/lite/kernels/*test_main.cc) \
 $(wildcard tensorflow/lite/kernels/*test_util.cc) \
 $(MINIMAL_SRCS)
 
+BUILD_WITH_MMAP=true
 ifeq ($(BUILD_TYPE),micro)
+	BUILD_WITH_MMAP=false
+endif
+ifeq ($(BUILD_TYPE),windows)
+	BUILD_WITH_MMAP=false
+endif
+ifeq ($(BUILD_WITH_MMAP),true)
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation.cc
 else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation_disabled.cc
@@ -141,6 +155,9 @@ endif
 
 BUILD_WITH_NNAPI=true
 ifeq ($(BUILD_TYPE),micro)
+	BUILD_WITH_NNAPI=false
+endif
+ifeq ($(TARGET),windows)
 	BUILD_WITH_NNAPI=false
 endif
 ifeq ($(TARGET),ios)
@@ -165,7 +182,6 @@ else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/minimal_logging_ios.cc
 endif
 
-
 # Filter out all the excluded files.
 TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 
@@ -173,14 +189,15 @@ TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 BENCHMARK_SRCS_DIR := tensorflow/lite/tools/benchmark
 EVALUATION_UTILS_SRCS := \
   tensorflow/lite/tools/evaluation/utils.cc
-BENCHMARK_ALL_SRCS := $(TFLITE_CC_SRCS) \
+BENCHMARK_ALL_SRCS := $(TF_LITE_CC_SRCS) \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*.cc) \
 	$(PROFILE_SUMMARIZER_SRCS) \
   $(CMD_LINE_TOOLS_SRCS) \
 	$(EVALUATION_UTILS_SRCS)
 
 BENCHMARK_SRCS := $(filter-out \
-	$(wildcard $(BENCHMARK_SRCS_DIR)/*_test.cc), \
+	$(wildcard $(BENCHMARK_SRCS_DIR)/*_test.cc) \
+	$(BENCHMARK_SRCS_DIR)/benchmark_plus_flex_main.cc, \
     $(BENCHMARK_ALL_SRCS))
 
 # These target-specific makefiles should modify or replace options like
@@ -195,7 +212,7 @@ ALL_SRCS := \
 	$(PROFILER_SUMMARIZER_SRCS) \
 	$(TF_LITE_CC_SRCS) \
 	$(BENCHMARK_SRCS) \
-  $(CMD_LINE_TOOLS_SRCS)
+	$(CMD_LINE_TOOLS_SRCS)
 
 # Where compiled objects are stored.
 GENDIR := $(MAKEFILE_DIR)/gen/$(TARGET)_$(TARGET_ARCH)/
@@ -216,11 +233,15 @@ MINIMAL_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MINIMAL_SRCS))))
 
 LIB_OBJS := $(addprefix $(OBJDIR), \
-$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(TF_LITE_CC_SRCS))))
+$(patsubst %.cpp,%.o,$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(TF_LITE_CC_SRCS)))))
 
 BENCHMARK_OBJS := $(addprefix $(OBJDIR), \
-$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(BENCHMARK_SRCS))))
+$(patsubst %.cpp,%.o,$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(BENCHMARK_SRCS)))))
 
+# For normal manually-created TensorFlow Lite C++ source files.
+$(OBJDIR)%.o: %.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 # For normal manually-created TensorFlow Lite C++ source files.
 $(OBJDIR)%.o: %.cc
 	@mkdir -p $(dir $@)

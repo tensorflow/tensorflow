@@ -122,7 +122,7 @@ TEST(ScopedShapedBufferTest, TestTakeSubTree) {
         TF_ASSERT_OK_AND_ASSIGN(
             se::OwningDeviceMemory m,
             allocator.Allocate(/*device_ordinal=*/0, /*size=*/77));
-        *buffer = m.Forget();
+        *buffer = m.Release();
       });
   ShapeTree<se::DeviceMemoryBase> buffers = sb.buffers();
 
@@ -160,7 +160,7 @@ TEST(ScopedShapedBufferTest, TestSubShapeTree) {
         TF_ASSERT_OK_AND_ASSIGN(
             se::OwningDeviceMemory m,
             allocator.Allocate(/*device_ordinal=*/0, /*size=*/32));
-        *buffer = m.Forget();
+        *buffer = m.Release();
       });
   auto ssb_statusor = sb.SubShapedBuffer({1});
   ASSERT_TRUE(ssb_statusor.ok());

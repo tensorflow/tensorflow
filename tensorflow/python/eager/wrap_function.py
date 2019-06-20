@@ -22,6 +22,7 @@ from __future__ import print_function
 import weakref
 
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import func_graph
@@ -29,6 +30,7 @@ from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training.tracking import data_structures
@@ -87,11 +89,13 @@ class VariableHolder(object):
     return wrapped
 
 
-def _get_tensor_from_tensor_info(tensor_info, graph):
+def _get_element_from_tensor_info(tensor_info, graph):
   """Simplified copy of the deprecated `get_tensor_from_tensor_info`."""
   encoding = tensor_info.WhichOneof("encoding")
   if encoding == "name":
-    return graph.get_tensor_by_name(tensor_info.name)
+    # We may get operations here in some cases. TensorInfo is a bit of a
+    # misnomer if so.
+    return graph.as_graph_element(tensor_info.name)
   elif encoding == "coo_sparse":
     return sparse_tensor.SparseTensor(
         graph.get_tensor_by_name(tensor_info.coo_sparse.indices_tensor_name),
@@ -198,6 +202,8 @@ class WrappedFunction(function.ConcreteFunction):
     _lift_unlifted_variables(fn_graph, variable_holder)
     # We call __init__ after lifting variables so that the function's signature
     # properly reflects the new captured inputs.
+    for f in fn_graph.as_graph_def().library.function:
+      context.context().add_function_def(f)
     super(WrappedFunction, self).__init__(
         fn_graph, attrs=attrs, signature=signature)
 
@@ -242,36 +248,43 @@ class WrappedFunction(function.ConcreteFunction):
     tensor_fetches = []
     tensor_infos = []
 
-    def _fetch_preprocesing_callback(f):
+    def _fetch_preprocesing_callback(fetch):
       """Extract out lists of ops, tensors, and tensor type info.
 
-      Turns TensorInfos into Tensors in the original fetches structure.
+      Turns TensorInfos into Tensors in the original `fetches` structure.
+      Also extracts ops from `fetches`.
 
       Args:
-        f: The fetch to preprocess: Tensor, TensorInfo, or Operation, or string
-          identifying a Tensor or Operation.
+        fetch: The fetch to preprocess: Tensor, TensorInfo, or Operation, or
+          string identifying a Tensor or Operation.
 
       Returns:
-        `f` converted to a Tensor.
+        `fetch` converted to a Tensor.
       """
-      if isinstance(f, ops.Operation):
-        operation_fetches.append(f)
-        return f
-      elif isinstance(f, meta_graph_pb2.TensorInfo):
-        tensor_infos.append(f)
-        f_tensor = _get_tensor_from_tensor_info(f, self._func_graph)
-        tensor_fetches.append(f_tensor)
-        return f_tensor
-      elif isinstance(f, ops.Tensor):
-        tensor_fetches.append(f)
-        return f
+      if isinstance(fetch, ops.Operation):
+        operation_fetches.append(fetch)
+        return fetch
+      elif isinstance(fetch, meta_graph_pb2.TensorInfo):
+        tensor_infos.append(fetch)
+        decoded = _get_element_from_tensor_info(fetch, self._func_graph)
+        if tensor_util.is_tensor(decoded):
+          tensor_fetches.append(decoded)
+        else:
+          operation_fetches.append(decoded)
+        return decoded
+      elif isinstance(fetch, ops.Tensor):
+        tensor_fetches.append(fetch)
+        return fetch
       else:
-        graph_element = self.graph.as_graph_element(f)
+        graph_element = self.graph.as_graph_element(fetch)
         return _fetch_preprocesing_callback(graph_element)
 
     fetches = nest.map_structure(_fetch_preprocesing_callback, fetches)
 
-    for f in flat_feeds + tensor_fetches + operation_fetches:
+    # Expand composite tensors into their component dense Tensors.
+    tensor_fetches = nest.flatten(tensor_fetches, expand_composites=True)
+
+    for f in (flat_feeds + tensor_fetches + operation_fetches):
       if f.graph is not self._func_graph:
         raise ValueError("Can only prune function whose feeds and fetches "
                          "are from this graph (%s). Input %s is from graph %s" %
@@ -282,6 +295,10 @@ class WrappedFunction(function.ConcreteFunction):
         operation_fetches + tensor_fetches,
         pruned_graph,
         sources=flat_feeds + internal_captures)
+
+    # Note that we add the component tensors of any composite tensors to the
+    # returned function's outputs list; the list must contain these component
+    # tensors, or the function's sparse outputs won't work properly.
     pruned_graph.outputs.extend(lift_map[x] for x in tensor_fetches)
     pruned_graph.control_outputs.extend(
         [lift_map[operation] for operation in operation_fetches])
@@ -291,8 +308,9 @@ class WrappedFunction(function.ConcreteFunction):
     pruned_graph.inputs.extend(pruned_graph.captures.values())
     for ti in tensor_infos:
       if ti.WhichOneof("encoding") == "name":  # Dense tensors only
-        t = pruned_graph.get_tensor_by_name(ti.name)
-        t.set_shape(tensor_shape.TensorShape(ti.tensor_shape))
+        t = pruned_graph.as_graph_element(ti.name)
+        if tensor_util.is_tensor(t):
+          t.set_shape(tensor_shape.TensorShape(ti.tensor_shape))
     # pylint: disable=protected-access
     for f in self.graph._functions.values():
       pruned_graph._add_function(f)
@@ -301,13 +319,17 @@ class WrappedFunction(function.ConcreteFunction):
     pruned_graph.variables = self.graph.variables
 
     def _structured_output_mapping(fetched):
+      """callback for `nest.map_structure()`"""
       lifted = lift_map[fetched]
       if isinstance(lifted, ops.Operation):
         return None
       return lifted
 
+    # expand_composites=True here causes composite tensors to be expanded
+    # into their component dense Tensors, mapped to the new graph, and then
+    # reconstituted into their original composite form.
     pruned_graph.structured_outputs = nest.map_structure(
-        _structured_output_mapping, fetches)
+        _structured_output_mapping, fetches, expand_composites=True)
     pruned_graph.structured_input_signature = input_signature
     pruned_fn = WrappedFunction(
         pruned_graph, variable_holder=self._variable_holder)

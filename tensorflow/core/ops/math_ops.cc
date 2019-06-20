@@ -828,6 +828,57 @@ REGISTER_OP("Select")
       return Status::OK();
     });
 
+REGISTER_OP("SelectV2")
+    .Input("condition: bool")
+    .Input("t: T")
+    .Input("e: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      auto* handle_data_1 = c->input_handle_shapes_and_types(1);
+      auto* handle_data_2 = c->input_handle_shapes_and_types(2);
+      // Merge handle shape and dtype if applicable.
+      if (handle_data_1 != nullptr && handle_data_2 != nullptr) {
+        const auto size = handle_data_1->size();
+        std::vector<shape_inference::ShapeAndType> merged_handle_data(size);
+        if (size != handle_data_2->size()) {
+          return errors::InvalidArgument(
+              "Trying to merge handles pointing to different numbers of "
+              "tensors.");
+        }
+
+        for (int i = 0; i < size; ++i) {
+          const shape_inference::ShapeAndType& s1 = (*handle_data_1)[i];
+          const shape_inference::ShapeAndType& s2 = (*handle_data_2)[i];
+          if (s1.dtype != s2.dtype) {
+            // TODO(apassos) resolve this in the manner of b/32476923
+            return errors::InvalidArgument(
+                "Trying to merge handles pointing to different dtypes.");
+          }
+          merged_handle_data[i].dtype = s1.dtype;
+          TF_RETURN_IF_ERROR(
+              c->Merge(s1.shape, s2.shape, &merged_handle_data[i].shape));
+        }
+
+        c->set_output_handle_shapes_and_types(0, merged_handle_data);
+      }
+
+      // The inputs 'cond', 'then', and 'else' must be broadcastable.
+      // TODO (yongtang): Consolidate 3-ary broadcast instead of
+      // multiple 2-ary broadcast.
+      ShapeHandle cond = c->input(0);
+      ShapeHandle then = c->input(1);
+      ShapeHandle else_ = c->input(2);
+      ShapeHandle other;
+      TF_RETURN_IF_ERROR(
+          BroadcastBinaryOpOutputShapeFnHelper(c, then, else_, &other));
+      ShapeHandle output;
+      TF_RETURN_IF_ERROR(
+          BroadcastBinaryOpOutputShapeFnHelper(c, cond, other, &output));
+      c->set_output(0, output);
+      return Status::OK();
+    });
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("MatMul")
@@ -1125,37 +1176,6 @@ Status SparseSegmentReductionWithNumSegmentsShapeFn(InferenceContext* c) {
   c->set_output(0, out);
   return Status::OK();
 }
-
-Status UnsortedSegmentReductionShapeFn(InferenceContext* c) {
-  ShapeHandle s_data = c->input(0);
-  ShapeHandle s_segment_ids = c->input(1);
-  ShapeHandle s_num_segments = c->input(2);
-  TF_RETURN_IF_ERROR(c->WithRank(s_num_segments, 0, &s_num_segments));
-
-  ShapeHandle out;
-
-  // Leading dimensions of data must be compatible with dimensions of
-  // <s_segment_ids>.
-  if (c->RankKnown(s_segment_ids)) {
-    TF_RETURN_IF_ERROR(
-        c->MergePrefix(s_data, s_segment_ids, &s_data, &s_segment_ids));
-
-    // Get the value of the num_segments input tensor.
-    DimensionHandle num_segments_dim;
-    TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &num_segments_dim));
-
-    // Output is {segment_id_rank} + s_data[segment_id_rank:].
-    ShapeHandle s_data_suffix;
-    TF_RETURN_IF_ERROR(
-        c->Subshape(s_data, c->Rank(s_segment_ids), &s_data_suffix));
-    TF_RETURN_IF_ERROR(
-        c->Concatenate(c->Vector(num_segments_dim), s_data_suffix, &out));
-  } else {
-    out = c->UnknownShape();
-  }
-  c->set_output(0, out);
-  return Status::OK();
-}
 }  // namespace
 
 REGISTER_OP("SegmentSum")
@@ -1206,7 +1226,7 @@ REGISTER_OP("UnsortedSegmentSum")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
-    .SetShapeFn(UnsortedSegmentReductionShapeFn);
+    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
 
 REGISTER_OP("UnsortedSegmentMax")
     .Input("data: T")
@@ -1216,7 +1236,7 @@ REGISTER_OP("UnsortedSegmentMax")
     .Attr("T: realnumbertype")
     .Attr("Tindices: {int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
-    .SetShapeFn(UnsortedSegmentReductionShapeFn);
+    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
 
 REGISTER_OP("UnsortedSegmentMin")
     .Input("data: T")
@@ -1226,7 +1246,7 @@ REGISTER_OP("UnsortedSegmentMin")
     .Attr("T: realnumbertype")
     .Attr("Tindices: {int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
-    .SetShapeFn(UnsortedSegmentReductionShapeFn);
+    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
 
 REGISTER_OP("UnsortedSegmentProd")
     .Input("data: T")
@@ -1236,7 +1256,7 @@ REGISTER_OP("UnsortedSegmentProd")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
-    .SetShapeFn(UnsortedSegmentReductionShapeFn);
+    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
 
 REGISTER_OP("SparseSegmentSum")
     .Input("data: T")

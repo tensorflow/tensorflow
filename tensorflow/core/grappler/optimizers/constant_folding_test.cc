@@ -1037,10 +1037,10 @@ TEST_F(ConstantFoldingTest, ControlDependencies) {
   Output i1 = ops::Identity(scope.WithOpName("i1"), {c});
   Output i2 =
       ops::Identity(scope.WithOpName("i2").WithControlDependencies(p2), {i1});
-  Output i3 = ops::Identity(scope.WithOpName("e"), {i2});
+  Output i3 = ops::Identity(scope.WithOpName("i3"), {i2});
 
   GrapplerItem item;
-  item.fetch.push_back("e");
+  item.fetch.push_back("i3");
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
   ConstantFolding optimizer(/*cpu_device=*/nullptr);
@@ -1048,18 +1048,18 @@ TEST_F(ConstantFoldingTest, ControlDependencies) {
   Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  std::vector<string> expected_nodes = {"dflt", "p1", "p2", "e"};
+  std::vector<string> expected_nodes = {"dflt", "p1", "p2", "i3"};
   EXPECT_EQ(output.node_size(), expected_nodes.size());
   int i = 0;
   int found = 0;
   for (const auto& node : output.node()) {
     EXPECT_EQ(expected_nodes[i], output.node(i).name());
     i++;
-    if (node.name() == "e") {
+    if (node.name() == "i3") {
       EXPECT_EQ("Const", node.op());
       ++found;
-      auto folded = EvaluateNodes(output, {"e"});
-      auto expected = EvaluateNodes(item.graph, {"e"});
+      auto folded = EvaluateNodes(output, {"i3"});
+      auto expected = EvaluateNodes(item.graph, {"i3"});
       EXPECT_EQ(1, expected.size());
       EXPECT_EQ(1, folded.size());
       test::ExpectTensorEqual<int>(folded[0], expected[0]);
@@ -2390,12 +2390,11 @@ TEST_F(ConstantFoldingTest, MergeConcat_PartialFolding) {
   TF_EXPECT_OK(status);
 
   GraphDef want;
-  AddNode("ConstantFolding/concat2_partial_split_0_0", "Const", {}, {}, &want);
+  AddNode("ConstantFolding/concat2_partial_split_0", "Const", {}, {}, &want);
   AddNode("axis", "Const", {}, {}, &want);
   AddNode("ph", "Placeholder", {}, {}, &want);
   AddNode("concat2", "ConcatV2",
-          {"ConstantFolding/concat2_partial_split_0_0", "ph", "axis"}, {},
-          &want);
+          {"ConstantFolding/concat2_partial_split_0", "ph", "axis"}, {}, &want);
 
   CompareGraphs(want, got);
 }
@@ -3233,7 +3232,7 @@ TEST_F(ConstantFoldingTest, PartialFolding_AssociativeAndCommutative) {
         EXPECT_EQ("ConstantFolding/acc6_partial_split_2", node.input(1));
         EXPECT_EQ("y", node.input(2));
       }
-      if (str_util::StartsWith(node.name(), "ConstantFolding/")) {
+      if (absl::StartsWith(node.name(), "ConstantFolding/")) {
         EXPECT_EQ("Const", node.op());
       }
     }
@@ -3318,7 +3317,7 @@ TEST_F(ConstantFoldingTest, PartialFolding_Concat) {
       EXPECT_EQ("x", node.input(1));
       EXPECT_EQ("y", node.input(2));
       EXPECT_EQ("axis", node.input(3));
-    } else if (str_util::StartsWith(node.name(), "ConstantFolding/")) {
+    } else if (absl::StartsWith(node.name(), "ConstantFolding/")) {
       EXPECT_EQ("Const", node.op());
     } else {
       EXPECT_EQ(item.graph.node(i).DebugString(), node.DebugString());

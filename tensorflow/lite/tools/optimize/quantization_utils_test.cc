@@ -56,7 +56,8 @@ TEST(QuantizationUtilsTest, NumElements) {
   EXPECT_EQ(num_elements, 5);
 
   tensor.shape = {};
-  EXPECT_EQ(kTfLiteError, NumElements(tensor, &num_elements));
+  EXPECT_EQ(kTfLiteOk, NumElements(tensor, &num_elements));
+  EXPECT_EQ(num_elements, 1);
 }
 
 TEST(QuantizationUtilsTest, GetAsymmetricQuantizationParamsUnitRange) {
@@ -258,6 +259,38 @@ TEST(QuantizationUtilsTest, SymmetricQuantizeTensor) {
   EXPECT_EQ(quant_buffer_size * 4, float_buffer_size);
 }
 
+TEST(QuantizationUtilsTest, QuantizeFloat16) {
+  // Conv model has weights between 0 and 10.
+  // Quantize the weights tensor.
+  ASSERT_TRUE(g_test_model_dir != nullptr);
+  ASSERT_FALSE(g_test_model_dir->empty());
+  auto test_model = ReadConvModel();
+  ASSERT_TRUE(test_model);
+  auto readonly_model = test_model->GetModel();
+  ASSERT_TRUE(readonly_model);
+  ASSERT_TRUE(readonly_model->subgraphs());
+  ASSERT_GE(readonly_model->subgraphs()->size(), 1);
+  tflite::ModelT model;
+  readonly_model->UnPackTo(&model);
+  auto subgraph = model.subgraphs[0].get();
+  auto conv_op = subgraph->operators.at(0).get();
+  ASSERT_EQ(model.operator_codes.at(conv_op->opcode_index)->builtin_code,
+            BuiltinOperator_CONV_2D);
+  int32_t weights_tensor_idx = conv_op->inputs[1];
+  TensorT* weights_tensor = subgraph->tensors.at(weights_tensor_idx).get();
+
+  EXPECT_EQ(weights_tensor->type, TensorType_FLOAT32);
+  size_t float_buffer_size =
+      model.buffers.at(weights_tensor->buffer)->data.size();
+
+  EXPECT_EQ(QuantizeTensorFloat16(&model, weights_tensor), kTfLiteOk);
+
+  size_t quant_buffer_size =
+      model.buffers.at(weights_tensor->buffer)->data.size();
+  EXPECT_EQ(weights_tensor->type, TensorType_FLOAT16);
+  EXPECT_EQ(quant_buffer_size * 2, float_buffer_size);
+}
+
 TEST(QuantizationUtilsTest, AddQuantizationParams) {
   // Create data.
   auto model = absl::make_unique<ModelT>();
@@ -353,7 +386,7 @@ TEST(QuantizationUtilsTest, SymmetricPerChannelBiasQuantize) {
   // Call and verify.
   EXPECT_EQ(SymmetricPerChannelBiasQuantize(
                 model.get(), model->subgraphs[0]->tensors[0].get(), input_scale,
-                weight_scales.data(), 2, 0),
+                weight_scales.data(), 2),
             kTfLiteOk);
   EXPECT_THAT(model->buffers[model->subgraphs[0]->tensors[0]->buffer]->data,
               ElementsAreArray({16, 0, 0, 0, 2, 0, 0, 0}));

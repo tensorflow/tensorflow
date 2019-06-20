@@ -1,3 +1,5 @@
+load(":build_defs.bzl", "cuda_header_library")
+
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
 package(default_visibility = ["//visibility:public"])
@@ -35,33 +37,17 @@ config_setting(
     values = {"cpu": "freebsd"},
 )
 
-# Provides CUDA headers for '#include "third_party/gpus/cuda/include/cuda.h"'
-# All clients including TensorFlow should use these directives.
-cc_library(
-    name = "cuda_virtual_headers",
+cuda_header_library(
+    name = "cuda_headers",
     hdrs = [
         "cuda/cuda_config.h",
         ":cuda-include"
     ],
     include_prefix = "third_party/gpus",
-    visibility = ["//visibility:private"],
-)
-
-# Provides CUDA headers for '#include <cuda.h>'.
-# CUDA itself as well as Eigen use these directives.
-cc_library(
-    name = "cuda_headers",
-    textual_hdrs = [
-        # TODO(csigg): change references to third_party/gpus/cuda/cuda_config.h
-        # (e.g. in the PIP build script) and then remove cuda_config.h.
-        "cuda/cuda_config.h",
-        ":cuda-include"
-    ],
     includes = [
         ".",  # required to include cuda/cuda/cuda_config.h as cuda/config.h
         "cuda/include",
     ],
-    deps = [":cuda_virtual_headers"],
 )
 
 cc_library(
@@ -88,20 +74,13 @@ cc_library(
     linkstatic = 1,
 )
 
-cc_library(
-    name = "cublas_virtual_headers",
+cuda_header_library(
+    name = "cublas_headers",
     hdrs = [":cublas-include"],
     include_prefix = "third_party/gpus/cuda/include",
     strip_include_prefix = "cublas/include",
-    visibility = ["//visibility:private"],
     deps = [":cuda_headers"],
-)
-
-cc_library(
-    name = "cublas_headers",
-    textual_hdrs = [":cublas-include"],
     includes = ["cublas/include"],
-    deps = [":cublas_virtual_headers"],
 )
 
 cc_library(
@@ -160,19 +139,12 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "cupti_virtual_headers",
+cuda_header_library(
+    name = "cupti_headers",
     hdrs = [":cuda-extras"],
     include_prefix="third_party/gpus",
-    visibility = ["//visibility:private"],
-    deps = [":cuda_headers"],
-)
-
-cc_library(
-    name = "cupti_headers",
-    textual_hdrs = [":cuda-extras"],
     includes = ["cuda/extras/CUPTI/include/"],
-    deps = [":cupti_virtual_headers"],
+    deps = [":cuda_headers"],
 )
 
 cc_library(

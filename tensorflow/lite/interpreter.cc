@@ -227,6 +227,13 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   return kTfLiteOk;
 }
 
+TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegatePtr delegate) {
+  // Note that we retain ownership of the delegate even if graph modification
+  // fails, as delegate use will be in an indeterminate state at that point.
+  owned_delegates_.push_back(std::move(delegate));
+  return ModifyGraphWithDelegate(owned_delegates_.back().get());
+}
+
 TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
                                           TfLiteBufferHandle buffer_handle,
                                           TfLiteDelegate* delegate) {

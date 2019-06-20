@@ -14,17 +14,22 @@ limitations under the License.
 ==============================================================================*/
 
 %include "tensorflow/python/platform/base.i"
+%include "tensorflow/c/tf_datatype.h"
+%include "tensorflow/c/tf_status.h"
 
 %ignore "";
 
 %rename("%s") TF_SetXlaEnableLazyCompilation;
-%rename("%s") TF_SetXLaAutoJitMode;
+%rename("%s") TF_SetXlaAutoJitMode;
+%rename("%s") TF_SetXlaConstantFoldingDisabled;
+%rename("%s") TF_GetXlaConstantFoldingDisabled;
 %rename("%s") TF_SetXlaMinClusterSize;
 %rename("%s") TFE_NewContext;
 %rename("%s") TFE_DeleteContext;
 %rename("%s") TFE_ContextListDevices;
 %rename("%s") TFE_ContextAddFunction;
 %rename("%s") TFE_ContextAddFunctionDef;
+%rename("%s") TFE_ContextRemoveFunction;
 %rename("%s") TFE_ContextHasFunction;
 %rename("%s") TFE_ContextEnableRunMetadata;
 %rename("%s") TFE_ContextDisableRunMetadata;
@@ -47,6 +52,7 @@ limitations under the License.
 %rename("%s") TFE_DeleteProfilerContext;
 %rename("%s") TFE_StartProfilerServer;
 %rename("%s") TFE_ProfilerClientStartTracing;
+%rename("%s") TFE_ProfilerClientMonitor;
 %rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_SetEagerTensorProfiler;
@@ -63,6 +69,7 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeSetRemove;
 %rename("%s") TFE_Py_TapeSetStopOnThread;
 %rename("%s") TFE_Py_TapeSetRestartOnThread;
+%rename("%s") TFE_Py_TapeSetIsStopped;
 %rename("%s") TFE_Py_TapeSetIsEmpty;
 %rename("%s") TFE_Py_TapeSetShouldRecord;
 %rename("%s") TFE_Py_TapeSetDeleteTrace;

@@ -44,6 +44,10 @@ class ThreadPoolDevice : public LocalDevice {
 
   Status Sync() override { return Status::OK(); }
 
+  void Compute(OpKernel* op_kernel, OpKernelContext* context) override;
+  void ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
+                    AsyncOpKernel::DoneCallback done) override;
+
  private:
   Allocator* allocator_;  // Not owned
   std::unique_ptr<ScopedAllocatorMgr> scoped_allocator_mgr_;

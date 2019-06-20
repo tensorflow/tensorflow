@@ -853,21 +853,7 @@ def strided_slice(input_,
       """Closure that holds all the arguments to create an assignment."""
 
       if var is None:
-        if name is None:
-          name = parent_name + "_strided_slice_update"
-
-        return gen_array_ops.tensor_strided_slice_update(
-            input=var,
-            begin=begin,
-            end=end,
-            strides=strides,
-            value=val,
-            name=name,
-            begin_mask=begin_mask,
-            end_mask=end_mask,
-            ellipsis_mask=ellipsis_mask,
-            new_axis_mask=new_axis_mask,
-            shrink_axis_mask=shrink_axis_mask)
+        raise ValueError("Sliced assignment is only supported for variables")
       else:
         if name is None:
           name = parent_name + "_assign"
@@ -1320,6 +1306,10 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
   In that case, `axis + dim(mask) <= dim(tensor)` and `mask`'s shape must match
   the first `axis + dim(mask)` dimensions of `tensor`'s shape.
 
+  See also: `tf.ragged.boolean_mask`, which can be applied to both dense and
+  ragged tensors, and can be used if you need to preserve the masked dimensions
+  of `tensor` (rather than flattening them, as `tf.boolean_mask` does).
+
   Args:
     tensor:  N-D tensor.
     mask:  K-D boolean tensor, K <= N and K must be known statically.
@@ -1403,6 +1393,10 @@ def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
   The `axis` could be used with `mask` to indicate the axis to mask from.
   In that case, `axis + dim(mask) <= dim(tensor)` and `mask`'s shape must match
   the first `axis + dim(mask)` dimensions of `tensor`'s shape.
+
+  See also: `tf.ragged.boolean_mask`, which can be applied to both dense and
+  ragged tensors, and can be used if you need to preserve the masked dimensions
+  of `tensor` (rather than flattening them, as `tf.boolean_mask` does).
 
   Args:
     tensor:  N-D tensor.
@@ -1811,6 +1805,343 @@ def matrix_transpose(a, name="matrix_transpose", conjugate=False):
 
     return transpose(a, perm=perm, conjugate=conjugate)
 
+
+@tf_export("linalg.diag", v1=["linalg.diag", "matrix_diag"])
+@deprecation.deprecated_endpoints("matrix_diag")
+def matrix_diag(diagonal,
+                name="diag",
+                k=0,
+                num_rows=-1,
+                num_cols=-1,
+                padding_value=0):
+  """Returns a batched diagonal tensor with given batched diagonal values.
+
+  Returns a tensor with the contents in `diagonal` as `k[0]`-th to `k[1]`-th
+  diagonals of a matrix, with everything else padded with `padding`. `num_rows`
+  and `num_cols` specify the dimension of the innermost matrix of the output. If
+  both are not specified, the op assumes the innermost matrix is square and
+  infers its size from `k` and the innermost dimension of `diagonal`. If only
+  one of them is specified, the op assumes the unspecified value is the smallest
+  possible based on other criteria.
+
+  Let `diagonal` have `r` dimensions `[I, J, ..., L, M, N]`. The output tensor
+  has rank `r+1` with shape `[I, J, ..., L, M, num_rows, num_cols]` when only
+  one diagonal is given (`k` is an integer or `k[0] == k[1]`). Otherwise, it has
+  rank `r` with shape `[I, J, ..., L, num_rows, num_cols]`.
+
+  The second innermost dimension of `diagonal` has double meaning. When `k` is
+  scalar or `k[0] == k[1]`, `M` is part of the batch size [I, J, ..., M], and
+  the output tensor is:
+
+  ```
+  output[i, j, ..., l, m, n]
+    = diagonal[i, j, ..., l, n-max(d_upper, 0)] ; if n - m == d_upper
+      output[i, j, ..., l, m, n]                ; otherwise
+  ```
+
+  Otherwise, `M` is treated as the number of diagonals for the matrix in the
+  same batch (`M = k[1]-k[0]+1`), and the output tensor is:
+
+  ```
+  output[i, j, ..., l, m, n]
+    = diagonal[i, j, ..., l, k[1]-d, n-max(d, 0)] ; if d_lower <= d <= d_upper
+      input[i, j, ..., l, m, n]                   ; otherwise
+  ```
+  where `d = n - m`
+
+  For example:
+
+  ```
+  # The main diagonal.
+  diagonal = np.array([[1, 2, 3, 4],            # Input shape: (2, 4)
+                       [5, 6, 7, 8]])
+  tf.matrix_diag(diagonal) ==> [[[1, 0, 0, 0],  # Output shape: (2, 4, 4)
+                                 [0, 2, 0, 0],
+                                 [0, 0, 3, 0],
+                                 [0, 0, 0, 4]],
+                                [[5, 0, 0, 0],
+                                 [0, 6, 0, 0],
+                                 [0, 0, 7, 0],
+                                 [0, 0, 0, 8]]]
+
+  # A superdiagonal (per batch).
+  diagonal = np.array([[1, 2, 3],  # Input shape: (2, 3)
+                       [4, 5, 6]])
+  tf.matrix_diag(diagonal, k = 1)
+    ==> [[[0, 1, 0, 0],  # Output shape: (2, 4, 4)
+          [0, 0, 2, 0],
+          [0, 0, 0, 3],
+          [0, 0, 0, 0]],
+         [[0, 4, 0, 0],
+          [0, 0, 5, 0],
+          [0, 0, 0, 6],
+          [0, 0, 0, 0]]]
+
+  # A band of diagonals.
+  diagonals = np.array([[[1, 2, 3],  # Input shape: (2, 2, 3)
+                         [4, 5, 0]],
+                        [[6, 7, 9],
+                         [9, 1, 0]]])
+  tf.matrix_diag(diagonals, k = (-1, 0))
+    ==> [[[1, 0, 0],  # Output shape: (2, 3, 3)
+          [4, 2, 0],
+          [0, 5, 3]],
+         [[6, 0, 0],
+          [9, 7, 0],
+          [0, 1, 9]]]
+
+  # Rectangular matrix.
+  diagonal = np.array([1, 2])  # Input shape: (2)
+  tf.matrix_diag(diagonal, k = -1, num_rows = 3, num_cols = 4)
+    ==> [[0, 0, 0, 0],  # Output shape: (3, 4)
+         [1, 0, 0, 0],
+         [0, 2, 0, 0]]
+
+  # Rectangular matrix with inferred num_cols and padding = 9.
+  tf.matrix_diag(diagonal, k = -1, num_rows = 3, padding = 9)
+    ==> [[9, 9],  # Output shape: (3, 2)
+         [1, 9],
+         [9, 2]]
+  ```
+
+  Args:
+    diagonal: A `Tensor` with `rank k >= 1`.
+    name: A name for the operation (optional).
+    k: Diagonal offset(s). Positive value means superdiagonal, 0 refers to the
+      main diagonal, and negative value means subdiagonals. `k` can be a single
+      integer (for a single diagonal) or a pair of integers specifying the low
+      and high ends of a matrix band. `k[0]` must not be larger than `k[1]`.
+    num_rows: The number of rows of the output matrix. If it is not provided,
+      the op assumes the output matrix is a square matrix and infers the matrix
+      size from `d_lower`, `d_upper`, and the innermost dimension of `diagonal`.
+    num_cols: The number of columns of the output matrix. If it is not provided,
+      the op assumes the output matrix is a square matrix and infers the matrix
+      size from `d_lower`, `d_upper`, and the innermost dimension of `diagonal`.
+    padding_value: The value to fill the area outside the specified diagonal
+      band with. Default is 0.
+
+  Returns:
+    A Tensor. Has the same type as `diagonal`.
+  """
+  if compat.forward_compatible(2019, 7, 4):
+    # Special case to sidestep the tf.constant conversion error:
+    # TypeError: Expected bool, got 0 of type 'int' instead.
+    if hasattr(diagonal, "dtype") and diagonal.dtype == "bool":
+      padding_value = bool(padding_value)
+    return gen_array_ops.matrix_diag_v2(
+        diagonal=diagonal,
+        k=k,
+        num_rows=num_rows,
+        num_cols=num_cols,
+        padding_value=padding_value,
+        name=name)
+
+  # Call v1 to maintain forward compatibility.
+  return gen_array_ops.matrix_diag(diagonal=diagonal, name=name)
+
+
+@tf_export("linalg.diag_part", v1=["linalg.diag_part", "matrix_diag_part"])
+@deprecation.deprecated_endpoints("matrix_diag_part")
+def matrix_diag_part(
+    input,  # pylint:disable=redefined-builtin
+    name="diag_part",
+    k=0,
+    padding_value=0):
+  """Returns the batched diagonal part of a batched tensor.
+
+  Returns a tensor with the `k[0]`-th to `k[1]`-th diagonals of the batched
+  `input`.
+
+  Assume `input` has `r` dimensions `[I, J, ..., L, M, N]`.
+  Let `max_diag_len` be the maximum length among all diagonals to be extracted,
+  `max_diag_len = min(M + min(k[1], 0), N + min(-k[0], 0))`
+  Let `num_diags` be the number of diagonals to extract,
+  `num_diags = k[1] - k[0] + 1`.
+
+  If `num_diags == 1`, the output tensor is of rank `r - 1` with shape
+  `[I, J, ..., L, max_diag_len]` and values:
+
+  ```
+  diagonal[i, j, ..., l, n]
+    = input[i, j, ..., l, n+y, n+x] ; when 0 <= n-y < M and 0 <= n-x < N,
+      0                             ; otherwise.
+  ```
+  where `y = max(-k[1], 0)`, `x = max(k[1], 0)`.
+
+  Otherwise, the output tensor has rank `r` with dimensions
+  `[I, J, ..., L, num_diags, max_diag_len]` with values:
+
+  ```
+  diagonal[i, j, ..., l, m, n]
+    = input[i, j, ..., l, n+y, n+x] ; when 0 <= n-y < M and 0 <= n-x < N,
+      0                             ; otherwise.
+  ```
+  where `d = k[1] - m`, `y = max(-d, 0)`, and `x = max(d, 0)`.
+
+  The input must be at least a matrix.
+
+  For example:
+
+  ```
+  input = np.array([[[1, 2, 3, 4],  # Input shape: (2, 3, 4)
+                     [5, 6, 7, 8],
+                     [9, 8, 7, 6]],
+                    [[5, 4, 3, 2],
+                     [1, 2, 3, 4],
+                     [5, 6, 7, 8]]])
+
+  # A main diagonal from each batch.
+  tf.matrix_diag_part(input) ==> [[1, 6, 7],  # Output shape: (2, 3)
+                                  [5, 2, 7]]
+
+  # A superdiagonal from each batch.
+  tf.matrix_diag_part(input, k = 1)
+    ==> [[2, 7, 6],  # Output shape: (2, 3)
+         [4, 3, 8]]
+
+  # A tridiagonal band from each batch.
+  tf.matrix_diag_part(input, k = (-1, 1))
+    ==> [[[2, 7, 6],  # Output shape: (2, 3, 3)
+          [1, 6, 7],
+          [5, 8, 0]],
+         [[4, 3, 8],
+          [5, 2, 7],
+          [1, 6, 0]]]
+
+  # Padding = 9
+  tf.matrix_diag_part(input, k = (1, 3), padding = 9)
+    ==> [[[4, 9, 9],  # Output shape: (2, 3, 3)
+          [3, 8, 9],
+          [2, 7, 6]],
+         [[2, 9, 9],
+          [3, 4, 9],
+          [4, 3, 8]]]
+  ```
+
+  Args:
+    input: A `Tensor` with `rank k >= 2`.
+    name: A name for the operation (optional).
+    k: Diagonal offset(s). Positive value means superdiagonal, 0 refers to the
+      main diagonal, and negative value means subdiagonals. `k` can be a single
+      integer (for a single diagonal) or a pair of integers specifying the low
+      and high ends of a matrix band. `k[0]` must not be larger than `k[1]`.
+    padding_value: The value to fill the area outside the specified diagonal
+      band with. Default is 0.
+
+  Returns:
+    A Tensor containing diagonals of `input`. Has the same type as `input`.
+  """
+  if compat.forward_compatible(2019, 7, 4):
+    # Special case to sidestep the tf.constant conversion error:
+    # TypeError: Expected bool, got 0 of type 'int' instead.
+    if hasattr(input, "dtype") and input.dtype == "bool":
+      padding_value = bool(padding_value)
+
+    return gen_array_ops.matrix_diag_part_v2(
+        input=input, k=k, padding_value=padding_value, name=name)
+
+  # Call v1 to maintain forward compatibility.
+  return gen_array_ops.matrix_diag_part(input=input, name=name)
+
+
+@tf_export("linalg.set_diag", v1=["linalg.set_diag", "matrix_set_diag"])
+@deprecation.deprecated_endpoints("matrix_set_diag")
+def matrix_set_diag(
+    input,  # pylint:disable=redefined-builtin
+    diagonal,
+    name="set_diag",
+    k=0):
+  """Returns a batched matrix tensor with new batched diagonal values.
+
+  Given `input` and `diagonal`, this operation returns a tensor with the
+  same shape and values as `input`, except for the specified diagonals of the
+  innermost matrices. These will be overwritten by the values in `diagonal`.
+
+  `input` has `r+1` dimensions `[I, J, ..., L, M, N]`. When `k` is scalar or
+  `k[0] == k[1]`, `diagonal` has `r` dimensions `[I, J, ..., L, max_diag_len]`.
+  Otherwise, it has `r+1` dimensions `[I, J, ..., L, num_diags, max_diag_len]`.
+  `num_diags` is the number of diagonals, `num_diags = k[1] - k[0] + 1`.
+  `max_diag_len` is the longest diagonal in the range `[k[0], k[1]]`,
+  `max_diag_len = min(M + min(k[1], 0), N + min(-k[0], 0))`
+
+  The output is a tensor of rank `k+1` with dimensions `[I, J, ..., L, M, N]`.
+  If `k` is scalar or `k[0] == k[1]`:
+
+  ```
+  output[i, j, ..., l, m, n]
+    = diagonal[i, j, ..., l, n-max(k[1], 0)] ; if n - m == k[1]
+      output[i, j, ..., l, m, n]             ; otherwise
+  ```
+
+  Otherwise,
+
+  ```
+  output[i, j, ..., l, m, n]
+    = diagonal[i, j, ..., l, k[1]-d, n-max(d, 0)] ; if d_lower <= d <= d_upper
+      input[i, j, ..., l, m, n]                   ; otherwise
+  ```
+  where `d = n - m`
+
+  For example:
+
+  ```
+  # The main diagonal.
+  input = np.array([[[7, 7, 7, 7],              # Input shape: (2, 3, 4)
+                     [7, 7, 7, 7],
+                     [7, 7, 7, 7]],
+                    [[7, 7, 7, 7],
+                     [7, 7, 7, 7],
+                     [7, 7, 7, 7]]])
+  diagonal = np.array([[1, 2, 3],               # Diagonal shape: (2, 3)
+                       [4, 5, 6]])
+  tf.matrix_diag(diagonal) ==> [[[1, 7, 7, 7],  # Output shape: (2, 3, 4)
+                                 [7, 2, 7, 7],
+                                 [7, 7, 3, 7]],
+                                [[4, 7, 7, 7],
+                                 [7, 5, 7, 7],
+                                 [7, 7, 6, 7]]]
+
+  # A superdiagonal (per batch).
+  tf.matrix_diag(diagonal, k = 1)
+    ==> [[[7, 1, 7, 7],  # Output shape: (2, 3, 4)
+          [7, 7, 2, 7],
+          [7, 7, 7, 3]],
+         [[7, 4, 7, 7],
+          [7, 7, 5, 7],
+          [7, 7, 7, 6]]]
+
+  # A band of diagonals.
+  diagonals = np.array([[[1, 2, 3],  # Diagonal shape: (2, 2, 3)
+                         [4, 5, 0]],
+                        [[6, 1, 2],
+                         [3, 4, 0]]])
+  tf.matrix_diag(diagonals, k = (-1, 0))
+    ==> [[[1, 7, 7, 7],  # Output shape: (2, 3, 4)
+          [4, 2, 7, 7],
+          [0, 5, 3, 7]],
+         [[6, 7, 7, 7],
+          [3, 1, 7, 7],
+          [7, 4, 2, 7]]]
+
+  ```
+
+  Args:
+    input: A `Tensor` with rank `k + 1`, where `k >= 1`.
+    diagonal:  A `Tensor` with rank `k`, when `d_lower == d_upper`, or `k + 1`,
+      otherwise. `k >= 1`.
+    name: A name for the operation (optional).
+    k: Diagonal offset(s). Positive value means superdiagonal, 0 refers to the
+      main diagonal, and negative value means subdiagonals. `k` can be a single
+      integer (for a single diagonal) or a pair of integers specifying the low
+      and high ends of a matrix band. `k[0]` must not be larger than `k[1]`.
+  """
+  if compat.forward_compatible(2019, 7, 4):
+    return gen_array_ops.matrix_set_diag_v2(
+        input=input, diagonal=diagonal, k=k, name=name)
+
+  # Call v1 to maintain forward compatibility.
+  return gen_array_ops.matrix_set_diag(
+      input=input, diagonal=diagonal, name=name)
 
 # pylint: enable=invalid-name
 
@@ -3126,8 +3457,6 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
   tf.shape(tf.squeeze(t, [2, 4]))  # [1, 2, 3, 1]
   ```
 
-  Note: When it comes to squeezing ragged tensors, it has O(number of elements).
-
   Note: if `input` is a `tf.RaggedTensor`, then this operation takes `O(N)`
   time, where `N` is the number of elements in the squeezed dimensions.
 
@@ -3159,11 +3488,60 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
 @tf_export("squeeze", v1=[])
 @dispatch.add_dispatch_support
 def squeeze_v2(input, axis=None, name=None):
+  """Removes dimensions of size 1 from the shape of a tensor.
+
+  Given a tensor `input`, this operation returns a tensor of the same type with
+  all dimensions of size 1 removed. If you don't want to remove all size 1
+  dimensions, you can remove specific size 1 dimensions by specifying
+  `axis`.
+
+  For example:
+
+  ```python
+  # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+  tf.shape(tf.squeeze(t))  # [2, 3]
+  ```
+
+  Or, to remove specific size 1 dimensions:
+
+  ```python
+  # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+  tf.shape(tf.squeeze(t, [2, 4]))  # [1, 2, 3, 1]
+  ```
+
+  Unlike the older op `tf.compat.v1.squeeze`, this op does not accept a
+  deprecated `squeeze_dims` argument.
+
+  Note: if `input` is a `tf.RaggedTensor`, then this operation takes `O(N)`
+  time, where `N` is the number of elements in the squeezed dimensions.
+
+  Args:
+    input: A `Tensor`. The `input` to squeeze.
+    axis: An optional list of `ints`. Defaults to `[]`. If specified, only
+      squeezes the dimensions listed. The dimension index starts at 0. It is an
+      error to squeeze a dimension that is not 1. Must be in the range
+      `[-rank(input), rank(input))`. Must be specified if `input` is a
+      `RaggedTensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `input`.
+    Contains the same data as `input`, but has one or more dimensions of
+    size 1 removed.
+
+  Raises:
+    ValueError: The input cannot be converted to a tensor, or the specified
+      axis cannot be squeezed.
+  """
   # pylint: disable=redefined-builtin
   return squeeze(input, axis, name)
 
 
-@tf_export("where")
+@tf_export(v1=["where"])
+@deprecation.deprecated(
+    date=None,
+    instructions="Use tf.where in 2.0, "
+    "which has the same broadcast rule as np.where")
 @dispatch.add_dispatch_support
 def where(condition, x=None, y=None, name=None):
   """Return the elements, either from `x` or `y`, depending on the `condition`.
@@ -3213,6 +3591,48 @@ def where(condition, x=None, y=None, name=None):
       return gen_array_ops.where(condition=condition, name=name)
   elif x is not None and y is not None:
     return gen_math_ops.select(condition=condition, x=x, y=y, name=name)
+  else:
+    raise ValueError("x and y must both be non-None or both be None.")
+
+
+@tf_export("where", v1=["where_v2"])
+def where_v2(condition, x=None, y=None, name=None):
+  """Return the elements, either from `x` or `y`, depending on the `condition`.
+
+  If both `x` and `y` are None, then this operation returns the coordinates of
+  true elements of `condition`.  The coordinates are returned in a 2-D tensor
+  where the first dimension (rows) represents the number of true elements, and
+  the second dimension (columns) represents the coordinates of the true
+  elements. Keep in mind, the shape of the output tensor can vary depending on
+  how many true values there are in input. Indices are output in row-major
+  order.
+  If both non-None, `condition`, `x` and `y` must be broadcastable to the same
+  shape.
+  The `condition` tensor acts as a mask that chooses, based on the value at each
+  element, whether the corresponding element / row in the output should be taken
+  from `x` (if true) or `y` (if false).
+  Args:
+    condition: A `Tensor` of type `bool`
+    x: A Tensor which is of the same type as `y`, and may be broadcastable with
+      `condition` and `y`.
+    y: A Tensor which is of the same type as `x`, and may be broadcastable with
+      `condition` and `x`.
+    name: A name of the operation (optional).
+
+  Returns:
+    A `Tensor` with the same type as `x` and `y`, and shape that
+      is broadcasted from `condition`, `x`, and `y`, if `x`, `y` are non-None.
+    A `Tensor` with shape `(num_true, dim_size(condition))`.
+  Raises:
+    ValueError: When exactly one of `x` or `y` is non-None.
+  """
+  if x is None and y is None:
+    with ops.name_scope(name, "Where", [condition]) as name:
+      condition = ops.convert_to_tensor(
+          condition, preferred_dtype=dtypes.bool, name="condition")
+      return gen_array_ops.where(condition=condition, name=name)
+  elif x is not None and y is not None:
+    return gen_math_ops.select_v2(condition=condition, t=x, e=y, name=name)
   else:
     raise ValueError("x and y must both be non-None or both be None.")
 
@@ -3279,7 +3699,7 @@ def gather(params,
            validate_indices=None,
            name=None,
            axis=None,
-           batch_dims=0):
+           batch_dims=0):  # pylint: disable=g-doc-args
   r"""Gather slices from params axis axis according to indices.
 
   Gather slices from params axis `axis` according to `indices`.  `indices` must
@@ -3334,18 +3754,32 @@ def gather(params,
     indices: The index `Tensor`.  Must be one of the following types: `int32`,
       `int64`. Must be in range `[0, params.shape[axis])`.
     validate_indices: Deprecated, does nothing.
-    name: A name for the operation (optional).
     axis: A `Tensor`. Must be one of the following types: `int32`, `int64`. The
       `axis` in `params` to gather `indices` from. Must be greater than or equal
       to `batch_dims`.  Defaults to the first non-batch dimension. Supports
       negative indexes.
     batch_dims: An `integer`.  The number of batch dimensions.  Must be less
       than `rank(indices)`.
+    name: A name for the operation (optional).
 
   Returns:
     A `Tensor`. Has the same type as `params`.
   """
   del validate_indices
+  if compat.forward_compatible(2019, 7, 10):
+    if axis is None:
+      axis = batch_dims
+    if axis != 0:
+      return gen_array_ops.gather_v2(
+          params, indices, axis, batch_dims=batch_dims, name=name)
+    try:
+      # TODO(apassos) find a less bad way of detecting resource variables
+      # without introducing a circular dependency.
+      return params.sparse_read(indices, name=name)
+    except AttributeError:
+      return gen_array_ops.gather_v2(
+          params, indices, axis, name=name)
+
   if batch_dims != 0:
     with ops.name_scope(name, "Gather", [params, indices, axis]):
       return _batch_gather(params, indices, batch_dims, axis)
@@ -3381,14 +3815,14 @@ def gather_v2(params,
       batch_dims=batch_dims)
 
 
-gather.__doc__ = gather_v2.__doc__ = gen_array_ops.gather_v2.__doc__
+gather_v2.__doc__ = gather.__doc__
 
 
 @tf_export(v1=["batch_gather"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated(
     "2017-10-25", "`tf.batch_gather` is deprecated, please use `tf.gather` "
-    "with `batch_dims` instead.")  # pylint: disable=missing-docstring
+    "with `batch_dims=-1` instead.")  # pylint: disable=missing-docstring
 def batch_gather(params, indices, name=None):
   """Gather slices from params according to indices with leading batch dims."""
   with ops.name_scope(name, "BatchGather", [params, indices]):
@@ -3824,6 +4258,50 @@ def quantize(input,  # pylint: disable=redefined-builtin
       T,
       mode=mode,
       round_mode=round_mode,
+      name=name)
+
+
+@tf_export("quantization.quantize_and_dequantize")
+def quantize_and_dequantize(input,  # pylint: disable=redefined-builtin
+                            input_min,
+                            input_max,
+                            signed_input=True,
+                            num_bits=8,
+                            range_given=False,
+                            round_mode="HALF_TO_EVEN",
+                            name=None,
+                            narrow_range=False):
+  """Quantizes then dequantizes a tensor.
+
+  Args:
+    input: A `Tensor` to quantize and dequantize.
+    input_min: If range_given=True, the minimum input value that needs to be
+      represented in the quantized representation.
+    input_max: If range_given=True, the maximum input value that needs to be
+      represented in the quantized representation.
+    signed_input: True if the quantization is signed or unsigned.
+    num_bits: The bitwidth of the quantization.
+    range_given: If true use `input_min` and `input_max` for the range of the
+      input, otherwise determine min and max from the input `Tensor`.
+    round_mode: Rounding mode when rounding from float values to quantized ones.
+    name: Optional name for the operation.
+    narrow_range: If true, then the absolute value of the quantized minimum
+      value is the same as the quantized maximum value, instead of 1 greater.
+      i.e. for 8 bit quantization, the minimum value is -127 instead of -128.
+
+  Returns:
+    A `Tensor`. Each element is the result of quantizing and dequantizing the
+    corresponding element of `input`.
+  """
+  return gen_array_ops.quantize_and_dequantize_v2(
+      input,
+      input_min=input_min,
+      input_max=input_max,
+      signed_input=signed_input,
+      num_bits=num_bits,
+      range_given=range_given,
+      round_mode=round_mode,
+      narrow_range=narrow_range,
       name=name)
 
 

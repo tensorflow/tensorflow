@@ -39,14 +39,18 @@ from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
+from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import registry
+from tensorflow.python.framework import tensor_conversion_registry
+from tensorflow.python.framework import tensor_like
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import traceable_stack
 from tensorflow.python.framework import versions
@@ -62,18 +66,28 @@ from tensorflow.python.util import memory
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_stack
 from tensorflow.python.util.deprecation import deprecated_args
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
-# This is to avoid a circular dependency: ops -> tensor_spec -> ops
-tensor_spec = LazyLoader(
-    "tensor_spec", globals(),
-    "tensorflow.python.framework.tensor_spec")
 
 # Temporary global switches determining if we should enable the work-in-progress
 # calls to the C API. These will be removed once all functionality is supported.
 _USE_C_API = True
 _USE_C_SHAPES = True
+
+_api_usage_gauge = monitoring.BoolGauge(
+    "/tensorflow/api/ops_eager_execution",
+    "Whether ops.enable_eager_execution() is called.")
+
+
+# pylint: disable=protected-access
+_TensorLike = tensor_like._TensorLike
+_tensor_conversion_func_registry = \
+    tensor_conversion_registry._tensor_conversion_func_registry
+_tensor_conversion_func_cache = \
+    tensor_conversion_registry._tensor_conversion_func_cache
+_tensor_conversion_func_lock = \
+    tensor_conversion_registry._tensor_conversion_func_lock
+# pylint: enable=protected-access
 
 
 def tensor_id(tensor):
@@ -245,12 +259,6 @@ def numpy_text(tensor, is_repr=False):
   if "\n" in text:
     text = "\n" + text
   return text
-
-
-# NOTE(ebrevdo): Do not subclass this.  If you do, I will break you on purpose.
-class _TensorLike(object):
-  """Internal cls for grouping Tensor, SparseTensor, ..., for is_instance."""
-  pass
 
 
 @tf_export("Tensor")
@@ -763,16 +771,26 @@ class _EagerTensorBase(Tensor):
 
   # __int__, __float__ and __index__ may copy the tensor to CPU and
   # only work for scalars; values are cast as per numpy.
+  # TODO(slebedev): avoid redundant copy in all of the following methods.
   def __int__(self):
     return int(self.numpy())
+
+  def __long__(self):
+    return long(self.numpy())
 
   def __float__(self):
     return float(self.numpy())
 
   def __index__(self):
-    return int(self.numpy())
+    maybe_arr = self.numpy()
+    if isinstance(maybe_arr, np.ndarray):
+      return maybe_arr.__index__()
+    return int(maybe_arr)  # Must be a NumPy scalar.
 
   def __array__(self, dtype=None):
+    # This is only called if the buffer interface conversion failed.
+    # Remove once numpy/numpy#13507 is merged and released or py_function
+    # creates EagerTensors with a non-nullptr context.
     return np.asarray(self.numpy(), dtype=dtype)
 
   def __format__(self, format_spec):
@@ -933,10 +951,12 @@ class _EagerTensorBase(Tensor):
     """
     return self._copy_nograd(context.context(), "CPU:0")
 
+  @deprecation.deprecated(None, "Use tf.identity instead.")
   def cpu(self):
     """A copy of this Tensor with contents backed by host memory."""
     return self._copy(context.context(), "CPU:0")
 
+  @deprecation.deprecated(None, "Use tf.identity instead.")
   def gpu(self, gpu_index=0):
     """A copy of this Tensor with contents backed by memory on the GPU.
 
@@ -1017,13 +1037,8 @@ def _TensorTensorConversionFunction(t, dtype=None, name=None, as_ref=False):
         "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
         (dtype.name, t.dtype.name, str(t)))
   return t
-
-
-_tensor_conversion_func_registry = {
-    0: [(Tensor, _TensorTensorConversionFunction)]
-}
-_tensor_conversion_func_cache = {}
-_tensor_conversion_func_lock = threading.Lock()
+tensor_conversion_registry.register_tensor_conversion_function(
+    Tensor, _TensorTensorConversionFunction, 0)
 register_dense_tensor_like_type(Tensor)
 
 
@@ -1325,137 +1340,6 @@ def convert_n_to_tensor(values, dtype=None, name=None, preferred_dtype=None):
       as_ref=False)
 
 
-@tf_export(v1=["convert_to_tensor_or_indexed_slices"])
-def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None):
-  """Converts the given object to a `Tensor` or an `IndexedSlices`.
-
-  If `value` is an `IndexedSlices` or `SparseTensor` it is returned
-  unmodified. Otherwise, it is converted to a `Tensor` using
-  `convert_to_tensor()`.
-
-  Args:
-    value: An `IndexedSlices`, `SparseTensor`, or an object that can be consumed
-      by `convert_to_tensor()`.
-    dtype: (Optional.) The required `DType` of the returned `Tensor` or
-      `IndexedSlices`.
-    name: (Optional.) A name to use if a new `Tensor` is created.
-
-  Returns:
-    A `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
-
-  Raises:
-    ValueError: If `dtype` does not match the element type of `value`.
-  """
-  return internal_convert_to_tensor_or_indexed_slices(
-      value=value, dtype=dtype, name=name, as_ref=False)
-
-
-def internal_convert_to_tensor_or_indexed_slices(value,
-                                                 dtype=None,
-                                                 name=None,
-                                                 as_ref=False):
-  """Converts the given object to a `Tensor` or an `IndexedSlices`.
-
-  If `value` is an `IndexedSlices` or `SparseTensor` it is returned
-  unmodified. Otherwise, it is converted to a `Tensor` using
-  `convert_to_tensor()`.
-
-  Args:
-    value: An `IndexedSlices`, `SparseTensor`, or an object that can be consumed
-      by `convert_to_tensor()`.
-    dtype: (Optional.) The required `DType` of the returned `Tensor` or
-      `IndexedSlices`.
-    name: (Optional.) A name to use if a new `Tensor` is created.
-    as_ref: True if the caller wants the results as ref tensors.
-
-  Returns:
-    A `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
-
-  Raises:
-    ValueError: If `dtype` does not match the element type of `value`.
-  """
-  if isinstance(value, EagerTensor) and not context.executing_eagerly():
-    return internal_convert_to_tensor(
-        value, dtype=dtype, name=name, as_ref=as_ref)
-  elif isinstance(value, _TensorLike):
-    if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value.dtype):
-      raise ValueError(
-          "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
-          (dtypes.as_dtype(dtype).name, value.dtype.name, str(value)))
-    return value
-  else:
-    return internal_convert_to_tensor(
-        value, dtype=dtype, name=name, as_ref=as_ref)
-
-
-def internal_convert_n_to_tensor_or_indexed_slices(values,
-                                                   dtype=None,
-                                                   name=None,
-                                                   as_ref=False):
-  """Converts `values` to a list of `Tensor` or `IndexedSlices` objects.
-
-  Any `IndexedSlices` or `SparseTensor` objects in `values` are returned
-  unmodified.
-
-  Args:
-    values: A list of `None`, `IndexedSlices`, `SparseTensor`, or objects that
-      can be consumed by `convert_to_tensor()`.
-    dtype: (Optional.) The required `DType` of the returned `Tensor` or
-      `IndexedSlices`.
-    name: (Optional.) A name prefix to used when a new `Tensor` is created, in
-      which case element `i` will be given the name `name + '_' + i`.
-    as_ref: True if the caller wants the results as ref tensors.
-
-  Returns:
-    A list of `Tensor`, `IndexedSlices`, `SparseTensor` and/or `None` objects.
-
-  Raises:
-    TypeError: If no conversion function is registered for an element in
-      `values`.
-    RuntimeError: If a registered conversion function returns an invalid
-      value.
-  """
-  if not isinstance(values, collections.Sequence):
-    raise TypeError("values must be a sequence.")
-  ret = []
-  for i, value in enumerate(values):
-    if value is None:
-      ret.append(value)
-    else:
-      n = None if name is None else "%s_%d" % (name, i)
-      ret.append(
-          internal_convert_to_tensor_or_indexed_slices(
-              value, dtype=dtype, name=n, as_ref=as_ref))
-  return ret
-
-
-def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None):
-  """Converts `values` to a list of `Output` or `IndexedSlices` objects.
-
-  Any `IndexedSlices` or `SparseTensor` objects in `values` are returned
-  unmodified.
-
-  Args:
-    values: A list of `None`, `IndexedSlices`, `SparseTensor`, or objects that
-      can be consumed by `convert_to_tensor()`.
-    dtype: (Optional.) The required `DType` of the returned `Tensor`
-      `IndexedSlices`.
-    name: (Optional.) A name prefix to used when a new `Tensor` is created, in
-      which case element `i` will be given the name `name + '_' + i`.
-
-  Returns:
-    A list of `Tensor`, `IndexedSlices`, and/or `SparseTensor` objects.
-
-  Raises:
-    TypeError: If no conversion function is registered for an element in
-      `values`.
-    RuntimeError: If a registered conversion function returns an invalid
-      value.
-  """
-  return internal_convert_n_to_tensor_or_indexed_slices(
-      values=values, dtype=dtype, name=name, as_ref=False)
-
-
 def convert_to_tensor_or_composite(value, dtype=None, name=None):
   """Converts the given object to a `Tensor` or `CompositeTensor`.
 
@@ -1582,201 +1466,6 @@ def convert_n_to_tensor_or_composite(values, dtype=None, name=None):
   """
   return internal_convert_n_to_tensor_or_composite(
       values=values, dtype=dtype, name=name, as_ref=False)
-
-
-# TODO(josh11b): Add ctx argument to conversion_func() signature.
-@tf_export("register_tensor_conversion_function")
-def register_tensor_conversion_function(base_type,
-                                        conversion_func,
-                                        priority=100):
-  """Registers a function for converting objects of `base_type` to `Tensor`.
-
-  The conversion function must have the following signature:
-
-  ```python
-      def conversion_func(value, dtype=None, name=None, as_ref=False):
-        # ...
-  ```
-
-  It must return a `Tensor` with the given `dtype` if specified. If the
-  conversion function creates a new `Tensor`, it should use the given
-  `name` if specified. All exceptions will be propagated to the caller.
-
-  The conversion function may return `NotImplemented` for some
-  inputs. In this case, the conversion process will continue to try
-  subsequent conversion functions.
-
-  If `as_ref` is true, the function must return a `Tensor` reference,
-  such as a `Variable`.
-
-  NOTE: The conversion functions will execute in order of priority,
-  followed by order of registration. To ensure that a conversion function
-  `F` runs before another conversion function `G`, ensure that `F` is
-  registered with a smaller priority than `G`.
-
-  Args:
-    base_type: The base type or tuple of base types for all objects that
-      `conversion_func` accepts.
-    conversion_func: A function that converts instances of `base_type` to
-      `Tensor`.
-    priority: Optional integer that indicates the priority for applying this
-      conversion function. Conversion functions with smaller priority values run
-      earlier than conversion functions with larger priority values. Defaults to
-      100.
-
-  Raises:
-    TypeError: If the arguments do not have the appropriate type.
-
-  """
-  global _tensor_conversion_func_cache
-  with _tensor_conversion_func_lock:
-    if not (isinstance(base_type, type) or
-            (isinstance(base_type, tuple) and
-             all(isinstance(x, type) for x in base_type))):
-      raise TypeError("base_type must be a type or a tuple of types.")
-    if not callable(conversion_func):
-      raise TypeError("conversion_func must be callable.")
-
-    # context._context is checked so that we don't inadvertently create it.
-    # This is because enable_eager_execution will fail when called from the main
-    # function if the context._context is already created, and the
-    # register_tensor_conversion_function calls happen when the module is
-    # imported.
-    if context._context is not None and context.executing_eagerly(
-    ) and isinstance(base_type, six.integer_types + (
-        float,
-        np.ndarray,
-    )):
-      # TODO(nareshmodi): consider setting a context variable which disables the
-      # fastpath instead.
-      raise TypeError(
-          "Cannot register conversions for numpy arrays, python number types "
-          "when executing eagerly.")
-
-    try:
-      funcs_at_priority = _tensor_conversion_func_registry[priority]
-    except KeyError:
-      funcs_at_priority = []
-      _tensor_conversion_func_registry[priority] = funcs_at_priority
-    funcs_at_priority.append((base_type, conversion_func))
-    _tensor_conversion_func_cache = {}
-
-
-@tf_export("IndexedSlices")
-class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
-  """A sparse representation of a set of tensor slices at given indices.
-
-  This class is a simple wrapper for a pair of `Tensor` objects:
-
-  * `values`: A `Tensor` of any dtype with shape `[D0, D1, ..., Dn]`.
-  * `indices`: A 1-D integer `Tensor` with shape `[D0]`.
-
-  An `IndexedSlices` is typically used to represent a subset of a larger
-  tensor `dense` of shape `[LARGE0, D1, .. , DN]` where `LARGE0 >> D0`.
-  The values in `indices` are the indices in the first dimension of
-  the slices that have been extracted from the larger tensor.
-
-  The dense tensor `dense` represented by an `IndexedSlices` `slices` has
-
-  ```python
-  dense[slices.indices[i], :, :, :, ...] = slices.values[i, :, :, :, ...]
-  ```
-
-  The `IndexedSlices` class is used principally in the definition of
-  gradients for operations that have sparse gradients
-  (e.g. `tf.gather`).
-
-  Contrast this representation with
-  `tf.SparseTensor`,
-  which uses multi-dimensional indices and scalar values.
-  """
-
-  def __init__(self, values, indices, dense_shape=None):
-    """Creates an `IndexedSlices`."""
-    if not isinstance(values, tensor_spec.TensorSpec):
-      _get_graph_from_inputs([values, indices, dense_shape])
-    self._values = values
-    self._indices = indices
-    self._dense_shape = dense_shape
-
-  @property
-  def values(self):
-    """A `Tensor` containing the values of the slices."""
-    return self._values
-
-  @property
-  def indices(self):
-    """A 1-D `Tensor` containing the indices of the slices."""
-    return self._indices
-
-  @property
-  def dense_shape(self):
-    """A 1-D `Tensor` containing the shape of the corresponding dense tensor."""
-    return self._dense_shape
-
-  @property
-  def name(self):
-    """The name of this `IndexedSlices`."""
-    return self.values.name
-
-  @property
-  def device(self):
-    """The name of the device on which `values` will be produced, or `None`."""
-    return self.values.device
-
-  @property
-  def op(self):
-    """The `Operation` that produces `values` as an output."""
-    return self.values.op
-
-  @property
-  def dtype(self):
-    """The `DType` of elements in this tensor."""
-    return self.values.dtype
-
-  @property
-  def graph(self):
-    """The `Graph` that contains the values, indices, and shape tensors."""
-    return self._values.graph
-
-  def __str__(self):
-    return "IndexedSlices(indices=%s, values=%s%s)" % (
-        self._indices, self._values,
-        (", dense_shape=%s" %
-         self._dense_shape) if self._dense_shape is not None else "")
-
-  def __neg__(self):
-    return IndexedSlices(-self.values, self.indices, self.dense_shape)
-
-  def _to_components(self):
-    if self._dense_shape is None:
-      return (self._values, self._indices)
-    else:
-      return (self._values, self._indices, self._dense_shape)
-
-  @classmethod
-  def _from_components(cls, components, metadata):
-    return cls(*components)
-
-  def _shape_invariant_to_components(self, shape=None):
-    if shape is None:
-      shape = self._values.shape
-    if self._dense_shape is None:
-      return (shape, shape[:1])  # values, indices
-    else:
-      # values, indices, dense_shape
-      return (shape, shape[:1], tensor_shape.TensorShape([shape.ndims]))
-
-  @property
-  def _is_graph_tensor(self):
-    return hasattr(self._values, "graph")
-
-  def consumers(self):
-    return self._consumers()
-
-
-IndexedSlicesValue = collections.namedtuple(
-    "IndexedSlicesValue", ["values", "indices", "dense_shape"])
 
 
 def _device_string(dev_spec):
@@ -2593,8 +2282,15 @@ class Operation(object):
     func = attr_value_pb2.NameAttrList(name=func_name)
     self._set_attr(attr_name, attr_value_pb2.AttrValue(func=func))
 
+  def _set_func_list_attr(self, attr_name, func_names):
+    """Private method used to set a list(function) attribute in the node_def."""
+    funcs = [attr_value_pb2.NameAttrList(name=func_name)
+             for func_name in func_names]
+    funcs_list = attr_value_pb2.AttrValue.ListValue(func=funcs)
+    self._set_attr(attr_name, attr_value_pb2.AttrValue(list=funcs_list))
+
   def _set_type_list_attr(self, attr_name, types):
-    """Private method used to set a function attribute in the node_def."""
+    """Private method used to set a list(type) attribute in the node_def."""
     if not types:
       return
     if isinstance(types[0], dtypes.DType):
@@ -2603,7 +2299,7 @@ class Operation(object):
     self._set_attr(attr_name, attr_value_pb2.AttrValue(list=types_list))
 
   def _set_shape_list_attr(self, attr_name, shapes):
-    """Private method used to set a function attribute in the node_def."""
+    """Private method used to set a list(shape) attribute in the node_def."""
     shapes = [s.as_proto() for s in shapes]
     shapes_list = attr_value_pb2.AttrValue.ListValue(shape=shapes)
     self._set_attr(attr_name, attr_value_pb2.AttrValue(list=shapes_list))
@@ -2706,6 +2402,9 @@ class RegisterGradient(object):
     Args:
       op_type: The string type of an operation. This corresponds to the
         `OpDef.name` field for the proto that defines the operation.
+
+    Raises:
+      TypeError: If `op_type` is not string.
     """
     if not isinstance(op_type, six.string_types):
       raise TypeError("op_type must be a string")
@@ -3501,13 +3200,6 @@ class Graph(object):
 
     # Add function to graph
     # pylint: disable=protected-access
-    # Handle functions created without using the C API. TODO(apassos,skyewm)
-    # remove this when all functions are generated using the C API by default
-    # as this will be unnecessary.
-    if not function._c_func:
-      serialized = function.definition.SerializeToString()
-      c_func = c_api.TF_FunctionImportFunctionDef(serialized)
-      function._c_func = c_api_util.ScopedTFFunction(c_func)
     gradient = (
         function._grad_func._c_func.func if function._grad_func else None)
     c_api.TF_GraphCopyFunction(self._c_graph, function._c_func.func, gradient)
@@ -3768,7 +3460,8 @@ class Graph(object):
     Args:
       obj: A `Tensor`, an `Operation`, or the name of a tensor or operation. Can
         also be any object with an `_as_graph_element()` method that returns a
-        value of one of these types.
+        value of one of these types. Note: `_as_graph_element` will be called
+        inside the graph's lock and so may not modify the graph.
       allow_tensor: If true, `obj` may refer to a `Tensor`.
       allow_operation: If true, `obj` may refer to an `Operation`.
 
@@ -5293,12 +4986,21 @@ def device(device_name_or_function):
     RuntimeError: If eager execution is enabled and a function is passed in.
   """
   if context.executing_eagerly():
-    # TODO(agarwal): support device functions in EAGER mode.
     if callable(device_name_or_function):
       raise RuntimeError(
           "tf.device does not support functions when eager execution "
           "is enabled.")
     return context.device(device_name_or_function)
+  elif inside_function():
+    @tf_contextlib.contextmanager
+    def combined(device_name_or_function):
+      with get_default_graph().device(device_name_or_function):
+        if not callable(device_name_or_function):
+          with context.device(device_name_or_function):
+            yield
+        else:
+          yield
+    return combined(device_name_or_function)
   else:
     return get_default_graph().device(device_name_or_function)
 
@@ -5333,10 +5035,7 @@ def device_v2(device_name):
   """
   if callable(device_name):
     raise RuntimeError("tf.device does not support functions.")
-  if context.executing_eagerly():
-    return context.device(device_name)
-  else:
-    return get_default_graph().device(device_name)
+  return device(device_name)
 
 
 @tf_export(v1=["container"])
@@ -5863,6 +5562,7 @@ def enable_eager_execution(config=None, device_policy=None,
      TensorFlow graph, or if options provided conflict with a previous call
      to this function.
   """
+  _api_usage_gauge.get_cell().set(True)
   if context.default_execution_mode != context.EAGER_MODE:
     return enable_eager_execution_internal(
         config=config,
@@ -5879,6 +5579,7 @@ def disable_eager_execution():
   created. It can be used at the beginning of the program for complex migration
   projects from TensorFlow 1.x to 2.x.
   """
+  _api_usage_gauge.get_cell().set(False)
   context.default_execution_mode = context.GRAPH_MODE
   c = context.context_safe()
   if c is not None:
@@ -5949,8 +5650,8 @@ def enable_eager_execution_internal(config=None,
         (context._context._config, config, context._context._device_policy,
          device_policy, context._context._execution_mode, execution_mode))
   else:
-    raise ValueError(
-        "tf.enable_eager_execution must be called at program startup.")
+    # We already created everything, so update the thread local data.
+    context._context._thread_local_data.is_eager = True
 
   # Monkey patch to get rid of an unnecessary conditional since the context is
   # now initialized.
@@ -6468,25 +6169,9 @@ class name_scope(object):  # pylint: disable=invalid-name
       return self._name_scope.__enter__()
 
     if self._in_eager_mode:
-      self._old_name = self._ctx.scope_name
-      if not self._name:
-        scope_name = ""
-      else:
-        cache_key = self._name, self._old_name, self._default_name
-        if cache_key in name_scope_cache:
-          self._ctx.scope_name = name_scope_cache[cache_key]
-          return self._ctx.scope_name
-        elif self._name[-1] == "/":
-          # A trailing slash breaks out of nested name scopes, indicating a
-          # fully specified scope name, for compatibility with Graph.name_scope.
-          scope_name = self._name
-        else:
-          name_with_trailing_slash = self._name + "/"
-          scope_name = (
-              self._old_name + name_with_trailing_slash
-              if self._old_name else name_with_trailing_slash)
-        name_scope_cache[cache_key] = scope_name
-      self._ctx.scope_name = scope_name
+      scope_name, old_name = enter_eager_name_scope(self._ctx, self._name,
+                                                    self._default_name)
+      self._old_name = old_name
       return scope_name
     else:
       if self._name is None and self._values is not None:
@@ -6517,6 +6202,29 @@ class name_scope(object):  # pylint: disable=invalid-name
       self._name_scope.__exit__(type_arg, value_arg, traceback_arg)
       self._g_manager.__exit__(type_arg, value_arg, traceback_arg)
     return False  # False values do not suppress exceptions
+
+
+def enter_eager_name_scope(ctx, name, default_name=None):
+  """Updates the eager context to enter the given name scope."""
+  old_name = ctx.scope_name
+  if not name:
+    scope_name = ""
+  else:
+    if name[-1] == "/":
+      # A trailing slash breaks out of nested name scopes, indicating a
+      # fully specified scope name, for compatibility with Graph.name_scope.
+      scope_name = name
+    else:
+      # TODO(tomhennigan) Benchmark and consider removing the cache.
+      cache_key = name, old_name, default_name
+      scope_name = name_scope_cache.get(cache_key, None)
+      if scope_name is None:
+        scope_name = name + "/"
+        if old_name:
+          scope_name = old_name + scope_name
+        name_scope_cache[cache_key] = scope_name
+  ctx.scope_name = scope_name
+  return scope_name, old_name
 
 
 @tf_export("name_scope", v1=[])
@@ -6557,7 +6265,38 @@ class name_scope_v2(name_scope):
     """
     if name is None or not isinstance(name, six.string_types):
       raise ValueError("name for name_scope must be a string.")
-    super(name_scope_v2, self).__init__(name=None, default_name=name)
+    self._name = name
+    self._exit_fns = []
+
+  @property
+  def name(self):
+    return self._name
+
+  def __enter__(self):
+    """Start the scope block.
+
+    Returns:
+      The scope name.
+
+    Raises:
+      ValueError: if neither `name` nor `default_name` is provided
+        but `values` are.
+    """
+    ctx = context.context()
+    if ctx.executing_eagerly():
+      scope_name, old_scope_name = enter_eager_name_scope(ctx, self._name)
+      self._exit_fns.append(
+          lambda *a: setattr(ctx, "scope_name", old_scope_name))
+    else:
+      scope = get_default_graph().name_scope(self._name)
+      scope_name = scope.__enter__()
+      self._exit_fns.append(scope.__exit__)
+    return scope_name
+
+  def __exit__(self, type_arg, value_arg, traceback_arg):
+    exit_fn = self._exit_fns.pop()
+    exit_fn(type_arg, value_arg, traceback_arg)
+    return False  # False values do not suppress exceptions
 
 
 def strip_name_scope(name, export_scope):
@@ -6716,4 +6455,22 @@ def _is_keras_symbolic_tensor(x):
   return hasattr(x, "graph") and getattr(x.graph, "name", None) == "keras_graph"
 
 
-register_tensor_conversion_function(Operation, _operation_conversion_error)
+tensor_conversion_registry.register_tensor_conversion_function(
+    Operation, _operation_conversion_error)
+
+
+# These symbols were originally defined in this module; import them for
+# backwards compatibility until all references have been updated to access
+# them from the indexed_slices.py module.
+IndexedSlices = indexed_slices.IndexedSlices
+IndexedSlicesValue = indexed_slices.IndexedSlicesValue
+convert_to_tensor_or_indexed_slices = \
+    indexed_slices.convert_to_tensor_or_indexed_slices
+convert_n_to_tensor_or_indexed_slices = \
+    indexed_slices.convert_n_to_tensor_or_indexed_slices
+internal_convert_to_tensor_or_indexed_slices = \
+    indexed_slices.internal_convert_to_tensor_or_indexed_slices
+internal_convert_n_to_tensor_or_indexed_slices = \
+    indexed_slices.internal_convert_n_to_tensor_or_indexed_slices
+register_tensor_conversion_function = \
+    tensor_conversion_registry.register_tensor_conversion_function

@@ -53,7 +53,7 @@ void CheckRankAtLeast2(OpKernelContext* ctx, const TensorShape& shape) {
 Status GroupShape(const VarDimArray& input_shape, ShapeArray* grouped_shape) {
   if (input_shape.size() < 2) {
     // TODO(irving): Why can't 2 be 1 here?
-    return errors::InvalidArgument("Shape [", str_util::Join(input_shape, ","),
+    return errors::InvalidArgument("Shape [", absl::StrJoin(input_shape, ","),
                                    "] has rank ", input_shape.size(), " < 2");
   }
   // grouped_shape is input_shape[:-1]
@@ -380,8 +380,8 @@ void SetOperationOp<T>::ApplySetOperation(const std::set<T>& set1,
 Status CheckShapesMatch(VarDimArray shape1, VarDimArray shape2) {
   if (shape1 != shape2) {
     return errors::InvalidArgument("Mismatched shapes [",
-                                   str_util::Join(shape1, ","), "] vs [",
-                                   str_util::Join(shape2, ","), "]");
+                                   absl::StrJoin(shape1, ","), "] vs [",
+                                   absl::StrJoin(shape2, ","), "]");
   }
   return Status::OK();
 }

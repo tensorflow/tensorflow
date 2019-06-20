@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
-#include "tensorflow/stream_executor/owning_device_memory.h"
 
 namespace xla {
 namespace gpu {

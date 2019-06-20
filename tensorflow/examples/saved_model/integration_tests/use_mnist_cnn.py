@@ -15,7 +15,7 @@
 """Imports a convolutional feature extractor for MNIST in SavedModel format.
 
 This program picks up the SavedModel written by export_mnist_cnn.py and
-uses the feature extractor contained in it to classification on either
+uses the feature extractor contained in it to do classification on either
 classic MNIST (digits) or Fashion MNIST (thumbnails of apparel). Optionally,
 it trains the feature extractor further as part of the new classifier.
 As expected, that makes training slower but does not help much for the
@@ -36,8 +36,8 @@ from tensorflow.examples.saved_model.integration_tests import mnist_util
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string(
-    'export_dir', None,
-    'Directory of exported SavedModel.')
+    'input_saved_model_dir', None,
+    'Directory of the reusable SavedModel that is imported into this program.')
 flags.DEFINE_integer(
     'epochs', 5,
     'Number of epochs to train.')
@@ -60,27 +60,37 @@ flags.DEFINE_bool(
 flags.DEFINE_bool(
     'use_mirrored_strategy', False,
     'Whether to use mirrored distribution strategy.')
+flags.DEFINE_string(
+    'output_saved_model_dir', None,
+    'Directory of the SavedModel that was exported for reuse.')
 
 
 def make_feature_extractor(saved_model_path, trainable,
                            regularization_loss_multiplier):
   """Load a pre-trained feature extractor and wrap it for use in Keras."""
-  obj = tf.saved_model.load(saved_model_path)
-
-  # Optional: scale regularization losses to target problem.
   if regularization_loss_multiplier:
+    # TODO(b/63257857): Scaling regularization losses requires manual loading
+    # and modification of the SavedModel
+    obj = tf.saved_model.load(saved_model_path)
     def _scale_one_loss(l):  # Separate def avoids lambda capture of loop var.
       f = tf.function(lambda: tf.multiply(regularization_loss_multiplier, l()))
       _ = f.get_concrete_function()
       return f
     obj.regularization_losses = [_scale_one_loss(l)
                                  for l in obj.regularization_losses]
+    # The modified object is then passed to hub.KerasLayer instead of the
+    # string handle. That prevents it from saving a Keras config (b/134528831).
+    handle = obj
+  else:
+    # If possible, we exercise the more common case of passing a string handle
+    # such that hub.KerasLayer can save a Keras config (b/134528831).
+    handle = saved_model_path
 
   arguments = {}
   if FLAGS.dropout_rate is not None:
     arguments['dropout_rate'] = FLAGS.dropout_rate
 
-  return hub.KerasLayer(obj, trainable=trainable, arguments=arguments)
+  return hub.KerasLayer(handle, trainable=trainable, arguments=arguments)
 
 
 def make_classifier(feature_extractor, l2_strength=0.01, dropout_rate=0.5):
@@ -88,7 +98,8 @@ def make_classifier(feature_extractor, l2_strength=0.01, dropout_rate=0.5):
   regularizer = lambda: tf.keras.regularizers.l2(l2_strength)
   net = inp = tf.keras.Input(mnist_util.INPUT_SHAPE)
   net = feature_extractor(net)
-  net = tf.keras.layers.Dropout(dropout_rate)(net)
+  if dropout_rate:
+    net = tf.keras.layers.Dropout(dropout_rate)(net)
   net = tf.keras.layers.Dense(mnist_util.NUM_CLASSES, activation='softmax',
                               kernel_regularizer=regularizer())(net)
   return tf.keras.Model(inputs=inp, outputs=net)
@@ -104,7 +115,7 @@ def main(argv):
 
   with strategy.scope():
     feature_extractor = make_feature_extractor(
-        FLAGS.export_dir,
+        FLAGS.input_saved_model_dir,
         FLAGS.retrain,
         FLAGS.regularization_loss_multiplier)
     model = make_classifier(feature_extractor)
@@ -125,6 +136,9 @@ def main(argv):
             epochs=FLAGS.epochs,
             verbose=1,
             validation_data=(x_test, y_test))
+
+  if FLAGS.output_saved_model_dir:
+    tf.saved_model.save(model, FLAGS.output_saved_model_dir)
 
 
 if __name__ == '__main__':

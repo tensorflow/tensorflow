@@ -46,12 +46,12 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kLogistic || type == OperatorType::kSoftmax ||
          type == OperatorType::kLogSoftmax || type == OperatorType::kSlice ||
          type == OperatorType::kResizeBilinear ||
-         type == OperatorType::kSplit || type == OperatorType::kSub ||
-         type == OperatorType::kSqueeze || type == OperatorType::kPad ||
-         type == OperatorType::kPadV2 || type == OperatorType::kReshape ||
-         type == OperatorType::kTanh || type == OperatorType::kMul ||
-         type == OperatorType::kBatchToSpaceND || type == OperatorType::kSum ||
-         type == OperatorType::kSpaceToBatchND ||
+         type == OperatorType::kSplit || type == OperatorType::kSplitV ||
+         type == OperatorType::kSub || type == OperatorType::kSqueeze ||
+         type == OperatorType::kPad || type == OperatorType::kPadV2 ||
+         type == OperatorType::kReshape || type == OperatorType::kTanh ||
+         type == OperatorType::kMul || type == OperatorType::kBatchToSpaceND ||
+         type == OperatorType::kSum || type == OperatorType::kSpaceToBatchND ||
          type == OperatorType::kSpaceToDepth ||
          type == OperatorType::kStridedSlice ||
          type == OperatorType::kDepthToSpace ||
@@ -71,7 +71,7 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kReduceMin ||
          type == OperatorType::kTransposeConv ||
          type == OperatorType::kMatrixSetDiag ||
-         type == OperatorType::kMatrixDiag;
+         type == OperatorType::kMatrixDiag || type == OperatorType::kHardSwish;
 }
 
 // The quantized op allows output arrays of type float using

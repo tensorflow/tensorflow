@@ -31,6 +31,7 @@ from tensorflow.lite.python import util as _util
 from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
 from tensorflow.python.keras.preprocessing import image
 from tensorflow.python.lib.io import file_io as _file_io
@@ -74,12 +75,11 @@ def get_image(size):
   return img_array
 
 
-def _convert(converter, version=1, **kwargs):
+def _convert(converter, **kwargs):
   """Converts the model.
 
   Args:
     converter: TFLiteConverter object.
-    version: Version of the converter. Only valid values are 1 and 2.
     **kwargs: Additional arguments to be passed into the converter. Supported
       flags are {"target_ops", "post_training_quantize"}.
 
@@ -89,14 +89,8 @@ def _convert(converter, version=1, **kwargs):
   Raises:
     ValueError: Invalid version number.
   """
-  if version not in (1, 2):
-    raise ValueError("Invalid TFLiteConverter version number.")
-
   if "target_ops" in kwargs:
-    if version == 1:
-      converter.target_ops = kwargs["target_ops"]
-    else:
-      converter.target_spec.supported_ops = kwargs["target_ops"]
+    converter.target_spec.supported_ops = kwargs["target_ops"]
   if "post_training_quantize" in kwargs:
     converter.post_training_quantize = kwargs["post_training_quantize"]
   return converter.convert()
@@ -185,26 +179,31 @@ def evaluate_frozen_graph(filename, input_arrays, output_arrays):
   Returns:
     Lambda function ([np.ndarray data] : [np.ndarray result]).
   """
-  with _session.Session().as_default() as sess:
-    with _file_io.FileIO(filename, "rb") as f:
-      file_content = f.read()
+  with _file_io.FileIO(filename, "rb") as f:
+    file_content = f.read()
 
-    graph_def = _graph_pb2.GraphDef()
-    try:
-      graph_def.ParseFromString(file_content)
-    except (_text_format.ParseError, DecodeError):
-      if not isinstance(file_content, str):
-        if PY3:
-          file_content = file_content.decode("utf-8")
-        else:
-          file_content = file_content.encode("utf-8")
-      _text_format.Merge(file_content, graph_def)
+  graph_def = _graph_pb2.GraphDef()
+  try:
+    graph_def.ParseFromString(file_content)
+  except (_text_format.ParseError, DecodeError):
+    if not isinstance(file_content, str):
+      if PY3:
+        file_content = file_content.decode("utf-8")
+      else:
+        file_content = file_content.encode("utf-8")
+    _text_format.Merge(file_content, graph_def)
+
+  graph = ops.Graph()
+  with graph.as_default():
     _import_graph_def(graph_def, name="")
+  inputs = _util.get_tensors_from_tensor_names(graph, input_arrays)
+  outputs = _util.get_tensors_from_tensor_names(graph, output_arrays)
 
-    inputs = _util.get_tensors_from_tensor_names(sess.graph, input_arrays)
-    outputs = _util.get_tensors_from_tensor_names(sess.graph, output_arrays)
+  def run_session(input_data):
+    with _session.Session(graph=graph) as sess:
+      return sess.run(outputs, dict(zip(inputs, input_data)))
 
-    return lambda input_data: sess.run(outputs, dict(zip(inputs, input_data)))
+  return run_session
 
 
 def evaluate_saved_model(directory, tag_set, signature_key):
@@ -461,7 +460,7 @@ def test_saved_model_v2(directory,
   concrete_func = model.signatures[signature_key]
 
   converter = _lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-  tflite_model = _convert(converter, version=2, **kwargs)
+  tflite_model = _convert(converter, **kwargs)
 
   compare_models_v2(tflite_model, concrete_func, input_data=input_data)
 
@@ -514,7 +513,7 @@ def test_keras_model_v2(filename, input_shapes=None, input_data=None, **kwargs):
       tensor.set_shape(shape)
 
   converter = _lite.TFLiteConverterV2.from_keras_model(keras_model)
-  tflite_model = _convert(converter, version=2, **kwargs)
+  tflite_model = _convert(converter, **kwargs)
 
   tf_eval_func = evaluate_keras_model(filename)
   compare_models_v2(tflite_model, tf_eval_func, input_data=input_data)

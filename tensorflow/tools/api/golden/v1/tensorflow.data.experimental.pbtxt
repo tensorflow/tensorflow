@@ -45,19 +45,11 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "RaggedTensorStructure"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "RandomDataset"
     mtype: "<type \'type\'>"
   }
   member {
     name: "Reducer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SparseTensorStructure"
     mtype: "<type \'type\'>"
   }
   member {
@@ -81,14 +73,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "TensorArrayStructure"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "TensorStructure"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "ThreadingOptions"
     mtype: "<type \'type\'>"
   }
@@ -99,6 +83,22 @@ tf_module {
   member_method {
     name: "Counter"
     argspec: "args=[\'start\', \'step\', \'dtype\'], varargs=None, keywords=None, defaults=[\'0\', \'1\', \"<dtype: \'int64\'>\"], "
+  }
+  member_method {
+    name: "RaggedTensorStructure"
+    argspec: "args=[\'dtype\', \'shape\', \'ragged_rank\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "SparseTensorStructure"
+    argspec: "args=[\'dtype\', \'shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "TensorArrayStructure"
+    argspec: "args=[\'dtype\', \'element_shape\', \'dynamic_size\', \'infer_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "TensorStructure"
+    argspec: "args=[\'dtype\', \'shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "bucket_by_sequence_length"

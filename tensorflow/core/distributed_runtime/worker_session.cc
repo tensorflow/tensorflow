@@ -42,14 +42,14 @@ class WorkerFreeListCache : public WorkerCacheInterface {
     wrapped_->ListWorkersInJob(job_name, workers);
   }
 
-  WorkerInterface* CreateWorker(const string& target) override {
+  WorkerInterface* GetOrCreateWorker(const string& target) override {
     mutex_lock l(mu_);
     auto p = workers_.find(target);
     if (p != workers_.end()) {
       return p->second.worker;
     }
     WorkerState state;
-    state.worker = wrapped_->CreateWorker(target);
+    state.worker = wrapped_->GetOrCreateWorker(target);
     if (state.worker != nullptr) {
       workers_.insert(std::make_pair(target, state));
     }

@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import boosted_trees_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import googletest
 
 
@@ -108,8 +109,8 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     self.assertAllClose([0.02823, 0.41184], gains)
     self.assertAllEqual([1, 1], thresholds)
     self.assertAllEqual([1, 0], feature_dimensions)
-    # # The left node contrib will be later added to the previous node value to
-    # # make the left node value, and the same for right node contrib.
+    # The left node contrib will be later added to the previous node value to
+    # make the left node value, and the same for right node contrib.
     self.assertAllClose([[-.6], [.568966]], left_node_contribs)
     self.assertAllClose([[-.076923], [-.75]], right_node_contribs)
     self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT] * 2, split_types)
@@ -658,6 +659,123 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
       expected_stats_summary = np.swapaxes(expected_stats_summary, 1, 2)
       self.assertAllClose(expected_stats_summary, result)
 
+  def _get_dense_summaries_from_sparse_features(self, max_splits, num_buckets,
+                                                batch_size, feature_dims,
+                                                logits_dims, hess_dims):
+    np.random.seed(0)
+    stats_dims = logits_dims + hess_dims
+    node_ids = np.random.randint(max_splits, size=batch_size)
+    gradients = np.random.uniform(5.0, size=(batch_size, logits_dims))
+    hessians = np.random.uniform(5.0, size=(batch_size, hess_dims))
+    dense_indices = np.random.randint(2, size=(batch_size, feature_dims))
+    feature_indices = np.argwhere(dense_indices == 1)
+    missing_feature_indices = np.argwhere(dense_indices == 0)
+    feature_values = np.random.randint(num_buckets, size=len(feature_indices))
+    feature_shape = np.asarray([batch_size, feature_dims])
+    # Last bucket is for missing values.
+    dense_summary = np.zeros(
+        (max_splits, feature_dims, num_buckets + 1, stats_dims))
+    for (instance, f_dim), bucket in zip(feature_indices, feature_values):
+      node_id = node_ids[instance]
+      dense_summary[node_id][f_dim][bucket] += np.concatenate(
+          [gradients[instance], hessians[instance]])
+
+    for instance, f_dim in missing_feature_indices:
+      node_id = node_ids[instance]
+      dense_summary[node_id][f_dim][num_buckets] += np.concatenate(
+          [gradients[instance], hessians[instance]])
+
+    return (node_ids, gradients, hessians, feature_indices, feature_values,
+            feature_shape, dense_summary)
+
+  def testMakeSparseStatsSummarySingleFeatureDimension(self):
+    batch_size = 10
+    max_splits = 2
+    num_buckets = 2
+    feature_dims = 1
+    logits_dims = 1
+    hess_dims = 1
+
+    (node_ids, gradients, hessians, feature_indices, feature_values,
+     feature_shape,
+     expected_dense_summary) = self._get_dense_summaries_from_sparse_features(
+         max_splits, num_buckets, batch_size, feature_dims, logits_dims,
+         hess_dims)
+
+    (summary_indices, summary_values,
+     summary_shape) = boosted_trees_ops.boosted_trees_sparse_aggregate_stats(
+         node_ids, gradients, hessians, feature_indices, feature_values,
+         feature_shape, max_splits, num_buckets)
+    dense_result = sparse_ops.sparse_to_dense(summary_indices, summary_shape,
+                                              summary_values)
+    self.assertAllClose(expected_dense_summary, dense_result)
+
+  def testMakeSparseStatsSummaryMultiDimFeature(self):
+    batch_size = 10
+    max_splits = 2
+    num_buckets = 2
+    feature_dims = 1
+    logits_dims = 1
+    hess_dims = 1
+
+    (node_ids, gradients, hessians, feature_indices, feature_values,
+     feature_shape,
+     expected_dense_summary) = self._get_dense_summaries_from_sparse_features(
+         max_splits, num_buckets, batch_size, feature_dims, logits_dims,
+         hess_dims)
+
+    (summary_indices, summary_values,
+     summary_shape) = boosted_trees_ops.boosted_trees_sparse_aggregate_stats(
+         node_ids, gradients, hessians, feature_indices, feature_values,
+         feature_shape, max_splits, num_buckets)
+    dense_result = sparse_ops.sparse_to_dense(summary_indices, summary_shape,
+                                              summary_values)
+    self.assertAllClose(expected_dense_summary, dense_result)
+
+  def testMakeSparseStatsSummaryMultiClass(self):
+    batch_size = 10
+    max_splits = 2
+    num_buckets = 2
+    feature_dims = 1
+    logits_dims = 2
+    hess_dims = 2
+
+    (node_ids, gradients, hessians, feature_indices, feature_values,
+     feature_shape,
+     expected_dense_summary) = self._get_dense_summaries_from_sparse_features(
+         max_splits, num_buckets, batch_size, feature_dims, logits_dims,
+         hess_dims)
+
+    (summary_indices, summary_values,
+     summary_shape) = boosted_trees_ops.boosted_trees_sparse_aggregate_stats(
+         node_ids, gradients, hessians, feature_indices, feature_values,
+         feature_shape, max_splits, num_buckets)
+    dense_result = sparse_ops.sparse_to_dense(summary_indices, summary_shape,
+                                              summary_values)
+    self.assertAllClose(expected_dense_summary, dense_result)
+
+  def testMakeSparseStatsSummaryMultiClassAndMultiFeatureDim(self):
+    batch_size = 10
+    max_splits = 2
+    num_buckets = 2
+    feature_dim = 2
+    logits_dims = 2
+    hess_dims = 2
+
+    (node_ids, gradients, hessians, feature_indices, feature_values,
+     feature_shape,
+     expected_dense_summary) = self._get_dense_summaries_from_sparse_features(
+         max_splits, num_buckets, batch_size, feature_dim, logits_dims,
+         hess_dims)
+
+    (summary_indices, summary_values,
+     summary_shape) = boosted_trees_ops.boosted_trees_sparse_aggregate_stats(
+         node_ids, gradients, hessians, feature_indices, feature_values,
+         feature_shape, max_splits, num_buckets)
+    dense_result = sparse_ops.sparse_to_dense(summary_indices, summary_shape,
+                                              summary_values)
+    self.assertAllClose(expected_dense_summary, dense_result)
+
   def _verify_precision(self, length):
     with self.cached_session():
       max_splits = 1
@@ -694,42 +812,340 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     self._verify_precision(length=50000000)
 
 
-class BestFeatureSplitMultiClass(test_util.TensorFlowTestCase):
+class BestMultiDimFeatureSplitMultiClass(test_util.TensorFlowTestCase):
   """Tests multi-class/multi-regression for best splits."""
 
-  def testCalculateBestMultiDimFeatureSplitsWithoutRegularizationMultiClass(
-      self):
-    # TODO(crawles)
-    pass
+  logits_dim = 2
 
-  def testCalculateMultiDimBestFeatureSplitsWithL2(self):
-    # TODO(crawles)
-    pass
+  def _get_stats_summary_for_split_diagonal_hessian(self):
+    summary = [
+        [[[0., 0., 0., 0.], [0.08, 0.2, 0.09, 0.3], [0., 0., 0., 0.],
+          [0., 0., 0., 0.]],
+         [[0., 0., 0., 0.], [0., 0., 0., 0.], [0.08, 0.2, 0.09, 0.3],
+          [0., 0., 0., 0.]]],  # node 0
+        [[[0., 0., 0., 0.], [-0.25, -0.1, 0.36, 0.2], [-0.14, 0.25, 0.07, 0.18],
+          [0.1, 0.235, 0.2, 0.06]],
+         [[0., 0., 0., 0.], [-0.3, 0.12, 0.5, 0.31], [-0.05, 0.115, 0.11, 0.09],
+          [0.06, 0.15, 0.02, 0.04]]],  # node 1
+        [[[0., 0., 0., 0.], [-0.03, 0.21, 0.28, 0.44], [0., 0., 0., 0.],
+          [0.3, 0.04, 0.4, 0.41]],
+         [[0.4, 0.188, 0.16, -0.03], [0.2, -0.088, 0.1, -0.24],
+          [-0.4, -0.06, 0.5, 0.15], [0.07, 0.21, -0.08, 0.97]]],  # node 2
+        [[[0., 0., 0., 0.], [0., 0., 0., 0.], [0., 0., 0., 0.],
+          [0., 0., 0., 0.]],
+         [[0., 0., 0., 0.], [0., 0., 0., 0.], [0., 0., 0., 0.],
+          [0., 0., 0., 0.]]],  # node 3
+        [[[0., 0., 0., 0.], [0., 0., 0., 0.], [0., 0., 0., 0.],
+          [0., 0., 0., 0.]],
+         [[0., 0., 0., 0.], [0., 0., 0., 0.], [0., 0., 0., 0.],
+          [0., 0., 0., 0.]]],  # node 4
+        [[[0., 0., 0., 0.], [0., 0., 0., 0.], [0., 0., 0., 0.],
+          [0., 0., 0., 0.]],
+         [[0., 0., 0., 0.], [0., 0., 0., 0.], [0., 0., 0., 0.],
+          [0., 0., 0., 0.]]],  # node 5
+        [[[0., 0., 0., 0.], [0., 0., 0., 0.], [0., 0., 0., 0.],
+          [0., 0., 0., 0.]],
+         [[0., 0., 0., 0.], [0., 0., 0., 0.], [0., 0., 0., 0.],
+          [0., 0., 0., 0.]]]  # node 6
+    ]
+    # [max_splits, num_features, num_buckets, 4]
+    return np.array(summary)
 
-  def testCalculateMultiDimBestFeatureSplitsWithMinNodeWeight(self):
-    # TODO(crawles)
-    pass
+  def _add_feature_dim(self, stats_summary):
+    """Add dimension for features; number of features will be 1."""
+    return np.expand_dims(stats_summary, axis=1)
 
-  def testCalculateMultiDimBestFeatureSplitsGradAlmostZero(self):
-    # TODO(crawles)
-    pass
+  def testSumOfStatsSummaryValuesFromHelperFunction(self):
+    """Sum of grads and hessians is correct from helper function."""
+    # [max_splits, num_features, num_buckets, 4]
+    stats_summary = self._get_stats_summary_for_split_diagonal_hessian()
+    # Test that sum of grads/hessians are same for both features for all nodes.
+    # [max_splits, num_features, 4]
+    agg = stats_summary.sum(axis=2)  # Sum along buckets.
+    self.assertAllClose(agg[:, 0, :], agg[:, 1, :])  # There are two features.
+    # Test sum of hessians for each nodes. These values are used to evaluate if
+    # node meets min_node_weight criteria.
+    nodes_agg = agg[:, 0, :]
+    hessians = nodes_agg[:, self.logits_dim:]
 
-  def testCalculateBestMultiDimFeatureSplitsWithL1(self):
-    # TODO(crawles)
-    pass
+    def frobenius(x, **kwargs):
+      return np.sqrt(np.square(x).sum(**kwargs))
 
-  def testCalculateBestMultiDimFeatureSplitsWithTreeComplexity(self):
-    # TODO(crawles)
-    pass
+    self.assertAllClose([0.3132092, 0.76843998, 1.08853112, 0., 0., 0., 0.],
+                        frobenius(hessians, axis=1))
 
-  def testCalculateMultiDimBestSplitsWithMinNodeWeight(self):
-    # TODO(crawles)
-    pass
+  def testCalculateBestFeatureSplitsSingleClassVsMultiClass(self):
+    """Testing same results using same grads/hess with both single and multi."""
+    node_id_range = [1, 3]  # node 1 through 2 will be processed.
 
-  def testCalculateBestMultiDimFeatureSplitsWithNoSplitOnFeaturePossible(
-      self):
-    # TODO(crawles)
-    pass
+    # Build same stats summary in single class and multi-class form (using
+    # diagonal hessian).
+    empty = [0] * 2
+    stats_summary = [
+        [empty, [.08, .09], empty],  # node 0; ignored
+        [empty, [-0.25, 0.11], [0.1, 0.5]],  # node 1
+        [empty, [0.14, 0.1], empty],  # node 2
+        [empty, empty, empty],  # node 3; ignored
+    ]
+    # [max_splits, num_features, num_buckets, 2]
+    stats_summary = self._add_feature_dim(stats_summary)
+    diag_empty = [0] * 4
+    diag_stats_summary = [
+        [diag_empty, [0, .08, 0, 0.09], diag_empty],  # node 0; ignored
+        [diag_empty, [0, -0.25, 0, 0.11], [0, 0.1, 0, 0.5]],  # node 1
+        [diag_empty, [0, 0.14, 0, 0.1], diag_empty],  # node 2
+        [diag_empty, diag_empty, diag_empty],  # node 3; ignored
+    ]
+    # [max_splits, num_features, num_buckets, 4]
+    diag_stats_summary = self._add_feature_dim(diag_stats_summary)
+
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
+             l1=0.0,
+             l2=0.0,
+             tree_complexity=0.0,
+             min_node_weight=0,
+             logits_dimension=1))
+
+    (diag_node_ids, diag_gains, diag_feature_dimensions, diag_thresholds,
+     diag_left_node_contribs, diag_right_node_contribs,
+     diag_split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             diag_stats_summary,
+             l1=0.0,
+             l2=0.0,
+             tree_complexity=0.0,
+             min_node_weight=0,
+             logits_dimension=2))
+
+    self.assertAllEqual(node_ids, diag_node_ids)
+    self.assertAllClose(gains, diag_gains)
+    self.assertAllEqual(thresholds, diag_thresholds)
+    self.assertAllEqual(feature_dimensions, diag_feature_dimensions)
+    # The left node contrib will be later added to the previous node value to
+    # make the left node value, and the same for right node contrib.
+    zeros = np.zeros_like(left_node_contribs)
+    self.assertAllClose(
+        np.concatenate([zeros, left_node_contribs], axis=1),
+        diag_left_node_contribs)
+    self.assertAllClose(
+        np.concatenate([zeros, right_node_contribs], axis=1),
+        diag_right_node_contribs)
+    self.assertAllEqual(split_types, diag_split_types)
+
+  def testCalculateBestFeatureSplitsDiagonalVsFull(self):
+    """Test results are same using diagonal hessian and full hessian."""
+    node_id_range = [1, 3]  # node 1 through 2 will be processed.
+
+    # Build same stats summary in diagonal and full hessian form, respectively.
+    diag_empty = [0] * 4
+    diag_stats_summary = [
+        [diag_empty, [.08, .09, -.1, .2], diag_empty],  # node 0; ignored
+        [diag_empty, [.15, .36, .21, -.11], [.06, .07, .67, 0.5]],  # node 1
+        [diag_empty, [-.33, .58, -.2, -.31], diag_empty],  # node 2
+        [diag_empty, diag_empty, diag_empty],  # node 3; ignored
+    ]
+    # [max_splits, num_features, num_buckets, 2*logits_dim]
+    diag_stats_summary = self._add_feature_dim(diag_stats_summary)
+    full_empty = [0] * 6
+    full_stats_summary = [
+        [full_empty, [.08, .09, -.1, 0, 0, .2], full_empty],  # node 0; ignored
+        [full_empty, [.15, .36, .21, 0, 0, -.11], [.06, .07, .67, 0, 0,
+                                                   0.5]],  # node 1
+        [full_empty, [-.33, .58, -.2, 0, 0, -.31], full_empty],  # node 2
+        [full_empty, full_empty, full_empty],  # node 3; ignored
+    ]
+    # [max_splits, num_features, num_buckets, logits_dim + logits_dim**2]
+    full_stats_summary = self._add_feature_dim(full_stats_summary)
+    (diag_node_ids, diag_gains, diag_feature_dimensions, diag_thresholds,
+     diag_left_node_contribs, diag_right_node_contribs,
+     diag_split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             diag_stats_summary,
+             l1=0.0,
+             l2=0.0,
+             tree_complexity=0.0,
+             min_node_weight=0,
+             logits_dimension=self.logits_dim))
+
+    (full_node_ids, full_gains, full_feature_dimensions, full_thresholds,
+     full_left_node_contribs, full_right_node_contribs,
+     full_split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             full_stats_summary,
+             l1=0.0,
+             l2=0.0,
+             tree_complexity=0.0,
+             min_node_weight=0,
+             logits_dimension=self.logits_dim))
+
+    self.assertAllEqual(diag_node_ids, full_node_ids)
+    self.assertAllClose(diag_gains, full_gains)
+    self.assertAllEqual(diag_thresholds, full_thresholds)
+    self.assertAllEqual(diag_feature_dimensions, full_feature_dimensions)
+    # The left node contrib will be later added to the previous node value to
+    # make the left node value, and the same for right node contrib.
+    self.assertAllClose(diag_left_node_contribs, full_left_node_contribs)
+    self.assertAllClose(diag_right_node_contribs, full_right_node_contribs)
+    self.assertAllEqual(diag_split_types, full_split_types)
+
+  def testCalculateBestFeatureSplitsWithoutRegularization(self):
+    """Testing best split calculation without any regularization."""
+    node_id_range = [1, 3]  # node 1 through 2 will be processed.
+    # [max_splits, num_features, num_buckets, 2*logits_dim]
+    stats_summary = self._get_stats_summary_for_split_diagonal_hessian()
+
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
+             l1=0.0,
+             l2=0.0,
+             tree_complexity=0.0,
+             min_node_weight=0,
+             logits_dimension=self.logits_dim))
+
+    self.assertAllEqual([1, 2], node_ids)
+    self.assertAllClose([0.912981, 1.446218], gains)
+    self.assertAllEqual([2, 1], thresholds)
+    self.assertAllEqual([0, 1], feature_dimensions)
+    # The left node contrib will be later added to the previous node value to
+    # make the left node value, and the same for right node contrib.
+    self.assertAllClose([[0.906977, -0.394737], [-2.307692, 0.370370]],
+                        left_node_contribs)
+    self.assertAllClose([[-0.5, -3.916667], [0.785714, -0.133928]],
+                        right_node_contribs)
+    self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT] * 2, split_types)
+
+  def testCalculateBestFeatureSplitsWithL2(self):
+    """Testing best split calculation inith L2 regularization."""
+    node_id_range = [1, 3]  # node 1 through 2 will be processed.
+    # [max_splits, num_features, num_buckets, 2*logits_dim]
+    stats_summary = self._get_stats_summary_for_split_diagonal_hessian()
+
+    l2 = 0.1
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
+             l1=0.0,
+             l2=l2,
+             tree_complexity=0.0,
+             min_node_weight=0,
+             logits_dimension=self.logits_dim))
+
+    self.assertAllEqual([1, 2], node_ids)
+    self.assertAllClose([0.475669, 1.009791], gains)
+    self.assertAllEqual([1, 1], thresholds)
+    self.assertAllEqual([0, 1], feature_dimensions)
+    # The left node contrib will be later added to the previous node value to
+    # make the left node value, and the same for right node contrib.
+    self.assertAllClose([[0.543478, 0.333333], [-1.666667, 0.588235]],
+                        left_node_contribs)
+    self.assertAllClose([[0.108108, -1.426471], [0.634615, -0.122951]],
+                        right_node_contribs)
+    self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT] * 2, split_types)
+
+  def testCalculateBestFeatureSplitsWithMinNodeWeight(self):
+    """Testing best split calculation with min_node_weight."""
+    node_id_range = [1, 3]  # node 1 through 2 will be processed.
+    # [max_splits, num_features, num_buckets, 2*logits_dim]
+    stats_summary = self._get_stats_summary_for_split_diagonal_hessian()
+
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
+             l1=0.0,
+             l2=0.0,
+             tree_complexity=0.0,
+             min_node_weight=0.5,
+             logits_dimension=self.logits_dim))
+
+    # Both nodes have large enough sum(hessians) so use them.
+    self.assertAllEqual([1, 2], node_ids)
+    self.assertAllClose([0.912981, 1.446218], gains)
+    self.assertAllEqual([2, 1], thresholds)
+    self.assertAllEqual([0, 1], feature_dimensions)
+    # The left node contrib will be later added to the previous node value to
+    # make the left node value, and the same for right node contrib.
+    self.assertAllClose([[0.906977, -0.394737], [-2.307692, 0.370370]],
+                        left_node_contribs)
+    self.assertAllClose([[-0.5, -3.916667], [0.785714, -0.133928]],
+                        right_node_contribs)
+    self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT] * 2, split_types)
+
+  def testCalculateBestFeatureSplitsWithTreeComplexity(self):
+    """Testing best split calculation with tree complexity."""
+    node_id_range = [1, 3]  # node 1 through 2 will be processed.
+    # [max_splits, num_features, num_buckets, 2*logits_dim]
+    stats_summary = self._get_stats_summary_for_split_diagonal_hessian()
+
+    l2 = 0.1
+    tree_complexity = 3.
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
+             l1=0.0,
+             l2=l2,
+             tree_complexity=tree_complexity,
+             min_node_weight=0,
+             logits_dimension=self.logits_dim))
+
+    self.assertAllEqual([1, 2], node_ids)
+    self.assertAllEqual([1, 2], node_ids)
+    # L2 test result, but subtracted by tree_complexity.
+    self.assertAllClose(
+        [0.475669 - tree_complexity, 1.009791 - tree_complexity], gains)
+    self.assertAllEqual([1, 1], thresholds)
+    self.assertAllEqual([0, 1], feature_dimensions)
+    # The left node contrib will be later added to the previous node value to
+    # make the left node value, and the same for right node contrib.
+    self.assertAllClose([[0.543478, 0.333333], [-1.666667, 0.588235]],
+                        left_node_contribs)
+    self.assertAllClose([[0.108108, -1.426471], [0.634615, -0.122951]],
+                        right_node_contribs)
+    self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT] * 2, split_types)
+
+  def testCalculateBestFeatureSplitsWithMinNodeNoSplitOnFeaturePossible(self):
+    """Test when parent node hessian doesn't meet min node weight."""
+    node_id_range = [1, 3]  # node 1 through 2 will be processed.
+    # [max_splits, num_features, num_buckets, 2*logits_dim]
+    stats_summary = self._get_stats_summary_for_split_diagonal_hessian()
+
+    min_node_weight = 0.8
+    (node_ids, gains, feature_dimensions, thresholds, left_node_contribs,
+     right_node_contribs, split_types) = self.evaluate(
+         boosted_trees_ops.calculate_best_feature_split(
+             node_id_range,
+             stats_summary,
+             l1=0.0,
+             l2=0.0,
+             tree_complexity=0.0,
+             min_node_weight=min_node_weight,
+             logits_dimension=self.logits_dim))
+
+    # node_1 doesn't have large enough sum(hessians) so don't return it.
+    self.assertAllEqual([2], node_ids)
+    self.assertAllClose([1.446218], gains)
+    self.assertAllEqual([1], thresholds)
+    self.assertAllEqual([1], feature_dimensions)
+    # The left node contrib will be later added to the previous node value to
+    # make the left node value, and the same for right node contrib.
+    self.assertAllClose([[-2.307692, 0.370370]], left_node_contribs)
+    self.assertAllClose([[0.785714, -0.133929]], right_node_contribs)
+    self.assertAllEqual([_INEQUALITY_DEFAULT_LEFT], split_types)
 
 
 if __name__ == '__main__':

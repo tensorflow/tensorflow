@@ -78,18 +78,6 @@ class Backend(object):
   def compile(self, computation, compile_options):
     """Compiles a computation. Returns an executable."""
 
-  @abc.abstractmethod
-  def delete_executable(self, executable):
-    """Deletes an executable."""
-
-  @abc.abstractmethod
-  def execute(self, executable, args):
-    """Runs an executable without replication."""
-
-  @abc.abstractmethod
-  def execute_replicated(self, executable, per_replica_args):
-    """Runs an executable in a replicated manner."""
-
 
 class LocalBackend(Backend):
   """XLA backend implemented using the in-process xla::LocalClient API."""
@@ -120,25 +108,14 @@ class LocalBackend(Backend):
   def compile(self, c_computation, compile_options):
     options = _xla.ExecutableBuildOptions()
     options.num_replicas = compile_options.num_replicas
-    if compile_options.argument_layouts:
-      argument_layouts = compile_options.argument_layouts
-    else:
-      argument_layouts = c_computation.GetProgramShape().parameter_shapes()
     if compile_options.result_layout:
       options.result_layout = compile_options.result_layout
     options.debug_options.xla_cpu_fast_math_honor_infs = True
     options.debug_options.xla_cpu_fast_math_honor_nans = True
-    return _xla.LocalExecutable.Compile(c_computation, argument_layouts,
-                                        options, self.client)
-
-  def delete_executable(self, executable):
-    executable.Delete()
-
-  def execute(self, executable, args):
-    return executable.Execute(args)
-
-  def execute_replicated(self, executable, per_replica_args):
-    return executable.ExecutePerReplica(per_replica_args)
+    return _xla.LocalExecutable.Compile(c_computation,
+                                        compile_options.argument_layouts,
+                                        options, self.client,
+                                        compile_options.device_assignment)
 
 
 def _cpu_backend_factory():
@@ -148,8 +125,26 @@ def _cpu_backend_factory():
 
 
 def _gpu_backend_factory():
+  """Returns a GPU backend. BFC allocator is used by default."""
+  allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
+  memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
+  if allocator not in ('default', 'platform', 'bfc'):
+    raise ValueError(
+        'XLA_PYTHON_CLIENT_ALLOCATOR env var must be "default", "platform", or '
+        '"bfc", got "%s"' % allocator)
+  config = _xla.AllocatorConfig()
+  if allocator == 'default':
+    config.kind = _xla.AllocatorConfig.Kind.DEFAULT
+  if allocator == 'platform':
+    config.kind = _xla.AllocatorConfig.Kind.PLATFORM
+  if allocator == 'bfc':
+    config.kind = _xla.AllocatorConfig.Kind.BFC
+  if memory_fraction:
+    config.memory_fraction = float(memory_fraction)
+
   client = _xla.LocalClient.Get(
-      platform='gpu', xla_platform_id='CUDA', asynchronous=False)
+      platform='gpu', xla_platform_id='CUDA', asynchronous=True,
+      allocator_config=config)
   return LocalBackend(platform='gpu', client=client)
 
 
@@ -204,30 +199,6 @@ def get_local_backend(name=None):
       raise RuntimeError('Unknown backend {}'.format(name))
 
   return list(backends.values())[-1]
-
-
-# Compatibility shims to support older clients.
-
-_default_platform_name = None
-
-
-def XlaLocalBackend():
-  # Deprecated. Use get_local_backend(platform_name).
-  return get_local_backend(_default_platform_name)
-
-
-def initialize_platform_name(platform_name):
-  """Deprecated. Use get_local_backend(platform_name)."""
-  if platform_name == 'Host':
-    platform_name = 'cpu'
-  elif platform_name == 'CUDA':
-    platform_name = 'gpu'
-
-  # Make sure the platform is valid by trying to instantiate it.
-  get_local_backend(platform_name)
-
-  global _default_platform_name
-  _default_platform_name = platform_name
 
 
 class OpMetadata(object):
@@ -312,6 +283,8 @@ class Shape(object):
   def from_pyval(pyval) -> Shape:
     "Returns a Shape that describes a tuple-tree of Numpy arrays."
 
+  def __init__(self, str) -> Shape:
+    "Parses a shape string."
   def __eq__(self, other: Shape) -> bool:
   def __ne__(self, other: Shape) -> bool:
   def __hash__(self):
@@ -325,7 +298,6 @@ class Shape(object):
   def element_type(self) -> np.dtype:
   def dimensions(self) -> (int, int, ...):
   def rank(self) -> int:
-  def minor_to_major(self) -> [int]:
   def with_major_to_minor_layout_if_absent(self) -> Shape:
     "Returns a copy with missing layouts set to major-to-minor."
 
@@ -357,7 +329,6 @@ class Buffer(object):
   def from_pyval(pyval, device=0, backend=None):
     """Copies the `pyval` to a freshly allocated on-device buffer."""
     backend = backend or get_local_backend()
-    pyval = require_numpy_array_layout(pyval)
     return backend.buffer_from_pyval(pyval, device)
 
   @staticmethod
@@ -374,8 +345,6 @@ class Buffer(object):
       A list of `Buffer` objects corresponding to `pyvals_and_devices`.
     """
     backend = backend or get_local_backend()
-    pyvals_and_devices = [(require_numpy_array_layout(pyval), device)
-                          for pyval, device in pyvals_and_devices]
     return backend.buffers_from_pyvals(pyvals_and_devices)
 
   @staticmethod
@@ -386,12 +355,23 @@ class Buffer(object):
   # Buffer is not an instantiable type and exists only for its static methods.
   # The underlying buffer objects are C++ object with the following
   # API:
-  # def to_py(self):
   # def shape(self) -> Shape:
   # def device(self) -> int:
   # def delete(self):
   # def destructure(self) -> [Buffer]
   # def is_deleted(self) -> bool:
+  # def block_host_until_ready(self):
+  #    """Blocks the calling thread until the buffer is ready on device."""
+  # def copy_to_host_async(self):
+  #    """Requests a copy of the buffer to the host.
+  #
+  #       Does not block waiting for the copy. Values fetched are available via
+  #       `to_py()`; the purpose of `copy_to_host_async` is to prefetch values
+  #       for subsequent `to_py()` calls, especially when requesting many values
+  #       at once.
+  #    """
+  # def to_py(self):
+  #    """Returns the value of the buffer as a Python tuple tree of ndarrays."""
   #
   # TODO(phawkins): remove Buffer and its static methods completely, have
   # clients call methods on Backend to create buffers.
@@ -409,17 +389,9 @@ def shape_from_pyval(pyval):
     if isinstance(pyval, tuple):
       return Shape.tuple_shape(tuple(convert(elt) for elt in pyval))
     else:
-      pyval = require_numpy_array_layout(pyval)
       return Shape.array_shape(pyval.dtype, np.shape(pyval))
 
   return convert(pyval)
-
-
-def require_numpy_array_layout(value):
-  if isinstance(value, tuple):
-    return tuple(require_numpy_array_layout(x) for x in value)
-  else:
-    return np.require(value, requirements=['C', 'A'])
 
 
 def transfer_to_infeed(value, device_ordinal=0):
@@ -437,8 +409,7 @@ def transfer_to_infeed(value, device_ordinal=0):
   """
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
-  backend.client.TransferToInfeed(
-      require_numpy_array_layout(value), device_ordinal)
+  backend.client.TransferToInfeed(value, device_ordinal)
 
 
 def transfer_from_outfeed(shape, device_ordinal=0):
@@ -458,6 +429,27 @@ def transfer_from_outfeed(shape, device_ordinal=0):
       shape.with_major_to_minor_layout_if_absent(), device_ordinal)
 
 
+DeviceAssignment = _xla.DeviceAssignment
+DeviceAssignment.__doc__ = """
+A DeviceAssignment is a C++ object with the following signature.
+
+def create(assignment):
+  '''Builds a device assignment.
+
+   Args:
+     assignment: a 2D numpy array of device ordinal integers, indexed by
+       [replica][computation_in_replica].
+   Returns:
+     A device assignment.
+  '''
+
+def replica_count():
+  '''Returns the number of replicas.'''
+def computation_count():
+  '''Returns the number of computations per replica.'''
+"""
+
+
 class CompileOptions(object):
   """Python object for XLA compile options.
 
@@ -475,6 +467,7 @@ class CompileOptions(object):
     self.num_replicas = 1
     self.argument_layouts = None
     self.result_layout = None
+    self.device_assignment = None
 
 
 class Computation(object):
@@ -537,8 +530,7 @@ class Computation(object):
     compile_options = compile_options or CompileOptions()
     if argument_shapes:
       compile_options.argument_layouts = argument_shapes
-    c = backend.compile(self.computation, compile_options)
-    return Executable(c, backend=backend)
+    return backend.compile(self.computation, compile_options)
 
   def GetProgramShape(self):
     return self._c_computation.GetProgramShape()
@@ -547,88 +539,66 @@ class Computation(object):
     return self._c_computation.GetProgramShape().result_shape()
 
 
-class Executable(object):
-  """Python wrapper for an XLA Executable."""
+# An Executable is a C++ class that duck types with the following API:
+# class Executable(object):
+#   def DeviceOrdinals(self) -> [int]:
+#   def Execute(self, arguments : [Buffer]) -> Buffer:
+#     """Execute on one replica with Buffer arguments and return value."""
+#
+#   def ExecutePerReplica(self, arguments: [[Buffer]]) -> [Buffer]:
+#     """Execute on many replicas with Buffer arguments and return value.
+#
+#     Args:
+#       arguments: A sequence of sequences of Buffers. The i'th inner sequence
+#         comprises the arguments for execution on the i'th replica.
+#
+#     Returns:
+#       A list of the computation's outputs for each replica, as a Buffer. If
+#       a shallow sequence of arguments was passed in for `arguments`, then the
+#       sole, zero'th replica's output is returned instead, as a Buffer.
+#     """
+#
+# There are different implementations of Executable for the Local and XRT
+# backends.
 
-  def __init__(self, c_executable, backend=None):
-    self._c_executable = c_executable
-    self._device_ordinals = c_executable.DeviceOrdinals()
-    self._backend = backend
 
-  def DeviceOrdinals(self):
-    """Returns a list containing the device ordinals for each replica."""
-    return self._device_ordinals
+def execute_with_python_values(executable, arguments=(), backend=None):
+  """Execute on one replica with Python values as arguments and output."""
 
-  def Execute(self, arguments=None, check_for_deleted_args=True):
-    """Execute on one replica with Buffer arguments and return value."""
-    arguments = arguments or []
-    if check_for_deleted_args and any(arg.is_deleted() for arg in arguments):
-      raise ValueError('Executing with deleted local buffer argument')
-    return self._backend.execute(self._c_executable, arguments)
+  backend = backend or get_local_backend()
 
-  def ExecutePerReplica(self, arguments=None):
-    """Execute on many replicas with Buffer arguments and return value.
+  def put(arg):
+    return Buffer.from_pyval(
+        arg, device=executable.DeviceOrdinals()[0], backend=backend)
 
-    Args:
-      arguments: A sequence of sequences of Buffers. The i'th inner sequence
-        comprises the arguments for execution on the i'th replica.
+  arguments = [put(arg) for arg in arguments]
+  return executable.Execute(arguments).to_py()
 
-    Returns:
-      A list of the computation's outputs for each replica, as a Buffer. If
-      a shallow sequence of arguments was passed in for `arguments`, then the
-      sole, zero'th replica's output is returned instead, as a Buffer.
-    """
-    if arguments is None:
-      arguments = ((),) * len(self._device_ordinals)
-    else:
-      arguments = [list(replica_args) for replica_args in arguments]
 
-    # Check arguments
-    for replica, replica_args in enumerate(arguments):
-      for arg in replica_args:
-        if arg.is_deleted():
-          raise ValueError('Executing with deleted local buffer argument')
-        if arg.device() != self._device_ordinals[replica]:
-          raise ValueError(
-              'Executing on device {} with argument from device {}'.format(
-                  self._device_ordinals[replica], arg.device()))
+def execute_with_python_values_replicated(executable, arguments, backend=None):
+  """Execute on many replicas with Python values as arguments and output.
 
-    # Execute
-    return self._backend.execute_replicated(self._c_executable, arguments)
+  Arguments:
+    executable: the program to run.
+    arguments: a list of lists of Python values indexed by
+      `[replica][arg_num]` to pass as inputs.
+    backend: the backend we are targeting.
 
-  def ExecuteWithPythonValues(self, arguments=()):
-    """Execute on one replica with Python values as arguments and output."""
-
-    def put(arg):
-      return Buffer.from_pyval(
-          arg, device=self._device_ordinals[0], backend=self._backend)
-
-    arguments = [put(arg) for arg in arguments]
-    return self.Execute(arguments).to_py()
-
-  def ExecuteWithPythonValuesPerReplica(self, arguments):
-    """Execute on many replicas with Python values as arguments and output.
-
-    Arguments:
-      arguments: a list of lists of Python values indexed by
-        `[replica][arg_num]` to pass as inputs.
-
-    Returns:
-      A list of python values, one per replica.
-    """
-    # pylint: disable=g-complex-comprehension
-    flat_args = [(arg, self._device_ordinals[replica])
-                 for replica, replica_args in enumerate(arguments)
-                 for arg in replica_args]
-    flat_arg_buffers = Buffer.from_pyvals(flat_args, backend=self._backend)
-    arg_buffers = []
-    for replica_args in arguments:
-      arg_buffers.append(flat_arg_buffers[:len(replica_args)])
-      flat_arg_buffers = flat_arg_buffers[len(replica_args):]
-    return [out.to_py() for out in self.ExecutePerReplica(arg_buffers)]
-
-  def __del__(self):
-    self._backend.delete_executable(self._c_executable)
+  Returns:
+    A list of python values, one per replica.
+  """
+  backend = backend or get_local_backend()
+  device_ordinals = executable.DeviceOrdinals()
+  # pylint: disable=g-complex-comprehension
+  flat_args = [(arg, device_ordinals[replica])
+               for replica, replica_args in enumerate(arguments)
+               for arg in replica_args]
+  flat_arg_buffers = Buffer.from_pyvals(flat_args, backend=backend)
+  arg_buffers = []
+  for replica_args in arguments:
+    arg_buffers.append(flat_arg_buffers[:len(replica_args)])
+    flat_arg_buffers = flat_arg_buffers[len(replica_args):]
+  return [out.to_py() for out in executable.ExecutePerReplica(arg_buffers)]
 
 
 class PaddingType(enum.Enum):
@@ -742,7 +712,6 @@ class ComputationBuilder(object):
     Returns:
       An XlaOp.
     """
-    value = require_numpy_array_layout(value)
     return ops.ConstantLiteral(self._builder, value)
 
   def ConstantF32Scalar(self, value):
@@ -1301,7 +1270,8 @@ class ComputationBuilder(object):
       dimension_numbers = GetDotDimensionsFromLists(dimension_numbers)
     return ops.DotGeneral(lhs, rhs, dimension_numbers)
 
-  def Conv(self, lhs, rhs, window_strides, padding, feature_group_count=1):
+  def Conv(self, lhs, rhs, window_strides, padding,
+           feature_group_count=1, batch_group_count=1):
     """Enqueues a Conv operation onto the computation.
 
     Args:
@@ -1310,6 +1280,7 @@ class ComputationBuilder(object):
       window_strides: length-N array-like of integer kernel strides.
       padding: PaddingType representing either 'SAME' or 'VALID' padding.
       feature_group_count: number of feature groups for grouped convolution.
+      batch_group_count: number of batch groups for grouped convolution.
     Returns: a XlaOp representing the Conv operation.
     """
     pads = _convert_padding_type_to_pad_values(
@@ -1322,7 +1293,8 @@ class ComputationBuilder(object):
         window_strides,
         pads, [], [],
         dimension_numbers=None,
-        feature_group_count=feature_group_count)
+        feature_group_count=feature_group_count,
+        batch_group_count=batch_group_count)
 
   def ConvWithGeneralPadding(self,
                              lhs,
@@ -1331,7 +1303,8 @@ class ComputationBuilder(object):
                              padding,
                              lhs_dilation,
                              rhs_dilation,
-                             feature_group_count=1):
+                             feature_group_count=1,
+                             batch_group_count=1):
     """Enqueues a ConvWithGeneralPadding operation onto the computation.
 
     Args:
@@ -1342,6 +1315,7 @@ class ComputationBuilder(object):
       lhs_dilation: length-N array-like of dilation factors.
       rhs_dilation: length-N array-like of dilation factors.
       feature_group_count: number of feature groups for grouped convolution.
+      batch_group_count: number of batch groups for grouped convolution.
 
     Returns:
       A ComputationdataHandle representing the added ConvWithGeneralPadding op.
@@ -1354,7 +1328,8 @@ class ComputationBuilder(object):
         list(lhs_dilation),
         list(rhs_dilation),
         dimension_numbers=None,
-        feature_group_count=feature_group_count)
+        feature_group_count=feature_group_count,
+        batch_group_count=batch_group_count)
 
   def _GetConvDimensionNumbers(self, num_spatial_dims):
     """Create ConvolutionDimensionNumbers proto for convolutions."""
@@ -1379,7 +1354,8 @@ class ComputationBuilder(object):
                          lhs_dilation,
                          rhs_dilation,
                          dimension_numbers=None,
-                         feature_group_count=1):
+                         feature_group_count=1,
+                         batch_group_count=1):
     """Enqueues a ConvGeneralDilated operation onto the computation.
 
     Args:
@@ -1409,6 +1385,7 @@ class ComputationBuilder(object):
           default, use the same dimension numbering as Conv and
           ConvWithGeneralPadding.
       feature_group_count: number of feature groups for grouped convolution.
+      batch_group_count: number of batch groups for grouped convolution.
     Returns: a XlaOp representing the ConvGenralDilated operation.
     """
     if dimension_numbers is None:
@@ -1434,7 +1411,7 @@ class ComputationBuilder(object):
                  key=lambda i: rhs_spec.index(out_spec[i])))
     return ops.ConvGeneralDilated(lhs, rhs, window_strides, padding,
                                   lhs_dilation, rhs_dilation, dimension_numbers,
-                                  feature_group_count)
+                                  feature_group_count, batch_group_count)
 
   def Sort(self, operand, dimension=-1):
     """Enqueues a sort operation onto the computation."""

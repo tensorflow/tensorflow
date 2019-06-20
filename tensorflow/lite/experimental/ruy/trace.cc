@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/trace.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
+#include <string>
 #include <vector>
 
 #include "tensorflow/lite/experimental/ruy/block_map.h"

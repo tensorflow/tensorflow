@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/fusion_queue.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -149,6 +150,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
+    case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kRsqrt:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
@@ -277,7 +279,7 @@ InstructionFusion::ComputeGloballyUnfusible(
       return size;
     };
     int64 operands_size = 0;
-    for (const HloInstruction* op : producer->operands()) {
+    for (const HloInstruction* op : producer->unique_operands()) {
       operands_size += total_size(op->shape());
     }
     if (operands_size <= total_size(producer->shape())) {
@@ -429,9 +431,14 @@ class ReversePostOrderFusionQueue : public FusionQueue {
     post_order_index_.erase(instruction);
   }
 
+  const std::vector<bool>* FusionConfiguration() override {
+    return &fusion_config_;
+  }
+
  private:
   std::vector<HloInstruction*> post_order_;
   absl::flat_hash_map<HloInstruction*, int> post_order_index_;
+  std::vector<bool> fusion_config_;
 };
 
 }  // namespace
@@ -442,11 +449,14 @@ std::unique_ptr<FusionQueue> InstructionFusion::GetFusionQueue(
 }
 
 StatusOr<bool> InstructionFusion::Run(HloModule* module) {
-  VLOG(2) << "Before instruction fusion:";
-  XLA_VLOG_LINES(2, module->ToString());
-
   bool changed = false;
   module_ = module;
+  int64 fuse_count = 0;
+  std::vector<std::vector<bool>>* fusion_config = nullptr;
+  if (is_main_fusion_) {
+    fusion_config = module->mutable_fusion_config();
+    fusion_config->clear();
+  }
   for (auto* computation : module->MakeNonfusionComputations()) {
     CHECK(!computation->IsFusionComputation());
     computation_ = computation;
@@ -487,24 +497,41 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
           continue;
         }
 
-        HloInstruction* fusion_instruction;
+        // Consumes a unit of compiler fuel and returns true if we should
+        // continue with the transformation.
+        auto consume_fuel = [&] {
+          return ConsumeFuel(name(), /*ran_out_of_fuel_msg=*/[&] {
+            return absl::StrFormat("Not fusing operand %d of %s, namely, %s", i,
+                                   instruction->ToString(),
+                                   operand->ToString());
+          });
+        };
+
+        HloInstruction* fusion_instruction = nullptr;
         // Try "regular" fusion if the operand may be duplicated. Otherwise,
         // perform multi-output fusion, unless this creates a cycle.
         if (do_not_duplicate.count(operand) == 0 &&
             ShouldFuse(instruction, i)) {
-          fusion_queue->PreFusion(operand, instruction);
-          fusion_instruction = Fuse(operand, instruction);
+          if (consume_fuel()) {
+            fusion_queue->PreFusion(operand, instruction);
+            fusion_instruction = Fuse(operand, instruction);
+          }
         } else if (ShouldFuseIntoMultiOutput(instruction, i) &&
                    !MultiOutputFusionCreatesCycle(operand, instruction)) {
-          fusion_queue->PreFusion(operand, instruction);
-          fusion_instruction = FuseIntoMultiOutput(operand, instruction);
-        } else {
+          if (consume_fuel()) {
+            fusion_queue->PreFusion(operand, instruction);
+            fusion_instruction = FuseIntoMultiOutput(operand, instruction);
+          }
+        }
+
+        if (fusion_instruction == nullptr) {
           continue;
         }
 
         fusion_queue->OnFusingInstruction(fusion_instruction, operand,
                                           instruction);
         changed = true;
+        ++fuse_count;
 
         if (operand->user_count() == 0) {
           do_not_duplicate.erase(operand);
@@ -520,10 +547,27 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         break;
       }
     }
+
+    if (is_main_fusion_) {
+      const std::vector<bool>* comp_fusion_config =
+          fusion_queue->FusionConfiguration();
+      if (comp_fusion_config && comp_fusion_config->size() > 0) {
+        fusion_config->push_back(*comp_fusion_config);
+      }
+    }
   }
 
-  VLOG(2) << "After instruction fusion:";
-  XLA_VLOG_LINES(2, module->ToString());
+  if (is_main_fusion_) {
+    int64 fused_edge_count = 0;
+    for (auto& config_per_computation : *fusion_config) {
+      for (auto edge : config_per_computation) {
+        if (edge) ++fused_edge_count;
+      }
+    }
+    VLOG(4) << "There are " << fused_edge_count << " fused edges that cause "
+            << fuse_count << " fusion actions.";
+    VLOG(4) << FusionConfigToString(*fusion_config);
+  }
 
   return changed;
 }

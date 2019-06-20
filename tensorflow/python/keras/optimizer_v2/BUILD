@@ -1,14 +1,15 @@
 # Description:
 #   Contains the Keras OptimizerV2 API (internal TensorFlow version).
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 py_library(
     name = "optimizer_v2",
@@ -27,13 +28,13 @@ py_library(
     deps = [
         ":learning_rate_schedule",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:distribute",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/keras:backend",
@@ -240,6 +241,7 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(

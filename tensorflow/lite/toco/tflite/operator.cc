@@ -22,6 +22,7 @@ limitations under the License.
 
 // TODO(ycling): Consider refactoring to extract the LSTM definition out of
 // graph_transformation module.
+#include "tensorflow/lite/delegates/flex/whitelisted_flex_ops.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/graph_transformations/lstm_utils.h"
 #include "tensorflow/lite/toco/model.h"
@@ -29,11 +30,12 @@ limitations under the License.
 #include "tensorflow/lite/toco/tflite/custom_operator.h"
 #include "tensorflow/lite/toco/tflite/simple_operator.h"
 #include "tensorflow/lite/toco/tflite/types.h"
-#include "tensorflow/lite/toco/tflite/whitelisted_flex_ops.h"
 
 namespace toco {
 
 namespace tflite {
+
+// LINT.IfChange
 
 class AveragePool
     : public BuiltinOperator<AveragePoolOperator, ::tflite::Pool2DOptions,
@@ -2354,6 +2356,22 @@ class Select : public SimpleOperator<SelectOperator> {
   }
 };
 
+class FloorDiv : public SimpleOperator<FloorDivOperator> {
+ public:
+  explicit FloorDiv() : SimpleOperator("FLOOR_DIV", OperatorType::kFloorDiv) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports float input types.
+    if (input_array.data_type == ArrayDataType::kFloat) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
+// LINT.ThenChange(//tensorflow/lite/toco/tflite/op_version.cc")
+
 namespace {
 // Build a vector containing all the known operators.
 std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
@@ -2560,8 +2578,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       "LOGICAL_AND", OperatorType::kLogicalAnd));
   ops.emplace_back(new SimpleOperator<LogicalNotOperator>(
       "LOGICAL_NOT", OperatorType::kLogicalNot));
-  ops.emplace_back(new SimpleOperator<FloorDivOperator>(
-      "FLOOR_DIV", OperatorType::kFloorDiv));
+  ops.push_back(MakeUnique<FloorDiv>());
   ops.emplace_back(new SimpleOperator<FloorModOperator>(
       "FLOOR_MOD", OperatorType::kFloorMod));
   ops.emplace_back(
@@ -2581,6 +2598,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       "ZEROS_LIKE", OperatorType::kZerosLike));
   ops.push_back(
       MakeUnique<SimpleOperator<AbsOperator>>("ABS", OperatorType::kAbs));
+  ops.push_back(MakeUnique<SimpleOperator<HardSwishOperator>>(
+      "HARD_SWISH", OperatorType::kHardSwish));
   ops.push_back(
       MakeUnique<SimpleOperator<FillOperator>>("FILL", OperatorType::kFill));
   ops.push_back(MakeUnique<SimpleOperator<ReverseV2Operator>>(
@@ -2633,7 +2652,7 @@ bool ShouldExportAsFlexOp(bool enable_select_tf_ops,
     return false;
   }
 
-  if (!IsWhitelistedFlexOp(tensorflow_op_name)) {
+  if (!::tflite::flex::IsWhitelistedFlexOp(tensorflow_op_name)) {
     LOG(WARNING) << "Op " << tensorflow_op_name
                  << " is a valid TensorFlow op but has not been whitelisted for"
                     " the TensorFlow Lite flex op set.";

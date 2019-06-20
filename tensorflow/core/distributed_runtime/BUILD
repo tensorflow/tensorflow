@@ -3,21 +3,8 @@
 # to be distributed and performed in parallel across multiple
 # processes.
 
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
-filegroup(
-    name = "c_srcs",
-    data = glob([
-        "**/*.cc",
-        "**/*.h",
-    ]),
-)
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_copts", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 # For platform specific build config
 load(
@@ -29,9 +16,22 @@ load(
     "tf_cuda_tests_tags",
 )
 
-package(default_visibility = [
-    "//tensorflow:internal",
-])
+package(
+    default_visibility = [
+        "//tensorflow:internal",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
+
+filegroup(
+    name = "c_srcs",
+    data = glob([
+        "**/*.cc",
+        "**/*.h",
+    ]),
+)
 
 cc_library(
     name = "partial_run_mgr",
@@ -571,6 +571,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 

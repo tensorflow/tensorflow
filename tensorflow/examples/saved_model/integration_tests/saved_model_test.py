@@ -18,12 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
+from absl.testing import parameterized
 import tensorflow.compat.v2 as tf
 
 from tensorflow.examples.saved_model.integration_tests import integration_scripts
 
 
-class SavedModelTest(integration_scripts.TestCase):
+class SavedModelTest(integration_scripts.TestCase, parameterized.TestCase):
 
   def __init__(self, method_name="runTest", has_extra_deps=False):
     super(SavedModelTest, self).__init__(method_name)
@@ -68,29 +71,38 @@ class SavedModelTest(integration_scripts.TestCase):
     self.assertCommandSucceeded(
         "use_text_embedding_in_dataset", model_dir=export_dir)
 
-  def test_mnist_cnn(self):
-    self.skipIfMissingExtraDeps()
-    export_dir = self.get_temp_dir()
-    self.assertCommandSucceeded(
-        "export_mnist_cnn", export_dir=export_dir, fast_test_mode="true")
-    self.assertCommandSucceeded(
-        "use_mnist_cnn", export_dir=export_dir, fast_test_mode="true")
+  NAMED_PARAMETERS_FOR_TEST_MNIST_CNN = (
+      ("", dict()),
+      ("_with_retraining", dict(
+          retrain=True,
+          regularization_loss_multiplier=2,  # Test impact of b/134528831.
+      )),
+      ("_with_mirrored_strategy", dict(
+          retrain=True,  # That's the relevant case for distribution.
+          use_mirrored_strategy=True,
+      )),
+  )
 
-  def test_mnist_cnn_with_mirrored_strategy(self):
+  @parameterized.named_parameters(*NAMED_PARAMETERS_FOR_TEST_MNIST_CNN)
+  def test_mnist_cnn(self, use_kwargs):
     self.skipIfMissingExtraDeps()
-    self.skipTest(
-        "b/129134185 - saved model and distribution strategy integration")
-    export_dir = self.get_temp_dir()
+    if use_kwargs.get("use_mirrored_strategy", None):
+      self.skipTest(
+          "b/129134185 - saved model and distribution strategy integration")
+    fast_test_mode = True
+    temp_dir = self.get_temp_dir()
+    feature_extrator_dir = os.path.join(temp_dir, "mnist_feature_extractor")
+    full_model_dir = os.path.join(temp_dir, "full_model")
     self.assertCommandSucceeded(
-        "export_mnist_cnn",
-        export_dir=export_dir,
-        fast_test_mode="true")
+        "export_mnist_cnn", fast_test_mode=fast_test_mode,
+        export_dir=feature_extrator_dir)
     self.assertCommandSucceeded(
-        "use_mnist_cnn",
-        export_dir=export_dir,
-        fast_test_mode="true",
-        use_mirrored_strategy=True,
-    )
+        "use_mnist_cnn", fast_test_mode=fast_test_mode,
+        input_saved_model_dir=feature_extrator_dir,
+        output_saved_model_dir=full_model_dir, **use_kwargs)
+    self.assertCommandSucceeded(
+        "deploy_mnist_cnn", fast_test_mode=fast_test_mode,
+        saved_model_dir=full_model_dir)
 
 
 if __name__ == "__main__":

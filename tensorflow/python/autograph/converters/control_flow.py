@@ -275,8 +275,9 @@ class ControlFlowTransformer(converter.Base):
                                        orelse_name, state_getter_name,
                                        state_setter_name)
 
-    if_ast = (undefined_assigns + cond_assign + composite_defs + body_def +
-              orelse_def + cond_expr)
+    if_ast = (
+        undefined_assigns + composite_defs + body_def + orelse_def +
+        cond_assign + cond_expr)
     return if_ast
 
   def _get_loop_state(self, node, modified_symbols):
@@ -285,8 +286,12 @@ class ControlFlowTransformer(converter.Base):
     live_in = anno.getanno(node, anno.Static.LIVE_VARS_IN)
     live_out = anno.getanno(node, anno.Static.LIVE_VARS_OUT)
     reserved_symbols = body_scope.referenced
+
     loop_state = []
     for s in modified_symbols:
+      if s.is_composite():
+        # TODO(mdan): Raise an error when this happens for a TF loop.
+        continue
 
       # Variables not live into or out of the loop are considered local to the
       # loop.

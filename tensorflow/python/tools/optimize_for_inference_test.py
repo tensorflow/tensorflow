@@ -174,17 +174,26 @@ class OptimizeForInferenceTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testFoldFusedBatchNorms(self):
-    for data_format, use_gpu in [("NHWC", False), ("NCHW", True)]:
+    for data_format, use_gpu, conv2d_func in [
+        ("NHWC", False, nn_ops.conv2d), ("NCHW", True, nn_ops.conv2d),
+        ("NHWC", False, nn_ops.depthwise_conv2d_native),
+        ("NCHW", True, nn_ops.depthwise_conv2d_native)
+    ]:
       with self.cached_session(use_gpu=use_gpu) as sess:
         inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
         input_op = constant_op.constant(
             np.array(inputs),
             shape=[1, 1, 6, 2] if data_format == "NHWC" else [1, 2, 1, 6],
             dtype=dtypes.float32)
-        weights = [1, 2, 3, 4, 0.1, 0.2, 0.3, 0.4]
-        weights_op = constant_op.constant(
-            np.array(weights), shape=[1, 2, 2, 2], dtype=dtypes.float32)
-        conv_op = nn_ops.conv2d(
+        if conv2d_func == nn_ops.conv2d:
+          weights = [1, 2, 3, 4, 0.1, 0.2, 0.3, 0.4]
+          weights_op = constant_op.constant(
+              np.array(weights), shape=[1, 2, 2, 2], dtype=dtypes.float32)
+        else:
+          weights = [1, 2, 0.3, 0.4]
+          weights_op = constant_op.constant(
+              np.array(weights), shape=[1, 2, 2, 1], dtype=dtypes.float32)
+        conv_op = conv2d_func(
             input_op,
             weights_op, [1, 1, 1, 1],
             padding="SAME",

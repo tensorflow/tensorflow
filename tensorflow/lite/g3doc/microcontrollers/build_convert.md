@@ -80,7 +80,7 @@ A model must be small enough to fit within your target device's memory alongside
 the rest of your program, both as a binary and at runtime.
 
 To create a smaller model, you can use fewer and smaller layers in your
-architecture. However, small models are more likely to suffer from overfitting.
+architecture. However, small models are more likely to suffer from underfitting.
 This means for many problems, it makes sense to try and use the largest model
 that will fit in memory. However, using larger models will also lead to
 increased processor workload.

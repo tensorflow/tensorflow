@@ -21,6 +21,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda_fp16.h"
 #endif
+#include "tensorflow/core/util/gpu_cuda_alias.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 
@@ -30,18 +31,22 @@ limitations under the License.
 #define TF_RED_WARPSIZE 64
 #endif
 
-// Deprecated, use 'for(int i : CudaGridRangeX(n))' instead.
+// Deprecated, use 'for(int i : GpuGridRangeX(n))' instead.
+#define GPU_1D_KERNEL_LOOP(i, n) \
+  for (int i : ::tensorflow::GpuGridRangeX<int>(n))
 #define CUDA_1D_KERNEL_LOOP(i, n) \
-  for (int i : ::tensorflow::CudaGridRangeX<int>(n))
-// Deprecated, use 'for(int i : CudaGridRange?(n))' instead.
+  for (int i : ::tensorflow::GpuGridRangeX<int>(n))
+
+// Deprecated, use 'for(int i : GpuGridRange?(n))' instead.
+#define GPU_AXIS_KERNEL_LOOP(i, n, axis) \
+  for (int i : ::tensorflow::GpuGridRange##axis<int>(n))
 #define CUDA_AXIS_KERNEL_LOOP(i, n, axis) \
-  for (int i : ::tensorflow::CudaGridRange##axis<int>(n))
+  for (int i : ::tensorflow::GpuGridRange##axis<int>(n))
 
 #if GOOGLE_CUDA
 #define gpuSuccess cudaSuccess
 using gpuStream_t = cudaStream_t;
 using gpuError_t = cudaError_t;
-
 #elif TENSORFLOW_USE_ROCM
 #define gpuSuccess hipSuccess
 using gpuStream_t = hipStream_t;
@@ -50,17 +55,66 @@ using gpuError_t = hipError_t;
 
 #define GetGPUStream(context) context->eigen_gpu_device().stream()
 
+// macro wrapper to declare dynamic shared memory
+#if GOOGLE_CUDA
+
+#define GPU_DYNAMIC_SHARED_MEM_DECL(ALIGN, TYPE, NAME) \
+  extern __shared__ __align__(ALIGN) TYPE NAME[]
+
+#elif TENSORFLOW_USE_ROCM
+
+#define GPU_DYNAMIC_SHARED_MEM_DECL(ALIGN, TYPE, NAME) \
+  HIP_DYNAMIC_SHARED(TYPE, NAME)
+
+#endif
+
 namespace tensorflow {
-__host__ __device__ inline tensorflow::bfloat16 CudaLdg(
+// Launches a GPU kernel through cudaLaunchKernel in CUDA environment, or
+// hipLaunchKernel in ROCm environment with the given arguments.
+//
+// The kernel parameters 'Ts' must be constructible from the arguments 'Args'.
+template <typename... Ts, typename... Args>
+Status GpuLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
+                       size_t shared_memory_size_bytes, gpuStream_t stream,
+                       Args... arguments) {
+  static_assert(detail::NoneIsReference<Ts...>(),
+                "Kernels with reference arguments have undefined behaviour.");
+#if GOOGLE_CUDA
+  auto func_ptr = absl::bit_cast<const void*>(function);
+  // Cast arguments and forward them as an array of pointers.
+  auto args_tuple = std::tuple<Ts...>(arguments...);
+  auto arg_ptrs = detail::GetArrayOfElementPointers(&args_tuple);
+  auto result = cudaLaunchKernel(func_ptr, grid_dim, block_dim, arg_ptrs.data(),
+                                 shared_memory_size_bytes, stream);
+  if (result != cudaSuccess) {
+    return errors::Internal(cudaGetErrorString(result));
+  }
+#elif TENSORFLOW_USE_ROCM
+  hipLaunchKernelGGL(function, grid_dim, block_dim, shared_memory_size_bytes,
+                     stream, std::forward<Args>(arguments)...);
+#endif
+  return Status::OK();
+}
+
+// Perfect forwarding to make CudaLaunchKernel available to both ROCm and CUDA
+// builds
+template <typename... Args>
+auto CudaLaunchKernel(Args&&... args)
+    -> decltype(GpuLaunchKernel(std::forward<Args>(args)...)) {
+  return GpuLaunchKernel(std::forward<Args>(args)...);
+}
+
+__host__ __device__ inline tensorflow::bfloat16 GpuLdg(
     const tensorflow::bfloat16* address) {
   tensorflow::bfloat16 return_value;
-  return_value.value = CudaLdg(reinterpret_cast<const uint16_t*>(address));
+  return_value.value = GpuLdg(reinterpret_cast<const uint16_t*>(address));
   return return_value;
 }
+// Already aliased in gpu_device_functions.h
 
 template <typename T>
 __host__ __device__ inline T ldg(const T* ptr) {
-  return CudaLdg(ptr);
+  return GpuLdg(ptr);
 }
 
 template <typename T>
@@ -87,32 +141,39 @@ __host__ __device__ inline double tf_max(double x, double y) {
   return fmax(x, y);
 }
 
-__device__ inline Eigen::half CudaShuffleSync(unsigned mask, Eigen::half value,
-                                              int src_lane,
-                                              int width = warpSize) {
+// ROCM TODO re-enable them after adding fp16 support logic
+#if GOOGLE_CUDA
+__device__ inline Eigen::half GpuShuffleSync(unsigned mask, Eigen::half value,
+                                             int src_lane,
+                                             int width = warpSize) {
   return Eigen::half(
-      CudaShuffleSync(mask, static_cast<uint16>(value), src_lane, width));
+      GpuShuffleSync(mask, static_cast<uint16>(value), src_lane, width));
 }
+// Aliased in gpu_device_functions.h
 
-__device__ EIGEN_ALWAYS_INLINE Eigen::half CudaShuffleUpSync(
+__device__ EIGEN_ALWAYS_INLINE Eigen::half GpuShuffleUpSync(
     unsigned mask, Eigen::half value, int delta, int width = warpSize) {
   return Eigen::half(
-      CudaShuffleUpSync(mask, static_cast<uint16>(value), delta, width));
+      GpuShuffleUpSync(mask, static_cast<uint16>(value), delta, width));
 }
+// Aliased in gpu_device_functions.h
 
-__device__ EIGEN_ALWAYS_INLINE Eigen::half CudaShuffleDownSync(
+__device__ EIGEN_ALWAYS_INLINE Eigen::half GpuShuffleDownSync(
     unsigned mask, Eigen::half value, int delta, int width = warpSize) {
   return Eigen::half(
-      CudaShuffleDownSync(mask, static_cast<uint16>(value), delta, width));
+      GpuShuffleDownSync(mask, static_cast<uint16>(value), delta, width));
 }
+// Aliased in gpu_device_functions.h
 
-__device__ EIGEN_ALWAYS_INLINE Eigen::half CudaShuffleXorSync(
+__device__ EIGEN_ALWAYS_INLINE Eigen::half GpuShuffleXorSync(
     unsigned mask, Eigen::half value, int lane_mask, int width = warpSize) {
   return Eigen::half(
-      CudaShuffleXorSync(mask, static_cast<uint16>(value), lane_mask, width));
+      GpuShuffleXorSync(mask, static_cast<uint16>(value), lane_mask, width));
 }
+// Aliased in gpu_device_functions.h
+#endif
 
-namespace cuda_helper {
+namespace gpu_helper {
 template <typename T, typename OutType = int32>
 __device__ OutType upper_bound(const T* first, OutType count, T val) {
   const T* orig = first;
@@ -153,7 +214,12 @@ __device__ OutType lower_bound(const T* first, OutType count, T val) {
   return first - orig;
 }
 
-}  // namespace cuda_helper
+}  // namespace gpu_helper
+
+#ifndef TENSORFLOW_USE_ROCM
+namespace cuda_helper = gpu_helper;
+#endif
+
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

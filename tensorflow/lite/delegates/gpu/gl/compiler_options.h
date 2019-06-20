@@ -59,6 +59,10 @@ struct CompilationOptions {
 
   // Fuses consequent nodes which have auto output and auto input.
   bool auto_input_fusion = true;
+
+  // If true sampler2D and texelFetch will be used to access read only textures.
+  // This feature is not supported yet by the OpenGL runtime.
+  bool sampler_textures = false;
 };
 
 }  // namespace gl

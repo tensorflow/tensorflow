@@ -204,7 +204,7 @@ class _SignatureMap(collections.Mapping, base.Trackable):
   def __repr__(self):
     return "_SignatureMap({})".format(self._signatures)
 
-  def _list_functions_for_serialization(self):
+  def _list_functions_for_serialization(self, unused_serialization_cache):
     return {
         key: value for key, value in self.items()
         if isinstance(value, (def_function.Function, defun.ConcreteFunction))

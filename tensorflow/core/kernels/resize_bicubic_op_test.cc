@@ -219,7 +219,7 @@ TEST_F(ResizeBicubicOpTest, TestBicubic2x2To0x0) {
   AddInputFromArray<int32>(TensorShape({2}), {0, 0});
 
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       s.ToString(), "Invalid argument: output dimensions must be positive"))
       << s;
 }

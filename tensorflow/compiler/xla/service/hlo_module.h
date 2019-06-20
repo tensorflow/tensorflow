@@ -109,6 +109,8 @@ class HloModule {
     return entry_computation_;
   }
 
+  bool has_entry_computation() const { return entry_computation_ != nullptr; }
+
   // Returns the root instruction shape of entry computation.
   //
   // Precondition: entry_computation_ is not nullptr.
@@ -283,6 +285,10 @@ class HloModule {
 
   Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
 
+  std::vector<std::vector<bool>>* mutable_fusion_config() {
+    return &fusion_config_;
+  }
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
@@ -322,6 +328,9 @@ class HloModule {
 
   // Bindings for dynamic parameter mapping.
   DynamicParameterBinding dynamic_parameter_binding_;
+
+  // Fusion configuration.
+  std::vector<std::vector<bool>> fusion_config_;
 };
 
 }  // namespace xla

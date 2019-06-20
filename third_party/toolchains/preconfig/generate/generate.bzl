@@ -3,7 +3,7 @@ load(
     "docker_toolchain_autoconfig",
 )
 
-def _tensorflow_rbe_config(name, compiler, python_version, os, cuda_version = None, cudnn_version = None, tensorrt_version = None, tensorrt_install_path = None, cudnn_install_path = None, compiler_prefix = None):
+def _tensorflow_rbe_config(name, compiler, python_version, os, cuda_version = None, cudnn_version = None, tensorrt_version = None, tensorrt_install_path = None, cudnn_install_path = None, compiler_prefix = None, build_bazel_src = False):
     base = "@%s//image" % os
     config_repos = [
         "local_config_python",
@@ -54,11 +54,11 @@ def _tensorflow_rbe_config(name, compiler, python_version, os, cuda_version = No
         name = name,
         base = base,
         bazel_version = "0.24.1",
+        build_bazel_src = build_bazel_src,
         config_repos = config_repos,
         env = env,
         mount_project = "$(mount_project)",
         tags = ["manual"],
-        incompatible_changes_off = True,
     )
 
 tensorflow_rbe_config = _tensorflow_rbe_config

@@ -24,6 +24,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.util.tf_export import keras_export
 
@@ -135,9 +136,9 @@ class InputLayer(base_layer.Layer):
 
     # Create an input node to add to self.outbound_node
     # and set output_tensors' _keras_history.
-    input_tensor._keras_history = (self, 0, 0)  # pylint: disable=protected-access
+    input_tensor._keras_history = base_layer.KerasHistory(self, 0, 0)
     input_tensor._keras_mask = None
-    base_layer.Node(
+    node_module.Node(
         self,
         inbound_layers=[],
         node_indices=[],

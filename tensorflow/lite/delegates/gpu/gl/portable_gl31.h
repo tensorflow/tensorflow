@@ -21,7 +21,6 @@ limitations under the License.
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
-#undef Status	// undefine X11's Status
 
 #ifdef __ANDROID__
 // Weak-link all GL APIs included from this point on.

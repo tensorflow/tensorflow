@@ -30,7 +30,7 @@ namespace gpu {
 namespace gl {
 namespace {
 
-TEST(AddTest, AddsTwoInputTensors) {
+TEST(AddTest, TwoInputTensorsOfTheSameShape) {
   TensorRefFloat32 augend, addend, output;
   augend.type = DataType::FLOAT32;
   augend.ref = 0;
@@ -54,7 +54,7 @@ TEST(AddTest, AddsTwoInputTensors) {
               Pointwise(FloatNear(1e-6), {-1.9, 0.4, 1.0, 1.3}));
 }
 
-TEST(AddTest, AddsOneInputTensorWithBroadcast) {
+TEST(AddTest, InputTensorAndScalar) {
   AddAttributes attr;
   attr.param = 0.1f;
   TensorRefFloat32 input, output;
@@ -72,6 +72,64 @@ TEST(AddTest, AddsOneInputTensorWithBroadcast) {
   ASSERT_TRUE(model.Invoke(*NewAddNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {-1.9, 0.3, 0.8, 0.9, 1.2, 2.1}));
+}
+
+TEST(AddTest, InputTensorWithConstandBroadcast) {
+  TensorRefFloat32 input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 2, 2, 2);
+
+  AddAttributes attr;
+  Tensor<Linear, DataType::FLOAT32> tensor;
+  tensor.shape.v = 2;
+  tensor.id = 1;
+  tensor.data.push_back(10.0);
+  tensor.data.push_back(20.0);
+  attr.param = std::move(tensor);
+
+  TensorRefFloat32 output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 2, 2, 2);
+
+  SingleOpModel model({ToString(OperationType::ADD), std::move(attr)}, {input},
+                      {output});
+  ASSERT_TRUE(
+      model.PopulateTensor(0, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0}));
+  ASSERT_TRUE(model.Invoke(*NewAddNodeShader()));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6),
+                        {11.0, 22.0, 13.0, 24.0, 15.0, 26.0, 17.0, 28.0}));
+}
+
+TEST(AddTest, InputTensorWithRuntimeBroadcast) {
+  TensorRefFloat32 input1;
+  input1.type = DataType::FLOAT32;
+  input1.ref = 0;
+  input1.shape = BHWC(1, 2, 2, 2);
+
+  TensorRefFloat32 input2;
+  input2.type = DataType::FLOAT32;
+  input2.ref = 1;
+  input2.shape = BHWC(1, 1, 1, 2);
+
+  AddAttributes attr;
+
+  TensorRefFloat32 output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 2, 2, 2);
+
+  SingleOpModel model({ToString(OperationType::ADD), std::move(attr)},
+                      {input1, input2}, {output});
+  ASSERT_TRUE(
+      model.PopulateTensor(0, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0}));
+  ASSERT_TRUE(model.PopulateTensor(1, {10.0, 20.0}));
+  ASSERT_TRUE(model.Invoke(*NewAddNodeShader()));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6),
+                        {11.0, 22.0, 13.0, 24.0, 15.0, 26.0, 17.0, 28.0}));
 }
 
 }  // namespace

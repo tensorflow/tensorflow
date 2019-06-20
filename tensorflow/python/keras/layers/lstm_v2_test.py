@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for UnifiedLSTM layer."""
+"""Tests for V2 LSTM layer."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -32,6 +32,7 @@ from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -153,7 +154,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
     targets = np.random.random((num_samples, units))
     model.train_on_batch([inputs] + initial_state, targets)
 
-  def DISABLED_test_specify_initial_state_non_keras_tensor(self):
+  def test_specify_initial_state_non_keras_tensor(self):
     num_states = 2
     timesteps = 3
     embedding_dim = 4
@@ -305,49 +306,50 @@ class LSTMV2Test(keras_parameterized.TestCase):
     targets = np.random.random((num_samples, units))
     model.train_on_batch([main_inputs] + initial_state, targets)
 
+  # Due to b/120160788.
+  @test_util.run_v2_only
   def test_unified_lstm_feature_parity_with_canonical_lstm(self):
-    with context.eager_mode():
-      # Run this test under eager only due to b/120160788 for model.set_weights.
-      input_shape = 10
-      rnn_state_size = 8
-      timestep = 4
-      batch = 20
+    input_shape = 10
+    rnn_state_size = 8
+    timestep = 4
+    batch = 20
 
-      (x_train, y_train), _ = testing_utils.get_test_data(
-          train_samples=batch,
-          test_samples=0,
-          input_shape=(timestep, input_shape),
-          num_classes=rnn_state_size)
-      y_train = keras.utils.to_categorical(y_train, rnn_state_size)
-      # For the last batch item of the test data, we filter out the last
-      # timestep to simulate the variable length sequence and masking test.
-      x_train[-2:, -1, :] = 0.0
-      y_train[-2:] = 0
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=batch,
+        test_samples=0,
+        input_shape=(timestep, input_shape),
+        num_classes=rnn_state_size,
+        random_seed=random_seed.DEFAULT_GRAPH_SEED)
+    y_train = keras.utils.to_categorical(y_train, rnn_state_size)
+    # For the last batch item of the test data, we filter out the last
+    # timestep to simulate the variable length sequence and masking test.
+    x_train[-2:, -1, :] = 0.0
+    y_train[-2:] = 0
 
-      inputs = keras.layers.Input(
-          shape=[timestep, input_shape], dtype=dtypes.float32)
-      masked_input = keras.layers.Masking()(inputs)
-      lstm_layer = rnn_v1.LSTM(rnn_state_size,
-                               recurrent_activation='sigmoid')
-      output = lstm_layer(masked_input)
-      lstm_model = keras.models.Model(inputs, output)
-      weights = lstm_model.get_weights()
-      y_1 = lstm_model.predict(x_train)
-      lstm_model.compile('rmsprop', 'mse')
-      lstm_model.fit(x_train, y_train)
-      y_2 = lstm_model.predict(x_train)
+    inputs = keras.layers.Input(
+        shape=[timestep, input_shape], dtype=dtypes.float32)
+    masked_input = keras.layers.Masking()(inputs)
+    lstm_layer = rnn_v1.LSTM(rnn_state_size,
+                             recurrent_activation='sigmoid')
+    output = lstm_layer(masked_input)
+    lstm_model = keras.models.Model(inputs, output)
+    weights = lstm_model.get_weights()
+    y_1 = lstm_model.predict(x_train)
+    lstm_model.compile('rmsprop', 'mse')
+    lstm_model.fit(x_train, y_train)
+    y_2 = lstm_model.predict(x_train)
 
-      with test_util.device(use_gpu=True):
-        cudnn_layer = rnn.LSTM(rnn_state_size)
-        cudnn_model = keras.models.Model(inputs, cudnn_layer(masked_input))
-      cudnn_model.set_weights(weights)
-      y_3 = cudnn_model.predict(x_train)
-      cudnn_model.compile('rmsprop', 'mse')
-      cudnn_model.fit(x_train, y_train)
-      y_4 = cudnn_model.predict(x_train)
+    with test_util.device(use_gpu=True):
+      cudnn_layer = rnn.LSTM(rnn_state_size)
+      cudnn_model = keras.models.Model(inputs, cudnn_layer(masked_input))
+    cudnn_model.set_weights(weights)
+    y_3 = cudnn_model.predict(x_train)
+    cudnn_model.compile('rmsprop', 'mse')
+    cudnn_model.fit(x_train, y_train)
+    y_4 = cudnn_model.predict(x_train)
 
-      self.assertAllClose(y_1, y_3, rtol=1e-5, atol=2e-5)
-      self.assertAllClose(y_2, y_4, rtol=1e-5, atol=2e-5)
+    self.assertAllClose(y_1, y_3, rtol=1e-5, atol=2e-5)
+    self.assertAllClose(y_2, y_4, rtol=1e-5, atol=2e-5)
 
   @parameterized.named_parameters(('v0', 0), ('v1', 1), ('v2', 2))
   def DISABLED_test_implementation_mode_LSTM(self, implementation_mode):
@@ -692,6 +694,29 @@ class LSTMV2Test(keras_parameterized.TestCase):
             'recurrent_dropout': 0.1
         },
         input_shape=(num_samples, timesteps, embedding_dim))
+
+  def test_bidirectional(self):
+    batch = 128
+    timestep = 20
+    vocab_size = 1000
+    model = keras.Sequential([
+        keras.layers.Embedding(vocab_size, 64),
+        keras.layers.Bidirectional(rnn.LSTM(
+            64, return_sequences=True)),
+        keras.layers.Bidirectional(rnn.LSTM(32)),
+        keras.layers.Dense(64, activation='relu'),
+        keras.layers.Dense(1, activation='sigmoid')
+    ])
+
+    model.compile(loss='binary_crossentropy',
+                  optimizer='adam',
+                  metrics=['accuracy'])
+
+    x = np.random.randint(0, vocab_size, size=(batch, timestep))
+    y = np.random.randint(0, 1, size=(batch))
+    model.fit(x, y, epochs=1, shuffle=False)
+    model.evaluate(x, y)
+    model.predict(x)
 
 
 class LSTMLayerGraphOnlyTest(test.TestCase):

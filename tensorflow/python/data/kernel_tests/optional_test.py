@@ -34,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -255,9 +256,10 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("Tensor", lambda: constant_op.constant(37.0),
        structure.TensorStructure(dtypes.float32, [])),
       ("SparseTensor", lambda: sparse_tensor.SparseTensor(
-          indices=[[0]], values=constant_op.constant([0], dtype=dtypes.int32),
-          dense_shape=[1]),
-       structure.SparseTensorStructure(dtypes.int32, [1])),
+          indices=[[0, 1]],
+          values=constant_op.constant([0], dtype=dtypes.int32),
+          dense_shape=[10, 10]),
+       structure.SparseTensorStructure(dtypes.int32, [10, 10])),
       ("Nest", lambda: {
           "a": constant_op.constant(37.0),
           "b": (constant_op.constant(["Foo"]), constant_op.constant("Bar"))},
@@ -278,7 +280,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertTrue(
         opt.value_structure.is_compatible_with(expected_value_structure))
 
-    opt_structure = structure.Structure.from_value(opt)
+    opt_structure = type_spec.type_spec_from_value(opt)
     self.assertIsInstance(opt_structure, optional_ops.OptionalStructure)
     self.assertTrue(opt_structure.is_compatible_with(opt_structure))
     self.assertTrue(opt_structure._value_structure.is_compatible_with(
@@ -288,7 +290,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     # All OptionalStructure objects are not compatible with a non-optional
     # value.
-    non_optional_structure = structure.Structure.from_value(
+    non_optional_structure = type_spec.type_spec_from_value(
         constant_op.constant(42.0))
     self.assertFalse(opt_structure.is_compatible_with(non_optional_structure))
 
@@ -297,12 +299,13 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
     round_trip_opt = opt_structure._from_tensor_list(
         opt_structure._to_tensor_list(opt))
     if isinstance(tf_value, optional_ops.Optional):
-      self.assertEqual(
+      self._assertElementValueEqual(
           self.evaluate(tf_value.get_value()),
           self.evaluate(round_trip_opt.get_value().get_value()))
     else:
-      self.assertEqual(
-          self.evaluate(tf_value), self.evaluate(round_trip_opt.get_value()))
+      self._assertElementValueEqual(
+          self.evaluate(tf_value),
+          self.evaluate(round_trip_opt.get_value()))
 
   @parameterized.named_parameters(
       ("Tensor", np.array([1, 2, 3], dtype=np.int32),
@@ -338,7 +341,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
         self.assertIsInstance(next_elem, optional_ops.Optional)
         self.assertTrue(
             next_elem.value_structure.is_compatible_with(
-                structure.Structure.from_value(tf_value_fn())))
+                type_spec.type_spec_from_value(tf_value_fn())))
         self.assertTrue(next_elem.has_value())
         self._assertElementValueEqual(np_value, next_elem.get_value())
       # After exhausting the iterator, `next_elem.has_value()` will evaluate to
@@ -354,7 +357,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertIsInstance(next_elem, optional_ops.Optional)
       self.assertTrue(
           next_elem.value_structure.is_compatible_with(
-              structure.Structure.from_value(tf_value_fn())))
+              type_spec.type_spec_from_value(tf_value_fn())))
       # Before initializing the iterator, evaluating the optional fails with
       # a FailedPreconditionError. This is only relevant in graph mode.
       elem_has_value_t = next_elem.has_value()
@@ -398,6 +401,22 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
     opt_tensor = get_optional()
     val = consume_optional(opt_tensor)
     self.assertEqual(self.evaluate(val), 1.0)
+
+  def testLimitedRetracing(self):
+    trace_count = [0]
+
+    @def_function.function
+    def f(opt):
+      trace_count[0] += 1
+      return opt.get_value()
+
+    opt1 = optional_ops.Optional.from_value(constant_op.constant(37.0))
+    opt2 = optional_ops.Optional.from_value(constant_op.constant(42.0))
+
+    for _ in range(10):
+      self.assertEqual(self.evaluate(f(opt1)), 37.0)
+      self.assertEqual(self.evaluate(f(opt2)), 42.0)
+      self.assertEqual(trace_count[0], 1)
 
 
 if __name__ == "__main__":

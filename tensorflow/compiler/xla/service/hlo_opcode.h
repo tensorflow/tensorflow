@@ -122,6 +122,7 @@ namespace xla {
   V(kReshape, "reshape", 1)                                            \
   V(kReverse, "reverse", 1)                                            \
   V(kRng, "rng", kHloOpcodeIsVariadic)                                 \
+  V(kRngGetAndUpdateState, "rng-get-and-update-state", 0)              \
   V(kRoundNearestAfz, "round-nearest-afz", 1)                          \
   V(kRsqrt, "rsqrt", 1)                                                \
   V(kScatter, "scatter", 3)                                            \

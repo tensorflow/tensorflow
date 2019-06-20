@@ -54,13 +54,13 @@ REQUIRED_PACKAGES = [
     'astor >= 0.6.0',
     'gast >= 0.2.0',
     'google_pasta >= 0.1.6',
-    'keras_applications >= 1.0.6',
+    'keras_applications >= 1.0.8',
     'keras_preprocessing >= 1.0.5',
     'numpy >= 1.14.5, < 2.0',
     'six >= 1.10.0',
     'protobuf >= 3.6.1',
     'tensorboard >= 1.13.0, < 1.14.0',
-    'tensorflow_estimator >= 1.13.0rc0, < 1.14.0rc0',
+    'tensorflow_estimator >= 1.14.0rc0, < 1.15.0rc0',
     'termcolor >= 1.1.0',
     'wrapt >= 1.11.1',
 ]
@@ -103,7 +103,6 @@ if sys.version_info < (3, 4):
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
-    'freeze_graph = tensorflow.python.tools.freeze_graph:run_main',
     'toco_from_protos = tensorflow.lite.toco.python.toco_from_protos:main',
     'tflite_convert = tensorflow.lite.python.tflite_convert:main',
     'toco = tensorflow.lite.python.tflite_convert:main',
@@ -116,6 +115,11 @@ CONSOLE_SCRIPTS = [
     'tf_upgrade_v2 = tensorflow.tools.compatibility.tf_upgrade_v2_main:main',
 ]
 # pylint: enable=line-too-long
+
+# Only keep freeze_graph console script in 1.X.
+if _VERSION.startswith('1.') and '_2.0' not in project_name:
+  CONSOLE_SCRIPTS.append(
+      'freeze_graph = tensorflow.python.tools.freeze_graph:run_main')
 
 # remove the tensorboard console script if building tf_nightly
 if 'tf_nightly' in project_name:
@@ -137,8 +141,9 @@ class InstallCommand(InstallCommandBase):
 
   def finalize_options(self):
     ret = InstallCommandBase.finalize_options(self)
-    self.install_headers = os.path.join(self.install_purelib,
-                                        'tensorflow', 'include')
+    self.install_headers = os.path.join(self.install_purelib, 'tensorflow_core',
+                                        'include')
+    self.install_lib = self.install_platlib
     return ret
 
 
@@ -174,15 +179,17 @@ class InstallHeaders(Command):
     # Get rid of some extra intervening directories so we can have fewer
     # directories for -I
     install_dir = re.sub('/google/protobuf_archive/src', '', install_dir)
+    install_dir = re.sub('/include/tensorflow_core/', '/include/tensorflow/',
+                         install_dir)
 
-    # Copy external code headers into tensorflow/include.
+    # Copy external code headers into tensorflow_core/include.
     # A symlink would do, but the wheel file that gets created ignores
     # symlink within the directory hierarchy.
     # NOTE(keveman): Figure out how to customize bdist_wheel package so
     # we can do the symlink.
     external_header_locations = [
-        'tensorflow/include/external/eigen_archive/',
-        'tensorflow/include/external/com_google_absl/',
+        'tensorflow_core/include/external/eigen_archive/',
+        'tensorflow_core/include/external/com_google_absl/',
     ]
     for location in external_header_locations:
       if location in install_dir:
@@ -236,14 +243,15 @@ else:
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.so'
 
 headers = (
-    list(find_files('*.h', 'tensorflow/core')) + list(
-        find_files('*.h', 'tensorflow/stream_executor')) +
+    list(find_files('*.h', 'tensorflow_core/core')) +
+    list(find_files('*.h', 'tensorflow_core/stream_executor')) +
     list(find_files('*.h', 'google/protobuf_archive/src')) +
-    list(find_files('*.inc', 'google/protobuf_archive/src')) + list(
-        find_files('*', 'third_party/eigen3')) + list(
-            find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
-    list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +
-    list(find_files('*', 'tensorflow/include/external/eigen_archive')))
+    list(find_files('*.inc', 'google/protobuf_archive/src')) +
+    list(find_files('*', 'third_party/eigen3')) + list(
+        find_files('*.h', 'tensorflow_core/include/external/com_google_absl')) +
+    list(
+        find_files('*.inc', 'tensorflow_core/include/external/com_google_absl'))
+    + list(find_files('*', 'tensorflow_core/include/external/eigen_archive')))
 
 setup(
     name=project_name,

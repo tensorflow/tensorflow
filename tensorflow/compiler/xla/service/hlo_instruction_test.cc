@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -1727,6 +1728,18 @@ TEST_F(HloInstructionTest, IdenticalAccountsForCustomCallDnums) {
   EXPECT_FALSE(instr1->Identical(*instr2));
 }
 
+TEST_F(HloInstructionTest, IdenticalAccountsForCustomCallHasSideEffect) {
+  auto instr1 = HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                                 /*operands=*/{},
+                                                 /*custom_call_target=*/"foo");
+  auto instr2 = instr1->Clone();
+  EXPECT_TRUE(instr1->Identical(*instr2));
+
+  auto custom_call_instr1 = Cast<HloCustomCallInstruction>(instr1.get());
+  custom_call_instr1->set_custom_call_has_side_effect(true);
+  EXPECT_FALSE(instr1->Identical(*instr2));
+}
+
 TEST_F(HloInstructionTest, CloneWindowOnCustomCall) {
   auto instr = HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
                                                 /*operands=*/{},
@@ -1751,6 +1764,29 @@ TEST_F(HloInstructionTest, CloneDnumsOnCustomCall) {
       << clone->convolution_dimension_numbers().DebugString();
 }
 
+TEST_F(HloInstructionTest, CloneHasSideEffectOnCustomCall) {
+  auto instr = HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                                /*operands=*/{},
+                                                /*custom_call_target=*/"foo");
+  auto custom_call_instr = Cast<HloCustomCallInstruction>(instr.get());
+  EXPECT_FALSE(custom_call_instr->custom_call_has_side_effect());
+  custom_call_instr->set_custom_call_has_side_effect(true);
+  EXPECT_TRUE(custom_call_instr->custom_call_has_side_effect());
+  auto clone = instr->Clone();
+  auto custom_call_clone = Cast<HloCustomCallInstruction>(clone.get());
+  EXPECT_TRUE(custom_call_clone->custom_call_has_side_effect());
+}
+
+TEST_F(HloInstructionTest, CustomCallHasSideEffect) {
+  auto instr = HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                                /*operands=*/{},
+                                                /*custom_call_target=*/"foo");
+  auto custom_call_instr = Cast<HloCustomCallInstruction>(instr.get());
+  EXPECT_FALSE(instr->HasSideEffect());
+  custom_call_instr->set_custom_call_has_side_effect(true);
+  EXPECT_TRUE(instr->HasSideEffect());
+}
+
 TEST_F(HloInstructionTest, PreserveOperandPrecisionOnCloneConv) {
   constexpr char kHloString[] = R"(
   HloModule test_module
@@ -1767,6 +1803,20 @@ TEST_F(HloInstructionTest, PreserveOperandPrecisionOnCloneConv) {
   EXPECT_THAT(
       clone->precision_config().operand_precision(),
       ::testing::ElementsAre(PrecisionConfig::HIGH, PrecisionConfig::DEFAULT));
+}
+
+TEST_F(HloInstructionTest, PreserveOuterDimensionPartitionsOnClone) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  ENTRY test {
+    ROOT iota = f32[100] iota(), iota_dimension=1, outer_dimension_partitions={0, 50}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kHloString));
+  auto* iota = module->entry_computation()->root_instruction();
+
+  auto clone = iota->Clone();
+  EXPECT_THAT(clone->outer_dimension_partitions(),
+              ::testing::ElementsAre(0, 50));
 }
 
 }  // namespace

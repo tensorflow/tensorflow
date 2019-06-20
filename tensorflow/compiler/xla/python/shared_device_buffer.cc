@@ -15,9 +15,19 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/shared_device_buffer.h"
 
+#include <memory>
+
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
+
+/*static*/ StatusOr<std::shared_ptr<BufferDefinitionEvent>>
+BufferDefinitionEvent::Create(se::StreamExecutor* executor) {
+  auto event = std::make_shared<BufferDefinitionEvent>(executor);
+  TF_RET_CHECK(event->event_.Init())
+      << "Buffer definition event initialization failed";
+  return event;
+}
 
 BufferDefinitionEvent::BufferDefinitionEvent(se::StreamExecutor* executor)
     : event_(executor) {}
@@ -132,7 +142,7 @@ static void PopulateShapedBufferFromBuffer(
     ShapeTree<se::DeviceMemoryBase>::iterator* iterator,
     const ShapeTree<se::DeviceMemoryBase>::iterator& end) {
   CHECK(*iterator != end);
-  (*iterator)->second = buffer.device_memory().AsDeviceMemoryBase();
+  (*iterator)->second = *buffer.device_memory();
   ++*iterator;
   for (const auto& child : buffer.children()) {
     PopulateShapedBufferFromBuffer(*child, iterator, end);

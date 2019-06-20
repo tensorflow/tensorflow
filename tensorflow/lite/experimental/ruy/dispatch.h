@@ -13,25 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Translates a user-facing Mul call into an implementation-facing TrMul
-
-// As a matrix multiplication library, Ruy offers a Mul entry point, performing
-// matrix multiplication. For implementation purposes, it is much nicer to
-// be dealing with the transpose-and-multiply operation, doing
-//   Destination = Transpose(LHS) * RHS
-// Indeed, the latter is performing dot-products between the *columns* of LHS
-// and the columns of RHS, whereas a plain matrix multiplication is performing
-// dot-products between the *rows* of LHS and the columns of RHS.
-// That is why TrMul is nicer to implement, allowing for a more symmetric
-// treatment of LHS and RHS.
+// This file implements the translation between Ruy's entry point (ruy::Mul) and
+// the internal implementation of matrix multiplication.
 //
-// In this file, we translate a Mul call into a TrMul call by transposing the
-// LHS, so that henceforth the deeper implementation layers only need to deal
-// with TrMul.
-
-// This file also selects between different TrMul versions specialized
-// on the Path.
-
+// The primary elements of this dispatch are:
+// - pick suitable gemm kernel and packing routines for the user-specified
+// CompiledPaths based on the current CPU.
+// - decide on the structure of the packed matrices needed by the internal
+// implementation (see pack.h for more information on packing).
+// - translate the Mul operation into TrMul (see trmul.h for why that is
+// useful). This is done by changing the matrix Layout -- no matrix data is
+// actually moved.
+//
+// This file is also factored to serve as a building block for the advanced API
+// as well.
+//
 // This file also performs some checking of invariants to catch user errors.
 
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_DISPATCH_H_
@@ -42,9 +38,9 @@ limitations under the License.
 #include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
 #include "tensorflow/lite/experimental/ruy/context.h"
-#include "tensorflow/lite/experimental/ruy/impl.h"
 #include "tensorflow/lite/experimental/ruy/matrix.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
+#include "tensorflow/lite/experimental/ruy/trmul.h"
 
 namespace ruy {
 
@@ -126,7 +122,7 @@ inline void CreatePackedLayout(const Layout& src, const Type& scalar,
   packed->cols = round_up_pot(src.cols, kernel_layout.cols);
   packed->kernel = kernel_layout;
   int inner_size = packed->rows;
-  if (RUY_OPT_SET & RUY_OPT_AVOID_ALIASING) {
+  if (RUY_OPT_ENABLED(RUY_OPT_AVOID_ALIASING)) {
     packed->stride =
         (inner_size * scalar.size) % 1024 ? inner_size : inner_size + 64;
   } else {

@@ -19,13 +19,19 @@ from __future__ import print_function
 
 import os
 
+
+from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.util import structure
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import importer as graph_def_importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import state_ops
@@ -322,6 +328,8 @@ class WrapFunctionTest(test.TestCase):
     self.assertEqual(0, v.numpy())
     f_pruned()
     self.assertEqual(1, v.numpy())
+    f_wrapped.prune([], 'assign_to_v')()
+    f_wrapped.prune([], meta_graph_pb2.TensorInfo(name='assign_to_v'))()
 
   def test_function_from_graph_def(self):
     @def_function.function
@@ -506,6 +514,27 @@ class WrappedGraphTest(test.TestCase):
     self.assertEqual(35, different_variable_fn(constant_op.constant(7)).numpy())
 
     self.assertAllEqual({'v', 'different_scope/v'}, set(vh.variables.keys()))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testImportedFunctionsRegistered(self):
+    with ops.Graph().as_default() as graph:
+      x = array_ops.placeholder(dtypes.variant, shape=[], name='foo')
+      ds = dataset_ops.from_variant(x, structure=(
+          structure.TensorStructure(dtypes.int32, [])))
+      y = ds.reduce(array_ops.zeros([], dtype=dtypes.int32), lambda p, q: p + q)
+
+    graph_def = graph.as_graph_def()
+
+    def fn_to_wrap(a):
+      returned_elements = graph_def_importer.import_graph_def(
+          graph_def, input_map={x.name: a}, return_elements=[y.name])
+      return returned_elements[0]
+
+    wrapped_fn = wrap_function.wrap_function(
+        fn_to_wrap, [tensor_spec.TensorSpec((), dtypes.variant)])
+    ds = dataset_ops.Dataset.from_tensor_slices([10, 20])
+    v = dataset_ops.to_variant(ds)
+    self.evaluate(wrapped_fn(v))
 
   def testReturnOp(self):
 

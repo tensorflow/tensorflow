@@ -1,11 +1,12 @@
 # TensorFlow Lite for Objective-C
 
-package(default_visibility = ["//visibility:private"])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZER_TAGS", "TFL_MINIMUM_OS_VERSION")
-load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
+
+package(
+    default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 SOURCES = glob([
     "sources/*.h",
@@ -58,7 +59,6 @@ objc_library(
     srcs = SOURCES,
     hdrs = API_HEADERS,
     copts = RELEASE_COPTS,
-    module_map = "apis/module.modulemap",
     tags = TFL_DEFAULT_TAGS,
     deps = [
         "//tensorflow/lite/experimental/c:c_api",
@@ -67,17 +67,17 @@ objc_library(
 )
 
 ios_unit_test(
-    name = "TensorFlowLiteTests",
+    name = "Tests",
     size = "medium",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
     tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS,
     deps = [
-        ":TestsLib",
+        ":TestsLibrary",
     ],
 )
 
 objc_library(
-    name = "TestsLib",
+    name = "TestsLibrary",
     testonly = 1,
     srcs = glob([
         "tests/*.m",
@@ -93,6 +93,44 @@ objc_library(
         "//tensorflow/lite:testdata/add_quantized.bin",
     ],
     tags = TFL_DEFAULT_TAGS,
+    deps = [
+        ":TensorFlowLite",
+    ],
+)
+
+ios_application(
+    name = "TestApp",
+    app_icons = glob(["apps/TestApp/TestApp/Assets.xcassets/AppIcon.appiconset/**"]),
+    bundle_id = "com.tensorflow.lite.objc.TestApp",
+    families = [
+        "ipad",
+        "iphone",
+    ],
+    infoplists = ["apps/TestApp/TestApp/Info.plist"],
+    minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    sdk_frameworks = [
+        "CoreGraphics",
+    ],
+    tags = TFL_DEFAULT_TAGS,
+    deps = [
+        ":TestAppLibrary",
+    ],
+)
+
+objc_library(
+    name = "TestAppLibrary",
+    srcs = glob(["apps/TestApp/TestApp/*.m"]),
+    hdrs = glob(["apps/TestApp/TestApp/*.h"]),
+    data = glob(["apps/TestApp/TestApp/Base.lproj/*.storyboard"]) + [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/add_quantized.bin",
+        "//tensorflow/lite:testdata/multi_add.bin",
+    ],
+    includes = [
+        "apis",
+    ],
+    module_name = "TestApp",
+    tags = TFL_DEFAULT_TAGS + ["manual"],
     deps = [
         ":TensorFlowLite",
     ],

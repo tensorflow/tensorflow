@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 import six
 
 from tensorflow.python.framework import test_util
@@ -41,6 +43,95 @@ class TfUpgradeV2SafetyTest(test_util.TensorFlowTestCase):
     _, report, _, _ = self._upgrade(text)
     expected_info = "tf.contrib will not be distributed"
     self.assertIn(expected_info, report)
+
+  def testTensorFlowImport(self):
+    text = "import tensorflow as tf"
+    expected_text = ("import tensorflow.compat.v1 as tf" + os.linesep +
+                     "tf.disable_v2_behavior()" + os.linesep)
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "import tensorflow as tf, other_import as y"
+    expected_text = ("import tensorflow.compat.v1 as tf, other_import as y" +
+                     os.linesep + "tf.disable_v2_behavior()" + os.linesep)
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "import tensorflow"
+    expected_text = ("import tensorflow.compat.v1 as tensorflow" + os.linesep +
+                     "tensorflow.disable_v2_behavior()" + os.linesep)
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "import tensorflow.foo"
+    expected_text = "import tensorflow.compat.v1.foo"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "import tensorflow.foo as bar"
+    expected_text = "import tensorflow.compat.v1.foo as bar"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+  def testTensorFlowImportInIndent(self):
+    text = """
+try:
+  import tensorflow as tf  # import line
+
+  tf.ones([4, 5])
+except AttributeError:
+  pass
+"""
+
+    expected_text = """
+try:
+  import tensorflow.compat.v1 as tf  # import line
+  tf.disable_v2_behavior()
+
+  tf.ones([4, 5])
+except AttributeError:
+  pass
+"""
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+  def testTensorFlowFromImport(self):
+    text = "from tensorflow import foo"
+    expected_text = "from tensorflow.compat.v1 import foo"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "from tensorflow.foo import bar"
+    expected_text = "from tensorflow.compat.v1.foo import bar"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "from tensorflow import *"
+    expected_text = "from tensorflow.compat.v1 import *"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+  def testTensorFlowImportAlreadyHasCompat(self):
+    text = "import tensorflow.compat.v1 as tf"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+
+    text = "import tensorflow.compat.v2 as tf"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+
+    text = "from tensorflow.compat import v2 as tf"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+
+  def testTensorFlowDontChangeContrib(self):
+    text = "import tensorflow.contrib as foo"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+
+    text = "from tensorflow import contrib"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
 
 
 if __name__ == "__main__":

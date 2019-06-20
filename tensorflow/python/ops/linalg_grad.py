@@ -468,6 +468,43 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
     return grad_a
 
 
+def _LeftShift(x):
+  """Shifts next-to-last dimension to the left, adding zero on the right."""
+  rank = array_ops.rank(x)
+  zeros = array_ops.zeros((rank - 2, 2), dtype=dtypes.int32)
+  pad = array_ops.concat([zeros, array_ops.constant([[0, 1], [0, 0]])], axis=0)
+  return array_ops.pad(x[..., 1:, :], pad)
+
+
+def _RightShift(x):
+  """Shifts next-to-last dimension to the right, adding zero on the left."""
+  rank = array_ops.rank(x)
+  zeros = array_ops.zeros((rank - 2, 2), dtype=dtypes.int32)
+  pad = array_ops.concat([zeros, array_ops.constant([[1, 0], [0, 0]])], axis=0)
+  return array_ops.pad(x[..., :-1, :], pad)
+
+
+@ops.RegisterGradient("TridiagonalMatMul")
+def _TridiagonalMatMulGrad(op, grad):
+  """Gradient for TridiagonalMatMul."""
+  superdiag_conj = array_ops.matrix_transpose(op.inputs[0], conjugate=True)
+  maindiag_conj = array_ops.matrix_transpose(op.inputs[1], conjugate=True)
+  subdiag_conj = array_ops.matrix_transpose(op.inputs[2], conjugate=True)
+  rhs_conj = math_ops.conj(op.inputs[3])
+
+  superdiag_grad = math_ops.reduce_sum(_LeftShift(rhs_conj) * grad, axis=-1)
+  maindiag_grad = math_ops.reduce_sum(rhs_conj * grad, axis=-1)
+  subdiag_grad = math_ops.reduce_sum(_RightShift(rhs_conj) * grad, axis=-1)
+  rhs_grad = _RightShift(superdiag_conj * grad) + \
+      maindiag_conj * grad + _LeftShift(subdiag_conj * grad)
+
+  superdiag_grad = array_ops.expand_dims(superdiag_grad, -2)
+  maindiag_grad = array_ops.expand_dims(maindiag_grad, -2)
+  subdiag_grad = array_ops.expand_dims(subdiag_grad, -2)
+
+  return superdiag_grad, maindiag_grad, subdiag_grad, rhs_grad
+
+
 @ops.RegisterGradient("TridiagonalSolve")
 def _TridiagonalSolveGrad(op, grad):
   """Gradient for TridiagonalSolveGrad."""

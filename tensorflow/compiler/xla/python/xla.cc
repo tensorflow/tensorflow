@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -59,7 +60,7 @@ Uniquer* GetUniquer() {
   return uniquer;
 }
 
-static string UniquifyName(const string& name) {
+static std::string UniquifyName(const std::string& name) {
   Uniquer* uniquer = GetUniquer();
   absl::MutexLock lock(&uniquer->mu);
   return uniquer->name_uniquer.GetUniqueName(name);
@@ -131,6 +132,9 @@ PYBIND11_MODULE(xla_extension, m) {
   // Shapes
   py::class_<Shape> shape_class(m, "Shape");
   shape_class
+      .def(py::init([](const string& s) {
+        return absl::make_unique<Shape>(ValueOrThrow(ParseShape(s)));
+      }))
       .def_static(
           "tuple_shape",
           [](std::vector<Shape> shapes) -> Shape {
@@ -239,14 +243,15 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("__repr__", &ProgramShape::ToString);
 
   // Literals
-  py::class_<Literal>(m, "Literal").def("__repr__", &Literal::ToString);
+  py::class_<Literal, std::shared_ptr<Literal>>(m, "Literal")
+      .def("__repr__", &Literal::ToString);
   py::class_<LiteralSlice>(m, "LiteralSlice");
   py::implicitly_convertible<Literal, LiteralSlice>();
   py::implicitly_convertible<BorrowingLiteral, LiteralSlice>();
 
   // Device assignments
   py::class_<DeviceAssignment>(m, "DeviceAssignment")
-      .def_static("Create",
+      .def_static("create",
                   [](py::array_t<int> array) -> StatusOr<DeviceAssignment> {
                     if (array.ndim() != 2) {
                       return InvalidArgument(
@@ -272,9 +277,19 @@ PYBIND11_MODULE(xla_extension, m) {
   // CPU custom-call targets.
   m.def("RegisterCpuCustomCallTarget", &RegisterCpuCustomCallTarget);
 
+  py::class_<AllocatorConfig> alloc_config(m, "AllocatorConfig");
+  alloc_config.def(py::init<>())
+      .def_readwrite("kind", &AllocatorConfig::kind)
+      .def_readwrite("memory_fraction", &AllocatorConfig::memory_fraction);
+  py::enum_<AllocatorConfig::Kind>(alloc_config, "Kind")
+      .value("DEFAULT", AllocatorConfig::Kind::kDefault)
+      .value("PLATFORM", AllocatorConfig::Kind::kPlatform)
+      .value("BFC", AllocatorConfig::Kind::kBFC);
+
   py::class_<PyLocalClient, std::shared_ptr<PyLocalClient>>(m, "LocalClient")
       .def_static("Get", &PyLocalClient::Get, py::arg("platform"),
-                  py::arg("xla_platform_id"), py::arg("asynchronous"))
+                  py::arg("xla_platform_id"), py::arg("asynchronous"),
+                  py::arg("allocator_config") = AllocatorConfig())
       .def("DeviceCount", &PyLocalClient::device_count)
       .def("TransferToInfeed", &PyLocalClient::TransferToInfeed)
       .def("TransferFromOutfeed", &PyLocalClient::TransferFromOutfeed);
@@ -285,11 +300,13 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_static("make_tuple", &PyLocalBuffer::MakeTuple)
       .def("delete", &PyLocalBuffer::Delete)
       .def("destructure", &PyLocalBuffer::DestructureTuple)
+      .def("block_host_until_ready", &PyLocalBuffer::BlockHostUntilReady)
+      .def("copy_to_host_async", &PyLocalBuffer::CopyToHostAsync)
       .def("to_py", &PyLocalBuffer::ToPython)
       .def("shape", &PyLocalBuffer::on_host_shape)
       .def("device", &PyLocalBuffer::device_ordinal)
       .def("is_deleted", [](const PyLocalBuffer& buffer) {
-        return buffer.device_buffer() == nullptr;
+        return buffer.DeviceBuffer() == nullptr;
       });
 
   py::class_<PyLocalExecutable>(m, "LocalExecutable")
@@ -298,9 +315,9 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("DeviceOrdinals", &PyLocalExecutable::DeviceOrdinals)
       .def("Delete", &PyLocalExecutable::Delete)
       .def("Execute", &PyLocalExecutable::Execute,
-           py::call_guard<py::gil_scoped_release>())
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("ExecutePerReplica", &PyLocalExecutable::ExecutePerReplica,
-           py::call_guard<py::gil_scoped_release>());
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"));
 
   py::class_<DebugOptions>(m, "DebugOptions")
       .def_property("xla_cpu_enable_fast_math",
@@ -431,10 +448,8 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("Outfeed", &Outfeed, py::arg("operand"), py::arg("shape_with_layout"),
           py::arg("outfeed_config") = "");
   ops.def("Pad", &Pad);
-  ops.def(
-      "Parameter",
-      static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&, const string&)>(
-          &Parameter));
+  ops.def("Parameter", static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,
+                                             const std::string&)>(&Parameter));
   ops.def("QR",
           [](XlaOp a, bool full_matrices) -> StatusOr<std::pair<XlaOp, XlaOp>> {
             TF_ASSIGN_OR_RETURN(auto qr, QRDecomposition(a, full_matrices));

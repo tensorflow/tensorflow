@@ -206,6 +206,8 @@ class ModelCorrectnessTest(
           self.assertAllClose(
               results[key],
               results_without_ds[key],
+              rtol=1e-5,
+              atol=1e-5,
               msg='Fail to assert {}'.format(key))
 
       return results

@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
-#include "tensorflow/stream_executor/owning_device_memory.h"
 
 namespace xla {
 
@@ -52,6 +51,9 @@ namespace xla {
 class BufferDefinitionEvent {
  public:
   // Creates a new definition event whose event has not yet been triggered.
+  static StatusOr<std::shared_ptr<BufferDefinitionEvent>> Create(
+      se::StreamExecutor* executor);
+
   explicit BufferDefinitionEvent(se::StreamExecutor* executor);
 
   // Records the definition event on the tail of 'stream'.

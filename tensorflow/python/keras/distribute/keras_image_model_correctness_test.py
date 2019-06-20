@@ -83,7 +83,7 @@ class DistributionStrategyCnnCorrectnessTest(
     x_predict = x_train
     return x_train, y_train, x_predict
 
-  def get_data_with_partial_last_batch(self):
+  def get_data_with_partial_last_batch_eval(self):
     x_train, y_train = self._get_data(count=1280)
     x_eval, y_eval = self._get_data(count=1000)
     return x_train, y_train, x_eval, y_eval, x_eval
@@ -99,15 +99,17 @@ class DistributionStrategyCnnCorrectnessTest(
                          all_strategy_and_input_config_combinations())
   def test_cnn_with_batch_norm_correctness(self, distribution, use_numpy,
                                            use_validation_data, cloning):
+    self.skipTest('Flakily times out, b/134670856')
     self.run_correctness_test(distribution, use_numpy, use_validation_data,
                               with_batch_norm=True, cloning=cloning)
 
   @combinations.generate(
+      keras_correctness_test_base.test_combinations_with_tpu_strategies() +
       keras_correctness_test_base
-      .test_combinations_with_tpu_strategies())
-  def test_cnn_correctness_with_partial_last_batch(self, distribution,
-                                                   use_numpy,
-                                                   use_validation_data):
+      .strategy_minus_tpu_and_input_config_combinations_eager())
+  def test_cnn_correctness_with_partial_last_batch_eval(self, distribution,
+                                                        use_numpy,
+                                                        use_validation_data):
     self.run_correctness_test(
         distribution,
         use_numpy,
@@ -116,9 +118,10 @@ class DistributionStrategyCnnCorrectnessTest(
         training_epochs=1)
 
   @combinations.generate(
+      keras_correctness_test_base.test_combinations_with_tpu_strategies() +
       keras_correctness_test_base
-      .test_combinations_with_tpu_strategies())
-  def test_cnn_with_batch_norm_correctness_and_partial_last_batch(
+      .strategy_minus_tpu_and_input_config_combinations_eager())
+  def test_cnn_with_batch_norm_correctness_and_partial_last_batch_eval(
       self, distribution, use_numpy, use_validation_data):
     self.run_correctness_test(
         distribution,

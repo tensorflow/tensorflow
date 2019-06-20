@@ -27,6 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
@@ -95,6 +96,9 @@ def convert_structure_to_signature(structure, arg_names=None):
       else:
         name = "/".join([str(p) for p in path])
       return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
+    if isinstance(arg, composite_tensor.CompositeTensor):
+      # TODO(b/133606651) Do we need to inject arg_name?
+      return arg._type_spec  # pylint: disable=protected-access
     if isinstance(arg, (
         int,
         float,
@@ -108,7 +112,7 @@ def convert_structure_to_signature(structure, arg_names=None):
 
   # We are using the flattened paths to name the TensorSpecs. We need an
   # explicit name for them downstream.
-  flattened = nest.flatten_with_tuple_paths(structure, expand_composites=True)
+  flattened = nest.flatten_with_tuple_paths(structure)
   if arg_names:
     if len(arg_names) != len(structure):
       raise ValueError(
@@ -120,7 +124,7 @@ def convert_structure_to_signature(structure, arg_names=None):
     ]
 
   mapped = [encode_arg(arg, path) for path, arg in flattened]
-  return nest.pack_sequence_as(structure, mapped, expand_composites=True)
+  return nest.pack_sequence_as(structure, mapped)
 
 
 class FuncGraph(ops.Graph):
@@ -147,6 +151,9 @@ class FuncGraph(ops.Graph):
       or the global default Graph.
     captures: Maps external tensor -> internal tensor (i.e. input placeholder).
       The entries are in the order they were captured.
+    deferred_captures: Maps arbitrary key -> (closure, placeholder), where at
+      function call time the value of closure() will be used to feed the
+      placeholder.
     control_captures: Set of external ops on which this graph has a control
       dependency.
     seed: The graph-level random seed.
@@ -186,6 +193,7 @@ class FuncGraph(ops.Graph):
     self._watched_variables = weakref.WeakSet()
     self.outer_graph = ops.get_default_graph()
     self.captures = py_collections.OrderedDict()
+    self.deferred_captures = py_collections.OrderedDict()
     # Inherit capture-by-value from outer graph.
     if capture_by_value is not None:
       self.capture_by_value = capture_by_value
@@ -235,6 +243,48 @@ class FuncGraph(ops.Graph):
     while self is not None and isinstance(self, FuncGraph):
       self._watched_variables.add(v)
       self = self.outer_graph
+
+  def capture_call_time_value(self, closure, spec, key=None):
+    """Creates a placeholder which at call time has the value closure().
+
+    Useful, for example, to respect TensorFlow context managers, which are often
+    dynamically scoped.
+
+    Args:
+      closure: function which takes no arguments, to be evaluated at function
+       call time, returning a tensor of compatible `shape` and `dtype`
+      spec: TypeSpec for the value to capture.
+      key: optional. If not None, multiple calls to lazy_capture with the same
+       key in the same graph will return the same placeholder, and the
+       first closure will be used at function call time.
+
+    Returns:
+      placeholder which, at function call time, will be fed with the result
+      of calling closure().
+
+    Raises:
+      ValueError: at function call time, if the return value of closure() is
+       not compatible with shape and dtype.
+      TypeError: if spec is not a supported type (currently only TensorSpec
+       is supported).
+    """
+    if key is None:
+      key = object()
+    if not isinstance(spec, tensor_spec.TensorSpec):
+      raise TypeError("Only TensorSpec supported so far, not", repr(spec))
+    dtype = spec.dtype
+    shape = spec.shape
+    if key not in self.deferred_captures:
+      placeholder = array_ops.placeholder(dtype=dtype, shape=shape)
+      def wrapped_closure():
+        tensor = ops.convert_to_tensor(closure(), dtype=dtype)
+        if not tensor.shape.is_compatible_with(shape):
+          raise ValueError(
+              "Return value of closure,", tensor,
+              "not compatible with shape", shape, "passed to lazy_placeholder")
+        return tensor
+      self.deferred_captures[key] = (wrapped_closure, placeholder)
+    return self.deferred_captures[key][1]
 
   def control_dependencies(self, control_inputs):
     """Handles control dependencies.
@@ -301,6 +351,7 @@ class FuncGraph(ops.Graph):
       old_device_stack = self._device_function_stack
       if context.executing_eagerly():
         if self._distribution_strategy_stack:
+          self._device_function_stack = self._device_function_stack.copy()
           self._add_device_to_stack(context.context().device_name)
       else:
         if (self._distribution_strategy_stack
@@ -484,6 +535,18 @@ class FuncGraph(ops.Graph):
     # tensors those will be captured first in the forward graph. This
     # makes sure that any tensor needed by a custom_gradient is correctly
     # captured.
+
+    # TODO(b/134097853): figure out a better way to check distributed variables
+    if hasattr(tensor, "_distribute_strategy") and hasattr(tensor, "_values"):
+      # This checks if the 'tensor' is a DistributedVariable. When it is a
+      # DistributedVariable, we do not want to check its "graph" attr as the
+      # following if branch does, because "graph" is not an attr for the
+      # container DistributedVariable object, and the underlying components may
+      # not have been initialized yet.
+      # The reason we do not use isinstance() is due to cyclic dependency issue.
+      if name is None:
+        name = str("distributed_variable")
+      return self._capture_helper(tensor, name)
     if (getattr(tensor, "graph", None) is not self and
         hasattr(self, "_forward_func_graph") and
         isinstance(self._forward_func_graph, FuncGraph)):
@@ -690,19 +753,21 @@ def func_graph_from_py_func(name,
         _, original_func = tf_decorator.unwrap(python_func)
 
         def wrapper(*args, **kwargs):
-          # Note: functions annotated with @tf.function should always be
-          # converted even though they would meet autograph's whitelisting
-          # criteria.
-          # If this assumption is ever broken, converted_call will need to
-          # handle the possibility of original_func still being a shim, e.g.
-          # bound to WeakrefSelf.
-          return autograph.converted_call(
-              original_func, None,
-              autograph.ConversionOptions(
-                  recursive=True,
-                  optional_features=autograph_options,
-                  force_conversion=True,
-              ), args, kwargs)
+          """Calls a converted version of original_func."""
+          # TODO(mdan): Push this block higher in tf.function's call stack.
+          try:
+            return autograph.converted_call(
+                original_func, None,
+                autograph.ConversionOptions(
+                    recursive=True,
+                    optional_features=autograph_options,
+                    force_conversion=True,
+                ), args, kwargs)
+          except Exception as e:  # pylint:disable=broad-except
+            if hasattr(e, "ag_error_metadata"):
+              raise e.ag_error_metadata.to_exception(type(e))
+            else:
+              raise
 
         # Wrapping around a decorator allows checks like tf_inspect.getargspec
         # to be accurate.
@@ -741,7 +806,9 @@ def func_graph_from_py_func(name,
       elif isinstance(arg, ops.Tensor):
         inputs.append(arg)
     variables = [v for v in graph_variables if v not in arg_variables]
-    func_graph.inputs = inputs + list(func_graph.captures.values())
+    func_graph.inputs = inputs + list(
+        func_graph.captures.values()) + [
+            x[1] for x in func_graph.deferred_captures.values()]
 
     func_graph.structured_outputs = func_outputs
     # Returning a closed-over tensor does not trigger convert_to_tensor.
@@ -754,13 +821,6 @@ def func_graph_from_py_func(name,
 
   if add_control_dependencies:
     func_graph.control_outputs.extend(control_manager.ops_which_must_run)
-
-# Register any other functions defined in the graph.
-  with ops.init_scope():
-    if context.executing_eagerly():
-      for f in func_graph._functions.values():  # pylint: disable=protected-access
-        # TODO(ashankar): What about the gradient registry?
-        context.add_function(f._c_func.func)  # pylint: disable=protected-access
 
   return func_graph
 
@@ -991,4 +1051,7 @@ def dismantle_func_graph(func_graph):
   while func_graph.captures:
     func_graph.captures.popitem()
   memory.dismantle_ordered_dict(func_graph.captures)
+  while func_graph.deferred_captures:
+    func_graph.deferred_captures.popitem()
+  memory.dismantle_ordered_dict(func_graph.deferred_captures)
   ops.dismantle_graph(func_graph)

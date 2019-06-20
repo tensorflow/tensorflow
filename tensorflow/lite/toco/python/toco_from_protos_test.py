@@ -67,7 +67,7 @@ class TocoFromProtosTest(googletest.TestCase):
       fp_model.flush()
       fp_toco.flush()
       fp_input.flush()
-      tflite_bin = resource_loader.get_path_to_datafile("toco_from_protos")
+      tflite_bin = resource_loader.get_path_to_datafile("toco_from_protos.par")
       cmdline = " ".join([
           tflite_bin, fp_model.name, fp_toco.name, fp_input.name, fp_output.name
       ])

@@ -59,7 +59,7 @@ void Callback_Memcpy(CUstream stream, void** buffers, const char* /*opaque*/,
   void* dst = buffers[1];
   auto err = cudaMemcpyAsync(dst, src, /*count=*/sizeof(float) * 128,
                              cudaMemcpyDeviceToDevice, stream);
-  CHECK_EQ(err, cudaSuccess);
+  ASSERT_EQ(err, cudaSuccess);
 }
 XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_Memcpy, "CUDA");
 TEST_F(CustomCallTest, Memcpy) {
@@ -76,7 +76,7 @@ std::string& kExpectedOpaque = *new std::string("abc\0def", 7);
 void Callback_Opaque(CUstream /*stream*/, void** /*buffers*/,
                      const char* opaque, size_t opaque_len) {
   std::string opaque_str(opaque, opaque_len);
-  CHECK_EQ(opaque_str, kExpectedOpaque);
+  ASSERT_EQ(opaque_str, kExpectedOpaque);
 }
 XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_Opaque, "CUDA");
 TEST_F(CustomCallTest, Opaque) {
@@ -117,8 +117,8 @@ void Callback_SubBuffers(CUstream stream, void** buffers,
   // these values via cudaMemcpy.
   void* p0[2];
   cudaMemcpy(p0, buffers[0], 2 * sizeof(void*), cudaMemcpyDeviceToHost);
-  CHECK_EQ(p0[0], buffers[1]);
-  CHECK_EQ(p0[1], buffers[2]);
+  ASSERT_EQ(p0[0], buffers[1]);
+  ASSERT_EQ(p0[1], buffers[2]);
 
   // Check the param 1 tuple, namely that
   //
@@ -126,8 +126,8 @@ void Callback_SubBuffers(CUstream stream, void** buffers,
   //   (*buffers[3])[1] == buffers[5].
   void* p1[2];
   cudaMemcpy(p1, buffers[3], 2 * sizeof(void*), cudaMemcpyDeviceToHost);
-  CHECK_EQ(p1[0], buffers[4]);
-  CHECK_EQ(p1[1], buffers[5]);
+  ASSERT_EQ(p1[0], buffers[4]);
+  ASSERT_EQ(p1[1], buffers[5]);
 
   // We don't have an equivalent check for the output tuple (i.e. we don't check
   // (*buffers[6])[0] == buffers[7]) because it's up to us to set the tuple

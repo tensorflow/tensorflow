@@ -15,10 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_UINT8_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_UINT8_H_
 
+#include <type_traits>
+
 #include "profiling/instrumentation.h"
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -1685,7 +1686,7 @@ inline void DepthwiseConvGeneral(
   const int input_depth = input_shape.Dims(3);
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
-  const int output_rows = output_shape.Dims(1);
+  const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
 #ifdef USE_NEON
   const bool shift_left = (output_shift > 0);
@@ -1771,11 +1772,12 @@ inline void DepthwiseConvGeneral(
   int batch_start = 0;
   int batch_end = batches;
   int row_start = 0;
-  int row_end = output_rows;
+  int row_end = output_height;
   int output_ptr_offset = 0;
 
   switch (thread_dim) {
     case 0:
+      // Multithread along with the batch axis
       TFLITE_DCHECK_GE(thread_start, 0);
       TFLITE_DCHECK_LE(thread_end, batches);
       batch_start = thread_start;
@@ -1783,8 +1785,9 @@ inline void DepthwiseConvGeneral(
       output_ptr_offset = batch_start * FlatSizeSkipDim(output_shape, 0);
       break;
     case 1:
+      // Multithread along with the row axis
       TFLITE_DCHECK_GE(thread_start, 0);
-      TFLITE_DCHECK_LE(thread_end, output_rows);
+      TFLITE_DCHECK_LE(thread_end, output_height);
       row_start = thread_start;
       row_end = thread_end;
       output_ptr_offset = row_start * output_width * output_depth;
@@ -1793,7 +1796,7 @@ inline void DepthwiseConvGeneral(
 
   uint8* output_ptr = output_data + output_ptr_offset;
   int batch_step =
-      (output_rows + row_start - row_end) * output_width * output_depth;
+      (output_height + row_start - row_end) * output_width * output_depth;
   for (int b = batch_start; b < batch_end; ++b) {
     for (int out_y = row_start; out_y < row_end; ++out_y) {
       const int in_y_origin = (out_y * stride_height) - pad_height;
@@ -1983,7 +1986,8 @@ inline void DepthwiseConvWithRounding(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, int thread_start, int thread_end, int thread_dim) {
+    uint8* output_data, const CpuFlags& cpu_flags, int thread_start,
+    int thread_end, int thread_dim) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConv/8bit");
   const int depth_multiplier = params.depth_multiplier;
   const int32 output_activation_min = params.quantized_activation_min;
@@ -2004,6 +2008,26 @@ inline void DepthwiseConvWithRounding(
 // Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
 // Jetson TX-2. This compiler does not support the offsetof() macro.
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
+  // Dispatch to dot-product 3x3 kernels when supported.
+  if (cpu_flags.neon_dotprod) {
+    using optimized_ops::depthwise_conv::DotProduct3x3KernelType;
+    DotProduct3x3KernelType kernel_type =
+        optimized_ops::depthwise_conv::CategorizeDotProductKernel(
+            input_shape, filter_shape, params);
+    if (kernel_type != DotProduct3x3KernelType::kNone) {
+      gemmlowp::ScopedProfilingLabel specialized_label(
+          "DepthwiseConv/8bit/3x3XDotProduct");
+      optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
+          DepthwiseConvImplementation::kUseNeon3x3DotProduct>(
+          params, input_shape, input_data, filter_shape, filter_data,
+          bias_shape, bias_data, output_shape, output_data, thread_start,
+          thread_end, thread_dim);
+      return;
+    }
+  }
+
+  // Dispatch to non-dot-product 3x3 kernels when supported.
+
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int pad_width = params.padding_values.width;
@@ -2038,123 +2062,20 @@ inline void DepthwiseConvImpl(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, int thread_start, int thread_end, int thread_dim) {
-  return DepthwiseConvWithRounding<DepthwiseConvOutputRounding::kAwayFromZero>(
+    uint8* output_data, const CpuFlags& cpu_flags, int thread_start,
+    int thread_end, int thread_dim) {
+  return DepthwiseConvWithRounding<DepthwiseConvOutputRounding::kUpward>(
       params, input_shape, input_data, filter_shape, filter_data, bias_shape,
-      bias_data, output_shape, output_data, thread_start, thread_end,
+      bias_data, output_shape, output_data, cpu_flags, thread_start, thread_end,
       thread_dim);
 }
 
-template <typename T, typename TS>
-struct DepthwiseConvWorkerTask : cpu_backend_threadpool::Task {
-  DepthwiseConvWorkerTask(const DepthwiseParams& params,
-                          const RuntimeShape& input_shape, const T* input_data,
-                          const RuntimeShape& filter_shape,
-                          const T* filter_data, const RuntimeShape& bias_shape,
-                          const TS* bias_data, const RuntimeShape& output_shape,
-                          T* output_data, int thread_start, int thread_end,
-                          int thread_dim)
-      : params_(params),
-        input_shape_(input_shape),
-        input_data_(input_data),
-        filter_shape_(filter_shape),
-        filter_data_(filter_data),
-        bias_shape_(bias_shape),
-        bias_data_(bias_data),
-        output_shape_(output_shape),
-        output_data_(output_data),
-        thread_start_(thread_start),
-        thread_end_(thread_end),
-        thread_dim_(thread_dim) {}
-
-  void Run() override {
-    DepthwiseConvImpl(params_, input_shape_, input_data_, filter_shape_,
-                      filter_data_, bias_shape_, bias_data_, output_shape_,
-                      output_data_, thread_start_, thread_end_, thread_dim_);
-  }
-
- private:
-  const DepthwiseParams& params_;
-  const RuntimeShape& input_shape_;
-  const T* input_data_;
-  const RuntimeShape& filter_shape_;
-  const T* filter_data_;
-  const RuntimeShape& bias_shape_;
-  const TS* bias_data_;
-  const RuntimeShape& output_shape_;
-  T* output_data_;
-  int thread_start_;
-  int thread_end_;
-  int thread_dim_;
-};
-
-inline int HowManyConvThreads(const RuntimeShape& output_shape,
-                              const RuntimeShape& filter_shape,
-                              int thread_dim) {
-  constexpr int kMinMulPerThread = 8;
-  const int output_units = output_shape.Dims(thread_dim);
-  const int filter_height = filter_shape.Dims(1);
-  const int filter_width = filter_shape.Dims(2);
-  const int num_mul_per_unit =
-      FlatSizeSkipDim(output_shape, thread_dim) * filter_height * filter_width;
-  const int min_units_per_thread = kMinMulPerThread / num_mul_per_unit + 1;
-  int thread_count = output_units / min_units_per_thread;
-  return thread_count;
-}
-
-inline void DepthwiseConv(
-    const DepthwiseParams& params, const RuntimeShape& input_shape,
-    const uint8* input_data, const RuntimeShape& filter_shape,
-    const uint8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, CpuBackendContext* cpu_backend_context) {
-  gemmlowp::ScopedProfilingLabel label("DepthwiseConv");
-
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-
-  const int output_batches = output_shape.Dims(0);
-  const int output_rows = output_shape.Dims(1);
-  int thread_count_batch = HowManyConvThreads(output_shape, filter_shape, 0);
-  int thread_count_row = HowManyConvThreads(output_shape, filter_shape, 1);
-  int thread_dim, thread_count, thread_dim_size;
-  if (thread_count_batch > thread_count_row) {
-    thread_dim = 0;
-    thread_dim_size = output_batches;
-    thread_count = thread_count_batch;
-  } else {
-    thread_dim = 1;
-    thread_dim_size = output_rows;
-    thread_count = thread_count_row;
-  }
-
-  const int max_threads = cpu_backend_context->max_num_threads();
-  thread_count = std::max(1, std::min(thread_count, max_threads));
-
-  if (thread_count == 1) {
-    DepthwiseConvImpl(params, input_shape, input_data, filter_shape,
-                      filter_data, bias_shape, bias_data, output_shape,
-                      output_data, /*thread_start=*/0,
-                      /*thread_end=*/output_rows, /*thread_dim=*/1);
-  } else {
-    std::vector<DepthwiseConvWorkerTask<uint8, int32>> tasks;
-    // TODO(b/131746020) don't create new heap allocations every time.
-    // At least we make it a single heap allocation by using reserve().
-    tasks.reserve(thread_count);
-    int thread_start = 0;
-    for (int i = 0; i < thread_count; ++i) {
-      int thread_end =
-          thread_start + (thread_dim_size - thread_start) / (thread_count - i);
-      tasks.emplace_back(params, input_shape, input_data, filter_shape,
-                         filter_data, bias_shape, bias_data, output_shape,
-                         output_data, thread_start, thread_end, thread_dim);
-      thread_start = thread_end;
-    }
-    cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),
-                                    cpu_backend_context);
-  }
-}
+void DepthwiseConv(const DepthwiseParams& params,
+                   const RuntimeShape& input_shape, const uint8* input_data,
+                   const RuntimeShape& filter_shape, const uint8* filter_data,
+                   const RuntimeShape& bias_shape, const int32* bias_data,
+                   const RuntimeShape& output_shape, uint8* output_data,
+                   const CpuFlags& cpu_flags);
 
 }  // namespace optimized_ops
 }  // namespace tflite

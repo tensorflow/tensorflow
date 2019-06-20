@@ -951,6 +951,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kReal:
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
+    case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSelect:

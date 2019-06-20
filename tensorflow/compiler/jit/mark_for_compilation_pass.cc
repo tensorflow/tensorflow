@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
@@ -82,6 +83,10 @@ class MarkForCompilationPassImpl {
   struct DebugOptions {
     // If true, do not respect the results of deadness analysis.
     bool ignore_deadness_checks;
+
+    // If true, do not do safety checks to preserve TensorFlow's resource
+    // variable concurrency semantics.
+    bool ignore_resource_variable_checks;
 
     // If true, do not respect the _XlaCompile=false attribute.
     bool ignore_xla_compile_attr;
@@ -222,6 +227,18 @@ class MarkForCompilationPassImpl {
     TF_DISALLOW_COPY_AND_ASSIGN(Cluster);
   };
 
+  // If `cluster` has only a single node then returns that, otherwise returns
+  // nullptr.
+  Node* GetOnlyNodeIn(const Cluster& cluster);
+
+  // Returns true if `cluster` is a trivial cluster containing a "sink like"
+  // node -- a NoOp node that only the Sink node control depends on.
+  bool IsSinkLike(const Cluster& cluster);
+
+  // Returns true if `cluster` looks like an "i++" operation on an integer
+  // scalar resource variable.
+  bool IsScalarIntegerResourceOperation(const Cluster& cluster);
+
   // ---------------------------------------------------------------------------
   // The pass proceeds in four steps, out of which `RunEdgeContractionLoop` and
   // `CreateClusters` do most of the heavy lifting.
@@ -229,9 +246,13 @@ class MarkForCompilationPassImpl {
   // Initialize some internal data structures.
   Status Initialize();
 
-  // Runs through all the nodes in `cycles_graph_` and tries to create clusters.
-  // Returns true if any new clusters were created.
-  StatusOr<bool> RunEdgeContractionLoopInPostOrderOnce();
+  // Runs through the entire cluster graph in post-order and calls `fn(from,
+  // to)` on each edge.  `fn(from, to)` is expected to return true if it was
+  // able to contract `from`->`to`.
+  //
+  // Returns true if `fn` returned true for any edge.
+  template <typename FnTy>
+  StatusOr<bool> ForEachEdgeInPostOrder(FnTy fn);
 
   // Contracts as many edges as possible to create XLA clusters.  After this
   // finishes the clustering decisions made are implicitly stored in
@@ -252,10 +273,6 @@ class MarkForCompilationPassImpl {
   // Tries to contract the edge from cluster `from` to cluster `to`.  Returns
   // true if successful.
   StatusOr<bool> TryToContractEdge(Cluster* from, Cluster* to);
-
-  // Tries to contract each edge from `cluster_from`.  Returns true if any edges
-  // were contracted, false otherwise.
-  StatusOr<bool> TryToContractEdgesFrom(Cluster* cluster_from);
 
   // Nodes that XLA can compile are put in `compilation_candidates_`.
   Status FindCompilationCandidates();
@@ -314,6 +331,13 @@ class MarkForCompilationPassImpl {
   //
   // Returns nullptr if `node_id` is not a compilation candidate.
   Cluster* GetClusterForCyclesGraphNode(int node_id) {
+    // We have to check `graph_->FindNodeId(node) == nullptr` because we add all
+    // nodes in [0, graph_->num_node_ids()) to the cycle detection graph but the
+    // TF graph may be missing some node ids.
+    if (node_id >= graph_->num_node_ids() ||
+        graph_->FindNodeId(node_id) == nullptr) {
+      return nullptr;
+    }
     Cluster* cluster = cluster_for_node_[node_id].Get();
     if (cluster) {
       DCHECK_EQ(cluster->cycles_graph_node_id(), node_id);
@@ -369,6 +393,13 @@ class MarkForCompilationPassImpl {
     cluster_for_node_[from].Merge(&cluster_for_node_[to]);
 
     return true;
+  }
+
+  string EdgeContractionFailureMsg(Cluster* from, Cluster* to,
+                                   absl::string_view reason) {
+    return absl::StrCat("Could not contract ", from->DebugString(*graph_),
+                        " -> ", to->DebugString(*graph_), " because ", reason,
+                        ".");
   }
 
   DebugOptions debug_options_;
@@ -581,39 +612,87 @@ Status MarkForCompilationPassImpl::Initialize() {
   return BuildInitialClusterSet();
 }
 
-StatusOr<bool>
-MarkForCompilationPassImpl::RunEdgeContractionLoopInPostOrderOnce() {
+template <typename FnTy>
+StatusOr<bool> MarkForCompilationPassImpl::ForEachEdgeInPostOrder(FnTy fn) {
   bool changed = false;
-  // Iterating over the graph once in post-order is sufficient to produce a
-  // maximal clustering:
-  //
-  // A. We visit a cluster only after maximally clustering all its children.
-  // B. By the time we're done with `node` (in `TryToContractEdgesFrom`) all of
-  //    its children that could have been absorbed into `node` have been
-  //    absorbed.
-  // C. We have an invariant that making a cluster larger does not make edges
-  //    leaving it more contractable. That is, if we have
-  //    digraph { X->Y; Y->Z; } then collapsing X->Y does not make it possible
-  //    to contract Y->Z if Y->Z was not contractible originally.
   for (int32 node : cycles_graph_.AllNodesInPostOrder()) {
-    // We have to check `graph_->FindNodeId(node) == nullptr` because we add all
-    // nodes in [0, graph_->num_node_ids()) to the cycle detection graph but the
-    // TF graph may be missing some node ids.
-    if (node >= graph_->num_node_ids() || graph_->FindNodeId(node) == nullptr) {
-      continue;
-    }
-
     Cluster* cluster_from = GetClusterForCyclesGraphNode(node);
-    if (cluster_from == nullptr) {
+    if (!cluster_from) {
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(bool contracted_one_edge,
-                        TryToContractEdgesFrom(cluster_from));
-    changed |= contracted_one_edge;
+    // Make a copy of the set of successors because we may modify the graph in
+    // TryToContractEdge.
+    std::vector<int32> successors_copy =
+        cycles_graph_.SuccessorsCopy(cluster_from->cycles_graph_node_id());
+
+    for (int to : successors_copy) {
+      iteration_count_++;
+
+      Cluster* cluster_to = GetClusterForCyclesGraphNode(to);
+      if (!cluster_to) {
+        continue;
+      }
+
+      TF_ASSIGN_OR_RETURN(bool contracted_edge, fn(cluster_from, cluster_to));
+      changed |= contracted_edge;
+    }
   }
 
   return changed;
+}
+
+Node* MarkForCompilationPassImpl::GetOnlyNodeIn(const Cluster& cluster) {
+  return cluster.cluster_size() == 1
+             ? graph_->FindNodeId(cluster.GetIdOfOnlyNode())
+             : nullptr;
+}
+
+bool MarkForCompilationPassImpl::IsSinkLike(const Cluster& cluster) {
+  if (Node* n = GetOnlyNodeIn(cluster)) {
+    return n->type_string() == "NoOp" && n->out_edges().size() == 1 &&
+           (*n->out_edges().begin())->dst()->IsSink();
+  }
+
+  return false;
+}
+
+bool MarkForCompilationPassImpl::IsScalarIntegerResourceOperation(
+    const Cluster& cluster) {
+  Node* n = GetOnlyNodeIn(cluster);
+  if (!n) {
+    return false;
+  }
+
+  if (n->type_string() != "AssignAddVariableOp" &&
+      n->type_string() != "AssignSubVariableOp") {
+    return false;
+  }
+
+  DataType dtype;
+  if (!GetNodeAttr(n->def(), "dtype", &dtype).ok() ||
+      !DataTypeIsInteger(dtype)) {
+    return false;
+  }
+
+  Node* const_input = nullptr;
+  for (const Edge* e : n->in_edges()) {
+    if (!e->IsControlEdge() && e->src()->IsConstant()) {
+      const_input = e->src();
+      break;
+    }
+  }
+
+  if (!const_input) {
+    return false;
+  }
+
+  const TensorProto* proto = nullptr;
+  if (!GetNodeAttr(const_input->def(), "value", &proto).ok()) {
+    return false;
+  }
+
+  return TensorShapeUtils::IsScalar(proto->tensor_shape());
 }
 
 Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
@@ -623,22 +702,126 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
   // TODO(hpucha): Handle the case where kXlaClusterAttr is already set (for
   // example, from the Grappler fusion pass).
 
-  TF_ASSIGN_OR_RETURN(bool changed, RunEdgeContractionLoopInPostOrderOnce());
+  // In general there are multiple maximal clusterings, but they are not all
+  // equally performant.  Some clustering decision are likely to improve
+  // performance much more than others, and we cannot order contractions on this
+  // cost function, nor can we look at global information while deciding on
+  // individual edges to contract.  Instead, we will make decisions on these
+  // important edges then make decisions on all other edges, causing the highest
+  // chance of all most important edges to be contracted.
+  //
+  // An example of where this might occur is with a digraph:
+  // {A -> B, B -> C, A -> X, X -> C} where B is a Size operation and X is
+  // not-compilable. In this case, the valid clusterings are {A,B} or {B,C}. B
+  // should be clustered with A because it will prevent a potentially large
+  // tensor from A being computed and copied.
+  //
+  // To choose better maximal clusterings we make multiple iterations over the
+  // graph in post-order, where each such iteration is called a "phase".
 
-  // Check that RunEdgeContractionLoopInPostOrderOnce is idempotent.  Once the
-  // linear time post-order scheme has been battle tested we can move this to
-  // happen only in debug builds.
-  TF_ASSIGN_OR_RETURN(changed, RunEdgeContractionLoopInPostOrderOnce());
+  // Phase 0: contract metadata operations with their producer.
+
+  TF_RETURN_IF_ERROR(
+      ForEachEdgeInPostOrder([&](Cluster* from, Cluster* to) -> StatusOr<bool> {
+        // Shape consuming operations are desirable to cluster with their
+        // operands because they return a small set of scalar values after
+        // consuming a large amount of data.  For example, given a graph X -> Y
+        // -> Size -> Z, where the possible clustering is [{X, Y, Size}, {Z}] or
+        // [{X, Y}, {Size, Z}], the better clustering is Size with Y because the
+        // output of size will be a small tensor while Y is a potentially large
+        // tensor that must be computed and possible transposed/copied before
+        // the second cluster executes.
+        Node* n = GetOnlyNodeIn(*to);
+        bool is_shape_consumer_op = n && IsShapeConsumerOp(*n);
+        if (!is_shape_consumer_op) {
+          return false;
+        }
+
+        return TryToContractEdge(from, to);
+      }).status());
+
+  // Phase 1: apply a heuristic to ensure that we don't mess up clusterig due to
+  // "group_deps".  After this phase most edges should have been contracted.
+
+  TF_RETURN_IF_ERROR(
+      ForEachEdgeInPostOrder([&](Cluster* from, Cluster* to) -> StatusOr<bool> {
+        // We split out this phase to get good clustering in the presence of a
+        // specific pattern seen in some graphs:
+        //
+        // digraph {
+        //   ApplyWeightUpdates_0 -> "iteration++"
+        //   ApplyWeightUpdates_1 -> "iteration++"
+        //   ApplyWeightUpdates_2 -> "iteration++"
+        //   ApplyWeightUpdates_0 -> Computation_A
+        //   ApplyWeightUpdates_1 -> Computation_B
+        //   ApplyWeightUpdates_2 -> Computation_C
+        //   Computation_A -> NoOp
+        //   Computation_B -> NoOp
+        //   Computation_C -> NoOp
+        //   "iteration++" -> NoOp
+        // }
+        //
+        // In the graph above we can't cluster iteration++ with any of the
+        // gradient update operations since that will break the TF resource
+        // variable memory model.  Given that constraint the ideal clustering
+        // would be to put all the gradient updates and all of the Computation_*
+        // nodes in one cluster, and leave iteration++ and NoOp unclustered.
+        //
+        // A naive post-order traversal would not create this good clustering,
+        // however.  Instead it will first create a cluster that puts
+        // Computation_* nodes, the NoOp and iteration++ node in a single
+        // cluster, after which it will fail to put any of the
+        // ApplyWeightUpdates_* nodes into this cluster. To avoid this fate we
+        // instead run a pass that avoids contracting edges _into_ NoOps like
+        // the above, and avoid clustering edges _from_ "iteration++" like the
+        // above.  Then we run a second pass that contracts the edges we could
+        // not contract the first time around.
+
+        if (IsSinkLike(*to)) {
+          return false;
+        }
+
+        if (IsScalarIntegerResourceOperation(*from)) {
+          return false;
+        }
+
+        return TryToContractEdge(from, to);
+      }).status());
+
+  // Phase 2: contract any remaining edges.  After this phase we should have a
+  // maximal clustering:
+  //
+  // A. We visit a cluster only after maximally clustering all its children.
+  // B. By the time we're done with a node all of its children that could have
+  //    been absorbed into the node have been absorbed.
+  // C. We have an invariant that making a cluster larger does not make edges
+  //    leaving it more contractable. That is, if we have
+  //    digraph { X->Y; Y->Z; } then collapsing X->Y does not make it possible
+  //    to contract Y->Z if Y->Z was not contractible originally.
+  TF_RETURN_IF_ERROR(ForEachEdgeInPostOrder([&](Cluster* from, Cluster* to) {
+                       return TryToContractEdge(from, to);
+                     }).status());
+
+  // Check that the conclusion made above (that iterating over the graph once in
+  // post order gives a maximal clustering) holds.  Once the linear time
+  // post-order scheme has been battle tested we can move this to happen only in
+  // debug builds.
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      ForEachEdgeInPostOrder([&](Cluster* from, Cluster* to) {
+                        return TryToContractEdge(from, to);
+                      }));
   TF_RET_CHECK(!changed);
 
   return Status::OK();
 }
 
+std::atomic<int64> cluster_sequence_num;
+
+int64 GetNextClusterSequenceNumber() { return cluster_sequence_num++; }
+
 Status MarkForCompilationPassImpl::CreateClusters() {
   TF_RET_CHECK(initialized_ && edges_contracted_ && !clusters_created_);
   clusters_created_ = true;
-
-  static std::atomic<int64> cluster_sequence_num;
 
   // Names for each cluster.
   std::unordered_map<int, string> cluster_names;
@@ -672,7 +855,7 @@ Status MarkForCompilationPassImpl::CreateClusters() {
       string& name = cluster_names[cluster->cycles_graph_node_id()];
 
       if (name.empty()) {
-        name = absl::StrCat("cluster_", cluster_sequence_num++);
+        name = absl::StrCat("cluster_", GetNextClusterSequenceNumber());
       }
 
       n->AddAttr(kXlaClusterAttr, name);
@@ -711,10 +894,6 @@ MarkForCompilationPassImpl::ClusteringWillIntroduceInterDeviceDependency(
   // where a cluster is producing data for multiple devices.
   for (const auto& in_id :
        cycles_graph_.Predecessors(cluster_to.cycles_graph_node_id())) {
-    if (in_id >= graph_->num_node_ids()) {
-      continue;
-    }
-
     const Cluster* cluster_in = GetClusterForCyclesGraphNode(in_id);
     if (cluster_in) {
       TF_ASSIGN_OR_RETURN(bool devices_compatible,
@@ -833,6 +1012,39 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
   }
 
   return Status::OK();
+}
+
+StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
+  if (!node->IsIdentity()) {
+    return false;
+  }
+
+  // Check if the Identity is driven by a Switch on its true path.
+  auto it = absl::c_find_if(node->in_edges(), [](const Edge* e) {
+    return e->src()->IsSwitch() && e->src_output() == 1;
+  });
+  if (it == node->in_edges().end()) {
+    return false;
+  }
+  const Node* switch_node = (*it)->src();
+
+  // Check if the Switch is driven by LoopCond.
+  const Node* maybe_loop_cond;
+  TF_RETURN_IF_ERROR(switch_node->input_node(1, &maybe_loop_cond));
+  if (!maybe_loop_cond->IsLoopCond()) {
+    return false;
+  }
+
+  // Check if the Identity is driving any const nodes through a control edge.
+  bool driving_any_consts =
+      absl::c_any_of(node->out_edges(), [](const Edge* e) {
+        return e->dst()->IsConstant() && e->IsControlEdge();
+      });
+  if (!driving_any_consts) {
+    return false;
+  }
+
+  return true;
 }
 
 Status MarkForCompilationPassImpl::FindCompilationCandidates() {
@@ -956,6 +1168,35 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       }
     }
 
+    // This is a heuristic to avoid creating dependency between while loop
+    // condition and body computations.  Dependency between them can be created
+    // if a special Identity node in the following pattern is clustered in.
+    // That is, an Identity node in the loop cond computation is used to drive
+    // const nodes consumed by the loop body.  If this Identity node goes into
+    // the same cluster with nodes from the loop body, extra dependency is
+    // created between the loop cond and body computations and it hinders the
+    // progression of the loop cond computation at runtime with significant
+    // overhead.  Specifically, we look for the below pattern and do not cluster
+    // in this Identity to avoid the described issue.  Since Identity has low
+    // execution cost in native TF, the fact that this heuristic gives up these
+    // special Identity nodes as candidates should not harm any performance.  If
+    // other considerations emerge in the future, we can revisit the heuristic
+    // and only disallow these Identities to go into the cluster with nodes from
+    // the loop body but still consider them candidates.
+    //
+    // LoopCond ->
+    // Merge    -> Switch -> Identity -> i++ -> ... -> NextIteration
+    //                               ..> Const -> LoopBody
+    //                            (control edge)
+    TF_ASSIGN_OR_RETURN(bool is_identity_driving_consts_in_loop,
+                        IsIdentityDrivingConstsInLoop(node));
+    if (is_identity_driving_consts_in_loop) {
+      VLOG(2) << "Rejecting " << node->name()
+              << ": including it can create dependencies between while loop "
+                 "condition and body computations with runtime overhead.";
+      continue;
+    }
+
     compilation_candidates_.insert(node);
     --(*debug_options_.fuel);
   }
@@ -996,8 +1237,7 @@ bool MarkForCompilationPassImpl::CompilationDisallowedByXlaCompileAttr(
 
 bool MarkForCompilationPassImpl::LogNotContractableAndReturnFalse(
     Cluster* from, Cluster* to, absl::string_view reason) {
-  VLOG(3) << "Could not contract " << from->DebugString(*graph_) << " -> "
-          << to->DebugString(*graph_) << " because " << reason << ".";
+  VLOG(3) << EdgeContractionFailureMsg(from, to, reason);
   return false;
 }
 
@@ -1006,8 +1246,14 @@ StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(Cluster* from,
   DCHECK(from->deadness_predicate().has_value() ==
          to->deadness_predicate().has_value());
   if (from->deadness_predicate() != to->deadness_predicate()) {
-    return LogNotContractableAndReturnFalse(
-        from, to, "the two nodes have mismatching deadness");
+    VLOG(3) << EdgeContractionFailureMsg(
+        from, to,
+        absl::StrCat(
+            "the two nodes have mismatching deadness: ",
+            deadness_analysis_->DebugString(*from->deadness_predicate()),
+            " and ",
+            deadness_analysis_->DebugString(*to->deadness_predicate())));
+    return false;
   }
 
   TF_ASSIGN_OR_RETURN(bool devices_compatible,
@@ -1041,61 +1287,29 @@ StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(Cluster* from,
   // Check if contracting this edge will break the resource variable concurrency
   // semantics.  In theory this is quadratic in the number of nodes, but seems
   // to not be a problem in practice so far.
-  for (int resource_var_from : from->resource_var_operation_node_ids()) {
-    for (int resource_var_to : to->resource_var_operation_node_ids()) {
-      // If unsafe_resource_deps_ contains {A, B} then
-      //
-      //  a. A and B are resource operations.
-      //  b. A and B cannot be placed in the same cluster.
-      //  c. There is no path from B to A in the cycles graph (but there may be
-      //     a path from A to B).
-      //
-      // So check the legality of the edge contraction by checking if any of the
-      // n^2 pairs of resource variable operations are forbidden.
-      if (unsafe_resource_deps_.contains(
-              {resource_var_from, resource_var_to})) {
-        return LogNotContractableAndReturnFalse(
-            from, to,
-            "the new cluster would break resource variable semantics");
+  if (!debug_options_.ignore_resource_variable_checks) {
+    for (int resource_var_from : from->resource_var_operation_node_ids()) {
+      for (int resource_var_to : to->resource_var_operation_node_ids()) {
+        // If unsafe_resource_deps_ contains {A, B} then
+        //
+        //  a. A and B are resource operations.
+        //  b. A and B cannot be placed in the same cluster.
+        //  c. There is no path from B to A in the cycles graph (but there may
+        //     be a path from A to B).
+        //
+        // So check the legality of the edge contraction by checking if any of
+        // the n^2 pairs of resource variable operations are forbidden.
+        if (unsafe_resource_deps_.contains(
+                {resource_var_from, resource_var_to})) {
+          return LogNotContractableAndReturnFalse(
+              from, to,
+              "the new cluster would break resource variable semantics");
+        }
       }
     }
   }
 
   return MergeClusters(from, to);
-}
-
-StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdgesFrom(
-    Cluster* cluster_from) {
-  bool changed = false;
-
-  // Make a copy of the set of successors because we may modify the graph in
-  // TryToContractEdge.
-  std::vector<int32> successors_copy = [&] {
-    absl::Span<const int32> successors =
-        cycles_graph_.Successors(cluster_from->cycles_graph_node_id());
-    return std::vector<int32>(successors.begin(), successors.end());
-  }();
-
-  for (int to : successors_copy) {
-    iteration_count_++;
-    if (to >= graph_->num_node_ids()) {
-      // Node is a fictitious node that is present only in the cycle detection
-      // graph. No clustering is possible.
-      continue;
-    }
-
-    Cluster* cluster_to = GetClusterForCyclesGraphNode(to);
-    if (!cluster_to) {
-      continue;
-    }
-
-    TF_ASSIGN_OR_RETURN(bool contracted_edge,
-                        TryToContractEdge(cluster_from, cluster_to));
-
-    changed |= contracted_edge;
-  }
-
-  return changed;
 }
 
 Status MarkForCompilationPassImpl::Run() {
@@ -1407,7 +1621,10 @@ std::atomic<int64>* GetPointerToFuel(int64 initial_value) {
 }
 }  // anonymous namespace
 
-bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
+bool IsCompilable(
+    FunctionLibraryRuntime* flr, const NodeDef& ndef,
+    std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>*
+        uncompilable_node_info) {
   Device* device = flr->device();
   const XlaOpRegistry::DeviceRegistration* registration;
   CHECK(XlaOpRegistry::GetCompilationDevice(device->device_type(),
@@ -1424,10 +1641,19 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
   op_filter.allow_control_trigger = true;
   op_filter.allow_eliding_assert_and_checknumerics_ops = true;
   op_filter.allow_ops_producing_or_consuming_variant = true;
-  op_filter.allow_slow_and_inaccurate_ops = true;
+  op_filter.allow_slow_ops = true;
+  op_filter.allow_inaccurate_ops = true;
 
-  return RecursiveCompilabilityChecker{&op_filter, &jit_device_type}
-      .IsCompilableCall(ndef, flr);
+  RecursiveCompilabilityChecker checker{&op_filter, &jit_device_type};
+  if (!uncompilable_node_info) {
+    // We do not need uncompilable node info. Just return the result.
+    return checker.IsCompilableCall(ndef, flr);
+  }
+
+  std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
+      uncompilable_node_result = checker.FindUncompilableNodes(ndef, flr);
+  uncompilable_node_info->swap(uncompilable_node_result);
+  return uncompilable_node_info->empty();
 }
 
 Status MarkForCompilationPass::Run(
@@ -1437,6 +1663,8 @@ Status MarkForCompilationPass::Run(
   MarkForCompilationPassImpl::DebugOptions debug_options;
   debug_options.ignore_deadness_checks =
       flags->tf_xla_disable_deadness_safety_checks_for_debugging;
+  debug_options.ignore_resource_variable_checks =
+      flags->tf_xla_disable_resource_variable_safety_checks_for_debugging;
   debug_options.ignore_xla_compile_attr = false;
   debug_options.max_cluster_size = flags->tf_xla_max_cluster_size;
   debug_options.min_cluster_size = flags->tf_xla_min_cluster_size;
@@ -1453,6 +1681,8 @@ Status MarkForCompilationPass::RunForTest(
 
   MarkForCompilationPassImpl::DebugOptions debug_options;
   debug_options.ignore_deadness_checks = disable_deadness_analysis;
+  debug_options.ignore_resource_variable_checks =
+      flags->tf_xla_disable_resource_variable_safety_checks_for_debugging;
   debug_options.ignore_xla_compile_attr = true;
   debug_options.max_cluster_size = flags->tf_xla_max_cluster_size;
   debug_options.min_cluster_size = flags->tf_xla_min_cluster_size;
@@ -1461,4 +1691,8 @@ Status MarkForCompilationPass::RunForTest(
 
   return MarkForCompilation(options, debug_options);
 }
+
+namespace testing {
+void ResetClusterSequenceNumber() { cluster_sequence_num = 0; }
+}  // namespace testing
 }  // namespace tensorflow

@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <atomic>
 
+#include "absl/synchronization/barrier.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -190,6 +192,24 @@ TEST(ThreadPool, ParallelForWithWorkerId) {
   }
 }
 
+TEST(ThreadPool, Parallelism) {
+  // Test that if we have N threads and schedule N tasks,
+  // all tasks will be scheduled at the same time.
+  // Failure mode for this test will be episodic timeouts (does not terminate).
+  ThreadPool pool(Env::Default(), "test", kNumThreads);
+  for (int iter = 0; iter < 2000; iter++) {
+    absl::Barrier barrier(kNumThreads);
+    absl::BlockingCounter counter(kNumThreads);
+    for (int t = 0; t < kNumThreads; ++t) {
+      pool.Schedule([&]() {
+        barrier.Block();
+        counter.DecrementCount();
+      });
+    }
+    counter.Wait();
+  }
+}
+
 static void BM_Sequential(int iters) {
   ThreadPool pool(Env::Default(), "test", kNumThreads);
   // Decrement count sequentially until 0.
@@ -209,7 +229,7 @@ static void BM_Sequential(int iters) {
   };
   work();
   mutex_lock l(done_lock);
-  if (!done_flag) {
+  while (!done_flag) {
     done.wait(l);
   }
 }
@@ -232,7 +252,7 @@ static void BM_Parallel(int iters) {
     });
   }
   mutex_lock l(done_lock);
-  if (!done_flag) {
+  while (!done_flag) {
     done.wait(l);
   }
 }
@@ -259,7 +279,7 @@ static void BM_ParallelFor(int iters, int total, int cost_per_unit) {
         });
   }
   mutex_lock l(done_lock);
-  if (!done_flag) {
+  while (!done_flag) {
     done.wait(l);
   }
 }

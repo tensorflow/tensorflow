@@ -20,8 +20,8 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.operators import special_values
-from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.utils import ag_logging
+from tensorflow.python.autograph.utils import tensors
 from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.experimental.ops import take_while_ops
 from tensorflow.python.data.ops import dataset_ops
@@ -301,7 +301,7 @@ def while_stmt(test, body, init_state, opts=None):
 
   # TensorFlow: Multiple evaluations are acceptable in this case, so we're fine
   # with the re-evaluation of `test` that `_tf_while_stmt` will make.
-  if tensor_util.is_tensor(init_test):
+  if tensors.is_dense_tensor(init_test):
     return _tf_while_stmt(test, body, init_state, opts)
 
   # Normal Python: We already consumed one evaluation of `test`; consistently,
@@ -344,7 +344,7 @@ class _PythonLoopChecker(object):
 
   def _check_unroll_limits(self):
     if LIMIT_PYTHON_ITERATIONS and self.iterations > PYTHON_MAX_ITERATIONS:
-      raise errors.ExecutionError('Python', 'iteration limit exceeded')
+      raise ValueError('iteration limit exceeded')
 
   def _stop_checking_inefficient_unroll(self):
     self.check_inefficient_unroll = False
@@ -436,7 +436,8 @@ def if_stmt(cond, body, orelse, get_state, set_state):
   Returns:
     Tuple containing the statement outputs.
   """
-  if tensor_util.is_tensor(cond):
+  # Note: tf.cond doesn't support SparseTensor.
+  if tensors.is_dense_tensor(cond):
     return tf_if_stmt(cond, body, orelse, get_state, set_state)
   else:
     return _py_if_stmt(cond, body, orelse)

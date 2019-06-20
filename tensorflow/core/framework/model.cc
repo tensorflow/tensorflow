@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/time/clock.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -95,7 +96,7 @@ class InterleaveMany : public Node {
 
   // The processing time is the sum of the self processing time and the average
   // processing time of inputs comprising the interleave "cycle".
-  double TotalProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
     if (inputs_.size() <= 1) {
       return SelfProcessingTimeLocked();
     }
@@ -164,7 +165,7 @@ class AsyncInterleaveMany : public Node {
 
   // The processing time is the sum of the self processing time and the average
   // processing time of inputs comprising the interleave "cycle".
-  double TotalProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
     if (inputs_.size() <= 1) {
       return SelfProcessingTimeLocked();
     }
@@ -207,7 +208,7 @@ class KnownRatio : public Node {
 
   // The processing time is the sum of the self processing time and the product
   // of `ratio_` and the sum of processing times of inputs.
-  double TotalProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
     return SelfProcessingTimeLocked() + ratio_ * ProcessingTimeForInputs();
   }
 
@@ -265,7 +266,7 @@ class AsyncKnownRatio : public Node {
 
   // The processing time is the sum of the self processing time and the product
   // of `ratio_` and the sum of processing times of inputs.
-  double TotalProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
     return SelfProcessingTimeLocked() + ratio_ * ProcessingTimeForInputs();
   }
 
@@ -309,7 +310,7 @@ class UnknownRatio : public Node {
 
   // The processing time is the sum of the self processing time and the product
   // of the ratio estimate and the sum of processing times of inputs.
-  double TotalProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
     if (inputs_.empty() || num_elements_ == 0) {
       return SelfProcessingTimeLocked();
     }
@@ -341,7 +342,7 @@ class Unknown : public Node {
   }
 
   // The processing time is the sum of processing times of inputs.
-  double TotalProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
     return ProcessingTimeForInputs();
   }
 };

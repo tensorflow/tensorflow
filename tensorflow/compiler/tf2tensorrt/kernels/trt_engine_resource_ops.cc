@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_instance.pb.h"  // NOLINT
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
@@ -32,7 +31,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "tensorrt/include/NvInfer.h"
+#include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -84,9 +83,8 @@ class PopulateTRTEngineCache : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     ResourceHandle handle = HandleFromInput(ctx, 0);
-    TRTEngineCacheResource* resource = nullptr;
+    core::RefCountPtr<TRTEngineCacheResource> resource;
     OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &resource));
-    core::ScopedUnref unref_me(resource);
 
     auto allocator = resource->allocator_.get();
     OP_REQUIRES(ctx, allocator != nullptr,
@@ -126,8 +124,7 @@ class PopulateTRTEngineCache : public OpKernel {
       TrtUniquePtrType<nvinfer1::ICudaEngine> engine(
           infer->deserializeCudaEngine(
               engine_instance.serialized_engine().c_str(),
-              engine_instance.serialized_engine().size(),
-              PluginFactoryTensorRT::GetInstance()));
+              engine_instance.serialized_engine().size(), nullptr));
       auto raw_engine = engine.get();
       resource->cache_.emplace(
           engine_input_shapes,
