@@ -252,7 +252,8 @@ class BufferValueMap {
           if (callsite.instruction()->opcode() == HloOpcode::kWhile &&
               callsite.instruction()->while_body() == computation) {
             // Call graph must have been flattened.
-            CHECK_EQ(call_graph_node.caller_callsites().size(), 1);
+            CHECK_EQ(call_graph_node.caller_callsites().size(), 1)
+                << "Call graph must have been flattened.";
 
             const HloValue& while_value = dataflow_.GetUniqueValueAt(
                 callsite.instruction(), position.index);
