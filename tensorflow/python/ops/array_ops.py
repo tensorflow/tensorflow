@@ -689,12 +689,12 @@ def slice(input_, begin, size, name=None):
   # pylint: disable=redefined-builtin
   """Extracts a slice from a tensor.
 
-  This operation extracts a slice of size `size` from a tensor `input` starting
+  This operation extracts a slice of size `size` from a tensor `input_` starting
   at the location specified by `begin`. The slice `size` is represented as a
   tensor shape, where `size[i]` is the number of elements of the 'i'th dimension
-  of `input` that you want to slice. The starting location (`begin`) for the
-  slice is represented as an offset in each dimension of `input`. In other
-  words, `begin[i]` is the offset into the 'i'th dimension of `input` that you
+  of `input_` that you want to slice. The starting location (`begin`) for the
+  slice is represented as an offset in each dimension of `input_`. In other
+  words, `begin[i]` is the offset into the i'th dimension of `input_` that you
   want to slice from.
 
   Note that `tf.Tensor.__getitem__` is typically a more pythonic way to
@@ -705,7 +705,7 @@ def slice(input_, begin, size, name=None):
   all remaining elements in dimension i are included in the
   slice. In other words, this is equivalent to setting:
 
-  `size[i] = input.dim_size(i) - begin[i]`
+  `size[i] = input_.dim_size(i) - begin[i]`
 
   This operation requires that:
 
@@ -731,7 +731,7 @@ def slice(input_, begin, size, name=None):
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` the same type as `input`.
+    A `Tensor` the same type as `input_`.
   """
   return gen_array_ops._slice(input_, begin, size, name=name)
 
