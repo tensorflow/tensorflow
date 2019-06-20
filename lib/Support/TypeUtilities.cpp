@@ -44,3 +44,17 @@ Type mlir::getElementTypeOrSelf(Value &val) {
 Type mlir::getElementTypeOrSelf(Attribute attr) {
   return getElementTypeOrSelf(attr.getType());
 }
+
+OperandElementTypeIterator::OperandElementTypeIterator(OperandIterator it)
+    : llvm::mapped_iterator<OperandIterator, Type (*)(Value *)>(it, &unwrap) {}
+
+Type OperandElementTypeIterator::unwrap(Value *value) {
+  return value->getType().cast<ShapedType>().getElementType();
+}
+
+ResultElementTypeIterator::ResultElementTypeIterator(ResultIterator it)
+    : llvm::mapped_iterator<ResultIterator, Type (*)(Value *)>(it, &unwrap) {}
+
+Type ResultElementTypeIterator::unwrap(Value *value) {
+  return value->getType().cast<ShapedType>().getElementType();
+}
