@@ -134,7 +134,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
   string DebugString() const override {
     return name_utils::DatasetDebugString(
-        ParallelInterleaveDatasetOp::kDatasetType);
+        ParallelInterleaveDatasetOp::kDatasetType,
+        name_utils::DatasetDebugStringParams(
+            op_version_, name_utils::kDefaultDatasetDebugStringPrefix));
   }
 
  protected:
@@ -916,6 +918,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
   const int64 cycle_length_;
   const int64 block_length_;
   const int64 num_parallel_calls_;
+  const int op_version_ = 2;
   const bool sloppy_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;

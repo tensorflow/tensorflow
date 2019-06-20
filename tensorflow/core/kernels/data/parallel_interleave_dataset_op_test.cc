@@ -18,6 +18,7 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "parallel_interleave_dataset";
+constexpr int kOpVersion = 2;
 
 class ParallelInterleaveDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -41,7 +42,8 @@ class ParallelInterleaveDatasetOpTest : public DatasetOpsTestBase {
       std::unique_ptr<OpKernel> *op_kernel) {
     NodeDef node_def = test::function::NDef(
         kNodeName,
-        name_utils::OpName(ParallelInterleaveDatasetOp::kDatasetType),
+        name_utils::OpName(ParallelInterleaveDatasetOp::kDatasetType,
+                           name_utils::OpNameParams(kOpVersion)),
         {ParallelInterleaveDatasetOp::kInputDataset,
          ParallelInterleaveDatasetOp::kCycleLength,
          ParallelInterleaveDatasetOp::kBlockLength,
@@ -608,7 +610,8 @@ TEST_F(ParallelInterleaveDatasetOpTest, DatasetTypeString) {
   core::ScopedUnref scoped_unref(parallel_interleave_dataset);
 
   EXPECT_EQ(parallel_interleave_dataset->type_string(),
-            name_utils::OpName(ParallelInterleaveDatasetOp::kDatasetType));
+            name_utils::OpName(ParallelInterleaveDatasetOp::kDatasetType,
+                               name_utils::OpNameParams(kOpVersion)));
 }
 
 TEST_P(ParameterizedParallelInterleaveDatasetOpTest, DatasetOutputDtypes) {

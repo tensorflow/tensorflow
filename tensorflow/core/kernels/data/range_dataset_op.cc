@@ -33,6 +33,7 @@ namespace data {
 /* static */ constexpr const char* const RangeDatasetOp::kOutputShapes;
 
 constexpr char kNext[] = "next";
+constexpr int kOpVersion = 1;
 
 class RangeDatasetOp::Dataset : public DatasetBase {
  public:
@@ -60,7 +61,11 @@ class RangeDatasetOp::Dataset : public DatasetBase {
   }
 
   string DebugString() const override {
-    return name_utils::DatasetDebugString(kDatasetType, start_, stop_, step_);
+    return name_utils::DatasetDebugString(
+        kDatasetType,
+        name_utils::DatasetDebugStringParams(
+            kOpVersion, name_utils::kDefaultDatasetDebugStringPrefix, start_,
+            stop_, step_));
   }
 
   int64 Cardinality() const override {

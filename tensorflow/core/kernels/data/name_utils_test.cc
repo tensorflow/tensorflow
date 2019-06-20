@@ -25,7 +25,7 @@ namespace data {
 namespace {
 
 TEST(DeviceNameUtils, ArgsToString) {
-  EXPECT_EQ(name_utils::ArgsToString({}), "()");
+  EXPECT_EQ(name_utils::ArgsToString({}), "");
   EXPECT_EQ(name_utils::ArgsToString({"a"}), "(a)");
   EXPECT_EQ(name_utils::ArgsToString({"1", "2", "3"}), "(1, 2, 3)");
 }
@@ -33,15 +33,30 @@ TEST(DeviceNameUtils, ArgsToString) {
 TEST(NameUtilsTest, DatasetDebugString) {
   EXPECT_EQ(name_utils::DatasetDebugString(ConcatenateDatasetOp::kDatasetType),
             "ConcatenateDatasetOp::Dataset");
-  EXPECT_EQ(
-      name_utils::DatasetDebugString(RangeDatasetOp::kDatasetType, 0, 10, 3),
-      "RangeDatasetOp(0, 10, 3)::Dataset");
-  EXPECT_EQ(name_utils::DatasetDebugString(ShuffleDatasetOp::kDatasetType,
-                                           "FixedSeed", {"10", "1", "2"}),
+  EXPECT_EQ(name_utils::DatasetDebugString(
+                RangeDatasetOp::kDatasetType,
+                name_utils::DatasetDebugStringParams(
+                    1, name_utils::kDefaultDatasetDebugStringPrefix, 0, 10, 3)),
+            "RangeDatasetOp(0, 10, 3)::Dataset");
+  EXPECT_EQ(name_utils::DatasetDebugString(
+                ShuffleDatasetOp::kDatasetType,
+                name_utils::DatasetDebugStringParams(1, "FixedSeed", 10, 1, 2)),
             "ShuffleDatasetOp(10, 1, 2)::FixedSeedDataset");
-  EXPECT_EQ(
-      name_utils::DatasetDebugString(ParallelInterleaveDatasetOp::kDatasetType),
-      "ParallelInterleaveDatasetV2Op::Dataset");
+  EXPECT_EQ(name_utils::DatasetDebugString(
+                ParallelInterleaveDatasetOp::kDatasetType,
+                name_utils::DatasetDebugStringParams(
+                    2, name_utils::kDefaultDatasetDebugStringPrefix)),
+            "ParallelInterleaveDatasetV2Op::Dataset");
+}
+
+TEST(NameUtilsTest, OpName) {
+  EXPECT_EQ(name_utils::OpName(RangeDatasetOp::kDatasetType), "RangeDataset");
+  EXPECT_EQ(name_utils::OpName(ConcatenateDatasetOp::kDatasetType,
+                               name_utils::OpNameParams()),
+            "ConcatenateDataset");
+  EXPECT_EQ(name_utils::OpName(ParallelInterleaveDatasetOp::kDatasetType,
+                               name_utils::OpNameParams(2)),
+            "ParallelInterleaveDatasetV2");
 }
 
 }  // namespace

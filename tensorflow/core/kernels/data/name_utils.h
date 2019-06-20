@@ -15,8 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_NAME_UTILS_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_NAME_UTILS_H_
 
-#include "absl/strings/str_join.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
+#include <vector>
+
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -27,39 +27,65 @@ namespace name_utils {
 extern const char kDelimiter[];
 extern const char kDefaultDatasetDebugStringPrefix[];
 
+struct OpNameParams {
+  OpNameParams() = default;
+
+  explicit OpNameParams(int op_version) : op_version(op_version){};
+
+  int op_version = 1;
+};
+
+struct DatasetDebugStringParams {
+  DatasetDebugStringParams() = default;
+
+  template <typename... T>
+  explicit DatasetDebugStringParams(int op_version, string dataset_prefix,
+                                    const T&... args)
+      : op_version(op_version),
+        dataset_prefix(std::move(dataset_prefix)),
+        args({static_cast<const strings::AlphaNum&>(args).data()...}){};
+
+  int op_version = 1;
+  string dataset_prefix = "";
+  std::vector<string> args;
+};
+
 // Merge the given args in the format of "(arg1, arg2, ..., argn)".
 //
-// e.g. ArgsToString({"1", "2", "3"}) -> "(1, 2, 3)".
-string ArgsToString(std::initializer_list<StringPiece> args);
+// e.g. ArgsToString({"1", "2", "3"}) -> "(1, 2, 3)"; ArgsToString({}) -> "".
+string ArgsToString(const std::vector<string>& args);
 
 // Returns the dataset op name.
 //
 // e.g. OpName("Map") -> "MapDataset".
 string OpName(const string& dataset_type);
 
-// Returns a human-readable debug string for this dataset in the format of
-// "FooDatasetOp(arg1, arg2, ...)::Dataset".
+// Returns the dataset op names.
 //
-// e.g. DatasetDebugString("Map", "", {}) -> "MapDatasetOp::Dataset";
-// DatasetDebugString("Range", "", {"0", "10", "3"}) ->
-// "RangeDatasetOp(0, 10, 3)::Dataset";
-// DatasetDebugString("Shuffle", "FixedSeed", {"10", "1", "2"}) ->
-// "ShuffleDatasetOp(10, 1, 2)::FixedSeedDataset";
-string DatasetDebugString(const string& dataset_type,
-                          const string& dataset_name_prefix,
-                          std::initializer_list<StringPiece> args);
+// e.g. OpName(ConcatenateDatasetOp::kDatasetType, OpNameParams())
+// -> "ConcatenateDataset"
+//
+// OpName(ParallelInterleaveDatasetOp::kDatasetType, OpNameParams(2)),
+// -> "ParallelInterleaveDatasetV2"
+string OpName(const string& dataset_type, const OpNameParams& params);
 
 // Returns a human-readable debug string for this dataset in the format of
 // "FooDatasetOp(arg1, arg2, ...)::Dataset".
 //
 // e.g. DatasetDebugString("Map") -> "MapDatasetOp::Dataset";
-// DatasetDebugString("Range", 0, 10, 3) -> "RangeDatasetOp(0, 10, 3)::Dataset".
-template <typename... Args>
-string DatasetDebugString(const string& dataset_type, const Args&... args) {
-  return DatasetDebugString(
-      dataset_type, kDefaultDatasetDebugStringPrefix,
-      {static_cast<const strings::AlphaNum&>(args).Piece()...});
-}
+string DatasetDebugString(const string& dataset_type);
+
+// Returns a human-readable debug string for this dataset in the format of
+// "FooDatasetOp(arg1, arg2, ...)::Dataset".
+//
+// e.g. DatasetDebugString(
+// "Shuffle", DatasetDebugStringParams(1, "FixedSeed", 10, 1, 2))
+// -> "ShuffleDatasetOp(10, 1, 2)::FixedSeedDataset";
+//
+// DatasetDebugString("ParallelInterleave", DatasetDebugStringParams(2, ""))
+// -> "ParallelInterleaveDatasetV2Op::Dataset").
+string DatasetDebugString(const string& dataset_type,
+                          const DatasetDebugStringParams& params);
 
 // Returns a string that identifies the sequence of iterators leading up to
 // the iterator of this dataset.
