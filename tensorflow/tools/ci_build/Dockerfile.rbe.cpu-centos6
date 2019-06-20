@@ -32,7 +32,7 @@ RUN bash install/install_centos_pip_packages.sh
 # Install golang.
 RUN bash install/install_golang_centos.sh
 env GOROOT=/usr/local/go
-env PATH=$GOPATH/bin:$GOROOT/bin:$PATH
+env PATH=$GOROOT/bin:$PATH
 
 # Install a /usr/bin/python2 and /usr/bin/python3 link.
 # centos by default does not provide links, and instead relies on paths into
