@@ -428,6 +428,26 @@ class ApiTest(test.TestCase):
                            converter.ConversionOptions(recursive=True), (), {})
     self.assertEqual(1, self.evaluate(x))
 
+  def test_converted_call_callable_metaclass(self):
+
+    class TestMetaclass(type):
+
+      x = constant_op.constant(-1)
+
+      def __call__(cls):
+        if cls.x < 0:
+          cls.x = -cls.x
+        return cls
+
+    tc = TestMetaclass('TestClass', (), {})
+    # This functools.partial will hide the class form the constructor
+    # check. Not ideal. See b/120224672.
+    tc = functools.partial(tc)
+    converted_tc = api.converted_call(
+        tc, None, converter.ConversionOptions(recursive=True), (), {})
+    self.assertIsInstance(converted_tc, TestMetaclass)
+    self.assertEqual(1, self.evaluate(converted_tc.x))
+
   @test_util.run_deprecated_v1
   def test_converted_call_constructor(self):
 

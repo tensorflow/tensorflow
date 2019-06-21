@@ -471,6 +471,7 @@ def converted_call(f, owner, options, args, kwargs):
 
     # Unwrap functools.partial objects
     # TODO(mdan): Consider sharing unwrapping logic with tf_inspect.
+    # TODO(b/120224672): This unwrapping should be done before the checks above.
     while isinstance(f, functools.partial):
       args = f.args + args
       new_kwargs = {}
