@@ -20,6 +20,7 @@ from __future__ import division as _division
 from __future__ import print_function as _print_function
 
 import sys as _sys
+print("Root DEBUG: sys.path is {}".format(_sys.path))
 import importlib as _importlib
 import types as _types
 
@@ -102,6 +103,7 @@ from tensorflow_core import *
 try:
   from tensorflow_core import keras
 except ImportError as e:
+  print("DEBUG Keras import failed with {}".format(e))
   pass
 
 # Similarly for estimator, but only if this file is not read via a
