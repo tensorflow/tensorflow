@@ -968,7 +968,8 @@ class RemoteWorkerMicroBenchmarks(test.Benchmark):
         wall_time=mean_us,
         extras={"examples_per_sec": num_iters / total_time})
 
-  def benchmark_mirroring_off(self):
+  # TODO(gjn): Fix continuous benchmark runs
+  def _DISABLED_benchmark_mirroring_off(self):
     remote.connect_to_remote_host(self._cached_server_target)
 
     x = random_ops.random_uniform((2, 2)).cpu()
@@ -984,7 +985,8 @@ class RemoteWorkerMicroBenchmarks(test.Benchmark):
     context.context().mirroring_policy = context.MIRRORING_NONE
     self._run(lambda: func(x))
 
-  def benchmark_mirroring_on(self):
+  # TODO(gjn): Fix continuous benchmark runs
+  def _DISABLED_benchmark_mirroring_on(self):
     remote.connect_to_remote_host(self._cached_server_target)
 
     x = random_ops.random_uniform((2, 2)).cpu()
