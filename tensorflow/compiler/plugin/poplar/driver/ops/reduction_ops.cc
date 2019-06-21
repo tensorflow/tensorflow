@@ -909,13 +909,16 @@ StatusOr<poplar::program::Program> CreateReplicatedAllReduce(
     const xla::Shape& output, TensorMap& tensor_map) {
   poplar::program::Sequence seq;
 
-  // If we aren't part of a replicated graph, then it's just an identity op
-  if (!res.replicated_graph) {
+  // If we aren't part of a replicated graph, then just duplicate the tensor.
+  if (res.replication_factor < 2) {
+    poplar::Graph& graph = GetGraph(res, inst);
     for (int i = 0; i < inst->operand_count(); ++i) {
       TF_ASSIGN_OR_RETURN(auto in,
                           FindInstructionInput(tensor_map, res, inst, i, seq));
-
-      TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, in));
+      auto out = DuplicateTensor(
+          in, seq, graph, StrCat(GetDebugName(inst), "/", i),
+          poplar::TensorCloneMethod::PRESERVE_ORDER_AND_ALIASES);
+      TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, out));
     }
   } else {
     // Collect all of the input tensors
@@ -930,7 +933,7 @@ StatusOr<poplar::program::Program> CreateReplicatedAllReduce(
 
     // Replicated sum the concatenated tensor
     auto out = popops::replicatedAllReduce(
-        res.replicated_graph.value(), res.main_graph, t, popops::Operation::ADD,
+        GetReplicatedGraph(res), GetMasterGraph(res), t, popops::Operation::ADD,
         seq, GetDebugName(inst));
 
     // Unconcat the result and unflatten

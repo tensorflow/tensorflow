@@ -17,9 +17,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_information.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/custom_op_replacer.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/gradient_accumulation_fuser.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/inter_ipu_copy_inserter.h"
 #include "tensorflow/compiler/plugin/poplar/driver/schedulers/look_ahead_scheduler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/schedulers/sync_list_scheduler.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/custom_ops/stateful_gradient_accumulate.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/matcher_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -85,10 +90,10 @@ add {
   auto seq = s.instructions();
   ASSERT_EQ(seq.size(), 8);
 
-  auto pred = [](HloInstruction* inst) {
+  auto pred = [](const HloInstruction* inst) {
     return inst->opcode() == HloOpcode::kAllReduce;
   };
-  ASSERT_EQ(std::count_if(seq.begin(), seq.end(), pred), 1);
+  ASSERT_EQ(absl::c_count_if(seq, pred), 1);
 }
 
 TEST_F(CombineInstructionsTest, TestLookAheadScheduler) {
@@ -141,10 +146,10 @@ add {
   auto seq = s.instructions();
   ASSERT_EQ(seq.size(), 8);
 
-  auto pred = [](HloInstruction* inst) {
+  auto pred = [](const HloInstruction* inst) {
     return inst->opcode() == HloOpcode::kAllReduce;
   };
-  ASSERT_EQ(std::count_if(seq.begin(), seq.end(), pred), 1);
+  ASSERT_EQ(absl::c_count_if(seq, pred), 1);
 }
 
 TEST_F(CombineInstructionsTest, TestMergeInterIpuCopiesLookAheadScheduler) {
@@ -196,7 +201,7 @@ ENTRY entry () -> f32[2] {
   InterIpuCopyInserter inserterPass;
   EXPECT_TRUE(inserterPass.Run(module).ValueOrDie());
 
-  auto pred = [](HloInstruction* inst) { return IsInterIpuCopy(inst); };
+  auto pred = [](const HloInstruction* inst) { return IsInterIpuCopy(inst); };
   // Expect three inter IPU copies to have been inserted.
   EXPECT_EQ(body->instruction_count(), 15);
   ASSERT_EQ(absl::c_count_if(body->instructions(), pred), 3);
@@ -214,6 +219,216 @@ ENTRY entry () -> f32[2] {
   // Two IPU copies have been merged.
   EXPECT_EQ(absl::c_count_if(body->instructions(), pred), 2);
   EXPECT_EQ(body->instruction_count(), 16);
+}
+
+TEST_F(CombineInstructionsTest, TestLookAheadSchedulerGradientAccumulation) {
+  std::string hlo_string = R"(
+HloModule top
+
+add {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  add = f32[] add(x, y)
+}
+
+%cluster_1  {
+  %arg0 = f16[4] parameter(0)
+  %ga0 = f16[4] custom-call(arg0), custom_call_target="Poputil::StatefulGradientAccumulate", opaque="{\"num_mini_batches\":4}\n"
+  %a0 = f16[4] all-reduce(ga0), to_apply=add
+  %norm0 = f16[4] custom-call(a0), custom_call_target="Poputil::ReplicationNormalise", opaque="{}\n"
+  %arg1 = f16[4] parameter(1)
+  %ga1 = f16[4] custom-call(arg1), custom_call_target="Poputil::StatefulGradientAccumulate", opaque="{\"num_mini_batches\":4}\n"
+  %a1 = f16[4] all-reduce(ga1), to_apply=add
+  %norm1 = f16[4] custom-call(a1), custom_call_target="Poputil::ReplicationNormalise", opaque="{}\n"
+  %arg2 = f16[4] parameter(2)
+  %ga2 = f16[4] custom-call(arg2), custom_call_target="Poputil::StatefulGradientAccumulate", opaque="{\"num_mini_batches\":4}\n"
+  %a2 = f16[4] all-reduce(ga2), to_apply=add
+  %norm2 = f16[4] custom-call(a2), custom_call_target="Poputil::ReplicationNormalise", opaque="{}\n"
+  ROOT %tuple = (f16[4], f16[4], f16[4]) tuple(norm0, norm1, norm2)
+}
+  )";
+
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
+
+  auto* module = module_or_status.ValueOrDie().get();
+  CompilerAnnotations annotations(module);
+  auto* entry = module->entry_computation();
+
+  // Replace and fuse the gradient accumulations.
+  EXPECT_EQ(entry->instruction_count(), 13);
+  CustomOpReplacer custom_op_replacer;
+  EXPECT_TRUE(custom_op_replacer.Run(module).ValueOrDie());
+  EXPECT_EQ(entry->instruction_count(), 13);
+  GradientAccumulationFuser fuser(annotations);
+  EXPECT_TRUE(fuser.Run(module).ValueOrDie());
+  EXPECT_EQ(entry->instruction_count(), 10);
+
+  HloMemoryScheduler scheduler(
+      [](const BufferValue& buffer) {
+        return ShapeUtil::ByteSizeOf(buffer.shape(), 1);
+      },
+      CreateLookAheadMemoryScheduler({64 * 1024, 64 * 1024}));
+  EXPECT_TRUE(scheduler.Run(module).ValueOrDie());
+  CombineInstructions combine_instructions;
+  EXPECT_TRUE(combine_instructions.Run(module).ValueOrDie());
+
+  // Check the inplace instructions are all GTEs
+  auto inplace_instructions = GetInplaceInstructions(module);
+  EXPECT_EQ(inplace_instructions.size(), 3);
+  for (auto inplace_inst : inplace_instructions) {
+    EXPECT_EQ(inplace_inst->opcode(), HloOpcode::kGetTupleElement);
+    EXPECT_TRUE(inplace_inst->tuple_index() < 3);
+  }
+
+  auto s = module->schedule().sequence(module->entry_computation());
+  auto seq = s.instructions();
+  ASSERT_EQ(seq.size(), 11);
+  auto pred = [](const HloInstruction* inst) {
+    return IsInstructionType<HloStatefulGradientAccumulateAndAllReduce>(inst);
+  };
+  ASSERT_EQ(absl::c_count_if(seq, pred), 1);
+}
+
+TEST_F(CombineInstructionsTest,
+       TestLookAheadSchedulerGradientAccumulationDifferentMiniBatches) {
+  std::string hlo_string = R"(
+HloModule top
+
+add {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  add = f32[] add(x, y)
+}
+
+%cluster_1  {
+  %arg0 = f16[4] parameter(0)
+  %ga0 = f16[4] custom-call(arg0), custom_call_target="Poputil::StatefulGradientAccumulate", opaque="{\"num_mini_batches\":4}\n"
+  %a0 = f16[4] all-reduce(ga0), to_apply=add
+  %norm0 = f16[4] custom-call(a0), custom_call_target="Poputil::ReplicationNormalise", opaque="{}\n"
+  %arg1 = f16[4] parameter(1)
+  %ga1 = f16[4] custom-call(arg1), custom_call_target="Poputil::StatefulGradientAccumulate", opaque="{\"num_mini_batches\":5}\n"
+  %a1 = f16[4] all-reduce(ga1), to_apply=add
+  %norm1 = f16[4] custom-call(a1), custom_call_target="Poputil::ReplicationNormalise", opaque="{}\n"
+  %arg2 = f16[4] parameter(2)
+  %ga2 = f16[4] custom-call(arg2), custom_call_target="Poputil::StatefulGradientAccumulate", opaque="{\"num_mini_batches\":6}\n"
+  %a2 = f16[4] all-reduce(ga2), to_apply=add
+  %norm2 = f16[4] custom-call(a2), custom_call_target="Poputil::ReplicationNormalise", opaque="{}\n"
+  ROOT %tuple = (f16[4], f16[4], f16[4]) tuple(norm0, norm1, norm2)
+}
+  )";
+
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
+
+  auto* module = module_or_status.ValueOrDie().get();
+  CompilerAnnotations annotations(module);
+  auto* entry = module->entry_computation();
+
+  // Replace and fuse the gradient accumulations.
+  EXPECT_EQ(entry->instruction_count(), 13);
+  CustomOpReplacer custom_op_replacer;
+  EXPECT_TRUE(custom_op_replacer.Run(module).ValueOrDie());
+  EXPECT_EQ(entry->instruction_count(), 13);
+  GradientAccumulationFuser fuser(annotations);
+  EXPECT_TRUE(fuser.Run(module).ValueOrDie());
+  EXPECT_EQ(entry->instruction_count(), 10);
+
+  HloMemoryScheduler scheduler(
+      [](const BufferValue& buffer) {
+        return ShapeUtil::ByteSizeOf(buffer.shape(), 1);
+      },
+      CreateLookAheadMemoryScheduler({64 * 1024, 64 * 1024}));
+  EXPECT_TRUE(scheduler.Run(module).ValueOrDie());
+  CombineInstructions combine_instructions;
+  EXPECT_FALSE(combine_instructions.Run(module).ValueOrDie());
+  EXPECT_EQ(entry->instruction_count(), 10);
+}
+
+TEST_F(CombineInstructionsTest, TestInplace) {
+  std::string hlo_string = R"(
+HloModule top
+
+add {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  add = f32[] add(x, y)
+}
+
+%cluster_1  {
+  %arg0 = f16[4] parameter(0)
+  %ga0 = f16[4] custom-call(arg0), custom_call_target="Poputil::StatefulGradientAccumulate", opaque="{\"num_mini_batches\":4}\n"
+  %a0 = f16[4] all-reduce(ga0), to_apply=add
+  %norm0 = f16[4] custom-call(a0), custom_call_target="Poputil::ReplicationNormalise", opaque="{}\n"
+  %arg1 = f16[4] parameter(1)
+  %ga1 = f16[4] custom-call(arg1), custom_call_target="Poputil::StatefulGradientAccumulate", opaque="{\"num_mini_batches\":4}\n"
+  %a1 = f16[4] all-reduce(ga1), to_apply=add
+  %norm1 = f16[4] custom-call(a1), custom_call_target="Poputil::ReplicationNormalise", opaque="{}\n"
+  %arg2 = f16[4] parameter(2)
+  %ga2 = f16[4] custom-call(arg2), custom_call_target="Poputil::StatefulGradientAccumulate", opaque="{\"num_mini_batches\":4}\n"
+  %a2 = f16[4] all-reduce(ga2), to_apply=add
+  %norm2 = f16[4] custom-call(a2), custom_call_target="Poputil::ReplicationNormalise", opaque="{}\n"
+  ROOT %tuple = (f16[4], f16[4], f16[4]) tuple(norm0, norm1, norm2)
+}
+  )";
+
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
+
+  auto* module = module_or_status.ValueOrDie().get();
+  CompilerAnnotations annotations(module);
+  auto* entry = module->entry_computation();
+
+  // Replace and fuse the gradient accumulations.
+  EXPECT_EQ(entry->instruction_count(), 13);
+  CustomOpReplacer custom_op_replacer;
+  EXPECT_TRUE(custom_op_replacer.Run(module).ValueOrDie());
+  EXPECT_EQ(entry->instruction_count(), 13);
+  GradientAccumulationFuser fuser(annotations);
+  EXPECT_TRUE(fuser.Run(module).ValueOrDie());
+  EXPECT_EQ(entry->instruction_count(), 10);
+
+  // Run the inplacer.
+  InplaceFinder inplace_finder;
+  EXPECT_TRUE(inplace_finder.Run(module).ValueOrDie());
+
+  auto pred = [](const HloInstruction* inst) {
+    return IsInstructionType<HloStatefulGradientAccumulateAndAllReduce>(inst);
+  };
+
+  // Expect the gradient accumulations to be inplace.
+  auto inplace_instructions = GetInplaceInstructions(module);
+  ASSERT_EQ(absl::c_count_if(inplace_instructions, pred), 3);
+
+  // Make one of the gradient accumulations not inplace.
+  auto root = entry->root_instruction();
+  auto norm1 = root->mutable_operand(1);
+  auto ga_and_ar = norm1->mutable_operand(0);
+  MakeUsedNotInplace(ga_and_ar);
+
+  HloMemoryScheduler scheduler(
+      [](const BufferValue& buffer) {
+        return ShapeUtil::ByteSizeOf(buffer.shape(), 1);
+      },
+      CreateLookAheadMemoryScheduler({64 * 1024, 64 * 1024}));
+  EXPECT_TRUE(scheduler.Run(module).ValueOrDie());
+  CombineInstructions combine_instructions;
+  EXPECT_TRUE(combine_instructions.Run(module).ValueOrDie());
+
+  auto s = module->schedule().sequence(module->entry_computation());
+  auto seq = s.instructions();
+  ASSERT_EQ(seq.size(), 11);
+  // Expect two gradient accumulation instructions.
+  ASSERT_EQ(absl::c_count_if(seq, pred), 2);
 }
 
 }  // namespace

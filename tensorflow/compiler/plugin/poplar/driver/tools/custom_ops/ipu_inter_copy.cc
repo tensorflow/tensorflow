@@ -19,22 +19,9 @@ limitations under the License.
 
 namespace xla {
 namespace poplarplugin {
-namespace {
-Shape MakeIpuInterCopyShape(absl::Span<HloInstruction* const> operands) {
-  if (operands.size() > 1) {
-    std::vector<Shape> shapes(operands.size());
-    absl::c_transform(operands, shapes.begin(),
-                      [](HloInstruction* inst) { return inst->shape(); });
-    return ShapeUtil::MakeTupleShape(shapes);
-  } else {
-    CHECK_EQ(operands.size(), 1);
-    return operands[0]->shape();
-  }
-}
-}  // namespace
 
 HloIpuInterCopy::HloIpuInterCopy(absl::Span<HloInstruction* const> operands)
-    : HloPoplarInstruction(MakeIpuInterCopyShape(operands), operands,
+    : HloPoplarInstruction(GetHloPoplarInstructionShape(operands), operands,
                            GetPoplibsCustomOpTargetString(
                                PoplibsOp::Poputil, PoplibsOp::IpuInterCopy)) {}
 

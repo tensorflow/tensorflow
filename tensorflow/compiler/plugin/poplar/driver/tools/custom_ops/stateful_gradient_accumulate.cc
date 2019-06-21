@@ -19,13 +19,20 @@ limitations under the License.
 
 namespace xla {
 namespace poplarplugin {
+namespace {
+PoplibsOp_Op SwitchAllReduce(bool is_all_reduce) {
+  return is_all_reduce ? PoplibsOp::StatefulGradientAccumulateAndAllReduce
+                       : PoplibsOp::StatefulGradientAccumulate;
+}
+}  // namespace
 
 HloStatefulGradientAccumulate::HloStatefulGradientAccumulate(
-    HloInstruction* operand, int32 num_mini_batches)
+    absl::Span<HloInstruction* const> operands, int32 num_mini_batches,
+    bool is_all_reduce)
     : HloPoplarInstruction(
-          operand->shape(), {operand},
+          GetHloPoplarInstructionShape(operands), operands,
           GetPoplibsCustomOpTargetString(PoplibsOp::Poputil,
-                                         PoplibsOp::StatefulGradientAccumulate),
+                                         SwitchAllReduce(is_all_reduce)),
           num_mini_batches),
       num_mini_batches_(num_mini_batches) {}
 
@@ -40,7 +47,7 @@ HloStatefulGradientAccumulate::LayoutDependencies() const {
 }
 
 uint64 HloStatefulGradientAccumulate::NumberOfInplaceOperands() const {
-  return 1;
+  return operand_count();
 }
 
 bool HloStatefulGradientAccumulate::IsPopOpsElementwise() const {
@@ -51,14 +58,33 @@ std::unique_ptr<HloInstruction>
 HloStatefulGradientAccumulate::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext*) const {
-  return absl::make_unique<HloStatefulGradientAccumulate>(new_operands[0],
+  return absl::make_unique<HloStatefulGradientAccumulate>(new_operands,
                                                           num_mini_batches_);
 }
 
 std::unique_ptr<HloInstruction> CreateStatefulGradientAccumulation(
-    HloInstruction* operand, int32 num_mini_batches) {
-  return absl::make_unique<HloStatefulGradientAccumulate>(operand,
+    absl::Span<HloInstruction* const> operands, int32 num_mini_batches) {
+  return absl::make_unique<HloStatefulGradientAccumulate>(operands,
                                                           num_mini_batches);
+}
+
+HloStatefulGradientAccumulateAndAllReduce::
+    HloStatefulGradientAccumulateAndAllReduce(
+        absl::Span<HloInstruction* const> operands, int32 num_mini_batches)
+    : HloStatefulGradientAccumulate(operands, num_mini_batches, true) {}
+
+std::unique_ptr<HloInstruction>
+HloStatefulGradientAccumulateAndAllReduce::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext*) const {
+  return absl::make_unique<HloStatefulGradientAccumulateAndAllReduce>(
+      new_operands, num_mini_batches_);
+}
+
+std::unique_ptr<HloInstruction> CreateStatefulGradientAccumulateAndAllReduce(
+    absl::Span<HloInstruction* const> operands, int32 num_mini_batches) {
+  return absl::make_unique<HloStatefulGradientAccumulateAndAllReduce>(
+      operands, num_mini_batches);
 }
 
 namespace {
@@ -70,11 +96,10 @@ HloStatefulGradientAccumulateFactoryFunc(HloCustomCallInstruction* call) {
   TF_ASSIGN_OR_RETURN(int32 num_mini_batches,
                       attribute_map.GetAttributeAsInt("num_mini_batches"));
 
-  return CreateStatefulGradientAccumulation(call->mutable_operand(0),
-                                            num_mini_batches);
+  return CreateStatefulGradientAccumulation(call->operands(), num_mini_batches);
 }
 
-static HloPoplarInstructionFactory dropout_factory(
+static HloPoplarInstructionFactory stateful_gradient_accumulate_factory(
     GetPoplibsCustomOpTargetString(PoplibsOp::Poputil,
                                    PoplibsOp::StatefulGradientAccumulate),
     HloStatefulGradientAccumulateFactoryFunc);

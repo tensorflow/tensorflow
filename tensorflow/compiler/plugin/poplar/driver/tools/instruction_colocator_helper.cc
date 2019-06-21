@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/tools/instruction_colocator_helper.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_information.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/custom_ops/stateful_gradient_accumulate.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/flags.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
@@ -153,10 +155,40 @@ class InterIpuCopyColocatorHelper : public InstructionColocatorHelper {
   }
 };
 
+// Colocator helper which is used to combine multiple gradient accumulations and
+// all reduce instructions.
+class StatefulGradientAccumulationAllReduceColocatorHelper
+    : public InstructionColocatorHelper {
+ public:
+  StatefulGradientAccumulationAllReduceColocatorHelper()
+      : InstructionColocatorHelper() {}
+
+  bool CanColocate(const HloInstruction* inst) const override {
+    return DynCast<HloStatefulGradientAccumulateAndAllReduce>(inst);
+  }
+
+  int64 GetColocateBufferSize(
+      const CompilerInformation& information) const override {
+    return information.max_all_reduce_buffer_size;
+  }
+
+ protected:
+  bool CanColocateExtra(const HloInstruction* a,
+                        const HloInstruction* b) const override {
+    auto a_cast = Cast<HloStatefulGradientAccumulateAndAllReduce>(a);
+    auto b_cast = Cast<HloStatefulGradientAccumulateAndAllReduce>(b);
+    // Make accumulate the same number of batches.
+    return a_cast->MiniBatchesToAccumulate() ==
+           b_cast->MiniBatchesToAccumulate();
+  }
+};
+
 }  // namespace
 
 REGISTER_INSTRUCTION_COLLOCATOR_HELPER(InterIpuCopyColocatorHelper)
 REGISTER_INSTRUCTION_COLLOCATOR_HELPER(AllReduceColocatorHelper)
+REGISTER_INSTRUCTION_COLLOCATOR_HELPER(
+    StatefulGradientAccumulationAllReduceColocatorHelper)
 
 const std::vector<const InstructionColocatorHelper*>&
 GetAllInstructionColocatorHelpers() {

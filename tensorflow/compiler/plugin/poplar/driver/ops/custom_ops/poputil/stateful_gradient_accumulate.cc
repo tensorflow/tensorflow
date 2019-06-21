@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 
 #include <poplar/Program.hpp>
+#include <popops/Collectives.hpp>
 #include <popops/ElementWise.hpp>
 #include <popops/Expr.hpp>
 #include <poputil/Broadcast.hpp>
@@ -60,12 +61,21 @@ class StatefulGradientAccumulateOp : public PoplibsOpDef {
     const HloStatefulGradientAccumulate* grad_inst =
         Cast<HloStatefulGradientAccumulate>(inst);
 
+    bool do_all_reduce =
+        DynCast<HloStatefulGradientAccumulateAndAllReduce>(inst) &&
+        res.replication_factor > 1;
+
     TF_ASSIGN_OR_RETURN(
         ArgVectors inputs,
         FindInplaceOutputTensors(tensor_map, res, inst, seq, false));
-    CHECK_EQ(inputs.size(), 1);
-    CHECK_EQ(inputs[0].size(), 1);
-    poplar::Tensor input = inputs[0][0];
+    CHECK_EQ(inputs.size(), inst->operand_count());
+    std::vector<poplar::Tensor> input_tensors(inst->operand_count());
+    for (int64 i = 0; i < inputs.size(); ++i) {
+      CHECK_EQ(inputs[i].size(), 1);
+      input_tensors[i] = inputs[i][0];
+    }
+    // Create a concatenated and flattened tensor of the input tensors.
+    poplar::Tensor input = FlattenAndConcatenteTensors(input_tensors);
     poplar::Tensor counter = master_graph.addVariable(
         poplar::UNSIGNED_INT, {}, GetDebugName(inst) + "/Counter");
     graph.setTileMapping(counter, 0);
@@ -82,10 +92,21 @@ class StatefulGradientAccumulateOp : public PoplibsOpDef {
         master_graph,
         pe::Equal(pe::_1, pe::Const(grad_inst->MiniBatchesToAccumulate() - 1)),
         {counter}, seq, GetDebugName(inst) + "/CheckOutputGradients");
+
+    poplar::Tensor output = input;
     poplar::program::Sequence if_true;
     {
-      // Copy accumulator into input.
-      if_true.add(poplar::program::Copy(accumulator, input));
+      poplar::Tensor result = accumulator;
+      if (do_all_reduce) {
+        // All reduce the accumulator tensor.
+        result = popops::replicatedAllReduce(
+            GetReplicatedGraph(res), GetMasterGraph(res), accumulator,
+            popops::Operation::ADD, if_true, GetDebugName(inst));
+      }
+
+      // Copy accumulator into output.
+      if_true.add(poplar::program::Copy(result, output));
+
       // Zero the accumulator.
       ZeroTensor(graph, accumulator, if_true);
       // Zero the counter.
@@ -93,20 +114,26 @@ class StatefulGradientAccumulateOp : public PoplibsOpDef {
     }
     poplar::program::Sequence if_false;
     {
-      // Set input to all zeros.
-      ZeroTensor(graph, input, if_false);
+      // Set output to all zeros.
+      ZeroTensor(graph, output, if_false);
       // Increase counter.
       popops::mapInPlace(master_graph, pe::Add(pe::_1, pe::Const(1)), {counter},
                          if_false, GetDebugName(inst) + "/IncreaseCounter");
     }
     seq.add(poplar::program::If(output_grads, if_true, if_false));
 
-    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, input));
+    // Unconcat the result and unflatten.
+    auto output_tensors = SliceTensorIntoTensorsLike(output, input_tensors);
+    for (int64 i = 0; i != output_tensors.size(); ++i) {
+      TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, output_tensors[i]));
+    }
 
     return seq;
   }
 };
 REGISTER_POPLIBS_OP(Poputil, StatefulGradientAccumulate,
+                    StatefulGradientAccumulateOp);
+REGISTER_POPLIBS_OP(Poputil, StatefulGradientAccumulateAndAllReduce,
                     StatefulGradientAccumulateOp);
 
 }  // namespace

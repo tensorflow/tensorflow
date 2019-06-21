@@ -18,6 +18,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
+#include "absl/types/optional.h"
+
 namespace xla {
 namespace poplarplugin {
 
@@ -32,8 +34,10 @@ class CombineInstructions : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  StatusOr<HloInstructionSequence> CombineInstructionsInComputation(
-      HloComputation* comp, const HloInstructionSequence& sequence);
+  // Returns a new sequence if any instructions were combined.
+  StatusOr<absl::optional<HloInstructionSequence>>
+  CombineInstructionsInComputation(HloComputation* comp,
+                                   const HloInstructionSequence& sequence);
 };
 
 }  // namespace poplarplugin

@@ -27,6 +27,8 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
+Shape GetHloPoplarInstructionShape(absl::Span<HloInstruction* const> operands);
+
 // Base class for a poplar hlo instruction
 class HloPoplarInstruction : public HloCustomCallInstruction {
  public:

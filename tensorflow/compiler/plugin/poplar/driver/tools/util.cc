@@ -318,11 +318,21 @@ void GetAllDepNames(const HloInstruction* base,
   }
 }
 
-void MakeUsedInplace(HloInstruction* inst) {
+namespace {
+void SetInplaceBackendField(HloInstruction* inst, bool inplace) {
   auto backend_config =
       inst->backend_config<PoplarBackendConfig>().ValueOrDie();
-  backend_config.set_is_inplace(true);
+  backend_config.set_is_inplace(inplace);
   inst->set_backend_config(backend_config);
+}
+}  // namespace
+
+void MakeUsedInplace(HloInstruction* inst) {
+  SetInplaceBackendField(inst, true);
+}
+
+void MakeUsedNotInplace(HloInstruction* inst) {
+  SetInplaceBackendField(inst, false);
 }
 
 bool IsUsedInplace(const HloInstruction* inst) {

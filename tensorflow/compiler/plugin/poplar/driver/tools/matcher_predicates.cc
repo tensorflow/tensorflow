@@ -9,9 +9,13 @@
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/window_util.h"
 namespace xla {
+
+namespace m = match;
+
 namespace poplarplugin {
 
 static bool IsAllFloatValue(const HloInstruction* inst, const double value) {
@@ -275,6 +279,14 @@ bool IsNonLinearityGradient(const HloInstruction* inst) {
 
 bool IsCompareEqual(const HloInstruction* inst) {
   return inst->comparison_direction() == ComparisonDirection::kEq;
+}
+
+bool IsSupportedAllReduce(const HloInstruction* inst) {
+  if (auto all_reduce = DynCast<HloAllReduceInstruction>(inst)) {
+    auto root = all_reduce->to_apply()->root_instruction();
+    return Match(root, m::Add(m::Parameter(0), m::Parameter(1)));
+  }
+  return false;
 }
 
 }  // namespace poplarplugin

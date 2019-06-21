@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/passes/fuse_ops_early.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/fuse_ops_late.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/fuse_wide_const.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/gradient_accumulation_fuser.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/hlo_computation_name_uniquify.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/inter_ipu_copy_inserter.h"
@@ -494,6 +495,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<HloGetDimensionSizeRewriter>();
     pipeline.AddPass<CustomOpReplacer>();
     pipeline.AddPass<ReplicationFactorToConstant>(resources.replication_factor);
+    pipeline.AddPass<GradientAccumulationFuser>(resources.annotations);
     pipeline.AddPass<HloComputationNameUniquify>();
     pipeline.AddPass<CholeskyExpander>();
     pipeline.AddPass<TriangularSolveExpander>();

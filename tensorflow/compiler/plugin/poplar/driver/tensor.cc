@@ -1581,12 +1581,11 @@ bool AreInplaceOutputTensorsWritable(TensorMap& map,
   return true;
 }
 
-namespace {
 // TODO T8403 - remove this function when Poplar supports it.
-poplar::Tensor Duplicate(const poplar::Tensor& src,
-                         poplar::program::Sequence& seq, poplar::Graph& graph,
-                         const poplar::TensorCloneMethod clone_method,
-                         std::string name) {
+poplar::Tensor DuplicateTensor(const poplar::Tensor& src,
+                               poplar::program::Sequence& seq,
+                               poplar::Graph& graph, std::string name,
+                               const poplar::TensorCloneMethod clone_method) {
   poplar::Tensor copy = graph.clone(src, name, clone_method);
   poplar::Tensor copy_dst = copy;
   poplar::Tensor copy_src = src;
@@ -1605,7 +1604,6 @@ poplar::Tensor Duplicate(const poplar::Tensor& src,
   seq.add(poplar::program::Copy(copy_src, copy_dst));
   return copy;
 }
-}  // namespace
 
 StatusOr<ArgVectors> FindInplaceOutputTensors(TensorMap& map,
                                               CompilerResources& res,
@@ -1706,8 +1704,8 @@ StatusOr<ArgVectors> FindInplaceOutputTensors(TensorMap& map,
                 << " inplace description: " << inplace_description.ToString();
         const auto* operand = inst->operand(inplace_indexes[i]);
         auto& graph = GetGraphWithOutputIndex(res, operand, tuple_idx);
-        t = Duplicate(t, seq, graph, clone_method,
-                      GetDebugName(inst) + ".clone");
+        t = DuplicateTensor(t, seq, graph, GetDebugName(inst) + ".clone",
+                            clone_method);
       }
       tensors[i][tuple_idx] = t;
     }
