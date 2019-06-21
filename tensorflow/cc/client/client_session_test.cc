@@ -13,21 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#define EIGEN_USE_THREADS
+
 #include "tensorflow/cc/client/client_session.h"
 
 #include <vector>
 
+#include "absl/synchronization/barrier.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/core/threadpool_options.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 namespace {
 
 using ops::Add;
+using ops::BatchMatMul;
 using ops::Const;
 using ops::Mul;
 using ops::Placeholder;
@@ -35,9 +41,9 @@ using ops::Sub;
 
 class CustomThreadPoolImpl : public thread::ThreadPoolInterface {
  public:
-  CustomThreadPoolImpl() {
+  explicit CustomThreadPoolImpl(int numThreads) {
     underlying_threadpool_.reset(new thread::ThreadPool(
-        tensorflow::Env::Default(), "custom_threadpool", 2));
+        tensorflow::Env::Default(), "custom_threadpool", numThreads));
     num_schedule_called_ = 0;
   }
 
@@ -155,17 +161,26 @@ TEST(ClientSessionTest, CallableWithDefaultThreadPool) {
 
 TEST(ClientSessionTest, CallableWithCustomThreadPool) {
   Scope root = Scope::NewRootScope();
-  auto a = Placeholder(root, DT_INT32);
-  auto b = Placeholder(root, DT_INT32);
-  auto c = Add(root, a, b);
+  int num_threads = 3;
+
+  TensorShape data_shape({1, 1});
+  auto a = Placeholder(root, DT_INT32, Placeholder::Shape(data_shape));
+  auto b = Placeholder(root, DT_INT32, Placeholder::Shape(data_shape));
+  auto c = BatchMatMul(root, a, b);
   ClientSession session(root);
   std::vector<Tensor> outputs;
 
-  auto inter_op_threadpool = absl::make_unique<CustomThreadPoolImpl>();
+  auto inter_op_threadpool =
+      absl::make_unique<CustomThreadPoolImpl>(num_threads);
   ASSERT_EQ(inter_op_threadpool->GetNumScheduleCalled(), 0);
+
+  auto intra_op_threadpool =
+      absl::make_unique<CustomThreadPoolImpl>(num_threads);
+  ASSERT_EQ(intra_op_threadpool->GetNumScheduleCalled(), 0);
 
   tensorflow::thread::ThreadPoolOptions threadPoolOptions;
   threadPoolOptions.inter_op_threadpool = inter_op_threadpool.get();
+  threadPoolOptions.intra_op_threadpool = intra_op_threadpool.get();
 
   CallableOptions options;
   options.add_feed(a.node()->name());
@@ -173,12 +188,26 @@ TEST(ClientSessionTest, CallableWithCustomThreadPool) {
   options.add_fetch(c.node()->name());
   ClientSession::CallableHandle callable;
   TF_CHECK_OK(session.MakeCallable(options, &callable));
+
+  // This is needed to have BatchMatMul computation be scheduled in the
+  // intra_op_threadpool.
+  absl::Barrier barrier(num_threads + 1);
+  for (int i = 0; i < num_threads; i++) {
+    intra_op_threadpool->Schedule([&barrier, num_threads]() {
+      tensorflow::SetPerThreadMaxParallelism(num_threads - 1);
+      barrier.Block();
+    });
+  }
+  barrier.Block();
+
   TF_EXPECT_OK(session.RunCallable(
-      callable, {test::AsTensor<int>({1}, {}), test::AsTensor<int>({41}, {})},
+      callable,
+      {test::AsTensor<int>({2}, {1, 1}), test::AsTensor<int>({10}, {1, 1})},
       &outputs, nullptr, threadPoolOptions));
-  test::ExpectTensorEqual<int>(outputs[0], test::AsTensor<int>({42}, {}));
+  test::ExpectTensorEqual<int>(outputs[0], test::AsTensor<int>({20}, {1, 1}));
   TF_EXPECT_OK(session.ReleaseCallable(callable));
   ASSERT_GT(inter_op_threadpool->GetNumScheduleCalled(), 0);
+  ASSERT_GT(intra_op_threadpool->GetNumScheduleCalled(), 0);
 }
 
 }  // namespace

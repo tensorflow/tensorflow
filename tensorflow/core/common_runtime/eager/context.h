@@ -25,6 +25,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
@@ -97,15 +98,13 @@ class RunMetadataListener {
 
 class EagerContext : public core::RefCounted {
  public:
-  EagerContext(
-      const SessionOptions& opts,
-      ContextDevicePlacementPolicy default_device_placement_policy,
-      ContextMirroringPolicy default_mirroring_policy, bool async,
-      const DeviceMgr* device_mgr, bool device_mgr_owned,
-      Rendezvous* rendezvous, const CustomKernelCreator* custom_kernel_creator,
-      DistributedFunctionLibraryRuntime* cluster_flr = nullptr,
-      std::function<Rendezvous*(const int64)> rendezvous_creator = nullptr,
-      const DeviceMgr* remote_device_mgr = nullptr);
+  EagerContext(const SessionOptions& opts,
+               ContextDevicePlacementPolicy default_device_placement_policy,
+               ContextMirroringPolicy default_mirroring_policy, bool async,
+               const DeviceMgr* device_mgr, bool device_mgr_owned,
+               Rendezvous* rendezvous,
+               const CustomKernelCreator* custom_kernel_creator,
+               DistributedFunctionLibraryRuntime* cluster_flr = nullptr);
 
   ~EagerContext() override;
 
@@ -254,13 +253,16 @@ class EagerContext : public core::RefCounted {
   FunctionLibraryDefinition* FuncLibDef() { return &func_lib_def_; }
 
 #if !defined(IS_MOBILE_PLATFORM)
-  Status GetClientAndContextID(Device* device, eager::EagerClient** client,
-                               uint64* context_id);
+  Status GetClient(Device* device, eager::EagerClient** client);
+
+  uint64 GetContextId();
 
   // TODO(nareshmodi): Encapsulate remote state into a separate
   // class/struct.
   //
-  // Enables the eager context to communicate with remote devices.
+  // Enables the eager context to communicate with remote devices. When
+  // initializing with this method, this context will be the master context,
+  // which will kill all its slaves in shutdown.
   //
   // - server: A ServerInterface that exports the tensorflow.WorkerService.
   // Note that this class expects the server to already have been started.
@@ -268,20 +270,23 @@ class EagerContext : public core::RefCounted {
   // communicate with remote eager services.
   // - remote_device_mgr: A DeviceMgr* which contains all remote devices
   // (should contain no local devices).
-  // - remote_contexts: A map containing task name to remote context ID.
-  Status InitializeRemote(
+  // - remote_contexts: A vector containing task names.
+  Status InitializeRemoteMaster(
       std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
       std::shared_ptr<WorkerSession> worker_session,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       std::unique_ptr<DeviceMgr> remote_device_manager,
-      const gtl::FlatMap<string, uint64>& remote_contexts, Rendezvous* r,
-      DeviceMgr* local_device_mgr, int keep_alive_secs,
+      const std::vector<string>& remote_contexts, uint64 context_id,
+      Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
       DistributedFunctionLibraryRuntime* cluster_flr);
 
-  bool HasActiveRemoteContext(uint64 context_id) {
-    return active_remote_contexts_.find(context_id) !=
-           active_remote_contexts_.end();
-  }
+  // Similar with InitializeRemoteMaster but this context will not kill remote
+  // contexts in shutdown.
+  Status InitializeRemoteWorker(
+      std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
+      const DeviceMgr* remote_device_mgr,
+      const std::vector<string>& remote_contexts, uint64 context_id,
+      std::function<Rendezvous*(const int64)> rendezvous_creator);
 
   Status StoreCollectiveOpsServer(
       std::unique_ptr<ServerInterface> server, DeviceMgr* device_mgr,
@@ -328,7 +333,7 @@ class EagerContext : public core::RefCounted {
   // Only one of the below is set. remote_unowned_device_manager_ is set on
   // remote worker to allow running multi-device function on remote worker.
   std::unique_ptr<DeviceMgr> remote_device_manager_;
-  const DeviceMgr* remote_unowned_device_manager_;
+  const DeviceMgr* remote_unowned_device_manager_ = nullptr;
 
   // Devices owned by device_manager
   std::vector<Device*> devices_;
@@ -344,6 +349,7 @@ class EagerContext : public core::RefCounted {
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 
+  const CustomKernelCreator* const custom_kernel_creator_;
   // One FunctionLibraryRuntime per device.
   // func_libs[i] is the FunctionLibraryRuntime corresponding to
   // session->devices[i].
@@ -405,10 +411,9 @@ class EagerContext : public core::RefCounted {
 
   mutex remote_state_mu_;
 
-  gtl::FlatMap<string, uint64> remote_contexts_;
-  gtl::FlatSet<uint64> active_remote_contexts_;
-  gtl::FlatMap<Device*, std::pair<eager::EagerClient*, uint64>>
-      device_to_client_cache_;
+  uint64 context_id_;
+  std::vector<string> remote_contexts_;
+  gtl::FlatMap<Device*, eager::EagerClient*> device_to_client_cache_;
 
   int keep_alive_secs_ GUARDED_BY(remote_state_mu_);
   std::atomic<int> sleep_for_secs_;

@@ -315,18 +315,19 @@ StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
                            ShapeUtil::HumanStringWithLayout(on_host_shape));
   }
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(on_host_shape));
-  const Shape on_device_shape = HostShapeToDeviceShape(on_host_shape);
+  Shape on_device_shape = HostShapeToDeviceShape(on_host_shape);
   TF_RET_CHECK(LayoutUtil::HasLayout(on_device_shape));
 
-  ScopedShapedBuffer shaped_buffer(on_host_shape, on_device_shape, allocator,
-                                   device_ordinal);
+  ScopedShapedBuffer shaped_buffer(on_host_shape, std::move(on_device_shape),
+                                   allocator, device_ordinal);
 
   // Allocate an appropriate sized buffer for each element in the shape
   // including the tuple pointer arrays.
   for (auto& pair : shaped_buffer.buffers()) {
     const ShapeIndex& index = pair.first;
     se::DeviceMemoryBase& memory_base = pair.second;
-    const Shape& subshape = ShapeUtil::GetSubshape(on_device_shape, index);
+    const Shape& subshape =
+        ShapeUtil::GetSubshape(shaped_buffer.on_device_shape(), index);
     TF_ASSIGN_OR_RETURN(auto memory,
                         allocator->Allocate(shaped_buffer.device_ordinal(),
                                             GetByteSizeRequirement(subshape)));

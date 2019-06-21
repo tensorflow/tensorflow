@@ -1168,6 +1168,7 @@ tf_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
     ],
+    shard_count = 4,
 )
 
 tf_py_test(

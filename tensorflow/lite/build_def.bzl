@@ -13,17 +13,12 @@ def tflite_copts():
         "-DFARMHASH_NO_CXX_STRING",
     ] + select({
         str(Label("//tensorflow:android_arm64")): [
-            "-std=c++11",
             "-O3",
         ],
         str(Label("//tensorflow:android_arm")): [
             "-mfpu=neon",
             "-mfloat-abi=softfp",
-            "-std=c++11",
             "-O3",
-        ],
-        str(Label("//tensorflow:android_x86")): [
-            "-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK",
         ],
         str(Label("//tensorflow:ios_x86_64")): [
             "-msse4.1",
@@ -35,9 +30,6 @@ def tflite_copts():
         "//conditions:default": [
             "-Wno-sign-compare",
         ],
-    }) + select({
-        str(Label("//tensorflow:with_default_optimizations")): [],
-        "//conditions:default": ["-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK"],
     })
 
     return copts
@@ -146,7 +138,8 @@ def tflite_cc_shared_object(
         copts = tflite_copts(),
         linkopts = [],
         linkstatic = 1,
-        deps = []):
+        deps = [],
+        visibility = None):
     """Builds a shared object for TFLite."""
     tf_cc_shared_object(
         name = name,
@@ -155,6 +148,7 @@ def tflite_cc_shared_object(
         linkopts = linkopts + tflite_jni_linkopts(),
         framework_so = [],
         deps = deps,
+        visibility = visibility,
     )
 
 def tf_to_tflite(name, src, options, out):

@@ -209,6 +209,16 @@ uint64_t GetHash(const TfLiteIntArray* int_array) {
   }
   return result;
 }
+
+bool HasZeroes(TfLiteIntArrayView array) {
+  for (auto value : array) {
+    if (value == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 // RAII NN API Model Destructor for use with std::unique_ptr
@@ -1194,6 +1204,12 @@ class NNAPIDelegateKernel {
             context->tensors[node->inputs->data[0]].type;
         if (version == 1 &&
             (input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8)) {
+          const TfLiteIntArrayView input_shape(
+              context->tensors[node->inputs->data[0]].dims);
+          if (HasZeroes(input_shape)) {
+            // NN API pad ops do not support input tensors with no elements
+            return nullptr;
+          }
           if (node->inputs->size == 2 &&
               android_sdk_version >= kMinSdkVersionForNNAPI11 &&
               (context->tensors[node->inputs->data[0]].type == kTfLiteFloat32 ||

@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import op_selector
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
@@ -32,6 +33,12 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
+
+
+VAR_OP_TYPES = [
+    "VariableV2",
+    "VarHandleOp",
+]
 
 
 def copy_handle_data(source_t, target_t):
@@ -163,6 +170,29 @@ def custom_gradient(f):
   return tf_decorator.make_decorator(f, decorated)
 
 
+def get_variable_by_name(var_name):
+  candidate_vars = ops.get_collection(
+      ops.GraphKeys.GLOBAL_VARIABLES, scope=var_name)
+  assert len(candidate_vars) == 1
+  return candidate_vars[0]
+
+
+def get_dependent_variables(input_ops, output_ops):
+  """Finds variables involved in the subgraph b/w input_ops and output_ops."""
+
+  # avoids the edge-case when input_ops == output_ops.
+  output_ops = nest.map_structure(gen_array_ops.identity, output_ops)
+  inbetween_ops = op_selector.get_backward_walk_ops(
+      seed_ops=nest.flatten(output_ops),
+      stop_at_ts=nest.flatten(input_ops),
+      inclusive=False,
+      only_differentiable=True)
+  var_ops = (op for op in inbetween_ops if op.type in VAR_OP_TYPES)
+  var_names = (op.name for op in var_ops)
+  tf_vars = [get_variable_by_name(var_name) for var_name in var_names]
+  return tf_vars
+
+
 def _graph_mode_decorator(f, *args, **kwargs):
   """Implement custom gradient decorator for graph mode."""
   # TODO(rsepassi): Add support for kwargs
@@ -191,7 +221,10 @@ def _graph_mode_decorator(f, *args, **kwargs):
           "with `use_resource=False`.")
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
-  variables = list(set(tape.watched_variables()) - set(args))
+  tf1_variables = get_dependent_variables(input_ops=args, output_ops=result)
+  eager_variables = list(set(tape.watched_variables()) - set(args))
+  variables = list(set(tf1_variables + eager_variables))
+
   grad_argspec = tf_inspect.getfullargspec(grad_fn)
   variables_in_signature = ("variables" in grad_argspec.args or
                             grad_argspec.varkw)

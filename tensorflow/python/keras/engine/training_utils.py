@@ -382,6 +382,7 @@ def check_num_samples(ins, batch_size=None, steps=None, steps_name='steps'):
                      ' is set, the `batch_size` must be None.')
   if check_steps_argument(ins, steps, steps_name):
     return None
+
   if hasattr(ins[0], 'shape'):
     return int(ins[0].shape[0])
   return None  # Edge case where ins == [static_learning_phase]
@@ -501,7 +502,8 @@ def standardize_input_data(data,
             continue
           data_shape = tuple(tensorshape.as_list())
         elif composite_tensor_utils.is_composite_or_composite_value(data[i]):
-          data_shape = composite_tensor_utils.get_shape(data[i])
+          tensorshape = composite_tensor_utils.get_shape(data[i])
+          data_shape = tuple(tensorshape.as_list())
         else:
           data_shape = data[i].shape
 
@@ -591,6 +593,10 @@ def check_array_lengths(inputs, targets, weights=None):
       ValueError: in case of incorrectly formatted data.
   """
 
+  def is_tensor_or_composite_tensor(x):
+    return tensor_util.is_tensor(
+        x) or composite_tensor_utils.is_composite_or_composite_value(x)
+
   def set_of_lengths(x):
     # Returns a set with the variation between
     # different shapes, with None => 0
@@ -600,7 +606,7 @@ def check_array_lengths(inputs, targets, weights=None):
       return set([
           y.shape[0]
           for y in x
-          if y is not None and not tensor_util.is_tensor(y)
+          if y is not None and not is_tensor_or_composite_tensor(y)
       ])
 
   set_x = set_of_lengths(inputs)

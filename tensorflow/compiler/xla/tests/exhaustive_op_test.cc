@@ -26,6 +26,16 @@ limitations under the License.
 namespace xla {
 namespace {
 
+struct ErrorSpec {
+  float abs_err;
+  float rel_err;
+
+  // If true, will consider -0 not near to +0 and vice versa.  Note that
+  // +epsilon may still be considered close to -0, depending on the error spec;
+  // this only covers the case when both `expected` and `actual` are equal to 0.
+  bool strict_signed_zeros = false;
+};
+
 using Eigen::half;
 
 template <typename T, size_t N>
@@ -183,6 +193,25 @@ string StringifyNum(bfloat16 x) {
                          BitCast<uint16>(x));
 }
 
+ErrorSpec DefaultF32SpecGenerator(float) { return ErrorSpec{0.0001, 0.0001}; }
+
+ErrorSpec DefaultF16SpecGenerator(float) { return ErrorSpec{0.001, 0.001}; }
+
+ErrorSpec DefaultBF16SpecGenerator(float) { return ErrorSpec{0.002, 0.02}; }
+
+std::function<ErrorSpec(float)> GetDefaultSpecGenerator(PrimitiveType ty) {
+  switch (ty) {
+    case F32:
+      return DefaultF32SpecGenerator;
+    case F16:
+      return DefaultF16SpecGenerator;
+    case BF16:
+      return DefaultBF16SpecGenerator;
+    default:
+      LOG(FATAL) << "Unhandled Type";
+  }
+}
+
 // Test parameter is a tuple containing
 //   - primitive type under test,
 //   - (begin, end) range under test, as zero-extended int64s bitcast to the
@@ -197,45 +226,36 @@ class ExhaustiveOpTest
 
   void Run(std::function<XlaOp(XlaOp)> enqueue_op,
            float (*evaluate_op)(float)) {
+    return Run(enqueue_op, evaluate_op, GetDefaultSpecGenerator(ty_));
+  }
+
+  void Run(std::function<XlaOp(XlaOp)> enqueue_op, float (*evaluate_op)(float),
+           std::function<ErrorSpec(float)> error_sepc_gen) {
     SetFastMathDisabled(true);
 
     // Run all HLO passes.  In particular, constant folding is disabled by
     // default for tests, but we need to run it in order to tickle some bugs.
     mutable_debug_options()->clear_xla_disable_hlo_passes();
 
-    PrimitiveType ty;
-    std::tie(ty, std::ignore) = GetParam();
-
-    switch (ty) {
+    switch (ty_) {
       case F32:
-        SetDefaultErrSpec(0.0001, 0.0001);
-        RunImpl<float, uint32>(enqueue_op, evaluate_op);
+        RunImpl<float, uint32>(enqueue_op, evaluate_op, error_sepc_gen);
         break;
       case F16:
-        SetDefaultErrSpec(0.001, 0.001);
-        RunImpl<half, uint16>(enqueue_op, evaluate_op);
+        RunImpl<half, uint16>(enqueue_op, evaluate_op, error_sepc_gen);
         break;
       case BF16:
-        SetDefaultErrSpec(0.002, 0.02);
-        RunImpl<bfloat16, uint16>(enqueue_op, evaluate_op);
+        RunImpl<bfloat16, uint16>(enqueue_op, evaluate_op, error_sepc_gen);
         break;
       default:
         LOG(FATAL) << "Unhandled type.";
     }
   }
 
-  void SetDefaultErrSpec(float abs_err, float rel_err) {
-    if (!abs_err_.has_value()) {
-      abs_err_ = abs_err;
-    }
-    if (!rel_err_.has_value()) {
-      rel_err_ = rel_err;
-    }
-  }
-
   template <typename T, typename IntegralT>
   void RunImpl(std::function<XlaOp(XlaOp)> enqueue_op,
-               float (*evaluate_op)(float)) {
+               float (*evaluate_op)(float),
+               std::function<ErrorSpec(float)> error_spec_gen) {
     static_assert(
         sizeof(T) == sizeof(IntegralT),
         "IntegralT must be an unsigned integer type of the same width as T.");
@@ -264,7 +284,7 @@ class ExhaustiveOpTest
 
     TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
                             BuildAndRunComputation(enqueue_op, input_literal));
-    ExpectNear<T>(input_literal, result_literal, evaluate_op);
+    ExpectNear<T>(input_literal, result_literal, evaluate_op, error_spec_gen);
   }
 
   StatusOr<Literal> BuildAndRunComputation(
@@ -305,16 +325,16 @@ class ExhaustiveOpTest
   }
 
   template <typename T>
-  bool IsClose(T expected, T actual) {
+  bool IsClose(T expected, T actual, ErrorSpec spec) {
     float expected_f32 = static_cast<float>(expected);
     float actual_f32 = static_cast<float>(actual);
     float abs_err = std::abs(expected_f32 - actual_f32);
     float rel_err = abs_err / std::abs(expected_f32);
-    if (strict_signed_zeros_ && actual == T{0} && expected == T{0}) {
+    if (spec.strict_signed_zeros && actual == T{0} && expected == T{0}) {
       // Check sign of zero.
       return std::signbit(actual_f32) == std::signbit(expected_f32);
     }
-    return abs_err < *abs_err_ || rel_err < *rel_err_ ||
+    return abs_err <= spec.abs_err || rel_err <= spec.rel_err ||
            (std::isnan(expected_f32) && std::isnan(actual_f32)) ||
            (std::isinf(expected_f32) && std::isinf(actual_f32) &&
             (expected_f32 > 0) == (actual_f32 > 0));
@@ -322,7 +342,8 @@ class ExhaustiveOpTest
 
   template <typename T>
   void ExpectNear(const Literal& input_literal, const Literal& result_literal,
-                  float (*evaluate_op)(float)) {
+                  float (*evaluate_op)(float),
+                  std::function<ErrorSpec(float)> error_spec_gen) {
     // We essentially reimplement LiteralTestUtil::Near here because
     //  a) this streamlined implementation is much faster, and
     //  b) we can print out better error messages (namely, we can print out
@@ -349,12 +370,14 @@ class ExhaustiveOpTest
       T actual = result_arr[i];
       T expected = static_cast<T>(evaluate_op(input_f32));
 
-      if (IsClose(expected, actual)) {
+      ErrorSpec error_spec = error_spec_gen(input_f32);
+
+      if (IsClose(expected, actual, error_spec)) {
         continue;
       }
 
-      // Easy case: If `input` is not denormal and !IsClose(expected, actual),
-      // print an error.
+      // Easy case: If `input` is not denormal and
+      // !IsClose(expected, actual, error_spec), print an error.
       //
       // (This doesn't correctly detect f16 and bfloat16 denormals!  This seems
       // to be OK for now, but at some point we may need to implement fpclassify
@@ -389,10 +412,10 @@ class ExhaustiveOpTest
                                        : expected_at_pos_min_normal_float;
       T sign_nonpreserving_ftz_expected =
           std::signbit(input_f32) ? expected_at_pos_zero : expected_at_neg_zero;
-      if (IsClose(sign_preserving_ftz_expected, actual) ||
-          IsClose(flush_to_normal_expected, actual) ||
+      if (IsClose(sign_preserving_ftz_expected, actual, error_spec) ||
+          IsClose(flush_to_normal_expected, actual, error_spec) ||
           (relaxed_denormal_signs_ &&
-           IsClose(sign_nonpreserving_ftz_expected, actual))) {
+           IsClose(sign_nonpreserving_ftz_expected, actual, error_spec))) {
         continue;
       }
 
@@ -470,16 +493,6 @@ class ExhaustiveOpTest
   // argument is the type under test, e.g. f32, zero-extended to int64).
   std::function<bool(int64)> known_incorrect_fn_;
 
-  // If unset, reasonable defaults will be used depending on the type under
-  // test.
-  absl::optional<float> abs_err_;
-  absl::optional<float> rel_err_;
-
-  // If true, will consider -0 not near to +0 and vice versa.  Note that
-  // +epsilon may still be considered close to -0, depending on the error spec;
-  // this only covers the case when both `expected` and `actual` are equal to 0.
-  bool strict_signed_zeros_ = false;
-
   // If true, allows denormals to be flushed to non-sign-preserving 0.
   //
   // For example, normally we'd expect sqrt(-denormal) to be either nan (sqrt of
@@ -491,24 +504,38 @@ class ExhaustiveOpTest
 };
 
 XLA_TEST_P(ExhaustiveOpTest, Log) {
+  auto error_spec_gen = GetDefaultSpecGenerator(ty_);
   if (platform_ != "Host" && platform_ != "CUDA" && ty_ == F32) {
-    abs_err_ = 0.001;
-    rel_err_ = 0.001;
+    error_spec_gen = [](float x) { return ErrorSpec{0.001, 0.001}; };
   }
 
-  Run(Log, std::log);
+  Run(Log, std::log, error_spec_gen);
 }
 
 XLA_TEST_P(ExhaustiveOpTest, Log1p) {
+  auto error_spec_gen = GetDefaultSpecGenerator(ty_);
   if (platform_ != "Host" && platform_ != "CUDA" && ty_ == F32) {
-    abs_err_ = 0.001;
-    rel_err_ = 0.001;
+    error_spec_gen = [](float x) { return ErrorSpec{0.001, 0.001}; };
   }
 
-  Run(Log1p, std::log1p);
+  Run(Log1p, std::log1p, error_spec_gen);
 }
 
 XLA_TEST_P(ExhaustiveOpTest, Exp) {
+  // When x < -105, the true value of exp(x) is smaller than the smallest F32,
+  // so exp(x) should return exactly 0. We want our implementation of exp to
+  // return exactly 0 as well, as not doing so implies either that our
+  // implementation of exp is not following the asymptotic behavior that exp(x)
+  // approaches 0 as x approaches -inf, or that our implementation is not
+  // approaching 0 fast enough.
+  auto default_spec_gen = GetDefaultSpecGenerator(ty_);
+  auto error_spec_gen = [default_spec_gen](float x) {
+    if (x < -105) {
+      return ErrorSpec{0, 0};
+    }
+    return default_spec_gen(x);
+  };
+
   // Our CPU implementation of exp returns one incorrect value: says
   // exp(88.7228394) = max-float, but the correct answer is inf.  We deem this
   // acceptable and check for it explicitly so that we can be aware if anything
@@ -520,13 +547,21 @@ XLA_TEST_P(ExhaustiveOpTest, Exp) {
       }
       return std::exp(f);
     };
-    Run(Exp, host_exp_with_overflow);
+    Run(Exp, host_exp_with_overflow, error_spec_gen);
   } else {
-    Run(Exp, std::exp);
+    Run(Exp, std::exp, error_spec_gen);
   }
 }
 
 XLA_TEST_P(ExhaustiveOpTest, Expm1) {
+  auto default_spec_gen = GetDefaultSpecGenerator(ty_);
+  auto error_spec_gen = [default_spec_gen](float x) {
+    if (x < -105) {
+      return ErrorSpec{0, 0};
+    }
+    return default_spec_gen(x);
+  };
+
   // Our CPU implementation of expm1 returns one incorrect value: says
   // exp(88.7228394) = max-float, but the correct answer is inf.  We deem this
   // acceptable and check for it explicitly so that we can be aware if anything
@@ -538,9 +573,9 @@ XLA_TEST_P(ExhaustiveOpTest, Expm1) {
       }
       return std::expm1(f);
     };
-    Run(Expm1, host_expm1_with_overflow);
+    Run(Expm1, host_expm1_with_overflow, error_spec_gen);
   } else {
-    Run(Expm1, std::expm1);
+    Run(Expm1, std::expm1, error_spec_gen);
   }
 }
 
@@ -558,30 +593,43 @@ XLA_TEST_P(ExhaustiveOpTest, Rsqrt) {
 }
 
 XLA_TEST_P(ExhaustiveOpTest, Sqrt) {
+  auto default_spec_gen = GetDefaultSpecGenerator(ty_);
+  std::function<ErrorSpec(float)> error_spec_gen;
   if (platform_ == "Host" || platform_ == "CUDA") {
-    strict_signed_zeros_ = true;
+    error_spec_gen = [default_spec_gen](float x) {
+      ErrorSpec spec = default_spec_gen(x);
+      spec.strict_signed_zeros = true;
+      return spec;
+    };
+  } else {
+    error_spec_gen = default_spec_gen;
   }
 
-  Run(Sqrt, std::sqrt);
+  Run(Sqrt, std::sqrt, error_spec_gen);
 }
 
 // TODO(jlebar): Test trig functions over complex inputs.
 
 XLA_TEST_P(ExhaustiveOpTest, Acosh) {
   // Error inherited from Log, which our implementation of Acosh uses.
+  std::function<ErrorSpec(float)> error_spec_gen;
   if (platform_ != "Host" && platform_ != "CUDA" && ty_ == F32) {
-    abs_err_ = 0.001;
-    rel_err_ = 0.001;
+    error_spec_gen = [](float x) { return ErrorSpec{0.001, 0.001}; };
+  } else {
+    error_spec_gen = GetDefaultSpecGenerator(ty_);
   }
-  Run(Acosh, std::acosh);
+
+  Run(Acosh, std::acosh, error_spec_gen);
 }
 XLA_TEST_P(ExhaustiveOpTest, Asinh) {
   // Error inherited from Log, which our implementation of Asinh uses.
+  std::function<ErrorSpec(float)> error_spec_gen;
   if (platform_ != "Host" && platform_ != "CUDA" && ty_ == F32) {
-    abs_err_ = 0.001;
-    rel_err_ = 0.001;
+    error_spec_gen = [](float x) { return ErrorSpec{0.001, 0.001}; };
+  } else {
+    error_spec_gen = GetDefaultSpecGenerator(ty_);
   }
-  Run(Asinh, std::asinh);
+  Run(Asinh, std::asinh, error_spec_gen);
 }
 XLA_TEST_P(ExhaustiveOpTest, Atanh) { Run(Atanh, std::atanh); }
 XLA_TEST_P(ExhaustiveOpTest, Acos) { Run(Acos, std::acos); }
@@ -638,8 +686,6 @@ void ExhaustiveOpTest::SetParamsForSinCosTan() {
   // and will not provide meaningful results for sin/cos/tan if magnitudes
   // exceed 2**p.
   if (ty_ == F32) {
-    rel_err_ = 0.001;
-    abs_err_ = 0.001;
     known_incorrect_fn_ = [](int64 v) {
       float f = BitCast<float>(static_cast<uint32>(v));
       return std::abs(f) > (1 << 13);
@@ -654,15 +700,33 @@ void ExhaustiveOpTest::SetParamsForSinCosTan() {
 
 XLA_TEST_P(ExhaustiveOpTest, Cos) {
   SetParamsForSinCosTan();
-  Run(Cos, std::cos);
+  std::function<ErrorSpec(float)> error_spec_gen;
+  if (ty_ == F32) {
+    error_spec_gen = [](float) { return ErrorSpec{0.001, 0.001}; };
+  } else {
+    error_spec_gen = GetDefaultSpecGenerator(ty_);
+  }
+  Run(Cos, std::cos, error_spec_gen);
 }
 XLA_TEST_P(ExhaustiveOpTest, Sin) {
   SetParamsForSinCosTan();
-  Run(Sin, std::sin);
+  std::function<ErrorSpec(float)> error_spec_gen;
+  if (ty_ == F32) {
+    error_spec_gen = [](float) { return ErrorSpec{0.001, 0.001}; };
+  } else {
+    error_spec_gen = GetDefaultSpecGenerator(ty_);
+  }
+  Run(Sin, std::sin, error_spec_gen);
 }
 XLA_TEST_P(ExhaustiveOpTest, Tan) {
   SetParamsForSinCosTan();
-  Run(Tan, std::tan);
+  std::function<ErrorSpec(float)> error_spec_gen;
+  if (ty_ == F32) {
+    error_spec_gen = [](float) { return ErrorSpec{0.001, 0.001}; };
+  } else {
+    error_spec_gen = GetDefaultSpecGenerator(ty_);
+  }
+  Run(Tan, std::tan, error_spec_gen);
 }
 
 // TODO(jlebar): Enable these.
@@ -673,11 +737,13 @@ XLA_TEST_P(ExhaustiveOpTest, Erf) { Run(Erf, std::erf); }
 XLA_TEST_P(ExhaustiveOpTest, Erfc) { Run(Erfc, std::erfc); }
 XLA_TEST_P(ExhaustiveOpTest, ErfInv) { Run(ErfInv, HostErfInv); }
 XLA_TEST_P(ExhaustiveOpTest, Digamma) {
+  std::function<ErrorSpec(float)> error_spec_gen;
   if (platform_ != "Host" && platform_ != "CUDA") {
     // TODO(b/123956399): This is a fairly high error, significantly higher than
     // we see on CPU/GPU.
-    rel_err_ = 0.01;
-    abs_err_ = 0.01;
+    error_spec_gen = [](float) { return ErrorSpec{0.01, 0.01}; };
+  } else {
+    error_spec_gen = GetDefaultSpecGenerator(ty_);
   }
 
   if (platform_ == "CUDA") {
@@ -696,23 +762,31 @@ XLA_TEST_P(ExhaustiveOpTest, Digamma) {
       }
       return HostDigamma(x);
     };
-    Run(Digamma, host_digamma_with_gpu_ftz_errors);
+    Run(Digamma, host_digamma_with_gpu_ftz_errors, error_spec_gen);
   } else {
-    Run(Digamma, HostDigamma);
+    Run(Digamma, HostDigamma, error_spec_gen);
   }
 }
 XLA_TEST_P(ExhaustiveOpTest, Lgamma) {
   // Our implementation gets within 0.0001 rel error except for ~20 denormal
   // inputs on GPU.  Anyway 0.001 rel error should be good enough for lgamma.
+  auto default_spec_gen = GetDefaultSpecGenerator(ty_);
+  std::function<ErrorSpec(float)> error_spec_gen;
   if (platform_ == "CUDA" && (ty_ == F32 || ty_ == F16)) {
-    rel_err_ = 0.001;
+    error_spec_gen = [default_spec_gen](float x) {
+      ErrorSpec spec = default_spec_gen(x);
+      spec.rel_err = 0.001;
+      return spec;
+    };
+  } else {
+    error_spec_gen = default_spec_gen;
   }
+
   float (*host_lgamma)(float) = std::lgamma;
   if (platform_ != "Host" && platform_ != "CUDA") {
     // TODO(b/123956399): This is a fairly high error, significantly higher than
     // we see on CPU/GPU.
-    rel_err_ = 0.01;
-    abs_err_ = 0.01;
+    error_spec_gen = [](float) { return ErrorSpec{0.01, 0.01}; };
 
     // Overflows to inf for input 4.08500343e+36 (0x7c44af8e).
     if (ty_ == F32) {
@@ -724,7 +798,7 @@ XLA_TEST_P(ExhaustiveOpTest, Lgamma) {
       };
     }
   }
-  Run(Lgamma, host_lgamma);
+  Run(Lgamma, host_lgamma, error_spec_gen);
 }
 
 XLA_TEST_P(ExhaustiveOpTest, Round) { Run(Round, std::round); }

@@ -1078,25 +1078,32 @@ Status BufferAssigner::AssignSingleHloBuffer(
     }
   }
 
-  if (hlo_buffer->values().size() == 1) {
-    HloComputation* computation =
-        hlo_buffer->values()[0]->instruction()->parent();
-    const bool has_sequential_order =
-        assignment->liveness().hlo_ordering().SequentialOrder(*computation) !=
-        nullptr;
-    if (!assignment->HasAllocation(*hlo_buffer) && has_sequential_order &&
-        !assignment->alias_analysis().BufferLivesOut(*hlo_buffer)) {
-      // There is a sequential instruction ordering, so we delay assignment of
-      // temp buffers until after the loop. We do this right before we decide to
-      // create a new allocation, to ensure we've exhausted all the buffer
-      // re-use cases above.
-      //
-      // Entry parameters and thread local buffers were already handled earlier
-      // in this loop iteration.  See BufferAllocation::IsPreallocatedTempBuffer
-      // for the definition of temp buffers.
-      (*buffers_to_assign_sequentially)[computation].insert(
-          hlo_buffer->values()[0]);
-      VLOG(3) << "Delaying assignment of temp buffer: " << *hlo_buffer;
+  if (!assignment->HasAllocation(*hlo_buffer) &&
+      !assignment->alias_analysis().BufferLivesOut(*hlo_buffer)) {
+    bool all_computations_have_sequential_order = true;
+    for (const HloValue* hlo_value : hlo_buffer->values()) {
+      HloComputation* computation = hlo_value->instruction()->parent();
+      const bool has_sequential_order =
+          assignment->liveness().hlo_ordering().SequentialOrder(*computation) !=
+          nullptr;
+      all_computations_have_sequential_order &= has_sequential_order;
+    }
+
+    if (all_computations_have_sequential_order) {
+      for (const HloValue* hlo_value : hlo_buffer->values()) {
+        HloComputation* computation = hlo_value->instruction()->parent();
+        // There is a sequential instruction ordering, so we delay assignment
+        // of temp buffers until after the loop. We do this right before we
+        // decide to create a new allocation, to ensure we've exhausted all
+        // the buffer re-use cases above.
+        //
+        // Entry parameters and thread local buffers were already handled
+        // earlier in this loop iteration.  See
+        // BufferAllocation::IsPreallocatedTempBuffer for the definition of
+        // temp buffers.
+        (*buffers_to_assign_sequentially)[computation].insert(hlo_value);
+        VLOG(3) << "Delaying assignment of temp buffer: " << *hlo_value;
+      }
       return Status::OK();
     }
   }
@@ -1297,19 +1304,13 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
   auto get_heap_algorithm = [&](int64 alignment) {
     auto algorithms =
         absl::make_unique<std::vector<std::unique_ptr<HeapAlgorithm>>>();
-    algorithms->push_back(absl::make_unique<DecreasingSizeRunsHeap>(
-        absl::make_unique<LazyBestFitHeap>(alignment)));
-    algorithms->push_back(
-        absl::make_unique<GlobalDecreasingSizeBestFitHeap>(alignment));
+    algorithms->push_back(absl::make_unique<GlobalDecreasingSizeBestFitHeap>(
+        alignment, GlobalDecreasingSizeBestFitHeap::kSpatial));
+    algorithms->push_back(absl::make_unique<GlobalDecreasingSizeBestFitHeap>(
+        alignment, GlobalDecreasingSizeBestFitHeap::kTemporal));
     return absl::make_unique<ChooseBestHeapAlgorithm>(std::move(algorithms));
   };
 
-  // The API of heap simulator is currently logical buffer based and buffer
-  // assignment currently uses HloValue. As an intermediate step, we convert
-  // between logical buffer and HloValue around the API boundary.
-  //
-  // TODO(yunxing): Update heap simulator to use HloValue and remove the
-  // conversions.
   if (run_whole_module_heap_simulation) {
     // Run the heap simulation over the whole module. This reduces memory
     // usage, since buffers for kCall, kWhile, and kConditional
@@ -1335,22 +1336,14 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       int64 alignment = assignment->color_alignment_(color);
       HeapSimulator::Options options;
       options.alloc_constants = allocate_buffers_for_constants_;
-      // At the API boundary between buffer_assignment and heap simulator,
-      // TuplePointsTo and LogicalBuffer are expected.
-      BufferValueFlatSet buffer_value_set = HloValueSetToLogicalBufferSet(
-          single_colored_set.second, assignment->points_to_analysis());
-      options.buffers_to_assign = &buffer_value_set;
+      options.buffers_to_assign = &single_colored_set.second;
 
       options.must_alias_sets = BuildMustAliasLogicalBufferSet(assignment);
       TF_ASSIGN_OR_RETURN(
           HeapSimulator::Result result,
-          HeapSimulator::Run(get_heap_algorithm(alignment),
-                             assignment->module(), schedule,
-                             assignment->points_to_analysis(),
-                             assignment->buffer_size_, options));
-      ConvertHeapSimulatorResultToHloValue(&result,
-                                           assignment->dataflow_analysis(),
-                                           assignment->points_to_analysis());
+          HeapSimulator::Run(
+              get_heap_algorithm(alignment), assignment->module(), schedule,
+              assignment->alias_analysis(), assignment->buffer_size_, options));
       AssignBuffersFromHeapSimulator(result, assignment,
                                      single_colored_set.first);
     }
@@ -1371,21 +1364,13 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         VLOG(2) << "Simulating heap for color " << color;
         int64 alignment = assignment->color_alignment_(color);
         HeapSimulator::Options options;
-        // At the API boundary between buffer_assignment and heap simulator,
-        // TuplePointsTo and LogicalBuffer are expected.
-        BufferValueFlatSet buffer_value_set = HloValueSetToLogicalBufferSet(
-            single_colored_set.second, assignment->points_to_analysis());
-        options.buffers_to_assign = &buffer_value_set;
-        options.must_alias_sets = BuildMustAliasLogicalBufferSet(assignment);
+        options.buffers_to_assign = &single_colored_set.second;
         TF_ASSIGN_OR_RETURN(
             HeapSimulator::Result result,
             HeapSimulator::Run(get_heap_algorithm(alignment), *computation,
                                *instruction_sequence,
-                               assignment->points_to_analysis(),
+                               assignment->alias_analysis(),
                                assignment->buffer_size_, options));
-        ConvertHeapSimulatorResultToHloValue(&result,
-                                             assignment->dataflow_analysis(),
-                                             assignment->points_to_analysis());
         AssignBuffersFromHeapSimulator(result, assignment,
                                        single_colored_set.first);
       }
@@ -1416,15 +1401,10 @@ std::vector<const BufferValue*> ComputePeakMemoryLogicalBuffers(
   // buffers. Can be negative.
   auto memory_delta = [&id_to_value, &buffer_sizes](
                           const HeapSimulatorTrace::Event& event) -> int64 {
-    if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
-      // Sharing a buffer does not change the live set size for the purposes
-      // of the heap simulator. Even though the shared-with buffer may be
-      // smaller, the entire allocation remains live.
-      return 0;
-    }
     const BufferValue* buffer = id_to_value.at(event.buffer_id());
     const int64 buffer_size = buffer_sizes.at(buffer);
-    if (event.kind() == HeapSimulatorTrace::Event::ALLOC) {
+    if (event.kind() == HeapSimulatorTrace::Event::ALLOC ||
+        event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
       return buffer_size;
     } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
       return -1 * buffer_size;
@@ -1447,11 +1427,9 @@ std::vector<const BufferValue*> ComputePeakMemoryLogicalBuffers(
   absl::flat_hash_set<const BufferValue*> live_values;
   live_size = 0;
   for (const auto& event : heap_trace.events()) {
-    if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
-      continue;
-    }
     const BufferValue* value = id_to_value.at(event.buffer_id());
-    if (event.kind() == HeapSimulatorTrace::Event::ALLOC) {
+    if (event.kind() == HeapSimulatorTrace::Event::ALLOC ||
+        event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
       InsertOrDie(&live_values, value);
     } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
       CHECK(ContainsKey(live_values, value));
@@ -1493,6 +1471,7 @@ void BufferAssigner::AssignBuffersFromHeapSimulator(
     assignment->stats_.preallocated_temp_fragmentation_bytes +=
         result.fragmentation_size;
   }
+  VLOG(1) << "Result size from heap simulator: " << result.heap_size;
 
   BufferAllocation* allocation =
       assignment->NewEmptyAllocation(result.heap_size, color);
@@ -1522,7 +1501,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
                       HloAliasAnalysis::Run(module, fusion_can_share_buffer));
 
   VLOG(1) << "Assigning buffers to module " << module->name();
-  XLA_VLOG_LINES(2, module->ToString());
+  XLA_VLOG_LINES(3, module->ToString());
   XLA_VLOG_LINES(3, alias_analysis->ToString());
   XLA_VLOG_LINES(3, alias_analysis->dataflow_analysis().ToString());
   VLOG(1) << "Number of buffers to assign: "
@@ -1555,9 +1534,9 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
       global_computations,
       /*is_thread_local=*/false, &buffers_to_assign_sequentially,
       assignment.get()));
-  // Assign buffers with sequential ordering, if any. If all global computations
-  // are sequential, we can run heap simuation on the whole module, which
-  // reduces memory usage.
+  // Assign buffers with sequential ordering, if any. If all global
+  // computations are sequential, we can run heap simuation on the whole
+  // module, which reduces memory usage.
   const bool run_whole_module_heap_simulation =
       buffers_to_assign_sequentially.size() == global_computations.size();
   VLOG(2) << "Running whole module heap simulation"
@@ -1597,8 +1576,8 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   }
 
   // Combines allocations of temporary buffers into one big BufferAllocation.
-  // This can only be performed after all buffers have been assigned, and after
-  // maybe_live_out is marked, since it is used to determine whether an
+  // This can only be performed after all buffers have been assigned, and
+  // after maybe_live_out is marked, since it is used to determine whether an
   // allocation contains temporary buffers or not.
   assignment->CombineTempAllocations();
 

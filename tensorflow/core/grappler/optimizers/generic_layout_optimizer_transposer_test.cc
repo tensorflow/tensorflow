@@ -49,6 +49,7 @@ constexpr int kOutHeight = 5;
 constexpr int kDepthOut = 16;
 constexpr char kSrcFormat[] = "NHWC";
 constexpr char kDstFormat[] = "NCHW";
+constexpr char kGPU[] = "GPU";
 constexpr char kAttrOutputShapes[] = "_output_shapes";
 constexpr char kAttrDataFormat[] = "data_format";
 constexpr char kOpTranspose[] = "Transpose";
@@ -316,7 +317,7 @@ TEST_F(TransposerTest, CreateConstPermNode) {
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleConv2DGraph(&item.graph));
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   TransposerImpl transposer;
   constexpr char kNodeName[] = "const_perm_node";
@@ -358,8 +359,8 @@ TEST_F(TransposerTest, CreateTransposeNode) {
   GrapplerItem item;
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleConv2DGraph(&item.graph));
-  TF_ASSERT_OK(
-      TransposeContext::InitializeTransposeContext(item, nullptr, &context));
+  TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   TransposerImpl transposer;
   constexpr char kNodeNameFormat[] =
@@ -398,14 +399,12 @@ TEST_F(TransposerTest, UpdateNode) {
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleConv2DGraph(&item.graph));
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer transposer;
   auto* conv2d = context.graph_view->GetNode("conv2d");
   ASSERT_NE(conv2d, nullptr);
-  NodeLayoutContext layout;
-  layout.Initialize(kSrcFormat, kDstFormat, /*is_transposable=*/true);
-  TF_ASSERT_OK(transposer.UpdateNode(&context, layout, conv2d));
+  TF_ASSERT_OK(transposer.UpdateNode(&context, conv2d));
   TF_ASSERT_OK(context.graph_view->GetMutationBuilder()->Apply());
 
   auto* updated_conv2d = context.graph_view->GetNode("conv2d");
@@ -430,7 +429,7 @@ TEST_F(TransposerTest, UpdateStrides) {
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleConv2DGraph(&item.graph));
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), "ABCD", "ACBD", kGPU, &context));
 
   AttrValue_ListValue expected_original_strides =
       MakeAttrValueListValueFromVector({1, 2, 4, 1});
@@ -449,9 +448,7 @@ TEST_F(TransposerTest, UpdateStrides) {
   TF_ASSERT_OK(context.graph_view->GetMutationBuilder()->Apply());
 
   DefaultLayoutSensitiveOpTransposer transposer;
-  NodeLayoutContext layout;
-  layout.Initialize("ABCD", "ACBD", /*is_transposable=*/true);
-  TF_ASSERT_OK(transposer.UpdateNode(&context, layout, conv2d));
+  TF_ASSERT_OK(transposer.UpdateNode(&context, conv2d));
   TF_ASSERT_OK(context.graph_view->GetMutationBuilder()->Apply());
 
   auto* updated_conv2d = context.graph_view->GetNode("conv2d");
@@ -468,19 +465,17 @@ TEST_F(TransposerTest, UpdateFaninEdgesTranspose) {
   GrapplerItem item;
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleFusedBatchNormGrad(&item.graph, true));
-  TF_ASSERT_OK(
-      TransposeContext::InitializeTransposeContext(item, nullptr, &context));
+  TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   FusedBatchNormGradTransposer transposer;
-  NodeLayoutContext layout;
-  layout.Initialize(kSrcFormat, kDstFormat, /*is_transposable=*/true);
   auto* fbng = context.graph_view->GetNode("fused_batch_norm_grad");
   ASSERT_NE(fbng, nullptr);
   const auto& fbng_output_shapes_attr = fbng->GetAttr("_output_shapes");
   ASSERT_NE(fbng_output_shapes_attr, nullptr);
   const TensorShapeProto& expected_shape = fbng_output_shapes_attr->shape();
-  TF_ASSERT_OK(transposer.UpdateFaninEdgesWithOp(&context, layout, {0, 1}, fbng,
-                                                 kOpTranspose));
+  TF_ASSERT_OK(
+      transposer.UpdateFaninEdgesWithOp(&context, {0, 1}, fbng, kOpTranspose));
   TF_ASSERT_OK(context.graph_view->GetMutationBuilder()->Apply());
 
   // Verify output shape matches input shape.
@@ -528,12 +523,10 @@ TEST_F(TransposerTest, UpdateFanoutEdgesTranspose) {
   GrapplerItem item;
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleConv2DGraph(&item.graph));
-  TF_ASSERT_OK(
-      TransposeContext::InitializeTransposeContext(item, nullptr, &context));
+  TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   TransposerImpl transposer;
-  NodeLayoutContext layout;
-  layout.Initialize(kSrcFormat, kDstFormat, /*is_transposable=*/true);
   TensorShapeProto expected_original_shape =
       MakeTensorShapeFromDimensions({32, 5, 3, 16});
   TensorShapeProto expected_updated_shape =
@@ -543,8 +536,8 @@ TEST_F(TransposerTest, UpdateFanoutEdgesTranspose) {
   ASSERT_NE(conv2d, nullptr);
   VerifyShapeAttributeMatch(conv2d, 0, expected_original_shape.DebugString());
 
-  TF_ASSERT_OK(transposer.UpdateFanoutEdgesWithOp(&context, layout, {0}, conv2d,
-                                                  kOpTranspose));
+  TF_ASSERT_OK(
+      transposer.UpdateFanoutEdgesWithOp(&context, {0}, conv2d, kOpTranspose));
   TF_ASSERT_OK(context.graph_view->GetMutationBuilder()->Apply());
 
   auto* updated_conv2d = context.graph_view->GetNode("conv2d");
@@ -584,7 +577,7 @@ TEST_F(TransposerTest, DefaultLayoutSensitiveOpTransposerTestFusedBatchNorm) {
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleFusedBatchNorm(&item.graph));
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer transposer;
   auto* bn = context.graph_view->GetNode("bn");
@@ -639,7 +632,7 @@ TEST_F(TransposerTest, DefaultLayoutSensitiveOpTransposerTestConv2D) {
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleConv2DGraph(&item.graph));
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer transposer;
   auto* conv2d = context.graph_view->GetNode("conv2d");
@@ -681,7 +674,7 @@ TEST_F(TransposerTest, MaxPoolGradTransposerTest) {
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleMaxPoolGrad(&item.graph));
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   MaxPoolGradTransposer transposer;
   auto* maxpool_grad = context.graph_view->GetNode("maxpool_grad");
@@ -733,7 +726,7 @@ TEST_F(TransposerTest, BiasAddGradTransposerTest) {
   TF_ASSERT_OK(CreateSimpleBiasAddGrad(
       &item.graph, {kBatchSize, kHeight, kWidth, kDepthIn}));
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   BiasAddGradTransposer transposer;
   auto* bag = context.graph_view->GetNode("bag");
@@ -768,7 +761,7 @@ TEST_F(TransposerTest, BiasAddGradTransposerIncorrectInputTest) {
   TF_ASSERT_OK(
       CreateSimpleBiasAddGrad(&item.graph, {kHeight, kWidth, kDepthIn}));
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   BiasAddGradTransposer transposer;
   auto* bag = context.graph_view->GetNode("bag");
@@ -802,7 +795,7 @@ TEST_F(TransposerTest, Conv2DBackpropFilterTransposerTest) {
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleConv2DBackpropFilter(&item.graph));
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   Conv2DBackpropFilterTransposer transposer;
   auto* conv2d_bf = context.graph_view->GetNode("conv2d_backprop_filter");
@@ -854,7 +847,7 @@ TEST_F(TransposerTest, FusedBatchNormGradTransposerIsTrainingTest) {
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleFusedBatchNormGrad(&item.graph, true));
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   FusedBatchNormGradTransposer transposer;
   auto* fbng = context.graph_view->GetNode("fused_batch_norm_grad");
@@ -922,7 +915,7 @@ TEST_F(TransposerTest, FusedBatchNormGradTransposerNotTrainingTest) {
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleFusedBatchNormGrad(&item.graph, false));
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   FusedBatchNormGradTransposer transposer;
   auto* fbng = context.graph_view->GetNode("fused_batch_norm_grad");
@@ -992,7 +985,7 @@ TEST_F(TransposerTest, DefaultLayoutAgnosticOpTransposerIdentityTest) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -1043,7 +1036,7 @@ TEST_F(TransposerTest, DefaultLayoutAgnosticOpTransposerIdentityBadInputTest) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -1084,7 +1077,7 @@ TEST_F(TransposerTest, AddNTransposerTest) {
   TF_ASSERT_OK(CreateSimpleAddN(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* conv2d = context.graph_view->GetNode("conv2d");
@@ -1147,7 +1140,7 @@ TEST_F(TransposerTest, AddNTransposerNotAfterTransformTest) {
   TF_ASSERT_OK(CreateSimpleAddN(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   AddNTransposer addn_transposer;
   auto* an = context.graph_view->GetNode("add_n");
@@ -1197,7 +1190,7 @@ TEST_F(TransposerTest, IdentityNTransposerTest) {
   TF_ASSERT_OK(CreateSimpleIdentityN(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* conv2d_1 = context.graph_view->GetNode("conv2d_1");
@@ -1295,7 +1288,7 @@ TEST_F(TransposerTest, MergeTransposerTestMergeBothInputsConvertible) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -1354,7 +1347,7 @@ TEST_F(TransposerTest, MergeTransposerTestMergeOneInputNotConvertible) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -1407,7 +1400,7 @@ TEST_F(TransposerTest, PadTransposerTest) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -1467,7 +1460,7 @@ TEST_F(TransposerTest, SwitchTransposerTest) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -1533,7 +1526,7 @@ TEST_F(TransposerTest, TernaryOpTransposerTest) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -1600,7 +1593,7 @@ TEST_F(TransposerTest, UnaryGradTransposerTestTanhGrad) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -1663,7 +1656,7 @@ TEST_F(TransposerTest, UnaryGradTransposerTestRelu6Grad) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -1731,7 +1724,7 @@ TEST_F(TransposerTest, SqueezeTransposerTest) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -1785,7 +1778,7 @@ TEST_F(TransposerTest, SqueezeTransposerTestUnsupportedInputShape) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -1824,7 +1817,7 @@ TEST_F(TransposerTest, SqueezeTransposerTestInvalidHWAxis) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -1863,7 +1856,7 @@ TEST_F(TransposerTest, SqueezeTransposerTestInvalidNHWAxis) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -1902,7 +1895,7 @@ TEST_F(TransposerTest, SqueezeTransposerTestSqueezeDimsUpdated) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -1960,7 +1953,7 @@ TEST_F(TransposerTest, MaxPoolV2Transposer) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   MaxPoolV2Transposer maxpool_transposer;
   auto* maxpool = context.graph_view->GetNode("maxpoolv2");
@@ -2023,7 +2016,7 @@ TEST_F(TransposerTest, MaxPoolGradV2Transposer) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   MaxPoolGradV2Transposer maxpoolgrad_transposer;
   auto* maxpoolgrad = context.graph_view->GetNode("maxpoolgradv2");
@@ -2091,7 +2084,7 @@ TEST_F(TransposerTest, BinaryOpTransposerAdd) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -2162,7 +2155,7 @@ TEST_F(TransposerTest, BinaryOpTransposerMul) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -2235,7 +2228,7 @@ TEST_F(TransposerTest, BinaryOpTransposerPolygamma) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -2326,7 +2319,7 @@ TEST_F(TransposerTest, ConcatOpTransposerConcat) {
 
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -2402,7 +2395,7 @@ TEST_F(TransposerTest, ConcatOpTransposerConcatV2) {
 
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -2474,7 +2467,7 @@ TEST_F(TransposerTest, ReverseV2Transposer) {
 
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -2541,7 +2534,7 @@ TEST_F(TransposerTest, TileTransposer) {
 
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -2606,7 +2599,7 @@ TEST_F(TransposerTest, ShapeTransposer) {
 
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -2671,7 +2664,7 @@ TEST_F(TransposerTest, ShapeNTransposer) {
 
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d_1 = context.graph_view->GetNode("conv2d_1");
@@ -2765,7 +2758,7 @@ TEST_F(TransposerTest, FillOpTransposer) {
 
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -2825,7 +2818,7 @@ TEST_F(TransposerTest, SliceTransposer) {
 
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -2901,7 +2894,7 @@ TEST_F(TransposerTest, SplitTransposer) {
 
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -2989,7 +2982,7 @@ TEST_F(TransposerTest, SplitVTransposer) {
 
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -3080,7 +3073,7 @@ TEST_F(TransposerTest, StridedSliceTransposer) {
 
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -3170,7 +3163,7 @@ TEST_F(TransposerTest, StridedSliceTransposerEllipsisMaskPresent) {
 
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -3226,7 +3219,7 @@ TEST_F(TransposerTest, ReduceTransposerKeepDims) {
 
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");
@@ -3291,7 +3284,7 @@ TEST_F(TransposerTest, ReduceTransposerValidAxisNode) {
 
   TransposeContext context;
   TF_ASSERT_OK(TransposeContext::InitializeTransposeContext(
-      item, virtual_cluster_.get(), &context));
+      item, virtual_cluster_.get(), kSrcFormat, kDstFormat, kGPU, &context));
 
   DefaultLayoutSensitiveOpTransposer conv2d_transposer;
   auto* c2d = context.graph_view->GetNode("conv2d");

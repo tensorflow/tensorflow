@@ -633,12 +633,14 @@ REGISTER_OP("XlaEinsum")
       if (context->RankKnown(input_a)) {
         rank_a = context->Rank(input_a);
       } else {
-        return errors::InvalidArgument("input 0's rank is unknown.");
+        context->set_output(0, context->UnknownShape());
+        return Status::OK();
       }
       if (context->RankKnown(input_b)) {
         rank_b = context->Rank(input_b);
       } else {
-        return errors::InvalidArgument("input 1's rank is unknown.");
+        context->set_output(0, context->UnknownShape());
+        return Status::OK();
       }
       string equation;
       TF_RETURN_IF_ERROR(context->GetAttr("equation", &equation));

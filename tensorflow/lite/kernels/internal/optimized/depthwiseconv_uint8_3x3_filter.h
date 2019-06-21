@@ -7209,6 +7209,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 #define DC_KERNEL_NO_MULT_25 "25"
 #define DC_KERNEL_NO_MULT_26 "26"
 
+#ifdef __linux__
     asm volatile(
         // Compiled code used block of 288 for spill out of total stack of 448.
         // However, two 4-byte spills were sneaked in to #360 and #364.
@@ -7834,6 +7835,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15",
         "x16", "x17", "x19", "x21", "x22", "x23", "x24", "x25", "x26", "x27",
         "x28", "x29", "x30");
+#endif  // __linux__
   }  // NOLINT(readability/fn_size) Manually unrolled.
 
 #undef DC_KERNEL_NO_MULT_1
@@ -7906,6 +7908,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 #define DC_KERNEL_NO_MULT_STRIDE_18 "18"
 #define DC_KERNEL_NO_MULT_STRIDE_19 "19"
 
+#ifdef __linux__
     asm volatile(
         // Compiled code used block of 48 for spill out of total stack of 208.
         // However, an 8-byte spill was sneaked in to #120.
@@ -8257,6 +8260,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15",
         "x16", "x17", "x19", "x21", "x22", "x23", "x24", "x25", "x26", "x27",
         "x28", "x29", "x30");
+#endif  // __linux__
   }  // NOLINT(readability/fn_size) Manually unrolled.
 
 #undef DC_KERNEL_NO_MULT_STRIDE_1
@@ -8325,6 +8329,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 #define DC_KERNEL_MULT_21 "21"
 #define DC_KERNEL_MULT_22 "22"
 
+#ifdef __linux__
     asm volatile(
         // Compiled code used block of 160 for spill out of total stack of 288.
         // However, an 8-byte spill was sneaked in to #168.
@@ -8886,6 +8891,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15",
         "x16", "x17", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26",
         "x27", "x28", "x29", "x30");
+#endif  // __linux__
   }  // NOLINT(readability/fn_size) Manually unrolled.
 
 #undef DC_KERNEL_MULT_1

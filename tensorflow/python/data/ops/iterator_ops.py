@@ -25,10 +25,13 @@ from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure as structure_lib
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.training.tracking import base as trackable
@@ -537,36 +540,56 @@ class IteratorResourceDeleter(object):
               handle=self._handle, deleter=self._deleter)
 
 
-class IteratorV2(trackable.Trackable):
+class IteratorV2(trackable.Trackable, composite_tensor.CompositeTensor):
   """An iterator producing tf.Tensor objects from a tf.data.Dataset."""
 
-  def __init__(self, dataset):
-    """Creates a new iterator over the given dataset.
+  def __init__(self, dataset=None, components=None, structure=None):
+    """Creates a new iterator from the given dataset.
 
-    For example:
-    ```python
-    dataset = tf.data.Dataset.range(4)
-    for x in Iterator(dataset):
-      print(x)
-    ```
-
-    Tensors produced will be placed on the device on which this iterator object
-    was created.
+    If `dataset` is not specified, the iterator will be created from the given
+    tensor components and structure. In particular, the alternative for
+    constructing the iterator is used when the iterator is reconstructed from
+    it `CompositeTensor` representation.
 
     Args:
       dataset: A `tf.data.Dataset` object.
+      components: Tensor components to construct the iterator from.
+      structure: A nested structure of `TypeSpec` objects that represents the
+        type specification elements of the iterator.
 
     Raises:
-      RuntimeError: When invoked without eager execution enabled.
+      ValueError: If `dataset` is not provided and either `components` or
+        `structure` is not provided. Or `dataset` is provided and either
+        `components` and `structure` is provided.
     """
 
+    error_message = "Either `dataset` or both `components` and `structure` "
+    "need to be provided."
+
     self._device = context.context().device_name
-    if (_device_stack_is_empty() or
-        context.context().device_spec.device_type != "CPU"):
-      with ops.device("/cpu:0"):
-        self._create_iterator(dataset)
+
+    if dataset is None:
+      if (components is None or structure is None):
+        raise ValueError(error_message)
+      # pylint: disable=protected-access
+      self._structure = structure
+      self._flat_output_types = self._structure._flat_types
+      self._flat_output_shapes = self._structure._flat_shapes
+      self._iterator_resource, self._deleter = components
+      # Delete the resource when this object is deleted
+      self._resource_deleter = IteratorResourceDeleter(
+          handle=self._iterator_resource,
+          device=self._device,
+          deleter=self._deleter)
     else:
-      self._create_iterator(dataset)
+      if (components is not None or structure is not None):
+        raise ValueError(error_message)
+      if (_device_stack_is_empty() or
+          context.context().device_spec.device_type != "CPU"):
+        with ops.device("/cpu:0"):
+          self._create_iterator(dataset)
+      else:
+        self._create_iterator(dataset)
 
   def _create_iterator(self, dataset):
     # pylint: disable=protected-access
@@ -624,9 +647,12 @@ class IteratorV2(trackable.Trackable):
 
       return self._structure._from_compatible_tensor_list(ret)  # pylint: disable=protected-access
 
+  @property
+  def _type_spec(self):
+    return IteratorSpec(self._element_structure)
+
   def next(self):
-    """Returns a nested structure of `tf.Tensor`s containing the next element.
-    """
+    """Returns a nested structure of `Tensor`s containing the next element."""
     try:
       return self._next_internal()
     except errors.OutOfRangeError:
@@ -701,6 +727,41 @@ class IteratorV2(trackable.Trackable):
       return _IteratorSaveable(self._iterator_resource, name)
 
     return {"ITERATOR": _saveable_factory}
+
+
+# TODO(jsimsa): Export this as "tf.data.IteratorSpec".
+class IteratorSpec(type_spec.TypeSpec):
+  """Type specification for `tf.data.Iterator`."""
+
+  __slots__ = ["_element_spec"]
+
+  def __init__(self, element_spec):
+    self._element_spec = element_spec
+
+  @property
+  def value_type(self):
+    return IteratorV2
+
+  def _serialize(self):
+    return (self._element_spec,)
+
+  @property
+  def _component_specs(self):
+    return (
+        tensor_spec.TensorSpec([], dtypes.resource),
+        tensor_spec.TensorSpec([], dtypes.scalar),
+    )
+
+  def _to_components(self, value):
+    return (value._iterator_resource, value._deleter)  # pylint: disable=protected-access
+
+  def _from_components(self, components):
+    return IteratorV2(
+        dataset=None, components=components, structure=self._element_spec)
+
+  @staticmethod
+  def from_value(value):
+    return IteratorSpec(value._element_structure)  # pylint: disable=protected-access
 
 
 # TODO(b/71645805): Expose trackable stateful objects from dataset

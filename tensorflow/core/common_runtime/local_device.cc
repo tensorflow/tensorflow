@@ -32,20 +32,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-class EigenThreadPoolWrapper : public Eigen::ThreadPoolInterface {
- public:
-  explicit EigenThreadPoolWrapper(thread::ThreadPool* pool) : pool_(pool) {}
-  ~EigenThreadPoolWrapper() override {}
-
-  void Schedule(std::function<void()> fn) override {
-    pool_->Schedule(std::move(fn));
-  }
-  int NumThreads() const override { return pool_->NumThreads(); }
-  int CurrentThreadId() const override { return pool_->CurrentThreadId(); }
-
- private:
-  thread::ThreadPool* pool_ = nullptr;
-};
 
 bool OverrideGlobalThreadPoolFromEnvironment() {
   static const bool override_global_threadpool = [] {
@@ -114,14 +100,6 @@ struct LocalDevice::EigenThreadPoolInfo {
         /*allocator=*/nullptr);
     Eigen::ThreadPoolInterface* threadpool =
         eigen_worker_threads_.workers->AsEigenThreadPool();
-    if (threadpool == nullptr) {
-      // This fallback code path is not executed since ThreadPool's current
-      // implementation of AsEigenThreadPool() always returns a non-null
-      // pointer.
-      eigen_threadpool_wrapper_ = absl::make_unique<EigenThreadPoolWrapper>(
-          eigen_worker_threads_.workers);
-      threadpool = eigen_threadpool_wrapper_.get();
-    }
     if (allocator != nullptr) {
       eigen_allocator_.reset(new EigenAllocator(allocator));
     }
@@ -130,13 +108,11 @@ struct LocalDevice::EigenThreadPoolInfo {
   }
 
   ~EigenThreadPoolInfo() {
-    eigen_threadpool_wrapper_.reset();
     eigen_device_.reset();
     delete eigen_worker_threads_.workers;
   }
 
   DeviceBase::CpuWorkerThreads eigen_worker_threads_;
-  std::unique_ptr<Eigen::ThreadPoolInterface> eigen_threadpool_wrapper_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_device_;
   std::unique_ptr<EigenAllocator> eigen_allocator_;
 };

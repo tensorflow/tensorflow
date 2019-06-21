@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.util import structure
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
@@ -33,9 +34,11 @@ from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
@@ -61,6 +64,10 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import serialization
 from tensorflow.python.util.tf_export import keras_export
 
+try:
+  from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
+except ImportError:
+  issparse = None
 
 _keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
                                         'keras api usage', 'method')
@@ -2444,6 +2451,39 @@ class Model(network.Network):
           check_batch_axis=False,  # Don't enforce the batch size.
           exception_prefix='input')
 
+    # Get typespecs for the input data and sanitize it if necessary.
+    # TODO(momernick): This should be capable of doing full input validation
+    # at all times - validate that this is so and refactor the standardization
+    # code.
+    if isinstance(x, dataset_ops.DatasetV2):
+      x_shapes = dataset_ops.get_structure(x)
+      # TODO(momernick): Remove this once NestedStructure goes away. Right
+      # now, Dataset outputs one of these instead of an actual python structure.
+      if isinstance(x_shapes, structure.NestedStructure):
+        x_shapes = x_shapes._component_specs  # pylint: disable=protected-access
+      if isinstance(x_shapes, tuple):
+        # If the output of a Dataset is a tuple, we assume it's either of the
+        # form (x_data, y_data) or (x_data, y_data, sample_weights). In either
+        # case, we only care about x_data here.
+        x_shapes = x_shapes[0]
+    else:
+      flat_inputs = nest.flatten(x, expand_composites=False)
+      flat_expected_inputs = nest.flatten(self.inputs, expand_composites=False)
+      converted_x = []
+      for (a, b) in zip(flat_inputs, flat_expected_inputs):
+        converted_x.append(_convert_scipy_sparse_tensor(a, b))
+      x = nest.pack_sequence_as(x, converted_x, expand_composites=False)
+      x_shapes = nest.map_structure(type_spec.type_spec_from_value, x)
+
+    # If the inputs are still a NestedStructure, then we have a dict-input to
+    # this model. We can't yet validate this. (It's only relevant for feature
+    # columns).
+    if not isinstance(x_shapes, structure.NestedStructure):
+      flat_inputs = nest.flatten(x_shapes, expand_composites=False)
+      flat_expected_inputs = nest.flatten(self.inputs, expand_composites=False)
+      for (a, b) in zip(flat_inputs, flat_expected_inputs):
+        nest.assert_same_structure(a, b, expand_composites=True)
+
     if y is not None:
       if not self._is_graph_network:
         feed_output_names = self._feed_output_names
@@ -3049,3 +3089,34 @@ class _TrainingTarget(object):
 
 def _is_symbolic_tensor(x):
   return tensor_util.is_tensor(x) and not isinstance(x, ops.EagerTensor)
+
+
+def _convert_scipy_sparse_tensor(value, expected_input):
+  """Handle scipy sparse tensor conversions.
+
+  This method takes a value 'value' and returns the proper conversion. If
+  value is a scipy sparse tensor and the expected input is a dense tensor,
+  we densify 'value'. If value is a scipy sparse tensor and the expected input
+  is a TF SparseTensor, we convert 'value' to a SparseTensor. If 'value' is
+  not a scipy sparse tensor, or scipy is not imported, we pass it through
+  unchanged.
+
+  Arguments:
+    value: An object that may be a scipy sparse tensor
+    expected_input: The expected input placeholder.
+
+  Returns:
+    The possibly-converted 'value'.
+  """
+  if issparse is not None and issparse(value):
+    if ops.is_dense_tensor_like(expected_input):
+      return value.toarray()
+    else:
+      sparse_coo = value.tocoo()
+      row, col = sparse_coo.row, sparse_coo.col
+      data, shape = sparse_coo.data, sparse_coo.shape
+      indices = np.concatenate((np.expand_dims(row, 1), np.expand_dims(col, 1)),
+                               1)
+      return sparse_tensor.SparseTensor(indices, data, shape)
+  else:
+    return value

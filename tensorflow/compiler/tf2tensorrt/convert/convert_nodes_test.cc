@@ -2000,7 +2000,7 @@ TEST_F(OpConverterTest, ConvertBiasAdd) {
     NodeDef node_def = MakeNodeDef("my_biasadd", "BiasAdd", {});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "BiasAdd expects exactly 2 inputs, but received 0");
+        "BiasAdd got 0 inputs but expected 2, at my_biasadd");
   }
 
   // OK. Note that kINT32 is not supported by IScaleLayer, so we don't test

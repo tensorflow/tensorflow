@@ -88,7 +88,9 @@ constexpr char kVariable[] = "Variable";
 constexpr char kVariableV2[] = "VariableV2";
 constexpr char kAutoReloadVariable[] = "AutoReloadVariable";
 constexpr char kVarHandleOp[] = "VarHandleOp";
+constexpr char kVarHandlesOp[] = "_VarHandlesOp";
 constexpr char kReadVariableOp[] = "ReadVariableOp";
+constexpr char kReadVariablesOp[] = "_ReadVariablesOp";
 
 static const Costs::Duration kMinComputeTime(1);
 
@@ -322,9 +324,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   };
 
   persistent_ops_ = {
-      kConst,       kVariable,       kVariableV2, kAutoReloadVariable,
-      kVarHandleOp, kReadVariableOp,
-  };
+      kConst,       kVariable,       kVariableV2,   kAutoReloadVariable,
+      kVarHandleOp, kReadVariableOp, kVarHandlesOp, kReadVariablesOp};
 
 #define EIGEN_COST(X) Eigen::internal::functor_traits<Eigen::internal::X>::Cost
 

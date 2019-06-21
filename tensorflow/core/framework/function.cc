@@ -928,10 +928,10 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
   }
   for (const auto& iter : options.input_resource_dtypes_and_shapes) {
     entries.push_back(strings::StrCat("_input_resource_dtype", iter.first, "=",
-                                      DataTypeString(iter.second.first)));
+                                      DataTypeString(iter.second.dtype)));
     entries.push_back(
         strings::StrCat("_input_resource_shape", iter.first, "=",
-                        absl::CEscape(iter.second.second.DebugString())));
+                        absl::CEscape(iter.second.shape.DebugString())));
   }
   if (options.lib_def) {
     entries.push_back(strings::StrCat(

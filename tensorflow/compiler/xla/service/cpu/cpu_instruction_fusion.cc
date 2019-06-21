@@ -33,6 +33,7 @@ bool CanBeLoopFused(const HloInstruction& hlo) {
          hlo.opcode() == HloOpcode::kDynamicUpdateSlice ||
          hlo.opcode() == HloOpcode::kGather ||
          hlo.opcode() == HloOpcode::kIota || hlo.opcode() == HloOpcode::kPad ||
+         hlo.opcode() == HloOpcode::kReduce ||
          hlo.opcode() == HloOpcode::kReshape ||
          hlo.opcode() == HloOpcode::kReverse ||
          hlo.opcode() == HloOpcode::kSlice ||
@@ -149,6 +150,19 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
         return true;
       }
     }
+  }
+
+  // Don't fuse reductions over the major dimensions. These have an efficient
+  // lowering that's only implemented for the unfused case.
+  if (consumer->opcode() == HloOpcode::kReduce) {
+    return absl::c_linear_search(
+        consumer->dimensions(),
+        LayoutUtil::Minor(consumer->operand(0)->shape().layout(), 0));
+  }
+  if (producer->opcode() == HloOpcode::kReduce) {
+    return absl::c_linear_search(
+        producer->dimensions(),
+        LayoutUtil::Minor(producer->operand(0)->shape().layout(), 0));
   }
 
   if (consumer->IsLoopFusion()) {

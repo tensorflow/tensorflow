@@ -169,11 +169,11 @@ TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusibleInstruction) {
   auto reduce = builder.AddInstruction(HloInstruction::CreateReduce(
       cshape,
       builder.AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(F32, {6, 1}), concatenate)),
+          ShapeUtil::MakeShape(F32, {1, 6}), concatenate)),
       /*init_value=*/
       builder.AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0))),
-      /*dimensions_to_reduce=*/{1}, add_f32));
+      /*dimensions_to_reduce=*/{0}, add_f32));
 
   auto exp = builder.AddInstruction(
       HloInstruction::CreateUnary(cshape, HloOpcode::kExp, reduce));

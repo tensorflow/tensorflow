@@ -202,7 +202,9 @@ class DeviceBase {
 
   virtual ScopedAllocatorMgr* GetScopedAllocatorMgr() const { return nullptr; }
 
-  bool has_eigen_cpu_device() const { return !eigen_cpu_devices_.empty(); }
+  virtual bool has_eigen_cpu_device() const {
+    return !eigen_cpu_devices_.empty();
+  }
 
   virtual const Eigen::ThreadPoolDevice* eigen_cpu_device();
 

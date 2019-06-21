@@ -118,3 +118,27 @@ cc_binary(
     ],
     deps = [":metal_delegate"],
 )
+
+cc_library(
+    name = "api",
+    srcs = ["api.cc"],
+    hdrs = ["api.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/gl:portable",
+        "//third_party/opencl_headers",
+        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
+    ],
+)
+
+cc_library(
+    name = "spi",
+    hdrs = ["spi.h"],
+    deps = [
+        ":api",
+        "//tensorflow/lite/delegates/gpu/common:status",
+    ],
+)
