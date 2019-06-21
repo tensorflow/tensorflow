@@ -659,9 +659,8 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
   }
 
   eager::EagerClient* eager_client;
-  uint64 context_id;
-  TF_RETURN_IF_ERROR(
-      ctx->GetClientAndContextID(recv_device, &eager_client, &context_id));
+  uint64 context_id = ctx->GetContextId();
+  TF_RETURN_IF_ERROR(ctx->GetClient(recv_device, &eager_client));
 
   eager::SendTensorRequest request;
   eager::SendTensorResponse response;
@@ -732,9 +731,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   EagerContext* ctx = op->EagerContext();
 
   eager::EagerClient* eager_client;
-  uint64 context_id;
-  TF_RETURN_IF_ERROR(
-      ctx->GetClientAndContextID(op->Device(), &eager_client, &context_id));
+  uint64 context_id = ctx->GetContextId();
+  TF_RETURN_IF_ERROR(ctx->GetClient(op->Device(), &eager_client));
 
   std::unique_ptr<eager::EnqueueRequest> request(new eager::EnqueueRequest);
   eager::EnqueueResponse response;
