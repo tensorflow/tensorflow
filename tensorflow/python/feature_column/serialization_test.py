@@ -159,6 +159,22 @@ class DenseFeaturesSerializationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(new_layer._feature_columns[1].categorical_column.name, 'b')
     self.assertIsInstance(new_layer._feature_columns[2], fc.IndicatorColumn)
 
+  def test_crossed_column(self):
+    a = fc.categorical_column_with_vocabulary_list(
+        'a', vocabulary_list=['1', '2', '3'])
+    b = fc.categorical_column_with_vocabulary_list(
+        'b', vocabulary_list=['1', '2', '3'])
+    ab = fc.crossed_column([a, b], hash_bucket_size=2)
+    cols = [fc.indicator_column(ab)]
+
+    orig_layer = fc.DenseFeatures(cols)
+    config = orig_layer.get_config()
+
+    new_layer = fc.DenseFeatures.from_config(config)
+
+    self.assertLen(new_layer._feature_columns, 1)
+    self.assertEqual(new_layer._feature_columns[0].name, 'a_X_b_indicator')
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class LinearModelLayerSerializationTest(test.TestCase, parameterized.TestCase):

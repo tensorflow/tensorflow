@@ -1299,6 +1299,9 @@ tf_kernel_library(
         "where_op_gpu_impl_3.cu.cc",
         "where_op_gpu_impl_4.cu.cc",
         "where_op_gpu_impl_5.cu.cc",
+        "where_op_gpu_impl_6.cu.cc",
+        "where_op_gpu_impl_7.cu.cc",
+        "where_op_gpu_impl_8.cu.cc",
     ],
     deps = if_cuda([
         ":cuda_solvers",
