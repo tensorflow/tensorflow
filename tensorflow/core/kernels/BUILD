@@ -3226,7 +3226,7 @@ cc_library(
         ":cholesky_grad",
         ":cholesky_op",
         ":determinant_op",
-        ":einsum_op",
+        #":einsum_op",  # disabling to move past build errors (no_rocm, no_cuda)
         ":lu_op",
         ":matrix_exponential_op",
         ":matrix_inverse_op",
