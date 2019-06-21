@@ -42,6 +42,12 @@ namespace xla {
 // Analysis which identifies all HLO values and their uses in an HLO module.
 class HloDataflowAnalysis {
  public:
+  static std::unique_ptr<HloDataflowAnalysis> NewEmptyAnalysis(
+      const HloModule* module) {
+    return std::unique_ptr<HloDataflowAnalysis>(
+        new HloDataflowAnalysis(*module, false));
+  }
+
   // Different backends can have very different ways to do fusion, so we give
   // backends the flexibility to decide whether an fusion instruction can share
   // buffer with it's operands. If this is not specified, a default strategy

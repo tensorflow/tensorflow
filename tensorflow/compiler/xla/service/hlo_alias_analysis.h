@@ -38,6 +38,15 @@ namespace xla {
 // Analysis which allocates HloBuffers to HloValues.
 class HloAliasAnalysis {
  public:
+  static std::unique_ptr<HloAliasAnalysis> NewEmptyAnalysis(
+      const HloModule* module) {
+    auto analysis =
+        std::unique_ptr<HloAliasAnalysis>(new HloAliasAnalysis(module));
+    analysis->dataflow_analysis_ =
+        HloDataflowAnalysis::NewEmptyAnalysis(module);
+    return analysis;
+  }
+
   // The callgraph of the given HloModule must be flattened
   // (xla::FlattenCallGraph) prior to running the analysis.
   static StatusOr<std::unique_ptr<HloAliasAnalysis>> Run(

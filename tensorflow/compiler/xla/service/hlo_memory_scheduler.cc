@@ -578,8 +578,11 @@ StatusOr<HloSchedule> ScheduleModule(
   HloSchedule schedule(module);
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(module));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module));
+//  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+//                      HloAliasAnalysis::Run(module));
+
+  std::unique_ptr<HloAliasAnalysis> alias_analysis =
+      HloAliasAnalysis::NewEmptyAnalysis(module);
 
   absl::flat_hash_map<const HloComputation*, int64> memory_by_computation;
   for (auto* computation : module->MakeComputationPostOrder()) {
@@ -609,8 +612,10 @@ StatusOr<HloInstructionSequence> ScheduleComputation(
   CHECK(!computation->IsFusionComputation());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(computation->parent()));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(computation->parent()));
+//  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+//                      HloAliasAnalysis::Run(computation->parent()));
+  std::unique_ptr<HloAliasAnalysis> alias_analysis =
+      HloAliasAnalysis::NewEmptyAnalysis(computation->parent());
   absl::flat_hash_map<const HloComputation*, int64> empty_map;
   return ScheduleComputationHelper(computation, *points_to_analysis,
                                    *alias_analysis, size_function, nullptr,
