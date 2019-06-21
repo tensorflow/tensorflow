@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/execute.h"
+#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
@@ -124,7 +125,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
       tensorflow::ContextMirroringPolicy::MIRRORING_NONE, request->async(),
-      device_mgr, false, r, nullptr, worker_session->cluster_flr.get());
+      device_mgr, false, r, GetDefaultCustomKernelCreator(),
+      worker_session->cluster_flr.get());
 
   Status s;
   std::vector<string> remote_workers;

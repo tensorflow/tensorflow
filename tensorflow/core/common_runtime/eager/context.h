@@ -349,6 +349,7 @@ class EagerContext : public core::RefCounted {
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 
+  const CustomKernelCreator* const custom_kernel_creator_;
   // One FunctionLibraryRuntime per device.
   // func_libs[i] is the FunctionLibraryRuntime corresponding to
   // session->devices[i].
