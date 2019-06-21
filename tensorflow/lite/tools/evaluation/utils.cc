@@ -25,10 +25,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 
-#if defined(__ANDROID__)
-#include "tensorflow/lite/delegates/gpu/gl_delegate.h"
-#endif
-
 namespace tflite {
 namespace evaluation {
 
@@ -91,6 +87,16 @@ Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate() {
 }
 
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
+    tflite::FlatBufferModel* model, TfLiteGpuDelegateOptions* options) {
+#if defined(__ANDROID__)
+  return Interpreter::TfLiteDelegatePtr(TfLiteGpuDelegateCreate(options),
+                                        &TfLiteGpuDelegateDelete);
+#else
+  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+#endif  // defined(__ANDROID__)
+}
+
+Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
     tflite::FlatBufferModel* model) {
 #if defined(__ANDROID__)
   TfLiteGpuDelegateOptions options;
@@ -99,8 +105,8 @@ Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
   options.compile_options.preferred_gl_object_type =
       TFLITE_GL_OBJECT_TYPE_FASTEST;
   options.compile_options.dynamic_batch_enabled = 0;
-  return Interpreter::TfLiteDelegatePtr(TfLiteGpuDelegateCreate(&options),
-                                        &TfLiteGpuDelegateDelete);
+
+  return CreateGPUDelegate(model, &options);
 #else
   return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
 #endif  // defined(__ANDROID__)

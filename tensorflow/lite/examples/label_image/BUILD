@@ -33,6 +33,7 @@ cc_binary(
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/profiling:profiler",
+        "//tensorflow/lite/tools/evaluation:utils",
     ] + select({
         "//tensorflow:android": ["//tensorflow/lite/delegates/gpu:gl_delegate"],
         "//tensorflow:android_arm64": ["//tensorflow/lite/delegates/gpu:gl_delegate"],

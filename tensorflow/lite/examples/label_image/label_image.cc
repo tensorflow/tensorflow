@@ -41,6 +41,7 @@ limitations under the License.
 
 #include "tensorflow/lite/examples/label_image/bitmap_helpers.h"
 #include "tensorflow/lite/examples/label_image/get_top_n.h"
+#include "tensorflow/lite/tools/evaluation/utils.h"
 
 #define LOG(x) std::cerr
 
@@ -65,6 +66,8 @@ Interpreter::TfLiteDelegatePtr CreateGPUDelegate(Settings* s) {
   options.compile_options.dynamic_batch_enabled = 0;
   return Interpreter::TfLiteDelegatePtr(TfLiteGpuDelegateCreate(&options),
                                         &TfLiteGpuDelegateDelete);
+
+  return tflite::evaluation::CreateGPUDelegate(s->model, &options);
 }
 
 Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate() {
@@ -160,7 +163,6 @@ void RunInference(Settings* s) {
     exit(-1);
   }
 
-  // interpreter->UseNNAPI(s->accel);
   interpreter->UseNNAPI(s->old_accel);
   interpreter->SetAllowFp16PrecisionForFp32(s->allow_fp16);
 

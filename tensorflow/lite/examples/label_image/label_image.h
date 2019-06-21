@@ -17,9 +17,6 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXAMPLES_LABEL_IMAGE_LABEL_IMAGE_H_
 
 #include "tensorflow/lite/string.h"
-#if defined(ANDROID) || defined(__ANDROID__)
-#include "tensorflow/lite/delegates/gpu/gl_delegate.h"
-#endif
 #include "tensorflow/lite/model.h"
 
 namespace tflite {
