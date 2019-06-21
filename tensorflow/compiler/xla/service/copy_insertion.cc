@@ -964,7 +964,7 @@ class CopyRemover {
 // instructions which have update-in-place semantics.
 Status CopyInsertion::AddCopiesToResolveInterference(HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, fusion_can_share_buffer_));
+                      HloAliasAnalysis::Run(module, can_share_buffer_));
 
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
@@ -989,7 +989,7 @@ Status CopyInsertion::AddSpecialCaseCopies(HloModule* module) {
 Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
                                            HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, fusion_can_share_buffer_));
+                      HloAliasAnalysis::Run(module, can_share_buffer_));
 
   // Identify which shape indices of which instructions need to be copied. Store
   // these results in 'instructions_to_copy'.
@@ -1091,7 +1091,7 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
 Status CopyInsertion::RemoveUnnecessaryCopies(const HloOrdering& ordering,
                                               HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, fusion_can_share_buffer_));
+                      HloAliasAnalysis::Run(module, can_share_buffer_));
 
   CopyRemover copy_remover(*module, *alias_analysis, ordering);
   if (VLOG_IS_ON(3)) {
