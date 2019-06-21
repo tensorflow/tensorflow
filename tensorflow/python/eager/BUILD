@@ -682,9 +682,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
     ],
-    tags = [
-        "no_windows",  # TODO(b/135556470) reenable.
-    ],
 )
 
 py_library(
