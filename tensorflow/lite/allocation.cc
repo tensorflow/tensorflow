@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <sys/stat.h>
 #include <sys/types.h>
-#ifdef _WIN32
-#include <stdio.h>
-#endif
 #include <cassert>
 #include <cstdarg>
 #include <cstdint>
+#ifdef _WIN32
+#include <cstdio>
+#endif
 #include <cstring>
 #include <utility>
 
