@@ -328,7 +328,7 @@ TEST(TensorBundleTest, SwapBytes) {
   // 16-bit types
   TestByteSwap(forward_16, swapped_16, arr_len_16);
   TestByteSwap((int16_t*)forward_16, (int16_t*)swapped_16, arr_len_16);
-  // TODO(frreiss): Test half-precision float
+  TestByteSwap((bfloat16*)forward_16, (bfloat16*)swapped_16, arr_len_16);
 
   // 32-bit types
   TestByteSwap(forward_32, swapped_32, arr_len_32);
@@ -377,10 +377,10 @@ void TestEndianness() {
   {
     // Write out a TensorBundle in the opposite of this host's endianness.
     BundleWriter writer(Env::Default(), Prefix("foo"));
-    TF_EXPECT_OK(writer.Add("foo_003", ByteSwap(Constant_2x3<T>(3))));
-    TF_EXPECT_OK(writer.Add("foo_000", ByteSwap(Constant_2x3<T>(0))));
-    TF_EXPECT_OK(writer.Add("foo_002", ByteSwap(Constant_2x3<T>(2))));
-    TF_EXPECT_OK(writer.Add("foo_001", ByteSwap(Constant_2x3<T>(1))));
+    TF_EXPECT_OK(writer.Add("foo_003", ByteSwap(Constant_2x3<T>(T(3)))));
+    TF_EXPECT_OK(writer.Add("foo_000", ByteSwap(Constant_2x3<T>(T(0)))));
+    TF_EXPECT_OK(writer.Add("foo_002", ByteSwap(Constant_2x3<T>(T(2)))));
+    TF_EXPECT_OK(writer.Add("foo_001", ByteSwap(Constant_2x3<T>(T(1)))));
     TF_ASSERT_OK(writer.Finish());
     TF_ASSERT_OK(FlipEndiannessBit(Prefix("foo")));
   }
@@ -390,28 +390,28 @@ void TestEndianness() {
     EXPECT_EQ(
         AllTensorKeys(&reader),
         std::vector<string>({"foo_000", "foo_001", "foo_002", "foo_003"}));
-    Expect<T>(&reader, "foo_000", Constant_2x3<T>(0));
-    Expect<T>(&reader, "foo_001", Constant_2x3<T>(1));
-    Expect<T>(&reader, "foo_002", Constant_2x3<T>(2));
-    Expect<T>(&reader, "foo_003", Constant_2x3<T>(3));
+    Expect<T>(&reader, "foo_000", Constant_2x3<T>(T(0)));
+    Expect<T>(&reader, "foo_001", Constant_2x3<T>(T(1)));
+    Expect<T>(&reader, "foo_002", Constant_2x3<T>(T(2)));
+    Expect<T>(&reader, "foo_003", Constant_2x3<T>(T(3)));
   }
   {
     BundleReader reader(Env::Default(), Prefix("foo"));
     TF_ASSERT_OK(reader.status());
-    ExpectNext<T>(&reader, Constant_2x3<T>(0));
-    ExpectNext<T>(&reader, Constant_2x3<T>(1));
-    ExpectNext<T>(&reader, Constant_2x3<T>(2));
-    ExpectNext<T>(&reader, Constant_2x3<T>(3));
+    ExpectNext<T>(&reader, Constant_2x3<T>(T(0)));
+    ExpectNext<T>(&reader, Constant_2x3<T>(T(1)));
+    ExpectNext<T>(&reader, Constant_2x3<T>(T(2)));
+    ExpectNext<T>(&reader, Constant_2x3<T>(T(3)));
     EXPECT_TRUE(reader.Valid());
     reader.Next();
     EXPECT_FALSE(reader.Valid());
   }
   {
     BundleWriter writer(Env::Default(), Prefix("bar"));
-    TF_EXPECT_OK(writer.Add("bar_003", ByteSwap(Constant_2x3<T>(3))));
-    TF_EXPECT_OK(writer.Add("bar_000", ByteSwap(Constant_2x3<T>(0))));
-    TF_EXPECT_OK(writer.Add("bar_002", ByteSwap(Constant_2x3<T>(2))));
-    TF_EXPECT_OK(writer.Add("bar_001", ByteSwap(Constant_2x3<T>(1))));
+    TF_EXPECT_OK(writer.Add("bar_003", ByteSwap(Constant_2x3<T>(T(3)))));
+    TF_EXPECT_OK(writer.Add("bar_000", ByteSwap(Constant_2x3<T>(T(0)))));
+    TF_EXPECT_OK(writer.Add("bar_002", ByteSwap(Constant_2x3<T>(T(2)))));
+    TF_EXPECT_OK(writer.Add("bar_001", ByteSwap(Constant_2x3<T>(T(1)))));
     TF_ASSERT_OK(writer.Finish());
     TF_ASSERT_OK(FlipEndiannessBit(Prefix("bar")));
   }
@@ -421,18 +421,18 @@ void TestEndianness() {
     EXPECT_EQ(
         AllTensorKeys(&reader),
         std::vector<string>({"bar_000", "bar_001", "bar_002", "bar_003"}));
-    Expect<T>(&reader, "bar_003", Constant_2x3<T>(3));
-    Expect<T>(&reader, "bar_002", Constant_2x3<T>(2));
-    Expect<T>(&reader, "bar_001", Constant_2x3<T>(1));
-    Expect<T>(&reader, "bar_000", Constant_2x3<T>(0));
+    Expect<T>(&reader, "bar_003", Constant_2x3<T>(T(3)));
+    Expect<T>(&reader, "bar_002", Constant_2x3<T>(T(2)));
+    Expect<T>(&reader, "bar_001", Constant_2x3<T>(T(1)));
+    Expect<T>(&reader, "bar_000", Constant_2x3<T>(T(0)));
   }
   {
     BundleReader reader(Env::Default(), Prefix("bar"));
     TF_ASSERT_OK(reader.status());
-    ExpectNext<T>(&reader, Constant_2x3<T>(0));
-    ExpectNext<T>(&reader, Constant_2x3<T>(1));
-    ExpectNext<T>(&reader, Constant_2x3<T>(2));
-    ExpectNext<T>(&reader, Constant_2x3<T>(3));
+    ExpectNext<T>(&reader, Constant_2x3<T>(T(0)));
+    ExpectNext<T>(&reader, Constant_2x3<T>(T(1)));
+    ExpectNext<T>(&reader, Constant_2x3<T>(T(2)));
+    ExpectNext<T>(&reader, Constant_2x3<T>(T(3)));
     EXPECT_TRUE(reader.Valid());
     reader.Next();
     EXPECT_FALSE(reader.Valid());
@@ -446,31 +446,32 @@ void TestEndianness() {
         AllTensorKeys(&reader),
         std::vector<string>({"bar_000", "bar_001", "bar_002", "bar_003",
                              "foo_000", "foo_001", "foo_002", "foo_003"}));
-    Expect<T>(&reader, "bar_000", Constant_2x3<T>(0));
-    Expect<T>(&reader, "bar_001", Constant_2x3<T>(1));
-    Expect<T>(&reader, "bar_002", Constant_2x3<T>(2));
-    Expect<T>(&reader, "bar_003", Constant_2x3<T>(3));
-    Expect<T>(&reader, "foo_000", Constant_2x3<T>(0));
-    Expect<T>(&reader, "foo_001", Constant_2x3<T>(1));
-    Expect<T>(&reader, "foo_002", Constant_2x3<T>(2));
-    Expect<T>(&reader, "foo_003", Constant_2x3<T>(3));
+    Expect<T>(&reader, "bar_000", Constant_2x3<T>(T(0)));
+    Expect<T>(&reader, "bar_001", Constant_2x3<T>(T(1)));
+    Expect<T>(&reader, "bar_002", Constant_2x3<T>(T(2)));
+    Expect<T>(&reader, "bar_003", Constant_2x3<T>(T(3)));
+    Expect<T>(&reader, "foo_000", Constant_2x3<T>(T(0)));
+    Expect<T>(&reader, "foo_001", Constant_2x3<T>(T(1)));
+    Expect<T>(&reader, "foo_002", Constant_2x3<T>(T(2)));
+    Expect<T>(&reader, "foo_003", Constant_2x3<T>(T(3)));
   }
   {
     BundleReader reader(Env::Default(), Prefix("merged"));
     TF_ASSERT_OK(reader.status());
-    ExpectNext<T>(&reader, Constant_2x3<T>(0));
-    ExpectNext<T>(&reader, Constant_2x3<T>(1));
-    ExpectNext<T>(&reader, Constant_2x3<T>(2));
-    ExpectNext<T>(&reader, Constant_2x3<T>(3));
-    ExpectNext<T>(&reader, Constant_2x3<T>(0));
-    ExpectNext<T>(&reader, Constant_2x3<T>(1));
-    ExpectNext<T>(&reader, Constant_2x3<T>(2));
-    ExpectNext<T>(&reader, Constant_2x3<T>(3));
+    ExpectNext<T>(&reader, Constant_2x3<T>(T(0)));
+    ExpectNext<T>(&reader, Constant_2x3<T>(T(1)));
+    ExpectNext<T>(&reader, Constant_2x3<T>(T(2)));
+    ExpectNext<T>(&reader, Constant_2x3<T>(T(3)));
+    ExpectNext<T>(&reader, Constant_2x3<T>(T(0)));
+    ExpectNext<T>(&reader, Constant_2x3<T>(T(1)));
+    ExpectNext<T>(&reader, Constant_2x3<T>(T(2)));
+    ExpectNext<T>(&reader, Constant_2x3<T>(T(3)));
     EXPECT_TRUE(reader.Valid());
     reader.Next();
     EXPECT_FALSE(reader.Valid());
   }
 }
+
 
 template <typename T>
 void TestNonStandardShapes() {
@@ -532,6 +533,23 @@ TEST(TensorBundleTest, Basic) {
   TestBasic<quint8>();
   TestBasic<qint8>();
   TestBasic<bfloat16>();
+}
+
+TEST(TensorBundleTest, Endianness) {
+  TestEndianness<float>();
+  TestEndianness<double>();
+  TestEndianness<int32>();
+  TestEndianness<uint8>();
+  TestEndianness<int16>();
+  TestEndianness<int8>();
+  TestEndianness<complex64>();
+  TestEndianness<complex128>();
+  TestEndianness<int64>();
+  TestEndianness<bool>();
+  TestEndianness<qint32>();
+  TestEndianness<quint8>();
+  TestEndianness<qint8>();
+  TestEndianness<bfloat16>();
 }
 
 TEST(TensorBundleTest, PartitionedVariables) {

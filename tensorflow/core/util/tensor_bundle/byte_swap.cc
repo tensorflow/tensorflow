@@ -56,12 +56,12 @@ Status ByteSwapTensor(Tensor* t) {
     case DT_QINT8:
     case DT_QUINT8:
     case DT_BOOL:
-    case DT_BFLOAT16:
     case DT_UINT8:
     case DT_INT8:
       return Status::OK();
 
     // 16-bit types
+    case DT_BFLOAT16:
     case DT_HALF:
     case DT_QINT16:
     case DT_QUINT16:
