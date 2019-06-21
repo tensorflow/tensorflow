@@ -86,8 +86,8 @@ class Transposer {
   // * node's device matches target device
   // * node's source format matches config's source format
   // * node has output
-  virtual bool ShouldProcess(const TransposeContext& context,
-                             const utils::MutableNodeView& node) const;
+  bool ShouldProcess(const TransposeContext& context,
+                     const utils::MutableNodeView& node) const;
 
   // Transposes given node from src format to dst format. Also perform other
   // necessary operations to guarantee the graph produce the same result.
@@ -176,6 +176,10 @@ class LayoutSensitiveOpTransposer : public Transposer {
   // Updates attrs data_format, ksize, strides of the given node to dst_format.
   // _output_shape is updated during UpdateOutputEdges.
   Status UpdateNode(TransposeContext* context, utils::MutableNodeView* node);
+
+ protected:
+  bool ShouldNotProcess(const TransposeContext& context,
+                        const utils::MutableNodeView& node);
 };
 
 // Layout sensitive op transposers.

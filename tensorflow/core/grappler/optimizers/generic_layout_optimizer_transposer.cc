@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -569,10 +571,59 @@ Status LayoutSensitiveOpTransposer::UpdateNode(TransposeContext* context,
   return Status::OK();
 }
 
+bool LayoutSensitiveOpTransposer::ShouldNotProcess(
+    const TransposeContext& context, const utils::MutableNodeView& node) {
+  // Preserve original data format (NHWC) if the data type is DT_HALF.
+  const auto* t_attr = node.GetAttr(kAttrT);
+  if (t_attr == nullptr || t_attr->type() != DT_HALF) {
+    return false;
+  }
+  if (context.virtual_placer == nullptr) {
+    return false;
+  }
+  const DeviceProperties& device =
+      context.virtual_placer->get_device(*node.node());
+  // TODO(lyandy): Implement a more robust check.
+  if (device.type() != kGPU) {
+    return false;
+  }
+  auto cuda_version_it = device.environment().find("cuda");
+  if (cuda_version_it == device.environment().end()) {
+    return false;
+  }
+  int cuda_version = 0;
+  if (!absl::SimpleAtoi(cuda_version_it->second, &cuda_version)) {
+    return false;
+  }
+  auto cudnn_version_it = device.environment().find("cudnn");
+  if (cudnn_version_it == device.environment().end()) {
+    return false;
+  }
+  int cudnn_version = 0;
+  if (!absl::SimpleAtoi(cudnn_version_it->second, &cudnn_version)) {
+    return false;
+  }
+  auto compute_capability_it = device.environment().find("architecture");
+  if (compute_capability_it == device.environment().end()) {
+    return false;
+  }
+  double compute_capability = 0.0f;
+  if (!absl::SimpleAtod(compute_capability_it->second, &compute_capability)) {
+    return false;
+  }
+  return cuda_version >= 9000 && cudnn_version >= 7402 &&
+         compute_capability >= 7.0;
+}
+
 Status DefaultLayoutSensitiveOpTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   DCHECK(IsDefaultLayoutSensitiveOp(*node->node()));
   if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4)) {
+    return Status::OK();
+  }
+  const NodeDef* node_def = node->node();
+  if ((IsConv2D(*node_def) || IsFusedBatchNorm(*node_def)) &&
+      ShouldNotProcess(*context, *node)) {
     return Status::OK();
   }
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
@@ -598,7 +649,8 @@ Status BiasAddGradTransposer::TransposeNode(TransposeContext* context,
 Status Conv2DBackpropFilterTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   DCHECK(IsConv2DBackpropFilter(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4)) {
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
+      ShouldNotProcess(*context, *node)) {
     return Status::OK();
   }
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
@@ -613,13 +665,14 @@ Status Conv2DBackpropFilterTransposer::TransposeNode(
 Status Conv2DBackpropInputTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   DCHECK(IsConv2DBackpropInput(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4)) {
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
+      ShouldNotProcess(*context, *node)) {
     return Status::OK();
   }
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
-  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {2}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {0}, node, kOpDataFormatVecPermute));
+  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {2}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
   return context->graph_view->GetMutationBuilder()->Apply();
 }
@@ -637,7 +690,7 @@ Status FusedBatchNormGradTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   DCHECK(IsFusedBatchNormGrad(*node->node()));
   if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
-      !IsTraining(*node)) {
+      !IsTraining(*node) || ShouldNotProcess(*context, *node)) {
     return Status::OK();
   }
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
