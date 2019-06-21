@@ -1364,10 +1364,10 @@ class TensorBoard(Callback):
   TensorBoard is a visualization tool provided with TensorFlow.
 
   This callback logs events for TensorBoard, including:
-  * Metrics summary plots
-  * Training graph visualization
-  * Activation histograms
-  * Sampled profiling
+  - Metrics summary plots
+  - Training graph visualization
+  - Activation histograms
+  - Sampled profiling
 
   If you have installed TensorFlow with pip, you should be able
   to launch TensorBoard from the command line:
@@ -1378,6 +1378,29 @@ class TensorBoard(Callback):
 
   You can find more information about TensorBoard
   [here](https://www.tensorflow.org/get_started/summaries_and_tensorboard).
+  
+  Example:
+
+  ```python
+  # Import the datetime module to display the date and time
+  import datetime
+
+  # Place the logs in a timestamped subdirectory to allow easy selection of different training runs
+  tensorboard_callback = tf.keras.callbacks.TensorBoard(
+    log_dir = 'logs/fit/' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"),
+    histogram_freq=1, # Record activation histogram every 1 epoch
+    )
+
+  model.fit(data, labels, 
+            epochs=10,
+            validation_data=[val_data, val_labels], 
+            callbacks=[tensorboard_callback])
+
+  # Load the TensorBoard notebook extension if you are using Jupyter
+  %load_ext tensorboard
+  # Launch TensorBoard with the subdirectory with the logs with % if you are using Jupyter
+  %tensorboard --logdir logs/fit
+  ```  
 
   Arguments:
       log_dir: the path of the directory where to save the log files to be
