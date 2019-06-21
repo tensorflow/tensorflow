@@ -505,7 +505,7 @@ struct KernelMacroBlock {
   // implementation rather than conforming to style.
 };
 
-#if defined(USE_NEON) && defined(__aarch64__)
+#if defined(__aarch64__)
 // Experiments suggest that a modest performance improvement is seen, at least
 // on 855 chipset big cores, with cache hints.
 template <typename T>
@@ -532,7 +532,7 @@ inline void PreloadInputBlock(
     row_ptr += input_height_stride;
   }
 }
-#endif  // USE_NEON &&__aarch64__
+#endif  // __aarch64__
 
 }  // namespace depthwise_conv
 }  // namespace optimized_ops

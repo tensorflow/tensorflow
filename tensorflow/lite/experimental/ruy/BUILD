@@ -45,11 +45,6 @@ cc_test(
 )
 
 cc_library(
-    name = "spec",
-    hdrs = ["spec.h"],
-)
-
-cc_library(
     name = "size_util",
     hdrs = ["size_util.h"],
     deps = [":check_macros"],
@@ -211,6 +206,12 @@ cc_library(
     name = "matrix",
     hdrs = ["matrix.h"],
     deps = [":check_macros"],
+)
+
+cc_library(
+    name = "spec",
+    hdrs = ["spec.h"],
+    deps = [":matrix"],
 )
 
 cc_library(

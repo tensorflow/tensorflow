@@ -3123,6 +3123,51 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     for key in ['loss', 'mae_1', 'mae_2', 'mae_3']:
       self.assertAllClose(history.history[key], expected_val, 1e-3)
 
+  @keras_parameterized.run_all_keras_modes
+  def test_model_with_nested_compiled_model(self):
+
+    class LayerWithAddMetric(keras.layers.Layer):
+
+      def __init__(self):
+        super(LayerWithAddMetric, self).__init__()
+        self.dense = keras.layers.Dense(1, kernel_initializer='ones')
+
+      def call(self, inputs):
+        outputs = self.dense(inputs)
+        self.add_metric(
+            math_ops.reduce_sum(outputs), name='mean', aggregation='mean')
+        return outputs
+
+    x = keras.layers.Input(shape=(1,))
+    y = LayerWithAddMetric()(x)
+
+    inner_model = keras.models.Model(x, y)
+    inner_model.add_metric(
+        math_ops.reduce_sum(y), name='mean1', aggregation='mean')
+
+    inner_model.compile(
+        'sgd',
+        loss='mse',
+        metrics=[metrics_module.Accuracy('acc')],
+        run_eagerly=testing_utils.should_run_eagerly())
+
+    self.assertEqual([m.name for m in inner_model.metrics],
+                     ['acc', 'mean', 'mean1'])
+
+    x = keras.layers.Input(shape=[1])
+    y = inner_model(x)
+    outer_model = keras.Model(x, y)
+    outer_model.add_metric(
+        math_ops.reduce_sum(y), name='mean2', aggregation='mean')
+
+    outer_model.compile(
+        'sgd',
+        loss='mse',
+        metrics=[metrics_module.Accuracy('acc2')],
+        run_eagerly=testing_utils.should_run_eagerly())
+    self.assertEqual([m.name for m in outer_model.metrics],
+                     ['acc2', 'mean', 'mean1', 'mean2'])
+
 
 class BareUpdateLayer(keras.layers.Layer):
 

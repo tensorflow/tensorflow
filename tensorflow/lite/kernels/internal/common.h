@@ -161,8 +161,13 @@ int CountLeadingZeros(T integer_input) {
   static_assert(std::is_unsigned<T>::value,
                 "Only unsigned integer types handled.");
 #if defined(__GNUC__)
-  return integer_input ? __builtin_clz(integer_input) : 0;
+  return integer_input ? __builtin_clz(integer_input)
+                       : std::numeric_limits<T>::digits;
 #else
+  if (integer_input == 0) {
+    return std::numeric_limits<T>::digits;
+  }
+
   const T one_in_leading_positive = static_cast<T>(1)
                                     << (std::numeric_limits<T>::digits - 1);
   int leading_zeros = 0;
@@ -171,6 +176,22 @@ int CountLeadingZeros(T integer_input) {
     ++leading_zeros;
   }
   return leading_zeros;
+#endif
+}
+
+template <typename T>
+inline int CountLeadingSignBits(T integer_input) {
+  static_assert(std::is_signed<T>::value, "Only signed integer types handled.");
+#if defined(__GNUC__) && !defined(__clang__)
+  return integer_input ? __builtin_clrsb(integer_input)
+                       : std::numeric_limits<T>::digits;
+#else
+  using U = typename std::make_unsigned<T>::type;
+  return integer_input >= 0
+             ? CountLeadingZeros(static_cast<U>(integer_input)) - 1
+             : integer_input != std::numeric_limits<T>::min()
+                   ? CountLeadingZeros(2 * static_cast<U>(-integer_input) - 1)
+                   : 0;
 #endif
 }
 

@@ -1169,6 +1169,7 @@ tf_py_test(
         "//tensorflow/python:sparse_tensor",
     ],
     shard_count = 4,
+    tags = ["no_windows"],  # b/135752236
 )
 
 tf_py_test(

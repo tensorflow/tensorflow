@@ -1536,6 +1536,8 @@ string InlineFunctionBodyOptions::DebugString() const {
       ", ignore_noinline=", true_false(ignore_noinline),
       ", override_device=", true_false(ignore_noinline),
       ", initialize_empty_device=", true_false(initialize_empty_device),
+      ", inline_impl_selection_group_functions=",
+      true_false(inline_impl_selection_group_functions),
       ", keep_caller_node=", keep_caller_node_str(), ", output_control_src=",
       output_control_src == OutputControlSrc::kDataOutputs ? "DataOutputs"
                                                            : "ControlOutputs");
@@ -1585,6 +1587,17 @@ Status ValidateInlining(const Node* node, const FunctionBody* fbody,
   if (options.disable_inlining) {
     return errors::InvalidArgument(
         "Function inlining explicitly disabled by 'options.disable_inlining'");
+  }
+
+  if (!options.inline_impl_selection_group_functions) {
+    bool is_impl_selection_group_function =
+        fbody->fdef.attr().find("api_implements") != fbody->fdef.attr().end();
+    if (is_impl_selection_group_function) {
+      return errors::InvalidArgument(
+          "Inlining of implementation selection group function ",
+          fbody->fdef.signature().name(),
+          " is disabled by options.inline_impl_selection_group_functions");
+    }
   }
 
   if (!options.ignore_noinline) {

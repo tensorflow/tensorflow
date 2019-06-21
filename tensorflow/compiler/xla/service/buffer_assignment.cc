@@ -763,12 +763,12 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     LogicalBuffer::AlignmentFunction color_alignment,
     bool allocate_buffers_for_constants, BufferAssigner::Colorer colorer,
     const absl::flat_hash_set<HloOpcode>& reuse_checker,
-    HloDataflowAnalysis::FusionCanShareBufferFunction fusion_can_share_buffer) {
+    HloDataflowAnalysis::CanShareBuffer can_share_buffer) {
   BufferAssigner assigner(allocate_buffers_for_constants, std::move(colorer),
                           reuse_checker);
   return assigner.CreateAssignment(
       module, std::move(hlo_ordering), std::move(buffer_size),
-      std::move(color_alignment), std::move(fusion_can_share_buffer));
+      std::move(color_alignment), std::move(can_share_buffer));
 }
 
 namespace {
@@ -1493,12 +1493,12 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     BufferValue::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,
-    HloDataflowAnalysis::FusionCanShareBufferFunction fusion_can_share_buffer) {
+    HloDataflowAnalysis::CanShareBuffer can_share_buffer) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferLiveness> liveness,
                       BufferLiveness::Run(module, std::move(hlo_ordering)));
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, fusion_can_share_buffer));
+                      HloAliasAnalysis::Run(module, can_share_buffer));
 
   VLOG(1) << "Assigning buffers to module " << module->name();
   XLA_VLOG_LINES(3, module->ToString());

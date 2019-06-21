@@ -67,19 +67,21 @@ message CreateContextRequest {
   // This is the version for all the ops that will be enqueued by the client.
   VersionDef version_def = 4;
 
+  // This ID will be used for all future communications. It is essential that
+  // both ends use this ID for selecting a rendezvous to get everything to
+  // match.
+  int64 rendezvous_id = 5;
+
   // Device attributes in the cluster
   repeated DeviceAttributes cluster_device_attributes = 6;
-
-  // The ID of the created context. This is usually a randomly generated number,
-  // that will be used to identify the context in future requests to the
-  // service. Contexts are not persisted through server restarts.
-  // This ID will be used for all future communications as well. It is essential
-  // that both ends use this ID for selecting a rendezvous to get everything to
-  // match.
-  fixed64 context_id = 7;
 }
 
 message CreateContextResponse {
+  // The ID of the created context. This is usually a randomly generated number,
+  // that will be used to identify the context in future requests to the
+  // service. Contexts are not persisted through server restarts.
+  fixed64 context_id = 1;
+
   // List of devices that are locally accessible to the worker.
   repeated DeviceAttributes device_attributes = 2;
 }

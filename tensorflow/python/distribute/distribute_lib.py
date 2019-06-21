@@ -647,6 +647,8 @@ class Strategy(object):
   def experimental_distribute_datasets_from_function(self, dataset_fn):
     """Distributes `tf.data.Dataset` instances created by calls to `dataset_fn`.
 
+    Note: This API can only be used in eager mode.
+
     `dataset_fn` will be called once for each worker in the strategy. Each
     replica on that worker will dequeue one batch of inputs from the local
     `Dataset` (i.e. if a worker has two replicas, two batches will be dequeued
@@ -688,8 +690,11 @@ class Strategy(object):
       A "distributed `Dataset`", which acts like a `tf.data.Dataset` except
       it produces "per-replica" values.
     """
-    return self._extended._experimental_distribute_datasets_from_function(  # pylint: disable=protected-access
-        dataset_fn)
+    if ops.executing_eagerly_outside_functions():
+      return self._extended._experimental_distribute_datasets_from_function(  # pylint: disable=protected-access
+          dataset_fn)
+    raise RuntimeError("`experimental_distribute_datasets_from_function` is "  # pylint: disable=g-doc-exception
+                       "only supported when eager execution is enabled.")
 
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """Runs ops in `fn` on each replica, with the given arguments.
@@ -718,7 +723,10 @@ class Strategy(object):
       (for example, if running on a single replica).
     """
     with self.scope():
-      fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx())
+      # tf.distribute supports Eager functions, so AutoGraph should not be
+      # applied when when the caller is also in Eager mode.
+      fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx(),
+                                convert_by_default=False)
       return self._extended.call_for_each_replica(fn, args=args, kwargs=kwargs)
 
   def reduce(self, reduce_op, value, axis):

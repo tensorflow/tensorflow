@@ -1256,9 +1256,6 @@ def _generate_defun_backend(unique_api_name, preferred_device, func):
   function_attributes = {
       _DEFUN_API_NAME_ATTRIBUTE: unique_api_name,
       _DEFUN_DEVICE_ATTRIBUTE: preferred_device,
-      # TODO(b/133178886): The function is auto inlined in eager context, which
-      # make grappler fail to do the optimization. Force it to not inline here.
-      '_noinline': True,
   }
   return function.defun_with_attributes(func=func,
                                         attributes=function_attributes)

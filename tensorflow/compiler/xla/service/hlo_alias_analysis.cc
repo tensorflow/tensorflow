@@ -490,8 +490,7 @@ string HloAliasAnalysis::ToString() const {
 /* static */
 StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
     const HloModule* module,
-    const HloDataflowAnalysis::FusionCanShareBufferFunction&
-        fusion_can_share_buffer) {
+    const HloDataflowAnalysis::CanShareBuffer& can_share_buffer) {
   VLOG(2) << "HloAliasAnalysis::Run on module " << module->name();
   XLA_VLOG_LINES(2, module->ToString());
 
@@ -499,7 +498,7 @@ StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
   TF_ASSIGN_OR_RETURN(alias_analysis->dataflow_analysis_,
                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
                                                /*bitcast_defines_value=*/false,
-                                               fusion_can_share_buffer));
+                                               can_share_buffer));
 
   BufferValueMap buffer_map(module, alias_analysis->dataflow_analysis());
   buffer_map.MergeAliasedBuffers();

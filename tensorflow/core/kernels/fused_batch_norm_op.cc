@@ -206,6 +206,8 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
     Tensor* dummy_reserve_space = nullptr;
     OP_REQUIRES_OK(context_, context_->allocate_output(output_index_, {},
                                                        &dummy_reserve_space));
+    // Initialize the memory, to avoid sanitizer alerts.
+    dummy_reserve_space->flat<T>()(0) = T();
   }
   CudnnBatchNormAllocatorInOutput(OpKernelContext* context, int output_index)
       : context_(context), output_index_(output_index) {}

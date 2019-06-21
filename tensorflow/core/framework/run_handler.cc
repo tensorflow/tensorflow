@@ -370,6 +370,10 @@ class RunHandlerPool::Impl {
     DCHECK_EQ(handlers_.size(), max_handlers_);
     DCHECK_EQ(free_handlers_.size(), handlers_.size());
     DCHECK_EQ(sorted_active_handlers_.size(), 0);
+    // Stop the threads in run_handler_thread_pool_ before freeing other
+    // pointers. Otherwise a thread may try to access a pointer after the
+    // pointer has been freed.
+    run_handler_thread_pool_.reset();
   }
 
   RunHandlerThreadPool* run_handler_thread_pool() {

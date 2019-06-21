@@ -253,9 +253,9 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
       labels * -log(sigmoid(logits)) +
           (1 - labels) * -log(1 - sigmoid(logits))
 
-  A value `pos_weights > 1` decreases the false negative count, hence increasing
+  A value `pos_weight > 1` decreases the false negative count, hence increasing
   the recall.
-  Conversely setting `pos_weights < 1` decreases the false positive count and
+  Conversely setting `pos_weight < 1` decreases the false positive count and
   increases the precision.
   This can be seen from the fact that `pos_weight` is introduced as a
   multiplicative coefficient for the positive labels term
@@ -332,9 +332,9 @@ def weighted_cross_entropy_with_logits(labels=None,
   The usual cross-entropy cost is defined as:
       labels * -log(sigmoid(logits)) +
           (1 - labels) * -log(1 - sigmoid(logits))
-  A value `pos_weights > 1` decreases the false negative count, hence increasing
+  A value `pos_weight > 1` decreases the false negative count, hence increasing
   the recall.
-  Conversely setting `pos_weights < 1` decreases the false positive count and
+  Conversely setting `pos_weight < 1` decreases the false positive count and
   increases the precision.
   This can be seen from the fact that `pos_weight` is introduced as a
   multiplicative coefficient for the positive labels term

@@ -1948,9 +1948,9 @@ class NNAPIDelegateKernel {
       const bool scalar_as_tensor = IsScalarInputSupported(reg->builtin_code);
 
       // Map inputs to NN API tensor indices.
-      int num_added_inputs = 0;
-      for (auto input_index : TfLiteIntArrayView(node->inputs)) {
-        if (reg->builtin_code == kTfLiteBuiltinLstm && num_added_inputs >= 20) {
+      for (int input_pos = 0; input_pos < node->inputs->size; ++input_pos) {
+        const auto input_index = node->inputs->data[input_pos];
+        if (reg->builtin_code == kTfLiteBuiltinLstm && input_pos >= 20) {
           // Skip layer normalization weights. They are added in the Map
           // function (after all the other inputs added there) since layer
           // normalization weights are the last four inputs of the LSTM op in
@@ -1961,7 +1961,7 @@ class NNAPIDelegateKernel {
         // be converted to a scalar type in NN API.
         if ((reg->builtin_code == kTfLiteBuiltinPadv2 ||
              reg->builtin_code == kTfLiteBuiltinPad) &&
-            node->inputs->size == 3 && num_added_inputs == 2) {
+            node->inputs->size == 3 && input_pos == 2) {
           const int constant_value_id = node->inputs->data[2];
           if (constant_value_id == kOptionalTensor) {
             continue;
@@ -1992,7 +1992,6 @@ class NNAPIDelegateKernel {
                   context, "Unsupported type of pad value for pad_v2\n");
               return kTfLiteError;
           }
-          ++num_added_inputs;
           continue;
         }
 
@@ -2005,7 +2004,7 @@ class NNAPIDelegateKernel {
           // tensor when supported by NNAPI.
           TF_LITE_ENSURE_STATUS(builder.AddVectorFloat32Operand(nullptr, 0));
         } else if (reg->builtin_code == kTfLiteBuiltinResizeBilinear) {
-          if (num_added_inputs == 0) {
+          if (input_pos == 0) {
             // Only the first input tensor is added. The second one, specifying
             // the output height and width, is not added and instead the height
             // and width will be added individually as scalars by the mapping
@@ -2013,8 +2012,7 @@ class NNAPIDelegateKernel {
             TF_LITE_ENSURE_STATUS(
                 builder.AddTensorInput(input_index, hybrid_op));
           }
-        } else if (reg->builtin_code == kTfLiteBuiltinTopkV2 &&
-                   num_added_inputs > 0) {
+        } else if (reg->builtin_code == kTfLiteBuiltinTopkV2 && input_pos > 0) {
           // The K parameter tensor is not handled here but by the functor
           // returned by Map, the input tensor is instead added in
           // the else clause below
@@ -2023,7 +2021,6 @@ class NNAPIDelegateKernel {
           TF_LITE_ENSURE_STATUS(
               builder.AddTensorInput(input_index, hybrid_op, scalar_as_tensor));
         }
-        ++num_added_inputs;
       }
       // Get op type and operands
       int nn_op_type = Map(

@@ -41,14 +41,14 @@ namespace xla {
 using absl::StrAppend;
 using absl::StrCat;
 
-HloDataflowAnalysis::HloDataflowAnalysis(
-    const HloModule& module, bool ssa_form, bool bitcast_defines_value,
-    const FusionCanShareBufferFunction& fusion_can_share_buffer)
+HloDataflowAnalysis::HloDataflowAnalysis(const HloModule& module, bool ssa_form,
+                                         bool bitcast_defines_value,
+                                         const CanShareBuffer& can_share_buffer)
     : module_(module),
       ssa_form_(ssa_form),
       bitcast_defines_value_(bitcast_defines_value),
       call_graph_(CallGraph::Build(&module)),
-      fusion_can_share_buffer_(fusion_can_share_buffer) {}
+      can_share_buffer_(can_share_buffer) {}
 
 bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
     const HloInstruction* inst) {
@@ -849,12 +849,12 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
 /* static */
 StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
     const HloModule& module, bool ssa_form, bool bitcast_defines_value,
-    const FusionCanShareBufferFunction& fusion_can_share_buffer) {
+    const CanShareBuffer& can_share_buffer) {
   VLOG(1) << "HloDataflowAnalysis::Run on module " << module.name();
   XLA_VLOG_LINES(2, module.ToString());
 
   auto dataflow_analysis = absl::WrapUnique(new HloDataflowAnalysis(
-      module, ssa_form, bitcast_defines_value, fusion_can_share_buffer));
+      module, ssa_form, bitcast_defines_value, can_share_buffer));
 
   TF_RETURN_IF_ERROR(dataflow_analysis->InitializeInstructionValueSets());
   dataflow_analysis->Propagate();
@@ -1055,10 +1055,20 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
         HloOpcode::kDynamicUpdateSlice) {
       return CanDoInPlaceDynamicUpdateSlice(user, fusion_param_value);
     }
+  }
 
-    if (fusion_can_share_buffer_ != nullptr) {
-      return fusion_can_share_buffer_(user, operand, user_index);
+  if (can_share_buffer_ != nullptr) {
+    if (absl::optional<bool> hint =
+            can_share_buffer_(user, operand, user_index)) {
+      return *hint;
     }
+  }
+
+  if (user->opcode() == HloOpcode::kFusion) {
+    HloInstruction* fusion_param =
+        user->fused_parameter(user->operand_index(operand));
+    const HloValue& fusion_param_value =
+        GetValueDefinedAt(fusion_param, operand_index);
 
     if (user->IsLoopFusion() || user->IsInputFusion()) {
       return AreTransitiveUsesElementwiseOrTuple(fusion_param);

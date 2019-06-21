@@ -171,10 +171,26 @@ def custom_gradient(f):
 
 
 def get_variable_by_name(var_name):
+  """Given a variable name, retrieves a handle on the tensorflow Variable."""
+
   candidate_vars = ops.get_collection(
       ops.GraphKeys.GLOBAL_VARIABLES, scope=var_name)
-  assert len(candidate_vars) == 1
-  return candidate_vars[0]
+  if len(candidate_vars) >= 1:
+    # Filter out non-trainable variables.
+    candidate_vars = [v for v in candidate_vars if v.trainable]
+  else:
+    raise ValueError("Unsuccessful at finding variable {}.".format(var_name))
+
+  if len(candidate_vars) == 1:
+    return candidate_vars[0]
+  elif len(candidate_vars) > 1:
+    raise ValueError(
+        "Unsuccessful at finding trainable variable {}. "
+        "Number of candidates: {}. "
+        "Candidates: {}".format(var_name, len(candidate_vars), candidate_vars))
+  else:
+    # The variable is not trainable.
+    return None
 
 
 def get_dependent_variables(input_ops, output_ops):
@@ -189,7 +205,8 @@ def get_dependent_variables(input_ops, output_ops):
       only_differentiable=True)
   var_ops = (op for op in inbetween_ops if op.type in VAR_OP_TYPES)
   var_names = (op.name for op in var_ops)
-  tf_vars = [get_variable_by_name(var_name) for var_name in var_names]
+  tf_vars = (get_variable_by_name(var_name) for var_name in var_names)
+  tf_vars = [v for v in tf_vars if v is not None]
   return tf_vars
 
 
@@ -221,9 +238,10 @@ def _graph_mode_decorator(f, *args, **kwargs):
           "with `use_resource=False`.")
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
-  tf1_variables = get_dependent_variables(input_ops=args, output_ops=result)
-  eager_variables = list(set(tape.watched_variables()) - set(args))
-  variables = list(set(tf1_variables + eager_variables))
+  variables_in_tape = frozenset(tape.watched_variables()) - frozenset(args)
+  variables_in_subgraph = frozenset(get_dependent_variables(
+      input_ops=args, output_ops=result))
+  variables = list(variables_in_subgraph.union(variables_in_tape))
 
   grad_argspec = tf_inspect.getfullargspec(grad_fn)
   variables_in_signature = ("variables" in grad_argspec.args or

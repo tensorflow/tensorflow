@@ -504,7 +504,7 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       const std::vector<ReplicaGroup>& replica_groups,
-      absl::string_view barrier, const absl::optional<int64>& all_reduce_id);
+      const absl::optional<int64>& all_reduce_id);
 
   // An all-to-all op takes N array operands of the same shape and scatters them
   // to N replicas.  Each replica gathers the results into a tuple.
@@ -1576,10 +1576,6 @@ class HloInstruction {
 
   // Delegates to HloCollectivePermuteInstruction::source_target_pairs.
   const std::vector<std::pair<int64, int64>>& source_target_pairs() const;
-
-  // Delegates to HloAllReduceInstruction::all_reduce_barrier.
-  string all_reduce_barrier() const;
-  void set_all_reduce_barrier(const string& barrier);
 
   // Delegates to HloAllReduceInstruction::all_reduce_id.
   absl::optional<int64> all_reduce_id() const;

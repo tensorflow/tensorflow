@@ -1487,9 +1487,9 @@ def sparse_to_indicator(sp_input, vocab_size, name=None):
       [0, 0, 0]: 0
       [0, 1, 0]: 10
       [1, 0, 3]: 103
-      [1, 1, 2]: 150
-      [1, 1, 3]: 149
-      [1, 1, 4]: 150
+      [1, 1, 1]: 150
+      [1, 1, 2]: 149
+      [1, 1, 3]: 150
       [1, 2, 1]: 121
 
   and `vocab_size = 200`, then the output will be a `[2, 3, 200]` dense bool

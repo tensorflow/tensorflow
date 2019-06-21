@@ -37,7 +37,8 @@ TEST(RunHandlerUtilTest, TestBasicScheduling) {
   int num_threads = 2;
   int num_handlers = 10;
 
-  std::unique_ptr<RunHandlerPool> pool(new RunHandlerPool(num_threads));
+  std::unique_ptr<RunHandlerPool> pool(
+      new RunHandlerPool(num_threads, num_threads));
 
   // RunHandler has 2 * num_threads (inter + intra) -
   // all should be able to run concurrently.
@@ -46,9 +47,8 @@ TEST(RunHandlerUtilTest, TestBasicScheduling) {
 
   BlockingCounter counter(2 * num_handlers * num_threads);
 
-  int num_test_threads = 10;
-  thread::ThreadPool test_pool(Env::Default(), "test", num_test_threads);
-  for (int i = 0; i < 10; ++i) {
+  thread::ThreadPool test_pool(Env::Default(), "test", num_handlers);
+  for (int i = 0; i < num_handlers; ++i) {
     test_pool.Schedule([&counter, &barrier1, &barrier2, &pool, i,
                         num_threads]() {
       auto handler = pool->Get();

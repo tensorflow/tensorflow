@@ -1941,14 +1941,13 @@ class HloDataflowAnalysisTestBase : public HloTestBase {
     computation_ = module_->AddEntryComputation(std::move(computation));
   }
 
-  void RunAnalysis(const HloDataflowAnalysis::FusionCanShareBufferFunction&
-                       fusion_can_share_buffer = nullptr) {
+  void RunAnalysis(
+      const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr) {
     CHECK_NOTNULL(module_.get());
-    dataflow_analysis_ =
-        HloDataflowAnalysis::Run(*module_, /*ssa_form=*/false,
-                                 /*bitcast_defines_value=*/false,
-                                 fusion_can_share_buffer)
-            .ConsumeValueOrDie();
+    dataflow_analysis_ = HloDataflowAnalysis::Run(
+                             *module_, /*ssa_form=*/false,
+                             /*bitcast_defines_value=*/false, can_share_buffer)
+                             .ConsumeValueOrDie();
   }
 
   void BuildModuleAndRunAnalysis(std::unique_ptr<HloComputation> computation) {
@@ -2575,9 +2574,9 @@ TEST_F(CanShareOperandBufferWithUserTest, FusionCanShareBufferCustomized) {
   BuildModule(builder.Build());
   auto fusion = computation_->CreateFusionInstruction(
       {add, two, mul}, HloInstruction::FusionKind::kInput);
-  RunAnalysis(/*fusion_can_share_buffer=*/[](const HloInstruction* fusion,
-                                             const HloInstruction*,
-                                             const ShapeIndex& output_index) {
+  RunAnalysis(/*can_share_buffer=*/[](const HloInstruction* fusion,
+                                      const HloInstruction*,
+                                      const ShapeIndex&) {
     return fusion->IsLoopFusion();
   });
 

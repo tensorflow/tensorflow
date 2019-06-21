@@ -78,6 +78,15 @@ Status ExecuteKernelOnStream(const se::KernelBase& kernel,
 se::cuda::PtxCompilationOptions PtxOptsFromConfig(
     const HloModuleConfig& hlo_module_config);
 
+// Initializes `buffer` with random data on `stream`.
+// `rng_state` is an inout parameter for the pseudorandom generator state.
+// `buffer_type` determines what buffer would be filled out with.
+//
+// Precondition: `buffer_type` is a floating point type, `rng_state` needs to be
+// initalized to zero on the first use.
+void InitializeFloatBuffer(se::Stream* stream, PrimitiveType buffer_type,
+                           int64* rng_state, se::DeviceMemoryBase buffer);
+
 }  // namespace gpu
 }  // namespace xla
 

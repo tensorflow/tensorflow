@@ -658,6 +658,7 @@ cc_test(
         "depthwiseconv_quantized_test.cc",
         "optimized/depthwiseconv_uint8_transitional.h",
     ],
+    copts = tflite_copts(),
     shard_count = 2,
     deps = [
         ":compatibility",

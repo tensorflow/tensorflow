@@ -392,7 +392,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           /*replica_groups=*/
           std::vector<ReplicaGroup>(proto.replica_groups().begin(),
                                     proto.replica_groups().end()),
-          /*barrier=*/proto.all_reduce_barrier(),
           /*all_reduce_id=*/all_reduce_id);
       break;
     }
@@ -860,11 +859,10 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllReduce(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
-    const std::vector<ReplicaGroup>& replica_groups, absl::string_view barrier,
+    const std::vector<ReplicaGroup>& replica_groups,
     const absl::optional<int64>& all_reduce_id) {
   return absl::make_unique<HloAllReduceInstruction>(
-      shape, operands, reduce_computation, replica_groups, barrier,
-      all_reduce_id);
+      shape, operands, reduce_computation, replica_groups, all_reduce_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
@@ -3547,14 +3545,6 @@ const std::vector<ReplicaGroup>& HloInstruction::replica_groups() const {
 const std::vector<std::pair<int64, int64>>&
 HloInstruction::source_target_pairs() const {
   return Cast<HloCollectivePermuteInstruction>(this)->source_target_pairs();
-}
-
-string HloInstruction::all_reduce_barrier() const {
-  return Cast<HloAllReduceInstruction>(this)->all_reduce_barrier();
-}
-
-void HloInstruction::set_all_reduce_barrier(const string& barrier) {
-  return Cast<HloAllReduceInstruction>(this)->set_all_reduce_barrier(barrier);
 }
 
 absl::optional<int64> HloInstruction::all_reduce_id() const {

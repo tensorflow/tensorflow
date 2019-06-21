@@ -243,63 +243,6 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
   return result_or;
 }
 
-// Unimplemented for integers yet.
-template <typename T, typename Generator>
-typename std::enable_if<std::is_integral<T>::value, T>::type
-UniformDistribution(T lhs, T rhs, Generator* gen) = delete;
-
-template <typename T, typename Generator>
-typename std::enable_if<std::is_floating_point<T>::value, T>::type
-UniformDistribution(T lhs, T rhs, Generator* gen) {
-  return std::uniform_real_distribution<T>(lhs, rhs)(*gen);
-}
-
-template <typename T>
-void InitializeTypedBuffer(se::Stream* stream, se::DeviceMemory<T> buffer,
-                           int64* rng_state) {
-  static_assert(
-      std::is_floating_point<T>::value || std::is_same<T, Eigen::half>::value,
-      "Unimplemented for integers yet.");
-
-  // Accesses to static variables are not locked, since the caller is already
-  // in a critical section.
-  static std::vector<T>* host_buffer = [] {
-    // Use a large prime number to fragment the accesses.
-    auto* ret = new std::vector<T>(10069);
-    // Default-seeded random numbers.
-    std::mt19937 gen;
-    for (auto& element : *ret) {
-      using RandomType =
-          typename std::conditional<std::is_same<T, Eigen::half>::value, float,
-                                    T>::type;
-      // Scale down the values for fp16 to have less overflows.
-      auto upper_bound =
-          RandomType(std::is_same<T, Eigen::half>::value ? 0.1 : 1.0);
-      element = T(UniformDistribution(RandomType(0), upper_bound, &gen));
-    }
-    return ret;
-  }();
-
-  int64& host_index = *rng_state;
-
-  char* current_addr = static_cast<char*>(buffer.opaque());
-  CHECK_EQ(0, buffer.size() % sizeof(T));
-  int64 elements_left = buffer.size() / sizeof(T);
-  while (elements_left > 0) {
-    CHECK_LE(host_index, host_buffer->size());
-    if (host_buffer->size() == host_index) {
-      host_index = 0;
-    }
-    int64 elements_copied =
-        std::min<int64>(host_buffer->size() - host_index, elements_left);
-    DeviceMemoryBase mem(current_addr, elements_copied * sizeof(T));
-    stream->ThenMemcpy(&mem, host_buffer->data() + host_index,
-                       elements_copied * sizeof(T));
-    current_addr += elements_copied * sizeof(T);
-    elements_left -= elements_copied;
-    host_index += elements_copied;
-  }
-}
 
 StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     const HloCustomCallInstruction* instr) {
@@ -335,22 +278,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
 
   const auto initialize_buffer = [&stream, &result_shape,
                                   &rng_state](DeviceMemoryBase buffer) {
-    switch (result_shape.element_type()) {
-      case xla::F16:
-        InitializeTypedBuffer(&stream, se::DeviceMemory<Eigen::half>(buffer),
-                              &rng_state);
-        break;
-      case xla::F32:
-        InitializeTypedBuffer(&stream, se::DeviceMemory<float>(buffer),
-                              &rng_state);
-        break;
-      case xla::F64:
-        InitializeTypedBuffer(&stream, se::DeviceMemory<double>(buffer),
-                              &rng_state);
-        break;
-      default:
-        stream.ThenMemZero(&buffer, buffer.size());
-    }
+    InitializeFloatBuffer(&stream, result_shape.element_type(), &rng_state,
+                          buffer);
   };
 
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
