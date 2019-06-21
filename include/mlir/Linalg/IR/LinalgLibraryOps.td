@@ -78,8 +78,8 @@ class LinalgLibrary_Op<string mnemonic, list<OpTrait> props>
   }];
 }
 
-class AffineMapAttrWithDefault<string val> : DefaultValuedAttr<
-    Attr<CPred<"$_self.isa<AffineMapAttr>()">, "AffineMap attribute">, val> {
+def AffineMapAttr : Attr<
+    CPred<"$_self.isa<AffineMapAttr>()">, "AffineMap attribute"> {
   let storageType = [{ AffineMapAttr }];
   let returnType = [{ AffineMap }];
   let constBuilderCall = "$_builder.getAffineMapAttr($0)";
@@ -126,14 +126,15 @@ def CopyOp : LinalgLibrary_Op<"copy", [NInputsAndOutputs<1, 1>]> {
   let arguments = (ins
     View,
     View,
-    AffineMapAttrWithDefault<[{
-      AffineMap::getMultiDimIdentityMap(getInputViewType(0).getRank(),
-                                        getOperation()->getContext())
-    }]>:$inputPermutation,
-    AffineMapAttrWithDefault<[{
-      AffineMap::getMultiDimIdentityMap(getOutputViewType(0).getRank(),
-                                        getOperation()->getContext())
-    }]>:$outputPermutation);
+    OptionalAttr<AffineMapAttr>:$inputPermutation,
+    OptionalAttr<AffineMapAttr>:$outputPermutation);
+  // TODO(ntv) this should go away once the usage of OptionalAttr triggers
+  // emission of builders with default arguments left unspecified.
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result, Value *input, Value *output", [{
+    return build(
+      builder, result, input, output, AffineMapAttr(), AffineMapAttr());
+  }]>];
   let extraClassDeclaration = [{
     unsigned getNumParallelLoops() {
       auto *view = *(getOperands().begin());

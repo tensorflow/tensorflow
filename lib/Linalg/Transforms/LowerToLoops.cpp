@@ -56,12 +56,17 @@ static SmallVector<Value *, 4> emitLoopRanges(OpBuilder &b, Location loc,
 static void emitLinalgOpAsLoops(LinalgOp &linalgOp, OperationFolder &state) {
   OpBuilder b(linalgOp.getOperation());
   ScopedContext scope(b, linalgOp.getOperation()->getLoc());
-  auto loopRanges = emitLoopRanges(
-      scope.getBuilder(), scope.getLocation(),
-      // The flattened loopToOperandRangesMaps is expected to be an invertible
-      // permutation map (which is asserted in the inverse calculation).
-      inversePermutation(concatAffineMaps(loopToOperandRangesMaps(linalgOp))),
-      getViewSizes(linalgOp), state);
+  // The flattened loopToOperandRangesMaps is expected to be an invertible
+  // permutation map (which is asserted in the inverse calculation).
+  auto invertedMap =
+      inversePermutation(concatAffineMaps(loopToOperandRangesMaps(linalgOp)));
+  if (!invertedMap) {
+    mlir::linalg::emitScalarImplementation({}, {}, linalgOp);
+    return;
+  }
+
+  auto loopRanges = emitLoopRanges(scope.getBuilder(), scope.getLocation(),
+                                   invertedMap, getViewSizes(linalgOp), state);
 
   SmallVector<IndexHandle, 4> parallelIvs(linalgOp.getNumParallelLoops());
   SmallVector<IndexHandle, 4> reductionIvs(linalgOp.getNumReductionLoops());

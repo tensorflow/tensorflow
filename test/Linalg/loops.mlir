@@ -100,6 +100,13 @@ func @fill_view(%arg0: !linalg.view<?xf32>, %arg1: f32) {
 //       CHECK:   linalg.for %i0 = %c0 to %0 step %c1 {
 //       CHECK:     linalg.store %arg1, %arg0[%i0] : !linalg.view<?xf32>
 
+func @fill_view0(%arg0: !linalg.view<f32>, %arg1: f32) {
+  linalg.fill(%arg0, %arg1) : !linalg.view<f32>, f32
+  return
+}
+// CHECK-LABEL: func @fill_view0(%arg0: !linalg.view<f32>, %arg1: f32) {
+//       CHECK:   linalg.store %arg1, %arg0[] : !linalg.view<f32>
+
 func @fill_view3(%arg0: !linalg.view<?x?x?xf32>, %arg1: f32) {
   linalg.fill(%arg0, %arg1) : !linalg.view<?x?x?xf32>, f32
   return
@@ -118,6 +125,14 @@ func @copy_view(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf32>) {
 //       CHECK:   linalg.for %i0 = %c0 to %0 step %c1 {
 //       CHECK:     %[[L:.*]] = linalg.load %arg0[%i0] : !linalg.view<?xf32>
 //       CHECK:     linalg.store %[[L]], %arg1[%i0] : !linalg.view<?xf32>
+
+func @copy_view0(%arg0: !linalg.view<f32>, %arg1: !linalg.view<f32>) {
+  linalg.copy(%arg0, %arg1) : !linalg.view<f32>, !linalg.view<f32>
+  return
+}
+// CHECK-LABEL: func @copy_view0(%arg0: !linalg.view<f32>, %arg1: !linalg.view<f32>) {
+//       CHECK:   %0 = linalg.load %arg0[] : !linalg.view<f32>
+//       CHECK:   linalg.store %0, %arg1[] : !linalg.view<f32>
 
 func @copy_view3(%arg0: !linalg.view<?x?x?xf32>, %arg1: !linalg.view<?x?x?xf32>) {
   linalg.copy(%arg0, %arg1) {inputPermutation : (i, j, k) -> (i, k, j),

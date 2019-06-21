@@ -268,6 +268,8 @@ AffineMap mlir::simplifyAffineMap(AffineMap map) {
 }
 
 AffineMap mlir::inversePermutation(AffineMap map) {
+  if (!map)
+    return map;
   assert(map.getNumSymbols() == 0 && "expected map without symbols");
   SmallVector<AffineExpr, 4> exprs(map.getNumDims());
   for (auto en : llvm::enumerate(map.getResults())) {
@@ -300,5 +302,5 @@ AffineMap mlir::concatAffineMaps(ArrayRef<AffineMap> maps) {
     results.append(m.getResults().begin(), m.getResults().end());
     numDims = std::max(m.getNumDims(), numDims);
   }
-  return AffineMap::get(numDims, 0, results);
+  return numDims == 0 ? AffineMap() : AffineMap::get(numDims, 0, results);
 }

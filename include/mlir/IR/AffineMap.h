@@ -150,6 +150,7 @@ AffineMap simplifyAffineMap(AffineMap map);
 
 /// Returns a map of codomain to domain dimensions such that the first codomain
 /// dimension for a particular domain dimension is selected.
+/// Returns an empty map if the input map is empty.
 ///
 /// Prerequisites:
 ///   1. `map` is a permutation of full rank.
@@ -173,6 +174,7 @@ AffineMap inversePermutation(AffineMap map);
 /// potentially empty maps. Assumes each of the underlying map has 0 symbols.
 /// The resulting map has a number of dims equal to the max of `maps`' dims and
 /// the concatenated results as its results.
+/// Returns an empty map if all input `maps` are empty.
 ///
 /// Example:
 /// When applied to the following list of 3 affine maps,
