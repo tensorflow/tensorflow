@@ -50,6 +50,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
+#include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/gemm_lowering.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -379,6 +381,17 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       // fuse the new ReducePrecision operations.
       TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
     }
+  }
+
+  {
+    HloPassPipeline pipeline("post-fusion");
+
+    // Determine the fusion configuration for GEMMs.
+    pipeline.AddPass<GemmLowering>();
+
+    // Find the fastest algorithm for GEMMs.
+    pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
   return Status::OK();

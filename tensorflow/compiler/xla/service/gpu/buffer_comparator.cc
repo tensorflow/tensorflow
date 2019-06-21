@@ -461,7 +461,7 @@ static StatusOr<bool> CompareEqualParameterized(se::Stream* stream,
 
 StatusOr<bool> BufferComparator::CompareEqual(se::Stream* stream,
                                               se::DeviceMemoryBase lhs,
-                                              se::DeviceMemoryBase rhs) {
+                                              se::DeviceMemoryBase rhs) const {
   switch (shape_.element_type()) {
     case xla::F16:
       return CompareEqualParameterized<Eigen::half, float>(
