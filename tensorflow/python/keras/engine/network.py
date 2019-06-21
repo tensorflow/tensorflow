@@ -218,8 +218,6 @@ class Network(base_layer.Layer):
     # A list of metric instances corresponding to the symbolic metric tensors
     # added using the `add_metric` API.
     self._metrics = []
-    # A dictionary that maps metric names to metric result tensors.
-    self._metrics_tensors = {}
     self._scope = None  # Never used.
     self._reuse = None  # Never used.
     if context.executing_eagerly():
@@ -593,19 +591,6 @@ class Network(base_layer.Layer):
         trainable=self.trainable,
         sub_layers=self._layers,
         extra_variables=self._non_trainable_weights + self._trainable_weights)
-
-  @property
-  def _all_metrics_tensors(self):
-    """Returns the network's symbolic metric tensors."""
-    # TODO(psv): Remove this property.
-    metrics_tensors = {}
-    for layer in self.layers:
-      if isinstance(layer, Network):
-        metrics_tensors.update(layer._all_metrics_tensors)
-      else:
-        metrics_tensors.update(layer._metrics_tensors)
-    metrics_tensors.update(self._metrics_tensors)
-    return metrics_tensors
 
   @property
   def input_spec(self):

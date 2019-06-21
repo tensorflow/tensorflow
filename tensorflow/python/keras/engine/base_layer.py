@@ -198,10 +198,6 @@ class Layer(module.Module):
     # A list of metric instances corresponding to the symbolic metric tensors
     # added using the `add_metric` API.
     self._metrics = []
-    # TODO(psv): Remove this property.
-    # A dictionary that maps metric names to metric result tensors. The results
-    # are the running averages of metric values over an epoch.
-    self._metrics_tensors = {}
 
     self._set_dtype_and_policy(dtype)
     self._call_convention = (base_layer_utils
@@ -1702,7 +1698,6 @@ class Layer(module.Module):
         metric_obj, result_tensor = base_layer_utils.create_mean_metric(
             value, name)
         self._metrics.append(metric_obj)
-    self._metrics_tensors[metric_obj.name] = result_tensor
 
   def _handle_weight_regularization(self, name, variable, regularizer):
     """Create lambdas which compute regularization losses."""

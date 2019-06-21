@@ -386,9 +386,18 @@ class Model(network.Network):
   @property
   def metrics_names(self):
     """Returns the model's display labels for all outputs."""
-    metrics_names = []
+    metrics_names = ['loss']
     if self._is_compiled:
-      metrics_names += self._compile_metrics_names  # Includes names of losses.
+      # Add output loss metric names to the metric names list.
+      if len(self._training_endpoints) > 1:
+        metrics_names.extend([
+            e.loss_name()
+            for e in self._training_endpoints
+            if not e.should_skip_target()
+        ])
+
+      # Add compile metrics/weighted metrics' names to the metric names list.
+      metrics_names.extend([m.name for m in self._compile_metric_functions])
 
     # Add metric names from layers.
     for layer in self.layers:
@@ -836,14 +845,9 @@ class Model(network.Network):
 
   def reset_metrics(self):
     """Resets the state of metrics."""
-    if hasattr(self, 'metrics'):
-      for m in self.metrics:
-        m.reset_states()
-
-    # Reset the state of loss metric wrappers.
-    if getattr(self, '_output_loss_metrics', None) is not None:
-      for m in self._output_loss_metrics:
-        m.reset_states()
+    metrics = self._get_training_eval_metrics()
+    for m in metrics:
+      m.reset_states()
 
     # Reset metrics on all the distributed (cloned) models.
     if self._distribution_strategy:
@@ -1590,8 +1594,7 @@ class Model(network.Network):
 
         if len(self.outputs) > 1:
           # Keep track of stateful result tensor for the loss.
-          aggregated_output_loss = endpoint.output_loss_metric(output_loss)
-          self._compile_metrics_tensors[loss_name] = aggregated_output_loss
+          endpoint.output_loss_metric(output_loss)
 
         # Scale output loss for distribution. For custom losses we assume
         # reduction was mean.
@@ -1774,35 +1777,17 @@ class Model(network.Network):
       metric_name = '%s_%s' % (self.output_names[output_index], metric_name)
     j = 1
     base_metric_name = metric_name
-    while metric_name in self._compile_metrics_names:
+    while metric_name in self.metrics_names:
       metric_name = '%s_%d' % (base_metric_name, j)
       j += 1
 
     return metric_name
 
-  @property
-  def _all_metrics_tensors(self):
-    """Returns a dictionary that maps metric names to metric result tensors.
-
-    This maps metric names from `model.metric_names` to result tensors.
-    Just like model.metric_names, this includes loss names and tensors.
-    """
-    metrics_tensors = {}
-    if self._is_compiled:
-      metrics_tensors.update(self._compile_metrics_tensors)
-    metrics_tensors.update(super(Model, self)._all_metrics_tensors)
-    return metrics_tensors
-
   def _init_metric_attributes(self):
     """Initialized model metric attributes."""
-    # List of all metric names in the model. This includes loss metrics.
-    self._compile_metrics_names = ['loss']
     # List of stateful metric functions. Used for resetting metric state during
-    # training/eval. This includes loss metric functions.
+    # training/eval.
     self._compile_metric_functions = []
-    # Dict of all aggregated metric result tensors. This includes aggregated
-    # loss result tensors.
-    self._compile_metrics_tensors = {}
 
   def _set_per_output_metric_attributes(self, metrics_dict, output_index):
     """Sets the metric attributes on the model for the given output.
@@ -1823,20 +1808,11 @@ class Model(network.Network):
       metric_fn._name = metric_name  # pylint: disable=protected-access
       updated_metrics_dict[metric_name] = metric_fn
       # Keep track of metric name and function.
-      self._compile_metrics_names.append(metric_name)
       self._compile_metric_functions.append(metric_fn)
     return updated_metrics_dict
 
   def _set_metric_attributes(self):
     """Sets the metric attributes on the model for all the model outputs."""
-    # Add loss metric names to the model metric names list.
-    if len(self._training_endpoints) > 1:
-      metric_names = [
-          e.loss_name() for e in self._training_endpoints
-          if not e.should_skip_target()
-      ]
-      self._compile_metrics_names.extend(metric_names)
-
     updated_per_output_metrics = []
     updated_per_output_weighted_metrics = []
     for i, endpoint in enumerate(self._training_endpoints):
@@ -1857,7 +1833,9 @@ class Model(network.Network):
     # batch).
     if len(self._training_endpoints) > 1:
       for endpoint in self._training_endpoints:
-        endpoint.output_loss_metric = metrics_module.Mean()
+        if not endpoint.should_skip_target():
+          endpoint.output_loss_metric = metrics_module.Mean(
+              name=endpoint.loss_name())
 
     self._per_output_metrics = updated_per_output_metrics
     self._per_output_weighted_metrics = updated_per_output_weighted_metrics
@@ -1886,9 +1864,6 @@ class Model(network.Network):
         metric_result = training_utils.call_metric_function(
             metric_fn, y_true, y_pred, weights=weights, mask=mask)
         metric_results.append(metric_result)
-        if not self.run_eagerly:
-          self._compile_metrics_tensors[metric_name] = metric_result
-
     return metric_results
 
   def _handle_metrics(self,
@@ -1967,9 +1942,6 @@ class Model(network.Network):
 
   def _make_train_function(self):
     has_recompiled = self._recompile_weights_loss_and_weighted_metrics()
-    metrics_tensors = [
-        self._all_metrics_tensors[m] for m in self.metrics_names[1:]
-    ]
     self._check_trainable_weights_consistency()
     # If we have re-compiled the loss/weighted metric sub-graphs then create
     # train function even if one exists already. This is because
@@ -1995,6 +1967,11 @@ class Model(network.Network):
           # Conditional updates relevant to this model
           updates += self.get_updates_for(self.inputs)
 
+        metrics = self._get_training_eval_metrics()
+        metrics_tensors = [
+            m._call_result for m in metrics if hasattr(m, '_call_result')  # pylint: disable=protected-access
+        ]
+
       with K.name_scope('training'):
         # Gets loss and metrics. Updates weights at each call.
         fn = K.function(
@@ -2009,9 +1986,6 @@ class Model(network.Network):
 
   def _make_test_function(self):
     has_recompiled = self._recompile_weights_loss_and_weighted_metrics()
-    metrics_tensors = [
-        self._all_metrics_tensors[m] for m in self.metrics_names[1:]
-    ]
     # If we have re-compiled the loss/weighted metric sub-graphs then create
     # test function even if one exists already. This is because
     # `_feed_sample_weights` list has been updated on re-copmpile.
@@ -2019,6 +1993,12 @@ class Model(network.Network):
       inputs = (self._feed_inputs +
                 self._feed_targets +
                 self._feed_sample_weights)
+
+      with K.get_graph().as_default():
+        metrics = self._get_training_eval_metrics()
+        metrics_tensors = [
+            m._call_result for m in metrics if hasattr(m, '_call_result')  # pylint: disable=protected-access
+        ]
 
       with K.name_scope('evaluation'):
         updates = self.state_updates
@@ -2759,6 +2739,19 @@ class Model(network.Network):
       return self._training_state.maybe_load_initial_epoch_from_ckpt(
           initial_epoch, mode)
     return initial_epoch
+
+  def _get_training_eval_metrics(self):
+    """Returns all the metrics that are to be reported.
+
+    This includes the output loss metrics, compile metrics/weighted metrics,
+    add_metric metrics.
+    """
+    metrics = []
+    if getattr(self, '_output_loss_metrics', None) is not None:
+      metrics.extend(self._output_loss_metrics)
+    if hasattr(self, 'metrics'):
+      metrics.extend(self.metrics)
+    return metrics
 
   @property
   def _object_identifier(self):
