@@ -146,6 +146,9 @@ void GetAllDepNames(const HloInstruction* base,
 // Configure the backend config of the instruction to indicate this instruction
 // is used inplace.
 void MakeUsedInplace(HloInstruction* inst);
+// Configure the backend config of the instruction to indicate this instruction
+// is not used inplace.
+void MakeUsedNotInplace(HloInstruction* inst);
 // Check whether this instruction is configured to be used inplace.
 bool IsUsedInplace(const HloInstruction* inst);
 

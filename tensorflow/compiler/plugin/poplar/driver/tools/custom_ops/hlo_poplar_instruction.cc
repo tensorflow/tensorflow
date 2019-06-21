@@ -51,5 +51,17 @@ const bool IsPoplibsHloCustomOp(const HloInstruction* inst) {
   return DynCast<HloPoplarInstruction>(inst) != nullptr;
 }
 
+Shape GetHloPoplarInstructionShape(absl::Span<HloInstruction* const> operands) {
+  if (operands.size() > 1) {
+    std::vector<Shape> shapes(operands.size());
+    absl::c_transform(operands, shapes.begin(),
+                      [](HloInstruction* inst) { return inst->shape(); });
+    return ShapeUtil::MakeTupleShape(shapes);
+  } else {
+    CHECK_EQ(operands.size(), 1);
+    return operands[0]->shape();
+  }
+}
+
 }  // namespace poplarplugin
 }  // namespace xla

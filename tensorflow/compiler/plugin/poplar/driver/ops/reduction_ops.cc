@@ -910,7 +910,7 @@ StatusOr<poplar::program::Program> CreateReplicatedAllReduce(
   poplar::program::Sequence seq;
 
   // If we aren't part of a replicated graph, then it's just an identity op
-  if (!res.replicated_graph) {
+  if (res.replication_factor < 2) {
     for (int i = 0; i < inst->operand_count(); ++i) {
       TF_ASSIGN_OR_RETURN(auto in,
                           FindInstructionInput(tensor_map, res, inst, i, seq));
@@ -930,7 +930,7 @@ StatusOr<poplar::program::Program> CreateReplicatedAllReduce(
 
     // Replicated sum the concatenated tensor
     auto out = popops::replicatedAllReduce(
-        res.replicated_graph.value(), res.main_graph, t, popops::Operation::ADD,
+        GetReplicatedGraph(res), GetMasterGraph(res), t, popops::Operation::ADD,
         seq, GetDebugName(inst));
 
     // Unconcat the result and unflatten

@@ -89,6 +89,7 @@ cc_library(
         "driver/passes/fuse_ops_early.cc",
         "driver/passes/fuse_ops_late.cc",
         "driver/passes/fuse_wide_const.cc",
+        "driver/passes/gradient_accumulation_fuser.cc",
         "driver/passes/hlo_computation_name_uniquify.cc",
         "driver/passes/inplace_finder.cc",
         "driver/passes/inplace_util.cc",
@@ -161,6 +162,7 @@ cc_library(
         "driver/passes/fuse_ops_early.h",
         "driver/passes/fuse_ops_late.h",
         "driver/passes/fuse_wide_const.h",
+        "driver/passes/gradient_accumulation_fuser.h",
         "driver/passes/hlo_computation_name_uniquify.h",
         "driver/passes/inplace_finder.h",
         "driver/passes/inplace_util.h",
@@ -1045,6 +1047,18 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "gradient_accumulation_fuser_test",
+    srcs = ["tests/gradient_accumulation_fuser_test.cc"],
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_query",
+        "//tensorflow/compiler/xla/service:shape_inference",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
 py_library(
     name = "test_utils_py",
     srcs = ["tests/test_utils.py"],
@@ -1630,6 +1644,7 @@ py_test(
     deps = [
         ":test_utils_py",
         ":ipu_ops_py",
+        ":popops_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
@@ -1670,6 +1685,7 @@ test_suite(
         "fuse_ops_test",
         "fuse_wide_const_test",
         "fused_batch_norm_test",
+        "gradient_accumulation_fuser_test",
         "graph_compile_io_map_test",
         "group_norm_test",
         "hlo_computation_name_uniquify_test",

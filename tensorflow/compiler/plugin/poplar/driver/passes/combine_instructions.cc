@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/errors.h"
 
+#include "absl/types/optional.h"
+
 #include <algorithm>
 
 namespace xla {
@@ -48,15 +50,18 @@ bool CanCombine(Iter begin, Iter end) {
   return true;
 }
 
-// Partition the ops into regions where they colocate and have the same type.
+// Partition the ops into regions where they colocate, have the same type and
+// same inplaceness.
 template <typename Iter>
 std::vector<std::pair<Iter, Iter>> Partition(Iter begin, Iter end) {
   std::vector<std::pair<Iter, Iter>> result;
 
   while (begin != end) {
+    auto first = *begin;
     auto pred = [&](const HloInstruction* inst) {
-      return CanColocate(*begin, inst) &&
-             ((*begin)->shape().element_type() == inst->shape().element_type());
+      return CanColocate(first, inst) &&
+             (first->shape().element_type() == inst->shape().element_type()) &&
+             (IsUsedInplace(first) == IsUsedInplace(inst));
     };
 
     auto itr = std::stable_partition(begin, end, pred);
@@ -117,7 +122,7 @@ StatusOr<std::vector<HloInstruction*>> Replace(HloComputation* comp, Iter begin,
   result.reserve(dist);
 
   for (auto itr = begin; itr != end; ++itr) {
-    // Add a get tuple to unpack the all-reduce result
+    // Add a get tuple to unpack the combined result
     auto gte = comp->AddInstruction(HloInstruction::CreateGetTupleElement(
         (*itr)->shape(), all_reduce, std::distance(begin, itr)));
     MakeUsedInplace(gte);
@@ -132,9 +137,10 @@ StatusOr<std::vector<HloInstruction*>> Replace(HloComputation* comp, Iter begin,
 }
 }  // namespace
 
-StatusOr<HloInstructionSequence>
+StatusOr<absl::optional<HloInstructionSequence>>
 CombineInstructions::CombineInstructionsInComputation(
     HloComputation* comp, const HloInstructionSequence& sequence) {
+  bool changed = false;
   auto instructions = sequence.instructions();
 
   std::vector<const HloInstruction*> result;
@@ -175,7 +181,7 @@ CombineInstructions::CombineInstructionsInComputation(
         TF_ASSIGN_OR_RETURN(auto ops,
                             Replace(comp, subregion.first, subregion.second,
                                     replacements.back()));
-
+        changed |= ops.size();
         replacements.insert(replacements.end(), ops.begin(), ops.end());
       }
 
@@ -203,8 +209,10 @@ CombineInstructions::CombineInstructionsInComputation(
         std::find_if(region_begin, instructions.end(), can_not_colocate);
   }
 
-  // Return the new schedule
-  return HloInstructionSequence(instructions);
+  // Returns a new sequence if any instructions were combined.
+  return changed ? absl::optional<HloInstructionSequence>(
+                       HloInstructionSequence(instructions))
+                 : absl::nullopt;
 }
 
 StatusOr<bool> CombineInstructions::Run(HloModule* module) {
@@ -212,7 +220,7 @@ StatusOr<bool> CombineInstructions::Run(HloModule* module) {
     return tensorflow::errors::FailedPrecondition(
         "CombineInstructions: module doesn't have a schedule");
   }
-
+  bool changed = false;
   const auto& schedule = module->schedule();
   const auto& sequences = schedule.sequences();
 
@@ -225,9 +233,14 @@ StatusOr<bool> CombineInstructions::Run(HloModule* module) {
   HloSchedule new_schedule(module);
   for (auto& pair : sequences) {
     auto comp = computations[pair.first];
-    TF_ASSIGN_OR_RETURN(auto sched,
+    TF_ASSIGN_OR_RETURN(auto new_seq,
                         CombineInstructionsInComputation(comp, pair.second));
-    new_schedule.set_sequence(comp, sched);
+    if (new_seq) {
+      new_schedule.set_sequence(comp, *new_seq);
+      changed = true;
+    } else {
+      new_schedule.set_sequence(comp, pair.second);
+    }
   }
 
   TF_RETURN_IF_ERROR(new_schedule.Verify());
@@ -235,7 +248,7 @@ StatusOr<bool> CombineInstructions::Run(HloModule* module) {
 
   VLOG(1) << "Combined all reduce schedule " << new_schedule.ToString();
 
-  return true;
+  return changed;
 }
 
 }  // namespace poplarplugin
