@@ -22,49 +22,37 @@
 
 # fkrull/deadsnakes is for Python3.6
 add-apt-repository -y ppa:fkrull/deadsnakes
-
 apt-get update
-apt-get upgrade
-
-# Install python dep
-apt-get install python-dev
-# Install bz2 dep
-apt-get install libbz2-dev
-# Install curses dep
-apt-get install libncurses5 libncurses5-dev
-apt-get install libncursesw5 libncursesw5-dev
-# Install readline dep
-apt-get install libreadline6 libreadline6-dev
-# Install sqlite3 dependencies
-apt-get install libsqlite3-dev
 
 set -e
-
 # Install Python 3.6 and dev library
-wget https://www.python.org/ftp/python/3.6.1/Python-3.6.1.tar.xz
-tar xvf Python-3.6.1.tar.xz
-cd Python-3.6.1
+apt-get install -y --no-install-recommends python3.6 libpython3.6-dev
 
-./configure
-make altinstall
-ln -s /usr/local/bin/pip3.6 /usr/local/bin/pip3
+# Install pip3.6
+set +e
+pip36_version=$(pip3.6 --version | grep "python 3.6")
+if [[ -z $pip36_version ]]; then
+  set -e
+  wget -q https://bootstrap.pypa.io/get-pip.py
+  python3.6 get-pip.py
+  rm -f get-pip.py
+fi
 
-pip3 install --upgrade pip
+set -e
+pip3.6 install --upgrade pip
 
 # Install last working version of setuptools. This must happen before we install
 # absl-py, which uses install_requires notation introduced in setuptools 20.5.
-pip3 install --upgrade setuptools==39.1.0
+pip3.6 install --upgrade setuptools==39.1.0
 
-pip3 install --upgrade virtualenv
-
-set -e
+pip3.6 install --upgrade virtualenv
 
 # Install six.
-pip3 install --upgrade absl-py
-pip3 install --upgrade six==1.10.0
+pip3.6 install --upgrade absl-py
+pip3.6 install --upgrade six==1.10.0
 
 # Install protobuf.
-pip3 install --upgrade protobuf==3.6.0
+pip3.6 install --upgrade protobuf==3.6.0
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
@@ -74,37 +62,36 @@ rm -rf /usr/lib/python3/dist-packages/six*
 # numpy needs to be installed from source to fix segfaults. See:
 # https://github.com/tensorflow/tensorflow/issues/6968
 # This workaround isn't needed for Ubuntu 16.04 or later.
-pip3 install --no-binary=:all: --upgrade numpy==1.14.5
+pip3.6 install --no-binary=:all: --upgrade numpy==1.14.5
 
-pip3 install scipy==0.18.1
+pip3.6 install scipy==0.18.1
 
-pip3 install scikit-learn==0.19.1
+pip3.6 install scikit-learn==0.19.1
 
 # pandas required by `inflow`
-pip3 install pandas==0.19.2
+pip3.6 install pandas==0.19.2
 
-pip3 install gnureadline
+pip3.6 install gnureadline
 
-pip3 install bz2file
+pip3.6 install bz2file
 
 # Install recent-enough version of wheel for Python 3.6 wheel builds
-pip3 install wheel==0.29.0
+pip3.6 install wheel==0.29.0
 
-pip3 install portpicker
+pip3.6 install portpicker
 
-pip3 install werkzeug
+pip3.6 install werkzeug
 
-pip3 install grpcio
+pip3.6 install grpcio
 
 # Eager-to-graph execution needs astor, gast and termcolor:
-pip3 install --upgrade astor
-pip3 install --upgrade gast
-pip3 install --upgrade termcolor
-
-pip3 install --upgrade h5py==2.8.0
+pip3.6 install --upgrade astor
+pip3.6 install --upgrade gast
+pip3.6 install --upgrade termcolor
 
 # Keras
-pip3 install keras_applications==1.0.6
-pip3 install keras_preprocessing==1.0.5
+pip3.6 install keras_applications==1.0.6
+pip3.6 install keras_preprocessing==1.0.5
+pip3.6 install --upgrade h5py==2.8.0
 
 # LINT.ThenChange(//tensorflow/tools/ci_build/install/install_python3.5_pip_packages.sh)
