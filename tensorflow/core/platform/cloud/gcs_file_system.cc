@@ -1688,4 +1688,5 @@ Status GcsFileSystem::CreateHttpRequest(std::unique_ptr<HttpRequest>* request) {
 
 }  // namespace tensorflow
 
-REGISTER_FILE_SYSTEM("gs", tensorflow::RetryingGcsFileSystem);
+// Initialize gcs_file_system
+REGISTER_FILE_SYSTEM("gs", ::tensorflow::RetryingGcsFileSystem);
