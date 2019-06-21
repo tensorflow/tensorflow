@@ -61,6 +61,8 @@ def SPV_ModuleOp : SPV_Op<"module", []> {
   let results = (outs);
 
   let regions = (region SizedRegion<1>:$body);
+
+  let builders = [OpBuilder<"Builder *, OperationState *state">];
 }
 
 def SPV_ModuleEndOp : SPV_Op<"_module_end", [Terminator]> {

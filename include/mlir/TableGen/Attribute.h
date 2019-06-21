@@ -152,6 +152,10 @@ public:
   // Returns the underlying type.
   StringRef getUnderlyingType() const;
 
+  // Returns the name of the utility function that converts a value of the
+  // underlying type to the corresponding symbol.
+  StringRef getUnderlyingToSymbolFnName() const;
+
   // Returns the name of the utility function that converts a string to the
   // corresponding symbol.
   StringRef getStringToSymbolFnName() const;

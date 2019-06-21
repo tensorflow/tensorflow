@@ -109,6 +109,7 @@ static void emitEnumDecl(const Record &enumDef, raw_ostream &os) {
   StringRef description = enumAttr.getDescription();
   StringRef strToSymFnName = enumAttr.getStringToSymbolFnName();
   StringRef symToStrFnName = enumAttr.getSymbolToStringFnName();
+  StringRef underlyingToSymFnName = enumAttr.getUnderlyingToSymbolFnName();
   StringRef maxEnumValFnName = enumAttr.getMaxEnumValFnName();
   auto enumerants = enumAttr.getAllCases();
 
@@ -122,6 +123,9 @@ static void emitEnumDecl(const Record &enumDef, raw_ostream &os) {
   emitEnumClass(enumDef, enumName, underlyingType, description, enumerants, os);
 
   // Emit coversion function declarations
+  os << formatv(
+      "llvm::Optional<{0}> {1}({2});\n", enumName, underlyingToSymFnName,
+      underlyingType.empty() ? std::string("unsigned") : underlyingType);
   os << formatv("llvm::StringRef {1}({0});\n", enumName, symToStrFnName);
   os << formatv("llvm::Optional<{0}> {1}(llvm::StringRef);\n", enumName,
                 strToSymFnName);
@@ -158,8 +162,10 @@ static void emitEnumDef(const Record &enumDef, raw_ostream &os) {
   EnumAttr enumAttr(enumDef);
   StringRef enumName = enumAttr.getEnumClassName();
   StringRef cppNamespace = enumAttr.getCppNamespace();
+  std::string underlyingType = enumAttr.getUnderlyingType();
   StringRef strToSymFnName = enumAttr.getStringToSymbolFnName();
   StringRef symToStrFnName = enumAttr.getSymbolToStringFnName();
+  StringRef underlyingToSymFnName = enumAttr.getUnderlyingToSymbolFnName();
   auto enumerants = enumAttr.getAllCases();
 
   llvm::SmallVector<StringRef, 2> namespaces;
@@ -178,6 +184,21 @@ static void emitEnumDef(const Record &enumDef, raw_ostream &os) {
   os << "  }\n";
   os << "  return \"\";\n";
   os << "}\n\n";
+
+  os << formatv("llvm::Optional<{0}> {1}({2} value) {{\n", enumName,
+                underlyingToSymFnName,
+                underlyingType.empty() ? std::string("unsigned")
+                                       : underlyingType)
+     << "  switch (value) {\n";
+  for (const auto &enumerant : enumerants) {
+    auto symbol = enumerant.getSymbol();
+    auto value = enumerant.getValue();
+    os << formatv("  case {0}: return {1}::{2};\n", value, enumName,
+                  makeIdentifier(symbol));
+  }
+  os << "  default: return llvm::None;\n"
+     << "  }\n"
+     << "}\n\n";
 
   os << formatv("llvm::Optional<{0}> {1}(llvm::StringRef str) {{\n", enumName,
                 strToSymFnName);

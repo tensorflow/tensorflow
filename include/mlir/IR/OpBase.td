@@ -673,6 +673,14 @@ class EnumAttr<string name, string description, list<EnumAttrCase> cases> :
   // TODO(b/134741431): use dialect to provide the namespace.
   string cppNamespace = "";
 
+  // The name of the utility function that converts a value of the underlying
+  // type to the corresponding symbol. It will have the following signature:
+  //
+  // ```c++
+  // llvm::Optional<<qualified-enum-class-name>> <fn-name>(<underlying-type>);
+  // ```
+  string underlyingToSymbolFnName = "symbolize" # name;
+
   // The name of the utility function that converts a string to the
   // corresponding symbol. It will have the following signature:
   //

@@ -4,6 +4,8 @@ set(LIBS
   MLIREDSC
   MLIRParser
   MLIRPass
+  MLIRSPIRV
+  MLIRSPIRVSerialization
   MLIRStandardOps
   MLIRTargetLLVMIR
   MLIRTargetNVVMIR

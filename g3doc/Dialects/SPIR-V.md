@@ -37,7 +37,8 @@ The SPIR-V dialect has the following conventions:
 
 A SPIR-V module is defined via the `spv.module` op, which has one region that
 contains one block. Model-level instructions, including function definitions,
-are all placed inside the block.
+are all placed inside the block. Functions are defined using the standard `func`
+op.
 
 Compared to the binary format, we adjust how certain module-level SPIR-V
 instructions are represented in the SPIR-V dialect. Notably,
@@ -89,7 +90,7 @@ For example,
 
 ### Image type
 
-This corresponds to SPIR-V [image_type][ImageType]. Its syntax is
+This corresponds to SPIR-V [image type][ImageType]. Its syntax is
 
 ``` {.ebnf}
 dim ::= `1D` | `2D` | `3D` | `Cube` | <and other SPIR-V Dim specifiers...>
@@ -151,8 +152,23 @@ For example,
 !spv.rtarray<vector<4 x f32>>
 ```
 
+## Serialization
+
+The serialization library provides two entry points, `mlir::spirv::serialize()`
+and `mlir::spirv::deserialize()`, for converting a MLIR SPIR-V module to binary
+format and back.
+
+The purpose of this library is to enable importing SPIR-V binary modules to run
+transformations on them and exporting SPIR-V modules to be consumed by execution
+environments. The focus is transformations, which inevitably means changes to
+the binary module; so it is not designed to be a general tool for investigating
+the SPIR-V binary module and does not guarantee roundtrip equivalence (at least
+for now). For the latter, please use the assembler/disassembler in the
+[SPIRV-Tools][SPIRV-Tools] project.
+
 [SPIR-V]: https://www.khronos.org/registry/spir-v/
 [ArrayType]: https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#OpTypeArray
 [PointerType]: https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#OpTypePointer
 [RuntimeArrayType]: https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#OpTypeRuntimeArray
 [ImageType]: https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#OpTypeImage
+[SPIRV-Tools]: https://github.com/KhronosGroup/SPIRV-Tools

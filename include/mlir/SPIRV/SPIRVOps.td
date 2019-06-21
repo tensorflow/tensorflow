@@ -61,6 +61,8 @@ def SPV_FMulOp : SPV_Op<"FMul", [NoSideEffect, SameOperandsAndResultType]> {
 
   // No additional verification needed in addition to the ODS-generated ones.
   let verifier = [{ return success(); }];
+
+  let opcode = 133;
 }
 
 def SPV_ReturnOp : SPV_Op<"Return", [Terminator]> {
@@ -78,6 +80,8 @@ def SPV_ReturnOp : SPV_Op<"Return", [Terminator]> {
   let printer = [{ printNoIOOp(getOperation(), p); }];
 
   let verifier = [{ return verifyReturn(*this); }];
+
+  let opcode = 253;
 }
 
 def SPV_VariableOp : SPV_Op<"Variable"> {
@@ -129,6 +133,8 @@ def SPV_VariableOp : SPV_Op<"Variable"> {
   let results = (outs
     SPV_AnyPtr:$pointer
   );
+
+  let opcode = 59;
 }
 
 #endif // SPIRV_OPS

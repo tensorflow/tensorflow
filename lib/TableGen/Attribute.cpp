@@ -170,6 +170,10 @@ StringRef tblgen::EnumAttr::getUnderlyingType() const {
   return def->getValueAsString("underlyingType");
 }
 
+StringRef tblgen::EnumAttr::getUnderlyingToSymbolFnName() const {
+  return def->getValueAsString("underlyingToSymbolFnName");
+}
+
 StringRef tblgen::EnumAttr::getStringToSymbolFnName() const {
   return def->getValueAsString("stringToSymbolFnName");
 }

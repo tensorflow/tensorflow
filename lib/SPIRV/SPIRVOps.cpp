@@ -139,6 +139,10 @@ static void ensureModuleEnd(Region *region, Builder builder, Location loc) {
   block.push_back(Operation::create(state));
 }
 
+void spirv::ModuleOp::build(Builder *builder, OperationState *state) {
+  ensureModuleEnd(state->addRegion(), *builder, state->location);
+}
+
 static ParseResult parseModuleOp(OpAsmParser *parser, OperationState *state) {
   Region *body = state->addRegion();
 
