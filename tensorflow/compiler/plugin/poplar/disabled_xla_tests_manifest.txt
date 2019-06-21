@@ -52,6 +52,7 @@ DequantizeTest.MinCombinedUint8R2TailingZero POPLAR
 DequantizeTest.MinCombinedUint8R2TailingZeroTransposeOutput POPLAR
 DequantizeTest.MinCombinedUint8LargeSizeTest POPLAR
 DequantizeTest.MinCombinedUint8LargeSizeTestTransposeOutput POPLAR
+ScalarBF16Test POPLAR
 
 UnaryOpTest.UnsignedAbsTestR1         POPLAR // U32
 UnaryOpTest.UnsignedSignTestR1        POPLAR

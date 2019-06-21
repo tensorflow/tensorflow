@@ -33,6 +33,7 @@ class SyncListScheduler {
   static StatusOr<HloInstructionSequence> Run(
       HloComputation* computation,
       const TuplePointsToAnalysis& points_to_analysis,
+      const HloAliasAnalysis& hlo_alias_analysis,
       const LogicalBuffer::SizeFunction& size_function,
       const absl::flat_hash_map<const HloComputation*, int64>&
           memory_by_computation,
@@ -397,11 +398,13 @@ class SyncListScheduler {
 StatusOr<HloInstructionSequence> SyncListMemoryScheduler(
     HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
+    const HloAliasAnalysis& hlo_alias_analysis,
     const LogicalBuffer::SizeFunction& size_function,
     const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation,
     int64 max_syncs) {
-  return SyncListScheduler::Run(computation, points_to_analysis, size_function,
+  return SyncListScheduler::Run(computation, points_to_analysis,
+                                hlo_alias_analysis, size_function,
                                 memory_by_computation, max_syncs);
 }
 }  // namespace
@@ -409,12 +412,13 @@ StatusOr<HloInstructionSequence> SyncListMemoryScheduler(
 MemorySchedulerAlgorithm CreateSyncListMemoryScheduler(int64 max_syncs) {
   return [=](HloComputation* computation,
              const TuplePointsToAnalysis& points_to_analysis,
+             const HloAliasAnalysis& hlo_alias_analysis,
              const LogicalBuffer::SizeFunction& size_function,
              const absl::flat_hash_map<const HloComputation*, int64>&
                  memory_by_computation) {
     return SyncListMemoryScheduler(computation, points_to_analysis,
-                                   size_function, memory_by_computation,
-                                   max_syncs);
+                                   hlo_alias_analysis, size_function,
+                                   memory_by_computation, max_syncs);
   };
 }
 

@@ -64,6 +64,7 @@ class LookAheadScheduler {
   static StatusOr<HloInstructionSequence> Run(
       HloComputation* computation,
       const TuplePointsToAnalysis& points_to_analysis,
+      const HloAliasAnalysis& hlo_alias_analysis,
       const LogicalBuffer::SizeFunction& size_function,
       const absl::flat_hash_map<const HloComputation*, int64>&
           memory_by_computation,
@@ -604,11 +605,13 @@ HloInstructionSequence LookAheadScheduler::CreateSchedule() {
 StatusOr<HloInstructionSequence> LookAheadScheduler(
     HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
+    const HloAliasAnalysis& hlo_alias_analysis,
     const LogicalBuffer::SizeFunction& size_function,
     const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation,
     const CompilerInformation& information) {
-  return LookAheadScheduler::Run(computation, points_to_analysis, size_function,
+  return LookAheadScheduler::Run(computation, points_to_analysis,
+                                 hlo_alias_analysis, size_function,
                                  memory_by_computation, information);
 }
 }  // namespace
@@ -618,10 +621,12 @@ MemorySchedulerAlgorithm CreateLookAheadMemoryScheduler(
     const CompilerInformation& information) {
   return [=](HloComputation* computation,
              const TuplePointsToAnalysis& points_to_analysis,
+             const HloAliasAnalysis& hlo_alias_analysis,
              const LogicalBuffer::SizeFunction& size_function,
              const absl::flat_hash_map<const HloComputation*, int64>&
                  memory_by_computation) {
-    return LookAheadScheduler(computation, points_to_analysis, size_function,
+    return LookAheadScheduler(computation, points_to_analysis,
+                              hlo_alias_analysis, size_function,
                               memory_by_computation, information);
   };
 }
