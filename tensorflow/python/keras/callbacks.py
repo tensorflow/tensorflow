@@ -788,15 +788,54 @@ class History(Callback):
 
 @keras_export('keras.callbacks.ModelCheckpoint')
 class ModelCheckpoint(Callback):
-  """Save the model after every epoch.
+  """Save the model checkpoints during and at the end of training.
+  
+  This callback allows to use the trained model without having to retrain it or 
+  pick up training where you left off in the event of, for example, an interrupted 
+  training process.
 
-  `filepath` can contain named formatting options,
-  which will be filled the value of `epoch` and
-  keys in `logs` (passed in `on_epoch_end`).
+  A path to save the model path - `filepath` - can contain named formatting options, 
+  which will be filled the value of `epoch` andkeys in `logs` (passed in `on_epoch_end`).
 
   For example: if `filepath` is `weights.{epoch:02d}-{val_loss:.2f}.hdf5`,
   then the model checkpoints will be saved with the epoch number and
   the validation loss in the filename.
+  
+  Example:
+  
+  ```python
+  import os
+  
+  # Checkpoint path, include the epoch in the file name using `str.format`
+  checkpoint_path = 'checkpoint_directory/cp-{epoch:04d}.ckpt'
+  checkpoint_dir = os.path.dirname(checkpoint_path)
+
+  # Create a checkpoint callback, save weights only after each epoch with `save_freq='epoch'
+  # Alternatively, instead of `save_freq` you can use `period={N_integer} to save after every N epoch)
+
+  cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path, 
+                                                   save_weights_only=True, 
+                                                   verbose=1,
+                                                   save_freq='epoch'
+                                                   )
+
+  model.fit(data, labels, 
+            epochs=10, validation_data=(val_data, val_labels),
+            callbacks=[cp_callback])
+            
+  # This creates a single collection of TensorFlow checkpoint files 
+  # that are updated at the end of each epoch
+  # Check the resulting checkpoints with `!ls {CHECKPOINT_DIRECTORY}
+
+  # Create a new untrained model
+  new_model = model
+
+  # Choose the weights from a chosen checkpoint, such as the latest with `tf.train.latest_checkpoint`
+  latest = tf.train.latest_checkpoint(checkpoint_dir)
+
+  # Load the weights from the latest checkpoint
+  new_model.load_weights(latest)
+  ```
 
   Arguments:
       filepath: string, path to save the model file.
