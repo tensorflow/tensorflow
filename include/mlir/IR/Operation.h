@@ -535,6 +535,8 @@ class OperandTypeIterator final
   static Type unwrap(Value *value) { return value->getType(); }
 
 public:
+  using reference = Type;
+
   /// Initializes the operand type iterator to the specified operand iterator.
   OperandTypeIterator(OperandIterator it)
       : llvm::mapped_iterator<OperandIterator, Type (*)(Value *)>(it, &unwrap) {
@@ -586,6 +588,8 @@ class ResultTypeIterator final
   static Type unwrap(Value *value) { return value->getType(); }
 
 public:
+  using reference = Type;
+
   /// Initializes the result type iterator to the specified result iterator.
   ResultTypeIterator(ResultIterator it)
       : llvm::mapped_iterator<ResultIterator, Type (*)(Value *)>(it, &unwrap) {}
