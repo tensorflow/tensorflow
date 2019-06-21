@@ -84,10 +84,8 @@ class IndexType : public Type::TypeBase<IndexType, Type> {
 public:
   using Base::Base;
 
-  /// Crete an IndexType instance, unique in the given context.
-  static IndexType get(MLIRContext *context) {
-    return Base::get(context, StandardTypes::Index);
-  }
+  /// Get an instance of the IndexType.
+  static IndexType get(MLIRContext *context);
 
   /// Support method to enable LLVM-style type casting.
   static bool kindof(unsigned kind) { return kind == StandardTypes::Index; }
@@ -148,10 +146,7 @@ class FloatType : public Type::TypeBase<FloatType, Type> {
 public:
   using Base::Base;
 
-  static FloatType get(StandardTypes::Kind kind, MLIRContext *context) {
-    assert(kindof(kind) && "Not a FP kind.");
-    return Base::get(context, kind);
-  }
+  static FloatType get(StandardTypes::Kind kind, MLIRContext *context);
 
   // Convenience factories.
   static FloatType getBF16(MLIRContext *ctx) {
@@ -499,10 +494,8 @@ class NoneType : public Type::TypeBase<NoneType, Type> {
 public:
   using Base::Base;
 
-  /// Get or create a NoneType instance.
-  static NoneType get(MLIRContext *context) {
-    return Base::get(context, StandardTypes::None);
-  }
+  /// Get an instance of the NoneType.
+  static NoneType get(MLIRContext *context);
 
   static bool kindof(unsigned kind) { return kind == StandardTypes::None; }
 };

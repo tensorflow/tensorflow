@@ -336,10 +336,20 @@ public:
   //===--------------------------------------------------------------------===//
   StorageUniquer typeUniquer;
 
+  /// Cached Type Instances.
+  FloatType bf16Ty, f16Ty, f32Ty, f64Ty;
+  IndexType indexTy;
+  IntegerType int1Ty, int8Ty, int16Ty, int32Ty, int64Ty, int128Ty;
+  NoneType noneType;
+
   //===--------------------------------------------------------------------===//
   // Attribute uniquing
   //===--------------------------------------------------------------------===//
   StorageUniquer attributeUniquer;
+
+  /// Cached Attribute Instances.
+  BoolAttr falseAttr, trueAttr;
+  UnitAttr unitAttr;
 
 public:
   MLIRContextImpl() : identifiers(identifierAllocator) {}
@@ -349,6 +359,44 @@ public:
 MLIRContext::MLIRContext() : impl(new MLIRContextImpl()) {
   new BuiltinDialect(this);
   registerAllDialects(this);
+
+  // Initialize several common attributes and types to avoid the need to lock
+  // the context when accessing them.
+
+  //// Types.
+  /// Floating-point Types.
+  impl->bf16Ty = TypeUniquer::get<FloatType>(this, StandardTypes::BF16);
+  impl->f16Ty = TypeUniquer::get<FloatType>(this, StandardTypes::F16);
+  impl->f32Ty = TypeUniquer::get<FloatType>(this, StandardTypes::F32);
+  impl->f64Ty = TypeUniquer::get<FloatType>(this, StandardTypes::F64);
+  /// Index Type.
+  impl->indexTy = TypeUniquer::get<IndexType>(this, StandardTypes::Index);
+  /// Integer Types.
+  impl->int1Ty = TypeUniquer::get<IntegerType>(this, StandardTypes::Integer, 1);
+  impl->int8Ty = TypeUniquer::get<IntegerType>(this, StandardTypes::Integer, 8);
+  impl->int16Ty =
+      TypeUniquer::get<IntegerType>(this, StandardTypes::Integer, 16);
+  impl->int32Ty =
+      TypeUniquer::get<IntegerType>(this, StandardTypes::Integer, 32);
+  impl->int64Ty =
+      TypeUniquer::get<IntegerType>(this, StandardTypes::Integer, 64);
+  impl->int128Ty =
+      TypeUniquer::get<IntegerType>(this, StandardTypes::Integer, 128);
+  /// None Type.
+  impl->noneType = TypeUniquer::get<NoneType>(this, StandardTypes::None);
+
+  //// Attributes.
+  //// Note: These must be registered after the types as they may generate one
+  //// of the above types internally.
+  /// Bool Attributes.
+  // Note: The context is also used within the BoolAttrStorage.
+  impl->falseAttr = AttributeUniquer::get<BoolAttr>(
+      this, StandardAttributes::Bool, this, false);
+  impl->trueAttr = AttributeUniquer::get<BoolAttr>(
+      this, StandardAttributes::Bool, this, true);
+  /// Unit Attribute.
+  impl->unitAttr =
+      AttributeUniquer::get<UnitAttr>(this, StandardAttributes::Unit);
 }
 
 MLIRContext::~MLIRContext() {}
@@ -661,6 +709,66 @@ Dialect &TypeUniquer::lookupDialectForType(MLIRContext *ctx,
   return lookupDialectForSymbol(ctx, typeID);
 }
 
+FloatType FloatType::get(StandardTypes::Kind kind, MLIRContext *context) {
+  assert(kindof(kind) && "Not a FP kind.");
+  switch (kind) {
+  case StandardTypes::BF16:
+    return context->getImpl().bf16Ty;
+  case StandardTypes::F16:
+    return context->getImpl().f16Ty;
+  case StandardTypes::F32:
+    return context->getImpl().f32Ty;
+  case StandardTypes::F64:
+    return context->getImpl().f64Ty;
+  default:
+    llvm_unreachable("unexpected floating-point kind");
+  }
+}
+
+/// Get an instance of the IndexType.
+IndexType IndexType::get(MLIRContext *context) {
+  return context->getImpl().indexTy;
+}
+
+/// Return an existing integer type instance if one is cached within the
+/// context.
+static IntegerType getCachedIntegerType(unsigned width, MLIRContext *context) {
+  switch (width) {
+  case 1:
+    return context->getImpl().int1Ty;
+  case 8:
+    return context->getImpl().int8Ty;
+  case 16:
+    return context->getImpl().int16Ty;
+  case 32:
+    return context->getImpl().int32Ty;
+  case 64:
+    return context->getImpl().int64Ty;
+  case 128:
+    return context->getImpl().int128Ty;
+  default:
+    return IntegerType();
+  }
+}
+
+IntegerType IntegerType::get(unsigned width, MLIRContext *context) {
+  if (auto cached = getCachedIntegerType(width, context))
+    return cached;
+  return Base::get(context, StandardTypes::Integer, width);
+}
+
+IntegerType IntegerType::getChecked(unsigned width, MLIRContext *context,
+                                    Location location) {
+  if (auto cached = getCachedIntegerType(width, context))
+    return cached;
+  return Base::getChecked(location, context, StandardTypes::Integer, width);
+}
+
+/// Get an instance of the NoneType.
+NoneType NoneType::get(MLIRContext *context) {
+  return context->getImpl().noneType;
+}
+
 //===----------------------------------------------------------------------===//
 // Attribute uniquing
 //===----------------------------------------------------------------------===//
@@ -681,6 +789,14 @@ AttributeUniquer::getInitFn(MLIRContext *ctx, const ClassID *const attrID) {
     if (!storage->getType())
       storage->setType(NoneType::get(ctx));
   };
+}
+
+BoolAttr BoolAttr::get(bool value, MLIRContext *context) {
+  return value ? context->getImpl().trueAttr : context->getImpl().falseAttr;
+}
+
+UnitAttr UnitAttr::get(MLIRContext *context) {
+  return context->getImpl().unitAttr;
 }
 
 //===----------------------------------------------------------------------===//

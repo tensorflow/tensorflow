@@ -81,11 +81,6 @@ ArrayRef<Attribute> ArrayAttr::getValue() const { return getImpl()->value; }
 // BoolAttr
 //===----------------------------------------------------------------------===//
 
-BoolAttr BoolAttr::get(bool value, MLIRContext *context) {
-  // Note: The context is also used within the BoolAttrStorage.
-  return Base::get(context, StandardAttributes::Bool, context, value);
-}
-
 bool BoolAttr::getValue() const { return getImpl()->value; }
 
 //===----------------------------------------------------------------------===//

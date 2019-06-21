@@ -46,15 +46,6 @@ LogicalResult IntegerType::verifyConstructionInvariants(
   return success();
 }
 
-IntegerType IntegerType::get(unsigned width, MLIRContext *context) {
-  return Base::get(context, StandardTypes::Integer, width);
-}
-
-IntegerType IntegerType::getChecked(unsigned width, MLIRContext *context,
-                                    Location location) {
-  return Base::getChecked(location, context, StandardTypes::Integer, width);
-}
-
 unsigned IntegerType::getWidth() const { return getImpl()->width; }
 
 //===----------------------------------------------------------------------===//

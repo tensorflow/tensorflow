@@ -418,9 +418,7 @@ class UnitAttr : public Attribute::AttrBase<UnitAttr> {
 public:
   using Base::Base;
 
-  static UnitAttr get(MLIRContext *context) {
-    return Base::get(context, StandardAttributes::Unit);
-  }
+  static UnitAttr get(MLIRContext *context);
 
   static bool kindof(unsigned kind) { return kind == StandardAttributes::Unit; }
 };
