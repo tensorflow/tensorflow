@@ -199,6 +199,11 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
   except AttributeError:
     pass
 
+  try:
+    doc_controls.do_not_generate_docs(tf.pywrap_tensorflow)
+  except AttributeError:
+    pass
+
   base_dir = path.dirname(tf.__file__)
 
   base_dirs = (
