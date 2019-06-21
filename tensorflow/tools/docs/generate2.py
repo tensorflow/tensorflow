@@ -51,22 +51,6 @@ parser.tf_inspect = tf_inspect
 # So patch `tf.__all__` to list everything.
 tf.__all__ = [item_name for item_name, value in tf_inspect.getmembers(tf)]
 
-tf.__doc__ = """
-## TensorFlow 2.0 Beta
-
-Caution:  This is a developer preview.  You will likely find some bugs,
-performance issues, and more, and we encourage you to tell us about them.
-We value your feedback!
-
-These docs were generated from the beta build of TensorFlow 2.0.
-
-You can install the exact version that was used to generate these docs
-with:
-
-```
-pip install tensorflow==2.0.0-beta1
-```
-"""
 
 FLAGS = flags.FLAGS
 
@@ -85,6 +69,75 @@ flags.DEFINE_bool("search_hints", True,
 flags.DEFINE_string("site_path", "",
                     "The prefix ({site-path}/api_docs/python/...) used in the "
                     "`_toc.yaml` and `_redirects.yaml` files")
+
+
+if tf.__version__.startswith('1'):
+  PRIVATE_MAP = {
+      'tf.contrib.autograph': ['utils', 'operators'],
+      'tf.test': ['mock'],
+      'tf.contrib.estimator': ['python'],
+  }
+
+  DO_NOT_DESCEND_MAP = {
+      'tf': ['cli', 'lib', 'wrappers'],
+      'tf.contrib': [
+          'compiler',
+          'grid_rnn',
+          # Block contrib.keras to de-clutter the docs
+          'keras',
+          'labeled_tensor',
+          'quantization',
+          'session_bundle',
+          'slim',
+          'solvers',
+          'specs',
+          'tensor_forest',
+          'tensorboard',
+          'testing',
+          'tfprof',
+      ],
+      'tf.contrib.bayesflow': [
+          'special_math', 'stochastic_gradient_estimators',
+          'stochastic_variables'
+      ],
+      'tf.contrib.ffmpeg': ['ffmpeg_ops'],
+      'tf.contrib.graph_editor': [
+          'edit', 'match', 'reroute', 'subgraph', 'transform', 'select', 'util'
+      ],
+      'tf.contrib.keras': ['api', 'python'],
+      'tf.contrib.layers': ['feature_column', 'summaries'],
+      'tf.contrib.learn': [
+          'datasets',
+          'head',
+          'graph_actions',
+          'io',
+          'models',
+          'monitors',
+          'ops',
+          'preprocessing',
+          'utils',
+      ],
+      'tf.contrib.util': ['loader'],
+  }
+else:
+  PRIVATE_MAP = {}
+  DO_NOT_DESCEND_MAP = {}
+  tf.__doc__ = """
+    ## TensorFlow 2.0 Beta
+
+    Caution:  This is a developer preview.  You will likely find some bugs,
+    performance issues, and more, and we encourage you to tell us about them.
+    We value your feedback!
+
+    These docs were generated from the beta build of TensorFlow 2.0.
+
+    You can install the exact version that was used to generate these docs
+    with:
+
+    ```
+    pip install tensorflow==2.0.0-beta1
+    ```
+    """
 
 
 # The doc generator isn't aware of tf_export.
@@ -126,7 +179,6 @@ def _hide_layer_and_module_methods():
     except AttributeError:
       pass
 
-
 def build_docs(output_dir, code_url_prefix, search_hints=True):
   """Build api docs for tensorflow v2.
 
@@ -139,6 +191,11 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
 
   try:
     doc_controls.do_not_generate_docs(tf.tools)
+  except AttributeError:
+    pass
+
+  try:
+    doc_controls.do_not_generate_docs(tf.compat.v1.pywrap_tensorflow)
   except AttributeError:
     pass
 
@@ -165,7 +222,9 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
       search_hints=search_hints,
       code_url_prefix=code_url_prefixes,
       site_path=FLAGS.site_path,
-      visitor_cls=TfExportAwareDocGeneratorVisitor)
+      visitor_cls=TfExportAwareDocGeneratorVisitor,
+      private_map=PRIVATE_MAP,
+      do_not_descend_map=DO_NOT_DESCEND_MAP)
 
   doc_generator.build(output_dir)
 
