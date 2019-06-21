@@ -26,8 +26,6 @@ namespace tflite {
 namespace optimized_ops {
 namespace depthwise_conv {
 
-#ifdef USE_NEON
-
 #define STR(s) STR_UNEXPANDED(s)
 #define STR_UNEXPANDED(s) #s
 
@@ -106,12 +104,6 @@ static_assert(offsetof(DepthwiseConvParams, output_width) ==
 static_assert(offsetof(DepthwiseConvParams, output_height) ==
                   OFFSET_OUTPUT_HEIGHT,
               "");
-#endif  // __aarch64__
-#endif  // ARM NEON
-
-#ifdef USE_NEON
-
-#if defined(__aarch64__) && !defined(GOOGLE_L4T)
 
 template <>
 struct DepthwiseConvWindowPerChannel<DepthwiseConvOutputRounding::kUpward, 8, 1,
@@ -3079,8 +3071,6 @@ inline void DepthwiseConv3x3FilterPerChannel(
   }
 }
 #endif  // __aarch64__
-
-#endif
 
 #undef STR
 #undef STR_UNEXPANDED
