@@ -1103,7 +1103,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
     self.assertEqual(42., self.evaluate(v))
 
   @test_util.run_in_graph_and_eager_modes
-  def test_load_model_with_compiled_with_loss_as_builtin_loss_class_instance(self):
+  def test_load_model_compiled_with_loss_as_builtin_loss_class_instance(self):
     with self.cached_session():
       inputs = keras.layers.Input(shape=(3,))
       x = keras.layers.Dense(2)(inputs)
