@@ -673,17 +673,13 @@ def _dummy_tensor_fn(value_structure):
 
   result = []
   # pylint: disable=protected-access
-  for feature_shape, feature_type in zip(value_structure._flat_shapes,
-                                         value_structure._flat_types):
+  for feature_shape, feature_type in zip(
+      structure.get_flat_tensor_shapes(value_structure),
+      structure.get_flat_tensor_types(value_structure)):
     result.append(create_dummy_tensor(feature_shape, feature_type))
 
-  if isinstance(value_structure, structure.NestedStructure):
-    result = nest.pack_sequence_as(value_structure._nested_structure, result)
-  else:
-    result = result[0]
+  return nest.pack_sequence_as(value_structure, result)
   # pylint: enable=protected-access
-
-  return result
 
 
 class _SingleWorkerDatasetIterator(object):

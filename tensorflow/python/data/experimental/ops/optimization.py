@@ -18,10 +18,10 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import structure as structure_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
+
 
 # TODO(jsimsa): Support RE matching for both individual transformation (e.g. to
 # account for indexing) and transformation sequence.
@@ -242,11 +242,11 @@ class _ChooseFastestBranchDataset(dataset_ops.UnaryDataset):
     Returns:
       A `Dataset` that has the same elements the inputs.
     """
-    nested_structure = structure_lib.NestedStructure(
-        dataset_ops.DatasetStructure(dataset_ops.get_structure(input_dataset)))
+    input_structure = dataset_ops.DatasetStructure(
+        dataset_ops.get_structure(input_dataset))
     self._funcs = [
         dataset_ops.StructuredFunctionWrapper(
-            f, "ChooseFastestV2", input_structure=nested_structure)
+            f, "ChooseFastestV2", input_structure=input_structure)
         for f in functions
     ]
     self._structure = self._funcs[0].output_structure._element_structure  # pylint: disable=protected-access

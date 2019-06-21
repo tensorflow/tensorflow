@@ -396,6 +396,5 @@ class LMDBDataset(dataset_ops.DatasetSource):
 
   @property
   def _element_structure(self):
-    return structure.NestedStructure(
-        (structure.TensorStructure(dtypes.string, []),
-         structure.TensorStructure(dtypes.string, [])))
+    return (structure.TensorStructure(dtypes.string, []),
+            structure.TensorStructure(dtypes.string, []))
