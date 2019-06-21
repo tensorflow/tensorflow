@@ -81,7 +81,7 @@ int floor_log2_quotient(int num, int denom) {
 
 void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
                   int kernel_cols, int lhs_scalar_size, int rhs_scalar_size,
-                  BlockMap* block_map) {
+                  int cache_friendly_traversal_threshold, BlockMap* block_map) {
   gemmlowp::ScopedProfilingLabel label("MakeBlockMap");
   RUY_DCHECK_GE(rows, kernel_rows);
   RUY_DCHECK_GE(cols, kernel_cols);
@@ -89,7 +89,7 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
   block_map->traversal_order = BlockMapTraversalOrder::kLinear;
   if (RUY_OPT_ENABLED(RUY_OPT_FRACTAL) &&
       (rows * lhs_scalar_size + cols * rhs_scalar_size) * depth >=
-          kCacheFriendlyLoopThreshold) {
+          cache_friendly_traversal_threshold) {
     block_map->traversal_order = RUY_OPT_ENABLED(RUY_OPT_FRACTAL_U)
                                      ? BlockMapTraversalOrder::kFractalU
                                      : BlockMapTraversalOrder::kFractalZ;

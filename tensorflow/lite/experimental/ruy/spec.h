@@ -20,6 +20,8 @@ limitations under the License.
 #include <limits>
 #include <type_traits>
 
+#include "tensorflow/lite/experimental/ruy/matrix.h"
+
 namespace ruy {
 
 // Our 'general' loop structure (the default) involves multi-threading and
@@ -96,6 +98,23 @@ struct BasicSpec {
   // See above enum ZeroPointSupport
   static constexpr ZeroPointSupport kZeroPointSupport =
       ZeroPointSupport::kGeneral;
+  // Testing-only, not meant to be used by actual users:
+  // Used for testing of various kernel layouts.
+  using StandardCppKernelLhsLayout = FixedKernelLayout<Order::kColMajor, 1, 1>;
+  using StandardCppKernelRhsLayout = FixedKernelLayout<Order::kColMajor, 1, 1>;
+  // The value and even the meaning of this value are empirically
+  // determined. Coarsely speaking, it's compared with the size of source
+  // LHS and RHS operands to determine whether they are big enough to be worth
+  // traversing in a more complicated "cache friendly" order. The current
+  // value is roughly the minimum size of a L1 cache on any CPU that we
+  // currently care about, e.g. ARM Cortex-A53. But we honestly don't even know
+  // the precise extent to which this should be related to L1 cache size.
+  //
+  // A lower value is not necessarily 'safer' from a cache-friendliness
+  // perspective: it means switching sooner (at smaller sizes) to more
+  // complicated traversal orders, which might be adversarial to the CPU's
+  // auto-prefetching or to the TLB.
+  static int cache_friendly_traversal_threshold() { return 32 * 1024; }
 };
 
 }  // namespace ruy

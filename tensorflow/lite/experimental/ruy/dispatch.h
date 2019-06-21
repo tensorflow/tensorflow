@@ -189,6 +189,9 @@ void PopulateTrMulParams(TrMulParams* params) {
       &RunPack<ThePath, RhsKernelLayout, RhsScalar, PackedRhsScalar>;
   params->run_kernel =
       &RunKernel<ThePath, PackedLhsScalar, PackedRhsScalar, DstScalar, Spec>;
+
+  params->cache_friendly_traversal_threshold =
+      Spec::cache_friendly_traversal_threshold();
   return;
 }
 
