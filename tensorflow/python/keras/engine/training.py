@@ -60,6 +60,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import serialization
 from tensorflow.python.util.tf_export import keras_export
@@ -381,7 +382,9 @@ class Model(network.Network):
     metrics = []
     if self._is_compiled:
       metrics += self._compile_metric_functions
-    return metrics + super(Model, self).metrics
+    metrics.extend(self._metrics)
+    metrics.extend(_get_metrics_from_layers(self._layers))
+    return metrics
 
   @property
   def metrics_names(self):
@@ -3113,3 +3116,27 @@ def _convert_scipy_sparse_tensor(value, expected_input):
       return sparse_tensor.SparseTensor(indices, data, shape)
   else:
     return value
+
+
+def _get_metrics_from_layers(layers):
+  """Returns list of metrics from the given layers.
+
+  This will not include the `compile` metrics of a model layer.
+
+  Arguments:
+    layers: List of layers.
+
+  Returns:
+    List of metrics.
+  """
+  metrics = []
+  layers = trackable_layer_utils.filter_empty_layer_containers(layers)
+  for layer in layers:
+    if isinstance(layer, Model):
+      # We cannot call 'metrics' on the model because we do not want to
+      # include the metrics that were added in compile API of a nested model.
+      metrics.extend(layer._metrics)  # pylint: disable=protected-access
+      metrics.extend(_get_metrics_from_layers(layer.layers))
+    else:
+      metrics.extend(layer.metrics)
+  return metrics
