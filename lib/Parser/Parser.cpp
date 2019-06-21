@@ -3252,7 +3252,8 @@ public:
   }
 
   /// Parse an optional arrow followed by a type list.
-  ParseResult parseOptionalArrowTypeList(SmallVectorImpl<Type> &result) {
+  ParseResult
+  parseOptionalArrowTypeList(SmallVectorImpl<Type> &result) override {
     if (!parser.consumeIf(Token::arrow))
       return success();
     return parser.parseFunctionResultTypes(result);
