@@ -909,13 +909,16 @@ StatusOr<poplar::program::Program> CreateReplicatedAllReduce(
     const xla::Shape& output, TensorMap& tensor_map) {
   poplar::program::Sequence seq;
 
-  // If we aren't part of a replicated graph, then it's just an identity op
+  // If we aren't part of a replicated graph, then just duplicate the tensor.
   if (res.replication_factor < 2) {
+    poplar::Graph& graph = GetGraph(res, inst);
     for (int i = 0; i < inst->operand_count(); ++i) {
       TF_ASSIGN_OR_RETURN(auto in,
                           FindInstructionInput(tensor_map, res, inst, i, seq));
-
-      TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, in));
+      auto out = DuplicateTensor(
+          in, seq, graph, StrCat(GetDebugName(inst), "/", i),
+          poplar::TensorCloneMethod::PRESERVE_ORDER_AND_ALIASES);
+      TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, out));
     }
   } else {
     // Collect all of the input tensors
