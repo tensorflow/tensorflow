@@ -67,8 +67,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
 
   string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
-    params.args.emplace_back(std::to_string(num_shards_));
-    params.args.emplace_back(std::to_string(index_));
+    params.set_args(num_shards_, index_);
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 

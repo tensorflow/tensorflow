@@ -34,18 +34,14 @@ TEST(NameUtilsTest, DatasetDebugString) {
   EXPECT_EQ(name_utils::DatasetDebugString(ConcatenateDatasetOp::kDatasetType),
             "ConcatenateDatasetOp::Dataset");
   name_utils::DatasetDebugStringParams range_params;
-  range_params.args.emplace_back(std::to_string(0));
-  range_params.args.emplace_back(std::to_string(10));
-  range_params.args.emplace_back(std::to_string(3));
+  range_params.set_args(0, 10, 3);
   EXPECT_EQ(name_utils::DatasetDebugString(RangeDatasetOp::kDatasetType,
                                            range_params),
             "RangeDatasetOp(0, 10, 3)::Dataset");
 
   name_utils::DatasetDebugStringParams shuffle_params;
   shuffle_params.dataset_prefix = "FixedSeed";
-  shuffle_params.args.emplace_back(std::to_string(10));
-  shuffle_params.args.emplace_back(std::to_string(1));
-  shuffle_params.args.emplace_back(std::to_string(2));
+  shuffle_params.set_args(10, 1, 2);
   EXPECT_EQ(name_utils::DatasetDebugString(ShuffleDatasetOp::kDatasetType,
                                            shuffle_params),
             "ShuffleDatasetOp(10, 1, 2)::FixedSeedDataset");

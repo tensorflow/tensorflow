@@ -32,6 +32,11 @@ struct OpNameParams {
 };
 
 struct DatasetDebugStringParams {
+  template <typename... T>
+  void set_args(T... input_args) {
+    args = {static_cast<const strings::AlphaNum&>(input_args).data()...};
+  }
+
   int op_version = 1;
   string dataset_prefix = "";
   std::vector<string> args;
@@ -69,9 +74,7 @@ string DatasetDebugString(const string& dataset_type);
 //
 // e.g.
 //  DatasetDebugStringParams range_params;
-//  range_params.args.emplace_back(std::to_string(0));
-//  range_params.args.emplace_back(std::to_string(10));
-//  range_params.args.emplace_back(std::to_string(3));
+//  range_params.set_args(0, 10, 3);
 //  DatasetDebugString(RangeDatasetOp::kDatasetType, range_params)
 //  -> "RangeDatasetOp(0, 10, 3)::Dataset");
 string DatasetDebugString(const string& dataset_type,

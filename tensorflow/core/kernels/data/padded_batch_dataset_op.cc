@@ -100,7 +100,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
   string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.op_version = op_version_;
-    params.args.emplace_back(std::to_string(batch_size_));
+    params.set_args(batch_size_);
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 

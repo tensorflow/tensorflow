@@ -402,9 +402,7 @@ class ShuffleDatasetOp::ReshufflingDataset : public ShuffleDatasetBase {
   string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.dataset_prefix = kReshufflingDatasetPrefix;
-    params.args.emplace_back(std::to_string(buffer_size_));
-    params.args.emplace_back(std::to_string(seed_));
-    params.args.emplace_back(std::to_string(seed2_));
+    params.set_args(buffer_size_, seed_, seed2_);
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
@@ -588,9 +586,7 @@ class ShuffleDatasetOp::FixedSeedDataset : public ShuffleDatasetBase {
   string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.dataset_prefix = kFixedSeedDatasetPrefix;
-    params.args.emplace_back(std::to_string(buffer_size_));
-    params.args.emplace_back(std::to_string(seed_));
-    params.args.emplace_back(std::to_string(seed2_));
+    params.set_args(buffer_size_, seed_, seed2_);
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
@@ -671,9 +667,7 @@ class ShuffleAndRepeatDatasetOp::Dataset : public ShuffleDatasetBase {
 
   string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
-    params.args.emplace_back(std::to_string(buffer_size_));
-    params.args.emplace_back(std::to_string(seed_));
-    params.args.emplace_back(std::to_string(seed2_));
+    params.set_args(buffer_size_, seed_, seed2_);
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 

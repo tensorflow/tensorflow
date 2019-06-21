@@ -61,9 +61,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
   string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
-    params.args.emplace_back(std::to_string(start_));
-    params.args.emplace_back(std::to_string(stop_));
-    params.args.emplace_back(std::to_string(step_));
+    params.set_args(start_, stop_, step_);
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
