@@ -188,5 +188,12 @@ def _rgb_to_hsv_grad(op, grad):
   green_smallest = cast((greens <= reds) & (greens < blues), dtypes.float32)
   blue_smallest = cast((blues <= reds) & (blues <= greens), dtypes.float32)
 
+  ##############################################################
+  #  Derivatives of R, G, B wrt Value slice
+  ##############################################################
+  dv_dr = red_biggest
+  dv_dg = green_biggest
+  dv_db = blue_biggest
+
 
   return None
