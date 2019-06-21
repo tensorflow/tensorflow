@@ -154,6 +154,20 @@ def _CropAndResizeGrad(op, grad):
 
   return [grad0, grad1, None, None]
 
+
+def _custom_reciprocal(x, my_eps=1e-10):
+  """
+  Performs reciprocal with an EPS added to the input. This is to avoid inversion errors 
+  or divide by zeros or NaNs.
+  Inputs:
+    x -> input tensor to be reciprocat-ed
+    my_eps -> custom machine precision epsilon
+  Returns:
+    x_reciprocal -> reciprocal of x added with my_eps
+  """
+  return reciprocal(x + my_eps)
+
+
 @ops.RegisterGradient("RGBToHSV")
 def _rgb_to_hsv_grad(op, grad):
   """The gradients for `zero_out`.
@@ -234,7 +248,7 @@ def _rgb_to_hsv_grad(op, grad):
   dh_dr_5 = 60 * (cast(blues > 0, dtypes.float32) * blue_biggest * green_smallest * _custom_reciprocal(blues - greens))
 
   dh_dr = dh_dr_1 + dh_dr_2 + dh_dr_3 + dh_dr_4 + dh_dr_5
-
+  
   # for green, dh_dg -> dh_dg_1 + dh_dg_2 + dh_dg_3 + dh_dg_4 + dh_dg_5
   # dh_dg_1 ->
   # if green was MAX, then derivative = 60 * -1 * (B-R)/square(MAX-MIN) == 60 * -1 * (blues - reds) * reciprocal(square(saturation)) * reciprocal(square(value))
@@ -276,6 +290,7 @@ def _rgb_to_hsv_grad(op, grad):
   dh_db_5 = 60 * (cast(greens > 0, dtypes.float32) * green_biggest * red_smallest * _custom_reciprocal(greens - reds))
 
   dh_db = dh_db_1 + dh_db_2 + dh_db_3 + dh_db_4 + dh_db_5
+
   # Gradients wrt to inputs
   dv_drgb = stack([grad[...,2] * dv_dr, grad[...,2] * dv_dg, grad[...,2] * dv_db], axis=-1)
   ds_drgb = stack([grad[...,1] * ds_dr, grad[...,1] * ds_dg, grad[...,1] * ds_db], axis=-1)
