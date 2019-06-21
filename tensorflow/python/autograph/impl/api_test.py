@@ -212,6 +212,16 @@ class ApiTest(test.TestCase):
     self.assertEqual((),
                      tuple(function_utils.fn_args(tc.test_method_whitelisted)))
 
+  def test_do_not_convert_callable_object(self):
+
+    class TestClass(object):
+
+      def __call__(self):
+        return 1
+
+    tc = TestClass()
+    self.assertEqual(1, api.do_not_convert(tc)())
+
   @test_util.run_deprecated_v1
   def test_convert_call_site_decorator(self):
 
@@ -729,6 +739,12 @@ class ApiTest(test.TestCase):
     self.assertEqual(
         ag_ctx.control_status_ctx().status, ag_ctx.Status.UNSPECIFIED)
 
+    @api.call_with_unspecified_conversion_status
+    def unspecified_fn():
+      self.assertEqual(
+          ag_ctx.control_status_ctx().status, ag_ctx.Status.UNSPECIFIED)
+    unspecified_fn()
+
   def test_to_graph_basic(self):
 
     def test_fn(x, s):
@@ -887,6 +903,23 @@ class ApiTest(test.TestCase):
     with self.assertRaisesRegex(TypeError, 'tf.Tensor.*bool'):
       # The code in `f` is only valid with AutoGraph.
       test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED))
+
+  def test_tf_convert_unspecified_not_converted_by_default(self):
+
+    def f():
+      self.assertEqual(
+          ag_ctx.control_status_ctx().status, ag_ctx.Status.UNSPECIFIED)
+      if tf.reduce_sum([1, 2]) > 0:
+        return -1
+      return 1
+
+    @def_function.function
+    def test_fn(ctx):
+      return api.tf_convert(f, ctx, convert_by_default=False)()
+
+    with self.assertRaisesRegex(TypeError, 'tf.Tensor.*bool'):
+      # The code in `f` is only valid with AutoGraph.
+      test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.UNSPECIFIED))
 
   def test_tf_convert_whitelisted_method(self):
 
