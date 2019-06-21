@@ -229,6 +229,9 @@ cc_library_with_android_deps(
 tf_cc_test(
     name = "client_client_session_test",
     srcs = ["client/client_session_test.cc"],
+    tags = [
+        "notsan",
+    ],
     deps = [
         ":cc_ops",
         ":client_session",

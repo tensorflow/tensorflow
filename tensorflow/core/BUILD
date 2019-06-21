@@ -4746,6 +4746,9 @@ tf_cc_test(
     size = "small",
     srcs = ["framework/run_handler_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = [
+        "notsan",
+    ],
     deps = [
         ":framework_internal",
         ":lib",
