@@ -162,7 +162,10 @@ class TPUStrategy(distribute_lib.Strategy):
   # This implementation runs a single step. It does not use infeed or outfeed.
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """See base class."""
-    fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx())
+    # tf.distribute supports Eager functions, so AutoGraph should not be applied
+    # when when the caller is also in Eager mode.
+    fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx(),
+                              convert_by_default=False)
     return self.extended.tpu_run(fn, args, kwargs)
 
 
