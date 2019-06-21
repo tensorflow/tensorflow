@@ -84,11 +84,12 @@ and by making references explicit with `function_ref`.
 
 # Getting started with MLIR
 
-The following instructions assume that you have `git`,
-[`ninja`](https://ninja-build.org/), and a working C++ toolchain. In the future,
-we aim to align on the same level of platform support as
+The following instructions for compiling and testing MLIR assume that you have
+`git`, [`ninja`](https://ninja-build.org/), and a working C++ toolchain. In the
+future, we aim to align on the same level of platform support as
 [LLVM](https://llvm.org/docs/GettingStarted.html#requirements). For now, MLIR
-has been tested on Linux and macOS, with recent versions of clang and with gcc 7.
+has been tested on Linux and macOS, with recent versions of clang and with
+gcc 7.
 
 ```sh
 git clone https://github.com/llvm/llvm-project.git
@@ -99,7 +100,7 @@ cmake -G Ninja ../llvm -DLLVM_BUILD_EXAMPLES=ON -DLLVM_ENABLE_CXX1Y=Y -DLLVM_TAR
 cmake --build . --target check-mlir
 ```
 
-To compile on Windows using Visual Studio 2017:
+To compile and test on Windows using Visual Studio 2017:
 
 ```bat
 REM In shell with Visual Studio environment set up, e.g., with command such as
