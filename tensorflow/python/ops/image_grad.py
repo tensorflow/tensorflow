@@ -276,6 +276,11 @@ def _rgb_to_hsv_grad(op, grad):
   dh_db_5 = 60 * (cast(greens > 0, dtypes.float32) * green_biggest * red_smallest * _custom_reciprocal(greens - reds))
 
   dh_db = dh_db_1 + dh_db_2 + dh_db_3 + dh_db_4 + dh_db_5
+  # Gradients wrt to inputs
+  dv_drgb = stack([grad[...,2] * dv_dr, grad[...,2] * dv_dg, grad[...,2] * dv_db], axis=-1)
+  ds_drgb = stack([grad[...,1] * ds_dr, grad[...,1] * ds_dg, grad[...,1] * ds_db], axis=-1)
+  dh_drgb = stack([grad[...,0] * dh_dr, grad[...,0] * dh_dg, grad[...,0] * dh_db], axis=-1)
 
+  gradient_input = add(add(dv_drgb, ds_drgb), dh_drgb)
 
-  return None
+  return gradient_input
