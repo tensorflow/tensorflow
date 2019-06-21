@@ -43,9 +43,6 @@ from tensorflow.python.util.tf_export import tf_export
 ops.NotDifferentiable('RandomCrop')
 # TODO(b/31222613): This op may be differentiable, and there may be
 # latent bugs here.
-ops.NotDifferentiable('RGBToHSV')
-# TODO(b/31222613): This op may be differentiable, and there may be
-# latent bugs here.
 ops.NotDifferentiable('HSVToRGB')
 ops.NotDifferentiable('DrawBoundingBoxes')
 ops.NotDifferentiable('SampleDistortedBoundingBox')
