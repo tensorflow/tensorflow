@@ -27,6 +27,13 @@ namespace xla {
 namespace {
 
 struct ErrorSpec {
+  ErrorSpec(float e) : ErrorSpec(e, e) {}
+
+  ErrorSpec(float a, float r) : ErrorSpec(a, r, false) {}
+
+  ErrorSpec(float a, float r, bool s)
+      : abs_err(a), rel_err(r), strict_signed_zeros(s) {}
+
   float abs_err;
   float rel_err;
 
@@ -193,11 +200,11 @@ string StringifyNum(bfloat16 x) {
                          BitCast<uint16>(x));
 }
 
-ErrorSpec DefaultF32SpecGenerator(float) { return ErrorSpec{0.0001, 0.0001}; }
+ErrorSpec DefaultF32SpecGenerator(float) { return ErrorSpec(0.0001, 0.0001); }
 
-ErrorSpec DefaultF16SpecGenerator(float) { return ErrorSpec{0.001, 0.001}; }
+ErrorSpec DefaultF16SpecGenerator(float) { return ErrorSpec(0.001, 0.001); }
 
-ErrorSpec DefaultBF16SpecGenerator(float) { return ErrorSpec{0.002, 0.02}; }
+ErrorSpec DefaultBF16SpecGenerator(float) { return ErrorSpec(0.002, 0.02); }
 
 std::function<ErrorSpec(float)> GetDefaultSpecGenerator(PrimitiveType ty) {
   switch (ty) {
