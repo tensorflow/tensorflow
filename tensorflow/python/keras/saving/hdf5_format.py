@@ -272,30 +272,30 @@ def preprocess_weights_for_loading(layer,
     Returns:
         A list of weights values (Numpy arrays).
     """
-    new_weights = []
-    # trainable weights
-    for sublayer in layer.layers:
-      num_weights = len(sublayer.trainable_weights)
-      if num_weights > 0:
-        new_weights.extend(preprocess_weights_for_loading(
-            layer=sublayer,
-            weights=weights[:num_weights],
-            original_keras_version=original_keras_version,
-            original_backend=original_backend))
-        weights = weights[num_weights:]
+    trainable_weights = weights[:len(layer.trainable_weights)]
+    non_trainable_weights = weights[len(layer.trainable_weights):]
 
-    # non-trainable weights
+    new_trainable_weights = []
+    new_non_trainable_weights = []
+
     for sublayer in layer.layers:
-      num_weights = len([l for l in sublayer.weights
-                         if l not in sublayer.trainable_weights])
-      if num_weights > 0:
-        new_weights.extend(preprocess_weights_for_loading(
+      num_trainable_weights = len(sublayer.trainable_weights)
+      num_non_trainable_weights = len(sublayer.non_trainable_weights)
+      if sublayer.weights:
+        preprocessed = preprocess_weights_for_loading(
             layer=sublayer,
-            weights=weights[:num_weights],
+            weights=(trainable_weights[:num_trainable_weights] +
+                     non_trainable_weights[:num_non_trainable_weights]),
             original_keras_version=original_keras_version,
-            original_backend=original_backend))
-        weights = weights[num_weights:]
-    return new_weights
+            original_backend=original_backend)
+        new_trainable_weights.extend(preprocessed[:num_trainable_weights])
+        new_non_trainable_weights.extend(preprocessed[num_trainable_weights:])
+
+        trainable_weights = trainable_weights[num_trainable_weights:]
+        non_trainable_weights = non_trainable_weights[
+            num_non_trainable_weights:]
+
+    return new_trainable_weights + new_non_trainable_weights
 
   # Convert layers nested in Bidirectional/Model/Sequential.
   # Both transformation should be ran for both Keras 1->2 conversion
