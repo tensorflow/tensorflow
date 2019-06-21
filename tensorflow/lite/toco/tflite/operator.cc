@@ -2370,7 +2370,7 @@ class FloorDiv : public SimpleOperator<FloorDivOperator> {
   }
 };
 
-// LINT.ThenChange(//tensorflow/lite/toco/tflite/op_version.cc")
+// LINT.ThenChange(//tensorflow/lite/toco/tflite/op_version.cc)
 
 namespace {
 // Build a vector containing all the known operators.
