@@ -216,6 +216,19 @@ public:
   virtual LogicalResult convertSignatureArg(unsigned inputNo, Type type,
                                             NamedAttributeList attrs,
                                             SignatureConversion &result);
+
+  /// This hook allows for materializing a conversion from a set of types into
+  /// one result type by generating a cast operation of some kind. The generated
+  /// operation should produce one result, of 'resultType', with the provided
+  /// 'inputs' as operands. This hook must be overridden when a type conversion
+  /// results in more than one type.
+  virtual Operation *materializeConversion(PatternRewriter &rewriter,
+                                           Type resultType,
+                                           ArrayRef<Value *> inputs,
+                                           Location loc) {
+    llvm_unreachable("expected 'materializeConversion' to be overridden when "
+                     "generating 1->N type conversions");
+  }
 };
 
 /// This class describes a specific conversion target.

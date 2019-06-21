@@ -227,4 +227,13 @@ def : Pat<(ILLegalOpD), (LegalOpA Test_LegalizerEnum_Failure)>;
 def : Pat<(ILLegalOpC), (ILLegalOpE), [], (addBenefit 10)>;
 def : Pat<(ILLegalOpE), (LegalOpA Test_LegalizerEnum_Success)>;
 
+//===----------------------------------------------------------------------===//
+// Test Type Legalization
+//===----------------------------------------------------------------------===//
+
+def TestReturnOp : TEST_Op<"return", [Terminator]>,
+  Arguments<(ins Variadic<AnyType>:$inputs)>;
+def TestCastOp : TEST_Op<"cast">,
+  Arguments<(ins Variadic<AnyType>:$inputs)>, Results<(outs AnyType:$res)>;
+
 #endif // TEST_OPS

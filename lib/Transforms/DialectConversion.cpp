@@ -51,6 +51,12 @@ struct ArgConverter {
       if (it == argMapping.end())
         continue;
       for (auto *op : it->second) {
+        // If the operation exists within the parent block, like with 1->N cast
+        // operations, we don't need to drop them. They will be automatically
+        // cleaned up with the region is destroyed.
+        if (op->getBlock())
+          continue;
+
         op->dropAllDefinedValueUses();
         op->destroy();
       }
@@ -77,7 +83,13 @@ struct ArgConverter {
         auto *op = argOps[i];
         auto *arg = block->addArgument(op->getResult(0)->getType());
         op->getResult(0)->replaceAllUsesWith(arg);
-        op->destroy();
+
+        // If this was a 1->N value mapping it exists within the parent block so
+        // erase it instead of destroying.
+        if (op->getBlock())
+          op->erase();
+        else
+          op->destroy();
       }
     }
     argMapping.clear();
@@ -97,8 +109,14 @@ struct ArgConverter {
         auto *op = argOps[i];
 
         // Handle the case of a 1->N value mapping.
-        if (op->getNumOperands() > 1)
-          llvm_unreachable("1->N argument mappings are currently not handled");
+        if (op->getNumOperands() > 1) {
+          // If all of the uses were removed, we can drop this op. Otherwise,
+          // keep the operation alive and let the user handle any remaining
+          // usages.
+          if (op->use_empty())
+            op->erase();
+          continue;
+        }
 
         // Handle the case where this argument had a direct mapping.
         if (op->getNumOperands() == 1) {
@@ -132,7 +150,8 @@ struct ArgConverter {
   }
 
   /// Converts the signature of the given entry block.
-  void convertSignature(Block *block,
+  void convertSignature(Block *block, PatternRewriter &rewriter,
+                        TypeConverter &converter,
                         TypeConverter::SignatureConversion &signatureConversion,
                         BlockAndValueMapping &mapping) {
     unsigned origArgCount = block->getNumArguments();
@@ -146,13 +165,15 @@ struct ArgConverter {
     // Remap each of the original arguments as determined by the signature
     // conversion.
     auto &newArgMapping = argMapping[block];
+    rewriter.setInsertionPointToStart(block);
     for (unsigned i = 0; i != origArgCount; ++i) {
       ArrayRef<Value *> remappedValues;
       if (auto inputMap = signatureConversion.getInputMapping(i))
         remappedValues = newArgRef.slice(inputMap->inputNo, inputMap->size);
 
       BlockArgument *arg = block->getArgument(i);
-      newArgMapping.push_back(convertArgument(arg, remappedValues, mapping));
+      newArgMapping.push_back(
+          convertArgument(arg, remappedValues, rewriter, converter, mapping));
     }
 
     // Erase all of the original arguments.
@@ -161,7 +182,8 @@ struct ArgConverter {
   }
 
   /// Converts the arguments of the given block.
-  LogicalResult convertArguments(Block *block, TypeConverter &converter,
+  LogicalResult convertArguments(Block *block, PatternRewriter &rewriter,
+                                 TypeConverter &converter,
                                  BlockAndValueMapping &mapping) {
     unsigned origArgCount = block->getNumArguments();
     if (origArgCount == 0)
@@ -178,10 +200,11 @@ struct ArgConverter {
 
     // Remap all of the original argument values.
     auto &newArgMapping = argMapping[block];
+    rewriter.setInsertionPointToStart(block);
     for (unsigned i = 0; i != origArgCount; ++i) {
       SmallVector<Value *, 1> newArgs(block->addArguments(newArgTypes[i]));
-      newArgMapping.push_back(
-          convertArgument(block->getArgument(i), newArgs, mapping));
+      newArgMapping.push_back(convertArgument(block->getArgument(i), newArgs,
+                                              rewriter, converter, mapping));
     }
 
     // Erase all of the original arguments.
@@ -195,6 +218,8 @@ struct ArgConverter {
   /// to perform the conversion.
   Operation *convertArgument(BlockArgument *origArg,
                              ArrayRef<Value *> newValues,
+                             PatternRewriter &rewriter,
+                             TypeConverter &converter,
                              BlockAndValueMapping &mapping) {
     // Handle the cases of 1->0 or 1->1 mappings.
     if (newValues.size() < 2) {
@@ -209,7 +234,15 @@ struct ArgConverter {
         mapping.map(cast->getResult(0), newValues[0]);
       return cast;
     }
-    llvm_unreachable("1->N argument mappings are currently not handled");
+
+    // Otherwise, this is a 1->N mapping. Call into the provided type converter
+    // to pack the new values.
+    auto *cast = converter.materializeConversion(rewriter, origArg->getType(),
+                                                 newValues, loc);
+    assert(cast->getNumResults() == 1 &&
+           cast->getNumOperands() == newValues.size());
+    origArg->replaceAllUsesWith(cast->getResult(0));
+    return cast;
   }
 
   /// A utility function used to create a conversion cast operation with the
@@ -874,10 +907,11 @@ FunctionConverter::convertRegion(DialectConversionRewriter &rewriter,
   // types.
   if (typeConverter) {
     for (Block &block :
-         llvm::drop_begin(region.getBlocks(), convertEntryTypes ? 0 : 1))
-      if (failed(rewriter.argConverter.convertArguments(&block, *typeConverter,
-                                                        rewriter.mapping)))
+         llvm::drop_begin(region.getBlocks(), convertEntryTypes ? 0 : 1)) {
+      if (failed(rewriter.argConverter.convertArguments(
+              &block, rewriter, *typeConverter, rewriter.mapping)))
         return failure();
+    }
   }
 
   // Store the number of blocks before conversion (new blocks may be added due
@@ -909,8 +943,9 @@ LogicalResult FunctionConverter::convertFunction(
 
   // Update the signature of the entry block.
   if (signatureConversion) {
-    rewriter.argConverter.convertSignature(
-        &f->getBody().front(), *signatureConversion, rewriter.mapping);
+    rewriter.argConverter.convertSignature(&f->getBody().front(), rewriter,
+                                           *typeConverter, *signatureConversion,
+                                           rewriter.mapping);
   }
 
   // Rewrite the function body.

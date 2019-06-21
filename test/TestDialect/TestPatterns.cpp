@@ -49,6 +49,7 @@ static mlir::PassRegistration<TestPatternDriver>
 //===----------------------------------------------------------------------===//
 // Legalization Driver.
 //===----------------------------------------------------------------------===//
+
 namespace {
 /// This pattern is a simple pattern that inlines the first region of a given
 /// operation into the parent region.
@@ -77,6 +78,29 @@ struct TestDropOp : public ConversionPattern {
     return matchSuccess();
   }
 };
+/// This pattern handles the case of a split return value.
+struct TestSplitReturnType : public ConversionPattern {
+  TestSplitReturnType(MLIRContext *ctx)
+      : ConversionPattern("test.return", 1, ctx) {}
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const final {
+    // Check for a return of F32.
+    if (op->getNumOperands() != 1 || !op->getOperand(0)->getType().isF32())
+      return matchFailure();
+
+    // Check if the first operation is a cast operation, if it is we use the
+    // results directly.
+    auto *defOp = operands[0]->getDefiningOp();
+    if (auto packerOp = llvm::dyn_cast_or_null<TestCastOp>(defOp)) {
+      SmallVector<Value *, 2> returnOperands(packerOp.getOperands());
+      rewriter.replaceOpWithNewOp<TestReturnOp>(op, returnOperands);
+      return matchSuccess();
+    }
+
+    // Otherwise, fail to match.
+    return matchFailure();
+  }
+};
 } // namespace
 
 namespace {
@@ -94,9 +118,34 @@ struct TestTypeConverter : public TypeConverter {
       return success();
     }
 
+    // Split F32 into F16,F16.
+    if (t.isF32()) {
+      results.assign(2, FloatType::getF16(t.getContext()));
+      return success();
+    }
+
     // Otherwise, convert the type directly.
     results.push_back(t);
     return success();
+  }
+
+  /// Override the hook to materialize a conversion. This is necessary because
+  /// we generate 1->N type mappings.
+  Operation *materializeConversion(PatternRewriter &rewriter, Type resultType,
+                                   ArrayRef<Value *> inputs, Location loc) {
+    return rewriter.create<TestCastOp>(loc, resultType, inputs);
+  }
+};
+
+struct TestConversionTarget : public ConversionTarget {
+  TestConversionTarget(MLIRContext &ctx) : ConversionTarget(ctx) {
+    addLegalOp<LegalOpA>();
+    addDynamicallyLegalOp<TestReturnOp>();
+  }
+  bool isDynamicallyLegal(Operation *op) const final {
+    // Don't allow F32 operands.
+    return llvm::none_of(op->getOperandTypes(),
+                         [](Type type) { return type.isF32(); });
   }
 };
 
@@ -105,12 +154,11 @@ struct TestLegalizePatternDriver
   void runOnModule() override {
     mlir::OwningRewritePatternList patterns;
     populateWithGenerated(&getContext(), &patterns);
-    RewriteListBuilder<TestRegionRewriteBlockMovement, TestDropOp>::build(
-        patterns, &getContext());
+    RewriteListBuilder<TestRegionRewriteBlockMovement, TestDropOp,
+                       TestSplitReturnType>::build(patterns, &getContext());
 
     TestTypeConverter converter;
-    ConversionTarget target(getContext());
-    target.addLegalOp<LegalOpA>();
+    TestConversionTarget target(getContext());
     if (failed(applyConversionPatterns(getModule(), target, converter,
                                        std::move(patterns))))
       signalPassFailure();

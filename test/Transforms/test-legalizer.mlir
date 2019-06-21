@@ -23,6 +23,19 @@ func @remap_input_1_to_1(%arg0: i64) -> i64 {
  return %arg0 : i64
 }
 
+// CHECK-LABEL: func @remap_input_1_to_N(%arg0: f16, %arg1: f16) -> (f16, f16)
+func @remap_input_1_to_N(%arg0: f32) -> f32 {
+ // CHECK-NEXT: "test.return"(%arg0, %arg1) : (f16, f16) -> ()
+ "test.return"(%arg0) : (f32) -> ()
+}
+
+// CHECK-LABEL: func @remap_input_1_to_N_remaining_use(%arg0: f16, %arg1: f16)
+func @remap_input_1_to_N_remaining_use(%arg0: f32) {
+  // CHECK-NEXT: [[CAST:%.*]] = "test.cast"(%arg0, %arg1) : (f16, f16) -> f32
+  // CHECK-NEXT: "work"([[CAST]]) : (f32) -> ()
+  "work"(%arg0) : (f32) -> ()
+}
+
 // CHECK-LABEL: func @remap_multi(%arg0: f64, %arg1: f64) -> (f64, f64)
 func @remap_multi(%arg0: i64, %unused: i16, %arg1: i64) -> (i64, i64) {
  // CHECK-NEXT: return %arg0, %arg1 : f64, f64
@@ -44,11 +57,12 @@ func @remap_nested() {
 // CHECK-LABEL: func @remap_moved_region_args
 func @remap_moved_region_args() {
   // CHECK-NEXT: return
-  // CHECK-NEXT: ^bb1(%{{.*}}: f64, %{{.*}}: f64):
-  // CHECK-NEXT: "work"{{.*}} : (f64, f64)
+  // CHECK-NEXT: ^bb1(%{{.*}}: f64, %{{.*}}: f64, %{{.*}}: f16, %{{.*}}: f16):
+  // CHECK-NEXT: "test.cast"{{.*}} : (f16, f16) -> f32
+  // CHECK-NEXT: "work"{{.*}} : (f64, f64, f32)
   "test.region"() ({
-    ^bb1(%i0: i64, %unused: i16, %i1: i64):
-      "work"(%i0, %i1) : (i64, i64) -> ()
+    ^bb1(%i0: i64, %unused: i16, %i1: i64, %2: f32):
+      "work"(%i0, %i1, %2) : (i64, i64, f32) -> ()
   }) : () -> ()
   return
 }
@@ -58,8 +72,8 @@ func @remap_drop_region() {
   // CHECK-NEXT: return
   // CHECK-NEXT: }
   "test.drop_op"() ({
-    ^bb1(%i0: i64, %unused: i16, %i1: i64):
-      "work"(%i0, %i1) : (i64, i64) -> ()
+    ^bb1(%i0: i64, %unused: i16, %i1: i64, %2: f32):
+      "work"(%i0, %i1, %2) : (i64, i64, f32) -> ()
   }) : () -> ()
   return
 }
