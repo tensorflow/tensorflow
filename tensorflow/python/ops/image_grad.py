@@ -194,6 +194,21 @@ def _rgb_to_hsv_grad(op, grad):
   dv_dr = red_biggest
   dv_dg = green_biggest
   dv_db = blue_biggest
+  ##############################################################
+  # Derivatives of R, G, B wrt Saturation slice
+  ##############################################################
+  # The first term in the addition is the case when the corresponding color from (r,g,b) was "MAX" 
+  # -> derivative = MIN/square(MAX), MIN could be one of the other two colors
+  # The second term is the case when the corresponding color from (r,g,b) was "MIN" 
+  # -> derivative = -1/MAX, MAX could be one of the other two colours.
+  # Defining a custom replacement for machine epsilon (eps) to avoid NaNs or divide by zeros
+  my_eps = 0.000000001
+  ds_dr = cast(reds > 0, dtypes.float32) * add(red_biggest * divide(add(green_smallest * greens, blue_smallest * blues), square(reds + my_eps)), 
+              red_smallest * -reciprocal(add(green_biggest * greens, blue_biggest * blues + my_eps))) 
+  ds_dg = cast(greens > 0, dtypes.float32) * add(green_biggest * divide(add(red_smallest * reds, blue_smallest * blues), square(greens + my_eps)), 
+              green_smallest * -reciprocal(add(red_biggest * reds, blue_biggest * blues + my_eps)))
+  ds_db = cast(blues > 0, dtypes.float32) * add(blue_biggest * divide(add(green_smallest * greens, red_smallest * reds), square(blues + my_eps)), 
+              blue_smallest * -reciprocal(add(green_biggest * greens, red_biggest * reds + my_eps)))
 
 
   return None
