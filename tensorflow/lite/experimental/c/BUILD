@@ -38,6 +38,15 @@ tflite_cc_shared_object(
     ],
 )
 
+# Create a local copy of the dependent c_api_internal.h header. This is required
+# for downstream library targets that assume a flat directory structure.
+genrule(
+    name = "c_api_types",
+    srcs = ["//tensorflow/lite/c:c_api_internal.h"],
+    outs = ["c_api_types.h"],
+    cmd = "cp -f $< $@",
+)
+
 cc_library(
     name = "c_api_internal",
     srcs = [
