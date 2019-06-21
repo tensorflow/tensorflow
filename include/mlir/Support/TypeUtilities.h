@@ -51,6 +51,8 @@ Type getElementTypeOrSelf(Value &val);
 class OperandElementTypeIterator final
     : public llvm::mapped_iterator<OperandIterator, Type (*)(Value *)> {
 public:
+  using reference = Type;
+
   /// Initializes the result element type iterator to the specified operand
   /// iterator.
   explicit OperandElementTypeIterator(OperandIterator it);
@@ -65,8 +67,9 @@ using OperandElementTypeRange =
 // An iterator for the tensor element types of an op's results of shaped types.
 class ResultElementTypeIterator final
     : public llvm::mapped_iterator<ResultIterator, Type (*)(Value *)> {
-
 public:
+  using reference = Type;
+
   /// Initializes the result element type iterator to the specified result
   /// iterator.
   explicit ResultElementTypeIterator(ResultIterator it);

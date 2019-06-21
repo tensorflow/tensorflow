@@ -578,6 +578,9 @@ public:
 
     /// Initializes the float element iterator to the specified iterator.
     FloatElementIterator(const llvm::fltSemantics &smt, IntElementIterator it);
+
+  public:
+    using reference = APFloat;
   };
 
   //===--------------------------------------------------------------------===//
