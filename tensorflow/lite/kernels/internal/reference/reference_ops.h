@@ -3371,8 +3371,14 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
                                const int num_axis_dimensions, bool keep_dims,
                                int* temp_index, int* resolved_axis, U* temp_sum,
                                bool compute_sum) {
-  gemmlowp::ScopedProfilingLabel label(compute_sum ? "Sum/Uint8"
-                                                   : "Mean/Uint8");
+  const bool uint8_case = std::is_same<T, int8_t>::value;
+  if (uint8_case) {
+    gemmlowp::ScopedProfilingLabel label(compute_sum ? "Sum/Uint8"
+                                                     : "Mean/Uint8");
+  } else {
+    gemmlowp::ScopedProfilingLabel label(compute_sum ? "Sum/Int8"
+                                                     : "Mean/Int8");
+  }
   // Reset output data.
   size_t num_outputs = 1;
   for (int idx = 0; idx < output_num_dims; ++idx) {
