@@ -553,6 +553,7 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   GraphOptimizer::Options graph_optimizer_options;
   graph_optimizer_options.cf_consider_fn = cf_consider_fn;
   graph_optimizer_options.inline_multi_device_functions = true;
+  graph_optimizer_options.inline_impl_selection_group_functions = true;
   optimizer.Optimize(flib_runtime_, flib_runtime_->env(),
                      /*device=*/nullptr, &graph, graph_optimizer_options);
 
