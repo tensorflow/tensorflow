@@ -106,8 +106,9 @@ class BuildEnvSetter(object):
         raise ValueError(
             "{} does not exist or is not executable.".format(gcc_path))
 
-      gcc_output = subprocess.check_output([gcc_path, "-dumpversion"],
-                                           stderr=subprocess.STDOUT)
+      gcc_output = subprocess.check_output(
+          [gcc_path, "-dumpfullversion", "-dumpversion"],
+          stderr=subprocess.STDOUT).strip()
       # handle python2 vs 3 (bytes vs str type)
       if isinstance(gcc_output, bytes):
         gcc_output = gcc_output.decode("utf-8")
