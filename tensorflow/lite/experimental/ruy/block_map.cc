@@ -95,17 +95,40 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
                                      : BlockMapTraversalOrder::kFractalZ;
   }
 
+  // See the comment on BlockMap in block_map.h.
+  // The destination matrix shape (rows x cols) is to be subdivided into a
+  // square (N x N) grid of blocks, whose shapes must be multiples of the
+  // kernel block shape (kernel_rows x kernel_cols).
+  // Inside each of these N*N blocks, we may have one further level of
+  // subdivision either along rows or along cols but not both, to handle
+  // better the highly rectangular cases. That is what we call
+  // 'rectangularness'.  This extra level of subdivision is into
+  // (1 << rows_rectangularness_log2) blocks along rows dimension, or into
+  // (1 << cols_rectangularness_log2) blocks along cols dimension.
   int rows_rectangularness_log2 = 0;
   int cols_rectangularness_log2 = 0;
-  if (rows >= cols) {
-    rows_rectangularness_log2 = floor_log2_quotient(rows, cols);
-    RUY_DCHECK_GE(rows >> rows_rectangularness_log2, cols);
-    RUY_DCHECK_EQ(cols_rectangularness_log2, 0);
-  }
-  if (cols >= rows) {
-    cols_rectangularness_log2 = floor_log2_quotient(cols, rows);
-    RUY_DCHECK_GE(cols >> cols_rectangularness_log2, rows);
-    RUY_DCHECK_EQ(rows_rectangularness_log2, 0);
+  // In order to compute these rectangularness values, we need to divide
+  // the destination matrix's aspect ratio,
+  //    rows / cols
+  // by the kernel block's aspect ratio,
+  //    kernel_block_rows / kernel_block_cols.
+  // The quotient of these two quotients simplifies to
+  //    (rows * kernel_cols) / (cols * kernel_rows)
+  // Whence the introduction of the following products:
+  const int rows_times_kernel_cols = rows * kernel_cols;
+  const int cols_times_kernel_rows = cols * kernel_rows;
+  if (rows_times_kernel_cols > cols_times_kernel_rows) {
+    rows_rectangularness_log2 =
+        floor_log2_quotient(rows_times_kernel_cols, cols_times_kernel_rows);
+    // Sanity check that we did not over-estimate rows_rectangularness_log2.
+    RUY_DCHECK_GE(rows_times_kernel_cols >> rows_rectangularness_log2,
+                  cols_times_kernel_rows);
+  } else if (cols_times_kernel_rows > rows_times_kernel_cols) {
+    cols_rectangularness_log2 =
+        floor_log2_quotient(cols_times_kernel_rows, rows_times_kernel_cols);
+    // Sanity check that we did not over-estimate cols_rectangularness_log2.
+    RUY_DCHECK_GE(cols_times_kernel_rows >> cols_rectangularness_log2,
+                  rows_times_kernel_cols);
   }
 
   RUY_DCHECK(!rows_rectangularness_log2 || !cols_rectangularness_log2);

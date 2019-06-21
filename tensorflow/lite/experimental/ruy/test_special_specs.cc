@@ -144,11 +144,19 @@ void TestStandardCppKernelLayout() {
   TestLinearAllOrders<TestSetType>(123, 234, 78);
 }
 
-TEST(TestSpecialSpecs, StandardCppKernelLayout) {
+TEST(TestSpecialSpecs, StandardCppKernelLayoutTrivial1x1) {
   TestStandardCppKernelLayout<FixedKernelLayout<Order::kColMajor, 1, 1>,
                               FixedKernelLayout<Order::kColMajor, 1, 1>>();
+}
+
+TEST(TestSpecialSpecs, StandardCppKernelLayoutSquare4x4) {
   TestStandardCppKernelLayout<FixedKernelLayout<Order::kRowMajor, 4, 4>,
                               FixedKernelLayout<Order::kRowMajor, 4, 4>>();
+}
+
+TEST(TestSpecialSpecs, StandardCppKernelLayoutRectangular4x8) {
+  TestStandardCppKernelLayout<FixedKernelLayout<Order::kColMajor, 1, 4>,
+                              FixedKernelLayout<Order::kColMajor, 1, 8>>();
 }
 
 }  // namespace ruy
