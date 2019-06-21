@@ -394,7 +394,7 @@ public:
     auto *firstBodyBlock =
         rewriter.splitBlock(conditionBlock, conditionBlock->begin());
     auto *lastBodyBlock = &forOp.getRegion().back();
-    rewriter.inlineRegionBefore(forOp.getRegion(), Region::iterator(endBlock));
+    rewriter.inlineRegionBefore(forOp.getRegion(), endBlock);
     auto *iv = conditionBlock->getArgument(0);
 
     // Append the induction variable stepping logic to the last body block and
@@ -518,8 +518,7 @@ public:
     auto *thenBlock = &ifOp.getThenBlocks().front();
     rewriter.setInsertionPointToEnd(&ifOp.getThenBlocks().back());
     rewriter.create<BranchOp>(loc, continueBlock);
-    rewriter.inlineRegionBefore(ifOp.getThenBlocks(),
-                                Region::iterator(continueBlock));
+    rewriter.inlineRegionBefore(ifOp.getThenBlocks(), continueBlock);
 
     // Move blocks from the "else" region (if present) to the region containing
     // 'affine.if', place it before the continuation block and branch to it.  It
@@ -529,8 +528,7 @@ public:
       elseBlock = &ifOp.getElseBlocks().front();
       rewriter.setInsertionPointToEnd(&ifOp.getElseBlocks().back());
       rewriter.create<BranchOp>(loc, continueBlock);
-      rewriter.inlineRegionBefore(ifOp.getElseBlocks(),
-                                  Region::iterator(continueBlock));
+      rewriter.inlineRegionBefore(ifOp.getElseBlocks(), continueBlock);
     }
 
     // Now we just have to handle the condition logic.

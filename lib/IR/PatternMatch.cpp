@@ -119,9 +119,12 @@ void PatternRewriter::replaceOpWithResultsOfAnotherOp(
 /// another region.  The two regions must be different.  The caller is in
 /// charge to update create the operation transferring the control flow to the
 /// region and pass it the correct block arguments.
-void PatternRewriter::inlineRegionBefore(Region &region,
+void PatternRewriter::inlineRegionBefore(Region &region, Region &parent,
                                          Region::iterator before) {
-  before->getParent()->getBlocks().splice(before, region.getBlocks());
+  parent.getBlocks().splice(before, region.getBlocks());
+}
+void PatternRewriter::inlineRegionBefore(Region &region, Block *before) {
+  inlineRegionBefore(region, *before->getParent(), before->getIterator());
 }
 
 /// This method is used as the final notification hook for patterns that end

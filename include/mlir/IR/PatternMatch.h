@@ -303,10 +303,12 @@ public:
   }
 
   /// Move the blocks that belong to "region" before the given position in
-  /// another region.  The two regions must be different.  The caller is in
-  /// charge to update create the operation transferring the control flow to the
-  /// region and pass it the correct block arguments.
-  virtual void inlineRegionBefore(Region &region, Region::iterator before);
+  /// another region "parent".  The two regions must be different.  The caller
+  /// is in charge to update create the operation transferring the control flow
+  /// to the region and pass it the correct block arguments.
+  virtual void inlineRegionBefore(Region &region, Region &parent,
+                                  Region::iterator before);
+  void inlineRegionBefore(Region &region, Block *before);
 
   /// This method performs the final replacement for a pattern, where the
   /// results of the operation are updated to use the specified list of SSA

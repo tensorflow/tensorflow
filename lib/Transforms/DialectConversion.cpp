@@ -418,7 +418,8 @@ struct DialectConversionRewriter final : public PatternRewriter {
   }
 
   /// PatternRewriter hook for moving blocks out of a region.
-  void inlineRegionBefore(Region &region, Region::iterator before) override {
+  void inlineRegionBefore(Region &region, Region &parent,
+                          Region::iterator before) override {
     for (auto &pair : llvm::enumerate(region)) {
       Block &block = pair.value();
       unsigned position = pair.index();
@@ -428,7 +429,7 @@ struct DialectConversionRewriter final : public PatternRewriter {
       action.originalPosition = {&region, position};
       blockActions.push_back(action);
     }
-    PatternRewriter::inlineRegionBefore(region, before);
+    PatternRewriter::inlineRegionBefore(region, parent, before);
   }
 
   /// PatternRewriter hook for creating a new operation.
