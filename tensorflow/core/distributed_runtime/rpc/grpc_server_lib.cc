@@ -24,12 +24,12 @@ limitations under the License.
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server_builder.h"
+
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
-#include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
 #include "tensorflow/core/distributed_runtime/local_master.h"
 #include "tensorflow/core/distributed_runtime/master.h"
@@ -49,7 +49,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -254,12 +253,6 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
         return WorkerCacheFactory(options, worker_cache);
       });
   worker_env_.compute_pool = ComputePool(sess_opts);
-  worker_env_.eager_client_cache_factory =
-      [this](const ServerDef& server_def,
-             std::unique_ptr<eager::EagerClientCache>* eager_client_cahce) {
-        WorkerCacheFactoryOptions options(server_def);
-        return EagerClientCacheFactory(options, eager_client_cahce);
-      };
 
   // Finish setting up master environment.
   master_env_.ops = OpRegistry::Global();
@@ -317,13 +310,25 @@ Status GrpcServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
 
 Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
                                       WorkerCacheInterface** worker_cache) {
-  std::shared_ptr<GrpcChannelCache> channel_cache;
-  TF_RETURN_IF_ERROR(FindOrCreateChannelCache(options, &channel_cache));
+  if (options.job_name == nullptr || options.job_name->empty()) {
+    Status s = errors::InvalidArgument(
+        "The master (current machine) is not included in the provided "
+        "cluster_def. ",
+        options.cluster_def->DebugString());
+    LOG(WARNING) << s;
+    return s;
+  }
+
+  GrpcChannelSpec channel_spec;
+  TF_RETURN_IF_ERROR(ParseChannelSpec(options, &channel_spec));
+
+  channel_cache_.reset(
+      NewGrpcChannelCache(channel_spec, GetChannelCreationFunction()));
 
   string name_prefix = strings::StrCat("/job:", *options.job_name, "/replica:0",
                                        "/task:", options.task_index);
 
-  const string host_port = channel_cache->TranslateTask(name_prefix);
+  const string host_port = channel_cache_->TranslateTask(name_prefix);
   int requested_port;
 
   auto colon_index = host_port.find_last_of(':');
@@ -338,47 +343,8 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
                                    " differs from expected port ", bound_port_);
   }
 
-  *worker_cache = NewGrpcWorkerCacheWithLocalWorker(channel_cache,
+  *worker_cache = NewGrpcWorkerCacheWithLocalWorker(channel_cache_,
                                                     worker_impl(), name_prefix);
-  return Status::OK();
-}
-
-Status GrpcServer::EagerClientCacheFactory(
-    const WorkerCacheFactoryOptions& options,
-    std::unique_ptr<eager::EagerClientCache>* eager_client_cache) {
-  std::shared_ptr<GrpcChannelCache> channel_cache;
-  TF_RETURN_IF_ERROR(FindOrCreateChannelCache(options, &channel_cache));
-
-  eager_client_cache->reset(eager::NewGrpcEagerClientCache(channel_cache));
-  return Status::OK();
-}
-
-Status GrpcServer::FindOrCreateChannelCache(
-    const WorkerCacheFactoryOptions& options,
-    std::shared_ptr<GrpcChannelCache>* cache) {
-  if (options.job_name == nullptr || options.job_name->empty()) {
-    Status s = errors::InvalidArgument(
-        "The master (current machine) is not included in the provided "
-        "cluster_def. ",
-        options.cluster_def->DebugString());
-    LOG(ERROR) << s;
-    return s;
-  }
-  string cluster = "";
-  if (options.cluster_def != nullptr) {
-    options.cluster_def->SerializeToString(&cluster);
-  }
-  Fprint128 cache_key = Fingerprint128(cluster);
-  mutex_lock l(channel_mu_);
-  *cache = gtl::FindPtrOrNull(channel_caches_, cache_key);
-  if (*cache == nullptr) {
-    GrpcChannelSpec channel_spec;
-    TF_RETURN_IF_ERROR(ParseChannelSpec(options, &channel_spec));
-
-    *cache = std::shared_ptr<GrpcChannelCache>(
-        NewGrpcChannelCache(channel_spec, GetChannelCreationFunction()));
-    channel_caches_.emplace(cache_key, *cache);
-  }
   return Status::OK();
 }
 

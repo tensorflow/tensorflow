@@ -29,7 +29,7 @@ void DestoryRemoteTensorHandle(EagerContext* ctx,
                                int output_num) {
   auto cleanup = gtl::MakeCleanup([ctx]() { ctx->Unref(); });
 
-  if (ctx->GetContextId() != context_id) {
+  if (!ctx->HasActiveRemoteContext(context_id)) {
     // This means that this tensor was pointing to a remote device, which
     // has been changed out from under us. Simply return since there is
     // nothing we can do.

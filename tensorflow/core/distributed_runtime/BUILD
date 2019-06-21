@@ -112,7 +112,6 @@ tf_cc_test(
     deps = [
         ":worker_session",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

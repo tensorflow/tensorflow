@@ -17,8 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_WORKER_ENV_H_
 
 #include <vector>
-
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -27,21 +25,12 @@ namespace thread {
 class ThreadPool;
 }  // namespace thread
 
-namespace eager {
-class EagerClientCache;
-}  // namespace eager
-
 class CollectiveExecutorMgrInterface;
 class Device;
 class DeviceMgr;
 class Env;
 class RendezvousMgrInterface;
 class SessionMgr;
-class ServerDef;
-
-typedef std::function<Status(const ServerDef&,
-                             std::unique_ptr<eager::EagerClientCache>*)>
-    EagerClientCacheFactory;
 
 // The worker environment class, which holds a bag of pointers to
 // per-worker singletons.
@@ -75,15 +64,6 @@ struct WorkerEnv {
 
   // A pool of threads for scheduling compute work.
   thread::ThreadPool* compute_pool = nullptr;
-
-  // A factory function to create eager client cache.
-  EagerClientCacheFactory eager_client_cache_factory =
-      [](const ServerDef& s, std::unique_ptr<eager::EagerClientCache>* c) {
-        return errors::Unimplemented(
-            "EagerClientCacheFactory unimplemented. "
-            "It is probably because you didn't use GRPC. Right now "
-            "EagerClient only supports GRPC.");
-      };
 };
 
 }  // end namespace tensorflow
