@@ -153,3 +153,40 @@ def _CropAndResizeGrad(op, grad):
       grad, op.inputs[0], op.inputs[1], op.inputs[2])
 
   return [grad0, grad1, None, None]
+
+@ops.RegisterGradient("RGBToHSV")
+def _rgb_to_hsv_grad(op, grad):
+  """The gradients for `zero_out`.
+
+  Args:
+    op: The `rgb_to_hsv` `Operation` that we are differentiating, which we can use
+      to find the inputs and outputs of the original op.
+    grad: Gradient with respect to the output of the `rgb_to_hsv` op.
+
+  Returns:
+    Gradients with respect to the input of `rgb_to_hsv`.
+  """
+  print("******** This is a test implementation ********** \n")
+    
+  # Input Channels
+  reds = op.inputs[0][..., 0]
+  greens = op.inputs[0][..., 1]
+  blues = op.inputs[0][..., 2]
+  # Output Channels
+  hue = op.outputs[0][..., 0]
+  saturation = op.outputs[0][..., 1]
+  value = op.outputs[0][..., 2]
+
+  # Mask/Indicator for max and min values of each pixel. Arbitrary assignment in case 
+  # of tie breakers with R>G>B.
+  # Max values
+  red_biggest = cast((reds >= blues) & (reds >= greens), dtypes.float32)
+  green_biggest = cast((greens > reds) & (greens >= blues), dtypes.float32)
+  blue_biggest = cast((blues > reds) & (blues > greens), dtypes.float32)
+  # Min values
+  red_smallest = cast((reds < blues) & (reds < greens), dtypes.float32)
+  green_smallest = cast((greens <= reds) & (greens < blues), dtypes.float32)
+  blue_smallest = cast((blues <= reds) & (blues <= greens), dtypes.float32)
+
+
+  return None
