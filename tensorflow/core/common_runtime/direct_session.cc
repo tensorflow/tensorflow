@@ -395,7 +395,7 @@ DirectSession::~DirectSession() {
 }
 
 Status DirectSession::MaybeInitializeExecutionState(
-    const GraphDef& graph, bool* out_already_initialized) {
+    GraphDef* graph, bool* out_already_initialized) {
   // If already initialized, do nothing.
   if (flib_def_ && execution_state_) {
     *out_already_initialized = true;
@@ -405,28 +405,23 @@ Status DirectSession::MaybeInitializeExecutionState(
   // NOTE(mrry): The function library created here will be used for
   // all subsequent extensions of the graph.
   flib_def_.reset(
-      new FunctionLibraryDefinition(OpRegistry::Global(), graph.library()));
+      new FunctionLibraryDefinition(OpRegistry::Global(), graph->library()));
   GraphExecutionStateOptions options;
   options.device_set = &device_set_;
   options.session_options = &options_;
   options.session_handle = session_handle_;
-  // TODO(mrry,suharshs): We explicitly copy `graph` so that
-  // `MakeForBaseGraph()` can take ownership of its
-  // contents. Previously this happened implicitly in calls to the
-  // `GraphExecutionState`. Other sessions call
-  // `MakeForBaseGraph` in such a way that we can destructively read
-  // the passed-in `GraphDef`. In principle we could do the same here,
-  // with a wider refactoring; we might revise the direct session so
-  // that it copies the graph fewer times.
-  GraphDef temp(graph);
   TF_RETURN_IF_ERROR(
-      GraphExecutionState::MakeForBaseGraph(&temp, options, &execution_state_));
+      GraphExecutionState::MakeForBaseGraph(graph, options, &execution_state_));
   graph_created_ = true;
   *out_already_initialized = false;
   return Status::OK();
 }
 
 Status DirectSession::Create(const GraphDef& graph) {
+  return Create(GraphDef(graph));
+}
+
+Status DirectSession::Create(GraphDef&& graph) {
   TF_RETURN_IF_ERROR(init_error_);
   if (graph.node_size() > 0) {
     mutex_lock l(graph_state_lock_);
@@ -434,26 +429,32 @@ Status DirectSession::Create(const GraphDef& graph) {
       return errors::AlreadyExists(
           "A Graph has already been created for this session.");
     }
-    return ExtendLocked(graph);
+    return ExtendLocked(std::move(graph));
   }
   return Status::OK();
 }
 
 Status DirectSession::Extend(const GraphDef& graph) {
-  TF_RETURN_IF_ERROR(CheckNotClosed());
-  mutex_lock l(graph_state_lock_);
-  return ExtendLocked(graph);
+  return Extend(GraphDef(graph));
 }
 
-Status DirectSession::ExtendLocked(const GraphDef& graph) {
+Status DirectSession::Extend(GraphDef&& graph) {
+  TF_RETURN_IF_ERROR(CheckNotClosed());
+  mutex_lock l(graph_state_lock_);
+  return ExtendLocked(std::move(graph));
+}
+
+Status DirectSession::ExtendLocked(GraphDef graph) {
   bool already_initialized;
   // If this is the first call, we can initialize the execution state
   // with `graph` and do not need to call `Extend()`.
   TF_RETURN_IF_ERROR(
-      MaybeInitializeExecutionState(graph, &already_initialized));
+      MaybeInitializeExecutionState(&graph, &already_initialized));
   if (already_initialized) {
     TF_RETURN_IF_ERROR(flib_def_->AddLibrary(graph.library()));
     std::unique_ptr<GraphExecutionState> state;
+    // TODO(mrry): Rewrite GraphExecutionState::Extend() to take `graph` by
+    // value and move `graph` in here.
     TF_RETURN_IF_ERROR(execution_state_->Extend(graph, &state));
     execution_state_.swap(state);
   }
