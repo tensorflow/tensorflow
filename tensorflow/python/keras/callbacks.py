@@ -1308,12 +1308,11 @@ class RemoteMonitor(Callback):
 @keras_export('keras.callbacks.LearningRateScheduler')
 class LearningRateScheduler(Callback):
   """Learning rate scheduler.
-
-  Arguments:
-      schedule: a function that takes an epoch index as input
-          (integer, indexed from 0) and returns a new
-          learning rate as output (float).
-      verbose: int. 0: quiet, 1: update messages.
+  
+  A callback for scheduling the learning rate to change after every epoch or batch.
+  A custom function, such as a learning rate decay function, can be defined and passed as the `schedule` parameter in this callback.
+  
+  Example:
 
   ```python
   # This function keeps the learning rate at 0.001 for the first ten epochs
@@ -1328,6 +1327,13 @@ class LearningRateScheduler(Callback):
   model.fit(data, labels, epochs=100, callbacks=[callback],
             validation_data=(val_data, val_labels))
   ```
+  
+  Arguments:
+      schedule: a function that takes an epoch index as input
+          (integer, indexed from 0) and returns a new
+          learning rate as output (float).
+      verbose: int. 0: quiet, 1: update messages.
+      
   """
 
   def __init__(self, schedule, verbose=0):
