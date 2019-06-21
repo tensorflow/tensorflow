@@ -40,15 +40,8 @@ void WaitUntil(const std::function<bool()>& condition,
   }
 
   // Finally, do real passive waiting.
-  //
-  // TODO(b/135624397): We really want wait_until(TimePoint::max()) but that
-  // runs into a libc++ bug at the moment, see b/135624397 and
-  // https://bugs.llvm.org/show_bug.cgi?id=21395#c5. We pick a duration large
-  // enough to appear infinite in practice and small enough to avoid such
-  // overflow bugs...
-  const Duration& timeout = DurationFromSeconds(1e6);
   std::unique_lock<std::mutex> lock(*mutex);
-  condvar->wait_for(lock, timeout, condition);
+  condvar->wait(lock, condition);
 }
 
 void WaitUntil(const std::function<bool()>& condition,
