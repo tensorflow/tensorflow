@@ -121,7 +121,7 @@ def pfor(loop_fn, iters, parallel_iterations=None):
 
 
   This is an experimental feature and currently has a lot of limitations:
-    - There should be no data depenendency between the different iterations. For
+    - There should be no data dependency between the different iterations. For
       example, a future iteration should not depend on a value or side-effect of
       a previous iteration.
     - Stateful kernels may mostly not be supported since these often imply a
