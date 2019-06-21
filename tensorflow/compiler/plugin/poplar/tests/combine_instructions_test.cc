@@ -233,17 +233,17 @@ add {
 
 %cluster_1  {
   %arg0 = f16[4] parameter(0)
-  %ga0 = f16[4] custom-call(arg0), custom_call_target="Poputil::StatefulGradientAccumulate", opaque="{\"num_mini_batches\":4}\n"
+  %ga0 = f16[4] custom-call(arg0), custom_call_target="Poputil::StatefulGradientAccumulate", backend_config="{\"num_mini_batches\":4}\n"
   %a0 = f16[4] all-reduce(ga0), to_apply=add
-  %norm0 = f16[4] custom-call(a0), custom_call_target="Poputil::ReplicationNormalise", opaque="{}\n"
+  %norm0 = f16[4] custom-call(a0), custom_call_target="Poputil::ReplicationNormalise", backend_config="{}\n"
   %arg1 = f16[4] parameter(1)
-  %ga1 = f16[4] custom-call(arg1), custom_call_target="Poputil::StatefulGradientAccumulate", opaque="{\"num_mini_batches\":4}\n"
+  %ga1 = f16[4] custom-call(arg1), custom_call_target="Poputil::StatefulGradientAccumulate", backend_config="{\"num_mini_batches\":4}\n"
   %a1 = f16[4] all-reduce(ga1), to_apply=add
-  %norm1 = f16[4] custom-call(a1), custom_call_target="Poputil::ReplicationNormalise", opaque="{}\n"
+  %norm1 = f16[4] custom-call(a1), custom_call_target="Poputil::ReplicationNormalise", backend_config="{}\n"
   %arg2 = f16[4] parameter(2)
-  %ga2 = f16[4] custom-call(arg2), custom_call_target="Poputil::StatefulGradientAccumulate", opaque="{\"num_mini_batches\":4}\n"
+  %ga2 = f16[4] custom-call(arg2), custom_call_target="Poputil::StatefulGradientAccumulate", backend_config="{\"num_mini_batches\":4}\n"
   %a2 = f16[4] all-reduce(ga2), to_apply=add
-  %norm2 = f16[4] custom-call(a2), custom_call_target="Poputil::ReplicationNormalise", opaque="{}\n"
+  %norm2 = f16[4] custom-call(a2), custom_call_target="Poputil::ReplicationNormalise", backend_config="{}\n"
   ROOT %tuple = (f16[4], f16[4], f16[4]) tuple(norm0, norm1, norm2)
 }
   )";
@@ -306,17 +306,17 @@ add {
 
 %cluster_1  {
   %arg0 = f16[4] parameter(0)
-  %ga0 = f16[4] custom-call(arg0), custom_call_target="Poputil::StatefulGradientAccumulate", opaque="{\"num_mini_batches\":4}\n"
+  %ga0 = f16[4] custom-call(arg0), custom_call_target="Poputil::StatefulGradientAccumulate", backend_config="{\"num_mini_batches\":4}\n"
   %a0 = f16[4] all-reduce(ga0), to_apply=add
-  %norm0 = f16[4] custom-call(a0), custom_call_target="Poputil::ReplicationNormalise", opaque="{}\n"
+  %norm0 = f16[4] custom-call(a0), custom_call_target="Poputil::ReplicationNormalise", backend_config="{}\n"
   %arg1 = f16[4] parameter(1)
-  %ga1 = f16[4] custom-call(arg1), custom_call_target="Poputil::StatefulGradientAccumulate", opaque="{\"num_mini_batches\":5}\n"
+  %ga1 = f16[4] custom-call(arg1), custom_call_target="Poputil::StatefulGradientAccumulate", backend_config="{\"num_mini_batches\":5}\n"
   %a1 = f16[4] all-reduce(ga1), to_apply=add
-  %norm1 = f16[4] custom-call(a1), custom_call_target="Poputil::ReplicationNormalise", opaque="{}\n"
+  %norm1 = f16[4] custom-call(a1), custom_call_target="Poputil::ReplicationNormalise", backend_config="{}\n"
   %arg2 = f16[4] parameter(2)
-  %ga2 = f16[4] custom-call(arg2), custom_call_target="Poputil::StatefulGradientAccumulate", opaque="{\"num_mini_batches\":6}\n"
+  %ga2 = f16[4] custom-call(arg2), custom_call_target="Poputil::StatefulGradientAccumulate", backend_config="{\"num_mini_batches\":6}\n"
   %a2 = f16[4] all-reduce(ga2), to_apply=add
-  %norm2 = f16[4] custom-call(a2), custom_call_target="Poputil::ReplicationNormalise", opaque="{}\n"
+  %norm2 = f16[4] custom-call(a2), custom_call_target="Poputil::ReplicationNormalise", backend_config="{}\n"
   ROOT %tuple = (f16[4], f16[4], f16[4]) tuple(norm0, norm1, norm2)
 }
   )";
@@ -363,17 +363,17 @@ add {
 
 %cluster_1  {
   %arg0 = f16[4] parameter(0)
-  %ga0 = f16[4] custom-call(arg0), custom_call_target="Poputil::StatefulGradientAccumulate", opaque="{\"num_mini_batches\":4}\n"
+  %ga0 = f16[4] custom-call(arg0), custom_call_target="Poputil::StatefulGradientAccumulate", backend_config="{\"num_mini_batches\":4}\n"
   %a0 = f16[4] all-reduce(ga0), to_apply=add
-  %norm0 = f16[4] custom-call(a0), custom_call_target="Poputil::ReplicationNormalise", opaque="{}\n"
+  %norm0 = f16[4] custom-call(a0), custom_call_target="Poputil::ReplicationNormalise", backend_config="{}\n"
   %arg1 = f16[4] parameter(1)
-  %ga1 = f16[4] custom-call(arg1), custom_call_target="Poputil::StatefulGradientAccumulate", opaque="{\"num_mini_batches\":4}\n"
+  %ga1 = f16[4] custom-call(arg1), custom_call_target="Poputil::StatefulGradientAccumulate", backend_config="{\"num_mini_batches\":4}\n"
   %a1 = f16[4] all-reduce(ga1), to_apply=add
-  %norm1 = f16[4] custom-call(a1), custom_call_target="Poputil::ReplicationNormalise", opaque="{}\n"
+  %norm1 = f16[4] custom-call(a1), custom_call_target="Poputil::ReplicationNormalise", backend_config="{}\n"
   %arg2 = f16[4] parameter(2)
-  %ga2 = f16[4] custom-call(arg2), custom_call_target="Poputil::StatefulGradientAccumulate", opaque="{\"num_mini_batches\":4}\n"
+  %ga2 = f16[4] custom-call(arg2), custom_call_target="Poputil::StatefulGradientAccumulate", backend_config="{\"num_mini_batches\":4}\n"
   %a2 = f16[4] all-reduce(ga2), to_apply=add
-  %norm2 = f16[4] custom-call(a2), custom_call_target="Poputil::ReplicationNormalise", opaque="{}\n"
+  %norm2 = f16[4] custom-call(a2), custom_call_target="Poputil::ReplicationNormalise", backend_config="{}\n"
   ROOT %tuple = (f16[4], f16[4], f16[4]) tuple(norm0, norm1, norm2)
 }
   )";
