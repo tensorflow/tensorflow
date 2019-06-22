@@ -600,6 +600,19 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "manip_ops_test",
+    size = "small",
+    srcs = ["manip_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:manip_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "matrix_band_part_test",
     size = "medium",
     timeout = "long",

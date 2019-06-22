@@ -79,6 +79,7 @@ tf_kernel_library(
         "retval_op.cc",
         "reverse_op.cc",
         "reverse_sequence_op.cc",
+        "roll_op.cc",
         "scan_ops.cc",
         "scatter_nd_op.cc",
         "segment_reduction_ops.cc",
