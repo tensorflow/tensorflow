@@ -67,6 +67,7 @@ target_link_libraries(linalg1-opt
   Linalg1
   Linalg1LLVMConversion
   Linalg1DialectConstruction
+  MLIRLLVMIR
   MLIRMlirOptLib
   ${LIBS}
   LLVMSupport)
