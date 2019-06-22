@@ -975,6 +975,7 @@ cc_test(
     name = "gather_test",
     size = "small",
     srcs = ["gather_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
