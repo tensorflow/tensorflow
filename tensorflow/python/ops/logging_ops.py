@@ -64,12 +64,12 @@ except NameError:
 # pylint: disable=invalid-name
 @deprecated("2018-08-20", "Use tf.print instead of tf.Print. Note that "
             "tf.print returns a no-output operator that directly "
-            "prints the output. Outside of defuns or eager mode, "
+            "prints the output. Outside of tf.function or eager mode, "
             "this operator will not be executed unless it is "
             "directly specified in session.run or used as a "
             "control dependency for other operators. This is "
-            "only a concern in graph mode. Below is an example "
-            "of how to ensure tf.print executes in graph mode:\n"
+            "only a concern in legacy v1 graph mode. Below is an "
+            "example of how to ensure tf.print executes in graph mode:\n"
             """```python
     sess = tf.compat.v1.Session()
     with sess.as_default():
@@ -127,7 +127,6 @@ def _is_filepath(output_stream):
   """Returns True if output_stream is a file path."""
   return isinstance(output_stream, str) and output_stream.startswith("file://")
 
-# todo: remove this when release tfv2
 # Temporarily disable pylint g-doc-args error to allow giving more context
 # about what the kwargs are.
 # Because we are using arbitrary-length positional arguments, python 2
@@ -254,10 +253,10 @@ def print_v2(*inputs, **kwargs):
   python objects. Printed tensors will recursively show the first and last
   `summarize` elements of each dimension.
 
-  With eager execution enabled and/or inside a `tf.contrib.eager.defun` this
+  With eager execution enabled and/or inside a `tf.funtion` this
   operator will automatically execute, and users only need to call `tf.print`
   without using the return value. When constructing graphs outside of a
-  `tf.contrib.eager.defun`, one must either include the returned op
+  `tf.funtion`, one must either include the returned op
   in the input to `session.run`, or use the operator as a control dependency for
   executed ops by specifying `with tf.control_dependencies([print_op])`.
 
