@@ -843,14 +843,6 @@ static SmallVector<AffineExpr, 4> concat(ArrayRef<AffineExpr> a,
   return res;
 }
 
-static SmallVector<Value *, 8> permuteIvs(ArrayRef<Value *> ivs,
-                                          AffineMap permutation,
-                                          OperationFolder &state) {
-  return applyMapToValues(ScopedContext::getBuilder(),
-                          ScopedContext::getLocation(), permutation, ivs,
-                          state);
-}
-
 static SmallVector<ValueHandle, 8>
 foldedAffineApplies(OpBuilder &b, Location loc, AffineMap map,
                     ArrayRef<Value *> vals, OperationFolder &folder) {
