@@ -107,7 +107,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     if (!rz_check_status.ok()) {
       result.mutable_failure()->set_kind(AutotuneResult::REDZONE_MODIFIED);
       *result.mutable_failure()->mutable_msg() =
-          rz_check_status.redzone_failure_msg;
+          rz_check_status.RedzoneFailureMsg();
       LOG(ERROR) << "Detected cuBLAS out-of-bounds write in gemm buffer";
       CHECK(!crash_on_checking_failure);
       continue;

@@ -58,13 +58,27 @@ class RedzoneAllocator : public ScratchAllocator {
   // Non-empty redzone check status implies that there was a write into a
   // redzone, with a string communicating the location of the write.
   struct RedzoneCheckStatus {
-    std::string redzone_failure_msg;
+    RedzoneCheckStatus() = default;
+
+    RedzoneCheckStatus(absl::string_view buffer_name, void* user_buffer_address,
+                       int64 offset, uint64 expected_value, uint64 actual_value)
+        : buffer_name(buffer_name),
+          user_buffer_address(user_buffer_address),
+          offset(offset),
+          expected_value(expected_value),
+          actual_value(actual_value) {}
 
     static RedzoneCheckStatus OK() { return {}; }
 
-    static RedzoneCheckStatus WithFailureMsg(std::string msg) { return {msg}; }
+    bool ok() { return user_buffer_address == nullptr; }
 
-    bool ok() { return redzone_failure_msg.empty(); }
+    std::string RedzoneFailureMsg() const;
+
+    string buffer_name = {};
+    void* user_buffer_address = nullptr;
+    int64 offset = 0;
+    uint64 expected_value = 0;
+    uint64 actual_value = 0;
   };
 
   // Determines whether redzones around all allocated buffers are unmodified.
