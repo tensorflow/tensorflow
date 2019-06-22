@@ -164,6 +164,9 @@ Diagnostic &Diagnostic::attachNote(llvm::Optional<Location> noteLoc) {
   return *notes.back();
 }
 
+/// Allow a diagnostic to be converted to 'failure'.
+Diagnostic::operator LogicalResult() const { return failure(); }
+
 //===----------------------------------------------------------------------===//
 // InFlightDiagnostic
 //===----------------------------------------------------------------------===//

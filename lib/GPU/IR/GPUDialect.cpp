@@ -138,12 +138,11 @@ LogicalResult LaunchOp::verify() {
     if (block.back().getNumSuccessors() != 0)
       continue;
     if (!isa<gpu::Return>(&block.back())) {
-      block.back()
-              .emitError("expected 'gpu.terminator' or a terminator with "
-                         "successors")
-              .attachNote(getLoc())
-          << "in '" << getOperationName() << "' body region";
-      return failure();
+      return block.back()
+                 .emitError("expected 'gpu.terminator' or a terminator with "
+                            "successors")
+                 .attachNote(getLoc())
+             << "in '" << getOperationName() << "' body region";
     }
   }
 

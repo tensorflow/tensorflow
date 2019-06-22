@@ -704,12 +704,11 @@ static LogicalResult checkHasAffineTerminator(OpState &op, Block &block) {
   if (block.empty() || isa<AffineTerminatorOp>(block.back()))
     return success();
 
-  op.emitOpError("expects regions to end with '" +
-                 AffineTerminatorOp::getOperationName() + "'")
-          .attachNote()
-      << "in custom textual format, the absence of terminator implies '"
-      << AffineTerminatorOp::getOperationName() << "'";
-  return failure();
+  return op.emitOpError("expects regions to end with '" +
+                        AffineTerminatorOp::getOperationName() + "'")
+             .attachNote()
+         << "in custom textual format, the absence of terminator implies '"
+         << AffineTerminatorOp::getOperationName() << "'";
 }
 
 // Insert `affine.terminator` at the end of the region's only block if it does

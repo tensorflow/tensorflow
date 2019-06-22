@@ -115,12 +115,11 @@ static LogicalResult checkHasTerminator(OpState &op, Block &block) {
   if (block.empty() || isa<TerminatorOp>(block.back()))
     return success();
 
-  op.emitOpError("expects regions to end with '" +
-                 TerminatorOp::getOperationName() + "'")
-          .attachNote()
-      << "in custom textual format, the absence of terminator implies '"
-      << TerminatorOp::getOperationName() << "'";
-  return failure();
+  return op.emitOpError("expects regions to end with '" +
+                        TerminatorOp::getOperationName() + "'")
+             .attachNote()
+         << "in custom textual format, the absence of terminator implies '"
+         << TerminatorOp::getOperationName() << "'";
 }
 
 // Insert `linalg.terminator` at the end of the ForOp only region's only block

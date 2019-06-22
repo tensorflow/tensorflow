@@ -2479,11 +2479,10 @@ ParseResult OperationParser::addDefinition(SSAUseInfo useInfo, Value *value) {
   // or a forward reference.
   if (auto *existing = entries[useInfo.number].first) {
     if (!isForwardRefPlaceholder(existing)) {
-      emitError(useInfo.loc)
+      return emitError(useInfo.loc)
           .append("redefinition of SSA value '", useInfo.name, "'")
           .attachNote(getEncodedSourceLocation(entries[useInfo.number].second))
           .append("previously defined here");
-      return failure();
     }
 
     // If it was a forward reference, update everything that used it to use

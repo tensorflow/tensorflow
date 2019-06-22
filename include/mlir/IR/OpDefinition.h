@@ -48,6 +48,7 @@ public:
 
   // Allow diagnostics emitted during parsing to be converted to failure.
   ParseResult(const InFlightDiagnostic &) : LogicalResult(failure()) {}
+  ParseResult(const Diagnostic &) : LogicalResult(failure()) {}
 
   /// Failure is true in a boolean context.
   explicit operator bool() const { return failed(*this); }

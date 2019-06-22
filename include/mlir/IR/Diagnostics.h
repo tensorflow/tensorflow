@@ -289,6 +289,9 @@ public:
     return {notes.begin(), notes.end()};
   }
 
+  /// Allow a diagnostic to be converted to 'failure'.
+  operator LogicalResult() const;
+
 private:
   Diagnostic(const Diagnostic &rhs) = delete;
   Diagnostic &operator=(const Diagnostic &rhs) = delete;
