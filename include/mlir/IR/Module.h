@@ -84,6 +84,50 @@ private:
   /// This is the actual list of functions the module contains.
   FunctionListType functions;
 };
+
+//===--------------------------------------------------------------------===//
+// Module Operation.
+//===--------------------------------------------------------------------===//
+
+/// ModuleOp represents a module, or an operation containing one region with a
+/// single block containing opaque operations. A ModuleOp contains a symbol
+/// table for operations, like FuncOp, held within its region. The region of a
+/// module is not allowed to implicitly capture global values, and all external
+/// references must use attributes.
+class ModuleOp : public Op<ModuleOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
+                           OpTrait::IsIsolatedFromAbove> {
+public:
+  using Op::Op;
+  static StringRef getOperationName() { return "module"; }
+
+  static void build(Builder *builder, OperationState *result);
+
+  /// Operation hooks.
+  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p);
+  LogicalResult verify();
+
+  /// Return body of this module.
+  Block *getBody();
+};
+
+/// The ModuleTerminatorOp is a special terminator operation for the body of a
+/// ModuleOp, it has no semantic meaning beyond keeping the body of a ModuleOp
+/// well-formed.
+///
+/// This operation does _not_ have a custom syntax. However, ModuleOp will omit
+/// the terminator in their custom syntax for brevity.
+class ModuleTerminatorOp
+    : public Op<ModuleTerminatorOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
+                OpTrait::IsTerminator> {
+public:
+  using Op::Op;
+  static StringRef getOperationName() { return "module_terminator"; }
+
+  static void build(Builder *, OperationState *) {}
+  LogicalResult verify();
+};
+
 } // end namespace mlir
 
 #endif // MLIR_IR_MODULE_H

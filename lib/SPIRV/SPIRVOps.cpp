@@ -126,17 +126,7 @@ static LogicalResult verify(spirv::ConstantOp constOp) {
 //===----------------------------------------------------------------------===//
 
 static void ensureModuleEnd(Region *region, Builder builder, Location loc) {
-  if (region->empty())
-    region->push_back(new Block);
-
-  Block &block = region->back();
-  if (!block.empty() && llvm::isa<spirv::ModuleEndOp>(block.back()))
-    return;
-
-  OperationState state(builder.getContext(), loc,
-                       spirv::ModuleEndOp::getOperationName());
-  spirv::ModuleEndOp::build(&builder, &state);
-  block.push_back(Operation::create(state));
+  impl::ensureRegionTerminator<spirv::ModuleEndOp>(*region, builder, loc);
 }
 
 void spirv::ModuleOp::build(Builder *builder, OperationState *state) {

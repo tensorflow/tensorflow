@@ -128,17 +128,7 @@ static LogicalResult checkHasTerminator(OpState &op, Block &block) {
 // inserted, the location is specified by `loc`. If the region is empty, insert
 // a new block first.
 static void ensureTerminator(Region &region, Builder &builder, Location loc) {
-  if (region.empty())
-    region.push_back(new Block);
-
-  Block &block = region.back();
-  if (!block.empty() && block.back().isKnownTerminator())
-    return;
-
-  OperationState terminatorState(builder.getContext(), loc,
-                                 TerminatorOp::getOperationName());
-  TerminatorOp::build(&builder, &terminatorState);
-  block.push_back(Operation::create(terminatorState));
+  impl::ensureRegionTerminator<TerminatorOp>(region, builder, loc);
 }
 
 void mlir::linalg::ForOp::build(Builder *builder, OperationState *result,

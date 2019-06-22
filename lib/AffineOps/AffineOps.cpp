@@ -717,17 +717,7 @@ static LogicalResult checkHasAffineTerminator(OpState &op, Block &block) {
 // first.
 static void ensureAffineTerminator(Region &region, Builder &builder,
                                    Location loc) {
-  if (region.empty())
-    region.push_back(new Block);
-
-  Block &block = region.back();
-  if (!block.empty() && block.back().isKnownTerminator())
-    return;
-
-  OperationState terminatorState(builder.getContext(), loc,
-                                 AffineTerminatorOp::getOperationName());
-  AffineTerminatorOp::build(&builder, &terminatorState);
-  block.push_back(Operation::create(terminatorState));
+  impl::ensureRegionTerminator<AffineTerminatorOp>(region, builder, loc);
 }
 
 void AffineForOp::build(Builder *builder, OperationState *result,

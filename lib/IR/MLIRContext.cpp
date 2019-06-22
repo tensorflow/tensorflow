@@ -27,10 +27,10 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
-#include "mlir/IR/Function.h"
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/Module.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/DenseSet.h"
@@ -90,9 +90,9 @@ struct BuiltinDialect : public Dialect {
              MemRefType, NoneType, OpaqueType, RankedTensorType, TupleType,
              UnrankedTensorType, VectorType>();
 
-    // TODO: FuncOp should be moved to a different dialect when it has been
-    // fully decoupled from the core.
-    addOperations<FuncOp>();
+    // TODO: These operations should be moved to a different dialect when they
+    // have been fully decoupled from the core.
+    addOperations<FuncOp, ModuleOp, ModuleTerminatorOp>();
   }
 };
 
