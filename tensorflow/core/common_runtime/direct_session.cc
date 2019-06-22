@@ -394,29 +394,6 @@ DirectSession::~DirectSession() {
   flib_def_.reset(nullptr);
 }
 
-Status DirectSession::MaybeInitializeExecutionState(
-    GraphDef* graph, bool* out_already_initialized) {
-  // If already initialized, do nothing.
-  if (flib_def_ && execution_state_) {
-    *out_already_initialized = true;
-    return Status::OK();
-  }
-  // Set up the per-session execution state.
-  // NOTE(mrry): The function library created here will be used for
-  // all subsequent extensions of the graph.
-  flib_def_.reset(
-      new FunctionLibraryDefinition(OpRegistry::Global(), graph->library()));
-  GraphExecutionStateOptions options;
-  options.device_set = &device_set_;
-  options.session_options = &options_;
-  options.session_handle = session_handle_;
-  TF_RETURN_IF_ERROR(
-      GraphExecutionState::MakeForBaseGraph(graph, options, &execution_state_));
-  graph_created_ = true;
-  *out_already_initialized = false;
-  return Status::OK();
-}
-
 Status DirectSession::Create(const GraphDef& graph) {
   return Create(GraphDef(graph));
 }
@@ -445,12 +422,21 @@ Status DirectSession::Extend(GraphDef&& graph) {
 }
 
 Status DirectSession::ExtendLocked(GraphDef graph) {
-  bool already_initialized;
-  // If this is the first call, we can initialize the execution state
-  // with `graph` and do not need to call `Extend()`.
-  TF_RETURN_IF_ERROR(
-      MaybeInitializeExecutionState(&graph, &already_initialized));
-  if (already_initialized) {
+  if (!(flib_def_ && execution_state_)) {
+    // If this is the first call, we can initialize the execution state
+    // with `graph` and do not need to call `Extend()`.
+    // NOTE(mrry): The function library created here will be used for
+    // all subsequent extensions of the graph.
+    flib_def_.reset(
+        new FunctionLibraryDefinition(OpRegistry::Global(), graph.library()));
+    GraphExecutionStateOptions options;
+    options.device_set = &device_set_;
+    options.session_options = &options_;
+    options.session_handle = session_handle_;
+    TF_RETURN_IF_ERROR(GraphExecutionState::MakeForBaseGraph(
+        std::move(graph), options, &execution_state_));
+    graph_created_ = true;
+  } else {
     TF_RETURN_IF_ERROR(flib_def_->AddLibrary(graph.library()));
     std::unique_ptr<GraphExecutionState> state;
     // TODO(mrry): Rewrite GraphExecutionState::Extend() to take `graph` by

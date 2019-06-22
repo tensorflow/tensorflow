@@ -222,14 +222,6 @@ class DirectSession : public Session {
     int64 collective_graph_key = BuildGraphOptions::kNoCollectiveGraphKey;
   };
 
-  // Initializes the base execution state given the 'graph',
-  // if not already initialized.
-  // On return, if *out_already_initialized, *graph is left in an undefined
-  // state.
-  Status MaybeInitializeExecutionState(GraphDef* graph,
-                                       bool* out_already_initialized)
-      EXCLUSIVE_LOCKS_REQUIRED(graph_state_lock_);
-
   // Retrieves an already existing set of executors to run 'inputs' and
   // 'outputs', or creates and caches them for future use.
   ::tensorflow::Status GetOrCreateExecutors(
