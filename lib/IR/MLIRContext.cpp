@@ -75,61 +75,6 @@ static ValueT safeGetOrCreate(DenseSet<ValueT, DenseInfoT> &container,
   return *existing.first = constructorFn();
 }
 
-/// A utility function to thread-safely get or create a uniqued instance within
-/// the given vector container.
-template <typename ValueT, typename ConstructorFn>
-ValueT safeGetOrCreate(std::vector<ValueT> &container, unsigned position,
-                       llvm::sys::SmartRWMutex<true> &mutex,
-                       ConstructorFn &&constructorFn) {
-  { // Check for an existing instance in read-only mode.
-    llvm::sys::SmartScopedReader<true> lock(mutex);
-    if (container.size() > position && container[position])
-      return container[position];
-  }
-
-  // Aquire a writer-lock so that we can safely create the new instance.
-  llvm::sys::SmartScopedWriter<true> lock(mutex);
-
-  // Check if we need to resize.
-  if (position >= container.size())
-    container.resize(position + 1, nullptr);
-
-  // Check for an existing instance again here, because another writer thread
-  // may have already created one.
-  auto *&result = container[position];
-  if (result)
-    return result;
-
-  return result = constructorFn();
-}
-
-/// A utility function to safely get or create a uniqued instance within the
-/// given map container.
-template <typename ContainerTy, typename KeyT, typename ConstructorFn>
-static typename ContainerTy::mapped_type
-safeGetOrCreate(ContainerTy &container, KeyT &&key,
-                llvm::sys::SmartRWMutex<true> &mutex,
-                ConstructorFn &&constructorFn) {
-  { // Check for an existing instance in read-only mode.
-    llvm::sys::SmartScopedReader<true> instanceLock(mutex);
-    auto it = container.find(key);
-    if (it != container.end())
-      return it->second;
-  }
-
-  // Aquire a writer-lock so that we can safely create the new instance.
-  llvm::sys::SmartScopedWriter<true> instanceLock(mutex);
-
-  // Check for an existing instance again here, because another writer thread
-  // may have already created one.
-  auto *&result = container[key];
-  if (result)
-    return result;
-
-  // Otherwise, construct a new instance of the value.
-  return result = constructorFn();
-}
-
 namespace {
 /// A builtin dialect to define types/etc that are necessary for the validity of
 /// the IR.
@@ -139,6 +84,8 @@ struct BuiltinDialect : public Dialect {
                   DictionaryAttr, FloatAttr, FunctionAttr, IntegerAttr,
                   IntegerSetAttr, OpaqueAttr, OpaqueElementsAttr,
                   SparseElementsAttr, StringAttr, TypeAttr, UnitAttr>();
+    addAttributes<CallSiteLoc, FileLineColLoc, FusedLoc, NameLoc, UnknownLoc>();
+
     addTypes<ComplexType, FloatType, FunctionType, IndexType, IntegerType,
              MemRefType, NoneType, OpaqueType, RankedTensorType, TupleType,
              UnrankedTensorType, VectorType>();
@@ -200,49 +147,6 @@ struct IntegerSetKeyInfo : DenseMapInfo<IntegerSet> {
                                   rhs.getConstraints(), rhs.getEqFlags());
   }
 };
-
-struct CallSiteLocationKeyInfo : DenseMapInfo<CallSiteLocationStorage *> {
-  // Call locations are uniqued based on their held concret location
-  // and the caller location.
-  using KeyTy = std::pair<Location, Location>;
-  using DenseMapInfo<CallSiteLocationStorage *>::isEqual;
-
-  static unsigned getHashValue(CallSiteLocationStorage *key) {
-    return getHashValue(KeyTy(key->callee, key->caller));
-  }
-
-  static unsigned getHashValue(KeyTy key) {
-    return hash_combine(key.first, key.second);
-  }
-
-  static bool isEqual(const KeyTy &lhs, const CallSiteLocationStorage *rhs) {
-    if (rhs == getEmptyKey() || rhs == getTombstoneKey())
-      return false;
-    return lhs == std::make_pair(rhs->callee, rhs->caller);
-  }
-};
-
-struct FusedLocKeyInfo : DenseMapInfo<FusedLocationStorage *> {
-  // Fused locations are uniqued based on their held locations and an optional
-  // metadata attribute.
-  using KeyTy = std::pair<ArrayRef<Location>, Attribute>;
-  using DenseMapInfo<FusedLocationStorage *>::isEqual;
-
-  static unsigned getHashValue(FusedLocationStorage *key) {
-    return getHashValue(KeyTy(key->getLocations(), key->metadata));
-  }
-
-  static unsigned getHashValue(KeyTy key) {
-    return hash_combine(hash_combine_range(key.first.begin(), key.first.end()),
-                        key.second);
-  }
-
-  static bool isEqual(const KeyTy &lhs, const FusedLocationStorage *rhs) {
-    if (rhs == getEmptyKey() || rhs == getTombstoneKey())
-      return false;
-    return lhs == std::make_pair(rhs->getLocations(), rhs->metadata);
-  }
-};
 } // end anonymous namespace.
 
 namespace mlir {
@@ -250,32 +154,6 @@ namespace mlir {
 /// This class is completely private to this file, so everything is public.
 class MLIRContextImpl {
 public:
-  //===--------------------------------------------------------------------===//
-  // Location uniquing
-  //===--------------------------------------------------------------------===//
-
-  // Location allocator and mutex for thread safety.
-  llvm::BumpPtrAllocator locationAllocator;
-  llvm::sys::SmartRWMutex<true> locationMutex;
-
-  /// The singleton for UnknownLoc.
-  UnknownLocationStorage theUnknownLoc;
-
-  /// FileLineColLoc uniquing.
-  DenseMap<std::tuple<const char *, unsigned, unsigned>,
-           FileLineColLocationStorage *>
-      fileLineColLocs;
-
-  /// NameLocation uniquing.
-  DenseMap<const char *, NameLocationStorage *> nameLocs;
-
-  /// CallLocation uniquing.
-  DenseSet<CallSiteLocationStorage *, CallSiteLocationKeyInfo> callLocs;
-
-  /// FusedLoc uniquing.
-  using FusedLocations = DenseSet<FusedLocationStorage *, FusedLocKeyInfo>;
-  FusedLocations fusedLocs;
-
   //===--------------------------------------------------------------------===//
   // Identifier uniquing
   //===--------------------------------------------------------------------===//
@@ -350,6 +228,7 @@ public:
   /// Cached Attribute Instances.
   BoolAttr falseAttr, trueAttr;
   UnitAttr unitAttr;
+  UnknownLoc unknownLocAttr;
 
 public:
   MLIRContextImpl() : identifiers(identifierAllocator) {}
@@ -397,6 +276,9 @@ MLIRContext::MLIRContext() : impl(new MLIRContextImpl()) {
   /// Unit Attribute.
   impl->unitAttr =
       AttributeUniquer::get<UnitAttr>(this, StandardAttributes::Unit);
+  /// Unknown Location Attribute.
+  impl->unknownLocAttr = AttributeUniquer::get<UnknownLoc>(
+      this, StandardAttributes::UnknownLocation);
 }
 
 MLIRContext::~MLIRContext() {}
@@ -598,95 +480,6 @@ Identifier Identifier::get(StringRef str, MLIRContext *context) {
 }
 
 //===----------------------------------------------------------------------===//
-// Location uniquing
-//===----------------------------------------------------------------------===//
-
-UnknownLoc UnknownLoc::get(MLIRContext *context) {
-  return &context->getImpl().theUnknownLoc;
-}
-
-FileLineColLoc FileLineColLoc::get(Identifier filename, unsigned line,
-                                   unsigned column, MLIRContext *context) {
-  auto &impl = context->getImpl();
-
-  // Safely get or create a location instance.
-  auto key = std::make_tuple(filename.data(), line, column);
-  return safeGetOrCreate(impl.fileLineColLocs, key, impl.locationMutex, [&] {
-    return new (impl.locationAllocator.Allocate<FileLineColLocationStorage>())
-        FileLineColLocationStorage(filename, line, column);
-  });
-}
-
-NameLoc NameLoc::get(Identifier name, Location child, MLIRContext *context) {
-  auto &impl = context->getImpl();
-  assert(!child.isa<NameLoc>() &&
-         "a NameLoc cannot be used as a child of another NameLoc");
-
-  // Safely get or create a location instance.
-  return safeGetOrCreate(impl.nameLocs, name.data(), impl.locationMutex, [&] {
-    return new (impl.locationAllocator.Allocate<NameLocationStorage>())
-        NameLocationStorage(name, child);
-  });
-}
-
-CallSiteLoc CallSiteLoc::get(Location callee, Location caller,
-                             MLIRContext *context) {
-  auto &impl = context->getImpl();
-
-  // Safely get or create a location instance.
-  auto key = std::make_pair(callee, caller);
-  return safeGetOrCreate(impl.callLocs, key, impl.locationMutex, [&] {
-    return new (impl.locationAllocator.Allocate<CallSiteLocationStorage>())
-        CallSiteLocationStorage(callee, caller);
-  });
-}
-
-Location FusedLoc::get(ArrayRef<Location> locs, Attribute metadata,
-                       MLIRContext *context) {
-  // Unique the set of locations to be fused.
-  llvm::SmallSetVector<Location, 4> decomposedLocs;
-  for (auto loc : locs) {
-    // If the location is a fused location we decompose it if it has no
-    // metadata or the metadata is the same as the top level metadata.
-    if (auto fusedLoc = loc.dyn_cast<FusedLoc>()) {
-      if (fusedLoc->getMetadata() == metadata) {
-        // UnknownLoc's have already been removed from FusedLocs so we can
-        // simply add all of the internal locations.
-        decomposedLocs.insert(fusedLoc->getLocations().begin(),
-                              fusedLoc->getLocations().end());
-        continue;
-      }
-    }
-    // Otherwise, only add known locations to the set.
-    if (!loc.isa<UnknownLoc>())
-      decomposedLocs.insert(loc);
-  }
-  locs = decomposedLocs.getArrayRef();
-
-  // Handle the simple cases of less than two locations.
-  if (locs.empty())
-    return UnknownLoc::get(context);
-  if (locs.size() == 1)
-    return locs.front();
-
-  auto &impl = context->getImpl();
-
-  // Safely get or create a location instance.
-  auto key = std::make_pair(locs, metadata);
-  return safeGetOrCreate(impl.fusedLocs, key, impl.locationMutex, [&] {
-    auto byteSize =
-        FusedLocationStorage::totalSizeToAlloc<Location>(locs.size());
-    auto rawMem = impl.locationAllocator.Allocate(
-        byteSize, alignof(FusedLocationStorage));
-    auto result = new (rawMem) FusedLocationStorage(locs.size(), metadata);
-
-    std::uninitialized_copy(locs.begin(), locs.end(),
-                            result->getTrailingObjects<Location>());
-    return result;
-  });
-}
-
-//===----------------------------------------------------------------------===//
 // Type uniquing
 //===----------------------------------------------------------------------===//
 
@@ -797,6 +590,10 @@ BoolAttr BoolAttr::get(bool value, MLIRContext *context) {
 
 UnitAttr UnitAttr::get(MLIRContext *context) {
   return context->getImpl().unitAttr;
+}
+
+UnknownLoc UnknownLoc::get(MLIRContext *context) {
+  return context->getImpl().unknownLocAttr;
 }
 
 //===----------------------------------------------------------------------===//

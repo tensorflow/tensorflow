@@ -933,3 +933,6 @@ func @scoped_names() {
   }) : () -> ()
   return
 }
+
+// CHECK-LABEL: func @loc_attr(i1 {foo.loc_attr: loc(callsite("foo" at "mysource.cc":10:8))})
+func @loc_attr(i1 {foo.loc_attr: loc(callsite("foo" at "mysource.cc":10:8))})

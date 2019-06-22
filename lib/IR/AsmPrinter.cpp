@@ -344,7 +344,7 @@ public:
 
   void printType(Type type);
   void print(Function *fn);
-  void printLocation(Location loc);
+  void printLocation(LocationAttr loc);
 
   void printAffineMap(AffineMap map);
   void printAffineExpr(AffineExpr expr);
@@ -359,7 +359,7 @@ protected:
                              ArrayRef<StringRef> elidedAttrs = {});
   void printAttributeOptionalType(Attribute attr, bool includeType);
   void printTrailingLocation(Location loc);
-  void printLocationInternal(Location loc, bool pretty = false);
+  void printLocationInternal(LocationAttr loc, bool pretty = false);
   void printDenseElementsAttr(DenseElementsAttr attr);
 
   /// This enum is used to represent the binding stength of the enclosing
@@ -383,22 +383,22 @@ void ModulePrinter::printTrailingLocation(Location loc) {
   printLocation(loc);
 }
 
-void ModulePrinter::printLocationInternal(Location loc, bool pretty) {
+void ModulePrinter::printLocationInternal(LocationAttr loc, bool pretty) {
   switch (loc.getKind()) {
-  case Location::Kind::UnknownLocation:
+  case StandardAttributes::UnknownLocation:
     if (pretty)
       os << "[unknown]";
     else
       os << "unknown";
     break;
-  case Location::Kind::FileLineColLocation: {
+  case StandardAttributes::FileLineColLocation: {
     auto fileLoc = loc.cast<FileLineColLoc>();
     auto mayQuote = pretty ? "" : "\"";
     os << mayQuote << fileLoc.getFilename() << mayQuote << ':'
        << fileLoc.getLine() << ':' << fileLoc.getColumn();
     break;
   }
-  case Location::Kind::NameLocation: {
+  case StandardAttributes::NameLocation: {
     auto nameLoc = loc.cast<NameLoc>();
     os << '\"' << nameLoc.getName() << '\"';
 
@@ -411,7 +411,7 @@ void ModulePrinter::printLocationInternal(Location loc, bool pretty) {
     }
     break;
   }
-  case Location::Kind::CallSiteLocation: {
+  case StandardAttributes::CallSiteLocation: {
     auto callLocation = loc.cast<CallSiteLoc>();
     auto caller = callLocation.getCaller();
     auto callee = callLocation.getCallee();
@@ -436,7 +436,7 @@ void ModulePrinter::printLocationInternal(Location loc, bool pretty) {
       os << ")";
     break;
   }
-  case Location::Kind::FusedLocation: {
+  case StandardAttributes::FusedLocation: {
     auto fusedLoc = loc.cast<FusedLoc>();
     if (!pretty)
       os << "fused";
@@ -495,7 +495,7 @@ static void printFloatValue(const APFloat &apValue, raw_ostream &os) {
   os << str;
 }
 
-void ModulePrinter::printLocation(Location loc) {
+void ModulePrinter::printLocation(LocationAttr loc) {
   if (printPrettyDebugInfo) {
     printLocationInternal(loc, /*pretty=*/true);
   } else {
@@ -712,6 +712,15 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
     os << '>';
     break;
   }
+
+  // Location attributes.
+  case StandardAttributes::CallSiteLocation:
+  case StandardAttributes::FileLineColLocation:
+  case StandardAttributes::FusedLocation:
+  case StandardAttributes::NameLocation:
+  case StandardAttributes::UnknownLocation:
+    printLocation(attr.cast<LocationAttr>());
+    break;
   }
 }
 
@@ -1727,10 +1736,3 @@ void Module::print(raw_ostream &os) {
 }
 
 void Module::dump() { print(llvm::errs()); }
-
-void Location::print(raw_ostream &os) const {
-  ModuleState state(nullptr);
-  ModulePrinter(os, state).printLocation(*this);
-}
-
-void Location::dump() const { print(llvm::errs()); }

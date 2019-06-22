@@ -24,6 +24,7 @@
 
 namespace mlir {
 class FloatType;
+class Identifier;
 class IndexType;
 class IntegerType;
 class MLIRContext;

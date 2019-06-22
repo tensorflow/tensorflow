@@ -280,6 +280,32 @@ LogicalResult UnrankedTensorType::verifyConstructionInvariants(
 // MemRefType
 //===----------------------------------------------------------------------===//
 
+/// Get or create a new MemRefType based on shape, element type, affine
+/// map composition, and memory space.  Assumes the arguments define a
+/// well-formed MemRef type.  Use getChecked to gracefully handle MemRefType
+/// construction failures.
+MemRefType MemRefType::get(ArrayRef<int64_t> shape, Type elementType,
+                           ArrayRef<AffineMap> affineMapComposition,
+                           unsigned memorySpace) {
+  auto result = getImpl(shape, elementType, affineMapComposition, memorySpace,
+                        /*location=*/llvm::None);
+  assert(result && "Failed to construct instance of MemRefType.");
+  return result;
+}
+
+/// Get or create a new MemRefType based on shape, element type, affine
+/// map composition, and memory space declared at the given location.
+/// If the location is unknown, the last argument should be an instance of
+/// UnknownLoc.  If the MemRefType defined by the arguments would be
+/// ill-formed, emits errors (to the handler registered with the context or to
+/// the error stream) and returns nullptr.
+MemRefType MemRefType::getChecked(ArrayRef<int64_t> shape, Type elementType,
+                                  ArrayRef<AffineMap> affineMapComposition,
+                                  unsigned memorySpace, Location location) {
+  return getImpl(shape, elementType, affineMapComposition, memorySpace,
+                 location);
+}
+
 /// Get or create a new MemRefType defined by the arguments.  If the resulting
 /// type would be ill-formed, return nullptr.  If the location is provided,
 /// emit detailed error messages.  To emit errors when the location is unknown,

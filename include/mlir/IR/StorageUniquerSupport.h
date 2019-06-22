@@ -22,12 +22,14 @@
 #ifndef MLIR_IR_STORAGEUNIQUERSUPPORT_H
 #define MLIR_IR_STORAGEUNIQUERSUPPORT_H
 
-#include "mlir/IR/Location.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/STLExtras.h"
 #include "mlir/Support/StorageUniquer.h"
 
 namespace mlir {
+class Location;
+class MLIRContext;
+
 namespace detail {
 /// Utility class for implementing users of storage classes uniqued by a
 /// StorageUniquer. Clients are not expected to interact with this class
@@ -69,8 +71,8 @@ protected:
   /// the given, potentially unknown, location. If the arguments provided are
   /// invalid then emit errors and return a null object.
   template <typename... Args>
-  static ConcreteT getChecked(Location loc, MLIRContext *ctx, unsigned kind,
-                              Args... args) {
+  static ConcreteT getChecked(const Location &loc, MLIRContext *ctx,
+                              unsigned kind, Args... args) {
     // If the construction invariants fail then we return a null attribute.
     if (failed(ConcreteT::verifyConstructionInvariants(loc, ctx, args...)))
       return ConcreteT();
@@ -79,9 +81,7 @@ protected:
 
   /// Default implementation that just returns success.
   template <typename... Args>
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc, MLIRContext *ctx,
-                               Args... args) {
+  static LogicalResult verifyConstructionInvariants(Args... args) {
     return success();
   }
 

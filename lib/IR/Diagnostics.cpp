@@ -313,12 +313,12 @@ struct SourceMgrDiagnosticHandlerImpl {
 
 /// Return a processable FileLineColLoc from the given location.
 static llvm::Optional<FileLineColLoc> getFileLineColLoc(Location loc) {
-  switch (loc.getKind()) {
-  case Location::Kind::NameLocation:
+  switch (loc->getKind()) {
+  case StandardAttributes::NameLocation:
     return getFileLineColLoc(loc.cast<NameLoc>().getChildLoc());
-  case Location::Kind::FileLineColLocation:
+  case StandardAttributes::FileLineColLocation:
     return loc.cast<FileLineColLoc>();
-  case Location::Kind::CallSiteLocation:
+  case StandardAttributes::CallSiteLocation:
     // Process the callee of a callsite location.
     return getFileLineColLoc(loc.cast<CallSiteLoc>().getCallee());
   default:
@@ -394,11 +394,11 @@ void SourceMgrDiagnosticHandler::emitDiagnostic(Diagnostic &diag) {
   // stack as well.
   if (auto callLoc = loc.dyn_cast<CallSiteLoc>()) {
     // Print the call stack while valid, or until the limit is reached.
-    Location callerLoc = callLoc->getCaller();
+    Location callerLoc = callLoc.getCaller();
     for (unsigned curDepth = 0; curDepth < callStackLimit; ++curDepth) {
       emitDiagnostic(callerLoc, "called from", DiagnosticSeverity::Note);
       if ((callLoc = callerLoc.dyn_cast<CallSiteLoc>()))
-        callerLoc = callLoc->getCaller();
+        callerLoc = callLoc.getCaller();
       else
         break;
     }

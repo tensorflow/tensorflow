@@ -50,7 +50,6 @@ struct TypeAttributeStorage;
 struct DenseElementsAttributeStorage;
 struct OpaqueElementsAttributeStorage;
 struct SparseElementsAttributeStorage;
-
 } // namespace detail
 
 /// Attributes are known-constant values of operations and functions.
@@ -122,8 +121,7 @@ public:
   const void *getAsOpaquePointer() const { return impl; }
   /// Construct an attribute from the opaque pointer representation.
   static Attribute getFromOpaquePointer(const void *ptr) {
-    return Attribute(
-        const_cast<ImplType *>(reinterpret_cast<const ImplType *>(ptr)));
+    return Attribute(reinterpret_cast<const ImplType *>(ptr));
   }
 
   friend ::llvm::hash_code hash_value(Attribute arg);
@@ -158,6 +156,25 @@ enum Kind {
   SparseElements,
   FIRST_ELEMENTS_ATTR = DenseElements,
   LAST_ELEMENTS_ATTR = SparseElements,
+
+  /// Locations.
+  CallSiteLocation,
+  FileLineColLocation,
+  FusedLocation,
+  NameLocation,
+  UnknownLocation,
+
+  // Represents a location as a 'void*' pointer to a front-end's opaque
+  // location information, which must live longer than the MLIR objects that
+  // refer to it.  OpaqueLocation's are never serialized.
+  //
+  // TODO: OpaqueLocation,
+
+  // Represents a value inlined through a function call.
+  // TODO: InlinedLocation,
+
+  FIRST_LOCATION_ATTR = CallSiteLocation,
+  LAST_LOCATION_ATTR = UnknownLocation,
 };
 } // namespace StandardAttributes
 

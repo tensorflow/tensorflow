@@ -17,57 +17,20 @@
 
 #include "mlir/IR/Location.h"
 #include "LocationDetail.h"
+#include "llvm/ADT/SetVector.h"
 
 using namespace mlir;
 using namespace mlir::detail;
 
 //===----------------------------------------------------------------------===//
-// Location
-//===----------------------------------------------------------------------===//
-
-Location::Kind Location::getKind() const { return loc->kind; }
-
-//===----------------------------------------------------------------------===//
-// FileLineColLoc
-//===----------------------------------------------------------------------===//
-
-FileLineColLoc FileLineColLoc::get(StringRef filename, unsigned line,
-                                   unsigned column, MLIRContext *context) {
-  return get(Identifier::get(filename.empty() ? "-" : filename, context), line,
-             column, context);
-}
-
-StringRef FileLineColLoc::getFilename() const {
-  return static_cast<ImplType *>(loc)->filename;
-}
-unsigned FileLineColLoc::getLine() const {
-  return static_cast<ImplType *>(loc)->line;
-}
-unsigned FileLineColLoc::getColumn() const {
-  return static_cast<ImplType *>(loc)->column;
-}
-
-//===----------------------------------------------------------------------===//
-// NameLoc
-//===----------------------------------------------------------------------===//
-
-NameLoc NameLoc::get(Identifier name, MLIRContext *context) {
-  return get(name, UnknownLoc::get(context), context);
-}
-
-/// Return the name identifier.
-Identifier NameLoc::getName() const {
-  return static_cast<ImplType *>(loc)->name;
-}
-
-/// Return the child location.
-Location NameLoc::getChildLoc() const {
-  return static_cast<ImplType *>(loc)->child;
-}
-
-//===----------------------------------------------------------------------===//
 // CallSiteLoc
 //===----------------------------------------------------------------------===//
+
+CallSiteLoc CallSiteLoc::get(Location callee, Location caller,
+                             MLIRContext *context) {
+  return Base::get(context, StandardAttributes::CallSiteLocation, callee,
+                   caller);
+}
 
 CallSiteLoc CallSiteLoc::get(Location name, ArrayRef<Location> frames,
                              MLIRContext *context) {
@@ -78,26 +41,86 @@ CallSiteLoc CallSiteLoc::get(Location name, ArrayRef<Location> frames,
   return CallSiteLoc::get(name, caller, context);
 }
 
-Location CallSiteLoc::getCallee() const {
-  return static_cast<ImplType *>(loc)->callee;
+Location CallSiteLoc::getCallee() const { return getImpl()->callee; }
+
+Location CallSiteLoc::getCaller() const { return getImpl()->caller; }
+
+//===----------------------------------------------------------------------===//
+// FileLineColLoc
+//===----------------------------------------------------------------------===//
+
+FileLineColLoc FileLineColLoc::get(Identifier filename, unsigned line,
+                                   unsigned column, MLIRContext *context) {
+  return Base::get(context, StandardAttributes::FileLineColLocation, filename,
+                   line, column);
 }
 
-Location CallSiteLoc::getCaller() const {
-  return static_cast<ImplType *>(loc)->caller;
+FileLineColLoc FileLineColLoc::get(StringRef filename, unsigned line,
+                                   unsigned column, MLIRContext *context) {
+  return get(Identifier::get(filename.empty() ? "-" : filename, context), line,
+             column, context);
 }
+
+StringRef FileLineColLoc::getFilename() const { return getImpl()->filename; }
+unsigned FileLineColLoc::getLine() const { return getImpl()->line; }
+unsigned FileLineColLoc::getColumn() const { return getImpl()->column; }
 
 //===----------------------------------------------------------------------===//
 // FusedLoc
 //===----------------------------------------------------------------------===//
 
-Location FusedLoc::get(ArrayRef<Location> locs, MLIRContext *context) {
-  return get(locs, Attribute(), context);
+LocationAttr FusedLoc::get(ArrayRef<Location> locs, Attribute metadata,
+                           MLIRContext *context) {
+  // Unique the set of locations to be fused.
+  llvm::SmallSetVector<Location, 4> decomposedLocs;
+  for (auto loc : locs) {
+    // If the location is a fused location we decompose it if it has no
+    // metadata or the metadata is the same as the top level metadata.
+    if (auto fusedLoc = loc.dyn_cast<FusedLoc>()) {
+      if (fusedLoc.getMetadata() == metadata) {
+        // UnknownLoc's have already been removed from FusedLocs so we can
+        // simply add all of the internal locations.
+        decomposedLocs.insert(fusedLoc.getLocations().begin(),
+                              fusedLoc.getLocations().end());
+        continue;
+      }
+    }
+    // Otherwise, only add known locations to the set.
+    if (!loc.isa<UnknownLoc>())
+      decomposedLocs.insert(loc);
+  }
+  locs = decomposedLocs.getArrayRef();
+
+  // Handle the simple cases of less than two locations.
+  if (locs.empty())
+    return UnknownLoc::get(context);
+  if (locs.size() == 1)
+    return locs.front();
+  return Base::get(context, StandardAttributes::FusedLocation, locs, metadata);
 }
 
 ArrayRef<Location> FusedLoc::getLocations() const {
-  return static_cast<ImplType *>(loc)->getLocations();
+  return getImpl()->getLocations();
 }
 
-Attribute FusedLoc::getMetadata() const {
-  return static_cast<ImplType *>(loc)->metadata;
+Attribute FusedLoc::getMetadata() const { return getImpl()->metadata; }
+
+//===----------------------------------------------------------------------===//
+// NameLoc
+//===----------------------------------------------------------------------===//
+
+NameLoc NameLoc::get(Identifier name, Location child, MLIRContext *context) {
+  assert(!child.isa<NameLoc>() &&
+         "a NameLoc cannot be used as a child of another NameLoc");
+  return Base::get(context, StandardAttributes::NameLocation, name, child);
 }
+
+NameLoc NameLoc::get(Identifier name, MLIRContext *context) {
+  return get(name, UnknownLoc::get(context), context);
+}
+
+/// Return the name identifier.
+Identifier NameLoc::getName() const { return getImpl()->name; }
+
+/// Return the child location.
+Location NameLoc::getChildLoc() const { return getImpl()->child; }

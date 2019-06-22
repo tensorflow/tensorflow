@@ -372,12 +372,7 @@ public:
   /// construction failures.
   static MemRefType get(ArrayRef<int64_t> shape, Type elementType,
                         ArrayRef<AffineMap> affineMapComposition = {},
-                        unsigned memorySpace = 0) {
-    auto result = getImpl(shape, elementType, affineMapComposition, memorySpace,
-                          /*location=*/llvm::None);
-    assert(result && "Failed to construct instance of MemRefType.");
-    return result;
-  }
+                        unsigned memorySpace = 0);
 
   /// Get or create a new MemRefType based on shape, element type, affine
   /// map composition, and memory space declared at the given location.
@@ -387,10 +382,7 @@ public:
   /// the error stream) and returns nullptr.
   static MemRefType getChecked(ArrayRef<int64_t> shape, Type elementType,
                                ArrayRef<AffineMap> affineMapComposition,
-                               unsigned memorySpace, Location location) {
-    return getImpl(shape, elementType, affineMapComposition, memorySpace,
-                   location);
-  }
+                               unsigned memorySpace, Location location);
 
   ArrayRef<int64_t> getShape() const;
 

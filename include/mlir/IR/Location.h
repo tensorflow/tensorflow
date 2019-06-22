@@ -23,8 +23,7 @@
 #ifndef MLIR_IR_LOCATION_H
 #define MLIR_IR_LOCATION_H
 
-#include "mlir/Support/LLVM.h"
-#include "llvm/ADT/DenseMapInfo.h"
+#include "mlir/IR/Attributes.h"
 
 namespace mlir {
 
@@ -44,74 +43,54 @@ struct FusedLocationStorage;
 } // namespace detail
 
 /// Location objects represent source locations information in MLIR.
+/// LocationAttr acts as the anchor for all Location based attributes.
+class LocationAttr : public Attribute {
+public:
+  using Attribute::Attribute;
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(Attribute attr) {
+    return attr.getKind() >= StandardAttributes::FIRST_LOCATION_ATTR &&
+           attr.getKind() <= StandardAttributes::LAST_LOCATION_ATTR;
+  }
+};
+
+/// This class defines the main interface for locations in MLIR and acts as a
+/// non-nullable wrapper around a LocationAttr.
 class Location {
 public:
-  enum class Kind : uint8_t {
-    /// This represents an unknown location.
-    UnknownLocation,
-
-    /// This represents a file/line/column location.
-    FileLineColLocation,
-
-    /// This represents an identity name attached to a child location.
-    NameLocation,
-
-    /// This represents a location as a call site.
-    CallSiteLocation,
-
-    // Represents a location as a 'void*' pointer to a front-end's opaque
-    // location information, which must live longer than the MLIR objects that
-    // refer to it.  OpaqueLocation's are never serialized.
-    //
-    // TODO: OpaqueLocation,
-
-    // Represents a value inlined through a function call.
-    // TODO: InlinedLocation,
-
-    // Represents a value composed of multiple source constructs.
-    FusedLocation,
-  };
-
-  using ImplType = detail::LocationStorage;
-
-  /* implicit */ Location(const ImplType *loc)
-      : loc(const_cast<ImplType *>(loc)) {
+  Location(LocationAttr loc) : impl(loc) {
     assert(loc && "location should never be null.");
   }
 
-  Location() = delete;
-  Location(const Location &other) : loc(other.loc) {}
-  Location &operator=(Location other) {
-    loc = other.loc;
-    return *this;
-  }
+  /// Access the impl location attribute.
+  operator LocationAttr() const { return impl; }
+  LocationAttr *operator->() const { return const_cast<LocationAttr *>(&impl); }
 
-  bool operator==(Location other) const { return loc == other.loc; }
-  bool operator!=(Location other) const { return !(*this == other); }
+  /// Type casting utilities on the underlying location.
+  template <typename U> bool isa() const { return impl.isa<U>(); }
+  template <typename U> U dyn_cast() const { return impl.dyn_cast<U>(); }
+  template <typename U> U cast() const { return impl.cast<U>(); }
 
-  template <typename U> bool isa() const;
-  template <typename U> Optional<U> dyn_cast() const;
-  template <typename U> U cast() const;
-
-  /// Return the classification for this location.
-  Kind getKind() const;
+  /// Comparison operators.
+  bool operator==(Location rhs) const { return impl == rhs.impl; }
+  bool operator!=(Location rhs) const { return !(*this == rhs); }
 
   /// Print the location.
-  void print(raw_ostream &os) const;
-  void dump() const;
+  void print(raw_ostream &os) const { impl.print(os); }
+  void dump() const { impl.dump(); }
 
   friend ::llvm::hash_code hash_value(Location arg);
 
   /// Methods for supporting PointerLikeTypeTraits.
-  const void *getAsOpaquePointer() const {
-    return static_cast<const void *>(loc);
-  }
+  const void *getAsOpaquePointer() const { return impl.getAsOpaquePointer(); }
   static Location getFromOpaquePointer(const void *pointer) {
-    return Location(reinterpret_cast<ImplType *>(const_cast<void *>(pointer)));
+    return LocationAttr(reinterpret_cast<const AttributeStorage *>(pointer));
   }
 
 protected:
-  ImplType *loc;
+  /// The internal backing location attribute.
+  LocationAttr impl;
 };
 
 inline raw_ostream &operator<<(raw_ostream &os, const Location &loc) {
@@ -119,73 +98,15 @@ inline raw_ostream &operator<<(raw_ostream &os, const Location &loc) {
   return os;
 }
 
-/// Represents an unknown location.  This is always a singleton for a given
-/// MLIRContext.
-class UnknownLoc : public Location {
-public:
-  using ImplType = detail::UnknownLocationStorage;
-  using Location::Location;
-
-  static UnknownLoc get(MLIRContext *context);
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::UnknownLocation; }
-};
-
-/// Represents a location derived from a file/line/column location.  The column
-/// and line may be zero to represent unknown column and/or unknown line/column
-/// information.
-class FileLineColLoc : public Location {
-public:
-  using ImplType = detail::FileLineColLocationStorage;
-  using Location::Location;
-
-  /// Return a uniqued FileLineCol location object.
-  static FileLineColLoc get(Identifier filename, unsigned line, unsigned column,
-                            MLIRContext *context);
-  static FileLineColLoc get(StringRef filename, unsigned line, unsigned column,
-                            MLIRContext *context);
-
-  StringRef getFilename() const;
-
-  unsigned getLine() const;
-  unsigned getColumn() const;
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::FileLineColLocation; }
-};
-
-/// Represents an identity name attached to a child location.
-class NameLoc : public Location {
-public:
-  using ImplType = detail::NameLocationStorage;
-  using Location::Location;
-
-  /// Return a uniqued name location object. The child location must not be
-  /// another NameLoc.
-  static NameLoc get(Identifier name, Location child, MLIRContext *context);
-
-  /// Return a uniqued name location object with an unknown child.
-  static NameLoc get(Identifier name, MLIRContext *context);
-
-  /// Return the name identifier.
-  Identifier getName() const;
-
-  /// Return the child location.
-  Location getChildLoc() const;
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::NameLocation; }
-};
-
 /// Represents a location as call site. "callee" is the concrete location
 /// (Unknown/NameLocation/FileLineColLoc) and "caller" points to the caller's
 /// location (another CallLocation or a concrete location). Multiple
 /// CallSiteLocs can be chained to form a call stack.
-class CallSiteLoc : public Location {
+class CallSiteLoc
+    : public Attribute::AttrBase<CallSiteLoc, LocationAttr,
+                                 detail::CallSiteLocationStorage> {
 public:
-  using ImplType = detail::CallSiteLocationStorage;
-  using Location::Location;
+  using Base::Base;
 
   /// Return a uniqued call location object.
   static CallSiteLoc get(Location callee, Location caller,
@@ -204,22 +125,52 @@ public:
   Location getCaller() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::CallSiteLocation; }
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::CallSiteLocation;
+  }
+};
+
+/// Represents a location derived from a file/line/column location.  The column
+/// and line may be zero to represent unknown column and/or unknown line/column
+/// information.
+class FileLineColLoc
+    : public Attribute::AttrBase<FileLineColLoc, LocationAttr,
+                                 detail::FileLineColLocationStorage> {
+public:
+  using Base::Base;
+
+  /// Return a uniqued FileLineCol location object.
+  static FileLineColLoc get(Identifier filename, unsigned line, unsigned column,
+                            MLIRContext *context);
+  static FileLineColLoc get(StringRef filename, unsigned line, unsigned column,
+                            MLIRContext *context);
+
+  StringRef getFilename() const;
+
+  unsigned getLine() const;
+  unsigned getColumn() const;
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::FileLineColLocation;
+  }
 };
 
 /// Represents a value composed of multiple source constructs, with an optional
 /// metadata attribute.
-class FusedLoc : public Location {
+class FusedLoc : public Attribute::AttrBase<FusedLoc, LocationAttr,
+                                            detail::FusedLocationStorage> {
 public:
-  using ImplType = detail::FusedLocationStorage;
-  using Location::Location;
+  using Base::Base;
 
   /// Return a uniqued Fused Location object. The first location in the list
   /// will get precedence during diagnostic emission, with the rest being
   /// displayed as supplementary "fused from here" style notes.
-  static Location get(ArrayRef<Location> locs, MLIRContext *context);
-  static Location get(ArrayRef<Location> locs, Attribute metadata,
-                      MLIRContext *context);
+  static LocationAttr get(ArrayRef<Location> locs, Attribute metadata,
+                          MLIRContext *context);
+  static LocationAttr get(ArrayRef<Location> locs, MLIRContext *context) {
+    return get(locs, Attribute(), context);
+  }
 
   ArrayRef<Location> getLocations() const;
 
@@ -228,23 +179,54 @@ public:
   Attribute getMetadata() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::FusedLocation; }
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::FusedLocation;
+  }
+};
+
+/// Represents an identity name attached to a child location.
+class NameLoc : public Attribute::AttrBase<NameLoc, LocationAttr,
+                                           detail::NameLocationStorage> {
+public:
+  using Base::Base;
+
+  /// Return a uniqued name location object. The child location must not be
+  /// another NameLoc.
+  static NameLoc get(Identifier name, Location child, MLIRContext *context);
+
+  /// Return a uniqued name location object with an unknown child.
+  static NameLoc get(Identifier name, MLIRContext *context);
+
+  /// Return the name identifier.
+  Identifier getName() const;
+
+  /// Return the child location.
+  Location getChildLoc() const;
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::NameLocation;
+  }
+};
+
+/// Represents an unknown location.  This is always a singleton for a given
+/// MLIRContext.
+class UnknownLoc : public Attribute::AttrBase<UnknownLoc, LocationAttr> {
+public:
+  using Base::Base;
+
+  /// Get an instance of the UnknownLoc.
+  static UnknownLoc get(MLIRContext *context);
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::UnknownLocation;
+  }
 };
 
 // Make Location hashable.
 inline ::llvm::hash_code hash_value(Location arg) {
-  return ::llvm::hash_value(arg.loc);
-}
-
-template <typename U> bool Location::isa() const {
-  return U::kindof(getKind());
-}
-template <typename U> Optional<U> Location::dyn_cast() const {
-  return isa<U>() ? U(loc) : Optional<U>();
-}
-template <typename U> U Location::cast() const {
-  assert(isa<U>());
-  return U(loc);
+  return hash_value(arg.impl);
 }
 
 } // end namespace mlir
@@ -255,11 +237,11 @@ namespace llvm {
 template <> struct DenseMapInfo<mlir::Location> {
   static mlir::Location getEmptyKey() {
     auto pointer = llvm::DenseMapInfo<void *>::getEmptyKey();
-    return mlir::Location(static_cast<mlir::Location::ImplType *>(pointer));
+    return mlir::Location::getFromOpaquePointer(pointer);
   }
   static mlir::Location getTombstoneKey() {
     auto pointer = llvm::DenseMapInfo<void *>::getTombstoneKey();
-    return mlir::Location(static_cast<mlir::Location::ImplType *>(pointer));
+    return mlir::Location::getFromOpaquePointer(pointer);
   }
   static unsigned getHashValue(mlir::Location val) {
     return mlir::hash_value(val);
@@ -278,7 +260,10 @@ public:
   static inline mlir::Location getFromVoidPointer(void *P) {
     return mlir::Location::getFromOpaquePointer(P);
   }
-  enum { NumLowBitsAvailable = 3 };
+  enum {
+    NumLowBitsAvailable =
+        PointerLikeTypeTraits<mlir::Attribute>::NumLowBitsAvailable
+  };
 };
 
 } // namespace llvm

@@ -243,10 +243,10 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Parse an inline location.
-  ParseResult parseLocation(llvm::Optional<Location> *loc);
+  ParseResult parseLocation(LocationAttr &loc);
 
   /// Parse a raw location instance.
-  ParseResult parseLocationInstance(llvm::Optional<Location> *loc);
+  ParseResult parseLocationInstance(LocationAttr &loc);
 
   /// Parse an optional trailing location.
   ///
@@ -259,10 +259,10 @@ public:
       return success();
 
     // Parse the location.
-    llvm::Optional<Location> directLoc;
-    if (parseLocation(&directLoc))
+    LocationAttr directLoc;
+    if (parseLocation(directLoc))
       return failure();
-    owner->setLoc(*directLoc);
+    owner->setLoc(directLoc);
     return success();
   }
 
@@ -1010,6 +1010,12 @@ Attribute Parser::parseAttribute(Type type) {
     return builder.getFunctionAttr(nameStr.drop_front());
   }
 
+  // Parse a location attribute.
+  case Token::kw_loc: {
+    LocationAttr attr;
+    return failed(parseLocation(attr)) ? Attribute() : attr;
+  }
+
   // Parse an opaque elements attribute.
   case Token::kw_opaque:
     return parseOpaqueElementsAttr();
@@ -1461,13 +1467,10 @@ Attribute Parser::parseSparseElementsAttr() {
 ///   location           ::= `loc` inline-location
 ///   inline-location    ::= '(' location-inst ')'
 ///
-ParseResult Parser::parseLocation(llvm::Optional<Location> *loc) {
-  assert(loc && "loc is expected to be non-null");
-
+ParseResult Parser::parseLocation(LocationAttr &loc) {
   // Check for 'loc' identifier.
-  if (getToken().isNot(Token::kw_loc))
-    return emitError("expected location keyword");
-  consumeToken(Token::kw_loc);
+  if (parseToken(Token::kw_loc, "expected 'loc' keyword"))
+    return emitError();
 
   // Parse the inline-location.
   if (parseToken(Token::l_paren, "expected '(' in inline location") ||
@@ -1492,7 +1495,7 @@ ParseResult Parser::parseLocation(llvm::Optional<Location> *loc) {
 ///                    '[' location-inst (location-inst ',')* ']'
 /// unknown-location ::= 'unknown'
 ///
-ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
+ParseResult Parser::parseLocationInstance(LocationAttr &loc) {
   auto *ctx = getContext();
 
   // Handle either name or filelinecol locations.
@@ -1522,8 +1525,7 @@ ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
         return emitError("expected integer column number in FileLineColLoc");
       consumeToken(Token::integer);
 
-      auto file = Identifier::get(str, ctx);
-      *loc = FileLineColLoc::get(file, line.getValue(), column.getValue(), ctx);
+      loc = FileLineColLoc::get(str, line.getValue(), column.getValue(), ctx);
       return success();
     }
 
@@ -1534,22 +1536,22 @@ ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
       auto childSourceLoc = getToken().getLoc();
 
       // Parse the child location.
-      llvm::Optional<Location> childLoc;
-      if (parseLocationInstance(&childLoc))
+      LocationAttr childLoc;
+      if (parseLocationInstance(childLoc))
         return failure();
 
       // The child must not be another NameLoc.
-      if (childLoc->isa<NameLoc>())
+      if (childLoc.isa<NameLoc>())
         return emitError(childSourceLoc,
                          "child of NameLoc cannot be another NameLoc");
-      *loc = NameLoc::get(Identifier::get(str, ctx), *childLoc, ctx);
+      loc = NameLoc::get(Identifier::get(str, ctx), childLoc, ctx);
 
       // Parse the closing ')'.
       if (parseToken(Token::r_paren,
                      "expected ')' after child location of NameLoc"))
         return failure();
     } else {
-      *loc = NameLoc::get(Identifier::get(str, ctx), ctx);
+      loc = NameLoc::get(Identifier::get(str, ctx), ctx);
     }
 
     return success();
@@ -1559,7 +1561,7 @@ ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
   if (getToken().is(Token::bare_identifier) &&
       getToken().getSpelling() == "unknown") {
     consumeToken(Token::bare_identifier);
-    *loc = UnknownLoc::get(ctx);
+    loc = UnknownLoc::get(ctx);
     return success();
   }
 
@@ -1580,30 +1582,22 @@ ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
         return failure();
     }
 
-    // Parse the '['.
-    if (parseToken(Token::l_square, "expected '[' in fused location"))
-      return failure();
-
-    // Parse the internal locations.
     llvm::SmallVector<Location, 4> locations;
-    do {
-      llvm::Optional<Location> newLoc;
-      if (parseLocationInstance(&newLoc))
+    auto parseElt = [&] {
+      LocationAttr newLoc;
+      if (parseLocationInstance(newLoc))
         return failure();
-      locations.push_back(*newLoc);
+      locations.push_back(newLoc);
+      return success();
+    };
 
-      // Parse the ','.
-    } while (consumeIf(Token::comma));
-
-    // Parse the ']'.
-    if (parseToken(Token::r_square, "expected ']' in fused location"))
+    if (parseToken(Token::l_square, "expected '[' in fused location") ||
+        parseCommaSeparatedList(parseElt) ||
+        parseToken(Token::r_square, "expected ']' in fused location"))
       return failure();
 
     // Return the fused location.
-    if (metadata)
-      *loc = FusedLoc::get(locations, metadata, getContext());
-    else
-      *loc = FusedLoc::get(locations, ctx);
+    loc = FusedLoc::get(locations, metadata, getContext());
     return success();
   }
 
@@ -1617,8 +1611,8 @@ ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
       return failure();
 
     // Parse the callee location.
-    llvm::Optional<Location> calleeLoc;
-    if (parseLocationInstance(&calleeLoc))
+    LocationAttr calleeLoc;
+    if (parseLocationInstance(calleeLoc))
       return failure();
 
     // Parse the 'at'.
@@ -1628,8 +1622,8 @@ ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
     consumeToken(Token::bare_identifier);
 
     // Parse the caller location.
-    llvm::Optional<Location> callerLoc;
-    if (parseLocationInstance(&callerLoc))
+    LocationAttr callerLoc;
+    if (parseLocationInstance(callerLoc))
       return failure();
 
     // Parse the ')'.
@@ -1637,7 +1631,7 @@ ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
       return failure();
 
     // Return the callsite location.
-    *loc = CallSiteLoc::get(*calleeLoc, *callerLoc, ctx);
+    loc = CallSiteLoc::get(calleeLoc, callerLoc, ctx);
     return success();
   }
 
