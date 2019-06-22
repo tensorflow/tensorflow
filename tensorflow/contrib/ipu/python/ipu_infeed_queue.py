@@ -24,6 +24,7 @@ from __future__ import print_function
 from tensorflow.compiler.plugin.poplar.ops import gen_pop_datastream_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops.dataset_ops import Dataset
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import ops
 
 
@@ -124,7 +125,7 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
     with ops.device('/device:CPU:0'):
       self._replication_factor = replication_factor
       self._dataset = dataset
-      self._structure = self._dataset._element_structure
+      self._structure = dataset_ops.get_structure(dataset)
       self._flat_structure = dataset_ops.flat_structure(self._dataset)
       # Batch the dataset to take replication into account.
       if self._replication_factor > 1:
@@ -165,7 +166,7 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
         replication_factor=self._replication_factor,
         **self._flat_structure)
     self._dequeued = True
-    return self._structure._from_tensor_list(flat_ret)
+    return structure.from_tensor_list(self._structure, flat_ret)
 
   @property
   def dequeued(self):
@@ -179,7 +180,7 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
   @property
   def number_of_tuple_elements(self):
     """Returns the number of IPUInfeedQueue tuple elements."""
-    return len(self._structure._flat_shapes)
+    return len(structure.get_flat_tensor_specs(self._structure))
 
   @property
   def initializer(self):
