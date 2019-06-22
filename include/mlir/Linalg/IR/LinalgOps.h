@@ -25,6 +25,8 @@
 #include "mlir/Support/LLVM.h"
 
 namespace mlir {
+class OperationFolder;
+
 namespace linalg {
 
 /// The "buffer_alloc" op creates a 1-D linalg.buffer of the specified type,
@@ -405,6 +407,9 @@ public:
   unsigned getNumWindowLoops() {
     return impl->getNumWindowLoops(getOperation());
   }
+  unsigned getNumLoops() {
+    return getNumParallelLoops() + getNumReductionLoops() + getNumWindowLoops();
+  }
   unsigned getNumInputs() { return impl->getNumInputs(getOperation()); }
   unsigned getNumOutputs() { return impl->getNumOutputs(getOperation()); }
   unsigned getNumInputsAndOutputs() {
@@ -447,7 +452,6 @@ private:
     virtual unsigned getNumParallelLoops(Operation *op) = 0;
     virtual unsigned getNumReductionLoops(Operation *op) = 0;
     virtual unsigned getNumWindowLoops(Operation *op) = 0;
-    virtual unsigned getNumLoops(Operation *op) = 0;
     virtual Value *getInput(Operation *op, unsigned i) = 0;
     virtual llvm::Optional<unsigned> getIndexOfInput(Operation *op,
                                                      Value *view) = 0;
@@ -494,9 +498,6 @@ private:
     }
     unsigned getNumWindowLoops(Operation *op) override {
       return cast<ConcreteOp>(op).getNumWindowLoops();
-    }
-    unsigned getNumLoops(Operation *op) override {
-      return cast<ConcreteOp>(op).getNumLoops();
     }
     Value *getInput(Operation *op, unsigned i) {
       return cast<ConcreteOp>(op).getInput(i);
@@ -556,7 +557,8 @@ private:
 
 void emitScalarImplementation(llvm::ArrayRef<Value *> parallelIvs,
                               llvm::ArrayRef<Value *> reductionIvs,
-                              LinalgOp &linalgOp);
+                              llvm::ArrayRef<Value *> windowIvs,
+                              LinalgOp &linalgOp, OperationFolder &folder);
 
 } // namespace linalg
 } // namespace mlir

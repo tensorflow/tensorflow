@@ -1,5 +1,9 @@
 // RUN: mlir-opt %s -linalg-lower-to-loops | FileCheck %s
 
+// CHECK-DAG: #[[S2D1:.*]] = (d0, d1) -> (d0 * 2 + d1)
+// CHECK-DAG: #[[S2D3:.*]] = (d0, d1) -> (d0 * 2 + d1 * 4)
+// CHECK-DAG: #[[S3D2:.*]] = (d0, d1) -> (d0 * 3 + d1 * 5)
+
 func @matmul(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: index) {
   %c0 = constant 0 : index
   %c1 = constant 1 : index
@@ -146,3 +150,54 @@ func @copy_view3(%arg0: !linalg.view<?x?x?xf32>, %arg1: !linalg.view<?x?x?xf32>)
 //       CHECK:       linalg.for %i2 = %c0 to %{{.*}} step %c1 {
 //       CHECK:         %[[L:.*]] = linalg.load %arg0[%i0, %i2, %i1] : !linalg.view<?x?x?xf32>
 //       CHECK:         linalg.store %[[L]], %arg1[%i2, %i1, %i0] : !linalg.view<?x?x?xf32>
+
+func @conv_view3(%arg0: !linalg.view<?x?x?xf32>, %arg1: !linalg.view<?x?x?xf32>, %arg2: !linalg.view<?x?x?xf32>) {
+  linalg.conv(%arg0, %arg1, %arg2) {strides: [2]}: !linalg.view<?x?x?xf32>, !linalg.view<?x?x?xf32>, !linalg.view<?x?x?xf32>
+  return
+}
+// CHECK-LABEL: func @conv_view3(%arg0: !linalg.view<?x?x?xf32>, %arg1: !linalg.view<?x?x?xf32>, %arg2: !linalg.view<?x?x?xf32>) {
+//       CHECK:   %[[Z0:.*]] = linalg.dim %arg0, 0 : !linalg.view<?x?x?xf32>
+//       CHECK:   %[[Q:.*]] = linalg.dim %arg0, 1 : !linalg.view<?x?x?xf32>
+//       CHECK:   %[[K:.*]] = linalg.dim %arg0, 2 : !linalg.view<?x?x?xf32>
+//       CHECK:   %[[B:.*]] = linalg.dim %arg1, 0 : !linalg.view<?x?x?xf32>
+//       CHECK:   %[[X0:.*]] = linalg.dim %arg2, 1 : !linalg.view<?x?x?xf32>
+//       CHECK:   linalg.for %i0 = %c0 to %[[B]] step %c1 {
+//       CHECK:     linalg.for %i1 = %c0 to %[[X0]] step %c1 {
+//       CHECK:       linalg.for %i2 = %c0 to %[[K]] step %c1 {
+//       CHECK:         linalg.for %i3 = %c0 to %[[Q]] step %c1 {
+//       CHECK:           linalg.for %i4 = %c0 to %[[Z0]] step %c1 {
+//       CHECK:             %[[SUM:.*]] = affine.apply #[[S2D1]](%i1, %i4)
+//       CHECK:             %{{.*}} = linalg.load %arg1[%i0, %[[SUM]], %i3] : !linalg.view<?x?x?xf32>
+//       CHECK:             %{{.*}} = linalg.load %arg0[%i4, %i3, %i2] : !linalg.view<?x?x?xf32>
+//       CHECK:             %{{.*}} = mulf %{{.*}}, %{{.*}} : f32
+//       CHECK:             %{{.*}} = linalg.load %arg2[%i0, %i1, %i2] : !linalg.view<?x?x?xf32>
+//       CHECK:             %{{.*}} = addf %{{.*}}, %{{.*}} : f32
+//       CHECK:             linalg.store %{{.*}}, %arg2[%i0, %i1, %i2] : !linalg.view<?x?x?xf32>
+
+func @conv_view4(%arg0: !linalg.view<?x?x?x?xf32>, %arg1: !linalg.view<?x?x?x?xf32>, %arg2: !linalg.view<?x?x?x?xf32>) {
+  linalg.conv(%arg0, %arg1, %arg2) {dilations: [4, 5], strides: [2, 3]} : !linalg.view<?x?x?x?xf32>, !linalg.view<?x?x?x?xf32>, !linalg.view<?x?x?x?xf32>
+  return
+}
+// CHECK-LABEL: func @conv_view4(%arg0: !linalg.view<?x?x?x?xf32>, %arg1: !linalg.view<?x?x?x?xf32>, %arg2: !linalg.view<?x?x?x?xf32>) {
+//       CHECK:   %[[Z0:.*]] = linalg.dim %arg0, 0 : !linalg.view<?x?x?x?xf32>
+//       CHECK:   %[[Z1:.*]] = linalg.dim %arg0, 1 : !linalg.view<?x?x?x?xf32>
+//       CHECK:   %[[Q:.*]] = linalg.dim %arg0, 2 : !linalg.view<?x?x?x?xf32>
+//       CHECK:   %[[K:.*]] = linalg.dim %arg0, 3 : !linalg.view<?x?x?x?xf32>
+//       CHECK:   %[[B:.*]] = linalg.dim %arg1, 0 : !linalg.view<?x?x?x?xf32>
+//       CHECK:   %[[X0:.*]] = linalg.dim %arg2, 1 : !linalg.view<?x?x?x?xf32>
+//       CHECK:   %[[X1:.*]] = linalg.dim %arg2, 2 : !linalg.view<?x?x?x?xf32>
+//       CHECK:   linalg.for %i0 = %c0 to %[[B]] step %c1 {
+//       CHECK:     linalg.for %i1 = %c0 to %[[X0]] step %c1 {
+//       CHECK:       linalg.for %i2 = %c0 to %[[X1]] step %c1 {
+//       CHECK:         linalg.for %i3 = %c0 to %[[K]] step %c1 {
+//       CHECK:           linalg.for %i4 = %c0 to %[[Q]] step %c1 {
+//       CHECK:             linalg.for %i5 = %c0 to %[[Z0]] step %c1 {
+//       CHECK:               linalg.for %i6 = %c0 to %[[Z1]] step %c1 {
+//       CHECK:                 %[[SUM0:.*]] = affine.apply #map1(%i1, %i5)
+//       CHECK:                 %[[SUM1:.*]] = affine.apply #map2(%i2, %i6)
+//       CHECK:                 %{{.*}} = linalg.load %arg1[%i0, %[[SUM0]], %[[SUM1]], %i4] : !linalg.view<?x?x?x?xf32>
+//       CHECK:                 %{{.*}} = linalg.load %arg0[%i5, %i6, %i4, %i3] : !linalg.view<?x?x?x?xf32>
+//       CHECK:                 %{{.*}} = mulf %{{.*}}, %{{.*}} : f32
+//       CHECK:                 %{{.*}} = linalg.load %arg2[%i0, %i1, %i2, %i3] : !linalg.view<?x?x?x?xf32>
+//       CHECK:                 %{{.*}} = addf %{{.*}}, %{{.*}} : f32
+//       CHECK:                 linalg.store %{{.*}}, %arg2[%i0, %i1, %i2, %i3] : !linalg.view<?x?x?x?xf32>

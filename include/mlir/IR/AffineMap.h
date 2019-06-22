@@ -153,14 +153,27 @@ AffineMap simplifyAffineMap(AffineMap map);
 /// Returns an empty map if the input map is empty.
 ///
 /// Prerequisites:
-///   1. `map` is a permutation of full rank.
+///   1. `map` must contain a subset that is a permutation of full domain rank.
 ///   2. `map` has no symbols.
 ///
-/// Example:
+/// Example 1:
 ///
 /// ```{.mlir}
 ///    (d0, d1, d2) -> (d1, d1, d0, d2, d1, d2, d1, d0)
 ///                      0       2   3
+/// ```
+///
+/// returns:
+///
+/// ```{.mlir}
+///    (d0, d1, d2, d3, d4, d5, d6, d7) -> (d2, d0, d3)
+/// ```
+///
+/// Example 2:
+///
+/// ```{.mlir}
+///    (d0, d1, d2) -> (d1, d0 + d1, d0, d2, d1, d2, d1, d0)
+///                      0            2   3
 /// ```
 ///
 /// returns:

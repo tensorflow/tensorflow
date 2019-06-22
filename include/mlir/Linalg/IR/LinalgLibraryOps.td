@@ -142,7 +142,6 @@ def CopyOp : LinalgLibrary_Op<"copy", [NInputsAndOutputs<1, 1>]> {
     }
     unsigned getNumReductionLoops() { return 0; }
     unsigned getNumWindowLoops() { return 0; }
-    unsigned getNumLoops() { return getNumParallelLoops(); }
   }];
   let verifier = [{ return ::verify(*this); }];
 }
@@ -156,30 +155,95 @@ def FillOp : LinalgLibrary_Op<"fill", [NInputsAndOutputs<0, 1>]> {
     }
     unsigned getNumReductionLoops() { return 0; }
     unsigned getNumWindowLoops() { return 0; }
-    unsigned getNumLoops() { return getNumParallelLoops(); }
     Value *getValue() {
       return *(getOperands().begin() + getNumInputsAndOutputs());
     }
   }];
   let verifier = [{ return ::verify(*this); }];
 }
+
 def DotOp : LinalgLibrary_Op<"dot",
                             [NInputsAndOutputs<2, 1>,
                              NLoopTypes<0, 1, 0>,
                              ViewRanks<[1, 1, 0]>]> {
   let arguments = (ins View, View, View);
 }
+
 def MatvecOp : LinalgLibrary_Op<"matvec",
                                   [NInputsAndOutputs<2, 1>,
                                    NLoopTypes<1, 1, 0>,
                                    ViewRanks<[2, 1, 1]>]> {
   let arguments = (ins View, View, View);
 }
+
 def MatmulOp : LinalgLibrary_Op<"matmul",
                                   [NInputsAndOutputs<2, 1>,
                                    NLoopTypes<2, 1, 0>,
                                    ViewRanks<[2, 2, 2]>]> {
   let arguments = (ins View, View, View);
+}
+
+def ConvOp : LinalgLibrary_Op<"conv", [NInputsAndOutputs<2, 1>]> {
+  let description = [{
+    Generic n-D convolution as described in the TF documentation:
+    https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/nn/convolution
+
+    ```
+      output[b, x[0], ..., x[N-1], k] =
+      sum_{z[0], ..., z[N-1], q}
+          filter[z[0], ..., z[N-1], q, k] *
+          padded_input[b,
+                       x[0] * strides[0] + dilation_rate[0] * z[0],
+                       ...,
+                       x[N-1] * strides[N-1] + dilation_rate[N-1] * z[N-1],
+                       q]
+    ```
+  }];
+  // TODO(ntv) padding.
+  // Following the TF source of truth above, strides and dilations are integer
+  // attributes of the same rank as the number of window dimensions.
+  // This convention
+  let arguments = (ins View:$filter, View:$input, View:$output,
+                   OptionalAttr<I64ArrayAttr>:$strides,
+                   OptionalAttr<I64ArrayAttr>:$dilations);
+  let extraClassDeclaration = [{
+    // TODO(ntv) extend to support more than 1 dimensions and potentially
+    // grouping too.
+    unsigned getNumBatchDimensions() { return 1; }
+    unsigned getNumInputFeatureDimensions() { return 1; }
+    unsigned getNumOutputFeatureDimensions() { return 1; }
+
+    // Outer parallel loops are always the number of output dimensions; i.e.
+    // [ b, xs, q] in the TF notation above.
+    unsigned getNumParallelLoops() { return getOutputViewType(0).getRank(); }
+
+    // Window loops are a special kind of reduction that is neither tiled or
+    // parallelized across; i.e. [zs] in the TF notation above whose number
+    // match `xs` (i.e. 1 window loop per "image" dimension).
+    unsigned getNumWindowLoops() {
+      return getNumParallelLoops() - getNumBatchDimensions() -
+             getNumInputFeatureDimensions(); }
+
+    // Reduction loops are exactly the non-parallel, non-window loops (i.e. `q`)
+    // We distinguish between reduction loops and convolution window loops for
+    // now. That distinction may disappear in the future.
+    unsigned getNumReductionLoops() { return getNumInputFeatureDimensions(); }
+
+    int64_t getStride(unsigned i) {
+      assert(i < getNumWindowLoops());
+      if (!strides().hasValue()) return 1;
+      return strides()->getValue()[i]
+        .cast<IntegerAttr>().getValue().getSExtValue();
+    }
+
+    int64_t getDilation(unsigned i) {
+      assert(i < getNumWindowLoops());
+      if (!dilations().hasValue()) return 1;
+      return dilations()->getValue()[i]
+        .cast<IntegerAttr>().getValue().getSExtValue();
+    }
+  }];
+  let verifier = [{ return ::verify(*this); }];
 }
 
 #endif // LINALG_LIBRARY_OPS

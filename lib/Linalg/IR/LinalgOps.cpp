@@ -732,7 +732,7 @@ static LogicalResult verify(CopyOp op) {
     return op.emitOpError("expects views of the same type");
   if (inputViewType.getRank() != outputViewType.getRank())
     return op.emitOpError("expects views of the same rank");
-  auto rank = op.getNumLoops();
+  auto rank = op.getNumParallelLoops();
   auto inputPermutationMap = op.inputPermutation();
   if (inputPermutationMap) {
     if (inputPermutationMap->getNumInputs() != rank)
@@ -758,6 +758,39 @@ static LogicalResult verify(CopyOp op) {
   return success();
 }
 
+static LogicalResult
+verifyStrideOrDilation(ConvOp op, ArrayRef<Attribute> attrs, bool isStride) {
+  auto strideOrDilation = isStride ? "stride" : "dilation";
+  if (attrs.size() != op.getNumWindowLoops())
+    return op.emitOpError("expects num ")
+           << strideOrDilation
+           << "s equal to number of window dimensions: " << attrs.size()
+           << " vs " << op.getNumWindowLoops();
+  return success();
+}
+
+static LogicalResult verify(ConvOp op) {
+  auto oType = op.output()->getType().cast<ViewType>();
+  auto fType = op.filter()->getType().cast<ViewType>();
+  auto iType = op.input()->getType().cast<ViewType>();
+  if (oType.getElementType() != iType.getElementType() ||
+      oType.getElementType() != fType.getElementType())
+    return op.emitOpError("expects view elemental types to match");
+  if (oType.getRank() != iType.getRank() || oType.getRank() != fType.getRank())
+    return op.emitOpError("expects view ranks to match");
+  if (auto strides = op.strides()) {
+    if (failed(
+            verifyStrideOrDilation(op, strides->getValue(), /*isStride=*/true)))
+      return failure();
+  }
+  if (auto dilations = op.dilations()) {
+    if (failed(verifyStrideOrDilation(op, dilations->getValue(),
+                                      /*isStride=*/false)))
+      return failure();
+  }
+  return success();
+}
+
 namespace mlir {
 namespace linalg {
 
@@ -769,7 +802,6 @@ namespace linalg {
 
 } // namespace linalg
 } // namespace mlir
-
 static AffineMap extractOrIdentityMap(llvm::Optional<AffineMap> maybeMap,
                                       unsigned rank, MLIRContext *context) {
   if (maybeMap)
@@ -779,6 +811,67 @@ static AffineMap extractOrIdentityMap(llvm::Optional<AffineMap> maybeMap,
   return AffineMap::getMultiDimIdentityMap(rank, context);
 }
 
+// Returns `num` AffineDimExpr dimensions at positions [curIdx, curIdx + num)
+// and increments `curIdx` to `curIdx + num`.
+static SmallVector<AffineExpr, 4>
+makeAffineDimExprs(unsigned num, unsigned &curIdx, MLIRContext *context) {
+  SmallVector<AffineExpr, 4> res;
+  res.reserve(num);
+  for (unsigned i = 0; i < num; ++i)
+    res.push_back(getAffineDimExpr(curIdx++, context));
+  return res;
+}
+
+static SmallVector<AffineExpr, 4>
+weightedConvInputIndex(ConvOp op, ArrayRef<AffineExpr> a,
+                       ArrayRef<AffineExpr> b) {
+  assert(a.size() == b.size());
+  SmallVector<AffineExpr, 4> res;
+  res.reserve(a.size());
+  for (unsigned i = 0, e = a.size(); i < e; ++i) {
+    res.push_back(op.getStride(i) * a[i] + op.getDilation(i) * b[i]);
+  }
+  return res;
+}
+
+static SmallVector<AffineExpr, 4> concat(ArrayRef<AffineExpr> a,
+                                         ArrayRef<AffineExpr> b) {
+  SmallVector<AffineExpr, 4> res;
+  res.reserve(a.size() + b.size());
+  res.assign(a.begin(), a.end());
+  res.append(b.begin(), b.end());
+  return res;
+}
+
+static SmallVector<Value *, 8> permuteIvs(ArrayRef<Value *> ivs,
+                                          AffineMap permutation,
+                                          OperationFolder &state) {
+  return applyMapToValues(ScopedContext::getBuilder(),
+                          ScopedContext::getLocation(), permutation, ivs,
+                          state);
+}
+
+static SmallVector<ValueHandle, 8>
+foldedAffineApplies(OpBuilder &b, Location loc, AffineMap map,
+                    ArrayRef<Value *> vals, OperationFolder &folder) {
+  assert(map.getNumSymbols() == 0);
+  assert(map.getNumInputs() == vals.size());
+  SmallVector<ValueHandle, 8> res;
+  res.reserve(map.getNumResults());
+  auto dims = map.getNumDims();
+  for (auto e : map.getResults()) {
+    auto exprMap = AffineMap::get(dims, 0, e);
+    SmallVector<Value *, 4> operands(vals.begin(), vals.end());
+    canonicalizeMapAndOperands(&exprMap, &operands);
+    res.push_back(
+        ValueHandle(folder.create<AffineApplyOp>(b, loc, exprMap, operands)));
+  }
+  return res;
+}
+
+// Note: both functions below would completely disappear with a simple tensor
+// kernel language.
+//
 // Ideally this should all be Tablegen'd but there is no good story for
 // AffineMap for now.
 SmallVector<AffineMap, 4> mlir::linalg::loopToOperandRangesMaps(Operation *op) {
@@ -795,7 +888,7 @@ SmallVector<AffineMap, 4> mlir::linalg::loopToOperandRangesMaps(Operation *op) {
   }
   if (auto fillOp = dyn_cast<FillOp>(op)) {
     // filling_value -> O(ivs)
-    unsigned rank = fillOp.getNumLoops();
+    unsigned rank = fillOp.getNumParallelLoops();
     return SmallVector<AffineMap, 4>{
         extractOrIdentityMap(llvm::None, rank, context)};
   }
@@ -816,6 +909,43 @@ SmallVector<AffineMap, 4> mlir::linalg::loopToOperandRangesMaps(Operation *op) {
     return SmallVector<AffineMap, 4>{AffineMap::get(3, 0, {i, k}),
                                      AffineMap::get(3, 0, {k, j}),
                                      AffineMap::get(3, 0, {i, j})};
+  if (auto convOp = dyn_cast<ConvOp>(op)) {
+    //   F(z0, ..., zN-1, q, k) * I(b, x0 + z0, ..., xN-1 + zN-1, q) ->
+    //     O(b, x0, ..., xN-1, k)
+    // for N equal to `nWindow`.
+    auto nWin = convOp.getNumWindowLoops();
+    assert(nWin > 0 && "expected at least one window dimension");
+    unsigned idx = 0;
+    // In the following, AffineDimExprs are indexed in loop order:
+    //   [ b, xs, k,           q,                     zs]
+    //    parallels     non-window reductions     windows
+    //
+    // Parallel dims are exactly the dimensions indexing `output`:
+    //     output[b, x[0], ..., x[N-1], k]; i.e.
+    //  * batch dimensions (bs with #bs = 1 for now)
+    //  * "image" dimensions (xs with #xs = #zs = output_rank - #bs - #ks)
+    //  * output filter dimensions (ks with #ks = 1 for now)
+    auto bs = makeAffineDimExprs(convOp.getNumBatchDimensions(), idx, context);
+    auto xs = makeAffineDimExprs(nWin, idx, context);
+    auto ks = makeAffineDimExprs(convOp.getNumOutputFeatureDimensions(), idx,
+                                 context);
+    // Non-window reduction dim: sum_{z[0], ..., z[N-1], q}
+    auto qs =
+        makeAffineDimExprs(convOp.getNumInputFeatureDimensions(), idx, context);
+    // Window reduction dims: sum_{z[0], ..., z[N-1], q}
+    auto zs = makeAffineDimExprs(nWin, idx, context);
+    // Construct the weighedSum expression.
+    auto ws = weightedConvInputIndex(convOp, xs, zs);
+    return SmallVector<AffineMap, 4>{
+        // filter[z[0], ..., z[N-1], q, k]
+        AffineMap::get(idx, 0, concat(concat(zs, qs), ks)),
+        // input[b,
+        //       x[0]*s[0] + d[0]*z[0], ..., x[N-1]*s[N-1] + d[N-1]*z[N-1],
+        //       q]
+        AffineMap::get(idx, 0, concat(concat(bs, ws), qs)),
+        // output[b, x[0], ..., x[N-1], k]
+        AffineMap::get(idx, 0, concat(concat(bs, xs), ks))};
+  }
   llvm_unreachable("Missing loopToOperandRangesMaps for op");
 }
 
@@ -832,7 +962,8 @@ static SmallVector<Value *, 4> permuteIvs(ArrayRef<Value *> ivs,
 // expansion directly in MLIR for now.
 void mlir::linalg::emitScalarImplementation(
     llvm::ArrayRef<Value *> parallelIvs, llvm::ArrayRef<Value *> reductionIvs,
-    LinalgOp &linalgOp) {
+    llvm::ArrayRef<Value *> windowIvs, LinalgOp &linalgOp,
+    OperationFolder &folder) {
   using linalg_load = ValueBuilder<linalg::LoadOp>;
   using linalg_store = OperationBuilder<linalg::StoreOp>;
   using IndexedValue = TemplatedIndexedValue<linalg_load, linalg_store>;
@@ -841,18 +972,26 @@ void mlir::linalg::emitScalarImplementation(
   using edsc::op::operator==;
   using edsc::intrinsics::select;
 
+  auto nPar = parallelIvs.size();
+  auto nRed = reductionIvs.size();
+  auto nWin = windowIvs.size();
+  SmallVector<Value *, 8> allIvs;
+  allIvs.reserve(nPar + nRed + nWin);
+  allIvs.assign(parallelIvs.begin(), parallelIvs.end());
+  allIvs.append(reductionIvs.begin(), reductionIvs.end());
+  allIvs.append(windowIvs.begin(), windowIvs.end());
+
   // Default OpBuilder supports 0-D case (no loops).
   OpBuilder b(linalgOp.getOperation());
-  unsigned nLoops = parallelIvs.size() + reductionIvs.size();
+  auto nLoops = nPar + nRed + nWin;
   if (nLoops > 0) {
-    auto *innermostIv =
-        reductionIvs.empty() ? parallelIvs.back() : reductionIvs.back();
-    auto innermostLoop = linalg::getForInductionVarOwner(innermostIv);
+    auto innermostLoop = linalg::getForInductionVarOwner(allIvs.back());
     // accounts for linalg.terminator in loop.
     b = innermostLoop.getBodyBuilder();
   }
 
-  ScopedContext scope(b, linalgOp.getLoc());
+  auto loc = linalgOp.getLoc();
+  ScopedContext scope(b, loc);
   auto *op = linalgOp.getOperation();
   if (auto copyOp = dyn_cast<CopyOp>(op)) {
     OperationFolder state(op->getFunction());
@@ -897,6 +1036,18 @@ void mlir::linalg::emitScalarImplementation(
     IndexedValue A(matmulOp.getInput(0)), B(matmulOp.getInput(1)),
         C(matmulOp.getOutput(0));
     C(i, j) = C(i, j) + A(i, r_k) * B(r_k, j);
+    return;
+  }
+  if (auto convOp = dyn_cast<ConvOp>(op)) {
+    auto maps = loopToOperandRangesMaps(op);
+    SmallVector<ValueHandle, 8> fIdx(
+        foldedAffineApplies(b, loc, maps[0], allIvs, folder));
+    SmallVector<ValueHandle, 8> imIdx(
+        foldedAffineApplies(b, loc, maps[1], allIvs, folder));
+    SmallVector<ValueHandle, 8> oIdx(
+        foldedAffineApplies(b, loc, maps[2], allIvs, folder));
+    IndexedValue F(convOp.filter()), I(convOp.input()), O(convOp.output());
+    O(oIdx) += F(fIdx) * I(imIdx);
     return;
   }
   llvm_unreachable("Missing emitScalarImplementation for op");

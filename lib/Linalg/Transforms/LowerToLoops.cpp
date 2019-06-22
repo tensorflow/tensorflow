@@ -61,7 +61,7 @@ static void emitLinalgOpAsLoops(LinalgOp &linalgOp, OperationFolder &state) {
   auto invertedMap =
       inversePermutation(concatAffineMaps(loopToOperandRangesMaps(linalgOp)));
   if (!invertedMap) {
-    mlir::linalg::emitScalarImplementation({}, {}, linalgOp);
+    mlir::linalg::emitScalarImplementation({}, {}, {}, linalgOp, state);
     return;
   }
 
@@ -70,22 +70,30 @@ static void emitLinalgOpAsLoops(LinalgOp &linalgOp, OperationFolder &state) {
 
   SmallVector<IndexHandle, 4> parallelIvs(linalgOp.getNumParallelLoops());
   SmallVector<IndexHandle, 4> reductionIvs(linalgOp.getNumReductionLoops());
+  SmallVector<IndexHandle, 4> windowIvs(linalgOp.getNumWindowLoops());
   auto pivs = IndexHandle::makeIndexHandlePointers(parallelIvs);
   auto rivs = IndexHandle::makeIndexHandlePointers(reductionIvs);
-  assert(loopRanges.size() == pivs.size() + rivs.size());
+  auto wivs = IndexHandle::makeIndexHandlePointers(windowIvs);
+  assert(loopRanges.size() == pivs.size() + rivs.size() + wivs.size());
 
   // clang-format off
   ArrayRef<Value *> ranges(loopRanges);
   LoopNestRangeBuilder(pivs, ranges.take_front(pivs.size()))([&] {
-    LoopNestRangeBuilder(rivs, ranges.take_back(rivs.size()))(
-        [&linalgOp, &parallelIvs, &reductionIvs] {
+    LoopNestRangeBuilder(
+        rivs, ranges.drop_back(wivs.size()).take_back(rivs.size()))([&] {
+      LoopNestRangeBuilder(wivs, ranges.take_back(wivs.size()))(
+        [&linalgOp, &parallelIvs, &reductionIvs, &windowIvs, &state] {
         SmallVector<mlir::Value *, 4> parallel(
             parallelIvs.begin(), parallelIvs.end());
         SmallVector<mlir::Value *, 4> reduction(
             reductionIvs.begin(), reductionIvs.end());
-        mlir::linalg::emitScalarImplementation(parallel, reduction, linalgOp);
+        SmallVector<mlir::Value *, 4> window(
+            windowIvs.begin(), windowIvs.end());
+        mlir::linalg::emitScalarImplementation(
+            parallel, reduction, window, linalgOp, state);
       });
     });
+  });
   // clang-format on
 }
 

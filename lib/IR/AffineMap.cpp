@@ -24,6 +24,7 @@
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 
@@ -274,17 +275,20 @@ AffineMap mlir::inversePermutation(AffineMap map) {
   SmallVector<AffineExpr, 4> exprs(map.getNumDims());
   for (auto en : llvm::enumerate(map.getResults())) {
     auto expr = en.value();
-    auto d = expr.cast<AffineDimExpr>(); // permutation map expected;
-    if (exprs[d.getPosition()])
-      continue;
-    exprs[d.getPosition()] = getAffineDimExpr(en.index(), d.getContext());
+    // Skip non-permutations.
+    if (auto d = expr.dyn_cast<AffineDimExpr>()) {
+      if (exprs[d.getPosition()])
+        continue;
+      exprs[d.getPosition()] = getAffineDimExpr(en.index(), d.getContext());
+    }
   }
   SmallVector<AffineExpr, 4> seenExprs;
   seenExprs.reserve(map.getNumDims());
   for (auto expr : exprs)
     if (expr)
       seenExprs.push_back(expr);
-  assert(seenExprs.size() == map.getNumInputs() && "map is not full rank");
+  assert(seenExprs.size() == map.getNumInputs() &&
+         "map does not include a full rank permutation");
   return AffineMap::get(map.getNumResults(), 0, seenExprs);
 }
 
