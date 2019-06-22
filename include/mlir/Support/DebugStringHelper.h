@@ -33,8 +33,7 @@
 namespace mlir {
 
 // Simple helper function that returns a string as printed from a op.
-template <typename T>
-static string debugString(T &op) {
+template <typename T> static std::string debugString(T &op) {
   std::string instr_str;
   llvm::raw_string_ostream os(instr_str);
   op.print(os);
