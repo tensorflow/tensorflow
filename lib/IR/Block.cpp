@@ -150,17 +150,6 @@ void Block::recomputeInstOrder() {
     op.orderIndex = orderIndex++;
 }
 
-Block *PredecessorIterator::operator*() const {
-  // The use iterator points to an operand of a terminator.  The predecessor
-  // we return is the block that the terminator is embedded into.
-  return bbUseIterator.getUser()->getBlock();
-}
-
-/// Get the successor number in the predecessor terminator.
-unsigned PredecessorIterator::getSuccessorIndex() const {
-  return bbUseIterator->getOperandNumber();
-}
-
 //===----------------------------------------------------------------------===//
 // Argument list management.
 //===----------------------------------------------------------------------===//
@@ -281,4 +270,17 @@ Block *Block::splitBlock(iterator splitBefore) {
   newBB->getOperations().splice(newBB->end(), getOperations(), splitBefore,
                                 end());
   return newBB;
+}
+
+//===----------------------------------------------------------------------===//
+// Predecessors
+//===----------------------------------------------------------------------===//
+
+Block *PredecessorIterator::unwrap(BlockOperand &value) {
+  return value.getOwner()->getBlock();
+}
+
+/// Get the successor number in the predecessor terminator.
+unsigned PredecessorIterator::getSuccessorIndex() const {
+  return I->getOperandNumber();
 }

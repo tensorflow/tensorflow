@@ -333,40 +333,27 @@ namespace mlir {
 // Predecessors
 //===----------------------------------------------------------------------===//
 
-/// Implement a predecessor iterator as a forward iterator.  This works by
-/// walking the use lists of the blocks.  The entries on this list are the
-/// BlockOperands that are embedded into terminator operations.  From the
-/// operand, we can get the terminator that contains it, and it's parent block
-/// is the predecessor.
-class PredecessorIterator
-    : public llvm::iterator_facade_base<PredecessorIterator,
-                                        std::forward_iterator_tag, Block *> {
+/// Implement a predecessor iterator for blocks. This works by walking the use
+/// lists of the blocks. The entries on this list are the BlockOperands that
+/// are embedded into terminator operations. From the operand, we can get the
+/// terminator that contains it, and its parent block is the predecessor.
+class PredecessorIterator final
+    : public llvm::mapped_iterator<ValueUseIterator<BlockOperand>,
+                                   Block *(*)(BlockOperand &)> {
+  static Block *unwrap(BlockOperand &value);
+
 public:
-  PredecessorIterator(BlockOperand *firstOperand)
-      : bbUseIterator(firstOperand) {}
+  using reference = Block *;
 
-  PredecessorIterator &operator=(const PredecessorIterator &rhs) {
-    bbUseIterator = rhs.bbUseIterator;
-    return *this;
-  }
-
-  bool operator==(const PredecessorIterator &rhs) const {
-    return bbUseIterator == rhs.bbUseIterator;
-  }
-
-  Block *operator*() const;
-
-  PredecessorIterator &operator++() {
-    ++bbUseIterator;
-    return *this;
-  }
+  /// Initializes the operand type iterator to the specified operand iterator.
+  PredecessorIterator(ValueUseIterator<BlockOperand> it)
+      : llvm::mapped_iterator<ValueUseIterator<BlockOperand>,
+                              Block *(*)(BlockOperand &)>(it, &unwrap) {}
+  explicit PredecessorIterator(BlockOperand *operand)
+      : PredecessorIterator(ValueUseIterator<BlockOperand>(operand)) {}
 
   /// Get the successor number in the predecessor terminator.
   unsigned getSuccessorIndex() const;
-
-private:
-  using BBUseIterator = ValueUseIterator<BlockOperand>;
-  BBUseIterator bbUseIterator;
 };
 
 inline auto Block::pred_begin() -> pred_iterator {
