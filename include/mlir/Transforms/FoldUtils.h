@@ -24,6 +24,7 @@
 #define MLIR_TRANSFORMS_FOLDUTILS_H
 
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Dialect.h"
 
 namespace mlir {
 class Function;
@@ -48,13 +49,15 @@ public:
   OperationFolder(Function *f) : function(f) {}
 
   /// Tries to perform folding on the given `op`, including unifying
-  /// deduplicated constants. If successful, calls `preReplaceAction` (if
-  /// provided) by passing in `op`, then replaces `op`'s uses with folded
-  /// results, and returns success. If the op was completely folded it is
+  /// deduplicated constants. If successful, replaces `op`'s uses with
+  /// folded results, and returns success. `preReplaceAction` is invoked on `op`
+  /// before it is replaced. 'processGeneratedConstants' is invoked for any new
+  /// operations generated when folding. If the op was completely folded it is
   /// erased.
-  LogicalResult
-  tryToFold(Operation *op,
-            std::function<void(Operation *)> preReplaceAction = {});
+  LogicalResult tryToFold(
+      Operation *op,
+      llvm::function_ref<void(Operation *)> processGeneratedConstants = nullptr,
+      llvm::function_ref<void(Operation *)> preReplaceAction = nullptr);
 
   /// Notifies that the given constant `op` should be remove from this
   /// OperationFolder's internal bookkeeping.
@@ -103,22 +106,28 @@ public:
 private:
   /// Tries to perform folding on the given `op`. If successful, populates
   /// `results` with the results of the folding.
-  LogicalResult tryToFold(Operation *op, SmallVectorImpl<Value *> &results);
+  LogicalResult tryToFold(Operation *op, SmallVectorImpl<Value *> &results,
+                          llvm::function_ref<void(Operation *)>
+                              processGeneratedConstants = nullptr);
 
-  /// Tries to deduplicate the given constant and returns success if that can be
-  /// done. This moves the given constant to the top of the entry block if it
-  /// is first seen. If there is already an existing constant that is the same,
-  /// this does *not* erases the given constant.
-  LogicalResult tryToUnify(Operation *op);
-
-  /// Moves the given constant `op` to entry block to guarantee dominance.
-  void moveConstantToEntryBlock(Operation *op);
+  /// Try to get or create a new constant entry. On success this returns the
+  /// constant operation, nullptr otherwise.
+  Operation *tryGetOrCreateConstant(Dialect *dialect, OpBuilder &builder,
+                                    Attribute value, Type type, Location loc);
 
   /// The function where we are managing constant.
   Function *function;
 
-  /// This map keeps track of uniqued constants.
-  DenseMap<std::pair<Attribute, Type>, Operation *> uniquedConstants;
+  /// This map keeps track of uniqued constants by dialect, attribute, and type.
+  /// A constant operation materializes an attribute with a type. Dialects may
+  /// generate different constants with the same input attribute and type, so we
+  /// also need to track per-dialect.
+  DenseMap<std::tuple<Dialect *, Attribute, Type>, Operation *>
+      uniquedConstants;
+
+  /// This map tracks all of the dialects that an operation is referenced by;
+  /// given that many dialects may generate the same constant.
+  DenseMap<Operation *, SmallVector<Dialect *, 2>> referencedDialects;
 };
 
 } // end namespace mlir

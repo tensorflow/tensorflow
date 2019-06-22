@@ -147,11 +147,14 @@ bool GreedyPatternRewriteDriver::simplifyFunction(int maxIterations) {
   // TODO(riverriddle) OperationFolder should take a region to insert into.
   OperationFolder helper(region->getContainingFunction());
 
+  // Add the given operation to the worklist.
+  auto collectOps = [this](Operation *op) { addToWorklist(op); };
+
   bool changed = false;
   int i = 0;
   do {
     // Add all operations to the worklist.
-    region->walk([&](Operation *op) { addToWorklist(op); });
+    region->walk(collectOps);
 
     // These are scratch vectors used in the folding loop below.
     SmallVector<Value *, 8> originalOperands, resultValues;
@@ -190,7 +193,7 @@ bool GreedyPatternRewriteDriver::simplifyFunction(int maxIterations) {
       };
 
       // Try to fold this op.
-      if (succeeded(helper.tryToFold(op, collectOperandsAndUses))) {
+      if (succeeded(helper.tryToFold(op, collectOps, collectOperandsAndUses))) {
         changed |= true;
         continue;
       }

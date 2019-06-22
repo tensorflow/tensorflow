@@ -33,30 +33,21 @@ using namespace mlir;
 // OperationFolder
 //===----------------------------------------------------------------------===//
 
-LogicalResult
-OperationFolder::tryToFold(Operation *op,
-                           std::function<void(Operation *)> preReplaceAction) {
+LogicalResult OperationFolder::tryToFold(
+    Operation *op,
+    llvm::function_ref<void(Operation *)> processGeneratedConstants,
+    llvm::function_ref<void(Operation *)> preReplaceAction) {
   assert(op->getFunction() == function &&
          "cannot constant fold op from another function");
 
-  // The constant op also implements the constant fold hook; it can be folded
-  // into the value it contains. We need to consider constants before the
-  // constant folding logic to avoid re-creating the same constant later.
-  // TODO: Extend to support dialect-specific constant ops.
-  if (auto constant = dyn_cast<ConstantOp>(op)) {
-    // If this constant is dead, update bookkeeping and signal the caller.
-    if (constant.use_empty()) {
-      notifyRemoval(op);
-      op->erase();
-      return success();
-    }
-    // Otherwise, try to see if we can de-duplicate it.
-    return tryToUnify(op);
-  }
+  // If this is a unique'd constant, return failure as we know that it has
+  // already been folded.
+  if (referencedDialects.count(op))
+    return failure();
 
   // Try to fold the operation.
   SmallVector<Value *, 8> results;
-  if (failed(tryToFold(op, results)))
+  if (failed(tryToFold(op, results, processGeneratedConstants)))
     return failure();
 
   // Constant folding succeeded. We will start replacing this op's uses and
@@ -76,10 +67,58 @@ OperationFolder::tryToFold(Operation *op,
   return success();
 }
 
+/// Notifies that the given constant `op` should be remove from this
+/// OperationFolder's internal bookkeeping.
+void OperationFolder::notifyRemoval(Operation *op) {
+  assert(op->getFunction() == function &&
+         "cannot remove constant from another function");
+
+  // Check to see if this operation is uniqued within the folder.
+  auto it = referencedDialects.find(op);
+  if (it == referencedDialects.end())
+    return;
+
+  // Get the constant value for this operation, this is the value that was used
+  // to unique the operation internally.
+  Attribute constValue;
+  matchPattern(op, m_Constant(&constValue));
+  assert(constValue);
+
+  // Erase all of the references to this operation.
+  auto type = op->getResult(0)->getType();
+  for (auto *dialect : it->second)
+    uniquedConstants.erase(std::make_tuple(dialect, constValue, type));
+  referencedDialects.erase(it);
+}
+
+/// A utility function used to materialize a constant for a given attribute and
+/// type. On success, a valid constant value is returned. Otherwise, null is
+/// returned
+static Operation *materializeConstant(Dialect *dialect, OpBuilder &builder,
+                                      Attribute value, Type type,
+                                      Location loc) {
+  auto insertPt = builder.getInsertionPoint();
+  (void)insertPt;
+
+  // Ask the dialect to materialize a constant operation for this value.
+  if (auto *constOp = dialect->materializeConstant(builder, value, type, loc)) {
+    assert(insertPt == builder.getInsertionPoint());
+    assert(matchPattern(constOp, m_Constant(&value)));
+    return constOp;
+  }
+
+  // If the dialect is unable to materialize a constant, check to see if the
+  // standard constant can be used.
+  if (ConstantOp::isBuildableWith(value, type))
+    return builder.create<ConstantOp>(loc, type, value);
+  return nullptr;
+}
+
 /// Tries to perform folding on the given `op`. If successful, populates
 /// `results` with the results of the folding.
-LogicalResult OperationFolder::tryToFold(Operation *op,
-                                         SmallVectorImpl<Value *> &results) {
+LogicalResult OperationFolder::tryToFold(
+    Operation *op, SmallVectorImpl<Value *> &results,
+    llvm::function_ref<void(Operation *)> processGeneratedConstants) {
   assert(op->getFunction() == function &&
          "cannot constant fold op from another function");
 
@@ -109,8 +148,12 @@ LogicalResult OperationFolder::tryToFold(Operation *op,
     return success();
   assert(foldResults.size() == op->getNumResults());
 
+  // Create a builder to insert new operations into the entry block.
+  auto &entry = function->getBody().front();
+  OpBuilder builder(&entry, entry.empty() ? entry.end() : entry.begin());
+
   // Create the result constants and replace the results.
-  OpBuilder builder(op);
+  auto *dialect = op->getDialect();
   for (unsigned i = 0, e = op->getNumResults(); i != e; ++i) {
     assert(!foldResults[i].isNull() && "expected valid OpFoldResult");
 
@@ -120,72 +163,70 @@ LogicalResult OperationFolder::tryToFold(Operation *op,
       continue;
     }
 
-    // If we already have a canonicalized version of this constant, just reuse
-    // it. Otherwise create a new one.
-    Attribute attrRepl = foldResults[i].get<Attribute>();
+    // Check to see if there is a canonicalized version of this constant.
     auto *res = op->getResult(i);
-    auto &constInst =
-        uniquedConstants[std::make_pair(attrRepl, res->getType())];
-    if (!constInst) {
-      // TODO: Extend to support dialect-specific constant ops.
-      auto newOp =
-          builder.create<ConstantOp>(op->getLoc(), res->getType(), attrRepl);
-      // Register to the constant map and also move up to entry block to
-      // guarantee dominance.
-      constInst = newOp.getOperation();
-      moveConstantToEntryBlock(constInst);
+    Attribute attrRepl = foldResults[i].get<Attribute>();
+    if (auto *constOp = tryGetOrCreateConstant(dialect, builder, attrRepl,
+                                               res->getType(), op->getLoc())) {
+      results.push_back(constOp->getResult(0));
+      continue;
     }
-    results.push_back(constInst->getResult(0));
+    // If materialization fails, cleanup any operations generated for the
+    // previous results and return failure.
+    for (Operation &op : llvm::make_early_inc_range(
+             llvm::make_range(entry.begin(), builder.getInsertionPoint()))) {
+      notifyRemoval(&op);
+      op.erase();
+    }
+    return failure();
+  }
+
+  // Process any newly generated operations.
+  if (processGeneratedConstants) {
+    for (auto i = entry.begin(), e = builder.getInsertionPoint(); i != e; ++i)
+      processGeneratedConstants(&*i);
   }
 
   return success();
 }
 
-void OperationFolder::notifyRemoval(Operation *op) {
-  assert(op->getFunction() == function &&
-         "cannot remove constant from another function");
+/// Try to get or create a new constant entry. On success this returns the
+/// constant operation value, nullptr otherwise.
+Operation *OperationFolder::tryGetOrCreateConstant(Dialect *dialect,
+                                                   OpBuilder &builder,
+                                                   Attribute value, Type type,
+                                                   Location loc) {
+  // Check if an existing mapping already exists.
+  auto constKey = std::make_tuple(dialect, value, type);
+  auto *&constInst = uniquedConstants[constKey];
+  if (constInst)
+    return constInst;
 
-  Attribute constValue;
-  if (!matchPattern(op, m_Constant(&constValue)))
-    return;
+  // If one doesn't exist, try to materialize one.
+  if (!(constInst = materializeConstant(dialect, builder, value, type, loc)))
+    return nullptr;
 
-  // This constant is dead. keep uniquedConstants up to date.
-  auto it = uniquedConstants.find({constValue, op->getResult(0)->getType()});
-  if (it != uniquedConstants.end() && it->second == op)
-    uniquedConstants.erase(it);
-}
-
-LogicalResult OperationFolder::tryToUnify(Operation *op) {
-  Attribute constValue;
-  matchPattern(op, m_Constant(&constValue));
-  assert(constValue);
-
-  // Check to see if we already have a constant with this type and value:
-  auto &constInst =
-      uniquedConstants[std::make_pair(constValue, op->getResult(0)->getType())];
-  if (constInst) {
-    // If this constant is already our uniqued one, then leave it alone.
-    if (constInst == op)
-      return failure();
-
-    // Otherwise replace this redundant constant with the uniqued one.  We know
-    // this is safe because we move constants to the top of the function when
-    // they are uniqued, so we know they dominate all uses.
-    op->getResult(0)->replaceAllUsesWith(constInst->getResult(0));
-    op->erase();
-    return success();
+  // Check to see if the generated constant is in the expected dialect.
+  auto *newDialect = constInst->getDialect();
+  if (newDialect == dialect) {
+    referencedDialects[constInst].push_back(dialect);
+    return constInst;
   }
 
-  // If we have no entry, then we should unique this constant as the
-  // canonical version.  To ensure safe dominance, move the operation to the
-  // entry block of the function.
-  constInst = op;
-  moveConstantToEntryBlock(op);
-  return failure();
-}
+  // If it isn't, then we also need to make sure that the mapping for the new
+  // dialect is valid.
+  auto newKey = std::make_tuple(newDialect, value, type);
 
-void OperationFolder::moveConstantToEntryBlock(Operation *op) {
-  // Insert at the very top of the entry block.
-  auto &entryBB = function->front();
-  op->moveBefore(&entryBB, entryBB.begin());
+  // If an existing operation in the new dialect already exists, delete the
+  // materialized operation in favor of the existing one.
+  if (auto *existingOp = uniquedConstants.lookup(newKey)) {
+    constInst->erase();
+    referencedDialects[existingOp].push_back(dialect);
+    return constInst = existingOp;
+  }
+
+  // Otherwise, update the new dialect to the materialized operation.
+  referencedDialects[constInst].assign({dialect, newDialect});
+  auto newIt = uniquedConstants.insert({newKey, constInst});
+  return newIt.first->second;
 }

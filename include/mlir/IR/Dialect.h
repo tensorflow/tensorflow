@@ -25,6 +25,7 @@
 #include "mlir/IR/OperationSupport.h"
 
 namespace mlir {
+class OpBuilder;
 class Type;
 
 using DialectConstantDecodeHook =
@@ -43,6 +44,12 @@ using DialectExtractElementHook =
 ///
 class Dialect {
 public:
+  virtual ~Dialect();
+
+  /// Utility function that returns if the given string is a valid dialect
+  /// namespace.
+  static bool isValidNamespace(StringRef str);
+
   MLIRContext *getContext() const { return context; }
 
   StringRef getNamespace() const { return name; }
@@ -51,6 +58,10 @@ public:
   /// operations prefixed with the dialect namespace but not registered with
   /// addOperation.
   bool allowsUnknownOperations() const { return allowUnknownOps; }
+
+  //===--------------------------------------------------------------------===//
+  // Constant Hooks
+  //===--------------------------------------------------------------------===//
 
   /// Registered fallback constant fold hook for the dialect. Like the constant
   /// fold hook of each operation, it attempts to constant fold the operation
@@ -79,6 +90,22 @@ public:
       [](const OpaqueElementsAttr input, ArrayRef<uint64_t> index) {
         return Attribute();
       };
+
+  /// Registered hook to materialize a single constant operation from a given
+  /// attribute value with the desired resultant type. This method should use
+  /// the provided builder to create the operation without changing the
+  /// insertion position. The generated operation is expected to be constant
+  /// like, i.e. single result, zero operands, non side-effecting, etc. On
+  /// success, this hook should return the value generated to represent the
+  /// constant value. Otherwise, it should return null on failure.
+  virtual Operation *materializeConstant(OpBuilder &builder, Attribute value,
+                                         Type type, Location loc) {
+    return nullptr;
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Parsing Hooks
+  //===--------------------------------------------------------------------===//
 
   /// Parse an attribute registered to this dialect.
   virtual Attribute parseAttribute(StringRef attrData, Location loc) const;
@@ -112,6 +139,10 @@ public:
   virtual void
   getTypeAliases(SmallVectorImpl<std::pair<Type, StringRef>> &aliases) {}
 
+  //===--------------------------------------------------------------------===//
+  // Verification Hooks
+  //===--------------------------------------------------------------------===//
+
   /// Verify an attribute from this dialect on the given function. Returns
   /// failure if the verification failed, success otherwise.
   virtual LogicalResult verifyFunctionAttribute(Function *, NamedAttribute) {
@@ -131,12 +162,6 @@ public:
   virtual LogicalResult verifyOperationAttribute(Operation *, NamedAttribute) {
     return success();
   }
-
-  virtual ~Dialect();
-
-  /// Utility function that returns if the given string is a valid dialect
-  /// namespace.
-  static bool isValidNamespace(StringRef str);
 
 protected:
   /// The constructor takes a unique namespace for this dialect as well as the

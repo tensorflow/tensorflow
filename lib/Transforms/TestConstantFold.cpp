@@ -38,15 +38,13 @@ struct TestConstantFold : public FunctionPass<TestConstantFold> {
 } // end anonymous namespace
 
 void TestConstantFold::foldOperation(Operation *op, OperationFolder &helper) {
+  auto processGeneratedConstants = [this](Operation *op) {
+    existingConstants.push_back(op);
+  };
+
   // Attempt to fold the specified operation, including handling unused or
   // duplicated constants.
-  if (succeeded(helper.tryToFold(op)))
-    return;
-
-  // If this op is a constant that are used and cannot be de-duplicated,
-  // remember it for cleanup later.
-  if (auto constant = dyn_cast<ConstantOp>(op))
-    existingConstants.push_back(op);
+  (void)helper.tryToFold(op, processGeneratedConstants);
 }
 
 // For now, we do a simple top-down pass over a function folding constants.  We

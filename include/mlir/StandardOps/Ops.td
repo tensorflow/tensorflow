@@ -499,6 +499,10 @@ def ConstantOp : Std_Op<"constant", [NoSideEffect]> {
 
   let extraClassDeclaration = [{
     Attribute getValue() { return getAttr("value"); }
+
+    /// Returns true if a constant operation can be built with the given value
+    /// and result type.
+    static bool isBuildableWith(Attribute value, Type type);
   }];
 
   let hasFolder = 1;

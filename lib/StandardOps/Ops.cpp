@@ -1131,6 +1131,20 @@ OpFoldResult ConstantOp::fold(ArrayRef<Attribute> operands) {
   return getValue();
 }
 
+/// Returns true if a constant operation can be built with the given value and
+/// result type.
+bool ConstantOp::isBuildableWith(Attribute value, Type type) {
+  // FunctionAttr can only be used with a function type.
+  if (value.isa<FunctionAttr>())
+    return type.isa<FunctionType>();
+  // Otherwise, the attribute must have the same type as 'type'.
+  if (value.getType() != type)
+    return false;
+  // Finally, check that the attribute kind is handled.
+  return value.isa<IntegerAttr>() || value.isa<FloatAttr>() ||
+         value.isa<ElementsAttr>() || value.isa<UnitAttr>();
+}
+
 void ConstantFloatOp::build(Builder *builder, OperationState *result,
                             const APFloat &value, FloatType type) {
   ConstantOp::build(builder, result, type, builder->getFloatAttr(type, value));
