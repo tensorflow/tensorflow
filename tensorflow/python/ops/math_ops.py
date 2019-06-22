@@ -556,6 +556,7 @@ def imag(input, name=None):
     A `Tensor` of type `float32` or `float64`.
   """
   with ops.name_scope(name, "Imag", [input]) as name:
+    input = ops.convert_to_tensor(input, name="input")
     if input.dtype.is_complex:
       return gen_math_ops.imag(input, Tout=input.dtype.real_dtype, name=name)
     else:
