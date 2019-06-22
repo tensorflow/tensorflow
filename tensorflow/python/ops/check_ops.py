@@ -89,15 +89,28 @@ def _shape_and_dtype_str(tensor):
 
 def _unary_assert_doc(sym, sym_name):
   """
-  Common docstring for assert_* ops that evaluate a unary predicate over every 
+  Common docstring for assert_* ops that evaluate a unary predicate over every
   element of a tensor.
 
   Args:
     sym: Mathematical symbol for the check performed on each element, i.e.
       "> 0"
     sym_name: English-language name for the op described by sym
+
+  Returns:
+    Decorator that adds the appropriate docstring to the function for symbol
+    `sym`.
   """
   def _decorator(func):
+    """
+    Generated decorator that adds the appropriate docstring to the function for
+    symbol `sym`.
+
+    Args:
+      func: Function for a TensorFlow op
+
+    Returns a version of `func` with documentation attached.
+    """
     opname = func.__name__
     cap_sym_name = sym_name.capitalize()
 
@@ -146,8 +159,21 @@ def _binary_assert_doc(sym):
 
   Args:
     sym: Binary operation symbol, i.e. "=="
+
+  Returns a decorator that adds the appropriate docstring to the function for
+  symbol `sym`.
   """
   def _decorator(func):
+    """
+    Generated decorator that adds the appropriate docstring to the function for
+    symbol `sym`.
+
+    Args:
+      func: Function for a TensorFlow op
+
+    Returns:
+      A version of `func` with documentation attached.
+    """
     opname = func.__name__
 
     func.__doc__ = """
@@ -198,7 +224,8 @@ def _make_assert_msg_data(sym, x, y, summarize, test_op):
   Args:
     sym: Mathematical symbol for the test to apply to pairs of tensor
       elements, i.e. "=="
-    x, y: Inputs to the assertion after convert_to_tensor()
+    x: First input to the assertion after applying `convert_to_tensor()`
+    y: Second input to the assertion
     summarize: Value of the "summarize" parameter to the original assert_*
       call; tells how many elements of each tensor to print.
     test_op: TensorFlow op that returns a Boolean tensor with True in each
@@ -248,14 +275,15 @@ def _make_assert_msg_data(sym, x, y, summarize, test_op):
 def _pretty_print(data_item, summarize):
   """
   Format a data item for use in an error message in eager mode.
-  
+ 
   Args:
     data_item: One of the items in the "data" argument to an assert_*
       function. Can be a Tensor or a scalar value.
     summarize: How many elements to retain of each tensor-valued entry 
       in data.
 
-  Returns an appropriate string representation of data_item
+  Returns:
+    An appropriate string representation of data_item
   """
   if isinstance(data_item, ops.Tensor):
     arr = data_item.numpy()
@@ -289,11 +317,17 @@ def _binary_assert(sym, opname, op_func, static_func,
       inputs to the assertion, will return a Boolean ndarray with containing 
       True in all positions where the assertion PASSES.
       i.e. lambda x,y: (x == y) for assert_equal()
-    x, y, data, summarize, message, name: See doc in _binary_assert_doc 
-      above.
+    x:  Numeric `Tensor`.
+    y:  Numeric `Tensor`, same dtype as and broadcastable to `x`.
+    data:  The tensors to print out if the condition is False.  Defaults to
+           error message and first few entries of `x`, `y`.
+    summarize: Print this many entries of each tensor.
+    message: A string to prefix to the default message.
+    name: A name for this operation (optional).  Defaults to the value of
+          `opname`.
 
   Returns:
-    See doc in _binary_assert_doc().
+    See docstring template in _binary_assert_doc().
   """
   with ops.name_scope(name, opname, [x, y, data]):
     x = ops.convert_to_tensor(x, name='x')
@@ -304,7 +338,7 @@ def _binary_assert(sym, opname, op_func, static_func,
       condition = math_ops.reduce_all(test_op)
       if condition:
         return
-      
+
       # If we get here, the assertion has failed.
       # Default to printing 3 elements like control_flow_ops.Assert (used
       # by graph mode) does. Also treat negative values as "print
