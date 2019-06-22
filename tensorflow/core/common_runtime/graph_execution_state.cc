@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/metrics.h"
@@ -58,21 +59,15 @@ limitations under the License.
 namespace tensorflow {
 
 GraphExecutionState::GraphExecutionState(
-    GraphDef* graph_def, const GraphExecutionStateOptions& options)
+    GraphDef&& graph_def, const GraphExecutionStateOptions& options)
     : stateful_placements_(options.stateful_placements),
+      original_graph_def_(std::move(graph_def)),
       device_set_(options.device_set),
       session_options_(options.session_options),
       session_handle_(options.session_handle),
       flib_def_(new FunctionLibraryDefinition(OpRegistry::Global(),
-                                              graph_def->library())),
-      graph_(nullptr) {
-  // NOTE(mrry): GraphDef does not have a move constructor, so we pass
-  // a non-const pointer and use `Swap()` to transfer the contents
-  // without copying.
-  original_graph_def_.Swap(graph_def);
-  // TODO(mrry): Publish placement visualizations or handle the log
-  // placement option.
-}
+                                              original_graph_def_.library())),
+      graph_(nullptr) {}
 
 GraphExecutionState::~GraphExecutionState() {
   node_name_to_cost_id_map_.clear();
@@ -80,14 +75,14 @@ GraphExecutionState::~GraphExecutionState() {
 }
 
 /* static */ Status GraphExecutionState::MakeForBaseGraph(
-    GraphDef* graph_def, const GraphExecutionStateOptions& options,
+    GraphDef&& graph_def, const GraphExecutionStateOptions& options,
     std::unique_ptr<GraphExecutionState>* out_state) {
 #ifndef __ANDROID__
-  VLOG(4) << "Graph proto is \n" << graph_def->DebugString();
+  VLOG(4) << "Graph proto is \n" << graph_def.DebugString();
 #endif  // __ANDROID__
 
-  std::unique_ptr<GraphExecutionState> ret(
-      new GraphExecutionState(graph_def, options));
+  auto ret =
+      absl::WrapUnique(new GraphExecutionState(std::move(graph_def), options));
 
   TF_RETURN_IF_ERROR(
       AddDefaultAttrsToGraphDef(&ret->original_graph_def_, *ret->flib_def_, 0));
@@ -116,8 +111,8 @@ GraphExecutionState::~GraphExecutionState() {
   // also that the previous version used `Extend()`, which is strictly
   // more expensive than copying a `GraphDef`.)
   GraphDef temp(graph_def);
-  std::unique_ptr<GraphExecutionState> ret(
-      new GraphExecutionState(&temp, options));
+  auto ret =
+      absl::WrapUnique(new GraphExecutionState(std::move(temp), options));
   TF_RETURN_IF_ERROR(
       AddDefaultAttrsToGraphDef(&ret->original_graph_def_, *ret->flib_def_, 0));
   TF_RETURN_IF_ERROR(ret->InitBaseGraph(subgraph_options));
@@ -207,8 +202,8 @@ Status GraphExecutionState::Extend(
 
   // NOTE(mrry): `gdef` is no longer valid after the constructor
   // executes.
-  std::unique_ptr<GraphExecutionState> new_execution_state(
-      new GraphExecutionState(&gdef, combined_options));
+  auto new_execution_state = absl::WrapUnique(
+      new GraphExecutionState(std::move(gdef), combined_options));
 
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(
       &new_execution_state->original_graph_def_, *flib_def_, 0));

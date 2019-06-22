@@ -358,6 +358,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["iterator_test.py"],
     additional_deps = [
+        ":test_base",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python/data/ops:readers",

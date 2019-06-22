@@ -61,6 +61,17 @@ _BaseSlice = slice
 def identity(input, name=None):  # pylint: disable=redefined-builtin
   r"""Return a tensor with the same shape and contents as input.
 
+  For example:
+
+  ```python
+  import tensorflow as tf
+  val0 = tf.ones((1,), dtype=tf.float32)
+  a = tf.atan2(val0, val0)
+  a_identity = tf.identity(a)
+  print(a.numpy())          #[0.7853982]
+  print(a_identity.numpy()) #[0.7853982]
+  ```
+
   Args:
     input: A `Tensor`.
     name: A name for the operation (optional).
@@ -2258,7 +2269,16 @@ def zeros_like_v2(
 
   ```python
   tensor = tf.constant([[1, 2, 3], [4, 5, 6]])
-  tf.zeros_like(tensor)  # [[0, 0, 0], [0, 0, 0]]
+  tf.zeros_like(tensor)  # [[0, 0, 0], [0, 0, 0]] with dtype=int32
+
+  If dtype of input `tensor` is `float32`, then the output is also of `float32`
+  tensor = tf.constant([[1.0, 2.0, 3.0], [4, 5, 6]])
+  tf.zeros_like(tensor)  # [[0., 0., 0.], [0., 0., 0.]] with dtype=floa32
+
+  If you want to specify desired dtype of output `tensor`, then specify it in
+  the op tensor = tf.constant([[1.0, 2.0, 3.0], [4, 5, 6]])
+  tf.zeros_like(tensor,dtype=tf.int32)  # [[0, 0, 0], [0, 0, 0]] with
+  dtype=int32
   ```
 
   Args:

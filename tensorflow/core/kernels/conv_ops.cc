@@ -623,7 +623,7 @@ static void CheckRedzones(const se::cuda::RedzoneAllocator& rz_allocator,
   auto rz_check_status = rz_status.ValueOrDie();
   if (!rz_check_status.ok()) {
     auto* fail = autotune_result->mutable_failure();
-    fail->set_msg(rz_check_status.redzone_failure_msg);
+    fail->set_msg(rz_check_status.RedzoneFailureMsg());
     fail->set_kind(AutotuneResult::REDZONE_MODIFIED);
     LOG(ERROR)
         << "Detected cudnn out-of-bounds write in convolution buffer! This is "
@@ -633,7 +633,7 @@ static void CheckRedzones(const se::cuda::RedzoneAllocator& rz_allocator,
            "of Google, please ensure you're running the latest version of "
            "cudnn. If that doesn't fix the problem, please file a bug with "
            "this full error message and we'll contact nvidia.";
-    LOG(ERROR) << rz_check_status.redzone_failure_msg;
+    LOG(ERROR) << rz_check_status.RedzoneFailureMsg();
   }
 }
 

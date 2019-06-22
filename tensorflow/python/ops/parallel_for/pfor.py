@@ -1734,19 +1734,51 @@ def _convert_matrix_band_part(pfor_input):
       t, num_lower=num_lower, num_upper=num_upper), True)
 
 
-@RegisterPFor("MatrixDiagPartV2")
-def _convert_matrix_diag_part_v2(pfor_input):
-  t = pfor_input.stacked_input(0)
-  return wrap(array_ops.matrix_diag_part(t), True)
-
-
 @RegisterPFor("MatrixSetDiag")
-@RegisterPFor("MatrixSetDiagV2")
 def _convert_matrix_set_diag(pfor_input):
   pfor_input.stack_inputs()
   t = pfor_input.stacked_input(0)
   diag = pfor_input.stacked_input(1)
   return wrap(array_ops.matrix_set_diag(t, diag), True)
+
+
+# Registrations for MatrixDiagV2, MatrixDiagPartv2, and MatrixSetDiagV2.
+# The input orders defined in the OpKernel and the actual python API are
+# different (for compatibility with V1), so we cannot use _convert_identity.
+@RegisterPFor("MatrixDiagV2")
+def _convert_matrix_diag_v2(pfor_input):
+  diagonal = pfor_input.stacked_input(0)
+  k = pfor_input.unstacked_input(1)
+  num_rows = pfor_input.unstacked_input(2)
+  num_cols = pfor_input.unstacked_input(3)
+  padding_value = pfor_input.unstacked_input(4)
+  return wrap(
+      array_ops.matrix_diag(
+          diagonal,
+          k=k,
+          num_rows=num_rows,
+          num_cols=num_cols,
+          padding_value=padding_value), True)
+
+
+# See notes for MatrixDiagV2
+@RegisterPFor("MatrixDiagPartV2")
+def _convert_matrix_diag_part_v2(pfor_input):
+  input = pfor_input.stacked_input(0)  # pylint:disable=redefined-builtin
+  k = pfor_input.unstacked_input(1)
+  padding_value = pfor_input.unstacked_input(2)
+  return wrap(
+      array_ops.matrix_diag_part(input, k=k, padding_value=padding_value), True)
+
+
+# See notes for MatrixDiagV2
+@RegisterPFor("MatrixSetDiagV2")
+def _convert_matrix_set_diag_v2(pfor_input):
+  pfor_input.stack_inputs([0, 1])
+  input = pfor_input.stacked_input(0)  # pylint:disable=redefined-builtin
+  diagonal = pfor_input.stacked_input(1)
+  k = pfor_input.unstacked_input(2)
+  return wrap(array_ops.matrix_set_diag(input, diagonal, k=k), True)
 
 
 @RegisterPFor("OneHot")

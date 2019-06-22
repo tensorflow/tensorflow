@@ -374,7 +374,7 @@ create_activate_virtualenv() {
   if [[ "${1}" == "--clean" ]]; then
     VIRTUALENV_FLAGS=""
     shift
-  elif [[ "{1}" == "--oss_serial" ]]; then
+  elif [[ "${1}" == "--oss_serial" ]]; then
     shift
   fi
 

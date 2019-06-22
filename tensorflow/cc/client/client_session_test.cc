@@ -208,6 +208,10 @@ TEST(ClientSessionTest, CallableWithCustomThreadPool) {
   TF_EXPECT_OK(session.ReleaseCallable(callable));
   ASSERT_GT(inter_op_threadpool->GetNumScheduleCalled(), 0);
   ASSERT_GT(intra_op_threadpool->GetNumScheduleCalled(), 0);
+
+  // Free intra_op_threadpool and wait for its threads to exit before freeing
+  // other objects (e.g. barrier). This is needed to avoid data race.
+  intra_op_threadpool.reset();
 }
 
 }  // namespace

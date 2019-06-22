@@ -152,7 +152,7 @@ StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
 
   auto* fail = result->mutable_failure();
   fail->set_kind(AutotuneResult::REDZONE_MODIFIED);
-  *fail->mutable_msg() = redzone_check.redzone_failure_msg;
+  *fail->mutable_msg() = redzone_check.RedzoneFailureMsg();
 
   LOG(ERROR) << absl::StreamFormat(
       "Detected cudnn out-of-bounds write in conv %s buffer! This is likely a "
@@ -163,7 +163,7 @@ StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
       "the problem, please file a bug with this full error message and we'll "
       "contact nvidia.",
       name);
-  LOG(ERROR) << redzone_check.redzone_failure_msg;
+  LOG(ERROR) << redzone_check.RedzoneFailureMsg();
   LOG(ERROR) << "HloInstruction " << instr->ToString();
   PrintPlatformInfo(stream);
   return false;

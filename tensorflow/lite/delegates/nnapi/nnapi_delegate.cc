@@ -1593,6 +1593,46 @@ class NNAPIDelegateKernel {
           }
         }
       } break;
+      case kTfLiteBuiltinGather: {
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
+          const auto& input = context->tensors[node->inputs->data[0]];
+          const auto& positions = context->tensors[node->inputs->data[1]];
+
+          auto is_supported_input_type = [](const TfLiteTensor& t) {
+            return (t.type == kTfLiteFloat32 || t.type == kTfLiteFloat16 ||
+                    t.type == kTfLiteInt32 || t.type == kTfLiteUInt8);
+          };
+
+          if (!is_supported_input_type(input) ||
+              !is_supported_input_type(positions)) {
+            return nullptr;
+          }
+
+          // 0-dimension args are not supported by NNAPI.
+          if (positions.dims->size == 0) {
+            return nullptr;
+          }
+
+          return [](const NNAPIOpMappingArgs& mapping_args)
+                     -> ANeuralNetworksOperationType {
+            auto builtin = reinterpret_cast<TfLiteGatherParams*>(
+                mapping_args.node->builtin_data);
+            mapping_args.builder->AddTensorInput(
+                mapping_args.node->inputs->data[0],
+                /* hybrid_op */ false,
+                /* scalar_as_tensor */ false);
+
+            mapping_args.builder->AddScalarInt32Operand(builtin->axis);
+
+            mapping_args.builder->AddTensorInput(
+                mapping_args.node->inputs->data[1],
+                /* hybrid_op */ false,
+                /* scalar_as_tensor */ false);
+
+            return ANEURALNETWORKS_GATHER;
+          };
+        }
+      } break;
       default:
         // All other operators are not mapped.
         return nullptr;
@@ -2016,6 +2056,10 @@ class NNAPIDelegateKernel {
           // The K parameter tensor is not handled here but by the functor
           // returned by Map, the input tensor is instead added in
           // the else clause below
+          continue;
+        } else if (reg->builtin_code == kTfLiteBuiltinGather) {
+          // Everything is added during Map since input tensors
+          // have different order.
           continue;
         } else {
           TF_LITE_ENSURE_STATUS(

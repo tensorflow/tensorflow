@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
+from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -279,13 +280,20 @@ class _MapAndBatchDataset(dataset_ops.UnaryDataset):
         drop_remainder, dtype=dtypes.bool, name="drop_remainder")
 
     constant_drop_remainder = tensor_util.constant_value(self._drop_remainder_t)
+    # pylint: disable=protected-access
     if constant_drop_remainder:
       # NOTE(mrry): `constant_drop_remainder` may be `None` (unknown statically)
       # or `False` (explicitly retaining the remainder).
-      self._structure = self._map_func.output_structure._batch(  # pylint: disable=protected-access
-          tensor_util.constant_value(self._batch_size_t))
+      # pylint: disable=g-long-lambda
+      self._structure = nest.map_structure(
+          lambda component_spec: component_spec._batch(
+              tensor_util.constant_value(self._batch_size_t)),
+          self._map_func.output_structure)
     else:
-      self._structure = self._map_func.output_structure._batch(None)  # pylint: disable=protected-access
+      self._structure = nest.map_structure(
+          lambda component_spec: component_spec._batch(None),
+          self._map_func.output_structure)
+    # pylint: enable=protected-access
     variant_tensor = ged_ops.experimental_map_and_batch_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._map_func.function.captured_inputs,
