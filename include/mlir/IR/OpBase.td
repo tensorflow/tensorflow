@@ -1122,29 +1122,34 @@ class TCopVTEtIsSameAs<int i, int j> : And<[
     CPred<"mlir::getElementTypeOrSelf($_op.getOperand(" # i # ")) == "
           "mlir::getElementTypeOrSelf($_op.getOperand(" # j # "))">]>;
 
-// Predicate to verify that the i'th result and the j'th operand have the same
-// elemental type.
-// Type Constraint result`i`'s Element type is Same As Operand `j`'s Element
-// type.
-class TCresVTEtIsSameAsOp<int i, int j> : And<[
+// Predicate to verify that the i'th result and the j'th operand exist and has
+// shaped types.
+class TCOpResIsShapedTypePred<int i, int j> : And<[
     CPred<"$_op.getNumResults() > " # i>,
     CPred<"$_op.getNumOperands() > " # j>,
     SubstLeaves<"$_self", "$_op.getResult(" # i # ")->getType()",
       IsShapedTypePred>,
     SubstLeaves<"$_self", "$_op.getOperand(" # j # ")->getType()",
-      IsShapedTypePred>,
+      IsShapedTypePred>]>;
+
+// Basic Predicate to verify that the i'th result and the j'th operand have the
+// same elemental type.
+class TCresVTEtIsSameAsOpBase<int i, int j> :
     CPred<"getElementTypeOrSelf($_op.getResult(" # i # ")) == "
-          "getElementTypeOrSelf($_op.getOperand(" # j # "))">]>;
+          "getElementTypeOrSelf($_op.getOperand(" # j # "))">;
+
+// Predicate to verify that the i'th result and the j'th operand have the same
+// elemental type.
+// Type Constraint result`i`'s Element type is Same As Operand `j`'s Element
+// type.
+class TCresVTEtIsSameAsOp<int i, int j> : And<[
+    TCOpResIsShapedTypePred<i, j>,
+    TCresVTEtIsSameAsOpBase<i, j>]>;
 
 // Predicate to verify that the opId'th operand can be broadcasted to the type
 // of the resId'th result.
 class TCOpIsBroadcastableToRes<int opId, int resId> : And<[
-    CPred<"$_op.getNumOperands() > " # opId>,
-    CPred<"$_op.getNumResults() > " # resId>,
-    SubstLeaves<"$_self", "$_op.getOperand(" # opId # ")->getType()",
-      IsShapedTypePred>,
-    SubstLeaves<"$_self", "$_op.getResult(" # resId # ")->getType()",
-      IsShapedTypePred>,
+    TCOpResIsShapedTypePred<opId, resId>,
     CPred<"OpTrait::util::getBroadcastedType("
               "$_op.getOperand(" # opId # ")->getType(), "
               "$_op.getResult(" # resId # ")->getType())">]>;
