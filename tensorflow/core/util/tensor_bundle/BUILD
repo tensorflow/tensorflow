@@ -18,11 +18,11 @@ load(
 filegroup(
     name = "mobile_srcs",
     srcs = [
+        "byte_swap.h",
         "naming.cc",
         "naming.h",
         "tensor_bundle.cc",
         "tensor_bundle.h",
-        "byte_swap.h"
     ],
 )
 
@@ -33,8 +33,14 @@ alias(
 
 cc_library(
     name = "tensor_bundle",
-    srcs = ["tensor_bundle.cc", "byte_swap.cc"],
-    hdrs = ["tensor_bundle.h", "byte_swap.h"],
+    srcs = [
+        "byte_swap.cc",
+        "tensor_bundle.cc",
+    ],
+    hdrs = [
+        "byte_swap.h",
+        "tensor_bundle.h",
+    ],
     copts = tf_copts() + if_not_windows(["-Wno-sign-compare"]),
     deps = [
         ":naming",
