@@ -29,22 +29,21 @@ using namespace mlir;
 // OperationState
 //===----------------------------------------------------------------------===//
 
-OperationState::OperationState(MLIRContext *context, Location location,
-                               StringRef name)
-    : context(context), location(location), name(name, context) {}
+OperationState::OperationState(Location location, StringRef name)
+    : context(location->getContext()), location(location),
+      name(name, location->getContext()) {}
 
-OperationState::OperationState(MLIRContext *context, Location location,
-                               OperationName name)
-    : context(context), location(location), name(name) {}
+OperationState::OperationState(Location location, OperationName name)
+    : context(location->getContext()), location(location), name(name) {}
 
-OperationState::OperationState(MLIRContext *context, Location location,
-                               StringRef name, ArrayRef<Value *> operands,
-                               ArrayRef<Type> types,
+OperationState::OperationState(Location location, StringRef name,
+                               ArrayRef<Value *> operands, ArrayRef<Type> types,
                                ArrayRef<NamedAttribute> attributes,
                                ArrayRef<Block *> successors,
                                MutableArrayRef<std::unique_ptr<Region>> regions,
                                bool resizableOperandList)
-    : context(context), location(location), name(name, context),
+    : context(location->getContext()), location(location),
+      name(name, location->getContext()),
       operands(operands.begin(), operands.end()),
       types(types.begin(), types.end()),
       attributes(attributes.begin(), attributes.end()),

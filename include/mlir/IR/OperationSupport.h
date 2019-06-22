@@ -247,13 +247,12 @@ struct OperationState {
   bool resizableOperandList = false;
 
 public:
-  OperationState(MLIRContext *context, Location location, StringRef name);
+  OperationState(Location location, StringRef name);
 
-  OperationState(MLIRContext *context, Location location, OperationName name);
+  OperationState(Location location, OperationName name);
 
-  OperationState(MLIRContext *context, Location location, StringRef name,
-                 ArrayRef<Value *> operands, ArrayRef<Type> types,
-                 ArrayRef<NamedAttribute> attributes,
+  OperationState(Location location, StringRef name, ArrayRef<Value *> operands,
+                 ArrayRef<Type> types, ArrayRef<NamedAttribute> attributes,
                  ArrayRef<Block *> successors = {},
                  MutableArrayRef<std::unique_ptr<Region>> regions = {},
                  bool resizableOperandList = false);
@@ -270,7 +269,7 @@ public:
 
   /// Add an attribute with the specified name.
   void addAttribute(StringRef name, Attribute attr) {
-    addAttribute(Identifier::get(name, context), attr);
+    addAttribute(Identifier::get(name, getContext()), attr);
   }
 
   /// Add an attribute with the specified name.
@@ -299,6 +298,9 @@ public:
   void setOperandListToResizable(bool isResizable = true) {
     resizableOperandList = isResizable;
   }
+
+  /// Get the context held by this operation state.
+  MLIRContext *getContext() { return location->getContext(); }
 };
 
 namespace detail {

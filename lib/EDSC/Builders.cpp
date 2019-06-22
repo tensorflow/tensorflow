@@ -117,8 +117,7 @@ OperationHandle OperationHandle::create(StringRef name,
                                         ArrayRef<ValueHandle> operands,
                                         ArrayRef<Type> resultTypes,
                                         ArrayRef<NamedAttribute> attributes) {
-  OperationState state(ScopedContext::getContext(),
-                       ScopedContext::getLocation(), name);
+  OperationState state(ScopedContext::getLocation(), name);
   SmallVector<Value *, 4> ops(operands.begin(), operands.end());
   state.addOperands(ops);
   state.addTypes(resultTypes);

@@ -2823,7 +2823,7 @@ Operation *OperationParser::parseGenericOperation() {
 
   consumeToken(Token::string);
 
-  OperationState result(builder.getContext(), srcLocation, name);
+  OperationState result(srcLocation, name);
 
   // Generic operations have a resizable operation list.
   result.setOperandListToResizable();
@@ -3325,7 +3325,7 @@ Operation *OperationParser::parseCustomOperation() {
   auto srcLocation = getEncodedSourceLocation(opLoc);
 
   // Have the op implementation take a crack and parsing this.
-  OperationState opState(builder.getContext(), srcLocation, opDefinition->name);
+  OperationState opState(srcLocation, opDefinition->name);
   CleanupOpStateRegions guard{opState};
   if (opAsmParser.parseOperation(opDefinition, &opState))
     return nullptr;

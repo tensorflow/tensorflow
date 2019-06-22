@@ -896,7 +896,7 @@ void ensureRegionTerminator(
 template <typename OpTy>
 void ensureRegionTerminator(Region &region, Builder &builder, Location loc) {
   ensureRegionTerminator(region, loc, [&] {
-    OperationState state(loc->getContext(), loc, OpTy::getOperationName());
+    OperationState state(loc, OpTy::getOperationName());
     OpTy::build(&builder, &state);
     return Operation::create(state);
   });

@@ -428,9 +428,8 @@ static Operation *instantiate(OpBuilder b, Operation *opInst,
 
   auto attrs = materializeAttributes(opInst, hwVectorType);
 
-  OperationState state(b.getContext(), opInst->getLoc(),
-                       opInst->getName().getStringRef(), operands,
-                       {hwVectorType}, attrs);
+  OperationState state(opInst->getLoc(), opInst->getName().getStringRef(),
+                       operands, {hwVectorType}, attrs);
   return b.createOperation(state);
 }
 

@@ -926,8 +926,7 @@ static Value *vectorizeConstant(Operation *op, ConstantOp constant, Type type) {
   auto attr = DenseElementsAttr::get(vectorType, constant.getValue());
   auto *constantOpInst = constant.getOperation();
 
-  OperationState state(b.getContext(), loc,
-                       constantOpInst->getName().getStringRef(), {},
+  OperationState state(loc, constantOpInst->getName().getStringRef(), {},
                        {vectorType}, {b.getNamedAttr("value", attr)});
 
   return b.createOperation(state)->getResult(0);
@@ -1055,9 +1054,9 @@ static Operation *vectorizeOneOperation(Operation *opInst,
   // TODO(ntv): Is it worth considering an Operation.clone operation which
   // changes the type so we can promote an Operation with less boilerplate?
   OpBuilder b(opInst);
-  OperationState newOp(b.getContext(), opInst->getLoc(),
-                       opInst->getName().getStringRef(), vectorOperands,
-                       vectorTypes, opInst->getAttrs(), /*successors=*/{},
+  OperationState newOp(opInst->getLoc(), opInst->getName().getStringRef(),
+                       vectorOperands, vectorTypes, opInst->getAttrs(),
+                       /*successors=*/{},
                        /*regions=*/{}, opInst->hasResizableOperandsList());
   return b.createOperation(newOp);
 }

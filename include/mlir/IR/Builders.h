@@ -297,7 +297,7 @@ public:
   /// Create an operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
   OpTy create(Location location, Args... args) {
-    OperationState state(getContext(), location, OpTy::getOperationName());
+    OperationState state(location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
     auto *op = createOperation(state);
     auto result = dyn_cast<OpTy>(op);

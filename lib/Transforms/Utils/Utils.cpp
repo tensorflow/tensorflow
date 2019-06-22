@@ -114,8 +114,7 @@ bool mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
     unsigned memRefOperandPos = getMemRefOperandPos();
 
     // Construct the new operation using this memref.
-    OperationState state(opInst->getContext(), opInst->getLoc(),
-                         opInst->getName());
+    OperationState state(opInst->getLoc(), opInst->getName());
     state.setOperandListToResizable(opInst->hasResizableOperandsList());
     state.operands.reserve(opInst->getNumOperands() + extraIndices.size());
     // Insert the non-memref operands.

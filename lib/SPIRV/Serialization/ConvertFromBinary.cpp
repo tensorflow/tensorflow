@@ -42,8 +42,7 @@ Block *createOneBlockFunction(Builder builder, Module *module) {
   auto *block = new Block();
   fn->push_back(block);
 
-  OperationState state(builder.getContext(), builder.getUnknownLoc(),
-                       ReturnOp::getOperationName());
+  OperationState state(builder.getUnknownLoc(), ReturnOp::getOperationName());
   ReturnOp::build(&builder, &state);
   block->push_back(Operation::create(state));
 

@@ -231,7 +231,7 @@ private:
 
     // Build the MLIR operation from the name and the two operands. The return
     // type is always a generic array for binary operators.
-    mlir::OperationState result(&context, location, op_name);
+    mlir::OperationState result(location, op_name);
     result.types.push_back(getType(VarType{}));
     result.operands.push_back(L);
     result.operands.push_back(R);
@@ -253,7 +253,7 @@ private:
   bool mlirGen(ReturnExprAST &ret) {
     auto location = loc(ret.loc());
     // `return` takes an optional expression, we need to account for it here.
-    mlir::OperationState result(&context, location, "toy.return");
+    mlir::OperationState result(location, "toy.return");
     if (ret.getExpr().hasValue()) {
       auto *expr = mlirGen(*ret.getExpr().getValue());
       if (!expr)
@@ -306,7 +306,7 @@ private:
                      .cast<mlir::DenseElementsAttr>());
 
     // Build the MLIR op `toy.constant`, only boilerplate below.
-    mlir::OperationState result(&context, location, "toy.constant");
+    mlir::OperationState result(location, "toy.constant");
     result.types.push_back(type);
     result.attributes.push_back(dataAttribute);
     return builder->createOperation(result)->getResult(0);
@@ -348,7 +348,7 @@ private:
     }
     // builtin have their custom operation, this is a straightforward emission.
     if (callee == "transpose") {
-      mlir::OperationState result(&context, location, "toy.transpose");
+      mlir::OperationState result(location, "toy.transpose");
       result.types.push_back(getType(VarType{}));
       result.operands = std::move(operands);
       return builder->createOperation(result)->getResult(0);
@@ -356,7 +356,7 @@ private:
 
     // Calls to user-defined functions are mapped to a custom call that takes
     // the callee name as an attribute.
-    mlir::OperationState result(&context, location, "toy.generic_call");
+    mlir::OperationState result(location, "toy.generic_call");
     result.types.push_back(getType(VarType{}));
     result.operands = std::move(operands);
     auto calleeAttr = builder->getStringAttr(call.getCallee());
@@ -372,7 +372,7 @@ private:
     if (!arg)
       return false;
     auto location = loc(call.loc());
-    mlir::OperationState result(&context, location, "toy.print");
+    mlir::OperationState result(location, "toy.print");
     result.operands.push_back(arg);
     builder->createOperation(result);
     return true;
@@ -381,7 +381,7 @@ private:
   // Emit a constant for a single number (FIXME: semantic? broadcast?)
   mlir::Value *mlirGen(NumberExprAST &num) {
     auto location = loc(num.loc());
-    mlir::OperationState result(&context, location, "toy.constant");
+    mlir::OperationState result(location, "toy.constant");
     mlir::Type elementType = mlir::FloatType::getF64(&context);
     result.types.push_back(builder->getMemRefType({1}, elementType));
     auto attr = mlir::FloatAttr::getChecked(elementType, num.getValue(),
@@ -427,7 +427,7 @@ private:
       // with specific shape, we emit a "reshape" operation. It will get
       // optimized out later as needed.
       if (!vardecl.getType().shape.empty()) {
-        mlir::OperationState result(&context, location, "toy.reshape");
+        mlir::OperationState result(location, "toy.reshape");
         result.types.push_back(getType(vardecl.getType()));
         result.operands.push_back(value);
         value = builder->createOperation(result)->getResult(0);

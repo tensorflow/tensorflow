@@ -177,8 +177,7 @@ LogicalResult Deserializer::processMemoryModel(ArrayRef<uint32_t> operands) {
 
 spirv::ModuleOp Deserializer::createModuleOp() {
   Builder builder(context);
-  OperationState state(context, unknownLoc,
-                       spirv::ModuleOp::getOperationName());
+  OperationState state(unknownLoc, spirv::ModuleOp::getOperationName());
   // TODO(antiagainst): use target environment to select the version
   state.addAttribute("major_version", builder.getI32IntegerAttr(1));
   state.addAttribute("minor_version", builder.getI32IntegerAttr(0));

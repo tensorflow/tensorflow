@@ -272,7 +272,7 @@ public:
   /// without verifying to see if it is valid.
   template <typename OpTy, typename... Args>
   OpTy create(Location location, Args... args) {
-    OperationState state(getContext(), location, OpTy::getOperationName());
+    OperationState state(location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
     auto *op = createOperation(state);
     auto result = dyn_cast<OpTy>(op);
@@ -285,7 +285,7 @@ public:
   /// and return null.
   template <typename OpTy, typename... Args>
   OpTy createChecked(Location location, Args... args) {
-    OperationState state(getContext(), location, OpTy::getOperationName());
+    OperationState state(location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
     auto *op = createOperation(state);
 
