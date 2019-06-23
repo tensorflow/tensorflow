@@ -42,7 +42,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/reshape.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/slice.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/softmax.h"
-#include "tensorflow/lite/delegates/gpu/gl/kernels/sub.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/transpose_conv.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/upsampling_bilinear.h"
 
@@ -88,7 +87,6 @@ class Registry : public NodeShader {
     insert_op(Type::PRELU, NewPReLUNodeShader);
     insert_op(Type::SLICE, NewSliceNodeShader);
     insert_op(Type::SOFT_MAX, NewSoftMaxNodeShader);
-    insert_op(Type::SUB, NewSubtractNodeShader);
     insert_op(Type::UPSAMPLE_2D, NewUpsamplingNodeShader);
 
     insert_elementwise_op(Type::ABS);
@@ -100,6 +98,10 @@ class Registry : public NodeShader {
     insert_elementwise_op(Type::SQRT);
     insert_elementwise_op(Type::SQUARE);
     insert_elementwise_op(Type::TANH);
+    insert_elementwise_op(Type::SUB);
+    insert_elementwise_op(Type::DIV);
+    insert_elementwise_op(Type::POW);
+    insert_elementwise_op(Type::SQUARED_DIFF);
 
 #ifndef TFLITE_GPU_BINARY_RELEASE
     insert_op(Type::MAX_UNPOOLING_2D, NewMaxUnpoolingNodeShader);

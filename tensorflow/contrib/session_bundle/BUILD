@@ -1,12 +1,6 @@
 # Description:
 #   TensorFlow Serving session bundle.
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -16,6 +10,15 @@ load(
     "py_test",
     "tf_cc_test",
 )
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
+# Placeholder for Google-internal load statements.
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 # TODO(b/32673259): add a test to continuously validate these files.
 filegroup(
@@ -65,6 +68,7 @@ py_test(
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     main = "bundle_shim_test.py",
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -114,6 +118,7 @@ py_test(
     name = "exporter_test",
     size = "small",
     srcs = ["exporter_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     visibility = ["//visibility:private"],
     deps = [
@@ -150,6 +155,7 @@ py_library(
 py_test(
     name = "gc_test",
     srcs = ["gc_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_windows"],  # TODO: needs investigation on Windows
     visibility = ["//visibility:private"],
@@ -266,6 +272,7 @@ py_test(
     srcs = ["session_bundle_test.py"],
     data = [":session_bundle_half_plus_two"],
     main = "session_bundle_test.py",
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -359,8 +366,6 @@ cc_library(
     ],
 )
 
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
-
 cc_library(
     name = "bundle_shim",
     srcs = ["bundle_shim.cc"],
@@ -412,6 +417,3 @@ tf_proto_library(
     cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
-
-# -----------------------------------------------------------------------------
-# Google-internal targets go here (must be at the end).

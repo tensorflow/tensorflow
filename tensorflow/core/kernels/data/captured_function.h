@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -35,6 +36,12 @@ class ResourceMgr;
 namespace data {
 
 class CapturedFunction;
+class InstantiatedCapturedFunction;
+
+Status MakeIteratorFromInputElement(
+    IteratorContext* ctx, const std::vector<Tensor>& input_element,
+    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
+    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator);
 
 // `InstantiatedCapturedFunction` encapsulates all the runtime support needed
 // to execute a tensorflow function.
@@ -81,16 +88,6 @@ class InstantiatedCapturedFunction {
                 FunctionLibraryRuntime::DoneCallback done,
                 const string& prefix) const;
 
-  // Returns a step ID for use when running an `InstantiatedCapturedFunction`.
-  static int64 generate_step_id() {
-    // Choose a step ID that is guaranteed not to clash with any
-    // Session-generated step ID. DirectSession only generates
-    // non-negative step IDs (contiguous, starting from 0), and
-    // MasterSession generates 56-bit random step IDs whose MSB is
-    // always 0, so a negative random step ID should suffice.
-    return -std::abs(static_cast<int64>(random::New64()));
-  }
-
  private:
   InstantiatedCapturedFunction(
       FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
@@ -109,25 +106,81 @@ class InstantiatedCapturedFunction {
   TF_DISALLOW_COPY_AND_ASSIGN(InstantiatedCapturedFunction);
 };
 
+struct ShortCircuitInfo {
+  std::vector<int> indices;
+  std::vector<bool> can_move;
+};
+
+// Metadata shared across all captures of the same function.
+class FunctionMetadata {
+ public:
+  struct Params {
+    bool is_multi_device_function = false;
+    bool use_inter_op_parallelism = true;
+  };
+
+  // Creates a new instance of the `FunctionMetadata` class, fetching function
+  // from a context argument.
+  static Status Create(tensorflow::OpKernelConstruction* ctx,
+                       const string& func_name, Params params,
+                       std::shared_ptr<FunctionMetadata>* out_metadata);
+
+  // Creates a new instance of the `FunctionMetadata` class, using the provided
+  // function.
+  static Status Create(tensorflow::OpKernelConstruction* ctx,
+                       NameAttrList&& func, Params params,
+                       std::shared_ptr<FunctionMetadata>* out_metadata);
+
+  // Returns the named list of function arguments.
+  const NameAttrList& func() const { return func_; }
+
+  // Indicates whether the function is a multi-device function.
+  bool is_multi_device_function() const { return is_multi_device_function_; }
+
+  // Returns a borrowed pointer to the function library that contains the
+  // transitive closure of definitions used by the function.
+  const FunctionLibraryDefinition* lib_def() const { return lib_def_.get(); }
+
+  // Returns short-circuit information.
+  const ShortCircuitInfo& short_circuit_info() const {
+    return short_circuit_info_;
+  }
+
+  // Indicates whether to use inter-op parallelism for execution of the
+  // function.
+  bool use_inter_op_parallelism() const { return use_inter_op_parallelism_; }
+
+ private:
+  FunctionMetadata(NameAttrList&& func, Params params)
+      : func_(std::move(func)),
+        is_multi_device_function_(params.is_multi_device_function),
+        use_inter_op_parallelism_(params.use_inter_op_parallelism) {}
+
+  void ValidateMultiDevice();
+
+  NameAttrList func_;
+  bool is_multi_device_function_ = false;
+  std::unique_ptr<FunctionLibraryDefinition> lib_def_ = nullptr;
+  ShortCircuitInfo short_circuit_info_;
+  bool use_inter_op_parallelism_ = true;
+};
+
 // A `CapturedFunction` encapsulates a TensorFlow function, plus any "captured"
 // arguments that it closed over in the user program.
 class CapturedFunction {
  public:
-  struct Params {
-    bool use_inter_op_parallelism = true;
-    bool is_multi_device_function = false;
-  };
-
   // Creates a new instance using a list of named attributes, fetching captured
   // inputs from a context argument.
-  static Status Create(const NameAttrList& func, OpKernelContext* ctx,
-                       const string& argument_name, Params params,
+  static Status Create(OpKernelContext* ctx,
+                       const std::shared_ptr<const FunctionMetadata> metadata,
+                       const string& argument_name,
                        std::unique_ptr<CapturedFunction>* out_function);
 
   // Creates a new instance using a list of named attributes, using provided
   // captured inputs.
-  static Status Create(const NameAttrList& func, OpKernelContext* ctx,
-                       std::vector<Tensor>&& captured_inputs, Params params,
+  static Status Create(OpKernelContext* ctx,
+                       const std::shared_ptr<const FunctionMetadata> metadata,
+                       std::vector<Tensor>&& captured_inputs,
                        std::unique_ptr<CapturedFunction>* out_function);
 
   // Adds the definition of this captured function into the given graph,
@@ -150,28 +203,37 @@ class CapturedFunction {
   }
 
   // Returns the named list of function arguments.
-  const NameAttrList& func() const { return func_; }
+  const NameAttrList& func() const { return metadata_->func(); }
 
   // Indicates whether the function is multi-device.
-  bool is_multi_device_function() const { return is_multi_device_function_; }
+  bool is_multi_device_function() const {
+    return metadata_->is_multi_device_function();
+  }
 
   // Returns the transitive set of function definition required to instantiate
   // this function.
-  const FunctionLibraryDefinition* lib_def() const { return &lib_def_; }
+  const FunctionLibraryDefinition* lib_def() const {
+    return metadata_->lib_def();
+  }
+
+  // If every function output corresponds to one of its inputs, the method
+  // returns the mapping from output indices to input indices. Otherwise, it
+  // returns an empty list.
+  const ShortCircuitInfo& short_circuit_info() const {
+    return metadata_->short_circuit_info();
+  }
 
   // Indicates whether the function should use inter op parallelism.
-  bool use_inter_op_parallelism() const { return use_inter_op_parallelism_; }
+  bool use_inter_op_parallelism() const {
+    return metadata_->use_inter_op_parallelism();
+  }
 
  private:
-  CapturedFunction(const NameAttrList& func,
-                   std::vector<Tensor> captured_inputs,
-                   FunctionLibraryDefinition&& flib_def, Params params);
+  CapturedFunction(const std::shared_ptr<const FunctionMetadata> metadata,
+                   std::vector<Tensor> captured_inputs);
 
-  const NameAttrList func_;
+  const std::shared_ptr<const FunctionMetadata> metadata_;
   const std::vector<Tensor> captured_inputs_;
-  const bool use_inter_op_parallelism_;
-  const bool is_multi_device_function_;
-  const FunctionLibraryDefinition lib_def_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CapturedFunction);
 };

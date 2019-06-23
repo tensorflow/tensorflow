@@ -22,15 +22,19 @@ import re
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import test
 
 
-class DatasetTestBase(test.TestCase):
+class DatasetTestBase(ragged_test_util.RaggedTensorTestCase, test.TestCase):
   """Base class for dataset tests."""
 
   @classmethod
@@ -39,6 +43,10 @@ class DatasetTestBase(test.TestCase):
       dataset_ops.Dataset = dataset_ops.DatasetV2
     else:
       dataset_ops.Dataset = dataset_ops.DatasetV1
+
+  def assert_op_cancelled(self, op):
+    with self.assertRaisesRegexp(errors.CancelledError, "was cancelled"):
+      self.evaluate(op)
 
   def assertSparseValuesEqual(self, a, b):
     """Asserts that two SparseTensors/SparseTensorValues are equal."""
@@ -63,11 +71,20 @@ class DatasetTestBase(test.TestCase):
         mode, it should use an initializable iterator to iterate through the
         dataset (e.g. when it contains stateful nodes). Defaults to False.
     Returns:
-      A callable that returns the next element of `dataset`.
+      A callable that returns the next element of `dataset`. Any `TensorArray`
+      objects `dataset` outputs are stacked.
     """
+    def ta_wrapper(gn):
+      def _wrapper():
+        r = gn()
+        if isinstance(r, tensor_array_ops.TensorArray):
+          return r.stack()
+        else:
+          return r
+      return _wrapper
     if context.executing_eagerly():
       iterator = iter(dataset)
-      return iterator._next_internal  # pylint: disable=protected-access
+      return ta_wrapper(iterator._next_internal)  # pylint: disable=protected-access
     else:
       if requires_initialization:
         iterator = dataset_ops.make_initializable_iterator(dataset)
@@ -75,7 +92,7 @@ class DatasetTestBase(test.TestCase):
       else:
         iterator = dataset_ops.make_one_shot_iterator(dataset)
       get_next = iterator.get_next()
-      return lambda: get_next
+      return ta_wrapper(lambda: get_next)
 
   def _compareOutputToExpected(self, result_values, expected_values,
                                assert_items_equal):
@@ -90,8 +107,14 @@ class DatasetTestBase(test.TestCase):
           nest.flatten(result_values[i]), nest.flatten(expected_values[i])):
         if sparse_tensor.is_sparse(result_value):
           self.assertSparseValuesEqual(result_value, expected_value)
+        elif ragged_tensor.is_ragged(result_value):
+          self.assertRaggedEqual(result_value, expected_value)
         else:
-          self.assertAllEqual(result_value, expected_value)
+          self.assertAllEqual(
+              result_value,
+              expected_value,
+              msg=("Result value: {}.  Expected value: {}"
+                   .format(result_value, expected_value)))
 
   def assertDatasetProduces(self,
                             dataset,
@@ -159,15 +182,17 @@ class DatasetTestBase(test.TestCase):
 
   def assertDatasetsEqual(self, dataset1, dataset2):
     """Checks that datasets are equal. Supports both graph and eager mode."""
-    self.assertTrue(dataset_ops.get_structure(dataset1).is_compatible_with(
-        dataset_ops.get_structure(dataset2)))
-    self.assertTrue(dataset_ops.get_structure(dataset2).is_compatible_with(
-        dataset_ops.get_structure(dataset1)))
+    self.assertTrue(
+        structure.are_compatible(
+            dataset_ops.get_structure(dataset1),
+            dataset_ops.get_structure(dataset2)))
+
     flattened_types = nest.flatten(
         dataset_ops.get_legacy_output_types(dataset1))
 
     next1 = self.getNext(dataset1)
     next2 = self.getNext(dataset2)
+
     while True:
       try:
         op1 = self.evaluate(next1())
@@ -183,6 +208,8 @@ class DatasetTestBase(test.TestCase):
       for i in range(len(op1)):
         if sparse_tensor.is_sparse(op1[i]):
           self.assertSparseValuesEqual(op1[i], op2[i])
+        elif ragged_tensor.is_ragged(op1[i]):
+          self.assertRaggedEqual(op1[i], op2[i])
         elif flattened_types[i] == dtypes.string:
           self.assertAllEqual(op1[i], op2[i])
         else:
@@ -212,28 +239,30 @@ class DatasetTestBase(test.TestCase):
                                    re.escape(expected_message)):
         self.evaluate(next2())
 
-  def structuredDataset(self, structure, shape=None, dtype=dtypes.int64):
+  def structuredDataset(self, dataset_structure, shape=None,
+                        dtype=dtypes.int64):
     """Returns a singleton dataset with the given structure."""
     if shape is None:
       shape = []
-    if structure is None:
+    if dataset_structure is None:
       return dataset_ops.Dataset.from_tensors(
           array_ops.zeros(shape, dtype=dtype))
     else:
       return dataset_ops.Dataset.zip(
           tuple([
               self.structuredDataset(substructure, shape, dtype)
-              for substructure in structure
+              for substructure in dataset_structure
           ]))
 
-  def structuredElement(self, structure, shape=None, dtype=dtypes.int64):
+  def structuredElement(self, element_structure, shape=None,
+                        dtype=dtypes.int64):
     """Returns an element with the given structure."""
     if shape is None:
       shape = []
-    if structure is None:
+    if element_structure is None:
       return array_ops.zeros(shape, dtype=dtype)
     else:
       return tuple([
           self.structuredElement(substructure, shape, dtype)
-          for substructure in structure
+          for substructure in element_structure
       ])

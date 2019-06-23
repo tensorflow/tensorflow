@@ -60,7 +60,7 @@ class SGD(optimizer_v2.OptimizerV2):
   """
 
   def __init__(self,
-               learning_rate=0.001,
+               learning_rate=0.01,
                momentum=0.0,
                nesterov=False,
                name="SGD",
@@ -100,7 +100,7 @@ class SGD(optimizer_v2.OptimizerV2):
 
   def _resource_apply_dense(self, grad, var):
     var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
+    lr_t = self._decayed_lr_t[var_dtype]
     if self._momentum:
       momentum_var = self.get_slot(var, "momentum")
       return training_ops.resource_apply_keras_momentum(
@@ -121,14 +121,14 @@ class SGD(optimizer_v2.OptimizerV2):
           grad, var, indices)
     else:
       var_dtype = var.dtype.base_dtype
-      lr_t = self._decayed_lr(var_dtype)
+      lr_t = self._decayed_lr_t[var_dtype]
       return resource_variable_ops.resource_scatter_add(var.handle, indices,
                                                         -grad * lr_t)
 
   def _resource_apply_sparse(self, grad, var, indices):
     # This method is only needed for momentum optimization.
     var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
+    lr_t = self._decayed_lr_t[var_dtype]
     momentum_var = self.get_slot(var, "momentum")
     return training_ops.resource_sparse_apply_keras_momentum(
         var.handle,

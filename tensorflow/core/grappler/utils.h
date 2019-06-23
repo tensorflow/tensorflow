@@ -104,6 +104,10 @@ class SetVector {
 // for the 0 port (first output), only the node name is returned.
 string TensorIdToString(const TensorId& tensor_id);
 
+// Returns formatted string from SafeTensorId specific to grappler.
+// Specifically, for the 0 port (first output), only the node name is returned.
+string SafeTensorIdToString(const SafeTensorId& tensor_id);
+
 // True iff 'name' refers to a control inputs, i.e. a node name prefixed with
 // the ^ character.
 bool IsControlInput(const string& name);
@@ -294,6 +298,11 @@ void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
 
 // Returns Status::OK() if a kernel is registered for node.op() on the device
 // type corresponding to node.device().
+Status IsKernelRegisteredForNode(
+    absl::string_view node_name, bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
+    absl::string_view node_op, absl::string_view node_device,
+    AttrSlice node_attrs);
 Status IsKernelRegisteredForNode(const NodeDef& node);
 
 Status SetTensorValue(DataType dtype, int value, Tensor* tensor);

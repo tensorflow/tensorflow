@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 
+#include <complex>
 #include <limits>
-#include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/xla/service/backend.h"
+#include <string>
+
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/stream_executor/device_memory.h"
 
 namespace xla {
 namespace gpu {
@@ -28,11 +31,34 @@ namespace {
 class BufferComparatorTest : public testing::Test {
  protected:
   BufferComparatorTest()
-      : backend_(Backend::CreateDefaultBackend().ConsumeValueOrDie()),
-        stream_exec_(backend_->default_stream_executor()),
-        allocator_(stream_exec_->platform(), {stream_exec_}),
-        compiler_(Compiler::GetForPlatform(stream_exec_->platform())
-                      .ConsumeValueOrDie()) {}
+      : platform_(
+            se::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie()),
+        stream_exec_(platform_->ExecutorForDevice(0).ValueOrDie()) {}
+
+  // Take floats only for convenience. Still uses ElementType internally.
+  template <typename ElementType>
+  bool CompareEqualBuffers(const std::vector<ElementType>& lhs,
+                           const std::vector<ElementType>& rhs) {
+    se::Stream stream(stream_exec_);
+    stream.Init();
+
+    se::ScopedDeviceMemory<ElementType> lhs_buffer =
+        stream_exec_->AllocateOwnedArray<ElementType>(lhs.size());
+    se::ScopedDeviceMemory<ElementType> rhs_buffer =
+        stream_exec_->AllocateOwnedArray<ElementType>(rhs.size());
+
+    stream.ThenMemcpy(lhs_buffer.ptr(), lhs.data(), lhs_buffer->size());
+    stream.ThenMemcpy(rhs_buffer.ptr(), rhs.data(), rhs_buffer->size());
+    TF_CHECK_OK(stream.BlockHostUntilDone());
+
+    BufferComparator comparator(
+        ShapeUtil::MakeShape(
+            primitive_util::NativeToPrimitiveType<ElementType>(),
+            {static_cast<int64>(lhs_buffer->ElementCount())}),
+        HloModuleConfig());
+    return comparator.CompareEqual(&stream, *lhs_buffer, *rhs_buffer)
+        .ConsumeValueOrDie();
+  }
 
   // Take floats only for convenience. Still uses ElementType internally.
   template <typename ElementType>
@@ -40,53 +66,40 @@ class BufferComparatorTest : public testing::Test {
                                 const std::vector<float>& rhs_float) {
     std::vector<ElementType> lhs(lhs_float.begin(), lhs_float.end());
     std::vector<ElementType> rhs(rhs_float.begin(), rhs_float.end());
-    se::Stream stream(stream_exec_);
-    stream.Init();
-
-    auto owning_lhs_buffer = allocator_
-                                 .Allocate(stream_exec_->device_ordinal(),
-                                           lhs.size() * sizeof(ElementType))
-                                 .ConsumeValueOrDie();
-
-    auto owning_rhs_buffer = allocator_
-                                 .Allocate(stream_exec_->device_ordinal(),
-                                           rhs.size() * sizeof(ElementType))
-                                 .ConsumeValueOrDie();
-
-    auto lhs_buffer =
-        se::DeviceMemory<ElementType>(owning_lhs_buffer.AsDeviceMemoryBase());
-    auto rhs_buffer =
-        se::DeviceMemory<ElementType>(owning_rhs_buffer.AsDeviceMemoryBase());
-
-    stream.ThenMemcpy(&lhs_buffer, lhs.data(), lhs_buffer.size());
-    stream.ThenMemcpy(&rhs_buffer, rhs.data(), rhs_buffer.size());
-
-    TF_CHECK_OK(stream.BlockHostUntilDone());
-
-    static auto* cmp_cache =
-        new absl::flat_hash_map<std::pair<PrimitiveType, int64>,
-                                std::unique_ptr<BufferComparator>>();
-    auto key =
-        std::make_pair(primitive_util::NativeToPrimitiveType<ElementType>(),
-                       static_cast<int64>(lhs_buffer.ElementCount()));
-    std::unique_ptr<BufferComparator>& comparator = (*cmp_cache)[key];
-    if (!comparator) {
-      comparator.reset(new BufferComparator(
-          BufferComparator::Create(
-              ShapeUtil::MakeShape(key.first, {key.second}), stream.parent(),
-              compiler_)
-              .ConsumeValueOrDie()));
-    }
-    return comparator
-        ->CompareEqual(&stream, &allocator_, lhs_buffer, rhs_buffer)
-        .ConsumeValueOrDie();
+    return CompareEqualBuffers(lhs, rhs);
   }
 
-  std::unique_ptr<Backend> backend_;
+  template <typename ElementType>
+  bool CompareEqualComplex(const std::vector<std::complex<ElementType>>& lhs,
+                           const std::vector<std::complex<ElementType>>& rhs) {
+    return CompareEqualBuffers<std::complex<ElementType>>(lhs, rhs);
+  }
+
+  se::Platform* platform_;
   se::StreamExecutor* stream_exec_;
-  StreamExecutorMemoryAllocator allocator_;
-  Compiler* compiler_;
 };
+
+TEST_F(BufferComparatorTest, TestComplex) {
+  EXPECT_FALSE(
+      CompareEqualComplex<float>({{0.1, 0.2}, {2, 3}}, {{0.1, 0.2}, {6, 7}}));
+  EXPECT_TRUE(CompareEqualComplex<float>({{0.1, 0.2}, {2, 3}},
+                                         {{0.1, 0.2}, {2.2, 3.3}}));
+  EXPECT_TRUE(
+      CompareEqualComplex<float>({{0.1, 0.2}, {2, 3}}, {{0.1, 0.2}, {2, 3}}));
+
+  EXPECT_FALSE(
+      CompareEqualComplex<float>({{0.1, 0.2}, {2, 3}}, {{0.1, 0.2}, {6, 3}}));
+
+  EXPECT_FALSE(
+      CompareEqualComplex<float>({{0.1, 0.2}, {2, 3}}, {{0.1, 0.2}, {6, 7}}));
+
+  EXPECT_FALSE(
+      CompareEqualComplex<float>({{0.1, 0.2}, {2, 3}}, {{0.1, 6}, {2, 3}}));
+  EXPECT_TRUE(CompareEqualComplex<double>({{0.1, 0.2}, {2, 3}},
+                                          {{0.1, 0.2}, {2.2, 3.3}}));
+  EXPECT_FALSE(
+      CompareEqualComplex<double>({{0.1, 0.2}, {2, 3}}, {{0.1, 0.2}, {2, 7}}));
+}
 
 TEST_F(BufferComparatorTest, TestNaNs) {
   EXPECT_TRUE(

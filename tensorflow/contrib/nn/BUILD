@@ -1,13 +1,14 @@
 # Description:
 #   Contains deprecated ops to calculate cross entropy.
 
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = ["//visibility:public"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "nn_py",
@@ -44,6 +45,7 @@ py_test(
     name = "alpha_dropout_test",
     size = "small",
     srcs = ["python/ops/alpha_dropout_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":nn_py",
@@ -61,6 +63,7 @@ py_test(
     name = "fwd_gradients_test",
     size = "small",
     srcs = ["python/ops/fwd_gradients_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":nn_py",
@@ -74,6 +77,7 @@ py_test(
     name = "sampling_ops_test",
     size = "small",
     srcs = ["python/ops/sampling_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":nn_py",
@@ -89,6 +93,7 @@ py_test(
     name = "scaled_softplus_test",
     size = "small",
     srcs = ["python/ops/scaled_softplus_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":nn_py",

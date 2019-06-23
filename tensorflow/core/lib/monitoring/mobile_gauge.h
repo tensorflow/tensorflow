@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_MONITORING_MOBILE_GAUGE_H_
 #define TENSORFLOW_CORE_LIB_MONITORING_MOBILE_GAUGE_H_
 
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -48,8 +49,9 @@ class Gauge {
   template <typename... MetricDefArgs>
   static Gauge* New(MetricDefArgs&&... metric_def_args) {
     static_assert(std::is_same<ValueType, int64>::value ||
-                      std::is_same<ValueType, string>::value,
-                  "Gauge only allows int64 and string types.");
+                      std::is_same<ValueType, string>::value ||
+                      std::is_same<ValueType, bool>::value,
+                  "Gauge only allows bool, int64, and string types.");
     return new Gauge();
   }
 
@@ -57,6 +59,8 @@ class Gauge {
   GaugeCell<ValueType>* GetCell(const Labels&... labels) {
     return &default_gauge_cell_;
   }
+
+  Status GetStatus() { return Status::OK(); }
 
  private:
   Gauge() {}

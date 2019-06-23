@@ -16,15 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/xla/service/owning_device_memory.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace xla {
 
 namespace py = pybind11;
 
-xla::StatusOr<PrimitiveType> NumpyTypeToPrimitiveType(
-    const py::dtype& np_type) {
+xla::StatusOr<PrimitiveType> DtypeToPrimitiveType(const py::dtype& np_type) {
   static auto* types =
       new absl::flat_hash_map<std::pair<char, int>, PrimitiveType>({
           {{'b', 1}, PRED},
@@ -50,6 +48,42 @@ xla::StatusOr<PrimitiveType> NumpyTypeToPrimitiveType(
   return it->second;
 }
 
+xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
+  switch (type) {
+    case PRED:
+      return py::dtype::of<bool>();
+    case S8:
+      return py::dtype::of<int8>();
+    case S16:
+      return py::dtype::of<int16>();
+    case S32:
+      return py::dtype::of<int32>();
+    case S64:
+      return py::dtype::of<int64>();
+    case U8:
+      return py::dtype::of<uint8>();
+    case U16:
+      return py::dtype::of<uint16>();
+    case U32:
+      return py::dtype::of<uint32>();
+    case U64:
+      return py::dtype::of<uint64>();
+    case F16:
+      return py::dtype("e");
+    case F32:
+      return py::dtype::of<float>();
+    case F64:
+      return py::dtype::of<double>();
+    case C64:
+      return py::dtype::of<std::complex<float>>();
+    case C128:
+      return py::dtype::of<std::complex<double>>();
+    default:
+      return Unimplemented("Unimplemented primitive type %s",
+                           PrimitiveType_Name(type));
+  }
+}
+
 // Returns a numpy-style format descriptor string for `type`.
 StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type) {
   switch (type) {
@@ -72,7 +106,7 @@ StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type) {
     case U64:
       return py::format_descriptor<uint64>::format();
     case F16:
-      return std::string("float16");
+      return std::string("e");
     case F32:
       return py::format_descriptor<float>::format();
     case F64:
@@ -102,7 +136,7 @@ std::vector<ssize_t> StridesForShape(const Shape& shape) {
   return strides;
 }
 
-StatusOr<py::object> LiteralToPython(std::unique_ptr<xla::Literal> literal) {
+StatusOr<py::object> LiteralToPython(std::shared_ptr<xla::Literal> literal) {
   xla::Literal& m = *literal;
   if (m.shape().IsTuple()) {
     std::vector<Literal> elems = m.DecomposeTuple();
@@ -120,9 +154,7 @@ StatusOr<py::object> LiteralToPython(std::unique_ptr<xla::Literal> literal) {
   }
   TF_RET_CHECK(m.shape().IsArray());
 
-  auto capsule = py::capsule(literal.release(), [](void* ptr) {
-    delete reinterpret_cast<xla::Literal*>(ptr);
-  });
+  py::object literal_object = py::cast(literal);
   TF_ASSIGN_OR_RETURN(std::string format, FormatDescriptorForPrimitiveType(
                                               m.shape().element_type()));
   py::buffer_info info(
@@ -135,7 +167,7 @@ StatusOr<py::object> LiteralToPython(std::unique_ptr<xla::Literal> literal) {
       StridesForShape(m.shape())      // Strides (in bytes) for each index
   );
   return py::array(pybind11::dtype(info), info.shape, info.strides, info.ptr,
-                   capsule);
+                   literal_object);
 }
 
 StatusOr<PythonBufferTree> GetPythonBufferTree(const py::object& argument) {
@@ -153,10 +185,31 @@ StatusOr<PythonBufferTree> GetPythonBufferTree(const py::object& argument) {
     }
     tree.shape = ShapeUtil::MakeTupleShape(host_shapes);
   } else {
-    tree.leaves.push_back(py::cast<xla::BorrowingLiteral>(argument));
+    pybind11::detail::type_caster<BorrowingLiteral> caster;
+    if (!caster.load(argument, /*convert=*/true)) {
+      return InvalidArgument("Invalid array value.");
+    }
+    tree.arrays.push_back(std::move(caster.array));
+    tree.leaves.push_back(std::move(*caster));
     tree.shape = tree.leaves.front().shape();
   }
   return tree;
+}
+
+py::tuple IntSpanToTuple(absl::Span<int64 const> xs) {
+  py::tuple out(xs.size());
+  for (int i = 0; i < xs.size(); ++i) {
+    out[i] = py::int_(xs[i]);
+  }
+  return out;
+}
+
+std::vector<int64> IntSequenceToVector(const py::object& sequence) {
+  std::vector<int64> output;
+  for (auto item : sequence) {
+    output.push_back(item.cast<int64>());
+  }
+  return output;
 }
 
 }  // namespace xla

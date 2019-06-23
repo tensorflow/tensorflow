@@ -1,9 +1,10 @@
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "api",
@@ -66,7 +67,7 @@ flatbuffer_cc_library(
         "--scoped-enums",
     ],
     includes = [
-        "//tensorflow/lite/delegates/gpu/gl:common_cc_fbs_includes",
+        ":common_cc_fbs_includes",
     ],
 )
 
@@ -174,15 +175,13 @@ cc_test(
     name = "gl_buffer_test",
     srcs = ["gl_buffer_test.cc"],
     linkopts = [
-        "-lGLESv3",
         "-lEGL",
+        "-lGLESv2",
     ],
     tags = [
         "local",
         "nobuilder",
         "notap",
-        # TODO(b/129551923): Enable on Android after resolving GL context issue.
-        "tflite_not_portable_android",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -262,8 +261,10 @@ cc_library(
     srcs = ["gl_sync.cc"],
     hdrs = ["gl_sync.h"],
     deps = [
+        ":gl_buffer",
         ":gl_call",
         ":gl_errors",
+        ":gl_program",
         ":portable",
         "//tensorflow/lite/delegates/gpu/common:status",
     ],
@@ -285,8 +286,8 @@ flatbuffer_cc_library(
     name = "metadata_cc_fbs",
     srcs = ["metadata.fbs"],
     includes = [
-        "//tensorflow/lite/delegates/gpu/gl:common_cc_fbs_includes",
-        "//tensorflow/lite/delegates/gpu/gl:workgroups_cc_fbs_includes",
+        ":common_cc_fbs_includes",
+        ":workgroups_cc_fbs_includes",
     ],
 )
 
@@ -308,6 +309,7 @@ cc_library(
     name = "object",
     hdrs = ["object.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:types",
@@ -433,7 +435,7 @@ flatbuffer_cc_library(
     name = "workgroups_cc_fbs",
     srcs = ["workgroups.fbs"],
     includes = [
-        "//tensorflow/lite/delegates/gpu/gl:common_cc_fbs_includes",
+        ":common_cc_fbs_includes",
     ],
 )
 

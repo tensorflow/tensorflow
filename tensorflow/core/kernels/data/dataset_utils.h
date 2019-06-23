@@ -17,39 +17,20 @@ limitations under the License.
 
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/captured_function.h"
 
 namespace tensorflow {
 namespace data {
 
 // Returns a GraphDef representation of the given dataset.
-Status AsGraphDef(OpKernelContext* ctx, DatasetBase* dataset,
+Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
+                  SerializationContext&& serialization_ctx,
                   GraphDef* graph_def);
 
-// This method is used to determine whether we can short-circuit the evaluation
-// of the user-defined function `func`. Short-circuting is possible if every
-// function output corresponds to one of its inputs (e.g. `f(x) = x`, `f(x,y) =
-// (y,x)`, or `f(x) = (x,x)`).
-//
-// If short-circuiting is possible, the method stores the mapping from output
-// indices to input indices in `indices`. Otherwise, `indices` will be empty.
-//
-// Returns non-ok status if analysis of the function fails.
-//
-// TODO(jsimsa): Extend this to support constants as well.
-Status ComputeShortCircuitIndices(OpKernelConstruction* ctx,
-                                  const NameAttrList& func,
-                                  std::vector<int>* indices);
-
-// Given a vector that maps output indices to input indices, return a vector
-// that identifies for which output indices can we move the input (assuming
-// output indices are processed left to right).
-std::vector<bool> ComputeMoveVector(const std::vector<int>& indices);
-
-Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const std::vector<Tensor>& input_element,
-    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
-    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator);
+// Rewrites the input dataset using the given config.
+Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
+                      std::function<RewriterConfig(void)> config_factory,
+                      bool optimize_function_library,
+                      DatasetBase** rewritten_input);
 
 // Returns Status::OK() if `expected` and `received` types match,
 // errors::InvalidArgument otherwise.
@@ -60,6 +41,19 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
 // errors::InvalidArgument otherwise.
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<PartialTensorShape>& received);
+
+// Returns a stable hash of the portion of the graph `g` rooted at
+// `node`, by creating a Merkle tree-like structure.
+//
+// Specifically, this function recursively walks the graph from `node` by
+// following its inputs.
+//
+// The hash is computed by hashing its op name, device, attributes, and hashes
+// of its inputs (if applicable).
+//
+// There is currently no guarantee that the hash of a subgraph will stay the
+// same between TensorFlow builds.
+uint64 HashSubgraph(const GraphDef& g, const NodeDef* node);
 
 // Helper class for reading data from a VariantTensorData object.
 class VariantTensorDataReader : public IteratorStateReader {

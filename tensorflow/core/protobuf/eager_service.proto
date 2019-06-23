@@ -5,10 +5,10 @@ package tensorflow.eager;
 import "tensorflow/core/framework/attr_value.proto";
 import "tensorflow/core/framework/device_attributes.proto";
 import "tensorflow/core/framework/function.proto";
+import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/versions.proto";
 import "tensorflow/core/protobuf/tensorflow_server.proto";
-import "tensorflow/core/framework/tensor_shape.proto";
-import "tensorflow/core/framework/tensor.proto";
 
 message RemoteTensorHandle {
   // The ID of the operation that produced this tensor.
@@ -71,6 +71,9 @@ message CreateContextRequest {
   // both ends use this ID for selecting a rendezvous to get everything to
   // match.
   int64 rendezvous_id = 5;
+
+  // Device attributes in the cluster
+  repeated DeviceAttributes cluster_device_attributes = 6;
 }
 
 message CreateContextResponse {
@@ -110,15 +113,13 @@ message KeepAliveRequest {
   fixed64 context_id = 1;
 }
 
-message KeepAliveResponse {
-}
+message KeepAliveResponse {}
 
 message CloseContextRequest {
   fixed64 context_id = 1;
 }
 
-message CloseContextResponse {
-}
+message CloseContextResponse {}
 
 message RegisterFunctionRequest {
   fixed64 context_id = 1;
@@ -126,8 +127,7 @@ message RegisterFunctionRequest {
   FunctionDef function_def = 2;
 }
 
-message RegisterFunctionResponse {
-}
+message RegisterFunctionResponse {}
 
 message SendTensorRequest {
   fixed64 context_id = 1;
@@ -144,8 +144,7 @@ message SendTensorRequest {
   string device_name = 4;
 }
 
-message SendTensorResponse {
-}
+message SendTensorResponse {}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -176,6 +175,14 @@ service EagerService {
   // DeleteTensorHandle entries will be assumed to be alive and are usable by
   // future calls to Enqueue.
   rpc Enqueue(EnqueueRequest) returns (EnqueueResponse);
+
+  // A streaming version of Enqueue.
+  // Current server implementation sends one response per received request.
+  // The benefit for using a streaming version is that subsequent requests
+  // can be sent without waiting for a response to the previous request. This
+  // synchronization is required in the regular Enqueue call because gRPC does
+  // not guarantee to preserve request order.
+  rpc StreamingEnqueue(stream EnqueueRequest) returns (stream EnqueueResponse);
 
   // Takes a set of op IDs and waits until those ops are done. Returns any error
   // in the stream so far.

@@ -141,7 +141,7 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
                        {}, {}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_TRUE(str_util::StrContains(
+    EXPECT_TRUE(absl::StrContains(
         s.ToString(), "Invalid argument: Shape must be rank 2 but is rank 1"));
   }
 
@@ -161,7 +161,7 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
                        {S({2, 5}), S({3, 4})}, {}, {}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_TRUE(str_util::StrContains(
+    EXPECT_TRUE(absl::StrContains(
         s.ToString(),
         "Invalid argument: Dimensions must be equal, but are 5 and 3"));
   }
@@ -172,7 +172,7 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
                        {S({2, 5, 3}), S({3, 5, 4})}, {}, {}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_TRUE(str_util::StrContains(
+    EXPECT_TRUE(absl::StrContains(
         s.ToString(), "Invalid argument: Shape must be rank 2 but is rank 3"));
   }
 
@@ -211,6 +211,129 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
     EXPECT_EQ(2, c.Value(c.Dim(output, 0)));
     EXPECT_EQ(4, c.Value(c.Dim(output, 1)));
   }
+}
+
+TEST(CommonShapeFnsTest, Einsum_ShapeFn) {
+  ShapeInferenceTestOp op("Einsum");
+  auto set_equation = [&op](int n, string equation) {
+    std::vector<NodeDefBuilder::NodeOut> input_list;
+    input_list.reserve(n);
+    for (int i = 0; i < n; ++i) {
+      input_list.emplace_back("a", 0, DT_FLOAT);
+    }
+    TF_ASSERT_OK(NodeDefBuilder("test", "Einsum")
+                     .Input(input_list)
+                     .Attr("equation", equation)
+                     .Finalize(&op.node_def));
+  };
+
+  // Unary cases.
+  set_equation(1, "abc->c");
+  INFER_OK(op, "[?,?,?]", "[d0_2]");
+  set_equation(1, "abc->aabbcc");
+  INFER_OK(op, "[?,?,?]", "[d0_0,d0_0,d0_1,d0_1,d0_2,d0_2]");
+  set_equation(1, "abc->");
+  INFER_OK(op, "[?,?,?]", "[]");
+  set_equation(1, "->");
+  INFER_OK(op, "[]", "[]");
+
+  // Binary cases.
+  set_equation(2, "ij,jk->ik");
+  INFER_OK(op, "[?,?];[?,?]", "[d0_0,d1_1]");
+  set_equation(2, "ij,jk->ik");
+  INFER_OK(op, "[?,?];[?,?]", "[d0_0,d1_1]");
+  set_equation(2, "ab,ab->");
+  INFER_OK(op, "[?,?];[?,?]", "[]");
+  set_equation(2, "ab,->b");
+  INFER_OK(op, "[?,?];[]", "[d0_1]");
+  set_equation(2, ",->");
+  INFER_OK(op, "[];[]", "[]");
+  set_equation(2, "aaa,b->abbb");
+  INFER_OK(op, "[?,?,?];[?]", "[d0_0,d1_0,d1_0,d1_0]");
+  set_equation(2, ",abcd->badc");
+  INFER_OK(op, "[];[?,?,?,?]", "[d1_1,d1_0,d1_3,d1_2]");
+
+  // Ellipsis cases.
+  set_equation(1, "a...bc->c...");
+  INFER_OK(op, "[?,?,?,?,?]", "[d0_4,d0_1,d0_2]");
+  set_equation(2, "...ij,...jk->...ik");
+  INFER_OK(op, "[?,?,?,?,?];[1,?,?]", "[d0_0,d0_1,d0_2,d0_3,d1_2]");
+  INFER_OK(op, "[1,?,?];[?,?,?,?,?]", "[d1_0,d1_1,d1_2,d0_1,d1_4]");
+
+  // Unknown rank.
+  set_equation(1, "abc->c");
+  INFER_OK(op, "?", "[?]");
+  set_equation(1, "a...bc->c");
+  INFER_OK(op, "?", "[?]");
+  set_equation(1, "a...bc->c...");
+  INFER_OK(op, "?", "?");
+
+  set_equation(2, "...ij,...jk->...ik");
+  INFER_OK(op, "?;?", "?");
+  INFER_OK(op, "[?,?,?];?", "?");
+  INFER_OK(op, "?;[?,?,?]", "?");
+  set_equation(2, "...ij,...jk->ik");
+  INFER_OK(op, "?;?", "[?,?]");
+  set_equation(2, "abd,b...c->...cad");
+  INFER_OK(op, "[?,?,?];[?,?,?,?]", "[d1_1,d1_2,d1_3,d0_0,d0_2]");
+  set_equation(2, "...ab,b...c->ac...");
+  INFER_OK(op, "[?,1,?,?];[?,?,?]", "[d0_2,d1_2,d0_0,d1_1]");
+
+  // Wrong number of inputs.
+  set_equation(2, "ab->b");
+  INFER_ERROR("got: 2", op, "[?,?];[?,?]");
+  set_equation(1, "ab,a->b");
+  INFER_ERROR("got: 1", op, "[?,?]");
+
+  // Invalid format. Implicit form is not supported.
+  set_equation(1, "a");
+  INFER_ERROR("equation", op, "[2]");
+  set_equation(2, "ab,bc");
+  INFER_ERROR("equation", op, "[2,2];[2,2]");
+
+  // Wrong number of ellipsis or periods outside of ellipsis.
+  set_equation(1, "..a.->a...");
+  INFER_ERROR("ellipsis", op, "[1,1,2,1]");
+  set_equation(1, "...a->.a..");
+  INFER_ERROR("ellipsis", op, "[1,1,1,2]");
+  set_equation(1, "...a...->...a");
+  INFER_ERROR("ellipsis", op, "[1,1,1,2]");
+  set_equation(1, "..a..b..->...ab");
+  INFER_ERROR("ellipsis", op, "[1,1,2,1]");
+  set_equation(2, "...a...,ab->a");
+  INFER_ERROR("ellipsis", op, "[1,2,1];[2,1]");
+  set_equation(2, "a,...ab...->a");
+  INFER_ERROR("ellipsis", op, "[2];[1,2,1,1]");
+  set_equation(2, "a,ab->a......");
+  INFER_ERROR("ellipsis", op, "[2];[2,1]");
+
+  // Output label doesn't appear in input.
+  set_equation(1, "abc->d");
+  INFER_ERROR("'d'", op, "[?,?,?]");
+
+  // Mismatch in input rank.
+  set_equation(1, "abc->c");
+  INFER_ERROR("4", op, "[?,?,?,?]");
+  INFER_ERROR("2", op, "[?,?]");
+  set_equation(1, "...abc->...c");
+  INFER_ERROR("2", op, "[?,?]");
+
+  // Input dimensions are not consistent.
+  set_equation(2, "ab,ab->a");
+  INFER_ERROR("are 1 and 2", op, "[1,2];[2,1]");
+  set_equation(2, "aa,bb->a");
+  INFER_ERROR("are 1 and 2", op, "[1,2];[2,2]");
+
+  // Invalid broadcasting dimensions.
+  set_equation(2, "...ij,...jk->...ik");
+  INFER_ERROR("are 2 and 3", op, "[2,?,?];[3,?,?]");
+  set_equation(2, "i...j,jk...->...ik");
+  INFER_ERROR("are 2 and 3", op, "[?,2,?];[?,?,3]");
+  set_equation(2, "...ij,...jk->ik");
+  set_equation(2, "i...j,jk...->ik");
+  INFER_ERROR("non-empty broadcasting", op, "[?,2,?];[?,?]");
+  set_equation(2, "...ab,b...c->ac...");
+  INFER_OK(op, "?;[4,5,3]", "?");
 }
 
 TEST(CommonShapeFnsTest, BatchMatMulV2_ShapeFn) {
@@ -384,6 +507,33 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
   }
 }
 
+TEST(CommonShapeFnsTest, FusedBatchNormExTest) {
+  ShapeInferenceTestOp op("_FusedBatchNormEx");
+
+  std::vector<NodeDefBuilder::NodeOut> no_side_inputs;
+  TF_CHECK_OK(NodeDefBuilder("test", "_FusedBatchNormEx")
+                  .Input("x", 0, DT_HALF)
+                  .Input("scale", 0, DT_FLOAT)
+                  .Input("offset", 0, DT_FLOAT)
+                  .Input("mean", 0, DT_FLOAT)
+                  .Input("variance", 0, DT_FLOAT)
+                  .Input(no_side_inputs)
+                  .Attr("T", DT_HALF)
+                  .Attr("U", DT_FLOAT)
+                  .Attr("epsilon", 0.001)
+                  .Attr("data_format", "NHWC")
+                  .Attr("activation_mode", "Relu")
+                  .Attr("num_side_inputs", 0)
+                  .Attr("is_training", true)
+                  .Finalize(&op.node_def));
+
+  // Channels are not multiple of 4.
+  INFER_ERROR("must be divisible by 4", op, "[2,2,2,2];[2];[2];[0];[0]");
+
+  INFER_OK(op, "[2,2,2,4];[4];[4];[0];[0]",
+           "[d0_0,d0_1,d0_2,d0_3];[d0_3];[d0_3];[d0_3];[d0_3];?");
+}
+
 TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
   OpRegistrationData op_reg_data;
   TF_CHECK_OK(OpDefBuilder("BiasAddGrad")
@@ -526,9 +676,10 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
   INFER_OK(op, "[1,4,4,1];[?,1,1,1]", "[d0_0,?,2,d1_3]");
   INFER_OK(op, "[1,4,4,1];[2,?,1,1]", "[d0_0,3,?,d1_3]");
 
-  // input depths must match.
-  INFER_ERROR("Dimensions must be equal, but are 10 and 10000", op,
-              "[1,2,2,10];[1,1,10000,20]");
+  // input depths must be multiple of filter.
+  INFER_ERROR(
+      "Depth of input (10) is not a multiple of input depth of filter (10000)",
+      op, "[1,2,2,10];[1,1,10000,20]");
 
   // Tests for NCHW
   // 1x1 filter

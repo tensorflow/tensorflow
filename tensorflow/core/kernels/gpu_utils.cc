@@ -17,9 +17,10 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 
+#include <iterator>
+
 #include "google/protobuf/any.pb.h"
-#include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/framework/tensor.pb.h"
+#include "absl/algorithm/container.h"
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/protobuf/conv_autotuning.pb.h"
@@ -55,20 +56,26 @@ tensorflow::ComputeCapability GetComputeCapability(
 
 }  // namespace
 
-void LogConvAutotuneResults(const NodeDef& node, const Tensor& input,
-                            const Tensor& filter, const Tensor& output,
+void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
+                            se::dnn::DataType element_type,
+                            const se::dnn::BatchDescriptor& input_desc,
+                            const se::dnn::FilterDescriptor& filter_desc,
+                            const se::dnn::BatchDescriptor& output_desc,
+                            const se::dnn::ConvolutionDescriptor& conv_desc,
                             se::StreamExecutor* stream_exec,
                             absl::Span<const AutotuneResult> results) {
   AutotuningLog log;
-  ConvNodeDef instr;
-  *instr.mutable_conv() = node;
-  input.shape().AsProto(instr.mutable_input()->mutable_tensor_shape());
-  instr.mutable_input()->set_dtype(input.dtype());
-  filter.shape().AsProto(instr.mutable_filter()->mutable_tensor_shape());
-  instr.mutable_filter()->set_dtype(filter.dtype());
-  output.shape().AsProto(instr.mutable_output()->mutable_tensor_shape());
-  instr.mutable_output()->set_dtype(output.dtype());
-  log.mutable_instr()->PackFrom(std::move(instr));
+  {
+    ConvolutionProto instr;
+    instr.set_kind(kind);
+    *instr.mutable_input() = input_desc.ToProto(element_type);
+    *instr.mutable_filter() = filter_desc.ToProto(element_type);
+    *instr.mutable_output() = output_desc.ToProto(element_type);
+    *instr.mutable_conv_desc() = conv_desc.ToProto();
+    log.mutable_instr()->PackFrom(std::move(instr));
+    instr.set_conv_scale(1);
+    instr.set_side_value_scale(0);
+  }
   *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);
   *log.mutable_compute_capability() = GetComputeCapability(stream_exec);
   log.set_device_pci_bus_id(stream_exec->GetDeviceDescription().pci_bus_id());
@@ -78,28 +85,26 @@ void LogConvAutotuneResults(const NodeDef& node, const Tensor& input,
   Logger::Singleton()->LogProto(log);
 }
 
-void LogFusedConvAutotuneResults(const NodeDef& node, const Tensor& input,
-                                 const Tensor& filter, const Tensor& output,
-                                 const Tensor& bias, const Tensor* side_input,
-                                 se::StreamExecutor* stream_exec,
-                                 absl::Span<const AutotuneResult> results) {
+void LogFusedConvForwardAutotuneResults(
+    se::dnn::DataType element_type, const se::dnn::BatchDescriptor& input_desc,
+    const se::dnn::FilterDescriptor& filter_desc,
+    const se::dnn::BatchDescriptor& output_desc,
+    const se::dnn::ConvolutionDescriptor& conv_desc, double conv_scale,
+    double side_value_scale, se::dnn::ActivationMode activation_mode,
+    se::StreamExecutor* stream_exec, absl::Span<const AutotuneResult> results) {
   AutotuningLog log;
-  ConvNodeDef instr;
-  *instr.mutable_conv() = node;
-  input.shape().AsProto(instr.mutable_input()->mutable_tensor_shape());
-  instr.mutable_input()->set_dtype(input.dtype());
-  filter.shape().AsProto(instr.mutable_filter()->mutable_tensor_shape());
-  instr.mutable_filter()->set_dtype(filter.dtype());
-  output.shape().AsProto(instr.mutable_output()->mutable_tensor_shape());
-  instr.mutable_output()->set_dtype(output.dtype());
-  bias.shape().AsProto(instr.mutable_bias()->mutable_tensor_shape());
-  instr.mutable_bias()->set_dtype(bias.dtype());
-  if (side_input) {
-    side_input->shape().AsProto(
-        instr.mutable_side_input()->mutable_tensor_shape());
-    instr.mutable_side_input()->set_dtype(side_input->dtype());
+  {
+    ConvolutionProto instr;
+    instr.set_kind(se::dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION);
+    *instr.mutable_input() = input_desc.ToProto(element_type);
+    *instr.mutable_filter() = filter_desc.ToProto(element_type);
+    *instr.mutable_output() = output_desc.ToProto(element_type);
+    *instr.mutable_conv_desc() = conv_desc.ToProto();
+    instr.set_conv_scale(conv_scale);
+    instr.set_side_value_scale(side_value_scale);
+    instr.set_activation(activation_mode);
+    log.mutable_instr()->PackFrom(std::move(instr));
   }
-  log.mutable_instr()->PackFrom(std::move(instr));
   *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);
   *log.mutable_compute_capability() = GetComputeCapability(stream_exec);
   log.set_device_pci_bus_id(stream_exec->GetDeviceDescription().pci_bus_id());
@@ -111,18 +116,23 @@ void LogFusedConvAutotuneResults(const NodeDef& node, const Tensor& input,
 
 Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
                               se::dnn::AlgorithmConfig* algo) {
-  // TODO(jlebar): Exclude conv ops with failures, once we have failure checking
-  // and have confidence that it's correct.
+  std::vector<AutotuneResult> filtered_results;
+  absl::c_copy_if(
+      results, std::back_inserter(filtered_results),
+      [](const AutotuneResult& result) { return !result.has_failure(); });
+  if (filtered_results.empty()) {
+    return errors::NotFound("No algorithm worked!");
+  }
 
-  const AutotuneResult* best_result = std::min_element(
-      results.begin(), results.end(),
+  const auto best_result = absl::c_min_element(
+      filtered_results,
       [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
         return proto_utils::FromDurationProto(lhs.run_time()) <
                proto_utils::FromDurationProto(rhs.run_time());
       });
 
-  const AutotuneResult* best_result_no_scratch = std::min_element(
-      results.begin(), results.end(),
+  const auto best_result_no_scratch = absl::c_min_element(
+      filtered_results,
       [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
         return std::make_tuple(lhs.scratch_bytes(),
                                proto_utils::FromDurationProto(lhs.run_time())) <
@@ -130,12 +140,9 @@ Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
                                proto_utils::FromDurationProto(rhs.run_time()));
       });
 
-  if (best_result == results.end()) {
-    return errors::NotFound("No algorithm worked!");
-  }
   algo->set_algorithm({best_result->conv().algorithm(),
                        best_result->conv().tensor_ops_enabled()});
-  if (best_result_no_scratch != results.end() &&
+  if (best_result_no_scratch != filtered_results.end() &&
       best_result_no_scratch->scratch_bytes() == 0) {
     algo->set_algorithm_no_scratch(
         {best_result_no_scratch->conv().algorithm(),

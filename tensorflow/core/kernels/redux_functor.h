@@ -16,7 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_REDUX_FUNCTOR_H_
 #define TENSORFLOW_CORE_KERNELS_REDUX_FUNCTOR_H_
 
+#define EIGEN_USE_THREADS
+
 #include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -33,6 +37,7 @@ namespace functor {
 //   output: [Di, ... , DN] where i belongs to set [1,N]
 template <typename T, typename AccumT, typename BinaryFunctor>
 struct ReduceOuterDimensions {
+  ReduceOuterDimensions(){};
   template <int num_dims>
   void operator()(const CPUDevice& device,
                   const Eigen::DSizes<Eigen::Index, num_dims>& input_dims,
@@ -41,7 +46,7 @@ struct ReduceOuterDimensions {
     const int num_output_dims = output->dims();
     auto output_dims = output->template flat<T>().dimensions();
 
-    int64 inner_dim = 1, outer_dim = 1;
+    Eigen::Index inner_dim = 1, outer_dim = 1;
     for (int i = 0; i < num_dims - num_output_dims; ++i)
       outer_dim *= input_dims[i];
     for (int i = num_dims - num_output_dims; i < num_dims; ++i)
@@ -55,15 +60,15 @@ struct ReduceOuterDimensions {
     }
 
     // Get device thread num.
-    const int64 num_threads = device.numThreads();
+    const Eigen::Index num_threads = device.numThreads();
 
     // If the inner dim parallelism is large enough
     if (inner_dim > num_threads * 16) {
       // Do not create more blocks than there are threads in a pool.
-      const int64 num_blocks = num_threads;
+      const Eigen::Index num_blocks = num_threads;
 
       // Block size along the outer dimension.
-      const int64 inner_block_size = Eigen::divup(inner_dim, num_blocks);
+      const Eigen::Index inner_block_size = Eigen::divup(inner_dim, num_blocks);
       const T* input_data = input.template flat<T>().data();
 
       // Allocate temporary buffer for partial reductions.
@@ -84,15 +89,15 @@ struct ReduceOuterDimensions {
                             input_data, buffer_data](
                                Eigen::Index start, Eigen::Index limit) -> void {
         DCHECK(start >= 0 && limit <= num_blocks);
-        int64 inner_dim_start = start * inner_block_size;
-        int64 inner_dim_limit = limit * inner_block_size;
+        Eigen::Index inner_dim_start = start * inner_block_size;
+        Eigen::Index inner_dim_limit = limit * inner_block_size;
         inner_dim_limit = std::min(inner_dim, inner_dim_limit);
-        int64 my_job_len = inner_dim_limit - inner_dim_start;
+        Eigen::Index my_job_len = inner_dim_limit - inner_dim_start;
 
         const T* my_job_start = input_data + inner_dim_start;
         Buffer buf(buffer_data + inner_dim_start, my_job_len);
 
-        for (int64 i = 0; i < outer_dim; ++i) {
+        for (Eigen::Index i = 0; i < outer_dim; ++i) {
           auto in = Input(my_job_start + i * inner_dim, my_job_len);
           auto cast = in.template cast<AccumT>();
           buf = Eigen::TensorCwiseBinaryOp<BinaryFunctor, const decltype(buf),
@@ -101,8 +106,8 @@ struct ReduceOuterDimensions {
       };
 
       // Compute cost of reducing a single block.
-      const int64 compute_size = outer_dim * inner_block_size;
-      const int64 compute_input_bytes = compute_size * sizeof(T);
+      const Eigen::Index compute_size = outer_dim * inner_block_size;
+      const Eigen::Index compute_input_bytes = compute_size * sizeof(T);
       const Eigen::TensorOpCost cost(
           compute_input_bytes,
           0,  // We'll be mostly writing to L1, assume store cost is 0
@@ -115,21 +120,21 @@ struct ReduceOuterDimensions {
           buffer.template cast<T>().reshape(output_dims);
     } else {
       // Compute block size along the outer dimension for efficiency.
-      const int64 parallel_cell_size = inner_dim;
-      const int64 total_workload = outer_dim * inner_dim;
-      const int64 max_parallelism = total_workload / parallel_cell_size;
+      const Eigen::Index parallel_cell_size = inner_dim;
+      const Eigen::Index total_workload = outer_dim * inner_dim;
+      const Eigen::Index max_parallelism = total_workload / parallel_cell_size;
 
-      const int64 min_block_workload = 2000;
-      const int64 min_block_size =
+      const Eigen::Index min_block_workload = 2000;
+      const Eigen::Index min_block_size =
           Eigen::divup(min_block_workload, parallel_cell_size);
-      const int64 max_num_blocks = std::min(
+      const Eigen::Index max_num_blocks = std::min(
           max_parallelism, Eigen::divup(total_workload, min_block_size));
 
       // Do not create more blocks than there are threads in a pool.
-      const int64 num_blocks = std::min(max_num_blocks, num_threads);
+      const Eigen::Index num_blocks = std::min(max_num_blocks, num_threads);
 
       // Block size along the outer dimension.
-      const int64 outer_block_size = Eigen::divup(outer_dim, num_blocks);
+      const Eigen::Index outer_block_size = Eigen::divup(outer_dim, num_blocks);
 
       const T* input_data = input.template flat<T>().data();
 
@@ -150,12 +155,12 @@ struct ReduceOuterDimensions {
                             buffer_data, input_data, outer_dim](
                                Eigen::Index start, Eigen::Index limit) -> void {
         DCHECK(start >= 0 && limit <= num_blocks);
-        int64 outer_dim_start = start * outer_block_size;
-        int64 outer_dim_limit = limit * outer_block_size;
+        Eigen::Index outer_dim_start = start * outer_block_size;
+        Eigen::Index outer_dim_limit = limit * outer_block_size;
         outer_dim_limit = std::min(outer_dim, outer_dim_limit);
 
         Buffer buf(buffer_data + start * inner_dim, inner_dim);
-        for (int64 i = outer_dim_start; i < outer_dim_limit; ++i) {
+        for (Eigen::Index i = outer_dim_start; i < outer_dim_limit; ++i) {
           auto in = Input(input_data + i * inner_dim, inner_dim);
           auto cast = in.template cast<AccumT>();
           buf = Eigen::TensorCwiseBinaryOp<BinaryFunctor, const decltype(buf),
@@ -164,8 +169,8 @@ struct ReduceOuterDimensions {
       };
 
       // Compute cost of reducing a single block.
-      const int64 compute_size = outer_block_size * inner_dim;
-      const int64 compute_input_bytes = compute_size * sizeof(T);
+      const Eigen::Index compute_size = outer_block_size * inner_dim;
+      const Eigen::Index compute_input_bytes = compute_size * sizeof(T);
       const Eigen::TensorOpCost cost(
           compute_input_bytes,
           0,  // We'll be mostly writing to L1, assume store cost is 0
@@ -194,6 +199,7 @@ struct ReduceOuterDimensions {
 //   output: [Di, ... , Dj] where i & j belongs to set [1,N].
 template <typename T, typename AccumT, typename BinaryFunctor, typename Reducer>
 struct ReduceMiddleDimensions {
+  ReduceMiddleDimensions(){};
   template <int num_dims>
   void operator()(const CPUDevice& device,
                   const Eigen::DSizes<Eigen::Index, num_dims>& input_dims,
@@ -203,7 +209,7 @@ struct ReduceMiddleDimensions {
     const int num_output_dims = output->dims();
     auto output_dims = output->template flat<T>().dimensions();
 
-    int64 inner_dim = 1, middle_dim = 1, outer_dim = 1;
+    Eigen::Index inner_dim = 1, middle_dim = 1, outer_dim = 1;
     for (int i = 0; i < axis_begin_dim; ++i) outer_dim *= input_dims[i];
     for (int i = axis_begin_dim; i < axis_begin_dim + num_output_dims; ++i)
       middle_dim *= input_dims[i];
@@ -223,22 +229,23 @@ struct ReduceMiddleDimensions {
     }
 
     // Compute block size along the outer dimension for efficiency.
-    const int64 parallel_cell_size = inner_dim;
-    const int64 max_parallelism = outer_dim * middle_dim;
-    const int64 total_workload = max_parallelism * inner_dim;
+    const Eigen::Index parallel_cell_size = inner_dim;
+    const Eigen::Index max_parallelism = outer_dim * middle_dim;
+    const Eigen::Index total_workload = max_parallelism * inner_dim;
 
-    const int64 min_block_workload = 2000;
-    const int64 min_block_size =
+    const Eigen::Index min_block_workload = 2000;
+    const Eigen::Index min_block_size =
         Eigen::divup(min_block_workload, parallel_cell_size);
-    const int64 max_num_blocks =
+    const Eigen::Index max_num_blocks =
         std::min(max_parallelism, Eigen::divup(total_workload, min_block_size));
 
     // Do not create more blocks than there are threads in a pool.
-    const int64 num_threads = device.numThreads();
-    const int64 num_blocks = std::min(max_num_blocks, num_threads);
+    const Eigen::Index num_threads = device.numThreads();
+    const Eigen::Index num_blocks = std::min(max_num_blocks, num_threads);
 
     // Block size along the outer dimension.
-    const int64 outer_block_size = Eigen::divup(total_workload, num_blocks);
+    const Eigen::Index outer_block_size =
+        Eigen::divup(total_workload, num_blocks);
 
     const T* input_data = input.template flat<T>().data();
 
@@ -251,7 +258,7 @@ struct ReduceMiddleDimensions {
     using Input = Eigen::TensorMap<Eigen::Tensor<const T, 1>>;
 
     Eigen::array<Eigen::Index, 1> reduction_axis = {0};
-    const Reducer reducer;
+    Reducer reducer;
     const BinaryFunctor binary_op;
 
     const auto compute = [inner_dim, middle_dim, input_data, buffer_data,
@@ -259,8 +266,8 @@ struct ReduceMiddleDimensions {
                           reduction_axis, reducer, binary_op](
                              Eigen::Index start, Eigen::Index limit) -> void {
       DCHECK(start >= 0 && limit <= num_blocks);
-      int64 block_start = start * outer_block_size;
-      int64 block_limit = limit * outer_block_size;
+      Eigen::Index block_start = start * outer_block_size;
+      Eigen::Index block_limit = limit * outer_block_size;
       block_limit = std::min(total_workload, block_limit);
       Buffer buf(buffer_data + start * middle_dim, middle_dim);
 
@@ -268,7 +275,7 @@ struct ReduceMiddleDimensions {
           ((block_start + inner_dim - 1) / inner_dim) * inner_dim;
       const int align_end = (block_limit / inner_dim) * inner_dim;
 
-      int64 coordinate = block_start / inner_dim % middle_dim;
+      Eigen::Index coordinate = block_start / inner_dim % middle_dim;
       Eigen::Tensor<AccumT, 0> reduced =
           Input(&input_data[block_start], align_start - block_start)
               .reduce(reduction_axis, reducer)
@@ -293,8 +300,8 @@ struct ReduceMiddleDimensions {
     };
 
     // Compute cost of reducing a single block.
-    const int64 compute_size = outer_block_size * inner_dim;
-    const int64 compute_input_bytes = compute_size * sizeof(T);
+    const Eigen::Index compute_size = outer_block_size * inner_dim;
+    const Eigen::Index compute_input_bytes = compute_size * sizeof(T);
     const Eigen::TensorOpCost cost(
         compute_input_bytes,
         0,  // We'll be mostly writing to L1, assume store cost is 0

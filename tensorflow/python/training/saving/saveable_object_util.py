@@ -50,8 +50,7 @@ def set_cpu0(device_string):
     A device string.
   """
   parsed_device = pydev.DeviceSpec.from_string(device_string)
-  parsed_device.device_type = "CPU"
-  parsed_device.device_index = 0
+  parsed_device = parsed_device.replace(device_type="CPU", device_index=0)
   return parsed_device.to_string()
 
 
@@ -82,7 +81,7 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
     if isinstance(var, ops.Tensor):
       self.handle_op = var.op.inputs[0]
       tensor = var
-    elif isinstance(var, resource_variable_ops.ResourceVariable):
+    elif resource_variable_ops.is_resource_variable(var):
 
       def _read_variable_closure(v):
         def f():
@@ -180,7 +179,7 @@ def saveable_objects_for_op(op, name):
     # pylint: enable=protected-access
   else:
     # A variable or tensor.
-    if isinstance(op, resource_variable_ops.ResourceVariable):
+    if isinstance(op, resource_variable_ops.BaseResourceVariable):
       # pylint: disable=protected-access
       if op._in_graph_mode:
         variable = op._graph_element
@@ -189,10 +188,9 @@ def saveable_objects_for_op(op, name):
       # pylint: enable=protected-access
       yield ResourceVariableSaveable(variable, "", name)
     else:
-      with ops.init_scope():
-        if context.executing_eagerly():
-          raise ValueError("Can only save/restore ResourceVariables when "
-                           "executing eagerly, got type: %s." % type(op))
+      if context.executing_eagerly():
+        raise ValueError("Can only save/restore ResourceVariables when "
+                         "executing eagerly, got type: %s." % type(op))
 
       variable = ops.internal_convert_to_tensor(op, as_ref=True)
       if not _tensor_comes_from_variable(variable):
@@ -234,6 +232,10 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
   names_to_saveables = {}
   # pylint: disable=protected-access
   for var in op_list:
+    resource_or_ref_variable = (
+        isinstance(var, resource_variable_ops.BaseResourceVariable) or
+        isinstance(var, variables.RefVariable))
+
     if isinstance(var, saveable_object.SaveableObject):
       names_to_saveables[var.name] = var
     elif isinstance(var, variables.PartitionedVariable):
@@ -250,8 +252,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
         names_to_saveables[name].append(var)
       else:
         names_to_saveables[name] = [var]
-    elif (isinstance(var, trackable.Trackable)
-          and not isinstance(var, variables.Variable)):
+    elif isinstance(var, trackable.Trackable) and not resource_or_ref_variable:
       trackable_saveables = [
           (factory() if callable(factory) else factory)
           for factory in var._gather_saveables_for_checkpoint().values()]
@@ -262,7 +263,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
       # indicating whether they were created in a graph building context. We
       # also get Tensors when graph building, which do not have this property.
       if not getattr(var, "_in_graph_mode", True):
-        if not isinstance(var, resource_variable_ops.ResourceVariable):
+        if not isinstance(var, resource_variable_ops.BaseResourceVariable):
           raise ValueError(
               "Can only save/restore ResourceVariables when eager execution "
               "is enabled, type: %s." % type(var))
@@ -276,7 +277,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
               (var._shared_name,))
       else:
         if convert_variable_to_tensor:
-          if isinstance(var, resource_variable_ops.ResourceVariable):
+          if isinstance(var, resource_variable_ops.BaseResourceVariable):
             var = var._graph_element  # pylint: disable=protected-access
           else:
             var = ops.internal_convert_to_tensor(var, as_ref=True)

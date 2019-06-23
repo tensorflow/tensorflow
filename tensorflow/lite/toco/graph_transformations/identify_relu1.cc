@@ -99,19 +99,13 @@ int GetSingleScalarInputIndexOfBinaryOp(Model* model, const Operator* op,
 
   // Create and emplace Relu1 node.
   auto* relu1_op = new Relu1Operator;
+  AddMessageF("Creating %s replacing equivalent subgraph", LogName(*relu1_op));
   relu1_op->inputs = {op_0->inputs[!op_0_scalar_input_index]};
   relu1_op->outputs = op_1->outputs;
   model->operators.emplace(op_it, relu1_op);
 
-  AddMessageF("Creating %s replacing equivalent subgraph", LogName(*relu1_op));
-
-  // Erase op scalar inputs & operators. Note that we preserve the non-scalar
-  // input to the first op as that's been redirected to the relu1_op.
-  DeleteArrayIfUsedOnce(op_0->inputs[op_0_scalar_input_index], model);
-  DeleteArrayIfUsedOnce(op_1->inputs[0], model);
-  DeleteArrayIfUsedOnce(op_1->inputs[1], model);
-  model->operators.erase(FindOperator(model, op_0));
-  model->operators.erase(FindOperator(model, op_1));
+  DeleteOpAndArrays(model, op_0);
+  DeleteOpAndArrays(model, op_1);
 
   *modified = true;
   return ::tensorflow::Status::OK();

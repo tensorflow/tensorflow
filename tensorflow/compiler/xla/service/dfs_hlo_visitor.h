@@ -117,6 +117,7 @@ class DfsHloVisitorBase {
   virtual Status HandleAllToAll(HloInstructionPtr hlo) = 0;
   virtual Status HandleCollectivePermute(HloInstructionPtr hlo) = 0;
   virtual Status HandleReplicaId(HloInstructionPtr hlo) = 0;
+  virtual Status HandlePartitionId(HloInstructionPtr hlo) = 0;
   virtual Status HandleGetDimensionSize(HloInstructionPtr hlo) = 0;
   virtual Status HandleCompare(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
@@ -223,6 +224,7 @@ class DfsHloVisitorBase {
   virtual Status HandleInfeed(HloInstructionPtr hlo) = 0;
   virtual Status HandleOutfeed(HloInstructionPtr hlo) = 0;
   virtual Status HandleRng(HloInstructionPtr hlo) = 0;
+  virtual Status HandleRngGetAndUpdateState(HloInstructionPtr hlo) = 0;
   virtual Status HandleReverse(HloInstructionPtr hlo) = 0;
   virtual Status HandleSort(HloInstructionPtr hlo) = 0;
   virtual Status HandleConstant(HloInstructionPtr hlo) = 0;
@@ -250,6 +252,9 @@ class DfsHloVisitorBase {
   virtual Status HandleScatter(HloInstructionPtr hlo) = 0;
 
   virtual Status HandlePad(HloInstructionPtr hlo) = 0;
+
+  virtual Status HandleCopyStart(HloInstructionPtr copy_start) = 0;
+  virtual Status HandleCopyDone(HloInstructionPtr copy_done) = 0;
 
   virtual Status HandleSend(HloInstructionPtr send) = 0;
   virtual Status HandleSendDone(HloInstructionPtr send_done) = 0;
@@ -291,6 +296,7 @@ class DfsHloVisitorBase {
   // This call is purely a performance hint and can be omitted without
   // affecting correctness.
   void ReserveVisitStates(int num) { visit_state_.reserve(num); }
+  size_t VisitStateCapacity() const { return visit_state_.capacity(); }
 
   // Useful when we want to visit the same computation more than once with the
   // same visitor.
@@ -349,6 +355,10 @@ class DfsHloVisitorBase {
 
   TF_DISALLOW_COPY_AND_ASSIGN(DfsHloVisitorBase);
 };
+
+// Explicit instantiations in dfs_hlo_visitor.cc.
+extern template class DfsHloVisitorBase<HloInstruction*>;
+extern template class DfsHloVisitorBase<const HloInstruction*>;
 
 // Users should use one of these two type aliases, which are the only two valid
 // instantiations of DfsHloVisitorBase.

@@ -155,12 +155,19 @@ class RaggedWhereOpTest(ragged_test_util.RaggedTensorTestCase,
       #=========================================================================
       # Elementwise row-selection mode
       #=========================================================================
-      dict(  # shape=[D1, D2]
+      dict(  # x.shape=[D1, D2], y.shape=[D1, D2]
           condition=[True, False, True],
           x=[['A', 'B'], ['C', 'D'], ['E', 'F']],
           y=[['a', 'b'], ['c', 'd'], ['e', 'f']],
           expected=[[b'A', b'B'], [b'c', b'd'], [b'E', b'F']]),
-      dict(  # shape=[D1, (D2)]
+      dict(  # x.shape=[D1, D2], y.shape=[D1, (D2)]
+          condition=[True, False, True],
+          x=[['A', 'B'], ['C', 'D'], ['E', 'F']],
+          y=ragged_factory_ops.constant_value(
+              [['a', 'b'], ['c'], ['d', 'e']]),
+          expected=ragged_factory_ops.constant_value(
+              [[b'A', b'B'], [b'c'], [b'E', b'F']])),
+      dict(  # x.shape=[D1, (D2)], y.shape=[D1, (D2)]
           condition=[True, False, True],
           x=ragged_factory_ops.constant_value(
               [['A', 'B', 'C'], ['D', 'E'], ['F', 'G']]),

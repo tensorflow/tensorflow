@@ -1,12 +1,11 @@
-package(
-    default_visibility = ["//visibility:public"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(glob([
     "testdata/*.bin",
@@ -159,15 +158,12 @@ cc_library(
         "stderr_reporter.cc",
     ] + select({
         "//tensorflow:android": [
-            "nnapi_delegate.cc",
             "mmap_allocation.cc",
         ],
         "//tensorflow:windows": [
-            "nnapi_delegate_disabled.cc",
             "mmap_allocation_disabled.cc",
         ],
         "//conditions:default": [
-            "nnapi_delegate_disabled.cc",
             "mmap_allocation.cc",
         ],
     }),
@@ -181,7 +177,6 @@ cc_library(
         "interpreter.h",
         "model.h",
         "mutable_op_resolver.h",
-        "nnapi_delegate.h",
         "op_resolver.h",
         "optional_debug_tools.h",
         "stderr_reporter.h",
@@ -198,8 +193,8 @@ cc_library(
         ":version",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/nnapi:nnapi_implementation",
-        "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({
         ":with_select_tf_ops": [
@@ -249,12 +244,15 @@ cc_test(
     deps = [
         ":framework",
         ":string_util",
+        ":version",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
+        "//third_party/eigen3",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -402,7 +400,9 @@ cc_library(
         "//tensorflow:android": ["-llog"],
         "//conditions:default": [],
     }),
-    visibility = ["//visibility:private"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
 )
 
 cc_test(

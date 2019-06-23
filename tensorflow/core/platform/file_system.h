@@ -260,6 +260,16 @@ class RandomAccessFile {
   virtual Status Read(uint64 offset, size_t n, StringPiece* result,
                       char* scratch) const = 0;
 
+  // TODO(ebrevdo): Remove this ifdef when absl is updated.
+#if defined(PLATFORM_GOOGLE)
+  /// \brief Read up to `n` bytes from the file starting at `offset`.
+  virtual Status Read(uint64 offset, size_t n, absl::Cord* cord) const {
+    return errors::Unimplemented(
+        "Read(uint64, size_t, absl::Cord*) is not "
+        "implemented");
+  }
+#endif
+
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(RandomAccessFile);
 };

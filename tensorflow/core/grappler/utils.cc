@@ -162,6 +162,10 @@ string TensorIdToString(const TensorId& tensor_id) {
                                 : tensor_id.ToString();
 }
 
+string SafeTensorIdToString(const SafeTensorId& tensor_id) {
+  return tensor_id.index() == 0 ? tensor_id.node() : tensor_id.ToString();
+}
+
 bool IsSameInput(const string& name1, const string& name2) {
   if (name1 == name2) return true;
   TensorId tensor1 = ParseTensorName(name1);
@@ -489,13 +493,26 @@ Status CheckAttrsExist(const NodeDef& node, absl::Span<const string> keys) {
   return Status::OK();
 }
 
-Status IsKernelRegisteredForNode(const NodeDef& node) {
+Status IsKernelRegisteredForNode(
+    absl::string_view node_name, bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
+    absl::string_view node_op, absl::string_view node_device,
+    AttrSlice node_attrs) {
   DeviceNameUtils::ParsedName parsed_name;
-  if (!DeviceNameUtils::ParseFullName(node.device(), &parsed_name)) {
+  if (!DeviceNameUtils::ParseFullName(node_device, &parsed_name)) {
     return errors::InvalidArgument("Could not parse device name: ",
-                                   node.device());
+                                   node_device);
   }
-  return FindKernelDef(DeviceType(parsed_name.type), node, nullptr, nullptr);
+  return FindKernelDef(DeviceType(parsed_name.type), node_name,
+                       has_experimental_debug_info, experimental_debug_info,
+                       node_op, node_device, node_attrs, nullptr, nullptr);
+}
+
+Status IsKernelRegisteredForNode(const NodeDef& node) {
+  return IsKernelRegisteredForNode(node.name(),
+                                   node.has_experimental_debug_info(),
+                                   node.experimental_debug_info(), node.op(),
+                                   node.device(), AttrSlice(&node.attr()));
 }
 
 }  // end namespace grappler

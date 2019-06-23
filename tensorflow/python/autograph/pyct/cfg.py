@@ -571,12 +571,14 @@ class GraphBuilder(object):
     # Build the statement edges.
     stmt_next = {}
     stmt_prev = {}
-    for node, _ in self.forward_edges:
+
+    for node in self.node_index.values():
       for stmt in self.owners[node]:
-        if stmt not in stmt_next:
-          stmt_next[stmt] = set()
         if stmt not in stmt_prev:
           stmt_prev[stmt] = set()
+        if stmt not in stmt_next:
+          stmt_next[stmt] = set()
+
     for first, second in self.forward_edges:
       stmts_exited = self.owners[first] - self.owners[second]
       for stmt in stmts_exited:
@@ -696,6 +698,15 @@ class AstToCfg(gast.NodeVisitor):
   def visit_AugAssign(self, node):
     self._process_basic_statement(node)
 
+  def visit_Pass(self, node):
+    self._process_basic_statement(node)
+
+  def visit_Global(self, node):
+    self._process_basic_statement(node)
+
+  def visit_Nonlocal(self, node):
+    self._process_basic_statement(node)
+
   def visit_Print(self, node):
     self._process_basic_statement(node)
 
@@ -787,22 +798,60 @@ class AstToCfg(gast.NodeVisitor):
   def visit_Continue(self, node):
     self._process_continue_statement(node, gast.While, gast.For)
 
-  def visit_Try(self, node):
-    self._enter_lexical_scope(node)
+  def visit_ExceptHandler(self, node):
+    self.builder.begin_statement(node)
+
+    if node.type is not None:
+      self.visit(node.type)
+    if node.name is not None:
+      self.visit(node.name)
 
     for stmt in node.body:
       self.visit(stmt)
-    # Unlike loops, the orelse is a simple continuation of the body.
-    for stmt in node.orelse:
+
+    self.builder.end_statement(node)
+
+  def visit_Try(self, node):
+    self.builder.begin_statement(node)
+    self._enter_lexical_scope(node)
+
+    # Note: the current simplification is that the try block fully executes
+    # regardless of whether an exception triggers or not. This is consistent
+    # with blocks free of try/except, which also don't account for the
+    # possibility of an exception being raised mid-block.
+
+    for stmt in node.body:
       self.visit(stmt)
+    # The orelse is an optional continuation of the body.
+    if node.orelse:
+      block_representative = node.orelse[0]
+      self.builder.enter_cond_section(block_representative)
+      self.builder.new_cond_branch(block_representative)
+      for stmt in node.orelse:
+        self.visit(stmt)
+      self.builder.new_cond_branch(block_representative)
+      self.builder.exit_cond_section(block_representative)
 
     self._exit_lexical_scope(node)
+
+    if node.handlers:
+      # Using node would be inconsistent. Using the first handler node is also
+      # inconsistent, but less so.
+      block_representative = node.handlers[0]
+      self.builder.enter_cond_section(block_representative)
+      for block in node.handlers:
+        self.builder.new_cond_branch(block_representative)
+        self.visit(block)
+      self.builder.new_cond_branch(block_representative)
+      self.builder.exit_cond_section(block_representative)
 
     if node.finalbody:
       self.builder.enter_finally_section(node)
       for stmt in node.finalbody:
         self.visit(stmt)
       self.builder.exit_finally_section(node)
+
+    self.builder.end_statement(node)
 
   def visit_With(self, node):
     # TODO(mdan): Mark the context manager's exit call as exit guard.

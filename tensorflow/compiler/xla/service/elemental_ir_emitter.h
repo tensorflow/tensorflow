@@ -146,9 +146,6 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   virtual StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
                                           llvm::Value* value);
 
-  virtual StatusOr<llvm::Value*> EmitRoundNearestAfz(PrimitiveType prim_type,
-                                                     llvm::Value* value);
-
   virtual StatusOr<llvm::Value*> EmitReducePrecision(const HloInstruction* hlo,
                                                      llvm::Value* x);
 

@@ -210,7 +210,7 @@ cc_binary(
     deps = [
         ":config",
         ":support",
-        ":table_gen",
+        ":tablegen",
     ],
 )
 
@@ -424,29 +424,6 @@ cc_library(
 )
 
 cc_library(
-    name = "aarch64_asm_printer",
-    srcs = glob([
-        "lib/Target/AArch64/InstPrinter/*.c",
-        "lib/Target/AArch64/InstPrinter/*.cpp",
-        "lib/Target/AArch64/InstPrinter/*.inc",
-    ]),
-    hdrs = glob([
-        "include/llvm/Target/AArch64/InstPrinter/*.h",
-        "include/llvm/Target/AArch64/InstPrinter/*.def",
-        "include/llvm/Target/AArch64/InstPrinter/*.inc",
-        "lib/Target/AArch64/InstPrinter/*.h",
-    ]),
-    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AArch64"],
-    deps = [
-        ":aarch64_target_gen",
-        ":aarch64_utils",
-        ":config",
-        ":mc",
-        ":support",
-    ],
-)
-
-cc_library(
     name = "aarch64_code_gen",
     srcs = glob([
         "lib/Target/AArch64/*.c",
@@ -461,7 +438,6 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AArch64"],
     deps = [
-        ":aarch64_asm_printer",
         ":aarch64_desc",
         ":aarch64_info",
         ":aarch64_utils",
@@ -494,9 +470,9 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AArch64"],
     deps = [
-        ":aarch64_asm_printer",
         ":aarch64_info",
         ":aarch64_target_gen",
+        ":aarch64_utils",
         ":attributes_gen",
         ":config",
         ":intrinsic_enums_gen",
@@ -580,51 +556,64 @@ cc_library(
 )
 
 cc_library(
-    name = "aggressive_inst_combine",
+    name = "amdgpu_asm_parser",
     srcs = glob([
-        "lib/Transforms/AggressiveInstCombine/*.c",
-        "lib/Transforms/AggressiveInstCombine/*.cpp",
-        "lib/Transforms/AggressiveInstCombine/*.inc",
-        "lib/Transforms/AggressiveInstCombine/*.h",
+        "lib/Target/AMDGPU/AsmParser/*.c",
+        "lib/Target/AMDGPU/AsmParser/*.cpp",
+        "lib/Target/AMDGPU/AsmParser/*.inc",
     ]),
     hdrs = glob([
-        "include/llvm/Transforms/AggressiveInstCombine/*.h",
-        "include/llvm/Transforms/AggressiveInstCombine/*.def",
-        "include/llvm/Transforms/AggressiveInstCombine/*.inc",
+        "include/llvm/Target/AMDGPU/AsmParser/*.h",
+        "include/llvm/Target/AMDGPU/AsmParser/*.def",
+        "include/llvm/Target/AMDGPU/AsmParser/*.inc",
+        "lib/Target/AMDGPU/AsmParser/*.h",
     ]),
-    copts = llvm_copts,
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AMDGPU"],
     deps = [
-        ":analysis",
+        ":amdgpu_desc",
+        ":amdgpu_info",
+        ":amdgpu_utils",
         ":config",
-        ":core",
+        ":mc",
+        ":mc_parser",
         ":support",
-        ":transform_utils",
     ],
 )
 
 cc_library(
-    name = "analysis",
+    name = "amdgpu_code_gen",
     srcs = glob([
-        "lib/Analysis/*.c",
-        "lib/Analysis/*.cpp",
-        "lib/Analysis/*.inc",
-        "include/llvm/Transforms/Utils/Local.h",
-        "include/llvm/Transforms/Scalar.h",
-        "lib/Analysis/*.h",
+        "lib/Target/AMDGPU/*.c",
+        "lib/Target/AMDGPU/*.cpp",
+        "lib/Target/AMDGPU/*.inc",
     ]),
     hdrs = glob([
-        "include/llvm/Analysis/*.h",
-        "include/llvm/Analysis/*.def",
-        "include/llvm/Analysis/*.inc",
+        "include/llvm/Target/AMDGPU/*.h",
+        "include/llvm/Target/AMDGPU/*.def",
+        "include/llvm/Target/AMDGPU/*.inc",
+        "lib/Target/AMDGPU/*.h",
     ]),
-    copts = llvm_copts,
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AMDGPU"],
     deps = [
+        ":amdgpu_desc",
+        ":amdgpu_info",
+        ":amdgpu_utils",
+        ":analysis",
+        ":asm_printer",
         ":binary_format",
+        ":code_gen",
         ":config",
         ":core",
-        ":object",
-        ":profile_data",
+        ":global_i_sel",
+        ":ipo",
+        ":mc",
+        ":mir_parser",
+        ":scalar",
+        ":selection_dag",
         ":support",
+        ":target",
+        ":transform_utils",
+        ":vectorize",
     ],
 )
 
@@ -643,7 +632,6 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AMDGPU"],
     deps = [
-        ":amdgpu_asm_printer",
         ":amdgpu_info",
         ":amdgpu_utils",
         ":binary_format",
@@ -728,87 +716,96 @@ cc_library(
 )
 
 cc_library(
-    name = "amdgpu_asm_parser",
+    name = "arc_code_gen",
     srcs = glob([
-        "lib/Target/AMDGPU/AsmParser/*.c",
-        "lib/Target/AMDGPU/AsmParser/*.cpp",
-        "lib/Target/AMDGPU/AsmParser/*.inc",
+        "lib/Target/ARC/*.c",
+        "lib/Target/ARC/*.cpp",
+        "lib/Target/ARC/*.inc",
     ]),
     hdrs = glob([
-        "include/llvm/Target/AMDGPU/AsmParser/*.h",
-        "include/llvm/Target/AMDGPU/AsmParser/*.def",
-        "include/llvm/Target/AMDGPU/AsmParser/*.inc",
-        "lib/Target/AMDGPU/AsmParser/*.h",
+        "include/llvm/Target/ARC/*.h",
+        "include/llvm/Target/ARC/*.def",
+        "include/llvm/Target/ARC/*.inc",
+        "lib/Target/ARC/*.h",
     ]),
-    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AMDGPU"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/ARC"],
     deps = [
-        ":amdgpu_desc",
-        ":amdgpu_info",
-        ":amdgpu_utils",
-        ":config",
-        ":mc",
-        ":mc_parser",
-        ":support",
-    ],
-)
-
-cc_library(
-    name = "amdgpu_asm_printer",
-    srcs = glob([
-        "lib/Target/AMDGPU/InstPrinter/*.c",
-        "lib/Target/AMDGPU/InstPrinter/*.cpp",
-        "lib/Target/AMDGPU/InstPrinter/*.inc",
-    ]),
-    hdrs = glob([
-        "include/llvm/Target/AMDGPU/InstPrinter/*.h",
-        "include/llvm/Target/AMDGPU/InstPrinter/*.def",
-        "include/llvm/Target/AMDGPU/InstPrinter/*.inc",
-        "lib/Target/AMDGPU/InstPrinter/*.h",
-    ]),
-    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AMDGPU"],
-    deps = [
-        ":amdgpu_utils",
-        ":config",
-        ":mc",
-        ":support",
-    ],
-)
-
-cc_library(
-    name = "amdgpu_code_gen",
-    srcs = glob([
-        "lib/Target/AMDGPU/*.c",
-        "lib/Target/AMDGPU/*.cpp",
-        "lib/Target/AMDGPU/*.inc",
-    ]),
-    hdrs = glob([
-        "include/llvm/Target/AMDGPU/*.h",
-        "include/llvm/Target/AMDGPU/*.def",
-        "include/llvm/Target/AMDGPU/*.inc",
-        "lib/Target/AMDGPU/*.h",
-    ]),
-    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AMDGPU"],
-    deps = [
-        ":amdgpu_asm_printer",
-        ":amdgpu_desc",
-        ":amdgpu_info",
-        ":amdgpu_utils",
         ":analysis",
+        ":arc_desc",
+        ":arc_info",
         ":asm_printer",
-        ":binary_format",
         ":code_gen",
         ":config",
         ":core",
-        ":global_i_sel",
-        ":ipo",
         ":mc",
-        ":mir_parser",
-        ":scalar",
         ":selection_dag",
         ":support",
         ":target",
         ":transform_utils",
-        ":vectorize",
+    ],
+)
+
+cc_library(
+    name = "arc_desc",
+    srcs = glob([
+        "lib/Target/ARC/MCTargetDesc/*.c",
+        "lib/Target/ARC/MCTargetDesc/*.cpp",
+        "lib/Target/ARC/MCTargetDesc/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/ARC/MCTargetDesc/*.h",
+        "include/llvm/Target/ARC/MCTargetDesc/*.def",
+        "include/llvm/Target/ARC/MCTargetDesc/*.inc",
+        "lib/Target/ARC/MCTargetDesc/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/ARC"],
+    deps = [
+        ":arc_info",
+        ":config",
+        ":mc",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "arc_disassembler",
+    srcs = glob([
+        "lib/Target/ARC/Disassembler/*.c",
+        "lib/Target/ARC/Disassembler/*.cpp",
+        "lib/Target/ARC/Disassembler/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/ARC/Disassembler/*.h",
+        "include/llvm/Target/ARC/Disassembler/*.def",
+        "include/llvm/Target/ARC/Disassembler/*.inc",
+        "lib/Target/ARC/Disassembler/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/ARC"],
+    deps = [
+        ":arc_info",
+        ":config",
+        ":mc_disassembler",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "arc_info",
+    srcs = glob([
+        "lib/Target/ARC/TargetInfo/*.c",
+        "lib/Target/ARC/TargetInfo/*.cpp",
+        "lib/Target/ARC/TargetInfo/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/ARC/TargetInfo/*.h",
+        "include/llvm/Target/ARC/TargetInfo/*.def",
+        "include/llvm/Target/ARC/TargetInfo/*.inc",
+        "lib/Target/ARC/TargetInfo/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/ARC"],
+    deps = [
+        ":config",
+        ":support",
     ],
 )
 
@@ -827,38 +824,12 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/ARM"],
     deps = [
-        ":arm_asm_printer",
         ":arm_desc",
         ":arm_info",
         ":arm_utils",
         ":config",
         ":mc",
         ":mc_parser",
-        ":support",
-    ],
-)
-
-cc_library(
-    name = "arm_asm_printer",
-    srcs = glob([
-        "lib/Target/ARM/InstPrinter/*.c",
-        "lib/Target/ARM/InstPrinter/*.cpp",
-        "lib/Target/ARM/InstPrinter/*.inc",
-    ]),
-    hdrs = glob([
-        "include/llvm/Target/ARM/InstPrinter/*.h",
-        "include/llvm/Target/ARM/InstPrinter/*.def",
-        "include/llvm/Target/ARM/InstPrinter/*.inc",
-        "lib/Target/ARM/*.h",
-        "lib/Target/ARM/InstPrinter/*.h",
-    ]),
-    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/ARM"],
-    deps = [
-        ":arm_info",
-        ":arm_target_gen",
-        ":arm_utils",
-        ":config",
-        ":mc",
         ":support",
     ],
 )
@@ -879,7 +850,6 @@ cc_library(
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/ARM"],
     deps = [
         ":analysis",
-        ":arm_asm_printer",
         ":arm_desc",
         ":arm_info",
         ":arm_utils",
@@ -914,9 +884,9 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/ARM"],
     deps = [
-        ":arm_asm_printer",
         ":arm_info",
         ":arm_target_gen",
+        ":arm_utils",
         ":attributes_gen",
         ":config",
         ":intrinsic_enums_gen",
@@ -998,6 +968,172 @@ cc_library(
 )
 
 cc_library(
+    name = "avr_asm_parser",
+    srcs = glob([
+        "lib/Target/AVR/AsmParser/*.c",
+        "lib/Target/AVR/AsmParser/*.cpp",
+        "lib/Target/AVR/AsmParser/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/AVR/AsmParser/*.h",
+        "include/llvm/Target/AVR/AsmParser/*.def",
+        "include/llvm/Target/AVR/AsmParser/*.inc",
+        "lib/Target/AVR/AsmParser/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AVR"],
+    deps = [
+        ":avr_desc",
+        ":avr_info",
+        ":config",
+        ":mc",
+        ":mc_parser",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "avr_code_gen",
+    srcs = glob([
+        "lib/Target/AVR/*.c",
+        "lib/Target/AVR/*.cpp",
+        "lib/Target/AVR/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/AVR/*.h",
+        "include/llvm/Target/AVR/*.def",
+        "include/llvm/Target/AVR/*.inc",
+        "lib/Target/AVR/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AVR"],
+    deps = [
+        ":asm_printer",
+        ":avr_desc",
+        ":avr_info",
+        ":code_gen",
+        ":config",
+        ":core",
+        ":mc",
+        ":selection_dag",
+        ":support",
+        ":target",
+    ],
+)
+
+cc_library(
+    name = "avr_desc",
+    srcs = glob([
+        "lib/Target/AVR/MCTargetDesc/*.c",
+        "lib/Target/AVR/MCTargetDesc/*.cpp",
+        "lib/Target/AVR/MCTargetDesc/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/AVR/MCTargetDesc/*.h",
+        "include/llvm/Target/AVR/MCTargetDesc/*.def",
+        "include/llvm/Target/AVR/MCTargetDesc/*.inc",
+        "lib/Target/AVR/MCTargetDesc/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AVR"],
+    deps = [
+        ":avr_info",
+        ":config",
+        ":mc",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "avr_disassembler",
+    srcs = glob([
+        "lib/Target/AVR/Disassembler/*.c",
+        "lib/Target/AVR/Disassembler/*.cpp",
+        "lib/Target/AVR/Disassembler/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/AVR/Disassembler/*.h",
+        "include/llvm/Target/AVR/Disassembler/*.def",
+        "include/llvm/Target/AVR/Disassembler/*.inc",
+        "lib/Target/AVR/Disassembler/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AVR"],
+    deps = [
+        ":avr_info",
+        ":config",
+        ":mc_disassembler",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "avr_info",
+    srcs = glob([
+        "lib/Target/AVR/TargetInfo/*.c",
+        "lib/Target/AVR/TargetInfo/*.cpp",
+        "lib/Target/AVR/TargetInfo/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/AVR/TargetInfo/*.h",
+        "include/llvm/Target/AVR/TargetInfo/*.def",
+        "include/llvm/Target/AVR/TargetInfo/*.inc",
+        "lib/Target/AVR/TargetInfo/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AVR"],
+    deps = [
+        ":config",
+        ":mc",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "aggressive_inst_combine",
+    srcs = glob([
+        "lib/Transforms/AggressiveInstCombine/*.c",
+        "lib/Transforms/AggressiveInstCombine/*.cpp",
+        "lib/Transforms/AggressiveInstCombine/*.inc",
+        "lib/Transforms/AggressiveInstCombine/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Transforms/AggressiveInstCombine/*.h",
+        "include/llvm/Transforms/AggressiveInstCombine/*.def",
+        "include/llvm/Transforms/AggressiveInstCombine/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":analysis",
+        ":config",
+        ":core",
+        ":support",
+        ":transform_utils",
+    ],
+)
+
+cc_library(
+    name = "analysis",
+    srcs = glob([
+        "lib/Analysis/*.c",
+        "lib/Analysis/*.cpp",
+        "lib/Analysis/*.inc",
+        "include/llvm/Transforms/Utils/Local.h",
+        "include/llvm/Transforms/Scalar.h",
+        "lib/Analysis/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Analysis/*.h",
+        "include/llvm/Analysis/*.def",
+        "include/llvm/Analysis/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":binary_format",
+        ":config",
+        ":core",
+        ":object",
+        ":profile_data",
+        ":support",
+    ],
+)
+
+cc_library(
     name = "asm_parser",
     srcs = glob([
         "lib/AsmParser/*.c",
@@ -1045,8 +1181,125 @@ cc_library(
         ":debug_info_msf",
         ":mc",
         ":mc_parser",
+        ":remarks",
         ":support",
         ":target",
+    ],
+)
+
+cc_library(
+    name = "bpf_asm_parser",
+    srcs = glob([
+        "lib/Target/BPF/AsmParser/*.c",
+        "lib/Target/BPF/AsmParser/*.cpp",
+        "lib/Target/BPF/AsmParser/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/BPF/AsmParser/*.h",
+        "include/llvm/Target/BPF/AsmParser/*.def",
+        "include/llvm/Target/BPF/AsmParser/*.inc",
+        "lib/Target/BPF/AsmParser/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/BPF"],
+    deps = [
+        ":bpf_desc",
+        ":bpf_info",
+        ":config",
+        ":mc",
+        ":mc_parser",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "bpf_code_gen",
+    srcs = glob([
+        "lib/Target/BPF/*.c",
+        "lib/Target/BPF/*.cpp",
+        "lib/Target/BPF/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/BPF/*.h",
+        "include/llvm/Target/BPF/*.def",
+        "include/llvm/Target/BPF/*.inc",
+        "lib/Target/BPF/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/BPF"],
+    deps = [
+        ":asm_printer",
+        ":bpf_desc",
+        ":bpf_info",
+        ":code_gen",
+        ":config",
+        ":core",
+        ":mc",
+        ":selection_dag",
+        ":support",
+        ":target",
+    ],
+)
+
+cc_library(
+    name = "bpf_desc",
+    srcs = glob([
+        "lib/Target/BPF/MCTargetDesc/*.c",
+        "lib/Target/BPF/MCTargetDesc/*.cpp",
+        "lib/Target/BPF/MCTargetDesc/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/BPF/MCTargetDesc/*.h",
+        "include/llvm/Target/BPF/MCTargetDesc/*.def",
+        "include/llvm/Target/BPF/MCTargetDesc/*.inc",
+        "lib/Target/BPF/MCTargetDesc/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/BPF"],
+    deps = [
+        ":bpf_info",
+        ":config",
+        ":mc",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "bpf_disassembler",
+    srcs = glob([
+        "lib/Target/BPF/Disassembler/*.c",
+        "lib/Target/BPF/Disassembler/*.cpp",
+        "lib/Target/BPF/Disassembler/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/BPF/Disassembler/*.h",
+        "include/llvm/Target/BPF/Disassembler/*.def",
+        "include/llvm/Target/BPF/Disassembler/*.inc",
+        "lib/Target/BPF/Disassembler/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/BPF"],
+    deps = [
+        ":bpf_info",
+        ":config",
+        ":mc_disassembler",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "bpf_info",
+    srcs = glob([
+        "lib/Target/BPF/TargetInfo/*.c",
+        "lib/Target/BPF/TargetInfo/*.cpp",
+        "lib/Target/BPF/TargetInfo/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/BPF/TargetInfo/*.h",
+        "include/llvm/Target/BPF/TargetInfo/*.def",
+        "include/llvm/Target/BPF/TargetInfo/*.inc",
+        "lib/Target/BPF/TargetInfo/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/BPF"],
+    deps = [
+        ":config",
+        ":support",
     ],
 )
 
@@ -1181,6 +1434,55 @@ cc_library(
         ":config",
         ":intrinsic_enums_gen",
         ":intrinsics_impl_gen",
+        ":remarks",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "coroutines",
+    srcs = glob([
+        "lib/Transforms/Coroutines/*.c",
+        "lib/Transforms/Coroutines/*.cpp",
+        "lib/Transforms/Coroutines/*.inc",
+        "lib/Transforms/Coroutines/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Transforms/Coroutines/*.h",
+        "include/llvm/Transforms/Coroutines/*.def",
+        "include/llvm/Transforms/Coroutines/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":analysis",
+        ":config",
+        ":core",
+        ":ipo",
+        ":scalar",
+        ":support",
+        ":transform_utils",
+    ],
+)
+
+cc_library(
+    name = "coverage",
+    srcs = glob([
+        "lib/ProfileData/Coverage/*.c",
+        "lib/ProfileData/Coverage/*.cpp",
+        "lib/ProfileData/Coverage/*.inc",
+        "lib/ProfileData/Coverage/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/ProfileData/Coverage/*.h",
+        "include/llvm/ProfileData/Coverage/*.def",
+        "include/llvm/ProfileData/Coverage/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":core",
+        ":object",
+        ":profile_data",
         ":support",
     ],
 )
@@ -1251,6 +1553,29 @@ cc_library(
 )
 
 cc_library(
+    name = "debug_info_pdb",
+    srcs = glob([
+        "lib/DebugInfo/PDB/*.c",
+        "lib/DebugInfo/PDB/*.cpp",
+        "lib/DebugInfo/PDB/*.inc",
+        "lib/DebugInfo/PDB/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/DebugInfo/PDB/*.h",
+        "include/llvm/DebugInfo/PDB/*.def",
+        "include/llvm/DebugInfo/PDB/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":debug_info_code_view",
+        ":debug_info_msf",
+        ":object",
+        ":support",
+    ],
+)
+
+cc_library(
     name = "demangle",
     srcs = glob([
         "lib/Demangle/*.c",
@@ -1265,6 +1590,28 @@ cc_library(
     ]),
     copts = llvm_copts,
     deps = [":config"],
+)
+
+cc_library(
+    name = "dlltool_driver",
+    srcs = glob([
+        "lib/ToolDrivers/llvm-dlltool/*.c",
+        "lib/ToolDrivers/llvm-dlltool/*.cpp",
+        "lib/ToolDrivers/llvm-dlltool/*.inc",
+        "lib/ToolDrivers/llvm-dlltool/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/ToolDrivers/llvm-dlltool/*.h",
+        "include/llvm/ToolDrivers/llvm-dlltool/*.def",
+        "include/llvm/ToolDrivers/llvm-dlltool/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":object",
+        ":option",
+        ":support",
+    ],
 )
 
 cc_library(
@@ -1287,6 +1634,32 @@ cc_library(
         ":mc",
         ":object",
         ":runtime_dyld",
+        ":support",
+        ":target",
+    ],
+)
+
+cc_library(
+    name = "fuzz_mutate",
+    srcs = glob([
+        "lib/FuzzMutate/*.c",
+        "lib/FuzzMutate/*.cpp",
+        "lib/FuzzMutate/*.inc",
+        "lib/FuzzMutate/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/FuzzMutate/*.h",
+        "include/llvm/FuzzMutate/*.def",
+        "include/llvm/FuzzMutate/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":analysis",
+        ":bit_reader",
+        ":bit_writer",
+        ":config",
+        ":core",
+        ":scalar",
         ":support",
         ":target",
     ],
@@ -1319,55 +1692,125 @@ cc_library(
 )
 
 cc_library(
-    name = "instrumentation",
+    name = "hexagon_asm_parser",
     srcs = glob([
-        "lib/Transforms/Instrumentation/*.c",
-        "lib/Transforms/Instrumentation/*.cpp",
-        "lib/Transforms/Instrumentation/*.inc",
-        "lib/Transforms/Instrumentation/*.h",
+        "lib/Target/Hexagon/AsmParser/*.c",
+        "lib/Target/Hexagon/AsmParser/*.cpp",
+        "lib/Target/Hexagon/AsmParser/*.inc",
     ]),
     hdrs = glob([
-        "include/llvm/Transforms/Instrumentation/*.h",
-        "include/llvm/Transforms/Instrumentation/*.def",
-        "include/llvm/Transforms/Instrumentation/*.inc",
-        "include/llvm/Transforms/GCOVProfiler.h",
-        "include/llvm/Transforms/Instrumentation.h",
-        "include/llvm/Transforms/InstrProfiling.h",
-        "include/llvm/Transforms/PGOInstrumentation.h",
+        "include/llvm/Target/Hexagon/AsmParser/*.h",
+        "include/llvm/Target/Hexagon/AsmParser/*.def",
+        "include/llvm/Target/Hexagon/AsmParser/*.inc",
+        "lib/Target/Hexagon/AsmParser/*.h",
     ]),
-    copts = llvm_copts,
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/Hexagon"],
+    deps = [
+        ":config",
+        ":hexagon_desc",
+        ":hexagon_info",
+        ":mc",
+        ":mc_parser",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "hexagon_code_gen",
+    srcs = glob([
+        "lib/Target/Hexagon/*.c",
+        "lib/Target/Hexagon/*.cpp",
+        "lib/Target/Hexagon/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/Hexagon/*.h",
+        "include/llvm/Target/Hexagon/*.def",
+        "include/llvm/Target/Hexagon/*.inc",
+        "lib/Target/Hexagon/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/Hexagon"],
     deps = [
         ":analysis",
+        ":asm_printer",
+        ":code_gen",
         ":config",
         ":core",
+        ":hexagon_asm_parser",
+        ":hexagon_desc",
+        ":hexagon_info",
+        ":ipo",
         ":mc",
-        ":profile_data",
+        ":scalar",
+        ":selection_dag",
         ":support",
+        ":target",
         ":transform_utils",
     ],
 )
 
 cc_library(
-    name = "inst_combine",
+    name = "hexagon_desc",
     srcs = glob([
-        "lib/Transforms/InstCombine/*.c",
-        "lib/Transforms/InstCombine/*.cpp",
-        "lib/Transforms/InstCombine/*.inc",
-        "lib/Transforms/InstCombine/*.h",
+        "lib/Target/Hexagon/MCTargetDesc/*.c",
+        "lib/Target/Hexagon/MCTargetDesc/*.cpp",
+        "lib/Target/Hexagon/MCTargetDesc/*.inc",
     ]),
     hdrs = glob([
-        "include/llvm/Transforms/InstCombine/*.h",
-        "include/llvm/Transforms/InstCombine/*.def",
-        "include/llvm/Transforms/InstCombine/*.inc",
+        "include/llvm/Target/Hexagon/MCTargetDesc/*.h",
+        "include/llvm/Target/Hexagon/MCTargetDesc/*.def",
+        "include/llvm/Target/Hexagon/MCTargetDesc/*.inc",
+        "lib/Target/Hexagon/MCTargetDesc/*.h",
     ]),
-    copts = llvm_copts,
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/Hexagon"],
     deps = [
-        ":analysis",
         ":config",
-        ":core",
-        ":instcombine_transforms_gen",
+        ":hexagon_info",
+        ":mc",
         ":support",
-        ":transform_utils",
+    ],
+)
+
+cc_library(
+    name = "hexagon_disassembler",
+    srcs = glob([
+        "lib/Target/Hexagon/Disassembler/*.c",
+        "lib/Target/Hexagon/Disassembler/*.cpp",
+        "lib/Target/Hexagon/Disassembler/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/Hexagon/Disassembler/*.h",
+        "include/llvm/Target/Hexagon/Disassembler/*.def",
+        "include/llvm/Target/Hexagon/Disassembler/*.inc",
+        "lib/Target/Hexagon/Disassembler/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/Hexagon"],
+    deps = [
+        ":config",
+        ":hexagon_desc",
+        ":hexagon_info",
+        ":mc",
+        ":mc_disassembler",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "hexagon_info",
+    srcs = glob([
+        "lib/Target/Hexagon/TargetInfo/*.c",
+        "lib/Target/Hexagon/TargetInfo/*.cpp",
+        "lib/Target/Hexagon/TargetInfo/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/Hexagon/TargetInfo/*.h",
+        "include/llvm/Target/Hexagon/TargetInfo/*.def",
+        "include/llvm/Target/Hexagon/TargetInfo/*.inc",
+        "lib/Target/Hexagon/TargetInfo/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/Hexagon"],
+    deps = [
+        ":config",
+        ":support",
     ],
 )
 
@@ -1432,6 +1875,307 @@ cc_library(
 )
 
 cc_library(
+    name = "inst_combine",
+    srcs = glob([
+        "lib/Transforms/InstCombine/*.c",
+        "lib/Transforms/InstCombine/*.cpp",
+        "lib/Transforms/InstCombine/*.inc",
+        "lib/Transforms/InstCombine/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Transforms/InstCombine/*.h",
+        "include/llvm/Transforms/InstCombine/*.def",
+        "include/llvm/Transforms/InstCombine/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":analysis",
+        ":config",
+        ":core",
+        ":instcombine_transforms_gen",
+        ":support",
+        ":transform_utils",
+    ],
+)
+
+cc_library(
+    name = "instrumentation",
+    srcs = glob([
+        "lib/Transforms/Instrumentation/*.c",
+        "lib/Transforms/Instrumentation/*.cpp",
+        "lib/Transforms/Instrumentation/*.inc",
+        "lib/Transforms/Instrumentation/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Transforms/Instrumentation/*.h",
+        "include/llvm/Transforms/Instrumentation/*.def",
+        "include/llvm/Transforms/Instrumentation/*.inc",
+        "include/llvm/Transforms/GCOVProfiler.h",
+        "include/llvm/Transforms/Instrumentation.h",
+        "include/llvm/Transforms/InstrProfiling.h",
+        "include/llvm/Transforms/PGOInstrumentation.h",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":analysis",
+        ":config",
+        ":core",
+        ":mc",
+        ":profile_data",
+        ":support",
+        ":transform_utils",
+    ],
+)
+
+cc_library(
+    name = "interpreter",
+    srcs = glob([
+        "lib/ExecutionEngine/Interpreter/*.c",
+        "lib/ExecutionEngine/Interpreter/*.cpp",
+        "lib/ExecutionEngine/Interpreter/*.inc",
+        "lib/ExecutionEngine/Interpreter/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/ExecutionEngine/Interpreter/*.h",
+        "include/llvm/ExecutionEngine/Interpreter/*.def",
+        "include/llvm/ExecutionEngine/Interpreter/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":code_gen",
+        ":config",
+        ":core",
+        ":execution_engine",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "jit_link",
+    srcs = glob([
+        "lib/ExecutionEngine/JITLink/*.c",
+        "lib/ExecutionEngine/JITLink/*.cpp",
+        "lib/ExecutionEngine/JITLink/*.inc",
+        "lib/ExecutionEngine/JITLink/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/ExecutionEngine/JITLink/*.h",
+        "include/llvm/ExecutionEngine/JITLink/*.def",
+        "include/llvm/ExecutionEngine/JITLink/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":binary_format",
+        ":config",
+        ":object",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "lto",
+    srcs = glob([
+        "lib/LTO/*.c",
+        "lib/LTO/*.cpp",
+        "lib/LTO/*.inc",
+        "lib/LTO/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/LTO/*.h",
+        "include/llvm/LTO/*.def",
+        "include/llvm/LTO/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":aggressive_inst_combine",
+        ":analysis",
+        ":bit_reader",
+        ":bit_writer",
+        ":code_gen",
+        ":config",
+        ":core",
+        ":inst_combine",
+        ":ipo",
+        ":linker",
+        ":mc",
+        ":objc_arc",
+        ":object",
+        ":passes",
+        ":remarks",
+        ":scalar",
+        ":support",
+        ":target",
+        ":transform_utils",
+    ],
+)
+
+cc_library(
+    name = "lanai_asm_parser",
+    srcs = glob([
+        "lib/Target/Lanai/AsmParser/*.c",
+        "lib/Target/Lanai/AsmParser/*.cpp",
+        "lib/Target/Lanai/AsmParser/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/Lanai/AsmParser/*.h",
+        "include/llvm/Target/Lanai/AsmParser/*.def",
+        "include/llvm/Target/Lanai/AsmParser/*.inc",
+        "lib/Target/Lanai/AsmParser/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/Lanai"],
+    deps = [
+        ":config",
+        ":lanai_desc",
+        ":lanai_info",
+        ":mc",
+        ":mc_parser",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "lanai_code_gen",
+    srcs = glob([
+        "lib/Target/Lanai/*.c",
+        "lib/Target/Lanai/*.cpp",
+        "lib/Target/Lanai/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/Lanai/*.h",
+        "include/llvm/Target/Lanai/*.def",
+        "include/llvm/Target/Lanai/*.inc",
+        "lib/Target/Lanai/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/Lanai"],
+    deps = [
+        ":analysis",
+        ":asm_printer",
+        ":code_gen",
+        ":config",
+        ":core",
+        ":lanai_asm_parser",
+        ":lanai_desc",
+        ":lanai_info",
+        ":mc",
+        ":selection_dag",
+        ":support",
+        ":target",
+        ":transform_utils",
+    ],
+)
+
+cc_library(
+    name = "lanai_desc",
+    srcs = glob([
+        "lib/Target/Lanai/MCTargetDesc/*.c",
+        "lib/Target/Lanai/MCTargetDesc/*.cpp",
+        "lib/Target/Lanai/MCTargetDesc/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/Lanai/MCTargetDesc/*.h",
+        "include/llvm/Target/Lanai/MCTargetDesc/*.def",
+        "include/llvm/Target/Lanai/MCTargetDesc/*.inc",
+        "lib/Target/Lanai/MCTargetDesc/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/Lanai"],
+    deps = [
+        ":config",
+        ":lanai_info",
+        ":mc",
+        ":mc_disassembler",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "lanai_disassembler",
+    srcs = glob([
+        "lib/Target/Lanai/Disassembler/*.c",
+        "lib/Target/Lanai/Disassembler/*.cpp",
+        "lib/Target/Lanai/Disassembler/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/Lanai/Disassembler/*.h",
+        "include/llvm/Target/Lanai/Disassembler/*.def",
+        "include/llvm/Target/Lanai/Disassembler/*.inc",
+        "lib/Target/Lanai/Disassembler/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/Lanai"],
+    deps = [
+        ":config",
+        ":lanai_desc",
+        ":lanai_info",
+        ":mc",
+        ":mc_disassembler",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "lanai_info",
+    srcs = glob([
+        "lib/Target/Lanai/TargetInfo/*.c",
+        "lib/Target/Lanai/TargetInfo/*.cpp",
+        "lib/Target/Lanai/TargetInfo/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/Lanai/TargetInfo/*.h",
+        "include/llvm/Target/Lanai/TargetInfo/*.def",
+        "include/llvm/Target/Lanai/TargetInfo/*.inc",
+        "lib/Target/Lanai/TargetInfo/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/Lanai"],
+    deps = [
+        ":config",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "lib_driver",
+    srcs = glob([
+        "lib/ToolDrivers/llvm-lib/*.c",
+        "lib/ToolDrivers/llvm-lib/*.cpp",
+        "lib/ToolDrivers/llvm-lib/*.inc",
+        "lib/ToolDrivers/llvm-lib/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/ToolDrivers/llvm-lib/*.h",
+        "include/llvm/ToolDrivers/llvm-lib/*.def",
+        "include/llvm/ToolDrivers/llvm-lib/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":binary_format",
+        ":bit_reader",
+        ":config",
+        ":object",
+        ":option",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "line_editor",
+    srcs = glob([
+        "lib/LineEditor/*.c",
+        "lib/LineEditor/*.cpp",
+        "lib/LineEditor/*.inc",
+        "lib/LineEditor/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/LineEditor/*.h",
+        "include/llvm/LineEditor/*.def",
+        "include/llvm/LineEditor/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":support",
+    ],
+)
+
+cc_library(
     name = "linker",
     srcs = glob([
         "lib/Linker/*.c",
@@ -1476,6 +2220,27 @@ cc_library(
 )
 
 cc_library(
+    name = "mca",
+    srcs = glob([
+        "lib/MCA/*.c",
+        "lib/MCA/*.cpp",
+        "lib/MCA/*.inc",
+        "lib/MCA/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/MCA/*.h",
+        "include/llvm/MCA/*.def",
+        "include/llvm/MCA/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":mc",
+        ":support",
+    ],
+)
+
+cc_library(
     name = "mc_disassembler",
     srcs = glob([
         "lib/MC/MCDisassembler/*.c",
@@ -1493,6 +2258,31 @@ cc_library(
         ":config",
         ":mc",
         ":support",
+    ],
+)
+
+cc_library(
+    name = "mcjit",
+    srcs = glob([
+        "lib/ExecutionEngine/MCJIT/*.c",
+        "lib/ExecutionEngine/MCJIT/*.cpp",
+        "lib/ExecutionEngine/MCJIT/*.inc",
+        "lib/ExecutionEngine/MCJIT/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/ExecutionEngine/MCJIT/*.h",
+        "include/llvm/ExecutionEngine/MCJIT/*.def",
+        "include/llvm/ExecutionEngine/MCJIT/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":core",
+        ":execution_engine",
+        ":object",
+        ":runtime_dyld",
+        ":support",
+        ":target",
     ],
 )
 
@@ -1544,25 +2334,235 @@ cc_library(
 )
 
 cc_library(
-    name = "nvptx_asm_printer",
+    name = "msp430_asm_parser",
     srcs = glob([
-        "lib/Target/NVPTX/InstPrinter/*.c",
-        "lib/Target/NVPTX/InstPrinter/*.cpp",
-        "lib/Target/NVPTX/InstPrinter/*.inc",
+        "lib/Target/MSP430/AsmParser/*.c",
+        "lib/Target/MSP430/AsmParser/*.cpp",
+        "lib/Target/MSP430/AsmParser/*.inc",
     ]),
     hdrs = glob([
-        "include/llvm/Target/NVPTX/InstPrinter/*.h",
-        "include/llvm/Target/NVPTX/InstPrinter/*.def",
-        "include/llvm/Target/NVPTX/InstPrinter/*.inc",
-        "lib/Target/NVPTX/InstPrinter/*.h",
+        "include/llvm/Target/MSP430/AsmParser/*.h",
+        "include/llvm/Target/MSP430/AsmParser/*.def",
+        "include/llvm/Target/MSP430/AsmParser/*.inc",
+        "lib/Target/MSP430/AsmParser/*.h",
     ]),
-    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/NVPTX"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/MSP430"],
     deps = [
-        "nvptx_target_gen",
-        ":attributes_gen",
         ":config",
         ":mc",
-        ":nvptx_info",
+        ":mc_parser",
+        ":msp430_desc",
+        ":msp430_info",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "msp430_code_gen",
+    srcs = glob([
+        "lib/Target/MSP430/*.c",
+        "lib/Target/MSP430/*.cpp",
+        "lib/Target/MSP430/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/MSP430/*.h",
+        "include/llvm/Target/MSP430/*.def",
+        "include/llvm/Target/MSP430/*.inc",
+        "lib/Target/MSP430/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/MSP430"],
+    deps = [
+        ":asm_printer",
+        ":code_gen",
+        ":config",
+        ":core",
+        ":mc",
+        ":msp430_desc",
+        ":msp430_info",
+        ":selection_dag",
+        ":support",
+        ":target",
+    ],
+)
+
+cc_library(
+    name = "msp430_desc",
+    srcs = glob([
+        "lib/Target/MSP430/MCTargetDesc/*.c",
+        "lib/Target/MSP430/MCTargetDesc/*.cpp",
+        "lib/Target/MSP430/MCTargetDesc/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/MSP430/MCTargetDesc/*.h",
+        "include/llvm/Target/MSP430/MCTargetDesc/*.def",
+        "include/llvm/Target/MSP430/MCTargetDesc/*.inc",
+        "lib/Target/MSP430/MCTargetDesc/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/MSP430"],
+    deps = [
+        ":config",
+        ":mc",
+        ":msp430_info",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "msp430_disassembler",
+    srcs = glob([
+        "lib/Target/MSP430/Disassembler/*.c",
+        "lib/Target/MSP430/Disassembler/*.cpp",
+        "lib/Target/MSP430/Disassembler/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/MSP430/Disassembler/*.h",
+        "include/llvm/Target/MSP430/Disassembler/*.def",
+        "include/llvm/Target/MSP430/Disassembler/*.inc",
+        "lib/Target/MSP430/Disassembler/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/MSP430"],
+    deps = [
+        ":config",
+        ":mc_disassembler",
+        ":msp430_info",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "msp430_info",
+    srcs = glob([
+        "lib/Target/MSP430/TargetInfo/*.c",
+        "lib/Target/MSP430/TargetInfo/*.cpp",
+        "lib/Target/MSP430/TargetInfo/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/MSP430/TargetInfo/*.h",
+        "include/llvm/Target/MSP430/TargetInfo/*.def",
+        "include/llvm/Target/MSP430/TargetInfo/*.inc",
+        "lib/Target/MSP430/TargetInfo/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/MSP430"],
+    deps = [
+        ":config",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "mips_asm_parser",
+    srcs = glob([
+        "lib/Target/Mips/AsmParser/*.c",
+        "lib/Target/Mips/AsmParser/*.cpp",
+        "lib/Target/Mips/AsmParser/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/Mips/AsmParser/*.h",
+        "include/llvm/Target/Mips/AsmParser/*.def",
+        "include/llvm/Target/Mips/AsmParser/*.inc",
+        "lib/Target/Mips/AsmParser/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/Mips"],
+    deps = [
+        ":config",
+        ":mc",
+        ":mc_parser",
+        ":mips_desc",
+        ":mips_info",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "mips_code_gen",
+    srcs = glob([
+        "lib/Target/Mips/*.c",
+        "lib/Target/Mips/*.cpp",
+        "lib/Target/Mips/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/Mips/*.h",
+        "include/llvm/Target/Mips/*.def",
+        "include/llvm/Target/Mips/*.inc",
+        "lib/Target/Mips/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/Mips"],
+    deps = [
+        ":analysis",
+        ":asm_printer",
+        ":code_gen",
+        ":config",
+        ":core",
+        ":global_i_sel",
+        ":mc",
+        ":mips_desc",
+        ":mips_info",
+        ":selection_dag",
+        ":support",
+        ":target",
+    ],
+)
+
+cc_library(
+    name = "mips_desc",
+    srcs = glob([
+        "lib/Target/Mips/MCTargetDesc/*.c",
+        "lib/Target/Mips/MCTargetDesc/*.cpp",
+        "lib/Target/Mips/MCTargetDesc/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/Mips/MCTargetDesc/*.h",
+        "include/llvm/Target/Mips/MCTargetDesc/*.def",
+        "include/llvm/Target/Mips/MCTargetDesc/*.inc",
+        "lib/Target/Mips/MCTargetDesc/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/Mips"],
+    deps = [
+        ":config",
+        ":mc",
+        ":mips_info",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "mips_disassembler",
+    srcs = glob([
+        "lib/Target/Mips/Disassembler/*.c",
+        "lib/Target/Mips/Disassembler/*.cpp",
+        "lib/Target/Mips/Disassembler/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/Mips/Disassembler/*.h",
+        "include/llvm/Target/Mips/Disassembler/*.def",
+        "include/llvm/Target/Mips/Disassembler/*.inc",
+        "lib/Target/Mips/Disassembler/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/Mips"],
+    deps = [
+        ":config",
+        ":mc_disassembler",
+        ":mips_info",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "mips_info",
+    srcs = glob([
+        "lib/Target/Mips/TargetInfo/*.c",
+        "lib/Target/Mips/TargetInfo/*.cpp",
+        "lib/Target/Mips/TargetInfo/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/Mips/TargetInfo/*.h",
+        "include/llvm/Target/Mips/TargetInfo/*.def",
+        "include/llvm/Target/Mips/TargetInfo/*.inc",
+        "lib/Target/Mips/TargetInfo/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/Mips"],
+    deps = [
+        ":config",
         ":support",
     ],
 )
@@ -1589,7 +2589,6 @@ cc_library(
         ":core",
         ":ipo",
         ":mc",
-        ":nvptx_asm_printer",
         ":nvptx_desc",
         ":nvptx_info",
         ":scalar",
@@ -1619,7 +2618,6 @@ cc_library(
         "nvptx_target_gen",
         ":config",
         ":mc",
-        ":nvptx_asm_printer",
         ":nvptx_info",
         ":support",
     ],
@@ -1652,6 +2650,30 @@ cc_library(
 )
 
 cc_library(
+    name = "objc_arc",
+    srcs = glob([
+        "lib/Transforms/ObjCARC/*.c",
+        "lib/Transforms/ObjCARC/*.cpp",
+        "lib/Transforms/ObjCARC/*.inc",
+        "include/llvm/Transforms/ObjCARC.h",
+        "lib/Transforms/ObjCARC/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Transforms/ObjCARC/*.h",
+        "include/llvm/Transforms/ObjCARC/*.def",
+        "include/llvm/Transforms/ObjCARC/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":analysis",
+        ":config",
+        ":core",
+        ":support",
+        ":transform_utils",
+    ],
+)
+
+cc_library(
     name = "object",
     srcs = glob([
         "lib/Object/*.c",
@@ -1677,26 +2699,44 @@ cc_library(
 )
 
 cc_library(
-    name = "objc_arc",
+    name = "object_yaml",
     srcs = glob([
-        "lib/Transforms/ObjCARC/*.c",
-        "lib/Transforms/ObjCARC/*.cpp",
-        "lib/Transforms/ObjCARC/*.inc",
-        "include/llvm/Transforms/ObjCARC.h",
-        "lib/Transforms/ObjCARC/*.h",
+        "lib/ObjectYAML/*.c",
+        "lib/ObjectYAML/*.cpp",
+        "lib/ObjectYAML/*.inc",
+        "lib/ObjectYAML/*.h",
     ]),
     hdrs = glob([
-        "include/llvm/Transforms/ObjCARC/*.h",
-        "include/llvm/Transforms/ObjCARC/*.def",
-        "include/llvm/Transforms/ObjCARC/*.inc",
+        "include/llvm/ObjectYAML/*.h",
+        "include/llvm/ObjectYAML/*.def",
+        "include/llvm/ObjectYAML/*.inc",
     ]),
     copts = llvm_copts,
     deps = [
-        ":analysis",
         ":config",
-        ":core",
+        ":debug_info_code_view",
+        ":object",
         ":support",
-        ":transform_utils",
+    ],
+)
+
+cc_library(
+    name = "option",
+    srcs = glob([
+        "lib/Option/*.c",
+        "lib/Option/*.cpp",
+        "lib/Option/*.inc",
+        "lib/Option/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Option/*.h",
+        "include/llvm/Option/*.def",
+        "include/llvm/Option/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":support",
     ],
 )
 
@@ -1718,12 +2758,44 @@ cc_library(
         ":config",
         ":core",
         ":execution_engine",
+        ":jit_link",
         ":mc",
         ":object",
         ":runtime_dyld",
         ":support",
         ":target",
         ":transform_utils",
+    ],
+)
+
+cc_library(
+    name = "passes",
+    srcs = glob([
+        "lib/Passes/*.c",
+        "lib/Passes/*.cpp",
+        "lib/Passes/*.inc",
+        "lib/Passes/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Passes/*.h",
+        "include/llvm/Passes/*.def",
+        "include/llvm/Passes/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":aggressive_inst_combine",
+        ":analysis",
+        ":code_gen",
+        ":config",
+        ":core",
+        ":inst_combine",
+        ":instrumentation",
+        ":ipo",
+        ":scalar",
+        ":support",
+        ":target",
+        ":transform_utils",
+        ":vectorize",
     ],
 )
 
@@ -1752,32 +2824,6 @@ cc_library(
 )
 
 cc_library(
-    name = "powerpc_asm_printer",
-    srcs = glob([
-        "lib/Target/PowerPC/InstPrinter/*.c",
-        "lib/Target/PowerPC/InstPrinter/*.cpp",
-        "lib/Target/PowerPC/InstPrinter/*.inc",
-    ]),
-    hdrs = glob([
-        "include/llvm/Target/PowerPC/InstPrinter/*.h",
-        "include/llvm/Target/PowerPC/InstPrinter/*.def",
-        "include/llvm/Target/PowerPC/InstPrinter/*.inc",
-        "lib/Target/PowerPC/InstPrinter/*.h",
-    ]),
-    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/PowerPC"],
-    deps = [
-        ":attributes_gen",
-        ":config",
-        ":intrinsic_enums_gen",
-        ":intrinsics_impl_gen",
-        ":mc",
-        ":powerpc_info",
-        ":powerpc_target_gen",
-        ":support",
-    ],
-)
-
-cc_library(
     name = "powerpc_code_gen",
     srcs = glob([
         "lib/Target/PowerPC/*.c",
@@ -1798,7 +2844,6 @@ cc_library(
         ":config",
         ":core",
         ":mc",
-        ":powerpc_asm_printer",
         ":powerpc_desc",
         ":powerpc_info",
         ":scalar",
@@ -1829,7 +2874,6 @@ cc_library(
         ":intrinsic_enums_gen",
         ":intrinsics_impl_gen",
         ":mc",
-        ":powerpc_asm_printer",
         ":powerpc_info",
         ":powerpc_target_gen",
         ":support",
@@ -1901,6 +2945,166 @@ cc_library(
     deps = [
         ":config",
         ":core",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "riscv_asm_parser",
+    srcs = glob([
+        "lib/Target/RISCV/AsmParser/*.c",
+        "lib/Target/RISCV/AsmParser/*.cpp",
+        "lib/Target/RISCV/AsmParser/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/RISCV/AsmParser/*.h",
+        "include/llvm/Target/RISCV/AsmParser/*.def",
+        "include/llvm/Target/RISCV/AsmParser/*.inc",
+        "lib/Target/RISCV/AsmParser/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/RISCV"],
+    deps = [
+        ":config",
+        ":mc",
+        ":mc_parser",
+        ":riscv_desc",
+        ":riscv_info",
+        ":riscv_utils",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "riscv_code_gen",
+    srcs = glob([
+        "lib/Target/RISCV/*.c",
+        "lib/Target/RISCV/*.cpp",
+        "lib/Target/RISCV/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/RISCV/*.h",
+        "include/llvm/Target/RISCV/*.def",
+        "include/llvm/Target/RISCV/*.inc",
+        "lib/Target/RISCV/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/RISCV"],
+    deps = [
+        ":analysis",
+        ":asm_printer",
+        ":code_gen",
+        ":config",
+        ":core",
+        ":mc",
+        ":riscv_desc",
+        ":riscv_info",
+        ":riscv_utils",
+        ":selection_dag",
+        ":support",
+        ":target",
+    ],
+)
+
+cc_library(
+    name = "riscv_desc",
+    srcs = glob([
+        "lib/Target/RISCV/MCTargetDesc/*.c",
+        "lib/Target/RISCV/MCTargetDesc/*.cpp",
+        "lib/Target/RISCV/MCTargetDesc/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/RISCV/MCTargetDesc/*.h",
+        "include/llvm/Target/RISCV/MCTargetDesc/*.def",
+        "include/llvm/Target/RISCV/MCTargetDesc/*.inc",
+        "lib/Target/RISCV/MCTargetDesc/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/RISCV"],
+    deps = [
+        ":config",
+        ":mc",
+        ":riscv_info",
+        ":riscv_utils",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "riscv_disassembler",
+    srcs = glob([
+        "lib/Target/RISCV/Disassembler/*.c",
+        "lib/Target/RISCV/Disassembler/*.cpp",
+        "lib/Target/RISCV/Disassembler/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/RISCV/Disassembler/*.h",
+        "include/llvm/Target/RISCV/Disassembler/*.def",
+        "include/llvm/Target/RISCV/Disassembler/*.inc",
+        "lib/Target/RISCV/Disassembler/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/RISCV"],
+    deps = [
+        ":config",
+        ":mc_disassembler",
+        ":riscv_info",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "riscv_info",
+    srcs = glob([
+        "lib/Target/RISCV/TargetInfo/*.c",
+        "lib/Target/RISCV/TargetInfo/*.cpp",
+        "lib/Target/RISCV/TargetInfo/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/RISCV/TargetInfo/*.h",
+        "include/llvm/Target/RISCV/TargetInfo/*.def",
+        "include/llvm/Target/RISCV/TargetInfo/*.inc",
+        "lib/Target/RISCV/TargetInfo/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/RISCV"],
+    deps = [
+        ":config",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "riscv_utils",
+    srcs = glob([
+        "lib/Target/RISCV/Utils/*.c",
+        "lib/Target/RISCV/Utils/*.cpp",
+        "lib/Target/RISCV/Utils/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/RISCV/Utils/*.h",
+        "include/llvm/Target/RISCV/Utils/*.def",
+        "include/llvm/Target/RISCV/Utils/*.inc",
+        "lib/Target/RISCV/Utils/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/RISCV"],
+    deps = [
+        ":config",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "remarks",
+    srcs = glob([
+        "lib/Remarks/*.c",
+        "lib/Remarks/*.cpp",
+        "lib/Remarks/*.inc",
+        "lib/Remarks/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Remarks/*.h",
+        "include/llvm/Remarks/*.def",
+        "include/llvm/Remarks/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
         ":support",
     ],
 )
@@ -1994,6 +3198,122 @@ cc_library(
 )
 
 cc_library(
+    name = "sparc_asm_parser",
+    srcs = glob([
+        "lib/Target/Sparc/AsmParser/*.c",
+        "lib/Target/Sparc/AsmParser/*.cpp",
+        "lib/Target/Sparc/AsmParser/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/Sparc/AsmParser/*.h",
+        "include/llvm/Target/Sparc/AsmParser/*.def",
+        "include/llvm/Target/Sparc/AsmParser/*.inc",
+        "lib/Target/Sparc/AsmParser/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/Sparc"],
+    deps = [
+        ":config",
+        ":mc",
+        ":mc_parser",
+        ":sparc_desc",
+        ":sparc_info",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "sparc_code_gen",
+    srcs = glob([
+        "lib/Target/Sparc/*.c",
+        "lib/Target/Sparc/*.cpp",
+        "lib/Target/Sparc/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/Sparc/*.h",
+        "include/llvm/Target/Sparc/*.def",
+        "include/llvm/Target/Sparc/*.inc",
+        "lib/Target/Sparc/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/Sparc"],
+    deps = [
+        ":asm_printer",
+        ":code_gen",
+        ":config",
+        ":core",
+        ":mc",
+        ":selection_dag",
+        ":sparc_desc",
+        ":sparc_info",
+        ":support",
+        ":target",
+    ],
+)
+
+cc_library(
+    name = "sparc_desc",
+    srcs = glob([
+        "lib/Target/Sparc/MCTargetDesc/*.c",
+        "lib/Target/Sparc/MCTargetDesc/*.cpp",
+        "lib/Target/Sparc/MCTargetDesc/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/Sparc/MCTargetDesc/*.h",
+        "include/llvm/Target/Sparc/MCTargetDesc/*.def",
+        "include/llvm/Target/Sparc/MCTargetDesc/*.inc",
+        "lib/Target/Sparc/MCTargetDesc/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/Sparc"],
+    deps = [
+        ":config",
+        ":mc",
+        ":sparc_info",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "sparc_disassembler",
+    srcs = glob([
+        "lib/Target/Sparc/Disassembler/*.c",
+        "lib/Target/Sparc/Disassembler/*.cpp",
+        "lib/Target/Sparc/Disassembler/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/Sparc/Disassembler/*.h",
+        "include/llvm/Target/Sparc/Disassembler/*.def",
+        "include/llvm/Target/Sparc/Disassembler/*.inc",
+        "lib/Target/Sparc/Disassembler/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/Sparc"],
+    deps = [
+        ":config",
+        ":mc_disassembler",
+        ":sparc_info",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "sparc_info",
+    srcs = glob([
+        "lib/Target/Sparc/TargetInfo/*.c",
+        "lib/Target/Sparc/TargetInfo/*.cpp",
+        "lib/Target/Sparc/TargetInfo/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/Sparc/TargetInfo/*.h",
+        "include/llvm/Target/Sparc/TargetInfo/*.def",
+        "include/llvm/Target/Sparc/TargetInfo/*.inc",
+        "lib/Target/Sparc/TargetInfo/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/Sparc"],
+    deps = [
+        ":config",
+        ":support",
+    ],
+)
+
+cc_library(
     name = "support",
     srcs = glob([
         "lib/Support/*.c",
@@ -2025,7 +3345,151 @@ cc_library(
 )
 
 cc_library(
-    name = "table_gen",
+    name = "symbolize",
+    srcs = glob([
+        "lib/DebugInfo/Symbolize/*.c",
+        "lib/DebugInfo/Symbolize/*.cpp",
+        "lib/DebugInfo/Symbolize/*.inc",
+        "lib/DebugInfo/Symbolize/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/DebugInfo/Symbolize/*.h",
+        "include/llvm/DebugInfo/Symbolize/*.def",
+        "include/llvm/DebugInfo/Symbolize/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":debug_info_dwarf",
+        ":debug_info_pdb",
+        ":demangle",
+        ":object",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "system_z_asm_parser",
+    srcs = glob([
+        "lib/Target/SystemZ/AsmParser/*.c",
+        "lib/Target/SystemZ/AsmParser/*.cpp",
+        "lib/Target/SystemZ/AsmParser/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/SystemZ/AsmParser/*.h",
+        "include/llvm/Target/SystemZ/AsmParser/*.def",
+        "include/llvm/Target/SystemZ/AsmParser/*.inc",
+        "lib/Target/SystemZ/AsmParser/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/SystemZ"],
+    deps = [
+        ":config",
+        ":mc",
+        ":mc_parser",
+        ":support",
+        ":system_z_desc",
+        ":system_z_info",
+    ],
+)
+
+cc_library(
+    name = "system_z_code_gen",
+    srcs = glob([
+        "lib/Target/SystemZ/*.c",
+        "lib/Target/SystemZ/*.cpp",
+        "lib/Target/SystemZ/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/SystemZ/*.h",
+        "include/llvm/Target/SystemZ/*.def",
+        "include/llvm/Target/SystemZ/*.inc",
+        "lib/Target/SystemZ/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/SystemZ"],
+    deps = [
+        ":analysis",
+        ":asm_printer",
+        ":code_gen",
+        ":config",
+        ":core",
+        ":mc",
+        ":scalar",
+        ":selection_dag",
+        ":support",
+        ":system_z_desc",
+        ":system_z_info",
+        ":target",
+    ],
+)
+
+cc_library(
+    name = "system_z_desc",
+    srcs = glob([
+        "lib/Target/SystemZ/MCTargetDesc/*.c",
+        "lib/Target/SystemZ/MCTargetDesc/*.cpp",
+        "lib/Target/SystemZ/MCTargetDesc/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/SystemZ/MCTargetDesc/*.h",
+        "include/llvm/Target/SystemZ/MCTargetDesc/*.def",
+        "include/llvm/Target/SystemZ/MCTargetDesc/*.inc",
+        "lib/Target/SystemZ/MCTargetDesc/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/SystemZ"],
+    deps = [
+        ":config",
+        ":mc",
+        ":support",
+        ":system_z_info",
+    ],
+)
+
+cc_library(
+    name = "system_z_disassembler",
+    srcs = glob([
+        "lib/Target/SystemZ/Disassembler/*.c",
+        "lib/Target/SystemZ/Disassembler/*.cpp",
+        "lib/Target/SystemZ/Disassembler/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/SystemZ/Disassembler/*.h",
+        "include/llvm/Target/SystemZ/Disassembler/*.def",
+        "include/llvm/Target/SystemZ/Disassembler/*.inc",
+        "lib/Target/SystemZ/Disassembler/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/SystemZ"],
+    deps = [
+        ":config",
+        ":mc",
+        ":mc_disassembler",
+        ":support",
+        ":system_z_desc",
+        ":system_z_info",
+    ],
+)
+
+cc_library(
+    name = "system_z_info",
+    srcs = glob([
+        "lib/Target/SystemZ/TargetInfo/*.c",
+        "lib/Target/SystemZ/TargetInfo/*.cpp",
+        "lib/Target/SystemZ/TargetInfo/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/SystemZ/TargetInfo/*.h",
+        "include/llvm/Target/SystemZ/TargetInfo/*.def",
+        "include/llvm/Target/SystemZ/TargetInfo/*.inc",
+        "lib/Target/SystemZ/TargetInfo/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/SystemZ"],
+    deps = [
+        ":config",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "tablegen",
     srcs = glob([
         "lib/TableGen/*.c",
         "lib/TableGen/*.cpp",
@@ -2071,6 +3535,47 @@ cc_library(
         ":config",
         ":core",
         ":mc",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "testing_support",
+    srcs = glob([
+        "lib/Testing/Support/*.c",
+        "lib/Testing/Support/*.cpp",
+        "lib/Testing/Support/*.inc",
+        "lib/Testing/Support/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Testing/Support/*.h",
+        "include/llvm/Testing/Support/*.def",
+        "include/llvm/Testing/Support/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "text_api",
+    srcs = glob([
+        "lib/TextAPI/*.c",
+        "lib/TextAPI/*.cpp",
+        "lib/TextAPI/*.inc",
+        "lib/TextAPI/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/TextAPI/*.h",
+        "include/llvm/TextAPI/*.def",
+        "include/llvm/TextAPI/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":binary_format",
+        ":config",
         ":support",
     ],
 )
@@ -2126,6 +3631,146 @@ cc_library(
 )
 
 cc_library(
+    name = "web_assembly_asm_parser",
+    srcs = glob([
+        "lib/Target/WebAssembly/AsmParser/*.c",
+        "lib/Target/WebAssembly/AsmParser/*.cpp",
+        "lib/Target/WebAssembly/AsmParser/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/WebAssembly/AsmParser/*.h",
+        "include/llvm/Target/WebAssembly/AsmParser/*.def",
+        "include/llvm/Target/WebAssembly/AsmParser/*.inc",
+        "lib/Target/WebAssembly/AsmParser/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/WebAssembly"],
+    deps = [
+        ":config",
+        ":mc",
+        ":mc_parser",
+        ":support",
+        ":web_assembly_info",
+    ],
+)
+
+cc_library(
+    name = "web_assembly_code_gen",
+    srcs = glob([
+        "lib/Target/WebAssembly/*.c",
+        "lib/Target/WebAssembly/*.cpp",
+        "lib/Target/WebAssembly/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/WebAssembly/*.h",
+        "include/llvm/Target/WebAssembly/*.def",
+        "include/llvm/Target/WebAssembly/*.inc",
+        "lib/Target/WebAssembly/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/WebAssembly"],
+    deps = [
+        ":analysis",
+        ":asm_printer",
+        ":binary_format",
+        ":code_gen",
+        ":config",
+        ":core",
+        ":mc",
+        ":scalar",
+        ":selection_dag",
+        ":support",
+        ":target",
+        ":transform_utils",
+        ":web_assembly_desc",
+        ":web_assembly_info",
+    ],
+)
+
+cc_library(
+    name = "web_assembly_desc",
+    srcs = glob([
+        "lib/Target/WebAssembly/MCTargetDesc/*.c",
+        "lib/Target/WebAssembly/MCTargetDesc/*.cpp",
+        "lib/Target/WebAssembly/MCTargetDesc/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/WebAssembly/MCTargetDesc/*.h",
+        "include/llvm/Target/WebAssembly/MCTargetDesc/*.def",
+        "include/llvm/Target/WebAssembly/MCTargetDesc/*.inc",
+        "lib/Target/WebAssembly/MCTargetDesc/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/WebAssembly"],
+    deps = [
+        ":config",
+        ":mc",
+        ":support",
+        ":web_assembly_info",
+    ],
+)
+
+cc_library(
+    name = "web_assembly_disassembler",
+    srcs = glob([
+        "lib/Target/WebAssembly/Disassembler/*.c",
+        "lib/Target/WebAssembly/Disassembler/*.cpp",
+        "lib/Target/WebAssembly/Disassembler/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/WebAssembly/Disassembler/*.h",
+        "include/llvm/Target/WebAssembly/Disassembler/*.def",
+        "include/llvm/Target/WebAssembly/Disassembler/*.inc",
+        "lib/Target/WebAssembly/Disassembler/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/WebAssembly"],
+    deps = [
+        ":config",
+        ":mc_disassembler",
+        ":support",
+        ":web_assembly_desc",
+        ":web_assembly_info",
+    ],
+)
+
+cc_library(
+    name = "web_assembly_info",
+    srcs = glob([
+        "lib/Target/WebAssembly/TargetInfo/*.c",
+        "lib/Target/WebAssembly/TargetInfo/*.cpp",
+        "lib/Target/WebAssembly/TargetInfo/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/WebAssembly/TargetInfo/*.h",
+        "include/llvm/Target/WebAssembly/TargetInfo/*.def",
+        "include/llvm/Target/WebAssembly/TargetInfo/*.inc",
+        "lib/Target/WebAssembly/TargetInfo/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/WebAssembly"],
+    deps = [
+        ":config",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "windows_manifest",
+    srcs = glob([
+        "lib/WindowsManifest/*.c",
+        "lib/WindowsManifest/*.cpp",
+        "lib/WindowsManifest/*.inc",
+        "lib/WindowsManifest/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/WindowsManifest/*.h",
+        "include/llvm/WindowsManifest/*.def",
+        "include/llvm/WindowsManifest/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":support",
+    ],
+)
+
+cc_library(
     name = "x86_asm_parser",
     srcs = glob([
         "lib/Target/X86/AsmParser/*.c",
@@ -2144,33 +3789,8 @@ cc_library(
         ":mc",
         ":mc_parser",
         ":support",
-        ":x86_asm_printer",
         ":x86_desc",
         ":x86_info",
-    ],
-)
-
-cc_library(
-    name = "x86_asm_printer",
-    srcs = glob([
-        "lib/Target/X86/InstPrinter/*.c",
-        "lib/Target/X86/InstPrinter/*.cpp",
-        "lib/Target/X86/InstPrinter/*.inc",
-    ]),
-    hdrs = glob([
-        "include/llvm/Target/X86/InstPrinter/*.h",
-        "include/llvm/Target/X86/InstPrinter/*.def",
-        "include/llvm/Target/X86/InstPrinter/*.inc",
-        "lib/Target/X86/InstPrinter/*.h",
-    ]),
-    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/X86"],
-    deps = [
-        ":config",
-        ":mc",
-        ":support",
-        ":x86_info",
-        ":x86_target_gen",
-        ":x86_utils",
     ],
 )
 
@@ -2200,7 +3820,6 @@ cc_library(
         ":selection_dag",
         ":support",
         ":target",
-        ":x86_asm_printer",
         ":x86_defs",
         ":x86_desc",
         ":x86_info",
@@ -2228,8 +3847,8 @@ cc_library(
         ":mc_disassembler",
         ":object",
         ":support",
-        ":x86_asm_printer",
         ":x86_info",
+        ":x86_utils",
     ],
 )
 
@@ -2296,5 +3915,160 @@ cc_library(
         ":code_gen",
         ":config",
         ":support",
+    ],
+)
+
+cc_library(
+    name = "x_core_code_gen",
+    srcs = glob([
+        "lib/Target/XCore/*.c",
+        "lib/Target/XCore/*.cpp",
+        "lib/Target/XCore/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/XCore/*.h",
+        "include/llvm/Target/XCore/*.def",
+        "include/llvm/Target/XCore/*.inc",
+        "lib/Target/XCore/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/XCore"],
+    deps = [
+        ":analysis",
+        ":asm_printer",
+        ":code_gen",
+        ":config",
+        ":core",
+        ":mc",
+        ":selection_dag",
+        ":support",
+        ":target",
+        ":transform_utils",
+        ":x_core_desc",
+        ":x_core_info",
+    ],
+)
+
+cc_library(
+    name = "x_core_desc",
+    srcs = glob([
+        "lib/Target/XCore/MCTargetDesc/*.c",
+        "lib/Target/XCore/MCTargetDesc/*.cpp",
+        "lib/Target/XCore/MCTargetDesc/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/XCore/MCTargetDesc/*.h",
+        "include/llvm/Target/XCore/MCTargetDesc/*.def",
+        "include/llvm/Target/XCore/MCTargetDesc/*.inc",
+        "lib/Target/XCore/MCTargetDesc/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/XCore"],
+    deps = [
+        ":config",
+        ":mc",
+        ":support",
+        ":x_core_info",
+    ],
+)
+
+cc_library(
+    name = "x_core_disassembler",
+    srcs = glob([
+        "lib/Target/XCore/Disassembler/*.c",
+        "lib/Target/XCore/Disassembler/*.cpp",
+        "lib/Target/XCore/Disassembler/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/XCore/Disassembler/*.h",
+        "include/llvm/Target/XCore/Disassembler/*.def",
+        "include/llvm/Target/XCore/Disassembler/*.inc",
+        "lib/Target/XCore/Disassembler/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/XCore"],
+    deps = [
+        ":config",
+        ":mc_disassembler",
+        ":support",
+        ":x_core_info",
+    ],
+)
+
+cc_library(
+    name = "x_core_info",
+    srcs = glob([
+        "lib/Target/XCore/TargetInfo/*.c",
+        "lib/Target/XCore/TargetInfo/*.cpp",
+        "lib/Target/XCore/TargetInfo/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/XCore/TargetInfo/*.h",
+        "include/llvm/Target/XCore/TargetInfo/*.def",
+        "include/llvm/Target/XCore/TargetInfo/*.inc",
+        "lib/Target/XCore/TargetInfo/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/XCore"],
+    deps = [
+        ":config",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "x_ray",
+    srcs = glob([
+        "lib/XRay/*.c",
+        "lib/XRay/*.cpp",
+        "lib/XRay/*.inc",
+        "lib/XRay/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/XRay/*.h",
+        "include/llvm/XRay/*.def",
+        "include/llvm/XRay/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":object",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "gtest",
+    srcs = glob([
+        "utils/unittest/*.c",
+        "utils/unittest/*.cpp",
+        "utils/unittest/*.inc",
+        "utils/unittest/*.h",
+    ]),
+    hdrs = glob([
+        "utils/unittest/*.h",
+        "utils/unittest/*.def",
+        "utils/unittest/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "gtest_main",
+    srcs = glob([
+        "utils/unittest/*.c",
+        "utils/unittest/*.cpp",
+        "utils/unittest/*.inc",
+        "utils/unittest/*.h",
+    ]),
+    hdrs = glob([
+        "utils/unittest/*.h",
+        "utils/unittest/*.def",
+        "utils/unittest/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":gtest",
     ],
 )

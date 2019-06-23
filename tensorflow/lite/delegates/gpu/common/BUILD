@@ -1,21 +1,27 @@
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "convert",
     srcs = ["convert.cc"],
     hdrs = ["convert.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:tensor",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
+        ":shape",
+        ":status",
+        ":tensor",
+        ":types",
+        ":util",
         "@FP16",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
+)
+
+cc_library(
+    name = "access_type",
+    hdrs = ["access_type.h"],
 )
 
 cc_library(
@@ -29,7 +35,9 @@ cc_library(
     srcs = ["memory_management.cc"],
     hdrs = ["memory_management.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/common:status",
+        ":shape",
+        ":status",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -69,22 +77,34 @@ cc_library(
         ":tensor",
         "//tensorflow/lite:context",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/schema:schema_fbs",
+        "@FP16",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
 
-# TODO(impjdi): Add unit test for model_builder.
+cc_test(
+    name = "model_builder_test",
+    srcs = ["model_builder_test.cc"],
+    deps = [
+        ":model_builder",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/c:c_api_internal",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
 
 cc_library(
     name = "model_transformer",
     srcs = ["model_transformer.cc"],
     hdrs = ["model_transformer.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
+        ":model",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -111,6 +131,7 @@ cc_library(
     srcs = ["shape.cc"],
     hdrs = ["shape.h"],
     deps = [
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -150,16 +171,7 @@ cc_library(
     name = "util",
     hdrs = ["util.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/common:types",
-    ],
-)
-
-cc_test(
-    name = "util_test",
-    srcs = ["util_test.cc"],
-    deps = [
-        ":util",
-        "@com_google_googletest//:gtest_main",
+        ":types",
     ],
 )
 
@@ -168,6 +180,15 @@ cc_test(
     srcs = ["memory_management_test.cc"],
     deps = [
         ":memory_management",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "util_test",
+    srcs = ["util_test.cc"],
+    deps = [
+        ":util",
         "@com_google_googletest//:gtest_main",
     ],
 )

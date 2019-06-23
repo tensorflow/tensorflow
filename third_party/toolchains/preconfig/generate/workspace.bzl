@@ -12,6 +12,13 @@ def _remote_config_workspace():
     container_repositories()
 
     container_pull(
+        name = "centos6",
+        registry = "gcr.io",
+        repository = "tensorflow-testing/nosla-centos6",
+        digest = container_digests["centos6"],
+    )
+
+    container_pull(
         name = "ubuntu16.04",
         registry = "gcr.io",
         repository = "tensorflow-testing/nosla-ubuntu16.04",
@@ -26,10 +33,17 @@ def _remote_config_workspace():
     )
 
     container_pull(
-        name = "cuda10.0-cudnn7-centos7",
+        name = "cuda10.0-cudnn7-centos6",
         registry = "gcr.io",
-        repository = "tensorflow-testing/nosla-cuda10.0-cudnn7-centos7",
-        digest = container_digests["cuda10.0-cudnn7-centos7"],
+        repository = "tensorflow-testing/nosla-cuda10.0-cudnn7-centos6",
+        digest = container_digests["cuda10.0-cudnn7-centos6"],
+    )
+
+    container_pull(
+        name = "cuda10.0-cudnn7-ubuntu16.04-manylinux2010",
+        registry = "gcr.io",
+        repository = "tensorflow-testing/nosla-cuda10.0-cudnn7-ubuntu16.04-manylinux2010",
+        digest = container_digests["cuda10.0-cudnn7-ubuntu16.04-manylinux2010"],
     )
 
 remote_config_workspace = _remote_config_workspace

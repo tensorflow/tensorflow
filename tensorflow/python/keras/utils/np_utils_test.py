@@ -29,11 +29,9 @@ class TestNPUtils(test.TestCase):
   def test_to_categorical(self):
     num_classes = 5
     shapes = [(1,), (3,), (4, 3), (5, 4, 3), (3, 1), (3, 2, 1)]
-    expected_shapes = [(1, num_classes),
-                       (3, num_classes),
-                       (4, 3, num_classes),
-                       (5, 4, 3, num_classes),
-                       (3, num_classes)]
+    expected_shapes = [(1, num_classes), (3, num_classes), (4, 3, num_classes),
+                       (5, 4, 3, num_classes), (3, num_classes),
+                       (3, 2, num_classes)]
     labels = [np.random.randint(0, num_classes, shape) for shape in shapes]
     one_hots = [
         keras.utils.to_categorical(label, num_classes) for label in labels]

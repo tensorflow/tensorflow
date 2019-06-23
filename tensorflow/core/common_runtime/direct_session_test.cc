@@ -18,10 +18,11 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
-#include <thread>
+#include <thread>  // NOLINT
 #include <unordered_map>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
@@ -50,8 +51,8 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 
 #ifdef GOOGLE_CUDA
-#include "cuda/include/cuda.h"
-#include "cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -73,10 +74,14 @@ CallableOptions MakeCallableOptions(gtl::ArraySlice<string> feeds,
   return ret;
 }
 
-std::unique_ptr<Session> CreateSession() {
+SessionOptions DefaultSessionOptions() {
   SessionOptions options;
   (*options.config.mutable_device_count())["CPU"] = 2;
-  return std::unique_ptr<Session>(NewSession(options));
+  return options;
+}
+
+std::unique_ptr<Session> CreateSession() {
+  return std::unique_ptr<Session>(NewSession(DefaultSessionOptions()));
 }
 
 class DirectSessionMinusAXTest : public ::testing::Test {
@@ -109,7 +114,7 @@ class DirectSessionMinusAXTest : public ::testing::Test {
     z_ = z->name();
     z->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:1");
 
-    test::graph::ToGraphDef(&graph, &def_);
+    graph.ToGraphDef(&def_);
   }
 
   string a_;
@@ -169,22 +174,22 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_Callable) {
 
     Status s = session->RunCallable(handle, {}, nullptr, nullptr);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(str_util::StrContains(s.error_message(),
-                                      "`fetch_tensors` must be provided"));
+    EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                  "`fetch_tensors` must be provided"));
 
     TF_ASSERT_OK(session->ReleaseCallable(handle));
 
     std::vector<Tensor> outputs;
     s = session->RunCallable(handle, {}, &outputs, nullptr);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(str_util::StrContains(
+    EXPECT_TRUE(absl::StrContains(
         s.error_message(),
         "Attempted to run callable after handle was released"));
 
     s = session->RunCallable(handle + 1, {}, &outputs, nullptr);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
     EXPECT_TRUE(
-        str_util::StrContains(s.error_message(), "No such callable handle"));
+        absl::StrContains(s.error_message(), "No such callable handle"));
   }
 }
 
@@ -260,8 +265,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
     Session::CallableHandle handle;
     Status s = session->MakeCallable(callable_options, &handle);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(
-        str_util::StrContains(s.error_message(), "would create a cycle"));
+    EXPECT_TRUE(absl::StrContains(s.error_message(), "would create a cycle"));
   }
 
   {
@@ -275,7 +279,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
     Session::CallableHandle handle;
     Status s = session->MakeCallable(callable_options, &handle);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(str_util::StrContains(s.error_message(), "unknown node"));
+    EXPECT_TRUE(absl::StrContains(s.error_message(), "unknown node"));
   }
 
   {
@@ -290,7 +294,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
     Session::CallableHandle handle;
     Status s = session->MakeCallable(callable_options, &handle);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(str_util::StrContains(s.error_message(), "unknown edge"));
+    EXPECT_TRUE(absl::StrContains(s.error_message(), "unknown edge"));
   }
 
   {
@@ -305,7 +309,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
     Status s = session->MakeCallable(callable_options, &handle);
     EXPECT_TRUE(errors::IsNotFound(s));
     EXPECT_TRUE(
-        str_util::StrContains(s.error_message(), "unable to find feed output"));
+        absl::StrContains(s.error_message(), "unable to find feed output"));
   }
 
   {
@@ -322,7 +326,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
     Session::CallableHandle handle;
     Status s = session->MakeCallable(callable_options, &handle);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
+    EXPECT_TRUE(absl::StrContains(s.error_message(), "fed more than once"));
   }
 
   {
@@ -337,7 +341,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
     Session::CallableHandle handle;
     Status s = session->MakeCallable(callable_options, &handle);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
+    EXPECT_TRUE(absl::StrContains(s.error_message(), "fed more than once"));
   }
 }
 
@@ -540,7 +544,7 @@ TEST_F(DirectSessionMinusAXTest, InvalidDevice) {
   Node* y = test::graph::Matmul(&graph, a, x, false, false);
   y->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:2");
 
-  test::graph::ToGraphDef(&graph, &def);
+  graph.ToGraphDef(&def);
 
   SessionOptions options;
   (*options.config.mutable_device_count())["CPU"] = 2;
@@ -552,7 +556,7 @@ TEST_F(DirectSessionMinusAXTest, InvalidDevice) {
   // Fix placement and run again
   def.Clear();
   y->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:1");
-  test::graph::ToGraphDef(&graph, &def);
+  graph.ToGraphDef(&def);
   session.reset(NewSession(options));
   TF_ASSERT_OK(session->Create(def));
   std::vector<Tensor> outputs;
@@ -671,7 +675,7 @@ TEST(DirectSessionTest, KeepsStateAcrossRunsOfSession) {
   Node* init = test::graph::Assign(&g, var, twenty_node);
   init->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:0");
 
-  test::graph::ToGraphDef(&g, &def);
+  g.ToGraphDef(&def);
 
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
@@ -706,7 +710,7 @@ TEST(DirectSessionTest, MultipleFeedTest) {
   Node* second_const = test::graph::Constant(&g, second_value);
   Node* second_identity = test::graph::Identity(&g, second_const);
 
-  test::graph::ToGraphDef(&g, &def);
+  g.ToGraphDef(&def);
 
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
@@ -762,7 +766,7 @@ TEST(DirectSessionTest, MultipleFeedTest) {
       {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
       &outputs);
   EXPECT_TRUE(errors::IsInvalidArgument(s));
-  EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
+  EXPECT_TRUE(absl::StrContains(s.error_message(), "fed more than once"));
 }
 
 TEST(DirectSessionTest, MultipleFeedTest_Callable) {
@@ -779,7 +783,7 @@ TEST(DirectSessionTest, MultipleFeedTest_Callable) {
   Node* second_const = test::graph::Constant(&g, second_value);
   Node* second_identity = test::graph::Identity(&g, second_const);
 
-  test::graph::ToGraphDef(&g, &def);
+  g.ToGraphDef(&def);
 
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
@@ -845,7 +849,7 @@ TEST(DirectSessionTest, MultipleFeedTest_Callable) {
           {first_identity->name() + ":0", second_identity->name() + ":0"}, {}),
       &handle);
   EXPECT_TRUE(errors::IsInvalidArgument(s));
-  EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
+  EXPECT_TRUE(absl::StrContains(s.error_message(), "fed more than once"));
 }
 
 TEST(DirectSessionTest, TestTensorConnectionUseTwice) {
@@ -865,7 +869,7 @@ TEST(DirectSessionTest, TestTensorConnectionUseTwice) {
   Node* y = test::graph::Add(&graph, left, right);
 
   GraphDef def;
-  test::graph::ToGraphDef(&graph, &def);
+  graph.ToGraphDef(&def);
 
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
@@ -904,7 +908,7 @@ TEST(DirectSessionTest, FetchMultipleTimes) {
   Node* seven_node = test::graph::Constant(&g, seven_tensor);
 
   GraphDef def;
-  test::graph::ToGraphDef(&g, &def);
+  g.ToGraphDef(&def);
 
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
@@ -941,7 +945,7 @@ TEST(DirectSessionTest, MultipleFeedTestSomeSyncRun) {
   Node* second_const = test::graph::Constant(&g, second_value);
   Node* second_identity = test::graph::Identity(&g, second_const);
 
-  test::graph::ToGraphDef(&g, &def);
+  g.ToGraphDef(&def);
 
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
@@ -999,7 +1003,134 @@ TEST(DirectSessionTest, MultipleFeedTestSomeSyncRun) {
       {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
       &outputs, nullptr);
   EXPECT_TRUE(errors::IsInvalidArgument(s));
-  EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
+  EXPECT_TRUE(absl::StrContains(s.error_message(), "fed more than once"));
+}
+
+REGISTER_OP("SessionMetadataReader")
+    .Input("x: int64")
+    .Output("y: string")
+    .SetIsStateful()
+    .Doc(R"doc(SessionMetadataReader returns the session metadata.
+
+x: int64
+y: string
+)doc");
+
+class SessionMetadataReaderOp : public OpKernel {
+ public:
+  explicit SessionMetadataReaderOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  void Compute(OpKernelContext* ctx) override {
+    Tensor* out_tensor = nullptr;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output("y", TensorShape({}), &out_tensor));
+    if (ctx->session_metadata() != nullptr) {
+      out_tensor->scalar<string>()() = ctx->session_metadata()->DebugString();
+    } else {
+      out_tensor->scalar<string>()() = "";
+    }
+  }
+};
+REGISTER_KERNEL_BUILDER(Name("SessionMetadataReader").Device(DEVICE_CPU),
+                        SessionMetadataReaderOp);
+
+TEST(DirectSessionTest, SessionMetadataAbsent) {
+  Graph g(OpRegistry::Global());
+  Tensor vx(DT_INT64, TensorShape({}));
+  vx.scalar<int64>()() = 17;
+  Node* x = test::graph::Constant(&g, vx);
+  Node* y = test::graph::Unary(&g, "SessionMetadataReader", x);
+  GraphDef def;
+  g.ToGraphDef(&def);
+  auto sess = CreateSession();
+  TF_ASSERT_OK(sess->Create(def));
+  std::vector<Tensor> outputs;
+  RunOptions run_opts;
+  run_opts.set_inter_op_thread_pool(-1);
+  auto s = sess->Run(run_opts, {}, {y->name() + ":0"}, {}, &outputs, nullptr);
+
+  EXPECT_EQ("", outputs[0].scalar<string>()());
+}
+
+TEST(DirectSessionTest, SessionMetadataPresent) {
+  Graph g(OpRegistry::Global());
+  Tensor vx(DT_INT64, TensorShape({}));
+  vx.scalar<int64>()() = 17;
+  Node* x = test::graph::Constant(&g, vx);
+  Node* y = test::graph::Unary(&g, "SessionMetadataReader", x);
+  GraphDef def;
+  g.ToGraphDef(&def);
+  auto session_options = DefaultSessionOptions();
+  auto* session_metadata =
+      session_options.config.mutable_experimental()->mutable_session_metadata();
+  session_metadata->set_name("name");
+  session_metadata->set_version(1);
+  auto sess = std::unique_ptr<Session>(NewSession(session_options));
+  TF_ASSERT_OK(sess->Create(def));
+  std::vector<Tensor> outputs;
+  RunOptions run_opts;
+  run_opts.set_inter_op_thread_pool(-1);
+  auto s = sess->Run(run_opts, {}, {y->name() + ":0"}, {}, &outputs, nullptr);
+
+  SessionMetadata read_metadata;
+  ASSERT_TRUE(protobuf::TextFormat::ParseFromString(
+      outputs[0].scalar<string>()(), &read_metadata));
+  EXPECT_EQ("name", read_metadata.name());
+  EXPECT_EQ(1, read_metadata.version());
+}
+
+TEST(DirectSessionTest, SessionMetadataKey) {
+  auto session_options0 = DefaultSessionOptions();
+  auto* session_metadata0 = session_options0.config.mutable_experimental()
+                                ->mutable_session_metadata();
+  session_metadata0->set_name("name");
+  Session* sess0_ptr;
+  ASSERT_TRUE(NewSession(session_options0, &sess0_ptr).ok());
+  auto sess0 = absl::WrapUnique(sess0_ptr);
+
+  // Trying to use the same metadata (name, version) will cause an error.
+  Session* dup_ptr;
+  EXPECT_TRUE(
+      errors::IsInvalidArgument(NewSession(session_options0, &dup_ptr)));
+
+  // A new (name, version) is fine.
+  auto session_options1 = DefaultSessionOptions();
+  auto* session_metadata1 = session_options1.config.mutable_experimental()
+                                ->mutable_session_metadata();
+  session_metadata1->set_name("name");
+  session_metadata1->set_version(1);
+  Session* sess1_ptr;
+  EXPECT_TRUE(NewSession(session_options1, &sess1_ptr).ok());
+  auto sess1 = absl::WrapUnique(sess1_ptr);
+
+  // If the previous session, using the same (name, version) is gone, then it's
+  // fine.
+  sess0 = nullptr;
+  EXPECT_TRUE(NewSession(session_options0, &dup_ptr).ok());
+  auto dup = absl::WrapUnique(dup_ptr);
+
+  // Sessions without metadata options are always fine.
+  auto sess_without_metadata0 = CreateSession();
+  EXPECT_NE(sess_without_metadata0, nullptr);
+  auto sess_without_metadata1 = CreateSession();
+  EXPECT_NE(sess_without_metadata1, nullptr);
+}
+
+TEST(DirectSessionTest, SessionMetadataInvalid) {
+  const auto valid_session_options = DefaultSessionOptions();
+  Session* sess_ptr;
+  ASSERT_TRUE(NewSession(valid_session_options, &sess_ptr).ok());
+  auto sess = absl::WrapUnique(sess_ptr);
+
+  auto invalid_session_options = valid_session_options;
+  auto* invalid_metadata =
+      invalid_session_options.config.mutable_experimental()
+          ->mutable_session_metadata();
+  invalid_metadata->set_name("name");
+  // Version should be >= 0.
+  invalid_metadata->set_version(-1);
+  Session* error_sess_ptr;
+  EXPECT_TRUE(errors::IsInvalidArgument(
+      NewSession(invalid_session_options, &error_sess_ptr)));
 }
 
 REGISTER_OP("ThreadID").Input("x: int64").Output("y: int64").Doc(R"doc(
@@ -1031,12 +1162,33 @@ TEST(DirectSessionTest, SessionSyncRun) {
   Node* x = test::graph::Constant(&g, vx);
   Node* y = test::graph::Unary(&g, "ThreadID", x);
   GraphDef def;
-  test::graph::ToGraphDef(&g, &def);
+  g.ToGraphDef(&def);
   auto sess = CreateSession();
   TF_ASSERT_OK(sess->Create(def));
   std::vector<Tensor> outputs;
   RunOptions run_opts;
   run_opts.set_inter_op_thread_pool(-1);
+  auto s = sess->Run(run_opts, {}, {y->name() + ":0"}, {}, &outputs, nullptr);
+
+  std::hash<std::thread::id> hasher;
+  EXPECT_EQ(static_cast<int64>(hasher(std::this_thread::get_id())),
+            static_cast<int64>(outputs[0].scalar<int64>()()));
+}
+
+TEST(DirectSessionTest, SyncSession) {
+  Graph g(OpRegistry::Global());
+  Tensor vx(DT_INT64, TensorShape({}));
+  vx.scalar<int64>()() = 17;
+  Node* x = test::graph::Constant(&g, vx);
+  Node* y = test::graph::Unary(&g, "ThreadID", x);
+  GraphDef def;
+  g.ToGraphDef(&def);
+  SessionOptions options;
+  options.config.set_inter_op_parallelism_threads(-1);
+  std::unique_ptr<Session> sess(NewSession(options));
+  TF_ASSERT_OK(sess->Create(def));
+  std::vector<Tensor> outputs;
+  RunOptions run_opts;
   auto s = sess->Run(run_opts, {}, {y->name() + ":0"}, {}, &outputs, nullptr);
 
   std::hash<std::thread::id> hasher;
@@ -1066,7 +1218,7 @@ TEST(DirectSessionTest, DarthKernel) {
   Node* x = test::graph::Constant(&g, vx);
   Node* y = test::graph::Unary(&g, "Darth", x);
   GraphDef def;
-  test::graph::ToGraphDef(&g, &def);
+  g.ToGraphDef(&def);
   auto sess = CreateSession();
   TF_ASSERT_OK(sess->Create(def));
   std::vector<Tensor> outputs;
@@ -1084,7 +1236,7 @@ TEST(DirectSessionTest, PlacePrunedGraph) {
     Node* y = test::graph::Unary(&g, "Darth", x);
     y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
     GraphDef def;
-    test::graph::ToGraphDef(&g, &def);
+    g.ToGraphDef(&def);
 
     // By default, we place the entire graph, so we should fail the
     // call to Create.
@@ -1102,7 +1254,7 @@ TEST(DirectSessionTest, PlacePrunedGraph) {
     Node* y = test::graph::Unary(&g, "Darth", x);
     y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
     GraphDef def;
-    test::graph::ToGraphDef(&g, &def);
+    g.ToGraphDef(&def);
 
     SessionOptions options;
     // Set the option to place pruned graphs, we should expect this
@@ -1133,7 +1285,7 @@ TEST(DirectSessionTest, PartialRunTest) {
   Node* third = test::graph::Add(&g, first_identity, second_identity);
   Node* third_identity = test::graph::Identity(&g, third);
 
-  test::graph::ToGraphDef(&g, &def);
+  g.ToGraphDef(&def);
 
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
@@ -1189,7 +1341,7 @@ TEST(DirectSessionTest, PartialRunMissingFeed) {
   Node* third = test::graph::Add(&g, first_identity, second_identity);
   Node* third_identity = test::graph::Identity(&g, third);
 
-  test::graph::ToGraphDef(&g, &def);
+  g.ToGraphDef(&def);
 
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
@@ -1208,8 +1360,8 @@ TEST(DirectSessionTest, PartialRunMissingFeed) {
   s = session->PRun(handle, {{first_const->name(), value_11}},
                     {third_identity->name() + ":0"}, &outputs);
   ASSERT_TRUE(errors::IsInvalidArgument(s));
-  EXPECT_TRUE(str_util::StrContains(s.error_message(),
-                                    "can't be computed from the feeds"));
+  EXPECT_TRUE(
+      absl::StrContains(s.error_message(), "can't be computed from the feeds"));
 }
 
 TEST(DirectSessionTest, PartialRunMultiOutputFeed) {
@@ -1222,7 +1374,7 @@ TEST(DirectSessionTest, PartialRunMultiOutputFeed) {
   Node* switch_node = test::graph::Switch(&g, bool_const, bool_const);
   Node* fourth_identity = test::graph::Identity(&g, switch_node, 1);
 
-  test::graph::ToGraphDef(&g, &def);
+  g.ToGraphDef(&def);
 
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
@@ -1238,8 +1390,8 @@ TEST(DirectSessionTest, PartialRunMultiOutputFeed) {
   // Fetch fourth_identity without feeds.
   s = session->PRun(handle, {}, {fourth_identity->name() + ":0"}, &outputs);
   ASSERT_TRUE(errors::IsInvalidArgument(s));
-  EXPECT_TRUE(str_util::StrContains(s.error_message(),
-                                    "can't be computed from the feeds"));
+  EXPECT_TRUE(
+      absl::StrContains(s.error_message(), "can't be computed from the feeds"));
 
   // Feed switch_node:1 and fetch fourth_identity.
   s = session->PRun(handle, {{switch_node->name() + ":1", bool_value}},
@@ -1271,7 +1423,7 @@ TEST(DirectSessionTest, RunHandleTest) {
 
   Node* node7 = test::graph::Unary(&g, "DeleteSessionTensor", const2);
 
-  test::graph::ToGraphDef(&g, &def);
+  g.ToGraphDef(&def);
 
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
@@ -1324,7 +1476,7 @@ TEST(DirectSessionTest, RunHandleTest_Callable) {
 
   Node* node7 = test::graph::Unary(&g, "DeleteSessionTensor", const2);
 
-  test::graph::ToGraphDef(&g, &def);
+  g.ToGraphDef(&def);
 
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
@@ -1526,7 +1678,7 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib,
     y = test::graph::Unary(&g, "BlockingOp", x);
   }
   GraphDef def;
-  test::graph::ToGraphDef(&g, &def);
+  g.ToGraphDef(&def);
   *def.mutable_library() = library_graph_def;
 
   // Create session with two inter-op thread pools.
@@ -1677,7 +1829,7 @@ TEST(DirectSessionTest, TestSessionInterOpThreadsInvalidOptions) {
   t.scalar<float>()() = {1.2f};
   Node* x = test::graph::Constant(&g, t);
   GraphDef def;
-  test::graph::ToGraphDef(&g, &def);
+  g.ToGraphDef(&def);
 
   SessionOptions options;
   options.config.mutable_graph_options()
@@ -1736,7 +1888,7 @@ TEST(DirectSessionTest, TestDirectSessionRunClose) {
   Node* var = test::graph::Var(&g, DT_FLOAT, {});
   Node* var_assign = test::graph::Assign(&g, var, var_val);
   GraphDef def;
-  test::graph::ToGraphDef(&g, &def);
+  g.ToGraphDef(&def);
 
   SessionOptions options;
   (*options.config.mutable_device_count())["CPU"] = 2;
@@ -1790,7 +1942,7 @@ TEST(DirectSessionTest, TestDirectSessionPRunClose) {
   Node* third = test::graph::Add(&g, first_identity, second_identity);
   Node* third_identity = test::graph::Identity(&g, third);
 
-  test::graph::ToGraphDef(&g, &def);
+  g.ToGraphDef(&def);
 
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
@@ -1829,7 +1981,7 @@ TEST(DirectSessionTest, TestDirectSessionReset) {
   Node* var = test::graph::Var(&g, DT_FLOAT, {});
   Node* var_assign = test::graph::Assign(&g, var, var_val);
   GraphDef def;
-  test::graph::ToGraphDef(&g, &def);
+  g.ToGraphDef(&def);
 
   SessionOptions options;
   (*options.config.mutable_device_count())["CPU"] = 2;
@@ -2072,7 +2224,7 @@ void TestFeedAndFetchTensorsInDeviceMemoryFailsToMakeCallable(
     Session::CallableHandle handle;
     Status status = session->MakeCallable(opts, &handle);
     EXPECT_FALSE(status.ok()) << DataType_Name(dtype);
-    EXPECT_TRUE(str_util::StrContains(
+    EXPECT_TRUE(absl::StrContains(
         status.error_message(),
         strings::StrCat(
             "Cannot feed or fetch tensor 'y:0' from device ", gpu_device_name,
@@ -2088,7 +2240,7 @@ void TestFeedAndFetchTensorsInDeviceMemoryFailsToMakeCallable(
     Session::CallableHandle handle;
     Status status = session->MakeCallable(opts, &handle);
     EXPECT_FALSE(status.ok());
-    EXPECT_TRUE(str_util::StrContains(
+    EXPECT_TRUE(absl::StrContains(
         status.error_message(),
         strings::StrCat(
             "Cannot feed or fetch tensor 'x:0' from device ", gpu_device_name,

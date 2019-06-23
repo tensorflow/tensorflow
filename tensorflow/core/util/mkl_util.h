@@ -633,7 +633,9 @@ class MklDnnShape {
   /// also be Blocked format.
   inline void SetTfLayout(size_t dims, const memory::dims& sizes,
                           memory::format format) {
-    CHECK_EQ(dims, sizes.size());
+    DCHECK_EQ(dims, sizes.size())
+        << "SetTfLayout: Number of dimensions does not"
+           "match with dimension array";
     data_.dimension_ = dims;
     for (size_t ii = 0; ii < dims; ii++) {
       data_.sizes_[ii] = sizes[ii];
@@ -641,6 +643,22 @@ class MklDnnShape {
     data_.tf_data_format_ = format;
     if (format != memory::format::blocked) {
       SetTfDimOrder(dims, format);
+    }
+  }
+
+  inline void SetTfLayout2D(size_t dims, const memory::dims& sizes,
+                            memory::format format) {
+    DCHECK_EQ(dims, sizes.size())
+        << "SetTfLayout2D: Number of dimensions does not"
+           "match with dimension array";
+    data_.dimension_ = dims;
+    for (size_t ii = 0; ii < dims; ++ii) {
+      data_.sizes_[ii] = sizes[ii];
+    }
+    data_.tf_data_format_ = format;
+    if (format != memory::format::blocked) {
+      data_.map_[0] = MklDnnDims::Dim_N;
+      data_.map_[1] = MklDnnDims::Dim_C;
     }
   }
 
@@ -1441,6 +1459,12 @@ memory::data_type MklDnnType<qint8>() {
 template <>
 memory::data_type MklDnnType<qint32>() {
   return memory::data_type::s32;
+}
+template <>
+memory::data_type MklDnnType<bfloat16>() {
+  // TODO(nhasabni): Enable MKL-DNN bfloat16 type later.
+  // Currently, falling back to f32 to get compilation working.
+  return memory::data_type::f32;
 }
 
 /// Map TensorFlow's data format into MKL-DNN 3D data format

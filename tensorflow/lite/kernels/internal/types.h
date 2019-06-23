@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstring>
+#include <initializer_list>
 
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
@@ -28,6 +29,12 @@ enum class PaddingType : uint8 { kNone, kSame, kValid };
 struct PaddingValues {
   int16 width;
   int16 height;
+  // offset is used for calculating "remaining" padding, for example, `width`
+  // is 1 and `width_offset` is 1, so padding_left is 1 while padding_right is
+  // 1 + 1 = 2.
+  int16 width_offset;
+  // Same as width_offset except it's over the height dimension.
+  int16 height_offset;
 };
 
 // This enumeration allows for non-default formats for the weights array
@@ -258,9 +265,7 @@ class RuntimeShape {
     int buffer_size = 1;
     const int* dims_data = reinterpret_cast<const int*>(DimsData());
     for (int i = 0; i < size_; i++) {
-      const int dim = dims_data[i];
-      TFLITE_DCHECK_GE(dim, 1);
-      buffer_size *= dim;
+      buffer_size *= dims_data[i];
     }
     return buffer_size;
   }
@@ -867,6 +872,38 @@ struct LocalResponseNormalizationParams {
   double beta;
 };
 
+struct HardSwishParams {
+  // uint8 inference params
+
+  // Contains input->params.zero_point
+  int32_t input_zero_point;
+
+  // when computing relu6(x+3), we scale input by using bit-shift
+  // to avoid loss of precision when doing computation in uint8 (and 6 might not
+  // be exactly representable in that scale.
+  // This flag contains number of bits to shift.
+  int32_t clip_input_shift;
+
+  // Added to the final output to bring the output's zero_point in order.
+  int32_t output_offset;
+
+  // Scale that converts x*relu6(x+3) computed in input range
+  // into output range x * relu6(x + 3) / 6.
+  // This takes into account that hardswish is quadratic
+  // so we have in_scale^2/out_scale.
+  // This is the integer nominator pat of the multiplier
+  int32_t scale;
+
+  // this is the denominator 2^shift of the multiplier
+  int shift;
+
+  // 3 in input 0-centered scale
+  int32_t three_input;
+
+  // 6 in input 0-centered scale
+  int32_t six_input;
+};
+
 struct LogisticParams {
   // uint8 inference params.
   int32 input_zero_point;
@@ -1016,6 +1053,11 @@ struct UnpackParams {
 
 struct LeakyReluParams {
   float alpha;
+  int32 input_offset;
+  int32 alpha_offset;
+  int32 output_offset;
+  int32 output_multiplier;
+  int output_shift;
 };
 
 template <typename P>

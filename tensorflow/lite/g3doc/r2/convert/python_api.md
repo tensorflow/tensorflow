@@ -8,9 +8,21 @@ This page provides examples on how to use the
 ## Python API
 
 The Python API for converting TensorFlow models to TensorFlow Lite in TensorFlow
-2.0 is
-[`tf.lite.TFLiteConverter.from_concrete_function()`](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/lite/TFLiteConverter).
-Documentation on concrete functions is available [here](concrete_function.md).
+2.0 is `tf.lite.TFLiteConverter`. `TFLiteConverter` provides the following
+classmethods to convert a model based on the original model format:
+
+*   `TFLiteConverter.from_saved_model()`: Converts
+    [SavedModel directories](https://www.tensorflow.org/alpha/guide/saved_model).
+*   `TFLiteConverter.from_keras_model()`: Converts
+    [`tf.keras` models](https://www.tensorflow.org/alpha/guide/keras/overview).
+*   `TFLiteConverter.from_concrete_functions()`: Converts
+    [concrete functions](concrete_function.md).
+
+Note: The TensorFlow Lite 2.0 alpha had a different version of the
+`TFLiteConverter` API which only contained the classmethod
+[`from_concrete_function`](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/lite/TFLiteConverter#from_concrete_function).
+The API detailed in this document can be installed using the
+[`tf-nightly-2.0-preview`](#installing_the_tensorflow_20_nightly_) pip install.
 
 This document contains [example usages](#examples) of the API, a detailed list
 of [changes in the API between 1.X and 2.0](#differences), and
@@ -18,36 +30,11 @@ of [changes in the API between 1.X and 2.0](#differences), and
 
 ## Examples <a name="examples"></a>
 
-### Exporting a concrete function <a name="concrete_function"></a>
+### Converting a SavedModel <a name="saved_model"></a>
 
-The following example shows how to convert a TensorFlow concrete function into a
-TensorFlow Lite `FlatBuffer`.
-
-```python
-import tensorflow as tf
-
-# Construct a basic model.
-root = tf.train.Checkpoint()
-root.v1 = tf.Variable(3.)
-root.v2 = tf.Variable(2.)
-root.f = tf.function(lambda x: root.v1 * root.v2 * x)
-
-# Create the concrete function.
-input_data = tf.constant(1., shape=[1, 1])
-concrete_func = root.f.get_concrete_function(input_data)
-
-# Convert the model.
-converter = tf.lite.TFLiteConverter.from_concrete_function(concrete_func)
-tflite_model = converter.convert()
-```
-
-### Exporting a SavedModel <a name="saved_model"></a>
-
-The following example shows how to convert a SavedModel into a TensorFlow Lite
-`FlatBuffer`.
-
-Note: Due to a known issue with preserving input shapes with SavedModels,
-`set_shape` needs to be called for all input tensors.
+The following example shows how to convert a
+[SavedModel](https://www.tensorflow.org/alpha/guide/saved_model) into a
+TensorFlow Lite [`FlatBuffer`](https://google.github.io/flatbuffers/).
 
 ```python
 import tensorflow as tf
@@ -64,23 +51,16 @@ input_data = tf.constant(1., shape=[1, 1])
 to_save = root.f.get_concrete_function(input_data)
 tf.saved_model.save(root, export_dir, to_save)
 
-# Load model and get the concrete function.
-model = tf.saved_model.load(export_dir)
-concrete_func = model.signatures[
-  tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
-
-# Set the shape manually.
-concrete_func.inputs[0].set_shape(input_data.shape)
-
 # Convert the model.
-converter = tf.lite.TFLiteConverter.from_concrete_function(concrete_func)
+converter = tf.lite.TFLiteConverter.from_saved_model(export_dir)
 tflite_model = converter.convert()
 ```
 
-### Exporting a Keras model <a name="keras"></a>
+### Converting a Keras model <a name="keras"></a>
 
-The following example shows how to convert a `tf.keras` model into a TensorFlow
-Lite `FlatBuffer`.
+The following example shows how to convert a
+[`tf.keras` model](https://www.tensorflow.org/alpha/guide/keras/overview) into a
+TensorFlow Lite [`FlatBuffer`](https://google.github.io/flatbuffers/).
 
 ```python
 import tensorflow as tf
@@ -94,21 +74,45 @@ model = tf.keras.models.Sequential(
 model.compile(optimizer='sgd', loss='mean_squared_error')
 model.fit(x, y, epochs=50)
 
-# Get the concrete function from the Keras model.
-run_model = tf.function(lambda x : model(x))
-concrete_func = run_model.get_concrete_function(
-    tf.TensorSpec([None, 1], tf.float32))
+# Convert the model.
+converter = tf.lite.TFLiteConverter.from_keras_model(model)
+tflite_model = converter.convert()
+```
+
+### Converting a concrete function <a name="concrete_function"></a>
+
+The following example shows how to convert a TensorFlow
+[concrete function](concrete_function.md) into a TensorFlow Lite
+[`FlatBuffer`](https://google.github.io/flatbuffers/).
+
+```python
+import tensorflow as tf
+
+# Construct a basic model.
+root = tf.train.Checkpoint()
+root.v1 = tf.Variable(3.)
+root.v2 = tf.Variable(2.)
+root.f = tf.function(lambda x: root.v1 * root.v2 * x)
+
+# Create the concrete function.
+input_data = tf.constant(1., shape=[1, 1])
+concrete_func = root.f.get_concrete_function(input_data)
 
 # Convert the model.
-converter = tf.lite.TFLiteConverter.from_concrete_function(concrete_func)
+#
+# `from_concrete_function` takes in a list of concrete functions, however,
+# currently only supports converting one function at a time. Converting multiple
+# functions is under development.
+converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func])
 tflite_model = converter.convert()
 ```
 
 ### End-to-end MobileNet conversion <a name="mobilenet"></a>
 
 The following example shows how to convert and run inference on a pre-trained
-`tf.Keras` MobileNet model to TensorFlow Lite. In order to load the model from
-file, use `model_path` instead of `model_content`.
+`tf.keras` MobileNet model to TensorFlow Lite. It compares the results of the
+TensorFlow and TensorFlow Lite model on random data. In order to load the model
+from file, use `model_path` instead of `model_content`.
 
 ```python
 import numpy as np
@@ -118,18 +122,8 @@ import tensorflow as tf
 model = tf.keras.applications.MobileNetV2(
     weights="imagenet", input_shape=(224, 224, 3))
 
-# Save and load the model to generate the concrete function to export.
-export_dir = "/tmp/test_model/mobilenet"
-tf.saved_model.save(model, export_dir)
-model = tf.saved_model.load(export_dir)
-concrete_func = model.signatures[
-  tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
-
-# Set the shape manually.
-concrete_func.inputs[0].set_shape([1, 224, 224, 3])
-
 # Convert the model.
-converter = tf.lite.TFLiteConverter.from_concrete_function(concrete_func)
+converter = tf.lite.TFLiteConverter.from_keras_model(model)
 tflite_model = converter.convert()
 
 # Load TFLite model and allocate tensors.
@@ -140,28 +134,37 @@ interpreter.allocate_tensors()
 input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 
-# Test model on random input data.
+# Test the TensorFlow Lite model on random input data.
 input_shape = input_details[0]['shape']
 input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
 interpreter.set_tensor(input_details[0]['index'], input_data)
 
 interpreter.invoke()
-output_data = interpreter.get_tensor(output_details[0]['index'])
-print(output_data)
+
+# The function `get_tensor()` returns a copy of the tensor data.
+# Use `tensor()` in order to get a pointer to the tensor.
+tflite_results = interpreter.get_tensor(output_details[0]['index'])
+
+# Test the TensorFlow model on random input data.
+tf_results = model(tf.constant(input_data))
+
+# Compare the result.
+for tf_result, tflite_result in zip(tf_results, tflite_results):
+  np.testing.assert_almost_equal(tf_result, tflite_result, decimal=5)
 ```
 
-## Summary of changes in `TFLiteConverter` between 1.X and 2.0 <a name="differences"></a>
+## Summary of changes in Python API between 1.X and 2.0 <a name="differences"></a>
 
-The following section summarizes the changes in `TFLiteConverter` from 1.X to
-2.0. If any of the changes raise concerns, please file a
+The following section summarizes the changes in the Python API from 1.X to 2.0.
+If any of the changes raise concerns, please file a
 [GitHub issue](https://github.com/tensorflow/tensorflow/issues).
 
-### Supported formats
+### Formats supported by `TFLiteConverter`
 
 `TFLiteConverter` in 2.0 supports SavedModels and Keras model files generated in
 both 1.X and 2.0. However, the conversion process no longer supports frozen
 `GraphDefs` generated in 1.X. Users who want to convert frozen `GraphDefs` to
-TensorFlow Lite should use `tensorflow.compat.v1`.
+TensorFlow Lite should use `tf.compat.v1.TFLiteConverter`.
 
 ### Quantization-aware training
 
@@ -184,9 +187,9 @@ API is being reworked and streamlined in a direction that supports
 quantization-aware training through the Keras API. These attributes will be
 removed in the 2.0 API until the new quantization API is launched. Users who
 want to convert models generated by the rewriter function can use
-`tensorflow.compat.v1`.
+`tf.compat.v1.TFLiteConverter`.
 
-### Changes to attributes
+### Changes to `TFLiteConverter` attributes
 
 The `target_ops` attribute has become an attribute of `TargetSpec` and renamed
 to `supported_ops` in line with future additions to the optimization framework.
@@ -205,13 +208,38 @@ Additionally, the following attributes have been removed:
     *   `dump_graphviz_dir`
     *   `dump_graphviz_video`
 
-### Deprecated APIs
+### General API changes
+
+#### Conversion methods
 
 The following methods that were previously deprecated in 1.X will no longer be
 exported in 2.0:
 
 *   `lite.toco_convert`
 *   `lite.TocoConverter`
+
+#### `lite.constants`
+
+The `lite.constants` API was removed in 2.0 in order to decrease duplication
+between TensorFlow and TensorFlow Lite. The following list maps the
+`lite.constant` type to the TensorFlow type:
+
+*   `lite.constants.FLOAT`: `tf.float32`
+*   `lite.constants.INT8`: `tf.int8`
+*   `lite.constants.INT32`: `tf.int32`
+*   `lite.constants.INT64`: `tf.int64`
+*   `lite.constants.STRING`: `tf.string`
+*   `lite.constants.QUANTIZED_UINT8`: `tf.uint8`
+
+Additionally, `lite.constants.TFLITE` and `lite.constants.GRAPHVIZ_DOT` were
+removed due to the deprecation of the `output_format` flag in `TFLiteConverter`.
+
+#### `lite.OpHint`
+
+The `OpHint` API is currently not available in 2.0 due to an incompatibility
+with the 2.0 APIs. This API enables conversion of LSTM based models. Support for
+LSTMs in 2.0 is being investigated. All related `lite.experimental` APIs have
+been removed due to this issue.
 
 ## Installing TensorFlow <a name="versioning"></a>
 
@@ -232,15 +260,6 @@ code snippet.
 import tensorflow.compat.v2 as tf
 
 tf.enable_v2_behavior()
-```
-
-### Using TensorFlow 1.X from a 2.0 installation <a name="use-1.X-from-2.0"></a>
-
-TensorFlow 1.X can be enabled from 2.0 installation. This can be useful if you
-are using features that are no longer supported in 2.0.
-
-```python
-import tensorflow.compat.v1 as tf
 ```
 
 ### Build from source code <a name="latest_package"></a>

@@ -28,8 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.training.tracking import \
-tracking
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util.tf_export import tf_export
 
 # A seed for random ops (stateful and stateless) will always be 1024
@@ -110,11 +109,15 @@ def _make_1d_state(state_size, seed):
     raise ValueError(
         "seed should only have one dimension; got shape: %s" % seed.shape)
   seed = seed[0:state_size]
-  # Padding with zeros on the right if too short
+  # Padding with zeros on the *left* if too short. Padding on the right would
+  # cause a small seed to be used as the "counter" while the "key" is always
+  # zero (for counter-based RNG algorithms), because in the current memory
+  # layout counter is stored before key. In such a situation two RNGs with
+  # two different small seeds may generate overlapping outputs.
   seed_size = seed.shape[0]
   if seed_size < state_size:
     seed = np.pad(
-        seed, [(0, state_size - seed_size)],
+        seed, [(state_size - seed_size, 0)],
         mode="constant",
         constant_values=0)
   assert seed.shape == (state_size,), "Wrong seed.shape: %s" % seed.shape
@@ -157,6 +160,13 @@ def _shape_tensor(shape):
   return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
 
 
+def _convert_to_state_tensor(t):
+  if isinstance(t, list):
+    # to avoid out-of-range error from ops.convert_to_tensor
+    t = list(map(_uint_to_int, t))
+  return ops.convert_to_tensor(t, dtype=STATE_TYPE)
+
+
 @tf_export("random.experimental.Generator")
 class Generator(tracking.AutoTrackable):
   """Random-number generator.
@@ -164,51 +174,169 @@ class Generator(tracking.AutoTrackable):
   It uses Variable to manage its internal state, and allows choosing an
   Random-Number-Generation (RNG) algorithm.
 
-  CPU and GPU with the same algorithm and seed will generate the same integer
-  random numbers. Float-point results (such as the output of `normal`) may have
-  small numerical discrepancies between CPU and GPU.
-
-  Because of different counter-reservation schemes, TPU's integer random numbers
-  will be different from CPU/GPU even with the same algorithm and seed.
-  Also, TPU uses different sampling algorithms for some distributions
-  (e.g. using reverse CDF for sampling normal distribution instead of
-  Box-Muller used by CPU/GPU). Harmonizing TPU's RNG behavior with CPU/GPU is
-  work in progress.
+  CPU, GPU and TPU with the same algorithm and seed will generate the same
+  integer random numbers. Float-point results (such as the output of `normal`)
+  may have small numerical discrepancies between CPU and GPU.
   """
 
-  def __init__(self, copy_from=None, seed=None, algorithm=None):
+  def __init__(self, copy_from=None, state=None, alg=None):
     """Creates a generator.
 
+    The new generator will be initialized by one of the following ways, with
+    decreasing precedence:
+    (1) If `copy_from` is not None, the new generator is initialized by copying
+        information from another generator.
+    (3) If `state` and `alg` are not None (they must be set together), the new
+        generator is initialized by a state.
+
     Args:
-      copy_from: (optional) a generator to be copied from.
-      seed: (optional) the seed for the RNG. If None, it will be chosen
-            nondeterministically
-      algorithm: (optional) the RNG algorithm. If None, it will be
-                 auto-selected.
+      copy_from: a generator to be copied from.
+      state: a vector of dtype STATE_TYPE representing the initial state of the
+        RNG, whose length and semantics are algorithm-specific.
+      alg: the RNG algorithm. Possible values are RNG_ALG_PHILOX for the
+        Philox algorithm and RNG_ALG_THREEFRY for the ThreeFry
+        algorithm (see paper 'Parallel Random Numbers: As Easy as 1, 2, 3'
+        [https://www.thesalmons.org/john/random123/papers/random123sc11.pdf]).
     """
-    if copy_from is None:
-      if algorithm is None:
-        # TODO(wangpeng): more sophisticated algorithm selection
-        algorithm = DEFAULT_ALGORITHM
-      if seed is None:
-        state = non_deterministic_ints(shape=[_get_state_size(algorithm)],
-                                       dtype=SEED_TYPE)
-      else:
-        state = create_rng_state(seed, algorithm)
-      self._state_var = variables.Variable(state, dtype=STATE_TYPE)
-      self._alg_var = algorithm
-    else:
-      assert seed is None
-      self._state_var = variables.Variable(copy_from.state, dtype=STATE_TYPE)
+    if copy_from is not None:
+      # All other arguments should be None
+      assert (alg or state) is None
+      self._state_var = variables.Variable(copy_from.state, dtype=STATE_TYPE,
+                                           trainable=False)
       self._alg_var = copy_from.algorithm
 
-  def reset(self, seed):
-    """Resets the generator.
+    else:
+      assert alg is not None and state is not None
+      state = _convert_to_state_tensor(state)
+      state.shape.assert_is_compatible_with([_get_state_size(alg)])
+      self._state_var = variables.Variable(state, dtype=STATE_TYPE,
+                                           trainable=False)
+      self._alg_var = alg
+
+  @classmethod
+  def from_state(cls, state, alg):
+    """Creates a generator from a state.
+
+    See `__init__` for description of `state` and `alg`.
 
     Args:
-      seed: the seed to reset the RNG to.
+      state: the new state.
+      alg: the RNG algorithm.
+
+    Returns:
+      The new generator.
+    """
+    return cls(alg=alg, state=state)
+
+  @classmethod
+  def from_seed(cls, seed, alg=None):
+    """Creates a generator from a seed.
+
+    A seed is a 1024-bit unsigned integer represented either as a Python
+    integer or a vector of integers. Seeds shorter than 1024-bit will be
+    padded. The padding, the internal structure of a seed and the way a seed
+    is converted to a state are all opaque (unspecified). The only semantics
+    specification of seeds is that two different seeds are likely to produce
+    two independent generators (but no guarantee).
+
+    Args:
+      seed: the seed for the RNG.
+      alg: (optional) the RNG algorithm. If None, it will be auto-selected. See
+        `__init__` for its possible values.
+
+    Returns:
+      The new generator.
+    """
+    if alg is None:
+      # TODO(wangpeng): more sophisticated algorithm selection
+      alg = DEFAULT_ALGORITHM
+    state = create_rng_state(seed, alg)
+    return cls(state=state, alg=alg)
+
+  @classmethod
+  def from_non_deterministic_state(cls, alg=None):
+    """Creates a generator by non-deterministically initializing its state.
+
+    The source of the non-determinism will be platform- and time-dependent.
+
+    Args:
+      alg: (optional) the RNG algorithm. If None, it will be auto-selected. See
+        `__init__` for its possible values.
+
+    Returns:
+      The new generator.
+    """
+    if alg is None:
+      # TODO(wangpeng): more sophisticated algorithm selection
+      alg = DEFAULT_ALGORITHM
+    state = non_deterministic_ints(shape=[_get_state_size(alg)],
+                                   dtype=SEED_TYPE)
+    return cls(state=state, alg=alg)
+
+  @classmethod
+  def from_key_counter(cls, key, counter, alg):
+    """Creates a generator from a key and a counter.
+
+    This constructor only applies if the algorithm is a counter-based algorithm.
+    See method `key` for the meaning of "key" and "counter".
+
+    Args:
+      key: the key for the RNG, a scalar of type STATE_TYPE.
+      counter: a vector of dtype STATE_TYPE representing the initial counter for
+        the RNG, whose length is algorithm-specific.,
+      alg: the RNG algorithm. If None, it will be auto-selected. See
+        `__init__` for its possible values.
+
+    Returns:
+      The new generator.
+    """
+    counter = _convert_to_state_tensor(counter)
+    key = _convert_to_state_tensor(key)
+    counter.shape.assert_is_compatible_with([_get_state_size(alg) - 1])
+    key.shape.assert_is_compatible_with([])
+    key = array_ops.reshape(key, [1])
+    state = array_ops.concat([counter, key], 0)
+    return cls(state=state, alg=alg)
+
+  def reset(self, state):
+    """Resets the generator by a new state.
+
+    See `__init__` for the meaning of "state".
+
+    Args:
+      state: the new state.
+    """
+    state = _convert_to_state_tensor(state)
+    state.shape.assert_is_compatible_with([_get_state_size(self.algorithm)])
+    self._state_var.assign(state)
+
+  def reset_from_seed(self, seed):
+    """Resets the generator by a new seed.
+
+    See `from_seed` for the meaning of "seed".
+
+    Args:
+      seed: the new seed.
     """
     state = create_rng_state(seed, self.algorithm)
+    self._state_var.assign(state)
+
+  def reset_from_key_counter(self, key, counter):
+    """Resets the generator by a new key-counter pair.
+
+    See `from_key_counter` for the meaning of "key" and "counter".
+
+    Args:
+      key: the new key.
+      counter: the new counter.
+    """
+    counter = _convert_to_state_tensor(counter)
+    key = _convert_to_state_tensor(key)
+    counter.shape.assert_is_compatible_with(
+        [_get_state_size(self.algorithm) - 1])
+    key.shape.assert_is_compatible_with([])
+    key = array_ops.reshape(key, [1])
+    state = array_ops.concat([counter, key], 0)
     self._state_var.assign(state)
 
   @property
@@ -224,6 +352,40 @@ class Generator(tracking.AutoTrackable):
   def _standard_normal(self, shape, dtype):
     return gen_stateful_random_ops.stateful_standard_normal_v2(
         self.state.handle, self.algorithm, shape, dtype=dtype)
+
+  @property
+  def key(self):
+    """The 'key' part of the state of a counter-based RNG.
+
+    For a counter-base RNG algorithm such as Philox and ThreeFry (as
+    described in paper 'Parallel Random Numbers: As Easy as 1, 2, 3'
+    [https://www.thesalmons.org/john/random123/papers/random123sc11.pdf]),
+    the RNG state consists of two parts: counter and key. The output is
+    generated via the formula: output=hash(key, counter), i.e. a hashing of
+    the counter parametrized by the key. Two RNGs with two different keys can
+    be thought as generating two independent random-number streams (a stream
+    is formed by increasing the counter).
+
+    Returns:
+      A scalar which is the 'key' part of the state, if the RNG algorithm is
+        counter-based; otherwise it raises a ValueError.
+    """
+    alg = self.algorithm
+    if alg == RNG_ALG_PHILOX or alg == RNG_ALG_THREEFRY:
+      return self._state_var[-1]
+    else:
+      raise ValueError("Unsupported algorithm id: %s" % alg)
+
+  def skip(self, delta):
+    """Advance the counter of a counter-based RNG.
+
+    Args:
+      delta: the amount of advancement. The state of the RNG after
+        `skip(n)` will be the same as that after `normal([n])`
+        (or any other distribution). The actual increment added to the
+        counter is an unspecified implementation detail.
+    """
+    gen_stateful_random_ops.rng_skip(self.state.handle, self.algorithm, delta)
 
   # The following functions return a tensor and as a side effect update
   # self._state_var.
@@ -368,6 +530,51 @@ class Generator(tracking.AutoTrackable):
           self.state.handle, self.algorithm, shape=shape,
           dtype=dtype, name=name)
 
+  def binomial(self, shape, counts, probs, dtype=dtypes.int32, name=None):
+    """Outputs random values from a binomial distribution.
+
+    The generated values follow a binomial distribution with specified count and
+    probability of success parameters.
+
+    Example:
+
+    ```python
+    counts = [10., 20.]
+    # Probability of success.
+    probs = [0.8, 0.9]
+
+    rng = tf.random.experimental.Generator(seed=234)
+    binomial_samples = rng.binomial(shape=[2], counts=counts, probs=probs)
+    ```
+
+
+    Args:
+      shape: A 1-D integer Tensor or Python array. The shape of the output
+        tensor.
+      counts: A 0/1-D Tensor or Python value`. The counts of the binomial
+        distribution.
+      probs: A 0/1-D Tensor or Python value`. The probability of success for the
+        binomial distribution.
+      dtype: The type of the output. Default: tf.int32
+      name: A name for the operation (optional).
+
+    Returns:
+      A tensor of the specified shape filled with random binomial values.
+    """
+    dtype = dtypes.as_dtype(dtype)
+    with ops.name_scope(name, "binomial", [shape, counts, probs]) as name:
+      counts = ops.convert_to_tensor(counts, name="counts")
+      probs = ops.convert_to_tensor(probs, name="probs")
+      shape_tensor = _shape_tensor(shape)
+      return gen_stateful_random_ops.stateful_random_binomial(
+          self.state.handle,
+          self.algorithm,
+          shape=shape_tensor,
+          counts=counts,
+          probs=probs,
+          dtype=dtype,
+          name=name)
+
   # TODO(wangpeng): implement other distributions
 
   def _make_int64_keys(self, shape=()):
@@ -452,7 +659,7 @@ class Generator(tracking.AutoTrackable):
     alg = self.algorithm
     if alg == RNG_ALG_PHILOX or alg == RNG_ALG_THREEFRY:
       keys = self._make_int64_keys(shape=[count])
-      return [Generator(seed=_key_to_state(alg, key), algorithm=alg)
+      return [Generator(state=_key_to_state(alg, key), alg=alg)
               for key in keys.numpy()]
     else:
       raise ValueError("Unsupported algorithm id: %s" % alg)
@@ -468,31 +675,27 @@ global_generator = None
 def get_global_generator():
   global global_generator
   if global_generator is None:
-    global_generator = Generator()
+    global_generator = Generator.from_non_deterministic_state()
   return global_generator
 
 
 @tf_export("random.experimental.set_global_generator")
 def set_global_generator(generator):
+  """Replaces the global generator with another `Generator` object.
+
+  This function creates a new Generator object (and the Variable object within),
+  which does not work well with tf.function because (1) tf.function puts
+  restrictions on Variable creation thus reset_global_generator can't be freely
+  used inside tf.function; (2) redirecting a global variable to
+  a new object is problematic with tf.function because the old object may be
+  captured by a 'tf.function'ed function and still be used by it.
+  A 'tf.function'ed function only keeps weak references to variables,
+  so deleting a variable and then calling that function again may raise an
+  error, as demonstrated by
+  random_test.py/RandomTest.testResetGlobalGeneratorBadWithDefun .
+
+  Args:
+    generator: the new `Generator` object.
+  """
   global global_generator
   global_generator = generator
-
-
-# This function creates a new Generator object (and the Variable object within),
-# which does not work well with tf.function because (1) tf.function puts
-# restrictions on Variable creation thus reset_global_generator can't be freely
-# used inside tf.function; (2) redirecting a global variable to
-# a new object is problematic with tf.function because the old object may be
-# captured by a 'tf.function'ed function and still be used by it.
-# A 'tf.function'ed function only keeps weak references to variables,
-# so deleting a variable and then calling that function again may raise an
-# error, as demonstrated by
-# random_test.py/RandomTest.testResetGlobalGeneratorBadWithDefun .
-# The function 'set_global_generator' below also has this problem.
-@tf_export("random.experimental.reset_global_generator")
-def reset_global_generator(seed, algorithm=None):
-  global global_generator
-  if algorithm is None:
-    # preserve the old algorithm
-    algorithm = int(get_global_generator().algorithm)
-  global_generator = Generator(seed=seed, algorithm=algorithm)

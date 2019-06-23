@@ -58,6 +58,57 @@ xla::StatusOr<xla::DeviceAssignment> AssignDevices(int num_replicas,
   return xla::ComputationPlacer().AssignDevices(num_replicas, num_computations);
 }
 
+xla::StatusOr<std::vector<std::vector<std::shared_ptr<XrtBuffer>>>>
+ExecuteReplicated(
+    XrtExecutable* executable,
+    absl::Span<std::vector<std::vector<std::shared_ptr<XrtBuffer>>> const>
+        pyargs) {
+  const xla::DeviceAssignment& device_assignment =
+      executable->device_assignment();
+  if (pyargs.size() != device_assignment.computation_count()) {
+    return xla::InvalidArgument(
+        "Outermost argument list must have one entry per "
+        "computation; "
+        "got %d args, device assignment has %d computations.",
+        pyargs.size(), device_assignment.computation_count());
+  }
+  std::vector<xla::Array2D<std::shared_ptr<XrtBuffer>>> args(pyargs.size());
+  for (int i = 0; i < pyargs.size(); ++i) {
+    if (pyargs[i].size() != device_assignment.replica_count() ||
+        pyargs[i].empty()) {
+      return xla::InvalidArgument(
+          "Mismatch in number of replicas; got %d arguments, but "
+          "device assignment has %d replicas.",
+          pyargs[i].size(), device_assignment.replica_count());
+    }
+
+    int arg_count = pyargs[i][0].size();
+    args[i] = xla::Array2D<std::shared_ptr<XrtBuffer>>(
+        device_assignment.replica_count(), arg_count);
+    for (int j = 0; j < pyargs[i].size(); ++j) {
+      if (pyargs[i][j].size() != arg_count) {
+        return xla::InvalidArgument(
+            "Mismatched number of arguments to computation %d for "
+            "different replicas; %d vs %d arguments.",
+            i, arg_count, pyargs[i][j].size());
+      }
+      for (int k = 0; k < arg_count; ++k) {
+        args[i](j, k) = pyargs[i][j][k];
+      }
+    }
+  }
+
+  TF_ASSIGN_OR_RETURN(auto result, executable->ExecuteReplicated(args));
+  std::vector<std::vector<std::shared_ptr<XrtBuffer>>> pyresult(result.n1());
+  for (int i = 0; i < result.n1(); ++i) {
+    pyresult[i].resize(result.n2());
+    for (int j = 0; j < result.n2(); ++j) {
+      pyresult[i][j] = result(i, j);
+    }
+  }
+  return pyresult;
+}
+
 }  // namespace
 
 void AddXrtSubmodule(py::module* module) {
@@ -84,8 +135,9 @@ void AddXrtSubmodule(py::module* module) {
       .def_property_readonly("tf_device_ids", &XrtContext::tf_device_ids);
 
   py::class_<XrtBuffer, std::shared_ptr<XrtBuffer>>(m, "XrtBuffer")
-      .def_static("FromLiteral", &XrtBuffer::FromLiteral)
-      .def("ToPython",
+      .def_static("from_literal", &XrtBuffer::FromLiteral)
+      .def_static("make_tuple", &XrtBuffer::MakeTuple)
+      .def("to_py",
            [](std::shared_ptr<XrtBuffer> buffer) -> xla::StatusOr<py::object> {
              auto literal = absl::make_unique<xla::Literal>();
              {
@@ -94,8 +146,16 @@ void AddXrtSubmodule(py::module* module) {
              }
              return xla::LiteralToPython(std::move(literal));
            })
-      .def("Delete", &XrtBuffer::Delete)
-      .def("DestructureTuple", &XrtBuffer::DestructureTuple);
+      .def("delete", &XrtBuffer::Delete)
+      .def("destructure", &XrtBuffer::DestructureTuple)
+      .def("device", &XrtBuffer::xrt_device_ordinal)
+      .def("shape", &XrtBuffer::shape)
+      .def("is_deleted",
+           [](const XrtBuffer& buffer) { return !buffer.handle().valid(); })
+      .def("block_host_until_ready", [](const XrtBuffer& buffer) {
+        return errors::Unimplemented(
+            "block_host_until_ready not implemented in XRT backend.");
+      });
 
   py::class_<XrtExecutable, std::shared_ptr<XrtExecutable>>(m, "XrtExecutable")
       .def_static("Compile",
@@ -118,53 +178,28 @@ void AddXrtSubmodule(py::module* module) {
                   pyargs)
                -> xla::StatusOr<
                    std::vector<std::vector<std::shared_ptr<XrtBuffer>>>> {
+             return ExecuteReplicated(&executable, pyargs);
+           })
+      // Simplified API for compatibility with the local ExecutePerReplica,
+      // that only accepts one computation per replica.
+      // TODO(phawkins): support multiple computations per replica everywhere
+      // and remove this entry point.
+      .def("ExecutePerReplica",
+           [](XrtExecutable& executable,
+              std::vector<std::vector<std::shared_ptr<XrtBuffer>>> pyargs)
+               -> xla::StatusOr<std::vector<std::shared_ptr<XrtBuffer>>> {
              const xla::DeviceAssignment& device_assignment =
                  executable.device_assignment();
-             if (pyargs.size() != device_assignment.computation_count()) {
+             if (device_assignment.computation_count() != 1) {
                return xla::InvalidArgument(
-                   "Outermost argument list must have one entry per "
-                   "computation; "
-                   "got %d args, device assignment has %d computations.",
-                   pyargs.size(), device_assignment.computation_count());
+                   "ExecutePerReplica requires one computation per replica, "
+                   "got %d.",
+                   device_assignment.computation_count());
              }
-             std::vector<xla::Array2D<std::shared_ptr<XrtBuffer>>> args(
-                 pyargs.size());
-             for (int i = 0; i < pyargs.size(); ++i) {
-               if (pyargs[i].size() != device_assignment.replica_count() ||
-                   pyargs[i].empty()) {
-                 return xla::InvalidArgument(
-                     "Mismatch in number of replicas; got %d arguments, but "
-                     "device assignment has %d replicas.",
-                     pyargs[i].size(), device_assignment.replica_count());
-               }
-
-               int arg_count = pyargs[i][0].size();
-               args[i] = xla::Array2D<std::shared_ptr<XrtBuffer>>(
-                   device_assignment.replica_count(), arg_count);
-               for (int j = 0; j < pyargs[i].size(); ++j) {
-                 if (pyargs[i][j].size() != arg_count) {
-                   return xla::InvalidArgument(
-                       "Mismatched number of arguments to computation %d for "
-                       "different replicas; %d vs %d arguments.",
-                       i, arg_count, pyargs[i][j].size());
-                 }
-                 for (int k = 0; k < arg_count; ++k) {
-                   args[i](j, k) = pyargs[i][j][k];
-                 }
-               }
-             }
-
              TF_ASSIGN_OR_RETURN(auto result,
-                                 executable.ExecuteReplicated(args));
-             std::vector<std::vector<std::shared_ptr<XrtBuffer>>> pyresult(
-                 result.n1());
-             for (int i = 0; i < result.n1(); ++i) {
-               pyresult[i].resize(result.n2());
-               for (int j = 0; j < result.n2(); ++j) {
-                 pyresult[i][j] = result(i, j);
-               }
-             }
-             return pyresult;
+                                 ExecuteReplicated(&executable, {pyargs}));
+             TF_RET_CHECK(result.size() == 1);
+             return result[0];
            })
       .def("Delete", &XrtExecutable::Delete)
       .def("DeviceOrdinals", [](const XrtExecutable& executable) {

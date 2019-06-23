@@ -86,12 +86,12 @@ TEST(LowerFunctionCallTest, InlineFunctionCall) {
                   /*control_ret_def=*/{{"must_execute", "add"}});
 
   // Construct a graph:
-  //   A = _Arg[T=int32]
+  //   A = Placeholder[dtype=int32]
   //   F = PartitionedCall[f=AddAndMul](a)
   //   B = Identity(func, ^func)
   Scope root = Scope::NewRootScope().ExitOnError();
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
-  auto a = ops::_Arg(root.WithOpName("A"), DT_INT32, 0);
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_INT32);
   Node* function_call;
   std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(a.node())});
   TF_ASSERT_OK(NodeBuilder("F", "PartitionedCall", &root.graph()->flib_def())
@@ -150,12 +150,12 @@ TEST(LowerFunctionCallTest, DoNotInlineTpuOrXlaFunctions) {
   *(f_lib_proto.add_function()) = test::function::XTimesTwo();
 
   // Construct a graph:
-  //   A = _Arg[T=int32]
+  //   A = Placeholder[dtype=int32]
   //   B = XTimesTwo[_tpu_replicate="cluster"](A)
   //   C = XTimesTwo[_xla_compile_id="cluster"](A)
   Scope root = Scope::NewRootScope().ExitOnError();
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
-  auto a = ops::_Arg(root.WithOpName("A"), DT_INT32, 0);
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_INT32);
   std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(a.node())});
 
   Node* tpu_call;

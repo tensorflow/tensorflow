@@ -21,6 +21,9 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/inspecting_placer.h"
+#include "tensorflow/core/common_runtime/placer_inspection_required_ops_utils.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -45,6 +48,8 @@ class Member {
   Status SetResourceDeviceName(const Node& node);
   Status SetRequestedDeviceName(const Node& node);
 
+  Status FillPossibleDevices(PossibleDevices* possible_device) const;
+
   Status EnsureCompatibilityAcrossResourceEdge(
       const Node& src, const Member& src_root,
       const Node& dst, /*dst_root is this*/
@@ -59,10 +64,14 @@ class Member {
   static void Merge(std::vector<Member>* tree, int x_root, int y_root,
                     Member** new_root, Member** old_root, bool dry_run);
 
-  // tree is non-const because we can change some `parent` pointers in some
-  // members for more efficient future lookups. The vector itself is not
-  // changed.
-  static int FindRoot(std::vector<Member>* tree, int node_id);
+  // Returns the root node of the disjoint tree to which the node with the
+  // given id is connected.
+  // FindRoot should be called only for debugging or after the members have
+  // been updated with direct root pointers because it does not update
+  // root pointers and can traverse many links. It exists to have
+  // a const version of FindAndUpdateRoot
+  static int FindRoot(const std::vector<Member>& tree, int node_id);
+  static int FindAndUpdateRoot(std::vector<Member>* tree, int node_id);
 
   Status MergeDeviceNames(const Member& other, bool allow_soft_placement);
 
@@ -72,6 +81,11 @@ class Member {
   bool MergeSupportedDevices(const Member& other);
 
   Status AssignDevice(const Node& node, bool allow_soft_placement);
+
+  // Limit the possible devices of this (should be a root) to the device
+  // specifications in `devices`.
+  Status LimitToPossibleDevices(const PossibleDevices& devices,
+                                bool allow_soft_placement);
 
   void set_possible_devices(std::vector<Device*>&& devices) {
     possible_devices_ = devices;
@@ -91,6 +105,10 @@ class Member {
   string DebugString() const;
 
  private:
+  // Updates this to contain the intersection of the device types in
+  // this and `other_devices`.
+  bool MergeSupportedDevices(const PrioritizedDeviceTypeVector& other_devices);
+
   // The id of the node that is the parent of this one, or its own
   // id if it is a root. parent <= 0 indicates that this member is invalid.
   int parent_ = -1;
@@ -114,7 +132,7 @@ class Member {
 
   // The merged form of the device requested for this node, with those of all of
   // its children. requested_device_name_ is always kept a specialization (i.e.
-  // DeviceNameUtils::IsSpecialization) of assigned_device_name_. When no device
+  // DeviceNameUtils::IsSpecification) of assigned_device_name_. When no device
   // is requested, this field is set to assigned_device_name_.  As a
   // specialization of assigned_device_name_, requested_device_name_ represents
   // the most specific form of all assigned and requested devices of this node
@@ -123,7 +141,7 @@ class Member {
   // to resource colocation constraints but not assigned devices (unless soft
   // placement is on).
   // INVARIANT: requested_device_name_ is always kept a
-  // DeviceNameUtils::IsSpecialization of assigned_device_name_ and
+  // DeviceNameUtils::IsSpecification of assigned_device_name_ and
   // resource_device_name_. This makes requested_device_name_ the "accumulation
   // of all wishes" about the device.
   DeviceNameUtils::ParsedName requested_device_name_;
@@ -166,35 +184,14 @@ class Member {
   PrioritizedDeviceTypeVector supported_device_types_;
 
   // If this node is a root, stores a list of Devices to which this node
-  // and all of its children have been assigned, or nullptr if this
-  // has not yet been computed.
+  // and all of its children can be assigned.
+  // `possible_devices` is empty if they have not yet been computed.
   std::vector<Device*> possible_devices_;
-};  // namespace
+};
 
 // This class maintains the connected components of a colocation
 // constraint graph, and uses this information to assign a satisfying
 // device placement to the nodes of the graph.
-//
-// The typical usage pattern is:
-//
-//   Graph graph = ...;
-//   DeviceSet device_set = ...;
-//   ColocationGraph colocation_graph(graph, device_set);
-//
-//   // Add all the nodes of the `graph` to the `colocation_graph`.
-//   for (Node* node : graph.nodes()) {
-//     TF_RETURN_IF_ERROR(colocation_graph.AddNode(*node));
-//   }
-//
-//   // Add one or more colocation constraints.
-//   Node node_1 = *graph.FindNodeId(...);
-//   Node node_2 = *graph.FindNodeId(...);
-//   TF_RETURN_IF_ERROR(colocation_graph.ColocateNodes(node_1, node_2));
-//
-//   // Assign devices based on the accumulated constraints.
-//   for (Node* node : graph.nodes()) {
-//     TF_RETURN_IF_ERROR(colocation_graph.AssignDevice(node));
-//   }
 //
 // This implementation uses the Union-Find algorithm to efficiently maintain the
 // connected components and incrementally adds edges via
@@ -205,10 +202,53 @@ class Member {
 // device is ignored.
 class ColocationGraph {
  public:
-  ColocationGraph(const Graph* graph, const DeviceSet* device_set,
-                  const Device* default_device, bool allow_soft_placement,
-                  bool log_device_placement);
+  // graph, flib_def, and device_set must not be null and must outlive
+  // this ColocationGraph. default_device can be null. If not, must outlive
+  // this.
+  ColocationGraph(const Graph* graph, const FunctionStack& stack,
+                  const FunctionLibraryDefinition* flib_def,
+                  const DeviceSet* device_set, const Device* default_device,
+                  bool allow_soft_placement, bool log_device_placement);
 
+  Status Initialize();
+
+  const std::vector<Member>& members() const { return members_; }
+
+  // Limit the group containing `node` to the device specifications in
+  // `devices`.
+  Status LimitToPossibleDevices(const Node& node,
+                                const PossibleDevices& devices);
+
+  // Limits the possible devices of `node`'s colocation group to the device
+  // to which `node` is assigned. This makes sure that all nodes in this
+  // colocation group will be assigned to the same device. Without this
+  // explicit restriction, heuristics can choose a different possible device
+  // for other nodes in the group.
+  Status LimitToAssignedDevice(const Node& node);
+
+  // Returns the root node of the disjoint tree to which the node with the
+  // given id is connected.
+  // Updates the internal pointers so that future calls will returns faster.
+  int FindAndUpdateRoot(int node_id) {
+    return Member::FindAndUpdateRoot(&members_, node_id);
+  }
+
+  // For the given node, subject to the constraints previously given
+  // to this ColocationGraph, set its assigned_device_name. Returns OK
+  // if a satisfying device can be found, otherwise an error.
+  //
+  // Note: This method returns a pointer to a field within members_.
+  // The caller must not use the returned pointer after there is any possibility
+  // that the members_[i].possible_devices field has been modified.
+  Status GetDevicesForNode(Node* node,
+                           const std::vector<Device*>** possible_devices);
+
+  // Returns debugging info for the node referred to by 'node_root'.
+  string DebugInfo(const int node_root) const;
+
+  string DebugString() const;
+
+ private:
   // Adds each node of the Graph to this ColocationGraph as a singleton.
   //
   // NOTE: The implementation assumes that the ids of nodes passed to
@@ -218,11 +258,46 @@ class ColocationGraph {
   // state.
   Status ColocateAllNodes();
 
-  Status ColocateResourceOrRefEdge(Node* src, Node* dst);
+  Status ColocateResourceOrRefEdge(const Node* src, const Node* dst);
 
-  Status ColocateResourceAndRefEdges();
+  // Updates this ColocationGraph by making sure that all nodes
+  // touching resource and/or ref tensors are colocated.
+  // As it iterates over the edges, fills the `inspection_required` set with
+  // the nodes that
+  // PlacerInspectionRequiredOpChecker::IsPlacerInspectionRequired
+  // deems as requiring deep inspection by placer. This is an optimization.
+  Status ColocateResourceAndRefEdges(
+      std::unordered_set<Node*>* inspection_required);
 
-  Status Initialize();
+  Status AddInspectionConstraints(
+      const std::unordered_set<Node*>& inspection_required);
+
+  // Applies colocation groups for `node`'s inputs and outputs to this
+  // ColocationGraph.
+  // `groups` are the colocation groups to which `nodes`'s inputs and outputs
+  // belong.
+  // `node` is a node requiring deep inspection (e.g. a node calling
+  // a function)
+  //
+  // For example, consider a `node` taking two inputs and producing one output
+  //    a  b
+  //    |  |
+  //    v  v
+  //    node
+  //     |
+  //     v
+  //     c
+  //
+  // `groups` can tell us that `a` and `c` must be colocated and their device
+  // must be a GPU. `b` might be in a group by itself without any device
+  // restrictions.
+  //
+  // ApplyIOColocationGroups will have an effect of calling
+  // ColocateNodes(a, c) and LimitToPossibleDevices(`a`, "GPU"). The colocation
+  // group of the `node` itself is not directly impacted.
+  //
+  Status ApplyIOColocationGroups(const IOColocationGroups& groups,
+                                 const Node& node);
 
   Status ColocateNodeToGroup(
       std::unordered_map<StringPiece, const Node*, StringPieceHasher>*
@@ -242,33 +317,11 @@ class ColocationGraph {
   // If this method returns an error, *this is unchanged.
   Status ColocateNodes(const Node& x, int x_root, const Node& y, int y_root);
 
-  // Limits the possible devices of `node`'s colocation group to the device
-  // to which `node` is assigned. This makes sure that all nodes in this
-  // colocation group will be assigned to the same device. Without this
-  // explicit restriction, heuristics can choose a different possible device
-  // for other nodes in the group.
-  Status LimitToAssignedDevice(const Node& node);
-
-  // For the given node, subject to the constraints previously given
-  // to this ColocationGraph, set its assigned_device_name. Returns OK
-  // if a satisfying device can be found, otherwise an error.
-  //
-  // Note: This method returns a pointer to a field within members_.
-  // The caller must not use the returned pointer after there is any possibility
-  // that the members_[i].possible_devices field has been modified.
-  Status GetDevicesForNode(Node* node,
-                           const std::vector<Device*>** possible_devices);
-
   void GetSoftDeviceCandidates(const Node& node, const Member& root_member,
                                int root_id,
                                std::vector<Device*>* possible_devices);
 
   Status InitializeMembers();
-
-  string DebugString();
-
-  // Returns debugging info for the node referred to by 'node_root'.
-  string DebugInfo(const int node_root);
 
   Status InitializeMemberWithAssignedDevice(const string& assigned_device_name,
                                             const string& node_type,
@@ -278,15 +331,27 @@ class ColocationGraph {
 
   // Returns the root node of the disjoint tree to which the node with the
   // given id is connected.
-  int FindRoot(int node_id) { return Member::FindRoot(&members_, node_id); }
+  // FindRoot should be called only for debugging or after the members have
+  // been updated with direct root pointers because it does not update
+  // root pointers and can traverse many links. It exists to have
+  // a const version of FindAndUpdateRoot
+  int FindRoot(int node_id) const {
+    return Member::FindRoot(members_, node_id);
+  }
 
-  const Graph* const graph_;  // Not owned.
+  const Graph& graph_;
+  const FunctionStack stack_;
+  const FunctionLibraryDefinition& flib_def_;
   std::vector<Member> members_;
-  const DeviceSet* device_set_;  // Not owned.
+  InspectingPlacer inspecting_placer_;
+  PlacerInspectionRequiredOpChecker inspection_required_checker_;
+  const DeviceSet& device_set_;
   const std::vector<DeviceType> device_types_;
   const Device* default_device_;
   const bool allow_soft_placement_;
   const bool log_device_placement_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(ColocationGraph);
 };
 
 }  // namespace tensorflow

@@ -13,15 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/service/hlo_verifier.h"
+
 #include <set>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -184,7 +186,45 @@ Status ShapeVerifier::HandleCholesky(HloInstruction* hlo) {
   return CheckShape(hlo, expected);
 }
 
+// Checks that `hlo`'s set of ReplicaGroups:
+//
+//  - names each replica 0 through n-1 exactly once, and
+//  - does not contain any empty ReplicaGroups.
+//
+// Note that although none of the groups may be empty, `hlo` is allowed to have
+// 0 groups.  That just means it has one big group.
+//
+// This is just a minimal set of checks; some instructions may have additional
+// requirements.  For example, all-to-all requires that all ReplicaGroups have
+// the same number of replicas, but that isn't checked here.
+static Status CheckReplicaGroups(HloInstruction* hlo) {
+  std::set<int64> replicas_seen;
+  for (const ReplicaGroup& g : hlo->replica_groups()) {
+    if (g.replica_ids().empty()) {
+      return InternalError("Instruction cannot have an empty replica group: %s",
+                           hlo->ToString());
+    }
+    for (int64 i : g.replica_ids()) {
+      if (!replicas_seen.insert(i).second) {
+        return InternalError(
+            "Replica %d is repeated in instruction's replica-groups: %s", i,
+            hlo->ToString());
+      }
+    }
+  }
+  for (int64 i = 0; i < replicas_seen.size(); ++i) {
+    if (!replicas_seen.count(i)) {
+      return InternalError(
+          "Replica %d is not named in instruction's replica-groups: %s", i,
+          hlo->ToString());
+    }
+  }
+  return Status::OK();
+}
+
 Status ShapeVerifier::HandleAllReduce(HloInstruction* crs) {
+  TF_RETURN_IF_ERROR(CheckReplicaGroups(crs));
+
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : crs->operands()) {
     operand_shapes.push_back(&operand->shape());
@@ -193,6 +233,19 @@ Status ShapeVerifier::HandleAllReduce(HloInstruction* crs) {
 }
 
 Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo));
+
+  // The size of each replica group must match the number of operands to the
+  // all-to-all.
+  for (const ReplicaGroup& g : hlo->replica_groups()) {
+    if (g.replica_ids_size() != hlo->operand_count()) {
+      return InternalError(
+          "Replica group has size %d, but all replica groups in an all-to-all "
+          "with N operands must have size N: %s",
+          g.replica_ids_size(), hlo->ToString());
+    }
+  }
+
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : hlo->operands()) {
     operand_shapes.push_back(&operand->shape());
@@ -201,11 +254,33 @@ Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
                     ShapeInference::InferAllToAllTupleShape(operand_shapes));
 }
 
+Status ShapeVerifier::HandlePartitionId(HloInstruction* hlo) {
+  return CheckShape(hlo, ShapeUtil::MakeShape(U32, {}));
+}
+
 Status ShapeVerifier::HandleReplicaId(HloInstruction* hlo) {
   return CheckShape(hlo, ShapeUtil::MakeShape(U32, {}));
 }
 
 Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
+  // A source or target cannot appear twice in the collective-permute's
+  // source-target pairs.
+  absl::flat_hash_set<int64> seen_sources;
+  absl::flat_hash_set<int64> seen_targets;
+  for (const auto& p : hlo->source_target_pairs()) {
+    if (!seen_sources.insert(p.first).second) {
+      return InternalError(
+          "Source %d appears more than once in instruction's source-target "
+          "pairs: %s",
+          p.first, hlo->ToString());
+    }
+    if (!seen_targets.insert(p.second).second) {
+      return InternalError(
+          "Target %d appears more than once in instruction's source-target "
+          "pairs: %s",
+          p.second, hlo->ToString());
+    }
+  }
   return CheckShape(hlo, ShapeInference::InferCollectivePermuteShape(
                              hlo->operand(0)->shape()));
 }
@@ -328,6 +403,19 @@ Status ShapeVerifier::HandleRng(HloInstruction* instruction) {
   return Status::OK();
 }
 
+Status ShapeVerifier::HandleRngGetAndUpdateState(HloInstruction* instruction) {
+  TF_RETURN_IF_ERROR(CheckOperandCount(instruction, 0));
+  const Shape& result_shape = instruction->shape();
+  const Shape expected_shape = ShapeUtil::MakeShape(U64, {2});
+  if (!ShapeUtil::Compatible(result_shape, expected_shape)) {
+    return InternalError(
+        "Invalid RngGetAndUpdateState, expect result to have shape %s, got %s ",
+        StringifyShape(expected_shape), StringifyShape(result_shape));
+  }
+
+  return Status::OK();
+}
+
 Status ShapeVerifier::HandleReverse(HloInstruction* reverse) {
   return CheckShape(
       reverse, ShapeInference::InferReverseShape(reverse->operand(0)->shape(),
@@ -407,9 +495,10 @@ Status ShapeVerifier::HandleIota(HloInstruction* instruction) {
     return InternalError("Iota does not support scalars.");
   }
   int64 iota_dimension = iota->iota_dimension();
-  if (iota_dimension >= rank) {
+  if (iota_dimension >= rank || iota_dimension < 0) {
     return InternalError(
-        "The iota dimension cannot go beyond the operation rank.");
+        "The iota dimension cannot go beyond the operation rank or be "
+        "negative.");
   }
   return Status::OK();
 }
@@ -669,10 +758,23 @@ Status ShapeVerifier::HandleWhile(HloInstruction* xla_while) {
 }
 
 Status ShapeVerifier::HandleConditional(HloInstruction* conditional) {
+  if (!ShapeUtil::IsScalar(conditional->operand(0)->shape())) {
+    return InvalidArgument(
+        "The first operand of conditional must be a scalar. Got %s",
+        conditional->operand(0)->shape().DebugString());
+  }
   const int num_branches = conditional->branch_count();
-  if (conditional->operand(0)->shape().element_type() == PRED) {
+  PrimitiveType operand0_type = conditional->operand(0)->shape().element_type();
+  if (operand0_type == PRED) {
     TF_RET_CHECK(num_branches == 2);
   } else {
+    if (operand0_type != S32) {
+      return InvalidArgument(
+          "The first operand of indexed conditional must be a scalar of S32. "
+          "Got"
+          " type %s.",
+          PrimitiveType_Name(operand0_type));
+    }
     TF_RET_CHECK(num_branches >= 1);
   }
   TF_RETURN_IF_ERROR(CheckOperandCount(conditional, num_branches + 1));
@@ -692,6 +794,18 @@ Status ShapeVerifier::HandlePad(HloInstruction* pad) {
   return CheckShape(pad, ShapeInference::InferPadShape(pad->operand(0)->shape(),
                                                        pad->operand(1)->shape(),
                                                        pad->padding_config()));
+}
+
+Status ShapeVerifier::HandleCopyStart(HloInstruction* copy_start) {
+  return CheckShape(copy_start,
+                    ShapeUtil::MakeTupleShape({copy_start->operand(0)->shape(),
+                                               ShapeUtil::MakeShape(U32, {})}),
+                    /*only_compare_minor_to_major_in_layout=*/true);
+}
+
+Status ShapeVerifier::HandleCopyDone(HloInstruction* copy_done) {
+  return CheckShape(copy_done, ShapeUtil::GetTupleElementShape(
+                                   copy_done->operand(0)->shape(), 0));
 }
 
 Status ShapeVerifier::HandleSend(HloInstruction* send) {
@@ -768,6 +882,8 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kConditional:
     case HloOpcode::kConstant:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kCopyDone:
+    case HloOpcode::kCopyStart:
     case HloOpcode::kCustomCall:
     case HloOpcode::kDomain:
     case HloOpcode::kFusion:
@@ -872,6 +988,8 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       case HloOpcode::kCall:
       case HloOpcode::kConditional:
       case HloOpcode::kConstant:
+      case HloOpcode::kCopyDone:
+      case HloOpcode::kCopyStart:
       case HloOpcode::kCustomCall:
       case HloOpcode::kGetTupleElement:
       case HloOpcode::kInfeed:
@@ -968,7 +1086,7 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
   if (computation->num_parameters() != layout.parameter_count()) {
     return InternalError(
         "Number of parameters in entry computation layout (%d) must be same "
-        "as number of parameters of entry computation computation (%d)",
+        "as number of parameters of entry computation (%d)",
         layout.parameter_count(), computation->num_parameters());
   }
 
@@ -1115,6 +1233,42 @@ Status CheckSameIsHostTransfer(const HloInstruction* instr1,
         "%s, "
         "%s ",
         instr1->ToString(), instr2->ToString());
+  }
+  return Status::OK();
+}
+
+// Checks CopyStart and CopyDone nodes.
+Status VerifyAsynchronousCopies(const HloModule& module) {
+  // CopyStart must have a single CopyDone user.
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      switch (instruction->opcode()) {
+        case HloOpcode::kCopyStart: {
+          TF_RET_CHECK(instruction->users().size() == 1)
+              << "CopyStart instruction requires one consumer, found "
+              << instruction->users().size();
+          const HloInstruction* copy_done = instruction->users().front();
+          TF_RET_CHECK(copy_done->opcode() == HloOpcode::kCopyDone)
+              << "The consumer of a CopyStart instruction needs to be "
+                 "CopyDone, found "
+              << HloOpcodeString(copy_done->opcode());
+          break;
+        }
+        case HloOpcode::kCopyDone: {
+          TF_RET_CHECK(instruction->operands().size() == 1)
+              << "CopyDone instruction requires one operand, found "
+              << instruction->operands().size();
+          const HloInstruction* copy_start = instruction->operand(0);
+          TF_RET_CHECK(copy_start->opcode() == HloOpcode::kCopyStart)
+              << "The operand of a CopyDone instruction needs to be CopyStart, "
+                 "found "
+              << HloOpcodeString(copy_start->opcode());
+          break;
+        }
+        default:
+          break;
+      }
+    }
   }
   return Status::OK();
 }
@@ -1481,15 +1635,14 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
   }
 
   TF_RETURN_IF_ERROR(VerifyHloStructure(module));
+  TF_RETURN_IF_ERROR(VerifyAsynchronousCopies(*module));
   TF_RETURN_IF_ERROR(VerifySendsAndRecvs(*module));
 
   std::unique_ptr<ShapeVerifier> shape_verifier =
       target_metadata_->GetVerifier();
+  InstructionVerifier instruction_verifier(instruction_can_change_layout_func_);
   for (auto* computation : module->computations()) {
     TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
-
-    InstructionVerifier instruction_verifier(
-        instruction_can_change_layout_func_);
     TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
   }
 

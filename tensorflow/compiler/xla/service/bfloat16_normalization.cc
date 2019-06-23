@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -30,22 +31,15 @@ namespace xla {
 class BFloat16NormalizationVisitor : public DfsHloVisitorWithDefault {
  public:
   explicit BFloat16NormalizationVisitor(
-      HloComputation* computation, const BFloat16Support* bfloat16_support,
+      const BFloat16Support* bfloat16_support,
       BFloat16Normalization* bfloat16_normalization)
-      : computation_(computation),
+      : computation_(nullptr),
         bfloat16_support_(bfloat16_support),
         bfloat16_normalization_(bfloat16_normalization) {}
 
+  bool changed() const { return changed_; }
   Status DefaultAction(HloInstruction* hlo) override;
-
-  static bool Run(HloComputation* computation,
-                  const BFloat16Support* bfloat16_support,
-                  BFloat16Normalization* bfloat16_normalization) {
-    BFloat16NormalizationVisitor visitor(computation, bfloat16_support,
-                                         bfloat16_normalization);
-    TF_CHECK_OK(computation->Accept(&visitor));
-    return visitor.changed_;
-  }
+  Status Preprocess(HloInstruction* hlo) override;
 
  private:
   // Checks if the HLO uses BF16 in an unsupported way, and if so, inserts
@@ -408,18 +402,21 @@ Status BFloat16NormalizationVisitor::DefaultAction(HloInstruction* hlo) {
   return HandleInstruction(hlo);
 }
 
+Status BFloat16NormalizationVisitor::Preprocess(HloInstruction* hlo) {
+  computation_ = hlo->parent();
+  return Status::OK();
+}
+
 StatusOr<bool> BFloat16Normalization::Run(HloModule* module) {
   XLA_VLOG_LINES(
       2, "BFloat16Normalization::Run(), before:\n" + module->ToString());
-  bool changed = false;
+  BFloat16NormalizationVisitor visitor(bfloat16_support_, this);
   for (auto* comp : module->MakeComputationPostOrder()) {
-    if (BFloat16NormalizationVisitor::Run(comp, bfloat16_support_, this)) {
-      changed = true;
-    }
+    TF_RETURN_IF_ERROR(comp->Accept(&visitor));
   }
   XLA_VLOG_LINES(2,
                  "BFloat16Normalization::Run(), after:\n" + module->ToString());
-  return changed;
+  return visitor.changed();
 }
 
 }  // namespace xla

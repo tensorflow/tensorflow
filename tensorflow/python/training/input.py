@@ -1090,7 +1090,7 @@ def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
 
   The `tensors_list` argument is a list of tuples of tensors, or a list of
   dictionaries of tensors.  Each element in the list is treated similarly
-  to the `tensors` argument of `tf.train.batch()`.
+  to the `tensors` argument of `tf.compat.v1.train.batch()`.
 
   WARNING: This function is nondeterministic, since it starts a separate thread
   for each tensor.
@@ -1284,7 +1284,7 @@ def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
 
   ```python
   # Creates batches of 32 images and 32 labels.
-  image_batch, label_batch = tf.train.shuffle_batch(
+  image_batch, label_batch = tf.compat.v1.train.shuffle_batch(
         [single_image, single_label],
         batch_size=32,
         num_threads=4,
@@ -1425,7 +1425,7 @@ def shuffle_batch_join(tensors_list, batch_size, capacity,
 
   The `tensors_list` argument is a list of tuples of tensors, or a list of
   dictionaries of tensors.  Each element in the list is treated similarly
-  to the `tensors` argument of `tf.train.shuffle_batch()`.
+  to the `tensors` argument of `tf.compat.v1.train.shuffle_batch()`.
 
   This version enqueues a different list of tensors in different threads.
   It adds the following to the current `Graph`:

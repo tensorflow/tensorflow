@@ -47,9 +47,11 @@ class TfLiteDriver : public TestRunner {
   void ResetTensor(int id) override;
   void SetInput(int id, const string& csv_values) override;
   void SetExpectation(int id, const string& csv_values) override;
+  void SetShapeExpectation(int id, const string& csv_values) override;
   void Invoke() override;
   bool CheckResults() override;
   string ReadOutput(int id) override;
+  void SetThreshold(double relative_threshold, double absolute_threshold);
 
  private:
   void DeallocateStringTensor(TfLiteTensor* t) {
@@ -74,8 +76,11 @@ class TfLiteDriver : public TestRunner {
   std::unique_ptr<FlatBufferModel> model_;
   std::unique_ptr<Interpreter> interpreter_;
   std::map<int, std::unique_ptr<Expectation>> expected_output_;
+  std::map<int, std::unique_ptr<Expectation>> expected_output_shape_;
   bool must_allocate_tensors_ = true;
   std::map<int, TfLiteTensor*> tensors_to_deallocate_;
+  double relative_threshold_;
+  double absolute_threshold_;
 };
 
 }  // namespace testing

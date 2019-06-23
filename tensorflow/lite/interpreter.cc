@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdarg>
 #include <cstdint>
 #include <cstring>
-#include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/context_util.h"
@@ -27,10 +26,13 @@ limitations under the License.
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/minimal_logging.h"
-#include "tensorflow/lite/nnapi_delegate.h"
-#include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
+
+// TODO(b/132087118): move static_assert to c_api_internal when compiled with
+// C++.
+static_assert(sizeof(TfLiteFloat16) == sizeof(uint16_t),
+              "Float 16 type must be 16 bits.");
 
 namespace tflite {
 
@@ -57,12 +59,8 @@ TfLiteQuantization GetQuantizationFromLegacy(
 Interpreter::Interpreter(ErrorReporter* error_reporter)
     : error_reporter_(error_reporter ? error_reporter
                                      : DefaultErrorReporter()) {
-  // Only log initialization once per-process to avoid log spam.
-  static std::once_flag init_log_once_flag;
-  std::call_once(init_log_once_flag, []() {
-    // TODO(b/128420794): Include the TFLite runtime version in the log.
-    TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Initialized TensorFlow Lite runtime.");
-  });
+  // TODO(b/128420794): Include the TFLite runtime version in the log.
+  TFLITE_LOG_PROD_ONCE(TFLITE_LOG_INFO, "Initialized TensorFlow Lite runtime.");
 
   // There's always at least 1 subgraph which is the primary subgraph.
   AddSubgraphs(1);
@@ -229,6 +227,13 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   return kTfLiteOk;
 }
 
+TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegatePtr delegate) {
+  // Note that we retain ownership of the delegate even if graph modification
+  // fails, as delegate use will be in an indeterminate state at that point.
+  owned_delegates_.push_back(std::move(delegate));
+  return ModifyGraphWithDelegate(owned_delegates_.back().get());
+}
+
 TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
                                           TfLiteBufferHandle buffer_handle,
                                           TfLiteDelegate* delegate) {
@@ -262,11 +267,11 @@ TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
   return kTfLiteOk;
 }
 
-void Interpreter::SetProfiler(profiling::Profiler* profiler) {
+void Interpreter::SetProfiler(Profiler* profiler) {
   for (auto& subgraph : subgraphs_) subgraph->SetProfiler(profiler);
 }
 
-profiling::Profiler* Interpreter::GetProfiler() {
+Profiler* Interpreter::GetProfiler() {
   return primary_subgraph().GetProfiler();
 }
 

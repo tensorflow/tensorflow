@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -24,26 +26,6 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 namespace {
-
-TEST(DatasetUtilsTest, ComputeMoveVector) {
-  struct TestCase {
-    std::vector<int> indices;
-    std::vector<bool> expected;
-  };
-
-  TestCase test_cases[] = {
-      TestCase{{}, {}},
-      TestCase{{1}, {true}},
-      TestCase{{1, 1}, {false, true}},
-      TestCase{{1, 2}, {true, true}},
-      TestCase{{1, 1, 2}, {false, true, true}},
-      TestCase{{1, 2, 2}, {true, false, true}},
-  };
-
-  for (auto& test_case : test_cases) {
-    EXPECT_EQ(test_case.expected, ComputeMoveVector(test_case.indices));
-  }
-}
 
 TEST(DatasetUtilsTest, VariantTensorDataRoundtrip) {
   VariantTensorData data;
@@ -78,6 +60,427 @@ TEST(DatasetUtilsTest, VariantTensorDataNonExistentKey) {
             reader.ReadScalar("NonExistentKey", &val_string).code());
   EXPECT_EQ(error::NOT_FOUND,
             reader.ReadTensor("NonExistentKey", &val_tensor).code());
+}
+
+TEST(DatasetUtilsTest, HashSubgraphSameGraphDifferentNames) {
+  GraphDef gd;
+
+  NodeDef* n1 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
+                  .Attr("value", 1)
+                  .Device("CPU:0")
+                  .Finalize(n1));
+
+  NodeDef* n2 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
+                  .Attr("value", 2)
+                  .Device("CPU:0")
+                  .Finalize(n2));
+
+  NodeDef* n3 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
+                  .Device("CPU:0")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n2->name(), 0, DT_INT32)
+                  .Finalize(n3));
+
+  uint64 hash1 = HashSubgraph(gd, n3);
+
+  n1->Clear();
+  TF_CHECK_OK(NodeDefBuilder("graph_3/node_7", "Const")
+                  .Attr("value", 1)
+                  .Device("CPU:0")
+                  .Finalize(n1));
+
+  n2->Clear();
+  TF_CHECK_OK(NodeDefBuilder("graph_4/node_9", "Const")
+                  .Attr("value", 2)
+                  .Device("CPU:0")
+                  .Finalize(n2));
+
+  n3->Clear();
+  TF_CHECK_OK(NodeDefBuilder("graph_5/node_11", "Add")
+                  .Device("CPU:0")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n2->name(), 0, DT_INT32)
+                  .Finalize(n3));
+
+  uint64 hash2 = HashSubgraph(gd, n3);
+
+  EXPECT_EQ(hash1, hash2);
+}
+
+TEST(DatasetUtilsTest, HashSubgraphDifferentGraphs) {
+  GraphDef gd;
+
+  NodeDef* n1 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
+                  .Attr("value", 1)
+                  .Device("CPU:0")
+                  .Finalize(n1));
+
+  NodeDef* n2 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
+                  .Attr("value", 2)
+                  .Device("CPU:0")
+                  .Finalize(n2));
+
+  NodeDef* n3 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
+                  .Device("CPU:0")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n2->name(), 0, DT_INT32)
+                  .Finalize(n3));
+
+  uint64 hash1 = HashSubgraph(gd, n3);
+
+  n3->Clear();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Mul")
+                  .Device("CPU:0")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n2->name(), 0, DT_INT32)
+                  .Finalize(n3));
+
+  uint64 hash2 = HashSubgraph(gd, n3);
+
+  // We expect different hashes because the op of n3 has changed.
+  EXPECT_NE(hash1, hash2);
+}
+
+TEST(DatasetUtilsTest, HashSubgraphReversedOrder) {
+  GraphDef gd;
+
+  NodeDef* n1 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
+                  .Attr("value", 1)
+                  .Device("CPU:0")
+                  .Finalize(n1));
+
+  NodeDef* n2 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
+                  .Attr("value", 2)
+                  .Device("CPU:0")
+                  .Finalize(n2));
+
+  NodeDef* n3 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
+                  .Device("CPU:0")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n2->name(), 0, DT_INT32)
+                  .Finalize(n3));
+
+  uint64 hash1 = HashSubgraph(gd, n3);
+
+  n3->Clear();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
+                  .Device("CPU:0")
+                  .Input(n2->name(), 0, DT_INT32)
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Finalize(n3));
+
+  uint64 hash2 = HashSubgraph(gd, n3);
+
+  // We expect different hashes because the inputs of n3 are swapped.
+  EXPECT_NE(hash1, hash2);
+}
+
+TEST(DatasetUtilsTest, HashSubgraphInputPortChanged) {
+  GraphDef gd;
+
+  NodeDef* n1 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
+                  .Attr("value", 1)
+                  .Device("CPU:0")
+                  .Finalize(n1));
+
+  NodeDef* n2 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
+                  .Attr("value", 2)
+                  .Device("CPU:0")
+                  .Finalize(n2));
+
+  NodeDef* n3 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
+                  .Device("CPU:0")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n2->name(), 0, DT_INT32)
+                  .Finalize(n3));
+
+  uint64 hash1 = HashSubgraph(gd, n3);
+
+  n3->Clear();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
+                  .Device("CPU:0")
+                  .Input(n1->name(), 1, DT_INT32)
+                  .Input(n2->name(), 2, DT_INT32)
+                  .Finalize(n3));
+
+  uint64 hash2 = HashSubgraph(gd, n3);
+
+  // We expect different hashes because the input ports for nodes used by n3
+  // has changed.
+  EXPECT_NE(hash1, hash2);
+}
+
+TEST(DatasetUtilsTest, HashSubgraphSameFunctionDifferentNames) {
+  GraphDef gd;
+
+  FunctionDefLibrary* fl1 = gd.mutable_library();
+  FunctionDef* f1 = fl1->add_function();
+
+  *f1 = FunctionDefHelper::Create(
+      "AddAndMul", {"i: float"}, {"o: float"}, {},
+      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "add"}});
+
+  FunctionDef* f2 = fl1->add_function();
+  *f2 = FunctionDefHelper::Create(
+      "AddAndMul2", {"input: float"}, {"o: float"}, {},
+      {{{"add"}, "Add", {"input", "input"}, {{"T", DT_FLOAT}}},
+       {{"ret"}, "Mul", {"input", "input"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "add"}});
+
+  AttrValue a1;
+  NameAttrList* nal1 = a1.mutable_func();
+  nal1->set_name("AddAndMul");
+
+  NodeDef* n1 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
+                  .Attr("value", 1)
+                  .Device("CPU:0")
+                  .Finalize(n1));
+
+  std::vector<NodeDefBuilder::NodeOut> func_inputs;
+  func_inputs.emplace_back(n1->name(), 0, DT_FLOAT);
+  func_inputs.emplace_back(n1->name(), 0, DT_FLOAT);
+
+  NodeDef* n2 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "For")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(func_inputs)
+                  .Attr("body", a1)
+                  .Device("CPU:0")
+                  .Finalize(n2));
+
+  uint64 hash1 = HashSubgraph(gd, n2);
+
+  n2->Clear();
+  AttrValue a2;
+  NameAttrList* nal2 = a2.mutable_func();
+  nal2->set_name("AddAndMul2");
+
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "For")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(func_inputs)
+                  .Attr("body", a2)
+                  .Device("CPU:0")
+                  .Finalize(n2));
+
+  uint64 hash2 = HashSubgraph(gd, n2);
+
+  // Currently, this is EXPECT_NE because we hash the entire function def, but
+  // this will change to EXPECT_EQ when we have better handling of functions.
+  // (See TODO in dataset_utils.cc)
+  EXPECT_NE(hash1, hash2);
+}
+
+TEST(DatasetUtilsTest, HashSubgraphDifferentFunctions) {
+  GraphDef gd;
+
+  FunctionDefLibrary* fl1 = gd.mutable_library();
+  FunctionDef* f1 = fl1->add_function();
+
+  FunctionDef func = FunctionDefHelper::Create(
+      "AddAndMul", {"i: float"}, {"o: float"}, {},
+      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "add"}});
+  *f1 = func;
+
+  FunctionDef* f2 = fl1->add_function();
+  func = FunctionDefHelper::Create(
+      "AddAndMul2", {"i: float"}, {"o: float"}, {},
+      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "mul"}});
+  *f2 = func;
+
+  AttrValue a1;
+  NameAttrList* nal1 = a1.mutable_func();
+  nal1->set_name("AddAndMul");
+
+  NodeDef* n1 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
+                  .Attr("value", 1)
+                  .Device("CPU:0")
+                  .Finalize(n1));
+
+  std::vector<NodeDefBuilder::NodeOut> func_inputs;
+  func_inputs.emplace_back(n1->name(), 0, DT_FLOAT);
+  func_inputs.emplace_back(n1->name(), 0, DT_FLOAT);
+
+  NodeDef* n2 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "For")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(func_inputs)
+                  .Attr("body", a1)
+                  .Device("CPU:0")
+                  .Finalize(n2));
+
+  uint64 hash1 = HashSubgraph(gd, n2);
+
+  n2->Clear();
+  AttrValue a2;
+  NameAttrList* nal2 = a2.mutable_func();
+  nal2->set_name("AddAndMul2");
+
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "For")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(func_inputs)
+                  .Attr("body", a2)
+                  .Device("CPU:0")
+                  .Finalize(n2));
+
+  uint64 hash2 = HashSubgraph(gd, n2);
+
+  EXPECT_NE(hash1, hash2);
+}
+
+TEST(DatasetUtilsTest, HashSubgraphDifferentControlInputs) {
+  GraphDef gd;
+
+  NodeDef* n1 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
+                  .Attr("value", 1)
+                  .Device("CPU:0")
+                  .Finalize(n1));
+
+  NodeDef* n2 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
+                  .Attr("value", 2)
+                  .Device("CPU:0")
+                  .Finalize(n2));
+
+  NodeDef* n3 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Const")
+                  .Attr("value", 10)
+                  .Device("CPU:0")
+                  .Finalize(n3));
+
+  NodeDef* n4 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_4", "Identity")
+                  .Device("CPU:0")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .ControlInput(n2->name())
+                  .Finalize(n4));
+
+  uint64 hash1 = HashSubgraph(gd, n4);
+
+  n4->Clear();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_4", "Identity")
+                  .Device("CPU:0")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .ControlInput(n3->name())
+                  .Finalize(n4));
+
+  uint64 hash2 = HashSubgraph(gd, n4);
+
+  // Control inputs are different between these two graphs.
+  EXPECT_NE(hash1, hash2);
+}
+
+TEST(DatasetUtilsTest, HashSubgraphControlInputDifferentOrdering) {
+  GraphDef gd;
+
+  NodeDef* n1 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
+                  .Attr("value", 1)
+                  .Device("CPU:0")
+                  .Finalize(n1));
+
+  NodeDef* n2 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
+                  .Attr("value", 2)
+                  .Device("CPU:0")
+                  .Finalize(n2));
+
+  NodeDef* n3 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Const")
+                  .Attr("value", 10)
+                  .Device("CPU:0")
+                  .Finalize(n3));
+
+  NodeDef* n4 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_4", "Identity")
+                  .Device("CPU:0")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .ControlInput(n2->name())
+                  .ControlInput(n3->name())
+                  .Finalize(n4));
+
+  uint64 hash1 = HashSubgraph(gd, n4);
+
+  n4->Clear();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_4", "Identity")
+                  .Device("CPU:0")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .ControlInput(n3->name())
+                  .ControlInput(n2->name())
+                  .Finalize(n4));
+
+  uint64 hash2 = HashSubgraph(gd, n4);
+
+  EXPECT_EQ(hash1, hash2);
+}
+
+TEST(DatasetUtilsTest, HashSubgraphDifferentGraphSamePartialGraph) {
+  GraphDef gd;
+
+  NodeDef* n1 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
+                  .Attr("value", 1)
+                  .Device("CPU:0")
+                  .Finalize(n1));
+
+  NodeDef* n2 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
+                  .Attr("value", 2)
+                  .Device("CPU:0")
+                  .Finalize(n2));
+
+  NodeDef* n3 = gd.add_node();
+
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
+                  .Device("CPU:0")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n2->name(), 0, DT_INT32)
+                  .Finalize(n3));
+
+  uint64 hash1 = HashSubgraph(gd, n1);
+
+  n3->Clear();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Mul")
+                  .Device("CPU:0")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n2->name(), 0, DT_INT32)
+                  .Finalize(n3));
+
+  uint64 hash2 = HashSubgraph(gd, n1);
+
+  EXPECT_EQ(hash1, hash2);
 }
 
 TEST(DatasetUtilsTest, AddToFunctionLibrary) {

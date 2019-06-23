@@ -25,9 +25,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond as smart_module
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.keras import backend as K
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_contextlib
 
 
 def smart_cond(pred, true_fn=None, false_fn=None, name=None):
@@ -104,9 +106,10 @@ def get_reachable_from_inputs(inputs, targets=None):
   Returns:
     A set of tensors reachable from the inputs (includes the inputs themselves).
   """
-  inputs = nest.flatten(inputs)
+  inputs = nest.flatten(inputs, expand_composites=True)
   reachable = set(inputs)
-  if targets:
+  if targets and not isinstance(targets, set):
+    targets = nest.flatten(targets)
     targets = set(targets)
   queue = inputs[:]
 
@@ -244,7 +247,7 @@ def convert_inner_node_data(nested, wrap=False):
       unwraps `ListWrapper` objects into lists.
 
   Returns:
-    Strucutre of same type as nested, with lists wrapped/unwrapped.
+    Structure of same type as nested, with lists wrapped/unwrapped.
   """
 
   def _is_atomic_nested(nested):
@@ -370,3 +373,57 @@ def register_symbolic_tensor_type(cls):
 
 def is_tensor_or_variable(x):
   return tensor_util.is_tensor(x) or isinstance(x, variables.Variable)
+
+
+def assert_no_legacy_layers(layers):
+  """Prevent tf.layers.Layers from being used with Keras.
+
+  Certain legacy layers inherit from their keras analogs; however they are
+  not supported with keras and can lead to subtle and hard to diagnose bugs.
+
+  Args:
+    layers: A list of layers to check
+
+  Raises:
+    TypeError: If any elements of layers are tf.layers.Layers
+  """
+
+  # isinstance check for tf.layers.Layer introduces a circular dependency.
+  legacy_layers = [l for l in layers if getattr(l, '_is_legacy_layer', None)]
+  if legacy_layers:
+    layer_str = '\n'.join(['  ' + str(l) for l in legacy_layers])
+    raise TypeError(
+        'The following are legacy tf.layers.Layers:\n{}\nTo use keras as a '
+        'framework (for instance using the Network, Model, or Sequential '
+        'classes), please use the tf.keras.layers implementation instead. '
+        '(Or, if writing custom layers, subclass from tf.keras.layers rather '
+        'than tf.layers)'.format(layer_str))
+
+
+@tf_contextlib.contextmanager
+def maybe_init_scope(layer):
+  """Open an `init_scope` if in V2 mode and using the keras graph.
+
+  Arguments:
+    layer: The Layer/Model that is currently active.
+
+  Yields:
+    None
+  """
+  # Don't open an init_scope in V1 mode or when using legacy tf.layers.
+  if (ops.executing_eagerly_outside_functions() and
+      getattr(layer, '_keras_style', True)):
+    with ops.init_scope():
+      yield
+  else:
+    yield
+
+
+@tf_contextlib.contextmanager
+def graph_context_for_symbolic_tensors(*args, **kwargs):
+  """Returns graph context manager if any of the inputs is a symbolic tensor."""
+  if any(is_symbolic_tensor(v) for v in list(args) + list(kwargs.values())):
+    with K.get_graph().as_default():
+      yield
+  else:
+    yield

@@ -44,6 +44,25 @@ tf_proto {
       label: LABEL_OPTIONAL
       type: TYPE_BOOL
     }
+    field {
+      name: "disable_thread_spinning"
+      number: 9
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "share_cluster_devices_in_session"
+      number: 10
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "session_metadata"
+      number: 11
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.SessionMetadata"
+    }
     reserved_range {
       start: 2
       end: 3

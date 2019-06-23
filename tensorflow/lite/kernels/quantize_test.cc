@@ -174,6 +174,21 @@ TEST(QuantizeOpTest, Int8Uint8SameScale) {
       ElementsAreArray({128, 129, 130, 131, 132, 133, 134, 135, 136, 137}));
 }
 
+// Same as previous test, except more data to hit the neon path.
+TEST(QuantizeOpTest, Int8UInt8SameScaleNeonPath) {
+  QuantizeOpModel m({TensorType_INT8, {1, 1, 4, 5}, -127, 128},
+                    {TensorType_UINT8, {1, 1, 4, 5}, -127, 128});
+
+  // Input will quantized to {0,1,2,3,4,5,6,7,8,9,9,8,7,6,5,4,3,2,1,0}.
+  m.SetInputAndQuantize<int8_t>(
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1});
+  m.Invoke();
+  EXPECT_THAT(
+      m.GetOutput<uint8_t>(),
+      ElementsAreArray({128, 129, 130, 131, 132, 133, 134, 135, 136, 137,
+                        137, 136, 135, 134, 133, 132, 131, 130, 129, 128}));
+}
+
 //  Input scale 1.000000, output scale 0.500000, input zeropoint -1, output
 //  zeropoint 127
 TEST(QuantizeOpTest, Int8Uint8SmallerScale) {
@@ -186,6 +201,21 @@ TEST(QuantizeOpTest, Int8Uint8SmallerScale) {
   EXPECT_THAT(
       m.GetOutput<uint8_t>(),
       ElementsAreArray({129, 131, 133, 135, 137, 139, 141, 143, 145, 147}));
+}
+
+// Same as previous test, except more data to hit the neon path.
+TEST(QuantizeOpTest, Int8Uint8SmallerScaleNeonPath) {
+  QuantizeOpModel m({TensorType_INT8, {1, 1, 4, 5}, -127, 128},
+                    {TensorType_UINT8, {1, 1, 4, 5}, -63.5, 64});
+
+  // Input will quantized to {0,1,2,3,4,5,6,7,8,9,9,8,7,6,5,4,3,2,1,0}.
+  m.SetInputAndQuantize<int8_t>(
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1});
+  m.Invoke();
+  EXPECT_THAT(
+      m.GetOutput<uint8_t>(),
+      ElementsAreArray({129, 131, 133, 135, 137, 139, 141, 143, 145, 147,
+                        147, 145, 143, 141, 139, 137, 135, 133, 131, 129}));
 }
 
 //  Input scale 1.000000, output scale 2.000000, input zeropoint -1, output
@@ -202,6 +232,21 @@ TEST(QuantizeOpTest, Int8Uint8LargerScale) {
       ElementsAreArray({128, 128, 129, 129, 130, 130, 131, 131, 132, 132}));
 }
 
+// Same as previous test, except more data to hit the neon path.
+TEST(QuantizeOpTest, Int8Uint8LargerScaleNeonPath) {
+  QuantizeOpModel m({TensorType_INT8, {1, 1, 4, 5}, -127, 128},
+                    {TensorType_UINT8, {1, 1, 4, 5}, -254, 256});
+
+  // Input will quantized to {0,1,2,3,4,5,6,7,8,9,9,8,7,6,5,4,3,2,1,0}.
+  m.SetInputAndQuantize<int8_t>(
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1});
+  m.Invoke();
+  EXPECT_THAT(
+      m.GetOutput<uint8_t>(),
+      ElementsAreArray({128, 128, 129, 129, 130, 130, 131, 131, 132, 132,
+                        132, 132, 131, 131, 130, 130, 129, 129, 128, 128}));
+}
+
 // input scale 0.500000, output scale 0.500000, input zeropoint 127, output
 // zeropoint -1
 TEST(QuantizeOpTest, UInt8Int8SameScale128Diff) {
@@ -213,6 +258,21 @@ TEST(QuantizeOpTest, UInt8Int8SameScale128Diff) {
   m.Invoke();
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));
+}
+
+// Same as previous test, except more data to hit the neon path.
+TEST(QuantizeOpTest, UInt8Int8SameScale128DiffNeonPath) {
+  QuantizeOpModel m({TensorType_UINT8, {1, 1, 4, 5}, -127, 128},
+                    {TensorType_INT8, {1, 1, 4, 5}, -127, 128});
+
+  // Input will quantized to {128, 129, 130, 131, 132, 133, 134, 135, 136, 137,
+  // 137, 136, 135, 134, 133, 132, 131, 130, 129, 128}.
+  m.SetInputAndQuantize<uint8_t>(
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray({0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+                                9, 8, 7, 6, 5, 4, 3, 2, 1, 0}));
 }
 
 // input scale 0.500000, output scale 0.500000, input zeropoint 0, output
@@ -228,6 +288,21 @@ TEST(QuantizeOpTest, Uint8Int8SameScaleArbitraryDiff) {
               ElementsAreArray({1, 3, 5, 7, 9, 11, 13, 15, 17, 19}));
 }
 
+// Same as previous test, except more data to hit the neon path.
+TEST(QuantizeOpTest, Uint8Int8SameScaleArbitraryDiffNeonPath) {
+  QuantizeOpModel m({TensorType_UINT8, {1, 1, 4, 5}, 0, 127.5},
+                    {TensorType_INT8, {1, 1, 4, 5}, -63.5, 64});
+
+  // Input will quantized to
+  // {2,4,6,8,10,12,14,16,18,20,20,18,16,14,12,10,8,6,4,2}.
+  m.SetInputAndQuantize<uint8_t>(
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray({1,  3,  5,  7,  9,  11, 13, 15, 17, 19,
+                                19, 17, 15, 13, 11, 9,  7,  5,  3,  1}));
+}
+
 // input scale 0.500000, output scale 1.000000, input zeropoint 0, output
 // zeropoint -1
 TEST(QuantizeOpTest, Uint8Int8LargerScale) {
@@ -239,6 +314,21 @@ TEST(QuantizeOpTest, Uint8Int8LargerScale) {
   m.Invoke();
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));
+}
+
+// Same as previous test, except more data to hit the neon path.
+TEST(QuantizeOpTest, Uint8Int8LargerScaleNeonPath) {
+  QuantizeOpModel m({TensorType_UINT8, {1, 1, 4, 5}, 0, 127.5},
+                    {TensorType_INT8, {1, 1, 4, 5}, -127, 128});
+
+  // Input will quantized to
+  // {2,4,6,8,10,12,14,16,18,20,20,18,16,14,12,10,8,6,4,2}.
+  m.SetInputAndQuantize<uint8_t>(
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray({0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+                                9, 8, 7, 6, 5, 4, 3, 2, 1, 0}));
 }
 
 // input scale 1.000000, output scale 0.500000, input zeropoint 0, output
@@ -256,9 +346,3 @@ TEST(QuantizeOpTest, Uint8Int8SmallerScale) {
 
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

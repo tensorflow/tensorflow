@@ -21,7 +21,7 @@ REGISTER5(BinaryOp, CPU, "Less", functor::less, float, Eigen::half, double,
 REGISTER5(BinaryOp, CPU, "Less", functor::less, int64, uint8, int8, int16,
           bfloat16);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER7(BinaryOp, GPU, "Less", functor::less, float, Eigen::half, double,
           int64, uint8, int8, int16);
 

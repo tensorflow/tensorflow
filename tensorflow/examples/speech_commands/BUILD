@@ -1,18 +1,15 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_py_test")
+
 package(
     default_visibility = [
         "//visibility:public",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files([
     "LICENSE",
 ])
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 py_library(
     name = "models",
@@ -35,6 +32,9 @@ tf_py_test(
         ":models",
         "//tensorflow/python:client_testlib",
     ],
+    tags = [
+        "no_pip",  # b/131330719
+    ],
 )
 
 py_library(
@@ -45,7 +45,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -60,11 +59,15 @@ tf_py_test(
         ":models",
         "//tensorflow/python:client_testlib",
     ],
+    tags = [
+        "no_pip",  # b/131330719
+    ],
 )
 
 py_binary(
     name = "train",
     srcs = ["train.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [":train_main_lib"],
 )
@@ -89,14 +92,18 @@ tf_py_test(
     size = "small",
     srcs = ["train_test.py"],
     additional_deps = [
-        ":train",
+        ":train_main_lib",
         "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "no_pip",  # b/131330719
     ],
 )
 
 py_binary(
     name = "freeze",
     srcs = ["freeze.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [":freeze_main_lib"],
 )
@@ -114,6 +121,9 @@ py_library(
         "freeze.py",
     ],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",  # b/131330719
+    ],
     deps = [
         ":input_data",
         ":models",
@@ -128,14 +138,18 @@ tf_py_test(
     size = "small",
     srcs = ["freeze_test.py"],
     additional_deps = [
-        ":freeze",
+        ":freeze_main_lib",
         "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "no_pip",  # b/131330719
     ],
 )
 
 py_binary(
     name = "wav_to_features",
     srcs = ["wav_to_features.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [":wav_to_features_main_lib"],
 )
@@ -167,14 +181,18 @@ tf_py_test(
     size = "small",
     srcs = ["wav_to_features_test.py"],
     additional_deps = [
-        ":wav_to_features",
+        ":wav_to_features_main_lib",
         "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "no_pip",  # b/131330719
     ],
 )
 
 py_binary(
     name = "generate_streaming_test_wav",
     srcs = ["generate_streaming_test_wav.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [":generate_streaming_test_wav_main_lib"],
 )
@@ -206,8 +224,11 @@ tf_py_test(
     size = "small",
     srcs = ["generate_streaming_test_wav_test.py"],
     additional_deps = [
-        ":generate_streaming_test_wav",
+        ":generate_streaming_test_wav_main_lib",
         "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "no_pip",  # b/131330719
     ],
 )
 
@@ -229,6 +250,7 @@ tf_cc_binary(
 py_binary(
     name = "label_wav",
     srcs = ["label_wav.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [":label_wav_main_lib"],
 )
@@ -256,8 +278,11 @@ tf_py_test(
     size = "medium",
     srcs = ["label_wav_test.py"],
     additional_deps = [
-        ":label_wav",
+        ":label_wav_main_lib",
         "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "no_pip",  # b/131330719
     ],
 )
 
@@ -343,5 +368,19 @@ tf_cc_binary(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+py_library(
+    name = "test_lib",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":freeze",
+        ":generate_streaming_test_wav",
+        ":input_data",
+        ":label_wav",
+        ":models",
+        ":train",
+        ":wav_to_features",
     ],
 )

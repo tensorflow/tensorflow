@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <atomic>
-
 #include "tensorflow/core/framework/resource_mgr.h"
+
+#include <atomic>
 
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -32,9 +32,10 @@ namespace tensorflow {
 // Used to generate unique names for anonymous variables
 static std::atomic<int64> current_id_;
 
-ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
-                                  const string& name,
-                                  const TypeIndex& type_index) {
+ResourceHandle MakeResourceHandle(
+    OpKernelContext* ctx, const string& container, const string& name,
+    const TypeIndex& type_index,
+    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes) {
   ResourceHandle result;
   result.set_device(ctx->device()->attributes().name());
   string actual_container;
@@ -51,6 +52,7 @@ ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
   }
   result.set_hash_code(type_index.hash_code());
   result.set_maybe_type_name(type_index.name());
+  result.set_dtypes_and_shapes(dtypes_and_shapes);
   return result;
 }
 
@@ -143,7 +145,7 @@ string ResourceMgr::DebugString() const {
         line.type.c_str(), line.resource->c_str(), line.detail.c_str()));
   }
   std::sort(text.begin(), text.end());
-  return str_util::Join(text, "\n");
+  return absl::StrJoin(text, "\n");
 }
 
 Status ResourceMgr::DoCreate(const string& container, TypeIndex type,

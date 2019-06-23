@@ -1,8 +1,9 @@
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//tensorflow:internal"])
-
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 py_library(
     name = "resnet50",
@@ -37,9 +38,6 @@ cuda_py_test(
     ],
     shard_count = 4,
     tags = [
-        "noasan",  # Fix b/118130911
-        "nomsan",  # Fix b/118130911
-        "notsan",  # Fix b/118130911
         "optonly",
         "oss_serial",
     ],

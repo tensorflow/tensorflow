@@ -442,7 +442,9 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
                                           {operand_value},
                                           {operand_value->getType()}, b_);
     case HloOpcode::kRoundNearestAfz:
-      return EmitRoundNearestAfz(op->shape().element_type(), operand_value);
+      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::round,
+                                          {operand_value},
+                                          {operand_value->getType()}, b_);
     case HloOpcode::kSign: {
       auto type = operand_value->getType();
       auto zero = llvm::ConstantFP::get(type, 0.0);
@@ -1139,12 +1141,6 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(PrimitiveType prim_type,
   return Select(x_is_small, for_small_x, for_large_x);
 }
 
-StatusOr<llvm::Value*> ElementalIrEmitter::EmitRoundNearestAfz(
-    PrimitiveType /*prim_type*/, llvm::Value* value) {
-  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::round, {value},
-                                      {value->getType()}, b_);
-}
-
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitPow(PrimitiveType prim_type,
                                                    llvm::Value* lhs,
                                                    llvm::Value* rhs) {
@@ -1470,11 +1466,16 @@ StatusOr<llvm::Value*> ElementalIrEmitter::ConvertValueForDistribution(
       }
     }
     case RNG_NORMAL: {
+      // Convert uniform x in (0, 1] to normal using formula:
+      //   Normal(x, mu, sigma) = mu + sqrt(2)*sigma*ErfcInv(2x)
+      //                        = mu + sqrt(2)*sigma*ErfInv(1-2x)
       TF_ASSIGN_OR_RETURN(
           llvm::Value * r,
           EmitErfcInv(elem_prim_ty, FMul(llvm::ConstantFP::get(elem_ir_ty, 2.0),
                                          elem_value)));
-      return FAdd(FMul(r, b_or_sigma), a_or_mean);
+      return FAdd(FMul(llvm::ConstantFP::get(r->getType(), std::sqrt(2.0)),
+                       FMul(r, b_or_sigma)),
+                  a_or_mean);
     }
     default:
       return InvalidArgument(
@@ -2129,7 +2130,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   int64 lhs_dims = hlo->operand(0)->shape().dimensions_size();
   int64 rhs_dims = hlo->operand(1)->shape().dimensions_size();
 
-  llvm::Type* index_type = dot_result_index[0]->getType();
+  llvm::Type* index_type = dot_result_index.GetType();
   auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_type, c);
   };

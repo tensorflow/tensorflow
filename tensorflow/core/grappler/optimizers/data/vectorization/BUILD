@@ -1,11 +1,10 @@
-package(
-    default_visibility = ["//visibility:private"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_protos_all")
+
+package(
+    default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 VECTORIZER_DEPS = [
     ":vectorizer_registry",

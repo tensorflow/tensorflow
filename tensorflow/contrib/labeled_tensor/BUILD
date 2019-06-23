@@ -1,13 +1,14 @@
 # Description:
 #   Labels for TensorFlow.
 
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = ["//tensorflow:__subpackages__"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "labeled_tensor",
@@ -69,6 +70,7 @@ py_test(
     srcs = [
         "python/ops/core_test.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",  # TODO: needs investigation on Windows
@@ -106,6 +108,7 @@ py_test(
     srcs = [
         "python/ops/io_ops_test.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":core",
@@ -136,6 +139,7 @@ py_test(
     srcs = [
         "python/ops/nn_test.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":core",
@@ -171,6 +175,7 @@ py_test(
     srcs = [
         "python/ops/ops_test.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":core",
@@ -205,6 +210,7 @@ py_test(
     srcs = [
         "python/ops/sugar_test.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":core",

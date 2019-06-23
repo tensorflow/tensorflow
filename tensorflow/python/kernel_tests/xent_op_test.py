@@ -24,6 +24,7 @@ import sys
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -52,12 +53,29 @@ class XentTest(test.TestCase):
     l = -np.sum(labels * np.log(probs + 1.0e-20), axis=dim)
     return l, bp
 
-  def _testXent(self, np_features, np_labels, use_gpu=False):
+  # TODO(b/123860949): The values are constant folded for XLA, so placeholders
+  # are needed.
+  def _testXent(self,
+                np_features,
+                np_labels,
+                use_gpu=False,
+                with_placeholders=False):
     np_loss, np_backprop = self._npXent(np_features, np_labels)
     with self.cached_session(use_gpu=use_gpu) as sess:
-      loss, backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
-          np_features, np_labels)
-      tf_loss, tf_backprop = self.evaluate([loss, backprop])
+      if with_placeholders:
+        features_placeholder = array_ops.placeholder(np_features.dtype)
+        labels_placeholder = array_ops.placeholder(np_labels.dtype)
+        loss, backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
+            labels=labels_placeholder, features=features_placeholder)
+        tf_loss, tf_backprop = sess.run([loss, backprop],
+                                        feed_dict={
+                                            labels_placeholder: np_labels,
+                                            features_placeholder: np_features
+                                        })
+      else:
+        loss, backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
+            np_features, np_labels)
+        tf_loss, tf_backprop = self.evaluate([loss, backprop])
     self.assertAllCloseAccordingToType(np_loss, tf_loss)
     self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
 
@@ -71,9 +89,13 @@ class XentTest(test.TestCase):
     print("tf_loss:", tf_loss)
     self.assertAllCloseAccordingToType(np_loss, tf_loss)
 
-  def _testAll(self, features, labels):
-    self._testXent(features, labels, use_gpu=False)
-    self._testXent(features, labels, use_gpu=True)
+  # TODO(b/123860949): The values are constant folded for XLA, so placeholders
+  # are needed.
+  def _testAll(self, features, labels, with_placeholders=False):
+    self._testXent(
+        features, labels, use_gpu=False, with_placeholders=with_placeholders)
+    self._testXent(
+        features, labels, use_gpu=True, with_placeholders=with_placeholders)
 
   def _testSingleClass(self, use_gpu=False):
     for dtype in np.float16, np.float32:
@@ -153,6 +175,19 @@ class XentTest(test.TestCase):
         tf_loss, tf_backprop = self.evaluate([loss, backprop])
       self.assertAllCloseAccordingToType(np_loss, tf_loss)
       self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
+
+  # TODO(b/123860949): The values are constant folded for XLA, so placeholders
+  # are needed.
+  @test_util.run_deprecated_v1
+  def testFeatureBroadcast(self):
+    self._testAll(
+        np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float16),
+        np.array([[0., 0., 0., 1.]]).astype(np.float16),
+        with_placeholders=True)
+    self._testAll(
+        np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float16),
+        np.array([[0.], [2.]]).astype(np.float16),
+        with_placeholders=True)
 
   @test_util.run_deprecated_v1
   def testShapeMismatch(self):
@@ -259,7 +294,10 @@ class XentTest(test.TestCase):
       op_names = [
           op.op_def.name for op in sess.graph.get_operations() if op.op_def
       ]
-      self.assertIn("BatchMatMul", op_names)
+      if compat.forward_compatible(2019, 4, 25):
+        self.assertIn("BatchMatMulV2", op_names)
+      else:
+        self.assertIn("BatchMatMul", op_names)
 
     print("cross entropy hessian err = ", err)
     self.assertLess(err, 5e-8)

@@ -75,6 +75,8 @@ namespace xla {
   V(kConvert, "convert", 1)                                            \
   V(kConvolution, "convolution", 2)                                    \
   V(kCopy, "copy", 1)                                                  \
+  V(kCopyDone, "copy-done", 1)                                         \
+  V(kCopyStart, "copy-start", 1)                                       \
   V(kCos, "cosine", 1)                                                 \
   V(kCustomCall, "custom-call", kHloOpcodeIsVariadic)                  \
   V(kDivide, "divide", 2)                                              \
@@ -108,6 +110,7 @@ namespace xla {
   V(kOutfeed, "outfeed", 2)                                            \
   V(kPad, "pad", 2)                                                    \
   V(kParameter, "parameter", 0)                                        \
+  V(kPartitionId, "partition-id", 0)                                   \
   V(kPopulationCount, "popcnt", 1)                                     \
   V(kPower, "power", 2)                                                \
   V(kReal, "real", 1)                                                  \
@@ -121,6 +124,7 @@ namespace xla {
   V(kReshape, "reshape", 1)                                            \
   V(kReverse, "reverse", 1)                                            \
   V(kRng, "rng", kHloOpcodeIsVariadic)                                 \
+  V(kRngGetAndUpdateState, "rng-get-and-update-state", 0)              \
   V(kRoundNearestAfz, "round-nearest-afz", 1)                          \
   V(kRsqrt, "rsqrt", 1)                                                \
   V(kScatter, "scatter", 3)                                            \
