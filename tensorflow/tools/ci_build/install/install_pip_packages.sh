@@ -130,8 +130,8 @@ pip2 install --upgrade h5py==2.8.0
 pip3 install --upgrade h5py==2.8.0
 
 # Estimator
-pip2 install tf-estimator-nightly --no-deps
-pip3 install tf-estimator-nightly --no-deps
+pip2 install tf-estimator-nightly==1.14.0.dev2019061801 --no-deps
+pip3 install tf-estimator-nightly==1.14.0.dev2019061801 --no-deps
 
 # Argparse
 pip2 install --upgrade argparse
