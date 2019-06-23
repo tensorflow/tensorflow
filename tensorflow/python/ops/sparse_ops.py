@@ -104,7 +104,7 @@ def _make_int64_tensor(value, name):
 def from_dense(tensor, name=None):
   with ops.name_scope(name, "dense_to_sparse"):
     tensor = ops.convert_to_tensor(tensor)
-    indices = array_ops.where(
+    indices = array_ops.where_v2(
         math_ops.not_equal(tensor, array_ops.constant(0, tensor.dtype)))
     values = array_ops.gather_nd(tensor, indices)
     shape = array_ops.shape(tensor, out_type=dtypes.int64)
