@@ -30,7 +30,7 @@ public:
     channel_cache_->ListWorkersInJob(job_name, workers);
   }
 
-  WorkerInterface* CreateWorker(const string& target) override {
+  WorkerInterface* GetOrCreateWorker(const string& target) override {
     if (target == local_target_) {
       return local_worker_;
     } else {

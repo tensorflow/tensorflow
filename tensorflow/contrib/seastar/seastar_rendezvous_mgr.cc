@@ -200,7 +200,7 @@ void SeastarRemoteRendezvous::RecvFromRemoteAsync(
                          " is invalid remote source device.");
   }
   WorkerSession* sess = session();
-  WorkerInterface* rwi = sess->worker_cache->CreateWorker(call->src_worker_);
+  WorkerInterface* rwi = sess->worker_cache->GetOrCreateWorker(call->src_worker_);
   if (s.ok() && rwi == nullptr) {
     s = errors::Internal("No worker known as ", call->src_worker_);
   }
