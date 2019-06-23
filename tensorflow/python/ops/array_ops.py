@@ -3629,11 +3629,14 @@ def where_v2(condition, x=None, y=None, name=None):
   elements. Keep in mind, the shape of the output tensor can vary depending on
   how many true values there are in input. Indices are output in row-major
   order.
+
   If both non-None, `condition`, `x` and `y` must be broadcastable to the same
   shape.
+
   The `condition` tensor acts as a mask that chooses, based on the value at each
   element, whether the corresponding element / row in the output should be taken
   from `x` (if true) or `y` (if false).
+
   Args:
     condition: A `Tensor` of type `bool`
     x: A Tensor which is of the same type as `y`, and may be broadcastable with
@@ -3644,8 +3647,9 @@ def where_v2(condition, x=None, y=None, name=None):
 
   Returns:
     A `Tensor` with the same type as `x` and `y`, and shape that
-      is broadcasted from `condition`, `x`, and `y`, if `x`, `y` are non-None.
+      is broadcast from `condition`, `x`, and `y`, if `x`, `y` are non-None.
     A `Tensor` with shape `(num_true, dim_size(condition))`.
+
   Raises:
     ValueError: When exactly one of `x` or `y` is non-None.
   """
