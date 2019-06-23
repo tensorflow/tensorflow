@@ -918,8 +918,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "boost",
         urls = [
-            "https://github.com/mirror.bazel.build/github.com/boost/archive/boost-1.63.0.tar.gz",
-            "https://github.com/liutongxuan/boost-1-63-0/archive/master.tar.gz",
+            "http://mirror.tensorflow.org/jaist.dl.sourceforge.net/project/boost/boost/1.63.0/boost_1_63_0.tar.gz",
+            "https://jaist.dl.sourceforge.net/project/boost/boost/1.63.0/boost_1_63_0.tar.gz",
         ],
         sha256 = "1404aa387f0a0f86d4dd3cf635b6a8ddda0074833dcda794331c0d2976ec0ca2",
         strip_prefix = 'boost-1-63-0-master',
