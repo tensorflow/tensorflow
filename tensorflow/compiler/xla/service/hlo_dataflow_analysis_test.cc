@@ -1170,6 +1170,37 @@ TEST_P(HloDataflowAnalysisTest, TupleCopy) {
       analysis.GetValueDefinedAt(copy, /*index=*/{}).live_out_of_module());
 }
 
+TEST_P(HloDataflowAnalysisTest, CopyStartAndCopyDone) {
+  // Test that a CopyDone forwards its operand tuple element at {0} to the
+  // output.
+  auto builder = HloComputation::Builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  auto copy_start = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeTupleShape(
+          {constant->shape(), ShapeUtil::MakeShape(U32, {})}),
+      HloOpcode::kCopyStart, constant));
+  auto copy_done = builder.AddInstruction(HloInstruction::CreateUnary(
+      constant->shape(), HloOpcode::kCopyDone, copy_start));
+  module_->AddEntryComputation(builder.Build());
+  SCOPED_TRACE(module_->ToString());
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+
+  EXPECT_EQ(analysis.values().size(), 4);
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(copy_start, /*index=*/{}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(copy_start, /*index=*/{0}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(copy_start, /*index=*/{1}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(copy_done, /*index=*/{}));
+  EXPECT_THAT(
+      HloValuesAt(copy_done, /*index=*/{}),
+      UnorderedElementsAre(analysis.GetValueDefinedAt(copy_start, {0})));
+  EXPECT_TRUE(analysis.GetValueDefinedAt(copy_start, /*index=*/{0})
+                  .live_out_of_module());
+}
+
 TEST_P(HloDataflowAnalysisTest, SendAndSendDone) {
   // Test that a Send forwards its operand to the output tuple at {0}.
   auto builder = HloComputation::Builder(TestName());

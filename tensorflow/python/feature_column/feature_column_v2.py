@@ -2711,7 +2711,7 @@ def _to_sparse_input_and_drop_ignore_values(input_tensor, ignore_value=None):
         ignore_value = input_tensor.dtype.as_numpy_dtype()
     ignore_value = math_ops.cast(
         ignore_value, input_tensor.dtype, name='ignore_value')
-    indices = array_ops.where(
+    indices = array_ops.where_v2(
         math_ops.not_equal(input_tensor, ignore_value), name='indices')
     return sparse_tensor_lib.SparseTensor(
         indices=indices,
@@ -3099,7 +3099,9 @@ class EmbeddingColumn(
 
   def create_state(self, state_manager):
     """Creates the embedding lookup variable."""
-    embedding_shape = (self.categorical_column._num_buckets, self.dimension)  # pylint: disable=protected-access
+    num_buckets = getattr(self.categorical_column, 'num_buckets',
+                          self.categorical_column._num_buckets)  # pylint: disable=protected-access
+    embedding_shape = (num_buckets, self.dimension)
     state_manager.create_variable(
         self,
         name='embedding_weights',
@@ -3854,7 +3856,7 @@ class IdentityCategoricalColumn(
         values = array_ops.identity(values)
     else:
       # Assign default for out-of-range values.
-      values = array_ops.where(
+      values = array_ops.where_v2(
           math_ops.logical_or(
               values < zero, values >= num_buckets, name='out_of_range'),
           array_ops.fill(

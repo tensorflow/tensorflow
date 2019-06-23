@@ -350,6 +350,20 @@ bool HloDataflowAnalysis::UpdateSendValueSet(HloInstruction* send) {
   return changed;
 }
 
+bool HloDataflowAnalysis::UpdateCopyDoneValueSet(HloInstruction* copy_done) {
+  CHECK_EQ(copy_done->opcode(), HloOpcode::kCopyDone);
+  bool changed = false;
+  // CopyDone forwards the operand value at {0} to element {} of its output.
+  const HloValueSet& operand_value_set =
+      GetValueSet(copy_done->operand(0), {0});
+  HloValueSet& value_set = GetValueSet(copy_done);
+  if (value_set != operand_value_set) {
+    value_set = operand_value_set;
+    changed = true;
+  }
+  return changed;
+}
+
 bool HloDataflowAnalysis::UpdateRecvDoneValueSet(HloInstruction* recv_done) {
   CHECK_EQ(recv_done->opcode(), HloOpcode::kRecvDone);
   bool changed = false;
@@ -636,6 +650,8 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateSendValueSet(instruction);
     case HloOpcode::kRecvDone:
       return UpdateRecvDoneValueSet(instruction);
+    case HloOpcode::kCopyDone:
+      return UpdateCopyDoneValueSet(instruction);
     case HloOpcode::kConditional:
       return UpdateConditionalValueSet(instruction);
     default:
@@ -821,6 +837,10 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           // These instructions only define their top-level values. Any other
           // values flow from their operands.
           define_top_level_only();
+          break;
+        case HloOpcode::kCopyDone:
+          // CopyDone produces an element. Its output aliases its input tuple
+          // element {0}; element one is a context.
           break;
         case HloOpcode::kRecvDone:
           // RecvDone produces a two-element tuple. Element zero aliases its

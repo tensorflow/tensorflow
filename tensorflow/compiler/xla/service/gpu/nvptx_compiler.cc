@@ -51,7 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
-#include "tensorflow/compiler/xla/service/gpu/gemm_lowering.h"
+#include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -75,6 +75,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
 #include "tensorflow/compiler/xla/service/hlo_get_dimension_size_rewriter.h"
@@ -238,8 +239,9 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     pipeline.AddPass<TransposeFolding>(
         [](const HloInstruction& dot,
            const TransposeFolding::OperandIndices& candidate_operands) {
-          return ImplementedAsGemm(dot) ? candidate_operands
-                                        : TransposeFolding::OperandIndices{};
+          return IsMatrixMultiplication(dot)
+                     ? candidate_operands
+                     : TransposeFolding::OperandIndices{};
         },
         TransposeFolding::NeverFoldTranspose);
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
@@ -255,6 +257,12 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // annotations added by this pass may not be correct after the
     // modifications.
     pipeline.AddPass<WhileLoopTripCountAnnotator>();
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
+  {
+    HloPassPipeline pipeline("gemm_canonicalization");
+    pipeline.AddPass<GemmRewriter>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
@@ -337,6 +345,9 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // wouldn't be able to simplify away the new_tuple bits.
     pipeline.AddPass<CudnnConvAlgorithmPicker>(stream_exec, device_allocator);
 
+    // Find the fastest algorithm for GEMMs.
+    pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
+
     // Clean up new_tuple described above.
     pipeline.AddPass<TupleSimplifier>();
 
@@ -381,17 +392,6 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       // fuse the new ReducePrecision operations.
       TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
     }
-  }
-
-  {
-    HloPassPipeline pipeline("post-fusion");
-
-    // Determine the fusion configuration for GEMMs.
-    pipeline.AddPass<GemmLowering>();
-
-    // Find the fastest algorithm for GEMMs.
-    pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
   return Status::OK();
@@ -489,6 +489,18 @@ StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
   return std::move(module);
 }
 
+static absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
+                                               const HloInstruction* operand,
+                                               const ShapeIndex&) {
+  // Share the bias buffer with the parent instruction.
+  if (IsCublasGemm(*user)) {
+    if (user->operand_count() == 3 && user->operand(2) == operand) {
+      return true;
+    }
+  }
+  return absl::nullopt;
+}
+
 StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
@@ -529,7 +541,9 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
           BufferSizeBytesFunction(),
           /*color_alignment=*/
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
-          /*allocate_buffers_for_constants=*/true));
+          /*allocate_buffers_for_constants=*/true,
+          /*colorer=*/BufferAssigner::DefaultColorer(),
+          /*must_not_live_out=*/{}, &CanShareBufferHint));
   DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
 
   IrEmitterContext ir_emitter_context(
