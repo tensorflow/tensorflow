@@ -4313,6 +4313,12 @@ def binary_crossentropy(target, output, from_logits=False):
   if not from_logits:
     if (isinstance(output, (ops.EagerTensor, variables_module.Variable)) or
         output.op.type != 'Sigmoid'):
+      try:
+        target.get_shape().merge_with(output.get_shape())
+      except ValueError:
+        raise ValueError(
+            "target and output must have the same shape (%s vs %s)" %
+            (target.get_shape(), output.get_shape()))
       epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
       output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
 
