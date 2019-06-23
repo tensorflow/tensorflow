@@ -154,8 +154,9 @@ TEST_P(ParameterizedSparseTensorSliceDatasetOpTest, GetNext) {
   std::vector<SparseTensorParam> expected_outputs = test_case.expected_outputs;
   DataType tvalues = input_sparse_tensor.values.dtype();
   gtl::InlinedVector<TensorValue, 4> inputs = {
-      &input_sparse_tensor.indices, &input_sparse_tensor.values,
-      &input_sparse_tensor.dense_shape};
+      TensorValue(&input_sparse_tensor.indices),
+      TensorValue(&input_sparse_tensor.values),
+      TensorValue(&input_sparse_tensor.dense_shape)};
 
   std::unique_ptr<OpKernel> dataset_kernel;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
@@ -199,8 +200,9 @@ TEST_F(SparseTensorSliceDatasetOpTest, DatasetNodeName) {
   std::vector<SparseTensorParam> expected_outputs = test_case.expected_outputs;
   DataType tvalues = input_sparse_tensor.values.dtype();
   gtl::InlinedVector<TensorValue, 4> inputs = {
-      &input_sparse_tensor.indices, &input_sparse_tensor.values,
-      &input_sparse_tensor.dense_shape};
+      TensorValue(&input_sparse_tensor.indices),
+      TensorValue(&input_sparse_tensor.values),
+      TensorValue(&input_sparse_tensor.dense_shape)};
 
   std::unique_ptr<OpKernel> dataset_kernel;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
@@ -225,8 +227,9 @@ TEST_F(SparseTensorSliceDatasetOpTest, DatasetTypeString) {
   std::vector<SparseTensorParam> expected_outputs = test_case.expected_outputs;
   DataType tvalues = input_sparse_tensor.values.dtype();
   gtl::InlinedVector<TensorValue, 4> inputs = {
-      &input_sparse_tensor.indices, &input_sparse_tensor.values,
-      &input_sparse_tensor.dense_shape};
+      TensorValue(&input_sparse_tensor.indices),
+      TensorValue(&input_sparse_tensor.values),
+      TensorValue(&input_sparse_tensor.dense_shape)};
 
   std::unique_ptr<OpKernel> dataset_kernel;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
@@ -251,8 +254,9 @@ TEST_P(ParameterizedSparseTensorSliceDatasetOpTest, DatasetOutputDtypes) {
   std::vector<SparseTensorParam> expected_outputs = test_case.expected_outputs;
   DataType tvalues = input_sparse_tensor.values.dtype();
   gtl::InlinedVector<TensorValue, 4> inputs = {
-      &input_sparse_tensor.indices, &input_sparse_tensor.values,
-      &input_sparse_tensor.dense_shape};
+      TensorValue(&input_sparse_tensor.indices),
+      TensorValue(&input_sparse_tensor.values),
+      TensorValue(&input_sparse_tensor.dense_shape)};
 
   std::unique_ptr<OpKernel> dataset_kernel;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
@@ -281,8 +285,9 @@ TEST_P(ParameterizedSparseTensorSliceDatasetOpTest, DatasetOutputShapes) {
   std::vector<SparseTensorParam> expected_outputs = test_case.expected_outputs;
   DataType tvalues = input_sparse_tensor.values.dtype();
   gtl::InlinedVector<TensorValue, 4> inputs = {
-      &input_sparse_tensor.indices, &input_sparse_tensor.values,
-      &input_sparse_tensor.dense_shape};
+      TensorValue(&input_sparse_tensor.indices),
+      TensorValue(&input_sparse_tensor.values),
+      TensorValue(&input_sparse_tensor.dense_shape)};
 
   std::unique_ptr<OpKernel> dataset_kernel;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
@@ -311,8 +316,9 @@ TEST_P(ParameterizedSparseTensorSliceDatasetOpTest, Cardinality) {
   std::vector<SparseTensorParam> expected_outputs = test_case.expected_outputs;
   DataType tvalues = input_sparse_tensor.values.dtype();
   gtl::InlinedVector<TensorValue, 4> inputs = {
-      &input_sparse_tensor.indices, &input_sparse_tensor.values,
-      &input_sparse_tensor.dense_shape};
+      TensorValue(&input_sparse_tensor.indices),
+      TensorValue(&input_sparse_tensor.values),
+      TensorValue(&input_sparse_tensor.dense_shape)};
 
   std::unique_ptr<OpKernel> dataset_kernel;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
@@ -337,8 +343,9 @@ TEST_F(SparseTensorSliceDatasetOpTest, DatasetSave) {
   std::vector<SparseTensorParam> expected_outputs = test_case.expected_outputs;
   DataType tvalues = input_sparse_tensor.values.dtype();
   gtl::InlinedVector<TensorValue, 4> inputs = {
-      &input_sparse_tensor.indices, &input_sparse_tensor.values,
-      &input_sparse_tensor.dense_shape};
+      TensorValue(&input_sparse_tensor.indices),
+      TensorValue(&input_sparse_tensor.values),
+      TensorValue(&input_sparse_tensor.dense_shape)};
 
   std::unique_ptr<OpKernel> dataset_kernel;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
@@ -368,8 +375,9 @@ TEST_P(ParameterizedSparseTensorSliceDatasetOpTest, IteratorOutputDtypes) {
   std::vector<SparseTensorParam> expected_outputs = test_case.expected_outputs;
   DataType tvalues = input_sparse_tensor.values.dtype();
   gtl::InlinedVector<TensorValue, 4> inputs = {
-      &input_sparse_tensor.indices, &input_sparse_tensor.values,
-      &input_sparse_tensor.dense_shape};
+      TensorValue(&input_sparse_tensor.indices),
+      TensorValue(&input_sparse_tensor.values),
+      TensorValue(&input_sparse_tensor.dense_shape)};
 
   std::unique_ptr<OpKernel> dataset_kernel;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
@@ -403,8 +411,9 @@ TEST_P(ParameterizedSparseTensorSliceDatasetOpTest, IteratorOutputShapes) {
   std::vector<SparseTensorParam> expected_outputs = test_case.expected_outputs;
   DataType tvalues = input_sparse_tensor.values.dtype();
   gtl::InlinedVector<TensorValue, 4> inputs = {
-      &input_sparse_tensor.indices, &input_sparse_tensor.values,
-      &input_sparse_tensor.dense_shape};
+      TensorValue(&input_sparse_tensor.indices),
+      TensorValue(&input_sparse_tensor.values),
+      TensorValue(&input_sparse_tensor.dense_shape)};
 
   std::unique_ptr<OpKernel> dataset_kernel;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
@@ -438,8 +447,9 @@ TEST_F(SparseTensorSliceDatasetOpTest, IteratorOutputPrefix) {
   std::vector<SparseTensorParam> expected_outputs = test_case.expected_outputs;
   DataType tvalues = input_sparse_tensor.values.dtype();
   gtl::InlinedVector<TensorValue, 4> inputs = {
-      &input_sparse_tensor.indices, &input_sparse_tensor.values,
-      &input_sparse_tensor.dense_shape};
+      TensorValue(&input_sparse_tensor.indices),
+      TensorValue(&input_sparse_tensor.values),
+      TensorValue(&input_sparse_tensor.dense_shape)};
 
   std::unique_ptr<OpKernel> dataset_kernel;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
@@ -470,8 +480,9 @@ TEST_P(ParameterizedSparseTensorSliceDatasetOpTest, Roundtrip) {
   std::vector<int> breakpoints = test_case.breakpoints;
   DataType tvalues = input_sparse_tensor.values.dtype();
   gtl::InlinedVector<TensorValue, 4> inputs = {
-      &input_sparse_tensor.indices, &input_sparse_tensor.values,
-      &input_sparse_tensor.dense_shape};
+      TensorValue(&input_sparse_tensor.indices),
+      TensorValue(&input_sparse_tensor.values),
+      TensorValue(&input_sparse_tensor.dense_shape)};
 
   std::unique_ptr<OpKernel> dataset_kernel;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetKernel(tvalues, &dataset_kernel));
@@ -524,7 +535,8 @@ TEST_P(ParameterizedSparseTensorSliceDatasetOpTest, Roundtrip) {
     TF_ASSERT_OK(iterator->Save(serialization_ctx.get(), &writer));
     TF_ASSERT_OK(writer.Flush());
     VariantTensorDataReader reader(&data);
-    TF_ASSERT_OK(iterator->Restore(iterator_ctx.get(), &reader));
+    TF_EXPECT_OK(RestoreIterator(iterator_ctx.get(), &reader, "Iterator",
+                                 *dataset, &iterator));
   }
 }
 

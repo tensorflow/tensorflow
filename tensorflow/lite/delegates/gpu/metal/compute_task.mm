@@ -81,6 +81,10 @@ using ::tflite::gpu::ValueId;
 #endif
   NSString* storageType;
   NSString* accumulatorType;
+  NSString* toAccumulatorType = @"";
+  NSString* toAccumulatorType2 = @"";
+  NSString* toAccumulatorType3 = @"";
+  NSString* toAccumulatorType4 = @"";
   if (options.storage_precision == RuntimeOptions::Precision::FP32) {
     storageType = @"float";
     accumulatorType = @"float";
@@ -89,6 +93,10 @@ using ::tflite::gpu::ValueId;
     storageType = @"half";
     if (options.accumulator_precision == RuntimeOptions::Precision::FP32) {
       accumulatorType = @"float";
+      toAccumulatorType = @"float";
+      toAccumulatorType2 = @"float2";
+      toAccumulatorType3 = @"float3";
+      toAccumulatorType4 = @"float4";
     } else {
       accumulatorType = @"half";
     }
@@ -102,6 +110,10 @@ using ::tflite::gpu::ValueId;
     @"ACCUM_FLT2" : [NSString stringWithFormat:@"%@2", accumulatorType],
     @"ACCUM_FLT3" : [NSString stringWithFormat:@"%@3", accumulatorType],
     @"ACCUM_FLT4" : [NSString stringWithFormat:@"%@4", accumulatorType],
+    @"TO_ACCUM_TYPE" : toAccumulatorType,
+    @"TO_ACCUM2_TYPE" : toAccumulatorType2,
+    @"TO_ACCUM3_TYPE" : toAccumulatorType3,
+    @"TO_ACCUM4_TYPE" : toAccumulatorType4,
     @"BARRIER" : barrier,
   };
 

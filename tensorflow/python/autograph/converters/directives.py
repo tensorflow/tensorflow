@@ -31,6 +31,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
+
 import gast
 
 from tensorflow.python.autograph.core import converter
@@ -92,7 +94,7 @@ class DirectivesTransformer(converter.Base):
     return call_node
 
   def _process_statement_directive(self, call_node, directive):
-    if self.local_scope_level < 1:
+    if self.local_scope_level < 2:
       raise ValueError(
           '"%s" must be used inside a statement' % directive.__name__)
     target = self.get_local(ENCLOSING_LOOP)
@@ -113,8 +115,9 @@ class DirectivesTransformer(converter.Base):
   def visit_Attribute(self, node):
     node = self.generic_visit(node)
     parent_val = anno.getanno(node.value, STATIC_VALUE, default=None)
-    if parent_val is not None and hasattr(parent_val, node.attr):
-      anno.setanno(node, STATIC_VALUE, getattr(parent_val, node.attr))
+    if parent_val is not None and inspect.ismodule(parent_val):
+      if hasattr(parent_val, node.attr):
+        anno.setanno(node, STATIC_VALUE, getattr(parent_val, node.attr))
     return node
 
   def visit_Expr(self, node):

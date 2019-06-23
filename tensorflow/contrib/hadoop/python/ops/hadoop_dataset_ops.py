@@ -44,7 +44,7 @@ class SequenceFileDataset(dataset_ops.DatasetSource):
     For example:
 
     ```python
-    tf.enable_eager_execution()
+    tf.compat.v1.enable_eager_execution()
 
     dataset = tf.contrib.hadoop.SequenceFileDataset("/foo/bar.seq")
     # Prints the (key, value) pairs inside a hadoop sequence file.
@@ -58,11 +58,11 @@ class SequenceFileDataset(dataset_ops.DatasetSource):
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
     variant_tensor = gen_dataset_ops.sequence_file_dataset(
-        self._filenames, self._element_structure._flat_types)  # pylint: disable=protected-access
+        self._filenames,
+        structure.get_flat_tensor_types(self._element_structure))
     super(SequenceFileDataset, self).__init__(variant_tensor)
 
   @property
   def _element_structure(self):
-    return structure.NestedStructure(
-        (structure.TensorStructure(dtypes.string, []),
-         structure.TensorStructure(dtypes.string, [])))
+    return (structure.TensorStructure(dtypes.string, []),
+            structure.TensorStructure(dtypes.string, []))

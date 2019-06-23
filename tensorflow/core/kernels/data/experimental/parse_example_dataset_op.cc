@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
-#include "tensorflow/core/kernels/data/parallel_map_iterator.h"
+#include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
 
@@ -72,12 +72,13 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 num_parallel_calls;
+    int64 num_parallel_calls = 0;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                             &num_parallel_calls));
-    OP_REQUIRES(ctx, num_parallel_calls > 0,
-                errors::InvalidArgument(
-                    "num_parallel_calls must be greater than zero."));
+    OP_REQUIRES(
+        ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutoTune,
+        errors::InvalidArgument(
+            "num_parallel_calls must be greater than zero."));
 
     OpInputList dense_default_tensors;
     OP_REQUIRES_OK(ctx,
@@ -267,7 +268,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                    StatusCallback callback) override {
         (*ctx->runner())([this, ctx, prefix, input, output, callback]() {
           thread::ThreadPool* device_threadpool =
-              ctx->lib()->device()->tensorflow_cpu_worker_threads()->workers;
+              ctx->flr()->device()->tensorflow_cpu_worker_threads()->workers;
           std::vector<string> slice_vec;
           for (const Tensor& t : input) {
             auto serialized_t = t.flat<string>();

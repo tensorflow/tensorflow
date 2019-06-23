@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdarg>
+#include <random>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -56,6 +58,21 @@ class BaseActivationsOpModel : public SingleOpModel {
     BuildInterpreter({GetShape(input_)});
   }
 
+  // A dedicated constructor for LeakyRelu, which does some options.
+  BaseActivationsOpModel(TensorData input, float alpha) {
+    input_ = AddInput(input);
+    if (input.type == TensorType_UINT8) {
+      output_ = AddOutput({input.type, {}, input.min, input.max});
+    } else if (input.type == TensorType_INT8) {
+      output_ = AddOutput({TensorType_INT8, {}, input.min, input.max});
+    } else {
+      output_ = AddOutput({input.type, {}});
+    }
+    SetBuiltinOp(BuiltinOperator_LEAKY_RELU, BuiltinOptions_LeakyReluOptions,
+                 CreateLeakyReluOptions(builder_, alpha).Union());
+    BuildInterpreter({GetShape(input_)});
+  }
+
   BaseActivationsOpModel(BuiltinOperator type, const TensorData& input,
                          const TensorData& output) {
     input_ = AddInput(input);
@@ -73,7 +90,7 @@ class FloatActivationsOpModel : public BaseActivationsOpModel {
  public:
   using BaseActivationsOpModel::BaseActivationsOpModel;
 
-  void SetInput(std::initializer_list<float> data) {
+  void SetInput(const std::vector<float>& data) {
     PopulateTensor(input_, data);
   }
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
@@ -103,7 +120,7 @@ class QuantizedActivationsOpModel : public BaseActivationsOpModel {
   using BaseActivationsOpModel::BaseActivationsOpModel;
 
   template <typename T>
-  void SetInput(std::initializer_list<float> data) {
+  void SetInput(const std::vector<float>& data) {
     QuantizeAndPopulate<T>(input_, data);
   }
   template <typename T>
@@ -111,6 +128,7 @@ class QuantizedActivationsOpModel : public BaseActivationsOpModel {
   std::vector<T> GetOutput() {
     return ExtractVector<T>(output_);
   }
+
   template <typename T>
   std::vector<float> GetDequantizedOutput() {
     return Dequantize<T>(ExtractVector<T>(output_), GetScale(output_),
@@ -174,6 +192,101 @@ TEST(FloatActivationsOpTest, Relu6) {
                              }));
 }
 
+void GenerateUniformRandomVector(int size, float min, float max,
+                                 std::minstd_rand* random_engine,
+                                 std::vector<float>* result) {
+  // Never use std::uniform_*_distribution in tests, it's
+  // implementation-defined. Likewise, don't use std::default_random_engine,
+  // implementation-defined. Implementation-defined is bad because it means that
+  // any toolchain update or new platform may run into test failures.
+  // std::minstd_rand is a standard instantiation of
+  // std::linear_congruential_engine, the cheapest generator in c++11 stdlib,
+  // it's good enough here.
+  result->resize(size);
+  for (int i = 0; i < size; i++) {
+    // We don't care whether the `max` value may ever be produced exactly.
+    // It may actually be thanks to rounding, as std::minstd_rand::modulus
+    // is 2^31 - 1 is greater than the inverse float epsilon.
+    float random_value_scaled_0_1 =
+        (*random_engine)() *
+        (1.0f / static_cast<float>(std::minstd_rand::modulus));
+    (*result)[i] = min + (max - min) * random_value_scaled_0_1;
+  }
+}
+
+void EvalTestReferenceHardSwish(int size, const std::vector<float>& input,
+                                std::vector<float>* result) {
+  result->resize(size);
+  for (int i = 0; i < size; i++) {
+    const float in = input[i];
+    (*result)[i] = in * std::min(6.0f, std::max(0.0f, in + 3)) * (1.0f / 6.0f);
+  }
+}
+
+void TestFloatHardSwish(int size, std::minstd_rand* random_engine) {
+  std::vector<float> float_input_values;
+  const float kMin = -10.0f;
+  const float kMax = 10.0f;
+  GenerateUniformRandomVector(size, kMin, kMax, random_engine,
+                              &float_input_values);
+  std::vector<float> float_ref_output_values;
+  EvalTestReferenceHardSwish(size, float_input_values,
+                             &float_ref_output_values);
+  FloatActivationsOpModel m(BuiltinOperator_HARD_SWISH,
+                            /*input=*/{TensorType_FLOAT32, {1, 1, 1, size}},
+                            /*output=*/{TensorType_FLOAT32, {1, 1, 1, size}});
+  m.SetInput(float_input_values);
+
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(float_ref_output_values)));
+}
+
+template <typename QuantizedType>
+void TestQuantizedHardSwish(TensorType tensor_type, int size,
+                            std::minstd_rand* random_engine) {
+  std::vector<float> float_input_values;
+  const float kMin = -10.0f;
+  const float kMax = 10.0f;
+  GenerateUniformRandomVector(size, kMin, kMax, random_engine,
+                              &float_input_values);
+  const float kOutMin = -3;
+  const float kOutMax = kMax;
+  std::vector<float> float_ref_output_values;
+  EvalTestReferenceHardSwish(size, float_input_values,
+                             &float_ref_output_values);
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_HARD_SWISH,
+      /*input=*/{tensor_type, {1, 1, 1, size}, kMin, kMax},
+      /*output=*/{tensor_type, {1, 1, 1, size}, kOutMin, kOutMax});
+  m.SetInput<QuantizedType>(float_input_values);
+
+  m.Invoke();
+  // The numerical error for any 8bit quantized function is at least one half
+  // times the quantization step: 0.5 * (kOutMax - kOutMin) / 256.
+  // To that we add again the quantization step (kOutMax - kOutMin) / 256
+  // to allow for an off-by-one rounding error.
+  const float kTolerance = (kOutMax - kOutMin) * (1.5f / 256.f);
+  EXPECT_THAT(
+      m.GetDequantizedOutput<QuantizedType>(),
+      ElementsAreArray(ArrayFloatNear(float_ref_output_values, kTolerance)));
+}
+
+TEST(FloatActivationsOpTest, HardSwish) {
+  std::minstd_rand random_engine;
+  for (int size : {1, 2, 3, 4, 10, 20, 30, 40, 100}) {
+    TestFloatHardSwish(size, &random_engine);
+  }
+}
+
+TEST(QuantizedActivationsOpTest, HardSwish) {
+  std::minstd_rand random_engine;
+  for (int size : {1, 2, 3, 4, 10, 20, 30, 40, 100}) {
+    TestQuantizedHardSwish<uint8_t>(TensorType_UINT8, size, &random_engine);
+    TestQuantizedHardSwish<int8_t>(TensorType_INT8, size, &random_engine);
+  }
+}
+
 TEST(FloatActivationsOpTest, Tanh) {
   FloatActivationsOpModel m(BuiltinOperator_TANH,
                             /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}});
@@ -209,6 +322,80 @@ TEST(QuantizedActivationsOpTest, Relu6Uint8) {
                   kQuantizedTolerance)));
   EXPECT_THAT(m.GetOutput<uint8_t>(),
               ElementsAreArray({128, 128, 160, 192, 176, 128, 224, 144}));
+}
+
+TEST(QuantizedActivationsOpTest, LeakyReluUint8) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedActivationsOpModel m(
+      /*input=*/{TensorType_UINT8, {2, 3}, 8 * kMin, 8 * kMax}, 0.5);
+
+  m.SetInput<uint8_t>({
+      0.0f, 1.0f, 3.0f,    // Row 1
+      1.0f, -1.0f, -2.0f,  // Row 2
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0f, 1.0f, 3.0f,    // Row 1
+                      1.0f, -0.5f, -1.0f,  // Row 2
+                  },
+                  kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({
+                                          128,
+                                          144,
+                                          176,
+                                          144,
+                                          120,
+                                          112,
+                                      }));
+}
+
+TEST(QuantizedActivationsOpTest, Relu1Int8) {
+  const float kMin = -1;
+  const float kMax = 1;
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_RELU_N1_TO_1,
+      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 2 * kMin, kMax},
+      /*output=*/{TensorType_INT8, {1, 2, 4, 1}, 2 * kMin, kMax});
+
+  m.SetInput<int8_t>({
+      0.0, -0.6, 0.2, -0.4,  //
+      0.3, -2.0, 1.1, -0.1,  //
+  });
+  m.Invoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0, -0.6, 0.2, -0.4,  //
+                      0.3, -1.0, 1.0, -0.1,  //
+                  },
+                  kQuantizedTolerance)));
+}
+
+TEST(QuantizedActivationsOpTest, Relu1UInt8) {
+  const float kMin = -1;
+  const float kMax = 1;
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_RELU_N1_TO_1,
+      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, 2 * kMin, kMax},
+      /*output=*/{TensorType_UINT8, {1, 2, 4, 1}, 2 * kMin, kMax});
+
+  m.SetInput<uint8_t>({
+      0.0, -0.6, 0.2, -0.4,  //
+      0.3, -2.0, 1.1, -0.1,  //
+  });
+  m.Invoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0, -0.6, 0.2, -0.4,  //
+                      0.3, -1.0, 1.0, -0.1,  //
+                  },
+                  kQuantizedTolerance)));
 }
 
 TEST(QuantizedActivationsOpTest, Relu6Int8) {
@@ -317,21 +504,33 @@ TEST(FloatActivationsOpTest, Sigmoid) {
 TEST(QuantizedActivationsOpTest, SigmoidUint8) {
   QuantizedActivationsOpModel m(
       BuiltinOperator_LOGISTIC,
-      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, -10, 10});
+      /*input=*/{TensorType_UINT8, {1, 6, 4, 1}, -10, 10});
   m.SetInput<uint8_t>({
-      0, -6, 2, 4,   //
+      0, -6, 2,  4,  //
+      3, -2, 10, 1,  //
+      0, -6, 2,  4,  //
+      3, -2, 10, 1,  //
+      0, -6, 2,  4,  //
       3, -2, 10, 1,  //
   });
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
-                      0.5, 0.002473, 0.880797, 0.982014,       //
+                      0.5,      0.002473, 0.880797, 0.982014,  //
+                      0.952574, 0.119203, 0.999955, 0.731059,  //
+                      0.5,      0.002473, 0.880797, 0.982014,  //
+                      0.952574, 0.119203, 0.999955, 0.731059,  //
+                      0.5,      0.002473, 0.880797, 0.982014,  //
                       0.952574, 0.119203, 0.999955, 0.731059,  //
                   },
                   kQuantizedTolerance)));
   EXPECT_THAT(m.GetOutput<uint8_t>(),
-              ElementsAreArray({128, 1, 227, 251, 244, 32, 255, 188}));
+              ElementsAreArray({
+                  128, 1, 227, 251, 244, 32, 255, 188,  //
+                  128, 1, 227, 251, 244, 32, 255, 188,  //
+                  128, 1, 227, 251, 244, 32, 255, 188,  //
+              }));
 }
 
 TEST(QuantizedActivationsOpTest, SigmoidInt8) {
@@ -970,12 +1169,5 @@ TEST(FloatActivationsOpTest, LeakyRelu) {
                                  1.0f, -0.5f, -1.0f,  // Row 2
                              }));
 }
-
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

@@ -109,7 +109,7 @@ $(HOST_NSYNC_LIB) \
 
 # If we're on Linux, also link in the dl library.
 ifeq ($(HOST_OS),LINUX)
-	HOST_LIBS += -ldl -lpthread
+	HOST_LIBS += -ldl -lpthread -lrt
 endif
 
 # If we're on a Pi, link in pthreads and dl
@@ -259,7 +259,7 @@ endif
 endif
 # If we're on Linux, also link in the dl library.
 ifeq ($(TARGET),LINUX)
-	LIBS += -ldl -lpthread
+	LIBS += -ldl -lpthread -lrt
 endif
 # If we're cross-compiling for the Raspberry Pi, use the right gcc.
 ifeq ($(TARGET),PI)
@@ -636,7 +636,10 @@ CORE_CC_ALL_SRCS := \
 $(ABSL_CC_SRCS) \
 tensorflow/c/c_api.cc \
 tensorflow/c/kernels.cc \
+tensorflow/c/tf_datatype.cc \
+tensorflow/c/tf_status.cc \
 tensorflow/c/tf_status_helper.cc \
+tensorflow/c/tf_tensor.cc \
 $(wildcard tensorflow/core/*.cc) \
 $(wildcard tensorflow/core/common_runtime/*.cc) \
 $(wildcard tensorflow/core/framework/*.cc) \
@@ -650,6 +653,10 @@ $(wildcard tensorflow/core/platform/*/*/*.cc) \
 $(wildcard tensorflow/core/util/*.cc) \
 $(wildcard tensorflow/core/util/*/*.cc) \
 $(wildcard tensorflow/contrib/makefile/downloads/double_conversion/double-conversion/*.cc) \
+tensorflow/core/profiler/internal/profiler_interface.cc \
+tensorflow/core/profiler/internal/traceme_recorder.cc \
+tensorflow/core/profiler/lib/profiler_session.cc \
+tensorflow/core/profiler/lib/traceme.cc \
 tensorflow/core/util/version_info.cc
 # Remove duplicates (for version_info.cc)
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
@@ -685,7 +692,7 @@ $(wildcard tensorflow/core/platform/windows/*) \
 $(wildcard tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.*) \
 $(wildcard tensorflow/core/grappler/inputs/file_input_yielder.*) \
 $(wildcard tensorflow/core/grappler/clusters/single_machine.*) \
-tensorflow/core/util/cuda_kernel_helper_test.cu.cc
+tensorflow/core/util/gpu_kernel_helper_test.cu.cc
 
 CORE_CC_EXCLUDE_SRCS := \
 $(CORE_CC_EXCLUDE_SRCS_NON_GPU) \

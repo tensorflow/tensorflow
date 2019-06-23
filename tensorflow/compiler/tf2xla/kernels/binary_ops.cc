@@ -16,6 +16,8 @@ limitations under the License.
 // Native XLA implementations of simple binary Ops
 
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
+#include "tensorflow/compiler/tf2xla/lib/broadcast.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -54,6 +56,7 @@ namespace {
   REGISTER_XLA_OP(Name(#NAME), NAME##Op)
 
 XLA_MAKE_BINARY(Add, xla::Add(lhs, rhs, extend_dimensions));
+XLA_MAKE_BINARY(AddV2, xla::Add(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Sub, xla::Sub(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Mul, xla::Mul(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Div, xla::Div(lhs, rhs, extend_dimensions));
@@ -234,8 +237,6 @@ XLA_MAKE_BINARY(TanhGrad,
                                        xla::Mul(lhs, lhs))));
 
 XLA_MAKE_BINARY(Pow, xla::Pow(lhs, rhs, extend_dimensions));
-
-XLA_MAKE_BINARY(NextAfter, xla::NextAfter(lhs, rhs));
 
 #undef XLA_MAKE_BINARY
 

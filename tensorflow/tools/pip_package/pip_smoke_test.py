@@ -36,7 +36,6 @@ BUILD_BLACKLIST = [
     "tensorflow/lite/delegates/gpu",
     "tensorflow/lite/delegates/gpu/metal",
     "tensorflow/lite/delegates/gpu/metal/kernels",
-    "tensorflow/lite/examples/android",
     "tensorflow/lite/experimental/objc",
     "tensorflow/lite/experimental/swift",
 ]
@@ -89,8 +88,10 @@ DEPENDENCY_BLACKLIST = [
     "//tensorflow/core:image_testdata",
     "//tensorflow/core:lmdb_testdata",
     "//tensorflow/core/kernels/cloud:bigquery_reader_ops",
+    "//tensorflow/python/debug:grpc_tensorflow_server.par",
     "//tensorflow/python/feature_column:vocabulary_testdata",
     "//tensorflow/python:framework/test_file_system.so",
+    "//tensorflow/python:util_nest_test_main_lib",
     # lite
     "//tensorflow/lite/experimental/examples/lstm:rnn_cell",
     "//tensorflow/lite/experimental/examples/lstm:rnn_cell.py",
@@ -101,6 +102,7 @@ DEPENDENCY_BLACKLIST = [
     "//tensorflow/lite/python:interpreter.py",
     "//tensorflow/lite/python:interpreter_test.py",
     # contrib
+    "//tensorflow/contrib/eager/python/examples/revnet:blocks_test_main_lib",
     "//tensorflow/contrib/session_bundle:session_bundle_half_plus_two",
     "//tensorflow/contrib/keras:testing_utils",
     "//tensorflow/contrib/ffmpeg:test_data",
@@ -139,6 +141,8 @@ def main():
   # pip_package_dependencies_list is the list of included files in pip packages
   pip_package_dependencies = subprocess.check_output(
       ["bazel", "cquery", PIP_PACKAGE_QUERY_EXPRESSION])
+  if isinstance(pip_package_dependencies, bytes):
+    pip_package_dependencies = pip_package_dependencies.decode("utf-8")
   pip_package_dependencies_list = pip_package_dependencies.strip().split("\n")
   pip_package_dependencies_list = [
       x.split()[0] for x in pip_package_dependencies_list
@@ -149,6 +153,8 @@ def main():
   # tests in tensorflow
   tf_py_test_dependencies = subprocess.check_output(
       ["bazel", "cquery", PY_TEST_QUERY_EXPRESSION])
+  if isinstance(tf_py_test_dependencies, bytes):
+    tf_py_test_dependencies = tf_py_test_dependencies.decode("utf-8")
   tf_py_test_dependencies_list = tf_py_test_dependencies.strip().split("\n")
   tf_py_test_dependencies_list = [
       x.split()[0] for x in tf_py_test_dependencies.strip().split("\n")
@@ -157,7 +163,9 @@ def main():
 
   missing_dependencies = []
   # File extensions and endings to ignore
-  ignore_extensions = ["_test", "_test.py", "_test_gpu", "_test_gpu.py"]
+  ignore_extensions = [
+      "_test", "_test.py", "_test_gpu", "_test_gpu.py", "_test_lib"
+  ]
 
   ignored_files_count = 0
   blacklisted_dependencies_count = len(DEPENDENCY_BLACKLIST)

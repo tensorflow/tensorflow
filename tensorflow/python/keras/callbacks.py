@@ -25,22 +25,27 @@ import csv
 import io
 import json
 import os
+import re
+import tempfile
 import time
 
 import numpy as np
 import six
 
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.distribute import distribute_coordinator_context as dc_context
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.distribute import multi_worker_training_state as training_state
 from tensorflow.python.keras.utils.data_utils import Sequence
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.util.tf_export import keras_export
 
 try:
@@ -161,7 +166,7 @@ def set_callback_parameters(callback_list,
 def _is_generator_like(data):
   """Checks if data is a generator, Sequence, or Iterator."""
   return (hasattr(data, 'next') or hasattr(data, '__next__') or isinstance(
-      data, (Sequence, iterator_ops.Iterator, iterator_ops.EagerIterator)))
+      data, (Sequence, iterator_ops.Iterator, iterator_ops.IteratorV2)))
 
 
 def make_logs(model, logs, outputs, mode, prefix=''):
@@ -420,6 +425,7 @@ class Callback(object):
           (eg. verbosity, batch size, number of epochs...).
       model: instance of `keras.models.Model`.
           Reference of the model being trained.
+      validation_data: Deprecated. Do not use.
 
   The `logs` dictionary that callback methods
   take as argument will contain keys for quantities relevant to
@@ -796,29 +802,26 @@ class ModelCheckpoint(Callback):
       filepath: string, path to save the model file.
       monitor: quantity to monitor.
       verbose: verbosity mode, 0 or 1.
-      save_best_only: if `save_best_only=True`,
-          the latest best model according to
-          the quantity monitored will not be overwritten.
-      mode: one of {auto, min, max}.
-          If `save_best_only=True`, the decision
-          to overwrite the current save file is made
-          based on either the maximization or the
-          minimization of the monitored quantity. For `val_acc`,
-          this should be `max`, for `val_loss` this should
-          be `min`, etc. In `auto` mode, the direction is
-          automatically inferred from the name of the monitored quantity.
-      save_weights_only: if True, then only the model's weights will be
-          saved (`model.save_weights(filepath)`), else the full model
-          is saved (`model.save(filepath)`).
-      period: Interval (number of epochs) between checkpoints.
-      load_weights_on_restart: Whether the training should restore the model.
-          If True, the model will attempt to load the checkpoint file from
-          `filepath` at the start of `model.fit()`. This saves the need of
-          manually calling `model.load_weights()` before `model.fit(). In
-          multi-worker distributed training, this provides fault-tolerance
-          and loads the model automatically upon recovery of workers.
-          The callback gives up loading if the filepath does not exist, and
-          raises ValueError if format does not match. Defaults to False.
+      save_best_only: if `save_best_only=True`, the latest best model according
+        to the quantity monitored will not be overwritten.
+      mode: one of {auto, min, max}. If `save_best_only=True`, the decision to
+        overwrite the current save file is made based on either the maximization
+        or the minimization of the monitored quantity. For `val_acc`, this
+        should be `max`, for `val_loss` this should be `min`, etc. In `auto`
+        mode, the direction is automatically inferred from the name of the
+        monitored quantity.
+      save_weights_only: if True, then only the model's weights will be saved
+        (`model.save_weights(filepath)`), else the full model is saved
+        (`model.save(filepath)`).
+      save_freq: `'epoch'` or integer. When using `'epoch'`, the callback saves
+        the model after each epoch. When using integer, the callback saves the
+        model at end of a batch at which this many samples have been seen since
+        last saving. Note that if the saving isn't aligned to epochs, the
+        monitored metric may potentially be less reliable (it could reflect as
+        little as 1 batch, since the metrics get reset every epoch). Defaults to
+        `'epoch'`
+      **kwargs: Additional arguments for backwards compatibility. Possible key
+        is `period`.
   """
 
   def __init__(self,
@@ -828,17 +831,37 @@ class ModelCheckpoint(Callback):
                save_best_only=False,
                save_weights_only=False,
                mode='auto',
-               period=1,
-               load_weights_on_restart=False):
+               save_freq='epoch',
+               **kwargs):
     super(ModelCheckpoint, self).__init__()
     self.monitor = monitor
     self.verbose = verbose
     self.filepath = filepath
     self.save_best_only = save_best_only
     self.save_weights_only = save_weights_only
-    self.period = period
+    self.save_freq = save_freq
     self.epochs_since_last_save = 0
-    self.load_weights_on_restart = load_weights_on_restart
+    self._samples_seen_since_last_saving = 0
+
+    # Deprecated field `load_weights_on_restart` is for loading the checkpoint
+    # file from `filepath` at the start of `model.fit()`
+    # TODO(rchao): Remove the arg during next breaking release.
+    if 'load_weights_on_restart' in kwargs:
+      self.load_weights_on_restart = kwargs['load_weights_on_restart']
+      logging.warning('`load_weights_on_restart` argument is deprecated. '
+                      'Please use `model.load_weights()` for loading weights '
+                      'before the start of `model.fit()`.')
+    else:
+      self.load_weights_on_restart = False
+
+    # Deprecated field `period` is for the number of epochs between which
+    # the model is saved.
+    if 'period' in kwargs:
+      self.period = kwargs['period']
+      logging.warning('`period` argument is deprecated. Please use `save_freq` '
+                      'to specify the frequency in number of samples seen.')
+    else:
+      self.period = 1
 
     if mode not in ['auto', 'min', 'max']:
       logging.warning('ModelCheckpoint mode %s is unknown, '
@@ -859,6 +882,9 @@ class ModelCheckpoint(Callback):
         self.monitor_op = np.less
         self.best = np.Inf
 
+    if self.save_freq != 'epoch' and not isinstance(self.save_freq, int):
+      raise ValueError('Unrecognized save_freq: {}'.format(self.save_freq))
+
     # Only the chief worker writes model checkpoints, but all workers
     # restore checkpoint at on_train_begin().
     self._chief_worker_only = False
@@ -872,39 +898,89 @@ class ModelCheckpoint(Callback):
       self.save_weights_only = True
 
   def on_train_begin(self, logs=None):
-    # TODO(rchao): Replace dc_context reference with
-    # distributed_training_utils.should_current_worker_load_model() once
-    # distributed_training_utils.py no longer depends on callbacks.py.
-    if K.in_multi_worker_mode(
-    ) and not dc_context.get_current_worker_context().experimental_should_init:
-      # For multi-worker training, it should not restore a model in certain
-      # worker setting (e.g. non-chief worker in ParameterServerStrategy).
-      return
+    if multi_worker_util.in_multi_worker_mode():
+      # pylint: disable=protected-access
+      # MultiWorkerTrainingState is used to manage the training state needed
+      # for preemption-recovery of a worker in multi-worker training.
+      self.model._training_state = (
+          training_state.MultiWorkerTrainingState(self.model, self.filepath))
+      self._training_state = self.model._training_state
+      if self._training_state.restore():
+        # If the training state needs to be and is successfully restored,
+        # it is recovering from a previous failure (or preemption). In such
+        # case, do not load the weights from user specified file path.
+        return
 
-    if (self.load_weights_on_restart and self.filepath is not None and
-        os.path.exists(self.filepath)):
-      try:
-        self.model.load_weights(self.filepath)
-      except (IOError, ValueError) as e:
-        raise ValueError('Error loading file from {}. Reason: {}'.format(
-            self.filepath, e))
+    # If this is not multi worker training, restoring is not needed, or
+    # restoring failed, check if it should load weights on restart.
+    if self.load_weights_on_restart:
+      if (not multi_worker_util.in_multi_worker_mode()
+          or multi_worker_util.should_load_checkpoint()):
+        filepath_to_load = (
+            self._get_most_recently_modified_file_matching_pattern(
+                self.filepath))
+        if (filepath_to_load is not None and
+            training_state.checkpoint_exists(filepath_to_load)):
+          try:
+            # `filepath` may contain placeholders such as `{epoch:02d}`, and
+            # thus it attempts to load the most recently modified file with file
+            # name matching the pattern.
+            self.model.load_weights(filepath_to_load)
+          except (IOError, ValueError) as e:
+            raise ValueError('Error loading file from {}. Reason: {}'.format(
+                filepath_to_load, e))
+
+  def on_train_end(self, logs=None):
+    if multi_worker_util.in_multi_worker_mode():
+      # In multi-worker training, on successful exit of training, delete the
+      # training state backup file that was saved for the purpose of worker
+      # recovery.
+      self._training_state.delete_backup()
+      # Restore the training state so the model is ready for next (possible)
+      # multi worker training.
+      del self._training_state
+      del self.model._training_state
+
+  def on_batch_end(self, batch, logs=None):
+    logs = logs or {}
+    if isinstance(self.save_freq, int):
+      self._samples_seen_since_last_saving += logs.get('size', 1)
+      if self._samples_seen_since_last_saving >= self.save_freq:
+        self._save_model(epoch=self._current_epoch, logs=logs)
+        self._samples_seen_since_last_saving = 0
+
+  def on_epoch_begin(self, epoch, logs=None):
+    self._current_epoch = epoch
 
   def on_epoch_end(self, epoch, logs=None):
-    logs = logs or {}
     self.epochs_since_last_save += 1
+    if self.save_freq == 'epoch':
+      if multi_worker_util.in_multi_worker_mode():
+        # Exclude training state variables in user-requested checkpoint file.
+        with self._training_state.untrack_vars():
+          self._save_model(epoch=epoch, logs=logs)
+      else:
+        self._save_model(epoch=epoch, logs=logs)
+    if multi_worker_util.in_multi_worker_mode():
+      # For multi-worker training, back up the weights and current training
+      # state for possible future recovery.
+      # TODO(rchao): Call `back_up` at finer period such as N steps.
+      self._training_state.back_up(epoch)
 
-    # TODO(rchao): Replace dc_context reference with
-    # distributed_training_utils.should_current_worker_checkpoint() once
-    # distributed_training_utils.py no longer depends on callbacks.py.
-    if K.in_multi_worker_mode(
-    ) and not dc_context.get_current_worker_context().should_checkpoint:
-      # For multi-worker training, it should not checkpoint a model in certain
-      # worker setting (e.g. non-chief worker in MultiWorkerMirroredStrategy).
-      return
+  def _save_model(self, epoch, logs):
+    """Saves the model.
 
-    if self.epochs_since_last_save >= self.period:
+    Arguments:
+        epoch: the epoch this iteration is in.
+        logs: the `logs` dict passed in to `on_batch_end` or `on_epoch_end`.
+    """
+    logs = logs or {}
+
+    if isinstance(self.save_freq,
+                  int) or self.epochs_since_last_save >= self.period:
       self.epochs_since_last_save = 0
-      filepath = self.filepath.format(epoch=epoch + 1, **logs)
+      filepath = self._get_file_path(epoch, logs)
+
       if self.save_best_only:
         current = logs.get(self.monitor)
         if current is None:
@@ -932,6 +1008,124 @@ class ModelCheckpoint(Callback):
           self.model.save_weights(filepath, overwrite=True)
         else:
           self.model.save(filepath, overwrite=True)
+
+      self._maybe_remove_file()
+
+  def _get_file_path(self, epoch, logs):
+    """Returns the file path for checkpoint."""
+    if not multi_worker_util.in_multi_worker_mode(
+    ) or multi_worker_util.should_save_checkpoint():
+      return self.filepath.format(epoch=epoch + 1, **logs)
+    else:
+      # If this is multi-worker training, and this worker should not
+      # save checkpoint, we use a temp filepath to store a dummy checkpoint, so
+      # it writes to a file that will be removed at the end of `_save_model()`
+      # call. This is because the SyncOnReadVariable needs to be synced across
+      # all the workers in order to be read, and all workers need to initiate
+      # that.
+      self._temp_file_dir = tempfile.mkdtemp()
+      extension = os.path.splitext(self.filepath)[1]
+      return os.path.join(self._temp_file_dir, 'temp' + extension)
+
+  def _maybe_remove_file(self):
+    # Remove the checkpoint directory in multi-worker training where this worker
+    # should not checkpoint. It is a dummy directory previously saved for sync
+    # distributed training.
+    if multi_worker_util.in_multi_worker_mode(
+    ) and not multi_worker_util.should_save_checkpoint():
+      file_io.delete_recursively(self._temp_file_dir)
+      del self._temp_file_dir
+
+  def _get_most_recently_modified_file_matching_pattern(self, pattern):
+    """Returns the most recently modified filepath matching pattern.
+
+    Pattern may contain python formatting placeholder. If
+    `tf.train.latest_checkpoint()` does not return None, use that; otherwise,
+    check for most recently modified one that matches the pattern.
+
+    In the rare case where there are more than one pattern-matching file having
+    the same modified time that is most recent among all, return the filepath
+    that is largest (by `>` operator, lexicographically using the numeric
+    equivalents). This provides a tie-breaker when multiple files are most
+    recent. Note that a larger `filepath` can sometimes indicate a later time of
+    modification (for instance, when epoch/batch is used as formatting option),
+    but not necessarily (when accuracy or loss is used). The tie-breaker is
+    put in the logic as best effort to return the most recent, and to avoid
+    undeterministic result.
+
+    Modified time of a file is obtained with `os.path.getmtime()`.
+
+    This utility function is best demonstrated via an example:
+
+    ```python
+    file_pattern = 'f.batch{batch:02d}epoch{epoch:02d}.h5'
+    test_dir = self.get_temp_dir()
+    path_pattern = os.path.join(test_dir, file_pattern)
+    file_paths = [
+        os.path.join(test_dir, file_name) for file_name in
+        ['f.batch03epoch02.h5', 'f.batch02epoch02.h5', 'f.batch01epoch01.h5']
+    ]
+    for file_path in file_paths:
+      # Write something to each of the files
+    self.assertEqual(
+        _get_most_recently_modified_file_matching_pattern(path_pattern),
+        file_paths[-1])
+    ```
+
+    Arguments:
+        pattern: The file pattern that may optionally contain python placeholder
+            such as `{epoch:02d}`.
+
+    Returns:
+        The most recently modified file's full filepath matching `pattern`. If
+        `pattern` does not contain any placeholder, this returns the filepath
+        that
+        exactly matches `pattern`. Returns `None` if no match is found.
+    """
+    dir_name = os.path.dirname(pattern)
+    base_name = os.path.basename(pattern)
+    base_name_regex = '^' + re.sub(r'{.*}', r'.*', base_name) + '$'
+
+    # If tf.train.latest_checkpoint tells us there exists a latest checkpoint,
+    # use that as it is more robust than `os.path.getmtime()`.
+    latest_tf_checkpoint = checkpoint_management.latest_checkpoint(dir_name)
+    if latest_tf_checkpoint is not None and re.match(
+        base_name_regex, os.path.basename(latest_tf_checkpoint)):
+      return latest_tf_checkpoint
+
+    latest_mod_time = 0
+    file_path_with_latest_mod_time = None
+    n_file_with_latest_mod_time = 0
+    file_path_with_largest_file_name = None
+
+    if file_io.file_exists(dir_name):
+      for file_name in os.listdir(dir_name):
+        # Only consider if `file_name` matches the pattern.
+        if re.match(base_name_regex, file_name):
+          file_path = os.path.join(dir_name, file_name)
+          mod_time = os.path.getmtime(file_path)
+          if (file_path_with_largest_file_name is None or
+              file_path > file_path_with_largest_file_name):
+            file_path_with_largest_file_name = file_path
+          if mod_time > latest_mod_time:
+            latest_mod_time = mod_time
+            file_path_with_latest_mod_time = file_path
+            # In the case a file with later modified time is found, reset
+            # the counter for the number of files with latest modified time.
+            n_file_with_latest_mod_time = 1
+          elif mod_time == latest_mod_time:
+            # In the case a file has modified time tied with the most recent,
+            # increment the counter for the number of files with latest modified
+            # time by 1.
+            n_file_with_latest_mod_time += 1
+
+    if n_file_with_latest_mod_time == 1:
+      # Return the sole file that has most recent modified time.
+      return file_path_with_latest_mod_time
+    else:
+      # If there are more than one file having latest modified time, return
+      # the file path with the largest file name.
+      return file_path_with_largest_file_name
 
 
 @keras_export('keras.callbacks.EarlyStopping')
@@ -961,6 +1155,16 @@ class EarlyStopping(Callback):
           the epoch with the best value of the monitored quantity.
           If False, the model weights obtained at the last step of
           training are used.
+
+  Example:
+
+  ```python
+  callback = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3)
+  # This callback will stop the training when there is no improvement in
+  # the validation loss for three consecutive epochs.
+  model.fit(data, labels, epochs=100, callbacks=[callback],
+      validation_data=(val_data, val_labels))
+  ```
   """
 
   def __init__(self,
@@ -1110,6 +1314,20 @@ class LearningRateScheduler(Callback):
           (integer, indexed from 0) and returns a new
           learning rate as output (float).
       verbose: int. 0: quiet, 1: update messages.
+
+  ```python
+  # This function keeps the learning rate at 0.001 for the first ten epochs
+  # and decreases it exponentially after that.
+  def scheduler(epoch):
+    if epoch < 10:
+      return 0.001
+    else:
+      return 0.001 * tf.math.exp(0.1 * (10 - epoch))
+
+  callback = tf.keras.callbacks.LearningRateScheduler(scheduler)
+  model.fit(data, labels, epochs=100, callbacks=[callback],
+            validation_data=(val_data, val_labels))
+  ```
   """
 
   def __init__(self, schedule, verbose=0):
@@ -1181,6 +1399,14 @@ class TensorBoard(Callback):
       profile_batch: Profile the batch to sample compute characteristics. By
         default, it will profile the second batch. Set profile_batch=0 to
         disable profiling. Must run in TensorFlow eager mode.
+      embeddings_freq: frequency (in epochs) at which embedding layers will
+        be visualized. If set to 0, embeddings won't be visualized.
+      embeddings_metadata: a dictionary which maps layer name to a file name in
+        which metadata for this embedding layer is saved. See the
+        [details](
+          https://www.tensorflow.org/how_tos/embedding_viz/#metadata_optional)
+        about metadata files format. In case if the same metadata file is
+        used for all embedding layers, string can be passed.
 
   Raises:
       ValueError: If histogram_freq is set and no validation data is provided.
@@ -1195,6 +1421,8 @@ class TensorBoard(Callback):
                write_images=False,
                update_freq='epoch',
                profile_batch=2,
+               embeddings_freq=0,
+               embeddings_metadata=None,
                **kwargs):
     super(TensorBoard, self).__init__()
     self._validate_kwargs(kwargs)
@@ -1207,6 +1435,8 @@ class TensorBoard(Callback):
       self.update_freq = 1
     else:
       self.update_freq = update_freq
+    self.embeddings_freq = embeddings_freq
+    self.embeddings_metadata = embeddings_metadata
 
     self._samples_seen = 0
     self._samples_seen_at_last_write = 0
@@ -1235,17 +1465,21 @@ class TensorBoard(Callback):
     if kwargs.get('write_grads', False):
       logging.warning('`write_grads` will be ignored in TensorFlow 2.0 '
                       'for the `TensorBoard` Callback.')
-    if kwargs.get('embeddings_freq', False):
-      logging.warning('Embeddings will be ignored in TensorFlow 2.0 '
-                      'for the `TensorBoard` Callback.')
     if kwargs.get('batch_size', False):
       logging.warning('`batch_size` is no longer needed in the '
                       '`TensorBoard` Callback and will be ignored '
                       'in TensorFlow 2.0.')
+    if kwargs.get('embeddings_layer_names', False):
+      logging.warning('`embeddings_layer_names` is not supported in '
+                      'TensorFlow 2.0. Instead, all `Embedding` layers '
+                      'will be visualized.')
+    if kwargs.get('embeddings_data', False):
+      logging.warning('`embeddings_data` is not supported in TensorFlow '
+                      '2.0. Instead, all `Embedding` variables will be '
+                      'visualized.')
 
     unrecognized_kwargs = set(kwargs.keys()) - {
-        'write_grads', 'embeddings_freq', 'embeddings_layer_names',
-        'embeddings_metadata', 'embeddings_data', 'batch_size'
+        'write_grads', 'embeddings_layer_names', 'embeddings_data', 'batch_size'
     }
 
     # Only allow kwargs that were supported in V1.
@@ -1262,13 +1496,55 @@ class TensorBoard(Callback):
         with self._get_writer(self._train_run_name).as_default():
           with summary_ops_v2.always_record_summaries():
             if not model.run_eagerly:
-              summary_ops_v2.graph(K.get_graph())
+              summary_ops_v2.graph(K.get_graph(), step=0)
 
             summary_writable = (
                 self.model._is_graph_network or  # pylint: disable=protected-access
                 self.model.__class__.__name__ == 'Sequential')  # pylint: disable=protected-access
             if summary_writable:
               summary_ops_v2.keras_model('keras', self.model, step=0)
+
+    if self.embeddings_freq:
+      self._configure_embeddings()
+
+  def _configure_embeddings(self):
+    """Configure the Projector for embeddings."""
+    # TODO(omalleyt): Add integration tests.
+    from tensorflow.python.keras.layers import embeddings
+    try:
+      from tensorboard.plugins import projector
+    except ImportError:
+      raise ImportError('Failed to import TensorBoard. Please make sure that '
+                        'TensorBoard integration is complete."')
+    config = projector.ProjectorConfig()
+    for layer in self.model.layers:
+      if isinstance(layer, embeddings.Embedding):
+        embedding = config.embeddings.add()
+        embedding.tensor_name = layer.embeddings.name
+
+        if self.embeddings_metadata is not None:
+          if isinstance(self.embeddings_metadata, str):
+            embedding.metadata_path = self.embeddings_metadata
+          else:
+            if layer.name in embedding.metadata_path:
+              embedding.metadata_path = self.embeddings_metadata.pop(layer.name)
+
+    if self.embeddings_metadata:
+      raise ValueError('Unrecognized `Embedding` layer names passed to '
+                       '`keras.callbacks.TensorBoard` `embeddings_metadata` '
+                       'argument: ' + str(self.embeddings_metadata.keys()))
+
+    class DummyWriter(object):
+      """Dummy writer to conform to `Projector` API."""
+
+      def __init__(self, logdir):
+        self.logdir = logdir
+
+      def get_logdir(self):
+        return self.logdir
+
+    writer = DummyWriter(self.log_dir)
+    projector.visualize_embeddings(writer, config)
 
   def _close_writers(self):
     """Close all remaining open file writers owned by this callback.
@@ -1285,7 +1561,7 @@ class TensorBoard(Callback):
 
     A writer will be created if it does not yet exist.
 
-    Args:
+    Arguments:
       writer_name: The name of the directory for which to create or
         retrieve a writer. Should be either `self._train_run_name` or
         `self._validation_run_name`.
@@ -1308,6 +1584,10 @@ class TensorBoard(Callback):
     """Writes scalar summaries for metrics on every training batch.
 
     Performs profiling if current batch is in profiler_batches.
+
+    Arguments:
+      batch: Integer, index of batch within the current epoch.
+      logs: Dict. Metric results for this batch.
     """
     # Don't output batch_size and batch number as TensorBoard summaries
     logs = logs or {}
@@ -1330,6 +1610,9 @@ class TensorBoard(Callback):
 
     if self.histogram_freq and epoch % self.histogram_freq == 0:
       self._log_weights(epoch)
+
+    if self.embeddings_freq and epoch % self.embeddings_freq == 0:
+      self._log_embeddings(epoch)
 
   def on_train_end(self, logs=None):
     if self._is_tracing:
@@ -1435,6 +1718,11 @@ class TensorBoard(Callback):
     if len(shape) == 4 and shape[-1] in [1, 3, 4]:
       summary_ops_v2.image(weight_name, w_img, step=epoch)
 
+  def _log_embeddings(self, epoch):
+    embeddings_ckpt = os.path.join(self.log_dir, 'train',
+                                   'keras_embedding.ckpt-{}'.format(epoch))
+    self.model.save_weights(embeddings_ckpt)
+
 
 @keras_export('keras.callbacks.ReduceLROnPlateau')
 class ReduceLROnPlateau(Callback):
@@ -1455,22 +1743,20 @@ class ReduceLROnPlateau(Callback):
 
   Arguments:
       monitor: quantity to be monitored.
-      factor: factor by which the learning rate will
-          be reduced. new_lr = lr * factor
-      patience: number of epochs with no improvement
-          after which learning rate will be reduced.
+      factor: factor by which the learning rate will be reduced. new_lr = lr *
+        factor
+      patience: number of epochs with no improvement after which learning rate
+        will be reduced.
       verbose: int. 0: quiet, 1: update messages.
-      mode: one of {auto, min, max}. In `min` mode,
-          lr will be reduced when the quantity
-          monitored has stopped decreasing; in `max`
-          mode it will be reduced when the quantity
-          monitored has stopped increasing; in `auto`
-          mode, the direction is automatically inferred
-          from the name of the monitored quantity.
-      min_delta: threshold for measuring the new optimum,
-          to only focus on significant changes.
-      cooldown: number of epochs to wait before resuming
-          normal operation after lr has been reduced.
+      mode: one of {auto, min, max}. In `min` mode, lr will be reduced when the
+        quantity monitored has stopped decreasing; in `max` mode it will be
+        reduced when the quantity monitored has stopped increasing; in `auto`
+        mode, the direction is automatically inferred from the name of the
+        monitored quantity.
+      min_delta: threshold for measuring the new optimum, to only focus on
+        significant changes.
+      cooldown: number of epochs to wait before resuming normal operation after
+        lr has been reduced.
       min_lr: lower bound on the learning rate.
   """
 
@@ -1599,7 +1885,7 @@ class CSVLogger(Callback):
 
   def on_train_begin(self, logs=None):
     if self.append:
-      if os.path.exists(self.filename):
+      if file_io.file_exists(self.filename):
         with open(self.filename, 'r' + self.file_flags) as f:
           self.append_header = not bool(len(f.readline()))
       mode = 'a'

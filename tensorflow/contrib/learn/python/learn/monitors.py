@@ -122,7 +122,7 @@ class BaseMonitor(object):
     """Callback at the end of training/evaluation.
 
     Args:
-      session: A `tf.Session` object that can be used to run ops.
+      session: A `tf.compat.v1.Session` object that can be used to run ops.
 
     Raises:
       ValueError: if we've not begun a run.

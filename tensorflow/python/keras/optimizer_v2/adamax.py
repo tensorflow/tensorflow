@@ -96,14 +96,12 @@ class Adamax(optimizer_v2.OptimizerV2):
         allow time inverse decay of learning rate. `lr` is included for backward
         compatibility, recommended to use `learning_rate` instead.
     """
-    if epsilon is None:
-      epsilon = backend_config.epsilon()
     super(Adamax, self).__init__(name, **kwargs)
     self._set_hyper('learning_rate', kwargs.get('lr', learning_rate))
     self._set_hyper('decay', self._initial_decay)
     self._set_hyper('beta_1', beta_1)
     self._set_hyper('beta_2', beta_2)
-    self._set_hyper('epsilon', epsilon)
+    self.epsilon = epsilon or backend_config.epsilon()
 
   def _create_slots(self, var_list):
     # Separate for-loops to respect the ordering of slot variables from v1.
@@ -114,7 +112,7 @@ class Adamax(optimizer_v2.OptimizerV2):
 
   def _resource_apply_dense(self, grad, var):
     var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
+    lr_t = self._decayed_lr_t[var_dtype]
     m = self.get_slot(var, 'm')
     v = self.get_slot(var, 'v')
     beta_1_t = self._get_hyper('beta_1', var_dtype)
@@ -129,19 +127,19 @@ class Adamax(optimizer_v2.OptimizerV2):
         lr_t,
         beta_1_t,
         beta_2_t,
-        self._get_hyper('epsilon', var_dtype),
+        ops.convert_to_tensor(self.epsilon, var_dtype),
         grad,
         use_locking=self._use_locking)
 
   def _resource_apply_sparse(self, grad, var, indices):
     var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
+    lr_t = self._decayed_lr_t[var_dtype]
 
     beta_1_t = self._get_hyper('beta_1', var_dtype)
     beta_2_t = self._get_hyper('beta_2', var_dtype)
     local_step = math_ops.cast(self.iterations + 1, var_dtype)
     beta_1_power = math_ops.pow(beta_1_t, local_step)
-    epsilon_t = self._get_hyper('epsilon', var_dtype)
+    epsilon_t = ops.convert_to_tensor(self.epsilon, var_dtype)
 
     # m_t = beta1 * m + (1 - beta1) * g_t
     m = self.get_slot(var, 'm')
@@ -170,6 +168,6 @@ class Adamax(optimizer_v2.OptimizerV2):
         'decay': self._serialize_hyperparameter('decay'),
         'beta_1': self._serialize_hyperparameter('beta_1'),
         'beta_2': self._serialize_hyperparameter('beta_2'),
-        'epsilon': self._serialize_hyperparameter('epsilon'),
+        'epsilon': self.epsilon,
     })
     return config

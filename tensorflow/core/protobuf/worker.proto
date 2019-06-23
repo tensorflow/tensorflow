@@ -67,6 +67,9 @@ message CreateWorkerSessionRequest {
   // If true, any resources such as Variables used in the session will not be
   // shared with other sessions.
   bool isolate_session_state = 3;
+
+  // The device attributes of all the devices in the cluster.
+  repeated DeviceAttributes cluster_device_attributes = 4;
 }
 
 message CreateWorkerSessionResponse {}
@@ -339,7 +342,8 @@ message RecvTensorRequest {
 
   // Unique identifier for this request. Every RecvTensorRequest must have a
   // unique request_id, and retried RecvTensorRequests must have the same
-  // request_id. If request_id is zero, retry detection is disabled.
+  // request_id. If request_id is zero, retry detection and response cache
+  // are disabled.
   //
   // Retried RecvTensorRequests are problematic because a RecvTensor with no
   // corresponding sender will wait forever, and the tensor may have been

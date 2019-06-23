@@ -91,6 +91,7 @@ Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString* func
 #endif
 #endif
 
+  [options setFastMathEnabled:YES];
   [options setPreprocessorMacros:macros];
   NSError* error = nil;
   id<MTLLibrary> library = [device newLibraryWithSource:code options:options error:&error];

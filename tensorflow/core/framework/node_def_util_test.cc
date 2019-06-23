@@ -68,7 +68,7 @@ void ExpectFailure(const NodeDef& bad, const OpDef& op_def,
       << "; OpDef: " << SummarizeOpDef(op_def);
 
   LOG(INFO) << "Message: " << status.error_message();
-  EXPECT_TRUE(str_util::StrContains(status.ToString(), message))
+  EXPECT_TRUE(absl::StrContains(status.ToString(), message))
       << "NodeDef: " << SummarizeNodeDef(bad)
       << "; OpDef: " << SummarizeOpDef(op_def) << "\nActual error: " << status
       << "\nDoes not contain: " << message;
@@ -270,7 +270,7 @@ void ExpectInvalidSyntax(const NodeDef& bad, const string& message) {
   EXPECT_TRUE(errors::IsInvalidArgument(status))
       << status << "; NodeDef: " << SummarizeNodeDef(bad);
 
-  EXPECT_TRUE(str_util::StrContains(StringPiece(status.ToString()), message))
+  EXPECT_TRUE(absl::StrContains(StringPiece(status.ToString()), message))
       << "NodeDef: " << SummarizeNodeDef(bad) << ", " << status << ", "
       << message;
 }
@@ -410,6 +410,20 @@ TEST(OutputTypesForNode, Simple) {
   EXPECT_TRUE(OutputTypeForNode(node_def, op_def, 1, &type).ok());
   EXPECT_EQ(type, DT_BOOL);
   EXPECT_FALSE(OutputTypeForNode(node_def, op_def, 2, &type).ok());
+}
+
+TEST(OutputTypesForNode_AttrSliceOverload, Simple) {
+  const OpDef op_def = ToOpDef(OpDefBuilder("Simple")
+                                   .Input("a: float")
+                                   .Input("b: int32")
+                                   .Output("c: string")
+                                   .Output("d: bool"));
+  const AttrSlice attr_slice = AttrSlice(ToNodeDef(
+      NodeDefBuilder("simple", &op_def).Input(FakeInput()).Input(FakeInput())));
+  DataTypeVector types;
+  EXPECT_TRUE(OutputTypesForNode(attr_slice, op_def, &types).ok());
+  EXPECT_EQ(types[0], DT_STRING);
+  EXPECT_EQ(types[1], DT_BOOL);
 }
 
 TEST(NameRangesForNodeTest, Simple) {

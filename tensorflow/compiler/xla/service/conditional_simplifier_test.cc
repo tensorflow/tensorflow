@@ -41,10 +41,11 @@ namespace op = xla::testing::opcode_matchers;
 class ConditionalSimplifierTest : public HloTestBase {
  public:
   // Makes a computation that contains a conditional with constant predicate.
-  HloComputation* MakeConditional(HloModule* module);
+  HloComputation* MakeConditional(HloModule* module, bool is_constant = true);
 };
 
-HloComputation* ConditionalSimplifierTest::MakeConditional(HloModule* module) {
+HloComputation* ConditionalSimplifierTest::MakeConditional(HloModule* module,
+                                                           bool is_constant) {
   HloComputation::Builder builder(TestName());
 
   // true_computation returns param+1.
@@ -83,7 +84,10 @@ HloComputation* ConditionalSimplifierTest::MakeConditional(HloModule* module) {
   }
 
   auto false_instrn = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+      is_constant
+          ? HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false))
+          : HloInstruction::CreateParameter(1, ShapeUtil::MakeShape(PRED, {}),
+                                            "cond"));
   auto false_param = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(S32, {}), "false_param"));
   auto one = builder.AddInstruction(
@@ -102,6 +106,16 @@ TEST_F(ConditionalSimplifierTest, ConditionalGetsInlined) {
   ASSERT_TRUE(ConditionalSimplifier().Run(m.get()).ValueOrDie());
   EXPECT_THAT(computation->root_instruction(),
               op::Add(op::Parameter(), op::Constant()));
+}
+
+TEST_F(ConditionalSimplifierTest, BranchGetsInlined) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation* computation = MakeConditional(m.get(), /*is_constant=*/false);
+  ASSERT_TRUE(ConditionalSimplifier().Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      computation->root_instruction(),
+      op::Select(op::Parameter(1), op::Add(op::Constant(), op::Constant()),
+                 op::Add(op::Parameter(0), op::Constant())));
 }
 
 TEST_F(ConditionalSimplifierTest, ConditionalWithControlDependency) {
@@ -212,6 +226,65 @@ ENTRY main {
                 .size(),
             2);
 }
+
+TEST_F(ConditionalSimplifierTest,
+       TwoConditionalsCreatedInReversedLexicalOrder) {
+  absl::string_view hlo_string = R"(
+  HloModule DeadConditional
+    computation.1 {
+      param.1 = s64[] parameter(0)
+      constant.1 = s64[] constant(1)
+      ROOT add.1 = s64[] add(param.1, constant.1)
+    }
+
+    computation.2 {
+      param.2 = s64[] parameter(0)
+      constant.2 = s64[] constant(2)
+      ROOT add.2 = s64[] add(param.2, constant.2)
+   }
+
+    computation.3 {
+      param.3 = s64[] parameter(0)
+      constant.3 = s64[] constant(3)
+      ROOT add.3 = s64[] add(param.3, constant.3)
+    }
+
+    computation.4 {
+      param.4 = s64[] parameter(0)
+      constant.4 = s64[] constant(4)
+      ROOT add.4 = s64[] add(param.4, constant.4)
+    }
+
+    ENTRY KernelEntry {
+      param.1 = s64[] parameter(0)
+      param.2 = s64[] parameter(1)
+      param.3 = s64[] parameter(2)
+      param.4 = pred[] parameter(3)
+
+      conditional_1 = s64[] conditional(param.4, param.3, param.2),
+        true_computation=computation.3, false_computation=computation.4
+      constant.1 = pred[] constant(false)
+      ROOT conditional_2 = s64[] conditional(constant.1, conditional_1,
+        param.1), true_computation=computation.1,
+        false_computation=computation.2
+    })";
+  auto status = ParseHloString(hlo_string);
+  TF_ASSERT_OK(status.status());
+  std::unique_ptr<HloModule> module = status.ConsumeValueOrDie();
+  HloVerifier v(false, false);
+  TF_ASSERT_OK(v.Run(module.get()).status());
+
+  // Replace conditional_1 with a clone that is created after conditional_2.
+  HloInstruction* conditional_1 =
+      FindInstruction(module.get(), "conditional_1");
+  HloInstruction* conditional_1_clone =
+      conditional_1->parent()->AddInstruction(conditional_1->Clone());
+  TF_ASSERT_OK(conditional_1->ReplaceAllUsesWith(conditional_1_clone));
+  TF_ASSERT_OK(conditional_1->parent()->RemoveInstruction(conditional_1));
+
+  EXPECT_TRUE(ConditionalSimplifier().Run(module.get()).ValueOrDie());
+}
+
 }  // namespace
 
 }  // namespace xla

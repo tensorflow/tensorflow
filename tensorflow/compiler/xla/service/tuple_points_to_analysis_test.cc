@@ -328,6 +328,31 @@ TEST_F(TuplePointsToAnalysisTest, TupleCopy) {
       {constant1, constant2, copy});
 }
 
+TEST_F(TuplePointsToAnalysisTest, CopyStartAndCopyDone) {
+  // CopyDone forwards its operand to the output tuple at {0}.
+  auto builder = HloComputation::Builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  auto copy_start = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeTupleShape(
+          {constant->shape(), ShapeUtil::MakeShape(U32, {})}),
+      HloOpcode::kCopyStart, constant));
+  auto copy_done = builder.AddInstruction(HloInstruction::CreateUnary(
+      constant->shape(), HloOpcode::kCopyDone, copy_start));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(copy_start).IsAmbiguous());
+  EXPECT_TRUE(points_to_analysis_->GetPointsToSet(copy_start).IsDistinct());
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(copy_done).IsAmbiguous());
+  EXPECT_TRUE(points_to_analysis_->GetPointsToSet(copy_done).IsDistinct());
+
+  ExpectHasTopLevelBuffers(
+      points_to_analysis_->GetPointsToSet(copy_start).element({}),
+      {copy_start});
+  ExpectHasBufferAliases(copy_start, {0}, {{copy_start, {0}}, {copy_done, {}}});
+}
+
 TEST_F(TuplePointsToAnalysisTest, SendAndSendDone) {
   // Send forwards its operand to the output tuple at {0}.
   auto builder = HloComputation::Builder(TestName());

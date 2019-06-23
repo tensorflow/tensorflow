@@ -18,13 +18,13 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/op.h"
@@ -40,8 +40,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "cuda/include/cuda_runtime_api.h"
-#include "tensorrt/include/NvInfer.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -54,11 +54,20 @@ using ::nvinfer1::IRuntime;
 // Helps simultaneous execution of native and TRT engines.
 class AsyncHelper : public core::RefCounted {
  public:
-  AsyncHelper(AsyncOpKernel::DoneCallback done) { done_ = done; }
-  ~AsyncHelper() override { done_(); }
+  AsyncHelper(AsyncOpKernel::DoneCallback done) : done_(done) {}
+
+  ~AsyncHelper() override { this->operator()(); }
+
+  void operator()() {
+    if (!called_) {
+      done_();
+      called_ = true;
+    }
+  }
 
  private:
   AsyncOpKernel::DoneCallback done_;
+  bool called_ = false;  // Has `done_` been called?
 };
 
 //  This OP can construct TRTEngine on the fly and if construction of engine
@@ -86,7 +95,7 @@ class TRTEngineOp : public AsyncOpKernel {
 
   // Allocate necessary resources for calibration
   Status AllocateCalibrationResources(OpKernelContext* ctx,
-                                      SerializableResourceBase** cr);
+                                      TRTCalibrationResource** cr);
 
   // Get engine for the input shape
   EngineContext* GetEngine(const std::vector<TensorShape>& input_shapes,
@@ -151,6 +160,7 @@ void* GetTensorAddress(const Tensor* tensor_ptr) {
     TYPECASE(DT_FLOAT, tensor_ptr, dest_ptr);
     TYPECASE(DT_HALF, tensor_ptr, dest_ptr);
     TYPECASE(DT_INT8, tensor_ptr, dest_ptr);
+    TYPECASE(DT_INT32, tensor_ptr, dest_ptr);
     default: {
       LOG(ERROR) << "Unsupported Data type " << DataTypeString(tensor_type);
       return nullptr;
@@ -173,13 +183,8 @@ Status TRTEngineOp::ConstructFunctionHandle(OpKernelContext* ctx) {
   inst_ops.state_handle = "";
   inst_ops.target = ctx->device()->name();
   native_func_ = 0;
-  auto status = lib->Instantiate(funcdef_name_, AttrSlice(&fdef->attr()),
-                                 inst_ops, &native_func_);
-  if (!status.ok()) {
-    LOG(ERROR) << " Instantiating native function " << funcdef_name_
-               << " failed!";
-  }
-  return status;
+  return lib->Instantiate(funcdef_name_, AttrSlice(&fdef->attr()), inst_ops,
+                          &native_func_);
 }
 
 TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
@@ -240,25 +245,16 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
                                        AsyncHelper* helper) {
-  if (funcdef_name_.empty()) {
-    const string err_msg = StrCat("Fallback path is disabled, for ", name());
-    LOG(WARNING) << err_msg;
-    ctx->SetStatus(errors::Internal(err_msg));
-    return;
-  }
+  OP_REQUIRES_ASYNC(ctx, !funcdef_name_.empty(),
+                    errors::Internal("Fallback path is disabled, for ", name()),
+                    *helper);
   std::vector<Tensor> inputs;
   std::vector<Tensor>* outputs = new std::vector<Tensor>();
   if (native_func_ == kInvalidHandle) {
-    auto status = ConstructFunctionHandle(ctx);
-    if (!status.ok()) {
-      LOG(ERROR) << "Couldn't construct function handle " << funcdef_name_;
-      ctx->SetStatus(status);
-      return;
-    }
+    OP_REQUIRES_OK_ASYNC(ctx, ConstructFunctionHandle(ctx), *helper);
   }
   auto lib = ctx->function_library();
   FunctionLibraryRuntime::Options opts;
-  opts.step_id = ctx->step_id();
   opts.rendezvous = ctx->rendezvous();
   opts.cancellation_manager = ctx->cancellation_manager();
   opts.runner = ctx->runner();
@@ -271,12 +267,7 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
   lib->Run(opts, native_func_, inputs, outputs,
            [this, ctx, outputs, helper](const Status& s) {
              core::ScopedUnref sc(helper);
-             if (!s.ok()) {
-               LOG(ERROR) << "Failed to execute native segment " << this->name()
-                          << ": " << s;
-               ctx->SetStatus(s);
-               return;
-             }
+             OP_REQUIRES_OK_ASYNC(ctx, s, *helper);
              VLOG(1) << "Native Segment completed";
              for (size_t t = 0; t < outputs->size(); ++t) {
                ctx->set_output(t, outputs->at(t));
@@ -290,17 +281,19 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   VLOG(1) << "Executing TRT calibration: " << name();
   helper->Ref();
   core::ScopedUnref sc(helper);
-  auto res_mgr = ctx->resource_manager();
   TRTCalibrationResource* calib_res = nullptr;
-  OP_REQUIRES_OK(ctx,
-                 res_mgr->LookupOrCreate(
-                     "TF_TRT_Calibration", name(),
-                     reinterpret_cast<SerializableResourceBase**>(&calib_res),
-                     {[ctx, this](SerializableResourceBase** cr) -> Status {
-                       return this->AllocateCalibrationResources(ctx, cr);
-                     }}));
+  OP_REQUIRES_OK_ASYNC(
+      ctx,
+      ctx->resource_manager()->LookupOrCreate(
+          std::string(kCalibrationContainerName), name(),
+          reinterpret_cast<TRTCalibrationResource**>(&calib_res),
+          {[ctx, this](TRTCalibrationResource** cr) -> Status {
+            return this->AllocateCalibrationResources(ctx, cr);
+          }}),
+      *helper);
   core::ScopedUnref calib_sc(calib_res);
   int num_inputs = ctx->num_inputs();
+  // TODO(laigd): need to check that input shape matches.
   // Pass input data to calibrator
   std::unordered_map<string, void*> input_data;
   for (int i = 0; i < num_inputs; i++) {
@@ -324,7 +317,17 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
                                                 ->stream()
                                                 ->implementation()
                                                 ->GpuStreamMemberHack()));
-  calib_res->calibrator_->setBatch(input_data, *stream);
+  // If calibrator is terminated before, it means an error has occurred.
+  //
+  // Note: setBatch() will wait until TRTInt8Calibrator::getBatch() is called
+  // the first time before proceeding, so if buildCudaEngine() returns an error,
+  // it means getBatch() is never called, and the setBatch() here will hang
+  // until setDone() is called later by the calibration thread in
+  // AllocateCalibrationResources(). In that case, this setBatch() will always
+  // be able to detect the error and return false.
+  OP_REQUIRES_ASYNC(ctx, calib_res->calibrator_->setBatch(input_data, *stream),
+                    errors::Internal("Failed to feed calibration data"),
+                    *helper);
   VLOG(2) << "Passed calibration data";
   ExecuteNativeSegment(ctx, helper);
 }
@@ -425,8 +428,9 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
             const_cast<float*>(input_tensor.flat<float>().data());
         break;
       case nvinfer1::DataType::kHALF:
-        LOG(ERROR) << "FP16 inputs are not supported yet!";
-        return kRetry;
+        buffers[binding_index] =
+            const_cast<Eigen::half*>(input_tensor.flat<Eigen::half>().data());
+        break;
       case nvinfer1::DataType::kINT8:
         LOG(ERROR) << "INT8 inputs are not supported yet!";
         return kRetry;
@@ -480,8 +484,9 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
             const_cast<float*>(output_tensor->flat<float>().data());
         break;
       case nvinfer1::DataType::kHALF:
-        LOG(WARNING) << "half size is not supported yet!";
-        return kRetry;
+        buffers[binding_index] =
+            const_cast<Eigen::half*>(output_tensor->flat<Eigen::half>().data());
+        break;
       case nvinfer1::DataType::kINT8:
         LOG(WARNING) << "int8 is not supported yet!";
         return kRetry;
@@ -522,18 +527,33 @@ EngineContext* TRTEngineOp::GetEngine(
   // TODO(tmorris): using first input to get batch size - is this reliable?
   const int batch_size = input_shapes[0].dim_size(0);
 
-  // Get engine cache
+  // Canonicalize the op name by removing the scopes if any. This is mainly
+  // because in TFv2, the function graph can be instantiated in various ways and
+  // it'll insert scope names to the name of the TRTEngineOps, which will result
+  // in many different engine caches if we use the instantiated op name
+  // directly, but we still want all of them share the same cache (if they were
+  // representing the same subgraph).
+  absl::string_view resource_name = name();
+  size_t last_slash = resource_name.find_last_of('/');
+  if (last_slash != absl::string_view::npos) {
+    resource_name.remove_prefix(last_slash + 1);
+  }
+
+  // Get engine cache.
   TRTEngineCacheResource* cache_res = nullptr;
   auto status = ctx->resource_manager()->LookupOrCreate(
-      "TRTEngineCache", name(), &cache_res,
+      "TF-TRT-Engine-Cache", string(resource_name), &cache_res,
       {[this, ctx](TRTEngineCacheResource** cr) -> Status {
         *cr = new TRTEngineCacheResource(ctx, this->max_cached_engines_);
         return Status::OK();
       }});
   if (!status.ok()) {
-    ctx->SetStatus(status);
+    LOG(WARNING) << "Not able to find or create engine cache for " << name()
+                 << ". The native segment will be used instead. "
+                 << "Reason: " << status;
     return &empty_context;
   }
+
   core::ScopedUnref sc(cache_res);
   auto& cache = cache_res->cache_;
   auto allocator = cache_res->allocator_.get();
@@ -557,8 +577,7 @@ EngineContext* TRTEngineOp::GetEngine(
     infer->setGpuAllocator(allocator);
     TrtUniquePtrType<nvinfer1::ICudaEngine> static_engine(
         infer->deserializeCudaEngine(serialized_segment_.c_str(),
-                                     serialized_segment_.size(),
-                                     PluginFactoryTensorRT::GetInstance()));
+                                     serialized_segment_.size(), nullptr));
     auto raw_static_engine = static_engine.get();
     const auto max_batch_size = raw_static_engine->getMaxBatchSize();
     // Static engine will have max_batch_size for batch size so that all inputs
@@ -632,18 +651,19 @@ EngineContext* TRTEngineOp::GetEngine(
       cache.emplace(engine_input_shapes, absl::make_unique<EngineContext>());
       return &empty_context;
     }
-    VLOG(1) << "Conversion is done";
     TrtUniquePtrType<nvinfer1::IExecutionContext> exec_context(
         engine->createExecutionContext());
     cache.emplace(engine_input_shapes,
                   absl::make_unique<EngineContext>(std::move(engine),
                                                    std::move(exec_context)));
+    VLOG(1) << "Added new engine to cache of " << name()
+            << ". Cache size: " << cache.size();
   }
   return cache.at(engine_input_shapes).get();
 }
 
-Status TRTEngineOp::AllocateCalibrationResources(
-    OpKernelContext* ctx, SerializableResourceBase** cr) {
+Status TRTEngineOp::AllocateCalibrationResources(OpKernelContext* ctx,
+                                                 TRTCalibrationResource** cr) {
   auto cres = new TRTCalibrationResource();
   *cr = cres;
   // Get the allocator.

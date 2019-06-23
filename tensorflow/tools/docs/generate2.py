@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-r"""A tool to generate api_docs for TensorFlow2.
+"""A tool to generate api_docs for TensorFlow2.
 
 ```
 python generate2.py --output_dir=/tmp/out
@@ -71,6 +71,75 @@ flags.DEFINE_string("site_path", "",
                     "`_toc.yaml` and `_redirects.yaml` files")
 
 
+if tf.__version__.startswith('1'):
+  PRIVATE_MAP = {
+      'tf.contrib.autograph': ['utils', 'operators'],
+      'tf.test': ['mock'],
+      'tf.contrib.estimator': ['python'],
+  }
+
+  DO_NOT_DESCEND_MAP = {
+      'tf': ['cli', 'lib', 'wrappers'],
+      'tf.contrib': [
+          'compiler',
+          'grid_rnn',
+          # Block contrib.keras to de-clutter the docs
+          'keras',
+          'labeled_tensor',
+          'quantization',
+          'session_bundle',
+          'slim',
+          'solvers',
+          'specs',
+          'tensor_forest',
+          'tensorboard',
+          'testing',
+          'tfprof',
+      ],
+      'tf.contrib.bayesflow': [
+          'special_math', 'stochastic_gradient_estimators',
+          'stochastic_variables'
+      ],
+      'tf.contrib.ffmpeg': ['ffmpeg_ops'],
+      'tf.contrib.graph_editor': [
+          'edit', 'match', 'reroute', 'subgraph', 'transform', 'select', 'util'
+      ],
+      'tf.contrib.keras': ['api', 'python'],
+      'tf.contrib.layers': ['feature_column', 'summaries'],
+      'tf.contrib.learn': [
+          'datasets',
+          'head',
+          'graph_actions',
+          'io',
+          'models',
+          'monitors',
+          'ops',
+          'preprocessing',
+          'utils',
+      ],
+      'tf.contrib.util': ['loader'],
+  }
+else:
+  PRIVATE_MAP = {}
+  DO_NOT_DESCEND_MAP = {}
+  tf.__doc__ = """
+    ## TensorFlow 2.0 Beta
+
+    Caution:  This is a developer preview.  You will likely find some bugs,
+    performance issues, and more, and we encourage you to tell us about them.
+    We value your feedback!
+
+    These docs were generated from the beta build of TensorFlow 2.0.
+
+    You can install the exact version that was used to generate these docs
+    with:
+
+    ```
+    pip install tensorflow==2.0.0-beta1
+    ```
+    """
+
+
 # The doc generator isn't aware of tf_export.
 # So prefix the score tuples with -1 when this is the canonical name, +1
 # otherwise. The generator chooses the name with the lowest score.
@@ -89,6 +158,27 @@ class TfExportAwareDocGeneratorVisitor(
     return (canonical_score,) + scores
 
 
+def _hide_layer_and_module_methods():
+  """Hide methods and properties defined in the base classes of keras layers."""
+  # __dict__ only sees attributes defined in *this* class, not on parent classes
+  module_contents = list(tf.Module.__dict__.items())
+  layer_contents = list(tf.keras.layers.Layer.__dict__.items())
+
+  for name, obj in module_contents + layer_contents:
+    if name == "__init__":
+      continue
+
+    if isinstance(obj, property):
+      obj = obj.fget
+
+    if isinstance(obj, (staticmethod, classmethod)):
+      obj = obj.__func__
+
+    try:
+      doc_controls.do_not_doc_in_subclasses(obj)
+    except AttributeError:
+      pass
+
 def build_docs(output_dir, code_url_prefix, search_hints=True):
   """Build api docs for tensorflow v2.
 
@@ -97,24 +187,42 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
     code_url_prefix: prefix for "Defined in" links.
     search_hints: Bool. Include meta-data search hints at the top of each file.
   """
+  _hide_layer_and_module_methods()
+
   try:
     doc_controls.do_not_generate_docs(tf.tools)
   except AttributeError:
     pass
 
+  try:
+    doc_controls.do_not_generate_docs(tf.compat.v1.pywrap_tensorflow)
+  except AttributeError:
+    pass
+
+  try:
+    doc_controls.do_not_generate_docs(tf.pywrap_tensorflow)
+  except AttributeError:
+    pass
+
+  try:
+    doc_controls.do_not_generate_docs(tf.flags)
+  except AttributeError:
+    pass
+
   base_dir = path.dirname(tf.__file__)
+
   base_dirs = (
       base_dir,
-      path.normpath(path.join(base_dir, "../../tensorflow")),
+      # External packages base directories,
       path.dirname(tensorboard.__file__),
       path.dirname(tensorflow_estimator.__file__),
   )
 
   code_url_prefixes = (
       code_url_prefix,
-      # External packages source repositories
-      "https://github.com/tensorflow/tensorboard/tree/master/tensorboard"
-      "https://github.com/tensorflow/estimator/tree/master/tensorflow_estimator"
+      # External packages source repositories,
+      "https://github.com/tensorflow/tensorboard/tree/master/tensorboard",
+      "https://github.com/tensorflow/estimator/tree/master/tensorflow_estimator",
   )
 
   doc_generator = generate_lib.DocGenerator(
@@ -124,7 +232,9 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
       search_hints=search_hints,
       code_url_prefix=code_url_prefixes,
       site_path=FLAGS.site_path,
-      visitor_cls=TfExportAwareDocGeneratorVisitor)
+      visitor_cls=TfExportAwareDocGeneratorVisitor,
+      private_map=PRIVATE_MAP,
+      do_not_descend_map=DO_NOT_DESCEND_MAP)
 
   doc_generator.build(output_dir)
 

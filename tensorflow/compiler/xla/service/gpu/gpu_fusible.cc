@@ -64,7 +64,7 @@ bool IsReduceInputFusion(const HloInstruction& instr) {
   if (instr.IsMultiOutputFusion()) {
     for (const HloInstruction* operand :
          instr.fused_expression_root()->operands()) {
-      if (IsReductionToVector(*operand)) {
+      if (IsReductionFromOrToContiguousDimensions(*operand)) {
         CHECK(instr.IsInputFusion())
             << " Multi-output fusion rooted at reduction-to-vector ops must be "
                "of kind kInput: "
@@ -73,7 +73,8 @@ bool IsReduceInputFusion(const HloInstruction& instr) {
       }
     }
   } else if (instr.opcode() == HloOpcode::kFusion &&
-             IsReductionToVector(*instr.fused_expression_root())) {
+             IsReductionFromOrToContiguousDimensions(
+                 *instr.fused_expression_root())) {
     CHECK(instr.IsInputFusion())
         << " Fusion rooted at reduction-to-vector op must be of kind kInput: "
         << instr.ToString();
@@ -83,7 +84,13 @@ bool IsReduceInputFusion(const HloInstruction& instr) {
 }
 
 bool IsInputFusibleReduction(const HloInstruction& instr) {
-  return IsReduceInputFusion(instr) || IsReductionToVector(instr);
+  // TODO(b/129089333): Don't fuse variadic reduce.
+  if (instr.opcode() == HloOpcode::kReduce && instr.shape().IsTuple()) {
+    return false;
+  }
+
+  return IsReduceInputFusion(instr) ||
+         IsReductionFromOrToContiguousDimensions(instr);
 }
 
 bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
@@ -98,7 +105,7 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
         // If possible, we want to pick a reduction-to-vector operand of the
         // fusion root, because it has the most constraints.
         for (const auto* inst : fused_expression_root->operands()) {
-          if (IsReductionToVector(*inst)) {
+          if (IsReductionFromOrToContiguousDimensions(*inst)) {
             return inst;
           }
         }
@@ -114,7 +121,7 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   auto get_loop_shape = [&](const HloInstruction* element_instr) {
     // Special-case reduction-to-vector ops: The loop dimensions are determined
     // by the shape of the first operand.
-    if (IsReductionToVector(*element_instr)) {
+    if (IsReductionFromOrToContiguousDimensions(*element_instr)) {
       return element_instr->operand(0)->shape();
     }
     return element_instr->shape();
@@ -127,7 +134,8 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   auto* instr_1 = get_real_hero(&instr1);
   auto* instr_2 = get_real_hero(&instr2);
   // TODO(tjoerg): Relax the shape constraint. The datatype does not matter.
-  if (IsReductionToVector(*instr_1) && IsReductionToVector(*instr_2) &&
+  if (IsReductionFromOrToContiguousDimensions(*instr_1) &&
+      IsReductionFromOrToContiguousDimensions(*instr_2) &&
       (!ShapeUtil::Equal(instr_1->shape(), instr_2->shape()) ||
        instr_1->dimensions() != instr_2->dimensions())) {
     return false;
@@ -150,7 +158,8 @@ bool IsInputFusibleScatter(const HloInstruction& instr) {
 
 bool IsInputFusible(const HloInstruction& instr) {
   // Input fusion only handles non-elemental reduction and scatter operations.
-  return IsInputFusibleReduction(instr) || IsInputFusibleScatter(instr);
+  return instr.IsFusible() &&
+         (IsInputFusibleReduction(instr) || IsInputFusibleScatter(instr));
 }
 
 bool IsLoopFusible(const HloInstruction& instr) {
@@ -160,28 +169,163 @@ bool IsLoopFusible(const HloInstruction& instr) {
   // compute the address of the GTE at the top of the kernel.  Often we know the
   // address of the GTE result statically, so we can do this without chasing any
   // pointers.
-  return (instr.IsElementwise() && instr.operand_count() > 0) ||
-         instr.opcode() == HloOpcode::kBitcast ||
-         instr.opcode() == HloOpcode::kBroadcast ||
-         instr.opcode() == HloOpcode::kConcatenate ||
-         instr.opcode() == HloOpcode::kDynamicSlice ||
-         instr.opcode() == HloOpcode::kDynamicUpdateSlice ||
-         (instr.opcode() == HloOpcode::kFusion &&
-          instr.fusion_kind() == HloInstruction::FusionKind::kLoop) ||
-         instr.opcode() == HloOpcode::kGather ||
-         instr.opcode() == HloOpcode::kIota ||
-         instr.opcode() == HloOpcode::kPad ||
-         (instr.opcode() == HloOpcode::kReduce &&
-          !IsReductionToVector(instr)) ||
-         instr.opcode() == HloOpcode::kReduceWindow ||
-         instr.opcode() == HloOpcode::kReshape ||
-         instr.opcode() == HloOpcode::kReverse ||
-         instr.opcode() == HloOpcode::kSlice ||
-         instr.opcode() == HloOpcode::kTranspose;
+  return instr.IsFusible() &&
+         ((instr.IsElementwise() && instr.operand_count() > 0) ||
+          instr.opcode() == HloOpcode::kBitcast ||
+          instr.opcode() == HloOpcode::kBroadcast ||
+          instr.opcode() == HloOpcode::kConcatenate ||
+          instr.opcode() == HloOpcode::kDynamicSlice ||
+          instr.opcode() == HloOpcode::kDynamicUpdateSlice ||
+          (instr.opcode() == HloOpcode::kFusion &&
+           instr.fusion_kind() == HloInstruction::FusionKind::kLoop) ||
+          instr.opcode() == HloOpcode::kGather ||
+          instr.opcode() == HloOpcode::kIota ||
+          instr.opcode() == HloOpcode::kPad ||
+          (instr.opcode() == HloOpcode::kReduce &&
+           !IsReductionFromOrToContiguousDimensions(instr)) ||
+          instr.opcode() == HloOpcode::kReduceWindow ||
+          instr.opcode() == HloOpcode::kReshape ||
+          instr.opcode() == HloOpcode::kReverse ||
+          instr.opcode() == HloOpcode::kSlice ||
+          instr.opcode() == HloOpcode::kConstant ||
+          instr.opcode() == HloOpcode::kTranspose);
 }
 
 bool IsFusible(const HloInstruction& instr) {
   return IsInputFusible(instr) || IsLoopFusible(instr);
+}
+
+bool IsProducerConsumerFusible(const HloInstruction& producer,
+                               const HloInstruction& consumer) {
+  if (!IsLoopFusible(producer) || !IsFusible(consumer)) {
+    return false;
+  }
+
+  // Skip multiple output fusion. It's not yet supported.
+  if (producer.IsMultiOutputFusion()) {
+    return false;
+  }
+
+  // Do not fuse into reduce input fusions if the resulting kernel would suffer
+  // from poor data locality (due to unfriendly input layouts).
+  if (IsInputFusibleReduction(consumer) &&
+      !LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
+    return false;
+  }
+
+  // We can't fuse library calls, so if a user of such an op could become a
+  // bitcast, leave it unfused. See `xla::InstructionFusion::ShouldFuse` for
+  // further rationale.
+  if (producer.CouldBeBitcast() &&
+      ImplementedAsLibraryCall(*producer.operand(0))) {
+    return false;
+  }
+
+  // Fuse scalar constants into loop fusion nodes. This reduces the number of
+  // parameters and makes matching scalar broadcasts easier.
+  //
+  // Don't fuse other constants: Unfused constants in GPU land can be
+  // represented as an external constant (i.e. not emitted in LLVM IR / PTX),
+  // but fused constants are handled by shrared CPU/GPU code and always emitted
+  // in the IR/PTX.  The external constant representation makes for faster
+  // compiles and significantly smaller assembly code.
+  if (producer.opcode() == HloOpcode::kConstant) {
+    return ShapeUtil::IsEffectiveScalar(producer.shape()) &&
+           consumer.opcode() == HloOpcode::kFusion;
+  }
+
+  return true;
+}
+
+bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
+                                          const HloInstruction& consumer) {
+  if (!IsLoopFusible(producer) || !IsFusibleAsMultiOutputFusionRoot(consumer)) {
+    return false;
+  }
+
+  if (!ShapesCompatibleForMultiOutputFusion(producer, consumer)) {
+    return false;
+  }
+
+  if (!LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
+    return false;
+  }
+
+  return true;
+}
+
+// This function limits the maximum number of operands to a fusion.
+//
+// There's a cap on how many parameters we can pass to a CUDA kernel, but
+// exactly what that limit is hazy, as it depends on (among other things) how
+// much GPU constant memory is in use for other purposes.
+//
+// Moreover, we don't even know at the point that we're running fusion how many
+// arguments the CUDA kernel for a fusion node will have: It depends on buffer
+// assignment, where we will decide which of the fusion's operands live in XLA's
+// big temp buffer versus in other allocations.
+//
+// As a heuristic, we simply cap the number of fusion operands plus outputs at
+// kMaxOperandsAndOutputsPerFusion.  This puts an upper bound on the number of
+// parameters to the kernel, working around the correctness problem.
+//
+// This limit is also often good for performance.  In a fusion with many
+// operands, each GPU thread likely has to do a lot of work, and so possibly
+// uses a lot of registers, thus limiting occupancy.
+bool FusionWouldBeTooLarge(const HloInstruction& instr1,
+                           const HloInstruction& instr2) {
+  // Compute the number of outputs of the (possibly multi-output) fusion node
+  // we're considering creating.
+  //
+  // This isn't precise; we may be off by one if
+  //  - We're creating a multi-output fusion out of two non-MOFs.  Creating a
+  //    MOF adds a new buffer, namely, the tuple buffer.
+  //  - We're merging two MOFs.  In this case, we should count the tuple buffer
+  //    only once.
+  //  - WLOG there's an edge from `a` to `b` and `b` is the only consumer of
+  //    `a`.  In this case the result of `a` is not part of the output of the
+  //    fusion.
+  //
+  // But because this is a heuristic and our limit
+  // kMaxOperandsAndOutputsPerFusion is a large value (so +/- 1 doesn't make a
+  // big difference), we ignore this small inaccuracy in favor of simplicity.
+  int64 num_output_buffers = ShapeUtil::SubshapeCount(instr1.shape()) +
+                             ShapeUtil::SubshapeCount(instr2.shape());
+
+  // The new fusion will have no more operands and outputs than
+  //   producer_operands + consumer_operands - 1 + num_output_buffers
+  // (minus one because we may be fusing a producer->consumer edge between `a`
+  // and `b`).
+  //
+  // This fact may be enough to let us avoid having to compute the true total
+  // number of operands, which can be expensive.
+  if (instr1.operand_count() + instr2.operand_count() - 1 +
+          num_output_buffers <=
+      kMaxOperandsAndOutputsPerFusion) {
+    return false;
+  }
+
+  // Compute the precise number of operands to the new fusion.
+  absl::flat_hash_set<const HloInstruction*> operands(instr1.operands().begin(),
+                                                      instr1.operands().end());
+  operands.insert(instr2.operands().begin(), instr2.operands().end());
+  // If there's an edge between `a` and `b`, don't count it: We're fusing that
+  // producer -> consumer relationship.
+  operands.erase(&instr1);
+  operands.erase(&instr2);
+  return operands.size() + num_output_buffers > kMaxOperandsAndOutputsPerFusion;
+}
+
+bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr) {
+  // We can fuse reduces and loop fusions. Elementwise instructions can be fused
+  // with any other instruction.
+  // Note that scatter cannot be the root of a multi-output fusion because
+  // its emitter doesn't support it.
+
+  return instr.IsFusible() &&
+         (IsInputFusibleReduction(instr) ||
+          instr.IsLoopFusion() ||  // TODO(b/130013493): Use IsLoopFusible here.
+          instr.IsElementwise());
 }
 
 }  // namespace gpu

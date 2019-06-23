@@ -90,6 +90,10 @@ class BaseGPUDevice : public LocalDevice {
                              const AllocatorAttributes alloc_attrs,
                              Tensor* tensor) override;
 
+  void CopyTensorInSameDevice(const Tensor* input_tensor, Tensor* output_tensor,
+                              const DeviceContext* device_context,
+                              StatusCallback done) override;
+
   // The caller owns the returned device.
   PerOpGpuDevice* MakeGpuDevice() override;
 
@@ -121,7 +125,7 @@ class BaseGPUDevice : public LocalDevice {
 
   // If returned value is > 0 then GPU Memory chunks freed before this count
   // are guaranteed not to be in use by any kernel pending on this device.
-  uint64 SafeAllocFrontier() override;
+  uint64 SafeAllocFrontier(uint64 old_value) override;
 
   // Returns the number of kernels that have been queued for execution on
   // the compute stream and are not yet known to have completed.
@@ -153,10 +157,10 @@ class BaseGPUDevice : public LocalDevice {
   TfGpuId tf_gpu_id_;
   const bool sync_every_op_ = false;
   const int32 max_streams_;
-  std::unique_ptr<EventMgr> em_;
+  EventMgr* em_ = nullptr;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
   std::unique_ptr<GPUKernelTracker> kernel_tracker_;
-  int pending_cap_ = 0;
+  int32 pending_cap_ = 0;
   bool timestamped_allocator_ = false;
 
   // Initialize scractch buffers used by Eigen.
@@ -164,8 +168,6 @@ class BaseGPUDevice : public LocalDevice {
 
   void ReinitializeDevice(OpKernelContext* context, PerOpGpuDevice* device,
                           int stream_id, Allocator* allocator);
-
-  void ComputeHelper(OpKernel* op_kernel, OpKernelContext* context);
 
   string ComputeOpKernelDebugString(const OpKernel& op_kernel,
                                     const int& stream_id);
@@ -181,15 +183,43 @@ class BaseGPUDevice : public LocalDevice {
 };
 
 // A per-compute-stream utility that keeps track of kernels that have been
-// queued for execution but may not yet have terminated, and also the queued
+// queued for execution but may not yet have terminated and also the queued
 // time of the most recently terminated kernel.
 class GPUKernelTracker {
  public:
+  // Controls the strategy for inserting tracking events after GPU kernels.
+  //   If max_interval >= 0, then insert an event after this many kernels
+  //     if an event has not been inserted for another reason.
+  //   If max_bytes > 0, then insert an event after kernels allocating this
+  //     many bytes have been queued since the last event.
+  //   If max_pending > 0, then track up to this many events at once.  If
+  //     this limit is reached the GPU::Compute() method will delay starting
+  //     additional ops until some event completes.  If 0 and one of the other
+  //     fields is non-zero, then a reasonable default will be selected.
+  struct Params {
+    int max_interval = 0;
+    int max_bytes = 0;
+    int max_pending = 0;
+    Params(int mi, int mb, int mp)
+        : max_interval(mi), max_bytes(mb), max_pending(mp) {}
+  };
+
   // If we're going to share a SharedCounter with an allocator, it's owned
   // by the allocator because allocators are initialized once per process.
   // Devices are per-session.
-  explicit GPUKernelTracker(Env* env, SharedCounter* timing_counter)
-      : env_(env), timing_counter_(timing_counter), pending_kernels_(64) {
+  explicit GPUKernelTracker(const Params& params, Env* env,
+                            se::Stream* compute_stream,
+                            SharedCounter* timing_counter, Allocator* allocator,
+                            EventMgr* event_manager)
+      : params_(params),
+        env_(env),
+        stream_(compute_stream),
+        timing_counter_(timing_counter),
+        allocator_(allocator),
+        em_(event_manager),
+        pending_kernels_(
+            params.max_pending > 0 ? std::max(8, 2 * params.max_pending) : 64) {
+    mem_since_last_ = 0;
     if (!timing_counter_) {
       // There's not a preexisting counter owned by GPUProcessState, i.e.
       // pending_cap > 0 but timestamped_allocator == false.
@@ -198,19 +228,33 @@ class GPUKernelTracker {
     }
   }
 
+  // Determine whether a GPU kernel should have a recording event queued
+  // immediately afterwards.  If so, advance the counter and return the new
+  // counter value after enqueuing.
+  uint64 MaybeQueue(OpKernelContext* ctx);
+
   // Record that a GPU kernel has just been enqueued on the compute stream.
-  // Inserts a new timing counter value in a new PendingKernel record appended
+  // Inserts the supplied counter value in a new PendingKernel record appended
   // to the end of the ring buffer then returns that same count.
-  uint64 RecordQueued();
+  // Caller is responsible for ensuring that RecordTerminate() is eventually
+  // called with the same counter value.
+  void RecordQueued(uint64 queued_count, int weight)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Takes a count value returned by RecordQueued and finds the corresponding
   // PendingKernel record in the ring buffer.  Marks the kernel as completed and
   // advances the completion frontier accordingly.
-  void RecordTerminated(uint64 at_count);
+  void RecordTerminated(uint64 queued_count);
 
   // Returns the largest timing count such that all kernels queued no
   // later than that count are known to have terminated.
-  uint64 LastTerminatedCount();
+  inline uint64 LastTerminatedCount(uint64 old_value) {
+    uint64 new_value = last_terminated_count_.load(std::memory_order_relaxed);
+    if (new_value == old_value) {
+      MaybeQueueProgressEvent();
+    }
+    return new_value;
+  }
 
   // Returns the number of kernels enqueued that are not yet known to
   // have terminated.
@@ -221,28 +265,42 @@ class GPUKernelTracker {
 
   // Yield current thread until number of pending kernels no longer
   // exceeds the cap.
-  void PauseWhilePendingExceeds(int cap) {
+  void PauseWhilePendingExceeds(int cap) LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     while (num_pending_ > cap) {
+      VLOG(1) << "num_pending_=" << num_pending_ << " cap=" << cap;
       pending_decreased_.wait(l);
     }
   }
 
  private:
+  friend class GPUKernelTrackerTest;
+  Params params_;
   Env* env_;
+  se::Stream* stream_;
   SharedCounter* timing_counter_;
   std::unique_ptr<SharedCounter> owned_counter_;
+  Allocator* allocator_ = nullptr;
+  EventMgr* em_ = nullptr;
+  std::atomic<uint64> last_terminated_count_ = {1};
+
+  void MaybeQueueProgressEvent();
 
   // Records when a kernel was queued for execution.  Kernel launches are
   // identified by a unique count value from a per-GPU device timing counter.
   struct PendingKernel {
     uint64 queued_count;
+    int weight;
     bool terminated;
     PendingKernel(const PendingKernel& pk)
-        : queued_count(pk.queued_count), terminated(pk.terminated) {}
-    PendingKernel() : queued_count(0), terminated(false) {}
+        : queued_count(pk.queued_count),
+          weight(pk.weight),
+          terminated(pk.terminated) {}
+    PendingKernel() : queued_count(0), weight(0), terminated(false) {}
   };
   mutex mu_;
+  int32 mem_since_last_ GUARDED_BY(mu_);
+  int32 ops_since_last_ GUARDED_BY(mu_);
   // Ring buffer of PendingKernel records.
   std::vector<PendingKernel> pending_kernels_ GUARDED_BY(mu_);
   // Next unused slot in pending_kernels_.
@@ -250,15 +308,16 @@ class GPUKernelTracker {
   // Last completed PendingKernel such that all prior PendingKernels are
   // also completed.  With out-of-order completion there may be a mixture
   // of completed and uncompleted entries between last_completed_ and
-  // first_available_, hence num_pending_ is not guaranteed equal to
-  // their differerence.
+  // first_available_.
   int last_completed_ GUARDED_BY(mu_) = -1;
+  // Sum of weights of the outstanding events marking tracked kernels.
   int num_pending_ GUARDED_BY(mu_) = 0;
   condition_variable pending_decreased_ GUARDED_BY(mu_);
 };
 
 class BaseGPUDeviceFactory : public DeviceFactory {
  public:
+  Status ListPhysicalDevices(std::vector<string>* devices) override;
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
                        std::vector<std::unique_ptr<Device>>* devices) override;
 
@@ -308,6 +367,8 @@ class BaseGPUDeviceFactory : public DeviceFactory {
       const DeviceLocality& dev_locality, TfGpuId tf_gpu_id,
       const string& physical_device_desc, Allocator* gpu_allocator,
       Allocator* cpu_allocator) = 0;
+
+  Status EnablePeerAccess(const std::vector<PlatformGpuId>& visible_gpu_order);
 
   // Returns into 'ids' the list of valid platform GPU ids, in the order that
   // they should map to TF GPU ids "/device:GPU:0", "/device:GPU:1", etc,

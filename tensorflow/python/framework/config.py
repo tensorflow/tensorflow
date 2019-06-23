@@ -22,58 +22,12 @@ from tensorflow.python.eager import context
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('config.gpu.get_per_process_memory_fraction')
-def get_gpu_per_process_memory_fraction():
-  """Get fraction of the available GPU memory to allocate for each process.
-
-  1.0 means to allocate all of the GPU memory, 0.5 means the process allocates
-  up to half of the available GPU memory.
-
-  Returns:
-    Current GPU per process memory fraction
-  """
-  return context.context().gpu_per_process_memory_fraction
-
-
-@tf_export('config.gpu.set_per_process_memory_fraction')
-def set_gpu_per_process_memory_fraction(fraction):
-  """Set fraction of the available GPU memory to allocate for each process.
-
-  1.0 means to allocate all of the GPU memory, 0.5 means the process allocates
-  up to half of the available GPU memory.
-
-  Args:
-    fraction: Fraction of GPU memory to allocate
-  """
-  context.context().gpu_per_process_memory_fraction = fraction
-
-
-@tf_export('config.gpu.get_per_process_memory_growth')
-def get_gpu_per_process_memory_growth():
-  """Get if GPU memory should be pre-allocated or allowed to grow.
-
-  Returns:
-    If GPU memory growth should be enabled
-  """
-  return context.context().gpu_per_process_memory_growth
-
-
-@tf_export('config.gpu.set_per_process_memory_growth')
-def set_gpu_per_process_memory_growth(enabled):
-  """Set if GPU memory should be pre-allocated or allowed to grow.
-
-  Args:
-    enabled: Indicates if GPU memory growth should be enabled
-  """
-  context.context().gpu_per_process_memory_growth = enabled
-
-
-@tf_export('config.threading.intra_op_parallelism_threads')
+@tf_export('config.threading.get_intra_op_parallelism_threads')
 def get_intra_op_parallelism_threads():
   """Get number of threads used within an individual op for parallelism.
 
   Certain operations like matrix multiplication and reductions can utilize
-  parellel threads for speed ups. A value of 0 means the system picks an
+  parallel threads for speed ups. A value of 0 means the system picks an
   appropriate number.
 
   Returns:
@@ -87,7 +41,7 @@ def set_intra_op_parallelism_threads(num_threads):
   """Set number of threads used within an individual op for parallelism.
 
   Certain operations like matrix multiplication and reductions can utilize
-  parellel threads for speed ups. A value of 0 means the system picks an
+  parallel threads for speed ups. A value of 0 means the system picks an
   appropriate number.
 
   Args:
@@ -96,11 +50,11 @@ def set_intra_op_parallelism_threads(num_threads):
   context.context().intra_op_parallelism_threads = num_threads
 
 
-@tf_export('config.threading.inter_op_parallelism_threads')
+@tf_export('config.threading.get_inter_op_parallelism_threads')
 def get_inter_op_parallelism_threads():
   """Get number of threads used for parallelism between independent operations.
 
-  Determines the number of threads used by independent non-blokcing operations.
+  Determines the number of threads used by independent non-blocking operations.
   0 means the system picks an appropriate number.
 
   Returns:
@@ -113,7 +67,7 @@ def get_inter_op_parallelism_threads():
 def set_inter_op_parallelism_threads(num_threads):
   """Set number of threads used for parallelism between independent operations.
 
-  Determines the number of threads used by independent non-blokcing operations.
+  Determines the number of threads used by independent non-blocking operations.
   0 means the system picks an appropriate number.
 
   Args:
@@ -191,6 +145,10 @@ def set_optimizer_experimental_options(options):
       - pin_to_host_optimization: Force small ops onto the CPU.
       - implementation_selector: Enable the swap of kernel implementations based
         on the device placement.
+      - auto_mixed_precision: Change certain float32 ops to float16 on Volta
+        GPUs and above. Without the use of loss scaling, this can cause
+        numerical underflow (see
+        `keras.mixed_precision.experimental.LossScaleOptimizer`).
       - disable_meta_optimizer: Disable the entire meta optimizer.
       - min_graph_nodes: The minimum number of nodes in a graph to optimizer.
         For smaller graphs, optimization is skipped.
@@ -333,3 +291,266 @@ def set_synchronous_execution(enable):
     context.context().execution_mode = context.SYNC
   else:
     context.context().execution_mode = context.ASYNC
+
+
+@tf_export('config.experimental.list_physical_devices')
+def list_physical_devices(device_type=None):
+  """Return a list of physical devices visible to the runtime.
+
+  Physical devices are hardware devices locally present on the current machine.
+  By default all discovered CPU and GPU devices are considered visible. The
+  `list_physical_devices` allows querying the hardware prior to runtime
+  initialization.
+
+  The following example ensures the machine can see at least 1 GPU.
+
+  ```python
+  physical_devices = tf.config.experimental.list_physical_devices('GPU')
+  assert len(physical_devices) > 0, "No GPUs found."
+  ```
+
+  Args:
+    device_type: (optional) Device type to filter by such as "CPU" or "GPU"
+
+  Returns:
+    List of PhysicalDevice objects
+  """
+  return context.context().list_physical_devices(device_type)
+
+
+@tf_export('config.experimental.list_logical_devices')
+def list_logical_devices(device_type=None):
+  """Return a list of logical devices created by runtime.
+
+  Logical devices may correspond to physical devices or remote devices in the
+  cluster. Operations and tensors may be placed on these devices by using the
+  `name` of the LogicalDevice.
+
+  For example:
+
+  ```python
+  logical_devices = tf.config.experimental.list_logical_devices('GPU')
+  # Allocate on GPU:0
+  with tf.device(logical_devices[0].name):
+    one = tf.constant(1)
+  # Allocate on GPU:1
+  with tf.device(logical_devices[1].name):
+    two = tf.constant(2)
+  ```
+
+  Args:
+    device_type: (optional) Device type to filter by such as "CPU" or "GPU"
+
+  Returns:
+    List of LogicalDevice objects
+  """
+  return context.context().list_logical_devices(device_type=device_type)
+
+
+@tf_export('config.experimental.get_visible_devices')
+def get_visible_devices(device_type=None):
+  """Get the list of visible physical devices.
+
+  Returns a list of PhysicalDevice objects that are current marked as visible to
+  the runtime. Any visible devices will have LogicalDevices assigned to them
+  once the runtime is initialized.
+
+  The following example verifies all visible GPUs have been disabled:
+
+  ```python
+  physical_devices = config.experimental.list_physical_devices('GPU')
+  assert len(physical_devices) > 0, "Not enough GPU hardware devices available"
+  # Disable all GPUS
+  tf.config.experimental.set_visible_devices([], 'GPU')
+  visible_devices = tf.config.experimental.get_visible_devices()
+  for device in visible_devices:
+    assert device.device_type != 'GPU'
+  ```
+
+  Args:
+    device_type: (optional) Device types to limit query to.
+
+  Returns:
+    List of PhysicalDevice objects
+  """
+  return context.context().get_visible_devices(device_type)
+
+
+@tf_export('config.experimental.set_visible_devices')
+def set_visible_devices(devices, device_type=None):
+  """Set the list of visible devices.
+
+  Sets the list of PhysicalDevices to be marked as visible to the runtime. Any
+  devices that are not marked as visible means TensorFlow will not allocate
+  memory on it and will not be able to place any operations on it as no
+  LogicalDevice will be created on it. By default all discovered devices are
+  marked as visible.
+
+  The following example demonstrates disabling the first GPU on the machine.
+
+  ```python
+  physical_devices = config.experimental.list_physical_devices('GPU')
+  assert len(physical_devices) > 0, "Not enough GPU hardware devices available"
+  # Disable first GPU
+  tf.config.experimental.set_visible_devices(physical_devices[1:], 'GPU')
+  logical_devices = config.experimental.list_logical_devices('GPU')
+  # Logical device was not created for first GPU
+  assert len(logical_devices) == len(physical_devices) - 1
+  ```
+
+  Args:
+    devices: (optional) List of PhysicalDevice objects to make visible
+    device_type: (optional) Device types to limit visibility configuration to.
+      Other device types will be left unaltered.
+  """
+  context.context().set_visible_devices(devices, device_type)
+
+
+@tf_export('config.experimental.get_memory_growth')
+def get_memory_growth(device):
+  """Get if memory growth is enabled for a PhysicalDevice.
+
+  A PhysicalDevice with memory growth set will not allocate all memory on the
+  device upfront.
+
+  For example:
+
+  ```python
+  physical_devices = config.experimental.list_physical_devices('GPU')
+  assert len(physical_devices) > 0, "Not enough GPU hardware devices available"
+  tf.config.experimental.set_memory_growth(physical_devices[0], True)
+  assert tf.config.experimental.get_memory_growth(physical_devices[0]) == True
+  ```
+
+  Args:
+    device: PhysicalDevice to query
+
+  Returns:
+    Current memory growth setting.
+  """
+  return context.context().get_memory_growth(device)
+
+
+@tf_export('config.experimental.set_memory_growth')
+def set_memory_growth(device, enable):
+  """Set if memory growth should be enabled for a PhysicalDevice.
+
+  A PhysicalDevice with memory growth set will not allocate all memory on the
+  device upfront. Memory growth cannot be configured on a PhysicalDevice with
+  virtual devices configured.
+
+  For example:
+
+  ```python
+  physical_devices = tf.config.experimental.list_physical_devices('GPU')
+  assert len(physical_devices) > 0, "Not enough GPU hardware devices available"
+  tf.config.experimental.set_memory_growth(physical_devices[0], True)
+  ```
+
+  Args:
+    device: PhysicalDevice to configure
+    enable: Whether to enable or disable memory growth
+  """
+  context.context().set_memory_growth(device, enable)
+
+
+@tf_export('config.experimental.get_virtual_device_configuration')
+def get_virtual_device_configuration(device):
+  """Get the virtual device configuration for a PhysicalDevice.
+
+  Returns the list of VirtualDeviceConfiguration objects previously configured
+  by a call to `tf.config.experimental.set_virtual_device_configuration()`.
+
+  For example:
+
+  ```python
+  physical_devices = tf.config.experimental.list_physical_devices('CPU')
+  assert len(physical_devices) == 1, "No CPUs found"
+  configs = tf.config.experimental.get_virtual_device_configuration(
+      physical_devices[0])
+  assert configs is None
+  tf.config.experimental.set_virtual_device_configuration(
+      physical_devices[0],
+      [tf.config.experimental.VirtualDeviceConfiguration(),
+       tf.config.experimental.VirtualDeviceConfiguration()])
+  configs = tf.config.experimental.get_virtual_device_configuration(
+      physical_devices[0])
+  assert len(configs) == 2
+  ```
+
+  Args:
+    device: PhysicalDevice to query
+
+  Returns:
+    List of `tf.config.experimental.VirtualDeviceConfiguration` objects or
+    `None` if no virtual device configuration has been set for this physical
+    device.
+  """
+  return context.context().get_virtual_device_configuration(device)
+
+
+@tf_export('config.experimental.set_virtual_device_configuration')
+def set_virtual_device_configuration(device, virtual_devices):
+  """Set the virtual device configuration for a PhysicalDevice.
+
+  A PhysicalDevice marked as visible will by default have a single LogicalDevice
+  allocated to it once the runtime is configured. Specifying a list of
+  tf.config.experimental.VirtualDeviceConfiguration objects allows multiple
+  devices to be configured that utilize the same PhysicalDevice.
+
+  The following example splits the CPU into 2 virtual devices:
+
+  ```python
+  physical_devices = tf.config.experimental.list_physical_devices('CPU')
+  assert len(physical_devices) == 1, "No CPUs found"
+  # Specify 2 virtual CPUs. Note currently memory limit is not supported.
+  tf.config.experimental.set_virtual_device_configuration(
+    physical_devices[0],
+    [tf.config.experimental.VirtualDeviceConfiguration(),
+     tf.config.experimental.VirtualDeviceConfiguration()])
+  logical_devices = tf.config.experimental.list_logical_devices('CPU')
+  assert len(logical_devices) == 2
+
+  try:
+    tf.config.experimental.set_virtual_device_configuration(
+      physical_devices[0],
+      [tf.config.experimental.VirtualDeviceConfiguration(),
+       tf.config.experimental.VirtualDeviceConfiguration(),
+       tf.config.experimental.VirtualDeviceConfiguration(),
+       tf.config.experimental.VirtualDeviceConfiguration()])
+  except:
+    print('Cannot modify the virtual devices once they have been initialized.')
+  ```
+
+  The following example splits the GPU into 2 virtual devices with 100 MB each:
+
+  ```python
+  physical_devices = tf.config.experimental.list_physical_devices('GPU')
+  assert len(physical_devices) > 0, "No GPUs found"
+  tf.config.experimental.set_virtual_device_configuration(
+    physical_devices[0],
+    [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=100),
+     tf.config.experimental.VirtualDeviceConfiguration(memory_limit=100)])
+
+  try:
+    tf.config.experimental.set_memory_growth(physical_devices[0], True)
+  except:
+    print('Cannot set memory growth when virtual devices configured')
+
+  logical_devices = tf.config.experimental.list_logical_devices('GPU')
+  assert len(logical_devices) == len(physical_devices) + 1
+
+  try:
+    tf.config.experimental.set_virtual_device_configuration(
+      physical_devices[0],
+      [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=10),
+       tf.config.experimental.VirtualDeviceConfiguration(memory_limit=10)])
+  except:
+    print('Cannot modify the virtual devices once they have been initialized.')
+  ```
+
+  Args:
+    device: (optional) Need to update
+    virtual_devices: (optional) Need to update
+  """
+  context.context().set_virtual_device_configuration(device, virtual_devices)

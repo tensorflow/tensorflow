@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/data/map_vectorization.h"
-#include "tensorflow/core/grappler/optimizers/data/vectorization_utils.h"
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
+#include "tensorflow/core/grappler/optimizers/data/vectorization_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -52,7 +53,6 @@ constexpr char kMapOp[] = "MapDataset";
 constexpr char kParallelMapOp[] = "ParallelMapDataset";
 constexpr char kChooseFastestOp[] = "ChooseFastestBranchDataset";
 constexpr char kPrefetchOp[] = "PrefetchDataset";
-constexpr int kAutotune = -1;
 
 // Returns a FunctionDef containing a MapDefun op that wraps the original
 // function.
@@ -267,12 +267,12 @@ Status AddNewMapNode(const NodeDef& old_map_node, const NodeDef& old_batch_node,
 
   // Set the `num_parallel_calls` input argument
   if (old_map_node.op() != kMapOp) {
-    // `num_parallel_calls` = kAutotune
+    // `num_parallel_calls` = `kAutoTune`
     // TODO(rachelim): Evaluate the performance of other potential
     // transformations to `num_parallel_calls`,
     // e.g. ceil(old num_parallel_calls // batch size)
-    auto autotune_val =
-        graph_utils::AddScalarConstNode(static_cast<int32>(kAutotune), graph);
+    auto autotune_val = graph_utils::AddScalarConstNode(
+        static_cast<int32>(data::model::kAutoTune), graph);
     map_node.add_input(autotune_val->name());
   }
 
@@ -302,11 +302,11 @@ Status AddNewPrefetchNode(const NodeDef& old_prefetch_node,
   // `input_dataset`
   prefetch_node.add_input(new_map_node.name());
 
-  // `buffer_size` = kAutotune
+  // `buffer_size` == `kAutoTune`
   // TODO(rachelim): Evaluate the performance of other potential transformations
   // to `buffer_size`, e.g. ceil(old buffer size // batch size)
-  auto autotune_val =
-      graph_utils::AddScalarConstNode(static_cast<int64>(kAutotune), graph);
+  auto autotune_val = graph_utils::AddScalarConstNode(
+      static_cast<int64>(data::model::kAutoTune), graph);
   prefetch_node.add_input(autotune_val->name());
 
   for (const auto& key : {"output_shapes", "output_types"}) {
@@ -425,7 +425,7 @@ Status AddNewChooseFastestNode(const NodeDef* input_dataset_node,
   DCHECK_EQ(branches.size(), other_arguments_lengths.size());
 
   AddNodeAttr("Targuments", t_arguments, &choose_fastest_node);
-  AddNodeAttr("num_elements_per_branch", 10, &choose_fastest_node);
+  AddNodeAttr("num_elements_per_branch", 100, &choose_fastest_node);
   AddNodeAttr("branches", branches, &choose_fastest_node);
   AddNodeAttr("other_arguments_lengths", other_arguments_lengths,
               &choose_fastest_node);

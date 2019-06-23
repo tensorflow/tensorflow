@@ -1622,19 +1622,18 @@ void RdmaTensorRequest::RecvTensorContent() {
               << ": Received tensor content #" << index_ << ": " << key_
               << " (Size: 0x" << std::hex << message_size << ")";
 
-  Tensor val;
-
 #if GOOGLE_CUDA
   if (proxy_tensor_ != nullptr) {
     CountCopies(key_, (void*)DMAHelper::base(proxy_tensor_),
                 (void*)DMAHelper::base(result_tensor_),
                 result_tensor_->TotalBytes(), false);
-    GPUUtil::CopyCPUTensorToGPU(proxy_tensor_, recv_args_.device_context,
-                                dst_dev_, result_tensor_,
-                                [this](const Status& s) {
-                                  CHECK(s.ok()) << "copy tensor to gpu sync";
-                                  Done(s);
-                                });
+    GPUUtil::CopyCPUTensorToGPU(
+        proxy_tensor_, recv_args_.device_context, dst_dev_, result_tensor_,
+        [this](const Status& s) {
+          CHECK(s.ok()) << "copy tensor to gpu sync";
+          Done(s);
+        },
+        true /*sync_dst_compute*/);
     return;
   }
 #endif

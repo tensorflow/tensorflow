@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -381,6 +382,25 @@ ENTRY main {
               Not(op::Fusion()));
 }
 
+TEST_F(InstructionFusionTest, DotOutputFusion_DontUnlessImplementedAsGemm) {
+  auto module = ParseHloString(R"(
+    HloModule dot
+
+    ENTRY entry_computation {
+      p0 = f32[64,63,512]{2,1,0} parameter(0)
+      p1 = f32[512,512]{1,0} parameter(1)
+      p2 = f32[64,63,512]{2,1,0} parameter(2)
+      dot.3525 = f32[64,63,512]{2,1,0} dot(p0, p1), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+      ROOT add.3529 = f32[64,63,512]{2,1,0} add(dot.3525, p2)
+    })")
+                    .ValueOrDie();
+
+  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
+                   .Run(module.get())
+                   .ValueOrDie())
+      << module->ToString();
+}
+
 // Compute sum(1/p0), where p0 has type f32, twice.  Check that the division is
 // duplicated and fused into both reduces.
 TEST_F(InstructionFusionTest, FloatingPointDivIsCheap) {
@@ -541,7 +561,7 @@ TEST_F(InstructionFusionTest, FuseScalarConstant) {
 // Check that we limit the number of operands to fusions we create.
 TEST_F(InstructionFusionTest, AvoidsLargeFusion) {
   constexpr int64 kNumParams = 200;
-  ASSERT_GT(kNumParams, GpuInstructionFusion::kMaxOperandsAndOutputsPerFusion);
+  ASSERT_GT(kNumParams, kMaxOperandsAndOutputsPerFusion);
 
   // Compute p0 + p1 + ... + pN.
   HloComputation::Builder b(TestName());
@@ -562,8 +582,7 @@ TEST_F(InstructionFusionTest, AvoidsLargeFusion) {
                   .ValueOrDie());
   SCOPED_TRACE(module->ToString());
   for (const HloInstruction* instr : computation->instructions()) {
-    EXPECT_LE(instr->operand_count(),
-              GpuInstructionFusion::kMaxOperandsAndOutputsPerFusion)
+    EXPECT_LE(instr->operand_count(), kMaxOperandsAndOutputsPerFusion)
         << instr->ToString();
   }
 }

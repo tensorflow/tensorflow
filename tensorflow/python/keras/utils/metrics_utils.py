@@ -27,14 +27,17 @@ from enum import Enum
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.generic_utils import to_list
-from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import weights_broadcast_ops
+from tensorflow.python.ops.losses import util as tf_losses_utils
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.util import tf_decorator
 
 NEG_INF = -1e10
@@ -68,9 +71,10 @@ def update_state_wrapper(update_state_fn):
   def decorated(metric_obj, *args, **kwargs):
     """Decorated function with `add_update()`."""
 
-    update_op = update_state_fn(*args, **kwargs)
+    with tf_utils.graph_context_for_symbolic_tensors(*args, **kwargs):
+      update_op = update_state_fn(*args, **kwargs)
     if update_op is not None:  # update_op will be None in eager execution.
-      metric_obj.add_update(update_op, inputs=True)
+      metric_obj.add_update(update_op)
     return update_op
 
   return tf_decorator.make_decorator(update_state_fn, decorated)
@@ -95,10 +99,11 @@ def result_wrapper(result_fn):
     `merge_call()`.
   """
 
-  def decorated(_, *args):
+  def decorated(metric_obj, *args):
     """Decorated function with merge_call."""
+    has_strategy = distribution_strategy_context.has_strategy()
     replica_context = distribution_strategy_context.get_replica_context()
-    if replica_context is None:  # if in cross replica context already
+    if not has_strategy or replica_context is None:
       result_t = array_ops.identity(result_fn(*args))
     else:
       # TODO(psv): Test distribution of metrics using different distribution
@@ -108,19 +113,24 @@ def result_wrapper(result_fn):
       # with distribution object as the first parameter. We create a wrapper
       # here so that the result function need not have that parameter.
       def merge_fn_wrapper(distribution, merge_fn, *args):
-        # We will get `PerDevice` merge function. Taking the first one as all
+        # We will get `PerReplica` merge function. Taking the first one as all
         # are identical copies of the function that we had passed below.
-        merged_result_fn = distribution.unwrap(merge_fn)[0](*args)
+        result = distribution.experimental_local_results(merge_fn)[0](*args)
 
         # Wrapping result in identity so that control dependency between
         # update_op from `update_state` and result works in case result returns
         # a tensor.
-        return array_ops.identity(merged_result_fn)
+        return array_ops.identity(result)
 
       # Wrapping result in merge_call. merge_call is used when we want to leave
       # replica mode and compute a value in cross replica mode.
       result_t = replica_context.merge_call(
           merge_fn_wrapper, args=(result_fn,) + args)
+
+    # We are saving the result op here to be used in train/test execution
+    # functions. This basically gives the result op that was generated with a
+    # control dep to the updates for these workflows.
+    metric_obj._call_result = result_t
     return result_t
 
   return tf_decorator.make_decorator(result_fn, decorated)
@@ -262,6 +272,9 @@ def update_confusion_matrix_variables(variables_to_update,
     return
   y_true = math_ops.cast(y_true, dtype=dtypes.float32)
   y_pred = math_ops.cast(y_pred, dtype=dtypes.float32)
+  [y_pred,
+   y_true], _ = ragged_assert_compatible_and_get_flat_values([y_pred, y_true],
+                                                             sample_weight)
   y_pred.shape.assert_is_compatible_with(y_true.shape)
 
   if not any(
@@ -290,8 +303,13 @@ def update_confusion_matrix_variables(variables_to_update,
           math_ops.cast(1.0, dtype=y_pred.dtype),
           message='predictions must be <= 1')
   ]):
-    y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
-        y_pred, y_true, sample_weight)
+    if sample_weight is None:
+      y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
+          y_pred, y_true)
+    else:
+      y_pred, y_true, sample_weight = (
+          tf_losses_utils.squeeze_or_expand_dimensions(
+              y_pred, y_true, sample_weight=sample_weight))
 
   if top_k is not None:
     y_pred = _filter_top_k(y_pred, top_k)
@@ -381,3 +399,67 @@ def _filter_top_k(x, k):
   top_k_mask = math_ops.reduce_sum(
       array_ops.one_hot(top_k_idx, x.shape[-1], axis=-1), axis=-2)
   return x * top_k_mask + NEG_INF * (1 - top_k_mask)
+
+
+def ragged_assert_compatible_and_get_flat_values(values, mask=None):
+  """If ragged, it checks the compatibility and then returns the flat_values.
+
+     Note: If two tensors are dense, it does not check their compatibility.
+     Note: Although two ragged tensors with different ragged ranks could have
+           identical overall rank and dimension sizes and hence be compatible,
+           we do not support those cases.
+  Args:
+     values: A list of potentially ragged tensor of the same ragged_rank.
+     mask: A potentially ragged tensor of the same ragged_rank as elements in
+       Values.
+
+  Returns:
+     A tuple in which the first element is the list of tensors and the second
+     is the mask tensor. ([Values], mask). Mask and the element in Values
+     are equal to the flat_values of the input arguments (if they were ragged).
+  """
+  if isinstance(values, list):
+    is_all_ragged = \
+        all(isinstance(rt, ragged_tensor.RaggedTensor) for rt in values)
+    is_any_ragged = \
+        any(isinstance(rt, ragged_tensor.RaggedTensor) for rt in values)
+  else:
+    is_all_ragged = isinstance(values, ragged_tensor.RaggedTensor)
+    is_any_ragged = is_all_ragged
+  if (is_all_ragged and
+      ((mask is None) or isinstance(mask, ragged_tensor.RaggedTensor))):
+    to_be_stripped = False
+    if not isinstance(values, list):
+      values = [values]
+      to_be_stripped = True
+
+    # NOTE: we leave the flat_values compatiblity to
+    # tf.TensorShape `assert_is_compatible_with`
+    # check if both dynamic dimensions are equal and then use the flat_values.
+    nested_row_split_list = [rt.nested_row_splits for rt in values]
+    assertion_list = ragged_util.assert_splits_match(nested_row_split_list)
+
+    # if both are ragged sample_weights also should be ragged with same dims.
+    if isinstance(mask, ragged_tensor.RaggedTensor):
+      assertion_list_for_mask = ragged_util.assert_splits_match(
+          [nested_row_split_list[0], mask.nested_row_splits])
+      tmp = control_flow_ops.with_dependencies(assertion_list_for_mask,
+                                               mask.flat_values)
+      mask = array_ops.expand_dims(tmp, -1)
+
+    # values has at least 1 element.
+    flat_values = []
+    for value in values:
+      tmp = control_flow_ops.with_dependencies(assertion_list,
+                                               value.flat_values)
+      flat_values.append(array_ops.expand_dims(tmp, -1))
+
+    values = flat_values[0] if to_be_stripped else flat_values
+
+  elif is_any_ragged:
+    raise TypeError('One of the inputs does not have acceptable types.')
+  # values are empty or value are not ragged and mask is ragged.
+  elif isinstance(mask, ragged_tensor.RaggedTensor):
+    raise TypeError('Ragged mask is not allowed with non-ragged inputs.')
+
+  return values, mask

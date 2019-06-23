@@ -39,8 +39,6 @@ renames = {
         'tf.compat.v1.ConditionalAccumulatorBase',
     'tf.ConfigProto':
         'tf.compat.v1.ConfigProto',
-    'tf.DeviceSpec':
-        'tf.compat.v1.DeviceSpec',
     'tf.Dimension':
         'tf.compat.v1.Dimension',
     'tf.Event':
@@ -118,7 +116,7 @@ renames = {
     'tf.SessionLog':
         'tf.compat.v1.SessionLog',
     'tf.SparseConditionalAccumulator':
-        'tf.sparse.SparseConditionalAccumulator',
+        'tf.compat.v1.SparseConditionalAccumulator',
     'tf.SparseFeature':
         'tf.io.SparseFeature',
     'tf.SparseTensorValue':
@@ -225,6 +223,12 @@ renames = {
         'tf.linalg.cross',
     'tf.cumprod':
         'tf.math.cumprod',
+    'tf.data.get_output_classes':
+        'tf.compat.v1.data.get_output_classes',
+    'tf.data.get_output_shapes':
+        'tf.compat.v1.data.get_output_shapes',
+    'tf.data.get_output_types':
+        'tf.compat.v1.data.get_output_types',
     'tf.data.make_initializable_iterator':
         'tf.compat.v1.data.make_initializable_iterator',
     'tf.data.make_one_shot_iterator':
@@ -265,12 +269,12 @@ renames = {
         'tf.compat.dimension_at_index',
     'tf.dimension_value':
         'tf.compat.dimension_value',
+    'tf.disable_control_flow_v2':
+        'tf.compat.v1.disable_control_flow_v2',
     'tf.disable_eager_execution':
         'tf.compat.v1.disable_eager_execution',
     'tf.disable_resource_variables':
         'tf.compat.v1.disable_resource_variables',
-    'tf.disable_v2_batch_normalization':
-        'tf.compat.v1.disable_v2_batch_normalization',
     'tf.disable_v2_behavior':
         'tf.compat.v1.disable_v2_behavior',
     'tf.disable_v2_tensorshape':
@@ -319,12 +323,12 @@ renames = {
         'tf.math.divide_no_nan',
     'tf.dtypes.as_string':
         'tf.strings.as_string',
+    'tf.enable_control_flow_v2':
+        'tf.compat.v1.enable_control_flow_v2',
     'tf.enable_eager_execution':
         'tf.compat.v1.enable_eager_execution',
     'tf.enable_resource_variables':
         'tf.compat.v1.enable_resource_variables',
-    'tf.enable_v2_batch_normalization':
-        'tf.compat.v1.enable_v2_batch_normalization',
     'tf.enable_v2_behavior':
         'tf.compat.v1.enable_v2_behavior',
     'tf.enable_v2_tensorshape':
@@ -337,10 +341,26 @@ renames = {
         'tf.math.erfc',
     'tf.estimator.experimental.KMeans':
         'tf.compat.v1.estimator.experimental.KMeans',
+    'tf.estimator.experimental.dnn_logit_fn_builder':
+        'tf.compat.v1.estimator.experimental.dnn_logit_fn_builder',
+    'tf.estimator.experimental.linear_logit_fn_builder':
+        'tf.compat.v1.estimator.experimental.linear_logit_fn_builder',
     'tf.estimator.inputs.numpy_input_fn':
         'tf.compat.v1.estimator.inputs.numpy_input_fn',
     'tf.estimator.inputs.pandas_input_fn':
         'tf.compat.v1.estimator.inputs.pandas_input_fn',
+    'tf.estimator.tpu.InputPipelineConfig':
+        'tf.compat.v1.estimator.tpu.InputPipelineConfig',
+    'tf.estimator.tpu.RunConfig':
+        'tf.compat.v1.estimator.tpu.RunConfig',
+    'tf.estimator.tpu.TPUConfig':
+        'tf.compat.v1.estimator.tpu.TPUConfig',
+    'tf.estimator.tpu.TPUEstimator':
+        'tf.compat.v1.estimator.tpu.TPUEstimator',
+    'tf.estimator.tpu.TPUEstimatorSpec':
+        'tf.compat.v1.estimator.tpu.TPUEstimatorSpec',
+    'tf.estimator.tpu.experimental.EmbeddingSpec':
+        'tf.compat.v1.estimator.tpu.experimental.EmbeddingSpec',
     'tf.expm1':
         'tf.math.expm1',
     'tf.fake_quant_with_min_max_args':
@@ -369,8 +389,12 @@ renames = {
         'tf.signal.fft3d',
     'tf.fixed_size_partitioner':
         'tf.compat.v1.fixed_size_partitioner',
+    'tf.floor_div':
+        'tf.compat.v1.floor_div',
     'tf.floordiv':
         'tf.math.floordiv',
+    'tf.floormod':
+        'tf.math.floormod',
     'tf.get_collection':
         'tf.compat.v1.get_collection',
     'tf.get_collection_ref':
@@ -399,10 +423,6 @@ renames = {
         'tf.compat.v1.global_variables',
     'tf.global_variables_initializer':
         'tf.compat.v1.global_variables_initializer',
-    'tf.glorot_normal_initializer':
-        'tf.compat.v1.glorot_normal_initializer',
-    'tf.glorot_uniform_initializer':
-        'tf.compat.v1.glorot_uniform_initializer',
     'tf.graph_util.convert_variables_to_constants':
         'tf.compat.v1.graph_util.convert_variables_to_constants',
     'tf.graph_util.extract_sub_graph':
@@ -431,12 +451,14 @@ renames = {
         'tf.compat.v1.image.resize_bicubic',
     'tf.image.resize_bilinear':
         'tf.compat.v1.image.resize_bilinear',
+    'tf.image.resize_image_with_crop_or_pad':
+        'tf.image.resize_with_crop_or_pad',
     'tf.image.resize_image_with_pad':
         'tf.compat.v1.image.resize_image_with_pad',
     'tf.image.resize_nearest_neighbor':
         'tf.compat.v1.image.resize_nearest_neighbor',
     'tf.image.transpose_image':
-        'tf.compat.v1.image.transpose_image',
+        'tf.image.transpose',
     'tf.initialize_all_tables':
         'tf.compat.v1.initialize_all_tables',
     'tf.initialize_all_variables':
@@ -445,46 +467,16 @@ renames = {
         'tf.compat.v1.initialize_local_variables',
     'tf.initialize_variables':
         'tf.compat.v1.initialize_variables',
-    'tf.initializers.constant':
-        'tf.compat.v1.initializers.constant',
     'tf.initializers.global_variables':
         'tf.compat.v1.initializers.global_variables',
-    'tf.initializers.glorot_normal':
-        'tf.compat.v1.initializers.glorot_normal',
-    'tf.initializers.glorot_uniform':
-        'tf.compat.v1.initializers.glorot_uniform',
-    'tf.initializers.he_normal':
-        'tf.compat.v1.initializers.he_normal',
-    'tf.initializers.he_uniform':
-        'tf.compat.v1.initializers.he_uniform',
-    'tf.initializers.identity':
-        'tf.compat.v1.initializers.identity',
-    'tf.initializers.lecun_normal':
-        'tf.compat.v1.initializers.lecun_normal',
-    'tf.initializers.lecun_uniform':
-        'tf.compat.v1.initializers.lecun_uniform',
     'tf.initializers.local_variables':
         'tf.compat.v1.initializers.local_variables',
-    'tf.initializers.ones':
-        'tf.compat.v1.initializers.ones',
-    'tf.initializers.orthogonal':
-        'tf.compat.v1.initializers.orthogonal',
-    'tf.initializers.random_normal':
-        'tf.compat.v1.initializers.random_normal',
-    'tf.initializers.random_uniform':
-        'tf.compat.v1.initializers.random_uniform',
     'tf.initializers.tables_initializer':
         'tf.compat.v1.initializers.tables_initializer',
-    'tf.initializers.truncated_normal':
-        'tf.compat.v1.initializers.truncated_normal',
     'tf.initializers.uniform_unit_scaling':
         'tf.compat.v1.initializers.uniform_unit_scaling',
     'tf.initializers.variables':
         'tf.compat.v1.initializers.variables',
-    'tf.initializers.variance_scaling':
-        'tf.compat.v1.initializers.variance_scaling',
-    'tf.initializers.zeros':
-        'tf.compat.v1.initializers.zeros',
     'tf.invert_permutation':
         'tf.math.invert_permutation',
     'tf.io.PaddingFIFOQueue':
@@ -495,6 +487,8 @@ renames = {
         'tf.queue.QueueBase',
     'tf.io.RandomShuffleQueue':
         'tf.queue.RandomShuffleQueue',
+    'tf.io.TFRecordCompressionType':
+        'tf.compat.v1.io.TFRecordCompressionType',
     'tf.io.tf_record_iterator':
         'tf.compat.v1.io.tf_record_iterator',
     'tf.is_finite':
@@ -513,16 +507,8 @@ renames = {
         'tf.compat.v1.is_variable_initialized',
     'tf.keras.backend.get_session':
         'tf.compat.v1.keras.backend.get_session',
-    'tf.keras.initializers.normal':
-        'tf.compat.v1.keras.initializers.normal',
-    'tf.keras.initializers.random_normal':
-        'tf.compat.v1.keras.initializers.random_normal',
-    'tf.keras.initializers.random_uniform':
-        'tf.compat.v1.keras.initializers.random_uniform',
-    'tf.keras.initializers.truncated_normal':
-        'tf.compat.v1.keras.initializers.truncated_normal',
-    'tf.keras.initializers.uniform':
-        'tf.compat.v1.keras.initializers.uniform',
+    'tf.keras.backend.set_session':
+        'tf.compat.v1.keras.backend.set_session',
     'tf.keras.layers.CuDNNGRU':
         'tf.compat.v1.keras.layers.CuDNNGRU',
     'tf.keras.layers.CuDNNLSTM':
@@ -617,8 +603,28 @@ renames = {
         'tf.math.lgamma',
     'tf.lin_space':
         'tf.linspace',
+    'tf.linalg.transpose':
+        'tf.linalg.matrix_transpose',
+    'tf.lite.OpHint':
+        'tf.compat.v1.lite.OpHint',
     'tf.lite.TocoConverter':
         'tf.compat.v1.lite.TocoConverter',
+    'tf.lite.constants.GRAPHVIZ_DOT':
+        'tf.compat.v1.lite.constants.GRAPHVIZ_DOT',
+    'tf.lite.constants.INT8':
+        'tf.compat.v1.lite.constants.INT8',
+    'tf.lite.constants.TFLITE':
+        'tf.compat.v1.lite.constants.TFLITE',
+    'tf.lite.experimental.convert_op_hints_to_stubs':
+        'tf.compat.v1.lite.experimental.convert_op_hints_to_stubs',
+    'tf.lite.experimental.get_potentially_supported_ops':
+        'tf.compat.v1.lite.experimental.get_potentially_supported_ops',
+    'tf.lite.experimental.nn.TFLiteLSTMCell':
+        'tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell',
+    'tf.lite.experimental.nn.TfLiteRNNCell':
+        'tf.compat.v1.lite.experimental.nn.TfLiteRNNCell',
+    'tf.lite.experimental.nn.dynamic_rnn':
+        'tf.compat.v1.lite.experimental.nn.dynamic_rnn',
     'tf.lite.toco_convert':
         'tf.compat.v1.lite.toco_convert',
     'tf.local_variables':
@@ -712,7 +718,7 @@ renames = {
     'tf.make_tensor_proto':
         'tf.compat.v1.make_tensor_proto',
     'tf.manip.gather_nd':
-        'tf.gather_nd',
+        'tf.compat.v1.manip.gather_nd',
     'tf.manip.reshape':
         'tf.reshape',
     'tf.manip.reverse':
@@ -744,7 +750,7 @@ renames = {
     'tf.matrix_solve_ls':
         'tf.linalg.lstsq',
     'tf.matrix_transpose':
-        'tf.linalg.transpose',
+        'tf.linalg.matrix_transpose',
     'tf.matrix_triangular_solve':
         'tf.linalg.triangular_solve',
     'tf.metrics.accuracy':
@@ -815,6 +821,8 @@ renames = {
         'tf.compat.v1.metrics.true_positives_at_thresholds',
     'tf.min_max_variable_partitioner':
         'tf.compat.v1.min_max_variable_partitioner',
+    'tf.mod':
+        'tf.math.mod',
     'tf.model_variables':
         'tf.compat.v1.model_variables',
     'tf.moving_average_variables':
@@ -881,14 +889,16 @@ renames = {
         'tf.compat.v1.nn.static_bidirectional_rnn',
     'tf.nn.static_rnn':
         'tf.compat.v1.nn.static_rnn',
+    'tf.nn.static_state_saving_rnn':
+        'tf.compat.v1.nn.static_state_saving_rnn',
     'tf.nn.uniform_candidate_sampler':
         'tf.random.uniform_candidate_sampler',
     'tf.nn.xw_plus_b':
         'tf.compat.v1.nn.xw_plus_b',
+    'tf.no_regularizer':
+        'tf.compat.v1.no_regularizer',
     'tf.op_scope':
         'tf.compat.v1.op_scope',
-    'tf.orthogonal_initializer':
-        'tf.compat.v1.orthogonal_initializer',
     'tf.parse_single_sequence_example':
         'tf.io.parse_single_sequence_example',
     'tf.parse_tensor':
@@ -919,8 +929,6 @@ renames = {
         'tf.compat.v1.profiler.write_op_log',
     'tf.py_func':
         'tf.compat.v1.py_func',
-    'tf.io.TFRecordCompressionType':
-        'tf.compat.v1.python_io.TFRecordCompressionType',
     'tf.python_io.TFRecordCompressionType':
         'tf.compat.v1.python_io.TFRecordCompressionType',
     'tf.python_io.TFRecordOptions':
@@ -939,6 +947,8 @@ renames = {
         'tf.compat.v1.ragged.RaggedTensorValue',
     'tf.ragged.constant_value':
         'tf.compat.v1.ragged.constant_value',
+    'tf.ragged.placeholder':
+        'tf.compat.v1.ragged.placeholder',
     'tf.random.get_seed':
         'tf.compat.v1.random.get_seed',
     'tf.random.set_random_seed':
@@ -1137,6 +1147,8 @@ renames = {
         'tf.sets.union',
     'tf.space_to_depth':
         'tf.compat.v1.space_to_depth',
+    'tf.sparse.SparseConditionalAccumulator':
+        'tf.compat.v1.sparse.SparseConditionalAccumulator',
     'tf.sparse.matmul':
         'tf.sparse.sparse_dense_matmul',
     'tf.sparse.merge':
@@ -1243,6 +1255,8 @@ renames = {
         'tf.compat.v1.summary.SummaryDescription',
     'tf.summary.TaggedRunMetadata':
         'tf.compat.v1.summary.TaggedRunMetadata',
+    'tf.summary.all_v2_summary_ops':
+        'tf.compat.v1.summary.all_v2_summary_ops',
     'tf.summary.audio':
         'tf.compat.v1.summary.audio',
     'tf.summary.get_summary_description':
@@ -1297,6 +1311,38 @@ renames = {
         'tf.compat.v1.to_int32',
     'tf.to_int64':
         'tf.compat.v1.to_int64',
+    'tf.tpu.CrossShardOptimizer':
+        'tf.compat.v1.tpu.CrossShardOptimizer',
+    'tf.tpu.batch_parallel':
+        'tf.compat.v1.tpu.batch_parallel',
+    'tf.tpu.bfloat16_scope':
+        'tf.compat.v1.tpu.bfloat16_scope',
+    'tf.tpu.core':
+        'tf.compat.v1.tpu.core',
+    'tf.tpu.cross_replica_sum':
+        'tf.compat.v1.tpu.cross_replica_sum',
+    'tf.tpu.experimental.AdagradParameters':
+        'tf.compat.v1.tpu.experimental.AdagradParameters',
+    'tf.tpu.experimental.AdamParameters':
+        'tf.compat.v1.tpu.experimental.AdamParameters',
+    'tf.tpu.experimental.StochasticGradientDescentParameters':
+        'tf.compat.v1.tpu.experimental.StochasticGradientDescentParameters',
+    'tf.tpu.experimental.embedding_column':
+        'tf.compat.v1.tpu.experimental.embedding_column',
+    'tf.tpu.experimental.shared_embedding_columns':
+        'tf.compat.v1.tpu.experimental.shared_embedding_columns',
+    'tf.tpu.initialize_system':
+        'tf.compat.v1.tpu.initialize_system',
+    'tf.tpu.outside_compilation':
+        'tf.compat.v1.tpu.outside_compilation',
+    'tf.tpu.replicate':
+        'tf.compat.v1.tpu.replicate',
+    'tf.tpu.rewrite':
+        'tf.compat.v1.tpu.rewrite',
+    'tf.tpu.shard':
+        'tf.compat.v1.tpu.shard',
+    'tf.tpu.shutdown_system':
+        'tf.compat.v1.tpu.shutdown_system',
     'tf.trace':
         'tf.linalg.trace',
     'tf.train.AdadeltaOptimizer':
@@ -1409,6 +1455,12 @@ renames = {
         'tf.compat.v1.train.create_global_step',
     'tf.train.do_quantize_training_on_graphdef':
         'tf.compat.v1.train.do_quantize_training_on_graphdef',
+    'tf.train.experimental.MixedPrecisionLossScaleOptimizer':
+        'tf.compat.v1.train.experimental.MixedPrecisionLossScaleOptimizer',
+    'tf.train.experimental.disable_mixed_precision_graph_rewrite':
+        'tf.compat.v1.train.experimental.disable_mixed_precision_graph_rewrite',
+    'tf.train.experimental.enable_mixed_precision_graph_rewrite':
+        'tf.compat.v1.train.experimental.enable_mixed_precision_graph_rewrite',
     'tf.train.exponential_decay':
         'tf.compat.v1.train.exponential_decay',
     'tf.train.export_meta_graph':
@@ -1511,10 +1563,10 @@ renames = {
         'tf.compat.v1.variable_scope',
     'tf.variables_initializer':
         'tf.compat.v1.variables_initializer',
-    'tf.variance_scaling_initializer':
-        'tf.compat.v1.variance_scaling_initializer',
     'tf.verify_tensor_all_finite':
         'tf.compat.v1.verify_tensor_all_finite',
+    'tf.where_v2':
+        'tf.where',
     'tf.wrap_function':
         'tf.compat.v1.wrap_function',
     'tf.write_file':

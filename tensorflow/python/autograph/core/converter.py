@@ -88,7 +88,20 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export('autograph.experimental.Feature')
 class Feature(enum.Enum):
-  """Represents conversion options that can be toggled on or off.
+  """This enumeration represents optional conversion options.
+
+  These conversion options are experimental. They are subject to change without
+  notice and offer no guarantees.
+
+  _Example Usage_
+
+  ```python
+  optionals= tf.autograph.experimental.Feature.EQUALITY_OPERATORS
+  @tf.function(experimental_autograph_options=optionals)
+  def f(i):
+    if i == 0:  # EQUALITY_OPERATORS allows the use of == here.
+      tf.print('i is zero')
+  ```
 
   Attributes:
     ALL: Enable all features.
@@ -96,11 +109,10 @@ class Feature(enum.Enum):
     ASSERT_STATEMENTS: Convert Tensor-dependent assert statements to tf.Assert.
     BUILTIN_FUNCTIONS: Convert builtin functions applied to Tensors to
       their TF counterparts.
-    ERROR_REWRITING: Rewrite errors that occur in the generated code to
-      indicate the source code to which the failing code corresponds.
+    EQUALITY_OPERATORS: Whether to convert the comparison operators, like
+      equality. This is soon to be deprecated as support is being added to the
+      Tensor class.
     LISTS: Convert list idioms, like initializers, slices, append, etc.
-    LOGICAL_EXPRESSIONS: Convert data-dependent logical expressions applied to
-      Tensors to their TF counterparts.
     NAME_SCOPES: Insert name scopes that name ops according to context, like the
       function they were defined in.
   """
@@ -110,9 +122,8 @@ class Feature(enum.Enum):
   AUTO_CONTROL_DEPS = 'AUTO_CONTROL_DEPS'
   ASSERT_STATEMENTS = 'ASSERT_STATEMENTS'
   BUILTIN_FUNCTIONS = 'BUILTIN_FUNCTIONS'
-  ERROR_REWRITING = 'ERROR_REWRITING'
+  EQUALITY_OPERATORS = 'EQUALITY_OPERATORS'
   LISTS = 'LISTS'
-  LOGICAL_EXPRESSIONS = 'LOGICAL_EXPRESSIONS'
   NAME_SCOPES = 'NAME_SCOPES'
 
   @classmethod
@@ -126,6 +137,9 @@ class Feature(enum.Enum):
     if not isinstance(exclude, (list, tuple, set)):
       exclude = (exclude,)
     return tuple(set(cls.all()) - set(exclude) - {cls.ALL})
+
+
+STANDARD_OPTIONS = None  # Forward definition.
 
 
 class ConversionOptions(object):
@@ -190,6 +204,9 @@ class ConversionOptions(object):
     Returns:
       ast.Node
     """
+    if self == STANDARD_OPTIONS:
+      return parser.parse_expression('ag__.STD')
+
     template = """
       ag__.ConversionOptions(
           recursive=recursive_val,
@@ -214,6 +231,13 @@ class ConversionOptions(object):
             str(internal_convert_user_code)),
         optional_features_val=list_of_features(self.optional_features))
     return expr_ast[0].value
+
+
+STANDARD_OPTIONS = ConversionOptions(
+    recursive=True,
+    force_conversion=False,
+    internal_convert_user_code=True,
+    optional_features=None)
 
 
 class ProgramContext(

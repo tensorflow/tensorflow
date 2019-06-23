@@ -217,9 +217,9 @@ TEST(TopkAccuracyEvalStage, FloatTest_CorrectLabelsAtLastIndices) {
   EXPECT_EQ(1, metrics.num_runs());
   auto accuracy_metrics = metrics.process_metrics().topk_accuracy_metrics();
   // Only top-5 count is 1.0, rest are 0.0
-  EXPECT_FLOAT_EQ(1.0, accuracy_metrics.topk_accuracy_percentages(4));
+  EXPECT_FLOAT_EQ(1.0, accuracy_metrics.topk_accuracies(4));
   for (int i = 0; i < 4; ++i) {
-    EXPECT_FLOAT_EQ(0.0, accuracy_metrics.topk_accuracy_percentages(i));
+    EXPECT_FLOAT_EQ(0.0, accuracy_metrics.topk_accuracies(i));
   }
 
   // The ground truth is index 1, but it is 4th highest based on model's output.
@@ -231,10 +231,10 @@ TEST(TopkAccuracyEvalStage, FloatTest_CorrectLabelsAtLastIndices) {
   accuracy_metrics = metrics.process_metrics().topk_accuracy_metrics();
   // 1/2 images had the currect output in top-4, 2/2 has currect output in
   // top-5.
-  EXPECT_FLOAT_EQ(1.0, accuracy_metrics.topk_accuracy_percentages(4));
-  EXPECT_FLOAT_EQ(0.5, accuracy_metrics.topk_accuracy_percentages(3));
+  EXPECT_FLOAT_EQ(1.0, accuracy_metrics.topk_accuracies(4));
+  EXPECT_FLOAT_EQ(0.5, accuracy_metrics.topk_accuracies(3));
   for (int i = 0; i < 3; ++i) {
-    EXPECT_FLOAT_EQ(0.0, accuracy_metrics.topk_accuracy_percentages(i));
+    EXPECT_FLOAT_EQ(0.0, accuracy_metrics.topk_accuracies(i));
   }
 }
 
@@ -261,7 +261,7 @@ class CorrectTopkAccuracyEvalTest : public ::testing::Test {
     EvaluationStageMetrics metrics = stage.LatestMetrics();
     EXPECT_EQ(0, metrics.num_runs());
     auto accuracy_metrics = metrics.process_metrics().topk_accuracy_metrics();
-    EXPECT_EQ(0, accuracy_metrics.topk_accuracy_percentages_size());
+    EXPECT_EQ(0, accuracy_metrics.topk_accuracies_size());
 
     T array[kNumCategories];
 
@@ -274,9 +274,8 @@ class CorrectTopkAccuracyEvalTest : public ::testing::Test {
     metrics = stage.LatestMetrics();
     EXPECT_EQ(1, metrics.num_runs());
     accuracy_metrics = metrics.process_metrics().topk_accuracy_metrics();
-    for (int i = 0; i < accuracy_metrics.topk_accuracy_percentages_size();
-         ++i) {
-      EXPECT_FLOAT_EQ(1.0, accuracy_metrics.topk_accuracy_percentages(i));
+    for (int i = 0; i < accuracy_metrics.topk_accuracies_size(); ++i) {
+      EXPECT_FLOAT_EQ(1.0, accuracy_metrics.topk_accuracies(i));
     }
 
     // Second image was also correctly identified as "1".
@@ -288,9 +287,8 @@ class CorrectTopkAccuracyEvalTest : public ::testing::Test {
     metrics = stage.LatestMetrics();
     EXPECT_EQ(2, metrics.num_runs());
     accuracy_metrics = metrics.process_metrics().topk_accuracy_metrics();
-    for (int i = 0; i < accuracy_metrics.topk_accuracy_percentages_size();
-         ++i) {
-      EXPECT_FLOAT_EQ(1.0, accuracy_metrics.topk_accuracy_percentages(i));
+    for (int i = 0; i < accuracy_metrics.topk_accuracies_size(); ++i) {
+      EXPECT_FLOAT_EQ(1.0, accuracy_metrics.topk_accuracies(i));
     }
   }
 };

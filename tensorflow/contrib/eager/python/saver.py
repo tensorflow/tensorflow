@@ -114,7 +114,7 @@ def restore_variables_on_create(save_path, map_func=None):
 
 
 class Saver(object):
-  """A tf.train.Saver adapter for use when eager execution is enabled.
+  """A tf.compat.v1.train.Saver adapter for use when eager execution is enabled.
 
   `Saver`'s name-based checkpointing strategy is fragile. Please switch to
   `tf.train.Checkpoint` or `tf.keras.Model.save_weights`, which perform a more
@@ -123,9 +123,9 @@ class Saver(object):
   """
 
   def __init__(self, var_list):
-    """A  tf.train.Saver adapter for use when eager execution is enabled.
+    """A  tf.compat.v1.train.Saver adapter for use when eager execution is enabled.
 
-      The API, and on-disk format, mimic tf.train.Saver except that no
+      The API, and on-disk format, mimic tf.compat.v1.train.Saver except that no
       Session is needed.
 
     Args:
@@ -173,13 +173,14 @@ class Saver(object):
 
 
 def get_optimizer_variables(optimizer):
-  """Returns a list of variables for the given `tf.train.Optimizer`.
+  """Returns a list of variables for the given `tf.compat.v1.train.Optimizer`.
 
   Equivalent to `optimizer.variables()`.
 
   Args:
-    optimizer: An instance of `tf.train.Optimizer` which has created variables
-      (typically after a call to `Optimizer.minimize`).
+    optimizer: An instance of `tf.compat.v1.train.Optimizer` which has created
+      variables (typically after a call to `Optimizer.minimize`).
+
   Returns:
     A list of variables which have been created by the `Optimizer`.
   """

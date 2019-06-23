@@ -26,7 +26,6 @@ import numpy as np
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.experimental.ops import interleave_ops
-from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import parsing_ops
 from tensorflow.python.data.experimental.ops import shuffle_ops
 from tensorflow.python.data.ops import dataset_ops
@@ -224,7 +223,7 @@ def make_tf_record_dataset(file_pattern,
                            shuffle=True,
                            shuffle_buffer_size=None,
                            shuffle_seed=None,
-                           prefetch_buffer_size=optimization.AUTOTUNE,
+                           prefetch_buffer_size=dataset_ops.AUTOTUNE,
                            num_parallel_reads=None,
                            num_parallel_parser_calls=None,
                            drop_final_batch=False):
@@ -235,7 +234,7 @@ def make_tf_record_dataset(file_pattern,
 
   Args:
     file_pattern: List of files or patterns of TFRecord file paths.
-      See `tf.gfile.Glob` for pattern rules.
+      See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int representing the number of records to combine
       in a single batch.
     parser_fn: (Optional.) A function accepting string input to parse
@@ -324,7 +323,7 @@ def make_csv_dataset_v2(
     shuffle=True,
     shuffle_buffer_size=10000,
     shuffle_seed=None,
-    prefetch_buffer_size=optimization.AUTOTUNE,
+    prefetch_buffer_size=dataset_ops.AUTOTUNE,
     num_parallel_reads=1,
     sloppy=False,
     num_rows_for_inference=100,
@@ -340,7 +339,7 @@ def make_csv_dataset_v2(
 
   Args:
     file_pattern: List of files or patterns of file paths containing CSV
-      records. See `tf.gfile.Glob` for pattern rules.
+      records. See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int representing the number of records to combine
       in a single batch.
     column_names: An optional list of strings that corresponds to the CSV
@@ -532,7 +531,7 @@ def make_csv_dataset_v1(
     shuffle=True,
     shuffle_buffer_size=10000,
     shuffle_seed=None,
-    prefetch_buffer_size=optimization.AUTOTUNE,
+    prefetch_buffer_size=dataset_ops.AUTOTUNE,
     num_parallel_reads=1,
     sloppy=False,
     num_rows_for_inference=100,
@@ -583,7 +582,7 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
     We can construct a CsvDataset from it as follows:
 
     ```python
-    tf.enable_eager_execution()
+    tf.compat.v1.enable_eager_execution()
 
      dataset = tf.data.experimental.CsvDataset(
         "my_file*.csv",
@@ -663,15 +662,14 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
         argument_default=[],
         argument_dtype=dtypes.int64,
     )
-    self._structure = structure.NestedStructure(
-        tuple(structure.TensorStructure(d.dtype, [])
-              for d in self._record_defaults))
+    self._structure = tuple(
+        structure.TensorStructure(d.dtype, []) for d in self._record_defaults)
     variant_tensor = gen_experimental_dataset_ops.experimental_csv_dataset(
         filenames=self._filenames,
         record_defaults=self._record_defaults,
         buffer_size=self._buffer_size,
         header=self._header,
-        output_shapes=self._structure._flat_shapes,  # pylint: disable=protected-access
+        output_shapes=structure.get_flat_tensor_shapes(self._structure),
         field_delim=self._field_delim,
         use_quote_delim=self._use_quote_delim,
         na_value=self._na_value,
@@ -716,7 +714,7 @@ def make_batched_features_dataset_v2(file_pattern,
                                      shuffle=True,
                                      shuffle_buffer_size=10000,
                                      shuffle_seed=None,
-                                     prefetch_buffer_size=optimization.AUTOTUNE,
+                                     prefetch_buffer_size=dataset_ops.AUTOTUNE,
                                      reader_num_threads=1,
                                      parser_num_threads=2,
                                      sloppy_ordering=False,
@@ -768,11 +766,11 @@ def make_batched_features_dataset_v2(file_pattern,
 
   Args:
     file_pattern: List of files or patterns of file paths containing
-      `Example` records. See `tf.gfile.Glob` for pattern rules.
+      `Example` records. See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int representing the number of records to combine
       in a single batch.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
-      `VarLenFeature` values. See `tf.parse_example`.
+      `VarLenFeature` values. See `tf.io.parse_example`.
     reader: A function or class that can be
       called with a `filenames` tensor and (optional) `reader_args` and returns
       a `Dataset` of `Example` tensors. Defaults to `tf.data.TFRecordDataset`.
@@ -808,14 +806,12 @@ def make_batched_features_dataset_v2(file_pattern,
     Each `dict` maps feature keys to `Tensor` or `SparseTensor` objects.
 
   Raises:
-    TypeError: If `reader` is a `tf.ReaderBase` subclass.
+    TypeError: If `reader` is a `tf.compat.v1.ReaderBase` subclass.
     ValueError: If `label_key` is not one of the `features` keys.
   """
   # Create dataset of all matching filenames
-  filenames = _get_file_names(file_pattern, False)
-  dataset = dataset_ops.Dataset.from_tensor_slices(filenames)
-  if shuffle:
-    dataset = dataset.shuffle(len(filenames), shuffle_seed)
+  dataset = dataset_ops.Dataset.list_files(
+      file_pattern, shuffle=shuffle, seed=shuffle_seed)
 
   if isinstance(reader, type) and issubclass(reader, io_ops.ReaderBase):
     raise TypeError("The `reader` argument must return a `Dataset` object. "
@@ -878,7 +874,7 @@ def make_batched_features_dataset_v1(file_pattern,  # pylint: disable=missing-do
                                      shuffle=True,
                                      shuffle_buffer_size=10000,
                                      shuffle_seed=None,
-                                     prefetch_buffer_size=optimization.AUTOTUNE,
+                                     prefetch_buffer_size=dataset_ops.AUTOTUNE,
                                      reader_num_threads=1,
                                      parser_num_threads=2,
                                      sloppy_ordering=False,
@@ -934,7 +930,7 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
     For example:
 
     ```python
-    tf.enable_eager_execution()
+    tf.compat.v1.enable_eager_execution()
 
     dataset = tf.data.experimental.SqlDataset("sqlite", "/foo/bar.sqlite3",
                                               "SELECT name, age FROM people",
@@ -959,9 +955,8 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
         data_source_name, dtype=dtypes.string, name="data_source_name")
     self._query = ops.convert_to_tensor(
         query, dtype=dtypes.string, name="query")
-    self._structure = structure.NestedStructure(
-        nest.map_structure(
-            lambda dtype: structure.TensorStructure(dtype, []), output_types))
+    self._structure = nest.map_structure(
+        lambda dtype: structure.TensorStructure(dtype, []), output_types)
     variant_tensor = gen_experimental_dataset_ops.experimental_sql_dataset(
         self._driver_name, self._data_source_name, self._query,
         **dataset_ops.flat_structure(self))

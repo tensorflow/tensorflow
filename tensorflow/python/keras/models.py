@@ -22,14 +22,13 @@ from __future__ import print_function
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import saving
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.input_layer import InputLayer
 from tensorflow.python.keras.engine.network import Network
-from tensorflow.python.keras.saving import hdf5_format
-from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.util import nest
@@ -39,11 +38,12 @@ from tensorflow.python.util.tf_export import keras_export
 # API entries importable from `keras.models`:
 Model = training.Model  # pylint: disable=invalid-name
 Sequential = sequential.Sequential  # pylint: disable=invalid-name
-save_model = hdf5_format.save_model
-load_model = hdf5_format.load_model
-model_from_config = model_config.model_from_config
-model_from_yaml = model_config.model_from_yaml
-model_from_json = model_config.model_from_json
+save_model = saving.save_model
+load_model = saving.load_model
+model_from_config = saving.model_from_config
+model_from_yaml = saving.model_from_yaml
+model_from_json = saving.model_from_json
+
 
 # Callable used to clone a layer with weights preserved.
 def share_weights(layer):
@@ -109,15 +109,14 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
           name=layer.name)
       input_tensors.append(input_tensor)
       # Cache newly created input layer.
-      newly_created_input_layer = input_tensor._keras_history[0]
+      newly_created_input_layer = input_tensor._keras_history.layer
       layer_map[layer] = newly_created_input_layer
   else:
     # Make sure that all input tensors come from a Keras layer.
     # If tensor comes from an input layer: cache the input layer.
     input_tensors = nest.flatten(input_tensors)
     input_tensors_ = []
-    for i in range(len(input_tensors)):
-      input_tensor = input_tensors[i]
+    for i, input_tensor in enumerate(input_tensors):
       if not K.is_keras_tensor(input_tensor):
         original_input_layer = model._input_layers[i]
         name = original_input_layer.name
@@ -126,7 +125,7 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
 
         input_tensors_.append(input_tensor)
         # Cache newly created input layer.
-        newly_created_input_layer = input_tensor._keras_history[0]
+        newly_created_input_layer = input_tensor._keras_history.layer
         layer_map[original_input_layer] = newly_created_input_layer
       else:
         input_tensors_.append(input_tensor)
@@ -137,6 +136,8 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
 
   if not callable(layer_fn):
     raise ValueError('Expected `layer_fn` argument to be a callable.')
+
+  new_nodes = set()
 
   # Iterated over every node in the reference model, in depth order.
   depth_keys = list(model._nodes_by_depth.keys())
@@ -169,6 +170,11 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
         kwargs = node.arguments or {}
         output_tensors = layer(computed_tensors, **kwargs)
 
+        # Thread-safe way to keep track of what node was created.
+        first_output_tensor = nest.flatten(output_tensors)[0]
+        new_nodes.add(
+            layer._inbound_nodes[first_output_tensor._keras_history.node_index])
+
         for x, y in zip(
             nest.flatten(node.output_tensors), nest.flatten(output_tensors)):
           tensor_map[x] = y
@@ -182,7 +188,18 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
 
   input_tensors = nest.pack_sequence_as(model._nested_inputs, input_tensors)
   output_tensors = nest.pack_sequence_as(model._nested_outputs, output_tensors)
-  return Model(input_tensors, output_tensors, name=model.name)
+  model = Model(input_tensors, output_tensors, name=model.name)
+  # Layers not directly tied to outputs of the Model, such as loss layers
+  # created in `add_loss`.
+  ancillary_layers = [
+      layer for layer in layer_map.values() if layer not in model.layers
+  ]
+  if ancillary_layers:
+    nodes = set(
+        nest.flatten([layer._inbound_nodes for layer in ancillary_layers]))
+    relevant_nodes = list(nodes.intersection(new_nodes))
+    model._insert_layers(ancillary_layers, relevant_nodes=relevant_nodes)
+  return model
 
 
 def _clone_sequential_model(model, input_tensors=None, layer_fn=_clone_layer):
@@ -249,7 +266,7 @@ def _clone_sequential_model(model, input_tensors=None, layer_fn=_clone_layer):
       input_tensors = list(input_tensors)
     x = generic_utils.to_list(input_tensors)[0]
     if K.is_keras_tensor(x):
-      origin_layer = x._keras_history[0]
+      origin_layer = x._keras_history.layer
       if isinstance(origin_layer, InputLayer):
         return Sequential(layers=[origin_layer] + layers, name=model.name)
       else:
@@ -258,7 +275,7 @@ def _clone_sequential_model(model, input_tensors=None, layer_fn=_clone_layer):
                          'other than an `InputLayer`. '
                          'Use the functional API instead.')
     input_tensor = Input(tensor=x, name='input_wrapper_for_' + str(x.name))
-    input_layer = input_tensor._keras_history[0]
+    input_layer = input_tensor._keras_history.layer
     return Sequential(layers=[input_layer] + layers, name=model.name)
 
 
@@ -334,6 +351,11 @@ def _in_place_subclassed_model_reset(model):
   # Retrieve all layers tracked by the model as well as their attribute names
   attributes_cache = {}
   for name in dir(model):
+    # Skip the check of methods in tf.Module since they basically
+    # recursively query all the other attributes within same module.
+    if name == 'submodules':
+      continue
+
     try:
       value = getattr(model, name)
     except (AttributeError, ValueError, TypeError):
@@ -383,25 +405,16 @@ def _in_place_subclassed_model_reset(model):
       attributes_to_cache = [
           'inputs',
           'outputs',
-          '_feed_outputs',
-          '_feed_output_names',
-          '_feed_output_shapes',
-          '_feed_loss_fns',
-          'loss_weights_list',
-          'targets',
-          '_feed_targets',
-          'sample_weight_modes',
           'total_loss',
-          'sample_weights',
-          '_feed_sample_weights',
+          'optimizer',
           'train_function',
           'test_function',
           'predict_function',
+          '_training_endpoints',
           '_collected_trainable_weights',
           '_feed_inputs',
           '_feed_input_names',
           '_feed_input_shapes',
-          'optimizer',
       ]
       for name in attributes_to_cache:
         attributes_cache[name] = getattr(model, name)
@@ -466,7 +479,8 @@ def in_place_subclassed_model_state_restoration(model):
 
 def clone_and_build_model(
     model, input_tensors=None, target_tensors=None, custom_objects=None,
-    compile_clone=True, in_place_reset=False, optimizer_iterations=None):
+    compile_clone=True, in_place_reset=False, optimizer_iterations=None,
+    optimizer_config=None):
   """Clone a `Model` and build/compile it with the same settings used before.
 
   This function can be be run in the same graph or in a separate graph from the
@@ -494,6 +508,10 @@ def clone_and_build_model(
       optimizer if the clone is compiled. This argument is used when a Keras
       model is cloned into an Estimator model function, because Estimators
       create their own global step variable.
+    optimizer_config: Optimizer config dictionary returned from `get_config()`.
+      This argument should be defined if `clone_and_build_model` is called in
+      a different graph or session from the original model, and the optimizer is
+      an instance of `OptimizerV2`.
 
   Returns:
     Clone of the model.
@@ -548,7 +566,7 @@ def clone_and_build_model(
           orig_optimizer.optimizer, optimizer_iterations)
       K.track_tf_optimizer(optimizer)
     else:
-      optimizer_config = orig_optimizer.get_config()
+      optimizer_config = optimizer_config or orig_optimizer.get_config()
       optimizer = orig_optimizer.__class__.from_config(optimizer_config)
       if optimizer_iterations is not None:
         optimizer.iterations = optimizer_iterations

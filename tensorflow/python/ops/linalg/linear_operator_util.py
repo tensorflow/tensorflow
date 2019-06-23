@@ -27,7 +27,117 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg_impl as linalg
+from tensorflow.python.util import tf_inspect
+
+
+################################################################################
+# To make more friendly for TF2.
+################################################################################
+
+
+def convert_immutable_to_tensor(value, dtype=None, dtype_hint=None, name=None):
+  """Converts the given `value` to a `Tensor` only if input is immutable.
+
+  This function converts Python objects of various types to `Tensor` objects
+  except if the input is mutable. A mutable object is characterized by
+  `tensor_util.is_mutable` and is, roughly speaking, any object which is a
+  `tf.Variable` or known to depend on a `tf.Variable`. It accepts `Tensor`
+  objects, numpy arrays, Python lists, and Python scalars. This function does
+  not descend through structured input--it only verifies if the input is mutable
+  per `tensor_util.is_mutable`. For example:
+
+  ```python
+  from tensorflow_probability.python.internal import tensor_util
+
+  x = tf.Variable(0.)
+  y = tensor_util.convert_immutable_to_tensor(x)
+  x is y
+  # ==> True
+
+  x = tf.constant(0.)
+  y = tensor_util.convert_immutable_to_tensor(x)
+  x is y
+  # ==> True
+
+  x = np.array(0.)
+  y = tensor_util.convert_immutable_to_tensor(x)
+  x is y
+  # ==> False
+  tf.is_tensor(y)
+  # ==> True
+  ```
+
+  This function can be useful when composing a new operation in Python
+  (such as `my_func` in the example above). All standard Python op
+  constructors apply this function to each of their Tensor-valued
+  inputs, which allows those ops to accept numpy arrays, Python lists,
+  and scalars in addition to `Tensor` objects.
+
+  Note: This function diverges from default Numpy behavior for `float` and
+    `string` types when `None` is present in a Python list or scalar. Rather
+    than silently converting `None` values, an error will be thrown.
+
+  Args:
+    value: An object whose type has a registered `Tensor` conversion function.
+    dtype: Optional element type for the returned tensor. If missing, the type
+      is inferred from the type of `value`.
+    dtype_hint: Optional element type for the returned tensor, used when dtype
+      is None. In some cases, a caller may not have a dtype in mind when
+      converting to a tensor, so dtype_hint can be used as a soft preference.
+      If the conversion to `dtype_hint` is not possible, this argument has no
+      effect.
+    name: Optional name to use if a new `Tensor` is created.
+
+  Returns:
+    tensor: A `Tensor` based on `value`.
+
+  Raises:
+    TypeError: If no conversion function is registered for `value` to `dtype`.
+    RuntimeError: If a registered conversion function returns an invalid value.
+    ValueError: If the `value` is a tensor not of given `dtype` in graph mode.
+  """
+  # We explicitly do not use a tf.name_scope to avoid graph clutter.
+  if value is None:
+    return None
+  if is_mutable(value):
+    if not hasattr(value, "dtype"):
+      raise ValueError("Mutable type ({}) must implement `dtype` property "
+                       "({}).".format(type(value).__name__, value))
+    if not hasattr(value, "shape"):
+      raise ValueError("Mutable type ({}) must implement `shape` property "
+                       "({}).".format(type(value).__name__, value))
+    if dtype is not None and dtype.base_dtype != value.dtype.base_dtype:
+      raise TypeError("Mutable type must be of dtype '{}' but is '{}'.".format(
+          dtype.base_dtype.name, value.dtype.base_dtype.name))
+    return value
+  return ops.convert_to_tensor(
+      value, dtype=dtype, dtype_hint=dtype_hint, name=name)
+
+
+def is_mutable(x):
+  """Evaluates if the object is known to have `tf.Variable` ancestors.
+
+  An object is deemed mutable if it is a `tf.Variable` instance or has a
+  properties `variables` or `trainable_variables` one of which is non-empty (as
+  might be the case for a subclasses of `tf.Module` or a Keras layer).
+
+  Args:
+    x: Python object which may or may not have a `tf.Variable` ancestor.
+
+  Returns:
+    is_mutable: Python `bool` indicating input is mutable or is known to depend
+      on mutable objects.
+  """
+  return ((tf_inspect.isclass(variables_module.Variable) and
+           isinstance(x, variables_module.Variable)) or
+          getattr(x, "variables", ()) or getattr(x, "trainable_variables", ()))
+
+
+################################################################################
+# Asserts.
+################################################################################
 
 
 def assert_no_entries_with_modulus_zero(
@@ -146,8 +256,8 @@ def broadcast_matrix_batch_dims(batch_matrices, name=None):
   Example broadcasting many batch dims
 
   ```python
-  x = tf.random_normal(shape=(2, 3, 1, 4, 4))
-  y = tf.random_normal(shape=(1, 3, 2, 5, 5))
+  x = tf.random.normal(shape=(2, 3, 1, 4, 4))
+  y = tf.random.normal(shape=(1, 3, 2, 5, 5))
   x_bc, y_bc = broadcast_matrix_batch_dims([x, y])
 
   x_bc.shape
@@ -193,11 +303,11 @@ def broadcast_matrix_batch_dims(batch_matrices, name=None):
           bcast_batch_shape,
           mat.get_shape()[:-2])
     if bcast_batch_shape.is_fully_defined():
-      # The [1, 1] at the end will broadcast with anything.
-      bcast_shape = bcast_batch_shape.concatenate([1, 1])
       for i, mat in enumerate(batch_matrices):
         if mat.get_shape()[:-2] != bcast_batch_shape:
-          batch_matrices[i] = _broadcast_to_shape(mat, bcast_shape)
+          bcast_shape = array_ops.concat(
+              [bcast_batch_shape.as_list(), array_ops.shape(mat)[-2:]], axis=0)
+          batch_matrices[i] = array_ops.broadcast_to(mat, bcast_shape)
       return batch_matrices
 
     # Since static didn't work, do dynamic, which always copies data.
@@ -206,15 +316,13 @@ def broadcast_matrix_batch_dims(batch_matrices, name=None):
       bcast_batch_shape = array_ops.broadcast_dynamic_shape(
           bcast_batch_shape,
           array_ops.shape(mat)[:-2])
-    bcast_shape = array_ops.concat([bcast_batch_shape, [1, 1]], axis=0)
     for i, mat in enumerate(batch_matrices):
-      batch_matrices[i] = _broadcast_to_shape(mat, bcast_shape)
+      batch_matrices[i] = array_ops.broadcast_to(
+          mat,
+          array_ops.concat(
+              [bcast_batch_shape, array_ops.shape(mat)[-2:]], axis=0))
 
     return batch_matrices
-
-
-def _broadcast_to_shape(x, shape):
-  return x + array_ops.zeros(shape=shape, dtype=x.dtype)
 
 
 def cholesky_solve_with_broadcast(chol, rhs, name=None):
@@ -222,121 +330,6 @@ def cholesky_solve_with_broadcast(chol, rhs, name=None):
   with ops.name_scope(name, "CholeskySolveWithBroadcast", [chol, rhs]):
     chol, rhs = broadcast_matrix_batch_dims([chol, rhs])
     return linalg_ops.cholesky_solve(chol, rhs)
-
-
-def matmul_with_broadcast(a,
-                          b,
-                          transpose_a=False,
-                          transpose_b=False,
-                          adjoint_a=False,
-                          adjoint_b=False,
-                          a_is_sparse=False,
-                          b_is_sparse=False,
-                          name=None):
-  """Multiplies matrix `a` by matrix `b`, producing `a @ b`.
-
-  Works identically to `tf.matmul`, but broadcasts batch dims
-  of `a` and `b` if they are determined statically to be different, or if static
-  shapes are not fully defined. Attempts are made to avoid unnecessary
-  replication of data, but this is not always possible.
-
-  The inputs must be matrices (or tensors of rank > 2, representing batches of
-  matrices).
-
-  Both matrices must be of the same type. The supported types are:
-  `float16`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
-
-  Either matrix can be transposed or adjointed (conjugated and transposed) on
-  the fly by setting one of the corresponding flag to `True`. These are `False`
-  by default.
-
-  If one or both of the matrices contain a lot of zeros, a more efficient
-  multiplication algorithm can be used by setting the corresponding
-  `a_is_sparse` or `b_is_sparse` flag to `True`. These are `False` by default.
-  This optimization is only available for plain matrices (rank-2 tensors) with
-  datatypes `bfloat16` or `float32`.
-
-  For example:
-
-  ```python
-  # A 2-batch of 3x4 matrices
-  a = tf.random_normal(shape=(2, 3, 4))
-
-  # A single 4x5 matrix
-  b = tf.random_normal(shape=(4, 5))
-
-  result = matmul_with_broadcast(a, b)
-
-  result.shape
-  ==> (2, 3, 5)
-
-  result[0,...]
-  ==> tf.matmul(a[0,...], b)
-
-  result[1,...]
-  ==> tf.matmul(a[1,...], b)
-  ```
-
-  Args:
-    a: `Tensor` of type `float16`, `float32`, `float64`, `int32`, `complex64`,
-      `complex128` and `rank > 1`.
-    b: `Tensor` with same type as `a` having compatible matrix dimensions and
-      broadcastable batch dimensions.
-    transpose_a: If `True`, `a` is transposed before multiplication.
-    transpose_b: If `True`, `b` is transposed before multiplication.
-    adjoint_a: If `True`, `a` is conjugated and transposed before
-      multiplication.
-    adjoint_b: If `True`, `b` is conjugated and transposed before
-      multiplication.
-    a_is_sparse: If `True`, `a` is treated as a sparse matrix.
-    b_is_sparse: If `True`, `b` is treated as a sparse matrix.
-    name: Name for the operation (optional).
-
-  Returns:
-    A `Tensor` of the same type as `a` and `b` where each inner-most matrix is
-    the product of the corresponding matrices in `a` and `b`, e.g. if all
-    transpose or adjoint attributes are `False`:
-
-    The leading shape of `output` is the result of broadcasting the leading
-    dimensions of `a` and `b`.
-
-    `output`[..., i, j] = sum_k (`a`[..., i, k] * `b`[..., k, j]),
-    for all indices i, j.
-
-    Note: This is matrix product, not element-wise product.
-
-
-  Raises:
-    ValueError: If transpose_a and adjoint_a, or transpose_b and adjoint_b
-      are both set to True.
-  """
-  with ops.name_scope(name, "MatMulWithBroadcast", [a, b]):
-    a = ops.convert_to_tensor(a, name="a")
-    b = ops.convert_to_tensor(b, name="b", dtype=a.dtype)
-
-    # If either a or b has extra dims, we can reshape to get rid of them.
-    a, b, reshape_inv, still_need_to_transpose = _reshape_for_efficiency(
-        a,
-        b,
-        transpose_a=transpose_a,
-        transpose_b=transpose_b,
-        adjoint_a=adjoint_a,
-        adjoint_b=adjoint_b)
-
-    # This will broadcast by brute force if we still need to.
-    a, b = broadcast_matrix_batch_dims([a, b])
-
-    a_times_b = math_ops.matmul(
-        a,
-        b,
-        transpose_a=transpose_a and still_need_to_transpose,
-        transpose_b=transpose_b and still_need_to_transpose,
-        adjoint_a=adjoint_a and still_need_to_transpose,
-        adjoint_b=adjoint_b and still_need_to_transpose,
-        a_is_sparse=a_is_sparse,
-        b_is_sparse=b_is_sparse)
-
-    return reshape_inv(a_times_b)
 
 
 def matrix_solve_with_broadcast(matrix, rhs, adjoint=False, name=None):
@@ -365,7 +358,7 @@ def matrix_triangular_solve_with_broadcast(matrix,
                                            name=None):
   """Solves triangular systems of linear equations with by backsubstitution.
 
-  Works identically to `tf.matrix_triangular_solve`, but broadcasts batch dims
+  Works identically to `tf.linalg.triangular_solve`, but broadcasts batch dims
   of `matrix` and `rhs` (by replicating) if they are determined statically to be
   different, or if static shapes are not fully defined.  Thus, this may result
   in an inefficient replication of data.

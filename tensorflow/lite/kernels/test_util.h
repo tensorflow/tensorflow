@@ -15,12 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_
 
+#include <cmath>
 #include <complex>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -46,7 +46,7 @@ template <typename T>
 inline std::vector<T> Quantize(const std::vector<float>& data, float scale,
                                int32_t zero_point) {
   std::vector<T> q;
-  for (float f : data) {
+  for (const auto& f : data) {
     q.push_back(static_cast<T>(std::max<float>(
         std::numeric_limits<T>::min(),
         std::min<float>(std::numeric_limits<T>::max(),
@@ -59,7 +59,7 @@ template <typename T>
 inline std::vector<float> Dequantize(const std::vector<T>& data, float scale,
                                      int32_t zero_point) {
   std::vector<float> f;
-  for (T q : data) {
+  for (const T& q : data) {
     f.push_back(scale * (q - zero_point));
   }
   return f;
@@ -252,7 +252,11 @@ class SingleOpModel {
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                         bool allow_fp32_relax_to_fp16 = false);
 
+  // Executes inference, asserting success.
   void Invoke();
+
+  // Executes inference *without* asserting success.
+  TfLiteStatus InvokeUnchecked();
 
   void PopulateStringTensor(int index, const std::vector<string>& content) {
     auto tensor = interpreter_->tensor(index);
@@ -276,7 +280,7 @@ class SingleOpModel {
                << ". Requested " << typeToTfLiteType<T>() << ", got "
                << t->type;
     }
-    for (T f : data) {
+    for (const T& f : data) {
       *v = f;
       ++v;
     }
@@ -296,7 +300,7 @@ class SingleOpModel {
                << ". Requested " << typeToTfLiteType<T>() << ", got "
                << t->type;
     }
-    for (T f : data) {
+    for (const T& f : data) {
       *v = f;
       ++v;
     }
@@ -335,6 +339,9 @@ class SingleOpModel {
     resolver_ = std::move(resolver);
   }
 
+  // Enables NNAPI delegate application during interpreter creation.
+  static void SetForceUseNnapi(bool use_nnapi);
+
  protected:
   int32_t GetTensorSize(int index) const;
 
@@ -343,20 +350,74 @@ class SingleOpModel {
   std::unique_ptr<OpResolver> resolver_;
 
  private:
-  // TODO(gavinbelson): sync this method with
-  // //tensorflow/lite/kernels/internal/quantization_util.h?l=31
   template <typename T>
   std::pair<float, int32_t> QuantizationParams(float f_min, float f_max) {
-    // These are required by many quantized operations.
+    int32_t zero_point = 0;
+    float scale = 0;
+    const T qmin = std::numeric_limits<T>::min();
+    const T qmax = std::numeric_limits<T>::max();
+    const float qmin_double = qmin;
+    const float qmax_double = qmax;
+    // 0 should always be a representable value. Let's assume that the initial
+    // min,max range contains 0.
     CHECK_LE(f_min, 0);
     CHECK_GE(f_max, 0);
-    T q_min = std::numeric_limits<T>::min();
-    T q_max = std::numeric_limits<T>::max();
-    float range = q_max - q_min;
-    float scale = (f_max - f_min) / range;
-    int32_t zero_point = std::min(
-        q_max,
-        std::max(q_min, static_cast<T>(std::round(q_min - f_min / scale))));
+    if (f_min == f_max) {
+      // Special case where the min,max range is a point. Should be {0}.
+      CHECK_EQ(f_min, 0);
+      CHECK_EQ(f_max, 0);
+      return {scale, zero_point};
+    }
+
+    // General case.
+    //
+    // First determine the scale.
+    scale = (f_max - f_min) / (qmax_double - qmin_double);
+
+    // Zero-point computation.
+    // First the initial floating-point computation. The zero-point can be
+    // determined from solving an affine equation for any known pair
+    // (real value, corresponding quantized value).
+    // We know two such pairs: (rmin, qmin) and (rmax, qmax).
+    // The arithmetic error on the zero point computed from either pair
+    // will be roughly machine_epsilon * (sum of absolute values of terms)
+    // so we want to use the variant that adds the smaller terms.
+    const float zero_point_from_min = qmin_double - f_min / scale;
+    const float zero_point_from_max = qmax_double - f_max / scale;
+
+    const float zero_point_from_min_error =
+        std::abs(qmin_double) + std::abs(f_min / scale);
+
+    const float zero_point_from_max_error =
+        std::abs(qmax_double) + std::abs(f_max / scale);
+
+    const float zero_point_double =
+        zero_point_from_min_error < zero_point_from_max_error
+            ? zero_point_from_min
+            : zero_point_from_max;
+
+    // Now we need to nudge the zero point to be an integer
+    // (our zero points are integer, and this is motivated by the requirement
+    // to be able to represent the real value "0" exactly as a quantized value,
+    // which is required in multiple places, for example in Im2col with SAME
+    //  padding).
+
+    T nudged_zero_point = 0;
+    if (zero_point_double < qmin_double) {
+      nudged_zero_point = qmin;
+    } else if (zero_point_double > qmax_double) {
+      nudged_zero_point = qmax;
+    } else {
+      nudged_zero_point = static_cast<T>(std::round(zero_point_double));
+    }
+
+    // The zero point should always be in the range of quantized value,
+    // // [qmin, qmax].
+    CHECK_GE(nudged_zero_point, qmin);
+    CHECK_LE(nudged_zero_point, qmax);
+
+    zero_point = nudged_zero_point;
+    // finally, return the values
     return {scale, zero_point};
   }
 
@@ -497,7 +558,7 @@ class SingleOpTest : public ::testing::TestWithParam<string> {
   static std::vector<string> GetKernelTags(
       const std::map<string, TfLiteRegistration*>& kernel_map) {
     std::vector<string> tags;
-    for (auto it : kernel_map) {
+    for (const auto& it : kernel_map) {
       tags.push_back(it.first);
     }
     return tags;
@@ -514,8 +575,11 @@ class SingleOpTest : public ::testing::TestWithParam<string> {
 template <typename T>
 TensorType GetTensorType() {
   if (std::is_same<T, float>::value) return TensorType_FLOAT32;
+  if (std::is_same<T, TfLiteFloat16>::value) return TensorType_FLOAT16;
   if (std::is_same<T, int32_t>::value) return TensorType_INT32;
+  if (std::is_same<T, int64_t>::value) return TensorType_INT64;
   if (std::is_same<T, uint8_t>::value) return TensorType_UINT8;
+  if (std::is_same<T, int8_t>::value) return TensorType_INT8;
   if (std::is_same<T, string>::value) return TensorType_STRING;
   return TensorType_MIN;  // default value
 }

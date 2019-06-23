@@ -2,11 +2,20 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
-package(
-    default_visibility = ["//visibility:public"],
+load(
+    "//tensorflow:tensorflow.bzl",
+    "cc_library_with_android_deps",
+    "tf_cc_binary",
+    "tf_cc_test",
+    "tf_copts",
+    "tf_gen_op_wrappers_cc",
+    "transitive_hdrs",
 )
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 filegroup(
     name = "srcs",
@@ -19,16 +28,6 @@ filegroup(
         "ops/while_loop.h",
         "//tensorflow/cc/saved_model:loader.h",
     ],
-)
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "cc_library_with_android_deps",
-    "tf_cc_binary",
-    "tf_cc_test",
-    "tf_copts",
-    "tf_gen_op_wrappers_cc",
-    "transitive_hdrs",
 )
 
 cc_library(
@@ -203,6 +202,7 @@ tf_cc_test(
     deps = [
         ":ops",
         ":scope",
+        "//tensorflow/cc:cc_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -236,10 +236,13 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_experimental",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -637,6 +640,7 @@ cc_library(
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -656,6 +660,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 

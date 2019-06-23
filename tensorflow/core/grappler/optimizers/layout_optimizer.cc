@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
+
 #include <deque>
 #include <unordered_set>
 
@@ -28,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
-#include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/frame.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -65,8 +67,10 @@ std::set<string> GetOpsFormatSupported() {
       "DepthwiseConv2dNativeBackpropFilter",
       "FusedBatchNorm",
       "FusedBatchNormV2",
+      "FusedBatchNormV3",
       "FusedBatchNormGrad",
       "FusedBatchNormGradV2",
+      "FusedBatchNormGradV3",
       "FusedConv2DBiasActivation",
       "MaxPool",
       "MaxPoolV2",
@@ -193,6 +197,7 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "StridedSlice",
                                           "StridedSliceGrad",
                                           "Switch",
+                                          "_SwitchN",
                                           "Tile",
                                           "TruncateDiv",
                                           "TruncateMod",
@@ -578,8 +583,8 @@ class NodeProcessor : public GraphProcessor {
     string device;
     string not_used;
     if (DeviceNameUtils::SplitDeviceName(device_name, &not_used, &device) &&
-        str_util::StrContains(str_util::Lowercase(device),
-                              str_util::Lowercase(DEVICE_GPU))) {
+        absl::StrContains(absl::AsciiStrToLower(device),
+                          absl::AsciiStrToLower(DEVICE_GPU))) {
       return true;
     }
     return false;
@@ -1941,7 +1946,15 @@ class SwitchProcessor : public AgnosticNodeProcessor {
       : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
-  std::set<int> GetOutputPos() const override { return {0, 1}; }
+  std::set<int> GetOutputPos() const override {
+    std::set<int> output_pos;
+    const int num_outs =
+        node_->attr().count("num_outs") ? node_->attr().at("num_outs").i() : 2;
+    for (int i = 0; i < num_outs; i++) {
+      output_pos.insert(i);
+    }
+    return output_pos;
+  }
 };
 
 class TileProcessor : public AgnosticNodeProcessor {
@@ -2198,35 +2211,29 @@ Status LayoutOptimizer::Tune(const GrapplerItem& item,
 Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output) {
   if (cluster == nullptr) {
-    return errors::InvalidArgument("cluster == nullptr");
+    LOG(WARNING) << "layout optimizer was called with cluster == nullptr";
+    return errors::Aborted("cluster == nullptr.");
+  }
+  if (GetNumGPUs(*cluster) < 1) {
+    return errors::Aborted(
+        "No GPUs found: LayoutOptimizer is currently only tuned for GPU.");
   }
 
-  if (GetNumGPUs(*cluster) < 1) {
-    // LayoutOptimizer is currently only tuned for GPU.
-    *output = item.graph;
-    return Status::OK();
-  }
+  GraphProperties graph_properties(item);
+  TF_RETURN_IF_ERROR(
+      graph_properties.InferStatically(/*assume_valid_feeds=*/false,
+                                       /*aggressive_shape_inference=*/false,
+                                       /*include_tensor_values=*/false));
+  GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
   virtual_placer_.reset(new VirtualPlacer(cluster->GetDevices()));
   nodes_to_preserve_ = item.NodesToPreserve();
-  GraphProperties graph_properties(item);
-  auto status = graph_properties.InferStatically(false);
-  if (!status.ok()) {
-    VLOG(1) << "Infer shape return status: " << status.ToString();
-    *output = item.graph;
-    return status;
-  }
-  GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
   TuningConfig config;
   config.no_gemm = true;
   // TODO(yaozhang): Enable tuning with various TuningConfig choices with
   // the measurement-based estimator.
-  status = Tune(item, graph_properties, config, output);
-  if (!status.ok()) {
-    *output = item.graph;
-  }
-  return status;
+  return Tune(item, graph_properties, config, output);
 }
 
 void LayoutOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,

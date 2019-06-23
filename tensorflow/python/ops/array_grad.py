@@ -28,8 +28,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 
@@ -107,7 +109,7 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
 
   out_grads = []
   if isinstance(grad, ops.Tensor):
-    if context.executing_eagerly():
+    if context.executing_eagerly() or isinstance(concat_dim, ops.EagerTensor):
       # Using mod here for convenience since concat_dim is already verified
       # in concat implementation to be within the allowed [-rank, rank) range.
       non_neg_concat_dim = (
@@ -331,6 +333,12 @@ def _MatrixDiagGrad(_, grad):
   return array_ops.matrix_diag_part(grad)
 
 
+@ops.RegisterGradient("MatrixDiagV2")
+def _MatrixDiagV2Grad(op, grad):
+  return array_ops.matrix_diag_part(
+      grad, k=op.inputs[1]), None, None, None, None
+
+
 @ops.RegisterGradient("MatrixDiagPart")
 def _MatrixDiagPartGrad(op, grad):
   matrix_shape = op.inputs[0].get_shape()[-2:]
@@ -338,6 +346,22 @@ def _MatrixDiagPartGrad(op, grad):
     return array_ops.matrix_diag(grad)
   else:
     return array_ops.matrix_set_diag(array_ops.zeros_like(op.inputs[0]), grad)
+
+
+@ops.RegisterGradient("MatrixDiagPartV2")
+def _MatrixDiagPartV2Grad(op, grad):
+  """Gradient for MatrixDiagPartV2."""
+  matrix_shape = op.inputs[0].get_shape()[-2:]
+  if matrix_shape.is_fully_defined():
+    return array_ops.matrix_diag(
+        grad,
+        k=op.inputs[1],
+        num_rows=matrix_shape[0],
+        num_cols=matrix_shape[1]), None, None
+  else:
+    return array_ops.matrix_set_diag(
+        array_ops.zeros_like(op.inputs[0]), grad,
+        k=op.inputs[1]), None, None
 
 
 @ops.RegisterGradient("MatrixSetDiag")
@@ -362,6 +386,42 @@ def _MatrixSetDiagGrad(op, grad):
                                              diag_shape, dtype=grad.dtype))
   grad_diag = array_ops.matrix_diag_part(grad)
   return (grad_input, grad_diag)
+
+
+@ops.RegisterGradient("MatrixSetDiagV2")
+def _MatrixSetDiagGradV2(op, grad):
+  """Gradient for MatrixSetDiag."""
+  diag_shape = op.inputs[1].get_shape()
+  if not diag_shape.is_fully_defined():
+    # Need to know the values of `d_lower` and `d_upper` to infer diag_shape.
+    grad_shape = array_ops.shape(grad)
+    batch_shape = grad_shape[:-2]
+    matrix_shape = grad_shape[-2:]
+    diag_index = array_ops.reshape(op.inputs[2], [-1])  # Converts to vector.
+    d_lower = diag_index[0]
+    d_upper = diag_index[-1]  # Works both when len(diag_index) is 1 and 2.
+    y_offset = control_flow_ops.cond(
+        math_ops.less(d_upper, 0), lambda: d_upper, lambda: 0)
+    x_offset = control_flow_ops.cond(
+        math_ops.greater(d_lower, 0), lambda: -d_lower, lambda: 0)
+
+    max_diag_len = math_ops.minimum(matrix_shape[0] + y_offset,
+                                    matrix_shape[1] + x_offset)
+    # pylint: disable=g-long-lambda
+    # pyformat: disable
+    postfix = control_flow_ops.cond(
+        math_ops.equal(d_lower, d_upper),
+        lambda: ops.convert_to_tensor([max_diag_len]),
+        lambda: ops.convert_to_tensor([d_upper - d_lower + 1,
+                                       max_diag_len]))
+    # pyformat: enable
+    # pylint: enable=g-long-lambda
+    diag_shape = array_ops.concat([batch_shape, postfix], 0)
+
+  grad_input = array_ops.matrix_set_diag(
+      grad, array_ops.zeros(diag_shape, dtype=grad.dtype), k=op.inputs[2])
+  grad_diag = array_ops.matrix_diag_part(grad, k=op.inputs[2])
+  return (grad_input, grad_diag, None)
 
 
 @ops.RegisterGradient("MatrixBandPart")
@@ -495,6 +555,19 @@ def _GatherNdGrad(op, grad):
   ref = op.inputs[0]
   indices = op.inputs[1]
   ref_shape = array_ops.shape(ref, out_type=indices.dtype)
+  if indices.shape.ndims == 2 and indices.shape.dims[-1].value == 1:
+    ref_grad = ops.IndexedSlices(grad, array_ops.squeeze(indices, axis=-1),
+                                 ref_shape)
+  else:
+    ref_grad = array_ops.scatter_nd(indices, grad, ref_shape)
+  return [ref_grad, None]
+
+
+@ops.RegisterGradient("ResourceGatherNd")
+def _ResourceGatherNdGrad(op, grad):  # pylint: disable=missing-docstring
+  ref = op.inputs[0]
+  indices = op.inputs[1]
+  ref_shape = gen_resource_variable_ops.variable_shape(ref, indices.dtype)
   if indices.shape.ndims == 2 and indices.shape.dims[-1].value == 1:
     ref_grad = ops.IndexedSlices(grad, array_ops.squeeze(indices, axis=-1),
                                  ref_shape)
@@ -758,12 +831,9 @@ def _QuantizeAndDequantizeV3Grad(_, grad):
 
 @ops.RegisterGradient("ExtractImagePatches")
 def _ExtractImagePatchesGrad(op, grad):
-  batch_size, rows_in, cols_in, channels = [
-      dim.value for dim in op.inputs[0].shape.dims
-  ]
-  input_bhwc = array_ops.shape(op.inputs[0])
-  batch_size = input_bhwc[0]
-  channels = input_bhwc[3]
+  input_bhwc = array_ops.shape(op.inputs[0], out_type=dtypes.int64)
+  batch_size, rows_in, cols_in, channels = input_bhwc[0], input_bhwc[1], \
+                                           input_bhwc[2], input_bhwc[3]
 
   # Create indices matrix for input tensor.
   # Note that 0 is preserved for padding location,
@@ -780,7 +850,8 @@ def _ExtractImagePatchesGrad(op, grad):
       op.get_attr("padding"))
 
   # Create indices matrix for output tensor.
-  _, rows_out, cols_out, _ = [dim.value for dim in op.outputs[0].shape.dims]
+  output_bhwc = array_ops.shape(op.outputs[0], out_type=dtypes.int64)
+  rows_out, cols_out = output_bhwc[1], output_bhwc[2]
   _, ksize_r, ksize_c, _ = op.get_attr("ksizes")
   # Indices for output start from 0.
   output_indices_num = rows_out * cols_out * ksize_r * ksize_c

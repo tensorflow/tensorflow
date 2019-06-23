@@ -1,6 +1,7 @@
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "add_bias",
@@ -77,6 +78,7 @@ cc_library(
         ":fuse_mul_to_conv",
         ":make_fully_connected",
         ":make_padding",
+        ":match_dilated_convolution",
         ":merge_padding_with",
         ":remove_noop",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
@@ -142,6 +144,34 @@ cc_library(
     name = "matching",
     hdrs = ["matching.h"],
     deps = ["//tensorflow/lite/delegates/gpu/common:model"],
+)
+
+cc_library(
+    name = "match_dilated_convolution",
+    srcs = ["match_dilated_convolution.cc"],
+    hdrs = ["match_dilated_convolution.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:model_transformer",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:any",
+    ],
+)
+
+cc_test(
+    name = "match_dilated_convolution_test",
+    srcs = ["match_dilated_convolution_test.cc"],
+    deps = [
+        ":match_dilated_convolution",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:model_transformer",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "@com_google_absl//absl/types:any",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(

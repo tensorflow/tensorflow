@@ -21,7 +21,9 @@ detection model, takes up a total of 22KB.
 
 -   [Goals](#goals)
 
--   [Generating Project Files](#generating-project-#files)
+-   [Generating Project Files](#generating-project-files)
+
+-   [Generating Arduino Libraries](#generating-arduino_libraries)
 
 -   [How to Port TensorFlow Lite Micro to a New Platform](#how-to-port-tensorflow-lite-micro-to-a-new-platform)
 
@@ -73,15 +75,12 @@ you can easily explore the code in a cross-platform IDE.
 ## Building Portable Reference Code using Make
 
 It's easy to build portable reference code directly from GitHub using make if
-you're on a Linux or OS X machine.
+you're on a Linux or OS X machine with an internet connection.
 
 -   Open a terminal
 -   Download the TensorFlow source with `git clone
     https://github.com/tensorflow/tensorflow.git`
 -   Enter the source root directory by running `cd tensorflow`
--   Download the dependencies by running
-    `tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh`.
-    This may take a few minutes
 -   Build and test the library with `make -f
     tensorflow/lite/experimental/micro/tools/make/Makefile test`
 
@@ -94,7 +93,7 @@ run them manually. For example, here's how to run the depthwise convolution
 test, and its output:
 
 ```
-tensorflow/lite/experimental/micro/tools/make/gen/linux_x86_64/bin/tensorflow/lite/experimental/micro/kernels/depthwise_conv_test
+tensorflow/lite/experimental/micro/tools/make/gen/linux_x86_64/bin/depthwise_conv_test
 
 Testing SimpleTest
 Testing SimpleTestQuantized
@@ -165,7 +164,7 @@ test, but through the emulated device test harness, with the following command:
 
 ```
 tensorflow/lite/experimental/micro/testing/test_bluepill_binary.sh \
-tensorflow/lite/experimental/micro/tools/make/gen/bluepill_cortex-m3/bin/tensorflow/lite/experimental/micro/kernels/depthwise_conv_test \
+tensorflow/lite/experimental/micro/tools/make/gen/bluepill_cortex-m3/bin/depthwise_conv_test \
 '~~~ALL TESTS PASSED~~~'
 
 ```
@@ -192,7 +191,7 @@ LOGS:
 03:27:32.4839 [DEBUG] cpu.uartSemihosting: [+41µs host +0s virt 0s virt from start]   ~~~ALL TESTS PASSED~~~
 03:27:32.4839 [DEBUG] cpu.uartSemihosting: [+5µs host +0s virt 0s virt from start]
 ...
-tensorflow/lite/experimental/micro/tools/make/gen/bluepill_cortex-m3/bin/tensorflow/lite/experimental/micro/kernels/depthwise_conv_test: PASS
+tensorflow/lite/experimental/micro/tools/make/gen/bluepill_cortex-m3/bin/depthwise_conv_test: PASS
 ```
 
 There's a lot of output here, but you should be able to see that the same tests
@@ -241,9 +240,6 @@ Building micro_speech_test binary
 -   Launch the Docker that we just created using: `docker run -it-v
     /tmp/copybara_out:/workspace riscv_build:latest bash`
 -   Enter the source root directory by running `cd /workspace`
--   Download the dependencies by running
-    `./tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh`.
-    This may take a few minutes.
 -   Set the path to RISC-V tools: `export
     PATH=${PATH}:/workspace/tensorflow/lite/experimental/micro/tools/make/downloads/riscv_toolchain/bin/`
 -   Build the binary: `make -f
@@ -270,59 +266,47 @@ You should see the following log with the magic string `~~~ALL TEST PASSED~~~`:
 
 ## Building for Ambiq Micro Apollo3Blue EVB using Make
 
-Follow these steps to get the pushbutton yes/no example working on Apollo 3:
+Follow these steps to get the micro_speech yes example working on Apollo 3 EVB:
 
 1.  Make sure to run the "Building Portable Reference Code using Make" section
     before performing the following steps
-2.  The Ambiq Micro SDK is downloaded into
-    `tensorflow/lite/experimental/micro/tools/make/downloads` by
-    'download_dependencies.sh'.
-3.  Compile the project with the following command: make -f
+2.  Compile the project with the following command: make -f
     tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=apollo3evb
-    pushbutton_cmsis_speech_test_bin
-4.  Install [Segger JLink tools](https://www.segger.com/downloads/jlink/)
-5.  Connect the Apollo3 EVB (with mic shield in slot 3 of Microbus Shield board)
+    micro_speech_bin
+3.  Install [Segger JLink tools](https://www.segger.com/downloads/jlink/)
+4.  Connect the Apollo3 EVB (with mic shield in slot 3 of Microbus Shield board)
     to the computer and power it on.
-6.  Start the GDB server in a new terminal with the following command:
+5.  Start the GDB server in a new terminal with the following command:
     JLinkGDBServer -select USB -device AMA3B1KK-KBR -endian little -if SWD
     -speed 1000 -noir -noLocalhostOnly
     1.  The command has run successfully if you see the message "Waiting for GDB
         connection"
-7.  Back in the original terminal, run the program via the debugger
+6.  Back in the original terminal, run the program via the debugger
     1.  Navigate to
-        tensorflow/lite/experimental/micro/examples/micro_speech/apollo3
+        tensorflow/lite/experimental/micro/examples/micro_speech/apollo3evb
     2.  Start gdb by entering the following command: arm-none-eabi-gdb
     3.  Run the command script by entering the following command: source
-        pushbutton_cmsis_scores.cmd. This script does the following:
-        1.  Load the binary created in step 6
-        2.  Set a breakpoint after inference scores have been computed
-        3.  Tell the debugger what variables should be printed out at this
-            breakpoint
-        4.  Begin program execution
-        5.  Press Ctrl+c to exit
-    4.  Press BTN2. An LED will flash for 1 second. Speak your utterance during
-        this one second
-    5.  The debugger will print out four numbers. They are the probabilites for
-        1.  no speech
-        2.  unknown speech
-        3.  yes
-        4.  no
-    6.  The EVB LEDs will indicate detection.
-        1.  LED0 (rightmost LED) - ON when capturing 1sec of audio
-        2.  LED1 - ON when detecting silence
-        3.  LED2 - ON when detecting UNKNOWN utterance
-        4.  LED3 - ON when detecting YES utterance
-        5.  LED4 (leftmost LED) - ON when detecting NO utterance
+        micro_speech.cmd. This script does the following:
+        1.  Load the binary created in step 2
+        2.  Reset
+        3.  Begin program execution
+        4.  Press Ctrl+c to exit
+    4.  The EVB LEDs will indicate detection.
+        1.  LED0 (rightmost LED) - ON when Digital MIC interface is initialized
+        2.  LED1 - Toggles after each inference
+        3.  LED2 thru 4 - "Ramp ON" when "Yes" is detected
+    5.  Say "Yes"
 
 ### Additional Apollo3 Instructions
 
-To flash a part with JFlash Lite, do the following: 
+To flash a part with JFlash Lite, do the following:
 
-1. At the command line: JFlashLiteExe 
-2. Device = AMA3B1KK-KBR 
-3. Interface = SWD at 1000 kHz 
-4. Data file = `tensorflow/lite/experimental/micro/tools/make/gen/apollo3evb_cortex-m4/bin/pushbutton_cmsis_speech_test.bin`
-5. Prog Addr = 0x0000C000
+1.  At the command line: JFlashLiteExe
+2.  Device = AMA3B1KK-KBR
+3.  Interface = SWD at 1000 kHz
+4.  Data file =
+    `tensorflow/lite/experimental/micro/tools/make/gen/apollo3evb_cortex-m4/bin/micro_speech.bin`
+5.  Prog Addr = 0x0000C000
 
 ## Building for the Eta Compute ECM3531 EVB using Make
 
@@ -333,9 +317,7 @@ To flash a part with JFlash Lite, do the following:
 2.  Download the Eta Compute SDK, version 0.0.17. Contact info@etacompute.com
 3.  You will need the the Arm compiler arm-none-eabi-gcc, version 7.3.1
     20180622, release ARM/embedded-7-branch revision 261907, 7-2018-q2-update.
-    This compiler is downloaded when you run the
-    tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh
-    script.
+    This compiler is downloaded through make.
 4.  Edit the file
     tensorflow/lite/experimental/micro/tools/make/targets/ecm3531_makefile.inc
     so that the variables ETA_SDK and GCC_ARM point to the correct directories.
@@ -370,6 +352,31 @@ To flash a part with JFlash Lite, do the following:
     &nbsp;&nbsp;&nbsp;&nbsp;cd
     tensorflow/lite/experimental/micro/tools/make/targets/ecm3531 \
     &nbsp;&nbsp;&nbsp;&nbsp;./flash_program executable_name to load into flash.
+
+## Implement target optimized kernels
+
+The reference kernels in tensorflow/lite/experimental/micro/kernels are
+implemented in pure C/C++. It might not utilize all HW architecture specific
+optimizations, such as DSP instructions etc. The instructions below provides an
+example on how to compile an external lib with HW architecture specific
+optimizations and link it with the microlite lib.
+
+### CMSIS-NN optimized kernels (---under development---)
+
+To utilize the CMSIS-NN optimized kernels, choose your target, e.g. Bluepill,
+and build with:
+
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile TAGS=cmsis-nn
+TARGET=bluepill test
+
+That will build the microlite lib including CMSIS-NN optimized kernels based on
+the version downloaded by 'download_dependencies.sh', so make sure you have run
+this script. If you want to utilize another version of CMSIS, clone it to a
+custom location run the following command:
+
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile
+CMSIS_PATH=<CUSTOM_LOCATION> TAGS=cmsis-nn TARGET=bluepill test (--- Under
+development, it will build, but test will fail ---)
 
 ## Goals
 
@@ -491,7 +498,7 @@ folders for various popular build systems. These projects are self-contained,
 with only the headers and source files needed by a particular binary, and
 include project files to make loading them into an IDE easy. These can be
 auto-generated for any target you can compile using the main Make system, using
-a command like this (making sure you've run `download_dependencies.sh` first):
+a command like this:
 
 ```
 make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=mbed TAGS="CMSIS disco_f746ng" generate_micro_speech_mbed_project
@@ -503,6 +510,30 @@ that contains the source and header files, some Mbed configuration files, and a
 README. You should then be able to copy this directory to another machine, and
 use it just like any other Mbed project. There's more information about project
 files [below](#working-with-generated-projects).
+
+## Generating Arduino Libraries
+
+It's possible to use the Arduino Desktop IDE to build TFL Micro targets for
+Arduino devices. The source code is packaged as a .zip archive that you can add
+in the IDE by going to Sketch->Include Library->Add .ZIP Library... Once you've
+added the library, you can then go to File->Examples->TensorFlowLite to find a
+simple sketch that you can use to build the example.
+
+You can generate the zip file from the source code here in git by running the
+following command:
+
+```
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=arduino TAGS="" generate_micro_speech_mock_arduino_library_zip
+```
+
+The resulting library can be found in `tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/micro_speech_mock/micro_speech_mock.zip`.
+This generates a library that builds the `micro_speech_mock` binary, but you can
+do the same for any other target by replacing the name in the make command line.
+If you want to build all the possible libraries, you can run this command:
+
+```
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=arduino TAGS="" generate_projects
+```
 
 ## How to Port TensorFlow Lite Micro to a New Platform
 

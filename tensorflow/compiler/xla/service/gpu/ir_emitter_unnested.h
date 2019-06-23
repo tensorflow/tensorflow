@@ -180,6 +180,8 @@ class IrEmitterUnnested : public IrEmitter {
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleAllReduce(HloInstruction* crs) override;
   Status HandleAfterAll(HloInstruction* after_all) override;
+  Status HandleReplicaId(HloInstruction* hlo) override;
+  Status HandleCollectivePermute(HloInstruction* hlo) override;
 
   Status EmitTargetElementLoop(
       const HloInstruction& hlo,
@@ -215,8 +217,9 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Generates code for reduction to contiguous dimensions.
   //
-  // Prerequisite: `IsReductionToVector(*unnested_hlo)`
-  Status EmitReductionToVector(HloInstruction* unnested_hlo);
+  // Prerequisite: `IsReductionFromOrToContiguousDimensions(*unnested_hlo)`
+  Status EmitReductionFromOrToContiguousDimensions(
+      HloInstruction* unnested_hlo);
 
   // Computes the KernelMappingScheme for the reduce HLO and indicates whether
   // the reduction is a row reduction. For an un-fused reduce op, unnested_hlo

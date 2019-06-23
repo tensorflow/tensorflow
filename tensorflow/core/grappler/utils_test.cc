@@ -393,11 +393,16 @@ TEST_F(UtilsTest, DeleteNodes) {
 TEST(IsKernelRegisteredForNode, All) {
   NodeDef node;
   node.set_name("foo");
-  node.set_op("NoOp");
+  node.set_op("MatMul");
   node.set_device("/cpu:0");
+  AttrValue v;
+  v.set_type(DataType::DT_FLOAT);
+  (*node.mutable_attr())["T"] = v;
   TF_EXPECT_OK(IsKernelRegisteredForNode(node));
+#ifdef GOOGLE_CUDA
   node.set_device("/gpu:0");
   TF_EXPECT_OK(IsKernelRegisteredForNode(node));
+#endif  // GOOGLE_CUDA
 
   // Bad device name.
   node.set_device("");
@@ -472,6 +477,13 @@ TEST_F(UtilsTest, TensorIdToString) {
   EXPECT_EQ(TensorIdToString({"foo", 0}), "foo");
   EXPECT_EQ(TensorIdToString({"foo", 1}), "foo:1");
   EXPECT_EQ(TensorIdToString({"foo", 2}), "foo:2");
+}
+
+TEST_F(UtilsTest, SafeTensorIdToString) {
+  EXPECT_EQ(SafeTensorIdToString({"foo", -1}), "^foo");
+  EXPECT_EQ(SafeTensorIdToString({"foo", 0}), "foo");
+  EXPECT_EQ(SafeTensorIdToString({"foo", 1}), "foo:1");
+  EXPECT_EQ(SafeTensorIdToString({"foo", 2}), "foo:2");
 }
 
 template <typename T>

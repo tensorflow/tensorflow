@@ -15,22 +15,126 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
+#include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/versions.pb.h"
+
 namespace tensorflow {
 namespace data {
 
+template <typename T>
+Status IsEqual(const Tensor& t1, const Tensor& t2) {
+  if (t1.dtype() != t2.dtype()) {
+    return tensorflow::errors::Internal(
+        "Two tensors have different dtypes: ", DataTypeString(t1.dtype()),
+        " vs. ", DataTypeString(t2.dtype()));
+  }
+  if (!t1.IsSameSize(t2)) {
+    return tensorflow::errors::Internal(
+        "Two tensors have different shapes: ", t1.shape().DebugString(),
+        " vs. ", t2.shape().DebugString());
+  }
+
+  auto flat_t1 = t1.flat<T>();
+  auto flat_t2 = t2.flat<T>();
+  auto length = flat_t1.size();
+
+  for (int i = 0; i < length; ++i) {
+    if (flat_t1(i) != flat_t2(i)) {
+      return tensorflow::errors::Internal(
+          "Two tensors have different values "
+          "at [",
+          i, "]: ", flat_t1(i), " vs. ", flat_t2(i));
+    }
+  }
+  return Status::OK();
+}
+
 Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
-  EXPECT_EQ(a.dtype(), b.dtype());
   switch (a.dtype()) {
-#define CASE(type)                       \
-  case DataTypeToEnum<type>::value:      \
-    test::ExpectTensorEqual<type>(a, b); \
+#define CASE(DT)                           \
+  case DataTypeToEnum<DT>::value:          \
+    TF_RETURN_IF_ERROR(IsEqual<DT>(a, b)); \
     break;
     TF_CALL_NUMBER_TYPES(CASE);
     TF_CALL_string(CASE);
+    TF_CALL_uint32(CASE);
+    TF_CALL_uint64(CASE);
     // TODO(feihugis): figure out how to support variant tensors.
 #undef CASE
     default:
-      return errors::Internal("Unsupported dtype", a.dtype());
+      return errors::Internal("Unsupported dtype: ", a.dtype());
+  }
+  return Status::OK();
+}
+
+template <typename T>
+bool compare(const Tensor& t1, const Tensor& t2) {
+  auto flat_t1 = t1.flat<T>();
+  auto flat_t2 = t2.flat<T>();
+  auto length = std::min(flat_t1.size(), flat_t2.size());
+  for (int i = 0; i < length; ++i) {
+    if (flat_t1(i) < flat_t2(i)) return true;
+    if (flat_t1(i) > flat_t2(i)) return false;
+  }
+  return flat_t1.size() < length;
+}
+
+Status DatasetOpsTestBase::ExpectEqual(std::vector<Tensor> produced_tensors,
+                                       std::vector<Tensor> expected_tensors,
+                                       bool compare_order) {
+  if (produced_tensors.size() != expected_tensors.size()) {
+    return Status(tensorflow::errors::Internal(
+        "The two tensor vectors have different size (", produced_tensors.size(),
+        " v.s. ", expected_tensors.size(), ")"));
+  }
+
+  if (produced_tensors.empty()) return Status::OK();
+  if (produced_tensors[0].dtype() != expected_tensors[0].dtype()) {
+    return Status(tensorflow::errors::Internal(
+        "The two tensor vectors have different dtypes (",
+        produced_tensors[0].dtype(), " v.s. ", expected_tensors[0].dtype(),
+        ")"));
+  }
+
+  if (!compare_order) {
+    const DataType& dtype = produced_tensors[0].dtype();
+    switch (dtype) {
+#define CASE(DT)                                                \
+  case DT:                                                      \
+    std::sort(produced_tensors.begin(), produced_tensors.end(), \
+              compare<EnumToDataType<DT>::Type>);               \
+    std::sort(expected_tensors.begin(), expected_tensors.end(), \
+              compare<EnumToDataType<DT>::Type>);               \
+    break;
+      CASE(DT_FLOAT);
+      CASE(DT_DOUBLE);
+      CASE(DT_INT32);
+      CASE(DT_UINT8);
+      CASE(DT_INT16);
+      CASE(DT_INT8);
+      CASE(DT_STRING);
+      CASE(DT_INT64);
+      CASE(DT_BOOL);
+      CASE(DT_QINT8);
+      CASE(DT_QUINT8);
+      CASE(DT_QINT32);
+      CASE(DT_QINT16);
+      CASE(DT_QUINT16);
+      CASE(DT_UINT16);
+      CASE(DT_HALF);
+      CASE(DT_UINT32);
+      CASE(DT_UINT64);
+      // TODO(feihugis): support other dtypes.
+#undef CASE
+      default:
+        return errors::Internal("Unsupported dtype: ", dtype);
+    }
+  }
+
+  for (int i = 0; i < produced_tensors.size(); ++i) {
+    TF_RETURN_IF_ERROR(DatasetOpsTestBase::ExpectEqual(produced_tensors[i],
+                                                       expected_tensors[i]));
   }
   return Status::OK();
 }
@@ -106,10 +210,20 @@ Status DatasetOpsTestBase::CreateDataset(OpKernel* kernel,
   return Status::OK();
 }
 
+Status DatasetOpsTestBase::RestoreIterator(
+    IteratorContext* ctx, IteratorStateReader* reader,
+    const string& output_prefix, const DatasetBase& dataset,
+    std::unique_ptr<IteratorBase>* iterator) {
+  TF_RETURN_IF_ERROR(dataset.MakeIterator(ctx, output_prefix, iterator));
+  TF_RETURN_IF_ERROR((*iterator)->Restore(ctx, reader));
+  return Status::OK();
+}
+
 Status DatasetOpsTestBase::CreateIteratorContext(
     OpKernelContext* const op_context,
     std::unique_ptr<IteratorContext>* iterator_context) {
   IteratorContext::Params params(op_context);
+  params.resource_mgr = op_context->resource_manager();
   function_handle_cache_ = absl::make_unique<FunctionHandleCache>(flr_);
   params.function_handle_cache = function_handle_cache_.get();
   *iterator_context = absl::make_unique<IteratorContext>(params);
@@ -131,7 +245,7 @@ Status DatasetOpsTestBase::InitThreadPool(int thread_num) {
         "The `thread_num` argument should be positive but got: ", thread_num);
   }
   thread_pool_ = absl::make_unique<thread::ThreadPool>(
-      Env::Default(), ThreadOptions(), "inter_op", thread_num);
+      Env::Default(), ThreadOptions(), "test_thread_pool", thread_num);
   return Status::OK();
 }
 
@@ -148,6 +262,7 @@ Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
   TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
       options, "/job:localhost/replica:0/task:0", &devices));
   device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
+  resource_mgr_ = absl::make_unique<ResourceMgr>("default_container");
 
   FunctionDefLibrary proto;
   for (const auto& fdef : flib) *(proto.add_function()) = fdef;
@@ -175,24 +290,84 @@ Status DatasetOpsTestBase::RunOpKernel(OpKernel* op_kernel,
   return context->status();
 }
 
+Status DatasetOpsTestBase::RunFunction(
+    const FunctionDef& fdef, test::function::Attrs attrs,
+    const std::vector<Tensor>& args,
+    const GraphConstructorOptions& graph_options, std::vector<Tensor*> rets) {
+  std::unique_ptr<Executor> exec;
+  InstantiationResult result;
+  auto GetOpSig = [](const string& op, const OpDef** sig) {
+    return OpRegistry::Global()->LookUpOpDef(op, sig);
+  };
+  TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, GetOpSig, &result));
+
+  DataTypeVector arg_types = result.arg_types;
+  DataTypeVector ret_types = result.ret_types;
+
+  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  TF_RETURN_IF_ERROR(
+      ConvertNodeDefsToGraph(graph_options, result.nodes, g.get()));
+
+  const int version = g->versions().producer();
+  LocalExecutorParams params;
+  params.function_library = flr_;
+  params.device = device_.get();
+  params.create_kernel = [this, version](const NodeDef& ndef,
+                                         OpKernel** kernel) {
+    return CreateNonCachedKernel(device_.get(), this->flr_, ndef, version,
+                                 kernel);
+  };
+  params.delete_kernel = [](OpKernel* kernel) {
+    DeleteNonCachedKernel(kernel);
+  };
+  params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
+                                 Rendezvous** r) {
+    *r = new IntraProcessRendezvous(device_mgr);
+    return Status::OK();
+  };
+
+  Executor* cur_exec;
+  TF_RETURN_IF_ERROR(NewLocalExecutor(params, std::move(g), &cur_exec));
+  exec.reset(cur_exec);
+  FunctionCallFrame frame(arg_types, ret_types);
+  TF_RETURN_IF_ERROR(frame.SetArgs(args));
+  Executor::Args exec_args;
+  exec_args.call_frame = &frame;
+  exec_args.runner = runner_;
+  TF_RETURN_IF_ERROR(exec->Run(exec_args));
+  std::vector<Tensor> computed;
+  TF_RETURN_IF_ERROR(frame.GetRetvals(&computed));
+  if (computed.size() != rets.size()) {
+    return errors::InvalidArgument(
+        "The result does not match the expected number of return outpus",
+        ". Expected: ", rets.size(), ". Actual: ", computed.size());
+  }
+  for (int i = 0; i < rets.size(); ++i) {
+    *(rets[i]) = computed[i];
+  }
+  return Status::OK();
+}
+
 Status DatasetOpsTestBase::CreateOpKernelContext(
     OpKernel* kernel, gtl::InlinedVector<TensorValue, 4>* inputs,
     std::unique_ptr<OpKernelContext>* context) {
   params_ = absl::make_unique<OpKernelContext::Params>();
+  cancellation_manager_ = absl::make_unique<CancellationManager>();
+  params_->cancellation_manager = cancellation_manager_.get();
   params_->device = device_.get();
-  params_->resource_manager = device_->resource_manager();
   params_->frame_iter = FrameAndIter(0, 0);
+  params_->function_library = flr_;
   params_->inputs = inputs;
   params_->op_kernel = kernel;
-  params_->function_library = flr_;
+  params_->resource_manager = resource_mgr_.get();
   params_->runner = &runner_;
-  step_container_ =
-      absl::make_unique<ScopedStepContainer>(0, [](const string&) {});
-  params_->step_container = step_container_.get();
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
   slice_reader_cache_ =
       absl::make_unique<checkpoint::TensorSliceReaderCacheWrapper>();
   params_->slice_reader_cache = slice_reader_cache_.get();
+  step_container_ =
+      absl::make_unique<ScopedStepContainer>(0, [](const string&) {});
+  params_->step_container = step_container_.get();
 
   // Set the allocator attributes for the outputs.
   allocator_attrs_.clear();

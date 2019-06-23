@@ -27,7 +27,6 @@ import six
 from tensorflow.python.autograph import operators
 from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core import converter
-from tensorflow.python.autograph.core import errors
 from tensorflow.python.autograph.core import function_wrapping
 from tensorflow.python.autograph.core import naming
 from tensorflow.python.autograph.lang import special_functions
@@ -78,8 +77,6 @@ class TestCase(test.TestCase):
       fake_ag.ConversionOptions = converter.ConversionOptions
       fake_ag.Feature = converter.Feature
       fake_ag.utils = utils
-      fake_ag.rewrite_graph_construction_error = (
-          errors.rewrite_graph_construction_error)
       fake_ag.function_scope = function_wrapping.function_scope
       result.ag__ = fake_ag
       result.ag_source_map__ = source_map
@@ -137,6 +134,6 @@ class TestCase(test.TestCase):
         future_features=future_features,
         namespace=namespace)
     ctx = converter.EntityContext(namer, entity_info, program_ctx)
-    origin_info.resolve(node, source, test_fn)
+    origin_info.resolve_entity(node, source, test_fn)
     node = converter.standard_analysis(node, ctx, is_initial=True)
     return node, ctx

@@ -1,14 +1,13 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//tensorflow:__subpackages__"])
-
 load("//third_party/mpi:mpi.bzl", "if_mpi")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
-load("//tensorflow:tensorflow.bzl", "if_not_windows_cuda")
+
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 py_library(
     name = "contrib_py",
@@ -27,7 +26,6 @@ py_library(
         "//tensorflow/contrib/boosted_trees:init_py",
         "//tensorflow/contrib/checkpoint/python:checkpoint",
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_py",
-        "//tensorflow/contrib/coder:coder_py",
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/contrib/compiler:xla",
         "//tensorflow/contrib/autograph",
@@ -166,7 +164,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/boosted_trees:boosted_trees_kernels",
-        "//tensorflow/contrib/coder:all_kernels",
         "//tensorflow/contrib/factorization/kernels:all_kernels",
         "//tensorflow/contrib/hadoop:dataset_kernels",
         "//tensorflow/contrib/image:image_ops_kernels",
@@ -207,7 +204,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/boosted_trees:boosted_trees_ops_op_lib",
-        "//tensorflow/contrib/coder:all_ops",
         "//tensorflow/contrib/factorization:all_ops",
         "//tensorflow/contrib/framework:all_ops",
         "//tensorflow/contrib/hadoop:dataset_ops_op_lib",

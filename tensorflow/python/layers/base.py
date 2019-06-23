@@ -22,11 +22,12 @@ import copy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
-from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
@@ -63,9 +64,9 @@ def keras_style_scope():
   class RNNModel(tf.keras.Model):
 
     def __init__(self, name):
-      super(RNNModel, self.).__init__(name=name)
-      self.rnn = tf.nn.rnn_cell.MultiRNNCell(
-        [tf.nn.rnn_cell.LSTMCell(64) for _ in range(2)])
+      super(RNNModel, self).__init__(name=name)
+      self.rnn = tf.compat.v1.nn.rnn_cell.MultiRNNCell(
+        [tf.compat.v1.nn.rnn_cell.LSTMCell(64) for _ in range(2)])
 
     def call(self, input, state):
       return self.rnn(input, state)
@@ -214,7 +215,6 @@ class Layer(base_layer.Layer):
     else:
       self._keras_style = False
 
-    self._graph = None
     self._call_has_scope_arg = 'scope' in self._call_fn_args
     if scope:
       with vs.variable_scope(scope) as captured_scope:
@@ -223,11 +223,17 @@ class Layer(base_layer.Layer):
       self._scope = None
     self._current_scope = None
 
+  # We no longer track graph in tf.layers layers. This property is only kept to
+  # maintain API backward compatibility.
   @property
+  @deprecation.deprecated(
+      date=None,
+      instructions='Stop using this property because tf.layers layers no '
+      'longer track their graph.')
   def graph(self):
     if context.executing_eagerly():
       raise RuntimeError('Layer.graph not supported when executing eagerly.')
-    return self._graph
+    return None
 
   def _init_set_name(self, name):
     # Determine layer name (non-unique).
@@ -244,11 +250,12 @@ class Layer(base_layer.Layer):
   def _make_unique_name(self, name_uid_map=None, avoid_names=None,
                         namespace='', zero_based=False):
     base_name = base_layer.to_snake_case(self.__class__.__name__)
-    name = base_layer_utils.unique_layer_name(base_name,
-                                              name_uid_map=name_uid_map,
-                                              avoid_names=avoid_names,
-                                              namespace=namespace,
-                                              zero_based=zero_based)
+    name = backend.unique_object_name(
+        base_name,
+        name_uid_map=name_uid_map,
+        avoid_names=avoid_names,
+        namespace=namespace,
+        zero_based=zero_based)
     return (name, base_name)
 
   @property
@@ -339,10 +346,10 @@ class Layer(base_layer.Layer):
         provided, when the requested variable is created it will be split
         into multiple partitions according to `partitioner`.  In this case,
         an instance of `PartitionedVariable` is returned.  Available
-        partitioners include `tf.fixed_size_partitioner` and
-        `tf.variable_axis_size_partitioner`.  For more details, see the
-        documentation of `tf.get_variable` and the  "Variable Partitioners
-        and Sharding" section of the API guide.
+        partitioners include `tf.compat.v1.fixed_size_partitioner` and
+        `tf.compat.v1.variable_axis_size_partitioner`.  For more details, see
+        the documentation of `tf.compat.v1.get_variable` and the  "Variable
+        Partitioners and Sharding" section of the API guide.
       **kwargs: Additional keyword arguments.
 
     Returns:
@@ -351,7 +358,7 @@ class Layer(base_layer.Layer):
       instance is returned.
 
     Raises:
-      RuntimeError: If called with partioned variable regularization and
+      RuntimeError: If called with partitioned variable regularization and
         eager execution is enabled.
       ValueError: When trainable has been set to True with synchronization
         set as `ON_READ`.
@@ -366,7 +373,7 @@ class Layer(base_layer.Layer):
           dtype=dtype,
           initializer=initializer,
           regularizer=regularizer,
-          trainable=trainable,
+          trainable=trainable and self.trainable,
           constraint=constraint,
           use_resource=use_resource,
           synchronization=vs.VariableSynchronization.AUTO,
@@ -433,7 +440,7 @@ class Layer(base_layer.Layer):
             shape,
             dtype=dtypes.as_dtype(dtype),
             initializer=initializer,
-            trainable=trainable,
+            trainable=trainable and self.trainable,
             constraint=constraint,
             partitioner=partitioner,
             use_resource=use_resource,
@@ -498,14 +505,6 @@ class Layer(base_layer.Layer):
 
     self._set_scope(scope)
 
-    if not context.executing_eagerly():
-      try:
-        # Set layer's "graph" at build time
-        self._graph = ops._get_graph_from_inputs(nest.flatten(inputs),  # pylint: disable=protected-access
-                                                 graph=self._graph)
-      except ValueError as e:
-        raise ValueError('Input graph and Layer graph are not the same: %s' % e)
-
     if self.built:
       try:
         # Some classes which inherit from Layer do not use its constructor, so
@@ -562,6 +561,11 @@ class Layer(base_layer.Layer):
   def __setattr__(self, value, name):
     # By-pass the automatic dependency tracking performed by the parent Layer.
     super(trackable.Trackable, self).__setattr__(value, name)
+
+  @property
+  def _is_legacy_layer(self):
+    """Used by keras to check compatibility. This should not be overridden."""
+    return True
 
 
 def _add_elements_to_collection(elements, collection_list):

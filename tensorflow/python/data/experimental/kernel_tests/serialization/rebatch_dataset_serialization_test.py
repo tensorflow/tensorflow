@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
-from tensorflow.python.data.experimental.ops import batching
+from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.platform import test
 
@@ -29,7 +29,7 @@ class RebatchDatasetSerializationTest(
   def testCore(self):
 
     def build_dataset(num_elements, batch_size):
-      return batching._RebatchDataset(
+      return distribute._RebatchDataset(
           dataset_ops.Dataset.range(num_elements).batch(
               4 * batch_size, drop_remainder=True),
           num_workers=4)

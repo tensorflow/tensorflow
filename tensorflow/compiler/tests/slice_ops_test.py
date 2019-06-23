@@ -29,7 +29,7 @@ class SliceTest(xla_test.XLATestCase):
 
   def test1D(self):
     for dtype in self.numeric_types:
-      with self.cached_session():
+      with self.session():
         i = array_ops.placeholder(dtype, shape=[10])
         with self.test_scope():
           o = array_ops.slice(i, [2], [4])
@@ -42,7 +42,7 @@ class SliceTest(xla_test.XLATestCase):
 
   def testZeroSlice(self):
     for dtype in self.numeric_types:
-      with self.cached_session():
+      with self.session():
         i = array_ops.placeholder(dtype, shape=[2])
         with self.test_scope():
           o = array_ops.slice(i, [0], [0])
@@ -55,7 +55,7 @@ class SliceTest(xla_test.XLATestCase):
 
   def test3D(self):
     for dtype in self.numeric_types:
-      with self.cached_session():
+      with self.session():
         i = array_ops.placeholder(dtype, shape=[3, 3, 10])
         with self.test_scope():
           o = array_ops.slice(i, [1, 2, 2], [1, 1, 4])
@@ -77,7 +77,7 @@ class SliceTest(xla_test.XLATestCase):
   def test3DWithDynamicBegin(self):
     """Tests a slice where the start offset is not known at compile time."""
     for dtype in self.numeric_types:
-      with self.cached_session():
+      with self.session():
         i = array_ops.placeholder(dtype, shape=[3, 3, 10])
         begin = array_ops.placeholder(dtypes.int32, shape=[3])
         with self.test_scope():
@@ -101,7 +101,7 @@ class SliceTest(xla_test.XLATestCase):
   def test3DWithDynamicBeginAndNegativeSize(self):
     """Tests a slice where `begin` is fed dynamically and `size` contains -1."""
     for dtype in self.numeric_types:
-      with self.cached_session():
+      with self.session():
         i = array_ops.placeholder(dtype, shape=[3, 3, 10])
         begin = array_ops.placeholder(dtypes.int32, shape=[3])
         with self.test_scope():
@@ -127,7 +127,7 @@ class StridedSliceTest(xla_test.XLATestCase):
 
   def test1D(self):
     for dtype in self.numeric_types:
-      with self.cached_session():
+      with self.session():
         i = array_ops.placeholder(dtype, shape=[10])
         with self.test_scope():
           o = array_ops.strided_slice(i, [2], [6], [2])
@@ -140,7 +140,7 @@ class StridedSliceTest(xla_test.XLATestCase):
 
   def test1DNegativeStride(self):
     for dtype in self.numeric_types:
-      with self.cached_session():
+      with self.session():
         i = array_ops.placeholder(dtype, shape=[10])
         with self.test_scope():
           o = array_ops.strided_slice(i, [6], [2], [-2])
@@ -153,7 +153,7 @@ class StridedSliceTest(xla_test.XLATestCase):
 
   def test2DDegenerate(self):
     for dtype in self.numeric_types:
-      with self.cached_session():
+      with self.session():
         i = array_ops.placeholder(dtype, shape=[2, 3])
         with self.test_scope():
           o = array_ops.strided_slice(i, [-1, 0], [0, 3])
@@ -167,7 +167,7 @@ class StridedSliceTest(xla_test.XLATestCase):
 
   def test2DDegenerateNegativeStride(self):
     for dtype in self.numeric_types:
-      with self.cached_session():
+      with self.session():
         i = array_ops.placeholder(dtype, shape=[2, 3])
         with self.test_scope():
           o = array_ops.strided_slice(i, [0, 0], [-1, 3], [-1, 1])
@@ -181,7 +181,7 @@ class StridedSliceTest(xla_test.XLATestCase):
 
   def test3D(self):
     for dtype in self.numeric_types:
-      with self.cached_session():
+      with self.session():
         i = array_ops.placeholder(dtype, shape=[3, 3, 10])
         with self.test_scope():
           o = array_ops.strided_slice(i, [0, 2, 2], [2, 3, 6], [1, 1, 2])
@@ -202,7 +202,7 @@ class StridedSliceTest(xla_test.XLATestCase):
 
   def test3DNegativeStride(self):
     for dtype in self.numeric_types:
-      with self.cached_session():
+      with self.session():
         i = array_ops.placeholder(dtype, shape=[3, 4, 10])
         with self.test_scope():
           o = array_ops.strided_slice(i, [2, 2, 6], [0, 0, 2], [-1, -1, -2])

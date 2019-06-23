@@ -1,8 +1,9 @@
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = [
-    "//visibility:public",
-])
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "nnapi_lib",
@@ -10,7 +11,10 @@ cc_library(
         "NeuralNetworksShim.h",
         "NeuralNetworksTypes.h",
     ],
-    linkopts = ["-ldl"],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-ldl"],
+    }),
 )
 
 cc_library(
@@ -29,7 +33,10 @@ cc_library(
     hdrs = [
         "nnapi_implementation.h",
     ],
-    linkopts = ["-ldl"] + select({
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-ldl"],
+    }) + select({
         "//tensorflow:android": [],
         "//tensorflow:macos": [],
         "//tensorflow:ios": [],

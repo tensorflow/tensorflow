@@ -8,7 +8,10 @@ load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "if_static",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
+load(
+    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 # xla_proto_library() is a convenience wrapper around cc_proto_library.
 def xla_proto_library(name, srcs = [], deps = [], visibility = None, testonly = 0, **kwargs):
@@ -19,12 +22,12 @@ def xla_proto_library(name, srcs = [], deps = [], visibility = None, testonly = 
         srcs = srcs,
         # Append well-known proto dep. As far as I know this is the only way
         # for xla_proto_library to access google.protobuf.{Any,Duration,...}.
-        deps = deps + ["@protobuf_archive//:cc_wkt_protos"],
+        deps = deps + ["@com_google_protobuf//:cc_wkt_protos"],
         cc_libs = if_static(
-            ["@protobuf_archive//:protobuf"],
-            otherwise = ["@protobuf_archive//:protobuf_headers"],
+            ["@com_google_protobuf//:protobuf"],
+            otherwise = ["@com_google_protobuf//:protobuf_headers"],
         ),
-        protoc = "@protobuf_archive//:protoc",
+        protoc = "@com_google_protobuf//:protoc",
         testonly = testonly,
         visibility = visibility,
         **kwargs

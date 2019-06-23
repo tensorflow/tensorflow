@@ -23,17 +23,19 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
-from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
 from tensorflow.python.keras import regularizers
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
@@ -44,6 +46,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
 
@@ -68,21 +71,26 @@ class AssertTypeLayer(base_layer.Layer):
 class AddLayer(AssertTypeLayer):
   """A layer which adds it's input to a scalar variable."""
 
-  def __init__(self, regularizer=None, use_operator=False, **kwargs):
+  def __init__(self, regularizer=None, use_operator=False, var_name='v',
+               **kwargs):
     """Initializes the AddLayer.
 
     Args:
       regularizer: The regularizer on the scalar variable.
       use_operator: If True, add using the + operator. If False, add using
         tf.add.
+      var_name: The name of the variable. It can be useful to pass a name other
+        than 'v', to test having the attribute name (self.v) being different
+        from the variable name.
       **kwargs: Passed to AssertTypeLayer constructor.
     """
     self._regularizer = regularizer
     self._use_operator = use_operator
+    self._var_name = var_name
     super(AddLayer, self).__init__(**kwargs)
 
   def build(self, _):
-    self.v = self.add_weight('v', (), initializer='ones',
+    self.v = self.add_weight(self._var_name, (), initializer='ones',
                              regularizer=self._regularizer)
     self.built = True
 
@@ -123,8 +131,9 @@ class IdentityRegularizer(regularizers.Regularizer):
     return array_ops.identity(x)
 
 
-def create_one_device_strategy():
-  return one_device_strategy.OneDeviceStrategy('cpu:0')
+# If called outside any strategy.scope() calls, this will return the default
+# strategy.
+default_strategy_fn = distribution_strategy_context.get_strategy
 
 
 def create_mirrored_strategy():
@@ -136,14 +145,14 @@ def create_mirrored_strategy():
 
 TESTCASES = ({
     'testcase_name': 'base',
-    'strategy_fn': create_one_device_strategy
+    'strategy_fn': default_strategy_fn
 }, {
     'testcase_name': 'distribute',
     'strategy_fn': create_mirrored_strategy
 })
 
 
-class KerasLayerTest(test.TestCase, parameterized.TestCase):
+class KerasLayerTest(keras_parameterized.TestCase):
   """Test mixed precision with Keras layers."""
 
   @parameterized.named_parameters(*TESTCASES)
@@ -274,12 +283,22 @@ class KerasLayerTest(test.TestCase, parameterized.TestCase):
     # restored with mixed precision? Or vice versa?
 
 
-class KerasModelTest(test.TestCase, parameterized.TestCase):
+class KerasModelTest(keras_parameterized.TestCase):
   """Test mixed precision with Keras models."""
 
+  def _is_strategy_supported(self, strategy_fn):
+    if (strategy_fn != default_strategy_fn and
+        testing_utils.should_run_eagerly()):
+      # Distribution strategies do not support running with `run_eagerly=True`
+      # in Keras Models.
+      return False
+    else:
+      return True
+
+  @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters({
       'testcase_name': 'base',
-      'strategy_fn': create_one_device_strategy,
+      'strategy_fn': default_strategy_fn
   }, {
       'testcase_name': 'distribute',
       'strategy_fn': create_mirrored_strategy,
@@ -291,13 +310,19 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
       'testcase_name': 'regularizer',
       'strategy_fn': create_mirrored_strategy,
       'use_regularizer': True
+  }, {
+      'testcase_name': 'nocloning',
+      'strategy_fn': create_mirrored_strategy,
+      'cloning': False
   })
-  @test_util.run_in_graph_and_eager_modes
-  def test_model(self, strategy_fn, use_operator=False, use_regularizer=False):
+  def test_model(self, strategy_fn, use_operator=False, use_regularizer=False,
+                 cloning=True):
+    if not self._is_strategy_supported(strategy_fn):
+      return
     regularizer = IdentityRegularizer() if use_regularizer else None
     with strategy_fn().scope():
       with policy.policy_scope('infer_float32_vars'):
-        x = layers.Input(shape=(), batch_size=2, dtype=dtypes.float16)
+        x = layers.Input(shape=(1,), batch_size=2, dtype=dtypes.float16)
         layer = AddLayer(assert_type=dtypes.float16, use_operator=use_operator,
                          regularizer=regularizer)
         y = layer(x)
@@ -312,24 +337,76 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
         # the variable will not change. So this tests the learning rate not
         # applied to a float16 value, but instead the float32 variable.
         opt = gradient_descent.SGD(2 ** -14)
-        model.compile(opt, loss=loss_fn)
+        model.compile(opt, loss=loss_fn, cloning=cloning,
+                      run_eagerly=testing_utils.should_run_eagerly())
 
-      self.assertEqual(backend.eval(layer.v), 1)
-      x = np.ones((2, 1))
-      y = np.ones((2, 1))
-      dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(2)
-      model.fit(dataset)
-      # Variable starts at 1, and should have gradient of 2 ** -14 subtracted
-      # from it.
-      expected = 1 - 2 ** -14
-      if use_regularizer:
-        # Regularizer adds another 2 ** -14 to the gradient.
-        expected -= 2 ** -14
-      self.assertEqual(backend.eval(layer.v), expected)
+    self.assertEqual(backend.eval(layer.v), 1)
+    x = np.ones((2, 1))
+    y = np.ones((2, 1))
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(2)
+    model.fit(dataset)
+    # Variable starts at 1, and should have gradient of 2 ** -14 subtracted
+    # from it.
+    expected = 1 - 2 ** -14
+    if use_regularizer:
+      # Regularizer adds another 2 ** -14 to the gradient.
+      expected -= 2 ** -14
+    self.assertEqual(backend.eval(layer.v), expected)
 
+  @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters({
       'testcase_name': 'base',
-      'strategy_fn': create_one_device_strategy,
+      'strategy_fn': default_strategy_fn
+  }, {
+      'testcase_name': 'distribute',
+      'strategy_fn': create_mirrored_strategy,
+  }, {
+      'testcase_name': 'nocloning',
+      'strategy_fn': create_mirrored_strategy,
+      'cloning': False,
+  })
+  def test_fixed_loss_scaling(self, strategy_fn, cloning=True):
+    # Note: We do not test mixed precision in this method, only loss scaling.
+    if not self._is_strategy_supported(strategy_fn):
+      return
+    loss_scale = 8.
+    batch_size = 4
+    with strategy_fn().scope():
+      x = layers.Input(shape=(1,), batch_size=batch_size)
+      layer = AddLayer()
+      y = layer(x)
+
+      # The gradient of 'y' at this point is 1. With loss scaling, the gradient
+      # is 'loss_scale'. We divide by the batch size since the loss is averaged
+      # across batch elements.
+      expected_gradient = loss_scale / batch_size
+      identity_with_grad_check_fn = (
+          mp_test_util.create_identity_with_grad_check_fn([expected_gradient]))
+      y = core.Lambda(identity_with_grad_check_fn)(y)
+      model = models.Model(inputs=x, outputs=y)
+
+      def loss_fn(y_true, y_pred):
+        del y_true
+        return math_ops.reduce_mean(y_pred)
+
+      opt = gradient_descent.SGD(1.)
+      opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
+      model.compile(opt, loss=loss_fn, cloning=cloning,
+                    run_eagerly=testing_utils.should_run_eagerly())
+
+    self.assertEqual(backend.eval(layer.v), 1)
+    x = np.ones((batch_size, 1))
+    y = np.ones((batch_size, 1))
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(batch_size)
+    model.fit(dataset)
+    # Variable starts at 1, and should have gradient of 1 subtracted from it.
+    expected = 0
+    self.assertEqual(backend.eval(layer.v), expected)
+
+  @keras_parameterized.run_all_keras_modes
+  @parameterized.named_parameters({
+      'testcase_name': 'base',
+      'strategy_fn': default_strategy_fn
   }, {
       'testcase_name': 'distribute',
       'strategy_fn': create_mirrored_strategy,
@@ -338,7 +415,6 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
       'strategy_fn': create_mirrored_strategy,
       'use_loss_scaling': True
   })
-  @test_util.run_in_graph_and_eager_modes
   def test_advanced_model(self, strategy_fn, use_loss_scaling=False):
 
     # The advanced model tests mixed-precision-related features that would occur
@@ -346,8 +422,10 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
     #  * Multiple layers, some which use auto-cast variables and some which do
     #    not
     #  * Regularization on some variables and not others.
-    #  * Loss scaling (if use_loss_scaling is True)
+    #  * A fixed loss scale (if use_loss_scaling is True)
 
+    if not self._is_strategy_supported(strategy_fn):
+      return
     strategy = strategy_fn()
     if use_loss_scaling:
       loss_scale = 8.
@@ -355,7 +433,7 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
 
     with strategy.scope():
       with policy.policy_scope(policy.Policy('infer_float32_vars')):
-        x = layers.Input(shape=(), batch_size=2, dtype=dtypes.float16)
+        x = layers.Input(shape=(1,), batch_size=2, dtype=dtypes.float16)
         layer1 = AddLayer(assert_type=dtypes.float16,
                           regularizer=IdentityRegularizer(), use_operator=True)
         layer2 = AddLayerWithoutAutoCast(assert_type=dtypes.float16,
@@ -370,14 +448,13 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
         y = layer4(y)
         if use_loss_scaling:
           # The gradient of 'y' at this point is 1. With loss scaling, the
-          # gradient is 'loss_scale'. The DistributionStrategy additionally
-          # scales the gradient by 1/num_replicas in_sync. We divide by the
-          # batch size of 2 since the loss is averaged across batch elements.
-          expected_gradient = loss_scale / strategy.num_replicas_in_sync / 2
+          # gradient is 'loss_scale'. We divide by the batch size of 2 since the
+          # loss is averaged across batch elements.
+          expected_gradient = loss_scale / 2
           identity_with_grad_check_fn = (
               mp_test_util.create_identity_with_grad_check_fn(
                   expected_dtype=dtypes.float16,
-                  expected_gradient=[expected_gradient] * 2))
+                  expected_gradient=[expected_gradient]))
           y = core.Lambda(identity_with_grad_check_fn)(y)
         y = math_ops.cast(y, dtypes.float32)
         model = models.Model(inputs=x, outputs=y)
@@ -390,29 +467,114 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
         opt = gradient_descent.SGD(learning_rate)
         if use_loss_scaling:
           opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
-        model.compile(opt, loss=loss_fn)
+        model.compile(opt, loss=loss_fn,
+                      run_eagerly=testing_utils.should_run_eagerly())
 
-      x = np.ones((2, 1))
-      y = np.ones((2, 1))
-      dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(2)
-      model.fit(dataset)
-      for layer in (layer1, layer2, layer3, layer4):
-        if layer.losses:
-          # Layer has weight regularizer
-          self.assertEqual(backend.eval(layer.v), 1 - 2 * learning_rate)
-        else:
-          # Layer does not have weight regularizer
-          self.assertEqual(backend.eval(layer.v), 1 - learning_rate)
+    x = np.ones((2, 1))
+    y = np.ones((2, 1))
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(2)
+    model.fit(dataset)
+    for layer in (layer1, layer2, layer3, layer4):
+      if layer.losses:
+        # Layer has weight regularizer
+        self.assertEqual(backend.eval(layer.v), 1 - 2 * learning_rate)
+      else:
+        # Layer does not have weight regularizer
+        self.assertEqual(backend.eval(layer.v), 1 - learning_rate)
+
+  @keras_parameterized.run_all_keras_modes
+  @parameterized.named_parameters({
+      'testcase_name': 'base',
+      'strategy_fn': default_strategy_fn
+  }, {
+      'testcase_name': 'distribute',
+      'strategy_fn': create_mirrored_strategy,
+  }, {
+      'testcase_name': 'nocloning',
+      'strategy_fn': create_mirrored_strategy,
+      'cloning': False,
+  })
+  def test_dynamic_loss_scaling(self, strategy_fn, cloning=True):
+    if not self._is_strategy_supported(strategy_fn):
+      return
+    strategy = strategy_fn()
+    initial_loss_scale = 2.
+    batch_size = 4
+    expected_gradient = backend.variable([initial_loss_scale / batch_size],
+                                         dtype=dtypes.float16)
+    # If this variable is set to True, the model below will have NaN gradients
+    have_nan_gradients = backend.variable(False, dtype=dtypes.bool)
+    with strategy.scope():
+      with policy.policy_scope(policy.Policy('infer_float32_vars')):
+        x = layers.Input(shape=(1,), batch_size=batch_size,
+                         dtype=dtypes.float16)
+        layer = AddLayer(assert_type=dtypes.float16)
+        y = layer(x)
+        identity_with_nan_grads = (
+            mp_test_util.create_identity_with_nan_gradients_fn(
+                have_nan_gradients))
+        y = core.Lambda(identity_with_nan_grads)(y)
+        identity_with_grad_check_fn = (
+            mp_test_util.create_identity_with_grad_check_fn(
+                expected_dtype=dtypes.float16,
+                expected_gradient=expected_gradient))
+        y = core.Lambda(identity_with_grad_check_fn)(y)
+        y = math_ops.cast(y, dtypes.float32)
+        model = models.Model(inputs=x, outputs=y)
+
+        def loss_fn(y_true, y_pred):
+          del y_true
+          return math_ops.reduce_mean(y_pred)
+
+        opt = gradient_descent.SGD(1.)
+        loss_scale = loss_scale_module.DynamicLossScale(
+            initial_loss_scale=initial_loss_scale, increment_period=2)
+        opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
+        model.compile(opt, loss=loss_fn, cloning=cloning,
+                      run_eagerly=testing_utils.should_run_eagerly())
+
+    self.assertEqual(backend.eval(layer.v), 1)
+    x = np.ones((batch_size, 1))
+    y = np.ones((batch_size, 1))
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(batch_size)
+    model.fit(dataset)
+    # The variables starts with 1 and has a gradient of 1, so will go down by 1
+    # each step.
+    self.assertEqual(backend.eval(layer.v), 0)
+
+    model.fit(dataset)
+    self.assertEqual(backend.eval(layer.v), -1)
+
+    # There have been two steps without NaNs, so the loss scale will double
+    backend.set_value(expected_gradient,
+                      backend.get_value(expected_gradient * 2))
+    model.fit(dataset)
+    self.assertEqual(backend.eval(layer.v), -2)
+
+    # Next test with NaN gradients.
+    backend.set_value(have_nan_gradients, True)
+    model.fit(dataset)
+    # Variable should not be updated
+    self.assertEqual(backend.eval(layer.v), -2)
+
+    # Test with finite gradients again
+    backend.set_value(have_nan_gradients, False)
+    # The loss scale will be halved due to the NaNs, so the gradient will also
+    # be halved
+    backend.set_value(expected_gradient,
+                      backend.get_value(expected_gradient / 2))
+    model.fit(dataset)
+    self.assertEqual(backend.eval(layer.v), -3)
 
   @parameterized.named_parameters({
       'testcase_name': 'base',
-      'strategy_fn': create_one_device_strategy,
+      'strategy_fn': default_strategy_fn,
   }, {
       'testcase_name': 'distribute',
       'strategy_fn': create_mirrored_strategy,
   }, {
       'testcase_name': 'base_h5',
-      'strategy_fn': create_one_device_strategy,
+      'strategy_fn': default_strategy_fn,
       'h5': True,
   }, {
       'testcase_name': 'distribute_h5',
@@ -420,10 +582,10 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
       'h5': True,
   })
   @test_util.run_in_graph_and_eager_modes
-  def test_save_weights(self, strategy_fn, h5=False):
+  def test_save_weights_with_autocast_vars(self, strategy_fn, h5=False):
     with strategy_fn().scope():
       with policy.policy_scope('infer_float32_vars'):
-        x = layers.Input(shape=(), batch_size=2, dtype=dtypes.float16)
+        x = layers.Input(shape=(1,), batch_size=2, dtype=dtypes.float16)
         layer = AddLayer(assert_type=dtypes.float16)
         y = layer(x)
         y = math_ops.cast(y, dtypes.float32)
@@ -441,6 +603,95 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
     model.load_weights(weights_file)
     self.assertAllClose(backend.get_value(model(x)), x + 100.)
     self.assertEqual(model.get_weights(), [np.array(100.)])
+
+  @keras_parameterized.run_all_keras_modes
+  @parameterized.named_parameters({
+      'testcase_name': 'base',
+      'strategy_fn': default_strategy_fn,
+  }, {
+      'testcase_name': 'distribute',
+      'strategy_fn': create_mirrored_strategy,
+  }, {
+      'testcase_name': 'different_var_name',
+      'strategy_fn': default_strategy_fn,
+      'var_name': 'w'
+  }, {
+      'testcase_name': 'different_var_name_distribute',
+      'strategy_fn': create_mirrored_strategy,
+      'var_name': 'w'
+  })
+  def test_save_slot_variables_with_autocast_vars(self, strategy_fn,
+                                                  var_name='v'):
+    if not self._is_strategy_supported(strategy_fn):
+      return
+    with strategy_fn().scope(), policy.policy_scope('infer_float32_vars'):
+      x = layers.Input(shape=(2,), batch_size=2, dtype=dtypes.float16)
+      # Having a var_name other than 'v' tests that a fixed bug (b/134713714)
+      # does not reoccur. The bug was that a crash would occur when saving a
+      # checkpoint where an AutoCastVariable with a slot variable would have a
+      # different name than the layer attribute's name (layer.v in this case).
+      layer = AddLayer(assert_type=dtypes.float16, var_name=var_name)
+      y = layer(x)
+      y = math_ops.cast(y, dtypes.float32)
+      model = models.Model(inputs=x, outputs=y)
+      opt = gradient_descent.SGD(1., 1.)
+      model.compile(optimizer=opt, loss='mse',
+                    run_eagerly=testing_utils.should_run_eagerly())
+
+    model.fit(np.zeros((2, 2)), np.zeros((2, 2)), batch_size=2)
+    weights_file = os.path.join(self.get_temp_dir(), 'weights')
+    model.save_weights(weights_file)
+    saved_slot = backend.get_value(opt.get_slot(layer.v, 'momentum'))
+
+    model.fit(np.zeros((2, 2)), np.zeros((2, 2)), batch_size=2)
+    new_slot = backend.get_value(opt.get_slot(layer.v, 'momentum'))
+    self.assertNotEqual(new_slot, saved_slot)
+
+    model.load_weights(weights_file)
+    restored_slot = backend.get_value(opt.get_slot(layer.v, 'momentum'))
+    self.assertEqual(restored_slot, saved_slot)
+
+  @keras_parameterized.run_all_keras_modes
+  @parameterized.named_parameters(*TESTCASES)
+  def test_save_weights_with_dynamic_loss_scaling(self, strategy_fn):
+    if not self._is_strategy_supported(strategy_fn):
+      return
+    strategy = strategy_fn()
+    if (isinstance(strategy, mirrored_strategy.MirroredStrategy) and
+        not context.executing_eagerly()):
+      # TODO(b/121381184): Enable running the test in this case.
+      return
+
+    # Create and run model.
+    with strategy.scope():
+      x = layers.Input(shape=(2,), batch_size=2, dtype=dtypes.float32)
+      y = AddLayer(assert_type=dtypes.float32)(x)
+      model = models.Model(inputs=x, outputs=y)
+
+      loss_scale = loss_scale_module.DynamicLossScale(
+          initial_loss_scale=1., increment_period=2., multiplier=2.)
+      opt = gradient_descent.SGD(1.)
+      opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
+      model.compile(optimizer=opt, loss='mse',
+                    run_eagerly=testing_utils.should_run_eagerly())
+    # Run for 3 steps (6 examples with a batch size of 2)
+    model.fit(np.zeros((6, 2)), np.zeros((6, 2)), batch_size=2)
+    self.assertEqual(backend.get_value(loss_scale()), 2)
+    self.assertEqual(backend.get_value(loss_scale._num_good_steps), 1)
+
+    # Save model weights.
+    save_prefix = os.path.join(self.get_temp_dir(), 'ckpt')
+    model.save_weights(save_prefix)
+
+    # Run model again for 1 step (2 examples with a batch size of 2)
+    model.fit(np.zeros((2, 2)), np.zeros((2, 2)), batch_size=2)
+    self.assertEqual(backend.get_value(loss_scale()), 4)
+    self.assertEqual(backend.get_value(loss_scale._num_good_steps), 0)
+
+    # Load model weights and ensure loss scale weights are restored.
+    model.load_weights(save_prefix)
+    self.assertEqual(backend.get_value(loss_scale()), 2)
+    self.assertEqual(backend.get_value(loss_scale._num_good_steps), 1)
 
 
 if __name__ == '__main__':

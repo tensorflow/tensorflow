@@ -59,7 +59,7 @@ mkdir -p ${DIR}/include/tensorflow/c
 mkdir -p ${DIR}/include/tensorflow/c/eager
 mkdir -p ${DIR}/lib
 cp bazel-bin/tensorflow/tensorflow.dll ${DIR}/lib/tensorflow.dll
-cp bazel-bin/tensorflow/tensorflow.lib ${DIR}/lib/tensorflow.lib
+cp bazel-genfiles/tensorflow/tensorflow.lib ${DIR}/lib/tensorflow.lib
 cp tensorflow/c/c_api.h ${DIR}/include/tensorflow/c
 cp tensorflow/c/eager/c_api.h ${DIR}/include/tensorflow/c/eager
 cp bazel-genfiles/tensorflow/tools/lib_package/include/tensorflow/c/LICENSE ${DIR}/include/tensorflow/c

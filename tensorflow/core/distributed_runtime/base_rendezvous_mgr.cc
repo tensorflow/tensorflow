@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -146,7 +147,7 @@ BaseRemoteRendezvous::~BaseRemoteRendezvous() {
 // and device name and does no lookups in the worker->device_mgr.
 static bool IsLocalDevice(const StringPiece worker_name,
                           const StringPiece device_name) {
-  return str_util::StartsWith(device_name, worker_name);
+  return absl::StartsWith(device_name, worker_name);
 }
 
 Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
@@ -245,9 +246,11 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
   // This copy must involve a GPU. Hence, "in" must support DMA
   // (e.g., string tensors do not work on GPU).  Variant copy DMA
   // checks happen inside CopyTensor::ViaDMA.
-  if (!DMAHelper::CanUseDMA(&in) && in.dtype() != DT_VARIANT) {
-    done(errors::InvalidArgument("Non-DMA-safe ", DataTypeString(in.dtype()),
-                                 " tensor may not be copied from/to a GPU."));
+  if (!DMAHelper::CanUseDMA(&in) && in.dtype() != DT_VARIANT &&
+      in.dtype() != DT_RESOURCE) {
+    done(errors::InvalidArgument(
+        "Non-DMA-safe ", DataTypeString(in.dtype()),
+        " tensor may not be copied from/to a device. Key: ", parsed.FullKey()));
     return;
   }
 
@@ -269,19 +272,28 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
   attr.set_gpu_compatible(send_args.alloc_attrs.gpu_compatible() ||
                           recv_args.alloc_attrs.gpu_compatible());
   Allocator* out_allocator = dst_device->GetAllocator(attr);
-
+  AllocationAttributes allocation_attr;
+  uint64 safe_alloc_frontier = dst_device->SafeAllocFrontier(0);
+  bool sync_dst_compute = (safe_alloc_frontier == 0);
+  std::function<uint64()> freed_by_func = [dst_device, &safe_alloc_frontier]() {
+    safe_alloc_frontier = dst_device->SafeAllocFrontier(safe_alloc_frontier);
+    return safe_alloc_frontier;
+  };
+  if (!sync_dst_compute) {
+    allocation_attr.freed_by_func = &freed_by_func;
+  }
   if (in.dtype() != DT_VARIANT) {
     // Variants are handled by CopyTensor::ViaDMA.
-    Tensor copy(out_allocator, in.dtype(), in.shape());
+    Tensor copy(out_allocator, in.dtype(), in.shape(), allocation_attr);
     *out = copy;
   }
 
   // The following function takes care of cpu->gpu, gpu->cpu, gpu->gpu copies,
   // etc.
-  CopyTensor::ViaDMA(parsed.edge_name, send_args.device_context,
-                     recv_args.device_context, src_device, dst_device,
-                     send_args.alloc_attrs, recv_args.alloc_attrs, &in, out,
-                     0 /*dev_to_dev_stream_index*/, std::move(done));
+  CopyTensor::ViaDMA(
+      parsed.edge_name, send_args.device_context, recv_args.device_context,
+      src_device, dst_device, send_args.alloc_attrs, recv_args.alloc_attrs, &in,
+      out, 0 /*dev_to_dev_stream_index*/, std::move(done), sync_dst_compute);
 }
 
 bool BaseRemoteRendezvous::IsSameWorker(DeviceNameUtils::ParsedName src,
@@ -311,6 +323,8 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
         [this, parsed, done](
             const Status& status, const Rendezvous::Args& send_args,
             const Rendezvous::Args& recv_args, const Tensor& in, bool is_dead) {
+          VLOG(2) << "RemoteRendezvous Finished Recv " << this << " "
+                  << parsed.FullKey();
           Tensor* out = new Tensor;
           StatusCallback final_callback = [done, send_args, recv_args, out,
                                            is_dead](const Status& s) {
@@ -363,14 +377,20 @@ void BaseRemoteRendezvous::RecvLocalAsyncInternal(const ParsedKey& parsed,
 
 void BaseRemoteRendezvous::StartAbort(const Status& s) {
   CHECK(!s.ok());
-  local_->StartAbort(s);
+  // Use a "derived" status as the status for the rendezvous. Derived
+  // status messages are ignored when aggregating errors across devices: this
+  // allows us to prefer our original status message over any cancellation
+  // related errors.
+  Status derived_status = StatusGroup::MakeDerived(s);
+
+  local_->StartAbort(derived_status);
   {
     // Aborts all active RecvTensor calls.
     mutex_lock l(mu_);
     if (status_.ok()) {
-      status_ = s;
+      status_ = derived_status;
       for (BaseRecvTensorCall* call : active_) {
-        call->StartAbort(s);
+        call->StartAbort(derived_status);
       }
       active_.clear();
     }

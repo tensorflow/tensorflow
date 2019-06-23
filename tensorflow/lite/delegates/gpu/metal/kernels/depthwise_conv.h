@@ -47,6 +47,21 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride1x1(
 bool CheckDepthWiseConv3x3Stride1x1Support(
     const DepthwiseConvolution2DAttributes& attr);
 
+// Depth Wise Convolution for kernel 3x3
+// require:
+//   channels_multiplier = 1;
+//   kernel_size = 3x3;
+//   dilation.y = 1;
+//   stride.y = 2;
+std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride2(
+    int id, ValueId input_id, ValueId output_id,
+    const DepthwiseConvolution2DAttributes& attr,
+    const RuntimeOptions& options);
+
+// TODO(impjdi): Move it inside module.
+bool CheckDepthWiseConv3x3Stride2Support(
+    const DepthwiseConvolution2DAttributes& attr);
+
 }  // namespace metal
 }  // namespace gpu
 }  // namespace tflite

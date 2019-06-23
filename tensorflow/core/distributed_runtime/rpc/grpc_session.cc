@@ -108,8 +108,7 @@ Status GrpcSession::Handle(string* out_handle) {
   return Status::OK();
 }
 
-Status GrpcSession::CreateImpl(CallOptions* call_options,
-                               const GraphDef& graph) {
+Status GrpcSession::CreateImpl(CallOptions* call_options, GraphDef graph) {
   {
     mutex_lock l(mu_);
     if (!handle_.empty()) {
@@ -118,7 +117,7 @@ Status GrpcSession::CreateImpl(CallOptions* call_options,
   }
   CreateSessionRequest req;
   *req.mutable_config() = options_.config;
-  *req.mutable_graph_def() = graph;
+  req.mutable_graph_def()->Swap(&graph);
   req.set_target(options_.target);
   ReEncodeConsts(req.mutable_graph_def());
   CreateSessionResponse resp;
@@ -130,33 +129,40 @@ Status GrpcSession::CreateImpl(CallOptions* call_options,
 }
 
 Status GrpcSession::Create(const GraphDef& graph) {
-  CallOptions call_options;
-  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
-  return CreateImpl(&call_options, graph);
+  return Create(GraphDef(graph));
 }
 
 Status GrpcSession::Create(const RunOptions& run_options,
                            const GraphDef& graph) {
-  CallOptions call_options;
-  call_options.SetTimeout(run_options.timeout_in_ms());
-  return CreateImpl(&call_options, graph);
+  return Create(run_options, GraphDef(graph));
 }
 
-Status GrpcSession::ExtendImpl(CallOptions* call_options,
-                               const GraphDef& graph) {
+Status GrpcSession::Create(GraphDef&& graph) {
+  CallOptions call_options;
+  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
+  return CreateImpl(&call_options, std::move(graph));
+}
+
+Status GrpcSession::Create(const RunOptions& run_options, GraphDef&& graph) {
+  CallOptions call_options;
+  call_options.SetTimeout(run_options.timeout_in_ms());
+  return CreateImpl(&call_options, std::move(graph));
+}
+
+Status GrpcSession::ExtendImpl(CallOptions* call_options, GraphDef graph) {
   bool handle_is_empty;
   {
     mutex_lock l(mu_);
     handle_is_empty = handle_.empty();
   }
   if (handle_is_empty) {
-    // Session was unitialized, so simply initialize the session with 'graph'.
-    return Create(graph);
+    // Session was uninitialized, so simply initialize the session with 'graph'.
+    return Create(std::move(graph));
   }
   mutex_lock l(mu_);
   ExtendSessionRequest req;
   req.set_session_handle(handle_);
-  *req.mutable_graph_def() = graph;
+  req.mutable_graph_def()->Swap(&graph);
   req.set_current_graph_version(current_graph_version_);
   ExtendSessionResponse resp;
   Status s = master_->ExtendSession(call_options, &req, &resp);
@@ -167,16 +173,24 @@ Status GrpcSession::ExtendImpl(CallOptions* call_options,
 }
 
 Status GrpcSession::Extend(const GraphDef& graph) {
-  CallOptions call_options;
-  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
-  return ExtendImpl(&call_options, graph);
+  return Extend(GraphDef(graph));
 }
 
 Status GrpcSession::Extend(const RunOptions& run_options,
                            const GraphDef& graph) {
+  return Extend(run_options, GraphDef(graph));
+}
+
+Status GrpcSession::Extend(GraphDef&& graph) {
+  CallOptions call_options;
+  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
+  return ExtendImpl(&call_options, std::move(graph));
+}
+
+Status GrpcSession::Extend(const RunOptions& run_options, GraphDef&& graph) {
   CallOptions call_options;
   call_options.SetTimeout(run_options.timeout_in_ms());
-  return ExtendImpl(&call_options, graph);
+  return ExtendImpl(&call_options, std::move(graph));
 }
 
 Status GrpcSession::RunHelper(
@@ -459,7 +473,7 @@ Status GrpcSession::ReleaseCallable(CallableHandle handle) {
 class GrpcSessionFactory : public SessionFactory {
  public:
   bool AcceptsOptions(const SessionOptions& options) override {
-    return str_util::StartsWith(options.target, kSchemePrefix);
+    return absl::StartsWith(options.target, kSchemePrefix);
   }
 
   Status NewSession(const SessionOptions& options,

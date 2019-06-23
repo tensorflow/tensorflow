@@ -17,12 +17,12 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
-#include "tensorflow/stream_executor/lib/str_util.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 
 namespace stream_executor {
 namespace {
@@ -71,7 +71,7 @@ class MultiPlatformManagerImpl {
 port::Status MultiPlatformManagerImpl::RegisterPlatform(
     std::unique_ptr<Platform> platform) {
   CHECK(platform != nullptr);
-  string key = port::Lowercase(platform->Name());
+  string key = absl::AsciiStrToLower(platform->Name());
   absl::MutexLock lock(&mu_);
   if (name_map_.find(key) != name_map_.end()) {
     return port::Status(port::error::INTERNAL,
@@ -140,7 +140,7 @@ port::StatusOr<Platform*> MultiPlatformManagerImpl::InitializePlatformWithId(
   if (platform->Initialized()) {
     return port::Status(
         port::error::FAILED_PRECONDITION,
-        port::Printf("platform with id 0x%p is already initialized", id));
+        absl::StrFormat("platform with id %p is already initialized", id));
   }
 
   SE_RETURN_IF_ERROR(platform->Initialize(options));
@@ -170,7 +170,7 @@ std::vector<Platform*> MultiPlatformManagerImpl::AllPlatforms() {
 
 port::StatusOr<Platform*> MultiPlatformManagerImpl::LookupByNameLocked(
     absl::string_view target) {
-  auto it = name_map_.find(port::Lowercase(target));
+  auto it = name_map_.find(absl::AsciiStrToLower(target));
   if (it == name_map_.end()) {
     return port::Status(
         port::error::NOT_FOUND,
@@ -186,7 +186,7 @@ port::StatusOr<Platform*> MultiPlatformManagerImpl::LookupByIdLocked(
   if (it == id_map_.end()) {
     return port::Status(
         port::error::NOT_FOUND,
-        port::Printf("could not find registered platform with id: 0x%p", id));
+        absl::StrFormat("could not find registered platform with id: %p", id));
   }
   return it->second;
 }

@@ -25,6 +25,7 @@ from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -111,7 +112,9 @@ class TestSequential(keras_parameterized.TestCase):
         metrics=[keras.metrics.CategoricalAccuracy()],
         run_eagerly=testing_utils.should_run_eagerly())
     self.assertEqual(len(model.layers), 2)
-    self.assertEqual(len(model.weights), 0)
+    with self.assertRaisesRegexp(
+        ValueError, 'Weights for model .* have not yet been created'):
+      len(model.weights)
     self.assertFalse(model.built)
 
     x = np.random.random((batch_size, input_dim))
@@ -136,7 +139,9 @@ class TestSequential(keras_parameterized.TestCase):
         metrics=[keras.metrics.CategoricalAccuracy()],
         run_eagerly=testing_utils.should_run_eagerly())
     self.assertEqual(len(model.layers), 2)
-    self.assertEqual(len(model.weights), 0)
+    with self.assertRaisesRegexp(
+        ValueError, 'Weights for model .* have not yet been created'):
+      len(model.weights)
     self.assertFalse(model.built)
 
     x = array_ops.ones((num_samples, input_dim))
@@ -365,6 +370,52 @@ class TestSequential(keras_parameterized.TestCase):
       with self.assertRaisesRegexp(ValueError,
                                    'expected min_ndim=2, found ndim=0'):
         model(1.0)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_string_input(self):
+    seq = keras.Sequential([
+        keras.layers.InputLayer(input_shape=(1,), dtype=dtypes.string),
+        keras.layers.Lambda(lambda x: x[0])
+    ])
+    seq.run_eagerly = testing_utils.should_run_eagerly()
+    preds = seq.predict([['tensorflow eager']])
+    self.assertEqual(preds.shape, (1,))
+
+  @keras_parameterized.run_all_keras_modes
+  def test_multi_output_layer_not_accepted(self):
+
+    class MultiOutputLayer(keras.layers.Layer):
+
+      def call(self, inputs):
+        return inputs, inputs
+
+    with self.assertRaisesRegexp(
+        ValueError, 'should have a single output tensor'):
+      keras.Sequential([MultiOutputLayer(input_shape=(3,))])
+
+  @keras_parameterized.run_all_keras_modes
+  def test_layer_add_after_compile_deferred(self):
+    model = keras.Sequential([keras.layers.Dense(3)])
+
+    self.assertFalse(model.built)
+    self.assertFalse(model.inputs)
+    self.assertFalse(model.outputs)
+
+    model.compile('adam', loss='mse')
+    model.fit(np.random.random((1, 3)), np.random.random((1, 3)))
+
+    self.assertTrue(model.built)
+    self.assertTrue(model.inputs)
+    self.assertTrue(model.outputs)
+
+    model.add(keras.layers.Dense(3))
+
+    self.assertTrue(model.built)
+    self.assertTrue(model.inputs)
+    self.assertTrue(model.outputs)
+
+    model.compile('adam', loss='mse')
+    model.fit(np.random.random((1, 3)), np.random.random((1, 3)))
 
 
 class TestSequentialEagerIntegration(keras_parameterized.TestCase):

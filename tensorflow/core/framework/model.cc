@@ -18,17 +18,11 @@ limitations under the License.
 #include <memory>
 
 #include "absl/time/clock.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
 namespace data {
 namespace model {
-
-std::shared_ptr<Parameter> MakeParameter(const string& name,
-                                         std::shared_ptr<SharedState> state,
-                                         int64 min, int64 max) {
-  return std::make_shared<Parameter>(name, state, min, max);
-}
-
 namespace {
 
 // Given the average time between output events (`output_time`), the average
@@ -41,19 +35,20 @@ namespace {
 // The formula used for computing the probability is derived by modeling the
 // problem as an M/M/1/K queue
 // (https://en.wikipedia.org/wiki/Birth%E2%80%93death_process#M/M/1/K_queue).
-int64 ComputeWaitTime(int64 output_time, int64 input_time, int64 buffer_size) {
+double ComputeWaitTime(double output_time, double input_time,
+                       double buffer_size) {
   if (output_time == 0 || input_time == 0) {
     return output_time;
   }
   if (input_time == output_time) {
-    const double p_buffer_empty = 1.0L / static_cast<double>(buffer_size + 1);
+    const double p_buffer_empty = 1.0L / (buffer_size + 1.0L);
     return p_buffer_empty * output_time;
   }
-  const double alpha = 1.0L / static_cast<double>(input_time);
-  const double beta = 1.0L / static_cast<double>(output_time);
+  const double alpha = 1.0L / input_time;
+  const double beta = 1.0L / output_time;
   const double p_buffer_empty =
       (1.0L - beta / alpha) /
-      (1.0L - std::pow((beta / alpha), static_cast<double>(buffer_size + 1)));
+      (1.0L - std::pow((beta / alpha), (buffer_size + 1.0L)));
   return p_buffer_empty * output_time;
 }
 
@@ -75,34 +70,40 @@ class InterleaveMany : public Node {
         Args{id_, name_, std::move(output)});
   }
 
-  int64 OutputTimeLocked(std::vector<int64>* input_times) const override
+  // The output time is the sum of the self processing time and the average
+  // output time of inputs comprising the interleave "cycle".
+  double OutputTimeLocked(std::vector<double>* input_times) const override
       SHARED_LOCKS_REQUIRED(mu_) {
-    if (inputs_.size() <= 1) {
-      return NanosPerElementLocked();
+    if (num_inputs() <= 1) {
+      return SelfProcessingTimeLocked();
     }
-    int64 delta = NanosPerElementLocked() * (inputs_.size() - 1);
+    double delta = SelfProcessingTimeLocked() * (num_inputs() - 1);
     input_times->back() += delta;
     auto cleanup = gtl::MakeCleanup(
         [input_times, delta]() { input_times->back() -= delta; });
-    int64 output_time =
-        static_cast<double>(OutputTimeForInputs(input_times) -
-                            inputs_.front()->OutputTime(input_times)) /
-        static_cast<double>(inputs_.size() - 1);
-    return NanosPerElementLocked() + output_time;
+    double output_time = (OutputTimeForInputs(input_times) -
+                          inputs_.front()->OutputTime(input_times)) /
+                         static_cast<double>(num_inputs() - 1);
+    return SelfProcessingTimeLocked() + output_time;
   }
 
-  int64 ProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
-    if (inputs_.size() <= 1) {
-      return NanosPerElementLocked();
+  // The processing time is the sum of the self processing time and the average
+  // processing time of inputs comprising the interleave "cycle".
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
+    if (num_inputs() <= 1) {
+      return SelfProcessingTimeLocked();
     }
-    int64 processing_time =
-        static_cast<double>(ProcessingTimeForInputs() -
-                            inputs_.front()->ProcessingTime()) /
-        static_cast<double>(inputs_.size() - 1);
-    return NanosPerElementLocked() + processing_time;
+    double processing_time =
+        (ProcessingTimeForInputs() - inputs_.front()->TotalProcessingTime()) /
+        static_cast<double>(num_inputs() - 1);
+    return SelfProcessingTimeLocked() + processing_time;
   }
 };
 
+// The first input of AsyncInterleaveMany corresponds to the input dataset whose
+// elements are used to create the (derived) input datasets whose elements are
+// interleaved as output.
+//
 // TODO(jsimsa): model the first input
 class AsyncInterleaveMany : public Node {
  public:
@@ -127,39 +128,44 @@ class AsyncInterleaveMany : public Node {
         Args{id_, name_, std::move(output)}, parameters);
   }
 
-  int64 OutputTimeLocked(std::vector<int64>* input_times) const override
+  // The output time is estimated using `ComputeWaitTime(output_time,
+  // input_time, parallelism)`, where `output_time` is the sum of the
+  // self-processing time and the average output time of inputs comprising the
+  // interleave "cycle", `input_time` is specified through `input_times` and
+  // `buffer_size` is derived from parallelism.
+  double OutputTimeLocked(std::vector<double>* input_times) const override
       SHARED_LOCKS_REQUIRED(mu_) {
-    if (inputs_.size() <= 1) {
-      return NanosPerElementLocked();
+    if (num_inputs() <= 1) {
+      return SelfProcessingTimeLocked();
     }
-    int64 old_input_time = input_times->back();
-    int64 new_input_time = static_cast<double>(NanosPerElementLocked()) *
-                           static_cast<double>(inputs_.size() - 1);
+    double old_input_time = input_times->back();
+    double new_input_time =
+        SelfProcessingTimeLocked() * static_cast<double>(num_inputs() - 1);
     input_times->push_back(new_input_time);
     auto cleanup =
         gtl::MakeCleanup([input_times]() { input_times->pop_back(); });
-    double parallelism = inputs_.size() - 1;  // default to cycle length
+    double parallelism = num_inputs() - 1;  // default to cycle length
     if (auto* parameter = gtl::FindOrNull(parameters_, "parallelism")) {
       parallelism = std::min(static_cast<int>(parallelism),
                              static_cast<int>((*parameter)->value));
     }
-    int64 output_time =
-        static_cast<double>(OutputTimeForInputs(input_times) -
-                            inputs_.front()->OutputTime(input_times)) /
-        static_cast<double>(inputs_.size() - 1) / parallelism;
-    return ComputeWaitTime(NanosPerElementLocked() + output_time,
+    double output_time = (OutputTimeForInputs(input_times) -
+                          inputs_.front()->OutputTime(input_times)) /
+                         static_cast<double>(num_inputs() - 1) / parallelism;
+    return ComputeWaitTime(SelfProcessingTimeLocked() + output_time,
                            old_input_time, parallelism);
   }
 
-  int64 ProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
-    if (inputs_.size() <= 1) {
-      return NanosPerElementLocked();
+  // The processing time is the sum of the self processing time and the average
+  // processing time of inputs comprising the interleave "cycle".
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
+    if (num_inputs() <= 1) {
+      return SelfProcessingTimeLocked();
     }
-    int64 processing_time =
-        ProcessingTimeForInputs() - inputs_.front()->ProcessingTime();
-    return NanosPerElementLocked() +
-           static_cast<double>(processing_time) /
-               static_cast<double>(inputs_.size() - 1);
+    double processing_time =
+        ProcessingTimeForInputs() - inputs_.front()->TotalProcessingTime();
+    return SelfProcessingTimeLocked() +
+           processing_time / static_cast<double>(num_inputs() - 1);
   }
 };
 
@@ -176,22 +182,27 @@ class KnownRatio : public Node {
                                         ratio_);
   }
 
-  int64 OutputTimeLocked(std::vector<int64>* input_times) const override
+  // The output time is the sum of the self processing time and the product of
+  // `ratio_` and the sum of output times of inputs.
+  double OutputTimeLocked(std::vector<double>* input_times) const override
       SHARED_LOCKS_REQUIRED(mu_) {
     if (ratio_ == 0) {
-      return NanosPerElementLocked();
+      return SelfProcessingTimeLocked();
     }
-    int64 old_input_time = input_times->back();
-    input_times->back() += static_cast<int64>(
-        static_cast<double>(old_input_time + NanosPerElementLocked()) / ratio_);
+    double old_input_time = input_times->back();
+    input_times->back() +=
+        (old_input_time + SelfProcessingTimeLocked()) / ratio_;
     auto cleanup = gtl::MakeCleanup([input_times, old_input_time]() {
       input_times->back() = old_input_time;
     });
-    return NanosPerElementLocked() + ratio_ * OutputTimeForInputs(input_times);
+    return SelfProcessingTimeLocked() +
+           ratio_ * OutputTimeForInputs(input_times);
   }
 
-  int64 ProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
-    return NanosPerElementLocked() + ratio_ * ProcessingTimeForInputs();
+  // The processing time is the sum of the self processing time and the product
+  // of `ratio_` and the sum of processing times of inputs.
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
+    return SelfProcessingTimeLocked() + ratio_ * ProcessingTimeForInputs();
   }
 
  private:
@@ -221,31 +232,35 @@ class AsyncKnownRatio : public Node {
         Args{id_, name_, std::move(output)}, ratio_, parameters);
   }
 
-  int64 OutputTimeLocked(std::vector<int64>* input_times) const override
+  // The output time is estimated using `ComputeWaitTime(output_time,
+  // input_time, parallelism)`, where `output_time` is the sum of the self
+  // processing time and the product of `ratio_` and the sum of output times of
+  // inputs, `input_time` is specified through `input_times` and `buffer_size`
+  // is derived from parallelism.
+  double OutputTimeLocked(std::vector<double>* input_times) const override
       SHARED_LOCKS_REQUIRED(mu_) {
     double parallelism = 1.0;
     if (auto* parameter = gtl::FindOrNull(parameters_, "parallelism")) {
       parallelism = (*parameter)->value;
     }
     if (ratio_ == 0.0) {
-      int64 output_time =
-          static_cast<double>(NanosPerElementLocked()) / parallelism;
+      double output_time = SelfProcessingTimeLocked() / parallelism;
       return ComputeWaitTime(output_time, input_times->back(), parallelism);
     }
-    int64 old_input_time = input_times->back();
-    int64 new_input_time = static_cast<int64>(
-        static_cast<double>(NanosPerElementLocked()) / ratio_ / parallelism);
+    double old_input_time = input_times->back();
+    double new_input_time = SelfProcessingTimeLocked() / ratio_ / parallelism;
     input_times->push_back(new_input_time);
     auto cleanup =
         gtl::MakeCleanup([input_times]() { input_times->pop_back(); });
-    int64 output_time = static_cast<int64>(
-        static_cast<double>(NanosPerElementLocked()) / parallelism +
-        ratio_ * OutputTimeForInputs(input_times));
+    double output_time = SelfProcessingTimeLocked() / parallelism +
+                         ratio_ * OutputTimeForInputs(input_times);
     return ComputeWaitTime(output_time, old_input_time, parallelism);
   }
 
-  int64 ProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
-    return NanosPerElementLocked() + ratio_ * ProcessingTimeForInputs();
+  // The processing time is the sum of the self processing time and the product
+  // of `ratio_` and the sum of processing times of inputs.
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
+    return SelfProcessingTimeLocked() + ratio_ * ProcessingTimeForInputs();
   }
 
  private:
@@ -264,40 +279,40 @@ class UnknownRatio : public Node {
     return std::make_shared<UnknownRatio>(Args{id_, name_, std::move(output)});
   }
 
-  int64 OutputTimeLocked(std::vector<int64>* input_times) const override
+  // The output time is the sum of the self processing time and the product of
+  // the ratio estimate and the sum of output times of inputs.
+  double OutputTimeLocked(std::vector<double>* input_times) const override
       SHARED_LOCKS_REQUIRED(mu_) {
     if (num_elements_ == 0 || inputs_.empty() ||
         inputs_.front()->num_elements() == 0) {
-      return NanosPerElementLocked();
+      return SelfProcessingTimeLocked();
     }
     // TODO(jsimsa): The current implementation assumes that the number of input
     // elements consumed per output is the same across all inputs.
     std::shared_ptr<Node> input = inputs_.front();
     double ratio = static_cast<double>(input->num_elements()) /
                    static_cast<double>(num_elements_);
-    int64 old_input_time = input_times->back();
-    input_times->back() =
-        static_cast<double>(old_input_time + NanosPerElementLocked()) / ratio;
+    double old_input_time = input_times->back();
+    input_times->back() = (old_input_time + SelfProcessingTimeLocked()) / ratio;
     auto cleanup = gtl::MakeCleanup([input_times, old_input_time]() {
       input_times->back() = old_input_time;
     });
-    return NanosPerElementLocked() +
-           static_cast<int64>(
-               ratio * static_cast<double>(OutputTimeForInputs(input_times)));
+    return SelfProcessingTimeLocked() +
+           ratio * OutputTimeForInputs(input_times);
   }
 
-  int64 ProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
+  // The processing time is the sum of the self processing time and the product
+  // of the ratio estimate and the sum of processing times of inputs.
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
     if (inputs_.empty() || num_elements_ == 0) {
-      return NanosPerElementLocked();
+      return SelfProcessingTimeLocked();
     }
-    // TODO(jsimsa): The current implementation that the number of input
+    // TODO(jsimsa): The current implementation assumes that the number of input
     // elements consumed per output is the same across all inputs.
     std::shared_ptr<Node> input = inputs_.front();
     double ratio = static_cast<double>(input->num_elements()) /
                    static_cast<double>(num_elements_);
-    return NanosPerElementLocked() +
-           static_cast<int64>(ratio *
-                              static_cast<double>(ProcessingTimeForInputs()));
+    return SelfProcessingTimeLocked() + ratio * ProcessingTimeForInputs();
   }
 };
 
@@ -313,17 +328,25 @@ class Unknown : public Node {
     return std::make_shared<Unknown>(Args{id_, name_, std::move(output)});
   }
 
-  int64 OutputTimeLocked(std::vector<int64>* input_times) const override
+  // The output time is the sum of output times of inputs.
+  double OutputTimeLocked(std::vector<double>* input_times) const override
       SHARED_LOCKS_REQUIRED(mu_) {
     return OutputTimeForInputs(input_times);
   }
 
-  int64 ProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
+  // The processing time is the sum of processing times of inputs.
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
     return ProcessingTimeForInputs();
   }
 };
 
 }  // namespace
+
+std::shared_ptr<Parameter> MakeParameter(const string& name,
+                                         std::shared_ptr<SharedState> state,
+                                         double min, double max) {
+  return std::make_shared<Parameter>(name, state, min, max);
+}
 
 std::shared_ptr<Node> MakeInterleaveManyNode(Node::Args args) {
   return std::make_shared<InterleaveMany>(std::move(args));
@@ -382,12 +405,11 @@ std::shared_ptr<Node> Model::AddNode(Node::Factory factory, const string& name,
     output_ = node;
   }
   if (output) {
-    VLOG(3) << "Adding " << node->name() << "(id:" << node->id()
-            << ") as input for " << output->name() << "(id:" << output->id()
-            << ")";
+    VLOG(3) << "Adding " << node->long_name() << " as input for "
+            << output->long_name();
     output->add_input(node);
   } else {
-    VLOG(3) << "Adding " << node->name() << "(id:" << node->id() << ")";
+    VLOG(3) << "Adding " << node->long_name();
   }
   collect_resource_usage_ =
       collect_resource_usage_ || node->has_tunable_parameters();
@@ -415,16 +437,17 @@ void Model::Optimize(int64 cpu_budget) {
     tf_shared_lock lock(mu_);
     snapshot = output_->Snapshot(nullptr);
   }
-  const int64 processing_time = ProcessingTime(snapshot);
+  VLOG(2) << "Starting optimization of tunable parameters";
+  const double processing_time = TotalProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
-  for (auto& parameter : parameters) {
-    parameter->value = 1;
+  for (auto& pair : parameters) {
+    pair.second->value = 1;
   }
   while (true) {
-    const int64 output_time = OutputTime(snapshot);
+    const double output_time = OutputTime(snapshot);
     bool all_max = true;
-    for (auto& parameter : parameters) {
-      if (parameter->value < parameter->max) {
+    for (auto& pair : parameters) {
+      if (pair.second->value < pair.second->max) {
         all_max = false;
         break;
       }
@@ -432,33 +455,35 @@ void Model::Optimize(int64 cpu_budget) {
     if (output_time < processing_time / cpu_budget || all_max) {
       break;
     }
-    int64 best_delta = -1;
+    double best_delta = -1.0L;
     Parameter* best_parameter = nullptr;
-    for (auto& parameter : parameters) {
-      if (parameter->value == parameter->max) {
+    for (auto& pair : parameters) {
+      if (pair.second->value == pair.second->max) {
         continue;
       }
-      parameter->value++;
-      int64 delta = output_time - OutputTime(snapshot);
+      pair.second->value++;
+      double new_output_time = OutputTime(snapshot);
+      double delta = output_time - new_output_time;
       if (delta > best_delta) {
         best_delta = delta;
-        best_parameter = parameter.get();
+        best_parameter = pair.second.get();
       }
-      parameter->value--;
+      pair.second->value--;
     }
     if (!best_parameter) {
-      // This should never happen because we are using a model snapshot and
-      // the output time is monotonically decreasing w.r.t. parallelism.
       LOG(WARNING) << "Failed to find a tunable parameter that would "
-                      "decrease the output time, aborting the current "
-                      "optimization attempt.";
+                      "decrease the output time. This means that the "
+                      "autotuning optimization got stuck in a local maximum. "
+                      "The optimization attempt will be aborted.";
       return;
     }
     best_parameter->value++;
   }
   VLOG(2) << "Number of tunable parameters: " << parameters.size();
-  for (auto& parameter : parameters) {
-    VLOG(2) << "Setting tunable parameter: " << parameter->value;
+  for (auto& pair : parameters) {
+    auto& parameter = pair.second;
+    VLOG(2) << "Setting tunable parameter " << pair.first << " to "
+            << parameter->value;
     mutex_lock l(*parameter->state->mu);
     parameter->state->value = parameter->value;
     parameter->state->cond_var->notify_all();
@@ -513,26 +538,32 @@ void Model::RemoveNode(const string& name) {
     if ((*node)->output()) {
       (*node)->output()->remove_input(*node);
     }
-    VLOG(3) << "Removing " << (*node)->name() << "(id:" << (*node)->id() << ")";
+    VLOG(3) << "Removing " << (*node)->long_name();
     remove_node_hook_(*node);
   }
   lookup_table_.erase(name);
 }
 
-std::vector<std::shared_ptr<Parameter>> Model::CollectTunableParameters(
+std::map<string, std::shared_ptr<Parameter>> Model::CollectTunableParameters(
     std::shared_ptr<Node> node) {
-  std::vector<std::shared_ptr<Parameter>> parameters;
+  std::map<string, std::shared_ptr<Parameter>> parameters;
   node->CollectTunableParameters(&parameters);
   return parameters;
 }
 
-int64 Model::OutputTime(std::shared_ptr<Node> node) {
-  std::vector<int64> input_times(1, 0);
+double Model::OutputTime(std::shared_ptr<Node> node) {
+  std::vector<double> input_times(1, 0);
+  // TODO(jsimsa): Now that we are accounting for buffer size in wait time
+  // computation, assuming that the input is infinitely fast will result in
+  // inaccurate estimates of the output latency.
+  //
+  // We should compute the output latency as a fix-point of the following
+  // equation: `output_time = node(OutputTime(input_times(1, output_time))`.
   return node->OutputTime(&input_times);
 }
 
-int64 Model::ProcessingTime(std::shared_ptr<Node> node) {
-  return node->ProcessingTime();
+double Model::TotalProcessingTime(std::shared_ptr<Node> node) {
+  return node->TotalProcessingTime();
 }
 
 }  // namespace model

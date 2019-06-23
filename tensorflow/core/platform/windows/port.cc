@@ -55,6 +55,18 @@ int NumSchedulableCPUs() {
   return system_info.dwNumberOfProcessors;
 }
 
+int MaxParallelism() { return NumSchedulableCPUs(); }
+
+int MaxParallelism(int numa_node) {
+  if (numa_node != port::kNUMANoAffinity) {
+    // Assume that CPUs are equally distributed over available NUMA nodes.
+    // This may not be true, but there isn't currently a better way of
+    // determining the number of CPUs specific to the requested node.
+    return NumSchedulableCPUs() / port::NUMANumNodes();
+  }
+  return NumSchedulableCPUs();
+}
+
 int NumTotalCPUs() {
   // TODO(ebrevdo): Make this more accurate.
   //

@@ -25,6 +25,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import time
 
 import numpy as np
@@ -40,6 +41,7 @@ from tensorflow.python.eager import core
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import profiler
+from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -52,6 +54,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import server_lib
 
 CPU = "/device:CPU:0"
 GPU = "/device:GPU:0"
@@ -132,6 +135,23 @@ def make_sequential_keras_model(initializer="ones"):
   return model
 
 
+def run_benchmark(func, num_iters, execution_mode=None):
+  ctx = context.context()
+  with context.execution_mode(execution_mode):
+    # call func to maybe warm up the GPU
+    func()
+    if execution_mode == context.ASYNC:
+      ctx.async_wait()
+    start = time.time()
+    for _ in xrange(num_iters):
+      func()
+    if execution_mode == context.ASYNC:
+      ctx.async_wait()
+    end = time.time()
+
+    return end - start
+
+
 class MicroBenchmarks(test.Benchmark):
 
   def __init__(self):
@@ -145,23 +165,12 @@ class MicroBenchmarks(test.Benchmark):
     self._num_iters_100_by_784 = 30000
 
   def _run(self, func, num_iters, execution_mode=None):
-    # call func to maybe warm up the GPU
-    ctx = context.context()
-    with context.execution_mode(execution_mode):
-      func()
-      if execution_mode == context.ASYNC:
-        ctx.async_wait()
-      start = time.time()
-      for _ in xrange(num_iters):
-        func()
-      if execution_mode == context.ASYNC:
-        ctx.async_wait()
-      end = time.time()
-      mean_us = (end - start) * 1e6 / num_iters
-      self.report_benchmark(
-          iters=num_iters,
-          wall_time=mean_us,
-          extras={"examples_per_sec": num_iters / (end - start)})
+    total_time = run_benchmark(func, num_iters, execution_mode)
+    mean_us = total_time * 1e6 / num_iters
+    self.report_benchmark(
+        iters=num_iters,
+        wall_time=mean_us,
+        extras={"examples_per_sec": num_iters / total_time})
 
   def benchmark_create_np_array(self):
     func = lambda: np.array([3.0])
@@ -917,6 +926,14 @@ class MicroBenchmarks(test.Benchmark):
 
     self._run(scan, 100)
 
+  def benchmark_fastpath_conversion_type_inference(self):
+    c = constant_op.constant(1., dtype=dtypes.float32)
+
+    def fn():
+      return gen_math_ops.add(c, 1)
+
+    self._run(fn, 10000)
+
   def _benchmarkFunctionWithResourceInputs(self, num_resources, num_iters):
     @def_function.function
     def add_all(*args):
@@ -933,6 +950,57 @@ class MicroBenchmarks(test.Benchmark):
 
   def benchmarkFunctionWithFiveHundredResourceInputs(self):
     self._benchmarkFunctionWithResourceInputs(500, 100)
+
+
+class RemoteWorkerMicroBenchmarks(test.Benchmark):
+
+  def __init__(self):
+    # used for remote benchmarks
+    os.environ["TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC"] = "1"
+    self._cached_server = server_lib.Server.create_local_server()
+    self._cached_server_target = self._cached_server.target[len("grpc://"):]
+
+  def _run(self, func, num_iters=10000, execution_mode=None):
+    total_time = run_benchmark(func, num_iters, execution_mode)
+    mean_us = total_time * 1e6 / num_iters
+    self.report_benchmark(
+        iters=num_iters,
+        wall_time=mean_us,
+        extras={"examples_per_sec": num_iters / total_time})
+
+  # TODO(gjn): Fix continuous benchmark runs
+  def _DISABLED_benchmark_mirroring_off(self):
+    remote.connect_to_remote_host(self._cached_server_target)
+
+    x = random_ops.random_uniform((2, 2)).cpu()
+
+    @def_function.function
+    def remote_func(m):
+      return math_ops.matmul(m, m)
+
+    def func(m):
+      with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
+        return remote_func(m)
+
+    context.context().mirroring_policy = context.MIRRORING_NONE
+    self._run(lambda: func(x))
+
+  # TODO(gjn): Fix continuous benchmark runs
+  def _DISABLED_benchmark_mirroring_on(self):
+    remote.connect_to_remote_host(self._cached_server_target)
+
+    x = random_ops.random_uniform((2, 2)).cpu()
+
+    @def_function.function
+    def remote_func(m):
+      return math_ops.matmul(m, m)
+
+    def func(m):
+      with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
+        return remote_func(m)
+
+    context.context().mirroring_policy = context.MIRRORING_ALL
+    self._run(lambda: func(x))
 
 
 if __name__ == "__main__":

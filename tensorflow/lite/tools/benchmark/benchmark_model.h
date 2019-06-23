@@ -23,9 +23,9 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/lite/tools/benchmark/benchmark_params.h"
-#include "tensorflow/lite/tools/benchmark/command_line_flags.h"
 #include "tensorflow/core/util/stats_calculator.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_params.h"
+#include "tensorflow/lite/tools/command_line_flags.h"
 
 namespace tflite {
 namespace benchmark {
@@ -157,7 +157,7 @@ class BenchmarkModel {
   virtual std::vector<Flag> GetFlags();
   virtual uint64_t ComputeInputBytes() = 0;
   virtual tensorflow::Stat<int64_t> Run(int min_num_times, float min_secs,
-                                        RunType run_type);
+                                        float max_secs, RunType run_type);
   // Prepares input data for benchmark. This can be used to initialize input
   // data that has non-trivial cost.
   virtual void PrepareInputData();

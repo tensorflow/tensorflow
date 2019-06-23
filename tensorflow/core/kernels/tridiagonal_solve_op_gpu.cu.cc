@@ -19,16 +19,17 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/kernels/cuda_sparse.h"
 #include "tensorflow/core/kernels/linalg_ops_common.h"
+#include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/cuda_device_functions.h"
-#include "tensorflow/core/util/cuda_launch_config.h"
+#include "tensorflow/core/util/gpu_device_functions.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
 
@@ -63,12 +64,39 @@ __global__ void SolveForSizeOneOrTwoKernel(const int m, const Scalar* diags,
 }
 
 template <typename Scalar>
-class TridiagonalSolveOpGpu : public LinearAlgebraOp<Scalar> {
+se::DeviceMemory<Scalar> AsDeviceMemory(const Scalar* cuda_memory) {
+  se::DeviceMemoryBase wrapped(const_cast<Scalar*>(cuda_memory));
+  se::DeviceMemory<Scalar> typed(wrapped);
+  return typed;
+}
+
+template <typename Scalar>
+void CopyDeviceToDevice(OpKernelContext* context, const Scalar* src,
+                        Scalar* dst, const int num_elements) {
+  auto src_device_mem = AsDeviceMemory(src);
+  auto dst_device_mem = AsDeviceMemory(dst);
+  auto* stream = context->op_device_context()->stream();
+  bool copy_status = stream
+                         ->ThenMemcpyD2D(&dst_device_mem, src_device_mem,
+                                         sizeof(Scalar) * num_elements)
+                         .ok();
+
+  if (!copy_status) {
+    context->SetStatus(errors::Internal("Copying device-to-device failed."));
+  }
+}
+
+// This implementation is used in cases when the batching mechanism of
+// LinearAlgebraOp is suitable. See TridiagonalSolveOpGpu below.
+template <class Scalar>
+class TridiagonalSolveOpGpuLinalg : public LinearAlgebraOp<Scalar> {
  public:
   INHERIT_LINALG_TYPEDEFS(Scalar);
 
-  explicit TridiagonalSolveOpGpu(OpKernelConstruction* context)
-      : Base(context) {}
+  explicit TridiagonalSolveOpGpuLinalg(OpKernelConstruction* context)
+      : Base(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("partial_pivoting", &pivoting_));
+  }
 
   void ValidateInputMatrixShapes(
       OpKernelContext* context,
@@ -93,6 +121,8 @@ class TridiagonalSolveOpGpu : public LinearAlgebraOp<Scalar> {
                                         num_rows1, " and ", num_rows2, "."));
   }
 
+  bool EnableInputForwarding() const final { return false; }
+
   TensorShapes GetOutputMatrixShapes(
       const TensorShapes& input_matrix_shapes) const final {
     return TensorShapes({input_matrix_shapes[1]});
@@ -101,11 +131,11 @@ class TridiagonalSolveOpGpu : public LinearAlgebraOp<Scalar> {
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
                      MatrixMaps* outputs) final {
     const auto diagonals = inputs[0];
-    // Subdiagonal elements, first is ignored.
+    // Superdiagonal elements, first is ignored.
     const auto& superdiag = diagonals.row(0);
     // Diagonal elements.
     const auto& diag = diagonals.row(1);
-    // Superdiagonal elements, last is ignored.
+    // Subdiagonal elements, last is ignored.
     const auto& subdiag = diagonals.row(2);
     // Right-hand sides.
     const auto& rhs = inputs[1];
@@ -149,8 +179,6 @@ class TridiagonalSolveOpGpu : public LinearAlgebraOp<Scalar> {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(TridiagonalSolveOpGpu);
-
   void TransposeWithGeam(OpKernelContext* context,
                          const std::unique_ptr<CudaSolver>& cublas_solver,
                          const Scalar* src, Scalar* dst, const int src_rows,
@@ -168,35 +196,17 @@ class TridiagonalSolveOpGpu : public LinearAlgebraOp<Scalar> {
                      const Scalar* superdiag, const Scalar* diag,
                      const Scalar* subdiag, Scalar* rhs, const int num_eqs,
                      const int num_rhs) const {
-    OP_REQUIRES_OK(context,
-                   cusparse_solver->Gtsv(num_eqs, num_rhs, subdiag, diag,
-                                         superdiag, rhs, num_eqs));
-  }
-
-  void CopyDeviceToDevice(OpKernelContext* context, const Scalar* src,
-                          Scalar* dst, const int num_elements) const {
-    auto src_device_mem = AsDeviceMemory(src);
-    auto dst_device_mem = AsDeviceMemory(dst);
-    auto* stream = context->op_device_context()->stream();
-    bool copy_status = stream
-                           ->ThenMemcpyD2D(&dst_device_mem, src_device_mem,
-                                           sizeof(Scalar) * num_elements)
-                           .ok();
-    if (!copy_status) {
-      context->SetStatus(errors::Internal("Copying device-to-device failed."));
-    }
-  }
-
-  se::DeviceMemory<Scalar> AsDeviceMemory(const Scalar* cuda_memory) const {
-    se::DeviceMemoryBase wrapped(const_cast<Scalar*>(cuda_memory));
-    se::DeviceMemory<Scalar> typed(wrapped);
-    return typed;
+    auto function = pivoting_ ? &CudaSparse::Gtsv<Scalar>
+                              : &CudaSparse::GtsvNoPivot<Scalar>;
+    OP_REQUIRES_OK(
+        context, (cusparse_solver.get()->*function)(
+                     num_eqs, num_rhs, subdiag, diag, superdiag, rhs, num_eqs));
   }
 
   void SolveForSizeOneOrTwo(OpKernelContext* context, const Scalar* diagonals,
                             const Scalar* rhs, Scalar* output, int m, int k) {
     const Eigen::GpuDevice& device = context->eigen_device<Eigen::GpuDevice>();
-    CudaLaunchConfig cfg = GetCudaLaunchConfig(1, device);
+    GpuLaunchConfig cfg = GetCudaLaunchConfig(1, device);
     bool* not_invertible_dev;
     cudaMalloc(&not_invertible_dev, sizeof(bool));
     TF_CHECK_OK(CudaLaunchKernel(SolveForSizeOneOrTwoKernel<Scalar>,
@@ -211,6 +221,116 @@ class TridiagonalSolveOpGpu : public LinearAlgebraOp<Scalar> {
                 errors::InvalidArgument(m == 1 ? kNotInvertibleScalarMsg
                                                : kNotInvertibleMsg));
   }
+
+  bool pivoting_;
+};
+
+template <class Scalar>
+class TridiagonalSolveOpGpu : public OpKernel {
+ public:
+  explicit TridiagonalSolveOpGpu(OpKernelConstruction* context)
+      : OpKernel(context), linalgOp_(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("partial_pivoting", &pivoting_));
+  }
+
+  void Compute(OpKernelContext* context) final {
+    const Tensor& lhs = context->input(0);
+    const Tensor& rhs = context->input(1);
+    const int ndims = lhs.dims();
+    const int64 num_rhs = rhs.dim_size(rhs.dims() - 1);
+    const int64 matrix_size = lhs.dim_size(ndims - 1);
+    int64 batch_size = 1;
+    for (int i = 0; i < ndims - 2; i++) {
+      batch_size *= lhs.dim_size(i);
+    }
+
+    // The batching mechanism of LinearAlgebraOp is used when it's not
+    // possible or desirable to use GtsvBatched.
+    const bool use_linalg_op =
+        pivoting_            // GtsvBatched doesn't do pivoting
+        || num_rhs > 1       // GtsvBatched doesn't support multiple rhs
+        || matrix_size < 3   // Not supported in cuSparse, use the custom kernel
+        || batch_size == 1;  // No point to use GtsvBatched
+
+    if (use_linalg_op) {
+      linalgOp_.Compute(context);
+    } else {
+      ComputeWithGtsvBatched(context, lhs, rhs, batch_size);
+    }
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(TridiagonalSolveOpGpu);
+
+  void ComputeWithGtsvBatched(OpKernelContext* context, const Tensor& lhs,
+                              const Tensor& rhs, const int batch_size) {
+    const Scalar* rhs_data = rhs.flat<Scalar>().data();
+    const int ndims = lhs.dims();
+
+    // To use GtsvBatched we need to transpose the left-hand side from shape
+    // [..., 3, M] into shape [3, ..., M]. With shape [..., 3, M] the stride
+    // between corresponding diagonal elements of consecutive batch components
+    // is 3 * M, while for the right-hand side the stride is M. Unfortunately,
+    // GtsvBatched requires the strides to be the same. For this reason we
+    // transpose into [3, ..., M], so that diagonals, superdiagonals, and
+    // and subdiagonals are separated from each other, and have stride M.
+    Tensor lhs_transposed;
+    TransposeLhsForGtsvBatched(context, lhs, lhs_transposed);
+    int matrix_size = lhs.dim_size(ndims - 1);
+    const Scalar* lhs_data = lhs_transposed.flat<Scalar>().data();
+    const Scalar* superdiag = lhs_data;
+    const Scalar* diag = lhs_data + matrix_size * batch_size;
+    const Scalar* subdiag = lhs_data + 2 * matrix_size * batch_size;
+
+    // Copy right-hand side into the output. GtsvBatched will replace it with
+    // the solution.
+    Tensor* output;
+    OP_REQUIRES_OK(context, context->allocate_output(0, rhs.shape(), &output));
+    CopyDeviceToDevice(context, rhs_data, output->flat<Scalar>().data(),
+                       rhs.flat<Scalar>().size());
+    Scalar* x = output->flat<Scalar>().data();
+
+    std::unique_ptr<CudaSparse> cusparse_solver(new CudaSparse(context));
+
+    OP_REQUIRES_OK(context, cusparse_solver->Initialize());
+    OP_REQUIRES_OK(context, cusparse_solver->GtsvStridedBatch(
+                                matrix_size, subdiag, diag, superdiag, x,
+                                batch_size, matrix_size));
+  }
+
+  void TransposeLhsForGtsvBatched(OpKernelContext* context, const Tensor& lhs,
+                                  Tensor& lhs_transposed) {
+    const int ndims = lhs.dims();
+
+    // Permutation of indices, transforming [..., 3, M] into [3, ..., M].
+    // E.g. for ndims = 6, it is [4, 0, 1, 2, 3, 5].
+    std::vector<int> perm(ndims);
+    perm[0] = ndims - 2;
+    for (int i = 0; i < ndims - 2; ++i) {
+      perm[i + 1] = i;
+    }
+    perm[ndims - 1] = ndims - 1;
+
+    std::vector<int64> dims;
+    for (int index : perm) {
+      dims.push_back(lhs.dim_size(index));
+    }
+    TensorShape lhs_transposed_shape(
+        gtl::ArraySlice<int64>(dims.data(), ndims));
+
+    std::unique_ptr<CudaSolver> cublas_solver(new CudaSolver(context));
+    OP_REQUIRES_OK(context, cublas_solver->allocate_scoped_tensor(
+                                DataTypeToEnum<Scalar>::value,
+                                lhs_transposed_shape, &lhs_transposed));
+    auto device = context->eigen_device<Eigen::GpuDevice>();
+    OP_REQUIRES_OK(
+        context,
+        DoTranspose(device, lhs, gtl::ArraySlice<int>(perm.data(), ndims),
+                    &lhs_transposed));
+  }
+
+  TridiagonalSolveOpGpuLinalg<Scalar> linalgOp_;
+  bool pivoting_;
 };
 
 REGISTER_LINALG_OP_GPU("TridiagonalSolve", (TridiagonalSolveOpGpu<float>),

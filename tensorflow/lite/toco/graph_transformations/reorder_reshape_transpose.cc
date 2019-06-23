@@ -190,7 +190,7 @@ std::vector<int> ComputeNewPerm(std::vector<int> input_dims,
     transpose_op->outputs[0] = new_intermediate_name;
     reshape_op->inputs[0] = new_intermediate_name;
     reshape_op->outputs[0] = output_name;
-    model->EraseArray(intermediate_name);
+    DeleteArrayIfUnused(intermediate_name, model);
   } else {
     // The intermediate array is now the output array.
     for (int i = 0; i < model->operators.size(); i++) {

@@ -243,6 +243,10 @@ void RenderFactoryMethods(const OpSpec& op, const Type& op_class,
       writer->EndLine();
     }
   }
+  // Add control dependencies, if any.
+  writer->Append("opBuilder = scope.applyControlDependencies(opBuilder);");
+  writer->EndLine();
+
   for (const AttributeSpec& attribute : op.attributes()) {
     WriteSetAttrDirective(attribute, false, writer);
   }
@@ -409,7 +413,7 @@ void RenderOptionsClass(const OpSpec& op, const Type& op_class,
 inline Type ClassOf(const EndpointSpec& endpoint, const string& base_package) {
   return Type::Class(
       endpoint.name(),
-      base_package + "." + str_util::Lowercase(endpoint.package()));
+      base_package + "." + absl::AsciiStrToLower(endpoint.package()));
 }
 
 void GenerateOp(const OpSpec& op, const EndpointSpec& endpoint,

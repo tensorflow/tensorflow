@@ -38,17 +38,22 @@ using absl::StrCat;
 void HloToIrBindings::EmitBasePointersForHlos(
     absl::Span<const HloInstruction* const> io_hlos,
     absl::Span<const HloInstruction* const> non_io_hlos) {
-  // I/O HLOs are bound to the arguments of the current IR function. I.e.,
+  // I/O HLOs are bound to the arguments of the current IR function,
+  // *excluding* the output argument, which is added to non-I/O HLOs.
+  // I.e.,
   //
-  // void IrFunction(io_0, io_1, ..., io_{m-1}, temp_buffer_base) {
+  // void IrFunction(io_0, io_1, ..., io_{m-1}, output_arg, temp_buffer_base) {
   llvm::Function* function = b_->GetInsertBlock()->getParent();
-  CHECK_EQ(io_hlos.size() + 1, function->arg_size());
+  CHECK_EQ(io_hlos.size() + 2, function->arg_size());
 
   // An HLO can have duplicated operands. This data structure remembers which
   // operand HLOs are already bound to avoid rebinding the same HLO.
   absl::flat_hash_set<const HloInstruction*> already_bound_for_this_function;
   auto arg_iter = function->arg_begin();
   for (const HloInstruction* io_hlo : io_hlos) {
+    CHECK(io_hlo == io_hlo->parent()->root_instruction() ||
+          !absl::c_count(non_io_hlos, io_hlo))
+        << "IO HLOs and non-IO HLOs should be disjoint";
     if (!already_bound_for_this_function.contains(io_hlo)) {
       if (!is_nested_ && io_hlo->opcode() == HloOpcode::kGetTupleElement) {
         BindHloToIrValue(*io_hlo, EmitGetTupleElement(io_hlo, &*arg_iter));
@@ -59,6 +64,10 @@ void HloToIrBindings::EmitBasePointersForHlos(
     }
     ++arg_iter;
   }
+
+  // Name and skip the output parameter.
+  arg_iter->setName("output_arg");
+  ++arg_iter;
 
   temp_buffer_base_ = &*arg_iter;
   temp_buffer_base_->setName("temp_buffer");

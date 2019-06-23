@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Master implements the service MasterSerivce.
+// Master implements the service MasterService.
 //
 // A Master maintains the state of live graph computation
 // sessions, each session orchestrates both local and remote devices
@@ -476,7 +476,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
     GraphDef* gdef =
         const_cast<CreateSessionRequest*>(req)->mutable_graph_def();
 
-    status = session->Create(gdef, worker_cache_factory_options);
+    status = session->Create(std::move(*gdef), worker_cache_factory_options);
     if (!status.ok()) {
       session->Close().IgnoreError();
       session->Unref();
@@ -629,7 +629,7 @@ void Master::CleanupWorkers(const ResetRequest& reset) {
     int c = 0;
     for (int i = 0; i < num_workers; ++i) {
       const string& worker_name = worker_names[i];
-      auto worker = env_->worker_cache->CreateWorker(worker_name);
+      auto worker = env_->worker_cache->GetOrCreateWorker(worker_name);
       if (worker) {
         worker->CleanupAllAsync(
             &req, &resp[i], [this, &n, worker_name, worker, c](Status s) {

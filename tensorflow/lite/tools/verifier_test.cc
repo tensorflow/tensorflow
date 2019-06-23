@@ -321,6 +321,14 @@ TEST(VerifyModel, TensorBufferIsNotValid) {
       ::testing::ContainsRegex("Missing 'operators' section in subgraph."));
 }
 
+TEST(VerifyModel, StringTensorIsEmpty) {
+  TfLiteFlatbufferModelBuilder builder;
+  builder.AddTensor({2}, TensorType_STRING, {0x00}, "input");
+  builder.FinishModel({}, {});
+  ASSERT_FALSE(builder.Verify());
+  EXPECT_EQ(builder.GetErrorString(), "String tensor input is invalid (empty)");
+}
+
 TEST(VerifyModel, StringTensorHasInvalidNumString) {
   TfLiteFlatbufferModelBuilder builder;
   builder.AddTensor(

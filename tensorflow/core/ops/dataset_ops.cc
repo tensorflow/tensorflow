@@ -167,6 +167,7 @@ REGISTER_OP("PrefetchDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("slack_period: int = 0")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // buffer_size should be a scalar.
@@ -220,6 +221,7 @@ REGISTER_OP("FilterDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+// This op is no longer supported.
 REGISTER_OP("FilterByLastComponentDataset")
     .Input("input_dataset: variant")
     .Output("output: variant")
@@ -264,6 +266,7 @@ REGISTER_OP("BatchDatasetV2")
     .Input("batch_size: int64")
     .Input("drop_remainder: bool")
     .Output("handle: variant")
+    .Attr("parallel_copy: bool = false")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
@@ -280,6 +283,7 @@ REGISTER_OP("ShardDataset")
     .Input("num_shards: int64")
     .Input("index: int64")
     .Output("handle: variant")
+    .Attr("require_non_empty: bool = false")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
@@ -318,6 +322,7 @@ REGISTER_OP("PaddedBatchDatasetV2")
     .Input("padding_values: Toutput_types")
     .Input("drop_remainder: bool")
     .Output("handle: variant")
+    .Attr("parallel_copy: bool = false")
     .Attr("Toutput_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("N: int >= 1")
@@ -501,6 +506,22 @@ REGISTER_OP("AnonymousIterator")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("AnonymousIteratorV2")
+    .Output("handle: resource")
+    .Output("deleter: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      c->set_output(1, c->Scalar());
+      return Status::OK();
+    });
+
+REGISTER_OP("DeleteIterator")
+    .Input("handle: resource")
+    .Input("deleter: variant")
+    .SetShapeFn(shape_inference::NoOutputs);
 
 REGISTER_OP("MakeIterator")
     .Input("dataset: variant")

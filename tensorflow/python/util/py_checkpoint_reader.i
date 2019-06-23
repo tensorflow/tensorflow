@@ -104,18 +104,18 @@ limitations under the License.
 static PyObject* CheckpointReader_GetTensor(
       tensorflow::checkpoint::CheckpointReader* reader,
       const string& name,
-      TF_Status* out_status) {
+      TF_Status* status) {
   PyObject* py_obj = Py_None;
   std::unique_ptr<tensorflow::Tensor> tensor;
-  reader->GetTensor(name, &tensor, out_status);
-  if (TF_GetCode(out_status) == TF_OK) {
-    tensorflow::Status status =
-        tensorflow::ConvertTensorToNdarray(*tensor.get(), &py_obj);
-    if (!status.ok()) {
-      Set_TF_Status_from_Status(out_status, status);
+  reader->GetTensor(name, &tensor, status);
+  if (TF_GetCode(status) == TF_OK) {
+    tensorflow::Status s =
+        tensorflow::TensorToNdarray(*tensor.get(), &py_obj);
+    if (!s.ok()) {
+      Set_TF_Status_from_Status(status, s);
     }
   }
-  return py_obj;
+  return PyArray_Return(reinterpret_cast<PyArrayObject*>(py_obj));
 }
 %}
 
@@ -123,7 +123,7 @@ static PyObject* CheckpointReader_GetTensor(
 PyObject* CheckpointReader_GetTensor(
     tensorflow::checkpoint::CheckpointReader* reader,
     const string& name,
-    TF_Status* out_status);
+    TF_Status* status);
 
 %ignoreall
 
@@ -150,20 +150,16 @@ PyObject* CheckpointReader_GetTensor(
     return self._HasTensor(compat.as_bytes(tensor_str))
 
   def get_tensor(self, tensor_str):
-    from tensorflow.python.framework import errors
-    with errors.raise_exception_on_not_ok_status() as status:
-      from tensorflow.python.util import compat
-      return CheckpointReader_GetTensor(self, compat.as_bytes(tensor_str),
-                                        status)
+    from tensorflow.python.util import compat
+
+    return CheckpointReader_GetTensor(self, compat.as_bytes(tensor_str))
 %}
 }
 
 %insert("python") %{
 def NewCheckpointReader(filepattern):
-  from tensorflow.python.framework import errors
-  with errors.raise_exception_on_not_ok_status() as status:
-    from tensorflow.python.util import compat
-    return CheckpointReader(compat.as_bytes(filepattern), status)
+  from tensorflow.python.util import compat
+  return CheckpointReader(compat.as_bytes(filepattern))
 
 NewCheckpointReader._tf_api_names_v1 = ['train.NewCheckpointReader']
 %}

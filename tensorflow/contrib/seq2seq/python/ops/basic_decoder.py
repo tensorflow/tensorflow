@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A class of Decoders that may sample to generate the next input.
-"""
+"""A class of Decoders that may sample to generate the next input."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -30,7 +29,6 @@ from tensorflow.python.keras import layers
 from tensorflow.python.layers import base as layers_base
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.util import nest
-
 
 __all__ = [
     "BasicDecoderOutput",
@@ -54,9 +52,9 @@ class BasicDecoder(decoder.Decoder):
       helper: A `Helper` instance.
       initial_state: A (possibly nested tuple of...) tensors and TensorArrays.
         The initial state of the RNNCell.
-      output_layer: (Optional) An instance of `tf.layers.Layer`, i.e.,
-        `tf.layers.Dense`. Optional layer to apply to the RNN output prior
-        to storing the result or sampling.
+      output_layer: (Optional) An instance of `tf.compat.v1.layers.Layer`, i.e.,
+        `tf.compat.v1.layers.Dense`. Optional layer to apply to the RNN output
+        prior to storing the result or sampling.
 
     Raises:
       TypeError: if `cell`, `helper` or `output_layer` have an incorrect type.
@@ -64,10 +62,10 @@ class BasicDecoder(decoder.Decoder):
     rnn_cell_impl.assert_like_rnncell("cell", cell)
     if not isinstance(helper, helper_py.Helper):
       raise TypeError("helper must be a Helper, received: %s" % type(helper))
-    if (output_layer is not None
-        and not isinstance(output_layer, layers_base.Layer)):
-      raise TypeError(
-          "output_layer must be a Layer, received: %s" % type(output_layer))
+    if (output_layer is not None and
+        not isinstance(output_layer, layers_base.Layer)):
+      raise TypeError("output_layer must be a Layer, received: %s" %
+                      type(output_layer))
     self._cell = cell
     self._helper = helper
     self._initial_state = initial_state
@@ -89,8 +87,7 @@ class BasicDecoder(decoder.Decoder):
       # dimensions to get the output size of the rnn with the layer
       # applied to the top.
       output_shape_with_unknown_batch = nest.map_structure(
-          lambda s: tensor_shape.TensorShape([None]).concatenate(s),
-          size)
+          lambda s: tensor_shape.TensorShape([None]).concatenate(s), size)
       layer_output_shape = self._output_layer.compute_output_shape(
           output_shape_with_unknown_batch)
       return nest.map_structure(lambda s: s[1:], layer_output_shape)
@@ -159,9 +156,9 @@ class BasicDecoderV2(decoder.BaseDecoder):
     Args:
       cell: An `RNNCell` instance.
       sampler: A `Sampler` instance.
-      output_layer: (Optional) An instance of `tf.layers.Layer`, i.e.,
-        `tf.layers.Dense`. Optional layer to apply to the RNN output prior to
-        storing the result or sampling.
+      output_layer: (Optional) An instance of `tf.compat.v1.layers.Layer`, i.e.,
+        `tf.compat.v1.layers.Dense`. Optional layer to apply to the RNN output
+        prior to storing the result or sampling.
       **kwargs: Other keyward arguments for layer creation.
 
     Raises:
@@ -172,8 +169,8 @@ class BasicDecoderV2(decoder.BaseDecoder):
       raise TypeError("sampler must be a Sampler, received: %s" % (sampler,))
     if (output_layer is not None and
         not isinstance(output_layer, layers.Layer)):
-      raise TypeError(
-          "output_layer must be a Layer, received: %s" % (output_layer,))
+      raise TypeError("output_layer must be a Layer, received: %s" %
+                      (output_layer,))
     self.cell = cell
     self.sampler = sampler
     self.output_layer = output_layer

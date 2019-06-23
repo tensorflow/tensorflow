@@ -19,7 +19,7 @@
 # throughout. Please refer to the TensorFlow dockerfiles documentation
 # for more information.
 
-ARG UBUNTU_VERSION=16.04
+ARG UBUNTU_VERSION=18.04
 
 ARG ARCH=
 ARG CUDA=10.0
@@ -62,7 +62,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libcudnn_static_v7.a
 
 RUN [[ "${ARCH}" = "ppc64le" ]] || { apt-get update && \
-        apt-get install nvinfer-runtime-trt-repo-ubuntu1604-5.0.2-ga-cuda${CUDA} \
+        apt-get install nvinfer-runtime-trt-repo-ubuntu1804-5.0.2-ga-cuda${CUDA} \
         && apt-get update \
         && apt-get install -y --no-install-recommends \
             libnvinfer5=5.0.2-1+cuda${CUDA} \
@@ -110,6 +110,7 @@ RUN apt-get update && apt-get install -y \
     wget \
     openjdk-8-jdk \
     ${PYTHON}-dev \
+    virtualenv \
     swig
 
 RUN ${PIP} --no-cache-dir install \
@@ -123,11 +124,13 @@ RUN ${PIP} --no-cache-dir install \
     scipy \
     sklearn \
     pandas \
+    future \
+    portpicker \
     && test "${USE_PYTHON_3_NOT_2}" -eq 1 && true || ${PIP} --no-cache-dir install \
     enum34
 
 # Install bazel
-ARG BAZEL_VERSION=0.23.2
+ARG BAZEL_VERSION=0.24.1
 RUN mkdir /bazel && \
     wget -O /bazel/installer.sh "https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh" && \
     wget -O /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \

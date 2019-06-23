@@ -13,12 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <atomic>
-
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 
+#include <atomic>
+
 #include "tensorflow/core/common_runtime/allocator_retry.h"
-#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -159,7 +158,7 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
   c->allocation_id = -1;
   c->prev = kInvalidChunkHandle;
   c->next = kInvalidChunkHandle;
-  c->freed_count = 0;
+  c->freed_at_count = 0;
 
   region_manager_.set_handle(c->ptr, h);
 
@@ -184,6 +183,8 @@ BFCAllocator::ChunkHandle BFCAllocator::AllocateChunk() {
 
 void BFCAllocator::DeallocateChunk(ChunkHandle h) {
   Chunk* c = ChunkFromHandle(h);
+  c->allocation_id = -1;
+  c->bin_num = kInvalidBinNum;
   c->next = free_chunks_list_;
   free_chunks_list_ = h;
 }
@@ -194,7 +195,7 @@ void* BFCAllocator::AllocateRawInternalWithRetry(
   // Fast path: Try once to allocate without getting the retry_helper_ involved
   uint64 freed_by_count = 0;
   if (allocation_attr.freed_by_func != nullptr) {
-    freed_by_count = allocation_attr.freed_by_func();
+    freed_by_count = (*allocation_attr.freed_by_func)();
   }
   void* r =
       AllocateRawInternal(unused_alignment, num_bytes, false, freed_by_count);
@@ -206,7 +207,7 @@ void* BFCAllocator::AllocateRawInternalWithRetry(
         [this, &allocation_attr](size_t a, size_t nb, bool v) {
           uint64 freed_by_count = 0;
           if (allocation_attr.freed_by_func != nullptr) {
-            freed_by_count = allocation_attr.freed_by_func();
+            freed_by_count = (*allocation_attr.freed_by_func)();
           }
           return AllocateRawInternal(a, nb, v, freed_by_count);
         },
@@ -224,7 +225,7 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
     bool dump_log_on_failure = VLOG_IS_ON(2);
     uint64 freed_by_count = 0;
     if (allocation_attr.freed_by_func != nullptr) {
-      freed_by_count = allocation_attr.freed_by_func();
+      freed_by_count = (*allocation_attr.freed_by_func)();
     }
     void* result = AllocateRawInternal(unused_alignment, num_bytes,
                                        dump_log_on_failure, freed_by_count);
@@ -236,6 +237,8 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
         LOG(WARNING)
             << "Allocator (" << Name() << ") ran out of memory trying "
             << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
+            << " with freed_by_count=" << freed_by_count
+
             << ". The caller indicates that this is not a failure, but"
             << " may mean that there could be performance gains if more"
             << " memory were available.";
@@ -262,7 +265,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
                                         bool dump_log_on_failure,
                                         uint64 freed_before) {
   if (num_bytes == 0) {
-    LOG(ERROR) << "tried to allocate 0 bytes";
+    VLOG(2) << "tried to allocate 0 bytes";
     return nullptr;
   }
   // First, always allocate memory of at least kMinAllocationSize
@@ -274,6 +277,10 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   BinNum bin_num = BinNumForSize(rounded_bytes);
 
   mutex_lock l(lock_);
+  if (!timestamped_chunks_.empty()) {
+    // Merge timestamped chunks whose counts have become safe for general use.
+    MergeTimestampedChunks(0);
+  }
   void* ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
   if (ptr != nullptr) {
     return ptr;
@@ -287,13 +294,27 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
     }
   }
 
+  if ((freed_before == 0) && (!timestamped_chunks_.empty())) {
+    // We're unable to satisfy an allocation request without a specific
+    // timestamp requirement.  Rather than fail, try merging any held-out
+    // timestamped chunks more aggressively until a free chunk of the necessary
+    // size is formed.
+    if (MergeTimestampedChunks(rounded_bytes)) {
+      ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
+      if (ptr != nullptr) {
+        return ptr;
+      }
+    }
+  }
+
   // We searched all bins for an existing free chunk to use and
   // couldn't find one.  This means we must have run out of memory,
   // Dump the memory log for analysis.
   if (dump_log_on_failure) {
     LOG(WARNING) << "Allocator (" << Name() << ") ran out of memory trying "
                  << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
-                 << ".  Current allocation summary follows.";
+                 << " (rounded to " << rounded_bytes
+                 << ").  Current allocation summary follows.";
     DumpMemoryLog(rounded_bytes);
     LOG(WARNING) << RenderOccupancy();
   }
@@ -312,7 +333,7 @@ void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
       const BFCAllocator::ChunkHandle h = (*citer);
       BFCAllocator::Chunk* chunk = ChunkFromHandle(h);
       DCHECK(!chunk->in_use());
-      if (freed_before > 0 && freed_before < chunk->freed_count) {
+      if (freed_before > 0 && freed_before < chunk->freed_at_count) {
         continue;
       }
       if (chunk->size >= rounded_bytes) {
@@ -378,7 +399,7 @@ void BFCAllocator::SplitChunk(BFCAllocator::ChunkHandle h, size_t num_bytes) {
   new_chunk->allocation_id = -1;
 
   // It inherits the freed time.
-  new_chunk->freed_count = c->freed_count;
+  new_chunk->freed_at_count = c->freed_at_count;
 
   // Maintain the pointers.
   // c <-> c_neighbor becomes
@@ -405,7 +426,7 @@ void BFCAllocator::DeallocateRaw(void* ptr) {
 
 void BFCAllocator::DeallocateRawInternal(void* ptr) {
   if (ptr == nullptr) {
-    LOG(ERROR) << "tried to deallocate nullptr";
+    VLOG(2) << "tried to deallocate nullptr";
     return;
   }
   mutex_lock l(lock_);
@@ -414,8 +435,15 @@ void BFCAllocator::DeallocateRawInternal(void* ptr) {
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle);
 
+  MarkFree(h);
+
   // Consider coalescing it.
-  FreeAndMaybeCoalesce(h);
+  if (timing_counter_) {
+    InsertFreeChunkIntoBin(h);
+    timestamped_chunks_.push_back(h);
+  } else {
+    InsertFreeChunkIntoBin(TryToCoalesce(h, false));
+  }
 
   if (VLOG_IS_ON(4)) {
     LOG(INFO) << "F: " << RenderOccupancy();
@@ -451,7 +479,7 @@ void BFCAllocator::Merge(BFCAllocator::ChunkHandle h1,
   c1->size += c2->size;
 
   // Pick latest free time.
-  c1->freed_count = std::max(c1->freed_count, c2->freed_count);
+  c1->freed_at_count = std::max(c1->freed_at_count, c2->freed_at_count);
 
   DeleteChunk(h2);
 }
@@ -491,7 +519,7 @@ void BFCAllocator::RemoveFreeChunkFromBin(BFCAllocator::ChunkHandle h) {
   c->bin_num = kInvalidBinNum;
 }
 
-void BFCAllocator::FreeAndMaybeCoalesce(BFCAllocator::ChunkHandle h) {
+void BFCAllocator::MarkFree(BFCAllocator::ChunkHandle h) {
   Chunk* c = ChunkFromHandle(h);
   CHECK(c->in_use() && (c->bin_num == kInvalidBinNum));
 
@@ -500,33 +528,128 @@ void BFCAllocator::FreeAndMaybeCoalesce(BFCAllocator::ChunkHandle h) {
 
   // Optionally record the free time.
   if (timing_counter_) {
-    c->freed_count = timing_counter_->next();
+    c->freed_at_count = timing_counter_->next();
   }
 
   // Updates the stats.
   stats_.bytes_in_use -= c->size;
+}
 
+BFCAllocator::ChunkHandle BFCAllocator::TryToCoalesce(ChunkHandle h,
+                                                      bool ignore_freed_at) {
+  Chunk* c = ChunkFromHandle(h);
+  if ((!ignore_freed_at) && c->freed_at_count > 0) return h;
   ChunkHandle coalesced_chunk = h;
 
   // If the next chunk is free, merge it into c and delete it.
   if (c->next != kInvalidChunkHandle && !ChunkFromHandle(c->next)->in_use()) {
-    // VLOG(8) << "Merging c->next " << ChunkFromHandle(c->next)->ptr
-    //         << " with c " << c->ptr;
-    RemoveFreeChunkFromBin(c->next);
-    Merge(h, c->next);
+    Chunk* n = ChunkFromHandle(c->next);
+    if ((n->freed_at_count == 0) || ignore_freed_at) {
+      VLOG(4) << "Merging c->next " << n->ptr << " with c " << c->ptr;
+      RemoveFreeChunkFromBin(c->next);
+      Merge(h, c->next);
+    }
   }
 
   // If the previous chunk is free, merge c into it and delete c.
   if (c->prev != kInvalidChunkHandle && !ChunkFromHandle(c->prev)->in_use()) {
-    // VLOG(8) << "Merging c " << c->ptr << " into c->prev "
-    //         << ChunkFromHandle(c->prev)->ptr;
-
-    coalesced_chunk = c->prev;
-    RemoveFreeChunkFromBin(c->prev);
-    Merge(c->prev, h);
+    Chunk* n = ChunkFromHandle(c->prev);
+    if ((n->freed_at_count == 0) || ignore_freed_at) {
+      VLOG(4) << "Merging c " << c->ptr << " into c->prev " << n->ptr;
+      coalesced_chunk = c->prev;
+      RemoveFreeChunkFromBin(c->prev);
+      Merge(c->prev, h);
+    }
   }
 
-  InsertFreeChunkIntoBin(coalesced_chunk);
+  return coalesced_chunk;
+}
+
+void BFCAllocator::SetSafeFrontier(uint64 count) {
+  uint64 current = safe_frontier_.load(std::memory_order_relaxed);
+  while (count > current) {
+    if (safe_frontier_.compare_exchange_strong(current, count)) {
+      retry_helper_.NotifyDealloc();
+      return;
+    } else {
+      current = safe_frontier_.load(std::memory_order_relaxed);
+    }
+  }
+}
+
+bool BFCAllocator::MergeTimestampedChunks(size_t required_bytes) {
+  VLOG(1) << "MergeTimestampedChunks queue_len=" << timestamped_chunks_.size()
+          << " required_bytes=" << required_bytes;
+  bool satisfied = (required_bytes == 0);
+  std::vector<void*> to_merge;
+  std::deque<ChunkHandle> new_ts_queue;
+  while (!timestamped_chunks_.empty()) {
+    ChunkHandle h = timestamped_chunks_.front();
+    timestamped_chunks_.pop_front();
+    DCHECK_NE(h, kInvalidChunkHandle);
+    Chunk* c = ChunkFromHandle(h);
+    // It's possible this chunk has already been merged so refetch and retest
+    // the handle.
+    h = region_manager_.get_handle(c->ptr);
+    if (h == kInvalidChunkHandle) {
+      continue;
+    }
+    if (c->in_use() || (c->bin_num == kInvalidBinNum)) {
+      // This chunk has already been reallocated.
+      continue;
+    }
+    if (c->freed_at_count == 0) {
+      to_merge.push_back(c->ptr);
+      continue;
+    }
+    // Chunk should be free and assigned to a bin.
+    DCHECK_NE(c->bin_num, kInvalidBinNum);
+    if (c->freed_at_count < safe_frontier_) {
+      c->freed_at_count = 0;
+      to_merge.push_back(c->ptr);
+    } else if (required_bytes > 0) {
+      to_merge.push_back(c->ptr);
+    } else {
+      new_ts_queue.push_back(h);
+    }
+  }
+  DCHECK(timestamped_chunks_.empty());
+  std::swap(timestamped_chunks_, new_ts_queue);
+
+  // At this point all candidate chunks have been moved from timestamped_chunks_
+  // to to_merge.  If this is a standard merge (required_bytes == 0) then
+  // merge them all, otherwise merge just until a Chunk of the required size
+  // is produced.
+  for (int ci = 0; ci < to_merge.size(); ++ci) {
+    void* ptr = to_merge[ci];
+    // It's possible that the Chunk associated with this memory location got
+    // merged and deallocated in a prior iteration so refetch the handle and
+    // retest.
+    ChunkHandle h = region_manager_.get_handle(ptr);
+    if (h == kInvalidChunkHandle) continue;
+    if (required_bytes == 0 || !satisfied) {
+      Chunk* c = ChunkFromHandle(h);
+      DCHECK_NE(c->bin_num, kInvalidBinNum);
+      DCHECK(!c->in_use());
+      RemoveFreeChunkFromBin(h);
+      ChunkHandle new_h = TryToCoalesce(h, (required_bytes > 0));
+      InsertFreeChunkIntoBin(new_h);
+      if (required_bytes > 0) {
+        c = ChunkFromHandle(new_h);
+        if (new_h != h && c->freed_at_count > 0) {
+          timestamped_chunks_.push_back(new_h);
+        }
+        if (c->size >= required_bytes) {
+          satisfied = true;
+        }
+      }
+    } else {
+      // We were force merging Chunks with unsafe timestamps, but managed
+      // to create a satisfying Chunk so just requeue the rest.
+      timestamped_chunks_.push_back(h);
+    }
+  }
+  return satisfied;
 }
 
 bool BFCAllocator::TracksAllocationSizes() const { return true; }
@@ -667,16 +790,17 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
   // number by size.
   std::map<size_t, int> in_use_by_size;
   for (const auto& region : region_manager_.regions()) {
+    LOG(INFO) << "Next region of size " << region.memory_size();
     ChunkHandle h = region_manager_.get_handle(region.ptr());
     while (h != kInvalidChunkHandle) {
       const Chunk* c = ChunkFromHandle(h);
       if (c->in_use()) {
         in_use_by_size[c->size]++;
       }
-      LOG(INFO) << (c->in_use() ? "Chunk" : "Free ") << " at " << c->ptr
-                << " of size " << c->size
+      LOG(INFO) << (c->in_use() ? "InUse" : "Free ") << " at " << c->ptr
+                << " next " << c->next << " of size " << c->size
                 << (timing_counter_
-                        ? strings::StrCat(" freed_count ", c->freed_count)
+                        ? strings::StrCat(" freed_at_count ", c->freed_at_count)
                         : "");
       h = c->next;
     }
@@ -691,6 +815,12 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
   }
   LOG(INFO) << "Sum Total of in-use chunks: "
             << strings::HumanReadableNumBytes(total_bytes);
+  LOG(INFO) << "total_region_allocated_bytes_: "
+            << total_region_allocated_bytes_
+            << " memory_limit_: " << memory_limit_ << " available bytes: "
+            << (memory_limit_ - total_region_allocated_bytes_)
+            << " curr_region_allocation_bytes_: "
+            << curr_region_allocation_bytes_;
   LOG(INFO) << "Stats: \n" << stats_.DebugString();
 }
 

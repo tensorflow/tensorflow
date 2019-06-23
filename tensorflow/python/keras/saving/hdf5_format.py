@@ -28,11 +28,11 @@ from six.moves import zip  # pylint: disable=redefined-builtin
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.saving import model_config as model_config_lib
+from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import serialization
-from tensorflow.python.util.tf_export import keras_export
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -43,8 +43,7 @@ except ImportError:
 # pylint: enable=g-import-not-at-top
 
 
-@keras_export('keras.models.save_model')
-def save_model(model, filepath, overwrite=True, include_optimizer=True):
+def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
   """Saves a model to a HDF5 file.
 
   The saved model contains:
@@ -73,8 +72,6 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
   if h5py is None:
     raise ImportError('`save_model` requires h5py.')
 
-  from tensorflow.python.keras import __version__ as keras_version  # pylint: disable=g-import-not-at-top
-
   # TODO(psv) Add warning when we save models that contain non-serializable
   # entities like metrics added using `add_metric` and losses added using
   # `add_loss.`
@@ -93,57 +90,32 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
     opened_new_file = False
 
   try:
-    f.attrs['keras_version'] = str(keras_version).encode('utf8')
-    f.attrs['backend'] = K.backend().encode('utf8')
-    f.attrs['model_config'] = json.dumps(
-        {
-            'class_name': model.__class__.__name__,
-            'config': model.get_config()
-        },
-        default=serialization.get_json_type).encode('utf8')
+    model_metadata = saving_utils.model_metadata(model, include_optimizer)
+    for k, v in model_metadata.items():
+      if isinstance(v, (dict, list, tuple)):
+        f.attrs[k] = json.dumps(
+            v, default=serialization.get_json_type).encode('utf8')
+      else:
+        f.attrs[k] = v
 
     model_weights_group = f.create_group('model_weights')
     model_layers = model.layers
     save_weights_to_hdf5_group(model_weights_group, model_layers)
 
-    if include_optimizer and model.optimizer:
-      if isinstance(model.optimizer, optimizers.TFOptimizer):
-        logging.warning(
-            'TensorFlow optimizers do not '
-            'make it possible to access '
-            'optimizer attributes or optimizer state '
-            'after instantiation. '
-            'As a result, we cannot save the optimizer '
-            'as part of the model save file. '
-            'You will have to compile your model again after loading it. '
-            'Prefer using a Keras optimizer instead '
-            '(see keras.io/optimizers).')
-      else:
-        f.attrs['training_config'] = json.dumps(
-            {
-                'optimizer_config': {
-                    'class_name': model.optimizer.__class__.__name__,
-                    'config': model.optimizer.get_config()
-                },
-                'loss': model.loss,
-                'metrics': model._compile_metrics,
-                'weighted_metrics': model._compile_weighted_metrics,
-                'sample_weight_mode': model.sample_weight_mode,
-                'loss_weights': model.loss_weights,
-            },
-            default=serialization.get_json_type).encode('utf8')
+    # TODO(b/128683857): Add integration tests between tf.keras and external
+    # Keras, to avoid breaking TF.js users.
+    if (include_optimizer and model.optimizer and
+        not isinstance(model.optimizer, optimizers.TFOptimizer)):
+      save_optimizer_weights_to_hdf5_group(f, model.optimizer)
 
-        # Save optimizer weights.
-        save_optimizer_weights_to_hdf5_group(f, model.optimizer)
     f.flush()
   finally:
     if opened_new_file:
       f.close()
 
 
-@keras_export('keras.models.load_model')
-def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
-  """Loads a model saved via `save_model`.
+def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
+  """Loads a model saved via `save_model_to_hdf5`.
 
   Arguments:
       filepath: One of the following:
@@ -173,31 +145,6 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
   if not custom_objects:
     custom_objects = {}
 
-  def convert_custom_objects(obj):
-    """Handles custom object lookup.
-
-    Arguments:
-        obj: object, dict, or list.
-
-    Returns:
-        The same structure, where occurrences
-            of a custom object name have been replaced
-            with the custom object.
-    """
-    if isinstance(obj, list):
-      deserialized = []
-      for value in obj:
-        deserialized.append(convert_custom_objects(value))
-      return deserialized
-    if isinstance(obj, dict):
-      deserialized = {}
-      for key, value in obj.items():
-        deserialized[key] = convert_custom_objects(value)
-      return deserialized
-    if obj in custom_objects:
-      return custom_objects[obj]
-    return obj
-
   opened_new_file = not isinstance(filepath, h5py.File)
   if opened_new_file:
     f = h5py.File(filepath, mode='r')
@@ -225,26 +172,10 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
                         'the model was *not* compiled. Compile it manually.')
         return model
       training_config = json.loads(training_config.decode('utf-8'))
-      optimizer_config = training_config['optimizer_config']
-      optimizer = optimizers.deserialize(
-          optimizer_config, custom_objects=custom_objects)
-
-      # Recover loss functions and metrics.
-      loss = convert_custom_objects(training_config['loss'])
-      metrics = convert_custom_objects(training_config['metrics'])
-      weighted_metrics = convert_custom_objects(
-          training_config.get('weighted_metrics', None))
-      sample_weight_mode = training_config['sample_weight_mode']
-      loss_weights = training_config['loss_weights']
 
       # Compile model.
-      model.compile(
-          optimizer=optimizer,
-          loss=loss,
-          metrics=metrics,
-          weighted_metrics=weighted_metrics,
-          loss_weights=loss_weights,
-          sample_weight_mode=sample_weight_mode)
+      model.compile(**saving_utils.compile_args_from_training_config(
+          training_config, custom_objects))
 
       # Set optimizer weights.
       if 'optimizer_weights' in f:
@@ -341,30 +272,30 @@ def preprocess_weights_for_loading(layer,
     Returns:
         A list of weights values (Numpy arrays).
     """
-    new_weights = []
-    # trainable weights
-    for sublayer in layer.layers:
-      num_weights = len(sublayer.trainable_weights)
-      if num_weights > 0:
-        new_weights.extend(preprocess_weights_for_loading(
-            layer=sublayer,
-            weights=weights[:num_weights],
-            original_keras_version=original_keras_version,
-            original_backend=original_backend))
-        weights = weights[num_weights:]
+    trainable_weights = weights[:len(layer.trainable_weights)]
+    non_trainable_weights = weights[len(layer.trainable_weights):]
 
-    # non-trainable weights
+    new_trainable_weights = []
+    new_non_trainable_weights = []
+
     for sublayer in layer.layers:
-      num_weights = len([l for l in sublayer.weights
-                         if l not in sublayer.trainable_weights])
-      if num_weights > 0:
-        new_weights.extend(preprocess_weights_for_loading(
+      num_trainable_weights = len(sublayer.trainable_weights)
+      num_non_trainable_weights = len(sublayer.non_trainable_weights)
+      if sublayer.weights:
+        preprocessed = preprocess_weights_for_loading(
             layer=sublayer,
-            weights=weights[:num_weights],
+            weights=(trainable_weights[:num_trainable_weights] +
+                     non_trainable_weights[:num_non_trainable_weights]),
             original_keras_version=original_keras_version,
-            original_backend=original_backend))
-        weights = weights[num_weights:]
-    return new_weights
+            original_backend=original_backend)
+        new_trainable_weights.extend(preprocessed[:num_trainable_weights])
+        new_non_trainable_weights.extend(preprocessed[num_trainable_weights:])
+
+        trainable_weights = trainable_weights[num_trainable_weights:]
+        non_trainable_weights = non_trainable_weights[
+            num_non_trainable_weights:]
+
+    return new_trainable_weights + new_non_trainable_weights
 
   # Convert layers nested in Bidirectional/Model/Sequential.
   # Both transformation should be ran for both Keras 1->2 conversion
@@ -686,8 +617,9 @@ def save_weights_to_hdf5_group(f, layers):
 
   for layer in layers:
     g = f.create_group(layer.name)
-    weight_values = K.batch_get_value(layer.weights)
-    weight_names = [w.name.encode('utf8') for w in layer.weights]
+    weights = _legacy_weights(layer)
+    weight_values = K.batch_get_value(weights)
+    weight_names = [w.name.encode('utf8') for w in weights]
     save_attributes_to_hdf5_group(g, 'weight_names', weight_names)
     for name, val in zip(weight_names, weight_values):
       param_dset = g.create_dataset(name, val.shape, dtype=val.dtype)
@@ -720,7 +652,7 @@ def load_weights_from_hdf5_group(f, layers):
 
   filtered_layers = []
   for layer in layers:
-    weights = layer.weights
+    weights = _legacy_weights(layer)
     if weights:
       filtered_layers.append(layer)
 
@@ -746,7 +678,7 @@ def load_weights_from_hdf5_group(f, layers):
     weight_names = load_attributes_from_hdf5_group(g, 'weight_names')
     weight_values = [np.asarray(g[weight_name]) for weight_name in weight_names]
     layer = filtered_layers[k]
-    symbolic_weights = layer.weights
+    symbolic_weights = _legacy_weights(layer)
     weight_values = preprocess_weights_for_loading(
         layer, weight_values, original_keras_version, original_backend)
     if len(weight_values) != len(symbolic_weights):
@@ -803,7 +735,7 @@ def load_weights_from_hdf5_group_by_name(f, layers):
     weight_values = [np.asarray(g[weight_name]) for weight_name in weight_names]
 
     for layer in index.get(name, []):
-      symbolic_weights = layer.weights
+      symbolic_weights = _legacy_weights(layer)
       weight_values = preprocess_weights_for_loading(
           layer, weight_values, original_keras_version, original_backend)
       if len(weight_values) != len(symbolic_weights):
@@ -893,3 +825,24 @@ def load_attributes_from_hdf5_group(group, name):
           [n.decode('utf8') for n in group.attrs['%s%d' % (name, chunk_id)]])
       chunk_id += 1
   return data
+
+
+def _legacy_weights(model):
+  """DO NOT USE.
+
+  For legacy reason, the model.weights was in the order of
+  [self.trainable_weights + self.non_trainable_weights], and this order was
+  used for preserving the weights in h5 format. The new order of model.weights
+  are the same as model.get_weights() which is more intuitive for user. To
+  keep supporting the existing saved h5 file, this method should be used to
+  save/load weights. In future version, we will delete this method and
+  introduce a breaking change for h5 and stay with the new order for weights.
+
+  Args:
+    model: a model or layer instance.
+
+  Returns:
+    A list of variables with the order of trainable_weights, followed by
+      non_trainable_weights.
+  """
+  return model.trainable_weights + model.non_trainable_weights

@@ -237,6 +237,14 @@ class PyFuncTest(test.TestCase):
       self.assertAllEqual(s.eval(), correct)
 
   @test_util.run_v1_only("b/120545219")
+  def testNulTerminatedStrings(self):
+    inp = np.array(["this\0", "is\0\0", "a\0", "test\0\0"], dtype=np.str_)
+    correct = [b"this", b"is", b"a", b"test"]
+    with self.cached_session():
+      s, = script_ops.py_func(lambda: [inp], [], [dtypes.string])
+      self.assertAllEqual(s.eval(), correct)
+
+  @test_util.run_v1_only("b/120545219")
   def testLarge(self):
     with self.cached_session() as sess:
       x = array_ops.zeros([1000000], dtype=np.float32)
@@ -280,8 +288,8 @@ class PyFuncTest(test.TestCase):
 
       y, = script_ops.py_func(bad, [], [dtypes.float32])
 
-      with self.assertRaisesRegexp(errors.UnimplementedError,
-                                   "Unsupported numpy type"):
+      with self.assertRaisesRegexp(errors.InternalError,
+                                   "Unsupported numpy data type"):
         self.evaluate(y)
 
   @test_util.run_v1_only("b/120545219")
@@ -294,7 +302,7 @@ class PyFuncTest(test.TestCase):
 
       z, = script_ops.py_func(bad, [], [dtypes.int64])
 
-      with self.assertRaisesRegexp(errors.UnimplementedError,
+      with self.assertRaisesRegexp(errors.InternalError,
                                    "Unsupported object type"):
         self.evaluate(z)
 
@@ -323,6 +331,7 @@ class PyFuncTest(test.TestCase):
       self.assertEqual(self.evaluate(x), 1)
       self.assertEqual(self.evaluate(x), 2)
 
+  @test_util.enable_tf_xla_constant_folding("b/134376434")
   def testStateless(self):
     # Not using self.cached_session(), which disables optimization.
     with session_lib.Session() as sess:
@@ -335,8 +344,8 @@ class PyFuncTest(test.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testGradientFunction(self):
-    # Input to tf.py_func is necessary, otherwise get_gradient_function()
-    # returns None per default.
+    # Input to tf.compat.v1.py_func is necessary,
+    # otherwise get_gradient_function() returns None per default.
     a = constant_op.constant(0)
     x, = script_ops.py_func(lambda a: 0, [a], [dtypes.int64])
     y, = script_ops.py_func(lambda a: 0, [a], [dtypes.int64], stateful=False)
@@ -353,7 +362,8 @@ class PyFuncTest(test.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testParallel(self):
-    # Tests that tf.py_func's can run in parallel if they release the GIL.
+    # Tests that tf.compat.v1.py_func's can run in parallel if they release
+    # the GIL.
     with self.cached_session() as session:
       q = queue.Queue(1)
 

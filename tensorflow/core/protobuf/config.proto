@@ -165,9 +165,26 @@ message GPUOptions {
     // is really not subject to pending use.
     bool timestamped_allocator = 5;
 
-    // If > 0 limit the number of pending kernels on any compute
-    // stream to this number.
-    int32 pending_cap = 6;
+    // reserved id: 6
+
+    // Parameters for GPUKernelTracker.  By default no kernel tracking is done.
+    // Note that timestamped_allocator is only effective if some tracking is
+    // specified.
+    //
+    // If kernel_tracker_max_interval = n > 0, then a tracking event
+    // is inserted after every n kernels without an event.
+    int32 kernel_tracker_max_interval = 7;
+    // If kernel_tracker_max_bytes = n > 0, then a tracking event is
+    // inserted after every series of kernels allocating a sum of
+    // memory >= n.  If one kernel allocates b * n bytes, then one
+    // event will be inserted after it, but it will count as b against
+    // the pending limit.
+    int32 kernel_tracker_max_bytes = 8;
+    // If kernel_tracker_max_pending > 0 then no more than this many
+    // tracking events can be outstanding at a time.  An attempt to
+    // launch an additional kernel will stall until an event
+    // completes.
+    int32 kernel_tracker_max_pending = 9;
   }
 
   // Everything inside experimental is subject to change and is not subject
@@ -312,6 +329,21 @@ message RPCOptions {
   int32 compression_level = 3;
 }
 
+// Metadata about the session.
+//
+// This can be used by the runtime and the Ops for debugging, monitoring, etc.
+//
+// The (name, version) tuple is expected to be a unique identifier for
+// sessions within the same process.
+//
+// NOTE: This is currently used and propagated only by the direct session.
+message SessionMetadata {
+  string name = 1;
+
+  // The version is optional. If set, needs to be >= 0.
+  int64 version = 2;
+}
+
 // Session configuration parameters.
 // The system picks appropriate values for fields that are not set.
 message ConfigProto {
@@ -330,6 +362,7 @@ message ConfigProto {
   // inter_op_parallelism_threads available in each process.
   //
   // 0 means the system picks an appropriate number.
+  // Negative means all operations are performed in caller's thread.
   //
   // Note that the first Session created in the process sets the
   // number of threads for all future sessions unless use_per_session_threads is
@@ -468,6 +501,26 @@ message ConfigProto {
     // TODO(b/129330037): Add a single API that consistently treats
     // isolate_session_state and ClusterSpec propagation.
     bool share_session_state_in_clusterspec_propagation = 8;
+
+    // If using a direct session, disable spinning while waiting for work in
+    // the thread pool. This may result in higher latency for completing ops,
+    // but in the case where there is a lot of spinning may result in lower
+    // CPU usage.
+    bool disable_thread_spinning = 9;
+
+    // When true, WorkerSessions are created with device attributes from the
+    // full cluster.
+    // This is helpful when a worker wants to partition a graph
+    // (for example during a PartitionedCallOp).
+    bool share_cluster_devices_in_session = 10;
+
+    // Metadata about the session.
+    //
+    // If set, this can be used by the runtime and the Ops for debugging,
+    // monitoring, etc.
+    //
+    // NOTE: This is currently used and propagated only by the direct session.
+    SessionMetadata session_metadata = 11;
   };
 
   Experimental experimental = 16;
