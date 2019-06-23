@@ -142,7 +142,7 @@ def sparse_expand_dims(sp_input, axis=None, name=None):
                       " - 1, rank(sp_input)]")
 
     # Convert axis to a positive value if it is negative.
-    axis = array_ops.where(axis >= 0, axis, axis + rank + 1)
+    axis = array_ops.where_v2(axis >= 0, axis, axis + rank + 1)
 
     # Create the new column of indices for the sparse tensor by slicing
     # the indices and inserting a new column of indices for the new dimension.
@@ -1727,7 +1727,7 @@ def sparse_retain(sp_input, to_retain):
     sp_input.values.get_shape().dims[0].merge_with(
         tensor_shape.dimension_at_index(retain_shape, 0))
 
-  where_true = array_ops.reshape(array_ops.where(to_retain), [-1])
+  where_true = array_ops.reshape(array_ops.where_v2(to_retain), [-1])
   new_indices = array_ops.gather(sp_input.indices, where_true)
   new_values = array_ops.gather(sp_input.values, where_true)
   return sparse_tensor.SparseTensor(new_indices, new_values,
