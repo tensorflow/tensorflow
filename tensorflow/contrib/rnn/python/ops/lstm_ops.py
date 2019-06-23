@@ -630,10 +630,10 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
     Returns:
       A pair containing:
 
-      - Cell state (cs): A `3-D` tensor of shape `[time_len, batch_size,
+      - Outputs (cs): A `3-D` tensor of shape `[time_len, batch_size,
                          output_size]`
-      - Output (h): A `3-D` tensor of shape `[time_len, batch_size,
-                    output_size]`
+      - Final state (h): A `LSTMStateTuple` that contains the final hidden state and the final output
+        of of shape `[batch_size, output_size]`
     """
 
     inputs_shape = inputs.get_shape().with_rank(3)
