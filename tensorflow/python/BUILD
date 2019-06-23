@@ -6690,6 +6690,18 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "tf2_test",
+    srcs = ["framework/tf2_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":tf2",
+        "//tensorflow/python/distribute:combinations",
+    ],
+)
+
 cuda_py_test(
     name = "raw_ops_test",
     srcs = ["ops/raw_ops_test.py"],
