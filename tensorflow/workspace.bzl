@@ -908,11 +908,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "seastar",
         urls = [
-            "https://mirror.bazel.build/github.com/seastar/seastar/archive/seastar-tf.tar.gz",
-            "https://github.com/liutongxuan/seastar/archive/features/tensorflow_rpc.tar.gz",
+            "https://mirror.bazel.build/github.com/seastar/seastar/archive/seastar-protocol.tar.gz",
+            "https://github.com/AlibabaPAI/seastar/archive/tensorflow_protocol.tar.gz",
         ],
-        sha256 = "4aff80e8f6889c21b17aeed93cc632229ced0e5cb6b35ba060416b668744c2b0",
-        strip_prefix = "seastar-features-tensorflow_rpc",
+        sha256 = "00e934bff0ce69e4c048bb3e896de4d99bf6c95e193fe82fd2b666229e0b620b",
+        strip_prefix = "seastar-tensorflow_protocol",
         build_file = clean_dep("//third_party:seastar.BUILD"),
     )
 
