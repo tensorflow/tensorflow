@@ -109,7 +109,8 @@ def _unary_assert_doc(sym, sym_name):
     Args:
       func: Function for a TensorFlow op
 
-    Returns a version of `func` with documentation attached.
+    Returns:
+      Version of `func` with documentation attached.
     """
     opname = func.__name__
     cap_sym_name = sym_name.capitalize()
@@ -160,7 +161,8 @@ def _binary_assert_doc(sym):
   Args:
     sym: Binary operation symbol, i.e. "=="
 
-  Returns a decorator that adds the appropriate docstring to the function for
+  Returns:
+    Decorator that adds the appropriate docstring to the function for
   symbol `sym`.
   """
   def _decorator(func):
