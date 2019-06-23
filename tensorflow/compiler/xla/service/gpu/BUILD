@@ -530,17 +530,20 @@ cc_library(
 )
 
 cc_library(
-    name = "gemm_lowering",
-    srcs = ["gemm_lowering.cc"],
-    hdrs = ["gemm_lowering.h"],
+    name = "gemm_rewriter",
+    srcs = ["gemm_rewriter.cc"],
+    hdrs = ["gemm_rewriter.h"],
     deps = [
         ":backend_configs",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -968,7 +971,7 @@ cc_library(
         ":cusolver_rewriter",
         ":fusion_merger",
         ":gemm_algorithm_picker",
-        ":gemm_lowering",
+        ":gemm_rewriter",
         ":gpu_constants",
         ":gpu_copy_insertion",
         ":gpu_executable",
@@ -1005,6 +1008,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_constant_folding",
         "//tensorflow/compiler/xla/service:hlo_cse",
+        "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
         "//tensorflow/compiler/xla/service:hlo_dce",
         "//tensorflow/compiler/xla/service:hlo_element_type_converter",
         "//tensorflow/compiler/xla/service:hlo_get_dimension_size_rewriter",
@@ -1099,6 +1103,7 @@ cc_library(
     srcs = ["gpu_layout_assignment.cc"],
     hdrs = ["gpu_layout_assignment.h"],
     deps = [
+        ":backend_configs",
         ":ir_emission_utils",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -1118,6 +1123,7 @@ tf_cc_test(
     name = "gpu_layout_assignment_test",
     srcs = ["gpu_layout_assignment_test.cc"],
     deps = [
+        ":gemm_rewriter",
         ":gpu_layout_assignment",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_layout",
@@ -1129,6 +1135,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
+        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",
     ],
 )

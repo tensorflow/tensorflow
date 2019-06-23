@@ -341,10 +341,6 @@ Status IrEmitterUnnested::DefaultAction(HloInstruction* hlo) {
 }
 
 Status IrEmitterUnnested::HandleDot(HloInstruction* dot) {
-  if (ImplementedAsGemm(*dot)) {
-    AddThunkToThunkSequence(BuildGemmThunk(dot));
-    return Status::OK();
-  }
   AddThunkToThunkSequence(
       BuildKernelThunk(dot, /*implements_whole_instruction=*/true));
   return IrEmitter::HandleDot(dot);
@@ -514,6 +510,11 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
           absl::make_unique<SequentialThunk>(std::move(thunks), custom_call));
     }
 
+    return Status::OK();
+  }
+
+  if (IsCublasGemm(*custom_call)) {
+    AddThunkToThunkSequence(BuildGemmThunk(custom_call));
     return Status::OK();
   }
 
@@ -690,11 +691,6 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
     return llvm_ir::EmitParallelFusedDynamicUpdateSliceInPlace(
         fusion, GetGeneratorForOperandIrArrays(fusion), output_array,
         &elemental_emitter, launch_dimensions, &b_);
-  }
-
-  if (ImplementedAsGemm(*fusion)) {
-    AddThunkToThunkSequence(BuildGemmThunk(fusion));
-    return Status::OK();
   }
 
   CHECK_EQ(fusion->fusion_kind(), HloInstruction::FusionKind::kLoop)
@@ -1791,17 +1787,14 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
     const HloInstruction* inst) {
   auto config_or = inst->backend_config<GemmBackendConfig>();
   GemmBackendConfig gemm_config = std::move(config_or.ValueOrDie());
-  const HloInstruction* lhs = inst->operand(gemm_config.lhs_parameter_number());
-  const HloInstruction* rhs = inst->operand(gemm_config.rhs_parameter_number());
+  const HloInstruction* lhs = inst->operand(0);
+  const HloInstruction* rhs = inst->operand(1);
 
   // The bias is passed inside the output buffer. If those buffers are shared
   // we can just use it, otherwise copy the bias values into the output buffer
   // first.
   if (gemm_config.beta() != 0.0) {
-    CHECK_GE(gemm_config.bias_parameter_number(), 0);
-    const HloInstruction* bias =
-        inst->operand(gemm_config.bias_parameter_number());
-
+    const HloInstruction* bias = inst->operand(2);
     if (GetAllocationSlice(*bias) != GetAllocationSlice(*inst)) {
       std::vector<std::unique_ptr<Thunk>> thunks;
       thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(

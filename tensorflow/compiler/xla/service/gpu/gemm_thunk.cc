@@ -160,13 +160,13 @@ Status RunGemm(const HloInstruction *gemm, se::DeviceMemoryBase lhs_buffer,
                se::blas::ProfileResult *profile_result,
                absl::optional<se::blas::AlgorithmType> algorithm) {
   VLOG(2) << "Executing a GemmThunk";
+  CHECK(IsCublasGemm(*gemm));
+
   TF_ASSIGN_OR_RETURN(GemmBackendConfig backend_config,
                       gemm->backend_config<GemmBackendConfig>());
   const Shape &output_shape = gemm->shape();
-  const HloInstruction *lhs =
-      gemm->operand(backend_config.lhs_parameter_number());
-  const HloInstruction *rhs =
-      gemm->operand(backend_config.rhs_parameter_number());
+  const HloInstruction *lhs = gemm->operand(0);
+  const HloInstruction *rhs = gemm->operand(1);
 
   const Shape &lhs_shape = lhs->shape();
   const Shape &rhs_shape = rhs->shape();

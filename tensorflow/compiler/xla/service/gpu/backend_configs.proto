@@ -51,16 +51,8 @@ message GemmBackendConfig {
     int64 selected_algorithm = 1;
   }
 
-  // A stored GEMM instruction `instr` with a given backend
-  // config evaluates to
-  // $\alpha (instr->operand(lhs_parameter_number) *
-  // instr->operand(rhs_parameter_number)) + \beta
-  // instr->operand(bias_parameter_number)$.
   double alpha = 2;
   double beta = 3;
-  int64 lhs_parameter_number = 4;
-  int64 rhs_parameter_number = 5;
-  int64 bias_parameter_number = 6;
 
   xla.DotDimensionNumbers dot_dimension_numbers = 7;
 
