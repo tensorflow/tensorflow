@@ -15,8 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_REDUCTION_OPS_COMMON_GPU_H_
 #define TENSORFLOW_CORE_KERNELS_REDUCTION_OPS_COMMON_GPU_H_
 
-#if !GOOGLE_CUDA
-#error This file must only be included when building with Cuda support
+#if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
+#error This file must only be included when building with GPU support
 #endif
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
