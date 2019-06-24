@@ -25,7 +25,6 @@ import numpy as np
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.data.util import structure
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
@@ -2442,10 +2441,6 @@ class Model(network.Network):
     # code.
     if isinstance(x, dataset_ops.DatasetV2):
       x_shapes = dataset_ops.get_structure(x)
-      # TODO(momernick): Remove this once NestedStructure goes away. Right
-      # now, Dataset outputs one of these instead of an actual python structure.
-      if isinstance(x_shapes, structure.NestedStructure):
-        x_shapes = x_shapes._component_specs  # pylint: disable=protected-access
       if isinstance(x_shapes, tuple):
         # If the output of a Dataset is a tuple, we assume it's either of the
         # form (x_data, y_data) or (x_data, y_data, sample_weights). In either
@@ -2460,14 +2455,10 @@ class Model(network.Network):
       x = nest.pack_sequence_as(x, converted_x, expand_composites=False)
       x_shapes = nest.map_structure(type_spec.type_spec_from_value, x)
 
-    # If the inputs are still a NestedStructure, then we have a dict-input to
-    # this model. We can't yet validate this. (It's only relevant for feature
-    # columns).
-    if not isinstance(x_shapes, structure.NestedStructure):
-      flat_inputs = nest.flatten(x_shapes, expand_composites=False)
-      flat_expected_inputs = nest.flatten(self.inputs, expand_composites=False)
-      for (a, b) in zip(flat_inputs, flat_expected_inputs):
-        nest.assert_same_structure(a, b, expand_composites=True)
+    flat_inputs = nest.flatten(x_shapes, expand_composites=False)
+    flat_expected_inputs = nest.flatten(self.inputs, expand_composites=False)
+    for (a, b) in zip(flat_inputs, flat_expected_inputs):
+      nest.assert_same_structure(a, b, expand_composites=True)
 
     if y is not None:
       if not self._is_graph_network:
