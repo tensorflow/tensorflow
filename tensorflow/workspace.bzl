@@ -55,6 +55,11 @@ def clean_dep(dep):
 # path_prefix is no longer used.
 # tf_repo_name is thought to be under consideration.
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
+    tf_repositories(path_prefix, tf_repo_name)
+    tf_bind()
+
+# Define all external repositories required by TensorFlow
+def tf_repositories(path_prefix = "", tf_repo_name = ""):
     """All external dependencies for TF builds."""
 
     # Note that we check the minimum bazel version in WORKSPACE.
