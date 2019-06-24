@@ -236,10 +236,10 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     *base_request.add_cluster_device_attributes() = da;
   }
 
-  std::shared_ptr<tensorflow::GrpcChannelCache> channel_cache =
-      grpc_server->channel_cache();
-  std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers(
-      tensorflow::eager::NewGrpcEagerClientCache(channel_cache));
+  std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers;
+  LOG_AND_RETURN_IF_ERROR(
+      grpc_server->master_env()->worker_cache->GetEagerClientCache(
+          &remote_eager_workers));
 
   // Initialize remote eager workers.
   tensorflow::gtl::FlatMap<string, tensorflow::uint64> remote_contexts;
