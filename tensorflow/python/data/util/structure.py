@@ -436,10 +436,7 @@ def get_flat_tensor_shapes(element_spec):
   Returns:
     A list `tf.TensorShapes`s for the element tensor representation.
   """
-
-  # pylint: disable=protected-access
-  return functools.reduce(lambda state, value: state + value._flat_shapes,
-                          nest.flatten(element_spec), [])
+  return [spec.shape for spec in get_flat_tensor_specs(element_spec)]
 
 
 def get_flat_tensor_types(element_spec):
@@ -452,10 +449,7 @@ def get_flat_tensor_types(element_spec):
   Returns:
     A list `tf.DType`s for the element tensor representation.
   """
-
-  # pylint: disable=protected-access
-  return functools.reduce(lambda state, value: state + value._flat_types,
-                          nest.flatten(element_spec), [])
+  return [spec.dtype for spec in get_flat_tensor_specs(element_spec)]
 
 
 def _to_tensor_list_helper(encode_fn, element_spec, element):

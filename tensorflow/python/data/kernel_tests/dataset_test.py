@@ -298,8 +298,10 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertTrue(
         structure.are_compatible(
             dataset_ops.get_structure(dataset), expected_element_structure))
-    self.assertEqual([dtypes.variant], dataset_structure._flat_types)
-    self.assertEqual([tensor_shape.scalar()], dataset_structure._flat_shapes)
+    self.assertEqual([dtypes.variant],
+                     structure.get_flat_tensor_types(dataset_structure))
+    self.assertEqual([tensor_shape.scalar()],
+                     structure.get_flat_tensor_shapes(dataset_structure))
 
     # Assert that the `Dataset` survives a round-trip via _from_tensor_list()
     # and _to_tensor_list().
