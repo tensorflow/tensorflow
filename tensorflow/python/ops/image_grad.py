@@ -286,7 +286,7 @@ def _rgb_to_hsv_grad(op, grad):
   dh_db_1 = 60 * (cast(blues > 0, dtypes.float32) * blue_biggest * -1 * (reds - greens) * _custom_reciprocal(square(saturation)) * _custom_reciprocal(square(value)))
   dh_db_2 = 60 * (cast(reds > 0, dtypes.float32) * red_biggest * blue_smallest * (greens - reds) * _custom_reciprocal(square(reds - blues)))
   dh_db_3 = 60 * (cast(reds > 0, dtypes.float32) * red_biggest * green_smallest * -1 * _custom_reciprocal(reds - greens))
-  dh_db_4 = 60 * (cast(greens > 0, dtypes.float32) * green_biggest * blue_smallest * (greens - reds) * _custom_reciprocal(square(greebs - blues)))
+  dh_db_4 = 60 * (cast(greens > 0, dtypes.float32) * green_biggest * blue_smallest * (greens - reds) * _custom_reciprocal(square(greens - blues)))
   dh_db_5 = 60 * (cast(greens > 0, dtypes.float32) * green_biggest * red_smallest * _custom_reciprocal(greens - reds))
 
   dh_db = dh_db_1 + dh_db_2 + dh_db_3 + dh_db_4 + dh_db_5
