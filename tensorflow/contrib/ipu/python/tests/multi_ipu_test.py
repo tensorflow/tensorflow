@@ -307,10 +307,10 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
 
       self.assertEqual(num_compiles, 1)
 
-      # There is 1 piece of global exchange (aprt from progId)
+      # There is 1 piece of global exchange (apart from progId)
       wl = [
-          'switchControlBroadcast*/GlobalPreAll',
-          '*_to_/custom-call/GlobalPreAll',
+          'switchControlBroadcast*/GlobalPre',
+          '*_to_/custom-call/GlobalPre',
       ]
       self.assertTrue(tu.check_all_compute_sets_and_list(ge_list, wl))
 
