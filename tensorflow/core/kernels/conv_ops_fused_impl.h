@@ -610,7 +610,8 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
           conv_parameters, launch, context, stream,
           [&](absl::Span<const tensorflow::AutotuneResult> results) {
             LogFusedConvForwardAutotuneResults(
-                se::dnn::ToDataType<T>::value, input_desc, filter_desc,
+                se::dnn::ToDataType<T>::value, input_ptr, filter_ptr,
+                output_ptr, bias_ptr, side_input_ptr, input_desc, filter_desc,
                 output_desc, conv_desc, 1.0, 0.0, dnn_activation_mode,
                 stream->parent(), results);
           },
