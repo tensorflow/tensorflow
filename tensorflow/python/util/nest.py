@@ -513,8 +513,9 @@ def map_structure(func, *structure, **kwargs):
     check_types = kwargs.pop("check_types", check_types)
     expand_composites = kwargs.pop("expand_composites", expand_composites)
     if kwargs:
-      raise ValueError("Only valid keyword arguments are check_types "
-                       "and expand_composites")
+      raise ValueError(
+          "Only valid keyword arguments are `check_types` and "
+          "`expand_composites`, not: `%s`" % ("`, `".join(kwargs.keys())))
 
   for other in structure[1:]:
     assert_same_structure(structure[0], other, check_types=check_types,
