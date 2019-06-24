@@ -260,19 +260,7 @@ void Operation::destroy() {
 }
 
 /// Return the context this operation is associated with.
-MLIRContext *Operation::getContext() {
-  // If the op has an attribute, a result type, or an operand type, we have a
-  // constant time way to get to the context.
-  if (auto dict = attrs.getDictionary())
-    return dict.getContext();
-  if (getNumResults())
-    return getResult(0)->getType().getContext();
-  if (getNumOperands())
-    return getOperand(0)->getType().getContext();
-
-  // For the rest, fallback to find the context by the enclosing region.
-  return getContainingRegion()->getContext();
-}
+MLIRContext *Operation::getContext() { return location->getContext(); }
 
 /// Return the dialact this operation is associated with, or nullptr if the
 /// associated dialect is not registered.
