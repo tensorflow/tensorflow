@@ -396,7 +396,12 @@ TF_CALL_ALL_TYPES(REGISTER_CPU);
                               .HostMemory("axis"),               \
                           RollOp<GPUDevice, type, int64, int64>)
 
+TF_CALL_int32(REGISTER_KERNEL);
+TF_CALL_int64(REGISTER_KERNEL);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNEL);
+TF_CALL_complex64(REGISTER_KERNEL);
+TF_CALL_complex128(REGISTER_KERNEL);
+
 #undef REGISTER_KERNEL
 #endif  // GOOGLE_CUDA
 }  // namespace tensorflow

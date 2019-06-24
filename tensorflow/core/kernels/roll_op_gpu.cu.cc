@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -78,12 +78,13 @@ struct Roll<GPUDevice, T> {
 
     CudaLaunchConfig cfg = GetCudaLaunchConfig(num_elements, d);
 
-    RollKernel<<<cfg.block_count, cfg.thread_per_block, 0,
-            d.stream()>>>(cfg.virtual_thread_count, num_dims,
-            input, output,
-            reinterpret_cast<const int32*>(dim_buf),
-            reinterpret_cast<const int32*>(thres_buf),
-            reinterpret_cast<const int64*>(range_buf));
+    TF_CHECK_OK(GpuLaunchKernel(
+        RollKernel<T>, cfg.block_count, cfg.thread_per_block, 0,
+        d.stream(), cfg.virtual_thread_count, num_dims,
+        input, output,
+        reinterpret_cast<const int32*>(dim_buf),
+        reinterpret_cast<const int32*>(thres_buf),
+        reinterpret_cast<const int64*>(range_buf)));
 
     d.deallocate(dim_buf);
     d.deallocate(thres_buf);
@@ -94,7 +95,11 @@ struct Roll<GPUDevice, T> {
 #define DEFINE_GPU_SPECS(T)                        \
   template struct Roll<GPUDevice, T>;              \
 
+TF_CALL_int32(DEFINE_GPU_SPECS);
+TF_CALL_int64(DEFINE_GPU_SPECS);
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
+TF_CALL_complex64(DEFINE_GPU_SPECS);
+TF_CALL_complex128(DEFINE_GPU_SPECS);
 
 #undef DEFINE_GPU_SPECS
 }  // namespace functor
