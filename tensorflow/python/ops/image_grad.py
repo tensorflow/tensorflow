@@ -174,7 +174,7 @@ def _RGBToHSVGrad(op, grad):
   This function is a piecewise continuous function as defined here:
   https://en.wikipedia.org/wiki/HSL_and_HSV#From_RGB
   We perform the multi variate derivative and compute all partial derivates
-  seperately before adding them in the end. Formulas are given before each 
+  seperately before adding them in the end. Formulas are given before each
   partial derivative calculation.
 
   Args:
