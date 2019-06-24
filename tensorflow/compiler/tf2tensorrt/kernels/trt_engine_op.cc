@@ -196,12 +196,8 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
                  context->GetAttr("workspace_size_bytes", &workspace_size_));
   OP_REQUIRES_OK(context, context->GetAttr("static_engine", &static_engine_));
   if (!static_engine_) {
-    if (!segment_graph_.ParseFromString(serialized_segment_)) {
-      LOG(ERROR) << "Parsing segment graph failed!";
-      context->SetStatus(
-          errors::InvalidArgument("Failed to parse segment graphdef!"));
-      return;
-    }
+    OP_REQUIRES(context, segment_graph_.ParseFromString(serialized_segment_),
+                errors::InvalidArgument("Failed to parse segment graphdef!"));
     VLOG(1) << "Size of serialized GraphDef: "
             << serialized_segment_.capacity();
     string tmp;
@@ -299,11 +295,10 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   for (int i = 0; i < num_inputs; i++) {
     const Tensor& t = ctx->input(i);
     void* data_address = GetTensorAddress(&t);
-    if (data_address == nullptr) {
-      ctx->SetStatus(errors::InvalidArgument(
-          "Unsupported data type encountered in input ", i));
-      return;
-    }
+    OP_REQUIRES_ASYNC(ctx, data_address,
+                      errors::InvalidArgument(
+                          "Unsupported data type encountered in input ", i),
+                      *helper);
     // Check the allocated buffer is sufficient for input
     const auto device_tensor =
         calib_res->device_tensors_.at(i).AccessTensor(ctx);
