@@ -729,12 +729,8 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DCustomBackpropInputOp);
 };
 
-// TODO(ezhulenev): Add XSMM support to LaunchConv2DBackpropInputOp functor.
-#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
+// TODO(ezhulenev): Add a cost model to switch between custom/Eigen ops.
 #define DEFAULT_CPU_OP Conv2DCustomBackpropInputOp
-#else
-#define DEFAULT_CPU_OP Conv2DBackpropInputOp
-#endif
 
 #define REGISTER_CPU_KERNELS(T)                                              \
   REGISTER_KERNEL_BUILDER(                                                   \
