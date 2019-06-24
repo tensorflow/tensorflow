@@ -137,7 +137,8 @@ void HloModule::ReplaceComputations(
         case HloOpcode::kMap:
         case HloOpcode::kReduce:
         case HloOpcode::kReduceWindow:
-        case HloOpcode::kScatter: {
+        case HloOpcode::kScatter:
+        case HloOpcode::kSort: {
           HloComputation* new_arg = tensorflow::gtl::FindWithDefault(
               replacements, instruction->to_apply(), nullptr);
           if (new_arg != nullptr) {
