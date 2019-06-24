@@ -352,14 +352,24 @@ def generated_test_models_failing(conversion_mode):
             "unidirectional_sequence_lstm",
             "unidirectional_sequence_rnn",
         ]
+    elif conversion_mode == "forward-compat":
+        return [
+            # TODO(b/135758082): L2Norm is broken in future forward
+            # compatibility horizon
+            "l2norm",
+            # TODO(b/135756979): Eye/MatrixDiag is broken in future
+            # forward compatibility horizon
+            "matrix_diag",
+            "matrix_set_diag",
+            "eye",
+        ]
 
     return []
 
 def generated_test_conversion_modes():
     """Returns a list of conversion modes."""
 
-    # TODO(nupurgarg): Add "pb2lite" when it's in open source. b/113614050.
-    return ["toco-flex", ""]
+    return ["toco-flex", "forward-compat", ""]
 
 def generated_test_models_all():
     """Generates a list of all tests with the different converters.
@@ -401,11 +411,10 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
     """
     toco = "//tensorflow/lite/toco:toco"
     flags = ""
-    if conversion_mode:
-        # TODO(nupurgarg): Comment in when pb2lite is in open source. b/113614050.
-        # if conversion_mode == "pb2lite":
-        #     toco = "//tensorflow/lite/experimental/pb2lite:pb2lite"
-        flags = "--ignore_converter_errors --run_with_flex"
+    if conversion_mode == "toco-flex":
+        flags += " --ignore_converter_errors --run_with_flex"
+    elif conversion_mode == "forward-compat":
+        flags += " --make_forward_compat_test"
 
     gen_zipped_test_file(
         name = "zip_%s" % test_name,

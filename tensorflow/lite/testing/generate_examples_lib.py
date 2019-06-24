@@ -29,6 +29,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import datetime
 import functools
 import itertools
 import operator
@@ -109,6 +110,8 @@ class Options(object):
     # A map from regular expression to bug number. Any test failure with label
     # matching the expression will be considered due to the corresponding bug.
     self.known_bugs = KNOWN_BUGS
+    # Make tests by setting TF forward compatibility horizon to the future.
+    self.make_forward_compat_test = False
 
 
 # A map from names to functions which make test cases.
@@ -5174,10 +5177,21 @@ def generate_examples(options):
   # Some zip filenames contain a postfix identifying the conversion mode. The
   # list of valid conversion modes is defined in
   # generated_test_conversion_modes() in build_def.bzl.
-  test_function = ("make_%s_tests" % (out.replace(".zip", "").replace(
-      "pb2lite", "").replace("toco-flex", "").rstrip("_")))
-  if test_function not in _MAKE_TEST_FUNCTIONS_MAP:
-    raise RuntimeError("Can't find a test function to create %r. Tried %r" %
-                       (out, test_function))
 
-  _MAKE_TEST_FUNCTIONS_MAP[test_function](options)
+  # Remove suffixes to extract the test name from the output name.
+  test_name = re.sub(r"(_(|toco-flex|forward-compat))?\.zip$", "", out, count=1)
+
+  test_function_name = "make_%s_tests" % test_name
+  if test_function_name not in _MAKE_TEST_FUNCTIONS_MAP:
+    raise RuntimeError("Can't find a test function to create %r. Tried %r" %
+                       (out, test_function_name))
+  test_function = _MAKE_TEST_FUNCTIONS_MAP[test_function_name]
+
+  if options.make_forward_compat_test:
+    future_date = datetime.date.today() + datetime.timedelta(days=30)
+    with tf.compat.forward_compatibility_horizon(future_date.year,
+                                                 future_date.month,
+                                                 future_date.day):
+      test_function(options)
+  else:
+    test_function(options)
