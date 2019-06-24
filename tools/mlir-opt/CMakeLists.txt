@@ -11,7 +11,6 @@ set(LIB_LIBS
   MLIRSupport
 )
 add_llvm_library(MLIRMlirOptLib
-  main.cpp
   mlir-opt.cpp
 )
 target_link_libraries(MLIRMlirOptLib ${LIB_LIBS})
