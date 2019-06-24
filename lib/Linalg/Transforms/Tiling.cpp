@@ -116,23 +116,6 @@ static bool isTiledView(LinalgOp linalgOp, unsigned viewIndex,
   return false;
 }
 
-static Value *foldRange(Value *view, unsigned dim) {
-  assert(view->getType().isa<ViewType>() && "View expected");
-  if (auto *op = view->getDefiningOp()) {
-    if (auto viewOp = dyn_cast<ViewOp>(op)) {
-      return *(viewOp.getIndexings().begin() + dim);
-    }
-    auto sliceOp = cast<SliceOp>(op);
-    for (auto *i : sliceOp.getIndexings())
-      if (i->getType().isa<RangeType>()) {
-        if (dim == 0)
-          return i;
-        --dim;
-      }
-  }
-  return nullptr;
-}
-
 static SmallVector<Value *, 4> makeTiledViews(OpBuilder &b, Location loc,
                                               LinalgOp linalgOp,
                                               ArrayRef<Value *> ivs,
@@ -162,20 +145,18 @@ static SmallVector<Value *, 4> makeTiledViews(OpBuilder &b, Location loc,
       continue;
     }
 
-    // If not a scalar, then construct a new slice.
-    SmallVector<Value *, 4> newRanges;
-    newRanges.reserve(viewRank);
+    // If not a scalar, then construct a new subview for the tile.
+    SmallVector<SubViewOp::Range, 4> subViewOperands;
+    subViewOperands.reserve(viewRank * 3);
     for (unsigned r = 0; r < viewRank; ++r) {
       // Loop position for the range dimension.
       auto pos = getPosInDomain(linalgOp, viewIndex, r);
       auto tileSize = tileSizes[pos];
       if (isZero(tileSize)) {
-        auto *foldedRange = foldRange(view, r);
-        foldedRange ? newRanges.push_back(foldedRange)
-                    : newRanges.push_back(
-                          range(state.create<ConstantIndexOp>(b, loc, 0),
-                                linalg::intrinsics::dim(view, r),
-                                state.create<ConstantIndexOp>(b, loc, 1)));
+        subViewOperands.push_back(
+            SubViewOp::Range{state.create<ConstantIndexOp>(b, loc, 0),
+                             linalg::intrinsics::dim(view, r),
+                             state.create<ConstantIndexOp>(b, loc, 1)});
         continue;
       }
 
@@ -192,16 +173,13 @@ static SmallVector<Value *, 4> makeTiledViews(OpBuilder &b, Location loc,
       // Tie this loose end in the future.
       ValueHandle lb(iv);
       ValueHandle step(tileSize);
-      ValueHandle steppedlb = lb + step;
-      ValueHandle viewSize = linalg::intrinsics::dim(view, r);
-      ValueHandle ub = select(viewSize < steppedlb, viewSize, steppedlb);
+      ValueHandle steppedLb = lb + step;
       // Tiling creates a new slice at the proper index, the slice step is 1
       // (i.e. the slice view does not subsample, stepping occurs in the loop).
-      newRanges.push_back(
-          range(lb, ub, state.create<ConstantIndexOp>(b, loc, 1)));
+      subViewOperands.push_back(SubViewOp::Range{
+          iv, steppedLb, state.create<ConstantIndexOp>(b, loc, 1)});
     }
-    // res.push_back(createOrReturnView(b, loc, viewDefiningOp, newRanges));
-    res.push_back(b.create<SliceOp>(loc, view, newRanges));
+    res.push_back(b.create<SubViewOp>(loc, view, subViewOperands));
   }
   return res;
 }

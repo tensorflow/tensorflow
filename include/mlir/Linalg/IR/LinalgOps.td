@@ -153,6 +153,15 @@ def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
   // TODO(ntv) evolve syntax towards:
   //   linalg.subview %0[%1:%2:%3][%4:%5:%6] : view<?x?xf32>
 
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result, Value *view, "
+    "ArrayRef<Value *> ranges",
+    [{
+      result->addOperands(view);
+      result->addOperands(ranges);
+      result->types.push_back(view->getType());
+    }]>];
+
   let verifier = [{
     auto numRanges = (getNumOperands() - 1) / 3;
     if (getNumOperands() != 3 * numRanges + 1 ||
@@ -177,6 +186,15 @@ def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
       for (unsigned i = 0; i < rank; ++i)
         res.push_back(getRange(i));
       return res;
+    }
+    // This requires `SubViewOp` to be declared, in the future it should be
+    // folded into the builders.
+    static void build(Builder *builder, OperationState *result, Value *view,
+        ArrayRef<SubViewOp::Range> ranges) {
+      result->addOperands(view);
+      for (auto r : ranges)
+        result->addOperands({r.min, r.max, r.step});
+      result->types.push_back(view->getType());
     }
   }];
 }

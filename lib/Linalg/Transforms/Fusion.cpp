@@ -77,7 +77,7 @@ static llvm::cl::list<unsigned> clTileSizes(
 // This is achieved by applying the `loopToOperandRangesMaps` permutation maps
 // to the `loopRanges` in order to obtain view ranges.
 static LinalgOp cloneWithLoopRanges(OpBuilder &b, Location loc, LinalgOp op,
-                                    ArrayRef<Value *> loopRanges,
+                                    ArrayRef<SubViewOp::Range> loopRanges,
                                     OperationFolder &state) {
   ScopedContext scope(b, loc);
 
@@ -92,18 +92,17 @@ static LinalgOp cloneWithLoopRanges(OpBuilder &b, Location loc, LinalgOp op,
     auto map = maps[idx];
     LLVM_DEBUG(dbgs() << "map: " << map << "\n");
     Value *view = en.value();
-    SmallVector<Value *, 8> viewRanges(map.getNumResults(), nullptr);
+    SmallVector<SubViewOp::Range, 8> viewRanges(map.getNumResults());
     for (auto en2 : llvm::enumerate(map.getResults())) {
       unsigned d = en2.index();
       // loopToOperandRangesMaps are permutations-only.
       unsigned loopPos = en2.value().cast<AffineDimExpr>().getPosition();
       viewRanges[d] = loopRanges[loopPos];
       LLVM_DEBUG(dbgs() << "i,j: " << en.index() << ", " << en2.index() << "\t"
-                        << "loopPos: " << loopPos << "\t" << *viewRanges[d]);
+                        << "loopPos: " << loopPos << "\t" << viewRanges[d]);
     }
-    // TODO(ntv) opportunities for folding / CSE here rather than build new
-    // IR (i.e. if dim folds away and the ranges are the same).
-    clonedViews.push_back(slice(view, viewRanges));
+    // TODO(ntv) opportunities for folding/CSE here rather than build new IR.
+    clonedViews.push_back(b.create<SubViewOp>(loc, view, viewRanges));
   }
   return op.create(b, loc, clonedViews);
 }
@@ -147,14 +146,13 @@ static Optional<LinalgOp> fuse(Value *producedView, LinalgOp producer,
     return llvm::None;
   unsigned producerIdx = maybeProducerIdx.getValue();
 
-  auto sliceOp = dyn_cast_or_null<SliceOp>(
+  auto sliceOp = dyn_cast_or_null<SubViewOp>(
       tiledConsumer.getInput(consumerIdx)->getDefiningOp());
   // If we don't have a slice, this also means we don't have loops and the
   // producer cannot be fused at this level.
   if (!sliceOp)
     return llvm::None;
 
-  auto sliceRanges = sliceOp.getRanges();
   AffineMap producerMap =
       loopToOperandRangesMaps(producer)[producer.getNumInputs() + producerIdx];
   LLVM_DEBUG(dbgs() << "Consumer Idx: " << consumerIdx << "\tmap: "
@@ -162,33 +160,30 @@ static Optional<LinalgOp> fuse(Value *producedView, LinalgOp producer,
   LLVM_DEBUG(dbgs() << "Producer Idx: " << producerIdx
                     << "\tmap: " << producerMap << "\n");
 
-  SmallVector<Value *, 8> loopRanges(producer.getNumParallelLoops() +
-                                         producer.getNumReductionLoops() +
-                                         producer.getNumWindowLoops(),
-                                     nullptr);
+  unsigned nPar = producer.getNumParallelLoops();
+  unsigned nRed = producer.getNumReductionLoops();
+  unsigned nWin = producer.getNumWindowLoops();
+  SmallVector<SubViewOp::Range, 8> loopRanges(nPar + nRed + nWin);
+  DenseSet<unsigned> fromSlice;
   for (auto en : llvm::enumerate(producerMap.getResults())) {
-    auto *r = *(sliceRanges.begin() + en.index());
     // loopToOperandRangesMaps are permutations-only.
     unsigned posInProducerLoop = en.value().cast<AffineDimExpr>().getPosition();
-    loopRanges[posInProducerLoop] = r;
+    loopRanges[posInProducerLoop] = sliceOp.getRange(en.index());
+    fromSlice.insert(posInProducerLoop);
   }
 
   OpBuilder b(tiledConsumer.getOperation());
   auto loc = tiledConsumer.getLoc();
   for (unsigned i = 0; i < loopRanges.size(); ++i) {
-    auto *r = loopRanges[i];
-    if (r)
-      LLVM_DEBUG(llvm::dbgs() << "LR: " << *r << "\n");
+    if (fromSlice.count(i))
+      LLVM_DEBUG(llvm::dbgs() << "LR: " << loopRanges[i] << "\n");
     else {
-      // TODO(ntv) opportunities for folding / CSE here rather than build new
-      // IR (i.e. if dim folds away and the ranges are the same).
       auto viewDim = getViewDefiningLoopRange(producer, i);
-      loopRanges[i] =
-          range(state.create<ConstantIndexOp>(b, loc, 0),
-                linalg::intrinsics::dim(viewDim.view, viewDim.dimension),
-                state.create<ConstantIndexOp>(b, loc, 1));
-      ;
-      LLVM_DEBUG(llvm::dbgs() << "new LR: " << *loopRanges[i] << "\n");
+      loopRanges[i] = SubViewOp::Range{
+          state.create<ConstantIndexOp>(b, loc, 0),
+          linalg::intrinsics::dim(viewDim.view, viewDim.dimension),
+          state.create<ConstantIndexOp>(b, loc, 1)};
+      LLVM_DEBUG(llvm::dbgs() << "new LR: " << loopRanges[i] << "\n");
     }
   }
 

@@ -814,6 +814,12 @@ static LogicalResult verify(ConvOp op) {
   return success();
 }
 
+llvm::raw_ostream &mlir::linalg::operator<<(llvm::raw_ostream &os,
+                                            SubViewOp::Range &range) {
+  return os << "range " << *range.min << ":" << *range.max << ":"
+            << *range.step;
+}
+
 namespace mlir {
 namespace linalg {
 
@@ -825,6 +831,7 @@ namespace linalg {
 
 } // namespace linalg
 } // namespace mlir
+
 static AffineMap extractOrIdentityMap(llvm::Optional<AffineMap> maybeMap,
                                       unsigned rank, MLIRContext *context) {
   if (maybeMap)

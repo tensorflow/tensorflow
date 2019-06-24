@@ -356,6 +356,8 @@ public:
 #define GET_OP_CLASSES
 #include "mlir/Linalg/IR/LinalgLibraryOps.h.inc"
 
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, SubViewOp::Range &range);
+
 /// Returns the list of maps that map loops to operands of a Linalg op.
 /// The i-th affine map identifies loop indices to subscripts that are used when
 /// accessing the i-th operand.
