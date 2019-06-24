@@ -151,7 +151,7 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
   B=tf.constant([[2,20,30,3,6],[3,11,16,1,8],[14,45,23,5,27]])
   tf.math.argmax(B,0) # [2, 2, 0, 2, 2]
   tf.math.argmax(B,1) # [2, 2, 1]
-   ```
+  ```
    
   Args:
     input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
