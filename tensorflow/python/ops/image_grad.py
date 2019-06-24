@@ -170,18 +170,20 @@ def _CustomReciprocal(x, my_eps=1e-10):
 
 @ops.RegisterGradient("RGBToHSV")
 def _RGBToHSVGrad(op, grad):
-  """The gradients for `zero_out`.
+  """The gradients for `rgb_to_hsv` operation.
+  This function is a piecewise continuous function as defined here:
+  https://en.wikipedia.org/wiki/HSL_and_HSV#From_RGB
+  We perform the multi variate derivative and compute all partial derivates
+  seperately before adding them in the end. Formulas are given before each 
+  partial derivative calculation.
 
   Args:
-    op: The `rgb_to_hsv` `Operation` that we are differentiating,
-      which we can use
-      to find the inputs and outputs of the original op.
+    op: The `rgb_to_hsv` `Operation` that we are differentiating.
     grad: Gradient with respect to the output of the `rgb_to_hsv` op.
 
   Returns:
     Gradients with respect to the input of `rgb_to_hsv`.
   """
-  print("******** This is a test implementation ********** \n")
   # Input Channels
   reds = op.inputs[0][..., 0]
   greens = op.inputs[0][..., 1]
