@@ -16,7 +16,9 @@
 
 #include <poplar/Engine.hpp>
 #include <poplar/Graph.hpp>
+#include <popops/Cast.hpp>
 #include <popops/DynamicSlice.hpp>
+#include <popops/Encoding.hpp>
 #include <popops/Pad.hpp>
 #include <poputil/TileMapping.hpp>
 
@@ -307,6 +309,72 @@ StatusOr<poplar::program::Program> CreateWideConstant(
     seq.add(poplar::program::Copy(out, layout));
     out = layout;
   }
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
+
+  return seq;
+}
+
+StatusOr<poplar::program::Program> CreateIota(CompilerResources& res,
+                                              const HloInstruction* inst,
+                                              const xla::Shape& output_shape,
+                                              TensorMap& tensor_map) {
+  poplar::program::Sequence seq;
+
+  poplar::Graph& graph = GetGraph(res, inst);
+
+  auto iota_inst = DynCast<HloIotaInstruction>(inst);
+  const auto iota_dimension = iota_inst->iota_dimension();
+
+  // Get iota length.
+  const int64 iota_length = output_shape.dimensions(iota_dimension);
+  switch (output_shape.element_type()) {
+    case S64: {
+      if (!convert_scalar<int32>(iota_length)) {
+        return xla::UnimplementedStrCat(
+            "Iota - trying to create an iota of length ", iota_length,
+            " but only 31-bit integer lengths are supported for signed types.");
+      }
+    }
+    case U64: {
+      if (!convert_scalar<uint32>(iota_length)) {
+        return xla::UnimplementedStrCat(
+            "Iota - trying to create an iota of length ", iota_length,
+            " but only 32-bit integer lengths are supported for unsigned "
+            "types.");
+      }
+    }
+    default:
+      break;
+  }
+
+  // Get the iota shape.
+  const bool is_signed = ShapeUtil::ElementIsSigned(output_shape);
+  auto iota_xla_type = is_signed ? S32 : U32;
+  auto iota_shape = ShapeUtil::MakeShape(iota_xla_type, {iota_length});
+
+  auto name = GetDebugName(inst);
+
+  // Create a tensor which stores the iota.
+  TF_ASSIGN_OR_RETURN(
+      poplar::Tensor iota_tensor,
+      AddPlainTensor(graph, name + "/InitialIotaTensor", iota_shape, res));
+  // Do the Iota.
+  if (is_signed) {
+    popops::iota(graph, iota_tensor, 0, seq, name + "/IotaSigned");
+  } else {
+    popops::iota(graph, iota_tensor, 0U, seq, name + "/IotaUnsigned");
+  }
+  // Cast it to the right type if the types don't match.
+  TF_ASSIGN_OR_RETURN(poplar::Type iota_type, PoplarDataType(iota_shape));
+  TF_ASSIGN_OR_RETURN(poplar::Type output_type, PoplarDataType(output_shape));
+  poplar::Tensor casted = iota_type != output_type
+                              ? popops::cast(graph, iota_tensor, output_type,
+                                             seq, name + "/IotaCast")
+                              : iota_tensor;
+
+  // Broadcast it to the right shape given the iota dimension.
+  TF_ASSIGN_OR_RETURN(poplar::Tensor out,
+                      BroadcastTensor(casted, output_shape, {iota_dimension}));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
   return seq;

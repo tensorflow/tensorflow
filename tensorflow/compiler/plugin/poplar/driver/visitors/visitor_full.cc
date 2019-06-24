@@ -308,14 +308,12 @@ Status FullVisitor::HandlePad(HloInstruction* inst) {
 
 Status FullVisitor::HandleIota(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  poplar::Graph& graph = GetGraph(resources_, inst);
 
-  auto* iota = Cast<HloIotaInstruction>(inst);
-  TF_ASSIGN_OR_RETURN(
-      poplar::Tensor t,
-      AddIotaTensor(graph, std::make_pair(inst, 0), GetOutputShape(inst),
-                    iota->iota_dimension(), resources_, tensor_map));
-  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, t));
+  TF_ASSIGN_OR_RETURN(auto prog, CreateIota(resources_, inst,
+                                            GetOutputShape(inst), tensor_map));
+
+  sequence.add(prog);
+
   return Status::OK();
 }
 

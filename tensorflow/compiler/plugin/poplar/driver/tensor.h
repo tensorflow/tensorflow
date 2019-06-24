@@ -106,13 +106,6 @@ StatusOr<poplar::Tensor> AddConstantTensor(poplar::Graph& graph,
                                            CompilerResources& resources,
                                            const TensorMap& tensor_map);
 
-StatusOr<poplar::Tensor> AddIotaTensor(poplar::Graph& graph,
-                                       const TensorSource& src,
-                                       const xla::Shape& shape,
-                                       int64 iota_dimension,
-                                       CompilerResources& resources,
-                                       const TensorMap& tensor_map);
-
 // Creates a constant tensor.
 StatusOr<poplar::Tensor> CreateConstantTensor(poplar::Graph& graph,
                                               const xla::Literal& literal,

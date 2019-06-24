@@ -159,12 +159,11 @@ StatusOr<poplar::Type> PoplarDataType(const xla::PrimitiveType& element_type) {
     case U8:
       return poplar::CHAR;
     case S32:
+    case S64:
       return poplar::INT;
     case U32:
-      return poplar::UNSIGNED_INT;
-    case S64:
     case U64:
-      return poplar::INT;
+      return poplar::UNSIGNED_INT;
     case F16:
       return poplar::HALF;
     case F32:
@@ -1301,49 +1300,6 @@ StatusOr<poplar::Tensor> AddConstantTensor(poplar::Graph& graph,
     std::vector<std::size_t> dim = PoplarShapeFromXlaShape(shape);
     return tensor.reshape(dim);
   }
-}
-
-template <typename TYPE>
-static Literal GetIotaLiteral(int64 len) {
-  std::vector<TYPE> data(len);
-  std::iota(data.begin(), data.end(), 0);
-  return LiteralUtil::CreateR1<TYPE>(data);
-}
-
-StatusOr<poplar::Tensor> AddIotaTensor(poplar::Graph& graph,
-                                       const TensorSource& src,
-                                       const xla::Shape& shape,
-                                       int64 iota_dimension,
-                                       CompilerResources& resources,
-                                       const TensorMap& tensor_map) {
-  TF_ASSIGN_OR_RETURN(poplar::Type type, PoplarDataType(shape));
-
-  int64 len = shape.dimensions(iota_dimension);
-  Literal literal;
-
-  switch (shape.element_type()) {
-    case S32: {
-      literal = GetIotaLiteral<int>(len);
-      break;
-    }
-    case U32: {
-      literal = GetIotaLiteral<unsigned>(len);
-      break;
-    }
-    case F32: {
-      literal = GetIotaLiteral<float>(len);
-      break;
-    }
-    default:
-      return xla::FailedPrecondition("unsupported primitive type for iota: %s",
-                                     PrimitiveType_Name(shape.element_type()));
-  }
-  auto iota_shape = ShapeUtil::MakeShape(shape.element_type(),
-                                         {shape.dimensions(iota_dimension)});
-  TF_ASSIGN_OR_RETURN(poplar::Tensor t,
-                      AddConstantTensor(graph, src, iota_shape, literal,
-                                        resources, tensor_map));
-  return BroadcastTensor(t, shape, {iota_dimension});
 }
 
 template <typename T>
