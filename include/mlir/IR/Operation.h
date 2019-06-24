@@ -79,6 +79,10 @@ public:
     return getName().getAbstractOperation();
   }
 
+  /// Returns true if this operation has a registered operation description,
+  /// otherwise false.
+  bool isRegistered() { return getAbstractOperation(); }
+
   /// Remove this operation from its parent block and delete it.
   void erase();
 

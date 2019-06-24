@@ -721,22 +721,6 @@ public:
   }
 };
 
-/// This verifies that all operands used in N-th region of the given operation
-/// are defined within that region. This is a weaker variant to the
-/// 'IsIsolatedFromAbove' trait above as it applies only to one specific region.
-template <unsigned RegionIdx> class NthRegionIsIsolatedFromAbove {
-public:
-  template <typename ConcreteType>
-  class Impl : public TraitBase<ConcreteType,
-                                NthRegionIsIsolatedFromAbove<RegionIdx>::Impl> {
-  public:
-    static LogicalResult verifyTrait(Operation *op) {
-      return success(
-          op->getRegion(RegionIdx).isIsolatedFromAbove(op->getLoc()));
-    }
-  };
-};
-
 } // end namespace OpTrait
 
 //===----------------------------------------------------------------------===//

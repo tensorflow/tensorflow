@@ -220,3 +220,27 @@ func @up_propagate_region() -> i32 {
   }) : () -> (i32)
   return %0 : i32
 }
+
+/// This test checks that nested regions that are isolated from above are
+/// properly handled.
+// CHECK-LABEL: @nested_isolated
+func @nested_isolated() -> i32 {
+  // CHECK-NEXT: constant 1
+  %0 = constant 1 : i32
+
+  // CHECK-NEXT: @nested_func
+  func @nested_func() {
+    // CHECK-NEXT: constant 1
+    %foo = constant 1 : i32
+    "foo.yield"(%foo) : (i32) -> ()
+  }
+
+  // CHECK: "foo.region"
+  "foo.region"() ({
+    // CHECK-NEXT: constant 1
+    %foo = constant 1 : i32
+    "foo.yield"(%foo) : (i32) -> ()
+  }) : () -> ()
+
+  return %0 : i32
+}
