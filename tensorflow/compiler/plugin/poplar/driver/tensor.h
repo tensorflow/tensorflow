@@ -40,13 +40,6 @@ poplar::Tensor ConvertFromDeviceLayout(const Shape& shape,
 bool PoplarShapeMatchesXLAShape(const poplar::Tensor& tensor,
                                 const xla::Shape& shape);
 
-// TODO T8403 - remove this function when Poplar supports it.
-poplar::Tensor DuplicateTensor(
-    const poplar::Tensor& src, poplar::program::Sequence& seq,
-    poplar::Graph& graph, std::string name,
-    const poplar::TensorCloneMethod clone_method =
-        poplar::TensorCloneMethod::PRESERVE_ORDER_UNLESS_ALIASES);
-
 // Concatante all tensors into a single tensor.
 poplar::Tensor FlattenAndConcatenteTensors(
     const std::vector<poplar::Tensor>& tensors);

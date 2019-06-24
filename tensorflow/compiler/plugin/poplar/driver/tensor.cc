@@ -53,6 +53,7 @@ limitations under the License.
 #include <popops/DynamicSlice.hpp>
 #include <popops/Gather.hpp>
 #include <poputil/TileMapping.hpp>
+#include <poputil/Util.hpp>
 
 #include <functional>
 #include <numeric>
@@ -1581,30 +1582,6 @@ bool AreInplaceOutputTensorsWritable(TensorMap& map,
   return true;
 }
 
-// TODO T8403 - remove this function when Poplar supports it.
-poplar::Tensor DuplicateTensor(const poplar::Tensor& src,
-                               poplar::program::Sequence& seq,
-                               poplar::Graph& graph, std::string name,
-                               const poplar::TensorCloneMethod clone_method) {
-  poplar::Tensor copy = graph.clone(src, name, clone_method);
-  poplar::Tensor copy_dst = copy;
-  poplar::Tensor copy_src = src;
-  if (clone_method == poplar::TensorCloneMethod::PRESERVE_ORDER_AND_ALIASES) {
-    // Remove all aliased regions in the source and destination tensor.
-    auto copy_flat = copy.flatten();
-    auto src_flat = src.flatten();
-
-    auto src_flat_regions = graph.getSortedContiguousRegions(
-        src_flat, {{0, src_flat.numElements()}}, true);
-    if (src_flat_regions.size()) {
-      copy_dst = poplar::concat(copy_flat.slices(src_flat_regions));
-      copy_src = poplar::concat(src_flat.slices(src_flat_regions));
-    }
-  }
-  seq.add(poplar::program::Copy(copy_src, copy_dst));
-  return copy;
-}
-
 StatusOr<ArgVectors> FindInplaceOutputTensors(TensorMap& map,
                                               CompilerResources& res,
                                               const HloInstruction* inst,
@@ -1704,8 +1681,8 @@ StatusOr<ArgVectors> FindInplaceOutputTensors(TensorMap& map,
                 << " inplace description: " << inplace_description.ToString();
         const auto* operand = inst->operand(inplace_indexes[i]);
         auto& graph = GetGraphWithOutputIndex(res, operand, tuple_idx);
-        t = DuplicateTensor(t, seq, graph, GetDebugName(inst) + ".clone",
-                            clone_method);
+        t = poputil::duplicate(graph, t, seq, GetDebugName(inst) + ".clone",
+                               clone_method);
       }
       tensors[i][tuple_idx] = t;
     }
