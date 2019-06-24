@@ -24,21 +24,14 @@ filegroup(
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_cuda_library",
     "tf_cc_test",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 # For platform specific build config
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_kernel_tests_linkstatic",
-)
-load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
 )
 
 package(default_visibility = [
@@ -59,7 +52,7 @@ cc_library(
     ],
 )
 
-tf_cuda_library(
+cc_library(
     name = "seastar_worker_service",
     srcs = select({"//tensorflow:with_seastar_support": ["seastar_worker_service.cc",
                                                          "seastar_client_tag.cc",
@@ -86,7 +79,6 @@ tf_cuda_library(
                                                          ":seastar_tensor_coding"],
                    "//conditions:default": []})
     + [
-        "//tensorflow/contrib/verbs:verbs_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:worker_proto_cc",

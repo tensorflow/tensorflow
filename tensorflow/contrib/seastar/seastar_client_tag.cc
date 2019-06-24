@@ -1,8 +1,4 @@
 #include "tensorflow/core/common_runtime/dma_helper.h"
-#if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
-#endif // GOOGLE_CUDA
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/logging.h"
@@ -98,8 +94,10 @@ void InitSeastarClientTag(protobuf::Message* request,
     if (can_memcpy) {
       if (response->GetDevice()->tensorflow_gpu_device_info() &&
           (!response->GetOnHost())) {
- #if GOOGLE_CUDA
-        Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
+        AllocatorAttributes alloc_attrs;
+        alloc_attrs.set_gpu_compatible(true);
+        alloc_attrs.set_on_host(true);
+        Allocator* alloc = response->GetDevice()->GetAllocator(alloc_attrs);
         Tensor cpu_copy(alloc, sm.data_type_, sm.tensor_shape_);
 
         tag->resp_tensor_buf_.data_
@@ -108,9 +106,6 @@ void InitSeastarClientTag(protobuf::Message* request,
         tag->resp_tensor_buf_.owned_ = false;
           
         response->SetTensor(cpu_copy);
-#else
-        return errors::Internal("No GPU device in process");
-#endif
 
       } else { 
         Tensor val(response->GetAlloc(), sm.data_type_, sm.tensor_shape_);
@@ -145,14 +140,11 @@ void InitSeastarClientTag(protobuf::Message* request,
     if (can_memcpy) {
       if (response->GetDevice()->tensorflow_gpu_device_info() &&
           (!response->GetOnHost())) {
-#if GOOGLE_CUDA
         Tensor* gpu_copy = new Tensor(response->GetAlloc(),
                                       response->GetTensor().dtype(),
                                       response->GetTensor().shape());
-        GPUUtil::CopyCPUTensorToGPU(&response->GetTensor(),
-                                    response->GetDevice()->tensorflow_gpu_device_info()->default_context,
-                                    response->GetDevice(),
-                                    gpu_copy,
+        DeviceContext* recv_dev_context = response->GetDevice()->tensorflow_gpu_device_info()->default_context;
+        recv_dev_context->CopyCPUTensorToDevice(&response->GetTensor(), response->GetDevice(), gpu_copy,
                                     [gpu_copy, response, done, tag](const Status& s) {
                                       CHECK(s.ok()) << "copy tensor to gpu sync";
                                       response->SetTensor(*gpu_copy);
@@ -160,10 +152,6 @@ void InitSeastarClientTag(protobuf::Message* request,
                                       delete gpu_copy;
                                       delete tag;
                                     });
-#else
-        done(errors::Internal("No GPU device in process"));
-        delete tag;
-#endif
       } else {
         done(s);
         delete tag;

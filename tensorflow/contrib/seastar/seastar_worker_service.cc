@@ -2,7 +2,6 @@
 #include "tensorflow/contrib/seastar/seastar_tag_factory.h"
 #include "tensorflow/contrib/seastar/seastar_tensor_coding.h"
 #include "tensorflow/contrib/seastar/seastar_worker_service.h"
-#include "tensorflow/contrib/verbs/verbs_util.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
@@ -10,11 +9,6 @@
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/session_options.h"
-
-#if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
-#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 namespace {
@@ -285,43 +279,25 @@ void SeastarWorker::RecvTensorAsync(CallOptions* opts,
 
           if (src_dev->tensorflow_gpu_device_info() &&
               (!send_args.alloc_attrs.on_host())) {
-#if GOOGLE_CUDA
             CHECK(send_args.device_context)
               << "send dev name: " << src_dev->name()
               << " gpu_info: " << src_dev->tensorflow_gpu_device_info();
 
-            if (can_memcpy) {
-              Allocator* alloc =
-                ProcessState::singleton()->GetCUDAHostAllocator(0);
-              Tensor* cpu_copy =
-                new Tensor(alloc, val.dtype(), val.shape());
+            AllocatorAttributes alloc_attrs;
+            alloc_attrs.set_gpu_compatible(true);
+            alloc_attrs.set_on_host(true);
+            Allocator* alloc = src_dev->GetAllocator(alloc_attrs);
+            Tensor* cpu_copy =
+              new Tensor(alloc, val.dtype(), val.shape());
 
-              GPUUtil::CopyGPUTensorToCPU(
-                  src_dev, send_args.device_context, &val, cpu_copy,
-                  [response, cpu_copy, done](const Status& s) {
-                    CHECK(s.ok()) << "copy tensor from gpu sync";
-                    response->SetTensor(*cpu_copy);
-                    delete cpu_copy;
-                    done(s);
-                  });
-            } else {
-              // NOTE(rangeng.llb): Should not be executed currrently.
-              Tensor* copy = new Tensor(val);
-              GPUUtil::SetProtoFromGPU(*copy,
-                  src_dev,
-                  send_args.device_context,
-                  &response->GetTensorProto(),
-                  is_dead,
-                  [response, copy, done] (const Status& s) {
-                    CHECK(s.ok()) << "copy proto from gpu sync";
-                    response->SetTensor(*copy);
-                    delete copy;
-                    done(s);
-                  });
-            }
-#else
-            done(errors::Internal("No GPU device in process"));
-#endif
+            send_args.device_context->CopyDeviceTensorToCPU(
+                &val, request->rendezvous_key(), src_dev, cpu_copy,
+                [response, cpu_copy, done](const Status& s) {
+                  CHECK(s.ok()) << "copy tensor from gpu sync";
+                  response->SetTensor(*cpu_copy);
+                  delete cpu_copy;
+                  done(s);
+                });
           } else {
             // tensor is in CPU memory.
             response->SetTensor(val);

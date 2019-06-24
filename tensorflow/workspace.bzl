@@ -909,7 +909,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "seastar",
         urls = [
-            "https://mirror.bazel.build/github.com/seastar/seastar/archive/seastar-protocol.tar.gz",
+            "https://mirror.bazel.build/github.com/AlibabaPAI/seastar/archive/seastar_protocol.tar.gz",
             "https://github.com/AlibabaPAI/seastar/archive/tensorflow_protocol.tar.gz",
         ],
         sha256 = "00e934bff0ce69e4c048bb3e896de4d99bf6c95e193fe82fd2b666229e0b620b",
