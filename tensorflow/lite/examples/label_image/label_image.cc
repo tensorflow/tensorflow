@@ -184,7 +184,8 @@ void RunInference(Settings* s) {
       exit(-1);
   }
 
-  profiling::Profiler* profiler = new profiling::Profiler();
+  profiling::Profiler* profiler =
+      new profiling::Profiler(s->max_profiling_buffer_entries);
   interpreter->SetProfiler(profiler);
 
   if (s->profiling) profiler->StartProfiling();
@@ -287,12 +288,13 @@ int Main(int argc, char** argv) {
         {"input_mean", required_argument, nullptr, 'b'},
         {"input_std", required_argument, nullptr, 's'},
         {"num_results", required_argument, nullptr, 'r'},
+        {"max_profiling_buffer_entries", required_argument, nullptr, 'e'},
         {nullptr, 0, nullptr, 0}};
 
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
-    c = getopt_long(argc, argv, "a:b:c:f:i:l:m:p:r:s:t:v:", long_options,
+    c = getopt_long(argc, argv, "a:b:c:e:f:i:l:m:p:r:s:t:v:", long_options,
                     &option_index);
 
     /* Detect the end of the options. */
@@ -307,6 +309,10 @@ int Main(int argc, char** argv) {
         break;
       case 'c':
         s.loop_count =
+            strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
+        break;
+      case 'e':
+        s.max_profiling_buffer_entries =
             strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
       case 'f':
