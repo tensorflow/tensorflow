@@ -1044,9 +1044,12 @@ class GradientTape(object):
         vectorization in such cases.
 
     Returns:
-      a list or nested structure of Tensors (or IndexedSlices, or None),
-      one for each element in `sources`. Returned structure is the same as
-      the structure of `sources`.
+      A list or nested structure of Tensors (or None), one for each element in
+      `sources`. Returned structure is the same as the structure of `sources`.
+      Note if any gradient is sparse (IndexedSlices), jacobian function
+      currently makes it dense and returns a Tensor instead. This may change in
+      the future.
+
 
     Raises:
       RuntimeError: If called on a non-persistent tape with eager execution
