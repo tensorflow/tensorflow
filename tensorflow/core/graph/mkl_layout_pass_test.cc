@@ -1039,45 +1039,45 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv2DTranspose_Negative) {
 
 TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv3DTranspose_Positive) {
   InitGraph(
-      "node { name: 'Input0' op: 'Input'}                                       \
-       node { name: 'Input1' op: 'Input'}                                       \
-       node { name: 'Const0' op: 'Const'                                        \
-         attr { key: 'dtype' value { type: DT_INT32 } }                         \
-         attr {                                                                 \
-           key: 'value'                                                         \
-           value {                                                              \
-             tensor {                                                           \
-               dtype: DT_INT32                                                  \
-               tensor_shape {                                                   \
-                 dim {                                                          \
-                   size: 5                                                      \
-                 }                                                              \
-               }                                                                \
-               tensor_content:                                                  \
-       '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004\\000  \
-       \\000\\000\\001\\000\\000\\000'                                          \
-             }                                                                  \
-           }                                                                    \
-         }                                                                      \
-       }                                                                        \
-       node { name: 'Const1' op: 'Const'                                        \
-         attr { key: 'dtype' value { type: DT_INT32 } }                         \
-         attr {                                                                 \
-           key: 'value'                                                         \
-           value {                                                              \
-             tensor {                                                           \
-               dtype: DT_INT32                                                  \
-               tensor_shape {                                                   \
-                 dim {                                                          \
-                   size: 5                                                      \
-                 }                                                              \
-               }                                                                \
-               tensor_content:                                                  \
-       '\\000\\000\\000\\000\\004\\000\\000\\000\\001\\000\\000\\000\\002\\000  \
-       \\000\\000\\003\\000\\000\\000'                                          \
-             }                                                                  \
-           }                                                                    \
-         }                                                                      \
+      "node { name: 'Input0' op: 'Input'}                                     \
+       node { name: 'Input1' op: 'Input'}                                     \
+       node { name: 'Const0' op: 'Const'                                      \
+         attr { key: 'dtype' value { type: DT_INT32 } }                       \
+         attr {                                                               \
+           key: 'value'                                                       \
+           value {                                                            \
+             tensor {                                                         \
+               dtype: DT_INT32                                                \
+               tensor_shape {                                                 \
+                 dim {                                                        \
+                   size: 5                                                    \
+                 }                                                            \
+               }                                                              \
+               tensor_content:                                                \
+       '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004\\000\
+       \\000\\000\\001\\000\\000\\000'                                        \
+             }                                                                \
+           }                                                                  \
+         }                                                                    \
+       }                                                                      \
+       node { name: 'Const1' op: 'Const'                                      \
+         attr { key: 'dtype' value { type: DT_INT32 } }                       \
+         attr {                                                               \
+           key: 'value'                                                       \
+           value {                                                            \
+             tensor {                                                         \
+               dtype: DT_INT32                                                \
+               tensor_shape {                                                 \
+                 dim {                                                        \
+                   size: 5                                                    \
+                 }                                                            \
+               }                                                              \
+               tensor_content:                                                \
+       '\\000\\000\\000\\000\\004\\000\\000\\000\\001\\000\\000\\000\\002\\000\
+       \\000\\000\\003\\000\\000\\000'                                        \
+             }                                                                \
+           }                                                                  \
+         }                                                                    \
        }"
       "node {              \
         name: 'Transpose0' \
@@ -1183,55 +1183,55 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv3DTranspose_Positive) {
 
 TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv3DTranspose_Negative) {
   InitGraph(
-      "node { name: 'Input0' op: 'Input'}                                        \
-       node { name: 'Input1' op: 'Input'}                                        \
-       node { name: 'Const0' op: 'Const'                                         \
-         attr {                                                                  \
-           key: 'dtype'                                                          \
-           value {                                                               \
-             type: DT_INT32                                                      \
-           }                                                                     \
-         }                                                                       \
-         attr {                                                                  \
-           key: 'value'                                                          \
-           value {                                                               \
-             tensor {                                                            \
-               dtype: DT_INT32                                                   \
-               tensor_shape {                                                    \
-                 dim {                                                           \
-                   size: 5                                                       \
-                 }                                                               \
-               }                                                                 \
-               tensor_content:                                                   \
-       '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004\\000   \
-        \\000\\000\\001\\000\\000\\000'                                          \
-             }                                                                   \
-           }                                                                     \
-         }                                                                       \
-       }                                                                         \
-       node { name: 'Const1' op: 'Const'                                         \
-         attr {                                                                  \
-           key: 'dtype'                                                          \
-           value {                                                               \
-             type: DT_INT32                                                      \
-           }                                                                     \
-         }                                                                       \
-         attr {                                                                  \
-           key: 'value'                                                          \
-           value {                                                               \
-             tensor {                                                            \
-               dtype: DT_INT32                                                   \
-               tensor_shape {                                                    \
-                 dim {                                                           \
-                   size: 5                                                       \
-                 }                                                               \
-               }                                                                 \
-               tensor_content:                                                   \
-       '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004\\000   \
-       \\000\\000\\001\\000\\000\\000'                                           \
-             }                                                                   \
-           }                                                                     \
-         }                                                                       \
+      "node { name: 'Input0' op: 'Input'}                                     \
+       node { name: 'Input1' op: 'Input'}                                     \
+       node { name: 'Const0' op: 'Const'                                      \
+         attr {                                                               \
+           key: 'dtype'                                                       \
+           value {                                                            \
+             type: DT_INT32                                                   \
+           }                                                                  \
+         }                                                                    \
+         attr {                                                               \
+           key: 'value'                                                       \
+           value {                                                            \
+             tensor {                                                         \
+               dtype: DT_INT32                                                \
+               tensor_shape {                                                 \
+                 dim {                                                        \
+                   size: 5                                                    \
+                 }                                                            \
+               }                                                              \
+               tensor_content:                                                \
+       '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004\\000\
+        \\000\\000\\001\\000\\000\\000'                                       \
+             }                                                                \
+           }                                                                  \
+         }                                                                    \
+       }                                                                      \
+       node { name: 'Const1' op: 'Const'                                      \
+         attr {                                                               \
+           key: 'dtype'                                                       \
+           value {                                                            \
+             type: DT_INT32                                                   \
+           }                                                                  \
+         }                                                                    \
+         attr {                                                               \
+           key: 'value'                                                       \
+           value {                                                            \
+             tensor {                                                         \
+               dtype: DT_INT32                                                \
+               tensor_shape {                                                 \
+                 dim {                                                        \
+                   size: 5                                                    \
+                 }                                                            \
+               }                                                              \
+               tensor_content:                                                \
+       '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004\\000\
+       \\000\\000\\001\\000\\000\\000'                                        \
+             }                                                                \
+           }                                                                  \
+         }                                                                    \
        }"
       "node {              \
         name: 'Transpose0' \
