@@ -155,10 +155,10 @@ def _CropAndResizeGrad(op, grad):
   return [grad0, grad1, None, None]
 
 
-def _custom_reciprocal(x, my_eps=1e-10):
+def _CustomReciprocal(x, my_eps=1e-10):
   """
-  Performs reciprocal with an EPS added to the input. This is to avoid inversion errors 
-  or divide by zeros or NaNs.
+  Performs reciprocal with an eps added to the input. This is to avoid
+  inversion errors or divide by zeros or NaNs.
   Inputs:
     x -> input tensor to be reciprocat-ed
     my_eps -> custom machine precision epsilon
@@ -169,11 +169,12 @@ def _custom_reciprocal(x, my_eps=1e-10):
 
 
 @ops.RegisterGradient("RGBToHSV")
-def _rgb_to_hsv_grad(op, grad):
+def _RGBToHSVGrad(op, grad):
   """The gradients for `zero_out`.
 
   Args:
-    op: The `rgb_to_hsv` `Operation` that we are differentiating, which we can use
+    op: The `rgb_to_hsv` `Operation` that we are differentiating,
+      which we can use
       to find the inputs and outputs of the original op.
     grad: Gradient with respect to the output of the `rgb_to_hsv` op.
 
@@ -181,7 +182,6 @@ def _rgb_to_hsv_grad(op, grad):
     Gradients with respect to the input of `rgb_to_hsv`.
   """
   print("******** This is a test implementation ********** \n")
-    
   # Input Channels
   reds = op.inputs[0][..., 0]
   greens = op.inputs[0][..., 1]
@@ -191,8 +191,8 @@ def _rgb_to_hsv_grad(op, grad):
   saturation = op.outputs[0][..., 1]
   value = op.outputs[0][..., 2]
 
-  # Mask/Indicator for max and min values of each pixel. Arbitrary assignment in case 
-  # of tie breakers with R>G>B.
+  # Mask/Indicator for max and min values of each pixel.
+  # Arbitrary assignment in case of tie breakers with R>G>B.
   # Max values
   red_biggest = cast((reds >= blues) & (reds >= greens), dtypes.float32)
   green_biggest = cast((greens > reds) & (greens >= blues), dtypes.float32)
@@ -211,18 +211,27 @@ def _rgb_to_hsv_grad(op, grad):
   ##############################################################
   # Derivatives of R, G, B wrt Saturation slice
   ##############################################################
-  # The first term in the addition is the case when the corresponding color from (r,g,b) was "MAX" 
+  # The first term in the addition is the case when the corresponding color
+  # from (r,g,b) was "MAX"
   # -> derivative = MIN/square(MAX), MIN could be one of the other two colors
-  # The second term is the case when the corresponding color from (r,g,b) was "MIN" 
+  # The second term is the case when the corresponding color from
+  # (r,g,b) was "MIN"
   # -> derivative = -1/MAX, MAX could be one of the other two colours.
-  # Defining a custom replacement for machine epsilon (eps) to avoid NaNs or divide by zeros
-  my_eps = 0.000000001
-  ds_dr = cast(reds > 0, dtypes.float32) * add(red_biggest * divide(add(green_smallest * greens, blue_smallest * blues), square(reds + my_eps)), 
-              red_smallest * -reciprocal(add(green_biggest * greens, blue_biggest * blues + my_eps))) 
-  ds_dg = cast(greens > 0, dtypes.float32) * add(green_biggest * divide(add(red_smallest * reds, blue_smallest * blues), square(greens + my_eps)), 
-              green_smallest * -reciprocal(add(red_biggest * reds, blue_biggest * blues + my_eps)))
-  ds_db = cast(blues > 0, dtypes.float32) * add(blue_biggest * divide(add(green_smallest * greens, red_smallest * reds), square(blues + my_eps)), 
-              blue_smallest * -reciprocal(add(green_biggest * greens, red_biggest * reds + my_eps)))
+  ds_dr = cast(reds > 0, dtypes.float32) * add(red_biggest * \
+               add(green_smallest * greens, blue_smallest * blues) * \
+               _CustomReciprocal(square(reds)),\
+               red_smallest * -1 * _CustomReciprocal((green_biggest * \
+               greens) + (blue_biggest * blues)))
+  ds_dg = cast(greens > 0, dtypes.float32) * add(green_biggest * \
+               add(red_smallest * reds, blue_smallest * blues) * \
+               _CustomReciprocal(square(greens)),\
+               green_smallest * -1 * _CustomReciprocal((red_biggest * \
+               reds) + (blue_biggest * blues)))
+  ds_db = cast(blues > 0, dtypes.float32) * add(blue_biggest * \
+               add(green_smallest * greens, red_smallest * reds) * \
+               _CustomReciprocal(square(blues)),\
+               blue_smallest * -1 * _CustomReciprocal((green_biggest * \
+               greens) + (red_biggest * reds)))
   ##############################################################
   # Derivatives of R, G, B wrt Hue slice
   ##############################################################
@@ -230,71 +239,122 @@ def _rgb_to_hsv_grad(op, grad):
 
   # for red, dh_dr -> dh_dr_1 + dh_dr_2 + dh_dr_3 + dh_dr_4 + dh_dr_5
   # dh_dr_1 ->
-  # if red was MAX, then derivative = 60 * -1 * (G-B)/square(MAX-MIN) == 60 * -1 * (greens-blues) * reciprocal(square(saturation)) * reciprical(square(value))
-  # elif green was MAX, there are two subcases ie when red was MIN and when red was NOT MIN
+  # if red was MAX, then derivative = 60 * -1 * (G-B)/square(MAX-MIN) == 60 *\
+  #  -1 * (greens-blues) * reciprocal(square(saturation)) * \
+  #  reciprical(square(value))
+  # elif green was MAX, there are two subcases
+  # ie when red was MIN and when red was NOT MIN
   #   dh_dr_2 ->
-  #   if red was MIN (use UV rule) ->  60 * ((1 * -1/(MAX-MIN))  + (B-R)*(-1/square(MAX-MIN) * -1)) == 60 * (blues - greens) * reciprocal(square(reds - greens))
+  #   if red was MIN (use UV rule) ->  60 * ((1 * -1/(MAX-MIN)) +\
+  #     (B-R)*(-1/square(MAX-MIN) * -1)) == 60 * (blues - greens) *\
+  #     reciprocal(square(reds - greens))
   #   dh_dr_3 ->
   #   if red was NOT MIN -> 60 * -1/MAX-MIN == -60 * reciprocal(greens-blues)
   # elif blue was MAX, there are two subcases
   #   dh_dr_4 ->
-  #   if red was MIN (similarly use the UV rule) -> 60 * (blues - greens) * reciprocal(square(blues - reds))
-  #   dh_dr_5 -> 
+  #   if red was MIN (similarly use the UV rule) -> 60 * (blues - greens) *\
+  #     reciprocal(square(blues - reds))
+  #   dh_dr_5 ->
   #   if red was NOT MIN -> 60 * 1/MAX-MIN == 60 * reciprocal(blues-greens)
-  dh_dr_1 = 60 * (cast(reds > 0, dtypes.float32) * red_biggest * -1  * (greens - blues) * _custom_reciprocal(square(saturation)) * _custom_reciprocal(square(value)))
-  dh_dr_2 = 60 * (cast(greens > 0, dtypes.float32) * green_biggest * red_smallest  * (blues - greens) * _custom_reciprocal(square(reds - greens)))
-  dh_dr_3 = 60 * (cast(greens > 0, dtypes.float32) * green_biggest * blue_smallest * -1 * _custom_reciprocal(greens - blues))
-  dh_dr_4 = 60 * (cast(blues > 0, dtypes.float32) * blue_biggest * red_smallest * (blues - greens) * _custom_reciprocal(square(blues - reds)))
-  dh_dr_5 = 60 * (cast(blues > 0, dtypes.float32) * blue_biggest * green_smallest * _custom_reciprocal(blues - greens))
+  dh_dr_1 = 60 * (cast(reds > 0, dtypes.float32) * red_biggest * -1  * \
+                  (greens - blues) * _CustomReciprocal(square(saturation)) *\
+                  _CustomReciprocal(square(value)))
+  dh_dr_2 = 60 * (cast(greens > 0, dtypes.float32) * green_biggest * \
+                  red_smallest  * (blues - greens) * \
+                  _CustomReciprocal(square(reds - greens)))
+  dh_dr_3 = 60 * (cast(greens > 0, dtypes.float32) * green_biggest * \
+                  blue_smallest * -1 * _CustomReciprocal(greens - blues))
+  dh_dr_4 = 60 * (cast(blues > 0, dtypes.float32) * blue_biggest * \
+                  red_smallest * (blues - greens) * \
+                  _CustomReciprocal(square(blues - reds)))
+  dh_dr_5 = 60 * (cast(blues > 0, dtypes.float32) * blue_biggest * \
+                  green_smallest * _CustomReciprocal(blues - greens))
 
   dh_dr = dh_dr_1 + dh_dr_2 + dh_dr_3 + dh_dr_4 + dh_dr_5
-  
+
   # for green, dh_dg -> dh_dg_1 + dh_dg_2 + dh_dg_3 + dh_dg_4 + dh_dg_5
   # dh_dg_1 ->
-  # if green was MAX, then derivative = 60 * -1 * (B-R)/square(MAX-MIN) == 60 * -1 * (blues - reds) * reciprocal(square(saturation)) * reciprocal(square(value))
-  # elif red was MAX, there are two subcases ie when green was MIN and when green was NOT MIN
+  # if green was MAX, then derivative = 60 * -1 * (B-R)/square(MAX-MIN) == 60 *\
+  #   -1 * (blues - reds) * reciprocal(square(saturation)) * \
+  #   reciprocal(square(value))
+  # elif red was MAX, there are two subcases ie
+  # when green was MIN and when green was NOT MIN
   #   dh_dg_2 ->
-  #   if green was MIN (use UV rule) ->  60 * ((1 * 1/(MAX-MIN))  + (greens-blues)*(-1/square(MAX-MIN) * -1)) == 60 * ((reciprocal(reds-greens) + (greens-blues)*reciprocal(square(reds-greens))))
+  #   if green was MIN (use UV rule) ->  60 * ((1 * 1/(MAX-MIN)) + \
+  #     (greens-blues) * (-1/square(MAX-MIN) * -1)) == 60 * \
+  #     ((reciprocal(reds-greens) + (greens-blues) * \
+  #     reciprocal(square(reds-greens))))
   #   dh_dg_3 ->
   #   if green was NOT MIN -> 60 * 1/MAX-MIN == 60 * reciprocal(reds - blues)
   # elif blue was MAX, there are two subcases
   #   dh_dg_4 ->
-  #   if green was MIN (similarly use the UV rule) -> 60 * -1 * (reciprocal(blues - greens) + (reds-greens)* -1 * reciprocal(square(blues-greens)))
-  #   dh_dr_5 -> 
-  #   if green was NOT MIN -> 60 * -1/MAX-MIN == 60 * -1 * reciprocal(blues - reds)
-  dh_dg_1 = 60 * (cast(greens > 0, dtypes.float32) * green_biggest * -1 * (blues - reds) * _custom_reciprocal(square(saturation)) * _custom_reciprocal(square(value)))
-  dh_dg_2 = 60 * (cast(reds > 0, dtypes.float32) * red_biggest * green_smallest * (reds - blues) * _custom_reciprocal(square(reds - greens)))
-  dh_dg_3 = 60 * (cast(reds > 0, dtypes.float32) * red_biggest * blue_smallest * _custom_reciprocal(reds - blues))
-  dh_dg_4 = 60 * (cast(blues > 0, dtypes.float32) * blue_biggest * green_smallest * (reds - blues) * _custom_reciprocal(square(blues - greens)))
-  dh_dg_5 = 60 * (cast(blues > 0, dtypes.float32) * blue_biggest * red_smallest * -1 * _custom_reciprocal(blues - reds))
+  #   if green was MIN (similarly use the UV rule) -> 60 * -1 * \
+  #     (reciprocal(blues - greens) + (reds-greens)* -1 * \
+  #     reciprocal(square(blues-greens)))
+  #   dh_dr_5 ->
+  #   if green was NOT MIN -> 60 * -1/MAX-MIN == -60 * reciprocal(blues - reds)
+  dh_dg_1 = 60 * (cast(greens > 0, dtypes.float32) * green_biggest * \
+                  -1 * (blues - reds) * _CustomReciprocal(square(saturation))\
+                  * _CustomReciprocal(square(value)))
+  dh_dg_2 = 60 * (cast(reds > 0, dtypes.float32) * red_biggest * \
+                  green_smallest * (reds - blues) * \
+                  _CustomReciprocal(square(reds - greens)))
+  dh_dg_3 = 60 * (cast(reds > 0, dtypes.float32) * red_biggest * \
+                  blue_smallest * _CustomReciprocal(reds - blues))
+  dh_dg_4 = 60 * (cast(blues > 0, dtypes.float32) * blue_biggest * \
+                  green_smallest * (reds - blues) * \
+                  _CustomReciprocal(square(blues - greens)))
+  dh_dg_5 = 60 * (cast(blues > 0, dtypes.float32) * blue_biggest * \
+                  red_smallest * -1 * _CustomReciprocal(blues - reds))
 
   dh_dg = dh_dg_1 + dh_dg_2 + dh_dg_3 + dh_dg_4 + dh_dg_5
 
   # for blue, dh_db -> dh_db_1 + dh_db_2 + dh_db_3 + dh_db_4 + dh_db_5
   # dh_db_1 ->
-  # if blue was MAX, then derivative = 60 * -1 * (R-G)/square(MAX-MIN) == 60 * -1 * reciprocal(square(saturation)) * reciprocal(square(value))
-  # elif red was MAX, there are two subcases ie when blue was MIN and when blue was NOT MIN
+  # if blue was MAX, then derivative = 60 * -1 * (R-G)/square(MAX-MIN) == 60 *\
+  #   -1 * reciprocal(square(saturation)) * reciprocal(square(value))
+  # elif red was MAX, there are two subcases
+  # ie when blue was MIN and when blue was NOT MIN
   #   dh_dg_2 ->
-  #   if blue was MIN (use UV rule) ->  60 * ((1 * -1/(MAX-MIN))  + (greens-blues)*(-1/square(MAX-MIN) * -1)) == 60 * (greens - reds) * reciprocal(square(reds - blues))
+  #   if blue was MIN (use UV rule) ->  60 * ((1 * -1/(MAX-MIN)) + \
+  #     (greens-blues) * (-1/square(MAX-MIN) * -1)) == 60 * (greens - reds) *\
+  #     reciprocal(square(reds - blues))
   #   dh_dg_3 ->
-  #   if blue was NOT MIN -> 60 * -1/MAX-MIN == 60 * -1 * reciprocal(reds - greens)
+  #   if blue was NOT MIN -> 60 * -1/MAX-MIN == 60 * -1 * \
+  #     reciprocal(reds - greens)
   # elif green was MAX, there are two subcases
   #   dh_dg_4 ->
-  #   if blue was MIN (similarly use the UV rule) -> 60 * -1 * (reciprocal(greens - blues) + (blues - reds)* -1 * reciprocal(square(greens - blues)))
-  #   dh_dr_5 -> 
+  #   if blue was MIN (similarly use the UV rule) -> 60 * -1 * \
+  #     (reciprocal(greens - blues) + (blues - reds) * -1 * \
+  #     reciprocal(square(greens - blues)))
+  #   dh_dr_5 ->
   #   if blue was NOT MIN -> 60 * 1/MAX-MIN == 60 * reciprocal(greens - reds)
-  dh_db_1 = 60 * (cast(blues > 0, dtypes.float32) * blue_biggest * -1 * (reds - greens) * _custom_reciprocal(square(saturation)) * _custom_reciprocal(square(value)))
-  dh_db_2 = 60 * (cast(reds > 0, dtypes.float32) * red_biggest * blue_smallest * (greens - reds) * _custom_reciprocal(square(reds - blues)))
-  dh_db_3 = 60 * (cast(reds > 0, dtypes.float32) * red_biggest * green_smallest * -1 * _custom_reciprocal(reds - greens))
-  dh_db_4 = 60 * (cast(greens > 0, dtypes.float32) * green_biggest * blue_smallest * (greens - reds) * _custom_reciprocal(square(greens - blues)))
-  dh_db_5 = 60 * (cast(greens > 0, dtypes.float32) * green_biggest * red_smallest * _custom_reciprocal(greens - reds))
+  dh_db_1 = 60 * (cast(blues > 0, dtypes.float32) * blue_biggest * -1 * \
+                  (reds - greens) * _CustomReciprocal(square(saturation)) * \
+                  _CustomReciprocal(square(value)))
+  dh_db_2 = 60 * (cast(reds > 0, dtypes.float32) * red_biggest *\
+                  blue_smallest * (greens - reds) * \
+                  _CustomReciprocal(square(reds - blues)))
+  dh_db_3 = 60 * (cast(reds > 0, dtypes.float32) * red_biggest * \
+                  green_smallest * -1 * _CustomReciprocal(reds - greens))
+  dh_db_4 = 60 * (cast(greens > 0, dtypes.float32) * green_biggest * \
+                  blue_smallest * (greens - reds) * \
+                  _CustomReciprocal(square(greens - blues)))
+  dh_db_5 = 60 * (cast(greens > 0, dtypes.float32) * green_biggest * \
+                  red_smallest * _CustomReciprocal(greens - reds))
 
   dh_db = dh_db_1 + dh_db_2 + dh_db_3 + dh_db_4 + dh_db_5
 
   # Gradients wrt to inputs
-  dv_drgb = stack([grad[...,2] * dv_dr, grad[...,2] * dv_dg, grad[...,2] * dv_db], axis=-1)
-  ds_drgb = stack([grad[...,1] * ds_dr, grad[...,1] * ds_dg, grad[...,1] * ds_db], axis=-1)
-  dh_drgb = stack([grad[...,0] * dh_dr, grad[...,0] * dh_dg, grad[...,0] * dh_db], axis=-1)
+  dv_drgb = stack([grad[..., 2] * dv_dr,
+                   grad[..., 2] * dv_dg,
+                   grad[..., 2] * dv_db], axis=-1)
+  ds_drgb = stack([grad[..., 1] * ds_dr,
+                   grad[..., 1] * ds_dg,
+                   grad[..., 1] * ds_db], axis=-1)
+  dh_drgb = stack([grad[..., 0] * dh_dr,
+                   grad[..., 0] * dh_dg,
+                   grad[..., 0] * dh_db], axis=-1)
 
   gradient_input = add(add(dv_drgb, ds_drgb), dh_drgb)
 
