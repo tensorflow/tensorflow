@@ -102,6 +102,18 @@ def _make_int64_tensor(value, name):
 
 @tf_export("sparse.from_dense")
 def from_dense(tensor, name=None):
+  """Converts a dense tensor into a sparse tensor.
+
+  Only elements not equal to zero will be present in the result. The resulting
+  `SparseTensor` has the same dtype and shape as the input.
+
+  Args:
+    tensor: A dense `Tensor` to be converted to a `SparseTensor`.
+    name: Optional name for the op.
+
+  Returns:
+    The `SparseTensor`.
+  """
   with ops.name_scope(name, "dense_to_sparse"):
     tensor = ops.convert_to_tensor(tensor)
     indices = array_ops.where_v2(
