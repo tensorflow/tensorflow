@@ -93,9 +93,9 @@ class InterleaveMany : public Node {
     if (num_inputs() <= 1) {
       return SelfProcessingTimeLocked();
     }
-    double processing_time =
-        (ProcessingTimeForInputs() - inputs_.front()->TotalProcessingTime()) /
-        static_cast<double>(num_inputs() - 1);
+    double processing_time = (TotalProcessingTimeForInputs() -
+                              inputs_.front()->TotalProcessingTime()) /
+                             static_cast<double>(num_inputs() - 1);
     return SelfProcessingTimeLocked() + processing_time;
   }
 };
@@ -163,7 +163,7 @@ class AsyncInterleaveMany : public Node {
       return SelfProcessingTimeLocked();
     }
     double processing_time =
-        ProcessingTimeForInputs() - inputs_.front()->TotalProcessingTime();
+        TotalProcessingTimeForInputs() - inputs_.front()->TotalProcessingTime();
     return SelfProcessingTimeLocked() +
            processing_time / static_cast<double>(num_inputs() - 1);
   }
@@ -202,7 +202,7 @@ class KnownRatio : public Node {
   // The processing time is the sum of the self processing time and the product
   // of `ratio_` and the sum of processing times of inputs.
   double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
-    return SelfProcessingTimeLocked() + ratio_ * ProcessingTimeForInputs();
+    return SelfProcessingTimeLocked() + ratio_ * TotalProcessingTimeForInputs();
   }
 
  private:
@@ -260,7 +260,7 @@ class AsyncKnownRatio : public Node {
   // The processing time is the sum of the self processing time and the product
   // of `ratio_` and the sum of processing times of inputs.
   double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
-    return SelfProcessingTimeLocked() + ratio_ * ProcessingTimeForInputs();
+    return SelfProcessingTimeLocked() + ratio_ * TotalProcessingTimeForInputs();
   }
 
  private:
@@ -312,7 +312,7 @@ class UnknownRatio : public Node {
     std::shared_ptr<Node> input = inputs_.front();
     double ratio = static_cast<double>(input->num_elements()) /
                    static_cast<double>(num_elements_);
-    return SelfProcessingTimeLocked() + ratio * ProcessingTimeForInputs();
+    return SelfProcessingTimeLocked() + ratio * TotalProcessingTimeForInputs();
   }
 };
 
@@ -336,7 +336,7 @@ class Unknown : public Node {
 
   // The processing time is the sum of processing times of inputs.
   double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
-    return ProcessingTimeForInputs();
+    return TotalProcessingTimeForInputs();
   }
 };
 

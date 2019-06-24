@@ -353,7 +353,7 @@ class Node {
   //
   // Uniform distribution of per-element processing times across different
   // inputs is assumed.
-  double ProcessingTimeForInputs() SHARED_LOCKS_REQUIRED(mu_) {
+  double TotalProcessingTimeForInputs() SHARED_LOCKS_REQUIRED(mu_) {
     // If the number of elements produced by a node is smaller than this
     // constant, then the processing time history is used as a prior for the
     // processing time computation.
@@ -366,7 +366,7 @@ class Node {
     for (auto& input : inputs_) {
       // Inputs for which autotuning is disabled are excluded.
       if (input->autotune()) {
-        processing_time = input->SelfProcessingTime();
+        processing_time = input->TotalProcessingTime();
         num_elements = input->num_elements();
         // The fewer elements the input has produced so far, the more weight
         // is assigned to the prior to reduce volatility.
