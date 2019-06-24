@@ -1053,12 +1053,6 @@ class HloInstruction {
                                 const CompareFunction& operand_order,
                                 bool call_finish_visit = true);
 
-  // Performs a postorder DFS visit using this node as the root. Calls the given
-  // visitor function at each instruction.
-  Status Accept(const std::function<Status(HloInstruction*)>& visitor_func);
-  Status Accept(
-      const std::function<Status(const HloInstruction*)>& visitor_func) const;
-
   // Visit this instruction and only this instruction with the given visitor.
   template <typename HloInstructionPtr>
   Status Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor);

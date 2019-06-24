@@ -432,8 +432,9 @@ TEST_F(HloComputationTest, CycleDetection) {
   auto instructions = computation->MakeInstructionPostOrder();
   EXPECT_EQ(3, instructions.size());
 
-  const auto visitor = [](HloInstruction* instruction) { return Status::OK(); };
-  auto visit_status = computation->Accept(visitor);
+  FunctionVisitor visitor(
+      [](HloInstruction* instruction) { return Status::OK(); });
+  auto visit_status = computation->Accept(&visitor);
   ASSERT_FALSE(visit_status.ok());
   ASSERT_THAT(visit_status.error_message(),
               ::testing::ContainsRegex("cycle is detecte"));
