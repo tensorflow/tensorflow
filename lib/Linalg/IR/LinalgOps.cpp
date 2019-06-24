@@ -662,6 +662,40 @@ static ParseResult parseRangeIntersectOp(OpAsmParser *parser,
                  parser->addTypeToList(type, result->types));
 }
 
+static void print(OpAsmPrinter *p, SubViewOp op) {
+  *p << op.getOperationName() << " " << *op.getOperand(0) << "[";
+  auto ranges = op.getRanges();
+  interleaveComma(ranges, *p, [&p](const SubViewOp::Range &i) {
+    *p << *i.min << ", " << *i.max << ", " << *i.step;
+  });
+  *p << "]";
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.getViewType();
+}
+
+static ParseResult parseSubViewOp(OpAsmParser *parser, OperationState *result) {
+  OpAsmParser::OperandType inputView, resultView;
+  Type viewType;
+  if (parser->parseOperand(inputView))
+    return failure();
+
+  SmallVector<OpAsmParser::OperandType, 12> ops;
+  // TODO(ntv) evolve parsing from
+  //    linalg.subview %0[%1, %2, %3, %4, %5, %6]
+  // to something resembling
+  //    linalg.subview %0[%1:%2:%3][%4:%5:%6]
+  if (parser->parseOperandList(ops, OpAsmParser::Delimiter::Square) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonType(viewType))
+    return failure();
+
+  auto indexTy = parser->getBuilder().getIndexType();
+  return failure(
+      parser->resolveOperand(inputView, viewType, result->operands) ||
+      parser->resolveOperands(ops, indexTy, result->operands) ||
+      parser->addTypeToList(viewType, result->types));
+}
+
 /////// Operations corresponding to library calls defined with Tablegen ////////
 // For such operations correspond to library calls (i.e. defined in
 // LinalgLibraryOps.td), we define an overloaded `print` function and a

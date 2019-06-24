@@ -31,6 +31,7 @@
 #include "mlir/Linalg/IR/LinalgOps.h"
 #include "mlir/Linalg/IR/LinalgTypes.h"
 #include "mlir/Linalg/Passes.h"
+#include "mlir/Linalg/Utils/Intrinsics.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
@@ -48,6 +49,7 @@ using namespace mlir::edsc;
 using namespace mlir::edsc::intrinsics;
 using namespace mlir::LLVM;
 using namespace mlir::linalg;
+using namespace mlir::linalg::intrinsics;
 
 using add = ValueBuilder<mlir::LLVM::AddOp>;
 using addi = ValueBuilder<mlir::AddIOp>;
@@ -716,6 +718,30 @@ struct LowerLinalgToLLVMPass : public ModulePass<LowerLinalgToLLVMPass> {
 };
 } // namespace
 
+// This is currently written as a standalone function because the lowering to
+// affine will look different than lowering to LLVM and it is still unclear how
+// everything will be eventually structured.
+static void lowerLinalgSubViewOps(Function &f) {
+  f.walk<SubViewOp>([&](SubViewOp op) {
+    OpBuilder b(op);
+    ScopedContext scope(b, op.getLoc());
+    auto *view = op.getView();
+    SmallVector<Value *, 8> ranges;
+    for (auto en : llvm::enumerate(op.getRanges())) {
+      using edsc::op::operator<;
+      using linalg::intrinsics::dim;
+      unsigned rank = en.index();
+      auto sliceRange = en.value();
+      auto size = dim(view, rank);
+      ValueHandle ub(sliceRange.max);
+      auto max = edsc::intrinsics::select(size < ub, size, ub);
+      ranges.push_back(range(sliceRange.min, max, sliceRange.step));
+    }
+    op.replaceAllUsesWith(slice(view, ranges));
+    op.erase();
+  });
+}
+
 // Converts a `linalg.for` op to CFG form before actual conversion to the LLVM
 // dialect starts.
 static void lowerLinalgForToCFG(Function &f) {
@@ -773,6 +799,7 @@ void LowerLinalgToLLVMPass::runOnModule() {
   auto &module = getModule();
 
   for (auto &f : module.getFunctions()) {
+    lowerLinalgSubViewOps(f);
     lowerLinalgForToCFG(f);
     if (failed(lowerAffineConstructs(f)))
       signalPassFailure();

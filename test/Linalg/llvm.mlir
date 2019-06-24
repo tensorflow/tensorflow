@@ -171,3 +171,25 @@ func @linalg_for_2(%arg0 : index, %arg1 : index, %arg2 : index) {
 //       CHECK:   %9 = llvm.mul %0, %7 : !llvm.i64
 //       CHECK:   %10 = llvm.add %7, %arg2 : !llvm.i64
 //       CHECK:   llvm.br ^bb8(%10 : !llvm.i64)
+
+func @subview(%arg0: !linalg.view<?x?xf32>) {
+  %c0 = constant 0 : index
+  %0 = linalg.subview %arg0[%c0, %c0, %c0, %c0, %c0, %c0] : !linalg.view<?x?xf32>
+  return
+}
+// CHECK-LABEL: func @subview(%arg0: !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">) {
+//       CHECK:   %0 = llvm.constant(0 : index) : !llvm.i64
+//       CHECK:   %1 = llvm.extractvalue %arg0[2, 0] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
+//       CHECK:   %2 = llvm.icmp "slt" %1, %0 : !llvm.i64
+//       CHECK:   %3 = llvm.select %2, %1, %0 : !llvm.i1, !llvm.i64
+//       CHECK:   %4 = llvm.undef : !llvm<"{ i64, i64, i64 }">
+//       CHECK:   %5 = llvm.insertvalue %0, %4[0] : !llvm<"{ i64, i64, i64 }">
+//       CHECK:   %6 = llvm.insertvalue %3, %5[1] : !llvm<"{ i64, i64, i64 }">
+//       CHECK:   %7 = llvm.insertvalue %0, %6[2] : !llvm<"{ i64, i64, i64 }">
+//       CHECK:   %8 = llvm.extractvalue %arg0[2, 1] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
+//       CHECK:   %9 = llvm.icmp "slt" %8, %0 : !llvm.i64
+//       CHECK:   %10 = llvm.select %9, %8, %0 : !llvm.i1, !llvm.i64
+//       CHECK:   %11 = llvm.undef : !llvm<"{ i64, i64, i64 }">
+//       CHECK:   %12 = llvm.insertvalue %0, %11[0] : !llvm<"{ i64, i64, i64 }">
+//       CHECK:   %13 = llvm.insertvalue %10, %12[1] : !llvm<"{ i64, i64, i64 }">
+//       CHECK:   %14 = llvm.insertvalue %0, %13[2] : !llvm<"{ i64, i64, i64 }">

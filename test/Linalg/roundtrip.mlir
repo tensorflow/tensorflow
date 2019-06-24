@@ -144,3 +144,12 @@ func @conv_view6(%arg0: !linalg.view<?x?x?x?x?x?xf32>, %arg1: !linalg.view<?x?x?
 }
 // CHECK-LABEL: func @conv_view6(%arg0: !linalg.view<?x?x?x?x?x?xf32>, %arg1: !linalg.view<?x?x?x?x?x?xf32>, %arg2: !linalg.view<?x?x?x?x?x?xf32>) {
 //       CHECK:   linalg.conv(%arg0, %arg1, %arg2) {dilations: [4, 4, 5, 5], strides: [2, 2, 3, 3]} : !linalg.view<?x?x?x?x?x?xf32>, !linalg.view<?x?x?x?x?x?xf32>, !linalg.view<?x?x?x?x?x?xf32>
+
+func @subview(%arg0: !linalg.view<?x?xvector<3x4xi4>>) {
+  %c0 = constant 0 : index
+  %0 = linalg.subview %arg0[%c0, %c0, %c0, %c0, %c0, %c0] : !linalg.view<?x?xvector<3x4xi4>>
+  return
+}
+// CHECK-LABEL: func @subview(%arg0: !linalg.view<?x?xvector<3x4xi4>>) {
+//       CHECK:   %c0 = constant 0 : index
+//       CHECK:   %0 = linalg.subview %arg0[%c0, %c0, %c0, %c0, %c0, %c0] : !linalg.view<?x?xvector<3x4xi4>>

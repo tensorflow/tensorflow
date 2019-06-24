@@ -134,4 +134,51 @@ def TerminatorOp :
   let verifier = ?;
 }
 
+def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
+    Arguments<(ins View:$view, Variadic<Index>:$ranges)>,
+    Results<(outs View)> {
+  let summary = "subview operation";
+  let description = [{
+    The "linalg.subview" operation takes a linalg.view, a list of indices and
+    returns a new linalg.view of the same type that is contained within the
+    operand view.
+    This operation is equivalent to a non-rank-reducing slice operation. The
+    main difference is the operands are all of type `index` and no intermediate
+    linalg.range operations are required. A "linalg.subview" is thus a
+    specialized linalg.slice with a higher level of abstraction.
+
+      %1 = linalg.subview %0[%1, %2, %3, %4, %5, %6] : view<?x?xf32>
+
+  }];
+  // TODO(ntv) evolve syntax towards:
+  //   linalg.subview %0[%1:%2:%3][%4:%5:%6] : view<?x?xf32>
+
+  let verifier = [{
+    auto numRanges = (getNumOperands() - 1) / 3;
+    if (getNumOperands() != 3 * numRanges + 1 ||
+        numRanges != getViewType().getRank())
+      return emitOpError("expected a view followed by 3 indices specifying ") <<
+        "a range for each dimension";
+    return success();
+  }];
+
+  let extraClassDeclaration = [{
+    Value *getView() { return getOperand(0); }
+    ViewType getViewType() { return getView()->getType().cast<ViewType>(); }
+    struct Range { Value *min; Value *max; Value *step; };
+    Range getRange(unsigned i) {
+      return Range{
+        getOperand(1 + 3*i), getOperand(1 + 3*i + 1), getOperand(1 + 3*i + 2)};
+    }
+    SmallVector<Range, 8> getRanges() {
+      SmallVector<Range, 8> res;
+      unsigned rank = getViewType().getRank();
+      res.reserve(rank);
+      for (unsigned i = 0; i < rank; ++i)
+        res.push_back(getRange(i));
+      return res;
+    }
+  }];
+}
+
 #endif // LINALG_OPS
