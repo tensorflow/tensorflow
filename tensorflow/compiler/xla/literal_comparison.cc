@@ -373,7 +373,7 @@ class NearComparator {
   }
 
   // Insert the given error into the given error bucket vector.
-  void UpdateErrorBucket(float error, absl::Span<int64> error_buckets) {
+  void UpdateErrorBucket(double error, absl::Span<int64> error_buckets) {
     CHECK_EQ(error_buckets.size(), kErrorBucketBounds.size());
     for (int i = 0; i < error_buckets.size(); ++i) {
       if (error >= kErrorBucketBounds[i]) {
