@@ -32,6 +32,7 @@ import weakref
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import tf2
 from tensorflow.python.client import session as session_module
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
@@ -1593,8 +1594,9 @@ def moving_average_update(x, value, momentum):
   # moving_averages, being low-level ops, should not be part of the training
   # module.
   from tensorflow.python.training import moving_averages  # pylint: disable=g-import-not-at-top
+  zero_debias = not tf2.enabled()
   return moving_averages.assign_moving_average(
-      x, value, momentum, zero_debias=True)
+      x, value, momentum, zero_debias=zero_debias)
 
 
 # LINEAR ALGEBRA
