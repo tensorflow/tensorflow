@@ -102,3 +102,9 @@ CategoricalTest.testEmpty # Integer output
 NonMaxSuppressionTest # Complex reductions
 XlaOpsNumericalTest.testShiftRightLogical # Unsigned int
 XlaOpsNumericalTest.testShiftRightArithmetic  # Unsigned int
+XlaSortOpTest.testTopK_200000
+XlaSortOpTest.testTopKLarge
+XlaSortOpTest.testTopK2D_200000
+XlaSortOpTest.testTopK2DLarge
+XlaSortOpTest.testInTopKLarge
+XlaSortOpTest.testInTopKLarge
