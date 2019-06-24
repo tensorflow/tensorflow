@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -180,14 +179,6 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
   return Status::OK();
 }
 
-static DotDimensionNumbers GetGemmDotDimensionNumbers(
-    const HloInstruction* instr) {
-  CHECK(IsCublasGemm(*instr));
-  return instr->backend_config<GemmBackendConfig>()
-      .ConsumeValueOrDie()
-      .dot_dimension_numbers();
-}
-
 Status GpuLayoutAssignment::AddBackendConstraints(
     LayoutConstraints* constraints) {
   // Add convolution constraints in reverse postorder that the earliest
@@ -205,11 +196,12 @@ Status GpuLayoutAssignment::AddBackendConstraints(
     // For batched dot we require the default layout.
     // TODO(b/112111608): This is overly conservative, the only real restriction
     // is that batch dimensions must be major.
-    if (IsCublasGemm(*instruction) &&
-        GetGemmDotDimensionNumbers(instruction).lhs_batch_dimensions_size() >
-            0) {
+    if (instruction->opcode() == HloOpcode::kDot &&
+        ImplementedAsGemm(*instruction) &&
+        instruction->dot_dimension_numbers().lhs_batch_dimensions_size() > 0) {
       // Verify that the batch dims come before the row and col dims.
-      DotDimensionNumbers dim_nums = GetGemmDotDimensionNumbers(instruction);
+      const DotDimensionNumbers& dim_nums =
+          instruction->dot_dimension_numbers();
       CHECK_EQ(dim_nums.lhs_batch_dimensions_size(),
                dim_nums.rhs_batch_dimensions_size());
       CHECK_EQ(dim_nums.lhs_batch_dimensions_size() + 2,

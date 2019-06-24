@@ -305,6 +305,102 @@ TEST_F(InstructionFusionTest, DontFuseGTE) {
                    .ValueOrDie());
 }
 
+TEST_F(InstructionFusionTest, DotOutputFusion) {
+  auto module = ParseHloString(R"(
+  HloModule test_module
+  ENTRY OutputFusion {
+    alpha = f32[] constant(3)
+    broadcast = f32[4,4]{1,0} broadcast(alpha), dimensions={}
+    p0 = f32[4,3]{1,0} parameter(0)
+    p1 = f32[4,3]{1,0} parameter(1)
+    transpose = f32[3,4]{1,0} transpose(p1), dimensions={1, 0}
+    dot = f32[4,4]{1,0} dot(p0, transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    ROOT mul = f32[4,4] multiply(dot, broadcast)
+  })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion());
+  EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kOutput);
+  EXPECT_THAT(
+      root->fused_expression_root(),
+      op::Multiply(op::Dot(op::Parameter(), op::Transpose(op::Parameter())),
+                   op::Broadcast(op::Constant())));
+}
+
+TEST_F(InstructionFusionTest, DotOutputFusionBiasAdd) {
+  auto module = ParseHloString(R"(
+  HloModule test_module
+  ENTRY OutputFusion {
+    alpha = f32[] constant(3)
+    broadcast = f32[4,4]{1,0} broadcast(alpha), dimensions={}
+    p0 = f32[4,3]{1,0} parameter(0)
+    p1 = f32[4,3]{1,0} parameter(1)
+    p2 = f32[4,4]{1,0} parameter(2)
+    transpose = f32[3,4]{1,0} transpose(p1), dimensions={1, 0}
+    dot = f32[4,4]{1,0} dot(p0, transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    ROOT add = f32[4,4] add(dot, p2)
+  })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion());
+  EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kOutput);
+  EXPECT_THAT(root->fused_expression_root(),
+              op::Add(op::Dot(op::Parameter(), op::Transpose(op::Parameter())),
+                      op::Parameter()));
+}
+
+TEST_F(InstructionFusionTest,
+       DotOperationFusion_DontOutputFuseDuplicateOperands) {
+  absl::string_view module_string = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[50,60]{1,0} parameter(0)
+  b = f32[60,1]{1,0} parameter(1)
+  c = f32[50,1]{1,0} dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT d = f32[50,1]{1,0} add(c, c)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool fused_something,
+      GpuInstructionFusion(/*may_duplicate=*/false).Run(module.get()));
+  EXPECT_FALSE(fused_something);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              Not(op::Fusion()));
+}
+
+TEST_F(InstructionFusionTest, DotOutputFusion_DontUnlessImplementedAsGemm) {
+  auto module = ParseHloString(R"(
+    HloModule dot
+
+    ENTRY entry_computation {
+      p0 = f32[64,63,512]{2,1,0} parameter(0)
+      p1 = f32[512,512]{1,0} parameter(1)
+      p2 = f32[64,63,512]{2,1,0} parameter(2)
+      dot.3525 = f32[64,63,512]{2,1,0} dot(p0, p1), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+      ROOT add.3529 = f32[64,63,512]{2,1,0} add(dot.3525, p2)
+    })")
+                    .ValueOrDie();
+
+  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
+                   .Run(module.get())
+                   .ValueOrDie())
+      << module->ToString();
+}
+
 // Compute sum(1/p0), where p0 has type f32, twice.  Check that the division is
 // duplicated and fused into both reduces.
 TEST_F(InstructionFusionTest, FloatingPointDivIsCheap) {

@@ -22,8 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logger.h"
@@ -39,8 +37,9 @@ namespace gpu {
 
 using tensorflow::AutotuneResult;
 
-using GemmCacheKey = std::tuple<se::StreamExecutor*, Shape, Shape, Shape,
-                                double, double, std::string>;
+using GemmCacheKey =
+    std::tuple<se::StreamExecutor*, Shape, Shape, Shape, double, double, int64,
+               int64, int64, std::string>;
 
 static tensorflow::mutex autotune_cache_mu(tensorflow::LINKER_INITIALIZED);
 static auto& autotune_cache GUARDED_BY(autotune_cache_mu) =
@@ -187,10 +186,12 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   GemmBackendConfig gemm_config =
       instr->backend_config<GemmBackendConfig>().ValueOrDie();
 
-  GemmCacheKey key =
-      std::make_tuple(stream->parent(), lhs->shape(), rhs->shape(),
-                      instr->shape(), gemm_config.alpha(), gemm_config.beta(),
-                      gemm_config.dot_dimension_numbers().SerializeAsString());
+  GemmCacheKey key = std::make_tuple(
+      stream->parent(), lhs->shape(), rhs->shape(), instr->shape(),
+      gemm_config.alpha(), gemm_config.beta(),
+      gemm_config.lhs_parameter_number(), gemm_config.rhs_parameter_number(),
+      gemm_config.bias_parameter_number(),
+      gemm_config.dot_dimension_numbers().SerializeAsString());
 
   tensorflow::mutex_lock cache_lock(autotune_cache_mu);
   auto it = autotune_cache.find(key);
@@ -258,8 +259,10 @@ static StatusOr<bool> RunOnInstruction(HloInstruction* instr,
 
   GemmBackendConfig gemm_config =
       instr->backend_config<GemmBackendConfig>().ValueOrDie();
-  const HloInstruction* lhs = instr->operand(0);
-  const HloInstruction* rhs = instr->operand(1);
+  const HloInstruction* lhs =
+      instr->operand(gemm_config.lhs_parameter_number());
+  const HloInstruction* rhs =
+      instr->operand(gemm_config.rhs_parameter_number());
 
   TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase lhs_buffer,
                       get_initialized_buffer(lhs));
@@ -300,7 +303,7 @@ static StatusOr<bool> RunOnComputation(HloComputation* computation,
                                        se::DeviceMemoryAllocator* allocator) {
   bool changed = false;
   for (HloInstruction* instr : computation->instructions()) {
-    if (IsCublasGemm(*instr)) {
+    if (ImplementedAsGemm(*instr)) {
       TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(instr, se, allocator));
       changed |= result;
     }
@@ -317,7 +320,7 @@ StatusOr<bool> GemmAlgorithmPicker::Run(HloModule* module) {
   }
 
   bool changed = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation : module->computations()) {
     TF_ASSIGN_OR_RETURN(
         bool result, RunOnComputation(computation, stream_exec_, allocator_));
     changed |= result;

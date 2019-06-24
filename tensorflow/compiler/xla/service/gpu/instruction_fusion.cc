@@ -57,7 +57,73 @@ bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
                                                        int64 operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
-  // Output fusions are not currently supported on GPUs.
+  // Check if we can use output fusion for (A @ B) * alpha
+  if (producer->opcode() == HloOpcode::kDot && ImplementedAsGemm(*producer)) {
+    int64 other_operand_index = 1 - operand_index;
+    HloInstruction* op1 = nullptr;
+    HloInstruction* op2 = nullptr;
+    if (consumer->operand_count() == 1 && consumer->IsLoopFusion() &&
+        Match(consumer->fused_expression_root(),
+              match::Op()
+                  .WithOpcode(HloOpcode::kMultiply)
+                  .WithOperand(0, match::Op(&op1))
+                  .WithOperand(1, match::Op(&op2)))) {
+      CHECK(op1 != nullptr && op2 != nullptr);
+      // If 'consumer' is a fusion node, it should consist of a broadcast of a
+      // scalar constant fused into a multiply, but nothing more. So one operand
+      // should be a parameter, and the other should be a broadcast.
+      if (op1->opcode() != HloOpcode::kParameter) {
+        std::swap(op1, op2);
+      }
+      if (op1->opcode() != HloOpcode::kParameter ||
+          op2->opcode() != HloOpcode::kBroadcast) {
+        return false;
+      }
+      if (IsIEEEFloatingPointScalarConstant(op2->operand(0))) {
+        return true;
+      }
+    } else if (consumer->operand_count() == 2 &&
+               consumer->opcode() == HloOpcode::kMultiply) {
+      const HloInstruction* alpha = consumer->operand(other_operand_index);
+      // Fuse if 'alpha' is a broadcast of a scalar constant.
+      if (alpha->opcode() == HloOpcode::kBroadcast &&
+          alpha->dimensions().empty() &&
+          IsIEEEFloatingPointScalarConstant(alpha->operand(0))) {
+        return true;
+      }
+    } else if (consumer->operand_count() == 2 &&
+               consumer->opcode() == HloOpcode::kAdd &&
+               consumer->operand(other_operand_index) != producer) {
+      // Fuse a bias add into the output of the dot.
+      return true;
+    }
+  }
+
+  // Only allow fusing transpose or broadcast into an output fusion that is
+  // implemented as a Gemm call.
+  if (consumer->IsOutputFusion() && ImplementedAsGemm(*consumer)) {
+    auto producer_operand_index = consumer->operand_index(producer);
+    auto fused_parameter = consumer->fused_parameter(producer_operand_index);
+    const std::vector<HloInstruction*>& fused_parameter_users =
+        fused_parameter->users();
+    if (fused_parameter_users.size() != 1) {
+      return false;
+    }
+    if (producer->opcode() == HloOpcode::kTranspose) {
+      // Check that the transpose is an operand of a dot.
+      return fused_parameter_users[0]->opcode() == HloOpcode::kDot;
+    }
+    if (producer->opcode() == HloOpcode::kBroadcast) {
+      // Check that the broadcast is a broadcast of a scalar constant into a
+      // multiply.
+      return producer->dimensions().empty() &&
+             IsIEEEFloatingPointScalarConstant(producer->operand(0)) &&
+             fused_parameter_users[0]->opcode() == HloOpcode::kMultiply;
+    }
+    return false;
+  }
+
+  // Other output fusions are not currently supported on GPUs.
   if (producer->opcode() == HloOpcode::kFusion) {
     return false;
   }
