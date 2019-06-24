@@ -419,6 +419,12 @@ class CallbackList(object):
 @keras_export('keras.callbacks.Callback')
 class Callback(object):
   """Abstract base class used to build new callbacks.
+  
+  `Callback` is subclassed to provide specific functionality, with a set of 
+  methods called at various stages of training (including batch/epoch starts 
+  and ends), evaluating, and inference. You can use it as a custom callback if 
+  you need to take a specific action and it is not covered by the existing built-in 
+  callbacks.
 
   Attributes:
       params: dict. Training parameters
@@ -443,6 +449,38 @@ class Callback(object):
           the number of samples in the current batch.
       on_batch_end: logs include `loss`, and optionally `acc`
           (if accuracy monitoring is enabled).
+    
+  Example:
+  ```python  
+  # Import the datetime module to display the time
+  import datetime
+  
+  # A custom callback displaying the loss and accuracy 
+  # from the `logs` dict at the end of a batch/epoch
+  class MyLossAccuracyCallback(tf.keras.callbacks.Callback):
+  
+    def on_train_batch_end(self, batch, logs=None):
+      print('For batch {}, loss = {:7.2f} at '.format(batch, logs['loss']), 
+            datetime.datetime.now().time())
+    
+    def on_test_batch_end(self, batch, logs=None):
+      print('For batch {}, loss = {:7.2f} at '.format(batch, logs['loss']),
+            datetime.datetime.now().time())
+            
+    def on_epoch_end(self, epoch, logs=None):
+      print('Average loss for epoch {} = {:7.2f}, accuracy = {:7.2f}.'
+            .format(epoch, logs['loss'], logs['acc']))
+  
+  batch_size = 128
+  epochs = 10
+  
+  model.fit(data, labels, 
+            batch_size=batch_size,
+            steps_per_epoch=int(np.ceil(X_train.shape[0])/batch_size),
+            epochs=epochs,
+            verbose=0,
+            validation_data=(val_data, val_labels),
+            callbacks=[MyLossAccuracyCallback()])
   """
 
   def __init__(self):
