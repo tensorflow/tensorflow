@@ -31,6 +31,7 @@ load("//third_party/nasm:workspace.bzl", nasm = "repo")
 load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
 load("//third_party/keras_applications_archive:workspace.bzl", keras_applications = "repo")
 load("//third_party/pasta:workspace.bzl", pasta = "repo")
+load("//third_party/boost:workspace.bzl", boost = "repo")
 
 def initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
@@ -45,6 +46,7 @@ def initialize_third_party():
     jpeg()
     nasm()
     pasta()
+    boost()
 
 # Sanitize a dependency so that it works correctly from code that includes
 # TensorFlow as a submodule.
@@ -913,17 +915,6 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         sha256 = "00e934bff0ce69e4c048bb3e896de4d99bf6c95e193fe82fd2b666229e0b620b",
         strip_prefix = "seastar-tensorflow_protocol",
         build_file = clean_dep("//third_party:seastar.BUILD"),
-    )
-
-    tf_http_archive(
-        name = "boost",
-        urls = [
-            "http://mirror.tensorflow.org/jaist.dl.sourceforge.net/project/boost/boost/1.63.0/boost_1_63_0.tar.gz",
-            "https://jaist.dl.sourceforge.net/project/boost/boost/1.63.0/boost_1_63_0.tar.gz",
-        ],
-        sha256 = "1404aa387f0a0f86d4dd3cf635b6a8ddda0074833dcda794331c0d2976ec0ca2",
-        strip_prefix = 'boost-1-63-0-master',
-        build_file = clean_dep("//third_party/boost:boost.BUILD"),
     )
 
 def tf_bind():
