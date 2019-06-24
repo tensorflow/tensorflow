@@ -278,14 +278,32 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "trmul",
+    srcs = ["trmul.cc"],
+    hdrs = ["trmul.h"],
+    deps = [
+        ":allocator",
+        ":block_map",
+        ":common",
+        ":context",
+        ":internal_matrix",
+        ":kernel",
+        ":opt_set",
+        ":pack",
+        ":thread_pool",
+        ":trace",
+        ":tune",
+        "@gemmlowp//:profiler",
+    ],
+)
+
 # The main library.
 cc_library(
     name = "ruy",
     srcs = [
         "dispatch.h",
         "prepack.h",
-        "trmul.cc",
-        "trmul.h",
     ],
     hdrs = [
         "matrix.h",
@@ -295,19 +313,12 @@ cc_library(
     ],
     visibility = ruy_visibility(),
     deps = [
-        ":allocator",
-        ":block_map",
         ":check_macros",
         ":common",
         ":context",
-        ":internal_matrix",
-        ":kernel",
-        ":opt_set",
-        ":pack",
         ":size_util",
         ":spec",
-        ":thread_pool",
-        ":trace",
+        ":trmul",
         ":tune",
         "@gemmlowp//:profiler",
     ],
