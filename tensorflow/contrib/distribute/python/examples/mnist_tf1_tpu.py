@@ -155,8 +155,9 @@ def main(argv):
         test_accuracy.variables)
 
     config = tf.ConfigProto()
-    config.cluster_def.CopyFrom(
-        cluster_resolver.cluster_spec().as_cluster_def())
+    cluster_spec = cluster_resolver.cluster_spec()
+    if cluster_spec:
+      config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
 
     with tf.Session(cluster_resolver.master(), config=config) as session:
       session.run([v.initializer for v in all_variables])
