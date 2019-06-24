@@ -63,6 +63,26 @@ class ExecutableBuildOptions {
       se::DeviceMemoryAllocator* allocator);
   se::DeviceMemoryAllocator* device_allocator() const;
 
+  // The number of arguments in the original operator
+  ExecutableBuildOptions& set_argument_count(int count);
+  int argument_count() const;
+
+  // An indicator of the number of resource variable inputs
+  ExecutableBuildOptions& set_resource_input_count(int count);
+  int resource_input_count() const;
+
+  // A map from the input of the computation to the original TF operation input
+  // index
+  ExecutableBuildOptions& set_input_mapping(
+      const std::vector<int>& input_mapping);
+  const std::vector<int>& input_mapping() const;
+
+  // An indicator of the number of resource variables updated by this
+  // executable.
+  ExecutableBuildOptions& set_resource_update_to_input_index(
+      const std::vector<int>& resource_update_to_input_index);
+  const std::vector<int>& resource_update_to_input_index() const;
+
   // Returns a string representation of the build options, suitable for
   // debugging.
   string ToString() const;
@@ -79,6 +99,11 @@ class ExecutableBuildOptions {
   absl::optional<DebugOptions> debug_options_;
   se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   int num_replicas_ = 1;
+
+  int argument_count_ = 0;
+  int resource_input_count_ = 0;
+  std::vector<int> input_mapping_ = std::vector<int>{};
+  std::vector<int> resource_update_to_input_index_ = std::vector<int>{};
 };
 
 }  // namespace xla

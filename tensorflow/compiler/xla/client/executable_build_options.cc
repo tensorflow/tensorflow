@@ -75,4 +75,48 @@ string ExecutableBuildOptions::ToString() const {
       device_ordinal_, result_layout, num_replicas_);
 }
 
+ExecutableBuildOptions& ExecutableBuildOptions::set_argument_count(
+    int count) {
+  argument_count_ = count;
+  return *this;
+}
+
+int ExecutableBuildOptions::argument_count() const {
+  return argument_count_;
+}
+
+ExecutableBuildOptions& ExecutableBuildOptions::set_resource_input_count(
+    int count) {
+  resource_input_count_ = count;
+  return *this;
+}
+
+int ExecutableBuildOptions::resource_input_count() const {
+  return resource_input_count_;
+}
+
+ExecutableBuildOptions& ExecutableBuildOptions::set_input_mapping(
+    const std::vector<int>& input_mapping) {
+  input_mapping_ = input_mapping;
+  return *this;
+}
+
+const std::vector<int>& ExecutableBuildOptions::input_mapping() const {
+  return input_mapping_;
+}
+
+ExecutableBuildOptions&
+ExecutableBuildOptions::set_resource_update_to_input_index(
+    const std::vector<int>& resource_update_to_input_index) {
+  std::copy(resource_update_to_input_index.begin(),
+            resource_update_to_input_index.end(),
+            std::back_inserter(resource_update_to_input_index_));
+  return *this;
+}
+
+const std::vector<int>& ExecutableBuildOptions::resource_update_to_input_index()
+    const {
+  return resource_update_to_input_index_;
+}
+
 }  // namespace xla
