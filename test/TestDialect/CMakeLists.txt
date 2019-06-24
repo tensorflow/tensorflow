@@ -33,6 +33,7 @@ whole_archive_link(mlir-test-opt
 target_link_libraries(mlir-test-opt
   PRIVATE
   MLIRMlirOptLib
+  MLIROptMain
   MLIRTypeUtilities
   LLVMSupport
 )

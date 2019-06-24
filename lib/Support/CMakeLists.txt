@@ -1,5 +1,6 @@
 set(LLVM_OPTIONAL_SOURCES
   FileUtilities.cpp
+  MlirOptMain.cpp
   StorageUniquer.cpp
   TypeUtilities.cpp
 )
@@ -20,3 +21,11 @@ add_llvm_library(MLIRTypeUtilities
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Support
   )
 target_link_libraries(MLIRTypeUtilities MLIRIR)
+
+add_llvm_library(MLIROptMain
+  MlirOptMain.cpp
+
+  ADDITIONAL_HEADER_DIRS
+  ${MLIR_MAIN_INCLUDE_DIR}/mlir/Support
+  )
+target_link_libraries(MLIROptMain LLVMSupport)
