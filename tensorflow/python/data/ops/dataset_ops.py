@@ -84,7 +84,7 @@ autograph_ctx = lazy_loader.LazyLoader(
     "tensorflow.python.autograph.core.ag_ctx")
 autograph = lazy_loader.LazyLoader(
     "autograph", globals(),
-    "tensorflow.python.autograph")
+    "tensorflow.python.autograph.impl.api")
 
 ops.NotDifferentiable("ReduceDataset")
 
@@ -2545,12 +2545,7 @@ class StructuredFunctionWrapper(object):
         [readable_transformation_name,
          function_utils.get_func_name(func)])
 
-    ctx = autograph_ctx.control_status_ctx()
-    if ctx.status in (
-        autograph_ctx.Status.ENABLED, autograph_ctx.Status.UNSPECIFIED):
-      apply_autograph = True
-    else:
-      apply_autograph = False
+    ag_ctx = autograph_ctx.control_status_ctx()
 
     def _warn_if_collections(transformation_name):
       """Prints a warning if the given graph uses common graph collections.
@@ -2575,23 +2570,7 @@ class StructuredFunctionWrapper(object):
       if not _should_unpack_args(nested_args):
         nested_args = (nested_args,)
 
-      if apply_autograph:
-        try:
-          ret = autograph.converted_call(
-              func, None,
-              autograph.ConversionOptions(
-                  recursive=True,
-                  # TODO(mdan): Grab features from context.
-                  optional_features=None,
-                  force_conversion=False,
-              ), nested_args, {})
-        except Exception as e:  # pylint:disable=broad-except
-          if hasattr(e, "ag_error_metadata"):
-            raise e.ag_error_metadata.to_exception(type(e))
-          else:
-            raise
-      else:
-        ret = func(*nested_args)
+      ret = autograph.tf_convert(func, ag_ctx)(*nested_args)
       # If `func` returns a list of tensors, `nest.flatten()` and
       # `ops.convert_to_tensor()` would conspire to attempt to stack
       # those tensors into a single tensor, because the customized
