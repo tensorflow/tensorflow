@@ -378,6 +378,19 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
       self.evaluate(get_next())
       self.assertTrue(event.is_set())
 
+  def testSharedName(self):
+
+    def generator():
+      for _ in range(10):
+        yield [20]
+
+    dataset = dataset_ops.Dataset.from_generator(generator,
+                                                 output_types=(dtypes.int64))
+    get_next = self.getNext(dataset, requires_initialization=True,
+                            shared_name="shared_dataset")
+
+    self.assertAllEqual([20], self.evaluate(get_next()))
+
 
 if __name__ == "__main__":
   test.main()
