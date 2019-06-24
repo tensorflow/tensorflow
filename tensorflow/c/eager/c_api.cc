@@ -90,12 +90,6 @@ bool IsCPU(const tensorflow::Device* d) {
   return d == nullptr || d->tensorflow_gpu_device_info() == nullptr;
 }
 
-bool IsXLA(const tensorflow::Device* d) {
-  if (d == nullptr) return false;
-  const auto& device_type = d->attributes().device_type();
-  return device_type.find("XLA") != std::string::npos;
-}
-
 string DeviceName(const tensorflow::Device* d) {
   return (d == nullptr) ? "cpu:0" : d->name();
 }
