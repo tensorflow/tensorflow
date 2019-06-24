@@ -37,10 +37,142 @@ static constexpr const char kValueAttrName[] = "value";
 // Common utility functions
 //===----------------------------------------------------------------------===//
 
+static ParseResult parseStorageClassAttribute(spirv::StorageClass &storageClass,
+                                              OpAsmParser *parser,
+                                              OperationState *state) {
+  Attribute storageClassAttr;
+  SmallVector<NamedAttribute, 1> storageAttr;
+  auto loc = parser->getCurrentLocation();
+  if (parser->parseAttribute(storageClassAttr, "storage_class", storageAttr)) {
+    return failure();
+  }
+  if (!storageClassAttr.isa<StringAttr>()) {
+    return parser->emitError(loc, "expected a string storage class specifier");
+  }
+  auto storageClassOptional = spirv::symbolizeStorageClass(
+      storageClassAttr.cast<StringAttr>().getValue());
+  if (!storageClassOptional) {
+    return parser->emitError(loc, "invalid storage class specifier :")
+           << storageClassAttr;
+  }
+  storageClass = storageClassOptional.getValue();
+  return success();
+}
+
+template <typename LoadStoreOpTy>
+static ParseResult parseMemoryAccessAttributes(OpAsmParser *parser,
+                                               OperationState *state) {
+  // Parse an optional list of attributes staring with '['
+  if (parser->parseOptionalLSquare()) {
+    // Nothing to do
+    return success();
+  }
+
+  Attribute memAccessAttr;
+  auto loc = parser->getCurrentLocation();
+  if (parser->parseAttribute(memAccessAttr,
+                             LoadStoreOpTy::getMemoryAccessAttrName(),
+                             state->attributes)) {
+    return failure();
+  }
+  // Check that this is a memory attribute
+  if (!memAccessAttr.isa<StringAttr>()) {
+    return parser->emitError(loc, "expected a string memory access specifier");
+  }
+  auto memAccessOptional =
+      spirv::symbolizeMemoryAccess(memAccessAttr.cast<StringAttr>().getValue());
+  if (!memAccessOptional) {
+    return parser->emitError(loc, "invalid memory access specifier :")
+           << memAccessAttr;
+  }
+
+  if (auto memAccess =
+          memAccessOptional.getValue() == spirv::MemoryAccess::Aligned) {
+    // Parse integer attribute for alignment.
+    Attribute alignmentAttr;
+    Type i32Type = parser->getBuilder().getIntegerType(32);
+    if (parser->parseComma() ||
+        parser->parseAttribute(alignmentAttr, i32Type,
+                               LoadStoreOpTy::getAlignmentAttrName(),
+                               state->attributes)) {
+      return failure();
+    }
+  }
+  return parser->parseRSquare();
+}
+
 // Parses an op that has no inputs and no outputs.
 static ParseResult parseNoIOOp(OpAsmParser *parser, OperationState *state) {
   if (parser->parseOptionalAttributeDict(state->attributes))
     return failure();
+  return success();
+}
+
+template <typename LoadStoreOpTy>
+static void
+printMemoryAccessAttribute(LoadStoreOpTy loadStoreOp, OpAsmPrinter *printer,
+                           SmallVectorImpl<StringRef> &elidedAttrs) {
+  // Print optional memory access attribute.
+  if (auto memaccess = loadStoreOp.memory_access()) {
+    elidedAttrs.push_back(LoadStoreOpTy::getMemoryAccessAttrName());
+    *printer << " [\"" << memaccess << "\"";
+
+    // Print integer alignment attribute.
+    if (auto alignment = loadStoreOp.alignment()) {
+      elidedAttrs.push_back(LoadStoreOpTy::getAlignmentAttrName());
+      *printer << ", " << alignment;
+    }
+    *printer << "]";
+  }
+}
+
+template <typename LoadStoreOpTy>
+static LogicalResult verifyMemoryAccessAttribute(LoadStoreOpTy loadStoreOp) {
+  // ODS checks for attributes values. Just need to verify that if the
+  // memory-access attribute is Aligned, then the alignment attribute must be
+  // present.
+  auto *op = loadStoreOp.getOperation();
+  auto memaccessAttr = op->getAttr(LoadStoreOpTy::getMemoryAccessAttrName());
+  if (!memaccessAttr) {
+    // Alignment attribute shouldnt be present if memory access attribute is not
+    // present.
+    if (op->getAttr(LoadStoreOpTy::getAlignmentAttrName())) {
+      return loadStoreOp.emitOpError(
+          "invalid alignment specification without aligned memory access "
+          "specification");
+    }
+    return success();
+  }
+
+  if (auto memaccess =
+          spirv::symbolizeMemoryAccess(
+              memaccessAttr.template cast<StringAttr>().getValue()) ==
+          spirv::MemoryAccess::Aligned) {
+    if (!op->getAttr(LoadStoreOpTy::getAlignmentAttrName())) {
+      return loadStoreOp.emitOpError("missing alignment value");
+    }
+  } else {
+    if (op->getAttr(LoadStoreOpTy::getAlignmentAttrName())) {
+      return loadStoreOp.emitOpError(
+          "invalid alignment specification with non-aligned memory access "
+          "specification");
+    }
+  }
+  return success();
+}
+
+template <typename LoadStoreOpTy>
+static LogicalResult verifyLoadStorePtrAndValTypes(LoadStoreOpTy op, Value *ptr,
+                                                   Value *val) {
+  // ODS already checks ptr is spirv::PointerType. Just check that the pointee
+  // type of the pointer and the type of the value are the same
+  //
+  // TODO(ravishankarm): Check that the value type satisfies restrictions of
+  // SPIR-V OpLoad/OpStore operations
+  if (val->getType() !=
+      ptr->getType().cast<spirv::PointerType>().getPointeeType()) {
+    return op.emitOpError("mismatch in result type and pointer type");
+  }
   return success();
 }
 
@@ -119,6 +251,59 @@ static LogicalResult verify(spirv::ConstantOp constOp) {
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.LoadOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseLoadOp(OpAsmParser *parser, OperationState *state) {
+  // Parse the storage class specification
+  spirv::StorageClass storageClass;
+  OpAsmParser::OperandType ptrInfo;
+  Type elementType;
+  if (parseStorageClassAttribute(storageClass, parser, state) ||
+      parser->parseOperand(ptrInfo) ||
+      parseMemoryAccessAttributes<spirv::LoadOp>(parser, state) ||
+      parser->parseOptionalAttributeDict(state->attributes) ||
+      parser->parseColon() || parser->parseType(elementType)) {
+    return failure();
+  }
+
+  auto ptrType = spirv::PointerType::get(elementType, storageClass);
+  if (parser->resolveOperand(ptrInfo, ptrType, state->operands)) {
+    return failure();
+  }
+
+  state->addTypes(elementType);
+  return success();
+}
+
+static void print(spirv::LoadOp loadOp, OpAsmPrinter *printer) {
+  auto *op = loadOp.getOperation();
+  SmallVector<StringRef, 4> elidedAttrs;
+  *printer
+      << spirv::LoadOp::getOperationName() << " \""
+      << loadOp.ptr()->getType().cast<spirv::PointerType>().getStorageClassStr()
+      << "\" ";
+  // Print the pointer operand.
+  printer->printOperand(loadOp.ptr());
+
+  printMemoryAccessAttribute(loadOp, printer, elidedAttrs);
+
+  printer->printOptionalAttrDict(op->getAttrs(), elidedAttrs);
+  *printer << " : " << loadOp.getType();
+}
+
+static LogicalResult verify(spirv::LoadOp loadOp) {
+  // SPIR-V spec : "Result Type is the type of the loaded object. It must be a
+  // type with fixed size; i.e., it cannot be, nor include, any
+  // OpTypeRuntimeArray types."
+  if (failed(verifyLoadStorePtrAndValTypes(loadOp, loadOp.ptr(),
+                                           loadOp.value()))) {
+    return failure();
+  }
+  return verifyMemoryAccessAttribute(loadOp);
 }
 
 //===----------------------------------------------------------------------===//
@@ -202,6 +387,63 @@ static LogicalResult verifyReturn(spirv::ReturnOp returnOp) {
            << (numOutputs > 1 ? "s" : "");
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.StoreOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseStoreOp(OpAsmParser *parser, OperationState *state) {
+  // Parse the storage class specification
+  spirv::StorageClass storageClass;
+  SmallVector<OpAsmParser::OperandType, 2> operandInfo;
+  auto loc = parser->getCurrentLocation();
+  Type elementType;
+  if (parseStorageClassAttribute(storageClass, parser, state) ||
+      parser->parseOperandList(operandInfo, 2) ||
+      parseMemoryAccessAttributes<spirv::StoreOp>(parser, state) ||
+      parser->parseColon() || parser->parseType(elementType)) {
+    return failure();
+  }
+
+  auto ptrType = spirv::PointerType::get(elementType, storageClass);
+  if (parser->resolveOperands(operandInfo, {ptrType, elementType}, loc,
+                              state->operands)) {
+    return failure();
+  }
+  return success();
+}
+
+static void print(spirv::StoreOp storeOp, OpAsmPrinter *printer) {
+  auto *op = storeOp.getOperation();
+  SmallVector<StringRef, 4> elidedAttrs;
+  *printer << spirv::StoreOp::getOperationName() << " \""
+           << storeOp.ptr()
+                  ->getType()
+                  .cast<spirv::PointerType>()
+                  .getStorageClassStr()
+           << "\" ";
+  // Print the pointer operand
+  printer->printOperand(storeOp.ptr());
+  *printer << ", ";
+  // Print the value operand
+  printer->printOperand(storeOp.value());
+
+  printMemoryAccessAttribute(storeOp, printer, elidedAttrs);
+
+  *printer << " : " << storeOp.value()->getType();
+
+  printer->printOptionalAttrDict(op->getAttrs(), elidedAttrs);
+}
+
+static LogicalResult verify(spirv::StoreOp storeOp) {
+  // SPIR-V spec : "Pointer is the pointer to store through. Its type must be an
+  // OpTypePointer whose Type operand is the same as the type of Object."
+  if (failed(verifyLoadStorePtrAndValTypes(storeOp, storeOp.ptr(),
+                                           storeOp.value()))) {
+    return failure();
+  }
+  return verifyMemoryAccessAttribute(storeOp);
 }
 
 //===----------------------------------------------------------------------===//

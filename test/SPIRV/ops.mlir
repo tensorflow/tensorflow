@@ -43,6 +43,117 @@ func @fmul_tensor(%arg: tensor<4xf32>) -> tensor<4xf32> {
 // -----
 
 //===----------------------------------------------------------------------===//
+// spv.LoadOp
+//===----------------------------------------------------------------------===//
+
+// CHECK_LABEL: @simple_load
+func @simple_load() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // CHECK: spv.Load "Function" %0 : f32
+  %1 = spv.Load "Function" %0 : f32
+  return
+}
+
+// CHECK_LABEL: @volatile_load
+func @volatile_load() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // CHECK: spv.Load "Function" %0 ["Volatile"] : f32
+  %1 = spv.Load "Function" %0 ["Volatile"] : f32
+  return
+}
+
+// CHECK_LABEL: @aligned_load
+func @aligned_load() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // CHECK: spv.Load "Function" %0 ["Aligned", 4] : f32
+  %1 = spv.Load "Function" %0 ["Aligned", 4] : f32
+  return
+}
+
+// -----
+
+func @simple_load_missing_storageclass() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+1 {{expected non-function type}}
+  %1 = spv.Load %0 : f32
+  return
+}
+
+// -----
+
+func @simple_load_missing_operand() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+1 {{expected SSA operand}}
+  %1 = spv.Load "Function" : f32
+  return
+}
+
+// -----
+
+func @simple_load_missing_rettype() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+2 {{expected ':'}}
+  %1 = spv.Load "Function" %0
+  return
+}
+
+// -----
+
+func @volatile_load_missing_lbrace() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+1 {{expected ':'}}
+  %1 = spv.Load "Function" %0 "Volatile"] : f32
+  return
+}
+
+// -----
+
+func @volatile_load_missing_rbrace() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+1 {{expected ']'}}
+  %1 = spv.Load "Function" %0 ["Volatile" : f32
+  return
+}
+
+// -----
+
+func @aligned_load_missing_alignment() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+1 {{expected ','}}
+  %1 = spv.Load "Function" %0 ["Aligned"] : f32
+  return
+}
+
+// -----
+
+func @aligned_load_missing_comma() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+1 {{expected ','}}
+  %1 = spv.Load "Function" %0 ["Aligned" 4] : f32
+  return
+}
+
+// -----
+
+func @load_incorrect_attributes() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+1 {{expected ']'}}
+  %1 = spv.Load "Function" %0 ["Volatile", 4] : f32
+  return
+}
+
+// -----
+
+func @aligned_load_incorrect_attributes() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+1 {{expected ']'}}
+  %1 = spv.Load "Function" %0 ["Aligned", 4, 23] : f32
+  return
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // spv.Return
 //===----------------------------------------------------------------------===//
 
@@ -63,6 +174,116 @@ func @return_mismatch_func_signature() -> () {
     addressing_model: "Logical",
     memory_model: "VulkanKHR"
   }
+  return
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// spv.StoreOp
+//===----------------------------------------------------------------------===//
+
+func @simple_store(%arg0 : f32) -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // CHECK: spv.Store  "Function" %0, %arg0 : f32
+  spv.Store  "Function" %0, %arg0 : f32
+  return
+}
+
+// CHECK_LABEL: @volatile_store
+func @volatile_store(%arg0 : f32) -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // CHECK: spv.Store  "Function" %0, %arg0 ["Volatile"] : f32
+  spv.Store  "Function" %0, %arg0 ["Volatile"] : f32
+  return
+}
+
+// CHECK_LABEL: @aligned_store
+func @aligned_store(%arg0 : f32) -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // CHECK: spv.Store  "Function" %0, %arg0 ["Aligned", 4] : f32
+  spv.Store  "Function" %0, %arg0 ["Aligned", 4] : f32
+  return
+}
+
+// -----
+
+func @simple_store_missing_ptr_type(%arg0 : f32) -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+1 {{expected non-function type}}
+  spv.Store  %0, %arg0 : f32
+  return
+}
+
+// -----
+
+func @simple_store_missing_operand(%arg0 : f32) -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+1 {{custom op 'spv.Store' invalid operand}} : f32
+  spv.Store  "Function" , %arg0 : f32
+  return
+}
+
+// -----
+
+func @simple_store_missing_operand(%arg0 : f32) -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+1 {{custom op 'spv.Store' expected 2 operands}} : f32
+  spv.Store  "Function" %0 : f32
+  return
+}
+
+// -----
+
+func @volatile_store_missing_lbrace(%arg0 : f32) -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+1 {{expected ':'}}
+  spv.Store  "Function" %0, %arg0 "Volatile"] : f32
+  return
+}
+
+// -----
+
+func @volatile_store_missing_rbrace(%arg0 : f32) -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+1 {{expected ']'}}
+  spv.Store  "Function" %0, %arg0 ["Volatile" : f32
+  return
+}
+
+// -----
+
+func @aligned_store_missing_alignment(%arg0 : f32) -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+1 {{expected ','}}
+  spv.Store  "Function" %0, %arg0 ["Aligned"] : f32
+  return
+}
+
+// -----
+
+func @aligned_store_missing_comma(%arg0 : f32) -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+1 {{expected ','}}
+  spv.Store  "Function" %0, %arg0 ["Aligned" 4] : f32
+  return
+}
+
+// -----
+
+func @load_incorrect_attributes(%arg0 : f32) -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+1 {{expected ']'}}
+  spv.Store  "Function" %0, %arg0 ["Volatile", 4] : f32
+  return
+}
+
+// -----
+
+func @aligned_store_incorrect_attributes(%arg0 : f32) -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+1 {{expected ']'}}
+  spv.Store  "Function" %0, %arg0 ["Aligned", 4, 23] : f32
   return
 }
 

@@ -190,6 +190,24 @@ def SPV_ImageFormatAttr :
   let underlyingType = "uint32_t";
 }
 
+def SPV_MA_None                    : EnumAttrCase<"None", 0x0000>;
+def SPV_MA_Volatile                : EnumAttrCase<"Volatile", 0x0001>;
+def SPV_MA_Aligned                 : EnumAttrCase<"Aligned", 0x0002>;
+def SPV_MA_Nontemporal             : EnumAttrCase<"Nontemporal", 0x0004>;
+def SPV_MA_MakePointerAvailableKHR : EnumAttrCase<"MakePointerAvailableKHR", 0x0008>;
+def SPV_MA_MakePointerVisibleKHR   : EnumAttrCase<"MakePointerVisibleKHR", 0x0010>;
+def SPV_MA_NonPrivatePointerKHR    : EnumAttrCase<"NonPrivatePointerKHR", 0x0020>;
+
+def SPV_MemoryAccessAttr :
+    EnumAttr<"MemoryAccess", "valid SPIR-V MemoryAccess", [
+      SPV_MA_None, SPV_MA_Volatile, SPV_MA_Aligned, SPV_MA_Nontemporal,
+      SPV_MA_MakePointerAvailableKHR, SPV_MA_MakePointerVisibleKHR,
+      SPV_MA_NonPrivatePointerKHR
+    ]> {
+  let cppNamespace = "::mlir::spirv";
+  let underlyingType = "uint32_t";
+}
+
 def SPV_MM_Simple    : EnumAttrCase<"Simple", 0>;
 def SPV_MM_GLSL450   : EnumAttrCase<"GLSL450", 1>;
 def SPV_MM_OpenCL    : EnumAttrCase<"OpenCL", 2>;

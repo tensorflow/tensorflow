@@ -3104,9 +3104,19 @@ public:
     return parser.parseToken(Token::l_square, "expected '['");
   }
 
+  /// Parses a '[' if present.
+  ParseResult parseOptionalLSquare() override {
+    return success(parser.consumeIf(Token::l_square));
+  }
+
   /// Parse a `]` token.
   ParseResult parseRSquare() override {
     return parser.parseToken(Token::r_square, "expected ']'");
+  }
+
+  /// Parses a ']' if present.
+  ParseResult parseOptionalRSquare() override {
+    return success(parser.consumeIf(Token::r_square));
   }
 
   //===--------------------------------------------------------------------===//

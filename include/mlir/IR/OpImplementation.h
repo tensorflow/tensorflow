@@ -244,8 +244,14 @@ public:
   /// Parse a `[` token.
   virtual ParseResult parseLSquare() = 0;
 
+  /// Parse a `[` token if present.
+  virtual ParseResult parseOptionalLSquare() = 0;
+
   /// Parse a `]` token.
   virtual ParseResult parseRSquare() = 0;
+
+  /// Parse a `]` token if present.
+  virtual ParseResult parseOptionalRSquare() = 0;
 
   //===--------------------------------------------------------------------===//
   // Attribute Parsing

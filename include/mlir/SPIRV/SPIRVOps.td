@@ -65,6 +65,61 @@ def SPV_FMulOp : SPV_Op<"FMul", [NoSideEffect, SameOperandsAndResultType]> {
   let opcode = 133;
 }
 
+def SPV_LoadOp : SPV_Op<"Load"> {
+  let summary = "Load value through a pointer.";
+
+  let description = [{
+    Result Type is the type of the loaded object. It must be a type
+    with fixed size; i.e., it cannot be, nor include, any
+    OpTypeRuntimeArray types.
+
+    Pointer is the pointer to load through. Its type must be an
+    OpTypePointer whose Type operand is the same as Result Type.
+
+    If present, any Memory Operands must begin with a memory operand
+    literal. If not present, it is the same as specifying the memory
+    operand None.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    memory-access ::= `"None"` | `"Volatile"` | `"Aligned"` integer-literal
+                    | `"NonTemporal"`
+
+    load-op ::= ssa-id ` = spv.Load ` storage-class ssa-use
+                (`[` memory-access `]`)? ` : ` spirv-element-type
+    ```
+
+    For example:
+
+    ```
+    %0 = spv.Variable : !spv.ptr<f32, Function>
+    %1 = spv.Load "Function" %0 : f32
+    %2 = spv.Load "Function" %0 ["Volatile"] : f32
+    %3 = spv.Load "Function" %0 ["Aligned", 4] : f32
+    ```
+  }];
+
+  let arguments = (ins
+    SPV_AnyPtr:$ptr,
+    OptionalAttr<SPV_MemoryAccessAttr>:$memory_access,
+    OptionalAttr<I32Attr>:$alignment
+  );
+
+  let results = (outs
+    SPV_Type:$value
+  );
+
+  let extraClassDeclaration = [{
+    static StringRef getMemoryAccessAttrName() {
+      return "memory_access";
+    }
+    static StringRef getAlignmentAttrName() {
+      return "alignment";
+    }
+  }];
+}
+
 def SPV_ReturnOp : SPV_Op<"Return", [Terminator]> {
   let summary = "Return with no value from a function with void return type";
 
@@ -82,6 +137,54 @@ def SPV_ReturnOp : SPV_Op<"Return", [Terminator]> {
   let verifier = [{ return verifyReturn(*this); }];
 
   let opcode = 253;
+}
+
+def SPV_StoreOp : SPV_Op<"Store"> {
+  let summary = "Store through a pointer.";
+
+  let description = [{
+    Pointer is the pointer to store through. Its type must be an
+    OpTypePointer whose Type operand is the same as the type of
+    Object.
+
+    Object is the object to store.
+
+    If present, any Memory Operands must begin with a memory operand
+    literal. If not present, it is the same as specifying the memory
+    operand None.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    store-op ::= `spv.Store ` storage-class ssa-use `, ` ssa-use `, `
+                  (memory-access)? : spirv-element-type
+    ```
+
+    For example:
+
+    ```
+    %0 = spv.Variable : !spv.ptr<f32, Function>
+    %1 = spv.FMul ... : f32
+    spv.Store "Function" %0, %1 : f32
+    spv.Store "Function" %0, %1 ["Volatile"] : f32
+    spv.Store "Function" %0, %1 ["Aligned", 4] : f32
+  }];
+
+  let arguments = (ins
+    SPV_AnyPtr:$ptr,
+    SPV_Type:$value,
+    OptionalAttr<SPV_MemoryAccessAttr>:$memory_access,
+    OptionalAttr<APIntAttr>:$alignment
+  );
+
+  let extraClassDeclaration = [{
+    static StringRef getMemoryAccessAttrName() {
+      return "memory_access";
+    }
+    static StringRef getAlignmentAttrName() {
+      return "alignment";
+    }
+  }];
 }
 
 def SPV_VariableOp : SPV_Op<"Variable"> {
