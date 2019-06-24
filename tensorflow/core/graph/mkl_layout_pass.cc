@@ -2213,14 +2213,15 @@ Status MklLayoutRewritePass::CopyInputs(
   int old_node_input_slots = old_node->op_def().input_arg_size();
   // Actual number of inputs can be greater than or equal to number
   // of Input slots because inputs of type list could be unfolded.
-  CHECK_GE(old_node_inputs.size(), old_node_input_slots);
+  auto old_node_input_size = old_node_inputs.size();
+  DCHECK_GE(old_node_input_size, old_node_input_slots);
 
   // Let's copy all inputs of old node to new node.
   int iidx = 0;
   for (int on_slot_idx = 0; on_slot_idx < old_node_input_slots; on_slot_idx++) {
     // An input slot could be a single tensor or a list. We need
     // to handle this case accordingly.
-    CHECK_LT(iidx, old_node_inputs.size());
+    DCHECK_LT(iidx, old_node_input_size);
     const OpDef::ArgDef& arg = old_node->op_def().input_arg(on_slot_idx);
     if (ArgIsList(arg)) {
       std::vector<NodeBuilder::NodeOut> new_node_inputs;
@@ -3193,7 +3194,7 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
   // In the following code of this function, an unsorted set is used to make
   // sure no duplicated edges be added into the new node. Therefore, we can
   // pass allow_duplicates = true in AddControlEdge call to skip the O(#edges)
-  // check in the routine. 
+  // check in the routine.
 
   // Incoming data edges from 'pred' node and 'succ' node to new 'new_node'
   // node are already copied in BuildNode. We handle control edges now.
@@ -3645,7 +3646,7 @@ Status MklLayoutRewritePass::RewriteNodeForLayoutPropagation(
   if (s != Status::OK()) {
     return s;
   }
-  CHECK_NOTNULL(*new_node);
+  DCHECK(*new_node != nullptr);
 
   // In the following code of this function, an unsorted set is used to make
   // sure no duplicated edges be added into the new node. Therefore, we can
@@ -3721,7 +3722,7 @@ Status MklLayoutRewritePass::RewriteNodeForJustOpNameChange(
   if (s != Status::OK()) {
     return s;
   }
-  CHECK_NOTNULL(*new_node);
+  DCHECK(*new_node != nullptr);
 
   // In the following code of this function, an unsorted set is used to make
   // sure no duplicated edges be added into the new node. Therefore, we can
@@ -3749,8 +3750,9 @@ Status MklLayoutRewritePass::RewriteNodeForJustOpNameChange(
         (*g)->AddControlEdge(*new_node, e->dst(), true);
       }
     } else {
-      CHECK_NOTNULL((*g)->AddEdge(*new_node, e->src_output(),
-          e->dst(), e->dst_input()));
+      auto result =
+          (*g)->AddEdge(*new_node, e->src_output(), e->dst(), e->dst_input());
+      DCHECK(result != nullptr);
     }
   }
 
@@ -3760,8 +3762,8 @@ Status MklLayoutRewritePass::RewriteNodeForJustOpNameChange(
 Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g,
                                          Node* orig_node,
                                          const RewriteInfo* ri) {
-  CHECK_NOTNULL(ri);
-  CHECK_NOTNULL(orig_node);
+  DCHECK(ri != nullptr);
+  DCHECK(orig_node != nullptr);
 
   VLOG(1) << "MklLayoutRewritePass: Original node:" << orig_node->DebugString();
 
@@ -3777,7 +3779,7 @@ Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g,
                         "RewriteNode will fail.");
   }
   TF_CHECK_OK(ret_status);
-  CHECK_NOTNULL(new_node);
+  DCHECK(new_node != nullptr);
 
   // Copy the runtime device assigned from original code to new node.
   new_node->set_assigned_device_name(orig_node->assigned_device_name());
