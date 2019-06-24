@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_executable.h"
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_platform_id.h"
+#include "tensorflow/compiler/plugin/poplar/driver/schedulers/ipu_scheduler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/schedulers/look_ahead_scheduler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/schedulers/sync_list_scheduler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
@@ -115,6 +116,10 @@ namespace xla {
 namespace poplarplugin {
 namespace {
 std::once_flag help_flag_printed;
+
+int64 SizeFunction(const BufferValue& buffer) {
+  return ShapeUtil::ByteSizeOf(buffer.shape(), 1);
+};
 
 std::string GetPathToGraphProgFile(std::string filename) {
   Dl_info dlInfo;
@@ -555,23 +560,24 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
     pipeline.AddPass<AllocationFinder>(resources.annotations);
     pipeline.AddPass<HloPassFix<ForwardAllocation>>(resources.annotations);
-
-    auto size_function = [](const BufferValue& buffer) {
-      return ShapeUtil::ByteSizeOf(buffer.shape(), 1);
-    };
-
-    // If user has specified to use the fallback scheduler use that, else use
-    // the default look ahead scheduler.
-    if (PoplarXlaFlags::Get().fallback_scheduler) {
-      pipeline.AddPass<HloMemoryScheduler>(
-          size_function, CreateSyncListMemoryScheduler(
-                             resources.information.max_all_reduce_buffer_size));
-    } else {
-      // The default scheduler.
-      pipeline.AddPass<HloMemoryScheduler>(
-          size_function, CreateLookAheadMemoryScheduler(resources.information));
+    if (resources.information.max_all_reduce_buffer_size > 0 ||
+        resources.information.max_inter_ipu_copies_buffer_size > 0) {
+      pipeline.AddPass<IpuScheduler>(
+          SizeFunction,
+          MemorySchedulerAlgorithmToIPU(
+              CreateLookAheadMemoryScheduler(resources.information)));
+      pipeline.AddPass<CombineInstructions>();
+      pipeline.AddPass<HloDescheduler>();
     }
-    pipeline.AddPass<CombineInstructions>();
+
+    TF_ASSIGN_OR_RETURN(
+        auto scheduler,
+        BestIpuSchedule(
+            MemorySchedulerAlgorithmToIPU(
+                CreateLookAheadMemoryScheduler(resources.information)),
+            MemorySchedulerAlgorithmToIPU(PostOrderMemoryScheduler)));
+
+    pipeline.AddPass<IpuScheduler>(SizeFunction, scheduler);
 
     TF_RETURN_IF_ERROR(pipeline.Run(module.get()).status());
   }

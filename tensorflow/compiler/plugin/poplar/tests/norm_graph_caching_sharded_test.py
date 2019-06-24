@@ -129,7 +129,9 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
       # Two BN for forwards (on shards 0 and 1) and two BN for grad
       # (note that we don't cache gradient application)
       ok = [
-          '__seed*', '*OnTileCopy*', 'Copy_',
+          '__seed*',
+          '*OnTileCopy*',
+          'Copy_',
           'vs/conv1/Conv2D/convolution.*/Conv_1x1',
           'vs/conv3/Conv2D/convolution.*/Conv_1x1',
           'vs/batch_normalization/FusedBatchNorm/batch-norm-training.*/',
@@ -142,8 +144,8 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
           'GradientDescent/update_vs/batch_normalization_2/',
           'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*/Conv_4x4',
           'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*/AddTo',
-          'gradients/vs/conv1/Conv2D_grad/Conv2DBackpropFilter/fusion*/Conv_4x4',
-          'gradients/vs/conv1/Conv2D_grad/Conv2DBackpropFilter/fusion.*/AddTo'
+          'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/fusion.*/Conv_4x4',
+          'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/fusion.*/AddTo',
       ]
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))

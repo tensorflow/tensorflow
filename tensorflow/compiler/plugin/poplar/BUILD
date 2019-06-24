@@ -141,6 +141,7 @@ cc_library(
         "driver/tools/single_hlo_matcher.cc",
         "driver/tools/util.cc",
         "driver/tools/while_loop_util.cc",
+        "driver/schedulers/ipu_scheduler.cc",
         "driver/schedulers/look_ahead_scheduler.cc",
         "driver/schedulers/sync_list_scheduler.cc"
     ],
@@ -207,6 +208,7 @@ cc_library(
         "driver/tools/single_hlo_matcher.h",
         "driver/tools/util.h",
         "driver/tools/while_loop_util.h",
+        "driver/schedulers/ipu_scheduler.h",
         "driver/schedulers/look_ahead_scheduler.h",
         "driver/schedulers/sync_list_scheduler.h"
 

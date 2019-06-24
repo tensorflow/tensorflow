@@ -142,7 +142,7 @@ class MappingTest(test_util.TensorFlowTestCase):
             self.assertEqual(len(pad_layout[7]), 17)
             self.assertEqual(pad_layout[7][0], [0, 512])
             for idx in range(1, 16):
-              self.assertEqual(pad_layout[7][idx], [255 + idx, 32])
+              self.assertEqual(pad_layout[7][idx], [256 + idx, 32])
 
             # The add is done inplace
             self.assertEqual(slice_layout[7], add_layout[7])
