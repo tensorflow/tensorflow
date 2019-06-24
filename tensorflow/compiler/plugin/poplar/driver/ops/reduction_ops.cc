@@ -24,6 +24,7 @@
 #include <popops/Pad.hpp>
 #include <popops/Reduce.hpp>
 #include <poputil/TileMapping.hpp>
+#include <poputil/Util.hpp>
 
 using ::absl::StrCat;
 
@@ -915,8 +916,8 @@ StatusOr<poplar::program::Program> CreateReplicatedAllReduce(
     for (int i = 0; i < inst->operand_count(); ++i) {
       TF_ASSIGN_OR_RETURN(auto in,
                           FindInstructionInput(tensor_map, res, inst, i, seq));
-      auto out = DuplicateTensor(
-          in, seq, graph, StrCat(GetDebugName(inst), "/", i),
+      auto out = poputil::duplicate(
+          graph, in, seq, StrCat(GetDebugName(inst), "/", i),
           poplar::TensorCloneMethod::PRESERVE_ORDER_AND_ALIASES);
       TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, out));
     }
