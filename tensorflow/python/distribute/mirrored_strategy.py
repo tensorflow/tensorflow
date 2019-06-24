@@ -198,90 +198,6 @@ def _call_for_each_replica(distribution, device_map, fn, args, kwargs):
   return values.regroup(device_map, tuple(t.main_result for t in threads))
 
 
-def _create_mirrored_variable(strategy, device_map, logical_device,  # pylint: disable=missing-docstring
-                              real_mirrored_creator, *args, **kwargs):
-  # Figure out what collections this variable should be added to.
-  # We'll add the MirroredVariable to those collections instead.
-  collections = kwargs.pop("collections", None)
-  if collections is None:
-    collections = [ops.GraphKeys.GLOBAL_VARIABLES]
-  kwargs["collections"] = []
-
-  # Get synchronization value
-  synchronization = kwargs.get("synchronization",
-                               variable_scope.VariableSynchronization.ON_WRITE)
-  if synchronization == variable_scope.VariableSynchronization.NONE:
-    raise ValueError("`NONE` variable synchronization mode is not "
-                     "supported with `Mirrored` distribution strategy. Please"
-                     " change the `synchronization` for variable: " +
-                     kwargs["name"])
-  elif synchronization == variable_scope.VariableSynchronization.ON_READ:
-    # Variables that are to be synced on read are replica local.
-    is_sync_on_read = True
-  elif (synchronization == variable_scope.VariableSynchronization.ON_WRITE or
-        synchronization == variable_scope.VariableSynchronization.AUTO):
-    # `AUTO` synchronization for `MirroredStrategy` is `ON_WRITE`.
-    is_sync_on_read = False
-  else:
-    raise ValueError(
-        "Invalid variable synchronization mode: %s for variable: %s" %
-        (synchronization, kwargs["name"]))
-
-  # Get aggregation value
-  aggregation = kwargs.pop("aggregation",
-                           variable_scope.VariableAggregation.NONE)
-  if aggregation not in (
-      variable_scope.VariableAggregation.NONE,
-      variable_scope.VariableAggregation.SUM,
-      variable_scope.VariableAggregation.MEAN,
-      variable_scope.VariableAggregation.ONLY_FIRST_REPLICA
-  ):
-    raise ValueError(
-        "Invalid variable aggregation mode: %s for variable: %s" %
-        (aggregation, kwargs["name"]))
-
-  # Ignore user-specified caching device, not needed for mirrored variables.
-  kwargs.pop("caching_device", None)
-
-  # TODO(josh11b,apassos): It would be better if variable initialization
-  # was never recorded on the tape instead of having to do this manually
-  # here.
-  with tape.stop_recording():
-    devices = device_map.logical_to_actual_devices(logical_device)
-    value_list = real_mirrored_creator(devices, *args, **kwargs)
-
-    if is_sync_on_read:
-      result = values.SyncOnReadVariable(
-          strategy, device_map, value_list, aggregation,
-          logical_device=logical_device)
-    else:
-      result = values.MirroredVariable(
-          strategy, device_map, value_list, aggregation,
-          logical_device=logical_device)
-
-  # Add the wrapped variable to the requested collections.
-  # The handling of eager mode and the global step matches
-  # ResourceVariable._init_from_args().
-  if not context.executing_eagerly():
-    g = ops.get_default_graph()
-    # If "trainable" is True, next_creator() will add the member variables
-    # to the TRAINABLE_VARIABLES collection, so we manually remove
-    # them and replace with the MirroredVariable. We can't set
-    # "trainable" to False for next_creator() since that causes functions
-    # like implicit_gradients to skip those variables.
-    if kwargs.get("trainable", True):
-      collections.append(ops.GraphKeys.TRAINABLE_VARIABLES)
-      l = g.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES)
-      for v in value_list:
-        if v in l:
-          l.remove(v)
-    g.add_to_collections(collections, result)
-  elif ops.GraphKeys.GLOBAL_STEP in collections:
-    ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, result)
-
-  return result
-
-
 def _is_device_list_local(devices):
   """Checks whether the devices list is for local or multi-worker.
 
@@ -595,9 +511,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
           value_list.append(v)
       return value_list
 
-    return _create_mirrored_variable(
+    return distribute_lib.create_mirrored_variable(
         self._container_strategy(), device_map, logical_device,
-        _real_mirrored_creator, *args, **kwargs)
+        _real_mirrored_creator, values.MirroredVariable,
+        values.SyncOnReadVariable, *args, **kwargs)
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate_distributed_variable(colocate_with_variable, self)
