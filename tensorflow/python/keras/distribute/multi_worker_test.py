@@ -286,8 +286,7 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
     num_workers = 2
     num_epoch = 2
 
-    cluster_spec = test_base.create_cluster_spec(
-        num_workers=num_workers, test_obj=self)
+    cluster_spec = test_base.create_cluster_spec(num_workers=num_workers)
     self._barrier = dc._Barrier(2)
 
     # The verification callback will be shared by multiple threads.
@@ -343,7 +342,7 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
     num_workers = 2
     num_epoch = 2
     cluster_spec = test_base.create_cluster_spec(
-        num_workers=num_workers, num_ps=2, test_obj=self)
+        num_workers=num_workers, num_ps=2)
     self._barrier = dc._Barrier(4)
 
     # The verification callback will be shared by multiple threads.
