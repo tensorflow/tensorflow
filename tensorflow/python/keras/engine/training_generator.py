@@ -480,7 +480,9 @@ def convert_to_generator_like(data,
   # Create generator from NumPy or EagerTensor Input.
   num_samples = int(nest.flatten(data)[0].shape[0])
   if batch_size is None:
-    raise ValueError('You must specify `batch_size`')
+    raise ValueError(
+        'When passing input data as arrays, do not specify '
+        '`steps_per_epoch`/`steps` argument. Please use `batch_size` instead.')
   steps_per_epoch = int(math.ceil(num_samples / batch_size))
 
   def _gen(data):

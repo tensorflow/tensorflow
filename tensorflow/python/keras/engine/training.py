@@ -596,6 +596,7 @@ class Model(network.Network):
             the batch size, or 1 if that cannot be determined. If x is a
             `tf.data` dataset or a dataset iterator, and 'steps_per_epoch'
             is None, the epoch will run until the input dataset is exhausted.
+            This argument is not supported with array inputs.
         validation_steps: Only relevant if `validation_data` is provided and
             is a dataset or dataset iterator. Total number of steps (batches of
             samples) to draw before stopping when performing validation
@@ -728,6 +729,7 @@ class Model(network.Network):
             Ignored with the default value of `None`.
             If x is a `tf.data` dataset or a dataset iterator, and `steps` is
             None, 'evaluate' will run until the dataset is exhausted.
+            This argument is not supported with array inputs.
         callbacks: List of `keras.callbacks.Callback` instances.
             List of callbacks to apply during evaluation.
             See [callbacks](/api_docs/python/tf/keras/callbacks).
