@@ -89,6 +89,10 @@ class GpuExecutable : public Executable {
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments) override;
 
+  std::shared_ptr<const BufferAssignment> GetBufferAssignment() const {
+    return assignment_;
+  }
+
  private:
   StatusOr<ScopedShapedBuffer> Execute(
       const ServiceExecutableRunOptions* run_options,
