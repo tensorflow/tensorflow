@@ -4033,9 +4033,14 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   // false}}));
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-  if (inputs[0].is_weights() && inputs[1].is_weights()) {
+  if (inputs.at(0).is_weights() && inputs.at(1).is_weights()) {
     return errors::InvalidArgument(
         "All inputs are weights, but Grappler is expected to fold them.");
+  }
+  if (inputs.at(0).is_tensor() && inputs.at(1).is_tensor() &&
+      inputs.at(0).GetTrtDims().nbDims != inputs.at(1).GetTrtDims().nbDims) {
+    return errors::Unimplemented(
+        "Inputs must have the same rank if they are both tensors.");
   }
 
   TFAttrs attrs(node_def);
@@ -4048,6 +4053,8 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   // It is not possible to treat the weight input as a batched [3, 6] tensor.
   const auto check_weight_is_not_batched = [](
       const TRT_TensorOrWeights& input_l, const TRT_TensorOrWeights& input_r) {
+    // If input_l is a weight, then input_r must be a tensor because otherwise
+    // the op would be handled by Grappler.
     if (input_l.is_weights() &&
         input_l.GetTrtDims().nbDims > input_r.GetTrtDims().nbDims &&
         input_l.GetTrtDims().d[0] != 1) {
@@ -4059,7 +4066,12 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(check_weight_is_not_batched(inputs.at(0), inputs.at(1)));
   TF_RETURN_IF_ERROR(check_weight_is_not_batched(inputs.at(1), inputs.at(0)));
 
-  // Broadcast inputs.
+  // Broadcast inputs. We don't check feasibility since the dimensions in a
+  // MatMul don't need to match. For example, consider a valid set of inputs
+  // which would produce an output of shape [N, T, K]:
+  // input 0: [N, T, C]
+  // input 1: [1, C, K]
+  // Since C != K and T != C, check feasiblity would fail.
   nvinfer1::Dims broadcasted_dims_l, broadcasted_dims_r;
   TF_RETURN_IF_ERROR(GetTrtBroadcastShape(
       inputs.at(0), inputs.at(1), /*check_feasibility=*/false,

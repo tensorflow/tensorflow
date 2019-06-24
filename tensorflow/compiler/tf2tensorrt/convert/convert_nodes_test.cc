@@ -1888,6 +1888,30 @@ TEST_F(OpConverterTest, ConvertBatchMatMul) {
     return matmul.operation.node()->def();
   };
 
+  {
+    // Can't broadcast two tensor inputs of different rank.
+    Reset();
+    NodeDef node_def = get_batch_matmul_nodedef(DT_FLOAT, false, false);
+    AddTestTensor("input", {1, 2, 2}, /*batch_size=*/2);
+    AddTestTensor("weights", {2}, /*batch_size=*/2);
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Inputs must have the same rank if they are both tensors.");
+  }
+  {
+    // Make sure that INT8 mode doesn't try to use IFullyConnectedLayer when not
+    // compatible. In this case we can't use FC because transpose_a is true.
+    precision_mode_to_test_ = TrtPrecisionMode::INT8;
+    Reset();
+    NodeDef node_def = get_batch_matmul_nodedef(DT_FLOAT, true, false);
+    AddTestTensor("input", {1, 2, 2});
+    AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
+    RunValidationAndConversion(node_def);
+    CheckAddedLayers<nvinfer1::IMatrixMultiplyLayer>(this, true);
+    CheckAddedLayers<nvinfer1::IFullyConnectedLayer>(this, false);
+    precision_mode_to_test_ = TrtPrecisionMode::FP32;
+  }
+
   for (bool transpose_a : {false, true}) {
     for (bool transpose_b : {false, true}) {
       Reset();
