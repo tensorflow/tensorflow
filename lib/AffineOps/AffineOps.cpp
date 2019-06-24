@@ -37,7 +37,8 @@ using llvm::dbgs;
 
 AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
-  addOperations<AffineApplyOp, AffineForOp, AffineIfOp, AffineTerminatorOp>();
+  addOperations<AffineApplyOp, AffineForOp, AffineIfOp, AffineLoadOp,
+                AffineStoreOp, AffineTerminatorOp>();
 }
 
 /// A utility function to check if a value is defined at the top level of a
@@ -1332,3 +1333,115 @@ Region &AffineIfOp::getThenBlocks() { return getOperation()->getRegion(0); }
 
 /// Returns the list of 'else' blocks.
 Region &AffineIfOp::getElseBlocks() { return getOperation()->getRegion(1); }
+
+//===----------------------------------------------------------------------===//
+// AffineLoadOp
+//===----------------------------------------------------------------------===//
+
+void AffineLoadOp::build(Builder *builder, OperationState *result,
+                         AffineMap map, ArrayRef<Value *> operands) {
+  // TODO(b/133776335) Check that map operands are loop IVs or symbols.
+  result->addOperands(operands);
+  result->addAttribute("map", builder->getAffineMapAttr(map));
+}
+
+ParseResult AffineLoadOp::parse(OpAsmParser *parser, OperationState *result) {
+  auto &builder = parser->getBuilder();
+  auto affineIntTy = builder.getIndexType();
+
+  MemRefType type;
+  OpAsmParser::OperandType memrefInfo;
+  AffineMapAttr mapAttr;
+  SmallVector<OpAsmParser::OperandType, 1> mapOperands;
+  return failure(
+      parser->parseOperand(memrefInfo) || parser->parseLSquare() ||
+      parser->parseAffineMapOfSSAIds(mapOperands, mapAttr, "map",
+                                     result->attributes) ||
+      parser->parseRSquare() || parser->parseColonType(type) ||
+      parser->resolveOperand(memrefInfo, type, result->operands) ||
+      parser->resolveOperands(mapOperands, affineIntTy, result->operands) ||
+      parser->addTypeToList(type.getElementType(), result->types));
+}
+
+void AffineLoadOp::print(OpAsmPrinter *p) {
+  *p << "affine.load " << *getMemRef() << '[';
+  AffineMapAttr mapAttr = getAttrOfType<AffineMapAttr>("map");
+  SmallVector<Value *, 2> operands(getIndices());
+  p->printAffineMapOfSSAIds(mapAttr, operands);
+  *p << "] : " << getMemRefType();
+}
+
+LogicalResult AffineLoadOp::verify() {
+  if (getType() != getMemRefType().getElementType())
+    return emitOpError("result type must match element type of memref");
+
+  AffineMap map = getAttrOfType<AffineMapAttr>("map").getValue();
+  if (map.getNumResults() != getMemRefType().getRank())
+    return emitOpError("affine.load affine map num results must equal memref "
+                       "rank");
+
+  for (auto *idx : getIndices())
+    if (!idx->getType().isIndex())
+      return emitOpError("index to load must have 'index' type");
+  // TODO(b/133776335) Verify that map operands are loop IVs or symbols.
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AffineStoreOp
+//===----------------------------------------------------------------------===//
+
+void AffineStoreOp::build(Builder *builder, OperationState *result,
+                          Value *valueToStore, AffineMap map,
+                          ArrayRef<Value *> operands) {
+  // TODO(b/133776335) Check that map operands are loop IVs or symbols.
+  result->addOperands(valueToStore);
+  result->addOperands(operands);
+  result->addAttribute("map", builder->getAffineMapAttr(map));
+}
+
+ParseResult AffineStoreOp::parse(OpAsmParser *parser, OperationState *result) {
+  auto affineIntTy = parser->getBuilder().getIndexType();
+
+  MemRefType type;
+  OpAsmParser::OperandType storeValueInfo;
+  OpAsmParser::OperandType memrefInfo;
+  AffineMapAttr mapAttr;
+  SmallVector<OpAsmParser::OperandType, 1> mapOperands;
+  return failure(
+      parser->parseOperand(storeValueInfo) || parser->parseComma() ||
+      parser->parseOperand(memrefInfo) || parser->parseLSquare() ||
+      parser->parseAffineMapOfSSAIds(mapOperands, mapAttr, "map",
+                                     result->attributes) ||
+      parser->parseRSquare() || parser->parseColonType(type) ||
+      parser->resolveOperand(storeValueInfo, type.getElementType(),
+                             result->operands) ||
+      parser->resolveOperand(memrefInfo, type, result->operands) ||
+      parser->resolveOperands(mapOperands, affineIntTy, result->operands));
+}
+
+void AffineStoreOp::print(OpAsmPrinter *p) {
+  *p << "affine.store " << *getValueToStore();
+  *p << ", " << *getMemRef() << '[';
+  AffineMapAttr mapAttr = getAttrOfType<AffineMapAttr>("map");
+  SmallVector<Value *, 2> operands(getIndices());
+  p->printAffineMapOfSSAIds(mapAttr, operands);
+  *p << "] : " << getMemRefType();
+}
+
+LogicalResult AffineStoreOp::verify() {
+  // First operand must have same type as memref element type.
+  if (getValueToStore()->getType() != getMemRefType().getElementType())
+    return emitOpError("first operand must have same type memref element type");
+
+  AffineMap map = getAttrOfType<AffineMapAttr>("map").getValue();
+  if (map.getNumResults() != getMemRefType().getRank())
+    return emitOpError("affine.store affine map num results must equal memref "
+                       "rank");
+
+  for (auto *idx : getIndices())
+    if (!idx->getType().isIndex())
+      return emitOpError("index to load must have 'index' type");
+  // TODO(b/133776335) Verify that map operands are loop IVs or symbols.
+  return success();
+}

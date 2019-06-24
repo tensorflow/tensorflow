@@ -85,6 +85,11 @@ public:
   virtual void printRegion(Region &blocks, bool printEntryBlockArgs = true,
                            bool printBlockTerminators = true) = 0;
 
+  /// Prints an affine map of SSA ids, where SSA id names are used in place
+  /// of dims/symbols.
+  virtual void printAffineMapOfSSAIds(AffineMapAttr mapAttr,
+                                      ArrayRef<Value *> operands) = 0;
+
   /// Print an optional arrow followed by a type list.
   void printOptionalArrowTypeList(ArrayRef<Type> types) {
     if (types.empty())
@@ -236,6 +241,12 @@ public:
   /// Parse a `)` token if present.
   virtual ParseResult parseOptionalRParen() = 0;
 
+  /// Parse a `[` token.
+  virtual ParseResult parseLSquare() = 0;
+
+  /// Parse a `]` token.
+  virtual ParseResult parseRSquare() = 0;
+
   //===--------------------------------------------------------------------===//
   // Attribute Parsing
   //===--------------------------------------------------------------------===//
@@ -361,6 +372,12 @@ public:
         return failure();
     return success();
   }
+
+  /// Parses an affine map attribute where dims and symbols are SSA operands.
+  virtual ParseResult
+  parseAffineMapOfSSAIds(SmallVectorImpl<OperandType> &operands, Attribute &map,
+                         StringRef attrName,
+                         SmallVectorImpl<NamedAttribute> &attrs) = 0;
 
   //===--------------------------------------------------------------------===//
   // Region Parsing

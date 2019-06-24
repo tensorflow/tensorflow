@@ -273,6 +273,11 @@ public:
   ParseResult parseAffineMapOrIntegerSetReference(AffineMap &map,
                                                   IntegerSet &set);
 
+  /// Parse an AffineMap where the dim and symbol identifiers are SSA ids.
+  ParseResult
+  parseAffineMapOfSSAIds(AffineMap &map,
+                         llvm::function_ref<ParseResult(bool)> parseElement);
+
 private:
   /// The Parser is subclassed and reinstantiated.  Do not add additional
   /// non-trivial state here, add it to the ParserState class.
@@ -1668,11 +1673,17 @@ namespace {
 /// bodies.
 class AffineParser : public Parser {
 public:
-  explicit AffineParser(ParserState &state) : Parser(state) {}
+  AffineParser(ParserState &state, bool allowParsingSSAIds = false,
+               llvm::function_ref<ParseResult(bool)> parseElement = nullptr)
+      : Parser(state), allowParsingSSAIds(allowParsingSSAIds),
+        parseElement(parseElement), numDimOperands(0), numSymbolOperands(0) {}
 
   AffineMap parseAffineMapRange(unsigned numDims, unsigned numSymbols);
   ParseResult parseAffineMapOrIntegerSetInline(AffineMap &map, IntegerSet &set);
   IntegerSet parseIntegerSetConstraints(unsigned numDims, unsigned numSymbols);
+  ParseResult parseAffineMapOfSSAIds(AffineMap &map);
+  void getDimsAndSymbolSSAIds(SmallVectorImpl<StringRef> &dimAndSymbolSSAIds,
+                              unsigned &numDims);
 
 private:
   // Binary affine op parsing.
@@ -1691,6 +1702,8 @@ private:
   AffineExpr parseNegateExpression(AffineExpr lhs);
   AffineExpr parseIntegerExpr();
   AffineExpr parseBareIdExpr();
+  AffineExpr parseSSAIdExpr(bool isSymbol);
+  AffineExpr parseSymbolSSAIdExpr();
 
   AffineExpr getAffineBinaryOpExpr(AffineHighPrecOp op, AffineExpr lhs,
                                    AffineExpr rhs, SMLoc opLoc);
@@ -1703,6 +1716,10 @@ private:
   AffineExpr parseAffineConstraint(bool *isEq);
 
 private:
+  bool allowParsingSSAIds;
+  llvm::function_ref<ParseResult(bool)> parseElement;
+  unsigned numDimOperands;
+  unsigned numSymbolOperands;
   SmallVector<std::pair<StringRef, AffineExpr>, 4> dimsAndSymbols;
 };
 } // end anonymous namespace
@@ -1892,6 +1909,42 @@ AffineExpr AffineParser::parseBareIdExpr() {
   return (emitError("use of undeclared identifier"), nullptr);
 }
 
+/// Parse an SSA id which may appear in an affine expression.
+AffineExpr AffineParser::parseSSAIdExpr(bool isSymbol) {
+  if (!allowParsingSSAIds)
+    return (emitError("unexpected ssa identifier"), nullptr);
+  if (getToken().isNot(Token::percent_identifier))
+    return (emitError("expected ssa identifier"), nullptr);
+  auto name = getTokenSpelling();
+  // Check if we already parsed this SSA id.
+  for (auto entry : dimsAndSymbols) {
+    if (entry.first == name) {
+      consumeToken(Token::percent_identifier);
+      return entry.second;
+    }
+  }
+  // Parse the SSA id and add an AffineDim/SymbolExpr to represent it.
+  if (parseElement(isSymbol))
+    return (emitError("failed to parse ssa identifier"), nullptr);
+  auto idExpr = isSymbol
+                    ? getAffineSymbolExpr(numSymbolOperands++, getContext())
+                    : getAffineDimExpr(numDimOperands++, getContext());
+  dimsAndSymbols.push_back({name, idExpr});
+  return idExpr;
+}
+
+AffineExpr AffineParser::parseSymbolSSAIdExpr() {
+  if (parseToken(Token::kw_symbol, "expected symbol keyword") ||
+      parseToken(Token::l_paren, "expected '(' at start of SSA symbol"))
+    return nullptr;
+  AffineExpr symbolExpr = parseSSAIdExpr(/*isSymbol=*/true);
+  if (!symbolExpr)
+    return nullptr;
+  if (parseToken(Token::r_paren, "expected ')' at end of SSA symbol"))
+    return nullptr;
+  return symbolExpr;
+}
+
 /// Parse a positive integral constant appearing in an affine expression.
 ///
 ///   affine-expr ::= integer-literal
@@ -1917,6 +1970,10 @@ AffineExpr AffineParser::parseAffineOperandExpr(AffineExpr lhs) {
   switch (getToken().getKind()) {
   case Token::bare_identifier:
     return parseBareIdExpr();
+  case Token::kw_symbol:
+    return parseSymbolSSAIdExpr();
+  case Token::percent_identifier:
+    return parseSSAIdExpr(/*isSymbol=*/false);
   case Token::integer:
     return parseIntegerExpr();
   case Token::l_paren:
@@ -2109,6 +2166,26 @@ ParseResult AffineParser::parseAffineMapOrIntegerSetInline(AffineMap &map,
   return failure();
 }
 
+/// Parse an AffineMap where the dim and symbol identifiers are SSA ids.
+ParseResult AffineParser::parseAffineMapOfSSAIds(AffineMap &map) {
+  SmallVector<AffineExpr, 4> exprs;
+  auto parseElt = [&]() -> ParseResult {
+    auto elt = parseAffineExpr();
+    exprs.push_back(elt);
+    return elt ? success() : failure();
+  };
+
+  // Parse a multi-dimensional affine expression (a comma-separated list of
+  // 1-d affine expressions); the list cannot be empty. Grammar:
+  // multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
+  if (parseCommaSeparatedList(parseElt))
+    return failure();
+  // Parsed a valid affine map.
+  map = builder.getAffineMap(numDimOperands,
+                             dimsAndSymbols.size() - numDimOperands, exprs);
+  return success();
+}
+
 /// Parse the range and sizes affine map definition inline.
 ///
 ///  affine-map ::= dim-and-symbol-id-lists `->` multi-dim-affine-expr
@@ -2219,6 +2296,14 @@ IntegerSet AffineParser::parseIntegerSetConstraints(unsigned numDims,
 ParseResult Parser::parseAffineMapOrIntegerSetReference(AffineMap &map,
                                                         IntegerSet &set) {
   return AffineParser(state).parseAffineMapOrIntegerSetInline(map, set);
+}
+
+/// Parse an AffineMap of SSA ids. The callback 'parseElement' is used to
+/// parse SSA value uses encountered while parsing affine expressions.
+ParseResult Parser::parseAffineMapOfSSAIds(
+    AffineMap &map, llvm::function_ref<ParseResult(bool)> parseElement) {
+  return AffineParser(state, /*allowParsingSSAIds=*/true, parseElement)
+      .parseAffineMapOfSSAIds(map);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3014,6 +3099,16 @@ public:
     return success(parser.consumeIf(Token::r_paren));
   }
 
+  /// Parse a `[` token.
+  ParseResult parseLSquare() override {
+    return parser.parseToken(Token::l_square, "expected '['");
+  }
+
+  /// Parse a `]` token.
+  ParseResult parseRSquare() override {
+    return parser.parseToken(Token::r_square, "expected ']'");
+  }
+
   //===--------------------------------------------------------------------===//
   // Attribute Parsing
   //===--------------------------------------------------------------------===//
@@ -3153,6 +3248,37 @@ public:
       return success();
     }
     return failure();
+  }
+
+  /// Parse an AffineMap of SSA ids.
+  ParseResult parseAffineMapOfSSAIds(SmallVectorImpl<OperandType> &operands,
+                                     Attribute &mapAttr, StringRef attrName,
+                                     SmallVectorImpl<NamedAttribute> &attrs) {
+    SmallVector<OperandType, 2> dimOperands;
+    SmallVector<OperandType, 1> symOperands;
+
+    auto parseElement = [&](bool isSymbol) -> ParseResult {
+      OperandType operand;
+      if (parseOperand(operand))
+        return failure();
+      if (isSymbol)
+        symOperands.push_back(operand);
+      else
+        dimOperands.push_back(operand);
+      return success();
+    };
+
+    AffineMap map;
+    if (parser.parseAffineMapOfSSAIds(map, parseElement))
+      return failure();
+    // Add AffineMap attribute.
+    mapAttr = parser.builder.getAffineMapAttr(map);
+    attrs.push_back(parser.builder.getNamedAttr(attrName, mapAttr));
+
+    // Add dim operands before symbol operands in 'operands'.
+    operands.assign(dimOperands.begin(), dimOperands.end());
+    operands.append(symOperands.begin(), symOperands.end());
+    return success();
   }
 
   //===--------------------------------------------------------------------===//

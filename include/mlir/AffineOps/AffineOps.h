@@ -346,6 +346,107 @@ public:
   static StringRef getOperationName() { return "affine.terminator"; }
 };
 
+/// The "affine.load" op reads an element from a memref, where the index
+/// for each memref dimension is an affine expression of loop induction
+/// variables and symbols. The output of 'affine.load' is a new value with the
+/// same type as the elements of the memref. An affine expression of loop IVs
+/// and symbols must be specified for each dimension of the memref. The keyword
+/// 'symbol' can be used to indicate SSA identifiers which are symbolic.
+//
+//  Example 1:
+//
+//    %1 = affine.load %0[%i0 + 3, %i1 + 7] : memref<100x100xf32>
+//
+//  Example 2: Uses 'symbol' keyword for symbols '%n' and '%m'.
+//
+//    %1 = affine.load %0[%i0 + symbol(%n), %i1 + symbol(%m)]
+//      : memref<100x100xf32>
+//
+class AffineLoadOp : public Op<AffineLoadOp, OpTrait::OneResult,
+                               OpTrait::AtLeastNOperands<1>::Impl> {
+public:
+  using Op::Op;
+
+  /// Builds an affine load op with the specified map and operands.
+  static void build(Builder *builder, OperationState *result, AffineMap map,
+                    ArrayRef<Value *> operands);
+
+  /// Get memref operand.
+  Value *getMemRef() { return getOperand(0); }
+  void setMemRef(Value *value) { setOperand(0, value); }
+  MemRefType getMemRefType() {
+    return getMemRef()->getType().cast<MemRefType>();
+  }
+
+  /// Get affine map operands.
+  operand_range getIndices() { return llvm::drop_begin(getOperands(), 1); }
+
+  /// Returns the affine map used to index the memref for this operation.
+  AffineMap getAffineMap() {
+    return getAttrOfType<AffineMapAttr>("map").getValue();
+  }
+
+  static StringRef getOperationName() { return "affine.load"; }
+
+  // Hooks to customize behavior of this op.
+  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p);
+  LogicalResult verify();
+};
+
+/// The "affine.store" op writes an element to a memref, where the index
+/// for each memref dimension is an affine expression of loop induction
+/// variables and symbols. The 'affine.store' op stores a new value which is the
+/// same type as the elements of the memref. An affine expression of loop IVs
+/// and symbols must be specified for each dimension of the memref. The keyword
+/// 'symbol' can be used to indicate SSA identifiers which are symbolic.
+//
+//  Example 1:
+//
+//    affine.store %v0, %0[%i0 + 3, %i1 + 7] : memref<100x100xf32>
+//
+//  Example 2: Uses 'symbol' keyword for symbols '%n' and '%m'.
+//
+//    affine.store %v0, %0[%i0 + symbol(%n), %i1 + symbol(%m)]
+//      : memref<100x100xf32>
+//
+class AffineStoreOp : public Op<AffineStoreOp, OpTrait::ZeroResult,
+                                OpTrait::AtLeastNOperands<1>::Impl> {
+public:
+  using Op::Op;
+
+  /// Builds an affine store operation with the specified map and operands.
+  static void build(Builder *builder, OperationState *result,
+                    Value *valueToStore, AffineMap map,
+                    ArrayRef<Value *> operands);
+
+  /// Get value to be stored by store operation.
+  Value *getValueToStore() { return getOperand(0); }
+
+  /// Get memref operand.
+  Value *getMemRef() { return getOperand(1); }
+  void setMemRef(Value *value) { setOperand(1, value); }
+
+  MemRefType getMemRefType() {
+    return getMemRef()->getType().cast<MemRefType>();
+  }
+
+  /// Get affine map operands.
+  operand_range getIndices() { return llvm::drop_begin(getOperands(), 2); }
+
+  /// Returns the affine map used to index the memref for this operation.
+  AffineMap getAffineMap() {
+    return getAttrOfType<AffineMapAttr>("map").getValue();
+  }
+
+  static StringRef getOperationName() { return "affine.store"; }
+
+  // Hooks to customize behavior of this op.
+  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p);
+  LogicalResult verify();
+};
+
 /// Returns true if the given Value can be used as a dimension id.
 bool isValidDim(Value *value);
 

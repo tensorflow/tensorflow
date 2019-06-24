@@ -347,7 +347,8 @@ public:
   void printLocation(LocationAttr loc);
 
   void printAffineMap(AffineMap map);
-  void printAffineExpr(AffineExpr expr);
+  void printAffineExpr(AffineExpr expr, ArrayRef<StringRef> dimValueNames = {},
+                       ArrayRef<StringRef> symbolValueNames = {});
   void printAffineConstraint(AffineExpr expr, bool isEq);
   void printIntegerSet(IntegerSet set);
 
@@ -370,7 +371,9 @@ protected:
     Strong, // All other binary operators.
   };
   void printAffineExprInternal(AffineExpr expr,
-                               BindingStrength enclosingTightness);
+                               BindingStrength enclosingTightness,
+                               ArrayRef<StringRef> dimValueNames = {},
+                               ArrayRef<StringRef> symbolValueNames = {});
 };
 } // end anonymous namespace
 
@@ -918,20 +921,34 @@ void ModulePrinter::printType(Type type) {
 // Affine expressions and maps
 //===----------------------------------------------------------------------===//
 
-void ModulePrinter::printAffineExpr(AffineExpr expr) {
-  printAffineExprInternal(expr, BindingStrength::Weak);
+void ModulePrinter::printAffineExpr(AffineExpr expr,
+                                    ArrayRef<StringRef> dimValueNames,
+                                    ArrayRef<StringRef> symbolValueNames) {
+  printAffineExprInternal(expr, BindingStrength::Weak, dimValueNames,
+                          symbolValueNames);
 }
 
 void ModulePrinter::printAffineExprInternal(
-    AffineExpr expr, BindingStrength enclosingTightness) {
+    AffineExpr expr, BindingStrength enclosingTightness,
+    ArrayRef<StringRef> dimValueNames, ArrayRef<StringRef> symbolValueNames) {
   const char *binopSpelling = nullptr;
   switch (expr.getKind()) {
-  case AffineExprKind::SymbolId:
-    os << 's' << expr.cast<AffineSymbolExpr>().getPosition();
+  case AffineExprKind::SymbolId: {
+    unsigned pos = expr.cast<AffineSymbolExpr>().getPosition();
+    if (pos < symbolValueNames.size())
+      os << "symbol(%" << symbolValueNames[pos] << ')';
+    else
+      os << 's' << pos;
     return;
-  case AffineExprKind::DimId:
-    os << 'd' << expr.cast<AffineDimExpr>().getPosition();
+  }
+  case AffineExprKind::DimId: {
+    unsigned pos = expr.cast<AffineDimExpr>().getPosition();
+    if (pos < dimValueNames.size())
+      os << '%' << dimValueNames[pos];
+    else
+      os << 'd' << pos;
     return;
+  }
   case AffineExprKind::Constant:
     os << expr.cast<AffineConstantExpr>().getValue();
     return;
@@ -965,13 +982,16 @@ void ModulePrinter::printAffineExprInternal(
     auto rhsConst = rhsExpr.dyn_cast<AffineConstantExpr>();
     if (rhsConst && rhsConst.getValue() == -1) {
       os << "-";
-      printAffineExprInternal(lhsExpr, BindingStrength::Strong);
+      printAffineExprInternal(lhsExpr, BindingStrength::Strong, dimValueNames,
+                              symbolValueNames);
       return;
     }
 
-    printAffineExprInternal(lhsExpr, BindingStrength::Strong);
+    printAffineExprInternal(lhsExpr, BindingStrength::Strong, dimValueNames,
+                            symbolValueNames);
     os << binopSpelling;
-    printAffineExprInternal(rhsExpr, BindingStrength::Strong);
+    printAffineExprInternal(rhsExpr, BindingStrength::Strong, dimValueNames,
+                            symbolValueNames);
 
     if (enclosingTightness == BindingStrength::Strong)
       os << ')';
@@ -989,12 +1009,15 @@ void ModulePrinter::printAffineExprInternal(
       AffineExpr rrhsExpr = rhs.getRHS();
       if (auto rrhs = rrhsExpr.dyn_cast<AffineConstantExpr>()) {
         if (rrhs.getValue() == -1) {
-          printAffineExprInternal(lhsExpr, BindingStrength::Weak);
+          printAffineExprInternal(lhsExpr, BindingStrength::Weak, dimValueNames,
+                                  symbolValueNames);
           os << " - ";
           if (rhs.getLHS().getKind() == AffineExprKind::Add) {
-            printAffineExprInternal(rhs.getLHS(), BindingStrength::Strong);
+            printAffineExprInternal(rhs.getLHS(), BindingStrength::Strong,
+                                    dimValueNames, symbolValueNames);
           } else {
-            printAffineExprInternal(rhs.getLHS(), BindingStrength::Weak);
+            printAffineExprInternal(rhs.getLHS(), BindingStrength::Weak,
+                                    dimValueNames, symbolValueNames);
           }
 
           if (enclosingTightness == BindingStrength::Strong)
@@ -1003,9 +1026,11 @@ void ModulePrinter::printAffineExprInternal(
         }
 
         if (rrhs.getValue() < -1) {
-          printAffineExprInternal(lhsExpr, BindingStrength::Weak);
+          printAffineExprInternal(lhsExpr, BindingStrength::Weak, dimValueNames,
+                                  symbolValueNames);
           os << " - ";
-          printAffineExprInternal(rhs.getLHS(), BindingStrength::Strong);
+          printAffineExprInternal(rhs.getLHS(), BindingStrength::Strong,
+                                  dimValueNames, symbolValueNames);
           os << " * " << -rrhs.getValue();
           if (enclosingTightness == BindingStrength::Strong)
             os << ')';
@@ -1018,7 +1043,8 @@ void ModulePrinter::printAffineExprInternal(
   // Pretty print addition to a negative number as a subtraction.
   if (auto rhsConst = rhsExpr.dyn_cast<AffineConstantExpr>()) {
     if (rhsConst.getValue() < 0) {
-      printAffineExprInternal(lhsExpr, BindingStrength::Weak);
+      printAffineExprInternal(lhsExpr, BindingStrength::Weak, dimValueNames,
+                              symbolValueNames);
       os << " - " << -rhsConst.getValue();
       if (enclosingTightness == BindingStrength::Strong)
         os << ')';
@@ -1026,9 +1052,11 @@ void ModulePrinter::printAffineExprInternal(
     }
   }
 
-  printAffineExprInternal(lhsExpr, BindingStrength::Weak);
+  printAffineExprInternal(lhsExpr, BindingStrength::Weak, dimValueNames,
+                          symbolValueNames);
   os << " + ";
-  printAffineExprInternal(rhsExpr, BindingStrength::Weak);
+  printAffineExprInternal(rhsExpr, BindingStrength::Weak, dimValueNames,
+                          symbolValueNames);
 
   if (enclosingTightness == BindingStrength::Strong)
     os << ')';
@@ -1208,6 +1236,23 @@ public:
         print(&b);
     }
     os.indent(currentIndent) << "}";
+  }
+
+  void printAffineMapOfSSAIds(AffineMapAttr mapAttr,
+                              ArrayRef<Value *> operands) {
+    AffineMap map = mapAttr.getValue();
+    unsigned numDims = map.getNumDims();
+    SmallVector<StringRef, 2> dimValueNames;
+    SmallVector<StringRef, 1> symbolValueNames;
+    for (unsigned i = 0, e = operands.size(); i < e; ++i) {
+      if (i < numDims)
+        dimValueNames.push_back(valueNames[operands[i]]);
+      else
+        symbolValueNames.push_back(valueNames[operands[i]]);
+    }
+    interleaveComma(map.getResults(), [&](AffineExpr expr) {
+      printAffineExpr(expr, dimValueNames, symbolValueNames);
+    });
   }
 
   // Number of spaces used for indenting nested operations.
