@@ -163,6 +163,7 @@ cc_library(
 cc_library(
     name = "path",
     hdrs = ["path.h"],
+    visibility = ruy_visibility(),
     deps = [":size_util"],
 )
 
@@ -205,12 +206,14 @@ cc_library(
 cc_library(
     name = "matrix",
     hdrs = ["matrix.h"],
+    visibility = ruy_visibility(),
     deps = [":check_macros"],
 )
 
 cc_library(
     name = "spec",
     hdrs = ["spec.h"],
+    visibility = ruy_visibility(),
     deps = [":matrix"],
 )
 
@@ -306,8 +309,6 @@ cc_library(
         "prepack.h",
     ],
     hdrs = [
-        "matrix.h",
-        "path.h",
         "ruy.h",
         "ruy_advanced.h",
     ],
@@ -316,6 +317,8 @@ cc_library(
         ":check_macros",
         ":common",
         ":context",
+        ":matrix",
+        ":path",
         ":size_util",
         ":spec",
         ":trmul",
