@@ -1,4 +1,4 @@
-// RUN: mlir-test-opt -test-patterns -mlir-print-debuginfo %s | FileCheck %s
+// RUN: mlir-opt -test-patterns -mlir-print-debuginfo %s | FileCheck %s
 
 // CHECK-LABEL: verifyConstantAttr
 func @verifyConstantAttr(%arg0 : i32) -> i32 {

@@ -1,4 +1,4 @@
-// RUN: mlir-test-opt -test-legalize-patterns -split-input-file -verify-diagnostics %s | FileCheck %s --dump-input=fail
+// RUN: mlir-opt -test-legalize-patterns -split-input-file -verify-diagnostics %s | FileCheck %s --dump-input=fail
 
 // CHECK-LABEL: verifyDirectPattern
 func @verifyDirectPattern() -> i32 {

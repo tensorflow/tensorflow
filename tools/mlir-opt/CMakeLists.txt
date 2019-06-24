@@ -35,6 +35,8 @@ set(LIBS
   MLIRStandardOps
   MLIRStandardToLLVM
   MLIRTransforms
+  MLIRTestDialect
+  MLIRTestTransforms
   MLIRSupport
   MLIRVectorOps
 )

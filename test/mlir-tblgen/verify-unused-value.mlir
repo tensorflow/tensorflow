@@ -1,4 +1,4 @@
-// RUN: mlir-test-opt -test-patterns %s | FileCheck %s
+// RUN: mlir-opt -test-patterns %s | FileCheck %s
 
 //===----------------------------------------------------------------------===//
 // Test 'verifyUnusedValue'

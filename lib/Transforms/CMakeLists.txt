@@ -16,8 +16,6 @@ add_llvm_library(MLIRTransforms
   PipelineDataTransfer.cpp
   SimplifyAffineStructures.cpp
   StripDebugInfo.cpp
-  TestConstantFold.cpp
-  TestLoopFusion.cpp
   Utils/FoldUtils.cpp
   Utils/GreedyPatternRewriteDriver.cpp
   Utils/LoopFusionUtils.cpp
@@ -26,7 +24,6 @@ add_llvm_library(MLIRTransforms
   Utils/Utils.cpp
   Vectorization
   Vectorize.cpp
-  Vectorization/VectorizerTestPass.cpp
   ViewFunctionGraph.cpp
 
   ADDITIONAL_HEADER_DIRS

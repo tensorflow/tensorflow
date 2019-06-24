@@ -1,7 +1,7 @@
 add_subdirectory(EDSC)
 add_subdirectory(mlir-cpu-runner)
 add_subdirectory(SDBM)
-add_subdirectory(TestDialect)
+add_subdirectory(lib)
 
 llvm_canonicalize_cmake_booleans(
   LLVM_BUILD_EXAMPLES
@@ -32,7 +32,6 @@ set(MLIR_TEST_DEPENDS
   mlir-opt
   mlir-sdbm-api-test
   mlir-tblgen
-  mlir-test-opt
   mlir-translate
   cblas
   cblas_interface
