@@ -58,12 +58,14 @@ Status ConvolutionPreplanning::StorePreplanConv(
   TF_ASSIGN_OR_RETURN(
       poplin::ConvParams conv_params,
       GetConvolutionParameters(inst, input_index, kernel_index));
-  auto conv_type = GetConvClassificationType(inst, resources.annotations);
+  auto conv_type = ConvClassificationTypeToString(
+      GetConvClassificationType(inst, resources.annotations));
+
   poplar::OptionFlags option_flags = resources.default_conv_options;
-  option_flags.set("pass", ConvClassificationTypeToString(conv_type));
-  option_flags_store.emplace_back(option_flags);
+  option_flags.set("pass", conv_type);
+  auto ins = option_flags_store.insert(std::make_pair(conv_type, option_flags));
   preplan_convs.insert(
-      std::make_tuple(&target, conv_params, &option_flags_store.back()));
+      std::make_tuple(&target, conv_params, &(ins.first->second)));
   return Status::OK();
 }
 

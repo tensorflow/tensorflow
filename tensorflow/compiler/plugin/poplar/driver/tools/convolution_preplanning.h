@@ -40,7 +40,7 @@ class ConvolutionPreplanning {
       preplan_convs;
 
   // OptionsFlags storage location.
-  std::list<poplar::OptionFlags> option_flags_store;
+  std::map<std::string, poplar::OptionFlags> option_flags_store;
 
   Status StorePreplanConv(const HloInstruction* inst,
                           const CompilerResources& resources, int64 input_index,
