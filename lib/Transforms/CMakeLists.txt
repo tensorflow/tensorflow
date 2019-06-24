@@ -22,7 +22,6 @@ add_llvm_library(MLIRTransforms
   Utils/LoopUtils.cpp
   Utils/RegionUtils.cpp
   Utils/Utils.cpp
-  Vectorization
   Vectorize.cpp
   ViewFunctionGraph.cpp
 
