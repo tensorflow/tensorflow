@@ -20,9 +20,7 @@ limitations under the License.
 #include <cassert>
 #include <cstdarg>
 #include <cstdint>
-#ifdef _WIN32
 #include <cstdio>
-#endif
 #include <cstring>
 #include <utility>
 
