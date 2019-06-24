@@ -36,7 +36,11 @@ namespace data {
 namespace model {
 
 // A constant that can be used to enable auto-tuning.
-constexpr int64 kAutoTune = -1;
+constexpr int64 kAutotune = -1;
+
+enum class AutotuneAlgorithm {
+  HILL_CLIMB = 0,
+};
 
 // Represents thread-safe state that can be shared between an input pipeline and
 // the performance model.
@@ -47,7 +51,7 @@ struct SharedState {
       : value(value),
         mu(std::move(mu)),
         cond_var(std::move(cond_var)),
-        tunable(value == kAutoTune) {}
+        tunable(value == kAutotune) {}
 
   double value;
   const std::shared_ptr<mutex> mu;
@@ -486,8 +490,9 @@ class Model {
   // Increments the processing time for the given node..
   void AddProcessingTime(const string& name, int64 delta) LOCKS_EXCLUDED(mu_);
 
-  // Runs optimization.
-  void Optimize(int64 cpu_budget) LOCKS_EXCLUDED(mu_);
+  // Uses the given algorithm to perform the autotuning optimization.
+  void Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget)
+      LOCKS_EXCLUDED(mu_);
 
   // Records that a node has produced an element.
   void RecordElement(const string& name) LOCKS_EXCLUDED(mu_);
@@ -511,6 +516,14 @@ class Model {
   // a mapping from a (unique) node name to a tunable parameter.
   std::map<string, std::shared_ptr<Parameter>> CollectTunableParameters(
       std::shared_ptr<Node> node);
+
+  // This optimization algorithm starts by setting all tunable parallelism
+  // parameters to 1. It then repeatedly identifies the parameter whose increase
+  // in parallelism decreases the output time the most. This process is repeated
+  // until all parameters reach their maximum values or the projected output
+  // time is less than or equal to the processing time needed to produce an
+  // element divided by CPU budget.
+  void OptimizeHillClimb(int64 cpu_budget);
 
   // Collects the output time for the given node.
   double OutputTime(std::shared_ptr<Node> node);

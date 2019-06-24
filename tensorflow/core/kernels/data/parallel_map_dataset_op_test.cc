@@ -170,14 +170,14 @@ TestCase TestCase4() {
           /*breakpoints*/ {0, 1, 5}};
 }
 
-// test case 5: num_parallel_calls = kAutoTune, use_inter_op_parallelism = true,
+// test case 5: num_parallel_calls = kAutotune, use_inter_op_parallelism = true,
 // sloppy = true, preserve_cardinality = true, MapFunc = XTimesFour
 TestCase TestCase5() {
   return {
       /*range_data_param*/ {0, 10, 3},
       /*num_parallel_calls*/
       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}),
-                                              {model::kAutoTune}),
+                                              {model::kAutotune}),
       /*func*/ MapFunc("XTimesFour", DT_INT64),
       /*func_lib*/ {test::function::XTimesTwo(), test::function::XTimesFour()},
       /*use_inter_op_parallelism*/ true,
@@ -242,14 +242,14 @@ TestCase TestCase7() {
 }
 
 // TODO(feihugis): make this test case work.
-// test case 8: num_parallel_calls = kAutoTune, use_inter_op_parallelism =
+// test case 8: num_parallel_calls = kAutotune, use_inter_op_parallelism =
 // false, sloppy = true, preserve_cardinality = true, MapFunc = XTimesFour
 TestCase TestCase8() {
   return {
       /*range_data_param*/ {0, 10, 3},
       /*num_parallel_calls*/
       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}),
-                                              {model::kAutoTune}),
+                                              {model::kAutotune}),
       /*func*/ MapFunc("XTimesFour", DT_INT64),
       /*func_lib*/ {test::function::XTimesTwo(), test::function::XTimesFour()},
       /*use_inter_op_parallelism*/ false,

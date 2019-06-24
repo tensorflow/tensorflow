@@ -425,68 +425,10 @@ void Model::AddProcessingTime(const string& name, int64 delta) {
   }
 }
 
-// The optimization algorithm starts by setting all tunable parallelism
-// parameters to 1. It then repeatedly identifies the parameter whose increase
-// in parallelism decreases the output time the most. This process is repeated
-// until all parameters reach their maximum values or the projected output time
-// is less than or equal to the processing time needed to produce an element
-// divided by CPU budget.
-void Model::Optimize(int64 cpu_budget) {
-  std::shared_ptr<Node> snapshot;
-  {
-    tf_shared_lock lock(mu_);
-    snapshot = output_->Snapshot(nullptr);
-  }
-  VLOG(2) << "Starting optimization of tunable parameters";
-  const double processing_time = TotalProcessingTime(snapshot);
-  auto parameters = CollectTunableParameters(snapshot);
-  for (auto& pair : parameters) {
-    pair.second->value = 1;
-  }
-  while (true) {
-    const double output_time = OutputTime(snapshot);
-    bool all_max = true;
-    for (auto& pair : parameters) {
-      if (pair.second->value < pair.second->max) {
-        all_max = false;
-        break;
-      }
-    }
-    if (output_time < processing_time / cpu_budget || all_max) {
-      break;
-    }
-    double best_delta = -1.0L;
-    Parameter* best_parameter = nullptr;
-    for (auto& pair : parameters) {
-      if (pair.second->value == pair.second->max) {
-        continue;
-      }
-      pair.second->value++;
-      double new_output_time = OutputTime(snapshot);
-      double delta = output_time - new_output_time;
-      if (delta > best_delta) {
-        best_delta = delta;
-        best_parameter = pair.second.get();
-      }
-      pair.second->value--;
-    }
-    if (!best_parameter) {
-      LOG(WARNING) << "Failed to find a tunable parameter that would "
-                      "decrease the output time. This means that the "
-                      "autotuning optimization got stuck in a local maximum. "
-                      "The optimization attempt will be aborted.";
-      return;
-    }
-    best_parameter->value++;
-  }
-  VLOG(2) << "Number of tunable parameters: " << parameters.size();
-  for (auto& pair : parameters) {
-    auto& parameter = pair.second;
-    VLOG(2) << "Setting tunable parameter " << pair.first << " to "
-            << parameter->value;
-    mutex_lock l(*parameter->state->mu);
-    parameter->state->value = parameter->value;
-    parameter->state->cond_var->notify_all();
+void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget) {
+  switch (algorithm) {
+    case AutotuneAlgorithm::HILL_CLIMB:
+      OptimizeHillClimb(cpu_budget);
   }
 }
 
@@ -549,6 +491,65 @@ std::map<string, std::shared_ptr<Parameter>> Model::CollectTunableParameters(
   std::map<string, std::shared_ptr<Parameter>> parameters;
   node->CollectTunableParameters(&parameters);
   return parameters;
+}
+
+void Model::OptimizeHillClimb(int64 cpu_budget) {
+  std::shared_ptr<Node> snapshot;
+  {
+    tf_shared_lock lock(mu_);
+    snapshot = output_->Snapshot(nullptr);
+  }
+  VLOG(2) << "Starting optimization of tunable parameters";
+  const double processing_time = TotalProcessingTime(snapshot);
+  auto parameters = CollectTunableParameters(snapshot);
+  for (auto& pair : parameters) {
+    pair.second->value = 1;
+  }
+  while (true) {
+    const double output_time = OutputTime(snapshot);
+    bool all_max = true;
+    for (auto& pair : parameters) {
+      if (pair.second->value < pair.second->max) {
+        all_max = false;
+        break;
+      }
+    }
+    if (output_time < processing_time / cpu_budget || all_max) {
+      break;
+    }
+    double best_delta = -1.0L;
+    Parameter* best_parameter = nullptr;
+    for (auto& pair : parameters) {
+      if (pair.second->value == pair.second->max) {
+        continue;
+      }
+      pair.second->value++;
+      double new_output_time = OutputTime(snapshot);
+      double delta = output_time - new_output_time;
+      if (delta > best_delta) {
+        best_delta = delta;
+        best_parameter = pair.second.get();
+      }
+      pair.second->value--;
+    }
+    if (!best_parameter) {
+      LOG(WARNING) << "Failed to find a tunable parameter that would "
+                      "decrease the output time. This means that the "
+                      "autotuning optimization got stuck in a local maximum. "
+                      "The optimization attempt will be aborted.";
+      return;
+    }
+    best_parameter->value++;
+  }
+  VLOG(2) << "Number of tunable parameters: " << parameters.size();
+  for (auto& pair : parameters) {
+    auto& parameter = pair.second;
+    VLOG(2) << "Setting tunable parameter " << pair.first << " to "
+            << parameter->value;
+    mutex_lock l(*parameter->state->mu);
+    parameter->state->value = parameter->value;
+    parameter->state->cond_var->notify_all();
+  }
 }
 
 double Model::OutputTime(std::shared_ptr<Node> node) {
