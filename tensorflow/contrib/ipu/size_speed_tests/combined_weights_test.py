@@ -114,7 +114,7 @@ class CombinedWightsTest(test_util.TensorFlowTestCase):
 
     # The download weights sequence should not have lots of entries (because the
     # copies will have been merged)
-    self.assertTrue(len(j['programs'][download_weights_index]['children']) < 6)
+    self.assertTrue(len(j['programs'][download_weights_index]['children']) < 7)
 
     # Also check the overall size
     size = utils.get_memory_size_from_events(evts)
