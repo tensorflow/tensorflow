@@ -49,6 +49,12 @@ public:
     }
   }
 
+   Status GetEagerClientCache(
+       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
+     return errors::Unimplemented(
+         "Eager client not yet implemented for this protocol");
+   }
+
   void SetLogging(bool v) override { logger_.SetLogging(v); }
   void ClearLogs() override { logger_.ClearLogs(); }
   bool RetrieveLogs(int64 step_id, StepStats* ss) override {
