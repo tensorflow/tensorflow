@@ -344,6 +344,14 @@ Value *LaunchFuncOp::getKernelOperand(unsigned i) {
   return getOperation()->getOperand(i + kNumConfigOperands);
 }
 
+KernelDim3 LaunchFuncOp::getGridSizeOperandValues() {
+  return KernelDim3{getOperand(0), getOperand(1), getOperand(2)};
+}
+
+KernelDim3 LaunchFuncOp::getBlockSizeOperandValues() {
+  return KernelDim3{getOperand(3), getOperand(4), getOperand(5)};
+}
+
 LogicalResult LaunchFuncOp::verify() {
   auto kernelAttr = this->getAttr(getKernelAttrName());
   if (!kernelAttr) {

@@ -133,6 +133,11 @@ public:
   /// The i-th operand passed to the kernel function.
   Value *getKernelOperand(unsigned i);
 
+  /// Get the SSA values passed as operands to specify the grid size.
+  KernelDim3 getGridSizeOperandValues();
+  /// Get the SSA values passed as operands to specify the block size.
+  KernelDim3 getBlockSizeOperandValues();
+
   LogicalResult verify();
 
   static StringRef getOperationName() { return "gpu.launch_func"; }
