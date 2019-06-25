@@ -999,6 +999,7 @@ tf_xla_py_test(
     name = "unary_ops_test",
     size = "medium",
     srcs = ["unary_ops_test.py"],
+    tags = ["notap"],  # b/136030724
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
