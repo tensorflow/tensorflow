@@ -41,6 +41,10 @@ public:
 
   /// Get the name of the attribute used to annotate outlined kernel functions.
   static StringRef getKernelFuncAttrName() { return "gpu.kernel"; }
+
+  /// Returns whether the given function is a kernel function, i.e., has the
+  /// 'gpu.kernel' attribute.
+  static bool isKernel(Function *function);
 };
 
 /// Utility class for the GPU dialect to represent triples of `Value`s

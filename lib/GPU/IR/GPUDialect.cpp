@@ -30,6 +30,12 @@ using namespace mlir::gpu;
 
 StringRef GPUDialect::getDialectName() { return "gpu"; }
 
+bool GPUDialect::isKernel(Function *function) {
+  UnitAttr isKernelAttr =
+      function->getAttrOfType<UnitAttr>(getKernelFuncAttrName());
+  return static_cast<bool>(isKernelAttr);
+}
+
 GPUDialect::GPUDialect(MLIRContext *context)
     : Dialect(getDialectName(), context) {
   addOperations<LaunchOp, LaunchFuncOp,

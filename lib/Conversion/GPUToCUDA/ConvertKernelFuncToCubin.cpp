@@ -83,7 +83,7 @@ std::string translateModuleToPtx(llvm::Module &module,
 
 using OwnedCubin = std::unique_ptr<std::vector<char>>;
 
-llvm::Optional<OwnedCubin> compilePtxToCubin(std::string ptx,
+llvm::Optional<OwnedCubin> compilePtxToCubin(std::string &ptx,
                                              Function &function) {
   RETURN_ON_CUDA_ERROR(cuInit(0), "cuInit");
 
@@ -161,10 +161,8 @@ LogicalResult translateGpuKernelToCubinAnnotation(Function &function) {
   auto llvmModule = translateModuleToNVVMIR(*module);
   auto cubin = convertModuleToCubin(*llvmModule, function);
 
-  if (!cubin) {
-    function.emitError("Translation to CUDA binary failed.");
-    return failure();
-  }
+  if (!cubin)
+    return function.emitError("Translation to CUDA binary failed.");
 
   function.setAttr(kCubinAnnotation,
                    builder.getStringAttr(
@@ -193,9 +191,7 @@ public:
     LLVMInitializeNVPTXAsmPrinter();
 
     for (auto &function : getModule()) {
-      UnitAttr isKernelAttr = function.getAttrOfType<UnitAttr>(
-          gpu::GPUDialect::getKernelFuncAttrName());
-      if (!isKernelAttr || function.isExternal()) {
+      if (!gpu::GPUDialect::isKernel(&function) || function.isExternal()) {
         continue;
       }
       if (failed(translateGpuKernelToCubinAnnotation(function)))
