@@ -41,7 +41,7 @@ static double GetScalarConstantAsDouble(const Literal &literal) {
     case F64:
       return literal.Get<double>({});
     default:
-      LOG(FATAL) << "Unsupported type.";
+      LOG(FATAL) << "Unsupported type: " << literal.shape();
   }
 }
 
@@ -95,7 +95,8 @@ class GemmRewriterVisitor : public DfsHloVisitorWithDefault {
                   m::Broadcast(m::ConstantScalar(&alpha))))) {
       TF_ASSIGN_OR_RETURN(auto config,
                           existing_gemm->backend_config<GemmBackendConfig>());
-      if (config.beta() == 0.0 && existing_gemm->user_count() == 1) {
+      if (config.beta() == 0.0 && existing_gemm->user_count() == 1 &&
+          ShapeUtil::ElementIsFloating(alpha->literal().shape())) {
         double prev_alpha = config.alpha();
         config.set_alpha(GetScalarConstantAsDouble(alpha->literal()) *
                          prev_alpha);
