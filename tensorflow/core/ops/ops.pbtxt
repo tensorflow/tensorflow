@@ -21489,6 +21489,13 @@ op {
     type: DT_VARIANT
   }
   attr {
+    name: "algorithm"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
     name: "cpu_budget"
     type: "int"
     default_value {
