@@ -29,6 +29,47 @@
 
 using namespace mlir;
 
+/// Given an operation, find the parent region that folded constants should be
+/// inserted into.
+static Region *getInsertionRegion(Operation *op) {
+  while (Region *region = op->getContainingRegion()) {
+    // Insert in this region for any of the following scenarios:
+    //  * The parent is not an operation, i.e. is a Function.
+    //  * The parent is unregistered, or is known to be isolated from above.
+    //  * The parent is a top-level operation.
+    auto *parentOp = region->getContainingOp();
+    if (!parentOp || !parentOp->isRegistered() ||
+        parentOp->isKnownIsolatedFromAbove() || !parentOp->getBlock())
+      return region;
+    // Traverse up the parent looking for an insertion region.
+    op = parentOp;
+  }
+  llvm_unreachable("expected valid insertion region");
+}
+
+/// A utility function used to materialize a constant for a given attribute and
+/// type. On success, a valid constant value is returned. Otherwise, null is
+/// returned
+static Operation *materializeConstant(Dialect *dialect, OpBuilder &builder,
+                                      Attribute value, Type type,
+                                      Location loc) {
+  auto insertPt = builder.getInsertionPoint();
+  (void)insertPt;
+
+  // Ask the dialect to materialize a constant operation for this value.
+  if (auto *constOp = dialect->materializeConstant(builder, value, type, loc)) {
+    assert(insertPt == builder.getInsertionPoint());
+    assert(matchPattern(constOp, m_Constant(&value)));
+    return constOp;
+  }
+
+  // If the dialect is unable to materialize a constant, check to see if the
+  // standard constant can be used.
+  if (ConstantOp::isBuildableWith(value, type))
+    return builder.create<ConstantOp>(loc, type, value);
+  return nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // OperationFolder
 //===----------------------------------------------------------------------===//
@@ -37,9 +78,6 @@ LogicalResult OperationFolder::tryToFold(
     Operation *op,
     llvm::function_ref<void(Operation *)> processGeneratedConstants,
     llvm::function_ref<void(Operation *)> preReplaceAction) {
-  assert(op->getFunction() == function &&
-         "cannot constant fold op from another function");
-
   // If this is a unique'd constant, return failure as we know that it has
   // already been folded.
   if (referencedDialects.count(op))
@@ -70,9 +108,6 @@ LogicalResult OperationFolder::tryToFold(
 /// Notifies that the given constant `op` should be remove from this
 /// OperationFolder's internal bookkeeping.
 void OperationFolder::notifyRemoval(Operation *op) {
-  assert(op->getFunction() == function &&
-         "cannot remove constant from another function");
-
   // Check to see if this operation is uniqued within the folder.
   auto it = referencedDialects.find(op);
   if (it == referencedDialects.end())
@@ -84,6 +119,9 @@ void OperationFolder::notifyRemoval(Operation *op) {
   matchPattern(op, m_Constant(&constValue));
   assert(constValue);
 
+  // Get the constant map that this operation was uniqued in.
+  auto &uniquedConstants = foldScopes[getInsertionRegion(op)];
+
   // Erase all of the references to this operation.
   auto type = op->getResult(0)->getType();
   for (auto *dialect : it->second)
@@ -91,37 +129,11 @@ void OperationFolder::notifyRemoval(Operation *op) {
   referencedDialects.erase(it);
 }
 
-/// A utility function used to materialize a constant for a given attribute and
-/// type. On success, a valid constant value is returned. Otherwise, null is
-/// returned
-static Operation *materializeConstant(Dialect *dialect, OpBuilder &builder,
-                                      Attribute value, Type type,
-                                      Location loc) {
-  auto insertPt = builder.getInsertionPoint();
-  (void)insertPt;
-
-  // Ask the dialect to materialize a constant operation for this value.
-  if (auto *constOp = dialect->materializeConstant(builder, value, type, loc)) {
-    assert(insertPt == builder.getInsertionPoint());
-    assert(matchPattern(constOp, m_Constant(&value)));
-    return constOp;
-  }
-
-  // If the dialect is unable to materialize a constant, check to see if the
-  // standard constant can be used.
-  if (ConstantOp::isBuildableWith(value, type))
-    return builder.create<ConstantOp>(loc, type, value);
-  return nullptr;
-}
-
 /// Tries to perform folding on the given `op`. If successful, populates
 /// `results` with the results of the folding.
 LogicalResult OperationFolder::tryToFold(
     Operation *op, SmallVectorImpl<Value *> &results,
     llvm::function_ref<void(Operation *)> processGeneratedConstants) {
-  assert(op->getFunction() == function &&
-         "cannot constant fold op from another function");
-
   SmallVector<Attribute, 8> operandConstants;
   SmallVector<OpFoldResult, 8> foldResults;
 
@@ -148,9 +160,14 @@ LogicalResult OperationFolder::tryToFold(
     return success();
   assert(foldResults.size() == op->getNumResults());
 
-  // Create a builder to insert new operations into the entry block.
-  auto &entry = function->getBody().front();
-  OpBuilder builder(&entry, entry.empty() ? entry.end() : entry.begin());
+  // Create a builder to insert new operations into the entry block of the
+  // insertion region.
+  auto *insertionRegion = getInsertionRegion(op);
+  auto &entry = insertionRegion->front();
+  OpBuilder builder(&entry, entry.begin());
+
+  // Get the constant map for the insertion region of this operation.
+  auto &uniquedConstants = foldScopes[insertionRegion];
 
   // Create the result constants and replace the results.
   auto *dialect = op->getDialect();
@@ -166,8 +183,9 @@ LogicalResult OperationFolder::tryToFold(
     // Check to see if there is a canonicalized version of this constant.
     auto *res = op->getResult(i);
     Attribute attrRepl = foldResults[i].get<Attribute>();
-    if (auto *constOp = tryGetOrCreateConstant(dialect, builder, attrRepl,
-                                               res->getType(), op->getLoc())) {
+    if (auto *constOp =
+            tryGetOrCreateConstant(uniquedConstants, dialect, builder, attrRepl,
+                                   res->getType(), op->getLoc())) {
       results.push_back(constOp->getResult(0));
       continue;
     }
@@ -192,10 +210,9 @@ LogicalResult OperationFolder::tryToFold(
 
 /// Try to get or create a new constant entry. On success this returns the
 /// constant operation value, nullptr otherwise.
-Operation *OperationFolder::tryGetOrCreateConstant(Dialect *dialect,
-                                                   OpBuilder &builder,
-                                                   Attribute value, Type type,
-                                                   Location loc) {
+Operation *OperationFolder::tryGetOrCreateConstant(
+    ConstantMap &uniquedConstants, Dialect *dialect, OpBuilder &builder,
+    Attribute value, Type type, Location loc) {
   // Check if an existing mapping already exists.
   auto constKey = std::make_tuple(dialect, value, type);
   auto *&constInst = uniquedConstants[constKey];

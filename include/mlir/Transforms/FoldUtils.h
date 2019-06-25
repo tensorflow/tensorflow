@@ -33,21 +33,8 @@ class Value;
 
 /// A utility class for folding operations, and unifying duplicated constants
 /// generated along the way.
-///
-/// To make sure constants properly dominate all their uses, constants are
-/// moved to the beginning of the entry block of the function when tracked by
-/// this class.
 class OperationFolder {
 public:
-  /// Constructs an instance for managing constants in the given function `f`.
-  /// Constants tracked by this instance will be moved to the entry block of
-  /// `f`. The insertion always happens at the very top of the entry block.
-  ///
-  /// This instance does not proactively walk the operations inside `f`;
-  /// instead, users must invoke the following methods to manually handle each
-  /// operation of interest.
-  OperationFolder(Function *f) : function(f) {}
-
   /// Tries to perform folding on the given `op`, including unifying
   /// deduplicated constants. If successful, replaces `op`'s uses with
   /// folded results, and returns success. `preReplaceAction` is invoked on `op`
@@ -67,7 +54,7 @@ public:
   void notifyRemoval(Operation *op);
 
   /// Create an operation of specific op type with the given builder,
-  /// and immediately try to fold it. This functions populates 'results' with
+  /// and immediately try to fold it. This function populates 'results' with
   /// the results after folding the operation.
   template <typename OpTy, typename... Args>
   void create(OpBuilder &builder, SmallVectorImpl<Value *> &results,
@@ -104,6 +91,13 @@ public:
   }
 
 private:
+  /// This map keeps track of uniqued constants by dialect, attribute, and type.
+  /// A constant operation materializes an attribute with a type. Dialects may
+  /// generate different constants with the same input attribute and type, so we
+  /// also need to track per-dialect.
+  using ConstantMap =
+      DenseMap<std::tuple<Dialect *, Attribute, Type>, Operation *>;
+
   /// Tries to perform folding on the given `op`. If successful, populates
   /// `results` with the results of the folding.
   LogicalResult tryToFold(Operation *op, SmallVectorImpl<Value *> &results,
@@ -112,18 +106,13 @@ private:
 
   /// Try to get or create a new constant entry. On success this returns the
   /// constant operation, nullptr otherwise.
-  Operation *tryGetOrCreateConstant(Dialect *dialect, OpBuilder &builder,
+  Operation *tryGetOrCreateConstant(ConstantMap &uniquedConstants,
+                                    Dialect *dialect, OpBuilder &builder,
                                     Attribute value, Type type, Location loc);
 
-  /// The function where we are managing constant.
-  Function *function;
-
-  /// This map keeps track of uniqued constants by dialect, attribute, and type.
-  /// A constant operation materializes an attribute with a type. Dialects may
-  /// generate different constants with the same input attribute and type, so we
-  /// also need to track per-dialect.
-  DenseMap<std::tuple<Dialect *, Attribute, Type>, Operation *>
-      uniquedConstants;
+  /// A mapping between an insertion region and the constants that have been
+  /// created within it.
+  DenseMap<Region *, ConstantMap> foldScopes;
 
   /// This map tracks all of the dialects that an operation is referenced by;
   /// given that many dialects may generate the same constant.

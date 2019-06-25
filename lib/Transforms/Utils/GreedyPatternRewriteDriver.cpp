@@ -143,9 +143,7 @@ private:
 /// Perform the rewrites.
 bool GreedyPatternRewriteDriver::simplifyFunction(int maxIterations) {
   Region *region = getRegion();
-
-  // TODO(riverriddle) OperationFolder should take a region to insert into.
-  OperationFolder helper(region->getContainingFunction());
+  OperationFolder helper;
 
   // Add the given operation to the worklist.
   auto collectOps = [this](Operation *op) { addToWorklist(op); };

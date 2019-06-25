@@ -421,6 +421,7 @@ func @fold_extract_element(%arg0 : index) -> (f32, f16, f16, i32) {
   return %ext_1, %ext_2, %ext_3, %ext_4 : f32, f16, f16, i32
 }
 
+// -----
 
 // CHECK-LABEL: func @fold_rank
 func @fold_rank() -> (index) {
@@ -434,3 +435,24 @@ func @fold_rank() -> (index) {
   return %rank_0 : index
 }
 
+// -----
+
+// CHECK-LABEL: func @nested_isolated_region
+func @nested_isolated_region() {
+  // CHECK-NEXT: func @isolated_op
+  // CHECK-NEXT: constant 2
+  func @isolated_op() {
+    %0 = constant 1 : i32
+    %2 = addi %0, %0 : i32
+    "foo.yield"(%2) : (i32) -> ()
+  }
+
+  // CHECK: "foo.unknown_region"
+  // CHECK-NEXT: constant 2
+  "foo.unknown_region"() ({
+    %0 = constant 1 : i32
+    %2 = addi %0, %0 : i32
+    "foo.yield"(%2) : (i32) -> ()
+  }) : () -> ()
+  return
+}

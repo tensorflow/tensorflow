@@ -210,7 +210,7 @@ static bool isStructurallyFusableProducer(LinalgOp producer, Value *readView,
 }
 
 static void fuseLinalgOps(Function &f, ArrayRef<int64_t> tileSizes) {
-  OperationFolder state(&f);
+  OperationFolder state;
   DenseSet<Operation *> eraseSet;
 
   // 1. Record the linalg ops so we can traverse them in reverse order.

@@ -105,7 +105,7 @@ struct LowerLinalgToLoopsPass : public FunctionPass<LowerLinalgToLoopsPass> {
 
 void LowerLinalgToLoopsPass::runOnFunction() {
   auto &f = getFunction();
-  OperationFolder state(&f);
+  OperationFolder state;
   f.walk<LinalgOp>([&state](LinalgOp linalgOp) {
     emitLinalgOpAsLoops(linalgOp, state);
     linalgOp.getOperation()->erase();

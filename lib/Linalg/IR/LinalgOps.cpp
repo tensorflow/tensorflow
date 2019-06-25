@@ -1016,7 +1016,7 @@ void mlir::linalg::emitScalarImplementation(
   ScopedContext scope(b, loc);
   auto *op = linalgOp.getOperation();
   if (auto copyOp = dyn_cast<CopyOp>(op)) {
-    OperationFolder state(op->getFunction());
+    OperationFolder state;
     auto inputIvs = permuteIvs(parallelIvs, copyOp.inputPermutation(), state);
     auto outputIvs = permuteIvs(parallelIvs, copyOp.outputPermutation(), state);
     SmallVector<IndexHandle, 8> iivs(inputIvs.begin(), inputIvs.end());
