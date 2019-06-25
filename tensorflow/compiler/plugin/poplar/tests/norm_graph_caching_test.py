@@ -266,7 +266,7 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
       ok = [
           '__seed*',
           'host-exchange-local-copy-',
-          'Copy_',
+          'Copy*',
           'vs/conv1/Conv2D/convolution.*/Conv_1x1',
           'vs/batch_normalization/FusedBatchNorm*/batch-norm-training.*/',
           'Sum/reduce.*/ReduceFinalStage/IntermediateToOutput/Reduce',

@@ -17,6 +17,7 @@
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
+#include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -458,10 +459,27 @@ void LookAheadScheduler::ClusterHelper::ClusterNodes() {
   BuildDependencyGraph();
 }
 
+namespace {
+int64 ByteSizeOfIncludingTuple(const Shape& shape) {
+  if (shape.IsTuple()) {
+    int64 result = 0;
+
+    for (auto i = 0; i < shape.tuple_shapes_size(); ++i) {
+      result += ByteSizeOfIncludingTuple(shape.tuple_shapes(i));
+    }
+
+    return result;
+  }
+
+  return ShapeUtil::ByteSizeOf(shape);
+}
+}  // namespace
+
 void LookAheadScheduler::AddToReady(Cluster::Ref node_to_add) {
   if (node_to_add->colocator) {
     auto colocator = *node_to_add->colocator;
-    int64 size = ShapeUtil::ByteSizeOf((*node_to_add->nodes.begin())->shape());
+    int64 size =
+        ByteSizeOfIncludingTuple((*node_to_add->nodes.begin())->shape());
     // Add the cluster so that it is colocated, making sure to indicate if the
     // cluster is ready to be scheduled.
     if (colocator_queues.at(colocator).Add(node_to_add, size)) {
@@ -610,8 +628,8 @@ StatusOr<HloInstructionSequence> LookAheadScheduler(
     const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation,
     const CompilerInformation& information) {
-  return LookAheadScheduler::Run(computation, points_to_analysis,
-                                 hlo_alias_analysis, size_function,
+  VLOG(1) << "LookAheadScheduler";
+  return LookAheadScheduler::Run(computation, points_to_analysis, size_function,
                                  memory_by_computation, information);
 }
 }  // namespace
