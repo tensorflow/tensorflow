@@ -27,3 +27,13 @@ func @nvvm_special_regs() -> !llvm.i32 {
   %12 = nvvm.read.ptx.sreg.nctaid.z : !llvm.i32
   llvm.return %1 : !llvm.i32
 }
+
+// This function has the "kernel" attribute attached and should appear in the
+// NVVM annotations after conversion.
+func @kernel_func() attributes {gpu.kernel} {
+  llvm.return
+}
+
+// CHECK:     !nvvm.annotations =
+// CHECK-NOT: {i32 ()* @nvvm_special_regs, !"kernel", i32 1}
+// CHECK:     {void ()* @kernel_func, !"kernel", i32 1}

@@ -22,4 +22,9 @@ add_llvm_library(MLIRTargetNVVMIR
   DEPENDS
   intrinsics_gen
   )
-target_link_libraries(MLIRTargetNVVMIR MLIRNVVMIR MLIRTargetLLVMIRModuleTranslation)
+target_link_libraries(MLIRTargetNVVMIR
+  MLIRGPU
+  MLIRIR
+  MLIRNVVMIR
+  MLIRTargetLLVMIRModuleTranslation
+  )

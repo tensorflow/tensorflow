@@ -22,6 +22,9 @@
 
 #include "mlir/Target/NVVMIR.h"
 
+#include "mlir/GPU/GPUDialect.h"
+#include "mlir/IR/Function.h"
+#include "mlir/IR/Module.h"
 #include "mlir/LLVMIR/NVVMDialect.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Target/LLVMIR/ModuleTranslation.h"
@@ -61,7 +64,29 @@ protected:
 
 std::unique_ptr<llvm::Module> mlir::translateModuleToNVVMIR(Module &m) {
   ModuleTranslation translation(m);
-  return LLVM::ModuleTranslation::translateModule<ModuleTranslation>(m);
+  auto llvmModule =
+      LLVM::ModuleTranslation::translateModule<ModuleTranslation>(m);
+
+  // Insert the nvvm.annotations kernel so that the NVVM backend recognizes the
+  // function as a kernel.
+  for (Function &func : m) {
+    if (!func.getAttrOfType<UnitAttr>(gpu::GPUDialect::getKernelFuncAttrName()))
+      continue;
+
+    auto *llvmFunc = llvmModule->getFunction(func.getName().strref());
+
+    llvm::Metadata *llvmMetadata[] = {
+        llvm::ValueAsMetadata::get(llvmFunc),
+        llvm::MDString::get(llvmModule->getContext(), "kernel"),
+        llvm::ValueAsMetadata::get(llvm::ConstantInt::get(
+            llvm::Type::getInt32Ty(llvmModule->getContext()), 1))};
+    llvm::MDNode *llvmMetadataNode =
+        llvm::MDNode::get(llvmModule->getContext(), llvmMetadata);
+    llvmModule->getOrInsertNamedMetadata("nvvm.annotations")
+        ->addOperand(llvmMetadataNode);
+  }
+
+  return llvmModule;
 }
 
 static TranslateFromMLIRRegistration registration(
@@ -69,8 +94,7 @@ static TranslateFromMLIRRegistration registration(
       if (!module)
         return true;
 
-      auto llvmModule =
-          LLVM::ModuleTranslation::translateModule<ModuleTranslation>(*module);
+      auto llvmModule = mlir::translateModuleToNVVMIR(*module);
       if (!llvmModule)
         return true;
 

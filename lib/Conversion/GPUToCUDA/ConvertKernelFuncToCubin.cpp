@@ -159,22 +159,6 @@ LogicalResult translateGpuKernelToCubinAnnotation(Function &function) {
   module->getFunctions().push_back(function.clone());
 
   auto llvmModule = translateModuleToNVVMIR(*module);
-
-  // Maybe the NVVMIR translation should do this but until it does we have
-  // to map the attributes here.
-  {
-    auto kernelFunc = llvmModule->getFunction(function.getName());
-    llvm::Metadata *md_args[] = {
-        llvm::ValueAsMetadata::get(kernelFunc),
-        llvm::MDString::get(llvmModule->getContext(), "kernel"),
-        llvm::ValueAsMetadata::get(llvm::ConstantInt::get(
-            llvm::Type::getInt32Ty(llvmModule->getContext()), 1))};
-    llvm::MDNode *md_node =
-        llvm::MDNode::get(llvmModule->getContext(), md_args);
-    llvmModule->getOrInsertNamedMetadata("nvvm.annotations")
-        ->addOperand(md_node);
-  }
-
   auto cubin = convertModuleToCubin(*llvmModule, function);
 
   if (!cubin) {
