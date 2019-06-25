@@ -1059,13 +1059,12 @@ cc_library(
     deps = [
         ":generic_layout_optimizer_transposer",
         ":generic_layout_optimizer_transposer_factory",
+        ":graph_optimizer",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:cluster",
-        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
-        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "@com_google_absl//absl/memory",
     ],
 )

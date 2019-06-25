@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/generic_layout_optimizer_transposer.h"
 #include "tensorflow/core/grappler/optimizers/generic_layout_optimizer_transposer_factory.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -238,13 +237,6 @@ void GenericLayoutOptimizer::Feedback(Cluster* cluster,
                                       double result) {
   // Takes no feedback.
 }
-
-Status GenericLayoutOptimizer::Init(
-    const RewriterConfig_CustomGraphOptimizer* config) {
-  return Status::OK();
-}
-
-REGISTER_GRAPH_OPTIMIZER_AS(GenericLayoutOptimizer, "GenericLayoutOptimizer");
 
 }  // end namespace grappler
 }  // end namespace tensorflow
