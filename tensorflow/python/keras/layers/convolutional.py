@@ -176,24 +176,24 @@ class Conv(Layer):
       self.bias = None
     self.input_spec = InputSpec(ndim=self.rank + 2,
                                 axes={channel_axis: input_dim})
+    self.built = True
+
+  def call(self, inputs):
     if self.padding == 'causal':
       op_padding = 'valid'
     else:
       op_padding = self.padding
     if not isinstance(op_padding, (list, tuple)):
       op_padding = op_padding.upper()
-    self._convolution_op = nn_ops.Convolution(
-        input_shape,
+    conv_op = nn_ops.Convolution(
+        inputs.shape,
         filter_shape=self.kernel.shape,
         dilation_rate=self.dilation_rate,
         strides=self.strides,
         padding=op_padding,
         data_format=conv_utils.convert_data_format(self.data_format,
                                                    self.rank + 2))
-    self.built = True
-
-  def call(self, inputs):
-    outputs = self._convolution_op(inputs, self.kernel)
+    outputs = conv_op(inputs, self.kernel)
 
     if self.use_bias:
       if self.data_format == 'channels_first':
