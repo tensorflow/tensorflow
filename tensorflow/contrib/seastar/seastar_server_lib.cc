@@ -33,7 +33,7 @@ public:
       LOG(FATAL) << "Job name: " << job_name
                  << " does not exist in cluster spec.";
     }
-    const std::map<int, std::string>& task_map = it_job->second;
+    const auto& task_map = it_job->second;
 
     const auto it_task = task_map.find(task_index);
     if (it_task == task_map.end()) {
@@ -78,7 +78,7 @@ private:
     task_index_ = server_def.task_index();
 
     for (const auto& job : server_def.cluster().job()) {
-      std::map<int, std::string>& task_map = grpc_cluster_spec_[job.name()];
+      auto& task_map = grpc_cluster_spec_[job.name()];
       for (const auto& task : job.tasks()) {
         task_map[task.first] = task.second;
         if (job.name() == job_name_ && task.first == task_index_) {
@@ -108,8 +108,9 @@ private:
   }
 
 private:
-  std::map<std::string, std::string> endpoint_grpc2seastar_;
-  std::map<std::string, std::map<int, std::string> > grpc_cluster_spec_;
+  std::unordered_map<std::string, std::string> endpoint_grpc2seastar_;
+  std::unordered_map<std::string,
+      std::unordered_map<int, std::string>> grpc_cluster_spec_;
   std::string job_name_;
   int task_index_;
   std::string local_grpc_ip_port_;

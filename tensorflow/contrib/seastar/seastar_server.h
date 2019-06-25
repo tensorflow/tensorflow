@@ -31,7 +31,6 @@ class SeastarServer {
     ~Connection();
   };
 
- private:
   seastar::lw_shared_ptr<seastar::server_socket> listener_;
 };
 }

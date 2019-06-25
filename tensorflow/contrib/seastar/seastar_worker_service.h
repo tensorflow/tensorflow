@@ -54,7 +54,6 @@ public:
 private:
   void Schedule(std::function<void()> f);
 
-private:
   std::map<SeastarWorkerServiceMethod, HandleRequestFunction> handler_map_;
   SeastarWorker* worker_;
 };

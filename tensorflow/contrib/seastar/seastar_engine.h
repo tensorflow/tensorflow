@@ -32,7 +32,6 @@ private:
   void GetCpuset(char**);
   seastar::channel* AsyncConnect(const std::string& ip);
 
-private:
   seastar::distributed<SeastarServer> server_;
   SeastarClient* client_;
   SeastarTagFactory* tag_factory_;
