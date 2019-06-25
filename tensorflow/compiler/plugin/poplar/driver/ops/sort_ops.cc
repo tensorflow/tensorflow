@@ -9,21 +9,22 @@
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
 
 #include <popops/ElementWise.hpp>
 #include <popops/Sort.hpp>
 
 namespace xla {
+
+namespace m = match;
+
 namespace poplarplugin {
 
 namespace {
 bool IsSimpleComparison(const HloInstruction* inst) {
   HloInstruction* root(inst->to_apply()->root_instruction());
-  if (!hlo_query::AllOperandsAreParameters(*root)) {
-    return false;
-  }
 
-  if (root->opcode() != HloOpcode::kCompare) {
+  if (!Match(root, m::Compare(m::Parameter(0), m::Parameter(1)))) {
     return false;
   }
 
