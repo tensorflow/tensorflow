@@ -347,36 +347,44 @@ class Node {
       SHARED_LOCKS_REQUIRED(mu_) = 0;
 
   // Returns the sum of per-element processing time for the inputs of this node.
-  // Processing time for a given input is a weighted combination of a median of
-  // processing history and the actual time. This is to reduce an uncertainty of
-  // processing time evaluation for newly created inputs.
+  // Processing time for a given input is a weighted combination of a statistic
+  // based on history of input processing time and the actual time. This is done
+  // to improve accuracy of processing time estimation for newly created inputs.
   //
   // Uniform distribution of per-element processing times across different
   // inputs is assumed.
   double TotalProcessingTimeForInputs() SHARED_LOCKS_REQUIRED(mu_) {
-    // If the number of elements produced by a node is smaller than this
-    // constant, then the processing time history is used as a prior for the
-    // processing time computation.
+    // If the number of elements produced by an input is smaller than this
+    // constant, then its processing time is estimated using a weighted average
+    // of the empirical processing time and processing time history.
     constexpr int kNumElementsThreshold = 30;
 
+    // Identifies the minimum number of input processing times to collect
+    // before the processing time history is used as a prior.
+    constexpr int kCountThreshold = 30;
+
     double sum = 0;
-    double processing_time;
-    double prior_weight;
-    int64 num_elements;
     for (auto& input : inputs_) {
       // Inputs for which autotuning is disabled are excluded.
       if (input->autotune()) {
-        processing_time = input->TotalProcessingTime();
-        num_elements = input->num_elements();
-        // The fewer elements the input has produced so far, the more weight
-        // is assigned to the prior to reduce volatility.
+        double input_processing_time = input->TotalProcessingTime();
+        int64 num_elements = input->num_elements();
         if (num_elements < kNumElementsThreshold) {
-          prior_weight = 1.0L / static_cast<double>(2 << num_elements);
-          sum += (1.0L - prior_weight) * processing_time +
-                 prior_weight * histogram_.Median();
-          histogram_.Add(processing_time);
+          if (input_processing_time_count_ < kCountThreshold) {
+            sum += input_processing_time;
+          } else {
+            // The fewer elements the input has produced so far, the more weight
+            // is assigned to the prior to reduce volatility.
+            double prior_weight = 1.0L / static_cast<double>(2 << num_elements);
+            double prior =
+                input_processing_time_sum_ / input_processing_time_count_;
+            sum += (1.0L - prior_weight) * input_processing_time +
+                   prior_weight * prior;
+          }
         } else {
-          sum += processing_time;
+          sum += input_processing_time;
+          input_processing_time_count_++;
+          input_processing_time_sum_ += input_processing_time;
         }
       }
     }
@@ -409,8 +417,9 @@ class Node {
   std::map<std::thread::id, int64> work_start_ GUARDED_BY(mu_);
   std::map<string, std::shared_ptr<Parameter>> parameters_ GUARDED_BY(mu_);
 
-  // Contains inputs processing time history.
-  histogram::ThreadSafeHistogram histogram_;
+  // Statistic of inputs processing time history.
+  double input_processing_time_sum_ = 0.0L;
+  int64 input_processing_time_count_ = 0;
 
   // Inputs of this node. These can represent an iterator created from the input
   // dataset but also other input iterators (e.g. created by the user-defined
