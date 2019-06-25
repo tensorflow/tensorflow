@@ -996,10 +996,11 @@ Status EagerExecute(EagerOperation* op,
 
   bool op_is_local = op->EagerContext()->IsLocal(op->Device());
 
+  std::unique_ptr<tensorflow::EagerOperation> out_op;
+  TF_RETURN_IF_ERROR(EagerOpRewriteRegistry::Global()->RunRewrite(
+      EagerOpRewriteRegistry::PRE_EXECUTION, op, &out_op));
+
   if (op_is_local) {
-    std::unique_ptr<tensorflow::EagerOperation> out_op;
-    TF_RETURN_IF_ERROR(EagerOpRewriteRegistry::Global()->RunRewrite(
-        EagerOpRewriteRegistry::PRE_EXECUTION, op, out_op));
     if (out_op) {
       return EagerLocalExecute(out_op.get(), retvals, num_retvals);
     } else {
@@ -1014,8 +1015,11 @@ Status EagerExecute(EagerOperation* op,
       LOG(INFO) << msg;
     }
   }
-
-  return EagerRemoteExecute(op, retvals->data(), num_retvals);
+  if (out_op) {
+    return EagerRemoteExecute(out_op.get(), retvals->data(), num_retvals);
+  } else {
+    return EagerRemoteExecute(op, retvals->data(), num_retvals);
+  }
 }
 
 Status EagerKernelExecute(EagerContext* ctx,

@@ -35,7 +35,7 @@ void EagerOpRewriteRegistry::Register(Phase phase,
 
 Status EagerOpRewriteRegistry::RunRewrite(
     Phase phase, EagerOperation* orig_op,
-    std::unique_ptr<tensorflow::EagerOperation>& out_op) {
+    std::unique_ptr<tensorflow::EagerOperation>* out_op) {
   auto rewrite = rewrites_.find(phase);
   if (rewrite != rewrites_.end()) {
     Status s = rewrite->second->Run(orig_op, out_op);

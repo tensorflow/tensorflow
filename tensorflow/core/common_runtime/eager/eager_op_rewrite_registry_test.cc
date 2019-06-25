@@ -22,7 +22,7 @@ class TestEagerOpRewrite : public EagerOpRewrite {
  public:
   static int count_;
   Status Run(EagerOperation* orig_op,
-             std::unique_ptr<tensorflow::EagerOperation>& out_op) override {
+             std::unique_ptr<tensorflow::EagerOperation>* out_op) override {
     ++count_;
     const tensorflow::AttrTypeMap* types;
     bool is_function = false;
@@ -30,8 +30,8 @@ class TestEagerOpRewrite : public EagerOpRewrite {
     TF_RETURN_IF_ERROR(
         tensorflow::AttrTypeMapForOp(kNewOp.c_str(), &types, &is_function));
     // Create a new NoOp Eager operation.
-    out_op.reset(new tensorflow::EagerOperation(nullptr, kNewOp.c_str(),
-                                                is_function, types));
+    out_op->reset(new tensorflow::EagerOperation(nullptr, kNewOp.c_str(),
+                                                 is_function, types));
     return Status::OK();
   }
 };
@@ -46,7 +46,7 @@ TEST(EagerOpRewriteRegistryTest, RegisterRewritePass) {
   std::unique_ptr<tensorflow::EagerOperation> out_op;
   EXPECT_EQ(Status::OK(),
             EagerOpRewriteRegistry::Global()->RunRewrite(
-                EagerOpRewriteRegistry::PRE_EXECUTION, orig_op, out_op));
+                EagerOpRewriteRegistry::PRE_EXECUTION, orig_op, &out_op));
   EXPECT_EQ(1, TestEagerOpRewrite::count_);
   EXPECT_EQ("NoOp", out_op->Name());
 }

@@ -30,7 +30,7 @@ class EagerOpRewrite {
 
   // To be implemnted by an Eager op rewrite pass.
   virtual Status Run(EagerOperation* orig_op,
-                     std::unique_ptr<tensorflow::EagerOperation>& out_op) = 0;
+                     std::unique_ptr<tensorflow::EagerOperation>* out_op) = 0;
 
   // Sets the name of the Eager op rewrite.
   void set_name(const string& name) { name_ = name; }
@@ -56,7 +56,7 @@ class EagerOpRewriteRegistry {
 
   // Run the rewrite pass registered for a given phase.
   Status RunRewrite(Phase phase, EagerOperation* orig_op,
-                    std::unique_ptr<tensorflow::EagerOperation>& out_op);
+                    std::unique_ptr<tensorflow::EagerOperation>* out_op);
 
   // Returns the global registry of rewrite passes.
   static EagerOpRewriteRegistry* Global();
