@@ -87,6 +87,8 @@ public:
 
   /// Prints an affine map of SSA ids, where SSA id names are used in place
   /// of dims/symbols.
+  /// Operand values must come from single-result sources, and be valid
+  /// dimensions/symbol identifiers according to mlir::isValidDim/Symbol.
   virtual void printAffineMapOfSSAIds(AffineMapAttr mapAttr,
                                       ArrayRef<Value *> operands) = 0;
 
@@ -380,6 +382,8 @@ public:
   }
 
   /// Parses an affine map attribute where dims and symbols are SSA operands.
+  /// Operand values must come from single-result sources, and be valid
+  /// dimensions/symbol identifiers according to mlir::isValidDim/Symbol.
   virtual ParseResult
   parseAffineMapOfSSAIds(SmallVectorImpl<OperandType> &operands, Attribute &map,
                          StringRef attrName,

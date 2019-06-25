@@ -166,3 +166,20 @@ func @test6(%arg0 : index, %arg1 : index) {
   }
   return
 }
+
+// -----
+
+// CHECK: [[MAP0:#map[0-9]+]] = (d0) -> (d0 + 1)
+
+// Test with operands without special SSA name.
+func @test7() {
+  %0 = alloc() : memref<10xf32>
+  affine.for %i0 = 0 to 10 {
+    %1 = affine.apply (d1) -> (d1 + 1)(%i0)
+    %2 = affine.load %0[%1] : memref<10xf32>
+    affine.store %2, %0[%1] : memref<10xf32>
+// CHECK: affine.load %0[%1] : memref<10xf32>
+// CHECK: affine.store %2, %0[%1] : memref<10xf32>
+  }
+  return
+}
