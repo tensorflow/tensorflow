@@ -178,6 +178,8 @@ load(
     "mkl_deps",
 )
 
+package_group(name = "experimental_access")
+
 exports_files(["ops/ops.pbtxt"])
 
 # -----------------------------------------------------------------------------
@@ -785,6 +787,7 @@ cc_library(
         "lib/core/threadpool_options.h",
     ],
     visibility = [
+        ":experimental_access",
         "//tensorflow/cc:__pkg__",
     ],
     deps = [
