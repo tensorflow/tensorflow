@@ -274,8 +274,9 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
           'GradientDescent/update_vs/batch_normalization/',
           'GradientDescent/update_vs/batch_normalization_1/',
           'GradientDescent/update_vs/batch_normalization_2/',
-          'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*/Conv_4x4/Convolve',
-          'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*/AddTo',
+          'gradients/vs/conv*/Conv2D_grad/Conv2DBackpropFilter/fusion.4/Conv_4x4/Transpose',
+          'gradients/vs/conv*/Conv2D_grad/Conv2DBackpropFilter/fusion.*/Conv_4x4/Convolve',
+          'gradients/vs/conv*/Conv2D_grad/Conv2DBackpropFilter/fusion.*/AddTo',
       ]
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
@@ -552,7 +553,7 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
           'vs/PopnnGroupNormTraining/custom-call*/Whiten',
           'Sum/reduce.*/*/Reduce',
           'gradients/vs/PopnnGroupNormTraining_2_grad/PopnnGroupNormGrad/custom-call*/',
-          'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*',
+          'gradients/vs/conv*/Conv2D_grad/Conv2DBackpropFilter/fusion.*',
       ]
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
