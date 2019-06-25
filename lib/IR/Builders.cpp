@@ -38,10 +38,10 @@ Module *Builder::createModule() { return new Module(context); }
 // Locations.
 //===----------------------------------------------------------------------===//
 
-UnknownLoc Builder::getUnknownLoc() { return UnknownLoc::get(context); }
+Location Builder::getUnknownLoc() { return UnknownLoc::get(context); }
 
-FileLineColLoc Builder::getFileLineColLoc(Identifier filename, unsigned line,
-                                          unsigned column) {
+Location Builder::getFileLineColLoc(Identifier filename, unsigned line,
+                                    unsigned column) {
   return FileLineColLoc::get(filename, line, column, context);
 }
 

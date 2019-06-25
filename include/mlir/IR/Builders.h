@@ -65,9 +65,9 @@ public:
   Module *createModule();
 
   // Locations.
-  UnknownLoc getUnknownLoc();
-  FileLineColLoc getFileLineColLoc(Identifier filename, unsigned line,
-                                   unsigned column);
+  Location getUnknownLoc();
+  Location getFileLineColLoc(Identifier filename, unsigned line,
+                             unsigned column);
   Location getFusedLoc(ArrayRef<Location> locs,
                        Attribute metadata = Attribute());
 

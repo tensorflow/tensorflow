@@ -89,7 +89,7 @@ struct ArgConverter {
 
   /// An instance of the unknown location that is used when generating
   /// producers.
-  UnknownLoc loc;
+  Location loc;
 };
 
 constexpr StringLiteral ArgConverter::kCastName;

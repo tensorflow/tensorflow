@@ -26,14 +26,14 @@ using namespace mlir::detail;
 // CallSiteLoc
 //===----------------------------------------------------------------------===//
 
-CallSiteLoc CallSiteLoc::get(Location callee, Location caller,
-                             MLIRContext *context) {
+Location CallSiteLoc::get(Location callee, Location caller,
+                          MLIRContext *context) {
   return Base::get(context, StandardAttributes::CallSiteLocation, callee,
                    caller);
 }
 
-CallSiteLoc CallSiteLoc::get(Location name, ArrayRef<Location> frames,
-                             MLIRContext *context) {
+Location CallSiteLoc::get(Location name, ArrayRef<Location> frames,
+                          MLIRContext *context) {
   assert(!frames.empty() && "required at least 1 frames");
   Location caller = frames.back();
   for (auto frame : llvm::reverse(frames.drop_back()))
@@ -49,14 +49,14 @@ Location CallSiteLoc::getCaller() const { return getImpl()->caller; }
 // FileLineColLoc
 //===----------------------------------------------------------------------===//
 
-FileLineColLoc FileLineColLoc::get(Identifier filename, unsigned line,
-                                   unsigned column, MLIRContext *context) {
+Location FileLineColLoc::get(Identifier filename, unsigned line,
+                             unsigned column, MLIRContext *context) {
   return Base::get(context, StandardAttributes::FileLineColLocation, filename,
                    line, column);
 }
 
-FileLineColLoc FileLineColLoc::get(StringRef filename, unsigned line,
-                                   unsigned column, MLIRContext *context) {
+Location FileLineColLoc::get(StringRef filename, unsigned line, unsigned column,
+                             MLIRContext *context) {
   return get(Identifier::get(filename.empty() ? "-" : filename, context), line,
              column, context);
 }
@@ -69,8 +69,8 @@ unsigned FileLineColLoc::getColumn() const { return getImpl()->column; }
 // FusedLoc
 //===----------------------------------------------------------------------===//
 
-LocationAttr FusedLoc::get(ArrayRef<Location> locs, Attribute metadata,
-                           MLIRContext *context) {
+Location FusedLoc::get(ArrayRef<Location> locs, Attribute metadata,
+                       MLIRContext *context) {
   // Unique the set of locations to be fused.
   llvm::SmallSetVector<Location, 4> decomposedLocs;
   for (auto loc : locs) {
@@ -109,13 +109,13 @@ Attribute FusedLoc::getMetadata() const { return getImpl()->metadata; }
 // NameLoc
 //===----------------------------------------------------------------------===//
 
-NameLoc NameLoc::get(Identifier name, Location child, MLIRContext *context) {
+Location NameLoc::get(Identifier name, Location child, MLIRContext *context) {
   assert(!child.isa<NameLoc>() &&
          "a NameLoc cannot be used as a child of another NameLoc");
   return Base::get(context, StandardAttributes::NameLocation, name, child);
 }
 
-NameLoc NameLoc::get(Identifier name, MLIRContext *context) {
+Location NameLoc::get(Identifier name, MLIRContext *context) {
   return get(name, UnknownLoc::get(context), context);
 }
 

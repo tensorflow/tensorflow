@@ -114,7 +114,7 @@ private:
   llvm::ScopedHashTable<StringRef, mlir::Value *> symbolTable;
 
   /// Helper conversion for a Toy AST location to an MLIR location.
-  mlir::FileLineColLoc loc(Location loc) {
+  mlir::Location loc(Location loc) {
     return mlir::FileLineColLoc::get(mlir::Identifier::get(*loc.file, &context),
                                      loc.line, loc.col, &context);
   }

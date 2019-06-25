@@ -592,7 +592,7 @@ UnitAttr UnitAttr::get(MLIRContext *context) {
   return context->getImpl().unitAttr;
 }
 
-UnknownLoc UnknownLoc::get(MLIRContext *context) {
+Location UnknownLoc::get(MLIRContext *context) {
   return context->getImpl().unknownLocAttr;
 }
 

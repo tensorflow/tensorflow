@@ -77,7 +77,7 @@ private:
   MLIRContext *context;
 
   // TODO(antiagainst): create Location subclass for binary blob
-  UnknownLoc unknownLoc;
+  Location unknownLoc;
 
   /// The SPIR-V ModuleOp.
   Optional<spirv::ModuleOp> module;

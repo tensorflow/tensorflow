@@ -30,7 +30,7 @@ struct StripDebugInfo : public FunctionPass<StripDebugInfo> {
 
 void StripDebugInfo::runOnFunction() {
   Function &func = getFunction();
-  UnknownLoc unknownLoc = UnknownLoc::get(&getContext());
+  auto unknownLoc = UnknownLoc::get(&getContext());
 
   // Strip the debug info from the function and its operations.
   func.setLoc(unknownLoc);

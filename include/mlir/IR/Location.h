@@ -109,14 +109,13 @@ public:
   using Base::Base;
 
   /// Return a uniqued call location object.
-  static CallSiteLoc get(Location callee, Location caller,
-                         MLIRContext *context);
+  static Location get(Location callee, Location caller, MLIRContext *context);
 
   /// Return a call site location which represents a name reference in one line
   /// or a stack of frames. The input frames are ordered from innermost to
   /// outermost.
-  static CallSiteLoc get(Location name, ArrayRef<Location> frames,
-                         MLIRContext *context);
+  static Location get(Location name, ArrayRef<Location> frames,
+                      MLIRContext *context);
 
   /// The concrete location information this object presents.
   Location getCallee() const;
@@ -140,10 +139,10 @@ public:
   using Base::Base;
 
   /// Return a uniqued FileLineCol location object.
-  static FileLineColLoc get(Identifier filename, unsigned line, unsigned column,
-                            MLIRContext *context);
-  static FileLineColLoc get(StringRef filename, unsigned line, unsigned column,
-                            MLIRContext *context);
+  static Location get(Identifier filename, unsigned line, unsigned column,
+                      MLIRContext *context);
+  static Location get(StringRef filename, unsigned line, unsigned column,
+                      MLIRContext *context);
 
   StringRef getFilename() const;
 
@@ -166,9 +165,9 @@ public:
   /// Return a uniqued Fused Location object. The first location in the list
   /// will get precedence during diagnostic emission, with the rest being
   /// displayed as supplementary "fused from here" style notes.
-  static LocationAttr get(ArrayRef<Location> locs, Attribute metadata,
-                          MLIRContext *context);
-  static LocationAttr get(ArrayRef<Location> locs, MLIRContext *context) {
+  static Location get(ArrayRef<Location> locs, Attribute metadata,
+                      MLIRContext *context);
+  static Location get(ArrayRef<Location> locs, MLIRContext *context) {
     return get(locs, Attribute(), context);
   }
 
@@ -192,10 +191,10 @@ public:
 
   /// Return a uniqued name location object. The child location must not be
   /// another NameLoc.
-  static NameLoc get(Identifier name, Location child, MLIRContext *context);
+  static Location get(Identifier name, Location child, MLIRContext *context);
 
   /// Return a uniqued name location object with an unknown child.
-  static NameLoc get(Identifier name, MLIRContext *context);
+  static Location get(Identifier name, MLIRContext *context);
 
   /// Return the name identifier.
   Identifier getName() const;
@@ -216,7 +215,7 @@ public:
   using Base::Base;
 
   /// Get an instance of the UnknownLoc.
-  static UnknownLoc get(MLIRContext *context);
+  static Location get(MLIRContext *context);
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(unsigned kind) {
