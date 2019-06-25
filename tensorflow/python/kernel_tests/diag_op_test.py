@@ -348,16 +348,6 @@ class MatrixDiagTest(test.TestCase):
           self.assertEqual(mat_batch.shape, v_batch_diag.get_shape())
           self.assertAllEqual(v_batch_diag.eval(), mat_batch)
 
-<<<<<<< HEAD
-        # Diagonal bands with padding.
-        for padding in [0, 555, -11]:
-          for _, tests in [self._moreCases(), square_cases()]:
-            for diags, (vecs, solution) in tests.items():
-              v_diags = array_ops.matrix_diag(
-                  vecs.astype(dtype), k=diags, padding=padding)
-              mask = solution == 0
-              solution = (solution + padding * mask).astype(dtype)
-=======
         # Diagonal bands with padding_value.
         for padding_value in [0, 555, -11]:
           for _, tests in [self._moreCases(), square_cases()]:
@@ -366,7 +356,6 @@ class MatrixDiagTest(test.TestCase):
                   vecs.astype(dtype), k=diags, padding_value=padding_value)
               mask = solution == 0
               solution = (solution + padding_value * mask).astype(dtype)
->>>>>>> upstream/master
               self.assertEqual(v_diags.get_shape(), solution.shape)
               self.assertAllEqual(v_diags.eval(), solution)
 
@@ -418,11 +407,7 @@ class MatrixDiagTest(test.TestCase):
         }
         test_list.append((expected, fat_cases()))
 
-<<<<<<< HEAD
-        for padding in [0, 555, -11]:
-=======
         for padding_value in [0, 555, -11]:
->>>>>>> upstream/master
           # Giving both num_rows and num_cols
           for _, tests in [tall_cases(), fat_cases()]:
             for diags, (vecs, solution) in tests.items():
@@ -431,15 +416,9 @@ class MatrixDiagTest(test.TestCase):
                   k=diags,
                   num_rows=solution.shape[-2],
                   num_cols=solution.shape[-1],
-<<<<<<< HEAD
-                  padding=padding)
-              mask = solution == 0
-              solution = solution + padding * mask
-=======
                   padding_value=padding_value)
               mask = solution == 0
               solution = solution + padding_value * mask
->>>>>>> upstream/master
               self.assertEqual(v_diags.get_shape(), solution.shape)
               self.assertAllEqual(v_diags.eval(), solution)
 
@@ -449,18 +428,12 @@ class MatrixDiagTest(test.TestCase):
               vecs, solution = tests[diags]
               solution = solution.take(indices=range(new_num_cols), axis=-1)
               v_diags = array_ops.matrix_diag(
-<<<<<<< HEAD
-                  vecs, k=diags, num_rows=solution.shape[-2], padding=padding)
-              mask = solution == 0
-              solution = solution + padding * mask
-=======
                   vecs,
                   k=diags,
                   num_rows=solution.shape[-2],
                   padding_value=padding_value)
               mask = solution == 0
               solution = solution + padding_value * mask
->>>>>>> upstream/master
               self.assertEqual(v_diags.get_shape(), solution.shape)
               self.assertAllEqual(v_diags.eval(), solution)
 
@@ -470,18 +443,12 @@ class MatrixDiagTest(test.TestCase):
               vecs, solution = tests[diags]
               solution = solution.take(indices=range(new_num_rows), axis=-2)
               v_diags = array_ops.matrix_diag(
-<<<<<<< HEAD
-                  vecs, k=diags, num_cols=solution.shape[-1], padding=padding)
-              mask = solution == 0
-              solution = solution + padding * mask
-=======
                   vecs,
                   k=diags,
                   num_cols=solution.shape[-1],
                   padding_value=padding_value)
               mask = solution == 0
               solution = solution + padding_value * mask
->>>>>>> upstream/master
               self.assertEqual(v_diags.get_shape(), solution.shape)
               self.assertAllEqual(v_diags.eval(), solution)
 
@@ -770,17 +737,6 @@ class MatrixDiagPartTest(test.TestCase):
       self.assertAllEqual(mat_batch_diag.eval(), v_batch)
 
       if compat.forward_compatible(2019, 7, 4):
-<<<<<<< HEAD
-        # Diagonal bands with padding.
-        mat, tests = square_cases()
-        for padding in [0, 555, -11]:
-          for diags, pair in tests.items():
-            solution, _ = pair
-            mat_batch_diag = array_ops.matrix_diag_part(
-                mat.astype(dtype), k=diags, padding=padding)
-            mask = solution == 0
-            solution = (solution + padding * mask).astype(dtype)
-=======
         # Diagonal bands with padding_value.
         mat, tests = square_cases()
         for padding_value in [0, 555, -11]:
@@ -790,7 +746,6 @@ class MatrixDiagPartTest(test.TestCase):
                 mat.astype(dtype), k=diags, padding_value=padding_value)
             mask = solution == 0
             solution = (solution + padding_value * mask).astype(dtype)
->>>>>>> upstream/master
             self.assertEqual(mat_batch_diag.get_shape(), solution.shape)
             self.assertAllEqual(mat_batch_diag.eval(), solution)
 
@@ -814,26 +769,15 @@ class MatrixDiagPartTest(test.TestCase):
       self.assertAllEqual(mat_batch_diag.eval(), v_batch)
 
       if compat.forward_compatible(2019, 7, 4):
-<<<<<<< HEAD
-        # Diagonal bands with padding.
-        for padding in [0, 555, -11]:
-=======
         # Diagonal bands with padding_value.
         for padding_value in [0, 555, -11]:
->>>>>>> upstream/master
           for mat, tests in [tall_cases(), fat_cases()]:
             for diags, pair in tests.items():
               solution, _ = pair
               mat_batch_diag = array_ops.matrix_diag_part(
-<<<<<<< HEAD
-                  mat, k=diags, padding=padding)
-              mask = solution == 0
-              solution = solution + padding * mask
-=======
                   mat, k=diags, padding_value=padding_value)
               mask = solution == 0
               solution = solution + padding_value * mask
->>>>>>> upstream/master
               self.assertEqual(mat_batch_diag.get_shape(), solution.shape)
               self.assertAllEqual(mat_batch_diag.eval(), solution)
 

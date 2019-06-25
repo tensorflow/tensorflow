@@ -122,19 +122,12 @@ void EagerExecutor::Run() {
         if (thread_done_) return;
         nodes_pending_.wait(l);
       }
-<<<<<<< HEAD
-      curr_node.reset(node_queue_.front());
-      // We update the last_node_id_ before calling Run() to ensure the value
-      // is updated before the response callback.
-      last_node_id_ = curr_node->id;
-=======
       // Obtain raw pointer since we don't want to remove from the queue until
       // the node has been run.
       curr_node = node_queue_.front().get();
       // We update the last_node_id_ before calling Run() to ensure the value
       // is updated before the response callback.
       last_node_id_ = curr_node->Id();
->>>>>>> upstream/master
     }
     tensorflow::Status status = curr_node->Run();
     const bool ok = status.ok();
@@ -150,11 +143,7 @@ void EagerExecutor::Run() {
                               "operations and poisons their output tensors.");
       for (int i = 0; i < node_queue_.size(); ++i) {
         node_queue_.front()->Abort(status);
-<<<<<<< HEAD
-        delete node_queue_.front();
-=======
         // Dequeue and delete nodes
->>>>>>> upstream/master
         node_queue_.pop();
       }
     }

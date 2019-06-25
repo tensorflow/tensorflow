@@ -145,11 +145,6 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
       **kwargs):
 
     extension = os.path.splitext(saving_filepath)[1]
-<<<<<<< HEAD
-    # TODO(rchao): Remove using .h5 once b/134551335 is fixed.
-    extension = '.h5'
-=======
->>>>>>> upstream/master
 
     # Incorporate type/index information and thread id in saving_filepath to
     # ensure every worker has a unique path. Note that in normal use case the

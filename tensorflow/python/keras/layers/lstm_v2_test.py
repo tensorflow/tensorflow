@@ -717,8 +717,6 @@ class LSTMV2Test(keras_parameterized.TestCase):
     model.evaluate(x, y)
     model.predict(x)
 
-<<<<<<< HEAD
-=======
   @test_util.run_v2_only
   def test_explicit_device_with_go_backward_and_mask(self):
     batch_size = 8
@@ -744,7 +742,6 @@ class LSTMV2Test(keras_parameterized.TestCase):
       outputs_trimmed = lstm(inputs[:, :masksteps])
     self.assertAllClose(outputs_masked[:, -masksteps:], outputs_trimmed)
 
->>>>>>> upstream/master
 
 @keras_parameterized.run_all_keras_modes(config=_config)
 class LSTMGraphRewriteTest(keras_parameterized.TestCase):

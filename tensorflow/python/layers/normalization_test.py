@@ -894,16 +894,9 @@ class BNTest(test.TestCase):
     yt = bn.apply(xt, training=training)
 
     moving_mean = 0.
-<<<<<<< HEAD
-    moving_variance = 1.
-    renorm_mean = 0.
-    renorm_stddev = 1.
-    renorm_weight = 0.
-=======
     moving_stddev = 1.
     renorm_mean = 0.
     renorm_stddev = 1.
->>>>>>> upstream/master
     with self.session(use_gpu=True) as sess:
       self.evaluate(variables.global_variables_initializer())
       for _ in range(5):
@@ -918,11 +911,7 @@ class BNTest(test.TestCase):
         renorm_mean += (mean - renorm_mean) * (1. - renorm_momentum)
         renorm_stddev += (stddev - renorm_stddev) * (1. - renorm_momentum)
         moving_mean += (mean - moving_mean) * (1. - momentum)
-<<<<<<< HEAD
-        moving_variance += (variance - moving_variance) * (1. - momentum)
-=======
         moving_stddev += (stddev - moving_stddev) * (1. - momentum)
->>>>>>> upstream/master
 
         y_test = ((x - moving_mean) /
                   (moving_stddev * moving_stddev)**0.5 * gamma) + beta
@@ -1062,11 +1051,7 @@ class BNTest(test.TestCase):
     yt = bn.apply(xt, training=training)
 
     moving_mean = 0.
-<<<<<<< HEAD
-    moving_variance = 1.
-=======
     moving_stddev = 1.
->>>>>>> upstream/master
     renorm_mean = 0.
     renorm_stddev = 1.
     with self.session(use_gpu=True) as sess:
@@ -1089,11 +1074,7 @@ class BNTest(test.TestCase):
         renorm_mean += (mean - renorm_mean) * (1. - renorm_momentum)
         renorm_stddev += (stddev - renorm_stddev) * (1. - renorm_momentum)
         moving_mean += (mean - moving_mean) * (1. - momentum)
-<<<<<<< HEAD
-        moving_variance += (variance - moving_variance) * (1. - momentum)
-=======
         moving_stddev += (stddev - moving_stddev) * (1. - momentum)
->>>>>>> upstream/master
 
         y_test = ((x - moving_mean) /
                   (moving_stddev * moving_stddev)**0.5 * gamma) + beta

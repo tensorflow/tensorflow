@@ -173,10 +173,7 @@ load(
     "tf_cuda_tests_tags",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-<<<<<<< HEAD
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-=======
->>>>>>> upstream/master
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_proto_library")
 load(
@@ -794,10 +791,7 @@ cc_library(
         "lib/core/threadpool_options.h",
     ],
     visibility = [
-<<<<<<< HEAD
-=======
         ":experimental_access",
->>>>>>> upstream/master
         "//tensorflow/cc:__pkg__",
     ],
     deps = [

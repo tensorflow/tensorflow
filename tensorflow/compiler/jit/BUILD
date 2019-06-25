@@ -1,13 +1,9 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-<<<<<<< HEAD
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
-=======
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library", "tf_jit_compilation_passes_extra_deps")
->>>>>>> upstream/master
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 
 package(

@@ -274,12 +274,6 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
     else:
       threads_to_join = [threads['worker'][0]]
     self.join_independent_workers(threads_to_join)
-<<<<<<< HEAD
-    # Asserting the checkpoint file exists.
-    self.assertTrue(
-        training_state.remove_checkpoint_if_exists(saving_dir, saving_filepath))
-    self.assertEqual(self._successful_thread_ends, 2)
-=======
 
     try:
       training_state.remove_checkpoint_if_exists(saving_dir, saving_filepath)
@@ -288,7 +282,6 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
                     'doesn\'t exist')
     if self._successful_thread_ends != 2:
       self.skipTest('To be understood why in rare cases a thread can disappear')
->>>>>>> upstream/master
 
     # Case 2: Training for `num_epoch` epoch with preemptions.
     # The preemption is simulated at both epoch boundary and batch boundary.
@@ -321,12 +314,6 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
     else:
       threads_to_join = [threads['worker'][0]]
     self.join_independent_workers(threads_to_join)
-<<<<<<< HEAD
-    # Asserting the checkpoint file exists.
-    self.assertTrue(
-        training_state.remove_checkpoint_if_exists(saving_dir, saving_filepath))
-    self.assertEqual(self._successful_thread_ends, 2)
-=======
 
     try:
       training_state.remove_checkpoint_if_exists(saving_dir, saving_filepath)
@@ -335,7 +322,6 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
                     'doesn\'t exist')
     if self._successful_thread_ends != 2:
       self.skipTest('To be understood why in rare cases a thread can disappear')
->>>>>>> upstream/master
 
     def assert_all_elements_are_identical(list_to_check):
       first_item = list_to_check[0]

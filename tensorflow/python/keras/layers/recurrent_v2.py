@@ -529,26 +529,20 @@ def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
   if mask is not None:
     sequence_length = calculate_sequence_by_mask(mask, time_major)
     if go_backwards:
-<<<<<<< HEAD
-=======
       # Three reversals are required. E.g.,
       # normal input = [1, 2, 3, 0, 0]  # where 0 need to be masked
       # reversed_input_to_cudnn = [3, 2, 1, 0, 0]
       # output_from_cudnn = [6, 5, 4, 0, 0]
       # expected_output = [0, 0, 6, 5 ,4]
->>>>>>> upstream/master
       inputs = array_ops.reverse_sequence_v2(inputs, sequence_length,
                                              seq_axis=0, batch_axis=1)
     outputs, h, _, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(
         inputs, input_h=init_h, input_c=0, params=params, is_training=True,
         rnn_mode='gru', sequence_lengths=sequence_length)
-<<<<<<< HEAD
-=======
     if go_backwards:
       outputs = array_ops.reverse_sequence_v2(outputs, sequence_length,
                                               seq_axis=0, batch_axis=1)
       outputs = array_ops.reverse(outputs, axis=[0])
->>>>>>> upstream/master
   else:
     if go_backwards:
       # Reverse axis 0 since the input is already convert to time major.
@@ -1126,26 +1120,20 @@ def cudnn_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
   if mask is not None:
     sequence_length = calculate_sequence_by_mask(mask, time_major)
     if go_backwards:
-<<<<<<< HEAD
-=======
       # Three reversals are required. E.g.,
       # normal input = [1, 2, 3, 0, 0]  # where 0 need to be masked
       # reversed_input_to_cudnn = [3, 2, 1, 0, 0]
       # output_from_cudnn = [6, 5, 4, 0, 0]
       # expected_output = [0, 0, 6, 5 ,4]
->>>>>>> upstream/master
       inputs = array_ops.reverse_sequence_v2(inputs, sequence_length,
                                              seq_axis=0, batch_axis=1)
     outputs, h, c, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(
         inputs, input_h=init_h, input_c=init_c, params=params, is_training=True,
         rnn_mode='lstm', sequence_lengths=sequence_length)
-<<<<<<< HEAD
-=======
     if go_backwards:
       outputs = array_ops.reverse_sequence_v2(outputs, sequence_length,
                                               seq_axis=0, batch_axis=1)
       outputs = array_ops.reverse(outputs, axis=[0])
->>>>>>> upstream/master
   else:
     # # Fill the array with shape [batch] with value of max timesteps.
     # sequence_length = array_ops.fill([array_ops.shape(inputs)[1]],
@@ -1274,9 +1262,6 @@ def _generate_defun_backend(unique_api_name, preferred_device, func):
   function_attributes = {
       _DEFUN_API_NAME_ATTRIBUTE: unique_api_name,
       _DEFUN_DEVICE_ATTRIBUTE: preferred_device,
-      # TODO(b/133178886): The function is auto inlined in eager context, which
-      # make grappler fail to do the optimization. Force it to not inline here.
-      '_noinline': True,
   }
   return function.defun_with_attributes(func=func,
                                         attributes=function_attributes)

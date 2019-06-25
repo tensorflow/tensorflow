@@ -136,10 +136,6 @@ class XlaAssignVariableOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("AssignVariableOp").Device(DEVICE).HostMemory("resource"),          \
       XlaAssignVariableOp);                                                    \
-<<<<<<< HEAD
-                                                                               \
-=======
->>>>>>> upstream/master
                                                                                \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("FIFOQueueV2").Device(DEVICE).HostMemory("handle"), FIFOQueueOp);   \

@@ -328,14 +328,10 @@ tf_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
     ],
-<<<<<<< HEAD
     tags = [
         "no_rocm",
         "no_cuda",
     ],
-=======
-    tags = ["no_rocm"],
->>>>>>> upstream/master
 )
 
 py_library(

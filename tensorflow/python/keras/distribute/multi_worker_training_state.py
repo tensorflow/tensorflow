@@ -19,14 +19,8 @@ from __future__ import print_function
 
 import contextlib
 import os
-<<<<<<< HEAD
-import tempfile
-
-from tensorflow.python.distribute import distribute_coordinator_context as dc_context
-=======
 import uuid
 from tensorflow.python.distribute import multi_worker_util
->>>>>>> upstream/master
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend as K
@@ -165,11 +159,7 @@ class MultiWorkerTrainingState(object):
     """
     self._assert_in_multi_worker_mode()
     tracking.AutoTrackable.__delattr__(self._model, CKPT_SAVED_EPOCH)
-<<<<<<< HEAD
-    if dc_context.get_current_worker_context().should_checkpoint:
-=======
     if multi_worker_util.should_save_checkpoint():
->>>>>>> upstream/master
       _remove_dir(self._backup_dir)
     else:
       assert not file_io.file_exists(self._temp_dir)
@@ -223,17 +213,11 @@ class MultiWorkerTrainingState(object):
     backup_dir = os.path.join(os.path.dirname(original_filepath), 'backup')
     return backup_dir, os.path.join(backup_dir, 'training_state')
 
-<<<<<<< HEAD
-  def _get_temp_filepath(self):
-    temp_dir = tempfile.mkdtemp()
-    return temp_dir, os.path.join(temp_dir, 'temp_training_state')
-=======
   def _get_temp_filepath(self, original_filepath):
     temp_dir = os.path.join(
         os.path.dirname(original_filepath), 'temp_training_states',
         str(uuid.uuid4()))
     return temp_dir, os.path.join(temp_dir, 'training_state')
->>>>>>> upstream/master
 
   def _assert_in_multi_worker_mode(self):
     if not multi_worker_util.in_multi_worker_mode():

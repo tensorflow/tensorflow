@@ -60,13 +60,8 @@ function reorganize_includes() {
   move_to_root_if_exists external/jsoncpp_git/include
   rm -rf external/jsoncpp_git
 
-<<<<<<< HEAD
-  move_to_root_if_exists external/protobuf_archive/src/google
-  rm -rf external/protobuf_archive/python
-=======
   move_to_root_if_exists external/com_google_protobuf/src/google
   rm -rf external/com_google_protobuf/python
->>>>>>> upstream/master
 
   popd
 }

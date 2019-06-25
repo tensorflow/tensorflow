@@ -25,53 +25,22 @@ namespace tensorflow {
 
 class CopyToDeviceNode : public EagerNode {
  public:
-<<<<<<< HEAD
-  CopyToDeviceNode(TensorHandle* src, Device* dstd, EagerContext* ctx)
-      : EagerNode(ctx->NextId()), src_(src), dstd_(dstd), ctx_(ctx) {
-=======
   CopyToDeviceNode(TensorHandle* src, TensorHandle* dst, Device* dstd,
                    EagerContext* ctx)
       : EagerNode(ctx->NextId()), src_(src), dst_(dst), dstd_(dstd), ctx_(ctx) {
->>>>>>> upstream/master
     src_->Ref();
-    status_ = TensorHandle::CreateAsyncLocalHandle(dstd_, dstd_, nullptr,
-                                                   src_->dtype, ctx, &dst_);
-    if (status_.ok()) {
-      dst_->Ref();
-    }
+    dst_->Ref();
   }
 
   ~CopyToDeviceNode() override {
     src_->Unref();
-    if (dst_) {
-      dst_->Unref();
-    }
+    dst_->Unref();
   }
 
   Status Run() override {
-<<<<<<< HEAD
-    if (!status_.ok()) {
-      return status_;
-    }
-    TensorHandle* temp = nullptr;
-    Status status = src_->CopyToDevice(ctx_, dstd_, &temp);
-    if (!status.ok()) {
-      dst_->Poison(status);
-      return status;
-    }
-    const Tensor* tensor = nullptr;
-    status = temp->Tensor(&tensor);
-    // `temp` is a ready handle. So the following call should return OK.
-    TF_DCHECK_OK(status) << status.error_message();
-    DCHECK(tensor);
-    dst_->SetTensor(*tensor);
-    temp->Unref();
-    return Status::OK();
-=======
     tensorflow::Tensor tensor;
     TF_RETURN_IF_ERROR(src_->CopyToDevice(ctx_, dstd_, &tensor));
     return dst_->SetTensor(tensor);
->>>>>>> upstream/master
   }
 
   void Abort(Status status) override { dst_->Poison(status); }
@@ -83,11 +52,6 @@ class CopyToDeviceNode : public EagerNode {
   TensorHandle* dst_;
   Device* dstd_;
   EagerContext* ctx_;
-<<<<<<< HEAD
-  TensorHandle* dst_;
-  Status status_;
-=======
->>>>>>> upstream/master
 };
 
 }  // namespace tensorflow

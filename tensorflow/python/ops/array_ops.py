@@ -1956,10 +1956,7 @@ def matrix_diag(diagonal,
 
 @tf_export("linalg.diag_part", v1=["linalg.diag_part", "matrix_diag_part"])
 @deprecation.deprecated_endpoints("matrix_diag_part")
-<<<<<<< HEAD
-=======
 @dispatch.add_dispatch_support
->>>>>>> upstream/master
 def matrix_diag_part(
     input,  # pylint:disable=redefined-builtin
     name="diag_part",

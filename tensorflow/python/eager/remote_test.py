@@ -101,8 +101,6 @@ class MultiWorkersTest(test.TestCase):
     workers, _ = test_util.create_local_cluster(3, 0)
     remote.connect_to_remote_host(
         [workers[0].target, workers[1].target, workers[2].target])
-<<<<<<< HEAD
-=======
 
   def testMultiDeviceFunctionOnLocalDevice(self):
     with ops.device('/job:worker/replica:0/task:1'):
@@ -116,7 +114,6 @@ class MultiWorkersTest(test.TestCase):
       return c
 
     self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
->>>>>>> upstream/master
 
   def testMultiDeviceFunctionOnRemoteDevice(self):
     with ops.device('/job:worker/replica:0/task:1'):
@@ -143,13 +140,10 @@ class MultiWorkersTest(test.TestCase):
     with ops.device('/job:worker/replica:0/task:0'):
       self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
 
-<<<<<<< HEAD
-=======
     if test_util.is_gpu_available():
       with ops.device('/job:worker/replica:0/task:0/device:GPU:0'):
         self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
 
->>>>>>> upstream/master
   def testSimpleParameterServer(self):
 
     with ops.device('/job:worker/task:2/device:CPU:0'):
@@ -168,8 +162,6 @@ class MultiWorkersTest(test.TestCase):
     with ops.device('/job:worker/task:1/device:CPU:0'):
       self.assertAllEqual(worker_fn(), 8)
 
-<<<<<<< HEAD
-=======
 
 _GRPC_PREFIX = 'grpc://'
 
@@ -213,7 +205,6 @@ class MultiJobsTest(test.TestCase):
 def _strip_prefix(s, prefix):
   return s[len(prefix):] if s.startswith(prefix) else s
 
->>>>>>> upstream/master
 
 if __name__ == '__main__':
   test.main()

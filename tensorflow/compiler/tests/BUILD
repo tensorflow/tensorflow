@@ -1,11 +1,11 @@
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test", "tf_gpu_tests_tags")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites")
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags","tf_gpu_tests_tags",
+    "tf_cuda_tests_tags",
 )
 
 package(

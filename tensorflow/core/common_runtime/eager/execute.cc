@@ -153,14 +153,9 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op,
   // trigger a copy.
   auto pre_time_nanos = Env::Default()->NowNanos();
   TensorHandle* result_handle = nullptr;
-<<<<<<< HEAD
-  Status status = EagerCopyToDevice(
-      handle, ctx, expected_input_device->name().c_str(), &result_handle);
-=======
   Status status =
       EagerCopyToDevice(handle, ctx, expected_input_device->name().c_str(),
                         ctx->MirrorTensors(), &result_handle);
->>>>>>> upstream/master
   if (run_metadata != nullptr) {
     auto* step_stats = run_metadata->mutable_step_stats();
     MaybeInitializeStepStats(step_stats, ctx);
@@ -178,7 +173,6 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op,
     node_stats->set_all_end_rel_micros((now_nanos - pre_time_nanos) /
                                        EnvTime::kMicrosToNanos);
     node_stats->set_all_end_rel_nanos(now_nanos - pre_time_nanos);
-<<<<<<< HEAD
   }
   if (!status.ok()) {
     if (result_handle != nullptr) result_handle->Unref();
@@ -187,16 +181,6 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op,
                             expected_input_device->name(), " in order to run ",
                             op->Name(), ": ", status.error_message());
   }
-=======
-  }
-  if (!status.ok()) {
-    if (result_handle != nullptr) result_handle->Unref();
-    return errors::Internal("Failed copying input tensor from ",
-                            actual_device->name(), " to ",
-                            expected_input_device->name(), " in order to run ",
-                            op->Name(), ": ", status.error_message());
-  }
->>>>>>> upstream/master
 
   *result = result_handle;
 
@@ -458,12 +442,6 @@ Status EagerLocalExecute(EagerOperation* op,
         TensorHandle* handle = nullptr;
         TF_RETURN_IF_ERROR(EagerCopyToDevice(
             input, ctx, device == nullptr ? "" : device->name().c_str(),
-<<<<<<< HEAD
-            &handle));
-        op->UpdateInput(i, handle);
-        // Unref handle since it has a ref as an input now
-        handle->Unref();
-=======
             ctx->MirrorTensors(), &handle));
         op->UpdateInput(i, handle);
         // Unref handle since it has a ref as an input now
@@ -509,7 +487,6 @@ Status EagerLocalExecute(EagerOperation* op,
           cache_key = FingerprintCat128(cache_key, dtype);
           AppendTensorShapeToFingerprint(dtype_and_shape.shape, &cache_key);
         }
->>>>>>> upstream/master
       }
     }
   }
@@ -728,11 +705,6 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
   n.WaitForNotification();
   if (!status.ok()) return status;
 
-<<<<<<< HEAD
-  status = TensorHandle::CreateRemoteHandle(
-      id, 0, tensor->shape(), eager_client, context_id, tensor->dtype(),
-      recv_device, nullptr, ctx, result);
-=======
   auto tensor_handle_data = absl::make_unique<RemoteTensorHandleData>(
       id, 0, tensor->shape(), eager_client, context_id, ctx);
   if (mirror) {
@@ -744,7 +716,6 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
                                               tensor->dtype(), recv_device,
                                               nullptr, ctx, result);
   }
->>>>>>> upstream/master
 
   actual_handle->Unref();
 
@@ -793,11 +764,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
           op, op->Device()->name(), i, remote_cpu_device,
           /* run_metadata= */ nullptr, &handle));
       op->UpdateInput(i, handle);
-<<<<<<< HEAD
-=======
       input = handle;
       input_device = remote_cpu_device;
->>>>>>> upstream/master
       // Unref handle since it has a ref as an input now
       handle->Unref();
     }
@@ -880,16 +848,11 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
                      const eager::EnqueueResponse& response) {
               for (int i = 0; i < retvals.size(); i++) {
                 if (status.ok()) {
-<<<<<<< HEAD
-                  retvals[i]->SetRemoteShape(
-                      response.queue_response(0).shape(i));
-=======
                   Status s = retvals[i]->SetRemoteShape(
                       response.queue_response(0).shape(i));
                   if (!s.ok()) {
                     retvals[i]->Poison(s);
                   }
->>>>>>> upstream/master
                 } else {
                   retvals[i]->Poison(status);
                 }

@@ -174,6 +174,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_rocm",
+        "no_cuda",
     ],
     deps = [
         ":distribute_lib",
@@ -188,10 +189,6 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
-    ],
-    tags = [
-        "no_rocm",
-        "no_cuda",
     ],
 )
 
@@ -985,15 +982,11 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_and_single_gpu",
-<<<<<<< HEAD
         # Failure due to Rccl Op does not support eager mode, should remove when
         # PR400 is submitted
         "no_rocm",
         "no_cuda",
         "no_pip",  # b/131691139
-=======
-        "no_rocm",
->>>>>>> upstream/master
         "no_windows_gpu",  # TODO(b/130551176)
     ],
     xla_enable_strict_auto_jit = True,
@@ -1120,38 +1113,16 @@ distribute_py_test(
 
 distribute_py_test(
     name = "keras_experimental_saved_model_test",
-<<<<<<< HEAD
     size = "medium",
     srcs = ["keras_experimental_saved_model_test.py"],
     main = "keras_experimental_saved_model_test.py",
     tags = [
         "no_oss",  # TODO(b/135287893) reenable
-    ],
-    deps = [
-        ":saved_model_test_base",
-        "//tensorflow/python/keras:saving",
-    ],
-)
-
-distribute_py_test(
-    name = "saved_model_mixed_api_test",
-    size = "medium",
-    srcs = ["saved_model_mixed_api_test.py"],
-    main = "saved_model_mixed_api_test.py",
-    tags = [
-=======
-    size = "medium",
-    srcs = ["keras_experimental_saved_model_test.py"],
-    main = "keras_experimental_saved_model_test.py",
-    tags = [
-        "no_oss",  # TODO(b/135287893) reenable
->>>>>>> upstream/master
         "no_rocm",
     ],
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras:saving",
-        "//tensorflow/python/saved_model",
     ],
 )
 

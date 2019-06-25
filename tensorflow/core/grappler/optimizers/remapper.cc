@@ -823,8 +823,6 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
         IsInPreserveSet(ctx, relu_fanin_0_node_def))
       return false;
 
-<<<<<<< HEAD
-=======
     // Add node supports broadcasting, FusedBatchNormEx does not.
     const auto& props =
         ctx.graph_properties.GetInputProperties(relu_fanin_0_node_def->name());
@@ -832,7 +830,6 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
         !ShapesSymbolicallyEqual(props[0].shape(), props[1].shape()))
       return false;
 
->>>>>>> upstream/master
     if (relu_fanin_0_node_view->NumRegularFanins() < 2) return false;
     const auto& add_regular_fanin_0 =
         relu_fanin_0_node_view->GetRegularFanin(0);
@@ -950,17 +947,10 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   mutation->AddNode(std::move(fused_op), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
-<<<<<<< HEAD
 
   (*invalidated_nodes)[matched.bias_add] = true;
   (*nodes_to_delete)[matched.contraction] = true;
 
-=======
-
-  (*invalidated_nodes)[matched.bias_add] = true;
-  (*nodes_to_delete)[matched.contraction] = true;
-
->>>>>>> upstream/master
   return Status::OK();
 }
 
@@ -1001,19 +991,11 @@ Status AddFusedContractionNode(
   mutation->AddNode(std::move(fused_op), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
-<<<<<<< HEAD
 
   (*nodes_to_delete)[matched.contraction] = true;
   (*nodes_to_delete)[matched.bias_add] = true;
   (*invalidated_nodes)[matched.activation] = true;
 
-=======
-
-  (*nodes_to_delete)[matched.contraction] = true;
-  (*nodes_to_delete)[matched.bias_add] = true;
-  (*invalidated_nodes)[matched.activation] = true;
-
->>>>>>> upstream/master
   return Status::OK();
 }
 
@@ -1175,7 +1157,6 @@ Status AddFusedContractionNode(RemapperContext* ctx,
 
   CopyConv2DAttributes(contraction, &fused_conv2d);
   SetFusedOpAttributes(&fused_conv2d, {"BiasAdd", "Add"}, 2);
-<<<<<<< HEAD
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
   Status status;
@@ -1187,19 +1168,6 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   (*nodes_to_delete)[matched.contraction] = true;
   (*nodes_to_delete)[matched.bias_add] = true;
 
-=======
-
-  utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
-  mutation->AddNode(std::move(fused_conv2d), &status);
-  TF_RETURN_IF_ERROR(status);
-  TF_RETURN_IF_ERROR(mutation->Apply());
-
-  (*invalidated_nodes)[matched.add] = true;
-  (*nodes_to_delete)[matched.contraction] = true;
-  (*nodes_to_delete)[matched.bias_add] = true;
-
->>>>>>> upstream/master
   return Status::OK();
 }
 
@@ -1228,7 +1196,6 @@ Status AddFusedContractionNode(
 
   CopyConv2DAttributes(contraction, &fused_conv2d);
   SetFusedOpAttributes(&fused_conv2d, {"BiasAdd", "Add", "Relu"}, 2);
-<<<<<<< HEAD
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
   Status status;
@@ -1241,20 +1208,6 @@ Status AddFusedContractionNode(
   (*nodes_to_delete)[matched.bias_add] = true;
   (*nodes_to_delete)[matched.contraction] = true;
 
-=======
-
-  utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
-  mutation->AddNode(std::move(fused_conv2d), &status);
-  TF_RETURN_IF_ERROR(status);
-  TF_RETURN_IF_ERROR(mutation->Apply());
-
-  (*invalidated_nodes)[matched.activation] = true;
-  (*nodes_to_delete)[matched.add] = true;
-  (*nodes_to_delete)[matched.bias_add] = true;
-  (*nodes_to_delete)[matched.contraction] = true;
-
->>>>>>> upstream/master
   return Status::OK();
 }
 #endif

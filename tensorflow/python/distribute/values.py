@@ -568,16 +568,6 @@ def _assign_sub_on_device(device, variable, tensor):
     return variable.assign_sub(tensor)
 
 
-def _assign_add_on_device(device, variable, tensor):
-  with ops.device(device):
-    return variable.assign_add(array_ops.identity(tensor))
-
-
-def _assign_sub_on_device(device, variable, tensor):
-  with ops.device(device):
-    return variable.assign_sub(array_ops.identity(tensor))
-
-
 def _assert_strategy(strategy):
   if not distribution_strategy_context.has_strategy():
     raise RuntimeError(
@@ -1106,90 +1096,6 @@ def is_distributed_variable(v):
 class TPUMirroredVariable(TPUVariableMixin, MirroredVariable):
   """Holds a map from device to TPU variables whose values are kept in sync."""
 
-<<<<<<< HEAD
-  def __init__(
-      self, strategy, device_map, values, aggregation, logical_device=None):
-    super(TPUMirroredVariable, self).__init__(
-        strategy=strategy, device_map=device_map, values=values,
-        aggregation=aggregation, logical_device=logical_device)
-
-    # Handle id is needed for get_replicated_var_handle to cache the variables
-    # correctly since in eager mode different variables can have the same name.
-    if ops.executing_eagerly_outside_functions():
-      self._handle_id = self._common_name + "_" + str(id(self.primary))
-    else:
-      self._handle_id = self._common_name
-
-  def __getattr__(self, name):
-    if _enclosing_tpu_context() is None:
-      return super(TPUMirroredVariable, self).__getattr__(name)
-    else:
-      raise AttributeError(
-          "'{}' not accessible within a TPU context.".format(name))
-
-  def get(self, device=None):
-    if (_enclosing_tpu_context() is None) or (device is not None):
-      return super(TPUMirroredVariable, self).get(device=device)
-    else:
-      raise NotImplementedError(
-          "`TPUMirroredVariable.get()` is not supported within a TPU context.")
-
-  def _get_as_operand(self):
-    return self.read_value()
-
-  def _get_closest(self):
-    if _enclosing_tpu_context() is None:
-      return super(TPUMirroredVariable, self)._get_closest()
-    else:
-      return self.primary
-
-  def numpy(self):
-    if context.executing_eagerly():
-      return self.read_value().numpy()
-    raise NotImplementedError(
-        "numpy() is only available when eager execution is enabled.")
-
-  @property
-  def handle(self):
-    # If we're in a tpu.rewrite(), return the replicated handle.
-    tpu_context = _enclosing_tpu_context()
-    if tpu_context is None:
-      return self._get_closest().handle
-    else:
-      return tpu_context.get_replicated_var_handle(
-          self._handle_id, self._values)
-
-  @property
-  def device(self):
-    return self.handle.device
-
-  @contextlib.contextmanager
-  def _handle_graph(self, handle):
-    # Note: might have an eager tensor but not be executing eagerly when
-    # building functions.
-    if (context.executing_eagerly() or isinstance(handle, ops.EagerTensor)
-        or ops.has_default_graph()):
-      yield
-    else:
-      with handle.graph.as_default():
-        yield
-
-  def _read_variable_op(self, parent_op=None):
-    if self.trainable:
-      tape.variable_accessed(self)
-    if parent_op is not None:
-      with ops.control_dependencies([parent_op]):
-        return gen_resource_variable_ops.read_variable_op(
-            self.handle, self.dtype)
-
-    return gen_resource_variable_ops.read_variable_op(
-        self.handle, self.dtype)
-
-  def read_value(self):
-    return self._read_variable_op()
-
-=======
->>>>>>> upstream/master
   def _assign_func(self, *args, **kwargs):
     with _enter_or_assert_strategy(self._distribute_strategy):
       if (distribution_strategy_context.in_cross_replica_context()

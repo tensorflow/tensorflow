@@ -159,16 +159,6 @@ def tf_convert(f, ctx, convert_by_default=True, force_conversion=False):
   f_wrapper = f
   decorators, f = tf_decorator.unwrap(f)
 
-<<<<<<< HEAD
-  apply_autograph = ((ctx.status == ag_ctx.Status.ENABLED) or
-                     (convert_by_default and
-                      ctx.status == ag_ctx.Status.UNSPECIFIED))
-  if apply_autograph:
-    # TODO(mdan): Grab features from context.
-    wrapper = convert(recursive=True, force_conversion=force_conversion)(f)
-  else:
-    wrapper = do_not_convert(f)
-=======
   # TODO(mdan): Grab features from context.
   if ctx.status == ag_ctx.Status.ENABLED:
     wrapper = convert(recursive=True, force_conversion=force_conversion)(f)
@@ -181,7 +171,6 @@ def tf_convert(f, ctx, convert_by_default=True, force_conversion=False):
       wrapper = call_with_unspecified_conversion_status(f)
   else:
     raise ValueError(ctx.status)
->>>>>>> upstream/master
 
   if decorators:
     wrapper = tf_decorator.rewrap(f_wrapper, f, wrapper)

@@ -193,7 +193,7 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
 // to make the non-GPU operations compatible with GPU ones.
 class ScratchAllocator {
  public:
-  virtual ~ScratchAllocator() {};
+  virtual ~ScratchAllocator() {}
 };
 
 template <typename T>
@@ -526,25 +526,6 @@ struct FusedBatchNorm<GPUDevice, T, U> {
 
     // In inference mode we use custom CUDA kernel, because cuDNN does not
     // support side input and activations for inference.
-<<<<<<< HEAD
-    if (!is_training) {
-      FusedBatchNormInferenceFunctor<GPUDevice, T, U> inference_functor;
-      if (side_input.dim_size(0) == 0) {
-        typename TTypes<T, 4>::ConstTensor empty_tensor(nullptr, 0, 0, 0, 0);
-        inference_functor(context, tensor_format, x.tensor<T, 4>(),
-                          scale.vec<U>(), offset.vec<U>(),
-                          estimated_mean.vec<U>(), estimated_variance.vec<U>(),
-                          empty_tensor, epsilon, activation_mode,
-                          y->tensor<T, 4>());
-
-      } else {
-        inference_functor(context, tensor_format, x.tensor<T, 4>(),
-                          scale.vec<U>(), offset.vec<U>(),
-                          estimated_mean.vec<U>(), estimated_variance.vec<U>(),
-                          side_input.tensor<T, 4>(), epsilon, activation_mode,
-                          y->tensor<T, 4>());
-      }
-=======
     const bool has_side_input = side_input.dim_size(0) != 0;
     const bool has_activation =
         activation_mode != FusedBatchNormActivationMode::kIdentity;
@@ -567,7 +548,6 @@ struct FusedBatchNorm<GPUDevice, T, U> {
                           y->tensor<T, 4>());
       }
 
->>>>>>> upstream/master
       return;
     }
 
@@ -871,11 +851,7 @@ DECLARE_GPU_SPEC(Eigen::half, float);
 
 #undef DECLARE_GPU_SPEC
 
-<<<<<<< HEAD
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-=======
-#endif  // GOOGLE_CUDA
->>>>>>> upstream/master
 }  // namespace functor
 
 template <typename Device, typename T, typename U>

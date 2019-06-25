@@ -72,6 +72,15 @@ constexpr int64 kWarpSize = 32;
 // A call to cuBLAS general matrix multiplication API.
 extern const char* const kGemmCallTarget;
 
+// Returns true if `hlo` will be implemented as a call to BLAS gemm.
+//
+// Precondition: `hlo` is in an "unnested context", meaning, it lives within the
+// entry computation, within the either of a while loop's subcomputations,
+// within any of a conditional's subcomputations, etc., but *does not* live
+// within a reduce subcomputation, a map subcomputation, a fusion
+// subcomputation, etc.  It's OK if `hlo` *is* a fusion.
+bool ImplementedAsGemm(const HloInstruction& hlo);
+
 // A call to cuDNN for batch normalization is represented as CustomCall HLO with
 // a call target equal to one of these strings.
 //

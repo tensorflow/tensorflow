@@ -219,9 +219,6 @@ REGISTER_KERNEL_BUILDER(Name("ReadVariableOp").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("_ReadVariablesOp").Device(DEVICE_CPU),
                         ReadVariablesOp);
 
-<<<<<<< HEAD
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-=======
 VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("container", &container_));
   OP_REQUIRES_OK(context, context->GetAttr("shared_name", &name_));
@@ -263,8 +260,7 @@ void VarHandleOp::Compute(OpKernelContext* ctx) {
 
 REGISTER_KERNEL_BUILDER(Name("VarHandleOp").Device(DEVICE_CPU), VarHandleOp);
 
-#if GOOGLE_CUDA
->>>>>>> upstream/master
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(
     Name("ReadVariableOp").Device(DEVICE_GPU).HostMemory("resource"),
     ReadVariableOp);

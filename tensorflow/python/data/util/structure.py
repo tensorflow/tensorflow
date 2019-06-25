@@ -94,21 +94,6 @@ def normalize_element(element):
   with ops.name_scope("normalize_tensors"):
     # Imported here to avoid circular dependency
     from tensorflow.python.data.ops import dataset_ops  # pylint: disable=g-import-not-at-top
-<<<<<<< HEAD
-    for i, t in enumerate(flat_tensors):
-      spec = type_spec.type_spec_from_value(t)
-      if isinstance(spec, sparse_tensor.SparseTensorSpec):
-        prepared.append(
-            sparse_tensor.SparseTensor.from_value(t))
-      elif isinstance(spec, ragged_tensor.RaggedTensorSpec):
-        prepared.append(
-            ragged_tensor.convert_to_tensor_or_ragged_tensor(
-                t, name="component_%d" % i))
-      elif isinstance(spec, tensor_array_ops.TensorArraySpec):
-        prepared.append(t)
-      elif isinstance(spec, dataset_ops.DatasetStructure):
-        prepared.append(t)
-=======
     for i, t in enumerate(components):
       spec = type_spec_from_value(t)
       if isinstance(spec, sparse_tensor.SparseTensorSpec):
@@ -123,7 +108,6 @@ def normalize_element(element):
         normalized_components.append(t)
       elif isinstance(t, composite_tensor.CompositeTensor):
         normalized_components.append(t)
->>>>>>> upstream/master
       else:
         normalized_components.append(
             ops.convert_to_tensor(t, name="component_%d" % i))
@@ -229,17 +213,8 @@ def from_compatible_tensor_list(element_spec, tensor_list):
       element type specification.
     tensor_list: A list of tensors to use for constructing the value.
 
-<<<<<<< HEAD
-  def most_specific_compatible_type(self, other):
-    if type(self) is not type(other):
-      raise ValueError("Incompatible types")
-    return self._deserialize(
-        nest.map_structure(lambda a, b: a.most_specific_compatible_type(b),
-                           self._nested_structure, other._nested_structure))
-=======
   Returns:
     An element constructed from the given spec and tensor list.
->>>>>>> upstream/master
 
   Raises:
     ValueError: If the number of tensors needed to construct an element for
@@ -430,115 +405,6 @@ def are_compatible(spec1, spec2):
 def type_spec_from_value(element):
   """Creates a type specification for the given value.
 
-<<<<<<< HEAD
-    # pylint: disable=g-complex-comprehension
-    return all(
-        substructure.is_compatible_with(other_substructure)
-        for substructure, other_substructure in zip(
-            nest.flatten(self._nested_structure),
-            nest.flatten(other._nested_structure)))
-
-  _component_specs = property(lambda self: self._nested_structure)
-  _flat_tensor_specs = property(lambda self: self.__flat_tensor_specs)
-
-  def _to_components(self, value):
-    return nest.map_structure_up_to(
-        self._nested_structure, lambda t, v: t._to_components(v),
-        self._nested_structure, value)
-
-  def _from_components(self, value):
-    return nest.map_structure_up_to(
-        self._nested_structure, lambda t, v: t._from_components(v),
-        self._nested_structure, value)
-
-  def _to_tensor_list(self, value):
-    return self.__value_to_tensors(
-        value, lambda struct, val: struct._to_tensor_list(val))
-
-  def _to_batched_tensor_list(self, value):
-    return self.__value_to_tensors(
-        value, lambda struct, val: struct._to_batched_tensor_list(val))
-
-  def __value_to_tensors(self, value, to_tensor_list_fn):
-    ret = []
-
-    try:
-      flat_value = nest.flatten_up_to(self._nested_structure, value)
-    except (ValueError, TypeError):
-      raise ValueError("The value %r is not compatible with the nested "
-                       "structure %r." % (value, self._nested_structure))
-
-    for sub_value, structure in zip(flat_value, self._flat_nested_structure):
-      if not structure.is_compatible_with(
-          type_spec.type_spec_from_value(sub_value)):
-        raise ValueError("Component value %r is not compatible with the nested "
-                         "structure %r." % (sub_value, structure))
-      ret.extend(to_tensor_list_fn(structure, sub_value))
-    return ret
-
-  def _from_tensor_list(self, value):
-    return self.__tensors_to_value(
-        value, lambda struct, val: struct._from_tensor_list(val))
-
-  def _from_compatible_tensor_list(self, value):
-    return self.__tensors_to_value(
-        value, lambda struct, val: struct._from_compatible_tensor_list(val))
-
-  def __tensors_to_value(self, flat_value, from_tensor_list_fn):
-    if len(flat_value) != len(self._flat_tensor_specs):
-      raise ValueError("Expected %d flat values in NestedStructure but got %d."
-                       % (len(self._flat_tensor_specs), len(flat_value)))
-    flat_ret = []
-    i = 0
-    for structure in self._flat_nested_structure:
-      num_flat_values = len(structure._flat_tensor_specs)
-      sub_value = flat_value[i:i + num_flat_values]
-      flat_ret.append(from_tensor_list_fn(structure, sub_value))
-      i += num_flat_values
-
-    return nest.pack_sequence_as(self._nested_structure, flat_ret)
-
-  @staticmethod
-  def from_value(value):
-    flat_nested_structure = [
-        type_spec.type_spec_from_value(sub_value)
-        for sub_value in nest.flatten(value)
-    ]
-    return NestedStructure(nest.pack_sequence_as(value, flat_nested_structure))
-
-  def _to_legacy_output_types(self):
-    return nest.map_structure(
-        lambda s: s._to_legacy_output_types(), self._nested_structure)
-
-  def _to_legacy_output_shapes(self):
-    return nest.map_structure(
-        lambda s: s._to_legacy_output_shapes(), self._nested_structure)
-
-  def _to_legacy_output_classes(self):
-    return nest.map_structure(
-        lambda s: s._to_legacy_output_classes(), self._nested_structure)
-
-  def _batch(self, batch_size):
-    return NestedStructure(nest.map_structure(
-        lambda s: s._batch(batch_size), self._nested_structure))
-
-  def _unbatch(self):
-    return NestedStructure(nest.map_structure(
-        lambda s: s._unbatch(), self._nested_structure))
-
-
-type_spec.register_type_spec_from_value_converter(
-    tuple, NestedStructure.from_value, allow_subclass=True)
-type_spec.register_type_spec_from_value_converter(
-    dict, NestedStructure.from_value, allow_subclass=True)
-
-
-# Re-register SparseTensorValue -- it's a subclass of tuple, but we don't
-# want the NestedStructure registration to take precedence.
-type_spec.register_type_spec_from_value_converter(
-    sparse_tensor.SparseTensorValue,
-    sparse_tensor.SparseTensorSpec.from_value)
-=======
   Args:
     element: The element to create the type specification for.
 
@@ -587,4 +453,3 @@ type_spec.register_type_spec_from_value_converter(
 
   raise TypeError("Could not build a TypeSpec for %r with type %s" %
                   (element, type(element).__name__))
->>>>>>> upstream/master

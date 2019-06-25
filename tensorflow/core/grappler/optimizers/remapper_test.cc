@@ -259,12 +259,8 @@ TEST_F(RemapperTest, FuseBatchNormWithAddAndRelu) {
     auto offset = Placeholder(s.WithOpName("offset"), DT_FLOAT);
     auto mean = Placeholder(s.WithOpName("mean"), DT_FLOAT);
     auto var = Placeholder(s.WithOpName("var"), DT_FLOAT);
-<<<<<<< HEAD
-    auto side_input = Placeholder(s.WithOpName("side_input"), DT_FLOAT);
-=======
     auto side_input = Placeholder(s.WithOpName("side_input"), DT_FLOAT,
                                   ops::Placeholder::Shape(input_shape));
->>>>>>> upstream/master
     auto side_input_cast =
         ops::Cast(s.WithOpName("side_input_cast"), side_input, DT_HALF);
 

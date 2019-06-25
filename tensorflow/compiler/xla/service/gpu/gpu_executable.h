@@ -86,14 +86,12 @@ class GpuExecutable : public Executable {
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments) override;
 
-<<<<<<< HEAD
   virtual Status CheckCompatibilityWithServiceExecutableRunOptions(
-      const ServiceExecutableRunOptions* run_options) = 0;
-=======
+                const ServiceExecutableRunOptions* run_options) = 0;
+
   std::shared_ptr<const BufferAssignment> GetBufferAssignment() const {
     return assignment_;
   }
->>>>>>> upstream/master
 
  private:
   StatusOr<ScopedShapedBuffer> Execute(

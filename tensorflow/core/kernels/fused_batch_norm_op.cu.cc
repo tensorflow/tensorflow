@@ -120,13 +120,8 @@ struct FusedBatchNormInferenceKernel {
       U var_v = var[channel];
 
       U scaling_factor_v = rsqrt(var_v + epsilon) * scale_v;
-<<<<<<< HEAD
-      U scaled_v = (in_v - mean_v) * scaling_factor_v;
-      U shifted_v = scaled_v + offset_v;
-=======
       static_assert(std::is_same<U, float>::value, "U data type must be float");
       U shifted_v = fmaf(in_v - mean_v, scaling_factor_v, offset_v);
->>>>>>> upstream/master
 
       if (add_side_input) {
         shifted_v += U(side_input[index]);
@@ -194,13 +189,8 @@ struct FusedBatchNormInferenceKernel<Eigen::half, float, tensor_format,
 
       half2 scaling_factor_v =
           __hmul2(h2rsqrt(__hadd2(var_v, epsilon_h2)), scale_v);
-<<<<<<< HEAD
-      half2 scaled_v = __hmul2(__hsub2(in_v, mean_v), scaling_factor_v);
-      half2 shifted_v = __hadd2(scaled_v, offset_v);
-=======
       half2 shifted_v =
           __hfma2(__hsub2(in_v, mean_v), scaling_factor_v, offset_v);
->>>>>>> upstream/master
 
       if (add_side_input) {
         shifted_v = __hadd2(shifted_v,
@@ -233,12 +223,7 @@ struct FusedBatchNormInferenceKernel<Eigen::half, float, tensor_format,
       half var_v = __float2half(var[channel]);
 
       half scaling_factor_v = __hmul(hrsqrt(__hadd(var_v, epsilon_h)), scale_v);
-<<<<<<< HEAD
-      half scaled_v = __hmul(__hsub(in_v, mean_v), scaling_factor_v);
-      half shifted_v = __hadd(scaled_v, offset_v);
-=======
       half shifted_v = __hfma(__hsub(in_v, mean_v), scaling_factor_v, offset_v);
->>>>>>> upstream/master
 
       if (add_side_input) {
         shifted_v = __hadd(shifted_v, side_input[index]);
@@ -268,20 +253,12 @@ __global__ void FusedBatchNormInferenceMetaKernel(
     const U* scale, const U* offset, const U* mean, const U* var,
     const T* side_input, float epsilon, T* out) {
   // We prefer to run non-generic specialization, for the given types T and U.
-<<<<<<< HEAD
-  FusedBatchNormInferenceKernel<
-      T, U, tensor_format, add_side_input, activation_mode,
-      /*is_generic_kernel=*/false>::run(count, channels_size, inner_dim_size,
-                                        in, scale, offset, mean, var,
-                                        side_input, epsilon, out);
-=======
   // TODO(b/135435976): Temporary disable non-generic kernel implementation.
   FusedBatchNormInferenceKernel<
       T, U, tensor_format, add_side_input, activation_mode,
       /*is_generic_kernel=*/true>::run(count, channels_size, inner_dim_size, in,
                                        scale, offset, mean, var, side_input,
                                        epsilon, out);
->>>>>>> upstream/master
 }
 
 template <typename T, typename U>
@@ -307,21 +284,13 @@ struct FusedBatchNormInferenceFunctor<GPUDevice, T, U> {
                INNER_DIM_SIZE)                                                 \
   launched = true;                                                             \
                                                                                \
-<<<<<<< HEAD
   GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(                   \
-=======
-  GpuLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(                  \
->>>>>>> upstream/master
       std::is_same<T, Eigen::half>::value ? Eigen::divup(count, 2) : count, d, \
       FusedBatchNormInferenceMetaKernel<T, U, DATA_FORMAT, ADD_SIDE_INPUT,     \
                                         ACTIVATION>,                           \
       0, kThreadInBlock);                                                      \
                                                                                \
-<<<<<<< HEAD
   TF_CHECK_OK(GpuLaunchKernel(                                                 \
-=======
-  TF_CHECK_OK(CudaLaunchKernel(                                                \
->>>>>>> upstream/master
       FusedBatchNormInferenceMetaKernel<T, U, DATA_FORMAT, ADD_SIDE_INPUT,     \
                                         ACTIVATION>,                           \
       config.block_count, config.thread_per_block, 0, d.stream(), count,       \

@@ -51,25 +51,6 @@ parser.tf_inspect = tf_inspect
 # So patch `tf.__all__` to list everything.
 tf.__all__ = [item_name for item_name, value in tf_inspect.getmembers(tf)]
 
-<<<<<<< HEAD
-tf.__doc__ = """
-## TensorFlow 2.0 Beta
-
-Caution:  This is a developer preview.  You will likely find some bugs,
-performance issues, and more, and we encourage you to tell us about them.
-We value your feedback!
-
-These docs were generated from the beta build of TensorFlow 2.0.
-
-You can install the exact version that was used to generate these docs
-with:
-
-```
-pip install tensorflow==2.0.0-beta1
-```
-"""
-=======
->>>>>>> upstream/master
 
 FLAGS = flags.FLAGS
 

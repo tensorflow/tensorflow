@@ -4,10 +4,3 @@
 FROM python:3.5-stretch
 
 LABEL maintainer="Pete Warden <petewarden@google.com>"
-<<<<<<< HEAD
-
-# We only need a few dependencies for Micro builds, so reduce the latency by skipping
-# most of the packages used by other CI images.
-RUN apt-get update && apt-get install -y sudo make curl build-essential zip tar python
-=======
->>>>>>> upstream/master

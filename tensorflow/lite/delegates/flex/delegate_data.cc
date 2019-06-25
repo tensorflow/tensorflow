@@ -46,10 +46,7 @@ tensorflow::Status DelegateData::Prepare(
   eager_context_ = new tensorflow::EagerContext(
       session_options,
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-<<<<<<< HEAD
-=======
       tensorflow::ContextMirroringPolicy::MIRRORING_NONE,
->>>>>>> upstream/master
       /*async=*/false, device_mgr.release(), /*device_mgr_owned*/ true,
       rendezvous, nullptr);
   return tensorflow::Status();

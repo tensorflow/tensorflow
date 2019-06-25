@@ -85,11 +85,7 @@ autograph_ctx = lazy_loader.LazyLoader(
     "tensorflow.python.autograph.core.ag_ctx")
 autograph = lazy_loader.LazyLoader(
     "autograph", globals(),
-<<<<<<< HEAD
-    "tensorflow.python.autograph")
-=======
     "tensorflow.python.autograph.impl.api")
->>>>>>> upstream/master
 
 ops.NotDifferentiable("ReduceDataset")
 
@@ -2338,20 +2334,11 @@ class TensorSliceDataset(DatasetSource):
 
   def __init__(self, element):
     """See `Dataset.from_tensor_slices()` for details."""
-<<<<<<< HEAD
-    tensors = structure_lib.normalize_tensors(tensors)
-    batched_structure = type_spec.type_spec_from_value(tensors)
-    # pylint: disable=protected-access
-    self._tensors = batched_structure._to_batched_tensor_list(tensors)
-    self._structure = batched_structure._unbatch()
-    # pylint: enable=protected-access
-=======
     element = structure.normalize_element(element)
     batched_spec = structure.type_spec_from_value(element)
     self._tensors = structure.to_batched_tensor_list(batched_spec, element)
     self._structure = nest.map_structure(
         lambda component_spec: component_spec._unbatch(), batched_spec)  # pylint: disable=protected-access
->>>>>>> upstream/master
 
     batch_dim = tensor_shape.Dimension(tensor_shape.dimension_value(
         self._tensors[0].get_shape()[0]))
@@ -2603,16 +2590,7 @@ class StructuredFunctionWrapper(object):
         [readable_transformation_name,
          function_utils.get_func_name(func)])
 
-<<<<<<< HEAD
-    ctx = autograph_ctx.control_status_ctx()
-    if ctx.status in (
-        autograph_ctx.Status.ENABLED, autograph_ctx.Status.UNSPECIFIED):
-      apply_autograph = True
-    else:
-      apply_autograph = False
-=======
     ag_ctx = autograph_ctx.control_status_ctx()
->>>>>>> upstream/master
 
     def _warn_if_collections(transformation_name):
       """Prints a warning if the given graph uses common graph collections.
@@ -2637,27 +2615,7 @@ class StructuredFunctionWrapper(object):
       if not _should_unpack_args(nested_args):
         nested_args = (nested_args,)
 
-<<<<<<< HEAD
-      if apply_autograph:
-        try:
-          ret = autograph.converted_call(
-              func, None,
-              autograph.ConversionOptions(
-                  recursive=True,
-                  # TODO(mdan): Grab features from context.
-                  optional_features=None,
-                  force_conversion=False,
-              ), nested_args, {})
-        except Exception as e:  # pylint:disable=broad-except
-          if hasattr(e, "ag_error_metadata"):
-            raise e.ag_error_metadata.to_exception(type(e))
-          else:
-            raise
-      else:
-        ret = func(*nested_args)
-=======
       ret = autograph.tf_convert(func, ag_ctx)(*nested_args)
->>>>>>> upstream/master
       # If `func` returns a list of tensors, `nest.flatten()` and
       # `ops.convert_to_tensor()` would conspire to attempt to stack
       # those tensors into a single tensor, because the customized
@@ -3735,11 +3693,7 @@ class _UnbatchDataset(UnaryDataset):
 
   def __init__(self, input_dataset):
     """See `unbatch()` for more details."""
-<<<<<<< HEAD
-    flat_shapes = get_structure(input_dataset)._flat_shapes  # pylint: disable=protected-access
-=======
     flat_shapes = input_dataset._flat_shapes  # pylint: disable=protected-access
->>>>>>> upstream/master
     if any(s.ndims == 0 for s in flat_shapes):
       raise ValueError("Cannot unbatch an input with scalar components.")
     known_batch_dim = tensor_shape.Dimension(None)
@@ -3750,13 +3704,9 @@ class _UnbatchDataset(UnaryDataset):
         raise ValueError("Cannot unbatch an input whose components have "
                          "different batch sizes.")
     self._input_dataset = input_dataset
-<<<<<<< HEAD
-    self._structure = get_structure(input_dataset)._unbatch()  # pylint: disable=protected-access
-=======
     self._structure = nest.map_structure(
         lambda component_spec: component_spec._unbatch(),  # pylint: disable=protected-access
         get_structure(input_dataset))
->>>>>>> upstream/master
     variant_tensor = ged_ops.experimental_unbatch_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         **self._flat_structure)

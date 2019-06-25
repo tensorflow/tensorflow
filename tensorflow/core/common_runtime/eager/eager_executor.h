@@ -55,12 +55,9 @@ class EagerNode {
   // it should poison the corresponding tensor handles in this method.
   virtual void Abort(Status status) = 0;
 
-<<<<<<< HEAD
-=======
   uint64 Id() const { return id_; }
 
  private:
->>>>>>> upstream/master
   // An id unique to the TFE_Context under which this node is created. Allocated
   // monotonically.
   const uint64 id_;
@@ -89,8 +86,6 @@ class EagerExecutor {
   uint64 NextId();
 
   // Schedules `node` for execution.
-  // Takes ownership of `node`.
-  // TODO(iga): take a unique_ptr instead.
   // Note that Add must be called in monotonically increasing order of node->id.
   void Add(std::unique_ptr<EagerNode> node);
 

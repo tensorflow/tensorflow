@@ -1355,10 +1355,6 @@ tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>* GetTapeSet() {
       tape_set = nullptr;
   if (tape_set == nullptr) {
     tape_set.reset(new tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>);
-<<<<<<< HEAD
-  }
-  return tape_set.get();
-=======
   }
   return tape_set.get();
 }
@@ -1373,7 +1369,6 @@ GetAccumulatorSet() {
         new tensorflow::gtl::CompactPointerSet<TFE_Py_ForwardAccumulator*>);
   }
   return accumulator_set.get();
->>>>>>> upstream/master
 }
 
 inline bool HasAccumulator() { return !GetAccumulatorSet()->empty(); }

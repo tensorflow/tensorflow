@@ -276,8 +276,6 @@ class ConversionTest(test.TestCase):
     # but with high likelihood).
     self.assertEqual(len(set(generated_file_names)), 1)
 
-<<<<<<< HEAD
-=======
   def test_convert_reentrance(self):
 
     def test_fn():
@@ -300,7 +298,6 @@ class ConversionTest(test.TestCase):
     finally:
       conversion.node_to_graph = old_node_to_graph
 
->>>>>>> upstream/master
 
 if __name__ == '__main__':
   test.main()

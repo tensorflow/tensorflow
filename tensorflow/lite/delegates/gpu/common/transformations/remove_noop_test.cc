@@ -69,8 +69,6 @@ TEST(RemoveSingleInputAdd, DoNotTrigger_Tensor) {
   add_node->operation.attributes = attr;
 
   Value<TensorRef<BHWC>>* temp;
-<<<<<<< HEAD
-=======
   ASSERT_TRUE(ConnectTwoNodes(&graph, first_node, add_node, &temp).ok());
   ASSERT_EQ(2, graph.nodes().size());
   ASSERT_EQ(3, graph.values().size());
@@ -98,7 +96,6 @@ TEST(RemoveSingleInputAdd, DoNotTrigger_Scalar) {
   add_node->operation.attributes = attr;
 
   Value<TensorRef<BHWC>>* temp;
->>>>>>> upstream/master
   ASSERT_TRUE(ConnectTwoNodes(&graph, first_node, add_node, &temp).ok());
   ASSERT_EQ(2, graph.nodes().size());
   ASSERT_EQ(3, graph.values().size());

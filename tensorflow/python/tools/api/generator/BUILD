@@ -82,11 +82,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
-<<<<<<< HEAD
-	"no_rocm",
-=======
         "no_rocm",
->>>>>>> upstream/master
     ],
     deps = [
         "//tensorflow/python:client_testlib",

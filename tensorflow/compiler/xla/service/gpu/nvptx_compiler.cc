@@ -64,7 +64,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.h"
-#include "tensorflow/compiler/xla/service/gpu/nvptx_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/nvptx_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
@@ -345,12 +344,9 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // can't simplify across HloComputation boundaries, so in this case we
     // wouldn't be able to simplify away the new_tuple bits.
     pipeline.AddPass<CudnnConvAlgorithmPicker>(stream_exec, device_allocator);
-<<<<<<< HEAD
-=======
 
     // Find the fastest algorithm for GEMMs.
     pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
->>>>>>> upstream/master
 
     // Clean up new_tuple described above.
     pipeline.AddPass<TupleSimplifier>();
@@ -560,8 +556,8 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
       &stream_exec->GetDeviceDescription(), &llvm_module);
 
   HloComputation* entry_computation = module->entry_computation();
-
-  IrEmitterUnnested ir_emitter(module->config(), entry_computation,&ir_emitter_context);
+  IrEmitterUnnested ir_emitter(module->config(), entry_computation,
+                               &ir_emitter_context);
 
   TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
 
@@ -666,15 +662,15 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     }
   }
 
-  auto* nvptx_executable = new NVPTXExecutable(
+  auto* gpu_executable = new GpuExecutable(
       ptx, cubin, {cc_major, cc_minor}, std::move(thunk_schedule),
       std::move(module), std::move(buffer_assignment),
       std::move(profile_printer), std::move(profile_index_map));
   if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
-    nvptx_executable->set_ir_module_string(ir_module_string_before_opt);
+    gpu_executable->set_ir_module_string(ir_module_string_before_opt);
   }
-  return std::unique_ptr<Executable>(nvptx_executable);
+  return std::unique_ptr<Executable>(gpu_executable);
 }
 
 std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(

@@ -924,8 +924,6 @@ class ApiTest(test.TestCase):
       # The code in `f` is only valid with AutoGraph.
       test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED))
 
-<<<<<<< HEAD
-=======
   def test_tf_convert_unspecified_not_converted_by_default(self):
 
     def f():
@@ -943,7 +941,6 @@ class ApiTest(test.TestCase):
       # The code in `f` is only valid with AutoGraph.
       test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.UNSPECIFIED))
 
->>>>>>> upstream/master
   def test_tf_convert_whitelisted_method(self):
 
     model = sequential.Sequential([

@@ -1386,14 +1386,10 @@ tf_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
     ],
-<<<<<<< HEAD
     tags = [
         "no_cuda", # fails on CUDA, do not upstream tag
         "no_rocm",
     ],
-=======
-    tags = ["no_rocm"],
->>>>>>> upstream/master
 )
 
 tf_py_test(

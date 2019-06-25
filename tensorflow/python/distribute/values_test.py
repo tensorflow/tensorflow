@@ -930,8 +930,6 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(self.evaluate(component.read_value()),
                             self.evaluate(array_ops.ones_like(component)))
 
-<<<<<<< HEAD
-=======
   def testAssignDtypeConversion(self, distribution):
     def assign(fn, v, update_value, cross_replica):
       update_fn = lambda: getattr(v, fn)(update_value)
@@ -963,7 +961,6 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(self.evaluate(component.read_value()),
                             self.evaluate(array_ops.ones_like(component)))
 
->>>>>>> upstream/master
   def testAssignWithAggregationSum(self, distribution):
     with distribution.scope():
       v = variable_scope.variable(

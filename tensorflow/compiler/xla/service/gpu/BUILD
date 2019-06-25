@@ -753,34 +753,16 @@ cc_library(
 
 cc_library(
     name = "cusolver_rewriter",
-<<<<<<< HEAD
     srcs = if_cuda_is_configured([
-            "cusolver_rewriter.cc"
-     ]),
+        "cusolver_rewriter.cc"
+    ]),
     hdrs = if_cuda_is_configured([
-            "cusolver_rewriter.h",
-       ]),
+        "cusolver_rewriter.h",
+    ]),
     deps = if_cuda_is_configured([
-            ":cusolver_context",
-            ":ir_emission_utils",
-            ":scratch_allocator",
-            "//tensorflow/compiler/xla:literal",
-            "//tensorflow/compiler/xla:util",
-            "//tensorflow/compiler/xla:xla_data_proto",
-            "//tensorflow/compiler/xla/service:hlo",
-            "//tensorflow/compiler/xla/service:hlo_pass",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:stream_executor_no_cuda",
-            "//tensorflow/stream_executor:blas",
-            "//tensorflow/stream_executor:device_memory_allocator",
-            "@com_google_absl//absl/types:optional",
-      ]),
-=======
-    srcs = ["cusolver_rewriter.cc"],
-    hdrs = ["cusolver_rewriter.h"],
-    deps = [
         ":cusolver_context",
         ":ir_emission_utils",
+        ":scratch_allocator",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:util",
@@ -792,8 +774,7 @@ cc_library(
         "//tensorflow/stream_executor:blas",
         "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/types:optional",
-    ],
->>>>>>> upstream/master
+    ]),
 )
 
 cc_library(

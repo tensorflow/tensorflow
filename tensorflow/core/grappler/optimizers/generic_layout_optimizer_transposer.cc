@@ -21,10 +21,7 @@ limitations under the License.
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
-<<<<<<< HEAD
-=======
 #include "absl/strings/numbers.h"
->>>>>>> upstream/master
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -32,10 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
-<<<<<<< HEAD
-=======
 #include "tensorflow/core/framework/types.pb.h"
->>>>>>> upstream/master
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -50,16 +44,10 @@ namespace grappler {
 namespace {
 
 constexpr char kOptimizedSuffix[] = "LayoutOptimizer";
-<<<<<<< HEAD
-constexpr char kAttrOutputShape[] = "_output_shapes";
-constexpr char kAttrKSize[] = "ksize";
-constexpr char kAttrStrides[] = "strides";
-=======
 constexpr char kAttrKSize[] = "ksize";
 constexpr char kAttrStrides[] = "strides";
 constexpr char kAttrDilations[] = "dilations";
 constexpr char kAttrExplicitPaddings[] = "explicit_paddings";
->>>>>>> upstream/master
 constexpr char kAttrDataFormat[] = "data_format";
 constexpr char kAttrIsTraining[] = "is_training";
 constexpr char kAttrValue[] = "value";
@@ -159,32 +147,12 @@ bool IsHostMemory(const NodeDef& node, int output_port) {
 
 }  // namespace
 
-<<<<<<< HEAD
-// NodeLayoutContext.
-
-void NodeLayoutContext::Initialize(absl::string_view src_format,
-                                   absl::string_view dst_format,
-                                   bool is_transposable) {
-  src = string(src_format);
-  dst = string(dst_format);
-  src_to_dst = GetPermutation(src_format, dst_format);
-  dst_to_src = GetPermutation(dst_format, src_format);
-  transposable = is_transposable;
-}
-
-// TransposeContext.
-
-Status TransposeContext::InitializeTransposeContext(const GrapplerItem& item,
-                                                    const Cluster* cluster,
-                                                    TransposeContext* context) {
-=======
 // TransposeContext.
 
 Status TransposeContext::InitializeTransposeContext(
     const GrapplerItem& item, const Cluster* cluster,
     absl::string_view src_format, absl::string_view dst_format,
     absl::string_view target_device, TransposeContext* context) {
->>>>>>> upstream/master
   DCHECK(context != nullptr);
   context->graph_properties = absl::make_unique<GraphProperties>(item);
   TF_RETURN_IF_ERROR(context->graph_properties->InferStatically(false));
@@ -203,14 +171,11 @@ Status TransposeContext::InitializeTransposeContext(
     context->virtual_placer =
         absl::make_unique<const VirtualPlacer>(cluster->GetDevices());
   }
-<<<<<<< HEAD
-=======
   context->src_format = string(src_format);
   context->dst_format = string(dst_format);
   context->target_device = string(target_device);
   context->src_to_dst = GetPermutation(src_format, dst_format);
   context->dst_to_src = GetPermutation(dst_format, src_format);
->>>>>>> upstream/master
   return Status::OK();
 }
 
@@ -223,14 +188,6 @@ string Transposer::GetDeviceName(const VirtualPlacer* virtual_placer,
              : node.device();
 }
 
-<<<<<<< HEAD
-string Transposer::GetDstDataFormatForDevice(
-    const DeviceProperties& device) const {
-  if (device.type() == kGPU) {
-    return kNCHW;
-  }
-  return "";
-=======
 bool Transposer::ShouldProcess(const TransposeContext& context,
                                const utils::MutableNodeView& node) const {
   const auto* node_def = node.node();
@@ -249,17 +206,13 @@ bool Transposer::ShouldProcess(const TransposeContext& context,
   return is_on_target_device && data_format_match &&
          !context.nodes_to_preserve.contains(node_def->name()) &&
          !(node.NumRegularFanouts() == 0 && node.NumControlledFanouts() == 0);
->>>>>>> upstream/master
 }
 
 Status Transposer::CreateConstPermNode(TransposeContext* context,
                                        absl::string_view node_name,
                                        absl::string_view device,
                                        absl::Span<const int> permutation,
-<<<<<<< HEAD
-=======
                                        absl::string_view control_node_name,
->>>>>>> upstream/master
                                        utils::MutationNewNode* added_node) {
   auto* graph_view = context->graph_view.get();
   DCHECK(!graph_view->HasNode(node_name));
@@ -269,13 +222,10 @@ Status Transposer::CreateConstPermNode(TransposeContext* context,
   node.set_op(kOpConst);
   node.set_device(string(device));
 
-<<<<<<< HEAD
-=======
   if (!control_node_name.empty()) {
     node.add_input(string(control_node_name));
   }
 
->>>>>>> upstream/master
   AttrValue attr_data_type;
   attr_data_type.set_type(DT_INT32);
   node.mutable_attr()->insert({"dtype", attr_data_type});
@@ -319,11 +269,7 @@ Status Transposer::CreateTransposeNode(
   node.mutable_attr()->insert({"Tperm", attr_data_type_perm});
 
   if (!fanin_shape.unknown_rank()) {
-<<<<<<< HEAD
-    TF_RETURN_IF_ERROR(Permute(permutation, fanin_shape.mutable_dim()));
-=======
     TF_RETURN_IF_ERROR(PermuteSingle(permutation, fanin_shape.mutable_dim()));
->>>>>>> upstream/master
     AttrValue attr_output_shape;
     *attr_output_shape.mutable_list()->add_shape() = fanin_shape;
     node.mutable_attr()->insert({kAttrOutputShape, attr_output_shape});
@@ -334,12 +280,8 @@ Status Transposer::CreateTransposeNode(
   const string const_perm_node_name =
       absl::Substitute(name_format, "PermConst");
   TF_RETURN_IF_ERROR(CreateConstPermNode(context, const_perm_node_name, device,
-<<<<<<< HEAD
-                                         permutation, &const_perm_added_node));
-=======
                                          permutation, control_node_name,
                                          &const_perm_added_node));
->>>>>>> upstream/master
   // Add place holder for 1st input.
   node.add_input("");
   // Connect const_perm_node to 2nd input of transpose_node.
@@ -352,34 +294,19 @@ Status Transposer::CreateTransposeNode(
 }
 
 Status Transposer::UpdateFaninEdgesWithOp(TransposeContext* context,
-<<<<<<< HEAD
-                                          const NodeLayoutContext& layout,
-                                          absl::Span<const int> dst_ports,
-                                          utils::MutableNodeView* dst_node,
-                                          absl::string_view op) {
-=======
                                           absl::Span<const int> dst_ports,
                                           utils::MutableNodeView* dst_node,
                                           absl::string_view op) {
   const bool is_in_frame = context->frames.IsInFrame(*dst_node->node());
->>>>>>> upstream/master
   for (int dst_port : dst_ports) {
     auto& fanin_port = dst_node->GetRegularFanin(dst_port);
     auto* fanin_node_view = fanin_port.node_view();
 
     TF_RETURN_IF_ERROR(
-<<<<<<< HEAD
-        UpdateEdge(context, layout,
-                   GetFaninNameFormat(dst_node->GetName(), dst_port, layout.src,
-                                      layout.dst),
-                   op,
-                   /*input_shape=*/nullptr,
-=======
         UpdateEdge(context,
                    GetFaninNameFormat(dst_node->GetName(), dst_port,
                                       context->src_format, context->dst_format),
                    op, /*input_shape=*/nullptr, /*is_in_frame=*/is_in_frame,
->>>>>>> upstream/master
                    /*is_src_format_to_dst_format=*/true, fanin_port.index(),
                    dst_port, fanin_node_view, dst_node));
   }
@@ -387,10 +314,6 @@ Status Transposer::UpdateFaninEdgesWithOp(TransposeContext* context,
 }
 
 Status Transposer::UpdateFanoutEdgesWithOp(TransposeContext* context,
-<<<<<<< HEAD
-                                           const NodeLayoutContext& layout,
-=======
->>>>>>> upstream/master
                                            absl::Span<const int> src_ports,
                                            utils::MutableNodeView* src_node,
                                            absl::string_view op) {
@@ -400,23 +323,15 @@ Status Transposer::UpdateFanoutEdgesWithOp(TransposeContext* context,
   if (op == kOpTranspose && output_shape_attr != nullptr) {
     shape_attr_copy = *output_shape_attr;
     for (int port : src_ports) {
-<<<<<<< HEAD
-      TF_RETURN_IF_ERROR(Permute(
-          layout.src_to_dst,
-=======
       TF_RETURN_IF_ERROR(PermuteSingle(
           context->src_to_dst,
->>>>>>> upstream/master
           shape_attr_copy.mutable_list()->mutable_shape(port)->mutable_dim()));
     }
     context->graph_view->GetMutationBuilder()->AddOrUpdateNodeAttr(
         src_node, kAttrOutputShape, shape_attr_copy);
   }
 
-<<<<<<< HEAD
-=======
   const bool is_in_frame = context->frames.IsInFrame(*src_node->node());
->>>>>>> upstream/master
   // We might modify the output set in the loop. Make a copy first.
   // Use a set with custom comparator to order output nodes by node name,
   // so that we can keep transposer name deterministic.
@@ -428,16 +343,6 @@ Status Transposer::UpdateFanoutEdgesWithOp(TransposeContext* context,
               ComparatorByNodeNameAndIndex());
     int num_downstream_transposers = 0;
     for (const auto& fanout : sorted_fanouts) {
-<<<<<<< HEAD
-      TF_RETURN_IF_ERROR(
-          UpdateEdge(context, layout,
-                     GetFanoutNameFormat(src_node->GetName(), src_port,
-                                         num_downstream_transposers++,
-                                         layout.src, layout.dst),
-                     op, &shape_attr_copy,
-                     /*is_src_format_to_dst_format=*/false, src_port,
-                     fanout.index(), src_node, fanout.node_view()));
-=======
       TF_RETURN_IF_ERROR(UpdateEdge(
           context,
           GetFanoutNameFormat(src_node->GetName(), src_port,
@@ -446,24 +351,16 @@ Status Transposer::UpdateFanoutEdgesWithOp(TransposeContext* context,
           op, &shape_attr_copy, /*is_in_frame=*/is_in_frame,
           /*is_src_format_to_dst_format=*/false, src_port, fanout.index(),
           src_node, fanout.node_view()));
->>>>>>> upstream/master
     }
   }
   return Status::OK();
 }
 
 Status Transposer::CreateDataFormatNode(
-<<<<<<< HEAD
-    TransposeContext* context, const NodeLayoutContext& layout,
-    absl::string_view node_name, absl::string_view op, absl::string_view device,
-    const DataType& data_type, bool is_fanin_on_host,
-    bool is_src_format_to_dst_format, utils::MutationNewNode* added_node) {
-=======
     TransposeContext* context, absl::string_view node_name,
     absl::string_view op, absl::string_view device, const DataType& data_type,
     bool is_fanin_on_host, bool is_src_format_to_dst_format,
     utils::MutationNewNode* added_node) {
->>>>>>> upstream/master
   auto* graph_view = context->graph_view.get();
   DCHECK(!graph_view->HasNode(node_name));
 
@@ -487,19 +384,12 @@ Status Transposer::CreateDataFormatNode(
   }
 
   AttrValue src_format;
-<<<<<<< HEAD
-  src_format.set_s(is_src_format_to_dst_format ? layout.src : layout.dst);
-  node.mutable_attr()->insert({kAttrSrcFormat, src_format});
-  AttrValue dst_format;
-  dst_format.set_s(is_src_format_to_dst_format ? layout.dst : layout.src);
-=======
   src_format.set_s(is_src_format_to_dst_format ? context->src_format
                                                : context->dst_format);
   node.mutable_attr()->insert({kAttrSrcFormat, src_format});
   AttrValue dst_format;
   dst_format.set_s(is_src_format_to_dst_format ? context->dst_format
                                                : context->src_format);
->>>>>>> upstream/master
   node.mutable_attr()->insert({kAttrDstFormat, dst_format});
 
   // Add place holder for 1st input field.
@@ -512,18 +402,10 @@ Status Transposer::CreateDataFormatNode(
 }
 
 Status Transposer::UpdateEdge(
-<<<<<<< HEAD
-    TransposeContext* context, const NodeLayoutContext& layout,
-    absl::string_view name_format, absl::string_view op,
-    const AttrValue* input_shape, bool is_src_format_to_dst_format,
-    const int src_port, const int dst_port, utils::MutableNodeView* src_node,
-    utils::MutableNodeView* dst_node) {
-=======
     TransposeContext* context, absl::string_view name_format,
     absl::string_view op, const AttrValue* input_shape, bool is_in_frame,
     bool is_src_format_to_dst_format, const int src_port, const int dst_port,
     utils::MutableNodeView* src_node, utils::MutableNodeView* dst_node) {
->>>>>>> upstream/master
   DCHECK(src_node != nullptr);
   DCHECK(dst_node != nullptr);
   auto* src_node_def = src_node->node();
@@ -555,18 +437,9 @@ Status Transposer::UpdateEdge(
       }
     }
     const string control_node_name =
-<<<<<<< HEAD
-        (context->frames.IsInFrame(*src_node_def) &&
-         context->frames.IsInFrame(*dst_node_def))
-            ? AsControlDependency(src_node_def->name())
-            : "";
-    const std::vector<int>& permutation =
-        is_src_format_to_dst_format ? layout.src_to_dst : layout.dst_to_src;
-=======
         is_in_frame ? AsControlDependency(src_node_def->name()) : "";
     const std::vector<int>& permutation =
         is_src_format_to_dst_format ? context->src_to_dst : context->dst_to_src;
->>>>>>> upstream/master
     TF_RETURN_IF_ERROR(CreateTransposeNode(
         context, name_format, data_type, device, input_shape_proto, permutation,
         control_node_name, &added_node, &added_node_name));
@@ -579,11 +452,7 @@ Status Transposer::UpdateEdge(
         parsed_name.type != "CPU" && IsHostMemory(*src_node_def, src_port);
     const string node_name = absl::Substitute(name_format, op);
     TF_RETURN_IF_ERROR(CreateDataFormatNode(
-<<<<<<< HEAD
-        context, layout, node_name, op, device, data_type, is_fanin_on_host,
-=======
         context, node_name, op, device, data_type, is_fanin_on_host,
->>>>>>> upstream/master
         is_src_format_to_dst_format, &added_node));
     added_node_name = node_name;
   } else {
@@ -683,75 +552,6 @@ inline string GetLayoutSensitiveNodeDataFormat(
   return "";
 }
 
-<<<<<<< HEAD
-const NodeLayoutContext& LayoutSensitiveOpTransposer::CheckNodeTransposable(
-    TransposeContext* context, const utils::MutableNodeView& node) const {
-  const auto* node_def = node.node();
-
-  string src_format = GetLayoutSensitiveNodeDataFormat(node);
-  if (src_format.empty()) {
-    src_format = kNHWC;
-  }
-
-  NodeLayoutContext layout;
-  DeviceProperties device;
-  string dst_format;
-  if (context->virtual_placer != nullptr) {
-    device = context->virtual_placer->get_device(*node_def);
-    dst_format = GetDstDataFormatForDevice(device);
-  }
-
-  if (dst_format.empty() || src_format.length() != dst_format.length() ||
-      src_format == dst_format || !CanProcessNode(*context, node)) {
-    layout.Initialize(src_format, src_format,
-                      /*is_transposable=*/false);
-    return context->sensitive_node_layouts.emplace(node.node_index(), layout)
-        .first->second;
-  }
-
-  layout.Initialize(src_format, dst_format, /*is_transposable=*/true);
-  return context->sensitive_node_layouts.emplace(node.node_index(), layout)
-      .first->second;
-}
-
-Status LayoutSensitiveOpTransposer::UpdateNode(TransposeContext* context,
-                                               const NodeLayoutContext& layout,
-                                               utils::MutableNodeView* node) {
-  utils::Mutation* mutation = context->graph_view->GetMutationBuilder();
-  AttrValue data_format_attr;
-  data_format_attr.set_s(layout.dst);
-  mutation->AddOrUpdateNodeAttr(node, kAttrDataFormat, data_format_attr);
-
-  // Update attrs strides and ksize.
-  const auto* strides_attr = node->GetAttr(kAttrStrides);
-  if (strides_attr != nullptr) {
-    AttrValue strides_attr_copy(*strides_attr);
-    TF_RETURN_IF_ERROR(Permute(layout.src_to_dst,
-                               strides_attr_copy.mutable_list()->mutable_i()));
-    mutation->AddOrUpdateNodeAttr(node, kAttrStrides, strides_attr_copy);
-  }
-
-  const auto* ksize_attr = node->GetAttr(kAttrKSize);
-  if (ksize_attr != nullptr) {
-    AttrValue ksize_attr_copy(*ksize_attr);
-    TF_RETURN_IF_ERROR(Permute(layout.src_to_dst,
-                               ksize_attr_copy.mutable_list()->mutable_i()));
-    mutation->AddOrUpdateNodeAttr(node, kAttrKSize, ksize_attr_copy);
-  }
-  return Status::OK();
-}
-
-Status LayoutSensitiveOpTransposer::CommitMutation(
-    TransposeContext* context, const utils::MutableNodeView& node) {
-  Status status = context->graph_view->GetMutationBuilder()->Apply();
-  if (!status.ok()) {
-    // If mutation failed, update node layout to reflect current state in graph.
-    auto& it = context->sensitive_node_layouts[node.node_index()];
-    it.dst = it.src;
-    it.transposable = false;
-  }
-  return status;
-=======
 Status LayoutSensitiveOpTransposer::UpdateNode(TransposeContext* context,
                                                utils::MutableNodeView* node) {
   utils::Mutation* mutation = context->graph_view->GetMutationBuilder();
@@ -832,24 +632,11 @@ bool LayoutSensitiveOpTransposer::ShouldNotProcess(
   }
   return cuda_version >= 9000 && cudnn_version >= 7402 &&
          compute_capability >= 7.0;
->>>>>>> upstream/master
 }
 
 Status DefaultLayoutSensitiveOpTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   DCHECK(IsDefaultLayoutSensitiveOp(*node->node()));
-<<<<<<< HEAD
-  const NodeLayoutContext& layout = CheckNodeTransposable(context, *node);
-  if (!layout.transposable || !IsFanoutPortDimsN(*node, 0, 4)) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(UpdateNode(context, layout, node));
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  return CommitMutation(context, *node);
-=======
   if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4)) {
     return Status::OK();
   }
@@ -862,25 +649,11 @@ Status DefaultLayoutSensitiveOpTransposer::TransposeNode(
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
   return context->graph_view->GetMutationBuilder()->Apply();
->>>>>>> upstream/master
 }
 
 Status BiasAddGradTransposer::TransposeNode(TransposeContext* context,
                                             utils::MutableNodeView* node) {
   DCHECK(IsBiasAddGrad(*node->node()));
-<<<<<<< HEAD
-  const NodeLayoutContext& layout = CheckNodeTransposable(context, *node);
-  if (!layout.transposable || !IsFaninPortDimsN(*node, 0, 4)) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(UpdateNode(context, layout, node));
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  // No need to update output shape, as it is always of shape 1-D with size the
-  // feature dimension of `out_backprop`, regardless of whether NCHW or NHWC is
-  // used.
-  return CommitMutation(context, *node);
-=======
   if (!ShouldProcess(*context, *node) || !IsFaninPortDimsN(*node, 0, 4)) {
     return Status::OK();
   }
@@ -890,25 +663,11 @@ Status BiasAddGradTransposer::TransposeNode(TransposeContext* context,
   // feature dimension of `out_backprop`, regardless of whether NCHW or NHWC is
   // used.
   return context->graph_view->GetMutationBuilder()->Apply();
->>>>>>> upstream/master
 }
 
 Status Conv2DBackpropFilterTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   DCHECK(IsConv2DBackpropFilter(*node->node()));
-<<<<<<< HEAD
-  const NodeLayoutContext& layout = CheckNodeTransposable(context, *node);
-  if (!layout.transposable || !IsFanoutPortDimsN(*node, 0, 4)) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(UpdateNode(context, layout, node));
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0, 2}, node, kOpTranspose));
-  // No need to update output shape, as it is always of shape
-  // [filter_height, filter_width, in_channels, out_channels], regardless of
-  // whether NCHW or NHWC is used.
-  return CommitMutation(context, *node);
-=======
   if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
       ShouldNotProcess(*context, *node)) {
     return Status::OK();
@@ -920,42 +679,11 @@ Status Conv2DBackpropFilterTransposer::TransposeNode(
   // [filter_height, filter_width, in_channels, out_channels], regardless of
   // whether NCHW or NHWC is used.
   return context->graph_view->GetMutationBuilder()->Apply();
->>>>>>> upstream/master
 }
 
 Status Conv2DBackpropInputTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   DCHECK(IsConv2DBackpropInput(*node->node()));
-<<<<<<< HEAD
-  const NodeLayoutContext& layout = CheckNodeTransposable(context, *node);
-  if (!layout.transposable || !IsFanoutPortDimsN(*node, 0, 4)) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(UpdateNode(context, layout, node));
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {2}, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, layout, {0}, node,
-                                            kOpDataFormatVecPermute));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  return CommitMutation(context, *node);
-}
-
-Status FusedBatchNormGradTransposer::TransposeNode(
-    TransposeContext* context, utils::MutableNodeView* node) {
-  DCHECK(IsFusedBatchNormGrad(*node->node()));
-  const NodeLayoutContext& layout = CheckNodeTransposable(context, *node);
-  if (!layout.transposable || !IsFanoutPortDimsN(*node, 0, 4) ||
-      !IsTraining(*node)) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(UpdateNode(context, layout, node));
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0, 1}, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  return CommitMutation(context, *node);
-=======
   if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
       ShouldNotProcess(*context, *node)) {
     return Status::OK();
@@ -966,7 +694,6 @@ Status FusedBatchNormGradTransposer::TransposeNode(
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {2}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
   return context->graph_view->GetMutationBuilder()->Apply();
->>>>>>> upstream/master
 }
 
 bool FusedBatchNormGradTransposer::IsTraining(
@@ -978,8 +705,6 @@ bool FusedBatchNormGradTransposer::IsTraining(
   return false;
 }
 
-<<<<<<< HEAD
-=======
 Status FusedBatchNormGradTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   DCHECK(IsFusedBatchNormGrad(*node->node()));
@@ -994,7 +719,6 @@ Status FusedBatchNormGradTransposer::TransposeNode(
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
->>>>>>> upstream/master
 Status MaxPoolV2Transposer::TransposeNode(TransposeContext* context,
                                           utils::MutableNodeView* node) {
   DCHECK(IsMaxPoolV2(*node->node()));
@@ -1003,21 +727,6 @@ Status MaxPoolV2Transposer::TransposeNode(TransposeContext* context,
   // constant.
   const auto& data_fanin = node->GetRegularFanin(0);
   auto* data_fanin_node = data_fanin.node_view();
-<<<<<<< HEAD
-  NodeLayoutContext layout = CheckNodeTransposable(context, *node);
-  if (!layout.transposable ||
-      !IsFanoutPortDimsN(*data_fanin_node, data_fanin.index(), 4)) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(UpdateNode(context, layout, node));
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, layout, {1, 2}, node,
-                                            kOpDataFormatVecPermute));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  return CommitMutation(context, *node);
-=======
   if (!ShouldProcess(*context, *node) ||
       !IsFanoutPortDimsN(*data_fanin_node, data_fanin.index(), 4)) {
     return Status::OK();
@@ -1028,24 +737,11 @@ Status MaxPoolV2Transposer::TransposeNode(TransposeContext* context,
       UpdateFaninEdgesWithOp(context, {1, 2}, node, kOpDataFormatVecPermute));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
   return context->graph_view->GetMutationBuilder()->Apply();
->>>>>>> upstream/master
 }
 
 Status MaxPoolGradTransposer::TransposeNode(TransposeContext* context,
                                             utils::MutableNodeView* node) {
   DCHECK(IsMaxPoolGrad(*node->node()));
-<<<<<<< HEAD
-  const NodeLayoutContext& layout = CheckNodeTransposable(context, *node);
-  if (!layout.transposable || !IsFanoutPortDimsN(*node, 0, 4)) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(UpdateNode(context, layout, node));
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0, 1, 2}, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  return CommitMutation(context, *node);
-=======
   if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4)) {
     return Status::OK();
   }
@@ -1054,26 +750,11 @@ Status MaxPoolGradTransposer::TransposeNode(TransposeContext* context,
       UpdateFaninEdgesWithOp(context, {0, 1, 2}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
   return context->graph_view->GetMutationBuilder()->Apply();
->>>>>>> upstream/master
 }
 
 Status MaxPoolGradV2Transposer::TransposeNode(TransposeContext* context,
                                               utils::MutableNodeView* node) {
   DCHECK(IsMaxPoolGradV2(*node->node()));
-<<<<<<< HEAD
-  const NodeLayoutContext& layout = CheckNodeTransposable(context, *node);
-  if (!layout.transposable || !IsFanoutPortDimsN(*node, 0, 4)) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(UpdateNode(context, layout, node));
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0, 1, 2}, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, layout, {3, 4}, node,
-                                            kOpDataFormatVecPermute));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  return CommitMutation(context, *node);
-=======
   if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4)) {
     return Status::OK();
   }
@@ -1084,239 +765,10 @@ Status MaxPoolGradV2Transposer::TransposeNode(TransposeContext* context,
       UpdateFaninEdgesWithOp(context, {3, 4}, node, kOpDataFormatVecPermute));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
   return context->graph_view->GetMutationBuilder()->Apply();
->>>>>>> upstream/master
 }
 
 // Layout agnostic transposer.
 
-<<<<<<< HEAD
-// Checks if fanin is a Transpose or DataFormatDimMap/DataFormatVecPermute added
-// by the transposer.
-inline bool IsTransposerAddedOp(const utils::MutableFanoutView& fanin,
-                                int num_nodes) {
-  if (fanin.node_index() < num_nodes) {
-    return false;
-  }
-  const auto* fanin_node = fanin.node_view();
-  if (IsDataFormatOp(*fanin_node)) {
-    return true;
-  }
-  const auto* fanin_node_def = fanin_node->node();
-  if (IsTranspose(*fanin_node_def)) {
-    const auto& regular_fanin_1 = fanin_node->GetRegularFanin(1);
-    return regular_fanin_1.node_index() >= num_nodes &&
-           IsConstant(*regular_fanin_1.node_view()->node());
-  }
-  return false;
-}
-
-// Check if fanin is of a processed layout sensitive or agnostic node and return
-// its data layout that was used to transform it.
-NodeLayoutContext GetTransposerAddedOpDataFormat(
-    const TransposeContext& context, const utils::MutableFanoutView& fanin) {
-  NodeLayoutContext layout;
-  if (!IsTransposerAddedOp(fanin, context.num_nodes)) {
-    return layout;
-  }
-  const auto* fanin_node = fanin.node_view();
-  const auto& regular_fanin_0 = fanin_node->GetRegularFanin(0);
-  const auto* node_def = regular_fanin_0.node_view()->node();
-  if (IsLayoutSensitiveOp(*node_def)) {
-    auto it = context.sensitive_node_layouts.find(regular_fanin_0.node_index());
-    if (it != context.sensitive_node_layouts.end()) {
-      layout = it->second;
-    }
-  } else if (IsLayoutAgnosticOp(*node_def)) {
-    auto it = context.agnostic_node_layouts.find(regular_fanin_0.node_index());
-    if (it != context.agnostic_node_layouts.end()) {
-      layout = it->second.fanout_layouts[regular_fanin_0.index()];
-    }
-  }
-  return layout;
-}
-
-// Resolve fanout data layouts from fanin data layouts for a given node.
-void SetFanoutDataLayouts(const TransposeContext& context,
-                          const utils::MutableNodeView& node,
-                          absl::Span<const NodeLayoutContext> fanin_layouts,
-                          absl::Span<const int> fanin_ports,
-                          std::vector<NodeLayoutContext>* fanout_layouts,
-                          absl::Span<const int> fanout_ports,
-                          bool* transposable) {
-  const auto* node_def = node.node();
-  DeviceProperties device;
-  if (context.virtual_placer != nullptr) {
-    device = context.virtual_placer->get_device(*node_def);
-  }
-  if (IsMerge(*node_def)) {
-    // Check if both fanins of Merge are being transposed in the same manner.
-    // TODO(lyandy): Determine if the restriction of both fanins needing to be
-    // transposed is necessary.
-    const auto& fanin_layout_0 = fanin_layouts[0];
-    if (fanin_layout_0.transposable && fanin_layout_0 == fanin_layouts[1]) {
-      (*fanout_layouts)[0] = fanin_layout_0;
-      *transposable = true;
-    }
-  } else if (IsIdentityN(*node_def) || IsShapeN(*node_def)) {
-    // Simply forward transposed fanins to fanouts as fanins of IdentityN/ShapeN
-    // are independent from one another.
-    for (const auto& port : fanin_ports) {
-      const auto& layout = fanin_layouts[port];
-      if (layout.transposable) {
-        (*fanout_layouts)[port] = layout;
-        *transposable = true;
-      }
-    }
-  } else {
-    // Check if all fanins that are transposed have been transposed from and to
-    // the same data format layouts.
-    // TODO(lyandy): Implement a better selection of data format if only some
-    // fanins are transposed.
-    bool is_transposable = true;
-    bool found_one_transposable = false;
-    NodeLayoutContext layout;
-    for (const auto& port : fanin_ports) {
-      if (fanin_layouts[port].transposable) {
-        if (!found_one_transposable) {
-          found_one_transposable = true;
-          layout = fanin_layouts[port];
-        } else if (layout != fanin_layouts[port]) {
-          is_transposable = false;
-          break;
-        }
-      }
-    }
-    if (is_transposable && found_one_transposable) {
-      for (const auto& port : fanout_ports) {
-        (*fanout_layouts)[port] = layout;
-      }
-      *transposable = true;
-    }
-  }
-}
-
-void LayoutAgnosticOpTransposer::ProcessFanoutDataLayouts(
-    TransposeContext* context, const utils::MutableNodeView& node) {
-  const int node_index = node.node_index();
-  auto it = context->agnostic_node_layouts.emplace(node_index,
-                                                   LayoutAgnosticNodeFanouts());
-  auto fanout_ports = GetDataFanoutPorts(node);
-  auto& node_layout = it.first->second;
-  if (!fanout_ports.empty()) {
-    node_layout.fanout_layouts.resize(fanout_ports[fanout_ports.size() - 1] +
-                                      1);
-  }
-  auto fanin_ports = GetDataFaninPorts(node);
-  if (!fanin_ports.empty()) {
-    node_layout.fanin_layouts.resize(fanin_ports[fanin_ports.size() - 1] + 1);
-  }
-  // Copy over fanout data layouts for each fanin.
-  for (const auto& port : fanin_ports) {
-    const auto& fanin = node.GetRegularFanin(port);
-    if (IsLayoutAgnosticOp(*fanin.node_view()->node())) {
-      node_layout.fanin_layouts[port] =
-          context->agnostic_node_layouts[fanin.node_index()]
-              .fanout_layouts[fanin.index()];
-    } else {
-      node_layout.fanin_layouts[port] =
-          GetTransposerAddedOpDataFormat(*context, fanin);
-    }
-  }
-  SetFanoutDataLayouts(*context, node, node_layout.fanin_layouts, fanin_ports,
-                       &node_layout.fanout_layouts, fanout_ports,
-                       &node_layout.transposable);
-}
-
-// Performs a DFS traversal processing layout agnostic parent nodes before
-// layout agnostic children nodes to propagate data layouts from processed
-// layout sensitive nodes and layout agnostic nodes. Nodes are only visited once
-// and results are cached.
-void LayoutAgnosticOpTransposer::FetchNodeDataLayouts(
-    TransposeContext* context, const utils::MutableNodeView& node) {
-  const int num_nodes = context->graph_view->NumNodes();
-  std::vector<bool> visited(num_nodes);
-  for (const auto& it : context->agnostic_node_layouts) {
-    visited[it.first] = true;
-  }
-  if (visited[node.node_index()]) {
-    return;
-  }
-
-  // TODO(lyandy): Pull out DFS traversal into a GraphView util.
-  enum RecursionStackState : bool { ENTER, EXIT };
-
-  struct RecursionStackEntry {
-    RecursionStackEntry(int node_index, RecursionStackState recursion_state)
-        : node_index(node_index), recursion_state(recursion_state) {}
-
-    const int node_index;
-    const RecursionStackState recursion_state;
-  };
-
-  std::vector<RecursionStackEntry> recursion_stack;
-  recursion_stack.push_back({node.node_index(), ENTER});
-  visited[node.node_index()] = true;
-
-  while (!recursion_stack.empty()) {
-    auto curr_entry = recursion_stack.back();
-    recursion_stack.pop_back();
-    const auto* curr_node = context->graph_view->GetNode(curr_entry.node_index);
-    if (curr_entry.recursion_state == ENTER) {
-      recursion_stack.push_back({curr_entry.node_index, EXIT});
-      auto fanin_ports = GetDataFaninPorts(*curr_node);
-      for (const auto& port : fanin_ports) {
-        const auto& fanin = curr_node->GetRegularFanin(port);
-        const auto* fanin_node = fanin.node_view();
-        // Traverse up chains of layout agnostic nodes.
-        if (IsLayoutAgnosticOp(*fanin_node->node()) &&
-            !visited[fanin.node_index()]) {
-          // Unprocessed layout agnostic node fanin.
-          recursion_stack.push_back({fanin.node_index(), ENTER});
-          visited[fanin.node_index()] = true;
-        } else if (IsTransposerAddedOp(fanin, context->num_nodes)) {
-          const auto& fanin_fanin_0 = fanin_node->GetRegularFanin(0);
-          if (IsLayoutAgnosticOp(*fanin_fanin_0.node_view()->node()) &&
-              !visited[fanin_fanin_0.node_index()]) {
-            // Processed layout agnostic node fanin.
-            recursion_stack.push_back({fanin_fanin_0.node_index(), ENTER});
-            visited[fanin_fanin_0.node_index()] = true;
-          }
-        }
-      }
-    } else {
-      ProcessFanoutDataLayouts(context, *curr_node);
-    }
-  }
-}
-
-const LayoutAgnosticNodeFanouts&
-LayoutAgnosticOpTransposer::CheckNodeTransposable(
-    TransposeContext* context, const utils::MutableNodeView& node) {
-  FetchNodeDataLayouts(context, node);
-  if (!CanProcessNode(*context, node)) {
-    return context->unknown_agnostic_node_layout;
-  }
-  auto it = context->agnostic_node_layouts.find(node.node_index());
-  if (it != context->agnostic_node_layouts.end()) {
-    return it->second;
-  }
-  return context->unknown_agnostic_node_layout;
-}
-
-const NodeLayoutContext& LayoutAgnosticOpTransposer::GetDataFormatLayoutForNode(
-    TransposeContext* context, const utils::MutableNodeView& node,
-    int fanout_port,
-    std::function<bool(const utils::MutableNodeView& node)> node_check) {
-  if (!node_check(node)) {
-    return context->unknown_node_layout;
-  }
-  const LayoutAgnosticNodeFanouts& layout =
-      CheckNodeTransposable(context, node);
-  if (!layout.transposable) {
-    return context->unknown_node_layout;
-  }
-  return layout.fanout_layouts[fanout_port];
-=======
 bool IsValidConstPermTransposeNode(const utils::MutableNodeView& node,
                                    absl::Span<const int> permutation) {
   Tensor tensor;
@@ -1408,53 +860,23 @@ std::vector<int> LayoutAgnosticOpTransposer::GetVariadic4DFaninPorts(
     }
   }
   return ports;
->>>>>>> upstream/master
 }
 
 Status DefaultLayoutAgnosticOpTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   DCHECK(IsDefaultLayoutAgnosticOp(*node->node()));
-<<<<<<< HEAD
-  const NodeLayoutContext& layout =
-      GetDataFormatLayoutForNode(context, *node, /*fanout_port=*/0,
-                                 [this](const utils::MutableNodeView& node) {
-                                   return IsFanoutPortDimsN(node, 0, 4);
-                                 });
-  if (!layout.transposable) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-=======
   if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
->>>>>>> upstream/master
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
 Status AddNTransposer::TransposeNode(TransposeContext* context,
                                      utils::MutableNodeView* node) {
   DCHECK(IsAddN(*node->node()));
-<<<<<<< HEAD
-  const NodeLayoutContext& layout =
-      GetDataFormatLayoutForNode(context, *node, /*fanout_port=*/0,
-                                 [this](const utils::MutableNodeView& node) {
-                                   return IsFanoutPortDimsN(node, 0, 4);
-                                 });
-  if (!layout.transposable) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(
-      context, layout, GetDataFaninPorts(*node), node, kOpTranspose));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-=======
   if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
@@ -1462,7 +884,6 @@ Status AddNTransposer::TransposeNode(TransposeContext* context,
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, GetDataFaninPorts(*node),
                                             node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
->>>>>>> upstream/master
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
@@ -1549,12 +970,7 @@ Status BinaryOpTransposer::AddNodeShapeConst(utils::Mutation* mutation,
 }
 
 Status BinaryOpTransposer::MaybeReshapeVectorFanin(
-<<<<<<< HEAD
-    TransposeContext* context, const NodeLayoutContext& layout,
-    utils::MutableNodeView* node) {
-=======
     TransposeContext* context, utils::MutableNodeView* node) {
->>>>>>> upstream/master
   int vector_index = -1;
   if (IsNDOperateWithMD(*node, 4, 1)) {
     vector_index = 1;
@@ -1565,11 +981,7 @@ Status BinaryOpTransposer::MaybeReshapeVectorFanin(
     const string& node_name = node->GetName();
     const string& node_device = node->GetDevice();
     string reshape_node_name = LayoutOptimizerNode(GetReshapeNodeNameFormat(
-<<<<<<< HEAD
-        node_name, vector_index, layout.src, layout.dst));
-=======
         node_name, vector_index, context->src_format, context->dst_format));
->>>>>>> upstream/master
     string shape_const_node_name = LayoutOptimizerNode(
         GetShapeConstNodeNameFormat(node_name, vector_index));
     const auto& fanin = node->GetRegularFanin(vector_index);
@@ -1602,21 +1014,6 @@ Status BinaryOpTransposer::MaybeReshapeVectorFanin(
 Status BinaryOpTransposer::TransposeNode(TransposeContext* context,
                                          utils::MutableNodeView* node) {
   DCHECK(IsBinaryOp(*node->node()));
-<<<<<<< HEAD
-  const NodeLayoutContext& layout =
-      GetDataFormatLayoutForNode(context, *node, /*fanout_port=*/0,
-                                 [this](const utils::MutableNodeView& node) {
-                                   return IsFaninShapeSupported(node);
-                                 });
-  if (!layout.transposable) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(
-      context, layout, Get4DDataFaninPorts(*node), node, kOpTranspose));
-  TF_RETURN_IF_ERROR(MaybeReshapeVectorFanin(context, layout, node));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-=======
   if (!ShouldProcess(*context, *node) || !IsFaninShapeSupported(*node) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
@@ -1625,32 +1022,18 @@ Status BinaryOpTransposer::TransposeNode(TransposeContext* context,
                                             node, kOpTranspose));
   TF_RETURN_IF_ERROR(MaybeReshapeVectorFanin(context, node));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
->>>>>>> upstream/master
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
 Status ConcatOpTransposer::TransposeNode(TransposeContext* context,
                                          utils::MutableNodeView* node) {
   DCHECK(IsConcat(*node->node()));
-<<<<<<< HEAD
-  const NodeLayoutContext& layout =
-      GetDataFormatLayoutForNode(context, *node, /*fanout_port=*/0,
-                                 [this](const utils::MutableNodeView& node) {
-                                   return IsFanoutPortDimsN(node, 0, 4);
-                                 });
-  if (!layout.transposable) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(
-      context, layout, GetConcatDataFaninPorts(*node), node, kOpTranspose));
-=======
   if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(
       context, GetConcatDataFaninPorts(*node), node, kOpTranspose));
->>>>>>> upstream/master
   int axis_node = 0;
   if (node->GetOp() == "ConcatV2") {
     const auto* n_attr = node->GetAttr(kAttrN);
@@ -1658,36 +1041,15 @@ Status ConcatOpTransposer::TransposeNode(TransposeContext* context,
       axis_node = n_attr->i();
     }
   }
-<<<<<<< HEAD
-  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, layout, {axis_node}, node,
-                                            kOpDataFormatDimMap));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-=======
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {axis_node}, node, kOpDataFormatDimMap));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
->>>>>>> upstream/master
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
 Status FillOpTransposer::TransposeNode(TransposeContext* context,
                                        utils::MutableNodeView* node) {
   DCHECK(IsFill(*node->node()));
-<<<<<<< HEAD
-  const NodeLayoutContext& layout =
-      GetDataFormatLayoutForNode(context, *node, /*fanout_port=*/0,
-                                 [this](const utils::MutableNodeView& node) {
-                                   return IsFanoutPortDimsN(node, 0, 4);
-                                 });
-  if (!layout.transposable) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, layout, {0}, node,
-                                            kOpDataFormatVecPermute));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-=======
   if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
@@ -1695,36 +1057,12 @@ Status FillOpTransposer::TransposeNode(TransposeContext* context,
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {0}, node, kOpDataFormatVecPermute));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
->>>>>>> upstream/master
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
 Status IdentityNTransposer::TransposeNode(TransposeContext* context,
                                           utils::MutableNodeView* node) {
   DCHECK(IsIdentityN(*node->node()));
-<<<<<<< HEAD
-  const LayoutAgnosticNodeFanouts& layout =
-      CheckNodeTransposable(context, *node);
-  if (!layout.transposable) {
-    return Status::OK();
-  }
-  bool transposed = false;
-  const int num_layout_ports = layout.fanout_layouts.size();
-  for (int i = 0; i < num_layout_ports; ++i) {
-    const auto& layout_port = layout.fanout_layouts[i];
-    if (layout_port.transposable && IsFanoutPortDimsN(*node, i, 4)) {
-      TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, layout_port, {i}, node,
-                                                kOpTranspose));
-      TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, layout_port, {i},
-                                                 node, kOpTranspose));
-      transposed = true;
-    }
-  }
-  if (transposed) {
-    return context->graph_view->GetMutationBuilder()->Apply();
-  }
-  return Status::OK();
-=======
   const auto ports = GetVariadic4DFaninPorts(*context, *node);
   if (!ShouldProcess(*context, *node) || ports.empty()) {
     return Status::OK();
@@ -1750,26 +1088,11 @@ bool MergeTransposer::IsEveryFaninAfterDstToSrcTransform(
     return false;
   }
   return true;
->>>>>>> upstream/master
 }
 
 Status MergeTransposer::TransposeNode(TransposeContext* context,
                                       utils::MutableNodeView* node) {
   DCHECK(IsMerge(*node->node()));
-<<<<<<< HEAD
-  const NodeLayoutContext& layout =
-      GetDataFormatLayoutForNode(context, *node, /*fanout_port=*/0,
-                                 [this](const utils::MutableNodeView& node) {
-                                   return IsFanoutPortDimsN(node, 0, 4);
-                                 });
-  if (!layout.transposable) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(
-      context, layout, GetDataFaninPorts(*node), node, kOpTranspose));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-=======
   if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
       !IsEveryFaninAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
@@ -1777,7 +1100,6 @@ Status MergeTransposer::TransposeNode(TransposeContext* context,
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, GetDataFaninPorts(*node),
                                             node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
->>>>>>> upstream/master
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
@@ -1785,44 +1107,6 @@ Status PadTransposer::TransposeNode(TransposeContext* context,
                                     utils::MutableNodeView* node) {
   DCHECK(IsMirrorPad(*node->node()) || IsMirrorPadGrad(*node->node()) ||
          IsPad(*node->node()));
-<<<<<<< HEAD
-  const NodeLayoutContext& layout =
-      GetDataFormatLayoutForNode(context, *node, /*fanout_port=*/0,
-                                 [this](const utils::MutableNodeView& node) {
-                                   return IsFanoutPortDimsN(node, 0, 4);
-                                 });
-  if (!layout.transposable) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, layout, {1}, node,
-                                            kOpDataFormatVecPermute));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  return context->graph_view->GetMutationBuilder()->Apply();
-}
-
-Status ReduceTransposer::TransposeNode(TransposeContext* context,
-                                       utils::MutableNodeView* node) {
-  DCHECK(IsReduceOp(*node->node()));
-  const NodeLayoutContext& layout =
-      GetDataFormatLayoutForNode(context, *node, /*fanout_port=*/0,
-                                 [this](const utils::MutableNodeView& node) {
-                                   return IsFaninPortDimsN(node, 0, 4);
-                                 });
-  if (!layout.transposable || !IsReduceAxisSupported(layout, *node)) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {1}, node, kOpDataFormatDimMap));
-  if (KeepDims(*node)) {
-    TF_RETURN_IF_ERROR(
-        UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  }
-=======
   if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
@@ -1831,7 +1115,6 @@ Status ReduceTransposer::TransposeNode(TransposeContext* context,
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {1}, node, kOpDataFormatVecPermute));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
->>>>>>> upstream/master
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
@@ -1866,70 +1149,18 @@ bool ReduceTransposer::IsAlongAxis(const utils::MutableNodeView& axis_node,
 }
 
 bool ReduceTransposer::IsReduceAxisSupported(
-<<<<<<< HEAD
-    const NodeLayoutContext& layout, const utils::MutableNodeView& node) {
-=======
     const TransposeContext& context, const utils::MutableNodeView& node) {
->>>>>>> upstream/master
   const auto& regular_fanin_1 = node.GetRegularFanin(1);
   auto* axis_node = regular_fanin_1.node_view();
   // TODO(lyandy): Generalize this for other data format conversions.
   return KeepDims(node) ||
-<<<<<<< HEAD
-         (layout.src == kNHWC && layout.dst == kNCHW &&
-=======
          (context.src_format == kNHWC && context.dst_format == kNCHW &&
->>>>>>> upstream/master
           (IsAlongAxis(*axis_node, {0, 1, 2, 3}) ||
            IsAlongAxis(*axis_node, {1, 2, 3}) ||
            IsAlongAxis(*axis_node, {0, 1, 2}) ||
            IsAlongAxis(*axis_node, {1, 2}) || IsAlongAxis(*axis_node, {3})));
 }
 
-<<<<<<< HEAD
-Status ReverseV2Transposer::TransposeNode(TransposeContext* context,
-                                          utils::MutableNodeView* node) {
-  DCHECK(IsReverseV2(*node->node()));
-  const NodeLayoutContext& layout =
-      GetDataFormatLayoutForNode(context, *node, /*fanout_port=*/0,
-                                 [this](const utils::MutableNodeView& node) {
-                                   return IsFanoutPortDimsN(node, 0, 4);
-                                 });
-  if (!layout.transposable) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {1}, node, kOpDataFormatDimMap));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  return context->graph_view->GetMutationBuilder()->Apply();
-}
-
-Status SelectTransposer::TransposeNode(TransposeContext* context,
-                                       utils::MutableNodeView* node) {
-  DCHECK(IsSelect(*node->node()));
-  const auto& regular_fanin_0 = node->GetRegularFanin(0);
-  auto* regular_fanin_0_node = regular_fanin_0.node_view();
-  if (!IsFaninScalarVector4D(*regular_fanin_0_node, regular_fanin_0.index())) {
-    return Status::OK();
-  }
-  const NodeLayoutContext& layout =
-      GetDataFormatLayoutForNode(context, *node, /*fanout_port=*/0,
-                                 [this](const utils::MutableNodeView& node) {
-                                   return IsFanoutPortDimsN(node, 0, 4);
-                                 });
-  if (!layout.transposable) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(
-      context, layout,
-      GetFaninPorts(*regular_fanin_0_node, regular_fanin_0.index()), node,
-      kOpTranspose));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-=======
 Status ReduceTransposer::TransposeNode(TransposeContext* context,
                                        utils::MutableNodeView* node) {
   DCHECK(IsReduceOp(*node->node()));
@@ -1959,7 +1190,6 @@ Status ReverseV2Transposer::TransposeNode(TransposeContext* context,
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {1}, node, kOpDataFormatDimMap));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
->>>>>>> upstream/master
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
@@ -1979,23 +1209,6 @@ std::vector<int> SelectTransposer::GetFaninPorts(
   return {1, 2};
 }
 
-<<<<<<< HEAD
-Status ShapeTransposer::TransposeNode(TransposeContext* context,
-                                      utils::MutableNodeView* node) {
-  DCHECK(IsShape(*node->node()));
-  const NodeLayoutContext& layout =
-      GetDataFormatLayoutForNode(context, *node, /*fanout_port=*/0,
-                                 [this](const utils::MutableNodeView& node) {
-                                   return IsFaninPortDimsN(node, 0, 4);
-                                 });
-  if (!layout.transposable) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, layout, {0}, node,
-                                             kOpDataFormatVecPermute));
-=======
 Status SelectTransposer::TransposeNode(TransposeContext* context,
                                        utils::MutableNodeView* node) {
   DCHECK(IsSelect(*node->node()));
@@ -2023,36 +1236,12 @@ Status ShapeTransposer::TransposeNode(TransposeContext* context,
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(
       UpdateFanoutEdgesWithOp(context, {0}, node, kOpDataFormatVecPermute));
->>>>>>> upstream/master
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
 Status ShapeNTransposer::TransposeNode(TransposeContext* context,
                                        utils::MutableNodeView* node) {
   DCHECK(IsShapeN(*node->node()));
-<<<<<<< HEAD
-  const LayoutAgnosticNodeFanouts& layout =
-      CheckNodeTransposable(context, *node);
-  if (!layout.transposable) {
-    return Status::OK();
-  }
-  bool transposed = false;
-  const int num_layout_ports = layout.fanout_layouts.size();
-  for (int i = 0; i < num_layout_ports; ++i) {
-    const auto& layout_port = layout.fanout_layouts[i];
-    if (layout_port.transposable && IsFaninPortDimsN(*node, i, 4)) {
-      TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, layout_port, {i}, node,
-                                                kOpTranspose));
-      TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(
-          context, layout_port, {i}, node, kOpDataFormatVecPermute));
-      transposed = true;
-    }
-  }
-  if (transposed) {
-    return context->graph_view->GetMutationBuilder()->Apply();
-  }
-  return Status::OK();
-=======
   const auto ports = GetVariadic4DFaninPorts(*context, *node);
   if (!ShouldProcess(*context, *node) || ports.empty()) {
     return Status::OK();
@@ -2062,28 +1251,11 @@ Status ShapeNTransposer::TransposeNode(TransposeContext* context,
   TF_RETURN_IF_ERROR(
       UpdateFanoutEdgesWithOp(context, ports, node, kOpDataFormatVecPermute));
   return context->graph_view->GetMutationBuilder()->Apply();
->>>>>>> upstream/master
 }
 
 Status SliceTransposer::TransposeNode(TransposeContext* context,
                                       utils::MutableNodeView* node) {
   DCHECK(IsSlice(*node->node()));
-<<<<<<< HEAD
-  const NodeLayoutContext& layout =
-      GetDataFormatLayoutForNode(context, *node, /*fanout_port=*/0,
-                                 [this](const utils::MutableNodeView& node) {
-                                   return IsFanoutPortDimsN(node, 0, 4);
-                                 });
-  if (!layout.transposable) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, layout, {1, 2}, node,
-                                            kOpDataFormatVecPermute));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-=======
   if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
@@ -2092,30 +1264,12 @@ Status SliceTransposer::TransposeNode(TransposeContext* context,
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {1, 2}, node, kOpDataFormatVecPermute));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
->>>>>>> upstream/master
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
 Status SplitTransposer::TransposeNode(TransposeContext* context,
                                       utils::MutableNodeView* node) {
   DCHECK(IsSplit(*node->node()));
-<<<<<<< HEAD
-  auto output_ports = GetDataFanoutPorts(*node);
-  const NodeLayoutContext& layout = GetDataFormatLayoutForNode(
-      context, *node, /*fanout_port=*/0,
-      [this, output_ports](const utils::MutableNodeView& node) {
-        return IsFanoutPortsDimsN(node, output_ports, 4);
-      });
-  if (!layout.transposable) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {1}, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0}, node, kOpDataFormatDimMap));
-  TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, layout, output_ports,
-                                             node, kOpTranspose));
-=======
   const auto ports = GetDataFanoutPorts(*node);
   if (!ShouldProcess(*context, *node) || !IsFanoutPortsDimsN(*node, ports, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
@@ -2126,48 +1280,12 @@ Status SplitTransposer::TransposeNode(TransposeContext* context,
       UpdateFaninEdgesWithOp(context, {0}, node, kOpDataFormatDimMap));
   TF_RETURN_IF_ERROR(
       UpdateFanoutEdgesWithOp(context, ports, node, kOpTranspose));
->>>>>>> upstream/master
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
 Status SplitVTransposer::TransposeNode(TransposeContext* context,
                                        utils::MutableNodeView* node) {
   DCHECK(IsSplitV(*node->node()));
-<<<<<<< HEAD
-  auto output_ports = GetDataFanoutPorts(*node);
-  const NodeLayoutContext& layout = GetDataFormatLayoutForNode(
-      context, *node, /*fanout_port=*/0,
-      [this, output_ports](const utils::MutableNodeView& node) {
-        return IsFanoutPortsDimsN(node, output_ports, 4);
-      });
-  if (!layout.transposable) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {2}, node, kOpDataFormatDimMap));
-  TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, layout, output_ports,
-                                             node, kOpTranspose));
-  return context->graph_view->GetMutationBuilder()->Apply();
-}
-
-Status SqueezeTransposer::TransposeNode(TransposeContext* context,
-                                        utils::MutableNodeView* node) {
-  DCHECK(IsSqueeze(*node->node()));
-  const NodeLayoutContext& layout = GetDataFormatLayoutForNode(
-      context, *node, /*fanout_port=*/0,
-      [this](const utils::MutableNodeView& node) {
-        return IsDimsSupported(node) && IsInputConvertible(node);
-      });
-  // TODO(lyandy): Generalize this for other data format conversions.
-  if (!layout.transposable || layout.src != kNHWC || layout.dst != kNCHW) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(UpdateSqueezeDims(context, node));
-=======
   const auto ports = GetDataFanoutPorts(*node);
   if (!ShouldProcess(*context, *node) || !IsFanoutPortsDimsN(*node, ports, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
@@ -2178,7 +1296,6 @@ Status SqueezeTransposer::TransposeNode(TransposeContext* context,
       UpdateFaninEdgesWithOp(context, {2}, node, kOpDataFormatDimMap));
   TF_RETURN_IF_ERROR(
       UpdateFanoutEdgesWithOp(context, ports, node, kOpTranspose));
->>>>>>> upstream/master
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
@@ -2251,27 +1368,6 @@ Status SqueezeTransposer::UpdateSqueezeDims(TransposeContext* context,
   return Status::OK();
 }
 
-<<<<<<< HEAD
-Status StridedSliceTransposer::TransposeNode(TransposeContext* context,
-                                             utils::MutableNodeView* node) {
-  DCHECK(IsStridedSlice(*node->node()));
-  const NodeLayoutContext& layout = GetDataFormatLayoutForNode(
-      context, *node, /*fanout_port=*/0,
-      [this](const utils::MutableNodeView& node) {
-        return IsFanoutPortDimsN(node, 0, 4) && HasOnlyBeginEndMask(node);
-      });
-  if (!layout.transposable) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(PermuteMask(context, layout, node, "begin_mask"));
-  TF_RETURN_IF_ERROR(PermuteMask(context, layout, node, "end_mask"));
-  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, layout, {1, 2, 3}, node,
-                                            kOpDataFormatVecPermute));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-=======
 Status SqueezeTransposer::TransposeNode(TransposeContext* context,
                                         utils::MutableNodeView* node) {
   DCHECK(IsSqueeze(*node->node()));
@@ -2286,7 +1382,6 @@ Status SqueezeTransposer::TransposeNode(TransposeContext* context,
   }
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateSqueezeDims(context, node));
->>>>>>> upstream/master
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
@@ -2307,10 +1402,6 @@ bool StridedSliceTransposer::HasOnlyBeginEndMask(
 }
 
 Status StridedSliceTransposer::PermuteMask(TransposeContext* context,
-<<<<<<< HEAD
-                                           const NodeLayoutContext& layout,
-=======
->>>>>>> upstream/master
                                            utils::MutableNodeView* node,
                                            absl::string_view mask) {
   // Computers the permutation of the masks based on the src and dst format.
@@ -2326,13 +1417,8 @@ Status StridedSliceTransposer::PermuteMask(TransposeContext* context,
     return errors::InvalidArgument("invalid mask value: ", mask_i);
   }
   int result = 0;
-<<<<<<< HEAD
-  for (int i = 0; i < layout.src_to_dst.size(); i++) {
-    const int final_pos = layout.src_to_dst[i];
-=======
   for (int i = 0; i < context->src_to_dst.size(); i++) {
     const int final_pos = context->src_to_dst[i];
->>>>>>> upstream/master
     const int position_mask = 1 << final_pos;
     const int bit_i = (mask_i & position_mask) >> final_pos;
     result |= bit_i << i;
@@ -2344,23 +1430,6 @@ Status StridedSliceTransposer::PermuteMask(TransposeContext* context,
   return Status::OK();
 }
 
-<<<<<<< HEAD
-Status SwitchTransposer::TransposeNode(TransposeContext* context,
-                                       utils::MutableNodeView* node) {
-  DCHECK(IsSwitch(*node->node()));
-  const NodeLayoutContext& layout =
-      GetDataFormatLayoutForNode(context, *node, /*fanout_port=*/0,
-                                 [this](const utils::MutableNodeView& node) {
-                                   return IsFaninPortDimsN(node, 0, 4);
-                                 });
-  if (!layout.transposable) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(
-      context, layout, GetDataFanoutPorts(*node), node, kOpTranspose));
-=======
 Status StridedSliceTransposer::TransposeNode(TransposeContext* context,
                                              utils::MutableNodeView* node) {
   DCHECK(IsStridedSlice(*node->node()));
@@ -2388,27 +1457,12 @@ Status SwitchTransposer::TransposeNode(TransposeContext* context,
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, GetDataFanoutPorts(*node),
                                              node, kOpTranspose));
->>>>>>> upstream/master
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
 Status TernaryOpTransposer::TransposeNode(TransposeContext* context,
                                           utils::MutableNodeView* node) {
   DCHECK(IsTernaryOp(*node->node()));
-<<<<<<< HEAD
-  const NodeLayoutContext& layout =
-      GetDataFormatLayoutForNode(context, *node, /*fanout_port=*/0,
-                                 [this](const utils::MutableNodeView& node) {
-                                   return IsFanoutPortDimsN(node, 0, 4);
-                                 });
-  if (!layout.transposable) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0, 1, 2}, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-=======
   if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
@@ -2416,29 +1470,12 @@ Status TernaryOpTransposer::TransposeNode(TransposeContext* context,
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {0, 1, 2}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
->>>>>>> upstream/master
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
 Status TileTransposer::TransposeNode(TransposeContext* context,
                                      utils::MutableNodeView* node) {
   DCHECK(IsTile(*node->node()));
-<<<<<<< HEAD
-  const NodeLayoutContext& layout =
-      GetDataFormatLayoutForNode(context, *node, /*fanout_port=*/0,
-                                 [this](const utils::MutableNodeView& node) {
-                                   return IsFanoutPortDimsN(node, 0, 4);
-                                 });
-  if (!layout.transposable) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, layout, {1}, node,
-                                            kOpDataFormatVecPermute));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-=======
   if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
@@ -2447,27 +1484,12 @@ Status TileTransposer::TransposeNode(TransposeContext* context,
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {1}, node, kOpDataFormatVecPermute));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
->>>>>>> upstream/master
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
 Status UnaryGradTransposer::TransposeNode(TransposeContext* context,
                                           utils::MutableNodeView* node) {
   DCHECK(IsUnaryGrad(*node->node()));
-<<<<<<< HEAD
-  const NodeLayoutContext& layout =
-      GetDataFormatLayoutForNode(context, *node, /*fanout_port=*/0,
-                                 [this](const utils::MutableNodeView& node) {
-                                   return IsFanoutPortDimsN(node, 0, 4);
-                                 });
-  if (!layout.transposable) {
-    return Status::OK();
-  }
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, layout, {0, 1}, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, layout, {0}, node, kOpTranspose));
-=======
   if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
@@ -2475,7 +1497,6 @@ Status UnaryGradTransposer::TransposeNode(TransposeContext* context,
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {0, 1}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
->>>>>>> upstream/master
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
@@ -2653,53 +1674,11 @@ bool GetValueAttrIfConstPermTransposeNode(const utils::MutableNodeView& node,
   return true;
 }
 
-<<<<<<< HEAD
-bool IsValidConstPermTransposeNode(const utils::MutableNodeView& node,
-                                   absl::Span<const int> permutation) {
-  Tensor tensor;
-  if (!GetValueAttrIfConstPermTransposeNode(node, &tensor)) {
-    return false;
-  }
-  if (tensor.NumElements() != permutation.size()) {
-    return false;
-  }
-
-  const auto& tensor_data = tensor.unaligned_flat<int32>();
-  for (int i = 0; i < permutation.size(); i++) {
-    if (permutation[i] != tensor_data(i)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-=======
->>>>>>> upstream/master
 bool IsDataFormatOp(const utils::MutableNodeView& node) {
   const string& op = node.GetOp();
   return op == kOpDataFormatDimMap || op == kOpDataFormatVecPermute;
 }
 
-<<<<<<< HEAD
-bool IsValidDataFormatNode(const utils::MutableNodeView& node,
-                           absl::string_view src_format,
-                           absl::string_view dst_format) {
-  if (!IsDataFormatOp(node)) {
-    return false;
-  }
-  const auto* src_format_attr = node.GetAttr(kAttrSrcFormat);
-  if (src_format_attr == nullptr || src_format_attr->s() != src_format) {
-    return false;
-  }
-  const auto* dst_format_attr = node.GetAttr(kAttrDstFormat);
-  if (dst_format_attr == nullptr || dst_format_attr->s() != dst_format) {
-    return false;
-  }
-  return true;
-}
-
-=======
->>>>>>> upstream/master
 std::vector<int> GetPermutation(absl::string_view src_format,
                                 absl::string_view dst_format) {
   // Generate permutation for transformation between src and dst format.

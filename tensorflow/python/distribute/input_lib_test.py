@@ -366,13 +366,10 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
         dataset1 = dataset_ops.DatasetV2.range(10)
         dataset2 = dataset_ops.DatasetV2.range(10).map(lambda x: x**2)
         return dataset_ops.DatasetV2.zip((dataset1, dataset2))
-<<<<<<< HEAD
-=======
       else:
         dataset1 = dataset_ops.Dataset.range(10)
         dataset2 = dataset_ops.Dataset.range(10).map(lambda x: x**2)
         return dataset_ops.Dataset.zip((dataset1, dataset2))
->>>>>>> upstream/master
     dataset_or_input_fn = self._create_dataset_or_input_fn(
         input_type, dataset_fn)
 

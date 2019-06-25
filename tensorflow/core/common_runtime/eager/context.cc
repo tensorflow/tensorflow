@@ -57,11 +57,8 @@ auto* eager_context_created =
     monitoring::Gauge<bool, 0>::New("/tensorflow/core/eager_context_created",
                                     "True if an eager context was created.");
 
-<<<<<<< HEAD
-=======
 }  // namespace
 
->>>>>>> upstream/master
 EagerContext::EagerContext(
     const SessionOptions& opts,
     ContextDevicePlacementPolicy default_device_placement_policy,

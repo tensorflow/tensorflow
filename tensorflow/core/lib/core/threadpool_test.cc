@@ -227,13 +227,7 @@ static void BM_Sequential(int iters) {
   };
   work();
   mutex_lock l(done_lock);
-<<<<<<< HEAD
-  while (!done_flag) {
-    done.wait(l);
-  }
-=======
   done_lock.Await(Condition(&done_flag));
->>>>>>> upstream/master
 }
 BENCHMARK(BM_Sequential);
 
@@ -252,13 +246,7 @@ static void BM_Parallel(int iters) {
     });
   }
   mutex_lock l(done_lock);
-<<<<<<< HEAD
-  while (!done_flag) {
-    done.wait(l);
-  }
-=======
   done_lock.Await(Condition(&done_flag));
->>>>>>> upstream/master
 }
 BENCHMARK(BM_Parallel);
 
@@ -280,13 +268,7 @@ static void BM_ParallelFor(int iters, int total, int cost_per_unit) {
                      });
   }
   mutex_lock l(done_lock);
-<<<<<<< HEAD
-  while (!done_flag) {
-    done.wait(l);
-  }
-=======
   done_lock.Await(Condition(&done_flag));
->>>>>>> upstream/master
 }
 BENCHMARK(BM_ParallelFor)
     ->ArgPair(1 << 10, 1)

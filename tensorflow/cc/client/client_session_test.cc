@@ -13,12 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-<<<<<<< HEAD
-#include "tensorflow/cc/client/client_session.h"
-
-#include <vector>
-
-=======
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/cc/client/client_session.h"
@@ -27,7 +21,6 @@ limitations under the License.
 
 #include "absl/synchronization/barrier.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
->>>>>>> upstream/master
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -48,15 +41,9 @@ using ops::Sub;
 
 class CustomThreadPoolImpl : public thread::ThreadPoolInterface {
  public:
-<<<<<<< HEAD
-  CustomThreadPoolImpl() {
-    underlying_threadpool_.reset(new thread::ThreadPool(
-        tensorflow::Env::Default(), "custom_threadpool", 2));
-=======
   explicit CustomThreadPoolImpl(int numThreads) {
     underlying_threadpool_.reset(new thread::ThreadPool(
         tensorflow::Env::Default(), "custom_threadpool", numThreads));
->>>>>>> upstream/master
     num_schedule_called_ = 0;
   }
 
@@ -174,19 +161,6 @@ TEST(ClientSessionTest, CallableWithDefaultThreadPool) {
 
 TEST(ClientSessionTest, CallableWithCustomThreadPool) {
   Scope root = Scope::NewRootScope();
-<<<<<<< HEAD
-  auto a = Placeholder(root, DT_INT32);
-  auto b = Placeholder(root, DT_INT32);
-  auto c = Add(root, a, b);
-  ClientSession session(root);
-  std::vector<Tensor> outputs;
-
-  auto inter_op_threadpool = absl::make_unique<CustomThreadPoolImpl>();
-  ASSERT_EQ(inter_op_threadpool->GetNumScheduleCalled(), 0);
-
-  tensorflow::thread::ThreadPoolOptions threadPoolOptions;
-  threadPoolOptions.inter_op_threadpool = inter_op_threadpool.get();
-=======
   int num_threads = 3;
 
   TensorShape data_shape({1, 1});
@@ -207,7 +181,6 @@ TEST(ClientSessionTest, CallableWithCustomThreadPool) {
   tensorflow::thread::ThreadPoolOptions threadPoolOptions;
   threadPoolOptions.inter_op_threadpool = inter_op_threadpool.get();
   threadPoolOptions.intra_op_threadpool = intra_op_threadpool.get();
->>>>>>> upstream/master
 
   CallableOptions options;
   options.add_feed(a.node()->name());
@@ -215,14 +188,6 @@ TEST(ClientSessionTest, CallableWithCustomThreadPool) {
   options.add_fetch(c.node()->name());
   ClientSession::CallableHandle callable;
   TF_CHECK_OK(session.MakeCallable(options, &callable));
-<<<<<<< HEAD
-  TF_EXPECT_OK(session.RunCallable(
-      callable, {test::AsTensor<int>({1}, {}), test::AsTensor<int>({41}, {})},
-      &outputs, nullptr, threadPoolOptions));
-  test::ExpectTensorEqual<int>(outputs[0], test::AsTensor<int>({42}, {}));
-  TF_EXPECT_OK(session.ReleaseCallable(callable));
-  ASSERT_GT(inter_op_threadpool->GetNumScheduleCalled(), 0);
-=======
 
   // This is needed to have BatchMatMul computation be scheduled in the
   // intra_op_threadpool.
@@ -247,7 +212,6 @@ TEST(ClientSessionTest, CallableWithCustomThreadPool) {
   // Free intra_op_threadpool and wait for its threads to exit before freeing
   // other objects (e.g. barrier). This is needed to avoid data race.
   intra_op_threadpool.reset();
->>>>>>> upstream/master
 }
 
 }  // namespace

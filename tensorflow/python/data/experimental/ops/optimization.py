@@ -242,13 +242,8 @@ class _ChooseFastestBranchDataset(dataset_ops.UnaryDataset):
     Returns:
       A `Dataset` that has the same elements the inputs.
     """
-<<<<<<< HEAD
-    nested_structure = structure_lib.NestedStructure(
-        dataset_ops.DatasetStructure(dataset_ops.get_structure(input_dataset)))
-=======
     input_structure = dataset_ops.DatasetStructure(
         dataset_ops.get_structure(input_dataset))
->>>>>>> upstream/master
     self._funcs = [
         dataset_ops.StructuredFunctionWrapper(
             f, "ChooseFastestV2", input_structure=input_structure)

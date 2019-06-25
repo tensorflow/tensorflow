@@ -61,12 +61,9 @@ flags.DEFINE_bool(
 flags.DEFINE_string(
     'output_saved_model_dir', None,
     'Directory of the SavedModel that was exported for reuse.')
-<<<<<<< HEAD
-=======
 flags.DEFINE_bool(
     'use_keras_save_api', False,
     'Uses tf.keras.models.save_model() instead of tf.saved_model.save().')
->>>>>>> upstream/master
 flags.DEFINE_string('strategy', None,
                     'Name of the distribution strategy to use.')
 

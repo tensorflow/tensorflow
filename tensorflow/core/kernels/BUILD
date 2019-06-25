@@ -38,49 +38,8 @@ load(
     "if_mkl_ml",
     "mkl_deps",
 )
-<<<<<<< HEAD
-load(
-    "@local_config_cuda//cuda:build_defs.bzl",
-    "if_cuda",
-    "if_cuda_is_configured",
-)
-=======
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
->>>>>>> upstream/master
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
-)
-
-# Description:
-# Op kernel implementations for TensorFlow.
-#
-# Note: Any test that uses GPU support and which we would like to
-# benchmark should be linked statically so that it can be executed
-# from a py_binary or cuda_py_test test logger.  For such a test,
-# append "_gpu" to the test name to invoke the GPU benchmarks.  Example:
-#
-#   # for CPU tests
-#   $ bazel test --config opt //third_party/tensorflow/core/kernels:my_op_test
-#   # for GPU benchmarks
-#   $ bazel run --config opt --config=cuda //third_party/tensorflow/core/kernels:my_op_test_gpu -- --benchmarks=..
-#
-package(
-    default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
-)
-
-package_group(
-    name = "friends",
-    packages = [
-        "//learning/brain/contrib/...",
-        "//learning/brain/research/sparse_matrix/...",
-        "//learning/faster_training/...",
-        "//tensorflow/...",
-        "//tensorflow_text/...",
-        "//third_party/car/...",
-    ],
-)
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda", "if_cuda_is_configured")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm", "if_rocm_is_configured")
 
 # Description:
 # Op kernel implementations for TensorFlow.
@@ -279,15 +238,9 @@ tf_kernel_library(
         "concat_lib.h",
         "concat_lib_cpu.h",
     ],
-<<<<<<< HEAD
-    gpu_copts = [
-        "-Xclang-only=-Wno-pass-failed",  # clang misses #pragma loop optimizations
-    ],
-=======
     gpu_copts = if_not_windows([
         "-Wno-pass-failed",  # clang misses #pragma loop optimizations
     ]),
->>>>>>> upstream/master
     gpu_srcs = [
         "concat_lib_gpu_impl.cu.cc",
         "concat_lib.h",
@@ -315,15 +268,9 @@ cc_library(
 tf_kernel_library(
     name = "conv_2d",
     hdrs = ["conv_2d.h"],
-<<<<<<< HEAD
-    gpu_copts = [
-        "-Xclang-only=-Wno-pass-failed",  # clang misses #pragma loop optimizations
-    ],
-=======
     gpu_copts = if_not_windows([
         "-Wno-pass-failed",  # clang misses #pragma loop optimizations
     ]),
->>>>>>> upstream/master
     gpu_srcs = [
         "conv_2d.h",
         "conv_2d_gpu.h",
@@ -339,6 +286,7 @@ tf_kernel_library(
     deps = [
         ":eigen_helpers",
         ":fill_functor",
+        ":gpu_utils",
         ":image_resizer_state",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -3274,11 +3222,7 @@ cc_library(
         ":cholesky_grad",
         ":cholesky_op",
         ":determinant_op",
-<<<<<<< HEAD
         ":einsum_op",  # disabling to move past build errors (no_rocm, no_cuda)
-=======
-        ":einsum_op",
->>>>>>> upstream/master
         ":lu_op",
         ":matrix_exponential_op",
         ":matrix_inverse_op",
@@ -4242,15 +4186,9 @@ tf_kernel_library(
     name = "depthwise_conv_op",
     srcs = ["depthwise_conv_op.cc"],
     hdrs = ["depthwise_conv_op.h"],
-<<<<<<< HEAD
-    gpu_copts = [
-        "-Xclang-only=-Wno-pass-failed",  # clang misses #pragma loop optimizations
-    ],
-=======
     gpu_copts = if_not_windows([
         "-Wno-pass-failed",  # clang misses #pragma loop optimizations
     ]),
->>>>>>> upstream/master
     gpu_srcs = [
         "depthwise_conv_op.h",
         "depthwise_conv_op_gpu.h",
@@ -4328,7 +4266,6 @@ NN_DEPS = [
     ":conv_2d",
     ":eigen_contraction_kernel",
     ":ops_util",
-    ":gpu_utils",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
@@ -5263,15 +5200,9 @@ tf_kernel_library(
         "scatter_nd_op.h",
         "scatter_nd_op_cpu_impl.h",
     ],
-<<<<<<< HEAD
-    gpu_copts = [
-        "-Xclang-only=-Wno-pass-failed",  # clang misses #pragma loop optimizations
-    ],
-=======
     gpu_copts = if_not_windows([
         "-Wno-pass-failed",  # clang misses #pragma loop optimizations
     ]),
->>>>>>> upstream/master
     gpu_srcs = [
         "scatter_nd_op.h",
         "scatter_nd_op_gpu.cu.cc",
@@ -5628,15 +5559,9 @@ tf_cuda_cc_test(
 
 tf_kernel_library(
     name = "parameterized_truncated_normal_op",
-<<<<<<< HEAD
-    gpu_copts = [
-        "-Xclang-only=-Wno-pass-failed",  # clang misses #pragma loop optimizations
-    ],
-=======
     gpu_copts = if_not_windows([
         "-Wno-pass-failed",  # clang misses #pragma loop optimizations
     ]),
->>>>>>> upstream/master
     prefix = "parameterized_truncated_normal_op",
     deps = [
         "//tensorflow/core:core_cpu",

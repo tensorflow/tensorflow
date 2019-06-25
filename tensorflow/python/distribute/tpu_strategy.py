@@ -79,64 +79,6 @@ def maybe_init_scope():
   else:
     with ops.init_scope():
       yield
-<<<<<<< HEAD
-
-
-# TODO(jhseu): Deduplicate with MirroredStrategy?
-def _create_tpu_mirrored_variable(  # pylint: disable=missing-docstring
-    strategy, device_map, logical_device, real_mirrored_creator,
-    *args, **kwargs):
-  # Figure out what collections this variable should be added to.
-  # We'll add the TPUMirroredVariable to those collections instead.
-  var_collections = kwargs.pop("collections", None)
-  if var_collections is None:
-    var_collections = [ops.GraphKeys.GLOBAL_VARIABLES]
-  kwargs["collections"] = []
-
-  # TODO(jhseu): Should we have different behavior for different
-  # synchronization settings?
-
-  # Get aggregation value
-  # TODO(jhseu): Support aggregation in a replica context.
-  aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
-  if aggregation not in [
-      vs.VariableAggregation.NONE,
-      vs.VariableAggregation.SUM,
-      vs.VariableAggregation.MEAN,
-      vs.VariableAggregation.ONLY_FIRST_REPLICA,
-  ]:
-    raise ValueError("Invalid variable aggregation mode: {} for variable: {}"
-                     .format(aggregation, kwargs["name"]))
-
-  # Ignore user-specified caching device, not needed for mirrored variables.
-  kwargs.pop("caching_device", None)
-
-  # TODO(josh11b,apassos): It would be better if variable initialization
-  # was never recorded on the tape instead of having to do this manually
-  # here.
-  with tape.stop_recording():
-    devices = device_map.logical_to_actual_devices(logical_device)
-    value_list = real_mirrored_creator(devices, *args, **kwargs)
-    result = values.TPUMirroredVariable(
-        strategy, device_map, value_list, aggregation,
-        logical_device=logical_device)
-
-  if not (context.executing_eagerly() or ops.inside_function()):
-    g = ops.get_default_graph()
-    # If "trainable" is True, next_creator() will add the member variables
-    # to the TRAINABLE_VARIABLES collection, so we manually remove
-    # them and replace with the MirroredVariable. We can't set
-    # "trainable" to False for next_creator() since that causes functions
-    # like implicit_gradients to skip those variables.
-    if kwargs.get("trainable", True):
-      var_collections.append(ops.GraphKeys.TRAINABLE_VARIABLES)
-      l = g.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES)
-      for v in value_list:
-        l.remove(v)
-    g.add_to_collections(var_collections, result)
-  return result
-=======
->>>>>>> upstream/master
 
 
 @tf_export("distribute.experimental.TPUStrategy", v1=[])
@@ -163,14 +105,10 @@ class TPUStrategy(distribute_lib.Strategy):
   # This implementation runs a single step. It does not use infeed or outfeed.
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """See base class."""
-<<<<<<< HEAD
-    fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx())
-=======
     # tf.distribute supports Eager functions, so AutoGraph should not be applied
     # when when the caller is also in Eager mode.
     fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx(),
                               convert_by_default=False)
->>>>>>> upstream/master
     return self.extended.tpu_run(fn, args, kwargs)
 
 
@@ -530,11 +468,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     return output
 
   def _update(self, var, fn, args, kwargs, group):
-<<<<<<< HEAD
-    assert isinstance(var, values.TPUMirroredVariable) or isinstance(
-=======
     assert isinstance(var, values.TPUVariableMixin) or isinstance(
->>>>>>> upstream/master
         var, resource_variable_ops.BaseResourceVariable)
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
       if group:
@@ -555,11 +489,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     return values.update_regroup(self, self._device_map, updates, group)
 
   def read_var(self, var):
-<<<<<<< HEAD
-    assert isinstance(var, values.TPUMirroredVariable) or isinstance(
-=======
     assert isinstance(var, values.TPUVariableMixin) or isinstance(
->>>>>>> upstream/master
         var, resource_variable_ops.BaseResourceVariable)
     return var.read_value()
 

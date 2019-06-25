@@ -191,8 +191,6 @@ string StringifyNum(half x) {
 string StringifyNum(bfloat16 x) {
   return absl::StrFormat("%0.4g (0x%04x)", static_cast<float>(x),
                          BitCast<uint16>(x));
-<<<<<<< HEAD
-=======
 }
 
 ErrorSpec DefaultF32SpecGenerator(float) { return ErrorSpec{0.0001, 0.0001}; }
@@ -212,7 +210,6 @@ std::function<ErrorSpec(float)> GetDefaultSpecGenerator(PrimitiveType ty) {
     default:
       LOG(FATAL) << "Unhandled Type";
   }
->>>>>>> upstream/master
 }
 
 // Test parameter is a tuple containing

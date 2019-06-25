@@ -56,8 +56,6 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
 // same between TensorFlow builds.
 uint64 HashSubgraph(const GraphDef& g, const NodeDef* node);
 
-<<<<<<< HEAD
-=======
 // Returns a stable hash of the function `f`.
 //
 // This function computes the hash by hashing the metadata of the
@@ -69,7 +67,6 @@ uint64 HashSubgraph(const GraphDef& g, const NodeDef* node);
 uint64 HashSubgraphFunction(const FunctionDefLibrary& library,
                             const FunctionDef* f);
 
->>>>>>> upstream/master
 // Helper class for reading data from a VariantTensorData object.
 class VariantTensorDataReader : public IteratorStateReader {
  public:

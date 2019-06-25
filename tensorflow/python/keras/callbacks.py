@@ -914,16 +914,8 @@ class ModelCheckpoint(Callback):
     # If this is not multi worker training, restoring is not needed, or
     # restoring failed, check if it should load weights on restart.
     if self.load_weights_on_restart:
-<<<<<<< HEAD
-      # In multi worker training, it only should load weights on restart if
-      # `experimental_should_init` is True.
-      # TODO(rchao): Reference `experimental_should_init` api from a util file.
-      if (not K.in_multi_worker_mode() or
-          dc_context.get_current_worker_context().experimental_should_init):
-=======
       if (not multi_worker_util.in_multi_worker_mode()
           or multi_worker_util.should_load_checkpoint()):
->>>>>>> upstream/master
         filepath_to_load = (
             self._get_most_recently_modified_file_matching_pattern(
                 self.filepath))
@@ -963,21 +955,13 @@ class ModelCheckpoint(Callback):
   def on_epoch_end(self, epoch, logs=None):
     self.epochs_since_last_save += 1
     if self.save_freq == 'epoch':
-<<<<<<< HEAD
-      if K.in_multi_worker_mode():
-=======
       if multi_worker_util.in_multi_worker_mode():
->>>>>>> upstream/master
         # Exclude training state variables in user-requested checkpoint file.
         with self._training_state.untrack_vars():
           self._save_model(epoch=epoch, logs=logs)
       else:
         self._save_model(epoch=epoch, logs=logs)
-<<<<<<< HEAD
-    if K.in_multi_worker_mode():
-=======
     if multi_worker_util.in_multi_worker_mode():
->>>>>>> upstream/master
       # For multi-worker training, back up the weights and current training
       # state for possible future recovery.
       # TODO(rchao): Call `back_up` at finer period such as N steps.
@@ -1029,16 +1013,8 @@ class ModelCheckpoint(Callback):
 
   def _get_file_path(self, epoch, logs):
     """Returns the file path for checkpoint."""
-<<<<<<< HEAD
-    # TODO(rchao): Replace dc_context reference with
-    # distributed_training_utils.should_current_worker_checkpoint() once
-    # distributed_training_utils.py no longer depends on callbacks.py.
-    if not K.in_multi_worker_mode() or dc_context.get_current_worker_context(
-    ).should_checkpoint:
-=======
     if not multi_worker_util.in_multi_worker_mode(
     ) or multi_worker_util.should_save_checkpoint():
->>>>>>> upstream/master
       return self.filepath.format(epoch=epoch + 1, **logs)
     else:
       # If this is multi-worker training, and this worker should not
@@ -1055,13 +1031,8 @@ class ModelCheckpoint(Callback):
     # Remove the checkpoint directory in multi-worker training where this worker
     # should not checkpoint. It is a dummy directory previously saved for sync
     # distributed training.
-<<<<<<< HEAD
-    if K.in_multi_worker_mode(
-    ) and not dc_context.get_current_worker_context().should_checkpoint:
-=======
     if multi_worker_util.in_multi_worker_mode(
     ) and not multi_worker_util.should_save_checkpoint():
->>>>>>> upstream/master
       file_io.delete_recursively(self._temp_file_dir)
       del self._temp_file_dir
 

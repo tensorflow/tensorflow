@@ -714,12 +714,11 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    tags = [
-	"no_cuda",
-	"no_rocm",
-    ],
     shard_count = 4,
-    tags = ["no_rocm"],
+    tags = [
+	    "no_rocm",
+	    "no_cuda",
+    ],
 )
 
 cuda_py_test(
@@ -892,17 +891,12 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
-<<<<<<< HEAD
-    tags = ["notsan",
-            # Test temporarily disabled due to test application failure (reshape failure)
-            # on both Cuda and ROCm. Should re-enable once get fixed
-            "no_rocm",
-            "no_cuda",
-=======
     tags = [
+        # Test temporarily disabled due to test application failure (reshape failure)
+        # on both Cuda and ROCm. Should re-enable once get fixed
+        "no_cuda",
         "no_rocm",
         "notsan",
->>>>>>> upstream/master
     ],
 )
 
@@ -1376,15 +1370,9 @@ tf_py_test(
     ],
     shard_count = 20,
     tags = [
-<<<<<<< HEAD
-            "notsan",
-            "no_rocm",
-           ],
-=======
         "no_rocm",
         "notsan",
     ],
->>>>>>> upstream/master
 )
 
 tf_py_test(
@@ -1413,13 +1401,7 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python:client_testlib",
     ],
-<<<<<<< HEAD
-    tags = [
-	"no_rocm",
-    ],
-=======
     tags = ["no_rocm"],
->>>>>>> upstream/master
 )
 
 tf_py_test(
@@ -1465,16 +1447,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = [
-<<<<<<< HEAD
-            "notsan",
-            "no_rocm",
-            "no_cuda",
-           ],
-=======
+        "no_cuda",
         "no_rocm",
         "notsan",
     ],
->>>>>>> upstream/master
 )
 
 tf_py_test(
@@ -1549,8 +1525,8 @@ tf_py_test(
     ],
     shard_count = 8,
     tags = [
-            "no_rocm",
-            "no_cuda",
+        "no_rocm",
+        "no_cuda",
     ],
 )
 

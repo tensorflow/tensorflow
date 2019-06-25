@@ -450,24 +450,10 @@ class BatchNormalizationBase(Layer):
         ).extended.colocate_vars_with(self.moving_mean):
           self.renorm_mean = _renorm_variable('renorm_mean', param_shape,
                                               self.moving_mean_initializer)
-<<<<<<< HEAD
-          self.renorm_mean_weight = _renorm_variable('renorm_mean_weight', ())
-        # We initialize renorm_stddev to 0, and maintain the (0-initialized)
-        # renorm_stddev_weight. This allows us to (1) mix the average
-        # stddev with the minibatch stddev early in training, and (2) compute
-        # the unbiased average stddev by dividing renorm_stddev by the weight.
-        with distribution_strategy_context.get_strategy(
-        ).extended.colocate_vars_with(self.moving_variance):
-          self.renorm_stddev = _renorm_variable(
-              'renorm_stddev', param_shape, self.moving_variance_initializer)
-          self.renorm_stddev_weight = _renorm_variable('renorm_stddev_weight',
-                                                       ())
-=======
         with distribution_strategy_context.get_strategy(
         ).extended.colocate_vars_with(self.moving_stddev):
           self.renorm_stddev = _renorm_variable('renorm_stddev', param_shape,
                                                 moving_stddev_initializer)
->>>>>>> upstream/master
     finally:
       if partitioner:
         self._scope.set_partitioner(partitioner)
@@ -577,12 +563,8 @@ class BatchNormalizationBase(Layer):
     # initialized with this batch's moments.
     renorm_mean = self.renorm_mean
     # Avoid divide by zero early on in training.
-<<<<<<< HEAD
-    renorm_stddev = math_ops.maximum(self.renorm_stddev, self.epsilon)
-=======
     renorm_stddev = math_ops.maximum(self.renorm_stddev,
                                      math_ops.sqrt(self.epsilon))
->>>>>>> upstream/master
     # Compute the corrections for batch renorm.
     r = stddev / renorm_stddev
     d = (mean - renorm_mean) / renorm_stddev
@@ -619,19 +601,10 @@ class BatchNormalizationBase(Layer):
       return tf_utils.smart_cond(training, _do_update, _fake_update)
 
     # TODO(yuefengz): colocate the operations
-<<<<<<< HEAD
-    update_new_mean = _update_renorm_variable(self.renorm_mean,
-                                              self.renorm_mean_weight, mean,
-                                              inputs_size)
-    update_new_stddev = _update_renorm_variable(self.renorm_stddev,
-                                                self.renorm_stddev_weight,
-                                                stddev, inputs_size)
-=======
     update_new_mean = _update_renorm_variable(self.renorm_mean, mean,
                                               inputs_size)
     update_new_stddev = _update_renorm_variable(self.renorm_stddev, stddev,
                                                 inputs_size)
->>>>>>> upstream/master
 
     # Update the inference mode moving averages with the batch value.
     with ops.control_dependencies([update_new_mean, update_new_stddev]):

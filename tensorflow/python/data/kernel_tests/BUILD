@@ -103,10 +103,7 @@ tf_py_test(
     ],
     tags = [
         "no_rocm",
-<<<<<<< HEAD
         "no_cuda",
-=======
->>>>>>> upstream/master
     ],
 )
 

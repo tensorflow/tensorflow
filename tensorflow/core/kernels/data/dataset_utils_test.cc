@@ -62,8 +62,6 @@ TEST(DatasetUtilsTest, VariantTensorDataNonExistentKey) {
             reader.ReadTensor("NonExistentKey", &val_tensor).code());
 }
 
-<<<<<<< HEAD
-=======
 TEST(DatasetUtilsTest, HashSubgraphFunctionSameFunctionDifferentNames) {
   FunctionDefLibrary fl1;
 
@@ -131,7 +129,6 @@ TEST(DatasetUtilsTest, HashSubgraphFunctionDifferentInternalNodeNames) {
   EXPECT_EQ(HashSubgraphFunction(fl1, f1), HashSubgraphFunction(fl1, f2));
 }
 
->>>>>>> upstream/master
 TEST(DatasetUtilsTest, HashSubgraphSameGraphDifferentNames) {
   GraphDef gd;
 
@@ -294,16 +291,9 @@ TEST(DatasetUtilsTest, HashSubgraphInputPortChanged) {
 
 TEST(DatasetUtilsTest, HashSubgraphSameFunctionDifferentNames) {
   GraphDef gd;
-<<<<<<< HEAD
-
-  FunctionDefLibrary* fl1 = gd.mutable_library();
-  FunctionDef* f1 = fl1->add_function();
-
-=======
   FunctionDefLibrary* fl1 = gd.mutable_library();
 
   FunctionDef* f1 = fl1->add_function();
->>>>>>> upstream/master
   *f1 = FunctionDefHelper::Create(
       "AddAndMul", {"i: float"}, {"o: float"}, {},
       {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
@@ -361,14 +351,7 @@ TEST(DatasetUtilsTest, HashSubgraphSameFunctionDifferentNames) {
 
   uint64 hash2 = HashSubgraph(gd, n2);
 
-<<<<<<< HEAD
-  // Currently, this is EXPECT_NE because we hash the entire function def, but
-  // this will change to EXPECT_EQ when we have better handling of functions.
-  // (See TODO in dataset_utils.cc)
-  EXPECT_NE(hash1, hash2);
-=======
   EXPECT_EQ(hash1, hash2);
->>>>>>> upstream/master
 }
 
 TEST(DatasetUtilsTest, HashSubgraphDifferentFunctions) {
@@ -391,11 +374,7 @@ TEST(DatasetUtilsTest, HashSubgraphDifferentFunctions) {
       {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
        {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
       /*ret_def=*/{{"o", "ret:z:0"}},
-<<<<<<< HEAD
-      /*control_ret_def=*/{{"must_execute", "mul"}});
-=======
       /*control_ret_def=*/{{"must_execute", "ret"}});
->>>>>>> upstream/master
   *f2 = func;
 
   AttrValue a1;

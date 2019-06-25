@@ -661,13 +661,8 @@ cc_test(
     copts = tflite_copts(),
     shard_count = 2,
     deps = [
-<<<<<<< HEAD
-        ":common",
-        ":compatibility",
-=======
         ":compatibility",
         ":cpu_check",
->>>>>>> upstream/master
         ":optimized_base",
         ":reference_base",
         ":test_util",

@@ -1970,14 +1970,11 @@ class Model(network.Network):
           updates += self.get_updates_for(None)
           # Conditional updates relevant to this model
           updates += self.get_updates_for(self.inputs)
-<<<<<<< HEAD
-=======
 
         metrics = self._get_training_eval_metrics()
         metrics_tensors = [
             m._call_result for m in metrics if hasattr(m, '_call_result')  # pylint: disable=protected-access
         ]
->>>>>>> upstream/master
 
       with K.name_scope('training'):
         # Gets loss and metrics. Updates weights at each call.

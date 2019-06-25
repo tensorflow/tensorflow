@@ -90,11 +90,7 @@ class InterleaveMany : public Node {
   // The processing time is the sum of the self processing time and the average
   // processing time of inputs comprising the interleave "cycle".
   double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
-<<<<<<< HEAD
-    if (inputs_.size() <= 1) {
-=======
     if (num_inputs() <= 1) {
->>>>>>> upstream/master
       return SelfProcessingTimeLocked();
     }
     double processing_time = (TotalProcessingTimeForInputs() -
@@ -163,11 +159,7 @@ class AsyncInterleaveMany : public Node {
   // The processing time is the sum of the self processing time and the average
   // processing time of inputs comprising the interleave "cycle".
   double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
-<<<<<<< HEAD
-    if (inputs_.size() <= 1) {
-=======
     if (num_inputs() <= 1) {
->>>>>>> upstream/master
       return SelfProcessingTimeLocked();
     }
     double processing_time =
@@ -210,11 +202,7 @@ class KnownRatio : public Node {
   // The processing time is the sum of the self processing time and the product
   // of `ratio_` and the sum of processing times of inputs.
   double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
-<<<<<<< HEAD
-    return SelfProcessingTimeLocked() + ratio_ * ProcessingTimeForInputs();
-=======
     return SelfProcessingTimeLocked() + ratio_ * TotalProcessingTimeForInputs();
->>>>>>> upstream/master
   }
 
  private:
@@ -272,11 +260,7 @@ class AsyncKnownRatio : public Node {
   // The processing time is the sum of the self processing time and the product
   // of `ratio_` and the sum of processing times of inputs.
   double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
-<<<<<<< HEAD
-    return SelfProcessingTimeLocked() + ratio_ * ProcessingTimeForInputs();
-=======
     return SelfProcessingTimeLocked() + ratio_ * TotalProcessingTimeForInputs();
->>>>>>> upstream/master
   }
 
  private:
@@ -352,11 +336,7 @@ class Unknown : public Node {
 
   // The processing time is the sum of processing times of inputs.
   double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
-<<<<<<< HEAD
-    return ProcessingTimeForInputs();
-=======
     return TotalProcessingTimeForInputs();
->>>>>>> upstream/master
   }
 };
 

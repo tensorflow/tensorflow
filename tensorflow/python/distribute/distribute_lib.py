@@ -724,14 +724,10 @@ class Strategy(object):
       (for example, if running on a single replica).
     """
     with self.scope():
-<<<<<<< HEAD
-      fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx())
-=======
       # tf.distribute supports Eager functions, so AutoGraph should not be
       # applied when when the caller is also in Eager mode.
       fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx(),
                                 convert_by_default=False)
->>>>>>> upstream/master
       return self._extended.call_for_each_replica(fn, args=args, kwargs=kwargs)
 
   def reduce(self, reduce_op, value, axis):

@@ -89,11 +89,7 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
   block_map->traversal_order = BlockMapTraversalOrder::kLinear;
   if (RUY_OPT_ENABLED(RUY_OPT_FRACTAL) &&
       (rows * lhs_scalar_size + cols * rhs_scalar_size) * depth >=
-<<<<<<< HEAD
-          kCacheFriendlyLoopThreshold) {
-=======
           cache_friendly_traversal_threshold) {
->>>>>>> upstream/master
     block_map->traversal_order = RUY_OPT_ENABLED(RUY_OPT_FRACTAL_U)
                                      ? BlockMapTraversalOrder::kFractalU
                                      : BlockMapTraversalOrder::kFractalZ;

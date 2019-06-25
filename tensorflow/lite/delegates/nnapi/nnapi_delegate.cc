@@ -136,8 +136,6 @@ bool IsHybridOperator(const TfLiteContext* context, int builtin_code,
       const TfLiteType weights_type = context->tensors[weights_id].type;
       return IsFloat(input_type) && IsQuantized(weights_type);
     }
-<<<<<<< HEAD
-=======
     case kTfLiteBuiltinBidirectionalSequenceLstm: {
       const int input_id = node->inputs->data[0];
       // Input #1 is optional so use #2 to determine if hybrid.
@@ -146,7 +144,6 @@ bool IsHybridOperator(const TfLiteContext* context, int builtin_code,
       const TfLiteType weights_type = context->tensors[weights_id].type;
       return IsFloat(input_type) && IsQuantized(weights_type);
     }
->>>>>>> upstream/master
     case kTfLiteBuiltinUnidirectionalSequenceRnn: {
       const int input_id = node->inputs->data[0];
       const int weights_id = node->inputs->data[1];
@@ -1605,8 +1602,6 @@ class NNAPIDelegateKernel {
           }
         }
       } break;
-<<<<<<< HEAD
-=======
       case kTfLiteBuiltinGather: {
         if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
           const auto& input = context->tensors[node->inputs->data[0]];
@@ -1672,7 +1667,6 @@ class NNAPIDelegateKernel {
           };
         }
         break;
->>>>>>> upstream/master
       default:
         // All other operators are not mapped.
         return nullptr;
@@ -2093,23 +2087,15 @@ class NNAPIDelegateKernel {
             TF_LITE_ENSURE_STATUS(
                 builder.AddTensorInput(input_index, hybrid_op));
           }
-<<<<<<< HEAD
-        } else if (reg->builtin_code == kTfLiteBuiltinTopkV2 &&
-                   num_added_inputs > 0) {
-=======
         } else if (reg->builtin_code == kTfLiteBuiltinTopkV2 && input_pos > 0) {
->>>>>>> upstream/master
           // The K parameter tensor is not handled here but by the functor
           // returned by Map, the input tensor is instead added in
           // the else clause below
           continue;
-<<<<<<< HEAD
-=======
         } else if (reg->builtin_code == kTfLiteBuiltinGather) {
           // Everything is added during Map since input tensors
           // have different order.
           continue;
->>>>>>> upstream/master
         } else {
           TF_LITE_ENSURE_STATUS(
               builder.AddTensorInput(input_index, hybrid_op, scalar_as_tensor));

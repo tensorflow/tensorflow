@@ -72,8 +72,6 @@ void LogNotCompilable(const Node& node, absl::string_view reason = "") {
 
 }  // anonymous namespace
 
-<<<<<<< HEAD
-=======
 std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
 RecursiveCompilabilityChecker::FindUncompilableNodes(
     const Node& node, FunctionLibraryRuntime* lib_runtime,
@@ -114,7 +112,6 @@ RecursiveCompilabilityChecker::FindUncompilableNodes(
   return uncompilable_nodes;
 }
 
->>>>>>> upstream/master
 bool RecursiveCompilabilityChecker::HasXLAKernel(const Node& node) const {
   // There is a SymbolicGradient kernel on the XLA_JIT device, but the gradient
   // is really a kind of function call and will be handled by

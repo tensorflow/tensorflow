@@ -31,8 +31,6 @@ namespace grappler {
 
 namespace {
 
-<<<<<<< HEAD
-=======
 inline int GetNumGPUs(const Cluster& cluster) {
   auto devices = cluster.GetDevices();
   int num_gpus = 0;
@@ -44,7 +42,6 @@ inline int GetNumGPUs(const Cluster& cluster) {
   return num_gpus;
 }
 
->>>>>>> upstream/master
 Status ExpandLayoutSensitiveOp(TransposeContext* context,
                                TransposerFactory* transposer_factory) {
   const int num_nodes = context->num_nodes;
@@ -162,34 +159,20 @@ Status EraseCancellableNodes(TransposeContext* context) {
       continue;
     }
     const auto& regular_fanin_0 = node->GetRegularFanin(0);
-<<<<<<< HEAD
-    auto* input_transpose = regular_fanin_0.node_view();
-    if (!IsCancellableNodePair(*node, *input_transpose)) {
-=======
     auto* fanin_node = regular_fanin_0.node_view();
     if (!IsCancellableNodePair(*node, *fanin_node)) {
->>>>>>> upstream/master
       continue;
     }
     // Skip transpose not added by optimizer.
     if ((node->GetRegularFanouts().size() != 1 &&
          node->NumControlledFanouts() != 0) ||
-<<<<<<< HEAD
-        (input_transpose->GetRegularFanouts().size() != 1 &&
-         input_transpose->NumControlledFanouts() != 0)) {
-=======
         (fanin_node->GetRegularFanouts().size() != 1 &&
          fanin_node->NumControlledFanouts() != 0)) {
->>>>>>> upstream/master
       VLOG(1) << "There is always only a single output for a Transpose "
                  "node, due to the way it is added by Layout Optimizer.";
       continue;
     }
-<<<<<<< HEAD
-    const auto& fanin_to_forward = input_transpose->GetRegularFanin(0);
-=======
     const auto& fanin_to_forward = fanin_node->GetRegularFanin(0);
->>>>>>> upstream/master
     TensorId fanin_id_to_forward(fanin_to_forward.node_view()->GetName(),
                                  fanin_to_forward.index());
     for (const auto& regular_fanout : node->GetRegularFanout(0)) {
@@ -198,9 +181,6 @@ Status EraseCancellableNodes(TransposeContext* context) {
                                         fanin_id_to_forward);
     }
     mutation->RemoveNode(node);
-<<<<<<< HEAD
-    mutation->RemoveNode(input_transpose);
-=======
     if (node->NumRegularFanins() > 1) {
       mutation->RemoveNode(node->GetRegularFanin(1).node_view());
     }
@@ -208,7 +188,6 @@ Status EraseCancellableNodes(TransposeContext* context) {
     if (fanin_node->NumRegularFanins() > 1) {
       mutation->RemoveNode(fanin_node->GetRegularFanin(1).node_view());
     }
->>>>>>> upstream/master
   }
   return mutation->Apply();
 }
@@ -218,16 +197,10 @@ Status EraseOutputShapeAttrs(TransposeContext* context) {
   utils::Mutation* mutation = graph_view->GetMutationBuilder();
   const int num_nodes = graph_view->NumNodes();
   for (int i = 0; i < num_nodes; ++i) {
-<<<<<<< HEAD
-    mutation->RemoveNodeAttr(graph_view->GetNode(i), "_output_shapes");
-  }
-  return mutation->Apply();
-=======
     mutation->RemoveNodeAttr(graph_view->GetNode(i), kAttrOutputShape);
     TF_RETURN_IF_ERROR(mutation->Apply());
   }
   return Status::OK();
->>>>>>> upstream/master
 }
 
 }  // namespace
@@ -235,17 +208,6 @@ Status EraseOutputShapeAttrs(TransposeContext* context) {
 Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
                                         const GrapplerItem& item,
                                         GraphDef* output) {
-<<<<<<< HEAD
-  // If optimizer returns early with error, output will be the input graph.
-  *output = item.graph;
-  TransposeContext context;
-  TF_RETURN_IF_ERROR(
-      TransposeContext::InitializeTransposeContext(item, cluster, &context));
-  TransposerFactory transposer_factory;
-  TF_RETURN_IF_ERROR(ExpandLayoutSensitiveOp(&context, &transposer_factory));
-  TF_RETURN_IF_ERROR(ExpandLayoutAgnosticOp(&context, &transposer_factory));
-  // TODO(lyandy): Merge non cancellable nodes.
-=======
   if (cluster == nullptr) {
     LOG(WARNING)
         << "generic layout optimizer was called with cluster == nullptr";
@@ -263,7 +225,6 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
   TransposerFactory transposer_factory;
   TF_RETURN_IF_ERROR(ExpandLayoutSensitiveOp(&context, &transposer_factory));
   TF_RETURN_IF_ERROR(ExpandLayoutAgnosticOp(&context, &transposer_factory));
->>>>>>> upstream/master
   TF_RETURN_IF_ERROR(EraseCancellableNodes(&context));
   TF_RETURN_IF_ERROR(EraseOutputShapeAttrs(&context));
 
@@ -278,28 +239,6 @@ void GenericLayoutOptimizer::Feedback(Cluster* cluster,
   // Takes no feedback.
 }
 
-<<<<<<< HEAD
-string GetAndValidateParameter(const string& parameter,
-                               const AttrValueMap& parameter_map,
-                               const std::set<string>& valid_inputs,
-                               std::vector<string>* validation_errors,
-                               std::vector<string>* missing_parameters) {
-  if (parameter_map.find(parameter) != parameter_map.end()) {
-    string input = str_util::Uppercase(parameter_map.at(parameter).s());
-    if (valid_inputs.find(input) != valid_inputs.end()) {
-      return input;
-    }
-    validation_errors->push_back(absl::StrCat(
-        "Invalid input ", input, " for parameter ", parameter,
-        ", must be one of [", str_util::Join(valid_inputs, ", "), "]."));
-  } else {
-    missing_parameters->push_back(parameter);
-  }
-  return "";
-}
-
-=======
->>>>>>> upstream/master
 Status GenericLayoutOptimizer::Init(
     const RewriterConfig_CustomGraphOptimizer* config) {
   return Status::OK();

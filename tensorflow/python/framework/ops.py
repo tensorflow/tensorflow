@@ -6225,13 +6225,7 @@ class name_scope(object):  # pylint: disable=invalid-name
       return self._name_scope.__enter__()
 
     if self._in_eager_mode:
-<<<<<<< HEAD
-      scope_name, old_name = enter_eager_name_scope(self._ctx, self._name,
-                                                    self._default_name)
-      self._old_name = old_name
-=======
       scope_name, self._old_name = enter_eager_name_scope(self._ctx, self._name)
->>>>>>> upstream/master
       return scope_name
     else:
       if self._name is None and self._values is not None:
@@ -6270,39 +6264,20 @@ class name_scope(object):  # pylint: disable=invalid-name
     return False  # False values do not suppress exceptions
 
 
-<<<<<<< HEAD
-def enter_eager_name_scope(ctx, name, default_name=None):
-=======
 def enter_eager_name_scope(ctx, name):
->>>>>>> upstream/master
   """Updates the eager context to enter the given name scope."""
   old_name = ctx.scope_name
   if not name:
     scope_name = ""
   else:
-<<<<<<< HEAD
-    if name[-1] == "/":
-=======
     if name.endswith("/"):
->>>>>>> upstream/master
       # A trailing slash breaks out of nested name scopes, indicating a
       # fully specified scope name, for compatibility with Graph.name_scope.
       scope_name = name
     else:
-<<<<<<< HEAD
-      # TODO(tomhennigan) Benchmark and consider removing the cache.
-      cache_key = name, old_name, default_name
-      scope_name = name_scope_cache.get(cache_key, None)
-      if scope_name is None:
-        scope_name = name + "/"
-        if old_name:
-          scope_name = old_name + scope_name
-        name_scope_cache[cache_key] = scope_name
-=======
       scope_name = name + "/"
       if old_name:
         scope_name = old_name + scope_name
->>>>>>> upstream/master
   ctx.scope_name = scope_name
   return scope_name, old_name
 
