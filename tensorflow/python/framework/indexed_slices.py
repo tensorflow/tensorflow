@@ -188,7 +188,7 @@ class IndexedSlicesSpec(type_spec.TypeSpec):
   value_type = property(lambda self: IndexedSlices)
 
   def __init__(self, shape=None, dtype=dtypes.float32,
-               indices_dtype=dtypes.int64, dense_shape_dtype=True,
+               indices_dtype=dtypes.int64, dense_shape_dtype=None,
                indices_shape=None):
     """Constructs a type specification for a `tf.IndexedSlices`.
 
