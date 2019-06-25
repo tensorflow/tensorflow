@@ -226,7 +226,7 @@ class IndexedSlicesSpec(type_spec.TypeSpec):
     if self._dense_shape_dtype is not None:
       specs.append(
           tensor_spec.TensorSpec([self._shape.ndims], self._dense_shape_dtype))
-    return specs
+    return tuple(specs)
 
   def _to_components(self, value):
     if value.dense_shape is None:
