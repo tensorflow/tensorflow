@@ -1,4 +1,13 @@
 op {
   graph_op_name: "Lgamma"
   summary: "Computes the log of the absolute value of `Gamma(x)` element-wise."
+  description: <<END
+  This function computes log((input - 1)!) for every element in the tensor.
+  lgamma(5) = log((5-1)!) = log(4!) = log(24) = 3.1780539
+
+  ```python
+  x = tf.constant([0, 0.5, 1, 5])
+  tf.math.lgamma(x) ==> [inf, 0.5723649, 0. , 3.1780539]
+  ```
+END
 }
