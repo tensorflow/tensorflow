@@ -29,6 +29,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import special_math
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
 
 
 class RandomOpsTest(xla_test.XLATestCase):
