@@ -3681,7 +3681,6 @@ def extract_glimpse(
     
   Usage Example:
     ```python
-    import tensorflow as tf
     BATCH_SIZE = 2
     IMAGE_HEIGHT = 256
     IMAGE_WIDTH = 256
@@ -3689,9 +3688,9 @@ def extract_glimpse(
     GLIMPSE_SIZE = (24, 24)
     image = tf.random.normal(shape=(BATCH_SIZE, IMAGE_HEIGHT, 
     IMAGE_WIDTH, CHANNELS) )
-    offsets_variable = tf.random.uniform(shape=(BATCH_SIZE, 2))
+    offsets = tf.random.uniform(shape=(BATCH_SIZE, 2))
     output = tf.image.extract_glimpse(image, size=GLIMPSE_SIZE, 
-    offsets=offsets_variable)
+    offsets=offsets)
     print(output.shape)
     ```    
   """
@@ -3762,8 +3761,7 @@ def extract_glimpse_v2(
     A `Tensor` of type `float32`.
   
   Usage Example:
-    ```python
-    import tensorflow as tf
+    ```python    
     BATCH_SIZE = 2
     IMAGE_HEIGHT = 256
     IMAGE_WIDTH = 256
@@ -3771,9 +3769,9 @@ def extract_glimpse_v2(
     GLIMPSE_SIZE = (24, 24)
     image = tf.random.normal(shape=(BATCH_SIZE, IMAGE_HEIGHT, 
     IMAGE_WIDTH, CHANNELS) )
-    offsets_variable = tf.random.uniform(shape=(BATCH_SIZE, 2))
+    offsets = tf.random.uniform(shape=(BATCH_SIZE, 2))
     output = tf.image.extract_glimpse(image, size=GLIMPSE_SIZE, 
-    offsets=offsets_variable)
+    offsets=offsets)
     print(output.shape)
     ```
 
