@@ -45,173 +45,24 @@ struct ArgConverter {
 
   /// Erase any rewrites registered for arguments to blocks within the given
   /// region. This function is called when the given region is to be destroyed.
-  void cancelPendingRewrites(Region &region) {
-    for (auto &block : region) {
-      auto it = argMapping.find(&block);
-      if (it == argMapping.end())
-        continue;
-      for (auto *op : it->second) {
-        // If the operation exists within the parent block, like with 1->N cast
-        // operations, we don't need to drop them. They will be automatically
-        // cleaned up with the region is destroyed.
-        if (op->getBlock())
-          continue;
-
-        op->dropAllDefinedValueUses();
-        op->destroy();
-      }
-      argMapping.erase(it);
-    }
-  }
+  void cancelPendingRewrites(Region &region);
 
   /// Cleanup and undo any generated conversion values.
-  void discardRewrites() {
-    // On failure reinstate all of the original block arguments.
-    Block *block;
-    ArrayRef<Operation *> argOps;
-    for (auto &mapping : argMapping) {
-      std::tie(block, argOps) = mapping;
-
-      // Erase all of the new arguments.
-      for (int i = block->getNumArguments() - 1; i >= 0; --i) {
-        block->getArgument(i)->dropAllUses();
-        block->eraseArgument(i, /*updatePredTerms=*/false);
-      }
-
-      // Re-instate the old arguments.
-      for (unsigned i = 0, e = argOps.size(); i != e; ++i) {
-        auto *op = argOps[i];
-        auto *arg = block->addArgument(op->getResult(0)->getType());
-        op->getResult(0)->replaceAllUsesWith(arg);
-
-        // If this was a 1->N value mapping it exists within the parent block so
-        // erase it instead of destroying.
-        if (op->getBlock())
-          op->erase();
-        else
-          op->destroy();
-      }
-    }
-    argMapping.clear();
-  }
+  void discardRewrites();
 
   /// Replace usages of the cast operations with the argument directly.
-  LogicalResult applyRewrites() {
-    Block *block;
-    ArrayRef<Operation *> argOps;
-
-    LogicalResult result = success();
-    for (auto &mapping : argMapping) {
-      std::tie(block, argOps) = mapping;
-
-      // Process the remapping for each of the original arguments.
-      for (unsigned i = 0, e = argOps.size(); i != e; ++i) {
-        auto *op = argOps[i];
-
-        // Handle the case of a 1->N value mapping.
-        if (op->getNumOperands() > 1) {
-          // If all of the uses were removed, we can drop this op. Otherwise,
-          // keep the operation alive and let the user handle any remaining
-          // usages.
-          if (op->use_empty())
-            op->erase();
-          continue;
-        }
-
-        // Handle the case where this argument had a direct mapping.
-        if (op->getNumOperands() == 1) {
-          op->getResult(0)->replaceAllUsesWith(op->getOperand(0));
-          // Otherwise, this argument was expected to be dropped.
-        } else if (!op->getResult(0)->use_empty()) {
-          // Don't emit another error if we already have one.
-          if (!failed(result)) {
-            auto *parent = block->getParent();
-            auto diag = parent->getContext()->emitError(parent->getLoc())
-                        << "block argument #" << i << " with type "
-                        << op->getResult(0)->getType()
-                        << " has unexpected remaining uses";
-            auto *user = *op->getResult(0)->user_begin();
-            diag.attachNote(user->getLoc())
-                << "unexpected user defined here : " << *user;
-            result = failure();
-          }
-          // Move this fake producer to the beginning of the parent block, we
-          // can't recover from this failure and we want to make sure the
-          // operations get cleaned up. Recovering from this would require
-          // detecting that an argument would be unused before applying all of
-          // the operation rewrites, which can get quite expensive.
-          block->push_front(op);
-          continue;
-        }
-        op->destroy();
-      }
-    }
-    return result;
-  }
+  LogicalResult applyRewrites();
 
   /// Converts the signature of the given entry block.
   void convertSignature(Block *block, PatternRewriter &rewriter,
                         TypeConverter &converter,
                         TypeConverter::SignatureConversion &signatureConversion,
-                        BlockAndValueMapping &mapping) {
-    unsigned origArgCount = block->getNumArguments();
-    auto convertedTypes = signatureConversion.getConvertedArgTypes();
-    if (origArgCount == 0 && convertedTypes.empty())
-      return;
-
-    SmallVector<Value *, 4> newArgRange(block->addArguments(convertedTypes));
-    ArrayRef<Value *> newArgRef(newArgRange);
-
-    // Remap each of the original arguments as determined by the signature
-    // conversion.
-    auto &newArgMapping = argMapping[block];
-    rewriter.setInsertionPointToStart(block);
-    for (unsigned i = 0; i != origArgCount; ++i) {
-      ArrayRef<Value *> remappedValues;
-      if (auto inputMap = signatureConversion.getInputMapping(i))
-        remappedValues = newArgRef.slice(inputMap->inputNo, inputMap->size);
-
-      BlockArgument *arg = block->getArgument(i);
-      newArgMapping.push_back(
-          convertArgument(arg, remappedValues, rewriter, converter, mapping));
-    }
-
-    // Erase all of the original arguments.
-    for (unsigned i = 0; i != origArgCount; ++i)
-      block->eraseArgument(0, /*updatePredTerms=*/false);
-  }
+                        BlockAndValueMapping &mapping);
 
   /// Converts the arguments of the given block.
   LogicalResult convertArguments(Block *block, PatternRewriter &rewriter,
                                  TypeConverter &converter,
-                                 BlockAndValueMapping &mapping) {
-    unsigned origArgCount = block->getNumArguments();
-    if (origArgCount == 0)
-      return success();
-
-    // Convert the types of each of the block arguments.
-    SmallVector<SmallVector<Type, 1>, 4> newArgTypes(origArgCount);
-    for (unsigned i = 0; i != origArgCount; ++i) {
-      auto *arg = block->getArgument(i);
-      if (failed(converter.convertType(arg->getType(), newArgTypes[i])))
-        return arg->getContext()->emitError(block->getParent()->getLoc())
-               << "could not convert block argument of type " << arg->getType();
-    }
-
-    // Remap all of the original argument values.
-    auto &newArgMapping = argMapping[block];
-    rewriter.setInsertionPointToStart(block);
-    for (unsigned i = 0; i != origArgCount; ++i) {
-      SmallVector<Value *, 1> newArgs(block->addArguments(newArgTypes[i]));
-      newArgMapping.push_back(convertArgument(block->getArgument(i), newArgs,
-                                              rewriter, converter, mapping));
-    }
-
-    // Erase all of the original arguments.
-    for (unsigned i = 0; i != origArgCount; ++i)
-      block->eraseArgument(0, /*updatePredTerms=*/false);
-    return success();
-  }
+                                 BlockAndValueMapping &mapping);
 
   /// Convert the given block argument given the provided set of new argument
   /// values that are to replace it. This function returns the operation used
@@ -220,37 +71,11 @@ struct ArgConverter {
                              ArrayRef<Value *> newValues,
                              PatternRewriter &rewriter,
                              TypeConverter &converter,
-                             BlockAndValueMapping &mapping) {
-    // Handle the cases of 1->0 or 1->1 mappings.
-    if (newValues.size() < 2) {
-      // Create a temporary producer for the argument during the conversion
-      // process.
-      auto *cast = createCast(newValues, origArg->getType());
-      origArg->replaceAllUsesWith(cast->getResult(0));
-
-      // Insert a mapping between this argument and the one that is replacing
-      // it.
-      if (!newValues.empty())
-        mapping.map(cast->getResult(0), newValues[0]);
-      return cast;
-    }
-
-    // Otherwise, this is a 1->N mapping. Call into the provided type converter
-    // to pack the new values.
-    auto *cast = converter.materializeConversion(rewriter, origArg->getType(),
-                                                 newValues, loc);
-    assert(cast->getNumResults() == 1 &&
-           cast->getNumOperands() == newValues.size());
-    origArg->replaceAllUsesWith(cast->getResult(0));
-    return cast;
-  }
+                             BlockAndValueMapping &mapping);
 
   /// A utility function used to create a conversion cast operation with the
   /// given input and result types.
-  Operation *createCast(ArrayRef<Value *> inputs, Type outputType) {
-    return Operation::create(loc, castOpName, inputs, outputType, llvm::None,
-                             llvm::None, 0, false, outputType.getContext());
-  }
+  Operation *createCast(ArrayRef<Value *> inputs, Type outputType);
 
   /// This is an operation name for a fake operation that is inserted during the
   /// conversion process. Operations of this type are guaranteed to never escape
@@ -268,6 +93,216 @@ struct ArgConverter {
 };
 
 constexpr StringLiteral ArgConverter::kCastName;
+
+/// Erase any rewrites registered for arguments to blocks within the given
+/// region. This function is called when the given region is to be destroyed.
+void ArgConverter::cancelPendingRewrites(Region &region) {
+  for (auto &block : region) {
+    auto it = argMapping.find(&block);
+    if (it == argMapping.end())
+      continue;
+    for (auto *op : it->second) {
+      // If the operation exists within the parent block, like with 1->N cast
+      // operations, we don't need to drop them. They will be automatically
+      // cleaned up with the region is destroyed.
+      if (op->getBlock())
+        continue;
+
+      op->dropAllDefinedValueUses();
+      op->destroy();
+    }
+    argMapping.erase(it);
+  }
+}
+
+/// Cleanup and undo any generated conversion values.
+void ArgConverter::discardRewrites() {
+  // On failure reinstate all of the original block arguments.
+  Block *block;
+  ArrayRef<Operation *> argOps;
+  for (auto &mapping : argMapping) {
+    std::tie(block, argOps) = mapping;
+
+    // Erase all of the new arguments.
+    for (int i = block->getNumArguments() - 1; i >= 0; --i) {
+      block->getArgument(i)->dropAllUses();
+      block->eraseArgument(i, /*updatePredTerms=*/false);
+    }
+
+    // Re-instate the old arguments.
+    for (unsigned i = 0, e = argOps.size(); i != e; ++i) {
+      auto *op = argOps[i];
+      auto *arg = block->addArgument(op->getResult(0)->getType());
+      op->getResult(0)->replaceAllUsesWith(arg);
+
+      // If this was a 1->N value mapping it exists within the parent block so
+      // erase it instead of destroying.
+      if (op->getBlock())
+        op->erase();
+      else
+        op->destroy();
+    }
+  }
+  argMapping.clear();
+}
+
+/// Replace usages of the cast operations with the argument directly.
+LogicalResult ArgConverter::applyRewrites() {
+  Block *block;
+  ArrayRef<Operation *> argOps;
+
+  LogicalResult result = success();
+  for (auto &mapping : argMapping) {
+    std::tie(block, argOps) = mapping;
+
+    // Process the remapping for each of the original arguments.
+    for (unsigned i = 0, e = argOps.size(); i != e; ++i) {
+      auto *op = argOps[i];
+
+      // Handle the case of a 1->N value mapping.
+      if (op->getNumOperands() > 1) {
+        // If all of the uses were removed, we can drop this op. Otherwise,
+        // keep the operation alive and let the user handle any remaining
+        // usages.
+        if (op->use_empty())
+          op->erase();
+        continue;
+      }
+
+      // Handle the case where this argument had a direct mapping.
+      if (op->getNumOperands() == 1) {
+        op->getResult(0)->replaceAllUsesWith(op->getOperand(0));
+        // Otherwise, this argument was expected to be dropped.
+      } else if (!op->getResult(0)->use_empty()) {
+        // Don't emit another error if we already have one.
+        if (!failed(result)) {
+          auto *parent = block->getParent();
+          auto diag = parent->getContext()->emitError(parent->getLoc())
+                      << "block argument #" << i << " with type "
+                      << op->getResult(0)->getType()
+                      << " has unexpected remaining uses";
+          auto *user = *op->getResult(0)->user_begin();
+          diag.attachNote(user->getLoc())
+              << "unexpected user defined here : " << *user;
+          result = failure();
+        }
+        // Move this fake producer to the beginning of the parent block, we
+        // can't recover from this failure and we want to make sure the
+        // operations get cleaned up. Recovering from this would require
+        // detecting that an argument would be unused before applying all of
+        // the operation rewrites, which can get quite expensive.
+        block->push_front(op);
+        continue;
+      }
+      op->destroy();
+    }
+  }
+  return result;
+}
+
+/// Converts the signature of the given entry block.
+void ArgConverter::convertSignature(
+    Block *block, PatternRewriter &rewriter, TypeConverter &converter,
+    TypeConverter::SignatureConversion &signatureConversion,
+    BlockAndValueMapping &mapping) {
+  unsigned origArgCount = block->getNumArguments();
+  auto convertedTypes = signatureConversion.getConvertedArgTypes();
+  if (origArgCount == 0 && convertedTypes.empty())
+    return;
+
+  SmallVector<Value *, 4> newArgRange(block->addArguments(convertedTypes));
+  ArrayRef<Value *> newArgRef(newArgRange);
+
+  // Remap each of the original arguments as determined by the signature
+  // conversion.
+  auto &newArgMapping = argMapping[block];
+  rewriter.setInsertionPointToStart(block);
+  for (unsigned i = 0; i != origArgCount; ++i) {
+    ArrayRef<Value *> remappedValues;
+    if (auto inputMap = signatureConversion.getInputMapping(i))
+      remappedValues = newArgRef.slice(inputMap->inputNo, inputMap->size);
+
+    BlockArgument *arg = block->getArgument(i);
+    newArgMapping.push_back(
+        convertArgument(arg, remappedValues, rewriter, converter, mapping));
+  }
+
+  // Erase all of the original arguments.
+  for (unsigned i = 0; i != origArgCount; ++i)
+    block->eraseArgument(0, /*updatePredTerms=*/false);
+}
+
+/// Converts the arguments of the given block.
+LogicalResult ArgConverter::convertArguments(Block *block,
+                                             PatternRewriter &rewriter,
+                                             TypeConverter &converter,
+                                             BlockAndValueMapping &mapping) {
+  unsigned origArgCount = block->getNumArguments();
+  if (origArgCount == 0)
+    return success();
+
+  // Convert the types of each of the block arguments.
+  SmallVector<SmallVector<Type, 1>, 4> newArgTypes(origArgCount);
+  for (unsigned i = 0; i != origArgCount; ++i) {
+    auto *arg = block->getArgument(i);
+    if (failed(converter.convertType(arg->getType(), newArgTypes[i])))
+      return arg->getContext()->emitError(block->getParent()->getLoc())
+             << "could not convert block argument of type " << arg->getType();
+  }
+
+  // Remap all of the original argument values.
+  auto &newArgMapping = argMapping[block];
+  rewriter.setInsertionPointToStart(block);
+  for (unsigned i = 0; i != origArgCount; ++i) {
+    SmallVector<Value *, 1> newArgs(block->addArguments(newArgTypes[i]));
+    newArgMapping.push_back(convertArgument(block->getArgument(i), newArgs,
+                                            rewriter, converter, mapping));
+  }
+
+  // Erase all of the original arguments.
+  for (unsigned i = 0; i != origArgCount; ++i)
+    block->eraseArgument(0, /*updatePredTerms=*/false);
+  return success();
+}
+
+/// Convert the given block argument given the provided set of new argument
+/// values that are to replace it. This function returns the operation used
+/// to perform the conversion.
+Operation *ArgConverter::convertArgument(BlockArgument *origArg,
+                                         ArrayRef<Value *> newValues,
+                                         PatternRewriter &rewriter,
+                                         TypeConverter &converter,
+                                         BlockAndValueMapping &mapping) {
+  // Handle the cases of 1->0 or 1->1 mappings.
+  if (newValues.size() < 2) {
+    // Create a temporary producer for the argument during the conversion
+    // process.
+    auto *cast = createCast(newValues, origArg->getType());
+    origArg->replaceAllUsesWith(cast->getResult(0));
+
+    // Insert a mapping between this argument and the one that is replacing
+    // it.
+    if (!newValues.empty())
+      mapping.map(cast->getResult(0), newValues[0]);
+    return cast;
+  }
+
+  // Otherwise, this is a 1->N mapping. Call into the provided type converter
+  // to pack the new values.
+  auto *cast = converter.materializeConversion(rewriter, origArg->getType(),
+                                               newValues, loc);
+  assert(cast->getNumResults() == 1 &&
+         cast->getNumOperands() == newValues.size());
+  origArg->replaceAllUsesWith(cast->getResult(0));
+  return cast;
+}
+
+/// A utility function used to create a conversion cast operation with the
+/// given input and result types.
+Operation *ArgConverter::createCast(ArrayRef<Value *> inputs, Type outputType) {
+  return Operation::create(loc, castOpName, inputs, outputType, llvm::None,
+                           llvm::None, 0, false, outputType.getContext());
+}
 
 //===----------------------------------------------------------------------===//
 // DialectConversionRewriter
