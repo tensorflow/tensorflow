@@ -71,6 +71,9 @@ cc_library(
 tf_cc_test(
     name = "bit_cast_test",
     srcs = ["bit_cast_test.cc"],
+    tags = [
+        "no_rocm", # hit build errors on new test
+    ],
     deps = [
         ":bit_cast",
         ":test",
