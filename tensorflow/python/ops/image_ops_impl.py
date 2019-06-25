@@ -3681,21 +3681,19 @@ def extract_glimpse(
     
   Usage Example:
     ```python
-    >> import tensorflow as tf
-    >> BATCH_SIZE = 2
-    >> IMAGE_HEIGHT = 256
-    >> IMAGE_WIDTH = 256
-    >> CHANNELS = 3
-    >> GLIMPSE_SIZE = (24, 24)
-    >>image = tf.random.normal(shape=(BATCH_SIZE, IMAGE_HEIGHT, 
+    import tensorflow as tf
+    BATCH_SIZE = 2
+    IMAGE_HEIGHT = 256
+    IMAGE_WIDTH = 256
+    CHANNELS = 3
+    GLIMPSE_SIZE = (24, 24)
+    image = tf.random.normal(shape=(BATCH_SIZE, IMAGE_HEIGHT, 
     IMAGE_WIDTH, CHANNELS) )
-    >> offsets_variable = tf.random.uniform(shape=(BATCH_SIZE, 2))
-    >> output = tf.image.extract_glimpse(image, size=GLIMPSE_SIZE, 
+    offsets_variable = tf.random.uniform(shape=(BATCH_SIZE, 2))
+    output = tf.image.extract_glimpse(image, size=GLIMPSE_SIZE, 
     offsets=offsets_variable)
-    >> print(output.shape)
-    ```
-  
-    
+    print(output.shape)
+    ```    
   """
   return gen_image_ops.extract_glimpse(
       input=input,
@@ -3765,18 +3763,18 @@ def extract_glimpse_v2(
   
   Usage Example:
     ```python
-    >> import tensorflow as tf
-    >> BATCH_SIZE = 2
-    >> IMAGE_HEIGHT = 256
-    >> IMAGE_WIDTH = 256
-    >> CHANNELS = 3
-    >> GLIMPSE_SIZE = (24, 24)
-    >>image = tf.random.normal(shape=(BATCH_SIZE, IMAGE_HEIGHT, 
+    import tensorflow as tf
+    BATCH_SIZE = 2
+    IMAGE_HEIGHT = 256
+    IMAGE_WIDTH = 256
+    CHANNELS = 3
+    GLIMPSE_SIZE = (24, 24)
+    image = tf.random.normal(shape=(BATCH_SIZE, IMAGE_HEIGHT, 
     IMAGE_WIDTH, CHANNELS) )
-    >> offsets_variable = tf.random.uniform(shape=(BATCH_SIZE, 2))
-    >> output = tf.image.extract_glimpse(image, size=GLIMPSE_SIZE, 
+    offsets_variable = tf.random.uniform(shape=(BATCH_SIZE, 2))
+    output = tf.image.extract_glimpse(image, size=GLIMPSE_SIZE, 
     offsets=offsets_variable)
-    >> print(output.shape)
+    print(output.shape)
     ```
 
   """
