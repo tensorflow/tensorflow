@@ -158,6 +158,7 @@ py_test(
         # No reason to run sanitizers or fastbuild for this test.
         "noasan",
         "nomsan",
+        "notap",  # TODO(b/135955435): Re-enable test after fixing flakiness.
         "notsan",
         "optonly",
     ],
