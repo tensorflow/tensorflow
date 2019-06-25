@@ -76,6 +76,7 @@ class TensorHandle : public core::RefCounted {
                Device* op_device, EagerContext* ctx);
   TensorHandle(std::unique_ptr<AsyncLocalTensorHandleData> t, Device* d,
                Device* op_device, Device* resource_device, DataType dtype,
+<<<<<<< HEAD
                EagerContext* ctx);
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -86,6 +87,18 @@ class TensorHandle : public core::RefCounted {
                EagerContext* ctx);
 #endif  // IS_MOBILE_PLATFORM
 
+=======
+               EagerContext* ctx);
+
+#if !defined(IS_MOBILE_PLATFORM)
+  TensorHandle(std::unique_ptr<RemoteTensorHandleData> t, DataType dtype,
+               Device* d, Device* resource_device, EagerContext* ctx);
+  TensorHandle(std::unique_ptr<UnshapedRemoteTensorHandleData> t,
+               DataType dtype, Device* d, Device* resource_device,
+               EagerContext* ctx);
+#endif  // IS_MOBILE_PLATFORM
+
+>>>>>>> upstream/master
  public:
   // TensorHandle with no assigned device
   static Status CreateLocalHandle(const class Tensor& t, TensorHandle** h);
@@ -105,6 +118,13 @@ class TensorHandle : public core::RefCounted {
                                    uint64 context_id, DataType dtype, Device* d,
                                    Device* resource_device, EagerContext* ctx,
                                    TensorHandle** h);
+<<<<<<< HEAD
+=======
+  static Status CreateRemoteHandle(std::unique_ptr<RemoteTensorHandleData> t,
+                                   DataType dtype, Device* d,
+                                   Device* resource_device, EagerContext* ctx,
+                                   TensorHandle** h);
+>>>>>>> upstream/master
   static Status CreateUnshapedRemoteHandle(int64 op_id, int32 output_num,
                                            eager::EagerClient* eager_client,
                                            uint64 context_id, DataType dtype,
@@ -115,9 +135,13 @@ class TensorHandle : public core::RefCounted {
   // Symbolic tensor constructor.
   TensorHandle(OutputGraphNode symbolic_tensor, DataType dtype);
 
+<<<<<<< HEAD
   ~TensorHandle() override {
     VLOG(3) << "Deleting internal TensorHandle " << this;
   }
+=======
+  ~TensorHandle() override { VLOG(3) << "Deleting TensorHandle " << this; }
+>>>>>>> upstream/master
 
   Status Tensor(const tensorflow::Tensor** t);
 
@@ -134,8 +158,18 @@ class TensorHandle : public core::RefCounted {
   Status NumElements(int64* num_elements);
 
 #if !defined(IS_MOBILE_PLATFORM)
+<<<<<<< HEAD
   // Return the op_id and output num if the handle refers to a remote tensor.
   Status RemoteAddress(int64* op_id, int32* output_num) const;
+=======
+  bool HasRemoteMirror(Device* d);
+  // TODO(gjn): Add Unshaped remote mirrors once EagerRemoteSendTensor supports
+  // async execution and EagerRemoteExecute is mirror-aware.
+  Status AddRemoteMirror(std::unique_ptr<RemoteTensorHandleData> t, Device* d);
+
+  // Return the op_id and output num if the handle refers to a remote tensor.
+  Status RemoteAddress(Device* d, int64* op_id, int32* output_num) const;
+>>>>>>> upstream/master
 
   // Called on an async remote tensor once it's shape has been determined. This
   // transitions the tensor handle from a non-ready to a ready state by
@@ -143,13 +177,28 @@ class TensorHandle : public core::RefCounted {
   // queried.
   // This method or Poison must be called exactly once for remote tensors that
   // were created without a known shape.
+<<<<<<< HEAD
   void SetRemoteShape(const TensorShape& shape);
+=======
+  Status SetRemoteShape(const TensorShape& shape);
+>>>>>>> upstream/master
 #endif
 
   // Sets the `tensor` for this async non-ready handle making it ready.
   // This method or Poison must be called exactly once for non-ready async
   // handles to make them ready.
+<<<<<<< HEAD
   void SetTensor(const tensorflow::Tensor& tensor);
+=======
+  Status SetTensor(const tensorflow::Tensor& tensor);
+
+  // Poisons this non-ready handle with an error `status`.
+  // Poisoning means that the handle will become ready and methods trying
+  // to access the actual tensor or shape will return this error `status`.
+  // Exactly one of SetTensor, SetRemoteShape, or Poison methods must be called
+  // on a non-ready tensor.
+  void Poison(Status status);
+>>>>>>> upstream/master
 
   // Poisons this non-ready handle with an error `status`.
   // Poisoning means that the handle will become ready and methods trying
@@ -159,7 +208,7 @@ class TensorHandle : public core::RefCounted {
   void Poison(Status status);
 
   Status CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
-                      TensorHandle** output);
+                      tensorflow::Tensor* output);
 
   // Warning: can return nullptr for CPU tensors.
   EagerContext* Context() { return ctx_; }
@@ -179,10 +228,10 @@ class TensorHandle : public core::RefCounted {
 
   string DebugString() const;
 
-  // If this TensorHandle is 1) a local tensor, and 2) a resource variable,
-  // return data type and shape of the resource variable.
-  Status GetResourceVariableDtypeAndShape(
-      std::pair<DataType, TensorShape>* result);
+  // If this TensorHandle is 1) a local tensor, and 2) a resource handle,
+  // return data types and shapes of the underlying resource.
+  Status GetResourceHandleDtypesAndShapes(
+      std::vector<DtypeAndPartialTensorShape>* result);
 
  private:
   // If the contents of the Tensor pointed to by this handle is yet to be
@@ -212,6 +261,13 @@ class TensorHandle : public core::RefCounted {
   tensorflow::Device* const resource_device_;
 
 #if !defined(IS_MOBILE_PLATFORM)
+<<<<<<< HEAD
+=======
+  mutable mutex remote_mirrors_mutex_;
+  std::map<tensorflow::Device*, std::unique_ptr<RemoteTensorHandleData>>
+      remote_mirrors_ GUARDED_BY(remote_mirrors_mutex_);
+
+>>>>>>> upstream/master
   // IDs required when this class is representing a remote tensor handle.
   const int64 remote_op_id_;
   const int32 remote_output_num_;
@@ -239,10 +295,15 @@ class TensorHandle : public core::RefCounted {
   std::unique_ptr<OutputGraphNode> symbolic_tensor_;
 
   // If this TensorHandle is 1) a local tensor, and 2) a resource handle, we
+<<<<<<< HEAD
   // we store the container and name to be able to get the data type and shape
   // in a call to GetResourceVariableDtypeAndShape.
   string resource_handle_container_;
   string resource_handle_name_;
+=======
+  // store data types and shapes for the underlying resource.
+  std::vector<DtypeAndPartialTensorShape> handle_dtypes_and_shapes_;
+>>>>>>> upstream/master
 
   // The TensorHandleData can either represent a local or remote tensor handle.
   // Further, it can be in a non-ready state. It would become ready with a call

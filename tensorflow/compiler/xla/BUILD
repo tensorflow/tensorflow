@@ -71,9 +71,12 @@ cc_library(
 tf_cc_test(
     name = "bit_cast_test",
     srcs = ["bit_cast_test.cc"],
+<<<<<<< HEAD
     tags = [
         "no_rocm", # hit build errors on new test
     ],
+=======
+>>>>>>> upstream/master
     deps = [
         ":bit_cast",
         ":test",
@@ -190,6 +193,10 @@ cc_library(
     hdrs = [
         "statusor.h",
     ],
+    linkopts = select({
+        "//tensorflow:freebsd": ["-lexecinfo"],
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":status",

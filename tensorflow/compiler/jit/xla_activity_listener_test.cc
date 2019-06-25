@@ -63,7 +63,10 @@ class XlaActivityListenerTest : public ::testing::Test {
     auto listener = absl::make_unique<TestListener>();
     listener_ = listener.get();
     RegisterXlaActivityListener(std::move(listener));
+<<<<<<< HEAD
     SetGlobalProcessIdMaker([]() { return "42-xyz"; });
+=======
+>>>>>>> upstream/master
   }
 
   TestListener* listener() const { return listener_; }
@@ -115,8 +118,12 @@ TEST_F(XlaActivityListenerTest, Test) {
                             &outputs));
 
   absl::string_view expected_auto_clustering_activity =
+<<<<<<< HEAD
       R"(global_process_id: "42-xyz"
 global_jit_level: ON_2
+=======
+      R"(global_jit_level: ON_2
+>>>>>>> upstream/master
 cpu_global_jit_enabled: true
 summary {
   unclustered_node_count: 4

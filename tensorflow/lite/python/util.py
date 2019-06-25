@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import sys
 
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.core.protobuf import config_pb2 as _config_pb2
@@ -26,7 +27,9 @@ from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
 from tensorflow.lite.toco import types_pb2 as _types_pb2
+from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import error_interpolation as _error_interpolation
 from tensorflow.python.framework import graph_util as tf_graph_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.training.saver import export_meta_graph as _export_meta_graph
@@ -285,3 +288,71 @@ def is_frozen_graph(sess):
     if op.type.startswith("Variable") or op.type.endswith("VariableOp"):
       return False
   return True
+
+
+def build_debug_info_func(original_graph):
+  """Returns a method to retrieve the `GraphDebugInfo` from the original graph.
+
+  Args:
+    original_graph: The original `Graph` containing all the op stack traces.
+
+  Returns:
+    A function which retrieves the stack traces from the original graph and
+    converts them to a `GraphDebugInfo` for a given set of nodes.
+  """
+  def f(original_nodes):
+    """Function to create `GraphDebugInfo` for the given `original_nodes`."""
+    if not original_graph:
+      return None
+    # For the given nodes, gets all the op definitions in the original graph.
+    useful_ops = []
+    for func, name in original_nodes:
+      try:
+        if not func:
+          useful_ops.append((func, original_graph.get_operation_by_name(name)))
+        else:
+          sub_func = original_graph._get_function(func)  # pylint: disable=protected-access
+          if isinstance(sub_func, function._EagerDefinedFunction):  # pylint: disable=protected-access
+            useful_ops.append(
+                (func, sub_func.graph.get_operation_by_name(name)))
+          else:
+            sys.stderr.write(
+                "Use '@tf.function' or '@defun' to decorate the function.")
+            continue
+      except KeyError:
+        # New node created by graph optimizer. No stack trace from source code.
+        continue
+    # Convert all the op definitions to stack traces in terms of GraphDebugInfo.
+    return _error_interpolation.create_graph_debug_info_def(useful_ops)
+
+  return f
+
+
+def get_debug_info(nodes_to_debug_info_func, converted_graph):
+  """Returns the debug info for the original nodes in the `converted_graph`.
+
+  Args:
+    nodes_to_debug_info_func: The method to collect the op debug info for the
+    nodes.
+    converted_graph: A `GraphDef` after optimization and transfermation.
+
+  Returns:
+    `GraphDebugInfo` for all the original nodes in `converted_graph`.
+  """
+  if not nodes_to_debug_info_func:
+    return None
+
+  # Collect all the debug info nodes from the converted_graph
+  original_nodes = set()
+  for node in converted_graph.node:
+    debug_nodes = node.experimental_debug_info.original_node_names
+    debug_funcs = node.experimental_debug_info.original_func_names
+    # If the `original_node_names` are empty, uses the node name directly.
+    if not debug_nodes:
+      original_nodes.add(("", node.name))
+    else:
+      for i in range(len(debug_nodes)):
+        original_nodes.add((debug_funcs[i], debug_nodes[i]))
+
+  # Convert the nodes to the debug info proto object.
+  return nodes_to_debug_info_func(original_nodes)

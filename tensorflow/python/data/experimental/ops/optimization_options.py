@@ -83,6 +83,13 @@ class OptimizationOptions(options.OptionsBase):
       "Whether to automatically tune performance knobs. If None, defaults to "
       "True.")
 
+  autotune_algorithm = options.create_option(
+      name="autotune_algorithm",
+      ty=int,
+      docstring=
+      "When autotuning is enabled (through `autotune`), identifies the "
+      "algorithm to use for the autotuning optimization.")
+
   autotune_cpu_budget = options.create_option(
       name="autotune_cpu_budget",
       ty=int,

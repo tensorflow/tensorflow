@@ -14,9 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #define EIGEN_USE_THREADS
+<<<<<<< HEAD
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+=======
+#if GOOGLE_CUDA
+#define EIGEN_USE_GPU
+#endif  // GOOGLE_CUDA
+>>>>>>> upstream/master
 
 #include "tensorflow/core/kernels/einsum_op.h"
 
@@ -39,9 +45,15 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/einsum_op_util.h"
 
+<<<<<<< HEAD
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/reduction_ops_common_gpu.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+=======
+#if GOOGLE_CUDA
+#include "tensorflow/core/kernels/reduction_ops_common_gpu.h"
+#endif  // GOOGLE_CUDA
+>>>>>>> upstream/master
 
 namespace tensorflow {
 
@@ -709,7 +721,11 @@ class EinsumOp : public OpKernel {
   bool output_has_ellipsis_ = false;
 };
 
+<<<<<<< HEAD
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+=======
+#if GOOGLE_CUDA
+>>>>>>> upstream/master
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T, N)                                      \
@@ -736,10 +752,19 @@ namespace functor {
 
 DECLARE_GPU_SPECS(double);
 DECLARE_GPU_SPECS(float);
+<<<<<<< HEAD
 #undef DECLARE_GPU_SPEC
 #undef DECLARE_GPU_SPECS
 }  // namespace functor
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+=======
+DECLARE_GPU_SPECS(complex64);
+DECLARE_GPU_SPECS(complex128);
+#undef DECLARE_GPU_SPEC
+#undef DECLARE_GPU_SPECS
+}  // namespace functor
+#endif  // GOOGLE_CUDA
+>>>>>>> upstream/master
 
 #define REGISTER_EINSUM(D, TYPE)                                   \
   REGISTER_KERNEL_BUILDER(                                         \
@@ -753,6 +778,7 @@ TF_CALL_complex64(REGISTER_CPU);
 TF_CALL_complex128(REGISTER_CPU);
 #undef REGISTER_CPU
 
+<<<<<<< HEAD
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GPU(TYPE) REGISTER_EINSUM(GPU, TYPE)
 TF_CALL_float(REGISTER_GPU);
@@ -761,6 +787,16 @@ TF_CALL_double(REGISTER_GPU);
 //TF_CALL_complex128(REGISTER_GPU);
 #undef REGISTER_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+=======
+#if GOOGLE_CUDA
+#define REGISTER_GPU(TYPE) REGISTER_EINSUM(GPU, TYPE)
+TF_CALL_float(REGISTER_GPU);
+TF_CALL_double(REGISTER_GPU);
+TF_CALL_complex64(REGISTER_GPU);
+TF_CALL_complex128(REGISTER_GPU);
+#undef REGISTER_GPU
+#endif  // GOOGLE_CUDA
+>>>>>>> upstream/master
 
 #undef REGISTER_EINSUM
 

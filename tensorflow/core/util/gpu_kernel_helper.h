@@ -93,10 +93,18 @@ inline const char* GpuGetErrorString(hipError_t error) {
 }
 #endif
 
+<<<<<<< HEAD
 inline const gpuStream_t& GetGpuStream(OpKernelContext* context) {
   // Returns a raw reference to the current cuda stream. Required by a
   // number of kernel calls (for which StreamInterface* does not work),
   // i.e. CUB and certain cublas primitives.
+=======
+// Exact copy from GetCudaStream() in gpu_launch_config.h
+// Returns a raw reference to the current cuda stream. Required by a
+// number of kernel calls (for which StreamInterface* does not work),
+// i.e. CUB and certain cublas primitives.
+inline const gpuStream_t& GetGpuStream(OpKernelContext* context) {
+>>>>>>> upstream/master
   const gpuStream_t* ptr = CHECK_NOTNULL(
       reinterpret_cast<const gpuStream_t*>(context->op_device_context()
                                                ->stream()

@@ -41,12 +41,22 @@ class XlaActivityListener {
   virtual Status Listen(
       const XlaJitCompilationActivity& jit_compilation_activity) = 0;
 
+<<<<<<< HEAD
+=======
+  // Called at program exit in best-effort manner to give listeners a chance to
+  // flush their state.
+  //
+  // Default implementation is a no-op.
+  virtual void Flush();
+
+>>>>>>> upstream/master
   virtual ~XlaActivityListener();
 };
 
 // Registers an `XlaActivityListener`, which will be invoked on all subsequent
 // `BroadcastXlaActivity` calls.
 void RegisterXlaActivityListener(std::unique_ptr<XlaActivityListener> listener);
+<<<<<<< HEAD
 
 using GlobalProcessIdMaker = std::function<std::string()>;
 
@@ -67,6 +77,8 @@ using GlobalProcessIdMaker = std::function<std::string()>;
 //  - Cannot be set or changed after we have broadcasted any XLA activity.
 void SetGlobalProcessIdMaker(GlobalProcessIdMaker global_process_id_maker);
 
+=======
+>>>>>>> upstream/master
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_XLA_ACTIVITY_LISTENER_H_

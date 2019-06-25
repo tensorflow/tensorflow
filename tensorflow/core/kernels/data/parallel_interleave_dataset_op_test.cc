@@ -341,7 +341,7 @@ TestCase TestCase9() {
 }
 
 // test case 10: cycle_length = 3, block_length = 3,
-// num_parallel_calls = kAutoTune, sloppy = true
+// num_parallel_calls = kAutotune, sloppy = true
 TestCase TestCase10() {
   return {
       /*input_tensors*/
@@ -358,7 +358,7 @@ TestCase TestCase10() {
       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
       /*num_parallel_calls*/
       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}),
-                                              {model::kAutoTune}),
+                                              {model::kAutotune}),
       /*sloppy*/ true,
       /*expected_outputs*/
       ConvertToTensorVec<string>({"a", "b", "c", "d", "e", "f", "g", "h", "i"}),

@@ -836,13 +836,11 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<std::vector<int64>>> tmp_groups;
       optional<HloComputation*> to_apply;
       optional<std::vector<int64>> replica_group_ids;
-      optional<string> barrier;
       optional<int64> all_reduce_id;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
       attrs["replica_groups"] = {/*required=*/false,
                                  AttrTy::kBracedInt64ListList, &tmp_groups};
-      attrs["barrier"] = {/*required=*/false, AttrTy::kString, &barrier};
       attrs["all_reduce_id"] = {/*required=*/false, AttrTy::kInt64,
                                 &all_reduce_id};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
@@ -853,13 +851,11 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
         replica_groups = CreateReplicaGroups(*tmp_groups);
       }
       instruction = builder->AddInstruction(HloInstruction::CreateAllReduce(
-          shape, operands, *to_apply, replica_groups, barrier ? *barrier : "",
-          all_reduce_id));
+          shape, operands, *to_apply, replica_groups, all_reduce_id));
       break;
     }
     case HloOpcode::kAllToAll: {
       optional<std::vector<std::vector<int64>>> tmp_groups;
-      optional<string> barrier;
       attrs["replica_groups"] = {/*required=*/false,
                                  AttrTy::kBracedInt64ListList, &tmp_groups};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {

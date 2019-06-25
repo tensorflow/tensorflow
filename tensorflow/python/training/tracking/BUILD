@@ -209,7 +209,10 @@ tf_xla_py_test(
     srcs = ["util_xla_test.py"],
     tags = [
         "no_pip",
+<<<<<<< HEAD
         "no_cuda",
+=======
+>>>>>>> upstream/master
         "no_windows",
         "nomac",
         "notsan",  # b/74395663

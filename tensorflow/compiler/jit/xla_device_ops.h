@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/identity_op.h"
 #include "tensorflow/core/kernels/resource_variable_ops.h"
 #include "tensorflow/core/kernels/shape_ops.h"
-#include "tensorflow/core/kernels/stack.h"
 #include "tensorflow/core/kernels/variable_ops.h"
 
 namespace tensorflow {
@@ -81,8 +80,7 @@ class XlaAssignVariableOp : public OpKernel {
       Name("Identity").Device(DEVICE).TypeConstraint("T", TYPES), IdentityOp); \
                                                                                \
   REGISTER_KERNEL_BUILDER(                                                     \
-      Name("VarHandleOp").Device(DEVICE).HostMemory("resource"),               \
-      ResourceHandleOp<Var>);                                                  \
+      Name("VarHandleOp").Device(DEVICE).HostMemory("resource"), VarHandleOp); \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("_VarHandlesOp").Device(DEVICE).HostMemory("resources"),            \
       ResourceHandlesOp<Var>);                                                 \
@@ -138,7 +136,10 @@ class XlaAssignVariableOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("AssignVariableOp").Device(DEVICE).HostMemory("resource"),          \
       XlaAssignVariableOp);                                                    \
+<<<<<<< HEAD
                                                                                \
+=======
+>>>>>>> upstream/master
                                                                                \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("FIFOQueueV2").Device(DEVICE).HostMemory("handle"), FIFOQueueOp);   \
@@ -218,25 +219,7 @@ class XlaAssignVariableOp : public OpKernel {
                               .Device(DEVICE)                                  \
                               .TypeConstraint<string>("T")                     \
                               .HostMemory("input"),                            \
-                          RetvalOp);                                           \
-                                                                               \
-  REGISTER_KERNEL_BUILDER(Name("StackV2")                                      \
-                              .Device(DEVICE)                                  \
-                              .HostMemory("max_size")                          \
-                              .HostMemory("handle"),                           \
-                          StackOp);                                            \
-  REGISTER_KERNEL_BUILDER(Name("StackPushV2")                                  \
-                              .Device(DEVICE)                                  \
-                              .HostMemory("handle")                            \
-                              .TypeConstraint("T", TYPES),                     \
-                          TemplatedStackPushOp</*allow_swapping=*/false>);     \
-  REGISTER_KERNEL_BUILDER(Name("StackPopV2")                                   \
-                              .Device(DEVICE)                                  \
-                              .HostMemory("handle")                            \
-                              .TypeConstraint("elem_type", TYPES),             \
-                          StackPopOp);                                         \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("StackCloseV2").Device(DEVICE).HostMemory("handle"), StackCloseOp);
+                          RetvalOp);
 
 // TODO(b/118881356): currently we do not register the QueueEnqueueMany,
 // QueueDequeueMany, or QueueDequeueUpTo kernels because they attempt to read

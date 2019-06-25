@@ -26,8 +26,17 @@ struct XlaActivityListenerList {
   std::vector<std::unique_ptr<XlaActivityListener>> listeners GUARDED_BY(mutex);
 };
 
+<<<<<<< HEAD
 XlaActivityListenerList* GetXlaActivityListenerList() {
   static XlaActivityListenerList* listener_list = new XlaActivityListenerList;
+=======
+void FlushAllListeners();
+
+XlaActivityListenerList* GetXlaActivityListenerList() {
+  static XlaActivityListenerList* listener_list = new XlaActivityListenerList;
+  static int unused = std::atexit(FlushAllListeners);
+  (void)unused;
+>>>>>>> upstream/master
   return listener_list;
 }
 
@@ -44,6 +53,7 @@ Status ForEachListener(FnTy fn) {
   return Status::OK();
 }
 
+<<<<<<< HEAD
 struct GlobalProcessIdMakerStorage {
   absl::Mutex mutex;
   GlobalProcessIdMaker global_process_id_maker GUARDED_BY(mutex);
@@ -89,13 +99,24 @@ absl::string_view GetGlobalProcessId() {
     return result;
   }();
   return *cached_process_id;
+=======
+void FlushAllListeners() {
+  Status s = ForEachListener([](XlaActivityListener* listener) {
+    listener->Flush();
+    return Status::OK();
+  });
+  CHECK(s.ok());
+>>>>>>> upstream/master
 }
 }  // namespace
 
 Status BroadcastXlaActivity(
     XlaAutoClusteringActivity auto_clustering_activity) {
+<<<<<<< HEAD
   auto_clustering_activity.set_global_process_id(
       std::string(GetGlobalProcessId()));
+=======
+>>>>>>> upstream/master
   return ForEachListener([&](XlaActivityListener* listener) {
     return listener->Listen(auto_clustering_activity);
   });
@@ -103,8 +124,11 @@ Status BroadcastXlaActivity(
 
 Status BroadcastXlaActivity(
     XlaJitCompilationActivity jit_compilation_activity) {
+<<<<<<< HEAD
   jit_compilation_activity.set_global_process_id(
       std::string(GetGlobalProcessId()));
+=======
+>>>>>>> upstream/master
   return ForEachListener([&](XlaActivityListener* listener) {
     return listener->Listen(jit_compilation_activity);
   });
@@ -118,6 +142,7 @@ void RegisterXlaActivityListener(
   listener_list->listeners.push_back(std::move(listener));
 }
 
+<<<<<<< HEAD
 void SetGlobalProcessIdMaker(GlobalProcessIdMaker global_process_id_maker) {
   GlobalProcessIdMakerStorage* global_process_id_maker_storage =
       GetGlobalProcessIdMakerStorage();
@@ -126,6 +151,9 @@ void SetGlobalProcessIdMaker(GlobalProcessIdMaker global_process_id_maker) {
   global_process_id_maker_storage->global_process_id_maker =
       std::move(global_process_id_maker);
 }
+=======
+void XlaActivityListener::Flush() {}
+>>>>>>> upstream/master
 
 XlaActivityListener::~XlaActivityListener() {}
 

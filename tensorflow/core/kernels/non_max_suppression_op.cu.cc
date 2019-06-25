@@ -381,7 +381,11 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
     }
     const int output_size = max_output_size.scalar<int>()();
     size_t cub_sort_temp_storage_bytes = 0;
+<<<<<<< HEAD
     auto cuda_stream = GetGpuStream(context);
+=======
+    auto cuda_stream = GetCudaStream(context);
+>>>>>>> upstream/master
     auto device = context->eigen_gpu_device();
     // Calling cub with nullptrs as inputs will make it return
     // workspace size needed for the operation instead of doing the operation.

@@ -1232,6 +1232,11 @@ class Sum
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -2370,7 +2375,7 @@ class FloorDiv : public SimpleOperator<FloorDivOperator> {
   }
 };
 
-// LINT.ThenChange(//tensorflow/lite/toco/tflite/op_version.cc")
+// LINT.ThenChange(//tensorflow/lite/toco/tflite/op_version.cc)
 
 namespace {
 // Build a vector containing all the known operators.

@@ -37,7 +37,6 @@ from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -47,7 +46,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_strategy_util
@@ -81,6 +79,7 @@ def maybe_init_scope():
   else:
     with ops.init_scope():
       yield
+<<<<<<< HEAD
 
 
 # TODO(jhseu): Deduplicate with MirroredStrategy?
@@ -136,6 +135,8 @@ def _create_tpu_mirrored_variable(  # pylint: disable=missing-docstring
         l.remove(v)
     g.add_to_collections(var_collections, result)
   return result
+=======
+>>>>>>> upstream/master
 
 
 @tf_export("distribute.experimental.TPUStrategy", v1=[])
@@ -162,7 +163,14 @@ class TPUStrategy(distribute_lib.Strategy):
   # This implementation runs a single step. It does not use infeed or outfeed.
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """See base class."""
+<<<<<<< HEAD
     fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx())
+=======
+    # tf.distribute supports Eager functions, so AutoGraph should not be applied
+    # when when the caller is also in Eager mode.
+    fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx(),
+                              convert_by_default=False)
+>>>>>>> upstream/master
     return self.extended.tpu_run(fn, args, kwargs)
 
 
@@ -271,7 +279,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self.experimental_enable_get_next_as_optional = True
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
-    values.validate_colocate_tpu_variable(colocate_with_variable, self)
+    values.validate_colocate(colocate_with_variable, self)
 
   def _make_dataset_iterator(self, dataset):
     """Make iterators for each of the TPU hosts."""
@@ -476,9 +484,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           value_list.append(v)
       return value_list
 
-    return _create_tpu_mirrored_variable(
+    return distribute_lib.create_mirrored_variable(
         self._container_strategy(), device_map, logical_device,
-        _real_mirrored_creator, *args, **kwargs)
+        _real_mirrored_creator, values.TPUMirroredVariable,
+        values.TPUSyncOnReadVariable, *args, **kwargs)
 
   def _reduce_to(self, reduce_op, value, destinations):
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
@@ -521,7 +530,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     return output
 
   def _update(self, var, fn, args, kwargs, group):
+<<<<<<< HEAD
     assert isinstance(var, values.TPUMirroredVariable) or isinstance(
+=======
+    assert isinstance(var, values.TPUVariableMixin) or isinstance(
+>>>>>>> upstream/master
         var, resource_variable_ops.BaseResourceVariable)
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
       if group:
@@ -542,7 +555,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     return values.update_regroup(self, self._device_map, updates, group)
 
   def read_var(self, var):
+<<<<<<< HEAD
     assert isinstance(var, values.TPUMirroredVariable) or isinstance(
+=======
+    assert isinstance(var, values.TPUVariableMixin) or isinstance(
+>>>>>>> upstream/master
         var, resource_variable_ops.BaseResourceVariable)
     return var.read_value()
 

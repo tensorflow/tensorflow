@@ -555,7 +555,17 @@ class Mirrored(DistributedDelegate):
 
 def _assign_on_device(device, variable, tensor):
   with ops.device(device):
-    return variable.assign(array_ops.identity(tensor))
+    return variable.assign(tensor)
+
+
+def _assign_add_on_device(device, variable, tensor):
+  with ops.device(device):
+    return variable.assign_add(tensor)
+
+
+def _assign_sub_on_device(device, variable, tensor):
+  with ops.device(device):
+    return variable.assign_sub(tensor)
 
 
 def _assign_add_on_device(device, variable, tensor):
@@ -779,6 +789,127 @@ class DistributedVariable(DistributedDelegate, variables_lib.AbstractVariable):
 ops.register_dense_tensor_like_type(DistributedVariable)
 
 
+@contextlib.contextmanager
+def _maybe_enter_graph(tensor):
+  # Note: might have an eager tensor but not be executing eagerly when
+  # building functions.
+  if (context.executing_eagerly() or isinstance(tensor, ops.EagerTensor)
+      or ops.has_default_graph()):
+    yield
+  else:
+    with tensor.graph.as_default():
+      yield
+
+
+def _make_raw_assign_fn(raw_assign_fn):  # pylint: disable=missing-docstring
+  def assign_fn(var, value, use_locking=False, name=None, read_value=True):  # pylint: disable=missing-docstring
+    del use_locking  # Unused.
+
+    with _maybe_enter_graph(var.handle):
+      op = raw_assign_fn(
+          var.handle, ops.convert_to_tensor(value, dtype=var.dtype), name=name)
+
+      with ops.control_dependencies([op]):
+        return var._read_variable_op() if read_value else op  # pylint: disable=protected-access
+  return assign_fn
+
+
+class TPUVariableMixin(object):
+  """Mixin for TPU variables."""
+
+  def __init__(self, *args, **kwargs):
+    super(TPUVariableMixin, self).__init__(*args, **kwargs)
+
+    # Handle ID is needed for `get_replicated_var_handle` to cache the variables
+    # correctly since in eager mode different variables can have the same name.
+    if ops.executing_eagerly_outside_functions():
+      self._handle_id = self._common_name + "_" + str(id(self.primary))
+    else:
+      self._handle_id = self._common_name
+
+  def __getattr__(self, name):
+    if _enclosing_tpu_context() is None:
+      return super(TPUVariableMixin, self).__getattr__(name)
+    else:
+      raise AttributeError(
+          "'{}' not accessible within a TPU context.".format(name))
+
+  def get(self, device=None):
+    if (_enclosing_tpu_context() is None) or (device is not None):
+      return super(TPUVariableMixin, self).get(device=device)
+    else:
+      raise NotImplementedError(
+          "`TPUVariableMixin.get()` is not supported within a TPU context.")
+
+  def _get_as_operand(self):
+    return self.read_value()
+
+  def _get_closest(self):
+    if _enclosing_tpu_context() is None:
+      return super(TPUVariableMixin, self)._get_closest()
+    else:
+      return self.primary
+
+  def numpy(self):
+    if context.executing_eagerly():
+      return self.read_value().numpy()
+    else:
+      raise NotImplementedError(
+          "numpy() is only available when eager execution is enabled.")
+
+  @property
+  def handle(self):
+    # If we're in a tpu.rewrite(), return the replicated handle.
+    tpu_context = _enclosing_tpu_context()
+    if tpu_context is None:
+      return self._get_closest().handle
+    else:
+      return tpu_context.get_replicated_var_handle(
+          self._handle_id, self._values)
+
+  @property
+  def device(self):
+    return self.handle.device
+
+  def _read_variable_op(self):
+    if self.trainable:
+      tape.variable_accessed(self)
+    return gen_resource_variable_ops.read_variable_op(self.handle, self.dtype)
+
+  def read_value(self):
+    if _enclosing_tpu_context() is None:
+      return super(TPUVariableMixin, self).read_value()
+    else:
+      return self._read_variable_op()
+
+  @property
+  def constraint(self):
+    return self.primary.constraint
+
+  def _as_graph_element(self):
+    if _enclosing_tpu_context() is None:
+      return super(TPUVariableMixin, self)._as_graph_element()  # pylint: disable=protected-access
+    else:
+      return None
+
+  @property
+  def op(self):
+    return DistributedVarOp(
+        self.primary.op.name, self.primary.op.graph, self.primary.op.type)
+
+  def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
+    """Converts a variable to a tensor."""
+    # pylint: disable=protected-access
+    if _enclosing_tpu_context() is None:
+      return super(TPUVariableMixin, self)._dense_var_to_tensor(
+          dtype=dtype, name=name, as_ref=as_ref)
+    # pylint: enable=protected-access
+    elif dtype is not None and dtype != self.dtype:
+      return math_ops.cast(self.read_value(), dtype)
+    else:
+      return self.handle if as_ref else self.read_value()
+
+
 def _validate_colocate_extended(v, extended):
   variable_strategy = v._distribute_strategy  # pylint: disable=protected-access
   if variable_strategy.extended is not extended:
@@ -790,14 +921,6 @@ def _validate_colocate_extended(v, extended):
 
 def validate_colocate_distributed_variable(v, extended):
   if not isinstance(v, DistributedVariable):
-    raise ValueError(
-        "`colocate_vars_with` must only be passed a variable created in this "
-        "tf.distribute.Strategy.scope(), not: %r" % (v,))
-  _validate_colocate_extended(v, extended)
-
-
-def validate_colocate_tpu_variable(v, extended):
-  if not isinstance(v, TPUMirroredVariable):
     raise ValueError(
         "`colocate_vars_with` must only be passed a variable created in this "
         "tf.distribute.Strategy.scope(), not: %r" % (v,))
@@ -837,6 +960,7 @@ _aggregation_error_msg = (
     "`tf.distribute.get_replica_context().merge_call(merge_fn, ..)`."
     "Inside `merge_fn`, you can then update the {variable_type} "
     "using `tf.distribute.StrategyExtended.update()`.")
+
 
 class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
   """Class for defining how to restore a MirroredVariable."""
@@ -979,9 +1103,10 @@ def is_distributed_variable(v):
   return isinstance(v, DistributedVariable)
 
 
-class TPUMirroredVariable(MirroredVariable):
+class TPUMirroredVariable(TPUVariableMixin, MirroredVariable):
   """Holds a map from device to TPU variables whose values are kept in sync."""
 
+<<<<<<< HEAD
   def __init__(
       self, strategy, device_map, values, aggregation, logical_device=None):
     super(TPUMirroredVariable, self).__init__(
@@ -1063,6 +1188,8 @@ class TPUMirroredVariable(MirroredVariable):
   def read_value(self):
     return self._read_variable_op()
 
+=======
+>>>>>>> upstream/master
   def _assign_func(self, *args, **kwargs):
     with _enter_or_assert_strategy(self._distribute_strategy):
       if (distribution_strategy_context.in_cross_replica_context()
@@ -1071,63 +1198,22 @@ class TPUMirroredVariable(MirroredVariable):
         return self._distribute_strategy.extended.update(
             self, f, args=args, kwargs=kwargs)
       else:
-        return super(TPUMirroredVariable, self)._assign_func(*args, **kwargs)
-
-  def _make_raw_assign_fn(self, raw_assign_fn):
-    def assign_fn(var, value, *args, **kwargs):
-      del args
-      name = kwargs.pop("name", None)
-      read_value = kwargs.pop("read_value", True)
-      with self._handle_graph(var.handle):
-        op = raw_assign_fn(
-            var.handle, ops.convert_to_tensor(value, dtype=self.dtype),
-            name=name)
-      return self._read_variable_op(parent_op=op) if read_value else op
-    return assign_fn
+        return MirroredVariable._assign_func(self, *args, **kwargs)
 
   def assign_sub(self, *args, **kwargs):
-    assign_sub_fn = self._make_raw_assign_fn(
+    assign_sub_fn = _make_raw_assign_fn(
         gen_resource_variable_ops.assign_sub_variable_op)
     return self._assign_func(f=assign_sub_fn, *args, **kwargs)
 
   def assign_add(self, *args, **kwargs):
-    assign_add_fn = self._make_raw_assign_fn(
+    assign_add_fn = _make_raw_assign_fn(
         gen_resource_variable_ops.assign_add_variable_op)
     return self._assign_func(f=assign_add_fn, *args, **kwargs)
 
   def assign(self, *args, **kwargs):
-    assign_fn = self._make_raw_assign_fn(
+    assign_fn = _make_raw_assign_fn(
         gen_resource_variable_ops.assign_variable_op)
     return self._assign_func(f=assign_fn, *args, **kwargs)
-
-  @property
-  def constraint(self):
-    return self.primary.constraint
-
-  def _as_graph_element(self):
-    if _enclosing_tpu_context() is None:
-      return super(TPUMirroredVariable, self)._as_graph_element()  # pylint: disable=protected-access
-    else:
-      return None
-
-  # Needed to pass ResourceVariable checks.
-  @property
-  def op(self):
-    return self.primary.op
-
-  def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
-    """Converts a variable to a tensor."""
-    # pylint: disable=protected-access
-    if _enclosing_tpu_context() is None:
-      return super(TPUMirroredVariable, self)._dense_var_to_tensor(
-          dtype, name, as_ref)
-    # pylint: enable=protected-access
-    if dtype is not None and dtype != self.dtype:
-      return math_ops.cast(self.read_value(), dtype)
-    if as_ref:
-      return self.handle
-    else:
-      return self.read_value()
 
 
 class _SyncOnReadSaveable(saver.BaseSaverBuilder.SaveableObject):
@@ -1221,9 +1307,11 @@ class SyncOnReadVariable(DistributedVariable, PerReplica):
   def _get_cross_replica(self):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
       return self.primary
-    return self._distribute_strategy.reduce(
-        reduce_util.ReduceOp.from_variable_aggregation(self.aggregation), self,
-        axis=None)
+
+    with _enter_or_assert_strategy(self._distribute_strategy):
+      return self._distribute_strategy.reduce(
+          reduce_util.ReduceOp.from_variable_aggregation(self.aggregation),
+          self, axis=None)
 
   def _as_graph_element(self):
     # pylint: disable=protected-access
@@ -1244,16 +1332,47 @@ class SyncOnReadVariable(DistributedVariable, PerReplica):
       return _SyncOnReadSaveable(self, name)
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
+  def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
+    """Converts a variable to a tensor."""
+    return ops.internal_convert_to_tensor(
+        self.get(), dtype=dtype, name=name, as_ref=as_ref)
+
 
 # Register a conversion function for SyncOnReadVariable which allows as_ref to
 # be true.
 def _tensor_conversion_sync_on_read(var, dtype=None, name=None, as_ref=False):
-  return ops.internal_convert_to_tensor(
-      var.get(), dtype=dtype, name=name, as_ref=as_ref)
+  return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
 
 ops.register_tensor_conversion_function(SyncOnReadVariable,
                                         _tensor_conversion_sync_on_read)
+
+
+class TPUSyncOnReadVariable(TPUVariableMixin, SyncOnReadVariable):
+  """Holds a map from device to variables whose values are reduced on save."""
+
+  def assign_sub(self, *args, **kwargs):
+    if _enclosing_tpu_context() is None:
+      return SyncOnReadVariable.assign_sub(self, *args, **kwargs)
+    else:
+      return _make_raw_assign_fn(
+          gen_resource_variable_ops.assign_sub_variable_op)(
+              self, *args, **kwargs)
+
+  def assign_add(self, *args, **kwargs):
+    if _enclosing_tpu_context() is None:
+      return SyncOnReadVariable.assign_add(self, *args, **kwargs)
+    else:
+      return _make_raw_assign_fn(
+          gen_resource_variable_ops.assign_add_variable_op)(
+              self, *args, **kwargs)
+
+  def assign(self, *args, **kwargs):
+    if _enclosing_tpu_context() is None:
+      return SyncOnReadVariable.assign(self, *args, **kwargs)
+    else:
+      return _make_raw_assign_fn(
+          gen_resource_variable_ops.assign_variable_op)(self, *args, **kwargs)
 
 
 def regroup(device_map, values, wrap_class=PerReplica):
@@ -1366,27 +1485,38 @@ def select_device_mirrored(device, structured):
 
 def update_regroup(extended, device_map, updates, group):
   """Regroup for an update, with dependencies to ensure all updates execute."""
-  # TODO(josh11b): Replace "Mirrored" here with a function that does the following
-  # so we can avoid all these nest operations.
-  regrouped = regroup(device_map, updates, Mirrored)
   if not group:
+    regrouped = regroup(device_map, updates, Mirrored)
     return nest.map_structure(extended._local_results, regrouped)  # pylint: disable=protected-access
-  grouped_flat = []
-  for u in nest.flatten(regrouped):
-    if isinstance(u, DistributedValues):
-      g = extended._group(u)  # pylint: disable=protected-access
-      if u.is_tensor_like:
-        # Make sure we run all updates. Without this, something like
-        # session.run(extended.update(...)) may only update one replica.
-        values = []
-        for d in u.devices:
-          with ops.device(d), ops.control_dependencies([g]):
-            values.append(array_ops.identity(u.get(d)))
-        g = Mirrored(u.device_map, values)
-    else:
-      g = u
-    grouped_flat.append(g)
-  return nest.pack_sequence_as(regrouped, grouped_flat)
+
+  def _make_grouped_mirrored(device_map, values):
+    """Convert per-replica list `values` into Mirrored type with grouping."""
+    if len(values) == 1:
+      return Mirrored(device_map, values)
+
+    # Make sure we run all updates. Without this, something like
+    # session.run(extended.update(...)) may only update one replica.
+    g = control_flow_ops.group(values)
+
+    # If values is just ops, the grouping is enough. Everything in values
+    # should have the same type, since we expect every replica to be performing
+    # the same computation.
+    if not all(tensor_util.is_tensor(v) for v in values):
+      return g
+
+    # Otherwise we need tensors with the same values as `values`, but
+    # that have a dependency on `g`.
+    devices = device_map.logical_to_actual_devices(
+        device_map.logical_device_from_values(values))
+    assert len(values) == len(devices)
+    with_dep = []
+    for v, d in zip(values, devices):
+      with ops.device(d), ops.control_dependencies([g]):
+        with_dep.append(array_ops.identity(v))
+
+    return Mirrored(device_map, with_dep)
+
+  return regroup(device_map, updates, _make_grouped_mirrored)
 
 
 def value_container(val):

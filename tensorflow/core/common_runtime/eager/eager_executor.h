@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <queue>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -56,9 +55,15 @@ class EagerNode {
   // it should poison the corresponding tensor handles in this method.
   virtual void Abort(Status status) = 0;
 
+<<<<<<< HEAD
+=======
+  uint64 Id() const { return id_; }
+
+ private:
+>>>>>>> upstream/master
   // An id unique to the TFE_Context under which this node is created. Allocated
   // monotonically.
-  const uint64 id;
+  const uint64 id_;
 };
 
 // A class for handling async execution (see TFE_ContextSetAsync).
@@ -87,7 +92,7 @@ class EagerExecutor {
   // Takes ownership of `node`.
   // TODO(iga): take a unique_ptr instead.
   // Note that Add must be called in monotonically increasing order of node->id.
-  void Add(EagerNode* node);
+  void Add(std::unique_ptr<EagerNode> node);
 
   // Causes the caller to block till node with id `node_id` has finished
   // execution.
@@ -120,7 +125,8 @@ class EagerExecutor {
   condition_variable nodes_pending_ GUARDED_BY(node_queue_mutex_);
 
   // Queue of pending EagerNodes.
-  std::queue<EagerNode*> node_queue_ GUARDED_BY(node_queue_mutex_);
+  std::queue<std::unique_ptr<EagerNode>> node_queue_
+      GUARDED_BY(node_queue_mutex_);
 
   // `status_` is set based on any errors raised during execution of a
   // EagerNode.  It remains set until ClearError is called.

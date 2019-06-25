@@ -129,6 +129,7 @@ class RecursiveCompilabilityChecker {
                                 const DeviceType* jit_device_type)
       : op_filter_(*op_filter), jit_device_type_(*jit_device_type) {}
 
+<<<<<<< HEAD
   // Returns a list of uncompilable nodes.
   std::vector<UncompilableNodeInfo> FindUncompilableNodes(
       const Node& node, FunctionLibraryRuntime* lib_runtime) const {
@@ -149,6 +150,23 @@ class RecursiveCompilabilityChecker {
     IsCompilableCall(call_def, lib_runtime, &stack_trace, &uncompilable_nodes);
     return uncompilable_nodes;
   }
+=======
+  // Returns a list of uncompilable nodes. When `node` is inside a function
+  // body, users can set `node_stack_trace` to provide an additional
+  // context for `node`'s placement within the outer most graph.
+  std::vector<UncompilableNodeInfo> FindUncompilableNodes(
+      const Node& node, FunctionLibraryRuntime* lib_runtime,
+      const std::vector<StackFrame>* node_stack_trace = nullptr) const;
+
+  // Returns a list of uncompilable nodes in `call_def` that cannot be
+  // compiled by XLA. It is assumed that `call_def` is a call operation.
+  // When `node` is inside a function body, users can set
+  // `node_stack_trace` to provide an additional context for `node`'s
+  // placement within the outer most graph.
+  std::vector<UncompilableNodeInfo> FindUncompilableNodes(
+      const NodeDef& call_def, FunctionLibraryRuntime* lib_runtime,
+      const std::vector<StackFrame>* node_stack_trace = nullptr) const;
+>>>>>>> upstream/master
 
   // Returns true if `node` can be compiled by XLA.
   bool IsCompilableNode(const Node& node,

@@ -55,6 +55,24 @@ py_library(
         "multi_worker_training_state.py",
     ],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/distribute:multi_worker_util",
+    ],
+)
+
+cuda_py_test(
+    name = "multi_worker_training_state_test",
+    srcs = ["multi_worker_training_state_test.py"],
+    additional_deps = [
+        ":multi_worker_testing_utils",
+        ":multi_worker_training_state",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/keras",
+    ],
+    shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -102,7 +120,10 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
+<<<<<<< HEAD
         "no_rocm",  # times out on ROCm, along with nccl-related warnings
+=======
+>>>>>>> upstream/master
         "no_windows_gpu",
         "notsan",
     ],
@@ -236,6 +257,7 @@ distribute_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",
         "no_pip",
         "no_windows_gpu",
         "notsan",

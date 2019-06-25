@@ -201,7 +201,7 @@ static string GetBinaryDir(bool strip_exe) {
   HMODULE hModule = GetModuleHandle(NULL);
   GetModuleFileName(hModule, exe_path, MAX_PATH);
 #else
-  CHECK_ERR(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
+  PCHECK(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1) != -1);
 #endif
 #endif
   // Make sure it's null-terminated:

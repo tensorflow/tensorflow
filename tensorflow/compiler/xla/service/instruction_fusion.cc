@@ -455,7 +455,11 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   module_ = module;
   int64 fuse_count = 0;
   std::vector<std::vector<bool>>* fusion_config = nullptr;
+<<<<<<< HEAD
   if (is_main_fusion_) {
+=======
+  if (config_collection_mode_ != FusionConfigCollection::kOff) {
+>>>>>>> upstream/master
     fusion_config = module->mutable_fusion_config();
     fusion_config->clear();
   }
@@ -550,7 +554,11 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
       }
     }
 
+<<<<<<< HEAD
     if (is_main_fusion_) {
+=======
+    if (config_collection_mode_ != FusionConfigCollection::kOff) {
+>>>>>>> upstream/master
       const std::vector<bool>* comp_fusion_config =
           fusion_queue->FusionConfiguration();
       if (comp_fusion_config && comp_fusion_config->size() > 0) {
@@ -559,6 +567,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     }
   }
 
+<<<<<<< HEAD
   if (is_main_fusion_) {
     int64 fused_edge_count = 0;
     for (auto& config_per_computation : *fusion_config) {
@@ -569,7 +578,22 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     VLOG(4) << "There are " << fused_edge_count << " fused edges that cause "
             << fuse_count << " fusion actions.";
     VLOG(4) << FusionConfigToString(*fusion_config);
+=======
+  if (config_collection_mode_ != FusionConfigCollection::kOff) {
+    int64 fused_count = 0;
+    for (auto& config_per_computation : *fusion_config) {
+      for (auto edge : config_per_computation) {
+        if (edge) {
+          ++fused_count;
+        }
+      }
+    }
+    VLOG(1) << "There are " << fused_count << " fused bits that cause "
+            << fuse_count << " fusion actions.";
+    VLOG(1) << FusionConfigToString(*fusion_config);
+>>>>>>> upstream/master
   }
+  VLOG(1) << "Fusion count: " << fuse_count;
 
   return changed;
 }

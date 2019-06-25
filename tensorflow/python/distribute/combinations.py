@@ -63,6 +63,7 @@ class NamedGPUCombination(test_combinations.TestCombination):
   """
 
   GPU_TEST = "test_gpu" in sys.argv[0]
+<<<<<<< HEAD
 
   def should_execute_combination(self, kwargs):
     distributions = [
@@ -106,6 +107,51 @@ class NamedTPUCombination(test_combinations.TestCombination):
   Optionally, the `required_tpus` parameter is supported.  TPU hardware is
   required, if its argument is `True` or > 0.
 
+=======
+
+  def should_execute_combination(self, kwargs):
+    distributions = [
+        v for v in kwargs.values() if isinstance(v, NamedDistribution)
+    ]
+    required_gpus = kwargs.get("required_gpus", None)
+
+    if distributions and required_gpus:
+      raise ValueError("Do not use `required_gpus` and arguments of type "
+                       "NamedDistribution together.")
+
+    number_of_required_gpus = max([required_gpus or 0] +
+                                  [d.required_gpus or 0 for d in distributions])
+
+    if not number_of_required_gpus and GPUCombination.GPU_TEST:
+      return (False, "Test that doesn't require GPUs.")
+    elif context.num_gpus() < number_of_required_gpus:
+      return (False, ("Only {} of {} required GPUs are available.".format(
+          context.num_gpus(), number_of_required_gpus)))
+    else:
+      return (True, None)
+
+  def parameter_modifiers(self):
+    return [test_combinations.OptionalParameter("required_gpus")]
+
+
+class GPUCombination(NamedGPUCombination):
+  """NamedGPUCombination that passes `tf.distribute.Strategy` to the tests."""
+
+  def parameter_modifiers(self):
+    return [DistributionParameter()
+           ] + NamedGPUCombination.parameter_modifiers(self)
+
+
+class NamedTPUCombination(test_combinations.TestCombination):
+  """Allow to request TPU hardware and skip non-TPU combinations.
+
+  This class expects test_combinations to be genarated with `NamedDistribution`
+  wrapping instances of `tf.distribute.Strategy`.
+
+  Optionally, the `required_tpus` parameter is supported.  TPU hardware is
+  required, if its argument is `True` or > 0.
+
+>>>>>>> upstream/master
   Attributes:
     TPU_TEST: The environment is considered to have GPU hardware available if
               the name of the program contains "test_gpu".
@@ -178,12 +224,21 @@ class EagerGraphCombination(test_combinations.TestCombination):
     return [test_combinations.OptionalParameter("mode")]
 
 
+<<<<<<< HEAD
 class NamedDistribution(test_combinations.NamedObject):
+=======
+class NamedDistribution(object):
+>>>>>>> upstream/master
   """Wraps a `tf.distribute.Strategy` and adds a name for test titles."""
 
   def __init__(self, name, distribution_fn, required_gpus=None,
                required_tpu=False):
+<<<<<<< HEAD
     test_combinations.NamedObject.__init__(self, name, distribution_fn)
+=======
+    object.__init__(self)
+    self._name = name
+>>>>>>> upstream/master
     self._distribution_fn = distribution_fn
     self._required_gpus = required_gpus
     self._required_tpu = required_tpu
@@ -200,6 +255,12 @@ class NamedDistribution(test_combinations.NamedObject):
   def required_tpu(self):
     return self._required_tpu
 
+<<<<<<< HEAD
+=======
+  def __repr__(self):
+    return self._name
+
+>>>>>>> upstream/master
 
 generate = functools.partial(
     test_combinations.generate,

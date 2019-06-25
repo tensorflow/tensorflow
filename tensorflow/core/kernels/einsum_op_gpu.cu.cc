@@ -13,7 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+<<<<<<< HEAD
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+=======
+#if GOOGLE_CUDA
+>>>>>>> upstream/master
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/framework/register_types.h"
@@ -43,4 +47,8 @@ TF_CALL_complex128(DECLARE_GPU_SPECS);
 
 }  // namespace tensorflow
 
+<<<<<<< HEAD
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+=======
+#endif  // GOOGLE_CUDA
+>>>>>>> upstream/master

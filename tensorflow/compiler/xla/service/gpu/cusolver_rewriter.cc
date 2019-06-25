@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -56,9 +57,10 @@ StatusOr<HloInstruction*> CreateCholesky(CusolverContext* context,
   CHECK_GE(ndim, 2);
   int64 n = a_shape.dimensions(ndim - 1);
 
-  int64 batch_size = std::accumulate(a_shape.dimensions().begin(),
-                                     a_shape.dimensions().end() - 2, int64{1},
-                                     [](int64 a, int64 b) { return a * b; });
+  std::vector<int64> batch_dims(a_shape.dimensions().begin(),
+                                a_shape.dimensions().end() - 2);
+  std::vector<int64> batch_dim_ids(batch_dims.size());
+  absl::c_iota(batch_dim_ids, 0);
 
   // Find the workspace size.
   se::blas::UpperLower uplo = options.lower() ? se::blas::UpperLower::kLower
@@ -80,17 +82,48 @@ StatusOr<HloInstruction*> CreateCholesky(CusolverContext* context,
   // * info contains the Potrf success/failure status.
   // Currently we have no meaningful way to report an error, so we simply
   // discard the success/failure information. Obviously this is suboptimal.
+  Shape info_shape = ShapeUtil::MakeShape(S32, batch_dims);
   Shape call_shape = ShapeUtil::MakeTupleShape(
       {a_shape,
        ShapeUtil::MakeShape(operand->shape().element_type(), {workspace_size}),
-       ShapeUtil::MakeShape(S32, {batch_size})});
+       info_shape});
 
   HloInstruction* custom_call =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
           call_shape, {operand}, kCusolverCholeskyCallTarget, {a_shape}));
   custom_call->set_metadata(metadata);
   TF_RETURN_IF_ERROR(custom_call->set_backend_config(options));
-  return custom_call;
+  HloInstruction* out = computation->AddInstruction(
+      HloInstruction::CreateGetTupleElement(a_shape, custom_call, 0));
+  HloInstruction* info = computation->AddInstruction(
+      HloInstruction::CreateGetTupleElement(info_shape, custom_call, 2));
+
+  // If info was non-zero, indicating that the Cholesky decomposition failed,
+  // returns an array full of NaNs for the corresponding batch element.
+  HloInstruction* zero = computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
+  HloInstruction* zeros =
+      computation->AddInstruction(HloInstruction::CreateBroadcast(
+          info_shape, zero, /*broadcast_dimensions=*/{}));
+  HloInstruction* ok = computation->AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, batch_dims),
+                                    info, zeros, ComparisonDirection::kEq));
+  ok = computation->AddInstruction(HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeShape(PRED, a_shape.dimensions()), ok,
+      /*broadcast_dimensions=*/batch_dim_ids));
+
+  TF_ASSIGN_OR_RETURN(Literal nan_literal,
+                      LiteralUtil::NanValue(a_shape.element_type()));
+  HloInstruction* nan = computation->AddInstruction(
+      HloInstruction::CreateConstant(std::move(nan_literal)));
+  HloInstruction* nans =
+      computation->AddInstruction(HloInstruction::CreateBroadcast(
+          a_shape, nan, /*broadcast_dimensions=*/{}));
+
+  HloInstruction* select =
+      computation->AddInstruction(HloInstruction::CreateTernary(
+          a_shape, HloOpcode::kSelect, ok, out, nans));
+  return select;
 }
 
 }  // namespace
@@ -110,11 +143,8 @@ StatusOr<bool> RunOnInstruction(CusolverContext* context,
   VLOG(1) << "Replacing " << instruction->ToString() << " with "
           << custom_call->ToString();
 
-  // The CustomCall returns a tuple (conv_result, scratch_memory).  Extract out
-  // the conv result and replace `conv` with it.
-  TF_RETURN_IF_ERROR(instruction->parent()->ReplaceWithNewInstruction(
-      instruction, HloInstruction::CreateGetTupleElement(instruction->shape(),
-                                                         custom_call, 0)));
+  TF_RETURN_IF_ERROR(
+      instruction->parent()->ReplaceInstruction(instruction, custom_call));
   return true;
 }
 

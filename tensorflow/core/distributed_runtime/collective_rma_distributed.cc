@@ -89,7 +89,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
   // State that needs to be threaded through a couple of async calls
   // in order to make this function completely non-blocking.
   struct State {
-    DeviceLocality server_locality;
+    DeviceAttributes server_attributes;
     std::unique_ptr<RecvBufCall> call;
   };
   State* state = new State;
@@ -168,14 +168,14 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
     } else {
       state->call.reset(new RecvBufCall(
           step_id_, peer_device, peer_task, key, to_device, to_device_ctx,
-          to_alloc_attr, to_tensor, client_locality, state->server_locality,
-          &cancel_mgr_, worker_cache_));
+          to_alloc_attr, to_tensor, client_locality,
+          state->server_attributes.locality(), &cancel_mgr_, worker_cache_));
       state->call->Start(recv_buf_callback);
     }
   };
 
-  dev_resolver_->GetLocalityAsync(
-      peer_device, peer_task, &state->server_locality, dev_locality_callback);
+  dev_resolver_->GetDeviceAttributesAsync(
+      peer_device, peer_task, &state->server_attributes, dev_locality_callback);
 }
 
 void CollectiveRemoteAccessDistributed::StartAbort(const Status& s) {

@@ -62,6 +62,76 @@ TEST(DatasetUtilsTest, VariantTensorDataNonExistentKey) {
             reader.ReadTensor("NonExistentKey", &val_tensor).code());
 }
 
+<<<<<<< HEAD
+=======
+TEST(DatasetUtilsTest, HashSubgraphFunctionSameFunctionDifferentNames) {
+  FunctionDefLibrary fl1;
+
+  FunctionDef* f1 = fl1.add_function();
+  *f1 = FunctionDefHelper::Create(
+      "AddAndMul", {"i: float"}, {"o: float"}, {},
+      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "add"}});
+
+  FunctionDef* f2 = fl1.add_function();
+  *f2 = FunctionDefHelper::Create(
+      "AddAndMul2", {"input: float"}, {"o: float"}, {},
+      {{{"add"}, "Add", {"input", "input"}, {{"T", DT_FLOAT}}},
+       {{"ret"}, "Mul", {"input", "input"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "add"}});
+
+  EXPECT_EQ(HashSubgraphFunction(fl1, f1), HashSubgraphFunction(fl1, f2));
+}
+
+TEST(DatasetUtilsTest, HashSubgraphFunctionDifferentFunctions) {
+  FunctionDefLibrary fl1;
+
+  FunctionDef* f1 = fl1.add_function();
+  *f1 = FunctionDefHelper::Create(
+      "AddAndMul", {"i: float"}, {"o: float"}, {},
+      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "add"}});
+
+  FunctionDef* f2 = fl1.add_function();
+  *f2 = FunctionDefHelper::Create(
+      "AddAndAdd", {"i: float"}, {"o: float"}, {},
+      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+       {{"ret"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "add"}});
+
+  // The second op in `f2` is changed to "Add"
+  EXPECT_NE(HashSubgraphFunction(fl1, f1), HashSubgraphFunction(fl1, f2));
+}
+
+TEST(DatasetUtilsTest, HashSubgraphFunctionDifferentInternalNodeNames) {
+  FunctionDefLibrary fl1;
+
+  FunctionDef* f1 = fl1.add_function();
+  *f1 = FunctionDefHelper::Create(
+      "AddAndMul", {"i: float", "j: float", "k: float"}, {"o: float"}, {},
+      {{{"add"}, "Add", {"i", "j"}, {{"T", DT_FLOAT}}},
+       {{"ret"}, "Mul", {"add", "k"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "ret"}});
+
+  FunctionDef* f2 = fl1.add_function();
+  *f2 = FunctionDefHelper::Create(
+      "AddAndMul", {"a: float", "b: float", "c: float"}, {"o: float"}, {},
+      {{{"add"}, "Add", {"a", "b"}, {{"T", DT_FLOAT}}},
+       {{"mul"}, "Mul", {"add", "c"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "mul:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "mul"}});
+
+  EXPECT_EQ(HashSubgraphFunction(fl1, f1), HashSubgraphFunction(fl1, f2));
+}
+
+>>>>>>> upstream/master
 TEST(DatasetUtilsTest, HashSubgraphSameGraphDifferentNames) {
   GraphDef gd;
 
@@ -224,10 +294,16 @@ TEST(DatasetUtilsTest, HashSubgraphInputPortChanged) {
 
 TEST(DatasetUtilsTest, HashSubgraphSameFunctionDifferentNames) {
   GraphDef gd;
+<<<<<<< HEAD
 
   FunctionDefLibrary* fl1 = gd.mutable_library();
   FunctionDef* f1 = fl1->add_function();
 
+=======
+  FunctionDefLibrary* fl1 = gd.mutable_library();
+
+  FunctionDef* f1 = fl1->add_function();
+>>>>>>> upstream/master
   *f1 = FunctionDefHelper::Create(
       "AddAndMul", {"i: float"}, {"o: float"}, {},
       {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
@@ -285,10 +361,14 @@ TEST(DatasetUtilsTest, HashSubgraphSameFunctionDifferentNames) {
 
   uint64 hash2 = HashSubgraph(gd, n2);
 
+<<<<<<< HEAD
   // Currently, this is EXPECT_NE because we hash the entire function def, but
   // this will change to EXPECT_EQ when we have better handling of functions.
   // (See TODO in dataset_utils.cc)
   EXPECT_NE(hash1, hash2);
+=======
+  EXPECT_EQ(hash1, hash2);
+>>>>>>> upstream/master
 }
 
 TEST(DatasetUtilsTest, HashSubgraphDifferentFunctions) {
@@ -311,7 +391,11 @@ TEST(DatasetUtilsTest, HashSubgraphDifferentFunctions) {
       {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
        {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
       /*ret_def=*/{{"o", "ret:z:0"}},
+<<<<<<< HEAD
       /*control_ret_def=*/{{"must_execute", "mul"}});
+=======
+      /*control_ret_def=*/{{"must_execute", "ret"}});
+>>>>>>> upstream/master
   *f2 = func;
 
   AttrValue a1;

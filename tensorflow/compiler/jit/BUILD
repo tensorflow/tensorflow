@@ -1,9 +1,13 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+<<<<<<< HEAD
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+=======
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library", "tf_jit_compilation_passes_extra_deps")
+>>>>>>> upstream/master
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 
 package(
@@ -57,7 +61,6 @@ cc_library(
     deps = [
         ":jit_compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_ops",
-        "//tensorflow/compiler/tf2xla/kernels:xla_cpu_only_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:cpu_plugin",
@@ -210,7 +213,6 @@ cc_library(
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core/kernels:shape_ops",
-        "//tensorflow/core/kernels:stack",
         "//tensorflow/core/kernels:variable_ops",
         "//tensorflow/core/kernels/data:generator_dataset_op",
         "//tensorflow/core/kernels/data:iterator_ops",
@@ -332,7 +334,7 @@ cc_library(
         ":compilation_passes",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow_pass_registration",
         "//tensorflow/core:core_cpu_internal",
-    ],
+    ] + tf_jit_compilation_passes_extra_deps(),
     alwayslink = 1,
 )
 

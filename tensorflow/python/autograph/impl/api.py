@@ -159,6 +159,7 @@ def tf_convert(f, ctx, convert_by_default=True, force_conversion=False):
   f_wrapper = f
   decorators, f = tf_decorator.unwrap(f)
 
+<<<<<<< HEAD
   apply_autograph = ((ctx.status == ag_ctx.Status.ENABLED) or
                      (convert_by_default and
                       ctx.status == ag_ctx.Status.UNSPECIFIED))
@@ -167,6 +168,20 @@ def tf_convert(f, ctx, convert_by_default=True, force_conversion=False):
     wrapper = convert(recursive=True, force_conversion=force_conversion)(f)
   else:
     wrapper = do_not_convert(f)
+=======
+  # TODO(mdan): Grab features from context.
+  if ctx.status == ag_ctx.Status.ENABLED:
+    wrapper = convert(recursive=True, force_conversion=force_conversion)(f)
+  elif ctx.status == ag_ctx.Status.DISABLED:
+    wrapper = do_not_convert(f)
+  elif ctx.status == ag_ctx.Status.UNSPECIFIED:
+    if convert_by_default:
+      wrapper = convert(recursive=True, force_conversion=force_conversion)(f)
+    else:
+      wrapper = call_with_unspecified_conversion_status(f)
+  else:
+    raise ValueError(ctx.status)
+>>>>>>> upstream/master
 
   if decorators:
     wrapper = tf_decorator.rewrap(f_wrapper, f, wrapper)
@@ -246,6 +261,19 @@ class RunMode(Enum):
   PY_FUNC = 2
 
 
+def call_with_unspecified_conversion_status(func):
+  """Decorator that resets the conversion context to the unspecified status."""
+  def wrapper(*args, **kwargs):
+    with ag_ctx.ControlStatusCtx(status=ag_ctx.Status.UNSPECIFIED):
+      return func(*args, **kwargs)
+
+  if inspect.isfunction(func) or inspect.ismethod(func):
+    wrapper = functools.update_wrapper(wrapper, func)
+
+  setattr(wrapper, '__ag_compiled', True)
+  return wrapper
+
+
 def do_not_convert_internal(f):
   """Decorator that marks internal functions which do not need conversion."""
   setattr(f, '__ag_compiled', True)
@@ -279,12 +307,10 @@ def do_not_convert(func=None, run_as=RunMode.GRAPH, return_dtypes=None):
         run_as=run_as,
         return_dtypes=return_dtypes)
 
-  @functools.wraps(func)
   def graph_wrapper(*args, **kwargs):
     with ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED):
       return func(*args, **kwargs)
 
-  @functools.wraps(func)
   def py_func_wrapper(*args, **kwargs):
     if kwargs:
       raise NotImplementedError('RunMode.PY_FUNC does not yet support kwargs')
@@ -298,6 +324,9 @@ def do_not_convert(func=None, run_as=RunMode.GRAPH, return_dtypes=None):
     wrapper = py_func_wrapper
   else:
     raise ValueError('unknown value for run_as: %s' % run_as)
+
+  if inspect.isfunction(func) or inspect.ismethod(func):
+    wrapper = functools.update_wrapper(wrapper, func)
 
   setattr(wrapper, '__ag_compiled', True)
   return wrapper
@@ -453,6 +482,7 @@ def converted_call(f, owner, options, args, kwargs):
 
     # Unwrap functools.partial objects
     # TODO(mdan): Consider sharing unwrapping logic with tf_inspect.
+    # TODO(b/120224672): This unwrapping should be done before the checks above.
     while isinstance(f, functools.partial):
       args = f.args + args
       new_kwargs = {}

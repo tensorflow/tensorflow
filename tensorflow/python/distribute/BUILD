@@ -172,6 +172,9 @@ py_test(
     srcs = ["distribute_lib_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_rocm",
+    ],
     deps = [
         ":distribute_lib",
         ":input_lib",
@@ -427,7 +430,7 @@ cuda_py_test(
         ":input_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
-        "//tensorflow/python/data/util:traverse",
+        "//tensorflow/python/data/util:structure",
         "//tensorflow/python:errors",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
@@ -982,11 +985,15 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_and_single_gpu",
+<<<<<<< HEAD
         # Failure due to Rccl Op does not support eager mode, should remove when
         # PR400 is submitted
         "no_rocm",
         "no_cuda",
         "no_pip",  # b/131691139
+=======
+        "no_rocm",
+>>>>>>> upstream/master
         "no_windows_gpu",  # TODO(b/130551176)
     ],
     xla_enable_strict_auto_jit = True,
@@ -1034,6 +1041,26 @@ distribute_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_metrics_test",
+    srcs = ["keras_metrics_test.py"],
+    main = "keras_metrics_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        ":combinations",
+        ":strategy_combinations",
+        ":tpu_strategy",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -1093,6 +1120,7 @@ distribute_py_test(
 
 distribute_py_test(
     name = "keras_experimental_saved_model_test",
+<<<<<<< HEAD
     size = "medium",
     srcs = ["keras_experimental_saved_model_test.py"],
     main = "keras_experimental_saved_model_test.py",
@@ -1111,8 +1139,38 @@ distribute_py_test(
     srcs = ["saved_model_mixed_api_test.py"],
     main = "saved_model_mixed_api_test.py",
     tags = [
+=======
+    size = "medium",
+    srcs = ["keras_experimental_saved_model_test.py"],
+    main = "keras_experimental_saved_model_test.py",
+    tags = [
+        "no_oss",  # TODO(b/135287893) reenable
+>>>>>>> upstream/master
         "no_rocm",
     ],
+    deps = [
+        ":saved_model_test_base",
+        "//tensorflow/python/keras:saving",
+        "//tensorflow/python/saved_model",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_save_load_test",
+    size = "medium",
+    srcs = ["keras_save_load_test.py"],
+    main = "keras_save_load_test.py",
+    deps = [
+        ":saved_model_test_base",
+        "//tensorflow/python/keras:saving",
+    ],
+)
+
+distribute_py_test(
+    name = "saved_model_mixed_api_test",
+    size = "medium",
+    srcs = ["saved_model_mixed_api_test.py"],
+    main = "saved_model_mixed_api_test.py",
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras:saving",

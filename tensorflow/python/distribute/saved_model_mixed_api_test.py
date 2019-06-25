@@ -27,7 +27,11 @@ from __future__ import print_function
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import saved_model_test_base as test_base
 from tensorflow.python.eager import test
+<<<<<<< HEAD
 from tensorflow.python.keras.saving import saved_model as keras_saved_model
+=======
+from tensorflow.python.keras.saving import saved_model_experimental as keras_saved_model
+>>>>>>> upstream/master
 
 _DEFAULT_FUNCTION_KEY = 'serving_default'
 

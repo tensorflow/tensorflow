@@ -1,5 +1,5 @@
 load(
-    "@protobuf_archive//:protobuf.bzl",
+    "@com_google_protobuf//:protobuf.bzl",
     "proto_gen",
     "py_proto_library",
     "cc_proto_library",
@@ -93,7 +93,7 @@ cc_proto_library(
 proto_gen(
     name = "protobuf_python_genproto",
     includes = ["."],
-    protoc = "@protobuf_archive//:protoc",
+    protoc = "@com_google_protobuf//:protoc",
     visibility = ["//visibility:public"],
 )
 

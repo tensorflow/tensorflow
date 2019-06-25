@@ -24,6 +24,12 @@ namespace thread {
 struct ThreadPoolOptions {
   // If not null, use this threadpool to schedule inter-op operation
   thread::ThreadPoolInterface* inter_op_threadpool;
+<<<<<<< HEAD
+=======
+
+  // If not null, use this threadpool to schedule intra-op operation
+  thread::ThreadPoolInterface* intra_op_threadpool;
+>>>>>>> upstream/master
 };
 
 }  // namespace thread

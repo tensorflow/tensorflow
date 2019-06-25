@@ -18,17 +18,24 @@ limitations under the License.
 // TODO(ghodrat): Remove this header file and the dependency to internal data
 // structure.
 #include "tensorflow/lite/c/builtin_op_data.h"
+<<<<<<< HEAD
+=======
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
+>>>>>>> upstream/master
 
 #if defined(_MSC_VER)
 #define __restrict__ __restrict
 #endif
 
+<<<<<<< HEAD
 #ifndef USE_NEON
 #if defined(__ARM_NEON__) || defined(__ARM_NEON)
 #define USE_NEON
 #endif  //  defined(__ARM_NEON__) || defined(__ARM_NEON)
 #endif  //  USE_NEON
 
+=======
+>>>>>>> upstream/master
 namespace tflite {
 namespace tensor_utils {
 

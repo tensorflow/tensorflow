@@ -25,8 +25,14 @@ namespace tensorflow {
 
 class CopyToDeviceNode : public EagerNode {
  public:
+<<<<<<< HEAD
   CopyToDeviceNode(TensorHandle* src, Device* dstd, EagerContext* ctx)
       : EagerNode(ctx->NextId()), src_(src), dstd_(dstd), ctx_(ctx) {
+=======
+  CopyToDeviceNode(TensorHandle* src, TensorHandle* dst, Device* dstd,
+                   EagerContext* ctx)
+      : EagerNode(ctx->NextId()), src_(src), dst_(dst), dstd_(dstd), ctx_(ctx) {
+>>>>>>> upstream/master
     src_->Ref();
     status_ = TensorHandle::CreateAsyncLocalHandle(dstd_, dstd_, nullptr,
                                                    src_->dtype, ctx, &dst_);
@@ -43,6 +49,7 @@ class CopyToDeviceNode : public EagerNode {
   }
 
   Status Run() override {
+<<<<<<< HEAD
     if (!status_.ok()) {
       return status_;
     }
@@ -60,6 +67,11 @@ class CopyToDeviceNode : public EagerNode {
     dst_->SetTensor(*tensor);
     temp->Unref();
     return Status::OK();
+=======
+    tensorflow::Tensor tensor;
+    TF_RETURN_IF_ERROR(src_->CopyToDevice(ctx_, dstd_, &tensor));
+    return dst_->SetTensor(tensor);
+>>>>>>> upstream/master
   }
 
   void Abort(Status status) override { dst_->Poison(status); }
@@ -68,10 +80,14 @@ class CopyToDeviceNode : public EagerNode {
 
  private:
   TensorHandle* src_;
+  TensorHandle* dst_;
   Device* dstd_;
   EagerContext* ctx_;
+<<<<<<< HEAD
   TensorHandle* dst_;
   Status status_;
+=======
+>>>>>>> upstream/master
 };
 
 }  // namespace tensorflow
