@@ -137,6 +137,11 @@ class TfDecoratorTest(test.TestCase):
     self.assertEqual('test_function',
                      tf_decorator.TFDecorator('', test_function).__name__)
 
+  def testInitSetsDecoratorQualNameToTargetQualName(self):
+    if hasattr(tf_decorator.TFDecorator('', test_function), '__qualname__'):
+      self.assertEqual('test_function',
+                       tf_decorator.TFDecorator('', test_function).__qualname__)
+
   def testInitSetsDecoratorDocToTargetDoc(self):
     self.assertEqual('Test Function Docstring.',
                      tf_decorator.TFDecorator('', test_function).__doc__)
@@ -165,6 +170,11 @@ class TfDecoratorTest(test.TestCase):
   def testNameOnBoundProperty(self):
     self.assertEqual('return_params',
                      TestDecoratedClass().return_params.__name__)
+
+  def testQualNameOnBoundProperty(self):
+    if hasattr(TestDecoratedClass().return_params, '__qualname__'):
+      self.assertEqual('TestDecoratedClass.return_params',
+                       TestDecoratedClass().return_params.__qualname__)
 
   def testDocstringOnBoundProperty(self):
     self.assertEqual('Return parameters.',
