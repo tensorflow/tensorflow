@@ -218,7 +218,7 @@ def model_iteration(model,
 
     step = 0
     while step < target_steps:
-      batch_data = _get_next_batch(generator, mode)
+      batch_data = _get_next_batch(generator)
       if batch_data is None:
         if is_dataset:
           # The dataset passed by the user ran out of batches.
@@ -357,25 +357,21 @@ predict_generator = functools.partial(
     model_iteration, mode=ModeKeys.PREDICT, shuffle=False)
 
 
-def _get_next_batch(generator, mode):
+def _get_next_batch(generator):
   """Retrieves the next batch of input data."""
   try:
     generator_output = next(generator)
   except (StopIteration, errors.OutOfRangeError):
     return None
-  if not isinstance(generator_output, tuple):
-    if mode == ModeKeys.PREDICT:
-      # Always wrap in a tuple.
-      return (generator_output,)
-    else:
-      raise ValueError('Output of generator should be '
-                       'a tuple `(x, y, sample_weight)` '
-                       'or `(x, y)`. Found: ' + str(generator_output))
 
-  if len(generator_output) < 1 or len(generator_output) > 3:
-    raise ValueError('Output of generator should be '
-                     'a tuple `(x, y, sample_weight)` '
-                     'or `(x, y)` or (x,). Found: ' + str(generator_output))
+  if not isinstance(generator_output, tuple):
+    # Always wrap in a tuple.
+    generator_output = (generator_output,)
+  if len(generator_output) not in [1, 2, 3]:
+    raise ValueError(
+        'Output of generator should be a tuple of 1 or 2 or 3 '
+        'elements: (input,) or (input, target) or '
+        '(input, target, sample_weights). Received {}'.format(generator_output))
   return generator_output
 
 
