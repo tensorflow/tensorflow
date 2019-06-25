@@ -3644,8 +3644,8 @@ tf_kernel_library(
 
 tf_mkl_kernel_library(
     name = "mkl_batch_matmul_op",
-    hdrs = ["batch_matmul_op_impl.h"],
     srcs = ["mkl_batch_matmul_op.cc"],
+    hdrs = ["batch_matmul_op_impl.h"],
     deps = MATH_DEPS + mkl_deps(),
 )
 
