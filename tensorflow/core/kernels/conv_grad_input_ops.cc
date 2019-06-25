@@ -427,6 +427,13 @@ class Conv2DBackpropInputOp : public OpKernel {
     const int dilation_rows = GetTensorDim(dilations_, data_format_, 'H');
     const int dilation_cols = GetTensorDim(dilations_, data_format_, 'W');
 
+    VLOG(2) << "Conv2DBackpropInput:"
+            << " input: " << input_shape.DebugString()
+            << " filter:" << filter.shape().DebugString()
+            << " out_backprop: " << out_backprop.shape().DebugString()
+            << " strides: [" << stride_rows << ", " << stride_cols << "]"
+            << " dilations: [" << dilation_rows << ", " << dilation_cols << "]";
+
     LaunchConv2DBackpropInputOp<Device, T> launch;
     launch(context, use_cudnn_, cudnn_use_autotune_, out_backprop, filter,
            dilation_rows, dilation_cols, stride_rows, stride_cols, padding_,
