@@ -2638,7 +2638,9 @@ Value *OperationParser::resolveSSAUse(SSAUseInfo useInfo, Type type) {
       return result;
 
     emitError(useInfo.loc, "use of value '")
-        .append(useInfo.name, "' expects different type than prior uses")
+        .append(useInfo.name,
+                "' expects different type than prior uses: ", type, " vs ",
+                result->getType())
         .attachNote(getEncodedSourceLocation(entries[useInfo.number].second))
         .append("prior use here");
     return nullptr;
