@@ -568,6 +568,10 @@ def _slice_helper(tensor, slice_spec, var=None):
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
   print(foo[::2,::-1].eval())  # => [[3,2,1], [9,8,7]]
 
+  # fetch multi elements once
+  foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
+  print(foo[[0, 2], [2, 0]].eval())  # => [3, 7]
+
   # Use scalar tensors as indices on both dimensions
   print(foo[tf.constant(0), tf.constant(2)].eval())  # => 3
 
@@ -612,9 +616,24 @@ def _slice_helper(tensor, slice_spec, var=None):
   (isinstance(slice_spec, ops.Tensor) and slice_spec.dtype == dtypes.bool) or \
   (isinstance(slice_spec, np.ndarray) and slice_spec.dtype == bool):
     return boolean_mask(tensor=tensor, mask=slice_spec)
+  
+  if (isinstance(slice_spec, np.ndarray) and len(slice_spec.shape) > 1) or \
+  (isinstance(slice_spec, ops.Tensor) and (slice_spec.shape.dims is not None) and 
+  len(slice_spec.shape) > 1):
+    return gather_nd(tensor, transpose(slice_spec))
 
   if not isinstance(slice_spec, (list, tuple)):
     slice_spec = [slice_spec]
+
+  if len(slice_spec) > 1:
+    for i, spec in enumerate(slice_spec):
+      if isinstance(spec, list) or \
+      (isinstance(spec, np.ndarray) and len(spec.shape) > 0) or \
+      (isinstance(spec, ops.Tensor) and (spec.shape.dims is not None) and len(spec.shape) > 0):
+        if i == len(slice_spec) - 1 :
+          return gather_nd(tensor, stack(slice_spec, axis=1))
+      else:
+        break
 
   begin, end, strides = [], [], []
   index = 0

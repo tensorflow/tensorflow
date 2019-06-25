@@ -546,7 +546,15 @@ class StridedSliceChecker(object):
       np_spec = eval_if_tensor(spec)
       self.test.assertAllEqual(self.x_np[np_spec], tensor)
       return tensor
-
+    
+    if (isinstance(spec, np.ndarray) and len(spec.shape) > 1) or \
+    (isinstance(spec, ops.Tensor) and (spec.shape.dims is not None) and 
+    len(spec.shape) > 1):
+      tensor = op.eval()
+      np_spec = eval_if_tensor(spec)
+      self.test.assertAllEqual(self.x_np[tuple(np_spec)], tensor)
+      return tensor
+  
     if not isinstance(spec, (list, tuple)):
       spec = [spec]
 
@@ -670,6 +678,47 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       # multiple ellipses not allowed
       with self.assertRaisesRegexp(ValueError, "Multiple ellipses"):
         _ = checker[..., :, ...].eval()
+
+  @test_util.run_deprecated_v1
+  def testFetchMulti(self):
+    with self.session(use_gpu=True):
+      raw = [[[1,2,3], [4, 5, 6]], [[7,8,9], [10, 11, 12]]]
+      checker = StridedSliceChecker(self, raw)
+      m1 = np.array([[0, 1, 1], [1, 0, 1], [1, 0, 2]], dtype=np.int32)
+      m2 = np.array([[0, 1, 1], [1, 0, 1]], dtype=np.int32)
+      m3 = np.array([0, 1, 1], dtype=np.int32)
+      m4 = np.array([1, 0], dtype=np.int32)
+      m5 = np.array([0, 1], dtype=np.int32)
+
+      _ = checker[[0, 1, 1], [1, 0, 1], [1, 0, 2]]
+      _ = checker[[0, 1, 1], [1, 0, 1]]
+      _ = checker[[0, 1], [1, 0]]
+      _ = checker[[0], [1]]
+
+      _ = checker[m1]
+      _ = checker[ops.convert_to_tensor(m1, dtype=dtypes.int32)]
+      _ = checker[m2]
+      _ = checker[ops.convert_to_tensor(m2, dtype=dtypes.int32)]
+      _ = checker[m3, [1, 0, 1]]
+      _ = checker[ops.convert_to_tensor(m3, dtype=dtypes.int32), [1, 0, 1]]
+      _ = checker[m4, m5]
+      _ = checker[ops.convert_to_tensor(m4, dtype=dtypes.int32), 
+                  ops.convert_to_tensor(m5, dtype=dtypes.int32)]
+  
+  @test_util.run_in_graph_and_eager_modes
+  def testFetchMultiEager(self):
+    x_value = [[[1,2,3], [4, 5, 6]], [[7,8,9], [10, 11, 12]]]
+    raw = constant_op.constant(x_value, dtype=dtypes.int32)
+    raw_arr = np.array(x_value).astype(raw.dtype.as_numpy_dtype)
+
+    self.assertAllEqual(self.evaluate(raw[[0, 1, 1], [1, 0, 1], [1, 0, 2]]), 
+                        raw_arr[[0, 1, 1], [1, 0, 1], [1, 0, 2]])
+    self.assertAllEqual(self.evaluate(raw[[0, 1, 1], [1, 0, 1]]), 
+                        raw_arr[[0, 1, 1], [1, 0, 1]])
+    self.assertAllEqual(self.evaluate(raw[[0, 1], [1, 0]]), 
+                        raw_arr[[0, 1], [1, 0]])
+    self.assertAllEqual(self.evaluate(raw[[0], [1]]), raw_arr[[0], [1]])
+
 
   @test_util.run_deprecated_v1
   def testShrink(self):
