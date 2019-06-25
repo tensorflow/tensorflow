@@ -22,6 +22,7 @@
 
 #include "mlir/GPU/GPUDialect.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/StandardTypes.h"
 #include "mlir/LLVMIR/LLVMDialect.h"
 #include "mlir/LLVMIR/NVVMDialect.h"
 #include "mlir/Pass/Pass.h"
@@ -51,9 +52,15 @@ private:
   }
 
   // Helper that replaces Op with XOp, YOp, or ZOp dependeing on the dimension
-  // that Op operates on.
+  // that Op operates on.  Op is assumed to return an `std.index` value and
+  // XOp, YOp and ZOp are assumed to return an `llvm.i32` value.  Depending on
+  // `indexBitwidth`, sign-extend or truncate the resulting value to match the
+  // bitwidth expected by the consumers of the value.
   template <typename XOp, typename YOp, typename ZOp, class Op>
-  void replaceWithIntrinsic(Op operation, LLVM::LLVMDialect *dialect) {
+  void replaceWithIntrinsic(Op operation, LLVM::LLVMDialect *dialect,
+                            unsigned indexBitwidth) {
+    assert(operation.getType().isIndex() &&
+           "expected an operation returning index");
     OpBuilder builder(operation);
     auto loc = operation.getLoc();
     Value *newOp;
@@ -72,6 +79,14 @@ private:
       signalPassFailure();
       return;
     }
+
+    if (indexBitwidth > 32) {
+      newOp = builder.create<LLVM::SExtOp>(
+          loc, LLVM::LLVMType::getIntNTy(dialect, indexBitwidth), newOp);
+    } else if (indexBitwidth < 32) {
+      newOp = builder.create<LLVM::TruncOp>(
+          loc, LLVM::LLVMType::getIntNTy(dialect, indexBitwidth), newOp);
+    }
     operation.replaceAllUsesWith(newOp);
     operation.erase();
   }
@@ -80,25 +95,31 @@ public:
   void runOnFunction() {
     LLVM::LLVMDialect *llvmDialect =
         getContext().getRegisteredDialect<LLVM::LLVMDialect>();
+    unsigned indexBitwidth =
+        llvmDialect->getLLVMModule().getDataLayout().getPointerSizeInBits();
     getFunction().walk([&](Operation *opInst) {
       if (auto threadId = dyn_cast<gpu::ThreadId>(opInst)) {
         replaceWithIntrinsic<NVVM::ThreadIdXOp, NVVM::ThreadIdYOp,
-                             NVVM::ThreadIdZOp>(threadId, llvmDialect);
+                             NVVM::ThreadIdZOp>(threadId, llvmDialect,
+                                                indexBitwidth);
         return;
       }
       if (auto blockDim = dyn_cast<gpu::BlockDim>(opInst)) {
         replaceWithIntrinsic<NVVM::BlockDimXOp, NVVM::BlockDimYOp,
-                             NVVM::BlockDimZOp>(blockDim, llvmDialect);
+                             NVVM::BlockDimZOp>(blockDim, llvmDialect,
+                                                indexBitwidth);
         return;
       }
       if (auto blockId = dyn_cast<gpu::BlockId>(opInst)) {
         replaceWithIntrinsic<NVVM::BlockIdXOp, NVVM::BlockIdYOp,
-                             NVVM::BlockIdZOp>(blockId, llvmDialect);
+                             NVVM::BlockIdZOp>(blockId, llvmDialect,
+                                               indexBitwidth);
         return;
       }
       if (auto gridDim = dyn_cast<gpu::GridDim>(opInst)) {
         replaceWithIntrinsic<NVVM::GridDimXOp, NVVM::GridDimYOp,
-                             NVVM::GridDimZOp>(gridDim, llvmDialect);
+                             NVVM::GridDimZOp>(gridDim, llvmDialect,
+                                               indexBitwidth);
         return;
       }
     });
