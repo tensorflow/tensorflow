@@ -27,6 +27,7 @@ from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.compat import compat as forward_compat
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
@@ -55,7 +56,7 @@ from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 
 
-class IteratorTest(test.TestCase, parameterized.TestCase):
+class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @test_util.deprecated_graph_mode_only
   def testNoGradients(self):
@@ -252,10 +253,10 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     # first session (initializing the iterator) is visible in the
     # second session.
     with ops.Graph().as_default():
-      iterator = (
-          dataset_ops.Dataset.from_tensors(components)
-          .map(lambda x, y, z: (x, y, z)).make_initializable_iterator(
-              shared_name="shared_iterator"))
+      iterator = dataset_ops.make_initializable_iterator(
+          dataset_ops.Dataset.from_tensors(
+              components).map(lambda x, y, z: (x, y, z)),
+          shared_name="shared_iterator")
       init_op = iterator.initializer
       get_next = iterator.get_next()
 
@@ -307,15 +308,19 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
         constant_op.constant([1, 2, 3]))
     dataset_4 = dataset_ops.Dataset.from_tensors(
         constant_op.constant([4, 5, 6, 7]))
-    iterator = iterator_ops.Iterator.from_structure(dataset_3.output_types,
-                                                    [None])
+    iterator = iterator_ops.Iterator.from_structure(
+        dataset_ops.get_legacy_output_types(dataset_3), [None])
 
     dataset_3_init_op = iterator.make_initializer(dataset_3)
     dataset_4_init_op = iterator.make_initializer(dataset_4)
     get_next = iterator.get_next()
 
-    self.assertEqual(dataset_3.output_types, iterator.output_types)
-    self.assertEqual(dataset_4.output_types, iterator.output_types)
+    self.assertEqual(
+        dataset_ops.get_legacy_output_types(dataset_3),
+        dataset_ops.get_legacy_output_types(iterator))
+    self.assertEqual(
+        dataset_ops.get_legacy_output_types(dataset_4),
+        dataset_ops.get_legacy_output_types(iterator))
     self.assertEqual(
         [None], dataset_ops.get_legacy_output_shapes(iterator).as_list())
 
@@ -416,10 +421,10 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
         dataset_ops.get_legacy_output_shapes(dataset_3))
     next_element = feedable_iterator.get_next()
 
-    self.assertTrue(dataset_ops.get_structure(dataset_3).is_compatible_with(
-        dataset_ops.get_structure(feedable_iterator)))
-    self.assertTrue(dataset_ops.get_structure(dataset_4).is_compatible_with(
-        dataset_ops.get_structure(feedable_iterator)))
+    self.assertTrue(
+        structure.are_compatible(
+            dataset_ops.get_structure(dataset_3),
+            dataset_ops.get_structure(feedable_iterator)))
 
     with self.cached_session() as sess:
       iterator_3_handle = sess.run(iterator_3.string_handle())
@@ -475,10 +480,10 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
           dataset_ops.get_legacy_output_shapes(dataset_3))
       next_element = feedable_iterator.get_next()
 
-      self.assertTrue(dataset_ops.get_structure(dataset_3).is_compatible_with(
-          dataset_ops.get_structure(feedable_iterator)))
-      self.assertTrue(dataset_ops.get_structure(dataset_4).is_compatible_with(
-          dataset_ops.get_structure(feedable_iterator)))
+      self.assertTrue(
+          structure.are_compatible(
+              dataset_ops.get_structure(dataset_3),
+              dataset_ops.get_structure(feedable_iterator)))
 
       with self.cached_session() as sess:
         iterator_3_handle = sess.run(iterator_3.string_handle())
@@ -532,7 +537,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     one_shot_iterator = dataset_ops.make_one_shot_iterator(dataset)
     initializable_iterator = dataset_ops.make_initializable_iterator(dataset)
     structure_iterator = iterator_ops.Iterator.from_structure(
-        dataset.output_types)
+        dataset_ops.get_legacy_output_types(dataset))
 
     created_ops = len(ops.get_default_graph().get_operations())
 
@@ -839,23 +844,31 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
   # pylint: disable=g-long-lambda
   @parameterized.named_parameters(
       ("Tensor", lambda: constant_op.constant(37.0),
-       structure.TensorStructure(dtypes.float32, []),
-       ops.Tensor, dtypes.float32, []),
+       structure.TensorStructure(dtypes.float32,
+                                 []), ops.Tensor, dtypes.float32, []),
       ("SparseTensor", lambda: sparse_tensor.SparseTensor(
-          indices=[[0]], values=constant_op.constant([0], dtype=dtypes.int32),
-          dense_shape=[1]),
-       structure.SparseTensorStructure(dtypes.int32, [1]),
+          indices=[[0]],
+          values=constant_op.constant([0], dtype=dtypes.int32),
+          dense_shape=[1]), structure.SparseTensorStructure(dtypes.int32, [1]),
        sparse_tensor.SparseTensor, dtypes.int32, [1]),
       ("Nest", lambda: {
           "a": constant_op.constant(37.0),
-          "b": (constant_op.constant(["Foo"]), constant_op.constant("Bar"))},
-       structure.NestedStructure({
-           "a": structure.TensorStructure(dtypes.float32, []),
-           "b": (structure.TensorStructure(dtypes.string, [1]),
-                 structure.TensorStructure(dtypes.string, []))}),
-       {"a": ops.Tensor, "b": (ops.Tensor, ops.Tensor)},
-       {"a": dtypes.float32, "b": (dtypes.string, dtypes.string)},
-       {"a": [], "b": ([1], [])}),
+          "b": (constant_op.constant(["Foo"]), constant_op.constant("Bar"))
+      }, {
+          "a":
+              structure.TensorStructure(dtypes.float32, []),
+          "b": (structure.TensorStructure(
+              dtypes.string, [1]), structure.TensorStructure(dtypes.string, []))
+      }, {
+          "a": ops.Tensor,
+          "b": (ops.Tensor, ops.Tensor)
+      }, {
+          "a": dtypes.float32,
+          "b": (dtypes.string, dtypes.string)
+      }, {
+          "a": [],
+          "b": ([1], [])
+      }),
   )
   def testIteratorStructure(self, tf_value_fn, expected_element_structure,
                             expected_output_classes, expected_output_types,
@@ -864,11 +877,9 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     iterator = dataset_ops.make_one_shot_iterator(
         dataset_ops.Dataset.from_tensors(tf_value))
 
-    self.assertTrue(expected_element_structure.is_compatible_with(
-        iterator._element_structure))
-    self.assertTrue(iterator._element_structure.is_compatible_with(
-        expected_element_structure))
-
+    self.assertTrue(
+        structure.are_compatible(
+            dataset_ops.get_structure(iterator), expected_element_structure))
     self.assertEqual(expected_output_classes,
                      dataset_ops.get_legacy_output_classes(iterator))
     self.assertEqual(expected_output_types,
@@ -942,6 +953,26 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
       fn()
 
     self.assertEqual(queue.size().numpy(), 2)
+
+  @test_util.run_v2_only
+  def testLimitedRetracing(self):
+    trace_count = [0]
+
+    @def_function.function
+    def f(iterator):
+      trace_count[0] += 1
+      counter = np.int64(0)
+      for elem in iterator:
+        counter += elem
+      return counter
+
+    dataset = dataset_ops.Dataset.range(5)
+    dataset2 = dataset_ops.Dataset.range(10)
+
+    for _ in range(10):
+      self.assertEqual(self.evaluate(f(iter(dataset))), 10)
+      self.assertEqual(self.evaluate(f(iter(dataset2))), 45)
+      self.assertEqual(trace_count[0], 1)
 
 
 if __name__ == "__main__":

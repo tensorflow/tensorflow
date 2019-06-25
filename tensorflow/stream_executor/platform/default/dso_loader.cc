@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/path.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
+#include "third_party/tensorrt/tensorrt_config.h"
 
 namespace stream_executor {
 namespace internal {
@@ -32,6 +33,7 @@ namespace {
 string GetCudaVersion() { return TF_CUDA_VERSION; }
 string GetCudaLibVersion() { return TF_CUDA_LIB_VERSION; }
 string GetCudnnVersion() { return TF_CUDNN_VERSION; }
+string GetTensorRTVersion() { return TF_TENSORRT_VERSION; }
 
 port::StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
   auto filename = port::Env::Default()->FormatLibraryFileName(name, version);
@@ -106,6 +108,14 @@ port::StatusOr<void*> GetCuptiDsoHandle() {
 
 port::StatusOr<void*> GetCudnnDsoHandle() {
   return GetDsoHandle("cudnn", GetCudnnVersion());
+}
+
+port::StatusOr<void*> GetNvInferDsoHandle() {
+  return GetDsoHandle("nvinfer", GetTensorRTVersion());
+}
+
+port::StatusOr<void*> GetNvInferPluginDsoHandle() {
+  return GetDsoHandle("nvinfer_plugin", GetTensorRTVersion());
 }
 
 port::StatusOr<void*> GetRocblasDsoHandle() {

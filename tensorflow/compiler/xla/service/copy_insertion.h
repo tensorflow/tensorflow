@@ -52,9 +52,9 @@ class CopyInsertion : public HloModulePass {
   //
   // TODO(b/80315712): Find a better way to tell whether a fusion can share
   // buffer.
-  CopyInsertion(const HloDataflowAnalysis::FusionCanShareBufferFunction&
-                    fusion_can_share_buffer = nullptr)
-      : fusion_can_share_buffer_(fusion_can_share_buffer) {}
+  explicit CopyInsertion(
+      const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr)
+      : can_share_buffer_(can_share_buffer) {}
 
   // Run the pass on the given module. Returns whether the module was changed
   // (copies were inserted).
@@ -85,7 +85,7 @@ class CopyInsertion : public HloModulePass {
 
   // Backend specific function that decides whether a fusion can share buffer
   // with its operand.
-  HloDataflowAnalysis::FusionCanShareBufferFunction fusion_can_share_buffer_;
+  HloDataflowAnalysis::CanShareBuffer can_share_buffer_;
 
  private:
   Status AddCopiesToResolveInterference(HloModule* module);

@@ -22,7 +22,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.util.concurrent.atomic.AtomicBoolean;
-
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -59,7 +59,9 @@ public class EagerSessionTest {
     assertTrue(deleted.get());
   }
 
-  @Test
+  // TODO(b/135541743): Re-enable once fixed.
+  // Disabled due to flakiness with -c opt --config=cuda
+  @Ignore
   public void cleanupResourceOnSafePoints() {
     AtomicBoolean deleted = new AtomicBoolean();
 

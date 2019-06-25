@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -33,7 +33,7 @@ __global__ void MatrixSetDiagKernel(const int num_threads, const int m,
                                     const int upper_diag_index,
                                     const Scalar* diag_ptr,
                                     Scalar* output_ptr) {
-  CUDA_1D_KERNEL_LOOP(index, num_threads) {
+  GPU_1D_KERNEL_LOOP(index, num_threads) {
     const int batch_and_diag_index = index / max_diag_len;
     const int index_in_the_diagonal =
         index - batch_and_diag_index * max_diag_len;
@@ -53,7 +53,7 @@ __global__ void MatrixCopyInputAndSetDiagKernel(
     const int max_diag_len, const int lower_diag_index,
     const int upper_diag_index, const Scalar* input_ptr, const Scalar* diag_ptr,
     Scalar* output_ptr) {
-  CUDA_1D_KERNEL_LOOP(index, num_threads) {
+  GPU_1D_KERNEL_LOOP(index, num_threads) {
     const int batch_and_row_index = index / n;
     const int col = index - batch_and_row_index * n;
     const int batch = batch_and_row_index / m;
@@ -89,14 +89,14 @@ struct MatrixSetDiag<GPUDevice, Scalar> {
     if (input.data() == output.data()) {
       GpuLaunchConfig config =
           GetGpuLaunchConfig(batch_size * num_diags * max_diag_len, device);
-      TF_CHECK_OK(CudaLaunchKernel(
+      TF_CHECK_OK(GpuLaunchKernel(
           MatrixSetDiagKernel<Scalar>, config.block_count,
           config.thread_per_block, 0, device.stream(),
           config.virtual_thread_count, m, n, num_diags, max_diag_len,
           upper_diag_index, diag.data(), output.data()));
     } else {
-      GpuLaunchConfig config = GetCudaLaunchConfig(batch_size * m * n, device);
-      TF_CHECK_OK(CudaLaunchKernel(
+      GpuLaunchConfig config = GetGpuLaunchConfig(batch_size * m * n, device);
+      TF_CHECK_OK(GpuLaunchKernel(
           MatrixCopyInputAndSetDiagKernel<Scalar>, config.block_count,
           config.thread_per_block, 0, device.stream(),
           config.virtual_thread_count, m, n, num_diags, max_diag_len,
@@ -116,4 +116,4 @@ TF_CALL_complex128(DEFINE_GPU_SPEC);
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

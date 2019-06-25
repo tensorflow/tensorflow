@@ -45,11 +45,10 @@ class _SnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
     self._writer_path_prefix = (
         writer_path_prefix if writer_path_prefix is not None else "")
     self._shard_size_bytes = (
-        shard_size_bytes
-        if shard_size_bytes is not None else 10 * 1024 * 1024 * 1024)
+        shard_size_bytes if shard_size_bytes is not None else -1)
     self._pending_snapshot_expiry_seconds = (
         pending_snapshot_expiry_seconds
-        if pending_snapshot_expiry_seconds is not None else 86400)
+        if pending_snapshot_expiry_seconds is not None else -1)
 
     self._input_dataset = input_dataset
     self._path = ops.convert_to_tensor(path, dtype=dtypes.string, name="path")
@@ -62,7 +61,7 @@ class _SnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
         writer_path_prefix=self._writer_path_prefix,
         shard_size_bytes=self._shard_size_bytes,
         pending_snapshot_expiry_seconds=self._pending_snapshot_expiry_seconds,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_SnapshotDataset, self).__init__(input_dataset, variant_tensor)
 
 

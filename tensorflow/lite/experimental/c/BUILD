@@ -6,6 +6,7 @@ package(
 package_group(
     name = "experimental",
     packages = [
+        "//dart/tensorflow/...",  # whitelisted
         "//tensorflow/lite/experimental/...",
     ],
 )

@@ -320,7 +320,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_COS, Register_COS());
   AddBuiltin(BuiltinOperator_TRANSPOSE_CONV, Register_TRANSPOSE_CONV());
   AddBuiltin(BuiltinOperator_TILE, Register_TILE());
-  AddBuiltin(BuiltinOperator_SUM, Register_SUM());
+  AddBuiltin(BuiltinOperator_SUM, Register_SUM(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_REDUCE_PROD, Register_REDUCE_PROD());
   AddBuiltin(BuiltinOperator_REDUCE_MAX, Register_REDUCE_MAX(),
              /* min_version */ 1,

@@ -338,6 +338,10 @@ class RNNCell(base_layer.Layer):
       self._last_zero_state = (state_size, batch_size, dtype, output)
     return output
 
+  # TODO(b/134773139): Remove when contrib RNN cells implement `get_config`
+  def get_config(self):  # pylint: disable=useless-super-delegation
+    return super(RNNCell, self).get_config()
+
 
 class LayerRNNCell(RNNCell):
   """Subclass of RNNCells that act like proper `tf.Layer` objects.

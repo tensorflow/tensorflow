@@ -31,12 +31,12 @@ namespace gl {
 namespace {
 
 TEST(SliceTest, Identity) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 2, 2);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 1, 2, 2);
@@ -49,17 +49,17 @@ TEST(SliceTest, Identity) {
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  ASSERT_TRUE(model.Invoke(*NewSliceNodeShader()));
+  ASSERT_OK(model.Invoke(*NewSliceNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {1, 2, 3, 4}));
 }
 
 TEST(SliceTest, NegativeEnds) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 2, 2);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 1, 2, 2);
@@ -72,17 +72,17 @@ TEST(SliceTest, NegativeEnds) {
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  ASSERT_TRUE(model.Invoke(*NewSliceNodeShader()));
+  ASSERT_OK(model.Invoke(*NewSliceNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {1, 2, 3, 4}));
 }
 
 TEST(SliceTest, NegativeEndsNonZeroStarts) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 2, 2);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 1, 1, 1);
@@ -95,17 +95,17 @@ TEST(SliceTest, NegativeEndsNonZeroStarts) {
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  ASSERT_TRUE(model.Invoke(*NewSliceNodeShader()));
+  ASSERT_OK(model.Invoke(*NewSliceNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {3}));
 }
 
 TEST(SliceTest, StridesByHeight) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 4, 1, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 2, 1, 1);
@@ -118,17 +118,17 @@ TEST(SliceTest, StridesByHeight) {
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  ASSERT_TRUE(model.Invoke(*NewSliceNodeShader()));
+  ASSERT_OK(model.Invoke(*NewSliceNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {1, 3}));
 }
 
 TEST(SliceTest, StridesByWidth) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 4, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 1, 2, 1);
@@ -141,17 +141,17 @@ TEST(SliceTest, StridesByWidth) {
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  ASSERT_TRUE(model.Invoke(*NewSliceNodeShader()));
+  ASSERT_OK(model.Invoke(*NewSliceNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {2, 4}));
 }
 
 TEST(SliceTest, StridesByChannels) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 1, 4);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 1, 1, 1);
@@ -164,7 +164,7 @@ TEST(SliceTest, StridesByChannels) {
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  ASSERT_TRUE(model.Invoke(*NewSliceNodeShader()));
+  ASSERT_OK(model.Invoke(*NewSliceNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {3}));
 }
 

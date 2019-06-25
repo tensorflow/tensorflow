@@ -216,6 +216,8 @@ def getqualifiedname(namespace, object_, max_depth=5, visited=None):
 def _get_unbound_function(m):
   # TODO(mdan): Figure out why six.get_unbound_function fails in some cases.
   # The failure case is for tf.keras.Model.
+  if hasattr(m, '__func__'):
+    return m.__func__
   if hasattr(m, 'im_func'):
     return m.im_func
   return m
@@ -225,7 +227,7 @@ def getdefiningclass(m, owner_class):
   """Resolves the class (e.g. one of the superclasses) that defined a method."""
   # Normalize bound functions to their respective unbound versions.
   m = _get_unbound_function(m)
-  for superclass in owner_class.__bases__:
+  for superclass in reversed(inspect.getmro(owner_class)):
     if hasattr(superclass, m.__name__):
       superclass_m = getattr(superclass, m.__name__)
       if _get_unbound_function(superclass_m) is m:

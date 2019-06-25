@@ -303,6 +303,24 @@ ENTRY %WhileWithScalarS32Result.v2 () -> s32[] {
 
 )"
 },
+// copy-start and copy-done
+{
+"CopyStartAndCopyDone",
+
+R"(HloModule CopyStartAndCopyDone_module
+
+ENTRY %CopyStartAndCopyDone (v1: f32[], v2: f32[2,3]) -> (f32[], f32[2,3]) {
+  %v1 = f32[] parameter(0)
+  %copy-start.1 = (f32[], u32[]) copy-start(f32[] %v1)
+  %copy-done.1 = f32[] copy-done((f32[], u32[]) %copy-start.1)
+  %v2 = f32[2,3]{1,0:S(1)} parameter(1)
+  %copy-start.2 = (f32[2,3]{1,0:S(2)}, u32[]) copy-start(f32[2,3]{1,0:S(1)} %v2)
+  %copy-done.2 = f32[2,3]{1,0:S(2)} copy-done((f32[2,3]{1,0:S(2)}, u32[]) %copy-start.2)
+  ROOT %tuple = (f32[], f32[2,3]{1,0:S(2)}) tuple(f32[] %copy-done.1, f32[2,3]{1,0:S(2)} %copy-done.2)
+}
+
+)"
+},
 // send and recv
 {
 "SendRecv",
@@ -1380,7 +1398,7 @@ add {
 
 ENTRY AllReduceWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
-  ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), replica_groups={{0,1},{2,3}}, barrier="abc", to_apply=add
+  ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), replica_groups={{0,1},{2,3}}, to_apply=add
 }
 
 )"

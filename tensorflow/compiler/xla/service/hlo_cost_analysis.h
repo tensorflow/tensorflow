@@ -61,6 +61,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleClamp(const HloInstruction* clamp) override;
   Status HandleReducePrecision(const HloInstruction* hlo) override;
   Status HandleConcatenate(const HloInstruction* concatenate) override;
+  Status HandleCopyStart(const HloInstruction* send) override;
+  Status HandleCopyDone(const HloInstruction* send_done) override;
   Status HandleSend(const HloInstruction* send) override;
   Status HandleSendDone(const HloInstruction* send_done) override;
   Status HandleRecv(const HloInstruction* recv) override;
@@ -157,6 +159,9 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
   HloCostAnalysis(const ShapeSizeFunction& shape_size,
                   const Properties& per_second_rates);
+
+  virtual std::unique_ptr<HloCostAnalysis> CreateNestedCostAnalysis(
+      const ShapeSizeFunction& shape_size, const Properties& per_second_rates);
 
   // Returns the properties computed from visiting the computation rooted at the
   // given hlo.

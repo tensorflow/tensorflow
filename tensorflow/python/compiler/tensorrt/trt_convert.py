@@ -20,13 +20,12 @@ from __future__ import print_function
 
 import collections
 import os
+import platform
 import tempfile
 
 import six as _six
 
-from tensorflow.compiler.tf2tensorrt.python.ops import trt_ops
-from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_linked_tensorrt_version
-from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_loaded_tensorrt_version
+from tensorflow.compiler.tf2tensorrt import wrap_py_utils
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -53,21 +52,24 @@ from tensorflow.python.training import saver
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util.lazy_loader import LazyLoader
 
-# Import TRT library. This is fine since we don't import TF-TRT in
-# tensorflow/python/compiler/__init__.py, and `import tensorflow` won't trigger
-# importing of TF-TRT. Note that TF-TRT is still included in GPU build since
-# tensorflow/python/BUILD depends on it.
-#
-# We need this import so that when users import this module, they can execute a
-# TRT-converted graph without calling any of the methods in this module.
-trt_ops.load_trt_ops()
-
 # Lazily load the op, since it's not available in cpu-only builds. Importing
 # this at top will cause tests that imports TF-TRT fail when they're built
 # and run without CUDA/GPU.
 gen_trt_ops = LazyLoader(
     "gen_trt_ops", globals(),
     "tensorflow.compiler.tf2tensorrt.ops.gen_trt_ops")
+
+# Register TRT ops in python, so that when users import this module they can
+# execute a TRT-converted graph without calling any of the methods in this
+# module.
+if wrap_py_utils.is_tensorrt_enabled():
+  if platform.system() == "Windows":
+    raise RuntimeError("Windows platform is not supported")
+
+  # This will call register_op_list() in
+  # tensorflow/python/framework/op_def_registry.py, but it doesn't register
+  # the op or the op kernel in C++ runtime.
+  gen_trt_ops.trt_engine_op  # pylint: disable=pointless-statement
 
 
 def _to_bytes(s):
@@ -567,8 +569,8 @@ def _check_trt_version_compatibility():
   Raises:
     RuntimeError: if the TensorRT library version is incompatible.
   """
-  compiled_version = get_linked_tensorrt_version()
-  loaded_version = get_loaded_tensorrt_version()
+  compiled_version = wrap_py_utils.get_linked_tensorrt_version()
+  loaded_version = wrap_py_utils.get_loaded_tensorrt_version()
   tf_logging.info("Linked TensorRT version: %s" % str(compiled_version))
   tf_logging.info("Loaded TensorRT version: %s" % str(loaded_version))
   version_mismatch = False

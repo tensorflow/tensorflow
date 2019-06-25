@@ -109,11 +109,14 @@ class TPUClusterResolver(ClusterResolver):
 
     if self._discovery_url:
       return discovery.build(
-          'tpu', 'v1alpha1', credentials=credentials,
-          discoveryServiceUrl=self._discovery_url, cache_discovery=False)
+          'tpu',
+          'v1',
+          credentials=credentials,
+          discoveryServiceUrl=self._discovery_url,
+          cache_discovery=False)
     else:
       return discovery.build(
-          'tpu', 'v1alpha1', credentials=credentials, cache_discovery=False)
+          'tpu', 'v1', credentials=credentials, cache_discovery=False)
 
   def _request_compute_metadata(self, path):
     req = Request('%s/computeMetadata/v1/%s' % (_GCE_METADATA_ENDPOINT, path),

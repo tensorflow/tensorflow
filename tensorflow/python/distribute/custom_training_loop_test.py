@@ -99,6 +99,32 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
+          distribution=strategy_combinations.strategies_minus_tpu +
+          [strategy_combinations.tpu_strategy_one_step],
+          mode=["eager"]
+      ))
+  def testRunInFunctionAutoGraphApplication(self, distribution):
+    dataset = self._get_dataset()
+
+    def train_step(data):
+      if math_ops.reduce_sum(data) < 0:
+        return -data
+      return data
+
+    @def_function.function
+    def f_train_step(input_data):
+      return distribution.experimental_local_results(
+          distribution.experimental_run_v2(train_step, args=(input_data,)))
+
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+    results = []
+    for x in dist_dataset:
+      output = f_train_step(x)
+      results.append(output)
+    self._validate_outputs(results)
+
+  @combinations.generate(
+      combinations.combine(
           distribution=strategy_combinations.strategies_minus_tpu,
           mode=["eager"]
       ))

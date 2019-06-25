@@ -31,12 +31,12 @@ namespace gl {
 namespace {
 
 TEST(MulTest, Scalar) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 2, 2, 1);
@@ -46,17 +46,17 @@ TEST(MulTest, Scalar) {
 
   SingleOpModel model({ToString(OperationType::MUL), attr}, {input}, {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  ASSERT_TRUE(model.Invoke(*NewMultiplyScalarNodeShader()));
+  ASSERT_OK(model.Invoke(*NewMultiplyScalarNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {2, 4, 6, 8}));
 }
 
 TEST(MulTest, Linear) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 2, 2);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 1, 2, 2);
@@ -70,22 +70,22 @@ TEST(MulTest, Linear) {
 
   SingleOpModel model({ToString(OperationType::MUL), attr}, {input}, {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  ASSERT_TRUE(model.Invoke(*NewMultiplyScalarNodeShader()));
+  ASSERT_OK(model.Invoke(*NewMultiplyScalarNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {2, 6, 6, 12}));
 }
 
 TEST(ApplyMaskTest, MaskChannel1) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 2, 2);
 
-  TensorRefFloat32 mask;
+  TensorRef<BHWC> mask;
   mask.type = DataType::FLOAT32;
   mask.ref = 1;
   mask.shape = BHWC(1, 1, 2, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 2;
   output.shape = BHWC(1, 1, 2, 2);
@@ -94,22 +94,22 @@ TEST(ApplyMaskTest, MaskChannel1) {
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
   ASSERT_TRUE(model.PopulateTensor(1, {2, 3}));
-  ASSERT_TRUE(model.Invoke(*NewApplyMaskNodeShader()));
+  ASSERT_OK(model.Invoke(*NewApplyMaskNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {2, 4, 9, 12}));
 }
 
 TEST(ApplyMaskTest, MaskChannelEqualsToInputChannel) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 2, 2);
 
-  TensorRefFloat32 mask;
+  TensorRef<BHWC> mask;
   mask.type = DataType::FLOAT32;
   mask.ref = 1;
   mask.shape = BHWC(1, 1, 2, 2);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 2;
   output.shape = BHWC(1, 1, 2, 2);
@@ -118,7 +118,7 @@ TEST(ApplyMaskTest, MaskChannelEqualsToInputChannel) {
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
   ASSERT_TRUE(model.PopulateTensor(1, {1, 2, 3, 4}));
-  ASSERT_TRUE(model.Invoke(*NewApplyMaskNodeShader()));
+  ASSERT_OK(model.Invoke(*NewApplyMaskNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {1, 4, 9, 16}));
 }
 

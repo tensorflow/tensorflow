@@ -26,6 +26,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -373,8 +374,8 @@ def _wait_for_variable_initialization(session):
 def init_restore_or_wait_for_variables():
   """Initialize or restore variables or wait for variables to be initialized."""
   session = K._get_session()  # pylint: disable=protected-access
-  worker_context = dc_context.get_current_worker_context()
-  if not worker_context or worker_context.experimental_should_init:
+  if not multi_worker_util.has_worker_context(
+  ) or multi_worker_util.should_load_checkpoint():
     # TODO(yuefengz): if checkpoints exist, restore from checkpoint.
     K._initialize_variables(session)  # pylint: disable=protected-access
   else:
@@ -555,6 +556,10 @@ def _get_input_from_iterator(iterator, model):
   """Get elements from the iterator and verify the input shape and type."""
   next_element = iterator.get_next()
 
+  # `len(nest.flatten(x))` is going to not count empty elements such as {}.
+  # len(nest.flatten([[0,1,2], {}])) is 3 and not 4.   The `next_element` is
+  # going to get flattened in `_prepare_feed_values` to work around that. Empty
+  # elements are going to get filtered out as part of the flattening.
   if len(nest.flatten(next_element)) == len(model.inputs):
     x = next_element
     y = None
@@ -604,6 +609,8 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
     # main flow.
     inputs, targets = nest.map_structure(
         training_utils.standardize_single_array, (inputs, targets))
+  else:
+    inputs = training_utils.ModelInputs(inputs).as_list()
 
   if mode == ModeKeys.PREDICT:
     sample_weights = []
@@ -1098,7 +1105,7 @@ def filter_distributed_callbacks(callbacks_list):
     The list of `Callback` instances that should be run on this worker.
   """
 
-  if not K.in_multi_worker_mode():
+  if not multi_worker_util.in_multi_worker_mode():
     raise ValueError(
         'filter_distributed_callbacks() should only be called when Keras '
         'is in multi worker mode.')

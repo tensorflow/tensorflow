@@ -40,12 +40,19 @@ message AutotuneResult {
     // compared one.
     oneof key {
       ConvKey reference_conv = 11;
+      GemmKey reference_gemm = 12;
     }
+
+    int64 buffer_address = 13;
   }
 
   message ConvKey {
     int64 algorithm = 1;
     bool tensor_ops_enabled = 2;
+  }
+
+  message GemmKey {
+    int64 algorithm = 1;
   }
 
   int64 scratch_bytes = 8;
@@ -55,9 +62,10 @@ message AutotuneResult {
 
   oneof key {
     ConvKey conv = 5;
+    GemmKey gemm = 6;
   }
 
-  // Next ID: 12
+  // Next ID: 14
 }
 
 message AutotuningLog {

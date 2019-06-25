@@ -253,6 +253,9 @@ class DfsHloVisitorBase {
 
   virtual Status HandlePad(HloInstructionPtr hlo) = 0;
 
+  virtual Status HandleCopyStart(HloInstructionPtr copy_start) = 0;
+  virtual Status HandleCopyDone(HloInstructionPtr copy_done) = 0;
+
   virtual Status HandleSend(HloInstructionPtr send) = 0;
   virtual Status HandleSendDone(HloInstructionPtr send_done) = 0;
 

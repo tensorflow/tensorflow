@@ -28,7 +28,7 @@ import traceback
 
 import six
 from six import iteritems
-from six.moves import xrange  # pylint: disable=redefined-builtin
+from six.moves import xrange, zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
@@ -93,9 +93,7 @@ class _PartitionInfo(object):
           "full_shape is of length {}.".format(
               len(var_offset), len(full_shape)))
 
-    for i in xrange(len(full_shape)):
-      offset = var_offset[i]
-      shape = full_shape[i]
+    for offset, shape in zip(var_offset, full_shape):
       if offset < 0 or offset >= shape:
         raise ValueError(
             "Expected 0 <= offset < shape but found offset={}, shape={} for "
@@ -2223,10 +2221,11 @@ class variable_scope(object):
 
     try:
       return self._enter_scope_uncached()
-    finally:
+    except:
       if (self._in_graph_mode and not self._building_function and
           self._graph_context_manager is not None):
         self._graph_context_manager.__exit__(*sys.exc_info())
+      raise
 
   def _enter_scope_uncached(self):
     """Enters the context manager when there is no cached scope yet.
@@ -2348,12 +2347,18 @@ class variable_scope(object):
       return entered_pure_variable_scope
 
   def __exit__(self, type_arg, value_arg, traceback_arg):
-    self._cached_pure_variable_scope.__exit__(type_arg, value_arg,
-                                              traceback_arg)
-    if self._current_name_scope:
-      self._current_name_scope.__exit__(type_arg, value_arg, traceback_arg)
-    if self._in_graph_mode and not self._building_function:
-      self._graph_context_manager.__exit__(type_arg, value_arg, traceback_arg)
+    try:
+      self._cached_pure_variable_scope.__exit__(type_arg, value_arg,
+                                                traceback_arg)
+    finally:
+      try:
+        if self._current_name_scope:
+          self._current_name_scope.__exit__(type_arg, value_arg,
+                                            traceback_arg)
+      finally:
+        if self._in_graph_mode and not self._building_function:
+          self._graph_context_manager.__exit__(type_arg, value_arg,
+                                               traceback_arg)
 
 
 # pylint: disable=g-doc-return-or-yield

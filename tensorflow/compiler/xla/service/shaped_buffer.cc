@@ -31,11 +31,10 @@ limitations under the License.
 
 namespace xla {
 
-ShapedBuffer::ShapedBuffer(const Shape& on_host_shape,
-                           const Shape& on_device_shape,
+ShapedBuffer::ShapedBuffer(Shape on_host_shape, Shape on_device_shape,
                            const se::Platform* platform, int device_ordinal)
-    : on_host_shape_(on_host_shape),
-      on_device_shape_(on_device_shape),
+    : on_host_shape_(std::move(on_host_shape)),
+      on_device_shape_(std::move(on_device_shape)),
       platform_(platform),
       device_ordinal_(device_ordinal),
       buffers_(&on_device_shape_) {}
@@ -117,12 +116,12 @@ std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer) {
   return out;
 }
 
-ScopedShapedBuffer::ScopedShapedBuffer(const Shape& on_host_shape,
-                                       const Shape& on_device_shape,
+ScopedShapedBuffer::ScopedShapedBuffer(Shape on_host_shape,
+                                       Shape on_device_shape,
                                        se::DeviceMemoryAllocator* allocator,
                                        int device_ordinal)
-    : ShapedBuffer(on_host_shape, on_device_shape, allocator->platform(),
-                   device_ordinal),
+    : ShapedBuffer(std::move(on_host_shape), std::move(on_device_shape),
+                   allocator->platform(), device_ordinal),
       allocator_(allocator) {}
 
 ScopedShapedBuffer::ScopedShapedBuffer(ShapedBuffer shaped_buffer,

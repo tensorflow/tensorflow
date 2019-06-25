@@ -235,6 +235,23 @@ class CompileTest(keras_parameterized.TestCase):
 
 class TrainingTest(keras_parameterized.TestCase):
 
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_fit_training_arg(self):
+
+    class ReturnTraining(keras.layers.Layer):
+
+      def call(self, inputs, training):
+        if training:
+          return inputs + array_ops.constant([100], 'float32')
+        else:
+          return inputs + array_ops.constant([0], 'float32')
+
+    model = keras.Sequential([ReturnTraining()])
+    model.compile('sgd', 'mse')
+    hist = model.fit(x=np.array([0.]), y=np.array([0.]))
+    self.assertAllClose(hist.history['loss'][0], (10000,))
+
   @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
   @keras_parameterized.run_all_keras_modes
   def test_fit_on_arrays(self):
@@ -1283,6 +1300,38 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
                'was done on purpose. The fit and evaluate APIs will not be '
                'expecting any data to be passed to dense_1.')
         self.assertRegexpMatches(str(mock_log.call_args), msg)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_invalid_steps_per_epoch_usage(self):
+    x = keras.layers.Input(shape=(1,))
+    y = keras.layers.Dense(1)(x)
+
+    model = keras.Model(x, y)
+    model.compile(
+        'sgd', loss='mse', run_eagerly=testing_utils.should_run_eagerly())
+    err_msg = 'When passing input data as arrays, do not specify'
+
+    if testing_utils.should_run_eagerly():
+      with self.assertRaisesRegex(ValueError, err_msg):
+        model.fit(x=np.zeros((100, 1)), y=np.ones((100, 1)), steps_per_epoch=4)
+
+      with self.assertRaisesRegex(ValueError, err_msg):
+        model.evaluate(x=np.zeros((100, 1)), y=np.ones((100, 1)), steps=4)
+
+      with self.assertRaisesRegex(ValueError, err_msg):
+        model.predict(np.zeros((100, 1)), steps=4)
+    else:
+      with test.mock.patch.object(logging, 'warning') as mock_log:
+        model.fit(x=np.zeros((100, 1)), y=np.ones((100, 1)), steps_per_epoch=4)
+        self.assertRegexpMatches(str(mock_log.call_args), err_msg)
+
+      with test.mock.patch.object(logging, 'warning') as mock_log:
+        model.evaluate(x=np.zeros((100, 1)), y=np.ones((100, 1)), steps=4)
+        self.assertRegexpMatches(str(mock_log.call_args), err_msg)
+
+      with test.mock.patch.object(logging, 'warning') as mock_log:
+        model.predict(np.zeros((100, 1)), steps=4)
+        self.assertRegexpMatches(str(mock_log.call_args), err_msg)
 
 
 class LossWeightingTest(keras_parameterized.TestCase):
@@ -3105,6 +3154,51 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     expected_val = [1., 0.9, 0.8, 0.7, 0.6]
     for key in ['loss', 'mae_1', 'mae_2', 'mae_3']:
       self.assertAllClose(history.history[key], expected_val, 1e-3)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_model_with_nested_compiled_model(self):
+
+    class LayerWithAddMetric(keras.layers.Layer):
+
+      def __init__(self):
+        super(LayerWithAddMetric, self).__init__()
+        self.dense = keras.layers.Dense(1, kernel_initializer='ones')
+
+      def call(self, inputs):
+        outputs = self.dense(inputs)
+        self.add_metric(
+            math_ops.reduce_sum(outputs), name='mean', aggregation='mean')
+        return outputs
+
+    x = keras.layers.Input(shape=(1,))
+    y = LayerWithAddMetric()(x)
+
+    inner_model = keras.models.Model(x, y)
+    inner_model.add_metric(
+        math_ops.reduce_sum(y), name='mean1', aggregation='mean')
+
+    inner_model.compile(
+        'sgd',
+        loss='mse',
+        metrics=[metrics_module.Accuracy('acc')],
+        run_eagerly=testing_utils.should_run_eagerly())
+
+    self.assertEqual([m.name for m in inner_model.metrics],
+                     ['acc', 'mean', 'mean1'])
+
+    x = keras.layers.Input(shape=[1])
+    y = inner_model(x)
+    outer_model = keras.Model(x, y)
+    outer_model.add_metric(
+        math_ops.reduce_sum(y), name='mean2', aggregation='mean')
+
+    outer_model.compile(
+        'sgd',
+        loss='mse',
+        metrics=[metrics_module.Accuracy('acc2')],
+        run_eagerly=testing_utils.should_run_eagerly())
+    self.assertEqual([m.name for m in outer_model.metrics],
+                     ['acc2', 'mean', 'mean1', 'mean2'])
 
 
 class BareUpdateLayer(keras.layers.Layer):

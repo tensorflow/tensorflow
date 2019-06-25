@@ -473,9 +473,9 @@ struct LaunchConvOp<GPUDevice, T> {
         }
       }
       LogConvAutotuneResults(se::dnn::ConvolutionKind::FORWARD,
-                             se::dnn::ToDataType<T>::value, input_desc,
-                             filter_desc, output_desc, conv_desc,
-                             stream->parent(), results);
+                             se::dnn::ToDataType<T>::value, input_ptr,
+                             filter_ptr, output_ptr, input_desc, filter_desc,
+                             output_desc, conv_desc, stream->parent(), results);
       OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
       AutoTuneConv3d::GetInstance()->Insert(conv_parameters, algorithm_config);
     }

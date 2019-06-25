@@ -262,8 +262,13 @@ class _SaveableView(object):
         if (tensor_util.is_tensor(capture)
             and capture.dtype not in _UNCOPIABLE_DTYPES
             and capture not in self.captured_tensor_node_ids):
-          copied_tensor = constant_op.constant(
-              tensor_util.constant_value(capture))
+          capture_constant_value = tensor_util.constant_value(capture)
+          if capture_constant_value is None:
+            raise ValueError(
+                ("Attempted to save a function {} which references a symbolic "
+                 "Tensor {} that is not a simple constant. This is not "
+                 "supported.").format(concrete_function.name, capture))
+          copied_tensor = constant_op.constant(capture_constant_value)
           node_id = len(self.nodes)
           node = _CapturedConstant(
               eager_tensor=capture, graph_tensor=copied_tensor)

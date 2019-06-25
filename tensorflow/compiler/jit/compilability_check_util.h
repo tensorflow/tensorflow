@@ -129,29 +129,25 @@ class RecursiveCompilabilityChecker {
                                 const DeviceType* jit_device_type)
       : op_filter_(*op_filter), jit_device_type_(*jit_device_type) {}
 
-  // Returns a list of uncompilable nodes.
+  // Returns a list of uncompilable nodes. When `node` is inside a function
+  // body, users can set `node_stack_trace` to provide an additional
+  // context for `node`'s placement within the outer most graph.
   std::vector<UncompilableNodeInfo> FindUncompilableNodes(
-      const Node& node, FunctionLibraryRuntime* lib_runtime) {
-    std::vector<StackFrameView> stack_trace;
-    stack_trace.emplace_back(StackFrameView{node.name(), ""});
-    std::vector<UncompilableNodeInfo> uncompilable_nodes;
-    IsCompilableNode(node, lib_runtime, &stack_trace, &uncompilable_nodes);
-    return uncompilable_nodes;
-  }
+      const Node& node, FunctionLibraryRuntime* lib_runtime,
+      const std::vector<StackFrame>* node_stack_trace = nullptr) const;
 
   // Returns a list of uncompilable nodes in `call_def` that cannot be
   // compiled by XLA. It is assumed that `call_def` is a call operation.
+  // When `node` is inside a function body, users can set
+  // `node_stack_trace` to provide an additional context for `node`'s
+  // placement within the outer most graph.
   std::vector<UncompilableNodeInfo> FindUncompilableNodes(
-      const NodeDef& call_def, FunctionLibraryRuntime* lib_runtime) {
-    std::vector<StackFrameView> stack_trace;
-    stack_trace.emplace_back(StackFrameView{call_def.name(), ""});
-    std::vector<UncompilableNodeInfo> uncompilable_nodes;
-    IsCompilableCall(call_def, lib_runtime, &stack_trace, &uncompilable_nodes);
-    return uncompilable_nodes;
-  }
+      const NodeDef& call_def, FunctionLibraryRuntime* lib_runtime,
+      const std::vector<StackFrame>* node_stack_trace = nullptr) const;
 
   // Returns true if `node` can be compiled by XLA.
-  bool IsCompilableNode(const Node& node, FunctionLibraryRuntime* lib_runtime) {
+  bool IsCompilableNode(const Node& node,
+                        FunctionLibraryRuntime* lib_runtime) const {
     std::vector<StackFrameView> stack_trace;
     stack_trace.emplace_back(StackFrameView{node.name(), ""});
     return IsCompilableNode(node, lib_runtime, &stack_trace);
@@ -168,8 +164,8 @@ class RecursiveCompilabilityChecker {
 
   // Returns true if XLA supports this Op, but we don't want to cluster it (ie:
   // due to performance or correctness concerns).
-  bool OpIsInaccurate(const Node& node);
-  bool OpIsSlow(const Node& node);
+  bool OpIsInaccurate(const Node& node) const;
+  bool OpIsSlow(const Node& node) const;
 
  private:
   struct StackFrameView {
@@ -180,47 +176,47 @@ class RecursiveCompilabilityChecker {
   bool IsCompilableNode(
       const Node& node, FunctionLibraryRuntime* lib_runtime,
       std::vector<StackFrameView>* stack_trace,
-      std::vector<UncompilableNodeInfo>* uncompilable_nodes = nullptr);
+      std::vector<UncompilableNodeInfo>* uncompilable_nodes = nullptr) const;
   bool IsCompilableCall(
       const NodeDef& call_def, FunctionLibraryRuntime* lib_runtime,
       std::vector<StackFrameView>* stack_trace,
-      std::vector<UncompilableNodeInfo>* uncompilable_nodes = nullptr);
-  bool IsCompilableWhile(const Node& while_node,
-                         FunctionLibraryRuntime* lib_runtime,
-                         std::vector<StackFrameView>* stack_trace,
-                         std::vector<UncompilableNodeInfo>* uncompilable_nodes);
+      std::vector<UncompilableNodeInfo>* uncompilable_nodes = nullptr) const;
+  bool IsCompilableWhile(
+      const Node& while_node, FunctionLibraryRuntime* lib_runtime,
+      std::vector<StackFrameView>* stack_trace,
+      std::vector<UncompilableNodeInfo>* uncompilable_nodes) const;
 
-  bool IsStackOp(const Node& node) {
+  bool IsStackOp(const Node& node) const {
     const XlaResourceOpInfo* op_info =
         GetResourceOpInfoForOp(node.type_string());
     return op_info && op_info->resource_kind() == XlaResourceKind::kStack;
   }
 
-  bool IsTensorArrayOp(const Node& node) {
+  bool IsTensorArrayOp(const Node& node) const {
     const XlaResourceOpInfo* op_info =
         GetResourceOpInfoForOp(node.type_string());
     return op_info && op_info->resource_kind() == XlaResourceKind::kTensorArray;
   }
 
-  bool IsAssertOrCheckNumerics(absl::string_view op_name) {
+  bool IsAssertOrCheckNumerics(absl::string_view op_name) const {
     return op_name == "Assert" || op_name == "CheckNumerics";
   }
 
-  bool IsStatefulRandomOp(absl::string_view op_name) {
+  bool IsStatefulRandomOp(absl::string_view op_name) const {
     return op_name == "RandomUniform" || op_name == "RandomShuffle" ||
            op_name == "RandomUniformInt" || op_name == "RandomStandardNormal" ||
            op_name == "TruncatedNormal" || op_name == "Multinomial";
   }
 
-  bool OpProducesOrConsumesVariant(const Node& node) {
+  bool OpProducesOrConsumesVariant(const Node& node) const {
     auto is_variant = [](DataType dtype) { return dtype == DT_VARIANT; };
     return absl::c_any_of(node.input_types(), is_variant) ||
            absl::c_any_of(node.output_types(), is_variant);
   }
 
-  bool HasXLAKernel(const Node& node);
+  bool HasXLAKernel(const Node& node) const;
 
-  void MaybeMarkUncompilableNode(
+  static void MaybeMarkUncompilableNode(
       const absl::string_view reason,
       const std::vector<StackFrameView>& stack_trace,
       std::vector<UncompilableNodeInfo>* uncompilable_node_list);

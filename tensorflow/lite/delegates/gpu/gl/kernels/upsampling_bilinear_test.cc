@@ -31,12 +31,12 @@ namespace gl {
 namespace {
 
 TEST(UpsamplingBilinearTest, 1x1x2To2x2x2) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 1, 2);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 2, 2, 2);
@@ -49,19 +49,19 @@ TEST(UpsamplingBilinearTest, 1x1x2To2x2x2) {
   SingleOpModel model({ToString(OperationType::UPSAMPLE_2D), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1.0, 2.0}));
-  ASSERT_TRUE(model.Invoke(*NewUpsamplingNodeShader()));
+  ASSERT_OK(model.Invoke(*NewUpsamplingNodeShader()));
   EXPECT_THAT(
       model.GetOutput(0),
       Pointwise(FloatNear(1e-6), {1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0}));
 }
 
 TEST(UpsamplingBilinearTest, 1x2x1To1x4x1) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 2, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 1, 4, 1);
@@ -74,18 +74,18 @@ TEST(UpsamplingBilinearTest, 1x2x1To1x4x1) {
   SingleOpModel model({ToString(OperationType::UPSAMPLE_2D), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1.0, 4.0}));
-  ASSERT_TRUE(model.Invoke(*NewUpsamplingNodeShader()));
+  ASSERT_OK(model.Invoke(*NewUpsamplingNodeShader()));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {1.0, 2.5, 4.0, 4.0}));
 }
 
 TEST(UpsamplingBilinearTest, 2x2x1To4x4x1) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 4, 4, 1);
@@ -98,7 +98,7 @@ TEST(UpsamplingBilinearTest, 2x2x1To4x4x1) {
   SingleOpModel model({ToString(OperationType::UPSAMPLE_2D), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1.0, 4.0, 6.0, 8.0}));
-  ASSERT_TRUE(model.Invoke(*NewUpsamplingNodeShader()));
+  ASSERT_OK(model.Invoke(*NewUpsamplingNodeShader()));
   EXPECT_THAT(
       model.GetOutput(0),
       Pointwise(FloatNear(1e-6), {1.0, 2.5, 4.0, 4.0, 3.5, 4.75, 6.0, 6.0, 6.0,

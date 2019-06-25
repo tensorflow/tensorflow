@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/name_utils.h"
 
 #include "tensorflow/core/kernels/data/concatenate_dataset_op.h"
+#include "tensorflow/core/kernels/data/parallel_interleave_dataset_op.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 #include "tensorflow/core/kernels/data/shuffle_dataset_op.h"
 #include "tensorflow/core/platform/test.h"
@@ -38,6 +39,9 @@ TEST(NameUtilsTest, DatasetDebugString) {
   EXPECT_EQ(name_utils::DatasetDebugString(ShuffleDatasetOp::kDatasetType,
                                            "FixedSeed", {"10", "1", "2"}),
             "ShuffleDatasetOp(10, 1, 2)::FixedSeedDataset");
+  EXPECT_EQ(
+      name_utils::DatasetDebugString(ParallelInterleaveDatasetOp::kDatasetType),
+      "ParallelInterleaveDatasetV2Op::Dataset");
 }
 
 }  // namespace

@@ -54,8 +54,10 @@ constexpr int kOpProfilingEnabledDefault = false;
 // Dumps profiling events if profiling is enabled.
 class ProfilingListener : public BenchmarkListener {
  public:
-  explicit ProfilingListener(Interpreter* interpreter)
-      : interpreter_(interpreter), has_profiles_(false) {
+  explicit ProfilingListener(Interpreter* interpreter, uint32_t max_num_entries)
+      : interpreter_(interpreter),
+        profiler_(max_num_entries),
+        has_profiles_(false) {
     TFLITE_BENCHMARK_CHECK(interpreter);
     interpreter_->SetProfiler(&profiler_);
   }
@@ -236,6 +238,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   default_params.AddParam(
       "enable_op_profiling",
       BenchmarkParam::Create<bool>(kOpProfilingEnabledDefault));
+  default_params.AddParam("max_profiling_buffer_entries",
+                          BenchmarkParam::Create<int32_t>(1024));
   return default_params;
 }
 
@@ -270,7 +274,9 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
       CreateFlag<bool>("use_legacy_nnapi", &params_, "use legacy nnapi api"),
       CreateFlag<bool>("use_gpu", &params_, "use gpu"),
       CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
-      CreateFlag<bool>("enable_op_profiling", &params_, "enable op profiling")};
+      CreateFlag<bool>("enable_op_profiling", &params_, "enable op profiling"),
+      CreateFlag<int32_t>("max_profiling_buffer_entries", &params_,
+                          "max profiling buffer entries")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
   return flags;
@@ -291,6 +297,9 @@ void BenchmarkTfLiteModel::LogParams() {
                    << "]";
   TFLITE_LOG(INFO) << "Enable op profiling: ["
                    << params_.Get<bool>("enable_op_profiling") << "]";
+  TFLITE_LOG(INFO) << "Max profiling buffer entries: ["
+                   << params_.Get<int32_t>("max_profiling_buffer_entries")
+                   << "]";
 }
 
 bool BenchmarkTfLiteModel::ValidateParams() {
@@ -480,7 +489,9 @@ void BenchmarkTfLiteModel::Init() {
 
   // Install profilers if necessary.
   if (params_.Get<bool>("enable_op_profiling")) {
-    profiling_listener_.reset(new ProfilingListener(interpreter.get()));
+    profiling_listener_.reset(new ProfilingListener(
+        interpreter.get(),
+        params_.Get<int32_t>("max_profiling_buffer_entries")));
     AddListener(profiling_listener_.get());
   }
 #ifdef GEMMLOWP_PROFILING

@@ -19,7 +19,8 @@ limitations under the License.
 // structure.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
-#include "tensorflow/lite/kernels/internal/optimized/tensor_utils_impl.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_tensor_utils_impl.h"
+#include "tensorflow/lite/kernels/internal/reference/portable_tensor_utils_impl.h"
 
 namespace tflite {
 namespace tensor_utils {
@@ -44,6 +45,8 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,
     float* __restrict__ result, int result_stride) {
+  // Use it with caution because it can only run on devices with Neon or sse4.1
+  // support.
   NeonSparseMatrixBatchVectorMultiplyAccumulate(
       matrix, ledger, m_rows, m_cols, vector, n_batch, result, result_stride);
 }
@@ -53,6 +56,8 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
     const int m_cols, const int8_t* __restrict__ vectors,
     const float* scaling_factors, int n_batch, float* __restrict__ result,
     int result_stride) {
+  // Use it with caution because it can only run on devices with Neon or sse4.1
+  // support.
   NeonSparseMatrixBatchVectorMultiplyAccumulate(matrix, ledger, m_rows, m_cols,
                                                 vectors, scaling_factors,
                                                 n_batch, result, result_stride);

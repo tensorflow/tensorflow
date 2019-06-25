@@ -95,8 +95,6 @@ class GrpcServer : public ServerInterface {
   WorkerEnv* worker_env() { return &worker_env_; }
   MasterEnv* master_env() { return &master_env_; }
 
-  std::shared_ptr<GrpcChannelCache> channel_cache() { return channel_cache_; }
-
  protected:
   virtual Status GetPort(int* port) const;
   Status Init(const GrpcServerOptions& opts = GrpcServerOptions());
@@ -124,9 +122,6 @@ class GrpcServer : public ServerInterface {
   const ServerDef& server_def() const { return server_def_; }
   GrpcWorker* worker_impl() const { return worker_impl_.get(); }
 
-  void set_channel_cache(GrpcChannelCache* channel_cache) {
-    channel_cache_.reset(channel_cache);
-  }
 
  private:
   // The overall server configuration.
@@ -156,7 +151,6 @@ class GrpcServer : public ServerInterface {
   std::unique_ptr<Master> master_impl_;
   AsyncServiceInterface* master_service_ = nullptr;
   std::unique_ptr<Thread> master_thread_ GUARDED_BY(mu_);
-  std::shared_ptr<GrpcChannelCache> channel_cache_;
 
   // Implementation of a TensorFlow worker, and RPC polling thread.
   WorkerEnv worker_env_;

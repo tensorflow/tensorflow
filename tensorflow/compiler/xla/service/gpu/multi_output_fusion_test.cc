@@ -599,6 +599,71 @@ TEST_F(MultiOutputFusionTest,
   ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
 }
 
+TEST_F(MultiOutputFusionTest, ProducerConsumerFusionAvoidsCycles) {
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+    fused_add {
+      p0 = f32[32,32,32]{2,1,0} parameter(0)
+      p1 = f32[32,32,32]{2,1,0} parameter(1)
+      ROOT add = f32[32,32,32]{2,1,0} add(p0, p1)
+    }
+
+    fused_mul {
+      p2 = f32[64,64,64]{2,1,0} parameter(0)
+      p3 = f32[64,64,64]{2,1,0} parameter(1)
+      ROOT multiply = f32[64,64,64]{2,1,0} multiply(p2, p3)
+    }
+
+    fused_reduce_1 {
+      p4 = f32[32,32,32]{2,1,0} parameter(0)
+      p5 = f32[64,64,64]{2,1,0} parameter(1)
+      slice = f32[32,32,32]{2,1,0} slice(p5), slice={[0:32], [0:32], [0:32]}
+      add = f32[32,32,32]{2,1,0} add(p4, slice)
+      c0 = f32[] constant(0)
+      ROOT r1 = f32[32,32]{1,0} reduce(add, c0), dimensions={2},
+        to_apply=scalar_add_computation
+    }
+
+    fused_reduce_2 {
+      p6 = f32[32,32,32]{2,1,0} parameter(0)
+      p7 = f32[64,64,64]{2,1,0} parameter(1)
+      c0 = f32[] constant(0)
+      pad = f32[64,64,64]{2,1,0} pad(p6, c0), padding=32_32x32_32x32_32
+      mul = f32[64,64,64]{2,1,0} multiply(pad, p7)
+      ROOT r1 = f32[64,64]{1,0} reduce(mul, c0), dimensions={2},
+        to_apply=scalar_add_computation
+    }
+
+    ENTRY reduce {
+      p8 = f32[32,32,32]{2,1,0} parameter(0)
+      p9 = f32[64,64,64]{2,1,0} parameter(1)
+      // `add` and `mul` can be multi-output fused with `reduce1` and `reduce2`,
+      // respectively. However, both isn't possible, because multi-output fusion
+      // will introduce an extra dependency from `neg` to `abs` or vice versa.
+      // Hence, the second multi-output fusion would introduce a cycle.
+      add = f32[32,32,32]{2,1,0} fusion(p8, p8), kind=kLoop, calls=fused_add
+      mul = f32[64,64,64]{2,1,0} fusion(p9, p9), kind=kLoop, calls=fused_mul
+
+      reduce1 = f32[32,32]{1,0} fusion(add, mul), kind=kInput,
+          calls=fused_reduce_1
+      reduce2 = f32[32,32]{1,0} fusion(add, mul), kind=kInput,
+          calls=fused_reduce_2
+      ROOT root = (f32[32,32,32]{2,1,0}, f32[32,32]{1,0}, f32[64,64]{1,0},
+                   f32[64,64,64]{2,1,0}) tuple(add, reduce1, reduce2, mul)
+    })"))
+                    .ValueOrDie();
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+  SCOPED_TRACE(module->ToString());
+  int multi_output_fusion_count = 0;
+  for (auto* computation : module->MakeNonfusionComputations()) {
+    for (auto* instr : computation->instructions()) {
+      if (instr->IsMultiOutputFusion()) {
+        multi_output_fusion_count++;
+      }
+    }
+  }
+  EXPECT_EQ(1, multi_output_fusion_count);
+}
+
 // Check that we limit the number of operands to fusions we create.
 TEST_F(MultiOutputFusionTest, AvoidsLargeFusion) {
   constexpr int64 kNumParams = 200;

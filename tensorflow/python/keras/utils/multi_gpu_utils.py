@@ -211,9 +211,7 @@ def multi_gpu_model(model, gpus, cpu_merge=True, cpu_relocation=False):
     with ops.device('/cpu:0'):
       model = clone_model(model)
 
-  all_outputs = []
-  for i in range(len(model.outputs)):
-    all_outputs.append([])
+  all_outputs = [[] for _ in range(len(model.outputs))]
 
   # Place a copy of the model on each GPU,
   # each getting a slice of the inputs.
@@ -241,8 +239,8 @@ def multi_gpu_model(model, gpus, cpu_merge=True, cpu_relocation=False):
           outputs = [outputs]
 
         # Save the outputs for merging back together later.
-        for o in range(len(outputs)):
-          all_outputs[o].append(outputs[o])
+        for o, output in enumerate(outputs):
+          all_outputs[o].append(output)
 
   # Deduplicate output names to handle Siamese networks.
   occurrences = {}

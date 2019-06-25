@@ -40,6 +40,8 @@ upper_tabs:
         path: /lite/convert/cmdline_reference
       - title: "Convert quantized models"
         path: /lite/convert/quantization
+      - title: "Convert RNN models"
+        path: /lite/convert/rnn
 
       - heading: "Convert a TensorFlow 2.0 model"
       - title: "TensorFlow Lite converter and 2.0"

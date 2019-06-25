@@ -529,11 +529,20 @@ def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
   if mask is not None:
     sequence_length = calculate_sequence_by_mask(mask, time_major)
     if go_backwards:
+      # Three reversals are required. E.g.,
+      # normal input = [1, 2, 3, 0, 0]  # where 0 need to be masked
+      # reversed_input_to_cudnn = [3, 2, 1, 0, 0]
+      # output_from_cudnn = [6, 5, 4, 0, 0]
+      # expected_output = [0, 0, 6, 5 ,4]
       inputs = array_ops.reverse_sequence_v2(inputs, sequence_length,
                                              seq_axis=0, batch_axis=1)
     outputs, h, _, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(
         inputs, input_h=init_h, input_c=0, params=params, is_training=True,
         rnn_mode='gru', sequence_lengths=sequence_length)
+    if go_backwards:
+      outputs = array_ops.reverse_sequence_v2(outputs, sequence_length,
+                                              seq_axis=0, batch_axis=1)
+      outputs = array_ops.reverse(outputs, axis=[0])
   else:
     if go_backwards:
       # Reverse axis 0 since the input is already convert to time major.
@@ -1111,11 +1120,20 @@ def cudnn_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
   if mask is not None:
     sequence_length = calculate_sequence_by_mask(mask, time_major)
     if go_backwards:
+      # Three reversals are required. E.g.,
+      # normal input = [1, 2, 3, 0, 0]  # where 0 need to be masked
+      # reversed_input_to_cudnn = [3, 2, 1, 0, 0]
+      # output_from_cudnn = [6, 5, 4, 0, 0]
+      # expected_output = [0, 0, 6, 5 ,4]
       inputs = array_ops.reverse_sequence_v2(inputs, sequence_length,
                                              seq_axis=0, batch_axis=1)
     outputs, h, c, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(
         inputs, input_h=init_h, input_c=init_c, params=params, is_training=True,
         rnn_mode='lstm', sequence_lengths=sequence_length)
+    if go_backwards:
+      outputs = array_ops.reverse_sequence_v2(outputs, sequence_length,
+                                              seq_axis=0, batch_axis=1)
+      outputs = array_ops.reverse(outputs, axis=[0])
   else:
     # # Fill the array with shape [batch] with value of max timesteps.
     # sequence_length = array_ops.fill([array_ops.shape(inputs)[1]],
@@ -1206,19 +1224,13 @@ def is_sequence_right_padded(mask, time_major):
   Returns:
     boolean scalar tensor, whether the mask is strictly right padded.
   """
-  timestep_index = 0 if time_major else 1
-  max_seq_length = array_ops.shape(mask)[timestep_index]
-  reversed_mask = math_ops.cast(array_ops.reverse(mask, axis=[timestep_index]),
-                                dtypes.int32)
-  # Use the argmax to find the index of leading 1 in the reversed mask, which is
-  # the index of the last True value in the original mask.
-  index = math_ops.argmax(reversed_mask, axis=timestep_index,
-                          output_type=dtypes.int32)
-  count_of_true = math_ops.reduce_sum(reversed_mask, axis=timestep_index)
-  # If the data is strictly right padded, then the
-  # "index = max_seq_length - count_of_true" should hold.
-  return math_ops.reduce_all(
-      math_ops.equal(index, max_seq_length - count_of_true))
+  if time_major:
+    mask = array_ops.transpose(mask)
+  max_seq_length = array_ops.shape(mask)[1]
+  count_of_true = math_ops.reduce_sum(math_ops.cast(mask, dtypes.int32), axis=1)
+  right_padded_mask = array_ops.sequence_mask(
+      count_of_true, maxlen=max_seq_length)
+  return math_ops.reduce_all(math_ops.equal(mask, right_padded_mask))
 
 
 def calculate_sequence_by_mask(mask, time_major):
@@ -1228,10 +1240,10 @@ def calculate_sequence_by_mask(mask, time_major):
   any timestep that should be masked, the corresponding field will be False.
   Consider the following example:
     a = [[True, True, False, False],
-         [True, False, True, False]]
+         [True, True, True, False]]
   It is a (2, 4) tensor, and the corresponding sequence length result should be
-  1D tensor with value [2, 3]. Note that for the second example, we need to find
-  the index of the last True value, which is 2 and sequence length is 3.
+  1D tensor with value [2, 3]. Note that the masking tensor must be right
+  padded that could be checked by, e.g., `is_sequence_right_padded()`.
 
   Args:
     mask: Boolean tensor with shape [batch, timestep] or [timestep, batch] if
@@ -1242,23 +1254,14 @@ def calculate_sequence_by_mask(mask, time_major):
     sequence_length: 1D int32 tensor.
   """
   timestep_index = 0 if time_major else 1
-  max_seq_length = array_ops.shape(mask)[timestep_index]
-  reversed_mask = math_ops.cast(array_ops.reverse(mask, axis=[timestep_index]),
-                                dtypes.int32)
-  # Use the argmax to find the index of leading 1 in the reversed mask, which is
-  # the index of the last True value in the original mask.
-  reversed_index = math_ops.argmax(reversed_mask, axis=timestep_index,
-                                   output_type=dtypes.int32)
-  return max_seq_length - reversed_index
+  return math_ops.reduce_sum(math_ops.cast(mask, dtypes.int32),
+                             axis=timestep_index)
 
 
 def _generate_defun_backend(unique_api_name, preferred_device, func):
   function_attributes = {
       _DEFUN_API_NAME_ATTRIBUTE: unique_api_name,
       _DEFUN_DEVICE_ATTRIBUTE: preferred_device,
-      # TODO(b/133178886): The function is auto inlined in eager context, which
-      # make grappler fail to do the optimization. Force it to not inline here.
-      '_noinline': True,
   }
   return function.defun_with_attributes(func=func,
                                         attributes=function_attributes)

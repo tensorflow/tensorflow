@@ -546,10 +546,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
           // Check if the output of that Dequantize op was not used by any
           // other operator. We will then erase that Dequantize op.
           if (!CountOpsWithInput(*model, dequantize_op->outputs[0])) {
-            if (IsDiscardableArray(*model, dequantize_op->outputs[0])) {
-              // Usual case: we can just discard the dequantize output.
-              model->EraseArray(dequantize_op->outputs[0]);
-            } else {
+            if (!IsDiscardableArray(*model, dequantize_op->outputs[0])) {
               // The dequantize output is not discardable. Special care needed.
               // If any of the model's output_arrays was pointing to the
               // Dequantize op's output, let it point to the Dequantize op's
@@ -583,13 +580,12 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
                         model->flags.output_arrays(i),
                         dequantize_op->inputs[0]);
                     model->flags.set_output_arrays(i, dequantize_op->inputs[0]);
-                    model->EraseArray(dequantize_op->outputs[0]);
                   }
                   break;
                 }
               }
             }
-            model->operators.erase(dequantize_it);
+            DeleteOpAndArrays(model, dequantize_op);
           }
           changed = true;
         } else {

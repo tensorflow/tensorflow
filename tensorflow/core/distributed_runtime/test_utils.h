@@ -162,6 +162,11 @@ class TestWorkerCache : public WorkerCacheInterface {
 
   void ReleaseWorker(const string& target, WorkerInterface* worker) override {}
 
+  Status GetEagerClientCache(
+      std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
+    return errors::Unimplemented("Unimplemented.");
+  }
+
   bool GetDeviceLocalityNonBlocking(const string& device,
                                     DeviceLocality* locality) override {
     auto it = localities_.find(device);

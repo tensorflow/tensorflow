@@ -148,8 +148,8 @@ template <typename LhsScalar, typename RhsScalar, typename DstScalar,
           typename Spec>
 struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
   using AccumScalar = typename Spec::AccumScalar;
-  using LhsLayout = FixedKernelLayout<Order::kColMajor, 1, 1>;
-  using RhsLayout = FixedKernelLayout<Order::kColMajor, 1, 1>;
+  using LhsLayout = typename Spec::StandardCppKernelLhsLayout;
+  using RhsLayout = typename Spec::StandardCppKernelRhsLayout;
   explicit Kernel(Tuning) {}
   void Run(const PackedMatrix<LhsScalar>& lhs,
            const PackedMatrix<RhsScalar>& rhs, const Spec& spec, int start_row,

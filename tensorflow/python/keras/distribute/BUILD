@@ -55,6 +55,9 @@ py_library(
         "multi_worker_training_state.py",
     ],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/distribute:multi_worker_util",
+    ],
 )
 
 cuda_py_test(
@@ -235,6 +238,7 @@ distribute_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",
         "no_pip",
         "no_windows_gpu",
         "notsan",
@@ -370,9 +374,11 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     shard_count = 14,
-    # TODO(b/132384649): Enable for guitar and oss tests.
+    # TODO(b/132384649): Enable once fixed.
     tags = [
+        "manual",
         "no_oss",
+        "no_tap",
         "noguitar",
     ],
     xla_enable_strict_auto_jit = True,

@@ -722,6 +722,9 @@ class Saver(object):
     saver = tf.compat.v1.train.Saver({v.op.name: v for v in [v1, v2]})
     ```
 
+    Note: the newer `AutoTrackable` API is not supported by `Saver`. In this
+    case, the `tf.train.Checkpoint` class should be used.
+
     The optional `reshape` argument, if `True`, allows restoring a variable from
     a save file where the variable had a different shape, but the same number
     of elements and type.  This is useful if you have reshaped a variable and

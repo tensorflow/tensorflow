@@ -375,18 +375,6 @@ Status XlaDevice::FillContextMap(const Graph* graph,
 void XlaDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   VLOG(2) << "XlaDevice::Compute " << op_kernel->name() << ":"
           << op_kernel->type_string();
-  profiler::TraceMe activity(
-      [&] {
-        return absl::StrCat("XlaDevice::Compute ", op_kernel->name(), ":",
-                            op_kernel->type_string(),
-                            "#step_id=", context->step_id(),
-                            ",step_container_name=",
-                            context->step_container() == nullptr
-                                ? "n/a"
-                                : context->step_container()->name(),
-                            "#");
-      },
-      profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
   op_kernel->Compute(context);
 }
 
@@ -394,18 +382,6 @@ void XlaDevice::ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                              AsyncOpKernel::DoneCallback done) {
   VLOG(2) << "XlaDevice::ComputeAsync " << op_kernel->name() << ":"
           << op_kernel->type_string();
-  profiler::TraceMe activity(
-      [&] {
-        return absl::StrCat("XlaDevice::ComputeAsync ", op_kernel->name(), ":",
-                            op_kernel->type_string(),
-                            "#step_id=", context->step_id(),
-                            ",step_container_name=",
-                            context->step_container() == nullptr
-                                ? "n/a"
-                                : context->step_container()->name(),
-                            "#");
-      },
-      profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
   op_kernel->ComputeAsync(context, done);
 }
 

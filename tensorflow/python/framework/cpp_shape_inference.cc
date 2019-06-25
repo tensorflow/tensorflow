@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/python/framework/cpp_shape_inference.pb.h"
+#include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/py_func.h"
 
 namespace tensorflow {
@@ -106,8 +107,7 @@ Status RunCppShapeInferenceImpl(
     if (py_val == Py_None) {
       input_tensors.push_back(nullptr);
     } else {
-      TF_RETURN_IF_ERROR(
-          ConvertNdarrayToTensor(py_val, &input_tensor_values[i]));
+      TF_RETURN_IF_ERROR(NdarrayToTensor(py_val, &input_tensor_values[i]));
       input_tensors.push_back(&input_tensor_values[i]);
     }
   }

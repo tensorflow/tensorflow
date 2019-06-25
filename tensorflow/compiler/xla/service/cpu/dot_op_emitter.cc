@@ -736,10 +736,22 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
 absl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo) {
   if (hlo.opcode() == HloOpcode::kDot && hlo.shape().dimensions_size() <= 1) {
-    if (hlo.dot_dimension_numbers().rhs_contracting_dimensions(0) == 0) {
-      return 1;
+    if (hlo.operand(0)->shape().rank() != 1 ||
+        hlo.dot_dimension_numbers().rhs_contracting_dimensions(0) != 0) {
+      return {};
     }
-    return {};
+
+    // Don't bother if the other operand is tiny, switching to column major
+    // wouldn't use tiling.
+    constexpr int kColumnMajorThresholdInBytes = 32;
+    int64 lhs_size =
+        ShapeUtil::ByteSizeOfPrimitiveType(hlo.shape().element_type()) *
+        ShapeUtil::ElementsIn(hlo.operand(0)->shape());
+    if (lhs_size < kColumnMajorThresholdInBytes) {
+      return {};
+    }
+
+    return 1;
   }
 
   if (hlo.IsOutputFusion()) {
