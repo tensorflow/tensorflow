@@ -46,7 +46,7 @@ filegroup(
             "*test*",
         ],
     ) + [
-        "//tensorflow/cc:srcs_no_runtime",
+        "//tensorflow/cc:srcs",
         "//tensorflow/core/distributed_runtime:server_lib.h",
     ],
     visibility = ["//visibility:public"],
@@ -202,7 +202,6 @@ cc_library(
             "//tensorflow/core:framework",
         ],
     }),
-    alwayslink = 1,
 )
 
 cc_library(
@@ -390,7 +389,6 @@ tf_cuda_library(
             "//tensorflow/core:framework",
         ],
     }),
-    alwayslink = 1,
 )
 
 # -----------------------------------------------------------------------------

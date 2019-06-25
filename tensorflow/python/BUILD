@@ -1902,10 +1902,6 @@ tf_gen_op_wrapper_private_py(
         "//tensorflow/contrib/quantization:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
     ],
-    deps = [
-        "//tensorflow/c/kernels:bitcast_op_lib",
-        "//tensorflow/core:array_ops_op_lib",
-    ],
 )
 
 tf_gen_op_wrapper_private_py(
