@@ -22,6 +22,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_image_ops
+from tensorflow.python.ops.math_ops import cast, add, reciprocal, square
+from tensorflow.python.ops.array_ops import stack
 
 
 @ops.RegisterGradient("ResizeNearestNeighbor")
@@ -189,7 +191,6 @@ def _RGBToHSVGrad(op, grad):
   greens = op.inputs[0][..., 1]
   blues = op.inputs[0][..., 2]
   # Output Channels
-  hue = op.outputs[0][..., 0]
   saturation = op.outputs[0][..., 1]
   value = op.outputs[0][..., 2]
 
@@ -204,15 +205,13 @@ def _RGBToHSVGrad(op, grad):
   green_smallest = cast((greens <= reds) & (greens < blues), dtypes.float32)
   blue_smallest = cast((blues <= reds) & (blues <= greens), dtypes.float32)
 
-  ##############################################################
-  #  Derivatives of R, G, B wrt Value slice
-  ##############################################################
+  # Derivatives of R, G, B wrt Value slice
   dv_dr = red_biggest
   dv_dg = green_biggest
   dv_db = blue_biggest
-  ##############################################################
+
   # Derivatives of R, G, B wrt Saturation slice
-  ##############################################################
+
   # The first term in the addition is the case when the corresponding color
   # from (r,g,b) was "MAX"
   # -> derivative = MIN/square(MAX), MIN could be one of the other two colors
@@ -234,11 +233,10 @@ def _RGBToHSVGrad(op, grad):
                _CustomReciprocal(square(blues)),\
                blue_smallest * -1 * _CustomReciprocal((green_biggest * \
                greens) + (red_biggest * reds)))
-  ##############################################################
-  # Derivatives of R, G, B wrt Hue slice
-  ##############################################################
-  # Need to go case by case for each color.
 
+  # Derivatives of R, G, B wrt Hue slice
+
+  # Need to go case by case for each color.
   # for red, dh_dr -> dh_dr_1 + dh_dr_2 + dh_dr_3 + dh_dr_4 + dh_dr_5
   # dh_dr_1 ->
   # if red was MAX, then derivative = 60 * -1 * (G-B)/square(MAX-MIN) == 60 *\
