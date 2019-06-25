@@ -1077,14 +1077,17 @@ tf_py_test(
     size = "small",
     srcs = ["string_split_op_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:string_ops",
         "//tensorflow/python/ops/ragged:ragged_string_ops",
-        "//tensorflow/python/ops/ragged:ragged_test_util",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -1093,14 +1096,17 @@ tf_py_test(
     size = "small",
     srcs = ["string_bytes_split_op_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_string_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:string_ops",
         "//tensorflow/python/ops/ragged",
-        "//tensorflow/python/ops/ragged:ragged_test_util",
     ],
 )
 
@@ -1327,11 +1333,14 @@ tf_py_test(
     additional_deps = [
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/ops/ragged:ragged_tensor_value",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:errors",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/ops/ragged:ragged_string_ops",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -1353,13 +1362,14 @@ tf_py_test(
     srcs = ["unicode_decode_op_test.py"],
     additional_deps = [
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_string_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python/ops/ragged:ragged",
-        "//tensorflow/python/ops/ragged:ragged_test_util",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
