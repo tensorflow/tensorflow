@@ -64,9 +64,6 @@ class SavedModelTest(scripts.TestCase, parameterized.TestCase):
         "use_model_in_sequential_keras", model_dir=export_dir)
 
   def test_text_embedding_in_dataset(self):
-    if tf.test.is_gpu_available():
-      self.skipTest("b/132156097 - fails if there is a gpu available")
-
     export_dir = self.get_temp_dir()
     self.assertCommandSucceeded(
         "export_simple_text_embedding", export_dir=export_dir)

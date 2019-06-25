@@ -555,17 +555,17 @@ class Mirrored(DistributedDelegate):
 
 def _assign_on_device(device, variable, tensor):
   with ops.device(device):
-    return variable.assign(array_ops.identity(tensor))
+    return variable.assign(tensor)
 
 
 def _assign_add_on_device(device, variable, tensor):
   with ops.device(device):
-    return variable.assign_add(array_ops.identity(tensor))
+    return variable.assign_add(tensor)
 
 
 def _assign_sub_on_device(device, variable, tensor):
   with ops.device(device):
-    return variable.assign_sub(array_ops.identity(tensor))
+    return variable.assign_sub(tensor)
 
 
 def _assert_strategy(strategy):
