@@ -65,14 +65,7 @@ Interpreter::TfLiteDelegatePtr CreateGPUDelegate(Settings* s) {
       TFLITE_GL_OBJECT_TYPE_FASTEST;
   options.compile_options.dynamic_batch_enabled = 0;
 
-  return tflite::evaluation::CreateGPUDelegate(s->model, &options);
-}
-
-Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate() {
-  return Interpreter::TfLiteDelegatePtr(
-      NnApiDelegate(),
-      // NnApiDelegate() returns a singleton, so provide a no-op deleter.
-      [](TfLiteDelegate*) {});
+  return evaluation::CreateGPUDelegate(s->model, &options);
 }
 #endif  // defined(__ANDROID__)
 
@@ -87,7 +80,7 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s) {
   }
   if (s->accel) {
 #if defined(__ANDROID__)
-    delegates.emplace("NNAPI", CreateNNAPIDelegate());
+    delegates.emplace("NNAPI", evaluation::CreateNNAPIDelegate());
 #else
     LOG(INFO) << "NNAPI acceleration is unsupported on this platform.";
 #endif
