@@ -32,6 +32,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/lite/examples/label_image/bitmap_helpers.h"
 #include "tensorflow/lite/examples/label_image/get_top_n.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -184,9 +185,8 @@ void RunInference(Settings* s) {
       exit(-1);
   }
 
-  profiling::Profiler* profiler =
-      new profiling::Profiler(s->max_profiling_buffer_entries);
-  interpreter->SetProfiler(profiler);
+  auto profiler = absl::make_unique<profiling::Profiler>(s->max_profiling_buffer_entries);
+  interpreter->SetProfiler(profiler.get());
 
   if (s->profiling) profiler->StartProfiling();
 
