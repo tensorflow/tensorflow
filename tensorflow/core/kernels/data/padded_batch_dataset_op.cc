@@ -361,11 +361,11 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
 
   const int64 batch_size_;
   const bool drop_remainder_;
-  const int op_version_;
   const bool parallel_copy_;
   const std::vector<PartialTensorShape> padded_shapes_;
   const std::vector<Tensor> padding_values_;
   const DatasetBase* const input_;
+  const int op_version_;
   std::vector<PartialTensorShape> output_shapes_;
 };
 
