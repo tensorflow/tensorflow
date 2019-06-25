@@ -491,12 +491,17 @@ StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
 
 static absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
                                                const HloInstruction* operand,
-                                               const ShapeIndex&) {
+                                               const ShapeIndex& user_index) {
   // Share the bias buffer with the parent instruction.
   if (IsCublasGemm(*user)) {
     if (user->operand_count() == 3 && user->operand(2) == operand) {
       return true;
     }
+  }
+  // The operand of cholesky can be shared with the first output.
+  if (user->opcode() == HloOpcode::kCustomCall &&
+      user->custom_call_target() == kCusolverCholeskyCallTarget) {
+    return user_index.size() == 1 && user_index[0] == 0;
   }
   return absl::nullopt;
 }
