@@ -304,8 +304,8 @@ public:
 
   /// Move the blocks that belong to "region" before the given position in
   /// another region "parent".  The two regions must be different.  The caller
-  /// is in charge to update create the operation transferring the control flow
-  /// to the region and pass it the correct block arguments.
+  /// is responsible for creating or updating the operation transferring flow
+  // of control to the region and pass it the correct block arguments.
   virtual void inlineRegionBefore(Region &region, Region &parent,
                                   Region::iterator before);
   void inlineRegionBefore(Region &region, Block *before);
