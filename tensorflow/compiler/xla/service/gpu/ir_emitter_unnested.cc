@@ -1031,8 +1031,7 @@ Status IrEmitterUnnested::HandleRng(HloInstruction* rng) {
   // Emit a kernel to increment the global state for Philox RNG algorithm.
   std::unique_ptr<Thunk> increment_seed_thunk =
       BuildKernelThunk(rng, /*implements_whole_instruction=*/false);
-  unsigned global_address_space = GetGlobalMemoryAddressSpace(*module_);
-  llvm_ir::IncrementVariableForPhiloxRngState(1, module_, &b_, global_address_space);
+  llvm_ir::IncrementVariableForPhiloxRngState(1, module_, &b_);
 
   // Build the SequentialThunk for the RNG hlo.
   std::vector<std::unique_ptr<Thunk>> thunks;
@@ -3843,14 +3842,13 @@ Status IrEmitterUnnested::EmitConstantGlobals() {
     //
     // We may have to be more more clever here in the future if we notice that
     // we're keeping around too many globals because of their linkage.
-    unsigned global_address_space =
-        GetGlobalMemoryAddressSpace(*(ir_emitter_context_->llvm_module()));
+    unsigned global_address_space = llvm_ir::GetGlobalMemoryAddressSpace(
+        *ir_emitter_context_->llvm_module());
     llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
         global_type, /*isConstant=*/should_emit_initializer,
         llvm::GlobalValue::ExternalLinkage,
         /*Initializer=*/initializer,
-        llvm_ir::AsStringRef(
-            llvm_ir::ConstantBufferAllocationToGlobalName(allocation)),
+        llvm_ir::ConstantBufferAllocationToGlobalName(allocation),
         /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
         /*AddressSpace=*/global_address_space,
         /*isExternallyInitialized=*/false);

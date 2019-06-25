@@ -771,6 +771,16 @@ genrule(
     }),
 )
 
+genrule(
+    name = "virtual_root_init_gen",
+    srcs = select({
+        "api_version_2": [":virtual_root_template_v2.__init__.py"],
+        "//conditions:default": [":virtual_root_template_v1.__init__.py"],
+    }),
+    outs = ["virtual_root.__init__.py"],
+    cmd = "cp $(SRCS) $(OUTS)",
+)
+
 gen_api_init_files(
     name = "tf_python_api_gen_v1",
     srcs = [
@@ -835,7 +845,9 @@ py_library(
     srcs = select({
         "api_version_2": [":tf_python_api_gen_v2"],
         "//conditions:default": [":tf_python_api_gen_v1"],
-    }) + [":root_init_gen"] + [
+    }) + [
+        ":root_init_gen",
+        ":virtual_root_init_gen",
         "//tensorflow/python/keras/api:keras_python_api_gen",
         "//tensorflow/python/keras/api:keras_python_api_gen_compat_v1",
         "//tensorflow/python/keras/api:keras_python_api_gen_compat_v2",

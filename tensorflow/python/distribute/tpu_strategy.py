@@ -19,11 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import contextlib
 import copy
 import weakref
 
 import numpy as np
 
+from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -69,6 +72,15 @@ def get_tpu_system_metadata(tpu_cluster_resolver):
           query_topology=False))
 
   return tpu_system_metadata
+
+
+@contextlib.contextmanager
+def maybe_init_scope():
+  if ops.executing_eagerly_outside_functions():
+    yield
+  else:
+    with ops.init_scope():
+      yield
 
 
 # TODO(jhseu): Deduplicate with MirroredStrategy?
@@ -138,9 +150,9 @@ class TPUStrategy(distribute_lib.Strategy):
     Args:
       tpu_cluster_resolver: A tf.distribute.cluster_resolver.TPUClusterResolver,
           which provides information about the TPU cluster.
-      device_assignment: Optional `tf.contrib.tpu.DeviceAssignment` to specify
-          the placement of replicas on the TPU cluster. Currently only supports
-          the usecase of using a single core within a TPU cluster.
+      device_assignment: Optional `tf.tpu.experimental.DeviceAssignment` to
+          specify the placement of replicas on the TPU cluster. Currently only
+          supports the usecase of using a single core within a TPU cluster.
     """
     super(TPUStrategy, self).__init__(TPUExtended(
         self, tpu_cluster_resolver, device_assignment=device_assignment))
@@ -150,8 +162,8 @@ class TPUStrategy(distribute_lib.Strategy):
   # This implementation runs a single step. It does not use infeed or outfeed.
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """See base class."""
+    fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx())
     return self.extended.tpu_run(fn, args, kwargs)
-
 
 
 @tf_export(v1=["distribute.experimental.TPUStrategy"])
@@ -172,9 +184,9 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
           metrics, summaries etc.
           This parameter is only used when Distribution Strategy is used with
           estimator or keras.
-      device_assignment: Optional `tf.contrib.tpu.DeviceAssignment` to specify
-          the placement of replicas on the TPU cluster. Currently only supports
-          the usecase of using a single core within a TPU cluster.
+      device_assignment: Optional `tf.tpu.experimental.DeviceAssignment` to
+          specify the placement of replicas on the TPU cluster. Currently only
+          supports the usecase of using a single core within a TPU cluster.
     """
     super(TPUStrategyV1, self).__init__(TPUExtended(
         self, tpu_cluster_resolver, steps_per_run, device_assignment))
@@ -189,6 +201,7 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
   # This implementation runs a single step. It does not use infeed or outfeed.
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """See base class."""
+    fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx())
     return self.extended.tpu_run(fn, args, kwargs)
 
 
@@ -353,7 +366,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         replicate_inputs.append((nest.map_structure(
             select_replica, per_replica_inputs),))
 
-      replicate_outputs = tpu.replicate(run_fn, replicate_inputs)
+      replicate_outputs = tpu.replicate(
+          run_fn, replicate_inputs, device_assignment=self._device_assignment)
 
       # If run_fn has tensor outputs, tpu.replicate returns a list of list. We
       # will flatten it in this case. If run_fn has no tensor outputs,
@@ -416,7 +430,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     """Experimental method added to be used by Estimator.
 
     This is a private method only to be used by Estimator. Other frameworks
-    should directly be calling `tf.contrib.distribute.initialize_tpu_system`
+    should directly be calling `tf.tpu.experimental.initialize_tpu_system`
     """
     tpu_strategy_util.initialize_tpu_system(self._tpu_cluster_resolver)
 
@@ -440,10 +454,9 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         with ops.device(d):
           if i == 0:
             initial_value = kwargs["initial_value"]
-            # TODO(b/134779280): Remove initialization scope once the
-            # "Tensor-typed variable initializers must either be wrapped in an "
-            # "init_scope or callable" error is fixed.
-            with ops.init_scope():
+            # Note: some v1 code expects variable initializer creation to happen
+            # inside a init_scope.
+            with maybe_init_scope():
               initial_value = initial_value() if callable(
                   initial_value) else initial_value
 
@@ -509,7 +522,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _update(self, var, fn, args, kwargs, group):
     assert isinstance(var, values.TPUMirroredVariable) or isinstance(
-        var, resource_variable_ops.ResourceVariable)
+        var, resource_variable_ops.BaseResourceVariable)
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
       if group:
         return fn(var, *args, **kwargs)
@@ -530,7 +543,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def read_var(self, var):
     assert isinstance(var, values.TPUMirroredVariable) or isinstance(
-        var, resource_variable_ops.ResourceVariable)
+        var, resource_variable_ops.BaseResourceVariable)
     return var.read_value()
 
   def _local_results(self, val):
@@ -711,8 +724,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         maximum_shapes = None
 
       with strategy.scope():
-        replicate_outputs = tpu.replicate(replicated_fn, replicate_inputs,
-                                          maximum_shapes=maximum_shapes)
+        replicate_outputs = tpu.replicate(
+            replicated_fn,
+            replicate_inputs,
+            device_assignment=self._device_assignment,
+            maximum_shapes=maximum_shapes)
 
       # Remove all no ops that may have been added during 'tpu.replicate()'
       if isinstance(result[0], list):

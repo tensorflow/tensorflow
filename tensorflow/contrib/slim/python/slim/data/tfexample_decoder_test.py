@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import sys
 
 from tensorflow.contrib.slim.python.slim.data import tfexample_decoder
 from tensorflow.core.example import example_pb2
@@ -72,6 +73,10 @@ class TFExampleDecoderTest(test.TestCase):
       tf_image = constant_op.constant(image, dtype=dtypes.uint8)
       return image_ops.encode_png(tf_image)
     if image_format in ['raw', 'RAW']:
+      # If machine is big endian, change the byte ordering in case of dtype float32
+      # so that it should be interpreted correctly.
+      if image.dtype == np.float32 and sys.byteorder == 'big':
+        image = image.astype('<f4')
       return constant_op.constant(image.tostring(), dtype=dtypes.string)
 
   def GenerateImage(self, image_format, image_shape, image_dtype=np.uint8):

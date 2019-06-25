@@ -408,6 +408,12 @@ class HloInstruction {
       const Shape& shape, RandomDistribution distribution,
       absl::Span<HloInstruction* const> parameters);
 
+  // Creates an instruction to update the random number generator state to
+  // reflect the new state after `delta` units of 32 random bits are generated
+  // and returns the old state.
+  static std::unique_ptr<HloInstruction> CreateRngGetAndUpdateState(
+      const Shape& shape, int64 delta);
+
   // Creates a unary instruction (one operand).
   // Precondition: opcode must be a legitimate unary operation.
   static std::unique_ptr<HloInstruction> CreateUnary(const Shape& shape,
@@ -1762,8 +1768,8 @@ class HloInstruction {
   // Removes a user for this instruction.
   void RemoveUser(HloInstruction* user);
 
-  // Returns how this instruction uses elements of its `i`th operand.
-  UseKind OperandElementUse(int64 i) const;
+  // Returns how this instruction uses elements of its operand at operand_num.
+  UseKind OperandElementUse(int64 operand_num) const;
 
   // Helper for implementing backend_config().  Parses backend_config_ into the
   // given proto.
@@ -1839,6 +1845,8 @@ class HloInstruction {
 // Explicit instantiations in hlo_instruction.cc.
 extern template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool);
 extern template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool);
+extern template Status HloInstruction::Visit(DfsHloVisitor* visitor);
+extern template Status HloInstruction::Visit(ConstDfsHloVisitor* visitor);
 
 string ToString(HloInstruction::FusionKind kind);
 StatusOr<HloInstruction::FusionKind> StringToFusionKind(

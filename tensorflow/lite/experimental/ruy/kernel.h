@@ -59,7 +59,7 @@ void RunKernelTyped(Tuning tuning, const PackedMatrix<LhsScalar>& lhs,
   RUY_DCHECK_LE(start_col, end_col);
   RUY_DCHECK_LT(end_col, dst->layout.cols + RhsLayout::kCols);
   RUY_DCHECK_EQ((end_col - start_col) % RhsLayout::kCols, 0);
-#if RUY_OPT_SET & RUY_OPT_FAT_KERNEL
+#if RUY_OPT_ENABLED(RUY_OPT_FAT_KERNEL)
   kernel.Run(lhs, rhs, spec, start_row, start_col, end_row, end_col, dst);
 #else
   for (int col = start_col; col < end_col; col += RhsLayout::kCols) {
@@ -216,7 +216,7 @@ struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
 RUY_INHERIT_KERNEL(Path::kStandardCpp, Path::kNeon)
 RUY_INHERIT_KERNEL(Path::kNeon, Path::kNeonDotprod)
 
-#if (defined __aarch64__) && (RUY_OPT_SET & RUY_OPT_ASM)
+#if (defined __aarch64__) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 #define RUY_ASM_FLAG_HAS_BIAS 0x1
 #define RUY_ASM_FLAG_HAS_LHS_SUMS 0x2
@@ -527,7 +527,7 @@ struct Kernel<Path::kNeonDotprod, float, float, float, BasicSpec<float, float>>
   }
 };
 
-#endif  // (defined __aarch64__) && (RUY_OPT_SET & RUY_OPT_ASM)
+#endif  // (defined __aarch64__) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 }  // namespace ruy
 

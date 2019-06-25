@@ -23,12 +23,15 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
+#include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"
 #include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -238,6 +241,73 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
   }
 
   return Status::OK();
+}
+
+namespace {
+
+uint64 HashSubgraph(const grappler::GraphView& g, const NodeDef* node) {
+  uint64 input_hash = 0;
+  uint64 control_dep_hash = 0;
+
+  for (int i = 0; i < node->input_size(); ++i) {
+    DCHECK_GT(node->input(i).length(), 0);
+    if (node->input(i)[0] == '^') {
+      // TODO(frankchn): Investigate if control dependencies are necessary
+      // inputs to the hash.
+      // Control dependency node names start with '^', and order of appearance
+      // for the control dependencies does not matter.
+      control_dep_hash = Hash64CombineUnordered(
+          control_dep_hash,
+          HashSubgraph(g, g.GetNode(node->input(i).substr(1))));
+    } else {
+      // The output port is significant and is optionally delimited by a ':'
+      // for non-zero ports.
+      std::vector<std::string> node_name = absl::StrSplit(node->input(i), ':');
+      uint64 child_node_hash = HashSubgraph(g, g.GetNode(node_name[0]));
+      uint64 child_port_hash =
+          Hash64(node_name.size() > 1 ? node_name[1] : "0");
+      input_hash = Hash64Combine(
+          input_hash, Hash64Combine(child_node_hash, child_port_hash));
+    }
+  }
+
+  uint64 op_hash = Hash64(node->op());
+
+  uint64 attr_hash = 0;
+  for (const auto& attr : node->attr()) {
+    if (attr.second.has_func()) {
+      // TODO(frankchn): Add better handling for functions. Currently, we are
+      // taking the naive (but correct) approach of hashing the entire
+      // FunctionDef but we should apply a similar technique to the function
+      // as we do to the larger graph in general.
+      auto& func_library = g.graph()->library();
+      for (const auto& func : func_library.function()) {
+        if (func.signature().name() == attr.second.func().name()) {
+          attr_hash = Hash64CombineUnordered(
+              attr_hash, Hash64(absl::StrCat(attr.first, "=",
+                                             DeterministicProtoHash64(func))));
+          break;
+        }
+      }
+    } else {
+      attr_hash = Hash64CombineUnordered(
+          attr_hash,
+          Hash64(absl::StrCat(attr.first, "=",
+                              DeterministicProtoHash64(attr.second))));
+    }
+  }
+
+  uint64 device_hash = Hash64(node->device());
+
+  return Hash64Combine(
+      Hash64Combine(attr_hash, op_hash),
+      Hash64Combine(device_hash, Hash64Combine(input_hash, control_dep_hash)));
+}
+
+}  // namespace
+
+uint64 HashSubgraph(const GraphDef& g, const NodeDef* node) {
+  return HashSubgraph(grappler::GraphView(&g), node);
 }
 
 namespace {

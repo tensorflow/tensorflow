@@ -148,7 +148,8 @@ struct MatrixBandPartFunctor<CPUDevice, Scalar> {
     const bool in_place = input.data() == output.data();
     auto compute_shard = [=, &input, &output](int64 begin, int64 end) {
       if (!in_place) {
-        std::fill(output.data() + begin * n, output.data() + end * n, Scalar());
+        std::fill(output.data() + begin * n, output.data() + end * n,
+                  Scalar(0));
       }
       const int64 batch_begin = begin / m;
       const int64 batch_end = (end + m - 1) / m;
@@ -167,11 +168,11 @@ struct MatrixBandPartFunctor<CPUDevice, Scalar> {
           if (in_place) {
             if (band_start > 0) {
               std::fill(&output(batch, row, 0), &output(batch, row, band_start),
-                        Scalar());
+                        Scalar(0));
             }
             if (band_end < n) {
               std::fill(&output(batch, row, band_end), &output(batch, row, n),
-                        Scalar());
+                        Scalar(0));
             }
           } else {
             if (band_start < band_end) {

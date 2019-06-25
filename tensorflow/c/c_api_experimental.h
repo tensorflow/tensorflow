@@ -285,7 +285,7 @@ TF_CAPI_EXPORT int TF_PickUnusedPortOrDie(void);
 // Fast path method that makes constructing a single scalar tensor require less
 // overhead and copies.
 TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromScalar(
-    TF_DataType data_type, void* data, size_t len);
+    TF_DataType data_type, void* data, size_t len, TF_Status* status);
 
 // Specify the server_def that enables collective ops.
 // This is different to the above function in that it doesn't create remote

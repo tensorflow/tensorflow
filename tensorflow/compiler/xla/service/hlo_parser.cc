@@ -749,6 +749,8 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kCeil:
     case HloOpcode::kClz:
     case HloOpcode::kCopy:
+    case HloOpcode::kCopyStart:
+    case HloOpcode::kCopyDone:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
@@ -1451,6 +1453,16 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       }
       instruction = builder->AddInstruction(
           HloInstruction::CreateRng(shape, *distribution, operands));
+      break;
+    }
+    case HloOpcode::kRngGetAndUpdateState: {
+      optional<int64> delta;
+      attrs["delta"] = {/*required=*/true, AttrTy::kInt64, &delta};
+      if (!ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateRngGetAndUpdateState(shape, *delta));
       break;
     }
     case HloOpcode::kReducePrecision: {

@@ -91,6 +91,12 @@ tensorflow::Status EagerExecutor::WaitImpl(bool wait_all,
   return status_;
 }
 
+bool EagerExecutor::IsQueued(uint64 node_id) const {
+  tf_shared_lock l(node_queue_mutex_);
+  // Note that we are relying on the ops being dispatched sequentially from
+  return node_id > last_node_id_;
+}
+
 void EagerExecutor::ClearError() {
   tensorflow::mutex_lock l(node_queue_mutex_);
   if (status_.ok()) return;
@@ -102,8 +108,8 @@ void EagerExecutor::ClearError() {
   nodes_pending_.notify_all();
 }
 
-tensorflow::Status EagerExecutor::status() {
-  tensorflow::mutex_lock l(node_queue_mutex_);
+tensorflow::Status EagerExecutor::status() const {
+  tf_shared_lock l(node_queue_mutex_);
   return status_;
 }
 
@@ -117,6 +123,9 @@ void EagerExecutor::Run() {
         nodes_pending_.wait(l);
       }
       curr_node.reset(node_queue_.front());
+      // We update the last_node_id_ before calling Run() to ensure the value
+      // is updated before the response callback.
+      last_node_id_ = curr_node->id;
     }
     tensorflow::Status status = curr_node->Run();
     const bool ok = status.ok();
@@ -124,11 +133,14 @@ void EagerExecutor::Run() {
     node_queue_.pop();
     if (!ok) {
       status_ = status;
-      // TODO(agarwal): mark all affected handles as corrupted before clearing
-      // this queue.
       // We remove any pending ops so that we don't try to execute them if
       // ClearError is called.
+      errors::AppendToMessage(&status,
+                              ". Encountered when executing an operation using "
+                              "EagerExecutor. This error cancels all future "
+                              "operations and poisons their output tensors.");
       for (int i = 0; i < node_queue_.size(); ++i) {
+        node_queue_.front()->Abort(status);
         delete node_queue_.front();
         node_queue_.pop();
       }

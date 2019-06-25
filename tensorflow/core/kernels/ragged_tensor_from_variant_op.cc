@@ -138,7 +138,7 @@ Status NestedStackRaggedTensors(
       output_ragged->nested_splits[dims - 1].vec<SPLIT_TYPE>();
   dims_splits_vec(0) = 0;
   for (int i = 0; i < ragged_components.size(); i++) {
-    int split_val = ragged_components[i].values.NumElements();
+    int split_val = ragged_components[i].values.shape().dim_size(0);
     if (input_ragged_rank != 0 && !ragged_components[i].nested_splits.empty()) {
       split_val = ragged_components[i].nested_splits[0].NumElements() - 1;
     }

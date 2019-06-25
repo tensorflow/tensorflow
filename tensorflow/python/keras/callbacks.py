@@ -37,10 +37,11 @@ from tensorflow.python.distribute import distribute_coordinator_context as dc_co
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.distribute import multi_worker_training_state
+from tensorflow.python.keras.distribute import multi_worker_training_state as training_state
 from tensorflow.python.keras.utils.data_utils import Sequence
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import tf_logging as logging
@@ -902,8 +903,7 @@ class ModelCheckpoint(Callback):
       # MultiWorkerTrainingState is used to manage the training state needed
       # for preemption-recovery of a worker in multi-worker training.
       self.model._training_state = (
-          multi_worker_training_state.MultiWorkerTrainingState(
-              self.model, self.filepath))
+          training_state.MultiWorkerTrainingState(self.model, self.filepath))
       self._training_state = self.model._training_state
       if self._training_state.restore():
         # If the training state needs to be and is successfully restored,
@@ -914,15 +914,16 @@ class ModelCheckpoint(Callback):
     # If this is not multi worker training, restoring is not needed, or
     # restoring failed, check if it should load weights on restart.
     if self.load_weights_on_restart:
-      # In multi worker training, it only should if `experimental_should_init`
-      # is True.
+      # In multi worker training, it only should load weights on restart if
+      # `experimental_should_init` is True.
       # TODO(rchao): Reference `experimental_should_init` api from a util file.
-      if not K.in_multi_worker_mode() or dc_context.get_current_worker_context(
-      ).experimental_should_init:
+      if (not K.in_multi_worker_mode() or
+          dc_context.get_current_worker_context().experimental_should_init):
         filepath_to_load = (
             self._get_most_recently_modified_file_matching_pattern(
                 self.filepath))
-        if filepath_to_load is not None and os.path.exists(filepath_to_load):
+        if (filepath_to_load is not None and
+            training_state.checkpoint_exists(filepath_to_load)):
           try:
             # `filepath` may contain placeholders such as `{epoch:02d}`, and
             # thus it attempts to load the most recently modified file with file
@@ -957,7 +958,12 @@ class ModelCheckpoint(Callback):
   def on_epoch_end(self, epoch, logs=None):
     self.epochs_since_last_save += 1
     if self.save_freq == 'epoch':
-      self._save_model(epoch=epoch, logs=logs)
+      if K.in_multi_worker_mode():
+        # Exclude training state variables in user-requested checkpoint file.
+        with self._training_state.untrack_vars():
+          self._save_model(epoch=epoch, logs=logs)
+      else:
+        self._save_model(epoch=epoch, logs=logs)
     if K.in_multi_worker_mode():
       # For multi-worker training, back up the weights and current training
       # state for possible future recovery.
@@ -976,7 +982,7 @@ class ModelCheckpoint(Callback):
     if isinstance(self.save_freq,
                   int) or self.epochs_since_last_save >= self.period:
       self.epochs_since_last_save = 0
-      file_handle, filepath = self._get_file_handle_and_path(epoch, logs)
+      filepath = self._get_file_path(epoch, logs)
 
       if self.save_best_only:
         current = logs.get(self.monitor)
@@ -1006,35 +1012,35 @@ class ModelCheckpoint(Callback):
         else:
           self.model.save(filepath, overwrite=True)
 
-      self._maybe_remove_file(file_handle, filepath)
+      self._maybe_remove_file()
 
-  def _get_file_handle_and_path(self, epoch, logs):
-    """Returns the file handle and path."""
+  def _get_file_path(self, epoch, logs):
+    """Returns the file path for checkpoint."""
     # TODO(rchao): Replace dc_context reference with
     # distributed_training_utils.should_current_worker_checkpoint() once
     # distributed_training_utils.py no longer depends on callbacks.py.
     if not K.in_multi_worker_mode() or dc_context.get_current_worker_context(
     ).should_checkpoint:
-      return None, self.filepath.format(epoch=epoch + 1, **logs)
+      return self.filepath.format(epoch=epoch + 1, **logs)
     else:
       # If this is multi-worker training, and this worker should not
-      # save checkpoint, we replace the filepath with a dummy filepath so
-      # it writes to a file that will be removed at the end of _save_model()
+      # save checkpoint, we use a temp filepath to store a dummy checkpoint, so
+      # it writes to a file that will be removed at the end of `_save_model()`
       # call. This is because the SyncOnReadVariable needs to be synced across
       # all the workers in order to be read, and all workers need to initiate
       # that.
-      file_handle, temp_file_name = tempfile.mkstemp()
+      self._temp_file_dir = tempfile.mkdtemp()
       extension = os.path.splitext(self.filepath)[1]
-      return file_handle, temp_file_name + extension
+      return os.path.join(self._temp_file_dir, 'temp' + extension)
 
-  def _maybe_remove_file(self, file_handle, filepath):
-    # Remove the file in multi-worker training where this worker should
-    # not checkpoint. It is a dummy file previously saved for sync distributed
-    # training.
+  def _maybe_remove_file(self):
+    # Remove the checkpoint directory in multi-worker training where this worker
+    # should not checkpoint. It is a dummy directory previously saved for sync
+    # distributed training.
     if K.in_multi_worker_mode(
     ) and not dc_context.get_current_worker_context().should_checkpoint:
-      os.close(file_handle)
-      os.remove(filepath)
+      file_io.delete_recursively(self._temp_file_dir)
+      del self._temp_file_dir
 
   def _get_most_recently_modified_file_matching_pattern(self, pattern):
     """Returns the most recently modified filepath matching pattern.
@@ -1098,7 +1104,7 @@ class ModelCheckpoint(Callback):
     n_file_with_latest_mod_time = 0
     file_path_with_largest_file_name = None
 
-    if os.path.exists(dir_name):
+    if file_io.file_exists(dir_name):
       for file_name in os.listdir(dir_name):
         # Only consider if `file_name` matches the pattern.
         if re.match(base_name_regex, file_name):
@@ -1885,7 +1891,7 @@ class CSVLogger(Callback):
 
   def on_train_begin(self, logs=None):
     if self.append:
-      if os.path.exists(self.filename):
+      if file_io.file_exists(self.filename):
         with open(self.filename, 'r' + self.file_flags) as f:
           self.append_header = not bool(len(f.readline()))
       mode = 'a'

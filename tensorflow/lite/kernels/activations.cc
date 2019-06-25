@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/softmax.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 
@@ -63,6 +65,10 @@ struct LeakyReluOpData : public OpData {
 struct PreluOpData : public OpData {
   int32_t output_multiplier = 0;
   int output_shift = 0;
+};
+
+struct HardSwishData {
+  HardSwishParams params;
 };
 
 namespace {
@@ -107,6 +113,10 @@ void PreluFree(TfLiteContext* context, void* buffer) {
   delete reinterpret_cast<PreluOpData*>(buffer);
 }
 
+void* HardSwishInit(TfLiteContext* context, const char* buffer, size_t length) {
+  return new HardSwishData;
+}
+
 TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -124,6 +134,56 @@ void* LeakyReluInit(TfLiteContext* context, const char* buffer, size_t length) {
 
 void LeakyReluFree(TfLiteContext* context, void* buffer) {
   delete reinterpret_cast<LeakyReluOpData*>(buffer);
+}
+
+void HardSwishFree(TfLiteContext* context, void* buffer) {
+  delete static_cast<HardSwishData*>(buffer);
+}
+
+TfLiteStatus HardSwishPrepare(TfLiteContext* context, TfLiteNode* node) {
+  TF_LITE_ENSURE_STATUS(GenericPrepare(context, node));
+  TfLiteTensor* output = GetOutput(context, node, 0);
+
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
+    HardSwishData* data = static_cast<HardSwishData*>(node->user_data);
+    HardSwishParams* params = &data->params;
+    const TfLiteTensor* input = GetInput(context, node, 0);
+    // TODO(131260336): Maybe pick a better way to select the denominator shift.
+    // Include input shift into the shift.
+    static constexpr int32_t extra_input_shift = 3;
+    // Note: optimized implementations will rely on the ability to perform this
+    // left shift within int16 without overflow. The values being left-shifted
+    // range in [-255, 255] i.e. just under 2^8 in absolute value, and after the
+    // left shift they will still be added the 'three_input' value, which is
+    // safe if they're not greater than 2^14 in absolute value (since 2^15 is
+    // the magnitude of the boundaries of int16 range). 14-8 == 6, so we
+    // require extra_input_shift to be no greater than 6.
+    static_assert(extra_input_shift <= 6, "");
+    const auto in_scale = input->params.scale;
+    params->input_zero_point = input->params.zero_point;
+    const auto out_scale = output->params.scale;
+    const int32_t out_zero_point = output->params.zero_point;
+    // Get 3 and 6 represented in input scale. We avoid intermediate conversion
+    // to the "true" scale, so all operations are done in input scale losslessly
+    // And then converted to the output scale.
+    // However 3 and 6 might not have exact representation in input scale.
+    // We use extra multiplier to avoid precision loss when converting
+    // 3 and 6 from input to output.
+    params->three_input = std::lround((3 << extra_input_shift) / in_scale);
+    params->six_input = std::lround((6 << extra_input_shift) / in_scale);
+    // Compensate for the fact that we multiply two numbers in in_scale
+    // and produce result in output format.
+    // NB: we fold 6 multiplier into the scaling factor here:
+    float from_in_to_out_sq = (in_scale * in_scale / out_scale / 6);
+
+    from_in_to_out_sq /= (1 << extra_input_shift);
+    QuantizeMultiplierSmallerThanOneExp(from_in_to_out_sq, &(params->scale),
+                                        &(params->shift));
+
+    params->output_offset = out_zero_point;
+    params->clip_input_shift = extra_input_shift;
+  }
+  return kTfLiteOk;
 }
 
 TfLiteStatus LeakyReluPrepare(TfLiteContext* context, TfLiteNode* node) {
@@ -436,6 +496,60 @@ TfLiteStatus Relu1Eval(TfLiteContext* context, TfLiteNode* node) {
                            "Only float32, uint8, int8 supported "
                            "currently, got %s.",
                            TfLiteTypeGetName(input->type));
+      return kTfLiteError;
+  }
+}
+
+template <KernelType kernel_type>
+TfLiteStatus HardSwishEval(TfLiteContext* context, TfLiteNode* node) {
+  HardSwishData* data = static_cast<HardSwishData*>(node->user_data);
+
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  switch (input->type) {
+    case kTfLiteFloat32: {
+      if (kernel_type == kReference) {
+        reference_ops::HardSwish(
+            GetTensorShape(input), GetTensorData<float>(input),
+            GetTensorShape(output), GetTensorData<float>(output));
+      } else {
+        optimized_ops::HardSwish(
+            GetTensorShape(input), GetTensorData<float>(input),
+            GetTensorShape(output), GetTensorData<float>(output));
+      }
+      return kTfLiteOk;
+    } break;
+    case kTfLiteUInt8: {
+      HardSwishParams& params = data->params;
+      if (kernel_type == kReference) {
+        reference_ops::HardSwish(
+            params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+            GetTensorShape(output), GetTensorData<uint8_t>(output));
+      } else {
+        optimized_ops::HardSwish(
+            params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+            GetTensorShape(output), GetTensorData<uint8_t>(output));
+      }
+      return kTfLiteOk;
+    } break;
+    case kTfLiteInt8: {
+      HardSwishParams& params = data->params;
+      if (kernel_type == kReference) {
+        reference_ops::HardSwish(
+            params, GetTensorShape(input), GetTensorData<int8_t>(input),
+            GetTensorShape(output), GetTensorData<int8_t>(output));
+      } else {
+        optimized_ops::HardSwish(
+            params, GetTensorShape(input), GetTensorData<int8_t>(input),
+            GetTensorShape(output), GetTensorData<int8_t>(output));
+      }
+      return kTfLiteOk;
+    } break;
+    default:
+      context->ReportError(
+          context,
+          "Only float32, uint8 and int8 are supported currently, got %s.",
+          TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 }
@@ -984,6 +1098,22 @@ TfLiteRegistration* Register_LEAKY_RELU() {
   static TfLiteRegistration r = {
       activations::LeakyReluInit, activations::LeakyReluFree,
       activations::LeakyReluPrepare, activations::LeakyReluEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_HARD_SWISH() {
+  static TfLiteRegistration r = {
+      activations::HardSwishInit, activations::HardSwishFree,
+      activations::HardSwishPrepare,
+      activations::HardSwishEval<activations::kGenericOptimized>};
+  return &r;
+}
+
+TfLiteRegistration* Register_HARD_SWISH_REF() {
+  static TfLiteRegistration r = {
+      activations::HardSwishInit, activations::HardSwishFree,
+      activations::HardSwishPrepare,
+      activations::HardSwishEval<activations::kReference>};
   return &r;
 }
 

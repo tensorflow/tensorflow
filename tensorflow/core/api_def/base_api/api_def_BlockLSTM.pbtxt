@@ -1,5 +1,6 @@
 op {
   graph_op_name: "BlockLSTM"
+  visibility: HIDDEN
   in_arg {
     name: "seq_len_max"
     description: <<END

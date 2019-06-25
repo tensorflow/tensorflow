@@ -66,7 +66,7 @@ deployment to accelerators that support float. To require the converter to only
 output integer operations, one can specify:
 
 ```
-converter.target_spec.supported_ops = [tf.lite.OpSet.TFLITE_BUILTINS_INT8]
+converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
 ```
 
 Note: `target_spec.supported_ops` was previously `target_ops` in the Python API.

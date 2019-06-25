@@ -22,6 +22,7 @@ from __future__ import print_function
 import weakref
 
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import func_graph
@@ -155,7 +156,7 @@ def _lift_unlifted_variables(graph, variable_holder):
     def _should_lift_variable(v):
       return ((v._in_graph_mode  # pylint: disable=protected-access
                and v.graph.building_function)
-              and isinstance(v, resource_variable_ops.ResourceVariable)
+              and isinstance(v, resource_variable_ops.BaseResourceVariable)
               and v.handle not in existing_captures)
 
     for old_variable in global_collection_variables:
@@ -201,6 +202,8 @@ class WrappedFunction(function.ConcreteFunction):
     _lift_unlifted_variables(fn_graph, variable_holder)
     # We call __init__ after lifting variables so that the function's signature
     # properly reflects the new captured inputs.
+    for f in fn_graph.as_graph_def().library.function:
+      context.context().add_function_def(f)
     super(WrappedFunction, self).__init__(
         fn_graph, attrs=attrs, signature=signature)
 

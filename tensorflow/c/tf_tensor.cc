@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "tensorflow/c/tf_tensor.h"
 
-#include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/coding.h"
 
@@ -227,13 +230,15 @@ size_t TF_StringEncode(const char* src, size_t src_len, char* dst,
                        size_t dst_len, TF_Status* status) {
   const size_t sz = TF_StringEncodedSize(src_len);
   if (sz < src_len) {
-    status->status = InvalidArgument("src string is too large to encode");
+    Set_TF_Status_from_Status(
+        status, InvalidArgument("src string is too large to encode"));
     return 0;
   }
   if (dst_len < sz) {
-    status->status =
+    Set_TF_Status_from_Status(
+        status,
         InvalidArgument("dst_len (", dst_len, ") too small to encode a ",
-                        src_len, "-byte string");
+                        src_len, "-byte string"));
     return 0;
   }
   dst = tensorflow::core::EncodeVarint64(dst, src_len);
@@ -259,7 +264,8 @@ static Status TF_StringDecode_Impl(const char* src, size_t src_len,
 
 size_t TF_StringDecode(const char* src, size_t src_len, const char** dst,
                        size_t* dst_len, TF_Status* status) {
-  status->status = TF_StringDecode_Impl(src, src_len, dst, dst_len);
+  Set_TF_Status_from_Status(status,
+                            TF_StringDecode_Impl(src, src_len, dst, dst_len));
   if (TF_GetCode(status) != TF_OK) return 0;
   return static_cast<size_t>(*dst - src) + *dst_len;
 }
@@ -299,8 +305,9 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
                                TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   if (!src.IsInitialized()) {
-    status->status = FailedPrecondition(
-        "attempt to use a tensor with an uninitialized value");
+    Set_TF_Status_from_Status(
+        status, FailedPrecondition(
+                    "attempt to use a tensor with an uninitialized value"));
     return nullptr;
   }
   if (src.NumElements() == 0) {
@@ -308,13 +315,14 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
   }
   if (src.dtype() == tensorflow::DT_RESOURCE) {
     if (src.shape().dims() != 0) {
-      status->status = InvalidArgument(
-          "Unexpected non-scalar DT_RESOURCE tensor seen (shape: ",
-          src.shape().DebugString(),
-          "). Please file a bug at "
-          "https://github.com/tensorflow/tensorflow/issues/new, "
-          "ideally with a "
-          "short code snippet that reproduces this error.");
+      Set_TF_Status_from_Status(
+          status, InvalidArgument(
+                      "Unexpected non-scalar DT_RESOURCE tensor seen (shape: ",
+                      src.shape().DebugString(),
+                      "). Please file a bug at "
+                      "https://github.com/tensorflow/tensorflow/issues/new, "
+                      "ideally with a "
+                      "short code snippet that reproduces this error."));
       return nullptr;
     }
     const string str =
@@ -353,9 +361,10 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
     const string& s = srcarray(i);
     size_t consumed = TF_StringEncode(s.data(), s.size(), dst, dst_len, status);
     if (TF_GetCode(status) != TF_OK) {
-      status->status = InvalidArgument(
-          "invalid string tensor encoding (string #", i, " of ",
-          srcarray.size(), "): ", status->status.error_message());
+      Set_TF_Status_from_Status(
+          status,
+          InvalidArgument("invalid string tensor encoding (string #", i, " of ",
+                          srcarray.size(), "): ", TF_Message(status)));
       delete[] base;
       return nullptr;
     }
@@ -363,9 +372,10 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
     dst_len -= consumed;
   }
   if (dst != base + size) {
-    status->status = InvalidArgument(
-        "invalid string tensor encoding (decoded ", (dst - base),
-        " bytes, but the tensor is encoded in ", size, " bytes");
+    Set_TF_Status_from_Status(
+        status, InvalidArgument(
+                    "invalid string tensor encoding (decoded ", (dst - base),
+                    " bytes, but the tensor is encoded in ", size, " bytes"));
     delete[] base;
     return nullptr;
   }

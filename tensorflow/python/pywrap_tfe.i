@@ -52,6 +52,7 @@ limitations under the License.
 %rename("%s") TFE_DeleteProfilerContext;
 %rename("%s") TFE_StartProfilerServer;
 %rename("%s") TFE_ProfilerClientStartTracing;
+%rename("%s") TFE_ProfilerClientMonitor;
 %rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_SetEagerTensorProfiler;
@@ -68,6 +69,7 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeSetRemove;
 %rename("%s") TFE_Py_TapeSetStopOnThread;
 %rename("%s") TFE_Py_TapeSetRestartOnThread;
+%rename("%s") TFE_Py_TapeSetIsStopped;
 %rename("%s") TFE_Py_TapeSetIsEmpty;
 %rename("%s") TFE_Py_TapeSetShouldRecord;
 %rename("%s") TFE_Py_TapeSetDeleteTrace;

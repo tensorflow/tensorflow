@@ -283,6 +283,8 @@ class Shape(object):
   def from_pyval(pyval) -> Shape:
     "Returns a Shape that describes a tuple-tree of Numpy arrays."
 
+  def __init__(self, str) -> Shape:
+    "Parses a shape string."
   def __eq__(self, other: Shape) -> bool:
   def __ne__(self, other: Shape) -> bool:
   def __hash__(self):
@@ -296,7 +298,6 @@ class Shape(object):
   def element_type(self) -> np.dtype:
   def dimensions(self) -> (int, int, ...):
   def rank(self) -> int:
-  def minor_to_major(self) -> [int]:
   def with_major_to_minor_layout_if_absent(self) -> Shape:
     "Returns a copy with missing layouts set to major-to-minor."
 

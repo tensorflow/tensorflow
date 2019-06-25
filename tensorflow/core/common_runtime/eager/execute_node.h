@@ -63,17 +63,28 @@ class ExecuteNode : public EagerNode {
     }
   }
 
-  tensorflow::Status Run() override {
+  Status Run() override {
     const Status status = EagerKernelExecute(
         ctx_, inputs_, kernel_.get(), maybe_stats_.get(), maybe_step_stats_,
         graph_collector_, retvals_.begin(), retvals_.size());
     if (status.ok()) {
+      // If status is ok, EagerKernelExecute would have called SetTensor on
+      // all the output handles.
       return status;
     } else {
-      return Status(status.code(),
-                    strings::StrCat("Got error, \"", status.error_message(),
-                                    "\" while executing kernel ",
-                                    kernel_->kernel()->def().DebugString()));
+      Status s =
+          Status(status.code(),
+                 strings::StrCat("Got error, \"", status.error_message(),
+                                 "\" while executing kernel ",
+                                 kernel_->kernel()->def().DebugString()));
+      Abort(s);
+      return s;
+    }
+  }
+
+  void Abort(Status status) override {
+    for (auto handle : retvals_) {
+      handle->Poison(status);
     }
   }
 

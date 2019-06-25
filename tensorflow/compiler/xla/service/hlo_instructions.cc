@@ -2687,4 +2687,39 @@ HloGetDimensionSizeInstruction::CloneWithNewOperandsImpl(
       shape, new_operands[0], dimension());
 }
 
+HloRngGetAndUpdateStateInstruction::HloRngGetAndUpdateStateInstruction(
+    const Shape& shape, int64 delta)
+    : HloInstruction(HloOpcode::kRngGetAndUpdateState, shape), delta_(delta) {}
+
+HloInstructionProto HloRngGetAndUpdateStateInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_delta(delta_);
+  return proto;
+}
+
+std::vector<string>
+HloRngGetAndUpdateStateInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& /*options*/) const {
+  return {StrCat("delta={", delta(), "}")};
+}
+
+bool HloRngGetAndUpdateStateInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    /*eq_computations*/) const {
+  const auto& casted_other =
+      static_cast<const HloRngGetAndUpdateStateInstruction&>(other);
+  return delta() == casted_other.delta();
+}
+
+std::unique_ptr<HloInstruction>
+HloRngGetAndUpdateStateInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* /*context*/) const {
+  if (!new_operands.empty()) {
+    LOG(FATAL) << "expects 0 operand";
+  }
+  return absl::make_unique<HloRngGetAndUpdateStateInstruction>(shape, delta());
+}
+
 }  // namespace xla

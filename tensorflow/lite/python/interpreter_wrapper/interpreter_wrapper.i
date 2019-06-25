@@ -26,10 +26,7 @@ limitations under the License.
 
 
 %typemap(in) TfLiteDelegate* {
- auto pointer_as_int =  PyInt_AsLong($input);
- static_assert(sizeof(pointer_as_int)==sizeof(TfLiteDelegate*),
-        "TFLiteDelegate must be representable as a long.");
- $1 = reinterpret_cast<TfLiteDelegate*>(pointer_as_int);
+ $1 = reinterpret_cast<TfLiteDelegate*>(PyLong_AsVoidPtr($input));
 }
 
 

@@ -69,6 +69,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "input_spec"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "kernel_constraint"
     mtype: "<type \'property\'>"
   }

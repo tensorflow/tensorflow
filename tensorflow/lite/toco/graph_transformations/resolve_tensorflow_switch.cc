@@ -121,7 +121,7 @@ namespace toco {
   }
   // Remove the switch node itself.
   AddMessageF("Removing already-resolved %s", LogName(*switch_op));
-  model->operators.erase(switch_it);
+  DeleteOpAndArrays(model, switch_op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

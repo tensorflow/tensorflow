@@ -56,6 +56,19 @@ class FromTensorSlicesTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       results = self.evaluate(get_next())
 
+  def testFromTensorSlicesDataset(self):
+    dss = [dataset_ops.Dataset.range(10) for _ in range(10)]
+    ds = dataset_ops.Dataset.from_tensor_slices(dss)
+    ds = ds.flat_map(lambda x: x)
+    self.assertDatasetProduces(ds, expected_output=list(range(10)) * 10)
+
+  def testFromTensorSlicesDatasetInFunction(self):
+    dss = [dataset_ops.Dataset.range(10) for _ in range(10)]
+    ds = dataset_ops.Dataset.from_tensors(dss)
+    ds = ds.flat_map(dataset_ops.Dataset.from_tensor_slices)
+    ds = ds.flat_map(lambda x: x)
+    self.assertDatasetProduces(ds, expected_output=list(range(10)) * 10)
+
   def testFromTensorSlicesSparse(self):
     """Test a dataset that represents the slices from a tuple of tensors."""
     components = (sparse_tensor.SparseTensorValue(

@@ -41,7 +41,7 @@ enum class TargetIntrinsicID {
   kBarrierId,
 };
 
-// Enumeration to get target specific device function.
+// Enumeration to get target specific device math function.
 enum class TargetDeviceFunctionID {
   kPow = 0,
   kErfcinv,
@@ -58,13 +58,6 @@ enum class TargetDeviceFunctionID {
   kRound
 };
 
-// AMDGCN target address spaces
-constexpr int kAMDGPUGlobalMemoryAddrSpace = 1;
-constexpr int kAMDGPUSharedMemoryAddrSpace = 3;
-
-// NVPTX target address spaces
-constexpr int kNVPTXSharedMemoryAddrSpace = 3;
-
 // Emits a call to the specified target intrinsic with the given operands.
 
 // Overloaded intrinsics (for example, "minnum") must include a type
@@ -76,7 +69,6 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
 
 // Obtain the target specific address space for global variables
 unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module);
-unsigned GetSharedMemoryAddressSpace(const llvm::Module& module);
 
 // Annotate the kernel as GPU kernel according to the GPU target.
 void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,

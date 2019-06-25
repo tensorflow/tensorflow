@@ -1582,6 +1582,7 @@ def main():
   config_info_line(
       'dynamic_kernels',
       '(Experimental) Build kernels into separate shared objects.')
+  config_info_line('v2', 'Build TensorFlow 2.x instead of 1.x.')
 
   print('Preconfigured Bazel build configs to DISABLE default on features:')
   config_info_line('noaws', 'Disable AWS S3 filesystem support.')

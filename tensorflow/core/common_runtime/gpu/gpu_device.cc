@@ -70,7 +70,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
@@ -518,18 +517,6 @@ string BaseGPUDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
 }
 
 void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
-  profiler::TraceMe activity(
-      [&] {
-        return strings::StrCat("BaseGPUDevice::Compute ", op_kernel->name(),
-                               ":", op_kernel->type_string(),
-                               "#step_id=", context->step_id(),
-                               ",step_container_name=",
-                               context->step_container() == nullptr
-                                   ? "n/a"
-                                   : context->step_container()->name(),
-                               "#");
-      },
-      profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
   // NOTE(tucker): We need to discriminate between Eigen GPU
   // operations and all others.  If an operation is Eigen
   // implemented (or otherwise tries to launch a GPU kernel
@@ -654,20 +641,6 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
           << op_kernel->type_string() << " on GPU" << tf_gpu_id_ << " stream["
           << stream_id << "]";
 
-  // When Xprof profiling is off (which is the default), constructing the
-  // activity is simple enough that its overhead is negligible.
-  profiler::TraceMe activity(
-      [&] {
-        return strings::StrCat("BaseGPUDevice::ComputeAsync ",
-                               op_kernel->name(), ":", op_kernel->type_string(),
-                               "#step_id=", context->step_id(),
-                               ",step_container_name=",
-                               context->step_container() == nullptr
-                                   ? "n/a"
-                                   : context->step_container()->name(),
-                               "#");
-      },
-      profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
   ScopedActivateExecutorContext scoped_activation{stream->parent()};
   op_kernel->ComputeAsync(context, done);
 }
@@ -1665,7 +1638,12 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
   // Try to dlopen GPU libraries if they are supposed to be dynamically loaded.
   auto handle_or = se::internal::DsoLoader::MaybeTryDlopenGPULibraries();
   if (!handle_or.ok()) {
-    LOG(WARNING) << "Cannot dlopen some GPU libraries. Skipping registering "
+    LOG(WARNING) << "Cannot dlopen some GPU libraries. Please make sure the "
+                    "missing libraries mentioned above are installed properly "
+                    "if you would like to use GPU. Follow the guide at "
+                    "https://www.tensorflow.org/install/gpu for how to "
+                    "download and setup the required libraries for your "
+                    "platform.\nSkipping registering "
                     "GPU devices...";
     return Status::OK();
   }

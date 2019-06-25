@@ -331,15 +331,13 @@ Status EmitSortInPlace(
   std::vector<llvm::Value*> param_shmem_buffers(values_arrays.size(), nullptr);
   if (xor_masks.size() > 1) {
     llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
-    unsigned int shared_memory_address_space =
-        gpu::GetSharedMemoryAddressSpace(*module);
     for (int64 i = 0; i < values_arrays.size(); ++i) {
       llvm::Type* tile_type = llvm::ArrayType::get(
           llvm_ir::PrimitiveTypeToIrType(
               values_arrays[i].GetShape().element_type(), module),
           tile_size);
-      param_shmem_buffers[i] = llvm_ir::AllocateSharedMemoryTile(module, tile_type, absl::StrCat(name, "_tile_param_", i),
-       shared_memory_address_space);
+      param_shmem_buffers[i] = llvm_ir::AllocateSharedMemoryTile(
+          module, tile_type, absl::StrCat(name, "_tile_param_", i));
     }
   }
 

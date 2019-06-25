@@ -211,6 +211,7 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   OpContext op_context(context, node);
+  TF_LITE_ENSURE_TYPES_EQ(context, op_context.axis->type, kTfLiteInt32);
   TF_LITE_ENSURE_OK(context, InitializeTemporaries(context, node, &op_context));
 
   TfLiteTensor* resolved_axis = GetTemporary(context, node, /*index=*/1);

@@ -49,6 +49,7 @@ cc_library(
         "eager_service_impl.h",
     ],
     deps = [
+        ":remote_tensor_handle",
         "//tensorflow:grpc",
         "//tensorflow:grpc++",
         "//tensorflow/c:c_api_internal",
@@ -68,7 +69,6 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_cache_wrapper",
         "//tensorflow/core/distributed_runtime:worker_env",
-        "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/memory",
@@ -93,5 +93,17 @@ tf_cc_test(
         "//tensorflow/core/distributed_runtime:session_mgr",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
+    ],
+)
+
+cc_library(
+    name = "remote_tensor_handle_data",
+    srcs = ["remote_tensor_handle_data.cc"],
+    hdrs = ["remote_tensor_handle_data.h"],
+    deps = [
+        ":eager_client",
+        ":remote_execute_node",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/eager:tensor_handle_data",
     ],
 )

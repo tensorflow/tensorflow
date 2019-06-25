@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_CLOUD_GCS_FILE_SYSTEM_H_
 
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 

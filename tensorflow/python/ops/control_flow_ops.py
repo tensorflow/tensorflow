@@ -2706,11 +2706,14 @@ def while_loop(cond,
       try_to_pack = len(loop_vars) == 1
       packed = False  # whether the body result was packed into a 1-item tuple
 
+      loop_var_structure = nest.map_structure(type_spec.type_spec_from_value,
+                                              list(loop_vars))
       while cond(*loop_vars):
         loop_vars = body(*loop_vars)
         if try_to_pack and not isinstance(loop_vars, (list, _basetuple)):
           packed = True
           loop_vars = (loop_vars,)
+        nest.assert_same_structure(loop_var_structure, list(loop_vars))
 
       def convert(x):
         if isinstance(x, tensor_array_ops.TensorArray):

@@ -1,10 +1,10 @@
+load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 package(
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 # We disable some tfcompile tests in the open source build with the
 # "manual" tag to avoid making our OSS users build LLVM twice
