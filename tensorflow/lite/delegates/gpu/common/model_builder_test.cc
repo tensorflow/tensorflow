@@ -34,7 +34,7 @@ TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefSucceedsForRank0) {
   tflite_tensor.type = TfLiteType::kTfLiteFloat32;
   tflite_tensor.dims = TfLiteIntArrayCreate(1);
   tflite_tensor.dims->data[0] = 4;
-  TensorRefFloat32 tensor_ref;
+  TensorRef<BHWC> tensor_ref;
   const auto status =
       ConvertTfLiteTensorToTensorRef(tflite_tensor, &tensor_ref);
   TfLiteIntArrayFree(tflite_tensor.dims);
@@ -49,7 +49,7 @@ TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefSucceedsForRank1) {
   tflite_tensor.dims = TfLiteIntArrayCreate(2);
   tflite_tensor.dims->data[0] = 4;
   tflite_tensor.dims->data[1] = 5;
-  TensorRefFloat32 tensor_ref;
+  TensorRef<BHWC> tensor_ref;
   const auto status =
       ConvertTfLiteTensorToTensorRef(tflite_tensor, &tensor_ref);
   TfLiteIntArrayFree(tflite_tensor.dims);
@@ -65,7 +65,7 @@ TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefSucceedsForRank2) {
   tflite_tensor.dims->data[0] = 4;
   tflite_tensor.dims->data[1] = 5;
   tflite_tensor.dims->data[2] = 6;
-  TensorRefFloat32 tensor_ref;
+  TensorRef<BHWC> tensor_ref;
   const auto status =
       ConvertTfLiteTensorToTensorRef(tflite_tensor, &tensor_ref);
   TfLiteIntArrayFree(tflite_tensor.dims);
@@ -82,7 +82,7 @@ TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefSucceedsForRank3) {
   tflite_tensor.dims->data[1] = 5;
   tflite_tensor.dims->data[2] = 6;
   tflite_tensor.dims->data[3] = 7;
-  TensorRefFloat32 tensor_ref;
+  TensorRef<BHWC> tensor_ref;
   const auto status =
       ConvertTfLiteTensorToTensorRef(tflite_tensor, &tensor_ref);
   TfLiteIntArrayFree(tflite_tensor.dims);
@@ -95,7 +95,7 @@ TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefFailsForRankLT0) {
   TfLiteTensor tflite_tensor;
   tflite_tensor.type = TfLiteType::kTfLiteFloat32;
   tflite_tensor.dims = TfLiteIntArrayCreate(0);
-  TensorRefFloat32 tensor_ref;
+  TensorRef<BHWC> tensor_ref;
   const auto status =
       ConvertTfLiteTensorToTensorRef(tflite_tensor, &tensor_ref);
   TfLiteIntArrayFree(tflite_tensor.dims);
@@ -107,7 +107,7 @@ TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefFailsForRankGT3) {
   TfLiteTensor tflite_tensor;
   tflite_tensor.type = TfLiteType::kTfLiteFloat32;
   tflite_tensor.dims = TfLiteIntArrayCreate(5);
-  TensorRefFloat32 tensor_ref;
+  TensorRef<BHWC> tensor_ref;
   const auto status =
       ConvertTfLiteTensorToTensorRef(tflite_tensor, &tensor_ref);
   TfLiteIntArrayFree(tflite_tensor.dims);
@@ -237,9 +237,22 @@ class InterpreterFp32 {
  public:
   InterpreterFp32() {
     void* builtin_data = malloc(sizeof(int));
-    EXPECT_EQ(interpreter_.AddTensors(3), kTfLiteOk);
-    EXPECT_EQ(interpreter_.SetInputs({0, 1}), kTfLiteOk);
-    EXPECT_EQ(interpreter_.SetOutputs({2}), kTfLiteOk);
+    EXPECT_EQ(interpreter_.AddTensors(4), kTfLiteOk);
+    EXPECT_EQ(interpreter_.SetInputs({0, 2}), kTfLiteOk);
+    EXPECT_EQ(interpreter_.SetOutputs({3}), kTfLiteOk);
+
+    // Add a Dequantize Node with uint8 input.
+    const TfLiteRegistration reg_dequant0 = {/*init=*/nullptr,
+                                             /*free=*/nullptr,
+                                             /*prepare=*/nullptr,
+                                             /*invoke=*/nullptr,
+                                             /*profiling_string=*/nullptr,
+                                             kTfLiteBuiltinDequantize};
+    EXPECT_EQ(interpreter_.AddNodeWithParameters(
+                  /*inputs=*/{0}, /*outputs=*/{1}, /*init_data=*/nullptr,
+                  /*init_data_size=*/0, /*builtin_data=*/nullptr,
+                  /*registration=*/&reg_dequant0),
+              kTfLiteOk);
 
     // Add a node that GPU delegate can parse.
     const TfLiteRegistration reg_add0 = {
@@ -254,7 +267,7 @@ class InterpreterFp32 {
         nullptr,
         kTfLiteBuiltinAdd};
     EXPECT_EQ(interpreter_.AddNodeWithParameters(
-                  /*inputs=*/{0, 1}, /*outputs=*/{2}, /*init_data=*/nullptr,
+                  /*inputs=*/{1, 2}, /*outputs=*/{3}, /*init_data=*/nullptr,
                   /*init_data_size=*/0,
                   /*builtin_data=*/builtin_data,
                   /*registration=*/&reg_add0),
@@ -263,16 +276,20 @@ class InterpreterFp32 {
     const std::vector<int> dims = {1};
     TfLiteQuantization quantization;
     quantization.type = kTfLiteNoQuantization;
-    EXPECT_EQ(
-        interpreter_.SetTensorParametersReadWrite(
-            0, TfLiteType::kTfLiteFloat32, "t0", dims, quantization, false),
-        kTfLiteOk);
+    EXPECT_EQ(interpreter_.SetTensorParametersReadWrite(
+                  0, TfLiteType::kTfLiteUInt8, "t0", dims, quantization, false),
+              kTfLiteOk);
     EXPECT_EQ(
         interpreter_.SetTensorParametersReadWrite(
             1, TfLiteType::kTfLiteFloat32, "t1", dims, quantization, false),
         kTfLiteOk);
-    exec_plan_ = TfLiteIntArrayCreate(1);
+    EXPECT_EQ(
+        interpreter_.SetTensorParametersReadWrite(
+            2, TfLiteType::kTfLiteFloat32, "t2", dims, quantization, false),
+        kTfLiteOk);
+    exec_plan_ = TfLiteIntArrayCreate(2);
     exec_plan_->data[0] = 0;
+    exec_plan_->data[1] = 1;
   }
 
   ~InterpreterFp32() { TfLiteIntArrayFree(exec_plan_); }
@@ -287,11 +304,15 @@ class InterpreterFp32 {
 
 InterpreterFp32* interpreter_fp32 = new InterpreterFp32();
 
-TEST(ModelBuilderTest, GetOpsToReplaceDoesNotPruneFp32) {
-  // A FP32 graph is not affected and is same before and after:
+TEST(ModelBuilderTest, GetOpsToReplaceDoesNotPruneUint8) {
+  // A graph with a Dequant node with uint8 input
+  // is not pruned. The delegate will attempt to replace it
+  // with a GPU op, but this op is currently not supported on
+  // the GPU. Therefore, the Dequant op and all downstream ops
+  // will be scheduled to run on the CPU.
   //
-  //   t0 (FP32) --> Add -> t2
-  //   t1 (FP32) --/
+  //   t0 (uint8) --> Dequant --> t1 (FP32) --> Add -> t3
+  //                              t2 (FP32) --/
   //
   TfLiteContext* context = interpreter_fp32->GetSubgraph()->context();
 
@@ -314,16 +335,9 @@ TEST(ModelBuilderTest, GetOpsToReplaceDoesNotPruneFp32) {
 
   TfLiteIntArray* ops_to_replace = GetOpsToReplace(context);
 
-  // Just one node left.
-  EXPECT_EQ(ops_to_replace->size, 1);
-  TfLiteNode* node = nullptr;
-  TfLiteRegistration* registration = nullptr;
-  context->GetNodeAndRegistration(context, ops_to_replace->data[0], &node,
-                                  &registration);
-  EXPECT_EQ(context->tensors[node->inputs->data[0]].type,
-            TfLiteType::kTfLiteFloat32);
-  EXPECT_EQ(context->tensors[node->inputs->data[1]].type,
-            TfLiteType::kTfLiteFloat32);
+  // No ops are run on the GPU, since the Dequant op is not pruned and must run
+  // on the CPU.
+  EXPECT_EQ(ops_to_replace->size, 0);
   TfLiteIntArrayFree(ops_to_replace);
 }
 

@@ -267,6 +267,35 @@ Literal ConvertType(LiteralSlice literal) {
   }
 }
 
+/* static */ StatusOr<Literal> LiteralUtil::NanValue(
+    PrimitiveType primitive_type) {
+  switch (primitive_type) {
+    case F16:
+      return LiteralUtil::CreateR0<half>(
+          static_cast<half>(std::numeric_limits<float>::quiet_NaN()));
+    case BF16:
+      return LiteralUtil::CreateR0<bfloat16>(
+          static_cast<bfloat16>(std::numeric_limits<float>::quiet_NaN()));
+    case F32:
+      return LiteralUtil::CreateR0<float>(
+          std::numeric_limits<float>::quiet_NaN());
+    case F64:
+      return LiteralUtil::CreateR0<double>(
+          std::numeric_limits<double>::quiet_NaN());
+    case C64: {
+      float nan = std::numeric_limits<float>::quiet_NaN();
+      return LiteralUtil::CreateR0<complex64>(complex64(nan, nan));
+    }
+    case C128: {
+      double nan = std::numeric_limits<double>::quiet_NaN();
+      return LiteralUtil::CreateR0<complex128>(complex128(nan, nan));
+    }
+    default:
+      return InvalidArgument("Invalid type for NanValue: %s",
+                             PrimitiveType_Name(primitive_type));
+  }
+}
+
 /* static */ Literal LiteralUtil::CreateR1(
     const tensorflow::core::Bitmap& values) {
   Literal literal(

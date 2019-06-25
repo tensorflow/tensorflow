@@ -30,7 +30,7 @@ tf_proto_library(
     name = "op_performance_data",
     srcs = ["op_performance_data.proto"],
     cc_api_version = 2,
-    default_header = True,
+    make_default_target_header_only = True,
     protodeps = tf_additional_all_protos(),
     visibility = ["//visibility:public"],
 )

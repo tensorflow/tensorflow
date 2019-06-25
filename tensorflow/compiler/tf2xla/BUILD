@@ -40,7 +40,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":xla_compiler",
-        "//tensorflow/compiler/tf2xla/kernels:xla_cpu_only_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -108,7 +107,6 @@ cc_library(
         ":tf2xla_proto",
         ":tf2xla_util",
         ":xla_compiler",
-        "//tensorflow/compiler/tf2xla/kernels:xla_cpu_only_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:xla_computation",

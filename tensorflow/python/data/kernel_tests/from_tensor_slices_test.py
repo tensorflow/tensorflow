@@ -258,7 +258,7 @@ class FromTensorSlicesTest(test_base.DatasetTestBase):
         if sparse_tensor.is_sparse(component):
           self.assertSparseValuesEqual(component, result_component)
         elif ragged_tensor.is_ragged(component):
-          self.assertRaggedEqual(component, result_component)
+          self.assertAllEqual(component, result_component)
         else:
           self.assertAllEqual(component, result_component)
     with self.assertRaises(errors.OutOfRangeError):

@@ -29,9 +29,9 @@ from tensorflow.python import keras
 from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_coordinator as dc
-from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base as test_base
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import testing_utils
@@ -129,7 +129,7 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
         self.filtered_correctly = True
 
       def on_train_begin(self, logs):
-        if not dc_context.get_current_worker_context().is_chief:
+        if not multi_worker_util.is_chief():
           # Non-chief workers shouldn't run this callback.
           self.filtered_correctly = False
 
@@ -145,16 +145,12 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
       **kwargs):
 
     extension = os.path.splitext(saving_filepath)[1]
-    # TODO(rchao): Remove using .h5 once b/134551335 is fixed.
-    extension = '.h5'
 
     # Incorporate type/index information and thread id in saving_filepath to
     # ensure every worker has a unique path. Note that in normal use case the
     # saving_filepath will be the same for all workers, but we use different
     # ones here just to test out chief saves checkpoint but non-chief doesn't.
 
-    # TODO(b/134551335): Must save to hdf5 until bug with copying
-    # MirroredVariables is resolved.
     saving_filepath = os.path.join(
         test_obj.get_temp_dir(), 'checkpoint_%s_%d%s' %
         (test_base.get_task_type(), test_base.get_task_index(), extension))
@@ -232,7 +228,7 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
       test_obj.assertAllClose(
           history_after_one_more_epoch.history,
           history_after_loading_weight_and_one_more_epoch.history,
-          rtol=6e-6)
+          rtol=5e-5)
 
     # Verify the temp files are indeed removed (no trace left behind).
     for filepath in filepaths:
@@ -266,7 +262,7 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
     test_obj.assertAllClose(
         history_after_one_more_epoch.history,
         history_after_model_restoring_and_one_more_epoch.history,
-        rtol=5e-6)
+        rtol=5e-5)
 
     history_one_more_epoch_without_model_restoring = model.fit(
         x=train_ds, epochs=1, steps_per_epoch=steps)
@@ -274,7 +270,8 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
     # Ensuring training for another epoch gives different result.
     test_obj.assertNotAllClose(
         history_after_model_restoring_and_one_more_epoch.history,
-        history_one_more_epoch_without_model_restoring.history)
+        history_one_more_epoch_without_model_restoring.history,
+        rtol=5e-5)
 
   @staticmethod
   def callableForTestUnmatchedModelFile(model, test_obj, train_ds, num_epoch,

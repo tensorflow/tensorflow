@@ -432,27 +432,13 @@ def _convert_tensorarray_to_flow(tensor_or_tensor_array):
     return tensor_or_tensor_array
 
 
-def _make_tensor_array(ta, t_or_flow):
-  # pylint: disable=protected-access
-  new_ta = tensor_array_ops.TensorArray(
-      dtype=ta.dtype,
-      handle=ta.handle,
-      flow=t_or_flow,
-      infer_shape=ta._infer_shape,
-      colocate_with_first_write_call=ta._colocate_with_first_write_call)
-  new_ta._colocate_with = ta._colocate_with
-  new_ta._element_shape = ta._element_shape
-  # pylint: enable=protected-access
-  return new_ta
-
-
 def _convert_flows_to_tensorarrays(tensors_or_tensorarrays, tensors_or_flows):
   if len(tensors_or_tensorarrays) != len(tensors_or_flows):
     raise ValueError(
         "Lengths of original Tensor list and new list do not match: %d vs. %d" %
         (len(tensors_or_tensorarrays), len(tensors_or_flows)))
   return [
-      _make_tensor_array(ta, t_or_flow) if isinstance(
+      tensor_array_ops.build_ta_with_new_flow(ta, t_or_flow) if isinstance(
           ta, tensor_array_ops.TensorArray) else t_or_flow
       for (ta, t_or_flow) in zip(tensors_or_tensorarrays, tensors_or_flows)
   ]

@@ -1646,6 +1646,15 @@ def _log_prob(self, x):
     _, _, errors, _ = self._upgrade("tf.flags.FLAGS")
     self.assertIn("tf.flags has been removed", errors[0])
 
+  def test_contrib_estimator_head_deprecation(self):
+    api_symbols = ["binary_classification_head", "logistic_regression_head",
+                   "multi_class_head", "multi_head", "multi_label_head",
+                   "poisson_regression_head", "regression_head"]
+    for symbol in api_symbols:
+      text = "tf.contrib.estimator." + symbol
+      _, report, _, _ = self._upgrade(text)
+      self.assertIn("`tf.contrib.estimator.*_head` has been deprecated", report)
+
   def test_contrib_layers_layer_norm_deprecation(self):
     _, report, _, _ = self._upgrade("tf.contrib.layers.layer_norm")
     self.assertIn("`tf.contrib.layers.layer_norm` has been deprecated", report)
@@ -2013,6 +2022,22 @@ def _log_prob(self, x):
         "l1=l, l2=m, num_loss_partitions=n, num_inner_iterations=o)")
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
+
+  def test_contrib_to_addons_move(self):
+    small_mapping = {
+        "tf.contrib.layers.poincare_normalize":
+            "tfa.layers.PoincareNormalize",
+        "tf.contrib.layers.maxout":
+            "tfa.layers.Maxout",
+        "tf.contrib.layers.group_norm":
+            "tfa.layers.GroupNormalization",
+        "tf.contrib.layers.instance_norm":
+            "tfa.layers.InstanceNormalization",
+    }
+    for symbol, replacement in small_mapping.items():
+      text = "{}('stuff', *args, **kwargs)".format(symbol)
+      _, report, _, _ = self._upgrade(text)
+      self.assertIn(replacement, report)
 
   def testXlaExperimental(self):
     text = "tf.xla.experimental.jit_scope(0)"

@@ -71,7 +71,8 @@ def get_test_data(train_samples,
 @test_util.use_deterministic_cudnn
 def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
                input_data=None, expected_output=None,
-               expected_output_dtype=None, validate_training=True):
+               expected_output_dtype=None, validate_training=True,
+               adapt_data=None):
   """Test routine for a layer with a single input and single output.
 
   Arguments:
@@ -86,6 +87,8 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     validate_training: Whether to attempt to validate training on this layer.
       This might be set to False for non-differentiable layers that output
       string or integer values.
+    adapt_data: Optional data for an 'adapt' call. If None, adapt() will not
+      be tested for this layer. This is only relevant for PreprocessingLayers.
 
   Returns:
     The output data (Numpy array) returned by the layer, for additional
@@ -117,6 +120,10 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   # instantiation
   kwargs = kwargs or {}
   layer = layer_cls(**kwargs)
+
+  # Test adapt, if data was passed.
+  if adapt_data is not None:
+    layer.adapt(adapt_data)
 
   # test get_weights , set_weights at layer level
   weights = layer.get_weights()
@@ -194,6 +201,10 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   layer_config = layer.get_config()
   layer_config['batch_input_shape'] = input_shape
   layer = layer.__class__.from_config(layer_config)
+
+  # Test adapt, if data was passed.
+  if adapt_data is not None:
+    layer.adapt(adapt_data)
 
   model = keras.models.Sequential()
   model.add(layer)

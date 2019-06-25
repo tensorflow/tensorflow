@@ -984,12 +984,13 @@ TEST_F(HloInstructionTest, FunctionVisitor) {
 
   int visit_num = 0;
   absl::flat_hash_map<HloInstruction*, int> visit_order;
-  EXPECT_IS_OK(add->Accept([&visit_num, &visit_order](HloInstruction* inst) {
+  FunctionVisitor visitor([&visit_num, &visit_order](HloInstruction* inst) {
     EXPECT_FALSE(visit_order.contains(inst));
     visit_order[inst] = visit_num;
     visit_num++;
     return Status::OK();
-  }));
+  });
+  EXPECT_IS_OK(add->Accept(&visitor));
 
   EXPECT_EQ(0, visit_order.at(param));
   // negate and exp can be visited in an arbitrary order.
@@ -1169,6 +1170,60 @@ TEST_F(HloInstructionTest, CloneOfFusionPreservesShape) {
   EXPECT_TRUE(ShapeUtil::Equal(root->operand(1)->operand(0)->shape(),
                                root2->operand(1)->operand(0)->shape()));
   EXPECT_TRUE(StructuralEqual(*fusion, *fusion2));
+}
+
+TEST_F(HloInstructionTest, FuseInstructionKeepsInstruction) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  fused_add {
+    p0 = f32[32,32]{1,0} parameter(0)
+    p1 = f32[32,32]{1,0} parameter(1)
+    ROOT add = f32[32,32]{1,0} add(p0, p1)
+  }
+
+  ENTRY reduce {
+    p2 = f32[32,32]{1,0} parameter(0)
+    p3 = f32[32,32]{1,0} parameter(1)
+    c1 = f32[] constant(1)
+    mul = f32[32,32]{1,0} multiply(p2, p3)
+    ROOT add = f32[32,32]{1,0} fusion(mul, c1), kind=kLoop, calls=fused_add
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kHloString));
+  HloInstruction* fused_add = module->entry_computation()->root_instruction();
+  HloInstruction* mul = fused_add->mutable_operand(0);
+  EXPECT_EQ(1, mul->user_count());
+  fused_add->FuseInstruction(mul);
+  EXPECT_EQ(0, mul->user_count());
+  // The fused instruction is still present in the computation.
+  EXPECT_EQ(fused_add->parent(), mul->parent());
+}
+
+TEST_F(HloInstructionTest, FuseInstructionIntoMultiOutputKeepsInstruction) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  fused_add {
+    p0 = f32[32,32]{1,0} parameter(0)
+    p1 = f32[32,32]{1,0} parameter(1)
+    ROOT add = f32[32,32]{1,0} add(p0, p1)
+  }
+
+  ENTRY reduce {
+    p2 = f32[32,32]{1,0} parameter(0)
+    p3 = f32[32,32]{1,0} parameter(1)
+    c1 = f32[] constant(1)
+    mul = f32[32,32]{1,0} multiply(p2, p3)
+    add = f32[32,32]{1,0} fusion(mul, c1), kind=kLoop, calls=fused_add
+    ROOT root = (f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(mul, add)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kHloString));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloInstruction* mul = root->mutable_operand(0);
+  HloInstruction* fused_add = root->mutable_operand(1);
+  EXPECT_EQ(2, mul->user_count());
+  fused_add->FuseInstructionIntoMultiOutput(mul);
+  EXPECT_EQ(0, mul->user_count());
+  // The fused instruction is still present in the computation.
+  EXPECT_EQ(root->parent(), mul->parent());
 }
 
 TEST_F(HloInstructionTest, NoRedundantFusionOperandsAfterReplacingUse) {

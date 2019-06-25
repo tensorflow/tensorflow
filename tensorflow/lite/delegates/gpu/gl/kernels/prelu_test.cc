@@ -29,7 +29,7 @@ namespace gl {
 namespace {
 
 TEST(PReluTest, LinearAlphaNoClip) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
@@ -42,7 +42,7 @@ TEST(PReluTest, LinearAlphaNoClip) {
   alpha.data = {2};
   attr.alpha = std::move(alpha);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 2;
   output.shape = BHWC(1, 2, 2, 1);
@@ -50,12 +50,12 @@ TEST(PReluTest, LinearAlphaNoClip) {
   SingleOpModel model({ToString(OperationType::PRELU), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {-1.0, -2.0, 1.0, 2.0}));
-  ASSERT_TRUE(model.Invoke(*NewPReLUNodeShader()));
+  ASSERT_OK(model.Invoke(*NewPReLUNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {-2, -4, 1, 2}));
 }
 
 TEST(PReluTest, LinearAlphaWithClip) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
@@ -68,7 +68,7 @@ TEST(PReluTest, LinearAlphaWithClip) {
   alpha.data = {2};
   attr.alpha = std::move(alpha);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 2;
   output.shape = BHWC(1, 2, 2, 1);
@@ -76,12 +76,12 @@ TEST(PReluTest, LinearAlphaWithClip) {
   SingleOpModel model({ToString(OperationType::PRELU), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {-1.0, -2.0, 1.0, 2.0}));
-  ASSERT_TRUE(model.Invoke(*NewPReLUNodeShader()));
+  ASSERT_OK(model.Invoke(*NewPReLUNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {-2, -4, 1, 1}));
 }
 
 TEST(PReluTest, 3DAlphaNoClip) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
@@ -95,19 +95,19 @@ TEST(PReluTest, 3DAlphaNoClip) {
   alpha.data = {1, 2, 2, 2};
   attr.alpha = std::move(alpha);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 2;
   output.shape = BHWC(1, 2, 2, 1);
 
   SingleOpModel model({ToString(op_type), attr}, {input}, {output});
   ASSERT_TRUE(model.PopulateTensor(0, {0.0, -1.0, 2.0, -3.0}));
-  ASSERT_TRUE(model.Invoke(*NewPReLUNodeShader()));
+  ASSERT_OK(model.Invoke(*NewPReLUNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {0, -2, 2, -6}));
 }
 
 TEST(PReluTest, 3DAlphaWithClip) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
@@ -121,14 +121,14 @@ TEST(PReluTest, 3DAlphaWithClip) {
   alpha.data = {1, 2, 2, 2};
   attr.alpha = std::move(alpha);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 2;
   output.shape = BHWC(1, 2, 2, 1);
 
   SingleOpModel model({ToString(op_type), attr}, {input}, {output});
   ASSERT_TRUE(model.PopulateTensor(0, {0.0, -1.0, 2.0, -3.0}));
-  ASSERT_TRUE(model.Invoke(*NewPReLUNodeShader()));
+  ASSERT_OK(model.Invoke(*NewPReLUNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {0, -2, 1, -6}));
 }
 

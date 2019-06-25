@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/redzone_allocator.h"
 
+#include "absl/container/fixed_array.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -175,8 +176,7 @@ using ComparisonKernelT =
 // Slower, but gives a more useful error message.
 static port::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
     DeviceMemoryBase redzone, DeviceMemoryBase user_allocation,
-    absl::string_view name, Stream* stream, uint8 redzone_pattern,
-    int64 redzone_size) {
+    absl::string_view name, Stream* stream, uint8 redzone_pattern) {
   uint64 size = redzone.size();
   auto redzone_data = absl::make_unique<uint8[]>(size);
   TF_RETURN_IF_ERROR(stream->ThenMemcpy(redzone_data.get(), redzone, size)
@@ -191,19 +191,15 @@ static port::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
   for (i = 0; i + 7 < size; i += sizeof(uint64)) {
     uint64 rz_value = *reinterpret_cast<uint64*>(&redzone_data[i]);
     if (rz_value != pattern64) {
-      return RedzoneCheckStatus::WithFailureMsg(absl::StrFormat(
-          "Redzone mismatch in %s redzone of buffer %p at offset %d; "
-          "expected %08x but was %08x.",
-          name, user_allocation.opaque(), i, pattern64, rz_value));
+      return RedzoneCheckStatus(name, user_allocation.opaque(), i, pattern64,
+                                rz_value);
     }
   }
   for (; i < size; ++i) {
     uint8 rz_value = redzone_data[i];
     if (rz_value != redzone_pattern) {
-      return RedzoneCheckStatus::WithFailureMsg(absl::StrFormat(
-          "Redzone mismatch in %s redzone of buffer %p at offset %d; "
-          "expected %08x but was %08x.",
-          name, user_allocation.opaque(), i, redzone_pattern, rz_value));
+      return RedzoneCheckStatus(name, user_allocation.opaque(), i,
+                                redzone_pattern, rz_value);
     }
   }
   return RedzoneCheckStatus::OK();
@@ -230,6 +226,20 @@ static void RunRedzoneChecker(Stream* stream,
                      redzone.size(), out_param);
 }
 
+// Since we reuse the same buffer for multiple checks, we re-initialize redzone
+// with a NaN pattern after a failed check.
+//
+// This function is blocking, since redzone failing is a rare event.
+static port::Status ReinitializeRedzone(Stream* stream,
+                                        DeviceMemoryBase redzone,
+                                        uint8 redzone_pattern) {
+  absl::FixedArray<uint8> redzone_array(redzone.size());
+  redzone_array.fill(redzone_pattern);
+  stream->ThenMemcpy(&redzone, redzone_array.data(), redzone.size());
+  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  return port::Status::OK();
+}
+
 // Check redzones around the user allocation.
 //
 // Precondition: the memory pointed out by out_param is zeroed.
@@ -246,12 +256,14 @@ static port::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
 
   DeviceMemory<uint8> buffer_uint8(memory);
   DeviceMemory<uint8> lhs_redzone =
-      executor->GetSubBuffer(&buffer_uint8, 0, redzone_size);
+      executor->GetSubBuffer(&buffer_uint8, 0,
+                             /*element_count=*/redzone_size);
   DeviceMemory<uint8> user_allocation =
-      executor->GetSubBuffer(&buffer_uint8, redzone_size, user_allocation_size);
+      executor->GetSubBuffer(&buffer_uint8, redzone_size,
+                             /*element_count=*/user_allocation_size);
   DeviceMemory<uint8> rhs_redzone =
       executor->GetSubBuffer(&buffer_uint8, redzone_size + user_allocation_size,
-                             redzone_size + rhs_slop);
+                             /*element_count=*/redzone_size + rhs_slop);
 
   RunRedzoneChecker(stream, lhs_redzone, redzone_pattern, out_param,
                     comparison_kernel);
@@ -263,17 +275,20 @@ static port::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   if (result != 0) {
-    TF_ASSIGN_OR_RETURN(
-        RedzoneCheckStatus lhs_check,
-        CheckRedzoneHost(lhs_redzone, user_allocation, "LHS", stream,
-                         redzone_pattern, redzone_size));
-    TF_ASSIGN_OR_RETURN(
-        RedzoneCheckStatus rhs_check,
-        CheckRedzoneHost(rhs_redzone, user_allocation, "RHS", stream,
-                         redzone_pattern, redzone_size));
+    TF_ASSIGN_OR_RETURN(RedzoneCheckStatus lhs_check,
+                        CheckRedzoneHost(lhs_redzone, user_allocation, "LHS",
+                                         stream, redzone_pattern));
+    TF_ASSIGN_OR_RETURN(RedzoneCheckStatus rhs_check,
+                        CheckRedzoneHost(rhs_redzone, user_allocation, "RHS",
+                                         stream, redzone_pattern));
 
     CHECK(!lhs_check.ok() || !rhs_check.ok())
         << "Mismatched results with host and device comparison";
+
+    TF_RETURN_IF_ERROR(
+        ReinitializeRedzone(stream, lhs_redzone, redzone_pattern));
+    TF_RETURN_IF_ERROR(
+        ReinitializeRedzone(stream, rhs_redzone, redzone_pattern));
     return !lhs_check.ok() ? lhs_check : rhs_check;
   }
 
@@ -291,8 +306,12 @@ port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones(
   if (compiled_ptx_or.ok()) {
     compiled_ptx = compiled_ptx_or.ValueOrDie();
   } else {
-    LOG(WARNING) << compiled_ptx_or.status().ToString()
-                 << "\nRelying on driver to perform ptx compilation";
+    static std::once_flag ptxas_not_found_logged;
+    std::call_once(ptxas_not_found_logged, [&]() {
+      LOG(WARNING) << compiled_ptx_or.status().ToString()
+                   << "\nRelying on driver to perform ptx compilation. "
+                   << "This message will be only logged once.";
+    });
   }
 
   ScopedDeviceMemory<uint64> out_param =
@@ -317,6 +336,13 @@ port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones(
   }
 
   return RedzoneCheckStatus::OK();
+}
+
+std::string RedzoneCheckStatus::RedzoneFailureMsg() const {
+  return absl::StrFormat(
+      "Redzone mismatch in %s redzone of buffer %p at offset %d; "
+      "expected %08x but was %08x.",
+      buffer_name, user_buffer_address, offset, expected_value, actual_value);
 }
 
 }  // namespace cuda

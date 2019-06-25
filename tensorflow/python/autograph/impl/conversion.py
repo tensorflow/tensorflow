@@ -123,7 +123,11 @@ class _ConversionCache(object):
     return self._cache[key]
 
 
-_CACHE_LOCK = threading.Lock()
+# Using a re-entrant lock to guard against the unlikely possibility that the
+# conversion process tiggers additional code execution.
+_CACHE_LOCK = threading.RLock()
+
+
 _CACHE = _ConversionCache()
 
 
@@ -361,7 +365,8 @@ def is_whitelisted_for_graph(o, check_call_override=True):
     logging.log(2, 'Whitelisted: %s: generator functions are not converted', o)
     return True
 
-  if check_call_override and hasattr(o, '__call__'):
+  if (check_call_override and not tf_inspect.isclass(o) and
+      hasattr(o, '__call__')):
     # Callable objects: whitelisted if their __call__ method is.
     # The type check avoids infinite recursion around the __call__ method
     # of function objects.
@@ -393,9 +398,7 @@ def is_whitelisted_for_graph(o, check_call_override=True):
         return True
 
       owner_class = inspect_utils.getdefiningclass(o, owner_class)
-      is_call_override = (o.__name__ == '__call__')
-      if is_whitelisted_for_graph(
-          owner_class, check_call_override=not is_call_override):
+      if is_whitelisted_for_graph(owner_class, check_call_override=False):
         logging.log(2, 'Whitelisted: %s: owner is whitelisted %s', o,
                     owner_class)
         return True

@@ -636,9 +636,6 @@ class Tensor {
       Tensor* parent, Tensor* element,
       int64 index);  // For access to RefCountIsOne().
 
-  friend class NumpyTensorBuffer;  // For access to the private constructor
-                                   // taking the buffer.
-
   // Creates a tensor with the input datatype, shape and buf.
   //
   // Acquires a ref on buf that belongs to this Tensor.
@@ -919,7 +916,7 @@ inline Tensor::Tensor(const Tensor& other)
 }
 
 inline Tensor::Tensor(Tensor&& other)
-    : shape_(std::move(other.shape())), buf_(other.buf_) {
+    : shape_(std::move(other.shape_)), buf_(other.buf_) {
   other.buf_ = nullptr;
 }
 

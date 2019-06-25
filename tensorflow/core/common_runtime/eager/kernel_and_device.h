@@ -196,7 +196,7 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
       FunctionLibraryRuntime* flr, ProcessFunctionLibraryRuntime* pflr,
       std::vector<Device*> input_devices,
       std::unordered_map<int, TensorShape> input_tensor_shapes,
-      std::unordered_map<int, std::pair<DataType, TensorShape>>
+      std::unordered_map<int, DtypeAndPartialTensorShape>
           input_resource_dtypes_and_shapes,
       std::function<void(std::function<void()>)>* runner,
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
@@ -249,7 +249,7 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   // devices.
   std::vector<Device*> input_devices_;
   std::unordered_map<int, TensorShape> input_tensor_shapes_;
-  std::unordered_map<int, std::pair<DataType, TensorShape>>
+  std::unordered_map<int, DtypeAndPartialTensorShape>
       input_resource_dtypes_and_shapes_;
 
   DataTypeVector input_dtypes_;

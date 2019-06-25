@@ -107,6 +107,8 @@ class ResolveConstantConcatenationTest : public ::testing::Test {
   // together with 4 arrays as its inputs.
   // It receives the dimension of concatenation as input.
   void PrepareModel(Model* model, int axis) {
+    const string output_name("concat_op_output");
+    model->flags.add_output_arrays(output_name);
     std::vector<string> concat_input_names = {"array0", "array1", "array2",
                                               "array3"};
 
@@ -141,7 +143,7 @@ class ResolveConstantConcatenationTest : public ::testing::Test {
     auto* concatenation_op = new ConcatenationOperator;
     concatenation_op->axis = axis;
     concatenation_op->inputs = concat_input_names;
-    concatenation_op->outputs = {"concat_op_outputs"};
+    concatenation_op->outputs = {output_name};
     Array& out_array = model->GetOrCreateArray(concatenation_op->outputs[0]);
     out_array.data_type = ArrayDataType::kFloat;
     Shape* out_array_shape = out_array.mutable_shape();
@@ -172,8 +174,8 @@ TEST_F(ResolveConstantConcatenationTest, ConcatAtAxis0) {
                   .ok());
   EXPECT_THAT(model.GetArrayMap().size(), 1);
 
-  auto& concatenated_array = (*model.GetArrayMap().begin()).second;
-  EXPECT_THAT(concatenated_array->GetBuffer<toco::ArrayDataType::kFloat>().data,
+  const auto& concatenated_array = model.GetArray(model.flags.output_arrays(0));
+  EXPECT_THAT(concatenated_array.GetBuffer<toco::ArrayDataType::kFloat>().data,
               ElementsAreArray(ArrayFloatNear(
                   {0.,  1.,  2.,  3.,  4.,  5.,  6.,  7.,  10., 11., 12.,
                    13., 14., 15., 16., 17., 20., 21., 22., 23., 24., 25.,

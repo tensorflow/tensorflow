@@ -26,7 +26,7 @@ from tensorflow.python.ops import init_ops
 
 
 _FEATURE_COLUMNS = [
-    fc_lib.BucketizedColumn, fc_lib.EmbeddingColumn,
+    fc_lib.BucketizedColumn, fc_lib.CrossedColumn, fc_lib.EmbeddingColumn,
     fc_lib.HashedCategoricalColumn, fc_lib.IdentityCategoricalColumn,
     fc_lib.IndicatorColumn, fc_lib.NumericColumn,
     fc_lib.SequenceCategoricalColumn, fc_lib.SequenceDenseColumn,

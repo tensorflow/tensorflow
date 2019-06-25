@@ -197,7 +197,8 @@ def build_toco_convert_protos(input_tensors,
                               dump_graphviz_dir=None,
                               dump_graphviz_video=False,
                               target_ops=None,
-                              allow_nonexistent_arrays=False):
+                              allow_nonexistent_arrays=False,
+                              debug_info=None):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -257,10 +258,12 @@ def build_toco_convert_protos(input_tensors,
       (default set([OpsSet.TFLITE_BUILTINS]))
     allow_nonexistent_arrays: Allow specifying array names that don't exist
       or are unused in the final graph. (default False)
+    debug_info: `GraphDebugInfo` proto containing the stack traces for the
+      original nodes referred by the converted graph.
 
   Returns:
-    model_flags, toco_flags: two protocol buffers describing the conversion
-    process.
+    model_flags, toco_flags, debug_info: three protocol buffers describing the
+    conversion process and debug information.
 
   Raises:
     ValueError:
@@ -319,7 +322,7 @@ def build_toco_convert_protos(input_tensors,
 
   model.allow_nonexistent_arrays = allow_nonexistent_arrays
 
-  return model, toco
+  return model, toco, debug_info
 
 
 def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
@@ -350,7 +353,7 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
   Raises:
     Defined in `build_toco_convert_protos`.
   """
-  model_flags, toco_flags = build_toco_convert_protos(
+  model_flags, toco_flags, _ = build_toco_convert_protos(
       input_tensors=[], output_tensors=[], *args, **kwargs)
 
   for idx, (name, shape) in enumerate(input_arrays_with_shape):
@@ -397,7 +400,7 @@ def toco_convert_impl(input_data, input_tensors, output_tensors, *args,
   Raises:
     Defined in `build_toco_convert_protos`.
   """
-  model_flags, toco_flags = build_toco_convert_protos(
+  model_flags, toco_flags, _ = build_toco_convert_protos(
       input_tensors, output_tensors, *args, **kwargs)
   data = toco_convert_protos(model_flags.SerializeToString(),
                              toco_flags.SerializeToString(),

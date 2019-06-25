@@ -26,7 +26,11 @@ limitations under the License.
 
 
 %typemap(in) TfLiteDelegate* {
- $1 = reinterpret_cast<TfLiteDelegate*>(PyLong_AsVoidPtr($input));
+  $1 = reinterpret_cast<TfLiteDelegate*>(PyLong_AsVoidPtr($input));
+}
+
+%typemap(out) TfLiteDelegate* {
+  $result = PyLong_FromVoidPtr($1)
 }
 
 

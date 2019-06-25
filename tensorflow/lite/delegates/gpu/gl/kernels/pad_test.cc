@@ -34,12 +34,12 @@ namespace {
 
 void TestPadOperation(const HWC& prepend, const HWC& append,
                       const BHWC& output_shape, std::vector<float>&& expected) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 1, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = output_shape;
@@ -51,7 +51,7 @@ void TestPadOperation(const HWC& prepend, const HWC& append,
 
   SingleOpModel model({ToString(OperationType::PAD), attr}, {input}, {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1.0}));
-  ASSERT_TRUE(model.Invoke(*NewPadNodeShader()));
+  ASSERT_OK(model.Invoke(*NewPadNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), expected));
 }
 

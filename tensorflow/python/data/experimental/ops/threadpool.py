@@ -69,7 +69,7 @@ class _ThreadPoolDataset(dataset_ops.UnaryUnchangedStructureDataset):
     variant_tensor = ged_ops.experimental_thread_pool_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._thread_pool._resource,  # pylint: disable=protected-access
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_ThreadPoolDataset, self).__init__(input_dataset, variant_tensor)
 
 

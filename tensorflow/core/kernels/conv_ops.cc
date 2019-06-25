@@ -623,8 +623,10 @@ static void CheckRedzones(const se::cuda::RedzoneAllocator& rz_allocator,
   auto rz_check_status = rz_status.ValueOrDie();
   if (!rz_check_status.ok()) {
     auto* fail = autotune_result->mutable_failure();
-    fail->set_msg(rz_check_status.redzone_failure_msg);
+    fail->set_msg(rz_check_status.RedzoneFailureMsg());
     fail->set_kind(AutotuneResult::REDZONE_MODIFIED);
+    fail->set_buffer_address(
+        reinterpret_cast<uint64>(rz_check_status.user_buffer_address));
     LOG(ERROR)
         << "Detected cudnn out-of-bounds write in convolution buffer! This is "
            "likely a cudnn bug. We will skip this algorithm in the future, but "
@@ -633,7 +635,7 @@ static void CheckRedzones(const se::cuda::RedzoneAllocator& rz_allocator,
            "of Google, please ensure you're running the latest version of "
            "cudnn. If that doesn't fix the problem, please file a bug with "
            "this full error message and we'll contact nvidia.";
-    LOG(ERROR) << rz_check_status.redzone_failure_msg;
+    LOG(ERROR) << rz_check_status.RedzoneFailureMsg();
   }
 }
 
@@ -1043,9 +1045,9 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       }
     }
     LogConvAutotuneResults(se::dnn::ConvolutionKind::FORWARD,
-                           se::dnn::ToDataType<T>::value, input_desc,
-                           filter_desc, output_desc, conv_desc,
-                           stream->parent(), results);
+                           se::dnn::ToDataType<T>::value, input_ptr, filter_ptr,
+                           output_tensor, input_desc, filter_desc, output_desc,
+                           conv_desc, stream->parent(), results);
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
     AutoTuneConv::GetInstance()->Insert(conv_parameters, algorithm_config);
   }

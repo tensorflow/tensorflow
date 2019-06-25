@@ -106,7 +106,8 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
     stream.ThenMemcpy(&old_redzone_value, redzone_at_offset, 1)
         .ThenMemZero(&redzone_at_offset, 1);
     EXPECT_REDZONE_VIOLATION(allocator.CheckRedzones(&stream));
-    stream.ThenMemcpy(&redzone_at_offset, &old_redzone_value, 1);
+
+    // Checking reinitializes the redzone.
     EXPECT_REDZONE_OK(allocator.CheckRedzones(&stream));
   };
 

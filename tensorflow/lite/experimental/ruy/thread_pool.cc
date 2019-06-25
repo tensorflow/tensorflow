@@ -23,84 +23,9 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/ruy/blocking_counter.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
-#include "tensorflow/lite/experimental/ruy/time.h"
+#include "tensorflow/lite/experimental/ruy/wait.h"
 
 namespace ruy {
-
-// This value was empirically derived on an end-to-end application benchmark.
-// That this value means that we may be sleeping substantially longer
-// than a scheduler timeslice's duration is not necessarily surprising. The
-// idea is to pick up quickly new work after having finished the previous
-// workload. When it's new work within the same GEMM as the previous work, the
-// time interval that we might be busy-waiting is very small, so for that
-// purpose it would be more than enough to sleep for 1 ms.
-// That is all what we would observe on a GEMM benchmark. However, in a real
-// application, after having finished a GEMM, we might do unrelated work for
-// a little while, then start on a new GEMM. Think of a neural network
-// application performing inference, where many but not all layers are
-// implemented by a GEMM. In such cases, our worker threads might be idle for
-// longer periods of time before having work again. If we let them passively
-// wait, on a mobile device, the CPU scheduler might aggressively clock down
-// or even turn off the CPU cores that they were running on. That would result
-// in a long delay the next time these need to be turned back on for the next
-// GEMM. So we need to strike a balance that reflects typical time intervals
-// between consecutive GEMM invokations, not just intra-GEMM considerations.
-// Of course, we need to balance keeping CPUs spinning longer to resume work
-// faster, versus passively waiting to conserve power.
-static constexpr double kThreadPoolMaxBusyWaitSeconds = 2e-3;
-
-// Waits until *var != initial_value.
-//
-// Returns the new value of *var. The guarantee here is that
-// the return value is different from initial_value, and that that
-// new value has been taken by *var at some point during the
-// execution of this function. There is no guarantee that this is
-// still the value of *var when this function returns, since *var is
-// not assumed to be guarded by any lock.
-//
-// First does some busy-waiting for a fixed number of no-op cycles,
-// then falls back to passive waiting for the given condvar, guarded
-// by the given mutex.
-//
-// The idea of doing some initial busy-waiting is to help get
-// better and more consistent multithreading benefits for small GEMM sizes.
-// Busy-waiting help ensuring that if we need to wake up soon after having
-// started waiting, then we can wake up quickly (as opposed to, say,
-// having to wait to be scheduled again by the OS). On the other hand,
-// we must still eventually revert to passive waiting for longer waits
-// (e.g. worker threads having finished a GEMM and waiting until the next GEMM)
-// so as to avoid permanently spinning.
-//
-template <typename T>
-T WaitForVariableChange(std::atomic<T>* var, T initial_value,
-                        std::condition_variable* cond, std::mutex* mutex) {
-  // First, trivial case where the variable already changed value.
-  T new_value = var->load(std::memory_order_acquire);
-  if (new_value != initial_value) {
-    return new_value;
-  }
-  // Then try busy-waiting.
-  const Duration wait_duration =
-      DurationFromSeconds(kThreadPoolMaxBusyWaitSeconds);
-  const TimePoint wait_start = Clock::now();
-  while (Clock::now() - wait_start < wait_duration) {
-    new_value = var->load(std::memory_order_acquire);
-    if (new_value != initial_value) {
-      return new_value;
-    }
-  }
-  // Finally, do real passive waiting.
-  mutex->lock();
-  new_value = var->load(std::memory_order_acquire);
-  while (new_value == initial_value) {
-    std::unique_lock<std::mutex> lock(*mutex, std::adopt_lock);
-    cond->wait(lock);
-    lock.release();
-    new_value = var->load(std::memory_order_acquire);
-  }
-  mutex->unlock();
-  return new_value;
-}
 
 // A worker thread.
 class Thread {
@@ -184,14 +109,15 @@ class Thread {
 
     // Thread main loop
     while (true) {
-      // Get a state to act on
       // In the 'Ready' state, we have nothing to do but to wait until
       // we switch to another state.
-      State state_to_act_upon = WaitForVariableChange(
-          &state_, State::Ready, &state_cond_, &state_mutex_);
+      const auto& condition = [this]() {
+        return state_.load(std::memory_order_acquire) != State::Ready;
+      };
+      WaitUntil(condition, &state_cond_, &state_mutex_);
 
-      // We now have a state to act on, so act.
-      switch (state_to_act_upon) {
+      // Act on new state.
+      switch (state_.load(std::memory_order_acquire)) {
         case State::HasWork:
           // Got work to do! So do it, and then revert to 'Ready' state.
           ChangeState(State::Ready);

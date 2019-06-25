@@ -70,7 +70,9 @@ ios_unit_test(
     name = "Tests",
     size = "medium",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
-    tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS,
+    tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS + [
+        "nozapfhahn",  # Fails during execution, see b/134486097.
+    ],
     deps = [
         ":TestsLibrary",
     ],

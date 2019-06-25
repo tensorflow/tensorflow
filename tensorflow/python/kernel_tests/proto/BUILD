@@ -111,7 +111,7 @@ py_library(
         ":proto_op_test_base",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@protobuf_archive//:protobuf_python",
+        "@com_google_protobuf//:protobuf_python",
     ],
 )
 

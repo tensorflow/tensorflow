@@ -18,6 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
+
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.ops import prefetching_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
@@ -35,7 +39,7 @@ from tensorflow.python.platform import tf_logging as logging
 
 
 @test_util.with_control_flow_v2
-class CriticalSectionTest(test.TestCase):
+class CriticalSectionTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testCreateCriticalSection(self):
@@ -56,46 +60,46 @@ class CriticalSectionTest(test.TestCase):
     self.assertAllClose([2.0 * i for i in range(num_concurrent)],
                         sorted(r_value))
 
+  @parameterized.named_parameters(
+      ("Inner%sOuter%s" % (inner, outer), inner, outer)
+      for (inner, outer) in itertools.product(*([(False, True)] * 2)))
   @test_util.disable_control_flow_v2("b/135070612")
-  @test_util.run_v1_only("b/135070612")
   @test_util.run_in_graph_and_eager_modes
   @test_util.xla_allow_fallback("b/128495870")
-  def testCriticalSectionWithControlFlow(self):
-    for outer_cond in [False, True]:
-      for inner_cond in [False, True]:
-        cs = critical_section_ops.CriticalSection(shared_name="cs")
-        v = resource_variable_ops.ResourceVariable(0.0, name="v")
-        num_concurrent = 100
+  def testCriticalSectionWithControlFlow(self, outer_cond, inner_cond):
+    cs = critical_section_ops.CriticalSection(shared_name="cs")
+    v = resource_variable_ops.ResourceVariable(0.0, name="v")
+    num_concurrent = 100
 
-        # pylint: disable=cell-var-from-loop
-        def fn(a, b):
-          c = v.read_value()
-          def true_fn():
-            with ops.control_dependencies([c]):
-              nv = v.assign_add(a * b)
-              with ops.control_dependencies([nv]):
-                return array_ops.identity(c)
-          return control_flow_ops.cond(
-              array_ops.identity(inner_cond), true_fn, lambda: c)
+    # pylint: disable=cell-var-from-loop
+    def fn(a, b):
+      c = v.read_value()
+      def true_fn():
+        with ops.control_dependencies([c]):
+          nv = v.assign_add(a * b)
+          with ops.control_dependencies([nv]):
+            return array_ops.identity(c)
+      return control_flow_ops.cond(
+          array_ops.identity(inner_cond), true_fn, lambda: c)
 
-        def execute():
-          return cs.execute(lambda: fn(1.0, 2.0))
+    def execute():
+      return cs.execute(lambda: fn(1.0, 2.0))
 
-        r = [
-            control_flow_ops.cond(array_ops.identity(outer_cond),
-                                  execute,
-                                  v.read_value)
-            for _ in range(num_concurrent)
-        ]
-        # pylint: enable=cell-var-from-loop
+    r = [
+        control_flow_ops.cond(array_ops.identity(outer_cond),
+                              execute,
+                              v.read_value)
+        for _ in range(num_concurrent)
+    ]
+    # pylint: enable=cell-var-from-loop
 
-        self.evaluate(v.initializer)
-        r_value = self.evaluate(r)
-        if inner_cond and outer_cond:
-          self.assertAllClose([2.0 * i for i in range(num_concurrent)],
-                              sorted(r_value))
-        else:
-          self.assertAllClose([0] * num_concurrent, r_value)
+    self.evaluate(v.initializer)
+    r_value = self.evaluate(r)
+    if inner_cond and outer_cond:
+      self.assertAllClose([2.0 * i for i in range(num_concurrent)],
+                          sorted(r_value))
+    else:
+      self.assertAllClose([0] * num_concurrent, r_value)
 
   @test_util.run_v1_only("b/123990562 Sees CancelledError on some calls")
   def testCriticalSectionInParallelDoesntDeadlockOnError(self):

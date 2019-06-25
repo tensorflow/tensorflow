@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"  // for DeviceLocality
 #include "tensorflow/core/lib/core/status.h"
@@ -68,6 +69,10 @@ class WorkerCacheInterface {
   virtual void GetDeviceLocalityAsync(const string& device,
                                       DeviceLocality* locality,
                                       StatusCallback done) = 0;
+
+  // Build and return a EagerClientCache object wrapping that channel.
+  virtual Status GetEagerClientCache(
+      std::unique_ptr<eager::EagerClientCache>* eager_client_cache) = 0;
 
   // Start/stop logging activity.
   virtual void SetLogging(bool active) {}

@@ -84,6 +84,67 @@ class ControlFlowTest(converter_testing.TestCase):
 
     self.assertTransformedResult(test_fn, constant_op.constant(5), 0)
 
+  def test_while_composite_state(self):
+
+    class TestClass(object):
+
+      def __init__(self):
+        self.x = constant_op.constant(3)
+
+    def test_fn(n):
+      tc = TestClass()
+      while n > 0:
+        tc.x += 1
+        n -= 1
+      return n
+
+    self.assertTransformedResult(
+        test_fn, constant_op.constant(5), 0, symbols={'TestClass': TestClass})
+
+  def test_while_composite_state_initialized_in_loop(self):
+
+    class TestClass(object):
+      pass
+
+    def test_fn(n, x):
+      tc = TestClass()
+      while n < 5:
+        if n == 0:
+          tc.x = x
+        else:
+          tc.x = tc.x + 1
+        n += 1
+      return tc.x
+
+    self.assertTransformedResult(
+        test_fn, (0, constant_op.constant(10)),
+        14,
+        symbols={'TestClass': TestClass})
+    with self.converted(
+        test_fn, control_flow, {'TestClass': TestClass}) as result:
+      # TODO(b/128519776): Better error message.
+      with self.assertRaisesRegex(
+          AttributeError, '\'TestClass\' object has no attribute \'x\''):
+        result.test_fn(constant_op.constant(0), constant_op.constant(5))
+
+  def test_while_nested_composite_state(self):
+
+    class TestClass(object):
+
+      def __init__(self):
+        self.x = constant_op.constant(3)
+
+    def test_fn(n):
+      tc = TestClass()
+      while n > 0:
+        if n < 2:
+          tc.x += 1
+        n -= 1
+      return n
+
+    self.assertTransformedResult(
+        test_fn, constant_op.constant(5), 0, symbols={'TestClass': TestClass})
+
   def test_while_local_composite(self):
 
     class TestClass(object):
@@ -361,6 +422,32 @@ class ControlFlowTest(converter_testing.TestCase):
     with self.compiled(node, ns) as result:
       self.assertEqual(result.test_fn(5), 10)
       self.assertEqual(eval_count[0], 1)
+
+  def test_for_composite_state_initialized_in_loop(self):
+
+    class TestClass(object):
+      pass
+
+    def test_fn(n, x):
+      tc = TestClass()
+      for i in n:
+        if i == 0:
+          tc.x = x
+        else:
+          tc.x = tc.x + i
+      return tc.x
+
+    self.assertTransformedResult(
+        test_fn, (range(5), constant_op.constant(10)),
+        20,
+        symbols={'TestClass': TestClass})
+    with self.converted(
+        test_fn, control_flow, {'TestClass': TestClass}) as result:
+      # TODO(b/128519776): Better error message.
+      with self.assertRaisesRegex(
+          AttributeError, '\'TestClass\' object has no attribute \'x\''):
+        result.test_fn(
+            constant_op.constant(list(range(5))), constant_op.constant(5))
 
   @test_util.run_deprecated_v1
   def test_for_tuple_unpacking(self):

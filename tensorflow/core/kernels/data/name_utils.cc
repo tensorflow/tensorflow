@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/name_utils.h"
 
+#include "absl/strings/match.h"
+#include "re2/re2.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -25,9 +27,22 @@ ABSL_CONST_INIT const char kDefaultDatasetDebugStringPrefix[] = "";
 
 constexpr char kDataset[] = "Dataset";
 constexpr char kOp[] = "Op";
+constexpr char kVersion[] = "V";
+constexpr char kVersionNumRegex[] = "V(\\d+)$";
 
 string OpName(const string& dataset_type) {
-  return strings::StrCat(dataset_type, kDataset);
+  // For the dataset ops with different versions of kernels (e.g.
+  // ParallelInterleaveDatasetOp), the version number needs to be added to the
+  // end of op name.
+  int version_num;
+  if (RE2::PartialMatch(dataset_type, kVersionNumRegex, &version_num)) {
+    string op_name = dataset_type;
+    RE2::Replace(&op_name, kVersionNumRegex,
+                 strings::StrCat(kDataset, kVersion, version_num));
+    return op_name;
+  } else {
+    return strings::StrCat(dataset_type, kDataset);
+  }
 }
 
 string ArgsToString(std::initializer_list<StringPiece> args) {

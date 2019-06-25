@@ -504,7 +504,7 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       const std::vector<ReplicaGroup>& replica_groups,
-      absl::string_view barrier, const absl::optional<int64>& all_reduce_id);
+      const absl::optional<int64>& all_reduce_id);
 
   // An all-to-all op takes N array operands of the same shape and scatters them
   // to N replicas.  Each replica gathers the results into a tuple.
@@ -1053,12 +1053,6 @@ class HloInstruction {
                                 const CompareFunction& operand_order,
                                 bool call_finish_visit = true);
 
-  // Performs a postorder DFS visit using this node as the root. Calls the given
-  // visitor function at each instruction.
-  Status Accept(const std::function<Status(HloInstruction*)>& visitor_func);
-  Status Accept(
-      const std::function<Status(const HloInstruction*)>& visitor_func) const;
-
   // Visit this instruction and only this instruction with the given visitor.
   template <typename HloInstructionPtr>
   Status Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor);
@@ -1145,6 +1139,15 @@ class HloInstruction {
 
   // As ToString, but returns a shorter string.
   string ToShortString() const;
+
+  // Prints an instruction to a string.
+  //
+  // The canonical string representation needs to name operands and instruction
+  // names in a consistent way. This is implemented through the
+  // canonical_name_map.
+  string ToStringWithCanonicalNameMap(
+      const HloPrintOptions& options,
+      CanonicalNameMap* canonical_name_map) const;
 
   // Returns a serialized representation of this instruction.
   virtual HloInstructionProto ToProto() const;
@@ -1568,10 +1571,6 @@ class HloInstruction {
   // Delegates to HloCollectivePermuteInstruction::source_target_pairs.
   const std::vector<std::pair<int64, int64>>& source_target_pairs() const;
 
-  // Delegates to HloAllReduceInstruction::all_reduce_barrier.
-  string all_reduce_barrier() const;
-  void set_all_reduce_barrier(const string& barrier);
-
   // Delegates to HloAllReduceInstruction::all_reduce_id.
   absl::optional<int64> all_reduce_id() const;
   void set_all_reduce_id(const absl::optional<int64>& all_reduce_id);
@@ -1729,14 +1728,6 @@ class HloInstruction {
   // the operands is equivalent to being elementwise on all the operands.
   virtual bool IsElementwiseImpl(
       const absl::optional<int64>& operand_idx) const;
-  // Prints an instruction to a string.
-  //
-  // The canonical string representation needs to name operands and instruction
-  // names in a consistent way. This is implemented through the
-  // canonical_name_map.
-  string ToStringWithCanonicalNameMap(
-      const HloPrintOptions& options,
-      CanonicalNameMap* canonical_name_map) const;
 
   // Prints an operand to a string.
   virtual string OperandsToStringWithCanonicalNameMap(
@@ -1768,8 +1759,8 @@ class HloInstruction {
   // Removes a user for this instruction.
   void RemoveUser(HloInstruction* user);
 
-  // Returns how this instruction uses elements of its `i`th operand.
-  UseKind OperandElementUse(int64 i) const;
+  // Returns how this instruction uses elements of its operand at operand_num.
+  UseKind OperandElementUse(int64 operand_num) const;
 
   // Helper for implementing backend_config().  Parses backend_config_ into the
   // given proto.

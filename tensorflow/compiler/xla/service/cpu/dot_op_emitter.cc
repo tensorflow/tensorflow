@@ -702,19 +702,32 @@ Status DotOpEmitter::EmitCallToRuntime() {
 }
 
 DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
-  CHECK_EQ(dot_info_.result_shape.dimensions_size(), 2);
+  CHECK_LE(dot_info_.result_shape.dimensions_size(), 2);
 
   const Shape& lhs_shape = lhs_array_.GetShape();
   const Shape& rhs_shape = rhs_array_.GetShape();
   const DotDimensionNumbers& dim_nums = dot_info_.dim_nums;
 
+  auto is_column_major = [](const Shape& shape) {
+    return shape.rank() > 1 && LayoutUtil::Minor(shape.layout(), 0) == 0;
+  };
+
+  // Non-contracting dots should never make it here.
+  CHECK_GE(dim_nums.lhs_contracting_dimensions_size(), 0);
+  CHECK_GE(dim_nums.rhs_contracting_dimensions_size(), 0);
+
   return {
-      /*m=*/lhs_shape.dimensions(1 - dim_nums.lhs_contracting_dimensions(0)),
+      /*m=*/lhs_shape.rank() <= 1
+          ? 1LL
+          : lhs_shape.dimensions(1LL - dim_nums.lhs_contracting_dimensions(0)),
       /*k=*/lhs_shape.dimensions(dim_nums.lhs_contracting_dimensions(0)),
-      /*n=*/rhs_shape.dimensions(1 - dim_nums.rhs_contracting_dimensions(0)),
-      /*lhs_column_major=*/LayoutUtil::Minor(lhs_shape.layout(), 0) == 0,
-      /*lhs_canonical=*/dim_nums.lhs_contracting_dimensions(0) == 1,
-      /*rhs_column_major=*/LayoutUtil::Minor(rhs_shape.layout(), 0) == 0,
+      /*n=*/rhs_shape.rank() <= 1
+          ? 1LL
+          : rhs_shape.dimensions(1LL - dim_nums.rhs_contracting_dimensions(0)),
+      /*lhs_column_major=*/is_column_major(lhs_shape),
+      /*lhs_canonical=*/lhs_shape.rank() <= 1 ||
+          dim_nums.lhs_contracting_dimensions(0) == 1,
+      /*rhs_column_major=*/is_column_major(rhs_shape),
       /*rhs_canonical=*/dim_nums.rhs_contracting_dimensions(0) == 0};
 }
 
@@ -722,12 +735,23 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
 // column major.
 absl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo) {
-  if (hlo.opcode() == HloOpcode::kDot && hlo.shape().dimensions_size() == 2 &&
-      hlo.shape().dimensions(0) == 1) {
-    if (hlo.dot_dimension_numbers().rhs_contracting_dimensions(0) == 0) {
-      return 1;
+  if (hlo.opcode() == HloOpcode::kDot && hlo.shape().dimensions_size() <= 1) {
+    if (hlo.operand(0)->shape().rank() != 1 ||
+        hlo.dot_dimension_numbers().rhs_contracting_dimensions(0) != 0) {
+      return {};
     }
-    return {};
+
+    // Don't bother if the other operand is tiny, switching to column major
+    // wouldn't use tiling.
+    constexpr int kColumnMajorThresholdInBytes = 32;
+    int64 lhs_size =
+        ShapeUtil::ByteSizeOfPrimitiveType(hlo.shape().element_type()) *
+        ShapeUtil::ElementsIn(hlo.operand(0)->shape());
+    if (lhs_size < kColumnMajorThresholdInBytes) {
+      return {};
+    }
+
+    return 1;
   }
 
   if (hlo.IsOutputFusion()) {
@@ -842,9 +866,10 @@ DotImplementationStrategy GetDotImplementationStrategy(
   // Any Matrix-Vector product of floating point or integral type, or
   // a transpose-dot fusion of the same can be lowered to a tiled LLVM
   // IR implementation.
-  if (dot_info.result_shape.dimensions_size() == 2 &&
-      (dot_info.result_shape.dimensions(0) == 1 ||
-       dot_info.result_shape.dimensions(1) == 1) &&
+  if ((dot_info.result_shape.dimensions_size() <= 1 ||
+       (dot_info.result_shape.dimensions_size() == 2 &&
+        (dot_info.result_shape.dimensions(0) == 1 ||
+         dot_info.result_shape.dimensions(1) == 1))) &&
       (primitive_util::IsFloatingPointType(element_type) ||
        primitive_util::IsIntegralType(element_type))) {
     return DotImplementationStrategy::kTiledLlvmIrGemv;

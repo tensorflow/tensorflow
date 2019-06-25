@@ -392,7 +392,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           /*replica_groups=*/
           std::vector<ReplicaGroup>(proto.replica_groups().begin(),
                                     proto.replica_groups().end()),
-          /*barrier=*/proto.all_reduce_barrier(),
           /*all_reduce_id=*/all_reduce_id);
       break;
     }
@@ -717,6 +716,8 @@ HloInstruction::CreateRngGetAndUpdateState(const Shape& shape, int64 delta) {
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kCopy:
+    case HloOpcode::kCopyStart:
+    case HloOpcode::kCopyDone:
     case HloOpcode::kCos:
     case HloOpcode::kClz:
     case HloOpcode::kExp:
@@ -858,11 +859,10 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllReduce(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
-    const std::vector<ReplicaGroup>& replica_groups, absl::string_view barrier,
+    const std::vector<ReplicaGroup>& replica_groups,
     const absl::optional<int64>& all_reduce_id) {
   return absl::make_unique<HloAllReduceInstruction>(
-      shape, operands, reduce_computation, replica_groups, barrier,
-      all_reduce_id);
+      shape, operands, reduce_computation, replica_groups, all_reduce_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
@@ -1435,6 +1435,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kCeil:
     case HloOpcode::kClz:
     case HloOpcode::kCopy:
+    case HloOpcode::kCopyStart:
+    case HloOpcode::kCopyDone:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
@@ -1779,6 +1781,8 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kComplex:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
+    case HloOpcode::kCopyStart:
+    case HloOpcode::kCopyDone:
     case HloOpcode::kCos:
     case HloOpcode::kDivide:
     case HloOpcode::kDynamicUpdateSlice:
@@ -2728,6 +2732,10 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleConditional(this);
     case HloOpcode::kCustomCall:
       return visitor->HandleCustomCall(this);
+    case HloOpcode::kCopyStart:
+      return visitor->HandleCopyStart(this);
+    case HloOpcode::kCopyDone:
+      return visitor->HandleCopyDone(this);
     case HloOpcode::kRecv:
       return visitor->HandleRecv(this);
     case HloOpcode::kRecvDone:
@@ -2916,18 +2924,6 @@ Status HloInstruction::AcceptWithOperandOrder(
   return Status::OK();
 }
 
-Status HloInstruction::Accept(
-    const std::function<Status(HloInstruction*)>& visitor_func) {
-  FunctionVisitor visitor(visitor_func);
-  return this->Accept(&visitor);
-}
-
-Status HloInstruction::Accept(
-    const std::function<Status(const HloInstruction*)>& visitor_func) const {
-  ConstFunctionVisitor visitor(visitor_func);
-  return this->Accept(&visitor);
-}
-
 const Shape& HloInstruction::shape() const { return shape_; }
 
 std::vector<int64> HloInstruction::OperandIndices(
@@ -3019,7 +3015,8 @@ class HloInstruction::FusionReusesParamElements {
   }
 };
 
-HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
+HloInstruction::UseKind HloInstruction::OperandElementUse(
+    int64 operand_num) const {
   switch (opcode_) {
     case HloOpcode::kBitcast:
     case HloOpcode::kConcatenate:
@@ -3030,30 +3027,28 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
       return UseKind::kUsePermutingElements;
     case HloOpcode::kPad:
       // Pad reuses the padding value but not the padded array elements.
-      return i > 0 ? UseKind::kReuse : UseKind::kUsePermutingElements;
+      return operand_num > 0 ? UseKind::kReuse : UseKind::kUsePermutingElements;
     case HloOpcode::kReduce:
       // Reduce reuses the init values but not the operand array elements.
-      return i >= Cast<HloReduceInstruction>(this)->input_count()
+      return operand_num >= Cast<HloReduceInstruction>(this)->input_count()
                  ? UseKind::kReuse
                  : UseKind::kUsePermutingElements;
     case HloOpcode::kFusion:
       // Uses the memoizing, recursive computation defined above.
-      return FusionReusesParamElements::Compute(i, *fused_expression_root());
+      return FusionReusesParamElements::Compute(operand_num,
+                                                *fused_expression_root());
     case HloOpcode::kDot:
-      // Dot operations with inputs [A,B] * [B,1] do not re-use
-      // elements on their left operand.
-      // Dot operations with inputs [1,A] * [A,B] do not re-use
-      // elements on their right operand.
-      if (shape().dimensions_size() == 2) {
-        if ((i == 0 && shape().dimensions(1) == 1) ||
-            (i == 1 && shape().dimensions(0) == 1)) {
+      // Matrix-vector dots do not reuse the matrix operand.
+      if (shape().dimensions_size() <= 1) {
+        if ((operand_num == 0 && operand(1)->shape().rank() <= 1) ||
+            (operand_num == 1 && operand(0)->shape().rank() <= 1)) {
           return UseKind::kUse;
         }
       }
       return UseKind::kReuse;
     case HloOpcode::kDynamicUpdateSlice:
       // Dynamic-update-slice reuses only start_indices.
-      if (i == 0 || i == 1) {
+      if (operand_num == 0 || operand_num == 1) {
         return UseKind::kUse;
       }
       return UseKind::kReuse;
@@ -3538,14 +3533,6 @@ const std::vector<ReplicaGroup>& HloInstruction::replica_groups() const {
 const std::vector<std::pair<int64, int64>>&
 HloInstruction::source_target_pairs() const {
   return Cast<HloCollectivePermuteInstruction>(this)->source_target_pairs();
-}
-
-string HloInstruction::all_reduce_barrier() const {
-  return Cast<HloAllReduceInstruction>(this)->all_reduce_barrier();
-}
-
-void HloInstruction::set_all_reduce_barrier(const string& barrier) {
-  return Cast<HloAllReduceInstruction>(this)->set_all_reduce_barrier(barrier);
 }
 
 absl::optional<int64> HloInstruction::all_reduce_id() const {

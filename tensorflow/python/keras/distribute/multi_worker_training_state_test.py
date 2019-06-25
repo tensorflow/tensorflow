@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 import os
 import sys
-import tempfile
 from absl.testing import parameterized
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import multi_worker_test_base as test_base
@@ -41,13 +40,14 @@ class MultiWorkerTrainingStateTest(test_base.IndependentWorkerTestBase,
   def testCheckpointExists(self, file_format, save_weights_only):
     train_ds, _ = multi_worker_testing_utils.mnist_synthetic_dataset(64, 2)
     model = multi_worker_testing_utils.get_mnist_model((28, 28, 1))
-    saving_dir = tempfile.mkdtemp()
+    saving_dir = self.get_temp_dir()
     saving_filepath = os.path.join(saving_dir, 'checkpoint.' + file_format)
     callbacks_list = [
         callbacks.ModelCheckpoint(
             filepath=saving_filepath, save_weights_only=save_weights_only)
     ]
     self.assertFalse(training_state.checkpoint_exists(saving_filepath))
+
     model.fit(x=train_ds, epochs=2, steps_per_epoch=2, callbacks=callbacks_list)
     self.assertTrue(training_state.checkpoint_exists(saving_filepath))
     self.assertTrue(

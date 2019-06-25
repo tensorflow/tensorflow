@@ -36,7 +36,7 @@ cc_library(
         "//tensorflow/core:grpc_services",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core/profiler:op_profile_proto_cc",
     ],
 )
 

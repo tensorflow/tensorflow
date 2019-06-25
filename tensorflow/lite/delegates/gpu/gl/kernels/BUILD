@@ -571,6 +571,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:object_manager",
         "//tensorflow/lite/delegates/gpu/gl:runtime_options",
         "//tensorflow/lite/delegates/gpu/gl/workgroups:default_calculator",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

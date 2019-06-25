@@ -170,12 +170,15 @@ load(
     "tf_cuda_tests_tags",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_proto_library")
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
     "mkl_deps",
 )
+
+package_group(name = "experimental_access")
 
 exports_files(["ops/ops.pbtxt"])
 
@@ -263,7 +266,7 @@ tf_proto_library(
     name = "protos_all",
     srcs = [],
     cc_api_version = 2,
-    default_header = True,
+    make_default_target_header_only = True,
     protodeps = [
         ":protos_all_proto",
         ":error_codes_proto",
@@ -454,7 +457,7 @@ cc_library(
         ":platform_base",
         ":platform_port",
         "//tensorflow/core/platform/default/build_config:protobuf",
-        "@protobuf_archive//:protobuf",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -660,6 +663,7 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:other",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/platform/default/build_config:port",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -720,6 +724,7 @@ cc_library(
         "lib/core/status.h",
         "lib/core/stringpiece.h",
         "lib/core/threadpool.h",
+        "lib/core/threadpool_interface.h",
         "lib/gtl/array_slice.h",
         "lib/gtl/cleanup.h",
         "lib/gtl/compactptrset.h",
@@ -771,6 +776,22 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+# APIs defined in lib_experimental are for experimental usage and may be
+# subject to change. Its visibility is limited to selected packages.
+cc_library(
+    name = "lib_experimental",
+    hdrs = [
+        "lib/core/threadpool_options.h",
+    ],
+    visibility = [
+        ":experimental_access",
+        "//tensorflow/cc:__pkg__",
+    ],
+    deps = [
+        ":lib",
     ],
 )
 
@@ -1422,6 +1443,9 @@ cc_library(
     ] + if_mkl([
         ":mkl_array_ops_op_lib",
         ":mkl_nn_ops_op_lib",
+    ]) + if_tensorrt([
+        "//tensorflow/compiler/tf2tensorrt:trt_engine_resource_ops_op_lib",
+        "//tensorflow/compiler/tf2tensorrt:trt_op_libs",
     ]) + tf_additional_cloud_op_deps(),
     alwayslink = 1,
 )
@@ -1615,6 +1639,9 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:gpu_swapping_ops",
     ]) + if_nccl([
         "//tensorflow/core/kernels:nccl_kernels",
+    ]) + if_tensorrt([
+        "//tensorflow/compiler/tf2tensorrt:trt_engine_resource_op_kernels",
+        "//tensorflow/compiler/tf2tensorrt:trt_op_kernels",
     ]),
 )
 
@@ -1903,10 +1930,10 @@ cc_library(
         ":protos_all_cc_impl",
         ":stats_calculator_portable",
         "//third_party/eigen3",
+        "@com_google_protobuf//:protobuf",
         "@double_conversion//:double-conversion",
         "@farmhash_archive//:farmhash",
         "@nsync//:nsync_cpp",
-        "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
 )
@@ -1928,10 +1955,10 @@ cc_library(
         ":protos_all_cc_impl",
         ":stats_calculator_portable",
         "//third_party/eigen3",
+        "@com_google_protobuf//:protobuf",
         "@double_conversion//:double-conversion",
         "@farmhash_archive//:farmhash",
         "@nsync//:nsync_cpp",
-        "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
 )
@@ -1987,9 +2014,9 @@ cc_library(
         ":protos_all_cc_impl",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
+        "@com_google_protobuf//:protobuf",
         "@fft2d",
         "@gemmlowp",
-        "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
 )
@@ -2004,10 +2031,10 @@ cc_library(
         ":protos_all_cc_impl",
         ":stats_calculator_portable",
         "//third_party/eigen3",
+        "@com_google_protobuf//:protobuf",
         "@double_conversion//:double-conversion",
         "@farmhash_archive//:farmhash",
         "@nsync//:nsync_cpp",
-        "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
 )
@@ -2046,7 +2073,7 @@ cc_library(
         ":protos_all_cc_impl",
         "//tensorflow/core/kernels:android_tensorflow_kernels",
         "//third_party/eigen3",
-        "@protobuf_archive//:protobuf",
+        "@com_google_protobuf//:protobuf",
     ],
     alwayslink = 1,
 )
@@ -2289,7 +2316,7 @@ tf_proto_library(
     name = "autotuning_proto",
     srcs = ["protobuf/autotuning.proto"],
     cc_api_version = 2,
-    default_header = True,
+    make_default_target_header_only = True,
     provide_cc_alias = True,
     visibility = [
         "//tensorflow:internal",
@@ -2300,7 +2327,7 @@ tf_proto_library(
     name = "conv_autotuning_proto",
     srcs = ["protobuf/conv_autotuning.proto"],
     cc_api_version = 2,
-    default_header = True,
+    make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/stream_executor:dnn_proto",
     ],
@@ -2470,7 +2497,6 @@ cc_library(
             "lib/**/*.cc",
             "platform/*.cc",
             "platform/profile_utils/**/*.cc",
-            "framework/resource_handle.cc",
             "util/env_var.cc",
         ],
         exclude = [
@@ -2524,7 +2550,7 @@ cc_library(
                "@snappy",
                "@zlib_archive//:zlib",
                "@double_conversion//:double-conversion",
-               "@protobuf_archive//:protobuf",
+               "@com_google_protobuf//:protobuf",
            ] + tf_protos_all_impl() + tf_protos_grappler_impl() +
            tf_additional_numa_deps(),
 )
@@ -2730,7 +2756,7 @@ tf_proto_library(
     name = "error_codes_proto",
     srcs = ERROR_CODES_PROTO_SRCS,
     cc_api_version = 2,
-    default_header = True,
+    make_default_target_header_only = True,
     provide_cc_alias = True,
 )
 
@@ -2749,7 +2775,7 @@ tf_proto_library(
     name = "protos_all_proto",
     srcs = COMMON_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
-    default_header = True,
+    make_default_target_header_only = True,
     protodeps = [
         ":error_codes_proto",
     ],
@@ -2853,10 +2879,10 @@ tf_cuda_library(
     ] + if_static(
         extra_deps = [
             ":framework_internal_impl",
-            "@protobuf_archive//:protobuf",
+            "@com_google_protobuf//:protobuf",
         ],
         otherwise = [
-            "@protobuf_archive//:protobuf_headers",
+            "@com_google_protobuf//:protobuf_headers",
         ],
     ),
     alwayslink = 1,
@@ -2915,7 +2941,6 @@ tf_cuda_library(
             "framework/fake_input.*",
             "framework/op_gen_lib.*",
             "framework/reader_base.*",
-            "framework/resource_handle.cc",
             "util/memmapped_file_system.*",
             "util/memmapped_file_system_writer.*",
             "util/stats_calculator.*",
@@ -2960,8 +2985,8 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//third_party/eigen3",
     ] + if_static(
-        extra_deps = ["@protobuf_archive//:protobuf"],
-        otherwise = ["@protobuf_archive//:protobuf_headers"],
+        extra_deps = ["@com_google_protobuf//:protobuf"],
+        otherwise = ["@com_google_protobuf//:protobuf_headers"],
     ) + mkl_deps(),
     alwayslink = 1,
 )
@@ -3327,6 +3352,7 @@ tf_cuda_library(
         ":lib",
         ":proto_text",
         ":protos_all_cc",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:utils",
@@ -3401,6 +3427,7 @@ tf_cuda_library(
         ":framework_internal",
         ":graph",
         ":lib",
+        ":lib_experimental",
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
@@ -3409,6 +3436,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:profiler_graph_lib",
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
     alwayslink = 1,
 )
@@ -3533,7 +3561,6 @@ tf_cuda_library(
         ":lib_internal",
         ":protos_all_cc",
         ":stream_executor",
-        "//tensorflow/core/profiler/lib:traceme",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
@@ -4720,6 +4747,23 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "framework_run_handler_test",
+    size = "small",
+    srcs = ["framework/run_handler_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":test",
+        ":test_main",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cc_test(
     name = "common_runtime_partitioning_utils_test",
     size = "small",
     srcs = ["common_runtime/partitioning_utils_test.cc"],
@@ -4759,6 +4803,7 @@ tf_cuda_cc_test(
         ":test",
         ":test_main",
         ":testlib",
+        "@com_google_absl//absl/memory",
         "//third_party/eigen3",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:collective_ops",
@@ -4800,6 +4845,7 @@ tf_cc_test(
         ":test_main",
         ":testlib",
         "//third_party/eigen3",
+        "@com_google_absl//absl/memory",
         "//tensorflow/cc:cc_ops",
         # Link with support for TensorFlow Debugger (tfdbg).
         "//tensorflow/core/debug",
@@ -5515,7 +5561,7 @@ tf_portable_proto_library(
     prefix_dir = "emscripten_proto_no_rtti",
     proto_deps = [
         ":protos_all_cc",
-        "@protobuf_archive//:protobuf",
+        "@com_google_protobuf//:protobuf",
     ],
     visibility = ["//visibility:public"],
 )

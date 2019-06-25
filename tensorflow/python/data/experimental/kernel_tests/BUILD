@@ -632,15 +632,13 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":reader_dataset_ops_test_base",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:io_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python/data/experimental/ops:readers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:string_ops",
         "//tensorflow/python/data/experimental/ops:snapshot",
-        "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:readers",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

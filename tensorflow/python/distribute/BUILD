@@ -172,6 +172,9 @@ py_test(
     srcs = ["distribute_lib_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_rocm",
+    ],
     deps = [
         ":distribute_lib",
         ":input_lib",
@@ -423,7 +426,7 @@ cuda_py_test(
         ":input_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
-        "//tensorflow/python/data/util:traverse",
+        "//tensorflow/python/data/util:structure",
         "//tensorflow/python:errors",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
@@ -808,10 +811,12 @@ distribute_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
@@ -862,6 +867,7 @@ distribute_py_test(
     main = "minimize_loss_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     deps = [
         ":mirrored_strategy",
@@ -914,6 +920,7 @@ distribute_py_test(
     main = "step_fn_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     deps = [
         ":single_loss_example",
@@ -974,6 +981,7 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_and_single_gpu",
+        "no_rocm",
         "no_windows_gpu",  # TODO(b/130551176)
     ],
     xla_enable_strict_auto_jit = True,
@@ -1021,6 +1029,26 @@ distribute_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_metrics_test",
+    srcs = ["keras_metrics_test.py"],
+    main = "keras_metrics_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        ":combinations",
+        ":strategy_combinations",
+        ":tpu_strategy",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -1083,6 +1111,21 @@ distribute_py_test(
     size = "medium",
     srcs = ["keras_experimental_saved_model_test.py"],
     main = "keras_experimental_saved_model_test.py",
+    tags = [
+        "no_oss",  # TODO(b/135287893) reenable
+        "no_rocm",
+    ],
+    deps = [
+        ":saved_model_test_base",
+        "//tensorflow/python/keras:saving",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_save_load_test",
+    size = "medium",
+    srcs = ["keras_save_load_test.py"],
+    main = "keras_save_load_test.py",
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras:saving",
