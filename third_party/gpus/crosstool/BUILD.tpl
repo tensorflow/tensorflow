@@ -28,6 +28,7 @@ cc_toolchain_suite(
         "darwin|compiler": ":cc-compiler-darwin",
         "x64_windows|msvc-cl": ":cc-compiler-windows",
         "x64_windows": ":cc-compiler-windows",
+        "aarch64": ":cc-compiler-local",
         "arm": ":cc-compiler-local",
         "k8": ":cc-compiler-local",
         "piii": ":cc-compiler-local",
