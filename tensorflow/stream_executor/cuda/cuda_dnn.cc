@@ -3190,10 +3190,9 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
                         "cuDNNv5 and cuDNNv6. See around b/68264959.");
   }
   if (IsTensorMathOpSet(conv) != algo_desc.tensor_ops_enabled()) {
-    return port::Status(
-        port::error::FAILED_PRECONDITION,
-        "Tensor op math type in the algorithm descriptor should "
-        "match that of the cudnn convolution descriptor");
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        "Tensor op math type in dnn::AlgorithmDesc does not "
+                        "match that of the CudnnConvolutionDescriptor");
   }
 
   RETURN_IF_CUDNN_ERROR(cudnnConvolutionBiasActivationForward(
