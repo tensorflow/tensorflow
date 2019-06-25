@@ -125,7 +125,8 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
     with ops.device('/device:CPU:0'):
       self._replication_factor = replication_factor
       self._dataset = dataset
-      self._structure = dataset_ops.get_structure(dataset)
+      self._structure = dataset_ops.get_structure(self._dataset)
+      self._flat_structure = dataset._flat_structure
       # Batch the dataset to take replication into account.
       if self._replication_factor > 1:
         self._dataset = self._dataset.batch(
@@ -163,7 +164,7 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
     flat_ret = gen_pop_datastream_ops.pop_datastream_infeed_dequeue(
         feed_id=self._id,
         replication_factor=self._replication_factor,
-        **self._dataset._flat_structure)
+        **self._flat_structure)
     self._dequeued = True
     return structure.from_tensor_list(self._structure, flat_ret)
 
