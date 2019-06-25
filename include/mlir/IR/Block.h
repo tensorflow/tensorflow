@@ -374,12 +374,13 @@ inline auto Block::getPredecessors() -> llvm::iterator_range<pred_iterator> {
 
 /// This template implements the successor iterators for Block.
 class SuccessorIterator final
-    : public IndexedAccessorIterator<SuccessorIterator, Block, Block> {
+    : public indexed_accessor_iterator<SuccessorIterator, Block *, Block *,
+                                       Block *, Block *> {
 public:
   /// Initializes the result iterator to the specified index.
   SuccessorIterator(Block *object, unsigned index)
-      : IndexedAccessorIterator<SuccessorIterator, Block, Block>(object,
-                                                                 index) {}
+      : indexed_accessor_iterator<SuccessorIterator, Block *, Block *, Block *,
+                                  Block *>(object, index) {}
 
   SuccessorIterator(const SuccessorIterator &other)
       : SuccessorIterator(other.object, other.index) {}

@@ -549,39 +549,17 @@ public:
 
   /// A utility iterator that allows walking over the internal raw APInt values.
   class IntElementIterator
-      : public llvm::iterator_facade_base<IntElementIterator,
-                                          std::bidirectional_iterator_tag,
-                                          APInt, std::ptrdiff_t, APInt, APInt> {
+      : public indexed_accessor_iterator<IntElementIterator, const char *,
+                                         APInt, APInt, APInt> {
   public:
-    /// Iterator movement.
-    IntElementIterator &operator++() {
-      ++index;
-      return *this;
-    }
-    IntElementIterator &operator--() {
-      --index;
-      return *this;
-    }
-
     /// Accesses the raw APInt value at this iterator position.
     APInt operator*() const;
-
-    /// Iterator equality.
-    bool operator==(const IntElementIterator &rhs) const {
-      return rawData == rhs.rawData && index == rhs.index;
-    }
 
   private:
     friend DenseElementsAttr;
 
     /// Constructs a new iterator.
     IntElementIterator(DenseElementsAttr attr, size_t index);
-
-    /// The base address of the raw data buffer.
-    const char *rawData;
-
-    /// The current element index.
-    size_t index;
 
     /// The bitwidth of the element type.
     size_t bitWidth;

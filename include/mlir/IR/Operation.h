@@ -522,12 +522,13 @@ inline raw_ostream &operator<<(raw_ostream &os, Operation &op) {
 /// This class implements the const/non-const operand iterators for the
 /// Operation class in terms of getOperand(idx).
 class OperandIterator final
-    : public IndexedAccessorIterator<OperandIterator, Operation, Value> {
+    : public indexed_accessor_iterator<OperandIterator, Operation *, Value *,
+                                       Value *, Value *> {
 public:
   /// Initializes the operand iterator to the specified operand index.
   OperandIterator(Operation *object, unsigned index)
-      : IndexedAccessorIterator<OperandIterator, Operation, Value>(object,
-                                                                   index) {}
+      : indexed_accessor_iterator<OperandIterator, Operation *, Value *,
+                                  Value *, Value *>(object, index) {}
 
   Value *operator*() const { return this->object->getOperand(this->index); }
 };
@@ -575,12 +576,13 @@ inline auto Operation::getOperandTypes() -> operand_type_range {
 /// This class implements the result iterators for the Operation class
 /// in terms of getResult(idx).
 class ResultIterator final
-    : public IndexedAccessorIterator<ResultIterator, Operation, Value> {
+    : public indexed_accessor_iterator<ResultIterator, Operation *, Value *,
+                                       Value *, Value *> {
 public:
   /// Initializes the result iterator to the specified index.
   ResultIterator(Operation *object, unsigned index)
-      : IndexedAccessorIterator<ResultIterator, Operation, Value>(object,
-                                                                  index) {}
+      : indexed_accessor_iterator<ResultIterator, Operation *, Value *, Value *,
+                                  Value *>(object, index) {}
 
   Value *operator*() const { return this->object->getResult(this->index); }
 };

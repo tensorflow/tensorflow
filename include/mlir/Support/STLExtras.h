@@ -24,6 +24,7 @@
 #define MLIR_SUPPORT_STLEXTRAS_H
 
 #include "mlir/Support/LLVM.h"
+#include "llvm/ADT/iterator.h"
 #include <tuple>
 
 namespace mlir {
@@ -105,6 +106,48 @@ struct detector<void_t<Op<Args...>>, Op, Args...> {
 
 template <template <class...> class Op, class... Args>
 using is_detected = typename detail::detector<void, Op, Args...>::value_t;
+
+//===----------------------------------------------------------------------===//
+//     Extra additions to <iterator>
+//===----------------------------------------------------------------------===//
+
+/// A utility class used to implement an iterator that contains some object and
+/// an index. The iterator moves the index but keeps the object constant.
+template <typename DerivedT, typename ObjectType, typename T,
+          typename PointerT = T *, typename ReferenceT = T &>
+class indexed_accessor_iterator
+    : public llvm::iterator_facade_base<DerivedT,
+                                        std::random_access_iterator_tag, T,
+                                        std::ptrdiff_t, PointerT, ReferenceT> {
+public:
+  ptrdiff_t operator-(const indexed_accessor_iterator &rhs) const {
+    assert(object == rhs.object && "incompatible iterators");
+    return index - rhs.index;
+  }
+  bool operator==(const indexed_accessor_iterator &rhs) const {
+    return object == rhs.object && index == rhs.index;
+  }
+  bool operator<(const indexed_accessor_iterator &rhs) const {
+    assert(object == rhs.object && "incompatible iterators");
+    return index < rhs.index;
+  }
+
+  DerivedT &operator+=(ptrdiff_t offset) {
+    this->index += offset;
+    return static_cast<DerivedT &>(*this);
+  }
+  DerivedT &operator-=(ptrdiff_t offset) {
+    this->index -= offset;
+    return static_cast<DerivedT &>(*this);
+  }
+
+protected:
+  indexed_accessor_iterator(ObjectType object, ptrdiff_t index)
+      : object(object), index(index) {}
+  ObjectType object;
+  ptrdiff_t index;
+};
+
 } // end namespace mlir
 
 // Allow tuples to be usable as DenseMap keys.

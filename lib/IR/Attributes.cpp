@@ -464,12 +464,13 @@ static bool hasSameElementsOrSplat(ShapedType type, const Values &values) {
 /// Constructs a new iterator.
 DenseElementsAttr::IntElementIterator::IntElementIterator(
     DenseElementsAttr attr, size_t index)
-    : rawData(attr.getRawData().data()), index(index),
+    : indexed_accessor_iterator<IntElementIterator, const char *, APInt, APInt,
+                                APInt>(attr.getRawData().data(), index),
       bitWidth(getDenseElementBitwidth(attr.getType().getElementType())) {}
 
 /// Accesses the raw APInt value at this iterator position.
 APInt DenseElementsAttr::IntElementIterator::operator*() const {
-  return readBits(rawData, index * getDenseElementStorageWidth(bitWidth),
+  return readBits(object, index * getDenseElementStorageWidth(bitWidth),
                   bitWidth);
 }
 
