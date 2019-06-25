@@ -8,7 +8,7 @@ func @illegaltype(i) // expected-error {{expected non-function type}}
 // -----
 
 func @illegaltype() {
-  %0 = constant dense<<vector 4 x f32>, 0> : vector<4 x f32> // expected-error {{expected non-function type}}
+  %0 = constant dense<0> : <vector 4 x f32> : vector<4 x f32> // expected-error {{expected non-function type}}
 }
 
 // -----
@@ -585,101 +585,101 @@ func@n(){^b(
 
 func @elementsattr_non_tensor_type() -> () {
 ^bb0:
-  "foo"(){bar: dense<i32, [4]>} : () -> () // expected-error {{elements literal must be a ranked tensor or vector type}}
+  "foo"(){bar: dense<[4]> : i32} : () -> () // expected-error {{elements literal must be a ranked tensor or vector type}}
 }
 
 // -----
 
 func @elementsattr_non_ranked() -> () {
 ^bb0:
-  "foo"(){bar: dense<tensor<?xi32>, [4]>} : () -> () // expected-error {{elements literal type must have static shape}}
+  "foo"(){bar: dense<[4]> : tensor<?xi32>} : () -> () // expected-error {{elements literal type must have static shape}}
 }
 
 // -----
 
 func @elementsattr_shape_mismatch() -> () {
 ^bb0:
-  "foo"(){bar: dense<tensor<5xi32>, [4]>} : () -> () // expected-error {{inferred shape of elements literal ([1]) does not match type ([5])}}
+  "foo"(){bar: dense<[4]> : tensor<5xi32>} : () -> () // expected-error {{inferred shape of elements literal ([1]) does not match type ([5])}}
 }
 
 // -----
 
 func @elementsattr_invalid() -> () {
 ^bb0:
-  "foo"(){bar: dense<tensor<2xi32>, [4, [5]]>} : () -> () // expected-error {{tensor literal is invalid; ranks are not consistent between elements}}
+  "foo"(){bar: dense<[4, [5]]> : tensor<2xi32>} : () -> () // expected-error {{tensor literal is invalid; ranks are not consistent between elements}}
 }
 
 // -----
 
 func @elementsattr_badtoken() -> () {
 ^bb0:
-  "foo"(){bar: dense<tensor<1xi32>, [tf_opaque]>} : () -> () // expected-error {{expected element literal of primitive type}}
+  "foo"(){bar: dense<[tf_opaque]> : tensor<1xi32>} : () -> () // expected-error {{expected element literal of primitive type}}
 }
 
 // -----
 
 func @elementsattr_floattype1() -> () {
 ^bb0:
-  // expected-error@+1 {{floating point value not valid for specified type}}
-  "foo"(){bar: dense<tensor<1xi32>, [4.0]>} : () -> ()
+  // expected-error@+1 {{expected integer elements, but parsed floating-point}}
+  "foo"(){bar: dense<[4.0]> : tensor<1xi32>} : () -> ()
 }
 
 // -----
 
 func @elementsattr_floattype1() -> () {
 ^bb0:
-  // expected-error@+1 {{floating point value not valid for specified type}}
-  "foo"(){bar: dense<tensor<i32>, 4.0>} : () -> ()
+  // expected-error@+1 {{expected integer elements, but parsed floating-point}}
+  "foo"(){bar: dense<4.0> : tensor<i32>} : () -> ()
 }
 
 // -----
 
 func @elementsattr_floattype2() -> () {
 ^bb0:
-  // expected-error@+1 {{integer value not valid for specified type}}
-  "foo"(){bar: dense<tensor<1xf32>, [4]>} : () -> ()
+  // expected-error@+1 {{expected floating-point elements, but parsed integer}}
+  "foo"(){bar: dense<[4]> : tensor<1xf32>} : () -> ()
 }
 
 // -----
 
 func @elementsattr_toolarge1() -> () {
 ^bb0:
-  "foo"(){bar: dense<tensor<1xi8>, [777]>} : () -> () // expected-error {{integer constant out of range for attribute}}
+  "foo"(){bar: dense<[777]> : tensor<1xi8>} : () -> () // expected-error {{integer constant out of range}}
 }
 
 // -----
 
 func @elementsattr_toolarge2() -> () {
 ^bb0:
-  "foo"(){bar: dense<tensor<1xi8>, [-777]>} : () -> () // expected-error {{integer constant out of range for attribute}}
+  "foo"(){bar: dense<[-777]> : tensor<1xi8>} : () -> () // expected-error {{integer constant out of range}}
 }
 
 // -----
 
 func @elementsattr_malformed_opaque() -> () {
 ^bb0:
-  "foo"(){bar: opaque<tensor<1xi8>, "0xQZz123">} : () -> () // expected-error {{expected dialect namespace}}
+  "foo"(){bar: opaque<10, "0xQZz123"> : tensor<1xi8>} : () -> () // expected-error {{expected dialect namespace}}
 }
 
 // -----
 
 func @elementsattr_malformed_opaque1() -> () {
 ^bb0:
-  "foo"(){bar: opaque<"", tensor<1xi8>, "0xQZz123">} : () -> () // expected-error {{opaque string only contains hex digits}}
+  "foo"(){bar: opaque<"", "0xQZz123"> : tensor<1xi8>} : () -> () // expected-error {{opaque string only contains hex digits}}
 }
 
 // -----
 
 func @elementsattr_malformed_opaque2() -> () {
 ^bb0:
-  "foo"(){bar: opaque<"", tensor<1xi8>, "00abc">} : () -> () // expected-error {{opaque string should start with '0x'}}
+  "foo"(){bar: opaque<"", "00abc"> : tensor<1xi8>} : () -> () // expected-error {{opaque string should start with '0x'}}
 }
 
 // -----
 
 func @elementsattr_malformed_opaque3() -> () {
 ^bb0:
-  "foo"(){bar: opaque<"t", tensor<1xi8>, "0xabc">} : () -> () // expected-error {{no registered dialect with namespace 't'}}
+  "foo"(){bar: opaque<"t", "0xabc"> : tensor<1xi8>} : () -> () // expected-error {{no registered dialect with namespace 't'}}
 }
 
 // -----
@@ -779,7 +779,7 @@ func @type_alias_unknown(!unknown_alias) -> () { // expected-error {{undefined s
 func @complex_loops() {
   affine.for %i1 = 1 to 100 {
   // expected-error @+1 {{expected '"' in string literal}}
-  "opaqueIntTensor"(){bar: opaque<"", tensor<2x1x4xi32>, "0x686]>} : () -> ()
+  "opaqueIntTensor"(){bar: opaque<"", "0x686]> : tensor<2x1x4xi32>} : () -> ()
 
 // -----
 
@@ -791,13 +791,13 @@ func @mi() {
 
 func @invalid_tensor_literal() {
   // expected-error @+1 {{expected 1-d tensor for values}}
-  "foof16"(){bar: sparse<vector<1x1x1xf16>, [[0, 0, 0]],  [[-2.0]]]>} : () -> ()
+  "foof16"(){bar: sparse<[[0, 0, 0]],  [[-2.0]]> : vector<1x1x1xf16>} : () -> ()
 
 // -----
 
 func @invalid_tensor_literal() {
   // expected-error @+1 {{expected element literal of primitive type}}
-  "fooi16"(){bar: sparse<tensor<2x2x2xi16>, [[1, 1, 0], [0, 1, 0], [0,, [[0, 0, 0]], [-2.0]>} : () -> ()
+  "fooi16"(){bar: sparse<[[1, 1, 0], [0, 1, 0], [0,, [[0, 0, 0]], [-2.0]> : tensor<2x2x2xi16>} : () -> ()
 
 // -----
 

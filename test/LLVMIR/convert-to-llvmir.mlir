@@ -359,8 +359,8 @@ func @multireturn_caller() {
 // CHECK-LABEL: func @vector_ops(%arg0: !llvm<"<4 x float>">, %arg1: !llvm<"<4 x i1>">, %arg2: !llvm<"<4 x i64>">) -> !llvm<"<4 x float>"> {
 func @vector_ops(vector<4xf32>, vector<4xi1>, vector<4xi64>) -> vector<4xf32> {
 ^bb0(%arg0: vector<4xf32>, %arg1: vector<4xi1>, %arg2: vector<4xi64>):
-// CHECK-NEXT:  %0 = llvm.constant(dense<vector<4xf32>, 4.200000e+01>) : !llvm<"<4 x float>">
-  %0 = constant dense<vector<4xf32>, 42.>
+// CHECK-NEXT:  %0 = llvm.constant(dense<4.200000e+01> : vector<4xf32>) : !llvm<"<4 x float>">
+  %0 = constant dense<42.> : vector<4xf32>
 // CHECK-NEXT:  %1 = llvm.fadd %arg0, %0 : !llvm<"<4 x float>">
   %1 = addf %arg0, %0 : vector<4xf32>
 // CHECK-NEXT:  %2 = llvm.sdiv %arg2, %arg2 : !llvm<"<4 x i64>">

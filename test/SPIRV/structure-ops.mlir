@@ -11,14 +11,14 @@ func @const() -> () {
   // CHECK: %0 = spv.constant true : i1
   // CHECK: %1 = spv.constant 42 : i32
   // CHECK: %2 = spv.constant 5.000000e-01 : f32
-  // CHECK: %3 = spv.constant dense<vector<2xi32>, [2, 3]> : vector<2xi32>
-  // CHECK: %4 = spv.constant [dense<vector<2xf32>, 3.000000e+00>] : !spv.array<1 x vector<2xf32>>
+  // CHECK: %3 = spv.constant dense<[2, 3]> : vector<2xi32> : vector<2xi32>
+  // CHECK: %4 = spv.constant [dense<3.000000e+00> : vector<2xf32>] : !spv.array<1 x vector<2xf32>>
 
   %0 = spv.constant true
   %1 = spv.constant 42 : i32
   %2 = spv.constant 0.5 : f32
-  %3 = spv.constant dense<vector<2xi32>, [2, 3]>
-  %4 = spv.constant [dense<vector<2xf32>, 3.0>] : !spv.array<1xvector<2xf32>>
+  %3 = spv.constant dense<[2, 3]> : vector<2xi32>
+  %4 = spv.constant [dense<3.0> : vector<2xf32>] : !spv.array<1xvector<2xf32>>
   return
 }
 
@@ -34,7 +34,7 @@ func @unaccepted_std_attr() -> () {
 
 func @array_constant() -> () {
   // expected-error @+1 {{has array element that are not of result array element type}}
-  %0 = spv.constant [dense<vector<2xf32>, 3.0>, dense<vector<2xi32>, 4>] : !spv.array<2xvector<2xf32>>
+  %0 = spv.constant [dense<3.0> : vector<2xf32>, dense<4> : vector<2xi32>] : !spv.array<2xvector<2xf32>>
   return
 }
 
@@ -42,7 +42,7 @@ func @array_constant() -> () {
 
 func @array_constant() -> () {
   // expected-error @+1 {{must have spv.array result type for array value}}
-  %0 = spv.constant [dense<vector<2xf32>, 3.0>] : !spv.rtarray<vector<2xf32>>
+  %0 = spv.constant [dense<3.0> : vector<2xf32>] : !spv.rtarray<vector<2xf32>>
   return
 }
 
@@ -50,7 +50,7 @@ func @array_constant() -> () {
 
 func @value_result_type_mismatch() -> () {
   // expected-error @+1 {{result type ('vector<4xi32>') does not match value type ('tensor<4xi32>')}}
-  %0 = "spv.constant"() {value: dense<tensor<4xi32>, 0>} : () -> (vector<4xi32>)
+  %0 = "spv.constant"() {value: dense<0> : tensor<4xi32>} : () -> (vector<4xi32>)
 }
 
 // -----

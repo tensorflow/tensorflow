@@ -766,8 +766,8 @@ An elements attribute is a literal attribute that represents a constant
 Syntax:
 
 ``` {.ebnf}
-dense-elements-attribute ::= `dense` `<` ( tensor-type | vector-type )
-                             `,` attribute-value `>`
+dense-elements-attribute ::= `dense` `<` attribute-value `>` `:`
+                             ( tensor-type | vector-type )
 ```
 
 A dense elements attribute is an elements attribute where the storage for the
@@ -781,8 +781,8 @@ Syntax:
 
 ``` {.ebnf}
 opaque-elements-attribute ::= `opaque` `<` dialect-namespace  `,`
-                              ( tensor-type | vector-type ) `,`
-                              hex-string-literal `>`
+                              hex-string-literal `>` `:`
+                              ( tensor-type | vector-type )
 ```
 
 An opaque elements attribute is an elements attribute where the content of the
@@ -797,8 +797,8 @@ Note: The parsed string literal must be in hexadecimal form.
 Syntax:
 
 ``` {.ebnf}
-sparse-elements-attribute ::= `sparse` `<` ( tensor-type | vector-type ) `,`
-                              attribute-value `,` attribute-value `>`
+sparse-elements-attribute ::= `sparse` `<` attribute-value `,` attribute-value
+                              `>` `:` ( tensor-type | vector-type )
 ```
 
 A sparse elements attribute is an elements attribute that represents a sparse

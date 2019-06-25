@@ -86,7 +86,7 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   %f2 = constant 2.0 : f32
   affine.for %i0 = 0 to %M {
     affine.for %i1 = 0 to %N {
-      // CHECK: [[C1:%.*]] = constant dense<vector<128xf32>, 1.000000e+00>
+      // CHECK: [[C1:%.*]] = constant dense<1.000000e+00> : vector<128xf32>
       // CHECK: vector.transfer_write [[C1]], {{.*}} {permutation_map: #[[map_proj_d0d1_d1]]} : vector<128xf32>, memref<?x?xf32>
       // non-scoped %f1
       store %f1, %A[%i0, %i1] : memref<?x?xf32, 0>
@@ -94,7 +94,7 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   }
   affine.for %i2 = 0 to %M {
     affine.for %i3 = 0 to %N {
-      // CHECK: [[C3:%.*]] = constant dense<vector<128xf32>, 2.000000e+00>
+      // CHECK: [[C3:%.*]] = constant dense<2.000000e+00> : vector<128xf32>
       // CHECK: vector.transfer_write [[C3]], {{.*}} {permutation_map: #[[map_proj_d0d1_d1]]} : vector<128xf32>, memref<?x?xf32>
       // non-scoped %f2
       store %f2, %B[%i2, %i3] : memref<?x?xf32, 0>
@@ -105,9 +105,9 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
       // CHECK: [[A5:%.*]] = vector.transfer_read %0[{{.*}}] {permutation_map: #[[map_proj_d0d1_d1]]} : memref<?x?xf32>, vector<128xf32>
       // CHECK: [[B5:%.*]] = vector.transfer_read %1[{{.*}}] {permutation_map: #[[map_proj_d0d1_d1]]} : memref<?x?xf32>, vector<128xf32>
       // CHECK: [[S5:%.*]] = addf [[A5]], [[B5]] : vector<128xf32>
-      // CHECK: [[SPLAT1:%.*]] = constant dense<vector<128xf32>, 1.000000e+00>
+      // CHECK: [[SPLAT1:%.*]] = constant dense<1.000000e+00> : vector<128xf32>
       // CHECK: [[S6:%.*]] = addf [[S5]], [[SPLAT1]] : vector<128xf32>
-      // CHECK: [[SPLAT2:%.*]] = constant dense<vector<128xf32>, 2.000000e+00>
+      // CHECK: [[SPLAT2:%.*]] = constant dense<2.000000e+00> : vector<128xf32>
       // CHECK: [[S7:%.*]] = addf [[S5]], [[SPLAT2]] : vector<128xf32>
       // CHECK: [[S8:%.*]] = addf [[S7]], [[S6]] : vector<128xf32>
       // CHECK: vector.transfer_write [[S8]], {{.*}} {permutation_map: #[[map_proj_d0d1_d1]]} : vector<128xf32>, memref<?x?xf32>

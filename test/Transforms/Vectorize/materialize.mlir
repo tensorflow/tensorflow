@@ -9,7 +9,7 @@
 // CHECK-LABEL: func @materialize
 func @materialize(%M : index, %N : index, %O : index, %P : index) {
   %A = alloc (%M, %N, %O, %P) : memref<?x?x?x?xf32, 0>
-  %f1 = constant dense<vector<4x4x4xf32>, 1.000000e+00>
+  %f1 = constant dense<1.000000e+00> : vector<4x4x4xf32>
   // CHECK:  affine.for %i0 = 0 to %arg0 step 4 {
   // CHECK-NEXT:    affine.for %i1 = 0 to %arg1 step 4 {
   // CHECK-NEXT:      affine.for %i2 = 0 to %arg2 {

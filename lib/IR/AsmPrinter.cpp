@@ -689,30 +689,27 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
   }
   case StandardAttributes::OpaqueElements: {
     auto eltsAttr = attr.cast<OpaqueElementsAttr>();
-    os << "opaque<";
-    os << '"' << eltsAttr.getDialect()->getNamespace() << "\", ";
+    os << "opaque<\"" << eltsAttr.getDialect()->getNamespace() << "\", ";
+    os << '"' << "0x" << llvm::toHex(eltsAttr.getValue()) << "\"> : ";
     printType(eltsAttr.getType());
-    os << ", " << '"' << "0x" << llvm::toHex(eltsAttr.getValue()) << '"' << '>';
     break;
   }
   case StandardAttributes::DenseElements: {
     auto eltsAttr = attr.cast<DenseElementsAttr>();
     os << "dense<";
-    printType(eltsAttr.getType());
-    os << ", ";
     printDenseElementsAttr(eltsAttr);
-    os << '>';
+    os << "> : ";
+    printType(eltsAttr.getType());
     break;
   }
   case StandardAttributes::SparseElements: {
     auto elementsAttr = attr.cast<SparseElementsAttr>();
     os << "sparse<";
-    printType(elementsAttr.getType());
-    os << ", ";
     printDenseElementsAttr(elementsAttr.getIndices());
     os << ", ";
     printDenseElementsAttr(elementsAttr.getValues());
-    os << '>';
+    os << "> : ";
+    printType(elementsAttr.getType());
     break;
   }
 

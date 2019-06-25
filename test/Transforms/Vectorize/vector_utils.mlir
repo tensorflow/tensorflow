@@ -13,17 +13,17 @@ func @vector_add_2d(%arg0: index, %arg1: index) -> f32 {
   %cst = constant 1.000000e+00 : f32
 
   // CHECK:matched: {{.*}} constant dense{{.*}} with shape ratio: 2, 32
-  %cst_1 = constant dense<vector<8x256xf32>, 1.000000e+00>
+  %cst_1 = constant dense<1.000000e+00> : vector<8x256xf32>
   // CHECK:matched: {{.*}} constant dense{{.*}} with shape ratio: 1, 3, 7, 2, 1
-  %cst_a = constant dense<vector<1x3x7x8x8xf32>, 1.000000e+00>
+  %cst_a = constant dense<1.000000e+00> : vector<1x3x7x8x8xf32>
   // CHECK-NOT:matched: {{.*}} constant dense{{.*}} with shape ratio: 1, 3, 7, 1{{.*}}
-  %cst_b = constant dense<vector<1x3x7x4x4xf32>, 1.000000e+00>
+  %cst_b = constant dense<1.000000e+00> : vector<1x3x7x4x4xf32>
   // TEST-3x4x5x8:matched: {{.*}} constant dense{{.*}} with shape ratio: 3, 2, 1, 4
-  %cst_c = constant dense<vector<3x4x5x8xf32>, 1.000000e+00>
+  %cst_c = constant dense<1.000000e+00> : vector<3x4x5x8xf32>
   // TEST-3x4x4x8-NOT:matched: {{.*}} constant dense{{.*}} with shape ratio{{.*}}
-  %cst_d = constant dense<vector<3x4x4x8xf32>, 1.000000e+00>
+  %cst_d = constant dense<1.000000e+00> : vector<3x4x4x8xf32>
   // TEST-3x4x4x8:matched: {{.*}} constant dense{{.*}} with shape ratio: 1, 1, 2, 16
-  %cst_e = constant dense<vector<1x2x10x32xf32>, 1.000000e+00>
+  %cst_e = constant dense<1.000000e+00> : vector<1x2x10x32xf32>
 
   // Nothing should be matched in this last block.
   // CHECK-NOT:matched: {{.*}} = constant 7{{.*}}

@@ -27,15 +27,15 @@ func @validStatisticsRef(%arg0: tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
 // CHECK-LABEL: validStatistics
 func @validStatistics(%arg0: tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
   %0 = "quant.stats"(%arg0) {
-    layerStats: dense<tensor<2xf32>, [-1.0, 1.0]>
+    layerStats: dense<[-1.0, 1.0]> : tensor<2xf32>
   } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
   %1 = "quant.stats"(%0) {
-    layerStats: dense<tensor<2xf32>, [-1.0, 1.0]>,
-    axisStats: dense<tensor<3x2xf32>, [
+    layerStats: dense<[-1.0, 1.0]> : tensor<2xf32>,
+    axisStats: dense<[
       [-1.0, 1.0],
       [-8.0, 8.0],
       [-0.5, 0.5]
-    ]>
+    ]> : tensor<3x2xf32>
   } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
   return %1 : tensor<8x4x3xf32>
 }

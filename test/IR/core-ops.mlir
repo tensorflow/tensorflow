@@ -93,14 +93,14 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
   // CHECK: %f_2 = constant @affine_apply : () -> ()
   %12 = constant @affine_apply : () -> ()
 
-  // CHECK: %cst_3 = constant dense<vector<4xi32>, 0>
-  %13 = constant dense<vector<4 x i32>, 0>
+  // CHECK: %cst_3 = constant dense<0> : vector<4xi32>
+  %13 = constant dense<0> : vector<4 x i32>
 
-  // CHECK: %cst_4 = constant dense<tensor<42xi32>, 0>
-  %tci32 = constant dense<tensor<42 x i32>, 0>
+  // CHECK: %cst_4 = constant dense<0> : tensor<42xi32>
+  %tci32 = constant dense<0> : tensor<42 x i32>
 
-  // CHECK: %cst_5 = constant dense<vector<42xi32>, 0>
-  %vci32 = constant dense<vector<42 x i32>, 0>
+  // CHECK: %cst_5 = constant dense<0> : vector<42xi32>
+  %vci32 = constant dense<0> : vector<42 x i32>
 
   // CHECK: %{{[0-9]+}} = cmpi "eq", %{{[0-9]+}}, %{{[0-9]+}} : i32
   %14 = cmpi "eq", %i3, %i4 : i32
@@ -253,9 +253,9 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
   // CHECK: %{{[0-9]+}} = xor %cst_4, %cst_4 : tensor<42xi32>
   %63 = xor %tci32, %tci32 : tensor<42 x i32>
 
-  %64 = constant dense<vector<4 x f32>, 0.>
-  %tcf32 = constant dense<tensor<42 x f32>, 0.>
-  %vcf32 = constant dense<vector<4 x f32>, 0.>
+  %64 = constant dense<0.> : vector<4 x f32>
+  %tcf32 = constant dense<0.> : tensor<42 x f32>
+  %vcf32 = constant dense<0.> : vector<4 x f32>
 
   // CHECK: %{{[0-9]+}} = cmpf "ogt", %{{[0-9]+}}, %{{[0-9]+}} : f32
   %65 = cmpf "ogt", %f3, %f4 : f32

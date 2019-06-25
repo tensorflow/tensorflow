@@ -37,10 +37,10 @@ func @simple_addf() -> f32 {
 
 // CHECK-LABEL: func @addf_splat_tensor
 func @addf_splat_tensor() -> tensor<4xf32> {
-  %0 = constant dense<tensor<4xf32>, 4.5>
-  %1 = constant dense<tensor<4xf32>, 1.5>
+  %0 = constant dense<4.5> : tensor<4xf32>
+  %1 = constant dense<1.5> : tensor<4xf32>
 
-  // CHECK-NEXT: %cst = constant dense<tensor<4xf32>, 6.000000e+00>
+  // CHECK-NEXT: %cst = constant dense<6.000000e+00> : tensor<4xf32>
   %2 = addf %0, %1 : tensor<4xf32>
 
   // CHECK-NEXT: return %cst
@@ -65,10 +65,10 @@ func @simple_addi() -> i32 {
 
 // CHECK-LABEL: func @addi_splat_vector
 func @addi_splat_vector() -> vector<8xi32> {
-  %0 = constant dense<vector<8xi32>, 1>
-  %1 = constant dense<vector<8xi32>, 5>
+  %0 = constant dense<1> : vector<8xi32>
+  %1 = constant dense<5> : vector<8xi32>
 
-  // CHECK-NEXT: %cst = constant dense<vector<8xi32>, 6>
+  // CHECK-NEXT: %cst = constant dense<6> : vector<8xi32>
   %2 = addi %0, %1 : vector<8xi32>
 
   // CHECK-NEXT: return %cst
@@ -93,10 +93,10 @@ func @simple_subf() -> f32 {
 
 // CHECK-LABEL: func @subf_splat_vector
 func @subf_splat_vector() -> vector<4xf32> {
-  %0 = constant dense<vector<4xf32>, 4.5>
-  %1 = constant dense<vector<4xf32>, 1.5>
+  %0 = constant dense<4.5> : vector<4xf32>
+  %1 = constant dense<1.5> : vector<4xf32>
 
-  // CHECK-NEXT: %cst = constant dense<vector<4xf32>, 3.000000e+00>
+  // CHECK-NEXT: %cst = constant dense<3.000000e+00> : vector<4xf32>
   %2 = subf %0, %1 : vector<4xf32>
 
   // CHECK-NEXT: return %cst
@@ -121,10 +121,10 @@ func @simple_subi() -> i32 {
 
 // CHECK-LABEL: func @subi_splat_tensor
 func @subi_splat_tensor() -> tensor<4xi32> {
-  %0 = constant dense<tensor<4xi32>, 4>
-  %1 = constant dense<tensor<4xi32>, 1>
+  %0 = constant dense<4> : tensor<4xi32>
+  %1 = constant dense<1> : tensor<4xi32>
 
-  // CHECK-NEXT: %cst = constant dense<tensor<4xi32>, 3>
+  // CHECK-NEXT: %cst = constant dense<3> : tensor<4xi32>
   %2 = subi %0, %1 : tensor<4xi32>
 
   // CHECK-NEXT: return %cst
@@ -171,10 +171,10 @@ func @simple_mulf() -> f32 {
 
 // CHECK-LABEL: func @mulf_splat_tensor
 func @mulf_splat_tensor() -> tensor<4xf32> {
-  %0 = constant dense<tensor<4xf32>, 4.5>
-  %1 = constant dense<tensor<4xf32>, 1.5>
+  %0 = constant dense<4.5> : tensor<4xf32>
+  %1 = constant dense<1.5> : tensor<4xf32>
 
-  // CHECK-NEXT: %cst = constant dense<tensor<4xf32>, 6.750000e+00>
+  // CHECK-NEXT: %cst = constant dense<6.750000e+00> : tensor<4xf32>
   %2 = mulf %0, %1 : tensor<4xf32>
 
   // CHECK-NEXT: return %cst
@@ -277,10 +277,10 @@ func @muli() -> i32 {
 
 // CHECK-LABEL: func @muli_splat_vector
 func @muli_splat_vector() -> vector<4xi32> {
-  %0 = constant dense<vector<4xi32>, 4>
-  %1 = constant dense<vector<4xi32>, 2>
+  %0 = constant dense<4> : vector<4xi32>
+  %1 = constant dense<2> : vector<4xi32>
 
-  // CHECK-NEXT: %cst = constant dense<vector<4xi32>, 8>
+  // CHECK-NEXT: %cst = constant dense<8> : vector<4xi32>
   %2 = muli %0, %1 : vector<4xi32>
 
   // CHECK-NEXT: return %cst
@@ -399,22 +399,22 @@ func @fold_extract_element(%arg0 : index) -> (f32, f16, f16, i32) {
 
   // Fold an extract into a splat.
   // CHECK-NEXT: {{.*}} = constant 4.500000e+00 : f32
-  %0 = constant dense<tensor<4xf32>, 4.5>
+  %0 = constant dense<4.5> : tensor<4xf32>
   %ext_1 = extract_element %0[%arg0] : tensor<4xf32>
 
   // Fold an extract into a sparse with a sparse index.
   // CHECK-NEXT: {{.*}} = constant -2.000000e+00 : f16
-  %1 = constant sparse<vector<1x1x1xf16>, [[0, 0, 0], [1, 1, 1]],  [-5.0, -2.0]>
+  %1 = constant sparse<[[0, 0, 0], [1, 1, 1]],  [-5.0, -2.0]> : vector<1x1x1xf16>
   %ext_2 = extract_element %1[%const_1, %const_1, %const_1] : vector<1x1x1xf16>
 
   // Fold an extract into a sparse with a non sparse index.
   // CHECK-NEXT: {{.*}} = constant 0.000000e+00 : f16
-  %2 = constant sparse<vector<1x1x1xf16>, [[1, 1, 1]],  [-2.0]>
+  %2 = constant sparse<[[1, 1, 1]],  [-2.0]> : vector<1x1x1xf16>
   %ext_3 = extract_element %2[%const_0, %const_0, %const_0] : vector<1x1x1xf16>
 
   // Fold an extract into a dense tensor.
   // CHECK-NEXT: {{.*}} = constant 64 : i32
-  %3 = constant dense<tensor<2x1x4xi32>, [[[1, -2, 1, 36]], [[0, 2, -1, 64]]]>
+  %3 = constant dense<[[[1, -2, 1, 36]], [[0, 2, -1, 64]]]> : tensor<2x1x4xi32>
   %ext_4 = extract_element %3[%const_1, %const_0, %const_3] : tensor<2x1x4xi32>
 
   // CHECK-NEXT: return
@@ -425,7 +425,7 @@ func @fold_extract_element(%arg0 : index) -> (f32, f16, f16, i32) {
 
 // CHECK-LABEL: func @fold_rank
 func @fold_rank() -> (index) {
-  %const_0 = constant dense<tensor<2x1x4xi32>, [[[1, -2, 1, 36]], [[0, 2, -1, 64]]]>
+  %const_0 = constant dense<[[[1, -2, 1, 36]], [[0, 2, -1, 64]]]> : tensor<2x1x4xi32>
 
   // Fold a rank into a constant
   // CHECK-NEXT: {{.*}} = constant 3 : index
