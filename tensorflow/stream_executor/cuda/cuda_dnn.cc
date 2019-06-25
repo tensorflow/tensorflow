@@ -642,6 +642,13 @@ bool RequireDeterminism() {
   return is_enabled;
 }
 
+std::tuple<int, int> get_cc_major_minor(Stream* stream) {
+  int cc_major, cc_minor;
+  stream->parent()->GetDeviceDescription().cuda_compute_capability(&cc_major,
+                                                                   &cc_minor);
+  return std::make_tuple(cc_major, cc_minor);
+}
+
 // Turns a ConvolutionDescriptor structure into a cudnn convolution handle
 // within a scope.
 class CudnnConvolutionDescriptor {
@@ -2487,6 +2494,10 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
   return scratch_allocator->AllocateBytes(stream, size_in_bytes);
 }
 
+inline bool TensorOpMathAvailable(int cc_major) {
+  return cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled();
+}
+
 port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
     Stream* stream, const CudnnHandle& cudnn,
     const dnn::AlgorithmConfig& algorithm_config,
@@ -2507,7 +2518,10 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
                         GetCudnnConvolutionForwardAlgo(
                             cudnn, input_nd, filter, conv, output_nd,
                             specify_workspace_limit, memory_limit_bytes));
-    algo_desc = dnn::AlgorithmDesc(algo, /*use_tensor_ops=*/true);
+    int cc_major, cc_minor;
+    std::tie(cc_major, cc_minor) = get_cc_major_minor(stream);
+    algo_desc =
+        dnn::AlgorithmDesc(algo, /*use_tensor_ops=*/TensorOpMathAvailable(cc_major));
   }
 
   const auto scratch_or = AllocateCudnnConvolutionForwardWorkspace(
@@ -2556,7 +2570,10 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
                         GetCudnnConvolutionBackwardDataAlgo(
                             cudnn, input_nd, filter, conv, output_nd,
                             specify_workspace_limit, memory_limit_bytes));
-    algo_desc = dnn::AlgorithmDesc(algo, /*use_tensor_ops=*/true);
+    int cc_major, cc_minor;
+    std::tie(cc_major, cc_minor) = get_cc_major_minor(stream);
+    algo_desc =
+        dnn::AlgorithmDesc(algo, /*use_tensor_ops=*/TensorOpMathAvailable(cc_major));
   }
 
   const auto scratch_or = AllocateCudnnConvolutionBackwardDataWorkspace(
@@ -2605,7 +2622,10 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
                         GetCudnnConvolutionBackwardFilterAlgo(
                             cudnn, input_nd, filter, conv, output_nd,
                             specify_workspace_limit, memory_limit_bytes));
-    algo_desc = dnn::AlgorithmDesc(algo, /*use_tensor_ops=*/true);
+    int cc_major, cc_minor;
+    std::tie(cc_major, cc_minor) = get_cc_major_minor(stream);
+    algo_desc =
+        dnn::AlgorithmDesc(algo, /*use_tensor_ops=*/TensorOpMathAvailable(cc_major));
   }
 
   auto scratch_or = AllocateCudnnConvolutionBackwardFilterWorkspace(
@@ -2847,6 +2867,8 @@ port::Status CudnnSupport::DoConvolve(
   auto accumulator_type = GetConvAccumulatorType(element_type);
   CudnnConvolutionDescriptor conv(convolution_descriptor,
                                   ToCudnnDataType(accumulator_type));
+  // Set use_tensor_math param to correct value
+  conv.set_use_tensor_op_math(algorithm_desc.tensor_ops_enabled());
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   // Alpha is the scaling factor for input.
@@ -3069,6 +3091,14 @@ port::Status CudnnSupport::DoConvolve(
   return port::Status::OK();
 }
 
+// A helper function to query if a CudnnConvolutionDescriptor has tensor_op_math
+// set
+inline bool IsTensorMathOpSet(const CudnnConvolutionDescriptor& conv) {
+  cudnnMathType_t math_type;
+  CHECK_CUDNN_OK(cudnnGetConvolutionMathType(conv.handle(), &math_type));
+  return math_type == CUDNN_TENSOR_OP_MATH;
+}
+
 template <typename ElementType, typename BiasType, typename ScaleType>
 port::Status CudnnSupport::DoFusedConvolveImpl(
     Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
@@ -3159,6 +3189,12 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
                         "This configuration has potential integer overflow in "
                         "cuDNNv5 and cuDNNv6. See around b/68264959.");
   }
+  if (IsTensorMathOpSet(conv) != algo_desc.tensor_ops_enabled()) {
+    return port::Status(
+        port::error::FAILED_PRECONDITION,
+        "Tensor op math type in the algorithm descriptor should "
+        "match that of the cudnn convolution descriptor");
+  }
 
   RETURN_IF_CUDNN_ERROR(cudnnConvolutionBiasActivationForward(
       cudnn.handle(),
@@ -3184,10 +3220,6 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
   }
 
   return port::Status::OK();
-}
-
-inline bool TensorOpMathAvailable(int cc_major) {
-  return cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled();
 }
 
 bool CudnnSupport::GetConvolveAlgorithms(
@@ -3730,8 +3762,8 @@ bool CudnnSupport::DoFusedConvolve(
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
   int cc_major, cc_minor;
-  stream->parent()->GetDeviceDescription().cuda_compute_capability(&cc_major,
-                                                                   &cc_minor);
+  std::tie(cc_major, cc_minor) = get_cc_major_minor(stream);
+
   if (cc_major < 6 || (cc_major == 6 && cc_minor < 1)) {
     LOG(WARNING) << "cudnnConvolutionBiasActivationForward() for int8 is only "
                     "supported on GPUs with compute capability 6.1 or later.";
