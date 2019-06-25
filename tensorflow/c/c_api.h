@@ -1293,7 +1293,7 @@ TF_CAPI_EXPORT extern void TF_SessionPRunSetup(
 TF_CAPI_EXPORT extern void TF_SessionPRun(
     TF_Session*, const char* handle,
     // Input tensors
-    const TF_Output* inputs, TF_Tensor* const* input_values, int ninputs,
+    const TF_Input* inputs, TF_Tensor* const* input_values, int ninputs,
     // Output tensors
     const TF_Output* outputs, TF_Tensor** output_values, int noutputs,
     // Target operations
