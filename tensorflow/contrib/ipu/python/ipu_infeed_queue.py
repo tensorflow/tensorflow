@@ -115,7 +115,7 @@ class IPUInfeedQueue:
 
     """
 
-    for output_shape in dataset_ops.flat_structure(dataset)["output_shapes"]:
+    for output_shape in dataset._flat_structure["output_shapes"]:
       if isinstance(output_shape, list) or isinstance(output_shape, tuple):
         raise ValueError("Nested list/tuple input shapes are not supported")
       if not output_shape.is_fully_defined():
@@ -126,7 +126,6 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
       self._replication_factor = replication_factor
       self._dataset = dataset
       self._structure = dataset_ops.get_structure(dataset)
-      self._flat_structure = dataset_ops.flat_structure(self._dataset)
       # Batch the dataset to take replication into account.
       if self._replication_factor > 1:
         self._dataset = self._dataset.batch(
@@ -146,7 +145,7 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
           input_dataset=ds_variant,
           feed_id=self._id,
           device_ordinal=device_ordinal,
-          **dataset_ops.flat_structure(self._dataset))
+          **self._dataset._flat_structure)
 
     self._dequeued = False
     self._initialized = False
@@ -164,7 +163,7 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
     flat_ret = gen_pop_datastream_ops.pop_datastream_infeed_dequeue(
         feed_id=self._id,
         replication_factor=self._replication_factor,
-        **self._flat_structure)
+        **self._dataset._flat_structure)
     self._dequeued = True
     return structure.from_tensor_list(self._structure, flat_ret)
 
