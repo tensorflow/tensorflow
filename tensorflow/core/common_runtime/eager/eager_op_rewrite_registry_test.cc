@@ -26,7 +26,7 @@ class TestEagerOpRewrite : public EagerOpRewrite {
     ++count_;
     const tensorflow::AttrTypeMap* types;
     bool is_function = false;
-    string kNewOp = "NoOp";
+    const string kNewOp = "NoOp";
     TF_RETURN_IF_ERROR(
         tensorflow::AttrTypeMapForOp(kNewOp.c_str(), &types, &is_function));
     // Create a new NoOp Eager operation.
