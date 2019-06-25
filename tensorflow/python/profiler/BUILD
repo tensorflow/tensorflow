@@ -59,6 +59,7 @@ cuda_py_test(
     ],
     tags = [
         "no_pip",
+        "notap",
         "oss_serial",
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
