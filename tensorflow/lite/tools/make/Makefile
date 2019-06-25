@@ -238,9 +238,14 @@ BENCHMARK_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cpp,%.o,$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(BENCHMARK_SRCS)))))
 
 # For normal manually-created TensorFlow Lite C++ source files.
-$(OBJDIR)%.o: %.cc %.cpp
+$(OBJDIR)%.o: %.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(OBJDIR)%.o: %.cc
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
 # For normal manually-created TensorFlow Lite C source files.
 $(OBJDIR)%.o: %.c
 	@mkdir -p $(dir $@)
