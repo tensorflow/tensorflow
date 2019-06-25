@@ -3527,7 +3527,7 @@ cuda_py_test(
     ],
     # TODO(b/127344411): This test passes because XLA does not actually cluster
     # the svd op.
-    xla_enable_strict_auto_jit = True,
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
