@@ -1619,12 +1619,16 @@ class ModelInputs(object):
         # we have. The user should call `model._set_inputs(placeholders)`
         # to specify custom placeholders if the need arises.
         shape = (None,) + tuple(v.shape[1:])
+        if shape == (None,):
+          shape = (None, 1)
         dtype = dtypes.as_dtype(v.dtype)
         if dtype.is_floating:
           dtype = K.floatx()
         v = K.placeholder(shape=shape, name=k, dtype=dtype)
       elif isinstance(v, tensor_spec.TensorSpec):
         shape = (None,) + tuple(v.shape.as_list()[1:])
+        if shape == (None,):
+          shape = (None, 1)
         v = K.placeholder(shape=shape, name=k, dtype=v.dtype)
 
       self._flattened_inputs[i] = v
