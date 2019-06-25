@@ -16,22 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_CPU_CHECK_H_
 
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
-
-#if defined(__ARM_NEON__) || defined(__ARM_NEON)
-#define USE_NEON
-#include <arm_neon.h>
-#endif  // __ARM_NEON
-
-#if defined __GNUC__ && defined __SSE4_1__ && !defined TF_LITE_DISABLE_X86_NEON
-#define USE_NEON
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#pragma GCC diagnostic ignored "-Wattributes"
-#pragma GCC diagnostic ignored "-Wnarrowing"
-#pragma GCC diagnostic ignored "-Wsequence-point"
-#include "NEON_2_SSE.h"
-#pragma GCC diagnostic pop
-#endif  // __SSE4_1__
+#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 
 namespace tflite {
 
@@ -48,17 +33,5 @@ inline void GetCpuFlags(CpuBackendContext* cpu_backend_context,
 }
 
 }  // namespace tflite
-
-// NEON_OR_PORTABLE(SomeFunc, args) calls NeonSomeFunc(args) if USE_NEON is
-// defined, PortableSomeFunc(args) otherwise.
-#ifdef USE_NEON
-// Always use Neon code
-#define NEON_OR_PORTABLE(funcname, ...) Neon##funcname(__VA_ARGS__)
-
-#else
-// No NEON available: Use Portable code
-#define NEON_OR_PORTABLE(funcname, ...) Portable##funcname(__VA_ARGS__)
-
-#endif  // defined(USE_NEON)
 
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_CPU_CHECK_H_

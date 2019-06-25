@@ -807,6 +807,7 @@ cc_library(
     name = "cpu_check",
     hdrs = [
         "optimized/cpu_check.h",
+        "optimized/neon_check.h",
     ],
     deps = [
         "//tensorflow/lite/kernels:cpu_backend_context",
