@@ -16,7 +16,7 @@ custom optimizations.
 
 We show in this chapter how to leverage the Toy Dialect and its high-level
 semantics to perform transformations that would be difficult in LLVM: first a
-simple combine of two redundant operations, and second a full inteprocedural
+simple combine of two redundant operations, and second a full interprocedural
 shape inference with function specialization.
 
 # Basic Optimization: Eliminate Redundant Transpose
@@ -195,8 +195,8 @@ MLIR also supports `FunctionPass`es which are restricted to modify a single
 function at a time. This pass couldn't be a function pass due the nature of its
 interprocedural transformations.
 
-Implementing a such pass is creating a class inheriting from `mlir::ModulePass`
-and overriding the `runOnModule()` method:
+Implementing such a pass is done by creating a class inheriting from
+`mlir::ModulePass` and overriding the `runOnModule()` method:
 
 ```
 class ShapeInferencePass : public mlir::ModulePass<ShapeInferencePass> {
