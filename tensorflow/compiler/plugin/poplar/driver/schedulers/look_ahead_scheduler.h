@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_SCHEDULERS_LOOK_AHEAD_SCHEDULER_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_SCHEDULERS_LOOK_AHEAD_SCHEDULER_H_
 
-#include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
+#include "tensorflow/compiler/plugin/poplar/driver/schedulers/ipu_scheduler.h"
 
 namespace xla {
 namespace poplarplugin {
@@ -24,7 +24,7 @@ struct CompilerInformation;
 
 // Scheduler which will look ahead and queue large chunks of the graph at a
 // time.
-MemorySchedulerAlgorithm CreateLookAheadMemoryScheduler(
+IpuSchedulerAlgorithm CreateLookAheadMemoryScheduler(
     const CompilerInformation& information);
 
 }  // namespace poplarplugin

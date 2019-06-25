@@ -564,8 +564,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         resources.information.max_inter_ipu_copies_buffer_size > 0) {
       pipeline.AddPass<IpuScheduler>(
           SizeFunction,
-          MemorySchedulerAlgorithmToIPU(
-              CreateLookAheadMemoryScheduler(resources.information)));
+          CreateLookAheadMemoryScheduler(resources.information));
       pipeline.AddPass<CombineInstructions>();
       pipeline.AddPass<HloDescheduler>();
     }
@@ -573,8 +572,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     TF_ASSIGN_OR_RETURN(
         auto scheduler,
         BestIpuSchedule(
-            MemorySchedulerAlgorithmToIPU(
-                CreateLookAheadMemoryScheduler(resources.information)),
+            CreateLookAheadMemoryScheduler(resources.information),
             MemorySchedulerAlgorithmToIPU(PostOrderMemoryScheduler)));
 
     pipeline.AddPass<IpuScheduler>(SizeFunction, scheduler);

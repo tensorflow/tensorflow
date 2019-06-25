@@ -48,6 +48,16 @@ IpuSchedulerAlgorithm MemorySchedulerAlgorithmToIPU(
     MemorySchedulerAlgorithm algorithm);
 
 /**
+ * Convert an IpuSchedulerAlgorithm into a tensorflow MemorySchedulerAlgorithm
+ *
+ * @param algorithm The IpuSchedulerAlgorithm to convert
+ *
+ * @returns a valid MemorySchedulerAlgorithm, or a failure status
+ */
+MemorySchedulerAlgorithm IpuToMemorySchedulerAlgorithm(
+    IpuSchedulerAlgorithm algorithm);
+
+/**
  * Given two scheduling algorithms, create a new schedule algorithm which will
  * return the best of the given scheduling algorithms.
  *

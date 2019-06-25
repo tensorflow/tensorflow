@@ -42,10 +42,12 @@ namespace {
 
 StatusOr<HloSchedule> IpuScheduleModule(
     HloModule* module, const LogicalBuffer::SizeFunction& size_function,
-    const MemorySchedulerAlgorithm& algorithm) {
+    const IpuSchedulerAlgorithm& algorithm) {
   HloSchedule schedule(module);
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(module));
+  std::unique_ptr<HloAliasAnalysis> alias_analysis =
+      HloAliasAnalysis::NewEmptyAnalysis(module);
   absl::flat_hash_map<const HloComputation*, int64> memory_by_computation;
   for (auto* computation : module->MakeComputationPostOrder()) {
     if (!computation->IsFusionComputation()) {
@@ -55,7 +57,7 @@ StatusOr<HloSchedule> IpuScheduleModule(
       TF_ASSIGN_OR_RETURN(
           auto bytes,
           HeapSimulator::MinimumMemoryForComputation(
-              *computation, computation_sequence, *points_to_analysis,
+              *computation, computation_sequence, *alias_analysis,
               size_function, &memory_by_computation));
 
       memory_by_computation[computation] = bytes;
@@ -72,7 +74,29 @@ StatusOr<HloSchedule> IpuScheduleModule(
 
 IpuSchedulerAlgorithm MemorySchedulerAlgorithmToIPU(
     MemorySchedulerAlgorithm algorithm) {
-  return algorithm;  // A translation layer that might be useful in the future.
+  return [algorithm](HloComputation* computation,
+                     const TuplePointsToAnalysis& points_to_analysis,
+                     const LogicalBuffer::SizeFunction& size_function,
+                     const absl::flat_hash_map<const HloComputation*, int64>&
+                        memory_by_computation) {
+    std::unique_ptr<HloAliasAnalysis> alias_analysis =
+        HloAliasAnalysis::NewEmptyAnalysis(computation->parent());
+    return algorithm(computation, points_to_analysis, *alias_analysis,
+                     size_function, memory_by_computation);
+  };
+}
+
+MemorySchedulerAlgorithm IpuToMemorySchedulerAlgorithm(
+    IpuSchedulerAlgorithm algorithm) {
+  return [algorithm](HloComputation* computation,
+                     const TuplePointsToAnalysis& points_to_analysis,
+                     const HloAliasAnalysis& alias_analysis,
+                     const LogicalBuffer::SizeFunction& size_function,
+                     const absl::flat_hash_map<const HloComputation*, int64>&
+                     memory_by_computation) {
+    return algorithm(computation, points_to_analysis, size_function,
+                     memory_by_computation);
+  };
 }
 
 StatusOr<IpuSchedulerAlgorithm> BestIpuSchedule(
@@ -98,6 +122,9 @@ StatusOr<IpuSchedulerAlgorithm> BestIpuSchedule(
           const LogicalBuffer::SizeFunction& size_function,
           const absl::flat_hash_map<const HloComputation*, int64>&
               memory_by_computation) -> StatusOr<HloInstructionSequence> {
+        std::unique_ptr<HloAliasAnalysis> alias_analysis =
+            HloAliasAnalysis::NewEmptyAnalysis(computation->parent());
+
         auto schedule_a_status =
             algorithm_a(computation, tuple_points_to_analysis, size_function,
                         memory_by_computation);
@@ -132,14 +159,14 @@ StatusOr<IpuSchedulerAlgorithm> BestIpuSchedule(
         TF_ASSIGN_OR_RETURN(
             const int64 schedule_a_memory,
             HeapSimulator::MinimumMemoryForComputation(
-                *computation, schedule_a, tuple_points_to_analysis,
-                size_function, &memory_by_computation));
+                *computation, schedule_a, *alias_analysis, size_function,
+                &memory_by_computation));
 
         TF_ASSIGN_OR_RETURN(
             const int64 schedule_b_memory,
             HeapSimulator::MinimumMemoryForComputation(
-                *computation, schedule_b, tuple_points_to_analysis,
-                size_function, &memory_by_computation));
+                *computation, schedule_b, *alias_analysis, size_function,
+                &memory_by_computation));
 
         // If schedule A is better than B, return A
         if (schedule_a_memory < schedule_b_memory) {

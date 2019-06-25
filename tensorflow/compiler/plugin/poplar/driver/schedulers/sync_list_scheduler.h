@@ -15,26 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_SCHEDULERS_SYNC_LIST_SCHEDULER_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_SCHEDULERS_SYNC_LIST_SCHEDULER_H_
 
-#include <vector>
-
-#include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_ordering.h"
-#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/compiler/xla/service/hlo_schedule.h"
-#include "tensorflow/compiler/xla/service/logical_buffer.h"
-#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/plugin/poplar/driver/schedulers/ipu_scheduler.h"
 
 namespace xla {
 namespace poplarplugin {
 
 // Sync aware list scheduler based on the TF ListMemoryScheduler from
 // hlo_memory_scheduler
-MemorySchedulerAlgorithm CreateSyncListMemoryScheduler(
+IpuSchedulerAlgorithm CreateSyncListMemoryScheduler(
     int64 maxmimum_all_reduce_buffer_size = 0);
 
 }  // namespace poplarplugin
