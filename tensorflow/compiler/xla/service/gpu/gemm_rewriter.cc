@@ -41,7 +41,7 @@ static double GetScalarConstantAsDouble(const Literal &literal) {
     case F64:
       return literal.Get<double>({});
     default:
-      LOG(FATAL) << "Unsupported type.";
+      LOG(FATAL) << "Unsupported type: " << literal.shape();
   }
 }
 
@@ -95,13 +95,16 @@ class GemmRewriterVisitor : public DfsHloVisitorWithDefault {
                   m::Broadcast(m::ConstantScalar(&alpha))))) {
       TF_ASSIGN_OR_RETURN(auto config,
                           existing_gemm->backend_config<GemmBackendConfig>());
-      double prev_alpha = config.alpha();
-      config.set_alpha(GetScalarConstantAsDouble(alpha->literal()) *
-                       prev_alpha);
-      TF_RETURN_IF_ERROR(existing_gemm->set_backend_config(config));
-      TF_RETURN_IF_ERROR(
-          instr->parent()->ReplaceInstruction(instr, existing_gemm));
-      changed_ = true;
+      if (config.beta() == 0.0 && existing_gemm->user_count() == 1 &&
+          ShapeUtil::ElementIsFloating(alpha->literal().shape())) {
+        double prev_alpha = config.alpha();
+        config.set_alpha(GetScalarConstantAsDouble(alpha->literal()) *
+                         prev_alpha);
+        TF_RETURN_IF_ERROR(existing_gemm->set_backend_config(config));
+        TF_RETURN_IF_ERROR(
+            instr->parent()->ReplaceInstruction(instr, existing_gemm));
+        changed_ = true;
+      }
     }
     return Status::OK();
   }
@@ -115,6 +118,7 @@ class GemmRewriterVisitor : public DfsHloVisitorWithDefault {
       auto config =
           existing_gemm->backend_config<GemmBackendConfig>().ValueOrDie();
       if (config.beta() == 0 && bias->user_count() == 1 &&
+          existing_gemm->user_count() == 1 &&
           bias->shape() == existing_gemm->shape()) {
         config.set_beta(1.0);
         CHECK_EQ(existing_gemm->operand_count(), 2);

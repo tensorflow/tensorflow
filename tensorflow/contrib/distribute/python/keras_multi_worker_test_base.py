@@ -80,7 +80,7 @@ class KerasIndependentWorkerTestBase(
                               num_ps=None,
                               **kwargs):
     cluster_spec = multi_worker_test_base.create_cluster_spec(
-        num_workers=num_workers, num_ps=num_ps, test_obj=self)
+        num_workers=num_workers, num_ps=num_ps)
     self._barrier = dc._Barrier(num_workers + (num_ps or 0))  # pylint: disable=protected-access
 
     def _worker_fn(**kwargs):

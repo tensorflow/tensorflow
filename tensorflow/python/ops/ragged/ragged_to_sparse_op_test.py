@@ -28,12 +28,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedTensorToSparseOpTest(ragged_test_util.RaggedTensorTestCase):
+class RaggedTensorToSparseOpTest(test_util.TensorFlowTestCase):
 
   def testDocStringExample(self):
     rt = ragged_factory_ops.constant([[1, 2, 3], [4], [], [5, 6]])
@@ -193,8 +192,8 @@ class RaggedTensorToSparseOpTest(ragged_test_util.RaggedTensorTestCase):
 
     g1, g2 = gradients_impl.gradients(st.values,
                                       [rt1.flat_values, rt2.flat_values])
-    self.assertRaggedEqual(g1, [[1.0, 1.0], [1.0, 1.0], [1.0, 1.0]])
-    self.assertRaggedEqual(g2, [[2.0, 2.0], [2.0, 2.0], [2.0, 2.0]])
+    self.assertAllEqual(g1, [[1.0, 1.0], [1.0, 1.0], [1.0, 1.0]])
+    self.assertAllEqual(g2, [[2.0, 2.0], [2.0, 2.0], [2.0, 2.0]])
 
 
 if __name__ == '__main__':

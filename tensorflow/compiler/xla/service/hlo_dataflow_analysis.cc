@@ -1126,11 +1126,13 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
 
   if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||
       user->opcode() == HloOpcode::kScatter ||
+      user->opcode() == HloOpcode::kTriangularSolve ||
       user->opcode() == HloOpcode::kWhile) {
-    // We eliminated other users in BufferLiveness::live_range_strictly_before,
-    // so here we just need to check that the use is at operand index 0.
+    // We eliminated other users in HloOrdering::LiveRangeStrictlyBefore
+    // so here we just need to check that the use is at the right operand index.
     std::vector<int64> operand_indices = user->OperandIndices(operand);
-    return operand_indices.size() == 1 && operand_indices[0] == 0;
+    int64 operand_no = user->opcode() == HloOpcode::kTriangularSolve ? 1 : 0;
+    return operand_indices.size() == 1 && operand_indices[0] == operand_no;
   }
   if (user->opcode() == HloOpcode::kSort) {
     // Only valid if there are no other users.

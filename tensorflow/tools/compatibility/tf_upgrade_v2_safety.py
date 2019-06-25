@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.tools.compatibility import all_renames_v2
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import module_deprecations_v2
 
@@ -33,6 +34,16 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.function_warnings = {}
     self.function_transformers = {}
     self.module_deprecations = module_deprecations_v2.MODULE_DEPRECATIONS
+
+    ## Inform about the addons mappings
+    for symbol, replacement in all_renames_v2.addons_symbol_mappings.items():
+      warning = (
+          ast_edits.WARNING, (
+              "(Manual edit required) `{}` has been migrated to `{}` in "
+              "TensorFlow Addons. The API spec may have changed during the "
+              "migration. Please see https://github.com/tensorflow/addons "
+              "for more info.").format(symbol, replacement))
+      self.function_warnings[symbol] = warning
 
     # List module renames. Right now, we just support renames from a module
     # names that don't contain '.'.

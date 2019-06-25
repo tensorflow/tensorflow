@@ -267,12 +267,12 @@ Status AddNewMapNode(const NodeDef& old_map_node, const NodeDef& old_batch_node,
 
   // Set the `num_parallel_calls` input argument
   if (old_map_node.op() != kMapOp) {
-    // `num_parallel_calls` = `kAutoTune`
+    // `num_parallel_calls` = `kAutotune`
     // TODO(rachelim): Evaluate the performance of other potential
     // transformations to `num_parallel_calls`,
     // e.g. ceil(old num_parallel_calls // batch size)
     auto autotune_val = graph_utils::AddScalarConstNode(
-        static_cast<int32>(data::model::kAutoTune), graph);
+        static_cast<int32>(data::model::kAutotune), graph);
     map_node.add_input(autotune_val->name());
   }
 
@@ -302,11 +302,11 @@ Status AddNewPrefetchNode(const NodeDef& old_prefetch_node,
   // `input_dataset`
   prefetch_node.add_input(new_map_node.name());
 
-  // `buffer_size` == `kAutoTune`
+  // `buffer_size` == `kAutotune`
   // TODO(rachelim): Evaluate the performance of other potential transformations
   // to `buffer_size`, e.g. ceil(old buffer size // batch size)
   auto autotune_val = graph_utils::AddScalarConstNode(
-      static_cast<int64>(data::model::kAutoTune), graph);
+      static_cast<int64>(data::model::kAutotune), graph);
   prefetch_node.add_input(autotune_val->name());
 
   for (const auto& key : {"output_shapes", "output_types"}) {

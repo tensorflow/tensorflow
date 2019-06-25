@@ -2428,6 +2428,7 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
 
 @tf_export("linalg.trace", v1=["linalg.trace", "trace"])
 @deprecation.deprecated_endpoints("trace")
+@dispatch.add_dispatch_support
 def trace(x, name=None):
   """Compute the trace of a tensor `x`.
 

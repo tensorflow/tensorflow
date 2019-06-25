@@ -400,7 +400,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([1 << 32, 1 << 36, 1 << 32, 1 << 36],
                             dtype=np.int64))
 
-
   def testNextAfter(self):
     for dtype in self.numeric_types:
       if dtype in [np.float32, np.float64]:
@@ -426,7 +425,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
             y,
             expected=expected,
             equality_test=NextAfterEqualityTest)
-
 
   def testComplexOps(self):
     for dtype in self.complex_types:

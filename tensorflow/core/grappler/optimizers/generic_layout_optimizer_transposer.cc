@@ -46,6 +46,8 @@ namespace {
 constexpr char kOptimizedSuffix[] = "LayoutOptimizer";
 constexpr char kAttrKSize[] = "ksize";
 constexpr char kAttrStrides[] = "strides";
+constexpr char kAttrDilations[] = "dilations";
+constexpr char kAttrExplicitPaddings[] = "explicit_paddings";
 constexpr char kAttrDataFormat[] = "data_format";
 constexpr char kAttrIsTraining[] = "is_training";
 constexpr char kAttrValue[] = "value";
@@ -210,6 +212,7 @@ Status Transposer::CreateConstPermNode(TransposeContext* context,
                                        absl::string_view node_name,
                                        absl::string_view device,
                                        absl::Span<const int> permutation,
+                                       absl::string_view control_node_name,
                                        utils::MutationNewNode* added_node) {
   auto* graph_view = context->graph_view.get();
   DCHECK(!graph_view->HasNode(node_name));
@@ -218,6 +221,10 @@ Status Transposer::CreateConstPermNode(TransposeContext* context,
   node.set_name(string(node_name));
   node.set_op(kOpConst);
   node.set_device(string(device));
+
+  if (!control_node_name.empty()) {
+    node.add_input(string(control_node_name));
+  }
 
   AttrValue attr_data_type;
   attr_data_type.set_type(DT_INT32);
@@ -262,7 +269,7 @@ Status Transposer::CreateTransposeNode(
   node.mutable_attr()->insert({"Tperm", attr_data_type_perm});
 
   if (!fanin_shape.unknown_rank()) {
-    TF_RETURN_IF_ERROR(Permute(permutation, fanin_shape.mutable_dim()));
+    TF_RETURN_IF_ERROR(PermuteSingle(permutation, fanin_shape.mutable_dim()));
     AttrValue attr_output_shape;
     *attr_output_shape.mutable_list()->add_shape() = fanin_shape;
     node.mutable_attr()->insert({kAttrOutputShape, attr_output_shape});
@@ -273,7 +280,8 @@ Status Transposer::CreateTransposeNode(
   const string const_perm_node_name =
       absl::Substitute(name_format, "PermConst");
   TF_RETURN_IF_ERROR(CreateConstPermNode(context, const_perm_node_name, device,
-                                         permutation, &const_perm_added_node));
+                                         permutation, control_node_name,
+                                         &const_perm_added_node));
   // Add place holder for 1st input.
   node.add_input("");
   // Connect const_perm_node to 2nd input of transpose_node.
@@ -289,6 +297,7 @@ Status Transposer::UpdateFaninEdgesWithOp(TransposeContext* context,
                                           absl::Span<const int> dst_ports,
                                           utils::MutableNodeView* dst_node,
                                           absl::string_view op) {
+  const bool is_in_frame = context->frames.IsInFrame(*dst_node->node());
   for (int dst_port : dst_ports) {
     auto& fanin_port = dst_node->GetRegularFanin(dst_port);
     auto* fanin_node_view = fanin_port.node_view();
@@ -297,7 +306,7 @@ Status Transposer::UpdateFaninEdgesWithOp(TransposeContext* context,
         UpdateEdge(context,
                    GetFaninNameFormat(dst_node->GetName(), dst_port,
                                       context->src_format, context->dst_format),
-                   op, /*input_shape=*/nullptr,
+                   op, /*input_shape=*/nullptr, /*is_in_frame=*/is_in_frame,
                    /*is_src_format_to_dst_format=*/true, fanin_port.index(),
                    dst_port, fanin_node_view, dst_node));
   }
@@ -314,7 +323,7 @@ Status Transposer::UpdateFanoutEdgesWithOp(TransposeContext* context,
   if (op == kOpTranspose && output_shape_attr != nullptr) {
     shape_attr_copy = *output_shape_attr;
     for (int port : src_ports) {
-      TF_RETURN_IF_ERROR(Permute(
+      TF_RETURN_IF_ERROR(PermuteSingle(
           context->src_to_dst,
           shape_attr_copy.mutable_list()->mutable_shape(port)->mutable_dim()));
     }
@@ -322,6 +331,7 @@ Status Transposer::UpdateFanoutEdgesWithOp(TransposeContext* context,
         src_node, kAttrOutputShape, shape_attr_copy);
   }
 
+  const bool is_in_frame = context->frames.IsInFrame(*src_node->node());
   // We might modify the output set in the loop. Make a copy first.
   // Use a set with custom comparator to order output nodes by node name,
   // so that we can keep transposer name deterministic.
@@ -338,7 +348,7 @@ Status Transposer::UpdateFanoutEdgesWithOp(TransposeContext* context,
           GetFanoutNameFormat(src_node->GetName(), src_port,
                               num_downstream_transposers++, context->src_format,
                               context->dst_format),
-          op, &shape_attr_copy,
+          op, &shape_attr_copy, /*is_in_frame=*/is_in_frame,
           /*is_src_format_to_dst_format=*/false, src_port, fanout.index(),
           src_node, fanout.node_view()));
     }
@@ -393,7 +403,7 @@ Status Transposer::CreateDataFormatNode(
 
 Status Transposer::UpdateEdge(
     TransposeContext* context, absl::string_view name_format,
-    absl::string_view op, const AttrValue* input_shape,
+    absl::string_view op, const AttrValue* input_shape, bool is_in_frame,
     bool is_src_format_to_dst_format, const int src_port, const int dst_port,
     utils::MutableNodeView* src_node, utils::MutableNodeView* dst_node) {
   DCHECK(src_node != nullptr);
@@ -427,10 +437,7 @@ Status Transposer::UpdateEdge(
       }
     }
     const string control_node_name =
-        (context->frames.IsInFrame(*src_node_def) &&
-         context->frames.IsInFrame(*dst_node_def))
-            ? AsControlDependency(src_node_def->name())
-            : "";
+        is_in_frame ? AsControlDependency(src_node_def->name()) : "";
     const std::vector<int>& permutation =
         is_src_format_to_dst_format ? context->src_to_dst : context->dst_to_src;
     TF_RETURN_IF_ERROR(CreateTransposeNode(
@@ -552,22 +559,34 @@ Status LayoutSensitiveOpTransposer::UpdateNode(TransposeContext* context,
   data_format_attr.set_s(context->dst_format);
   mutation->AddOrUpdateNodeAttr(node, kAttrDataFormat, data_format_attr);
 
-  // Update attrs strides and ksize.
-  const auto* strides_attr = node->GetAttr(kAttrStrides);
-  if (strides_attr != nullptr) {
-    AttrValue strides_attr_copy(*strides_attr);
-    TF_RETURN_IF_ERROR(Permute(context->src_to_dst,
-                               strides_attr_copy.mutable_list()->mutable_i()));
-    mutation->AddOrUpdateNodeAttr(node, kAttrStrides, strides_attr_copy);
+  auto permute_attr = [&context, &node,
+                       &mutation](absl::string_view attr_name) {
+    const auto* attr = node->GetAttr(attr_name);
+    if (attr != nullptr) {
+      AttrValue attr_copy(*attr);
+      TF_RETURN_IF_ERROR(PermuteSingle(context->src_to_dst,
+                                       attr_copy.mutable_list()->mutable_i()));
+      mutation->AddOrUpdateNodeAttr(node, attr_name, attr_copy);
+    }
+    return Status::OK();
+  };
+
+  // Update attrs.
+  TF_RETURN_IF_ERROR(permute_attr(kAttrStrides));
+  TF_RETURN_IF_ERROR(permute_attr(kAttrKSize));
+  TF_RETURN_IF_ERROR(permute_attr(kAttrDilations));
+
+  const auto* explicit_paddings_attr = node->GetAttr(kAttrExplicitPaddings);
+  if (explicit_paddings_attr != nullptr && explicit_paddings_attr->has_list() &&
+      explicit_paddings_attr->list().i_size() > 0) {
+    AttrValue explicit_paddings_attr_copy(*explicit_paddings_attr);
+    TF_RETURN_IF_ERROR(
+        PermuteDouble(context->src_to_dst,
+                      explicit_paddings_attr_copy.mutable_list()->mutable_i()));
+    mutation->AddOrUpdateNodeAttr(node, kAttrExplicitPaddings,
+                                  explicit_paddings_attr_copy);
   }
 
-  const auto* ksize_attr = node->GetAttr(kAttrKSize);
-  if (ksize_attr != nullptr) {
-    AttrValue ksize_attr_copy(*ksize_attr);
-    TF_RETURN_IF_ERROR(Permute(context->src_to_dst,
-                               ksize_attr_copy.mutable_list()->mutable_i()));
-    mutation->AddOrUpdateNodeAttr(node, kAttrKSize, ksize_attr_copy);
-  }
   return Status::OK();
 }
 

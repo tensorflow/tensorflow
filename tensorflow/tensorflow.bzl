@@ -629,10 +629,21 @@ register_extension_info(
 def tf_native_cc_binary(
         name,
         copts = tf_copts(),
+        linkopts = [],
         **kwargs):
     native.cc_binary(
         name = name,
         copts = copts,
+        linkopts = select({
+            clean_dep("//tensorflow:windows"): [],
+            clean_dep("//tensorflow:macos"): [
+                "-lm",
+            ],
+            "//conditions:default": [
+                "-lpthread",
+                "-lm",
+            ],
+        }) + linkopts + _rpath_linkopts(name),
         **kwargs
     )
 

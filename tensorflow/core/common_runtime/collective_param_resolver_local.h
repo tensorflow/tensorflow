@@ -182,7 +182,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   // ir->shared.instance.task_names by considering localities of all devices.
   void CompleteDefaultRanking(const GroupRec* gr, const CollectiveParams* cp,
                               InstanceRec* ir,
-                              const std::vector<DeviceLocality>& localities)
+                              const std::vector<DeviceAttributes>& attributes)
       EXCLUSIVE_LOCKS_REQUIRED(ir->out_mu);
 
   // Finish populating *cp.

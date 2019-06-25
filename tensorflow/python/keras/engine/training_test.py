@@ -1301,6 +1301,38 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
                'expecting any data to be passed to dense_1.')
         self.assertRegexpMatches(str(mock_log.call_args), msg)
 
+  @keras_parameterized.run_all_keras_modes
+  def test_invalid_steps_per_epoch_usage(self):
+    x = keras.layers.Input(shape=(1,))
+    y = keras.layers.Dense(1)(x)
+
+    model = keras.Model(x, y)
+    model.compile(
+        'sgd', loss='mse', run_eagerly=testing_utils.should_run_eagerly())
+    err_msg = 'When passing input data as arrays, do not specify'
+
+    if testing_utils.should_run_eagerly():
+      with self.assertRaisesRegex(ValueError, err_msg):
+        model.fit(x=np.zeros((100, 1)), y=np.ones((100, 1)), steps_per_epoch=4)
+
+      with self.assertRaisesRegex(ValueError, err_msg):
+        model.evaluate(x=np.zeros((100, 1)), y=np.ones((100, 1)), steps=4)
+
+      with self.assertRaisesRegex(ValueError, err_msg):
+        model.predict(np.zeros((100, 1)), steps=4)
+    else:
+      with test.mock.patch.object(logging, 'warning') as mock_log:
+        model.fit(x=np.zeros((100, 1)), y=np.ones((100, 1)), steps_per_epoch=4)
+        self.assertRegexpMatches(str(mock_log.call_args), err_msg)
+
+      with test.mock.patch.object(logging, 'warning') as mock_log:
+        model.evaluate(x=np.zeros((100, 1)), y=np.ones((100, 1)), steps=4)
+        self.assertRegexpMatches(str(mock_log.call_args), err_msg)
+
+      with test.mock.patch.object(logging, 'warning') as mock_log:
+        model.predict(np.zeros((100, 1)), steps=4)
+        self.assertRegexpMatches(str(mock_log.call_args), err_msg)
+
 
 class LossWeightingTest(keras_parameterized.TestCase):
 

@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -128,6 +129,14 @@ bool IsHybridOperator(const TfLiteContext* context, int builtin_code,
       return IsFloat(input_type) && IsQuantized(filter_type);
     }
     case kTfLiteBuiltinLstm: {
+      const int input_id = node->inputs->data[0];
+      // Input #1 is optional so use #2 to determine if hybrid.
+      const int weights_id = node->inputs->data[2];
+      const TfLiteType input_type = context->tensors[input_id].type;
+      const TfLiteType weights_type = context->tensors[weights_id].type;
+      return IsFloat(input_type) && IsQuantized(weights_type);
+    }
+    case kTfLiteBuiltinBidirectionalSequenceLstm: {
       const int input_id = node->inputs->data[0];
       // Input #1 is optional so use #2 to determine if hybrid.
       const int weights_id = node->inputs->data[2];
@@ -1633,6 +1642,31 @@ class NNAPIDelegateKernel {
           };
         }
       } break;
+      case kTfLiteBuiltinBidirectionalSequenceLstm:
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
+          if (IsHybridOperator(context, builtin_code, node)) {
+            // Hybrid version of this op is not supported by NN API.
+            return nullptr;
+          }
+          return [](const NNAPIOpMappingArgs& mapping_args)
+                     -> ANeuralNetworksOperationType {
+            auto builtin =
+                reinterpret_cast<TfLiteBidirectionalSequenceLSTMParams*>(
+                    mapping_args.node->builtin_data);
+            mapping_args.builder->AddScalarInt32Operand(builtin->activation);
+            mapping_args.builder->AddScalarFloat32Operand(builtin->cell_clip);
+            mapping_args.builder->AddScalarFloat32Operand(builtin->proj_clip);
+            mapping_args.builder->AddScalarBoolOperand(builtin->merge_outputs);
+            mapping_args.builder->AddScalarBoolOperand(builtin->time_major);
+            // TF Lite doesn't support layer normalization in bidirectional
+            // sequence LSTM, so we insert optional tensors for NNAPI
+            for (int i = 0; i < 8; ++i) {
+              mapping_args.builder->AddVectorFloat32Operand(nullptr, 0);
+            }
+            return ANEURALNETWORKS_BIDIRECTIONAL_SEQUENCE_LSTM;
+          };
+        }
+        break;
       default:
         // All other operators are not mapped.
         return nullptr;
@@ -2037,7 +2071,8 @@ class NNAPIDelegateKernel {
 
         if (input_index == kOptionalTensor &&
             (reg->builtin_code == kTfLiteBuiltinLstm ||
-             reg->builtin_code == kTfLiteBuiltinSvdf)) {
+             reg->builtin_code == kTfLiteBuiltinSvdf ||
+             reg->builtin_code == kTfLiteBuiltinBidirectionalSequenceLstm)) {
           // properly handle the optional tensor for LSTM and SVDF.
           // currently only support float32.
           // TODO(miaowang): make sure this is also able to handle quantized

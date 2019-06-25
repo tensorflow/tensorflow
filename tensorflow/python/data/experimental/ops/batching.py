@@ -250,7 +250,7 @@ class _DenseToSparseBatchDataset(dataset_ops.UnaryDataset):
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._batch_size,
         row_shape=convert.partial_shape_to_tensor(self._row_shape),
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_DenseToSparseBatchDataset, self).__init__(input_dataset,
                                                      variant_tensor)
 
@@ -302,7 +302,7 @@ class _MapAndBatchDataset(dataset_ops.UnaryDataset):
         num_parallel_calls=self._num_parallel_calls_t,
         drop_remainder=self._drop_remainder_t,
         preserve_cardinality=True,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_MapAndBatchDataset, self).__init__(input_dataset, variant_tensor)
 
   def _functions(self):

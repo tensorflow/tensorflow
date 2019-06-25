@@ -902,7 +902,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       }
     }
     LogConvAutotuneResults(se::dnn::ConvolutionKind::BACKWARD_FILTER,
-                           se::dnn::ToDataType<T>::value, input_desc,
+                           se::dnn::ToDataType<T>::value, input_ptr,
+                           filter_backprop_ptr, out_backprop_ptr, input_desc,
                            filter_desc, output_desc, conv_desc,
                            stream->parent(), results);
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));

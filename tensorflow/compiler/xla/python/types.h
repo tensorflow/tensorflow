@@ -424,6 +424,29 @@ struct type_caster<xla::OpMetadata> {
     return true;
   }
 };
+
+template <>
+struct type_caster<xla::PrecisionConfig> {
+ public:
+  PYBIND11_TYPE_CASTER(xla::PrecisionConfig, _("xla::PrecisionConfig"));
+
+  // PyObject -> C++ conversion.
+  bool load(handle handle, bool) {
+    if (handle.is_none()) {
+      return true;
+    }
+
+    sequence operand_precisions =
+        reinterpret_borrow<sequence>(getattr(handle, "operand_precision"));
+
+    for (auto operand_precision : operand_precisions) {
+      value.add_operand_precision(
+          operand_precision.cast<xla::PrecisionConfig::Precision>());
+    }
+    return true;
+  }
+};
+
 }  // namespace detail
 }  // namespace pybind11
 

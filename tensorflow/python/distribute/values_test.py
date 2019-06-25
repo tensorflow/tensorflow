@@ -27,6 +27,7 @@ from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -644,17 +645,27 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(before_save, after_restore)
 
 
-_devices = ("/device:GPU:0", "/device:CPU:0")
+_TPU_STRATEGIES = (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)
 
 
 def _make_replica_local(method, strategy=None):
-  device_map = values.ReplicaDeviceMap(_devices)
+  if strategy is None:
+    devices = ("/device:GPU:0", "/device:CPU:0")
+  else:
+    devices = strategy.extended.worker_devices
+
+  device_map = values.ReplicaDeviceMap(devices)
   v = []
-  for d, n, init in zip(_devices, ["v", "v/replica"], [1., 2.]):
+  for d, n, init in zip(devices, ["v", "v/replica"], [1., 2.]):
     with ops.device(d):
       v.append(variable_scope.get_variable(
           name=n, initializer=init, use_resource=True))
-  replica_local = values.SyncOnReadVariable(strategy, device_map, v, method)
+
+  if (strategy is not None) and isinstance(strategy, _TPU_STRATEGIES):
+    var_cls = values.TPUSyncOnReadVariable
+  else:
+    var_cls = values.SyncOnReadVariable
+  replica_local = var_cls(strategy, device_map, v, method)
   return v, replica_local
 
 
@@ -708,13 +719,14 @@ class SyncOnReadVariablePropertiesTest(test.TestCase):
     combinations.combine(
         distribution=[
             strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+            strategy_combinations.tpu_strategy,
         ],
         mode=["graph", "eager"]))
 class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
 
-  def _assign_replica_local(self, devices, v, new):
-    for d, var, n in zip(devices, v, new):
-      with ops.device(d):
+  def _assign_replica_local(self, v, new):
+    for var, n in zip(v, new):
+      with ops.device(var.device):
         self.evaluate(var.assign(n))
 
   def _save_return_saver(self, sess, var):
@@ -733,14 +745,14 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
           variable_scope.VariableAggregation.SUM, distribution)
 
       # Overwrite the initial values.
-      self._assign_replica_local(_devices, v, [3., 4.])
+      self._assign_replica_local(v, [3., 4.])
 
       with distribution.scope():
         # Saves the current value of v[0] + v[1], 7.
         save_path, saver = self._save_return_saver(sess, replica_local)
 
         # Change the values between save and restore.
-        self._assign_replica_local(_devices, v, [5., 6.])
+        self._assign_replica_local(v, [5., 6.])
 
         # Restores the saved value of 7. which gets divided equally
         # between the variables.
@@ -756,14 +768,14 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
           variable_scope.VariableAggregation.MEAN, distribution)
 
       # Overwrite the initial values.
-      self._assign_replica_local(_devices, v, [3., 4.])
+      self._assign_replica_local(v, [3., 4.])
 
       with distribution.scope():
         # Saves the current value of (v[0] + v[1])/2, 3.5.
         save_path, saver = self._save_return_saver(sess, replica_local)
 
         # Change the values between save and restore.
-        self._assign_replica_local(_devices, v, [5., 6.])
+        self._assign_replica_local(v, [5., 6.])
 
         # Restores the saved value of 3.5 to both variables.
         saver.restore(sess, save_path)
@@ -776,14 +788,14 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
           variable_scope.VariableAggregation.MEAN, distribution)
 
       # Overwrite the initial values.
-      self._assign_replica_local(_devices, v, [3., 4.])
+      self._assign_replica_local(v, [3., 4.])
 
       with distribution.scope():
         # Saves the current value of (v[0] + v[1])/2, 3.5
         save_path = self._save(sess, replica_local)
 
         # Change the values between save and restore.
-        self._assign_replica_local(_devices, v, [5., 6.])
+        self._assign_replica_local(v, [5., 6.])
     return save_path
 
   def _save_replica_local_sum(self, distribution):
@@ -793,14 +805,14 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
           variable_scope.VariableAggregation.SUM, distribution)
 
       # Overwrite the initial values.
-      self._assign_replica_local(_devices, v, [1.5, 2.])
+      self._assign_replica_local(v, [1.5, 2.])
 
       with distribution.scope():
         # Saves the current value of v[0] + v[1], 3.5
         save_path = self._save(sess, replica_local)
 
         # Change the values between save and restore.
-        self._assign_replica_local(_devices, v, [5., 6.])
+        self._assign_replica_local(v, [5., 6.])
     return save_path
 
   def _save_normal(self):
@@ -840,7 +852,7 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
           variable_scope.VariableAggregation.MEAN, distribution)
 
       # Overwrite the initial values.
-      self._assign_replica_local(_devices, v, [7., 8.])
+      self._assign_replica_local(v, [7., 8.])
 
       with distribution.scope():
         # Restores the saved value of 3.5 to both variables.
@@ -855,7 +867,7 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
           variable_scope.VariableAggregation.SUM, distribution)
 
       # Overwrite the initial values.
-      self._assign_replica_local(_devices, v, [7., 8.])
+      self._assign_replica_local(v, [7., 8.])
 
       with distribution.scope():
         # Restores the saved value of 3.5 to both variables.

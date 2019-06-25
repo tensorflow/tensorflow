@@ -1122,7 +1122,6 @@ def check_steps_argument(input_data, steps, steps_name):
       ValueError: if `steps` argument is required for given input data type
         but not provided.
   """
-  # TODO(fchollet): allow datasets with steps=None if cardinality is known.
   is_x_iterator = isinstance(
       input_data, (iterator_ops.Iterator, iterator_ops.IteratorV2))
   if (input_data is None or is_x_iterator or has_symbolic_tensors(input_data) or
@@ -1133,6 +1132,18 @@ def check_steps_argument(input_data, steps, steps_name):
                        ' specify the `{steps_name}` argument.'.format(
                            input_type=input_type_str, steps_name=steps_name))
     return True
+
+  if isinstance(input_data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
+    return True
+
+  if steps is not None:
+    list_types = (np.ndarray, list, tuple)
+    if (isinstance(input_data, list_types) or
+        (isinstance(input_data, dict) and
+         any(isinstance(v, list_types) for v in input_data.values()))):
+      logging.warning('When passing input data as arrays, do not specify '
+                      '`steps_per_epoch`/`steps` argument. '
+                      'Please use `batch_size` instead.')
   return False
 
 

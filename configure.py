@@ -236,7 +236,9 @@ def setup_python(environ_cp):
         python_lib_path = default_python_lib_path
     environ_cp['PYTHON_LIB_PATH'] = python_lib_path
 
-  _ = get_python_major_version(python_bin_path)
+  python_major_version = get_python_major_version(python_bin_path)
+  if python_major_version == '2':
+    write_to_bazelrc('build --host_force_python=PY2')
 
   # Convert python path to Windows style before writing into bazel.rc
   if is_windows() or is_cygwin():

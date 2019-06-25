@@ -661,6 +661,7 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:other",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/platform/default/build_config:port",
+        "@com_google_absl//absl/time",
     ],
 )
 

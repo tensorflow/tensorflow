@@ -101,6 +101,7 @@ class Transposer {
                              absl::string_view node_name,
                              absl::string_view device,
                              absl::Span<const int> permutation,
+                             absl::string_view control_node_name,
                              utils::MutationNewNode* added_node);
 
   // Creates a TransposeNode with given properties. If node with node_name
@@ -149,12 +150,13 @@ class Transposer {
   string GetDeviceName(const VirtualPlacer* virtual_placer,
                        const NodeDef& node) const;
   // Update all edges between dst_node->fanin[dst_ports] and dst_node.
-  // A node with op is created and insereted between all edges.
+  // A node with op is created and inserted between all edges.
   // op is one of Transpose, DataFormatVecPermute or DataFormatDimMap.
   Status UpdateEdge(TransposeContext* context, absl::string_view name_format,
                     absl::string_view op, const AttrValue* input_shape,
-                    bool is_src_format_to_dst_format, const int src_port,
-                    const int dst_port, utils::MutableNodeView* src_node,
+                    bool is_in_frame, bool is_src_format_to_dst_format,
+                    const int src_port, const int dst_port,
+                    utils::MutableNodeView* src_node,
                     utils::MutableNodeView* dst_node);
   string GetFaninNameFormat(absl::string_view node_name, int port,
                             absl::string_view src_format,
@@ -494,14 +496,14 @@ class UnaryGradTransposer : public LayoutAgnosticOpTransposer {
 // Utils.
 
 // Permutes elements according to permutation and replaces the original values.
-// permutation and values must have same size.
+// Permutation and values must have same size.
 template <typename T>
-Status Permute(absl::Span<const int> permutation, T* values) {
+Status PermuteSingle(absl::Span<const int> permutation, T* values) {
   DCHECK(values != nullptr);
   if (values->size() != permutation.size()) {
     return Status(tensorflow::error::Code::INVALID_ARGUMENT,
                   absl::StrCat("Size of values ", values->size(),
-                               " does not match size of permuation ",
+                               " does not match size of permutation ",
                                permutation.size(), "."));
   }
   typedef typename T::value_type V;
@@ -509,6 +511,27 @@ Status Permute(absl::Span<const int> permutation, T* values) {
   int index = 0;
   for (V& element : *values) {
     element = elements[permutation[index++]];
+  }
+  return Status::OK();
+}
+
+// Permutes two elements at a time according to permutation and replaces the
+// original values. Values must be twice the size of permutation.
+template <typename T>
+Status PermuteDouble(absl::Span<const int> permutation, T* values) {
+  DCHECK(values != nullptr);
+  if (values->size() != permutation.size() * 2) {
+    return Status(tensorflow::error::Code::INVALID_ARGUMENT,
+                  absl::StrCat("Size of values ", values->size(),
+                               " does not match twice the size of permutation ",
+                               permutation.size(), "."));
+  }
+  typedef typename T::value_type V;
+  std::vector<V> elements(values->begin(), values->end());
+  for (int i = 0; i < values->size(); i = i + 2) {
+    const int permutation_index = permutation[i / 2];
+    (*values)[i] = elements[permutation_index * 2];
+    (*values)[i + 1] = elements[permutation_index * 2 + 1];
   }
   return Status::OK();
 }

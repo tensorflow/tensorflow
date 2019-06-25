@@ -159,20 +159,20 @@ Status EraseCancellableNodes(TransposeContext* context) {
       continue;
     }
     const auto& regular_fanin_0 = node->GetRegularFanin(0);
-    auto* input_transpose = regular_fanin_0.node_view();
-    if (!IsCancellableNodePair(*node, *input_transpose)) {
+    auto* fanin_node = regular_fanin_0.node_view();
+    if (!IsCancellableNodePair(*node, *fanin_node)) {
       continue;
     }
     // Skip transpose not added by optimizer.
     if ((node->GetRegularFanouts().size() != 1 &&
          node->NumControlledFanouts() != 0) ||
-        (input_transpose->GetRegularFanouts().size() != 1 &&
-         input_transpose->NumControlledFanouts() != 0)) {
+        (fanin_node->GetRegularFanouts().size() != 1 &&
+         fanin_node->NumControlledFanouts() != 0)) {
       VLOG(1) << "There is always only a single output for a Transpose "
                  "node, due to the way it is added by Layout Optimizer.";
       continue;
     }
-    const auto& fanin_to_forward = input_transpose->GetRegularFanin(0);
+    const auto& fanin_to_forward = fanin_node->GetRegularFanin(0);
     TensorId fanin_id_to_forward(fanin_to_forward.node_view()->GetName(),
                                  fanin_to_forward.index());
     for (const auto& regular_fanout : node->GetRegularFanout(0)) {
@@ -181,7 +181,13 @@ Status EraseCancellableNodes(TransposeContext* context) {
                                         fanin_id_to_forward);
     }
     mutation->RemoveNode(node);
-    mutation->RemoveNode(input_transpose);
+    if (node->NumRegularFanins() > 1) {
+      mutation->RemoveNode(node->GetRegularFanin(1).node_view());
+    }
+    mutation->RemoveNode(fanin_node);
+    if (fanin_node->NumRegularFanins() > 1) {
+      mutation->RemoveNode(fanin_node->GetRegularFanin(1).node_view());
+    }
   }
   return mutation->Apply();
 }

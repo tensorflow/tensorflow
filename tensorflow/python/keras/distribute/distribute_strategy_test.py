@@ -457,15 +457,9 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
         # TODO(anjalisridhar): We need tests for when the batch size and steps
         # are smaller and results in a 0 batch_size and steps value.
         model.evaluate(inputs, targets)
-        # with steps
-        model.evaluate(inputs, targets, steps=2)
-        # with batch_size
         model.evaluate(inputs, targets, batch_size=8)
 
         model.predict(inputs)
-        # with steps
-        model.predict(inputs, steps=2)
-        # with batch_size
         model.predict(inputs, batch_size=8)
 
   @combinations.generate(all_strategy_combinations_plus_cloning())
@@ -496,15 +490,9 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       # TODO(anjalisridhar): We need tests for when the batch size and steps are
       # smaller and results in a 0 batch_size and steps value.
       model.evaluate(inputs, targets)
-      # with steps
-      model.evaluate(inputs, targets, steps=2)
-      # with batch_size
       model.evaluate(inputs, targets, batch_size=8)
 
       model.predict(inputs)
-      # with steps
-      model.predict(inputs, steps=2)
-      # with batch_size
       model.predict(inputs, batch_size=8)
 
   @combinations.generate(
@@ -580,7 +568,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       input_b_np = np.asarray(np.random.random((6, 5)), dtype=np.float32)
       inputs = [input_a_np, input_b_np]
 
-      outs = model.predict(inputs, steps=1)
+      outs = model.predict(inputs)
       # `predict` a list that is equal in length to the number of model outputs.
       # In this test our model has two outputs and each element of `outs`
       # corresponds to all the samples of one of the model outputs.
@@ -1476,9 +1464,9 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       inputs = np.zeros((20, 10), np.float32)
       targets = np.zeros((20, 2), np.float32)
 
-    model.fit(inputs, targets, epochs=1, steps_per_epoch=2)
-    model.predict(inputs, steps=1)
-    model.evaluate(inputs, targets, steps=1)
+    model.fit(inputs, targets, epochs=1, batch_size=10)
+    model.predict(inputs, batch_size=10)
+    model.evaluate(inputs, targets, batch_size=10)
 
   @combinations.generate(all_strategy_combinations_plus_cloning())
   def test_distribution_strategy_on_functional_model(self, distribution,
@@ -1496,9 +1484,9 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       inputs = np.zeros((64, 3), dtype=np.float32)
       targets = np.zeros((64, 4), dtype=np.float32)
 
-    model.fit(inputs, targets, epochs=1, steps_per_epoch=2)
-    model.predict(inputs, steps=1)
-    model.evaluate(inputs, targets, steps=1)
+    model.fit(inputs, targets, epochs=1)
+    model.predict(inputs)
+    model.evaluate(inputs, targets)
 
   @combinations.generate(
       combinations.times(
@@ -1586,12 +1574,12 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
 
     model = _make_model_with_add_loss()
     model.compile('sgd')
-    history = model.fit(x, steps_per_epoch=2, epochs=1)
+    history = model.fit(x, epochs=1)
 
     with distribution.scope():
       ds_model = _make_model_with_add_loss()
       ds_model.compile('sgd', cloning=cloning)
-      ds_history = ds_model.fit(x, steps_per_epoch=2, epochs=1)
+      ds_history = ds_model.fit(x, epochs=1)
 
     self.assertAllClose(history.history, ds_history.history)
 
@@ -1661,7 +1649,6 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     history = model.fit(
         x,
         y,
-        steps_per_epoch=2,
         validation_data=(x, y),
         validation_steps=2,
         epochs=2)
@@ -1673,7 +1660,6 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       ds_history = ds_model.fit(
           x,
           y,
-          steps_per_epoch=2,
           validation_data=(x, y),
           validation_steps=2,
           epochs=2)
@@ -1722,7 +1708,6 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     history = model.fit(
         x,
         y,
-        steps_per_epoch=2,
         validation_data=(x, y),
         validation_steps=2,
         epochs=2)
@@ -1734,7 +1719,6 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       ds_history = ds_model.fit(
           x,
           y,
-          steps_per_epoch=2,
           validation_data=(x, y),
           validation_steps=2,
           epochs=2)
@@ -1767,7 +1751,6 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     history = model.fit(
         x,
         y,
-        steps_per_epoch=2,
         validation_data=(x, y),
         validation_steps=2,
         epochs=2)
@@ -1779,7 +1762,6 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       ds_history = ds_model.fit(
           x,
           y,
-          steps_per_epoch=2,
           validation_data=(x, y),
           validation_steps=2,
           epochs=2)
