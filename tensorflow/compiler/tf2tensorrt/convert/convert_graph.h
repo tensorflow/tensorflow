@@ -46,8 +46,6 @@ struct ConversionParams {
   // maximum number of cached engines
   int max_cached_engines = 1;
   bool use_calibration = true;
-  // list of cached engines
-  std::vector<int> cached_engine_batches;
   // Whether to use function fallback for TRTEngineOp
   bool use_function_backup = true;
 };

@@ -460,10 +460,6 @@ Status CreateTRTNode(const ConversionParams& params,
     node_builder.ControlInput(c);
   }
 
-  if (info.engine_type == EngineInfo::EngineType::TRTStatic &&
-      !info.cached_engine_batches.empty()) {
-    LOG(WARNING) << "Cached engine batches are ignored for static engines";
-  }
   NodeDef trt_node;
   Status status =
       node_builder.Attr("input_shapes", input_shape_protos)
@@ -763,7 +759,6 @@ Status ConvertAfterShapes(const ConversionParams& params) {
                                    ? EngineInfo::EngineType::TRTDynamic
                                    : EngineInfo::EngineType::TRTStatic);
     curr_engine.use_calibration = params.use_calibration;
-    curr_engine.cached_engine_batches = params.cached_engine_batches;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
     if (params.use_function_backup) {
       status = RegisterSegmentFunctionToFunctionLibrary(
