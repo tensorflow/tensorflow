@@ -13,11 +13,11 @@ def if_mkl_open_source_only(if_true, if_false = []):
     })
 
 def if_mkl_v1_open_source_only(if_true, if_false = []):
-    """Shorthand for select()'ing on whether we're building with MKL-DNN v1.x
-    (and v0.x) open source library only, without depending on MKL binary form.
+    """Shorthand for select()'ing on whether we're building with
+    MKL-DNN v1.x open source library only, without depending on MKL binary form.
 
     Returns a select statement which evaluates to if_true if we're building
-    with MKL-DNN v1.x (and v0.x) open source library only. Otherwise, the
+    with MKL-DNN v1.x open source library only. Otherwise, the
     select statement evaluates to if_false.
 
     """
