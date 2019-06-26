@@ -51,6 +51,7 @@ using tensorflow::tracing::ScopedAnnotation;
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(
     const string& text, const std::vector<uint8>& binary,
+    absl::variant<std::pair<int, int>, int> compute_capability,
     std::unique_ptr<const ThunkSchedule> thunk_schedule,
     std::shared_ptr<HloModule> hlo_module,
     std::shared_ptr<const BufferAssignment> assignment,
@@ -58,7 +59,9 @@ GpuExecutable::GpuExecutable(
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
-      text_(text), binary_(binary),
+      text_(text),
+      binary_(binary),
+      compute_capability_(compute_capability),
       thunk_schedule_(std::move(thunk_schedule)),
       assignment_(std::move(assignment)) {
   CHECK(has_module() && assignment_);
@@ -84,6 +87,41 @@ void GpuExecutable::ComputeThunkAnnotations() {
                                           &canonical_name_map),
         hlo->metadata().op_name(), hlo->name(), hlo->GetModule()->name());
   }
+
+Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
+    const ServiceExecutableRunOptions* run_options) {
+  se::Stream* main_stream = run_options->stream();
+
+  string vendor = main_stream->parent()->GetDeviceDescription().device_vendor();
+
+  if (vendor == "Advanced Micro Devices, Inc") {
+    int stream_isa_version;
+    main_stream->parent()->GetDeviceDescription().rocm_amdgpu_isa_version(
+        &stream_isa_version);
+    absl::variant<std::pair<int, int>, int> amd_isa_version =
+        stream_isa_version;
+    TF_RET_CHECK(amd_isa_version == compute_capability_)
+        << "AMDGPU GCN ISA version mismatch; expected {"
+        << absl::get<int>(compute_capability_) << ", but was "
+        << stream_isa_version;
+  } else if (vendor == "NVDIA Corporation") {
+    std::pair<int, int> stream_compute_compatibility;
+    main_stream->parent()->GetDeviceDescription().cuda_compute_capability(
+        &stream_compute_compatibility.first,
+        &stream_compute_compatibility.second);
+    absl::variant<std::pair<int, int>, int> nvdia_compute_compatibility =
+        stream_compute_compatibility;
+    TF_RET_CHECK(nvdia_compute_compatibility == compute_capability_)
+        << "Compute capability mismatch; expected {"
+        << absl::get<std::pair<int, int>>(compute_capability_).first << ", "
+        << absl::get<std::pair<int, int>>(compute_capability_).second
+        << "}, but was {" << stream_compute_compatibility.first << ", "
+        << stream_compute_compatibility.second << "}";
+  } else {
+    return InternalError("Unknown vendor: %s", vendor);
+  }
+
+  return Status::OK();
 }
 
 Status GpuExecutable::ExecuteThunks(
@@ -198,7 +236,9 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
   }
 
   se::MultiModuleLoaderSpec module_spec;
-  module_spec.AddCudaCubinInMemory(binary());
+  if (!binary().empty()) {
+    module_spec.AddCudaCubinInMemory(binary());
+  }
   module_spec.AddCudaPtxInMemory(text().c_str());
 
   absl::flat_hash_map<int64, se::DeviceMemoryBase> globals;

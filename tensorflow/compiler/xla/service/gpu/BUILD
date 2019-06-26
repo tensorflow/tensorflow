@@ -433,9 +433,7 @@ cc_library(
         "while_thunk.cc",
     ] + if_cuda_is_configured([
         "cholesky_thunk.cc",
-        "nvptx_executable.cc"
-       ])
-      +  if_rocm_is_configured(["amdgpu_executable.cc"]),
+    ]),
     hdrs = [
         "collective_permute_thunk.h",
         "conditional_thunk.h",
@@ -459,9 +457,7 @@ cc_library(
         "while_thunk.h",
     ] + if_cuda_is_configured([
          "cholesky_thunk.h",
-         "nvptx_executable.h"
-     ])
-      + if_rocm_is_configured(["amdgpu_executable.h"]),
+    ]),
     deps = [
         ":backend_configs",
         ":buffer_allocations",
