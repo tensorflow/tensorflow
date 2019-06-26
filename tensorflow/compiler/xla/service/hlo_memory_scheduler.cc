@@ -409,8 +409,8 @@ StatusOr<HloInstructionSequence> ScheduleComputationHelper(
     return algorithm(computation, points_to_analysis, alias_analysis,
                      size_function, memory_by_computation);
   }
-  return DFSMemoryScheduler(computation, points_to_analysis, alias_analysis,
-                            size_function, memory_by_computation);
+  return DefaultMemoryScheduler(computation, points_to_analysis, alias_analysis,
+                                size_function, memory_by_computation);
 }
 
 }  // namespace
