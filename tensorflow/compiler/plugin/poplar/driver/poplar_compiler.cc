@@ -492,6 +492,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     simplifier_opts.set_enable_conv_simplification(false);
     simplifier_opts.set_enable_dot_strength_reduction(false);
     simplifier_opts.set_enable_window_reduce_to_reduce_replacement(false);
+    simplifier_opts.set_enable_dot_strength_reduction(false);
 
     HloPassPipeline pipeline("IPU");
     if (!poplarExecutor->RetainControlDependencies()) {
@@ -563,8 +564,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     if (resources.information.max_all_reduce_buffer_size > 0 ||
         resources.information.max_inter_ipu_copies_buffer_size > 0) {
       pipeline.AddPass<IpuScheduler>(
-          SizeFunction,
-          CreateLookAheadMemoryScheduler(resources.information));
+          SizeFunction, CreateLookAheadMemoryScheduler(resources.information));
       pipeline.AddPass<CombineInstructions>();
       pipeline.AddPass<HloDescheduler>();
     }
