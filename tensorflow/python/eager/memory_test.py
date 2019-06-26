@@ -96,7 +96,8 @@ class MemoryTest(test.TestCase):
 
     assert_no_leak(f, num_iters=10000)
 
-  def testMemoryLeakInSimpleModelForwardOnly(self):
+  # TODO(b/136031434): De-flake
+  def DISABLE_testMemoryLeakInSimpleModelForwardOnly(self):
     if memory_profiler is None:
       self.skipTest("memory_profiler required to run this test")
 
