@@ -6218,6 +6218,8 @@ filegroup(
         "encode_wav_op.cc",
         "eigen_contraction_kernel.cc",
         "eigen_contraction_kernel.h",
+        "einsum_op.cc",
+        "einsum_op.h",
         "fake_quant_ops.cc",
         "fifo_queue.cc",
         "fifo_queue_op.cc",
