@@ -258,7 +258,7 @@ private:
     // TODO: All errors show up at the beginning of the extended type location.
     // Figure out how to make this location relative to where the error occurred
     // in this instance.
-    context->emitError(location, message);
+    mlir::emitError(location, message);
   }
 
   // Parsers.

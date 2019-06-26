@@ -142,9 +142,8 @@ void InferQuantizedTypesPass::runWithConfig(SolverContext &solverContext,
       break;
   }
   if (propRound == 0) {
-    getContext().emitError(
-        UnknownLoc::get(&getContext()),
-        "exceeded maximum number of solver iterations (infinite loop?)");
+    emitError(UnknownLoc::get(&getContext()),
+              "exceeded maximum number of solver iterations (infinite loop?)");
     return;
   }
 

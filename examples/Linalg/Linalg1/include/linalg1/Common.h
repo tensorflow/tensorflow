@@ -87,8 +87,7 @@ inline void cleanupAndPrintFunction(mlir::Function *f) {
   bool printToOuts = true;
   auto check = [f, &printToOuts](mlir::LogicalResult result) {
     if (failed(result)) {
-      f->getContext()->emitError(f->getLoc(),
-                                 "Verification and cleanup passes failed");
+      f->emitError("Verification and cleanup passes failed");
       printToOuts = false;
     }
   };

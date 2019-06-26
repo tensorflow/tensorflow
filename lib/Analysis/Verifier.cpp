@@ -85,7 +85,7 @@ private:
       return bb.front().emitError(message);
 
     // Worst case, fall back to using the parent's location.
-    return ctx->emitError(bb.getParent()->getLoc(), message);
+    return mlir::emitError(bb.getParent()->getLoc(), message);
   }
 
   /// The current context for the verifier.
@@ -149,8 +149,8 @@ LogicalResult OperationVerifier::verifyRegion(Region &region) {
   // Verify the first block has no predecessors.
   auto *firstBB = &region.front();
   if (!firstBB->hasNoPredecessors())
-    return ctx->emitError(region.getLoc(),
-                          "entry block of region may not have predecessors");
+    return mlir::emitError(region.getLoc(),
+                           "entry block of region may not have predecessors");
 
   // Verify each of the blocks within the region.
   for (auto &block : region)

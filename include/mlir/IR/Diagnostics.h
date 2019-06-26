@@ -476,6 +476,18 @@ private:
   MLIRContext *ctx;
 };
 
+/// Utility method to emit an error message using this location.
+InFlightDiagnostic emitError(Location loc);
+InFlightDiagnostic emitError(Location loc, const Twine &message);
+
+/// Utility method to emit a warning message using this location.
+InFlightDiagnostic emitWarning(Location loc);
+InFlightDiagnostic emitWarning(Location loc, const Twine &message);
+
+/// Utility method to emit a remark message using this location.
+InFlightDiagnostic emitRemark(Location loc);
+InFlightDiagnostic emitRemark(Location loc, const Twine &message);
+
 //===----------------------------------------------------------------------===//
 // SourceMgrDiagnosticHandler
 //===----------------------------------------------------------------------===//

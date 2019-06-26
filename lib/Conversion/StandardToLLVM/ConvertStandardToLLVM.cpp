@@ -58,8 +58,8 @@ LLVM::LLVMType LLVMTypeConverter::unwrap(Type type) {
   auto *mlirContext = type.getContext();
   auto wrappedLLVMType = type.dyn_cast<LLVM::LLVMType>();
   if (!wrappedLLVMType)
-    mlirContext->emitError(UnknownLoc::get(mlirContext),
-                           "conversion resulted in a non-LLVM type");
+    emitError(UnknownLoc::get(mlirContext),
+              "conversion resulted in a non-LLVM type");
   return wrappedLLVMType;
 }
 
@@ -86,8 +86,7 @@ Type LLVMTypeConverter::convertFloatType(FloatType type) {
     return LLVM::LLVMType::getHalfTy(llvmDialect);
   case mlir::StandardTypes::BF16: {
     auto *mlirContext = llvmDialect->getContext();
-    return mlirContext->emitError(UnknownLoc::get(mlirContext),
-                                  "unsupported type: BF16"),
+    return emitError(UnknownLoc::get(mlirContext), "unsupported type: BF16"),
            Type();
   }
   default:
@@ -149,8 +148,7 @@ Type LLVMTypeConverter::convertMemRefType(MemRefType type) {
 Type LLVMTypeConverter::convertVectorType(VectorType type) {
   if (type.getRank() != 1) {
     auto *mlirContext = llvmDialect->getContext();
-    mlirContext->emitError(UnknownLoc::get(mlirContext),
-                           "only 1D vectors are supported");
+    emitError(UnknownLoc::get(mlirContext), "only 1D vectors are supported");
     return {};
   }
 

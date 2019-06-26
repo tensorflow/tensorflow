@@ -78,14 +78,13 @@ public:
   Value *visitModExpr(AffineBinaryOpExpr expr) {
     auto rhsConst = expr.getRHS().dyn_cast<AffineConstantExpr>();
     if (!rhsConst) {
-      builder.getContext()->emitError(
+      emitError(
           loc,
           "semi-affine expressions (modulo by non-const) are not supported");
       return nullptr;
     }
     if (rhsConst.getValue() <= 0) {
-      builder.getContext()->emitError(
-          loc, "modulo by non-positive value is not supported");
+      emitError(loc, "modulo by non-positive value is not supported");
       return nullptr;
     }
 
@@ -116,14 +115,13 @@ public:
   Value *visitFloorDivExpr(AffineBinaryOpExpr expr) {
     auto rhsConst = expr.getRHS().dyn_cast<AffineConstantExpr>();
     if (!rhsConst) {
-      builder.getContext()->emitError(
+      emitError(
           loc,
           "semi-affine expressions (division by non-const) are not supported");
       return nullptr;
     }
     if (rhsConst.getValue() <= 0) {
-      builder.getContext()->emitError(
-          loc, "division by non-positive value is not supported");
+      emitError(loc, "division by non-positive value is not supported");
       return nullptr;
     }
 
@@ -158,14 +156,12 @@ public:
   Value *visitCeilDivExpr(AffineBinaryOpExpr expr) {
     auto rhsConst = expr.getRHS().dyn_cast<AffineConstantExpr>();
     if (!rhsConst) {
-      builder.getContext()->emitError(
-          loc,
-          "semi-affine expressions (division by non-const) are not supported");
+      emitError(loc) << "semi-affine expressions (division by non-const) are "
+                        "not supported";
       return nullptr;
     }
     if (rhsConst.getValue() <= 0) {
-      builder.getContext()->emitError(
-          loc, "division by non-positive value is not supported");
+      emitError(loc, "division by non-positive value is not supported");
       return nullptr;
     }
     auto lhs = visit(expr.getLHS());

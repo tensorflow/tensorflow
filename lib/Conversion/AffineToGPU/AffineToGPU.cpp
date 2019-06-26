@@ -60,16 +60,13 @@ LogicalResult mlir::convertAffineLoopNestToGPULaunch(AffineForOp forOp,
   }
 
   OpBuilder builder(forOp.getOperation());
-
   if (numBlockDims > 3) {
-    forOp.getContext()->emitError(builder.getUnknownLoc(),
-                                  "cannot map to more than 3 block dimensions");
-    return failure();
+    return emitError(builder.getUnknownLoc(),
+                     "cannot map to more than 3 block dimensions");
   }
   if (numThreadDims > 3) {
-    forOp.getContext()->emitError(
-        builder.getUnknownLoc(), "cannot map to more than 3 thread dimensions");
-    return failure();
+    return emitError(builder.getUnknownLoc(),
+                     "cannot map to more than 3 thread dimensions");
   }
 
   // Check the structure of the loop nest:

@@ -177,7 +177,7 @@ LogicalResult ArgConverter::applyRewrites() {
         // Don't emit another error if we already have one.
         if (!failed(result)) {
           auto *parent = block->getParent();
-          auto diag = parent->getContext()->emitError(parent->getLoc())
+          auto diag = emitError(parent->getLoc())
                       << "block argument #" << i << " with type "
                       << op->getResult(0)->getType()
                       << " has unexpected remaining uses";
@@ -246,7 +246,7 @@ LogicalResult ArgConverter::convertArguments(Block *block,
   for (unsigned i = 0; i != origArgCount; ++i) {
     auto *arg = block->getArgument(i);
     if (failed(converter.convertType(arg->getType(), newArgTypes[i])))
-      return arg->getContext()->emitError(block->getParent()->getLoc())
+      return emitError(block->getParent()->getLoc())
              << "could not convert block argument of type " << arg->getType();
   }
 
@@ -963,8 +963,7 @@ FunctionConverter::convertRegion(DialectConversionRewriter &rewriter,
   // If some blocks are not reachable through successor chains, they should have
   // been removed by the DCE before this.
   if (visitedBlocks.size() != numBlocks)
-    return rewriter.getContext()->emitError(region.getLoc())
-           << "unreachable blocks were not converted";
+    return emitError(region.getLoc(), "unreachable blocks were not converted");
   return success();
 }
 

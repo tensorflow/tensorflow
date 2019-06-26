@@ -52,8 +52,7 @@ static Value *emitUniformPerLayerDequantize(Location loc, Value *input,
   // Pre-conditions.
   if (!elementType.isSigned()) {
     // TODO: Support unsigned storage type.
-    rewriter.getContext()->emitWarning(
-        loc, "unimplemented: dequantize signed uniform");
+    emitWarning(loc, "unimplemented: dequantize signed uniform");
     return nullptr;
   }
 

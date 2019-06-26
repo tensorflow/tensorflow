@@ -82,7 +82,7 @@ static Type parseAndVerifyTypeImpl(SPIRVDialect const &dialect, Location loc,
   auto *context = dialect.getContext();
   auto type = mlir::parseType(spec, context);
   if (!type) {
-    context->emitError(loc, "cannot parse type: ") << spec;
+    emitError(loc, "cannot parse type: ") << spec;
     return Type();
   }
 
@@ -93,25 +93,23 @@ static Type parseAndVerifyTypeImpl(SPIRVDialect const &dialect, Location loc,
   // Check other allowed types
   if (auto t = type.dyn_cast<FloatType>()) {
     if (type.isBF16()) {
-      context->emitError(loc, "cannot use 'bf16' to compose SPIR-V types");
+      emitError(loc, "cannot use 'bf16' to compose SPIR-V types");
       return Type();
     }
   } else if (auto t = type.dyn_cast<IntegerType>()) {
     if (!llvm::is_contained(llvm::ArrayRef<unsigned>({8, 16, 32, 64}),
                             t.getWidth())) {
-      context->emitError(loc,
-                         "only 8/16/32/64-bit integer type allowed but found ")
+      emitError(loc, "only 8/16/32/64-bit integer type allowed but found ")
           << type;
       return Type();
     }
   } else if (auto t = type.dyn_cast<VectorType>()) {
     if (t.getRank() != 1) {
-      context->emitError(loc, "only 1-D vector allowed but found ") << t;
+      emitError(loc, "only 1-D vector allowed but found ") << t;
       return Type();
     }
   } else {
-    context->emitError(loc, "cannot use ")
-        << type << " to compose SPIR-V types";
+    emitError(loc, "cannot use ") << type << " to compose SPIR-V types";
     return Type();
   }
 
@@ -129,23 +127,21 @@ Type SPIRVDialect::parseAndVerifyType(StringRef spec, Location loc) const {
 //
 // array-type ::= `!spv.array<` integer-literal `x` element-type `>`
 Type SPIRVDialect::parseArrayType(StringRef spec, Location loc) const {
-  auto *context = getContext();
   if (!spec.consume_front("array<") || !spec.consume_back(">")) {
-    context->emitError(loc, "spv.array delimiter <...> mismatch");
+    emitError(loc, "spv.array delimiter <...> mismatch");
     return Type();
   }
 
   int64_t count = 0;
   spec = spec.trim();
   if (!parseNumberX(spec, count)) {
-    context->emitError(
-        loc, "expected array element count followed by 'x' but found '")
+    emitError(loc, "expected array element count followed by 'x' but found '")
         << spec << "'";
     return Type();
   }
 
   if (spec.trim().empty()) {
-    context->emitError(loc, "expected element type");
+    emitError(loc, "expected element type");
     return Type();
   }
 
@@ -163,9 +159,8 @@ Type SPIRVDialect::parseArrayType(StringRef spec, Location loc) const {
 //
 // pointer-type ::= `!spv.ptr<` element-type `,` storage-class `>`
 Type SPIRVDialect::parsePointerType(StringRef spec, Location loc) const {
-  auto *context = getContext();
   if (!spec.consume_front("ptr<") || !spec.consume_back(">")) {
-    context->emitError(loc, "spv.ptr delimiter <...> mismatch");
+    emitError(loc, "spv.ptr delimiter <...> mismatch");
     return Type();
   }
 
@@ -173,8 +168,8 @@ Type SPIRVDialect::parsePointerType(StringRef spec, Location loc) const {
   StringRef scSpec, ptSpec;
   std::tie(ptSpec, scSpec) = spec.rsplit(',');
   if (scSpec.empty()) {
-    context->emitError(
-        loc, "expected comma to separate pointee type and storage class in '")
+    emitError(loc,
+              "expected comma to separate pointee type and storage class in '")
         << spec << "'";
     return Type();
   }
@@ -182,12 +177,12 @@ Type SPIRVDialect::parsePointerType(StringRef spec, Location loc) const {
   scSpec = scSpec.trim();
   auto storageClass = symbolizeStorageClass(scSpec);
   if (!storageClass) {
-    context->emitError(loc, "unknown storage class: ") << scSpec;
+    emitError(loc, "unknown storage class: ") << scSpec;
     return Type();
   }
 
   if (ptSpec.trim().empty()) {
-    context->emitError(loc, "expected pointee type");
+    emitError(loc, "expected pointee type");
     return Type();
   }
 
@@ -200,14 +195,13 @@ Type SPIRVDialect::parsePointerType(StringRef spec, Location loc) const {
 
 // runtime-array-type ::= `!spv.rtarray<` element-type `>`
 Type SPIRVDialect::parseRuntimeArrayType(StringRef spec, Location loc) const {
-  auto *context = getContext();
   if (!spec.consume_front("rtarray<") || !spec.consume_back(">")) {
-    context->emitError(loc, "spv.rtarray delimiter <...> mismatch");
+    emitError(loc, "spv.rtarray delimiter <...> mismatch");
     return Type();
   }
 
   if (spec.trim().empty()) {
-    context->emitError(loc, "expected element type");
+    emitError(loc, "expected element type");
     return Type();
   }
 
@@ -223,9 +217,7 @@ Type SPIRVDialect::parseRuntimeArrayType(StringRef spec, Location loc) const {
 template <typename ValTy>
 Optional<ValTy> parseAndVerify(SPIRVDialect const &dialect, Location loc,
                                StringRef spec) {
-  auto *context = dialect.getContext();
-  context->emitError(loc, "unexpected parameter while parsing '")
-      << spec << "'";
+  emitError(loc, "unexpected parameter while parsing '") << spec << "'";
   return llvm::None;
 }
 
@@ -240,10 +232,8 @@ template <>
 Optional<Dim> parseAndVerify<Dim>(SPIRVDialect const &dialect, Location loc,
                                   StringRef spec) {
   auto dim = symbolizeDim(spec);
-  if (!dim) {
-    auto *context = dialect.getContext();
-    context->emitError(loc, "unknown Dim in Image type: '") << spec << "'";
-  }
+  if (!dim)
+    emitError(loc, "unknown Dim in Image type: '") << spec << "'";
   return dim;
 }
 
@@ -252,11 +242,8 @@ Optional<ImageDepthInfo>
 parseAndVerify<ImageDepthInfo>(SPIRVDialect const &dialect, Location loc,
                                StringRef spec) {
   auto depth = symbolizeImageDepthInfo(spec);
-  if (!depth) {
-    auto *context = dialect.getContext();
-    context->emitError(loc, "unknown ImageDepthInfo in Image type: '")
-        << spec << "'";
-  }
+  if (!depth)
+    emitError(loc, "unknown ImageDepthInfo in Image type: '") << spec << "'";
   return depth;
 }
 
@@ -265,11 +252,8 @@ Optional<ImageArrayedInfo>
 parseAndVerify<ImageArrayedInfo>(SPIRVDialect const &dialect, Location loc,
                                  StringRef spec) {
   auto arrayedInfo = symbolizeImageArrayedInfo(spec);
-  if (!arrayedInfo) {
-    auto *context = dialect.getContext();
-    context->emitError(loc, "unknown ImageArrayedInfo in Image type: '")
-        << spec << "'";
-  }
+  if (!arrayedInfo)
+    emitError(loc, "unknown ImageArrayedInfo in Image type: '") << spec << "'";
   return arrayedInfo;
 }
 
@@ -278,11 +262,8 @@ Optional<ImageSamplingInfo>
 parseAndVerify<ImageSamplingInfo>(SPIRVDialect const &dialect, Location loc,
                                   StringRef spec) {
   auto samplingInfo = symbolizeImageSamplingInfo(spec);
-  if (!samplingInfo) {
-    auto *context = dialect.getContext();
-    context->emitError(loc, "unknown ImageSamplingInfo in Image type: '")
-        << spec << "'";
-  }
+  if (!samplingInfo)
+    emitError(loc, "unknown ImageSamplingInfo in Image type: '") << spec << "'";
   return samplingInfo;
 }
 
@@ -291,11 +272,9 @@ Optional<ImageSamplerUseInfo>
 parseAndVerify<ImageSamplerUseInfo>(SPIRVDialect const &dialect, Location loc,
                                     StringRef spec) {
   auto samplerUseInfo = symbolizeImageSamplerUseInfo(spec);
-  if (!samplerUseInfo) {
-    auto *context = dialect.getContext();
-    context->emitError(loc, "unknown ImageSamplerUseInfo in Image type: '")
+  if (!samplerUseInfo)
+    emitError(loc, "unknown ImageSamplerUseInfo in Image type: '")
         << spec << "'";
-  }
   return samplerUseInfo;
 }
 
@@ -304,11 +283,8 @@ Optional<ImageFormat> parseAndVerify<ImageFormat>(SPIRVDialect const &dialect,
                                                   Location loc,
                                                   StringRef spec) {
   auto format = symbolizeImageFormat(spec);
-  if (!format) {
-    auto *context = dialect.getContext();
-    context->emitError(loc, "unknown ImageFormat in Image type: '")
-        << spec << "'";
-  }
+  if (!format)
+    emitError(loc, "unknown ImageFormat in Image type: '") << spec << "'";
   return format;
 }
 
@@ -321,12 +297,11 @@ template <typename ParseType, typename... Args> struct parseCommaSeparatedList {
   operator()(SPIRVDialect const &dialect, Location loc, StringRef spec) const {
     auto numArgs = std::tuple_size<std::tuple<Args...>>::value;
     StringRef parseSpec, restSpec;
-    auto *context = dialect.getContext();
     std::tie(parseSpec, restSpec) = spec.split(',');
 
     parseSpec = parseSpec.trim();
     if (numArgs != 0 && restSpec.empty()) {
-      context->emitError(loc, "expected more parameters for image type '")
+      emitError(loc, "expected more parameters for image type '")
           << parseSpec << "'";
       return llvm::None;
     }
@@ -376,9 +351,8 @@ template <typename ParseType> struct parseCommaSeparatedList<ParseType> {
 //                              arrayed-info `,` sampling-info `,`
 //                              sampler-use-info `,` format `>`
 Type SPIRVDialect::parseImageType(StringRef spec, Location loc) const {
-  auto *context = getContext();
   if (!spec.consume_front("image<") || !spec.consume_back(">")) {
-    context->emitError(loc, "spv.image delimiter <...> mismatch");
+    emitError(loc, "spv.image delimiter <...> mismatch");
     return Type();
   }
 
@@ -403,7 +377,7 @@ Type SPIRVDialect::parseType(StringRef spec, Location loc) const {
   if (spec.startswith("rtarray"))
     return parseRuntimeArrayType(spec, loc);
 
-  getContext()->emitError(loc, "unknown SPIR-V type: ") << spec;
+  emitError(loc, "unknown SPIR-V type: ") << spec;
   return Type();
 }
 

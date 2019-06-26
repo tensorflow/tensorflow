@@ -122,9 +122,8 @@ public:
     auto &module = getModule();
     auto *main = module.getNamedFunction("main");
     if (!main) {
-      module.getContext()->emitError(
-          mlir::UnknownLoc::get(module.getContext()),
-          "Shape inference failed: can't find a main function\n");
+      emitError(mlir::UnknownLoc::get(module.getContext()),
+                "Shape inference failed: can't find a main function\n");
       signalPassFailure();
       return;
     }
@@ -203,10 +202,9 @@ public:
 
     auto *toyDialect = getContext().getRegisteredDialect("toy");
     if (!toyDialect) {
-      getContext().emitError(mlir::UnknownLoc::get(&getContext()),
-                             "Toy dialect is not registered");
       signalPassFailure();
-      return mlir::failure();
+      return emitError(mlir::UnknownLoc::get(&getContext()),
+                       "Toy dialect is not registered");
     }
 
     // Populate the worklist with the operations that need shape inference:
@@ -267,10 +265,9 @@ public:
         auto lhsRank = lhs.getShape().size();
         auto rhsRank = rhs.getShape().size();
         if (lhsRank != rhsRank) {
-          op->emitError("Shape mismatch: LHS and RHS must have the same "
-                        "rank for multiplication, got " +
-                        Twine(lhsRank) + " vs  " + Twine(lhsRank));
-          return mlir::failure();
+          return op->emitError("Shape mismatch: LHS and RHS must have the same "
+                               "rank for multiplication, got ")
+                 << lhsRank << " vs  " << lhsRank;
         }
         SmallVector<int64_t, 2> dims;
         if (lhsRank == 1) {
@@ -278,10 +275,9 @@ public:
           dims.push_back(1);
         } else {
           if (lhsRank != 2) {
-            op->emitError(
-                "Shape mismatch: expect rank 1 or 2 for mul operands, got " +
-                Twine(lhsRank));
-            return mlir::failure();
+            return op->emitError("Shape mismatch: expect rank 1 or 2 for mul "
+                                 "operands, got ")
+                   << lhsRank;
           }
           dims.push_back(lhs.getShape()[0]);
           dims.push_back(rhs.getShape()[1]);
@@ -299,11 +295,9 @@ public:
         auto calleeName = callOp.getCalleeName();
         auto *callee = getModule().getNamedFunction(calleeName);
         if (!callee) {
-          f->emitError(
-              llvm::Twine("Shape inference failed, call to unknown '") +
-              calleeName + "'");
           signalPassFailure();
-          return mlir::failure();
+          return f->emitError("Shape inference failed, call to unknown '")
+                 << calleeName << "'";
         }
         auto mangledName = mangle(calleeName, op->getOpOperands());
         LLVM_DEBUG(llvm::dbgs() << "Found callee to infer: '" << calleeName
@@ -338,15 +332,12 @@ public:
 
     // If the operation worklist isn't empty, this indicates a failure.
     if (!opWorklist.empty()) {
-      std::string str;
-      llvm::raw_string_ostream errorMsg(str);
-      errorMsg << "Shape inference failed, " << opWorklist.size()
-               << " operations couldn't be inferred\n";
-      for (auto *ope : opWorklist)
-        errorMsg << " - " << *ope << "\n";
-      f->emitError(errorMsg.str());
       signalPassFailure();
-      return mlir::failure();
+      auto diag = f->emitError("Shape inference failed, ")
+                  << opWorklist.size() << " operations couldn't be inferred\n";
+      for (auto *ope : opWorklist)
+        diag << " - " << *ope << "\n";
+      return diag;
     }
 
     // Finally, update the return type of the function based on the argument to

@@ -82,8 +82,7 @@ public:
     // this won't do much, but it should at least check some structural
     // properties.
     if (failed(theModule->verify())) {
-      context.emitError(mlir::UnknownLoc::get(&context),
-                        "Module verification error");
+      emitError(mlir::UnknownLoc::get(&context), "Module verification error");
       return nullptr;
     }
 
@@ -223,9 +222,8 @@ private:
       op_name = "toy.mul";
       break;
     default:
-      context.emitError(loc(binop.loc()),
-                        Twine("Error: invalid binary operator '") +
-                            Twine(binop.getOp()) + "'");
+      emitError(loc(binop.loc()), "Error: invalid binary operator '")
+          << binop.getOp() << "'";
       return nullptr;
     }
 
@@ -244,8 +242,8 @@ private:
   mlir::Value *mlirGen(VariableExprAST &expr) {
     if (symbolTable.count(expr.getName()))
       return symbolTable.lookup(expr.getName());
-    context.emitError(loc(expr.loc()), Twine("Error: unknown variable '") +
-                                           expr.getName() + "'");
+    emitError(loc(expr.loc()), "Error: unknown variable '")
+        << expr.getName() << "'";
     return nullptr;
   }
 
@@ -404,10 +402,9 @@ private:
     case toy::ExprAST::Expr_Num:
       return mlirGen(cast<NumberExprAST>(expr));
     default:
-      context.emitError(
-          loc(expr.loc()),
-          Twine("MLIR codegen encountered an unhandled expr kind '") +
-              Twine(expr.getKind()) + "'");
+      emitError(loc(expr.loc()))
+          << "MLIR codegen encountered an unhandled expr kind '"
+          << Twine(expr.getKind()) << "'";
       return nullptr;
     }
   }
@@ -433,8 +430,8 @@ private:
         value = builder->createOperation(result)->getResult(0);
       }
     } else {
-      context.emitError(loc(vardecl.loc()),
-                        "Missing initializer in variable declaration");
+      emitError(loc(vardecl.loc()),
+                "Missing initializer in variable declaration");
       return nullptr;
     }
     // Register the value in the symbol table

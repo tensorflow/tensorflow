@@ -42,7 +42,7 @@ LogicalResult QuantizedType::verifyConstructionInvariants(
   auto intStorageType = storageType.dyn_cast<IntegerType>();
   if (!intStorageType) {
     if (loc) {
-      context->emitError(*loc, "storage type must be integral");
+      emitError(*loc, "storage type must be integral");
     }
     return failure();
   }
@@ -51,7 +51,7 @@ LogicalResult QuantizedType::verifyConstructionInvariants(
   // Verify storage width.
   if (integralWidth == 0 || integralWidth > MaxStorageBits) {
     if (loc) {
-      context->emitError(*loc, "illegal storage type size: ") << integralWidth;
+      emitError(*loc, "illegal storage type size: ") << integralWidth;
     }
     return failure();
   }
@@ -67,7 +67,7 @@ LogicalResult QuantizedType::verifyConstructionInvariants(
       storageTypeMin < defaultIntegerMin ||
       storageTypeMax > defaultIntegerMax) {
     if (loc) {
-      context->emitError(*loc, "illegal storage min and storage max: (")
+      emitError(*loc, "illegal storage min and storage max: (")
           << storageTypeMin << ":" << storageTypeMax << ")";
     }
     return failure();
@@ -249,7 +249,7 @@ LogicalResult AnyQuantizedType::verifyConstructionInvariants(
   // extended.
   if (expressedType && !expressedType.isa<FloatType>()) {
     if (loc) {
-      context->emitError(*loc, "expressed type must be floating point");
+      emitError(*loc, "expressed type must be floating point");
     }
     return failure();
   }
@@ -293,7 +293,7 @@ LogicalResult UniformQuantizedType::verifyConstructionInvariants(
   // expressed type.
   if (!expressedType) {
     if (loc) {
-      context->emitError(*loc, "uniform quantization requires expressed type");
+      emitError(*loc, "uniform quantization requires expressed type");
     }
     return failure();
   }
@@ -303,7 +303,7 @@ LogicalResult UniformQuantizedType::verifyConstructionInvariants(
   // extended.
   if (!expressedType.isa<FloatType>()) {
     if (loc) {
-      context->emitError(*loc, "expressed type must be floating point");
+      emitError(*loc, "expressed type must be floating point");
     }
     return failure();
   }
@@ -311,7 +311,7 @@ LogicalResult UniformQuantizedType::verifyConstructionInvariants(
   // Verify scale.
   if (scale <= 0.0 || std::isinf(scale) || std::isnan(scale)) {
     if (loc) {
-      context->emitError(*loc) << "illegal scale: " << scale;
+      emitError(*loc) << "illegal scale: " << scale;
     }
     return failure();
   }
@@ -362,7 +362,7 @@ LogicalResult UniformQuantizedPerAxisType::verifyConstructionInvariants(
   // expressed type.
   if (!expressedType) {
     if (loc) {
-      context->emitError(*loc, "uniform quantization requires expressed type");
+      emitError(*loc, "uniform quantization requires expressed type");
     }
     return failure();
   }
@@ -372,7 +372,7 @@ LogicalResult UniformQuantizedPerAxisType::verifyConstructionInvariants(
   // extended.
   if (!expressedType.isa<FloatType>()) {
     if (loc) {
-      context->emitError(*loc, "expressed type must be floating point");
+      emitError(*loc, "expressed type must be floating point");
     }
     return failure();
   }
@@ -380,7 +380,7 @@ LogicalResult UniformQuantizedPerAxisType::verifyConstructionInvariants(
   // Ensure that the number of scales and zeroPoints match.
   if (scales.size() != zeroPoints.size()) {
     if (loc) {
-      context->emitError(*loc, "illegal number of scales and zeroPoints: ")
+      emitError(*loc, "illegal number of scales and zeroPoints: ")
           << scales.size() << ", " << zeroPoints.size();
     }
     return failure();
@@ -390,7 +390,7 @@ LogicalResult UniformQuantizedPerAxisType::verifyConstructionInvariants(
   for (double scale : scales) {
     if (scale <= 0.0 || std::isinf(scale) || std::isnan(scale)) {
       if (loc) {
-        context->emitError(*loc) << "illegal scale: " << scale;
+        emitError(*loc) << "illegal scale: " << scale;
       }
       return failure();
     }

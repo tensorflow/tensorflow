@@ -108,8 +108,7 @@ Type mlir::linalg::LinalgDialect::parseType(StringRef spec,
         if (spec.consume_front("?")) {
           ++rank;
           if (!spec.consume_front("x")) {
-            context->emitError(loc,
-                               "expected a list of '?x' dimension specifiers: ")
+            emitError(loc, "expected a list of '?x' dimension specifiers: ")
                 << spec;
             return Type();
           }
@@ -119,7 +118,7 @@ Type mlir::linalg::LinalgDialect::parseType(StringRef spec,
         return ViewType::get(context, t, rank);
     }
   }
-  return (context->emitError(loc, "unknown Linalg type: " + origSpec), Type());
+  return (emitError(loc, "unknown Linalg type: " + origSpec), Type());
 }
 
 struct mlir::linalg::ViewTypeStorage : public TypeStorage {

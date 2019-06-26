@@ -122,9 +122,8 @@ public:
     auto &module = getModule();
     auto *main = module.getNamedFunction("main");
     if (!main) {
-      module.getContext()->emitError(
-          mlir::UnknownLoc::get(module.getContext()),
-          "Shape inference failed: can't find a main function\n");
+      emitError(mlir::UnknownLoc::get(module.getContext()),
+                "Shape inference failed: can't find a main function\n");
       signalPassFailure();
       return;
     }
@@ -203,8 +202,8 @@ public:
 
     auto *toyDialect = getContext().getRegisteredDialect("toy");
     if (!toyDialect) {
-      getContext().emitError(mlir::UnknownLoc::get(&getContext()),
-                             "Toy dialect is not registered");
+      emitError(mlir::UnknownLoc::get(&getContext()),
+                "Toy dialect is not registered");
       signalPassFailure();
       return mlir::failure();
     }
@@ -295,9 +294,8 @@ public:
         auto calleeName = callOp.getCalleeName();
         auto *callee = getModule().getNamedFunction(calleeName);
         if (!callee) {
-          f->emitError(
-              llvm::Twine("Shape inference failed, call to unknown '") +
-              calleeName + "'");
+          f->emitError("Shape inference failed, call to unknown '")
+              << calleeName << "'";
           signalPassFailure();
           return mlir::failure();
         }

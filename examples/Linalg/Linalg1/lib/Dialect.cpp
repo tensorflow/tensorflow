@@ -54,7 +54,7 @@ Type LinalgDialect::parseType(StringRef spec, Location loc) const {
     if (str.consume_front("f64>"))
       return ViewType::get(context, FloatType::getF64(context), rank);
   }
-  return (context->emitError(loc, "unknown Linalg type: " + spec), nullptr);
+  return (emitError(loc, "unknown Linalg type: " + spec), nullptr);
 }
 
 /// RangeType prints as just "range".

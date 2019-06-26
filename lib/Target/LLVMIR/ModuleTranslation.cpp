@@ -47,11 +47,8 @@ static llvm::FunctionType *convertFunctionType(llvm::LLVMContext &llvmContext,
                                                FunctionType type, Location loc,
                                                bool isVarArgs) {
   assert(type && "expected non-null type");
-
-  auto context = type.getContext();
   if (type.getNumResults() > 1)
-    return context->emitError(loc,
-                              "LLVM functions can only have 0 or 1 result"),
+    return emitError(loc, "LLVM functions can only have 0 or 1 result"),
            nullptr;
 
   SmallVector<llvm::Type *, 8> argTypes;
@@ -59,8 +56,7 @@ static llvm::FunctionType *convertFunctionType(llvm::LLVMContext &llvmContext,
   for (auto t : type.getInputs()) {
     auto wrappedLLVMType = t.dyn_cast<LLVM::LLVMType>();
     if (!wrappedLLVMType)
-      return context->emitError(loc, "non-LLVM function argument type"),
-             nullptr;
+      return emitError(loc, "non-LLVM function argument type"), nullptr;
     argTypes.push_back(wrappedLLVMType.getUnderlyingType());
   }
 
@@ -70,7 +66,7 @@ static llvm::FunctionType *convertFunctionType(llvm::LLVMContext &llvmContext,
 
   auto wrappedResultType = type.getResult(0).dyn_cast<LLVM::LLVMType>();
   if (!wrappedResultType)
-    return context->emitError(loc, "non-LLVM function result"), nullptr;
+    return emitError(loc, "non-LLVM function result"), nullptr;
 
   return llvm::FunctionType::get(wrappedResultType.getUnderlyingType(),
                                  argTypes, isVarArgs);
@@ -115,7 +111,7 @@ llvm::Constant *ModuleTranslation::getLLVMConstant(llvm::Type *llvmType,
         llvmModule->getContext(), ArrayRef<char>{stringAttr.getValue().data(),
                                                  stringAttr.getValue().size()});
   }
-  mlirModule.getContext()->emitError(loc, "unsupported constant value");
+  emitError(loc, "unsupported constant value");
   return nullptr;
 }
 
@@ -238,8 +234,8 @@ bool ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
     for (auto *arg : bb.getArguments()) {
       auto wrappedType = arg->getType().dyn_cast<LLVM::LLVMType>();
       if (!wrappedType) {
-        arg->getType().getContext()->emitError(
-            bb.front().getLoc(), "block argument does not have an LLVM type");
+        emitError(bb.front().getLoc(),
+                  "block argument does not have an LLVM type");
         return true;
       }
       llvm::Type *type = wrappedType.getUnderlyingType();
@@ -344,8 +340,7 @@ bool ModuleTranslation::convertOneFunction(Function &func) {
       // attach the attribute to this argument, based on its type.
       auto argTy = mlirArg->getType().dyn_cast<LLVM::LLVMType>();
       if (!argTy.getUnderlyingType()->isPointerTy()) {
-        argTy.getContext()->emitError(
-            func.getLoc(),
+        func.emitError(
             "llvm.noalias attribute attached to LLVM non-pointer argument");
         return true;
       }

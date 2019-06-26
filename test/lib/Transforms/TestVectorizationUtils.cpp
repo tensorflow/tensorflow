@@ -282,7 +282,7 @@ void VectorizerTestPass::runOnFunction() {
     testNormalizeMaps();
 
   if (!outs.str().empty()) {
-    getContext().emitRemark(UnknownLoc::get(&getContext()), outs.str());
+    emitRemark(UnknownLoc::get(&getContext()), outs.str());
   }
 }
 

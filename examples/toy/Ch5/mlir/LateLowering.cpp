@@ -350,8 +350,8 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
     target.addLegalOp<toy::AllocOp, toy::TypeCastOp>();
     if (failed(applyConversionPatterns(getModule(), target, typeConverter,
                                        std::move(toyPatterns)))) {
-      getModule().getContext()->emitError(
-          UnknownLoc::get(getModule().getContext()), "Error lowering Toy\n");
+      emitError(UnknownLoc::get(getModule().getContext()),
+                "Error lowering Toy\n");
       signalPassFailure();
     }
 

@@ -815,7 +815,7 @@ Type LLVMDialect::parseType(StringRef tyData, Location loc) const {
   llvm::SMDiagnostic errorMessage;
   llvm::Type *type = llvm::parseType(tyData, errorMessage, impl->module);
   if (!type)
-    return (getContext()->emitError(loc, errorMessage.getMessage()), nullptr);
+    return (emitError(loc, errorMessage.getMessage()), nullptr);
   return LLVMType::get(getContext(), type);
 }
 

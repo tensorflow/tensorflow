@@ -264,6 +264,41 @@ void DiagnosticEngine::emit(Diagnostic diag) {
   impl->emit(std::move(diag));
 }
 
+/// Helper function used to emit a diagnostic with an optionally empty twine
+/// message. If the message is empty, then it is not inserted into the
+/// diagnostic.
+static InFlightDiagnostic emitDiag(Location location,
+                                   DiagnosticSeverity severity,
+                                   const llvm::Twine &message) {
+  auto &diagEngine = location->getContext()->getDiagEngine();
+  auto diag = diagEngine.emit(location, severity);
+  if (!message.isTriviallyEmpty())
+    diag << message;
+  return diag;
+}
+
+/// Emit an error message using this location.
+InFlightDiagnostic mlir::emitError(Location loc) { return emitError(loc, {}); }
+InFlightDiagnostic mlir::emitError(Location loc, const Twine &message) {
+  return emitDiag(loc, DiagnosticSeverity::Error, message);
+}
+
+/// Emit a warning message using this location.
+InFlightDiagnostic mlir::emitWarning(Location loc) {
+  return emitWarning(loc, {});
+}
+InFlightDiagnostic mlir::emitWarning(Location loc, const Twine &message) {
+  return emitDiag(loc, DiagnosticSeverity::Warning, message);
+}
+
+/// Emit a remark message using this location.
+InFlightDiagnostic mlir::emitRemark(Location loc) {
+  return emitRemark(loc, {});
+}
+InFlightDiagnostic mlir::emitRemark(Location loc, const Twine &message) {
+  return emitDiag(loc, DiagnosticSeverity::Remark, message);
+}
+
 //===----------------------------------------------------------------------===//
 // ScopedDiagnosticHandler
 //===----------------------------------------------------------------------===//

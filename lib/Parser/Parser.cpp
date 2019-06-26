@@ -472,7 +472,7 @@ static Symbol parseExtendedSymbol(Parser &p, Token::Kind identifierTok,
 //===----------------------------------------------------------------------===//
 
 InFlightDiagnostic Parser::emitError(SMLoc loc, const Twine &message) {
-  auto diag = getContext()->emitError(getEncodedSourceLocation(loc), message);
+  auto diag = mlir::emitError(getEncodedSourceLocation(loc), message);
 
   // If we hit a parse error in response to a lexer error, then the lexer
   // already reported the error.
@@ -4152,8 +4152,8 @@ Module *mlir::parseSourceFile(const llvm::SourceMgr &sourceMgr,
 Module *mlir::parseSourceFile(StringRef filename, MLIRContext *context) {
   auto file_or_err = llvm::MemoryBuffer::getFile(filename);
   if (std::error_code error = file_or_err.getError()) {
-    context->emitError(mlir::UnknownLoc::get(context),
-                       "Could not open input file " + filename);
+    emitError(mlir::UnknownLoc::get(context),
+              "Could not open input file " + filename);
     return nullptr;
   }
 

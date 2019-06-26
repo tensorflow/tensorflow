@@ -57,8 +57,8 @@ Location Lexer::getEncodedSourceLocation(llvm::SMLoc loc) {
 
 /// emitError - Emit an error message and return an Token::error token.
 Token Lexer::emitError(const char *loc, const Twine &message) {
-  context->emitError(getEncodedSourceLocation(SMLoc::getFromPointer(loc)),
-                     message);
+  mlir::emitError(getEncodedSourceLocation(SMLoc::getFromPointer(loc)),
+                  message);
   return formToken(Token::error, loc);
 }
 

@@ -70,15 +70,15 @@ Dialect::~Dialect() {}
 
 /// Parse an attribute registered to this dialect.
 Attribute Dialect::parseAttribute(StringRef attrData, Location loc) const {
-  getContext()->emitError(loc) << "dialect '" << getNamespace()
-                               << "' provides no attribute parsing hook";
+  emitError(loc) << "dialect '" << getNamespace()
+                 << "' provides no attribute parsing hook";
   return Attribute();
 }
 
 /// Parse a type registered to this dialect.
 Type Dialect::parseType(StringRef tyData, Location loc) const {
-  getContext()->emitError(loc)
-      << "dialect '" << getNamespace() << "' provides no type parsing hook";
+  emitError(loc) << "dialect '" << getNamespace()
+                 << "' provides no type parsing hook";
   return Type();
 }
 

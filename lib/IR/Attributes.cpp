@@ -216,7 +216,7 @@ static LogicalResult verifyFloatTypeInvariants(llvm::Optional<Location> loc,
                                                Type type) {
   if (!type.isa<FloatType>()) {
     if (loc)
-      type.getContext()->emitError(*loc, "expected floating point type");
+      emitError(*loc, "expected floating point type");
     return failure();
   }
   return success();
@@ -238,8 +238,8 @@ FloatAttr::verifyConstructionInvariants(llvm::Optional<Location> loc,
   // Verify that the type semantics match that of the value.
   if (&type.cast<FloatType>().getFloatSemantics() != &value.getSemantics()) {
     if (loc)
-      ctx->emitError(
-          *loc, "FloatAttr type doesn't match the type implied by its value");
+      emitError(*loc,
+                "FloatAttr type doesn't match the type implied by its value");
     return failure();
   }
   return success();
@@ -321,8 +321,7 @@ LogicalResult OpaqueAttr::verifyConstructionInvariants(
     StringRef attrData) {
   if (!Dialect::isValidNamespace(dialect.strref())) {
     if (loc)
-      context->emitError(*loc)
-          << "invalid dialect namespace '" << dialect << "'";
+      emitError(*loc) << "invalid dialect namespace '" << dialect << "'";
     return failure();
   }
   return success();

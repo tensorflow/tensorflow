@@ -39,8 +39,8 @@ LogicalResult IntegerType::verifyConstructionInvariants(
     llvm::Optional<Location> loc, MLIRContext *context, unsigned width) {
   if (width > IntegerType::kMaxWidth) {
     if (loc)
-      context->emitError(*loc) << "integer bitwidth is limited to "
-                               << IntegerType::kMaxWidth << " bits";
+      emitError(*loc) << "integer bitwidth is limited to "
+                      << IntegerType::kMaxWidth << " bits";
     return failure();
   }
   return success();
@@ -184,20 +184,19 @@ LogicalResult VectorType::verifyConstructionInvariants(
     Type elementType) {
   if (shape.empty()) {
     if (loc)
-      context->emitError(*loc, "vector types must have at least one dimension");
+      emitError(*loc, "vector types must have at least one dimension");
     return failure();
   }
 
   if (!isValidElementType(elementType)) {
     if (loc)
-      context->emitError(*loc, "vector elements must be int or float type");
+      emitError(*loc, "vector elements must be int or float type");
     return failure();
   }
 
   if (any_of(shape, [](int64_t i) { return i <= 0; })) {
     if (loc)
-      context->emitError(*loc,
-                         "vector types must have positive constant sizes");
+      emitError(*loc, "vector types must have positive constant sizes");
     return failure();
   }
   return success();
@@ -216,7 +215,7 @@ static inline LogicalResult checkTensorElementType(Optional<Location> location,
                                                    Type elementType) {
   if (!TensorType::isValidElementType(elementType)) {
     if (location)
-      context->emitError(*location, "invalid tensor element type");
+      emitError(*location, "invalid tensor element type");
     return failure();
   }
   return success();
@@ -245,7 +244,7 @@ LogicalResult RankedTensorType::verifyConstructionInvariants(
   for (int64_t s : shape) {
     if (s < -1) {
       if (loc)
-        context->emitError(*loc, "invalid tensor dimension size");
+        emitError(*loc, "invalid tensor dimension size");
       return failure();
     }
   }
@@ -320,7 +319,7 @@ MemRefType MemRefType::getImpl(ArrayRef<int64_t> shape, Type elementType,
     // Negative sizes are not allowed except for `-1` that means dynamic size.
     if (s < -1) {
       if (location)
-        context->emitError(*location, "invalid memref size");
+        emitError(*location, "invalid memref size");
       return {};
     }
   }
@@ -333,7 +332,7 @@ MemRefType MemRefType::getImpl(ArrayRef<int64_t> shape, Type elementType,
   for (const auto &affineMap : affineMapComposition) {
     if (affineMap.getNumDims() != dim) {
       if (location)
-        context->emitError(*location)
+        emitError(*location)
             << "memref affine map dimension mismatch between "
             << (i == 0 ? Twine("memref rank") : "affine map " + Twine(i))
             << " and affine map" << i + 1 << ": " << dim
@@ -386,7 +385,7 @@ LogicalResult ComplexType::verifyConstructionInvariants(
     llvm::Optional<Location> loc, MLIRContext *context, Type elementType) {
   if (!elementType.isa<FloatType>() && !elementType.isa<IntegerType>()) {
     if (loc)
-      context->emitError(*loc, "invalid element type for complex");
+      emitError(*loc, "invalid element type for complex");
     return failure();
   }
   return success();

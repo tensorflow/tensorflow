@@ -99,21 +99,21 @@ void Function::erase() {
 /// use when the IR is in an inconsistent state.
 InFlightDiagnostic Function::emitError() { return emitError({}); }
 InFlightDiagnostic Function::emitError(const Twine &message) {
-  return getContext()->emitError(getLoc(), message);
+  return mlir::emitError(getLoc(), message);
 }
 
 /// Emit a warning about this function, reporting up to any diagnostic
 /// handlers that may be listening.
 InFlightDiagnostic Function::emitWarning() { return emitWarning({}); }
 InFlightDiagnostic Function::emitWarning(const Twine &message) {
-  return getContext()->emitWarning(getLoc(), message);
+  return mlir::emitWarning(getLoc(), message);
 }
 
 /// Emit a remark about this function, reporting up to any diagnostic
 /// handlers that may be listening.
 InFlightDiagnostic Function::emitRemark() { return emitRemark({}); }
 InFlightDiagnostic Function::emitRemark(const Twine &message) {
-  return getContext()->emitRemark(getLoc(), message);
+  return mlir::emitRemark(getLoc(), message);
 }
 
 /// Clone the internal blocks from this function into dest and all attributes

@@ -106,12 +106,12 @@ LogicalResult Deserializer::deserialize() {
     uint32_t opcode = binary[curOffset] & 0xffff;
 
     if (wordCount == 0)
-      return context->emitError(unknownLoc, "word count cannot be zero");
+      return emitError(unknownLoc, "word count cannot be zero");
 
     uint32_t nextOffset = curOffset + wordCount;
     if (nextOffset > binarySize)
-      return context->emitError(unknownLoc,
-                                "insufficient words for the last instruction");
+      return emitError(unknownLoc,
+                       "insufficient words for the last instruction");
 
     auto operands = binary.slice(curOffset + 1, wordCount - 1);
     if (failed(processInstruction(opcode, operands)))
@@ -127,11 +127,11 @@ Optional<spirv::ModuleOp> Deserializer::collect() { return module; }
 
 LogicalResult Deserializer::processHeader() {
   if (binary.size() < spirv::kHeaderWordCount)
-    return context->emitError(unknownLoc,
-                              "SPIR-V binary module must have a 5-word header");
+    return emitError(unknownLoc,
+                     "SPIR-V binary module must have a 5-word header");
 
   if (binary[0] != spirv::kMagicNumber)
-    return context->emitError(unknownLoc, "incorrect magic number");
+    return emitError(unknownLoc, "incorrect magic number");
 
   // TODO(antiagainst): generator number, bound, schema
   return success();
@@ -145,26 +145,23 @@ LogicalResult Deserializer::processInstruction(uint32_t opcode,
   default:
     break;
   }
-  return context->emitError(unknownLoc, "NYI: opcode ") << opcode;
+  return emitError(unknownLoc, "NYI: opcode ") << opcode;
 }
 
 LogicalResult Deserializer::processMemoryModel(ArrayRef<uint32_t> operands) {
   if (operands.size() != 2)
-    return context->emitError(unknownLoc,
-                              "OpMemoryModel must have two operands");
+    return emitError(unknownLoc, "OpMemoryModel must have two operands");
 
   // TODO(antiagainst): use IntegerAttr-backed enum attributes to avoid the
   // excessive string conversions here.
 
   auto am = spirv::symbolizeAddressingModel(operands.front());
   if (!am)
-    return context->emitError(unknownLoc,
-                              "unknown addressing model for OpMemoryModel");
+    return emitError(unknownLoc, "unknown addressing model for OpMemoryModel");
 
   auto mm = spirv::symbolizeMemoryModel(operands.back());
   if (!mm)
-    return context->emitError(unknownLoc,
-                              "unknown memory model for OpMemoryModel");
+    return emitError(unknownLoc, "unknown memory model for OpMemoryModel");
 
   module->setAttr(
       "addressing_model",

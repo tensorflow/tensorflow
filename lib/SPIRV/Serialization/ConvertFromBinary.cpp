@@ -58,7 +58,7 @@ std::unique_ptr<Module> deserializeModule(llvm::StringRef inputFilename,
   std::string errorMessage;
   auto file = openInputFile(inputFilename, &errorMessage);
   if (!file) {
-    context->emitError(builder.getUnknownLoc()) << errorMessage;
+    emitError(UnknownLoc::get(context), errorMessage);
     return {};
   }
 
@@ -66,7 +66,7 @@ std::unique_ptr<Module> deserializeModule(llvm::StringRef inputFilename,
   auto start = file->getBufferStart();
   auto end = file->getBufferEnd();
   if ((start - end) % sizeof(uint32_t) != 0) {
-    context->emitError(builder.getUnknownLoc())
+    emitError(UnknownLoc::get(context))
         << "SPIR-V binary module must contain integral number of 32-bit words";
     return {};
   }

@@ -314,19 +314,19 @@ void Operation::walk(const std::function<void(Operation *)> &callback) {
 /// Emit an error about fatal conditions with this operation, reporting up to
 /// any diagnostic handlers that may be listening.
 InFlightDiagnostic Operation::emitError(const Twine &message) {
-  return getContext()->emitError(getLoc(), message);
+  return mlir::emitError(getLoc(), message);
 }
 
 /// Emit a warning about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 InFlightDiagnostic Operation::emitWarning(const Twine &message) {
-  return getContext()->emitWarning(getLoc(), message);
+  return mlir::emitWarning(getLoc(), message);
 }
 
 /// Emit a remark about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 InFlightDiagnostic Operation::emitRemark(const Twine &message) {
-  return getContext()->emitRemark(getLoc(), message);
+  return mlir::emitRemark(getLoc(), message);
 }
 
 /// Given an operation 'other' that is within the same parent block, return

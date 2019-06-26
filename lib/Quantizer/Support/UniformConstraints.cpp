@@ -48,8 +48,7 @@ static QuantizedType solveUniformType(SolverContext &solverContext,
                                       Type originalElementType, Location loc) {
   switch (ct.scheme) {
   default:
-    solverContext.getMlirContext().emitError(
-        loc, "unsupported scheme for uniform type conversion");
+    emitError(loc, "unsupported scheme for uniform type conversion");
     return nullptr;
 
   case CandidateQuantizedType::Scheme::UniformPerLayer: {
@@ -66,9 +65,8 @@ static QuantizedType solveUniformType(SolverContext &solverContext,
         params, clusteredFacts.requiredRange.getValue().first,
         clusteredFacts.requiredRange.getValue().second);
     if (!solver.compute()) {
-      solverContext.getMlirContext().emitWarning(loc)
-          << "unable to solve uniform type with "
-          << "UniformParamsFromMinMaxSolver";
+      emitWarning(loc) << "unable to solve uniform type with "
+                       << "UniformParamsFromMinMaxSolver";
       return nullptr;
     }
 
@@ -80,7 +78,7 @@ static QuantizedType solveUniformType(SolverContext &solverContext,
   }
   case CandidateQuantizedType::Scheme::UniformExplicitFixedPointScale: {
     if (!clusteredFacts.explicitScaleZeroPoint.hasValue()) {
-      solverContext.getMlirContext().emitRemark(loc)
+      emitRemark(loc)
           << "unable to solve uniform type with UniformExplicitFixedPointScale "
           << "(no explicitScaleZeroPoint)";
       return nullptr;
@@ -90,7 +88,7 @@ static QuantizedType solveUniformType(SolverContext &solverContext,
     assert(scaleZp.value && "optional value not set on fact");
 
     if (scaleZp.conflict) {
-      solverContext.getMlirContext().emitWarning(loc)
+      emitWarning(loc)
           << "conflicting explicit scale/zeroPoint on node cluster: "
           << "an arbitrary scale/zeroPoint will be used";
     }
@@ -216,7 +214,7 @@ private:
     }
 
     if (!bestCandidateType || !originalElementType) {
-      solverContext.getMlirContext().emitRemark(fusedLoc)
+      emitRemark(fusedLoc)
           << "not solving uniform type (no viable candidate type)";
       return;
     }

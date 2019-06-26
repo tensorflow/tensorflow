@@ -83,8 +83,7 @@ public:
     // this won't do much, but it should at least check some structural
     // properties.
     if (failed(theModule->verify())) {
-      context.emitError(mlir::UnknownLoc::get(&context),
-                        "Module verification error");
+      emitError(mlir::UnknownLoc::get(&context), "Module verification error");
       return nullptr;
     }
 
@@ -222,9 +221,8 @@ private:
     case '*':
       return builder->create<MulOp>(location, L, R).getResult();
     default:
-      context.emitError(loc(binop.loc()),
-                        Twine("Error: invalid binary operator '") +
-                            Twine(binop.getOp()) + "'");
+      emitError(location, "Error: invalid binary operator '")
+          << binop.getOp() << "'";
       return nullptr;
     }
   }
@@ -235,8 +233,8 @@ private:
   mlir::Value *mlirGen(VariableExprAST &expr) {
     if (symbolTable.count(expr.getName()))
       return symbolTable.lookup(expr.getName());
-    context.emitError(loc(expr.loc()), Twine("Error: unknown variable '") +
-                                           expr.getName() + "'");
+    emitError(loc(expr.loc()), "Error: unknown variable '")
+        << expr.getName() << "'";
     return nullptr;
   }
 
@@ -326,9 +324,8 @@ private:
     std::string callee = call.getCallee();
     if (callee == "transpose") {
       if (call.getArgs().size() != 1) {
-        context.emitError(
-            location, Twine("MLIR codegen encountered an error: toy.transpose "
-                            "does not accept multiple arguments"));
+        emitError(location, "MLIR codegen encountered an error: toy.transpose "
+                            "does not accept multiple arguments");
         return nullptr;
       }
       mlir::Value *arg = mlirGen(*call.getArgs()[0]);
@@ -384,10 +381,9 @@ private:
     case toy::ExprAST::Expr_Num:
       return mlirGen(cast<NumberExprAST>(expr));
     default:
-      context.emitError(
-          loc(expr.loc()),
-          Twine("MLIR codegen encountered an unhandled expr kind '") +
-              Twine(expr.getKind()) + "'");
+      emitError(loc(expr.loc()))
+          << "MLIR codegen encountered an unhandled expr kind '"
+          << Twine(expr.getKind()) << "'";
       return nullptr;
     }
   }
@@ -414,8 +410,8 @@ private:
                     .getResult();
       }
     } else {
-      context.emitError(loc(vardecl.loc()),
-                        "Missing initializer in variable declaration");
+      emitError(loc(vardecl.loc()),
+                "Missing initializer in variable declaration");
       return nullptr;
     }
     // Register the value in the symbol table
