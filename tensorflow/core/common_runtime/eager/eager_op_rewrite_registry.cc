@@ -27,9 +27,11 @@ void EagerOpRewriteRegistry::Register(Phase phase,
   if (rewrites_.find(phase) == rewrites_.end()) {
     rewrites_[phase] = std::move(pass);
   } else {
-    TF_CHECK_OK(errors::AlreadyExists(
-        "An EagerOpRewrite is already registerd for this phase: ",
-        pass->name()));
+    TF_CHECK_OK(errors::AlreadyExists(pass->GetDebugInfo().name,
+                                      " is already registered as"
+                                      " EagerOpRewrite for this phase in ",
+                                      pass->GetDebugInfo().file, ":",
+                                      pass->GetDebugInfo().line));
   }
 }
 

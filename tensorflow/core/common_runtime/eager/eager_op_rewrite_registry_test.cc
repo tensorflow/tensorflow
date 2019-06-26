@@ -20,6 +20,8 @@ namespace tensorflow {
 
 class TestEagerOpRewrite : public EagerOpRewrite {
  public:
+  TestEagerOpRewrite(string name, string file, string line)
+      : EagerOpRewrite(name, file, line) {}
   static int count_;
   Status Run(EagerOperation* orig_op,
              std::unique_ptr<tensorflow::EagerOperation>* out_op) override {

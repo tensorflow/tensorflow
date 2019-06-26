@@ -26,20 +26,28 @@ namespace tensorflow {
 // implement the Run method.
 class EagerOpRewrite {
  public:
+  EagerOpRewrite(string name, string file, string line) {
+    debug_info_.name = name;
+    debug_info_.file = file;
+    debug_info_.line = line;
+  }
+
   virtual ~EagerOpRewrite() {}
 
   // To be implemnted by an Eager op rewrite pass.
   virtual Status Run(EagerOperation* orig_op,
                      std::unique_ptr<tensorflow::EagerOperation>* out_op) = 0;
 
-  // Sets the name of the Eager op rewrite.
-  void set_name(const string& name) { name_ = name; }
+  // Holds information about the rewrite registration.
+  struct DebugInfo {
+    string name, file, line;
+  };
 
-  // Returns the name of the Eager op rewrite.
-  string name() const { return name_; }
+  // Returns information about the registered Eager op rewrite.
+  DebugInfo GetDebugInfo() const { return debug_info_; }
 
  private:
-  string name_;
+  DebugInfo debug_info_;
 };
 
 class EagerOpRewriteRegistry {
@@ -72,9 +80,7 @@ namespace eager_rewrite_registration {
 class EagerRewriteRegistration {
  public:
   EagerRewriteRegistration(EagerOpRewriteRegistry::Phase phase,
-                           std::unique_ptr<EagerOpRewrite> pass,
-                           string rewrite_pass_name) {
-    pass->set_name(rewrite_pass_name);
+                           std::unique_ptr<EagerOpRewrite> pass) {
     EagerOpRewriteRegistry::Global()->Register(phase, std::move(pass));
   }
 };
@@ -82,14 +88,16 @@ class EagerRewriteRegistration {
 }  // namespace eager_rewrite_registration
 
 #define REGISTER_REWRITE(phase, rewrite) \
-  REGISTER_REWRITE_UNIQ(__COUNTER__, phase, rewrite)
+  REGISTER_REWRITE_UNIQ_HELPER(__COUNTER__, __FILE__, __LINE__, phase, rewrite)
 
-#define REGISTER_REWRITE_UNIQ(ctr, phase, rewrite)                          \
-  static ::tensorflow::eager_rewrite_registration::EagerRewriteRegistration \
-      register_rewrite_##ctr(                                               \
-          phase,                                                            \
-          ::std::unique_ptr<::tensorflow::EagerOpRewrite>(new rewrite()),   \
-          #rewrite)
+#define REGISTER_REWRITE_UNIQ_HELPER(ctr, file, line, phase, rewrite) \
+  REGISTER_REWRITE_UNIQ(ctr, file, line, phase, rewrite)
+
+#define REGISTER_REWRITE_UNIQ(ctr, file, line, phase, rewrite)                \
+  static ::tensorflow::eager_rewrite_registration::EagerRewriteRegistration   \
+      register_rewrite_##ctr(phase,                                           \
+                             ::std::unique_ptr<::tensorflow::EagerOpRewrite>( \
+                                 new rewrite(#rewrite, file, #line)))
 
 }  // namespace tensorflow
 #endif
