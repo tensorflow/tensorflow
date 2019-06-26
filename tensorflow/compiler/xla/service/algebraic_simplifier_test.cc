@@ -5457,5 +5457,30 @@ TEST_F(AlgebraicSimplifierTest, CompareSame) {
               GmockMatch(m::Broadcast(m::ConstantScalar(true))));
 }
 
+TEST_F(AlgebraicSimplifierTest, CanDisableDotToMultiplyRewrite) {
+  // Some backends may have better performance by treating an outer product as a
+  // Dot, rather than a broadcast Multiply
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      param1 = f32[64] parameter(0)
+      param2 = f32[64] parameter(1)
+      ROOT compare = f32[64, 64] dot(param1, param2),
+        lhs_contracting_dims={}, rhs_contracting_dims={}
+    })";
+
+  // Verify that the default is to re-write
+  TF_ASSERT_OK_AND_ASSIGN(auto m1, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m1.get()).ValueOrDie());
+  EXPECT_THAT(m1->entry_computation()->root_instruction(),
+      GmockMatch(m::Multiply(m::Op(), m::Op())));
+
+  // Verify that we can disable the re-write
+  AlgebraicSimplifierOptions opts = default_options_;
+  opts.set_enable_dot_to_multiply_rewrite(false);
+  TF_ASSERT_OK_AND_ASSIGN(auto m2, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(opts).Run(m2.get()).ValueOrDie());
+}
+
 }  // namespace
 }  // namespace xla
