@@ -1006,37 +1006,30 @@ Status IrEmitterUnnested::HandleWhile(HloInstruction* xla_while) {
 }
 
 Status IrEmitterUnnested::HandleRng(HloInstruction* rng) {
-  // Build the kernel to generate the random numbers.
-  //
-  // Unroll the kernel so that the duplicated computation that calculates the
-  // 128 bit sample can be optimized away by LLVM.
-  std::unique_ptr<KernelThunk> rng_thunk = BuildKernelThunk(
-      rng, /*implements_whole_instruction=*/false, ComputeMaxUnrollFactor(rng));
-  ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
-  for (const HloInstruction* operand : rng->operands()) {
-    operand_to_generator[operand] = [=](const llvm_ir::IrArray::Index& index) {
-      return GetIrArray(*operand, *rng).EmitReadArrayElement(index, &b_);
-    };
-  }
-  TF_RETURN_IF_ERROR(EmitTargetElementLoopInThunk(
-      *rng,
-      GpuElementalIrEmitter(hlo_module_config_, module_, &b_,
-                            GetNestedComputer())
-          .MakeElementGenerator(rng, operand_to_generator),
-      rng_thunk.get()));
+  return Unimplemented("Rng should be expanded for GPU.");
+}
 
+Status IrEmitterUnnested::HandleRngGetAndUpdateState(
+    HloInstruction* rng_state) {
   // Emit a kernel to increment the global state for Philox RNG algorithm.
-  std::unique_ptr<Thunk> increment_seed_thunk =
-      BuildKernelThunk(rng, /*implements_whole_instruction=*/false);
-  llvm_ir::IncrementVariableForPhiloxRngState(1, module_, &b_);
-
-  // Build the SequentialThunk for the RNG hlo.
-  std::vector<std::unique_ptr<Thunk>> thunks;
-  thunks.reserve(2);
-  thunks.push_back(std::move(rng_thunk));
-  thunks.push_back(std::move(increment_seed_thunk));
   AddThunkToThunkSequence(
-      absl::make_unique<SequentialThunk>(std::move(thunks), rng));
+      BuildKernelThunk(rng_state, /*implements_whole_instruction=*/true));
+
+  llvm::Value* old_state = llvm_ir::RngGetAndUpdateState(
+      Cast<HloRngGetAndUpdateStateInstruction>(rng_state)->delta(), module_,
+      &b_);
+
+  llvm::Value* output_address =
+      GetIrArray(*rng_state, *rng_state)
+          .EmitArrayElementAddress(
+              llvm_ir::IrArray::Index(
+                  /*linear=*/b_.getInt64(0), rng_state->shape(), &b_),
+              &b_, "rng_state_address");
+  output_address = BitCast(
+      output_address, llvm::PointerType::get(
+                          old_state->getType(),
+                          output_address->getType()->getPointerAddressSpace()));
+  Store(old_state, output_address);
 
   return Status::OK();
 }

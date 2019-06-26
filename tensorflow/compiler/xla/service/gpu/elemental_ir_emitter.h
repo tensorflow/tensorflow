@@ -56,9 +56,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
                                            llvm::Value* lhs_value,
                                            llvm::Value* rhs_value) override;
 
-  StatusOr<llvm::Value*> EmitErfcInv(PrimitiveType prim_type,
-                                     llvm::Value* value) override;
-
   StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
                                  llvm::Value* value) override;
 
