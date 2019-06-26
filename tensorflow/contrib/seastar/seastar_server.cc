@@ -1,4 +1,5 @@
-#include "boost/asio/ip/address_v4.hpp"
+#include <arpa/inet.h>
+
 #include "core/reactor.hh"
 #include "core/channel.hh"
 
@@ -43,8 +44,8 @@ SeastarServer::Connection::Connection(seastar::connected_socket&& fd,
   : tag_factory_(tag_factory),
     addr_(addr) {
   seastar::ipv4_addr ip_addr(addr);
-  boost::asio::ip::address_v4 addr_v4(ip_addr.ip);
-  string addr_str = addr_v4.to_string() + ":" + std::to_string(ip_addr.port);
+  struct in_addr addr_v4 { .s_addr = ip_addr.ip };
+  string addr_str = string(inet_ntoa(addr_v4)) + ":" + std::to_string(ip_addr.port);
   channel_ = new seastar::channel(addr_str);
   fd_ = std::move(fd);
   fd_.set_nodelay(true);
