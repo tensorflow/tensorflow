@@ -10,3 +10,12 @@ config_setting(
     },
     visibility = ["//visibility:public"],
 )
+
+config_setting(
+    name = "build_with_mkl_dnn_v1_only",
+    define_values = {
+        "build_with_mkl": "true",
+        "build_with_mkl_dnn_v1_only": "true",
+    },
+    visibility = ["//visibility:public"],
+)
