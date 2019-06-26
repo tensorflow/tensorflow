@@ -411,14 +411,15 @@ class MklDnnConvUtil {
                          input_cols, filter_cols, dilation_cols, stride_cols,
                          padding_type, &out_cols, &pad_left, &pad_right));
     } else {
-      OP_REQUIRES_OK(context_, GetWindowedOutputSizeVerbose(
-                                   input_planes, filter_planes, stride_planes,
-                                   padding_, &out_planes, &pad_D1, &pad_D2));
-      OP_REQUIRES_OK(context_, GetWindowedOutputSizeVerbose(
-                                   input_rows, filter_rows, stride_rows,
+      OP_REQUIRES_OK(context_, GetWindowedOutputSizeVerboseV2(
+                                   input_planes, filter_planes, dilation_planes,
+                                   stride_planes, padding_, &out_planes, &pad_D1,
+                                   &pad_D2));
+      OP_REQUIRES_OK(context_, GetWindowedOutputSizeVerboseV2(
+                                   input_rows, filter_rows, dilation_rows, stride_rows,
                                    padding_, &out_rows, &pad_top, &pad_bottom));
-      OP_REQUIRES_OK(context_, GetWindowedOutputSizeVerbose(
-                                   input_cols, filter_cols, stride_cols,
+      OP_REQUIRES_OK(context_, GetWindowedOutputSizeVerboseV2(
+                                   input_cols, filter_cols, dilation_cols, stride_cols,
                                    padding_, &out_cols, &pad_left, &pad_right));
     }
 
