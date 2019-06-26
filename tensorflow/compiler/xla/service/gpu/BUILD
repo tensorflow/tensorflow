@@ -1027,7 +1027,6 @@ cc_library(
         ":cudnn_conv_rewriter",
         ":cudnn_fused_conv_rewriter",
         ":fusion_merger",
-        ":gemm_algorithm_picker",
         ":gemm_rewriter",
         ":gpu_constants",
         ":gpu_copy_insertion",
@@ -1105,6 +1104,7 @@ cc_library(
     if_cuda_is_configured([
         ":cusolver_rewriter",
         ":cudnn_conv_algorithm_picker",
+        ":gemm_algorithm_picker",
         "//tensorflow/core:cuda_libdevice_path",
         "//tensorflow/stream_executor/cuda:cuda_diagnostics",
         "//tensorflow/stream_executor/cuda:ptxas_utils",
