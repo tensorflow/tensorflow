@@ -52,6 +52,7 @@ load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_verbs_deps")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_mpi_deps")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_gdr_deps")
+load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_seastar_deps")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 load(
     "//third_party/ngraph:build_defs.bzl",
@@ -4818,6 +4819,7 @@ tf_py_wrap_cc(
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps() +
          tf_additional_verbs_deps() +
+         tf_additional_seastar_deps() +
          tf_additional_mpi_deps() +
          tf_additional_gdr_deps()) + if_ngraph([
         "@ngraph_tf//:ngraph_tf",

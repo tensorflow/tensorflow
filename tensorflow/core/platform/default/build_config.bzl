@@ -740,6 +740,12 @@ def tf_additional_verbs_lib_defines():
         "//conditions:default": [],
     })
 
+def tf_additional_seastar_lib_defines():
+    return select({
+        "//tensorflow:with_seastar_support": ["TENSORFLOW_USE_SEASTAR"],
+        "//conditions:default": [],
+    })
+
 def tf_additional_mpi_lib_defines():
     return select({
         "//tensorflow:with_mpi_support": ["TENSORFLOW_USE_MPI"],

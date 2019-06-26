@@ -91,6 +91,7 @@ build:gdr --define=with_gdr_support=true
 build:ngraph --define=with_ngraph_support=true
 build:verbs --define=with_verbs_support=true
 build:numa --define=with_numa_support=true
+build:seastar --define=with_seastar_support=true
 
 # Options to disable default on features
 build:noaws --define=no_aws_support=true

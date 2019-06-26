@@ -148,6 +148,7 @@ load(
     "tf_additional_test_deps",
     "tf_additional_test_srcs",
     "tf_additional_verbs_lib_defines",
+    "tf_additional_seastar_lib_defines",
     "tf_grpc_service_all",
     "tf_jspb_proto_library",
     "tf_kernel_tests_linkstatic",
@@ -2463,6 +2464,7 @@ LIB_INTERNAL_DEFINES = (
     ] + tf_additional_verbs_lib_defines() +
     tf_additional_mpi_lib_defines() +
     tf_additional_gdr_lib_defines() +
+    tf_additional_seastar_lib_defines() +
     tf_additional_numa_lib_defines()
 )
 
