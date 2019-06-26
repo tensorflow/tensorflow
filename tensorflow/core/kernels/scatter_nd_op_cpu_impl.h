@@ -47,56 +47,57 @@ class OpKernelContext;
 // Specialization of UpdateExecutor to CPU
 namespace update_executor {
 
-template <typename Input, typename Update, typename Output,
+template <typename DeviceType, typename Input, typename Update, typename Output,
           scatter_nd_op::UpdateOp OP>
 class UpdateExecutor {
  public:
-  EIGEN_STRONG_INLINE static void Execute(Input value, Update update,
-                                          Output output);
+  EIGEN_STRONG_INLINE static void Execute(const DeviceType& device, Input value, 
+                                          Update update, Output output);
+  
 };
 
-template <typename Input, typename Update, typename Output>
-class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::ASSIGN> {
+template <typename DeviceType, typename Input, typename Update, typename Output>
+class UpdateExecutor<DeviceType, Input, Update, Output, scatter_nd_op::UpdateOp::ASSIGN> {
  public:
-  EIGEN_STRONG_INLINE static void Execute(Input /* input */, Update update,
-                                          Output output) {
-    output = update;
+  EIGEN_STRONG_INLINE static void Execute(const DeviceType& device, Input /* input */, 
+                                          Update update, Output output) {
+    output.device(device) = update;
   }
 };
 
-template <typename Input, typename Update, typename Output>
-class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::ADD> {
+template <typename DeviceType, typename Input, typename Update, typename Output>
+class UpdateExecutor<DeviceType, Input, Update, Output, scatter_nd_op::UpdateOp::ADD> {
  public:
-  EIGEN_STRONG_INLINE static void Execute(Input /* input */, Update update,
-                                          Output output) {
-    output += update;
+  EIGEN_STRONG_INLINE static void Execute(const DeviceType& device, Input /* input */, 
+                                          Update update, Output output) {
+    output.device(device) += update;
   }
 };
 
-template <typename Input, typename Update, typename Output>
-class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::SUB> {
+template <typename DeviceType, typename Input, typename Update, typename Output>
+class UpdateExecutor<DeviceType, Input, Update, Output, scatter_nd_op::UpdateOp::SUB> {
  public:
-  EIGEN_STRONG_INLINE static void Execute(Input /* input */, Update update,
-                                          Output output) {
-    output -= update;
+  EIGEN_STRONG_INLINE static void Execute(const DeviceType& device, Input /* input */, 
+                                          Update update, Output output) {
+    output.device(device) -= update;
   }
 };
 
-template <typename Input, typename Update, typename Output>
-class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::MAX> {
+template <typename DeviceType, typename Input, typename Update, typename Output>
+class UpdateExecutor<DeviceType, Input, Update, Output, scatter_nd_op::UpdateOp::MAX> {
  public:
-  EIGEN_STRONG_INLINE static void Execute(Input /* input */, Update update,
-                                          Output output) {
-    output = output.cwiseMax(update);
+  EIGEN_STRONG_INLINE static void Execute(const DeviceType& device, Input /* input */, 
+                                          Update update, Output output) {
+    output.device(device) = output.cwiseMax(update);
   }
 };
 
-template <typename Input, typename Update, typename Output>
-class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::MIN> {
+template <typename DeviceType, typename Input, typename Update, typename Output>
+class UpdateExecutor<DeviceType, Input, Update, Output, scatter_nd_op::UpdateOp::MIN> {
  public:
-  EIGEN_STRONG_INLINE static void Execute(Input /* input */, Update update,
-                                          Output output) {
-    output = output.cwiseMin(update);
+  EIGEN_STRONG_INLINE static void Execute(const DeviceType& device, Input /* input */, 
+                                          Update update, Output output) {
+    output.device(device) = output.cwiseMin(update);
   }
 };
 
@@ -143,11 +144,11 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
         break;
       } else {
         auto input_chip = Toutput.template chip<0>(i);
-        auto output_chip = input_chip.device(d);
+        auto output_chip = input_chip;
         auto update_chip = Tupdates.template chip<0>(loc);
         update_executor::UpdateExecutor<
-            decltype(input_chip), decltype(update_chip), decltype(output_chip),
-            OP>::Execute(input_chip, update_chip, output_chip);
+            DeviceType, decltype(input_chip), decltype(update_chip), decltype(output_chip),
+            OP>::Execute(d, input_chip, update_chip, output_chip);
       }
     }
 
@@ -233,11 +234,11 @@ struct ScatterNdFunctor<SYCLDevice, T, Index, OP, IXDIM> {
         break;
       } else {
         auto input_chip = Toutput.template chip<0>(i);
-        auto output_chip = input_chip.device(d);
+        auto output_chip = input_chip;
         auto update_chip = Tupdates.template chip<0>(loc);
         update_executor::UpdateExecutor<
-            decltype(input_chip), decltype(update_chip), decltype(output_chip),
-            OP>::Execute(input_chip, update_chip, output_chip);
+            DeviceType, decltype(input_chip), decltype(update_chip), decltype(output_chip),
+            OP>::Execute(d, input_chip, update_chip, output_chip);
       }
     }
 
