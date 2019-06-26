@@ -89,13 +89,14 @@ ENTRY AddDotsFunc {
 
 )";
 
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
 
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 ; CHECK-NEXT:    %x = f32[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    %y = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    ROOT %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha:1,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
+; CHECK-NEXT:    ROOT %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha_real:1,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
       )");
 }
 
@@ -112,13 +113,14 @@ ENTRY AddDotsFunc {
 
 )";
 
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
 
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 ; CHECK-NEXT:    %x = f32[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    %y = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    ROOT %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha:1,dot_dimension_numbers:{lhs_contracting_dimensions:[0],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
+; CHECK-NEXT:    ROOT %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha_real:1,dot_dimension_numbers:{lhs_contracting_dimensions:[0],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
       )");
 }
 
@@ -135,19 +137,20 @@ ENTRY AddDotsFunc {
 
 )";
 
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
 
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 ; CHECK-NEXT:    %y = f32[2,2]{1,0} parameter(1)
 ; CHECK-NEXT:    %x = f32[2,2]{1,0} parameter(0)
-; CHECK-NEXT:    ROOT %custom-call = f32[2,2]{1,0} custom-call(%y, %x), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha:1,dot_dimension_numbers:{lhs_contracting_dimensions:[0],rhs_contracting_dimensions:[1],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
+; CHECK-NEXT:    ROOT %custom-call = f32[2,2]{1,0} custom-call(%y, %x), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha_real:1,dot_dimension_numbers:{lhs_contracting_dimensions:[0],rhs_contracting_dimensions:[1],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
       )");
 }
 
 TEST_F(GemmRewriteTest, AlphaSimpleRewrite) {
   const char* hlo_text = R"(
-HloModule NonZeroAlpha
+HloModule AlphaSimpleRewrite
 
 ENTRY AddDotsFunc {
   x = f32[2,2] parameter(0)
@@ -160,13 +163,40 @@ ENTRY AddDotsFunc {
 
 )";
 
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
 
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 ; CHECK-NEXT:    %x = f32[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    %y = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    ROOT %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha:3,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
+; CHECK-NEXT:    ROOT %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha_real:3,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
+      )");
+}
+
+TEST_F(GemmRewriteTest, ComplexAlphaSimpleRewrite) {
+  const char* hlo_text = R"(
+HloModule ComplexAlphaSimpleRewrite
+
+ENTRY AddDotsFunc {
+  x = c64[2,2] parameter(0)
+  y = c64[2,2] parameter(1)
+  k = c64[] constant((3.0, 3.0))
+  k_broadcast = c64[2, 2] broadcast(k), dimensions={}
+  dot_a = c64[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT dot_a_multiplied = c64[2, 2] multiply(dot_a, k_broadcast)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %AddDotsFunc (x: c64[2,2], y: c64[2,2]) -> c64[2,2] {
+; CHECK-NEXT:    %x = c64[2,2]{1,0} parameter(0)
+; CHECK-NEXT:    %y = c64[2,2]{1,0} parameter(1)
+; CHECK-NEXT:    ROOT %custom-call = c64[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha_real:3,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1,alpha_imag:3}"
       )");
 }
 
@@ -186,9 +216,10 @@ ENTRY AddDotsFunc {
 
 )";
 
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK:    %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha:1,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
+; CHECK:    %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha_real:1,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
       )");
 }
 
@@ -206,13 +237,14 @@ ENTRY AddDotsFunc {
 }
 )";
 
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
 
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 ; CHECK-NEXT:    %x = f32[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    %y = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha:1,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
+; CHECK-NEXT:    %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha_real:1,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
       )");
 }
 
@@ -233,6 +265,7 @@ ENTRY AddDotsFunc {
 
 )";
 
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
 
@@ -240,7 +273,7 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    %x = f32[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    %y = f32[2,2]{1,0} parameter(1)
 ; CHECK-NEXT:    %bias = f32[2,2]{1,0} parameter(2)
-; CHECK-NEXT:    ROOT %custom-call.1 = f32[2,2]{1,0} custom-call(%x, %y, %bias), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha:3,beta:1,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
+; CHECK-NEXT:    ROOT %custom-call.1 = f32[2,2]{1,0} custom-call(%x, %y, %bias), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha_real:3,beta:1,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
       )");
 }
 
@@ -262,6 +295,7 @@ ENTRY AddDotsFunc {
 
 )";
 
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
 
@@ -269,7 +303,7 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    %bias = f32[2,2]{1,0} parameter(2)
 ; CHECK-NEXT:    %x = f32[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    %y = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha:3,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
+; CHECK-NEXT:    %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha_real:3,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
       )");
 }
 
@@ -287,13 +321,14 @@ ENTRY AddDotsFunc {
 
 )";
 
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
 
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2], bias: f32[2,2]) -> f32[2,2] {
 ; CHECK-NEXT:    %x = f32[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    %y = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha:1,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
+; CHECK-NEXT:    %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha_real:1,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
       )");
 }
 
@@ -313,6 +348,7 @@ ENTRY AddDotsFunc {
 
   // Bias should be fused into the multiplication.
   CheckNumberOfAllocations(hlo_text, 3);
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
 }  // namespace

@@ -51,7 +51,9 @@ message GemmBackendConfig {
     int64 selected_algorithm = 1;
   }
 
-  double alpha = 2;
+  double alpha_real = 2;
+  double alpha_imag = 9;
+
   double beta = 3;
 
   xla.DotDimensionNumbers dot_dimension_numbers = 7;
