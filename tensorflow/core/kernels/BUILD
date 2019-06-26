@@ -1266,7 +1266,7 @@ tf_kernel_library(
         "transpose_op.cc",
     ],
     hdrs = ["transpose_op.h"],
-    deps = ARRAY_DEPS + if_mkl([":mkl_transpose_op"]),
+    deps = ARRAY_DEPS,
 )
 
 tf_kernel_library(
@@ -3634,15 +3634,19 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "batch_matmul_op",
-    srcs = if_mkl_ml([
-        "mkl_batch_matmul_op.cc",
-    ]),
     # <prefix>*impl.h are excluded by default from the CPU build, add explicitly.
     hdrs = ["batch_matmul_op_impl.h"],
     prefix = "batch_matmul_op",
     deps = MATH_DEPS + [":eigen_contraction_kernel"] + if_mkl_ml([
         "//third_party/mkl:intel_binary_blob",
     ]),
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_batch_matmul_op",
+    srcs = ["mkl_batch_matmul_op.cc"],
+    hdrs = ["batch_matmul_op_impl.h"],
+    deps = MATH_DEPS + mkl_deps(),
 )
 
 tf_kernel_library(
@@ -3708,9 +3712,7 @@ tf_kernel_library(
     srcs = [
         "matmul_op.cc",
         "matmul_op_fused.cc",
-    ] + if_mkl([
-        "mkl_matmul_op.cc",
-    ]),
+    ],
     hdrs = ["matmul_op.h"],
     defines = select({
         ":xsmm": [
@@ -3729,6 +3731,12 @@ tf_kernel_library(
     }) + mkl_deps() + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
     ]),
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_matmul_op",
+    srcs = ["mkl_matmul_op.cc"],
+    deps = MATH_DEPS + mkl_deps(),
 )
 
 tf_kernel_library(
@@ -7731,7 +7739,7 @@ tf_mkl_kernel_library(
         "mkl_transpose_op.cc",
     ],
     hdrs = ["transpose_op.h"],
-    deps = ARRAY_DEPS + mkl_deps(),
+    deps = ARRAY_DEPS + mkl_deps() + [":transpose_op"],
 )
 
 # NOTE(lespeholt): This rule is deprecated, please use:
