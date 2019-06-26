@@ -53,7 +53,6 @@ double get_us(struct timeval t) { return (t.tv_sec * 1000000 + t.tv_usec); }
 using TfLiteDelegatePtr = tflite::Interpreter::TfLiteDelegatePtr;
 using TfLiteDelegatePtrMap = std::map<std::string, TfLiteDelegatePtr>;
 
-#if defined(__ANDROID__)
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(Settings* s) {
   TfLiteGpuDelegateOptions options;
   options.metadata = TfLiteGpuDelegateGetModelMetadata(s->model->GetModel());
@@ -67,23 +66,23 @@ Interpreter::TfLiteDelegatePtr CreateGPUDelegate(Settings* s) {
 
   return evaluation::CreateGPUDelegate(s->model, &options);
 }
-#endif  // defined(__ANDROID__)
 
 TfLiteDelegatePtrMap GetDelegates(Settings* s) {
   TfLiteDelegatePtrMap delegates;
   if (s->gl_backend) {
-#if defined(__ANDROID__)
-    delegates.emplace("GPU", CreateGPUDelegate(s));
-#else
-    LOG(INFO) << "GPU acceleration is unsupported on this platform.";
-#endif
+    auto delegate = CreateGPUDelegate(s);
+    if (!delegate)
+      LOG(INFO) << "GPU acceleration is unsupported on this platform.";
+    else
+      delegates.emplace("GPU", std::move(delegate));
   }
+
   if (s->accel) {
-#if defined(__ANDROID__)
-    delegates.emplace("NNAPI", evaluation::CreateNNAPIDelegate());
-#else
-    LOG(INFO) << "NNAPI acceleration is unsupported on this platform.";
-#endif
+    auto delegate = evaluation::CreateNNAPIDelegate();
+    if (!delegate)
+      LOG(INFO) << "NNAPI acceleration is unsupported on this platform.";
+    else
+      delegates.emplace("NNAPI", evaluation::CreateNNAPIDelegate());
   }
   return delegates;
 }
