@@ -64,24 +64,6 @@ namespace convert {
 using absl::StrAppend;
 using absl::StrCat;
 
-TrtCandidateSelector::TrtCandidateSelector(
-    const grappler::GraphProperties& graph_properties,
-    TrtPrecisionMode precision_mode)
-    : graph_properties_(graph_properties), precision_mode_(precision_mode) {}
-
-Status TrtCandidateSelector::IsTensorRTCandidate(const Node* node) {
-  std::vector<const Edge*> input_edges;
-  TF_RETURN_IF_ERROR(node->input_edges(&input_edges));
-  std::vector<std::pair<const NodeDef*, int>> input_node_and_ports;
-  input_node_and_ports.reserve(input_edges.size());
-  for (const Edge* input_edge : input_edges) {
-    input_node_and_ports.emplace_back(&input_edge->src()->def(),
-                                      input_edge->src_output());
-  }
-  return validator_.ValidateNode(node->def(), input_node_and_ports,
-                                 precision_mode_, graph_properties_);
-}
-
 namespace {
 
 Status BuildNodeMap(const Graph& graph,
@@ -740,13 +722,12 @@ Status ConvertAfterShapes(const ConversionParams& params) {
   }
   segment_options.minimum_segment_size = params.minimum_segment_size;
   segment::SegmentNodesVector initial_segments;
-  TrtCandidateSelector candidate_selector(*params.graph_properties,
-                                          params.precision_mode);
+  TrtNodeValidator validator(*params.graph_properties, params.precision_mode);
   TF_RETURN_IF_ERROR(segment::SegmentGraph(
       &graph,
-      std::bind(&TrtCandidateSelector::IsTensorRTCandidate, &candidate_selector,
+      std::bind(&TrtNodeValidator::IsTensorRTCandidate, &validator,
                 std::placeholders::_1),
-      // Input validation is already done by TrtCandidateSelector, so we don't
+      // Input validation is already done by TrtNodeValidator, so we don't
       // need to check the input edges.
       [](const Edge* edge) { return true; }, OutputEdgeValidator(),
       segment_options, &initial_segments));

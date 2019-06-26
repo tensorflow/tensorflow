@@ -962,11 +962,15 @@ const std::set<string>* TrtNodeValidator::quantize_ops = new std::set<string>{
     "FakeQuantWithMinMaxArgs",
 };
 
-TrtNodeValidator::TrtNodeValidator() { RegisterOpValidators(); }
+TrtNodeValidator::TrtNodeValidator(
+    const grappler::GraphProperties& graph_properties,
+    TrtPrecisionMode precision_mode)
+    : graph_properties_(graph_properties), precision_mode_(precision_mode) {
+  RegisterOpValidators();
+}
 
 Status TrtNodeValidator::ConvertToTensorOrWeights(
     const NodeDef& node_def, int output_port,
-    const grappler::GraphProperties& graph_properties,
     TRT_TensorOrWeights* tensor_or_weights) {
   if (node_def.op() == "Const") {
     if (output_port != 0) {
@@ -982,13 +986,13 @@ Status TrtNodeValidator::ConvertToTensorOrWeights(
     std::vector<TRT_TensorOrWeights> inputs;
     return ConvertConstToWeights(node_def, inputs, tensor_or_weights);
   }
-  if (!graph_properties.HasOutputProperties(node_def.name())) {
+  if (!graph_properties_.HasOutputProperties(node_def.name())) {
     return errors::InvalidArgument("Shape and data type are unknown");
   }
 
   // Validate and convert shape and dtype.
   const auto& output_params =
-      graph_properties.GetOutputProperties(node_def.name());
+      graph_properties_.GetOutputProperties(node_def.name());
   const auto& tensor_properties = output_params.at(output_port);
   const DataType dtype = tensor_properties.dtype();
   const PartialTensorShape shape = tensor_properties.shape();
@@ -1006,20 +1010,16 @@ Status TrtNodeValidator::ConvertToTensorOrWeights(
   return Status::OK();
 }
 
-Status TrtNodeValidator::ValidateNode(
-    const NodeDef& node_def,
-    const std::vector<std::pair<const NodeDef*, int>>& input_node_and_ports,
-    const TrtPrecisionMode precision_mode,
-    const grappler::GraphProperties& graph_properties) {
-  const string& op = node_def.op();
+Status TrtNodeValidator::IsTensorRTCandidate(const Node* node) {
+  const string& op = node->def().op();
   // In INT8 mode, we will always apply the quantization ranges provided by
   // these ops to the relevant tensors. This happens regardless of the value of
   // use_calibration.
   bool is_supported_op = false;
   if (quantize_ops->count(op)) {
-    is_supported_op = (precision_mode == TrtPrecisionMode::INT8);
+    is_supported_op = (precision_mode_ == TrtPrecisionMode::INT8);
   } else {
-    is_supported_op = op_validators_.count(node_def.op());
+    is_supported_op = op_validators_.count(op);
   }
   if (!is_supported_op) {
     return errors::Unimplemented("Op type ", op, " is not supported.");
@@ -1028,22 +1028,24 @@ Status TrtNodeValidator::ValidateNode(
   // Convert input NodeDef and corresponding output ports to
   // TRT_TensorOrWeights.
   std::vector<TRT_TensorOrWeights> inputs;
-  for (int i = 0; i < input_node_and_ports.size(); ++i) {
-    const auto& pair = input_node_and_ports[i];
+  std::vector<const Edge*> input_edges;
+  TF_RETURN_IF_ERROR(node->input_edges(&input_edges));
+  for (const Edge* edge : input_edges) {
     TRT_TensorOrWeights tensor_or_weights;
-    Status status = ConvertToTensorOrWeights(
-        *pair.first, pair.second, graph_properties, &tensor_or_weights);
+    const NodeDef& src_def = edge->src()->def();
+    Status status = ConvertToTensorOrWeights(src_def, edge->src_output(),
+                                             &tensor_or_weights);
     if (!status.ok()) {
       return errors::Internal(
-          "Failed to convert input with index ", i,
+          "Failed to convert input ", src_def.name(),
           " to a TRT_TensorOrWeights: ", status.error_message());
     }
     inputs.push_back(tensor_or_weights);
   }
 
-  OpConverter validator = op_validators_[node_def.op()];
+  OpConverter validator = op_validators_[op];
   OpConverterParams params(
-      /*arg_converter=*/nullptr, node_def, inputs, /*arg_outputs=*/nullptr,
+      /*arg_converter=*/nullptr, node->def(), inputs, /*arg_outputs=*/nullptr,
       /*arg_validation_only=*/true, &weight_store_);
   return validator(&params);
 }

@@ -378,21 +378,15 @@ using OpConverter = std::function<Status(OpConverterParams*)>;
 // Class to verify if specific TF node is supported by TRT.
 class TrtNodeValidator {
  public:
-  TrtNodeValidator();
+  // 'graph_properties' is the GraphProperties of the graph whose nodes will be
+  // checked by IsTensorRTCandidate() later. It is used to get the shape and
+  // data type information of a tensor for validation purpose.
+  TrtNodeValidator(const grappler::GraphProperties& graph_properties,
+                   TrtPrecisionMode precision_mode);
 
-  // Validate the node, and return ok if it's supported by TRT.
-  //
-  // - 'node_def' is the node to validate.
-  // - 'input_node_and_ports' are the input NodeDefs and their output ports that
-  //   are connected to 'node_def' in the TF graph.
-  // - 'graph_properties' is the GraphProperties of the graph where 'node_def'
-  //   belongs. It is used to get the shape and data type information of a
-  //   tensor for validation purpose.
-  Status ValidateNode(
-      const NodeDef& node_def,
-      const std::vector<std::pair<const NodeDef*, int>>& input_node_and_ports,
-      const TrtPrecisionMode precision_mode,
-      const grappler::GraphProperties& graph_properties);
+  // Returns OK iff 'node' is a TF-TRT conversion candidate, which will be added
+  // to TRT subgraph and later converted into TRT engine.
+  Status IsTensorRTCandidate(const Node* node);
 
  private:
   static const std::set<string>* quantize_ops;
@@ -407,10 +401,8 @@ class TrtNodeValidator {
   // Convert the output tensor at 'output_port' of 'node_def' to a
   // TRT_TensorOrWeights which will be later used as an input to other nodes and
   // passed to ValidateNode() below.
-  Status ConvertToTensorOrWeights(
-      const NodeDef& node_def, int output_port,
-      const grappler::GraphProperties& graph_properties,
-      TRT_TensorOrWeights* tensor_or_weights);
+  Status ConvertToTensorOrWeights(const NodeDef& node_def, int output_port,
+                                  TRT_TensorOrWeights* tensor_or_weights);
 
   // Stores all the validators by op type. If no validator is registered for
   // specific op, it means no validation is needed and ValidateNode() will
@@ -420,6 +412,13 @@ class TrtNodeValidator {
   // Store the weights added during validation. Some validations (e.g.
   // validation for Const node) may produce weights.
   TrtWeightStore weight_store_;
+
+  // GraphProperties of the graph whose nodes are to be validated by
+  // IsTensorRTCandidate().
+  const grappler::GraphProperties& graph_properties_;
+
+  // Quantization ops are only converted when using quantized precisions.
+  const TrtPrecisionMode precision_mode_;
 
   friend class ValidatorTest;
   friend class OpConverterTest;
