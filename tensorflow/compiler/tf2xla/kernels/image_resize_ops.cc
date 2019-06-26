@@ -456,7 +456,8 @@ xla::XlaOp ResizeUsingDilationAndConvolutionGradOp(
 }
 
 void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners_,
-                    bool is_kernel_bilinear) {
+                    bool is_kernel_bilinear,
+                    absl::string_view device_type_string) {
   xla::XlaBuilder* b = ctx->builder();
 
   TensorShape input_shape = ctx->InputShape(0);
@@ -508,7 +509,9 @@ void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners_,
   // integer convolution on CuDNN is either not supported or not allowed
   // directly.
   xla::PrimitiveType original_input_type = input_type;
-  if (is_kernel_bilinear || (xla::primitive_util::IsIntegralType(input_type))) {
+  if (is_kernel_bilinear || ((device_type_string == DEVICE_GPU_XLA_JIT ||
+                              device_type_string == DEVICE_XLA_GPU) &&
+                             xla::primitive_util::IsIntegralType(input_type))) {
     input = xla::ConvertElementType(input, xla::F32);
     input_type = xla::F32;
   }
@@ -570,7 +573,8 @@ void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners_,
 class ResizeNearestNeighborOp : public XlaOpKernel {
  public:
   explicit ResizeNearestNeighborOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx) {
+      : XlaOpKernel(ctx),
+        device_type_string_(ctx->device_type().type_string()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
     OP_REQUIRES(
         ctx, align_corners_ == true,
@@ -585,13 +589,15 @@ class ResizeNearestNeighborOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    GeneralCompile(ctx, align_corners_, is_kernel_bilinear_);
+    GeneralCompile(ctx, align_corners_, is_kernel_bilinear_,
+                   device_type_string_);
   }
 
  private:
   bool align_corners_ = true;
   bool half_pixel_centers_ = true;
   bool is_kernel_bilinear_ = false;
+  string device_type_string_;
 };
 
 REGISTER_XLA_OP(Name("ResizeNearestNeighbor").CompileTimeConstantInput("size"),
@@ -599,7 +605,9 @@ REGISTER_XLA_OP(Name("ResizeNearestNeighbor").CompileTimeConstantInput("size"),
 
 class ResizeBilinearOp : public XlaOpKernel {
  public:
-  explicit ResizeBilinearOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+  explicit ResizeBilinearOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx),
+        device_type_string_(ctx->device_type().type_string()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
     OP_REQUIRES_OK(ctx,
                    ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
@@ -610,13 +618,15 @@ class ResizeBilinearOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    GeneralCompile(ctx, align_corners_, is_kernel_bilinear_);
+    GeneralCompile(ctx, align_corners_, is_kernel_bilinear_,
+                   device_type_string_);
   }
 
  private:
   bool align_corners_ = true;
   bool half_pixel_centers_ = true;
   bool is_kernel_bilinear_ = true;
+  string device_type_string_;
 };
 
 REGISTER_XLA_OP(Name("ResizeBilinear").CompileTimeConstantInput("size"),
