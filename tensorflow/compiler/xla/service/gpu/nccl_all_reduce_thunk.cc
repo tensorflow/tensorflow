@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 
 #if GOOGLE_CUDA
+#include <chrono>  // NOLINT (required by TF interfaces)
 #include <memory>
 #include <string>
 #include <utility>
@@ -71,6 +72,8 @@ namespace gpu {
 #if GOOGLE_CUDA
 namespace {
 
+using tensorflow::BlockingCounter;
+
 // Functions to translate an ncclResult_t/cudaError_t to a Status object.  Used
 // by the macros below.
 Status TranslateStatus(ncclResult_t s, const char* file, int64 line,
@@ -114,6 +117,23 @@ Status TranslateStatus(cudaError_t s, const char* file, int64 line,
     }                                                                        \
   } while (0)
 
+template <typename DescFn>
+void WaitAndLogIfStuck(BlockingCounter* counter, const DescFn& desc_fn) {
+  VLOG(3) << "Begin: " << desc_fn();
+  const std::chrono::milliseconds timeout(5000);
+  bool ok = counter->WaitFor(timeout);
+  if (ok) {
+    VLOG(3) << "Finished: " << desc_fn();
+    return;
+  }
+  LOG(ERROR) << "This thread has been waiting for " << timeout.count()
+             << "ms for and may be stuck: " << desc_fn();
+  counter->Wait();
+  LOG(ERROR) << "Thread is unstuck!  Warning above was a false-positive.  "
+                "Perhaps the timeout is too short: "
+             << desc_fn();
+}
+
 // RAII class owning a ncclComm_t, ensuring it doesn't leak.
 class NcclComm {
  public:
@@ -149,6 +169,11 @@ class NcclComm {
 // * Only ops with the same RunId can communicate with each other. (This is the
 //   whole purpose of RunId).
 //
+// * Only ops with the same set of participating replicas can communicate with
+//   each other.  This is how we separate out different replica groups (e.g. a
+//   single AllReduce HLO might do two reductions, between say GPUs {0,2} and
+//   {1,3}).
+//
 // * Only ops with the same opcode can communicate with each other.  At the
 //   moment we only support kAllReduce, so we don't check for this explicitly.
 //
@@ -167,8 +192,9 @@ struct RendezvousKey {
   };
 
   explicit RendezvousKey(const RunId& run_id,
+                         std::vector<int64> participating_replicas,
                          const HloAllReduceInstruction* instr)
-      : run_id(run_id) {
+      : run_id(run_id), participating_replicas(participating_replicas) {
     std::tie(all_reduce_kind, op_id) =
         instr->all_reduce_id().has_value()
             ? std::make_pair(kCrossModule, instr->all_reduce_id().value())
@@ -177,13 +203,17 @@ struct RendezvousKey {
                   static_cast<int64>(instr->GetModule()->unique_id()));
   }
 
+  int num_participants() const { return participating_replicas.size(); }
+
   template <typename H>
   friend H AbslHashValue(H h, const RendezvousKey& k) {
-    return H::combine(std::move(h), k.run_id,
+    return H::combine(std::move(h), k.run_id, k.participating_replicas,
                       static_cast<int>(k.all_reduce_kind), k.op_id);
   }
   friend bool operator==(const RendezvousKey& a, const RendezvousKey& b) {
-    return a.run_id == b.run_id && a.all_reduce_kind == b.all_reduce_kind &&
+    return a.run_id == b.run_id &&
+           a.participating_replicas == b.participating_replicas &&
+           a.all_reduce_kind == b.all_reduce_kind &&  //
            a.op_id == b.op_id;
   }
   friend bool operator!=(const RendezvousKey& a, const RendezvousKey& b) {
@@ -192,11 +222,14 @@ struct RendezvousKey {
 
   string ToString() const {
     return absl::StrFormat(
-        "RendezvousKey{run_id=%s, all_reduce_kind=%d, op_id=%d}",
-        run_id.ToString(), static_cast<int>(all_reduce_kind), op_id);
+        "RendezvousKey{run_id=%s, participating_replicas=[%s], "
+        "all_reduce_kind=%d, op_id=%d}",
+        run_id.ToString(), absl::StrJoin(participating_replicas, ","),
+        static_cast<int>(all_reduce_kind), op_id);
   }
 
   RunId run_id;
+  std::vector<int64> participating_replicas;
   AllReduceKind all_reduce_kind;
   int64 op_id;
 };
@@ -206,7 +239,6 @@ struct ParticipantData {
   explicit ParticipantData(RendezvousKey rendezvous_key)
       : rendezvous_key(rendezvous_key) {}
 
-  int64 replica_count;  // Number of GPUs particiating in the AllReduce.
   int64 element_count;
   int64 device_ordinal;
   RendezvousKey rendezvous_key;
@@ -219,12 +251,13 @@ struct ParticipantData {
   se::DeviceMemoryBase destination_data;
   se::Stream* stream;
 
+  int num_participants() const { return rendezvous_key.num_participants(); }
+
   string ToString() const {
     return absl::StrFormat(
-        "ParticipantData{replica_count=%d, element_count=%d, "
-        "rendezvous_key=%s, device_ordinal=%d, stream=%p}",
-        replica_count, element_count, rendezvous_key.ToString(), device_ordinal,
-        stream);
+        "ParticipantData{element_count=%d, rendezvous_key=%s, "
+        "device_ordinal=%d, stream=%p}",
+        element_count, rendezvous_key.ToString(), device_ordinal, stream);
   }
 };
 
@@ -377,7 +410,7 @@ RefcountingHashMap<NcclCliqueKey, NcclClique>& GlobalNcclCliqueMap() {
 // Rendezvous objects can only be used once.
 class Rendezvous {
  public:
-  Rendezvous() = default;
+  explicit Rendezvous(const RendezvousKey& k) : key_(k) {}
 
   // Runs the all-reduce on the given thread.  If successful, returns
   //  - a handle to the clique that was used, so that the caller may keep the
@@ -385,23 +418,26 @@ class Rendezvous {
   //  - a BlockingCounter initialized to the number of participants, so that
   //    the caller can coordinate with the participants one last time if it
   //    chooses.  This is useful for coordinating destruction of the Rendezvous.
-  StatusOr<std::pair<std::shared_ptr<NcclClique>,
-                     std::shared_ptr<tensorflow::BlockingCounter>>>
+  StatusOr<
+      std::pair<std::shared_ptr<NcclClique>, std::shared_ptr<BlockingCounter>>>
   SubmitParticipant(ParticipantData participant);
 
  private:
   Status DoAllReduce(ParticipantData participant, ncclComm_t comm);
 
+  const RendezvousKey key_;
+
+  BlockingCounter all_participants_present_{key_.num_participants()};
+  BlockingCounter done_{key_.num_participants()};
+  // BlockingCounter returned by SubmitParticipant.
+  std::shared_ptr<BlockingCounter> returned_blocking_counter_{
+      std::make_shared<BlockingCounter>(key_.num_participants())};
+
   tensorflow::mutex mu_;
-  tensorflow::condition_variable all_participants_present_;
 
   bool initialized_ GUARDED_BY(mu_) = false;
-  absl::optional<tensorflow::BlockingCounter> done_;
-  std::vector<ParticipantData> participants_ GUARDED_BY(mu_);
 
-  // BlockingCounter returned by SubmitParticipant.  Initialized by the primary
-  // thread.
-  std::shared_ptr<tensorflow::BlockingCounter> returned_blocking_counter_;
+  std::vector<ParticipantData> participants_ GUARDED_BY(mu_);
 };
 
 // Global map of Rendezvous objects.  A thread participating in a collective op
@@ -411,13 +447,39 @@ class Rendezvous {
 // Rendezvous objects are one-time use, so they're removed from this map once
 // we're through with them.
 RefcountingHashMap<RendezvousKey, Rendezvous>& GlobalRendezvousMap() {
-  static auto& m = *new RefcountingHashMap<RendezvousKey, Rendezvous>();
+  static auto& m = *new RefcountingHashMap<RendezvousKey, Rendezvous>(
+      [](const RendezvousKey& k) { return absl::make_unique<Rendezvous>(k); });
   return m;
 }
 
-StatusOr<std::pair<std::shared_ptr<NcclClique>,
-                   std::shared_ptr<tensorflow::BlockingCounter>>>
+StatusOr<
+    std::pair<std::shared_ptr<NcclClique>, std::shared_ptr<BlockingCounter>>>
 Rendezvous::SubmitParticipant(ParticipantData participant) {
+  {
+    tensorflow::mutex_lock lock(mu_);
+    CHECK(!initialized_);
+
+    // Spot check for consistent replica counts among submitting threads.
+    if (!participants_.empty() &&
+        (participants_.back().element_count != participant.element_count ||
+         participants_.back().rendezvous_key != participant.rendezvous_key)) {
+      return InvalidArgument(
+          "Mismatch among all-reduce participants.  Expected same "
+          "replica-count, element-count, and rendezvous-key but were %s and %s",
+          participants_.back().ToString(), participant.ToString());
+    }
+    participants_.push_back(participant);
+  }
+
+  // Wait for all participants to arrive.
+  all_participants_present_.DecrementCount();
+  WaitAndLogIfStuck(&all_participants_present_, [&] {
+    return absl::StrFormat(
+        "participant for device ordinal %d, stream %p waiting for all "
+        "participants to be arrive at rendezvous %s",
+        participant.device_ordinal, participant.stream, key_.ToString());
+  });
+
   // We pull into our thread a) the communication handle and b) whether we're
   // the "primary" thread for this rendezvous -- the "primary" thread has some
   // additional responsibilities for setup/teardown.
@@ -430,27 +492,6 @@ Rendezvous::SubmitParticipant(ParticipantData participant) {
 
   {
     tensorflow::mutex_lock lock(mu_);
-    CHECK(!initialized_);
-
-    // Spot check for consistent replica counts among submitting threads.
-    if (!participants_.empty() &&
-        (participants_.back().replica_count != participant.replica_count ||
-         participants_.back().element_count != participant.element_count ||
-         participants_.back().rendezvous_key != participant.rendezvous_key)) {
-      return InvalidArgument(
-          "Mismatch among all-reduce participants.  Expected same "
-          "replica-count, element-count, and rendezvous-key but were %s and %s",
-          participants_.back().ToString(), participant.ToString());
-    }
-    participants_.push_back(participant);
-
-    // Wait here for all participants to arrive.
-    while (participants_.size() < participant.replica_count) {
-      all_participants_present_.wait(lock);
-    }
-    if (participants_.size() == participant.replica_count) {
-      all_participants_present_.notify_all();
-    }
 
     // The first thread to get here has additional responsibilities, such as
     // ensuring that there's a NCCL clique available for us to use.
@@ -466,10 +507,6 @@ Rendezvous::SubmitParticipant(ParticipantData participant) {
     if (primary) {
       VLOG(3) << "Primary initializing accounting data.";
       initialized_ = true;
-      done_.emplace(participant.replica_count);
-      returned_blocking_counter_ =
-          std::make_shared<tensorflow::BlockingCounter>(
-              participant.replica_count);
 
       // Acquire exclusive access to the NCCL clique itself so that two
       // unrelated collective operations won't try to use the clique
@@ -495,15 +532,17 @@ Rendezvous::SubmitParticipant(ParticipantData participant) {
   Status all_reduce_status = DoAllReduce(participant, comm);
   VLOG(3) << "This thread done with all-reduce op.";
 
-  done_->DecrementCount();
+  done_.DecrementCount();
 
   // The primary owns the lock on the NCCL clique.  Hold it until all threads
   // are done.  (We'll release it when we return from this function.)
   if (primary) {
-    VLOG(3)
-        << "Primary waiting for all participants to complete all-reduce op.";
-    done_->Wait();
-    VLOG(3) << "All participants completed all-reduce op.";
+    WaitAndLogIfStuck(&done_, [&] {
+      return absl::StrFormat(
+          "primary participant (device ordinal %d, stream %p) waiting for all "
+          "other participants to complete all-reduce %s",
+          participant.device_ordinal, participant.stream, key_.ToString());
+    });
   }
 
   VLOG(3) << "Returning status: " << all_reduce_status;
@@ -573,23 +612,77 @@ NcclAllReduceThunk::NcclAllReduceThunk(
       destination_buffer_(destination_buffer),
       aux_data_(absl::make_unique<AuxData>()) {}
 
-Status NcclAllReduceThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream,
-    const RunId& run_id, HloExecutionProfiler* profiler) {
+// Figures out which devices (named by their replica-ids) are participating in
+// the all-reduce subgroup that contains device_ordinal.
+static StatusOr<std::vector<int64>> GetParticipatingReplicas(
+    int64 device_ordinal, const HloAllReduceInstruction* instr,
+    int64 total_replica_count, const DeviceAssignment& device_assn) {
+  std::vector<int64> participating_replicas;
+
+  // Empty replica_groups() means that all replicas participate in one big
+  // group.
+  if (instr->replica_groups().empty()) {
+    participating_replicas.resize(total_replica_count);
+    absl::c_iota(participating_replicas, 0);
+    return participating_replicas;
+  }
+
+  // Use the DeviceAssignment to figure out our replica-id.
+  TF_ASSIGN_OR_RETURN(int replica_id,
+                      device_assn.ReplicaIdForDeviceOrdinal(device_ordinal));
+
+  // Figure out the other replicas that go together with this one.
+  absl::optional<ReplicaGroup> replica_group;
+  for (const ReplicaGroup& g : instr->replica_groups()) {
+    if (absl::c_linear_search(g.replica_ids(), replica_id)) {
+      CHECK(!replica_group.has_value())
+          << "Replica appears twice in replica groups? " << instr->ToString();
+      replica_group = g;
+    }
+  }
+  CHECK(replica_group.has_value())
+      << "Replica " << replica_id << " doesn't appear in replica groups? "
+      << instr->ToString();
+
+  participating_replicas.insert(participating_replicas.begin(),
+                                replica_group->replica_ids().begin(),
+                                replica_group->replica_ids().end());
+  return participating_replicas;
+}
+
+Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
+  VLOG(1) << "Starting NcclAllReduceThunk.";
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+
+  auto* instr = Cast<HloAllReduceInstruction>(hlo_instruction());
+  int64 device_ordinal = params.stream->parent()->device_ordinal();
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64> participating_replicas,
+      GetParticipatingReplicas(device_ordinal, instr, replica_count_,
+                               *params.device_assn));
+
   // Find or create the rendezvous for this collective operation.
   RendezvousKey rendezvous_key(
-      run_id, Cast<HloAllReduceInstruction>(hlo_instruction()));
+      params.run_id, participating_replicas,
+      Cast<HloAllReduceInstruction>(hlo_instruction()));
   std::shared_ptr<Rendezvous> rendezvous =
       GlobalRendezvousMap()[rendezvous_key];
 
+  VLOG(2) << "Rendezvous key: " << rendezvous_key.ToString()
+          << ", rendezvous: " << rendezvous.get()
+          << ", participating replicas: "
+          << absl::StrJoin(participating_replicas, ", ");
+
   ParticipantData participant(rendezvous_key);
-  participant.replica_count = replica_count_;
   participant.element_count = element_count_;
-  participant.device_ordinal = stream->parent()->device_ordinal();
-  participant.source_data = buffer_allocations.GetDeviceAddress(source_buffer_);
+  participant.device_ordinal = device_ordinal;
+  participant.source_data =
+      params.buffer_allocations->GetDeviceAddress(source_buffer_);
   participant.destination_data =
-      buffer_allocations.GetDeviceAddress(destination_buffer_);
-  participant.stream = stream;
+      params.buffer_allocations->GetDeviceAddress(destination_buffer_);
+  participant.stream = params.stream;
 
   // Do the operation.
   StatusOr<std::pair<std::shared_ptr<NcclClique>,
@@ -622,7 +715,12 @@ Status NcclAllReduceThunk::ExecuteOnStream(
   // erase() is deceptively complex to implement correctly.
   rendezvous.reset();
   blocking_counter->DecrementCount();
-  blocking_counter->Wait();
+  WaitAndLogIfStuck(blocking_counter.get(), [&] {
+    return absl::StrFormat(
+        "participant for device ordinal %d, stream %p waiting for "
+        "all threads to drop their reference to the rendezvous: %s",
+        device_ordinal, params.stream, rendezvous_key.ToString());
+  });
 
   return Status::OK();
 }
@@ -631,9 +729,7 @@ NcclAllReduceThunk::~NcclAllReduceThunk() {}
 
 #else
 
-Status NcclAllReduceThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream,
-    const RunId& run_id, HloExecutionProfiler* profiler) {
+Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "
       "compiler, which is necessary to build the NCCL source library.");

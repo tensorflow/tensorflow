@@ -36,7 +36,7 @@ TfLiteStatus FlatBufferIntVectorToArray(
                            op_name);
     return kTfLiteError;
   } else {
-    int num_dimensions = flat_vector->Length();
+    int num_dimensions = flat_vector->size();
     if (num_dimensions > max_size_of_buffer / sizeof(int)) {
       error_reporter->Report(
           "Found too many dimensions in the input array of operation '%s'.\n",
@@ -472,7 +472,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
             sizeof(params->shape), new_shape, params->shape, error_reporter,
             "reshape"));
-        params->num_dimensions = new_shape->Length();
+        params->num_dimensions = new_shape->size();
       }
       *builtin_data = reinterpret_cast<void*>(params);
       break;
@@ -544,7 +544,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
             sizeof(params->squeeze_dims), squeeze_dims, params->squeeze_dims,
             error_reporter, "squeeze"));
-        params->num_squeeze_dims = squeeze_dims->Length();
+        params->num_squeeze_dims = squeeze_dims->size();
       }
       *builtin_data = reinterpret_cast<void*>(params);
       break;
@@ -719,6 +719,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_FLOOR:
     case BuiltinOperator_GREATER:
     case BuiltinOperator_GREATER_EQUAL:
+    case BuiltinOperator_HARD_SWISH:
     case BuiltinOperator_LESS:
     case BuiltinOperator_LESS_EQUAL:
     case BuiltinOperator_LOG:

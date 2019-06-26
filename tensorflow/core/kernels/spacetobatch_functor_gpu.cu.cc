@@ -141,10 +141,10 @@ struct SpaceToBatchFunctor<GPUDevice, T, NUM_BLOCK_DIMS, B2S> {
     GpuLaunchConfig config =
         GetGpuLaunchConfig(static_cast<int32>(total_count), d);
     return GpuLaunchKernel(S2B<T, NUM_BLOCK_DIMS, B2S>, config.block_count,
-                            config.thread_per_block, 0, d.stream(),
-                            config.virtual_thread_count,
-                            const_cast<T*>(space_tensor.data()), args,
-                            const_cast<T*>(batch_tensor.data()));
+                           config.thread_per_block, 0, d.stream(),
+                           config.virtual_thread_count,
+                           const_cast<T*>(space_tensor.data()), args,
+                           const_cast<T*>(batch_tensor.data()));
   }
 };
 

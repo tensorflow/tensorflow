@@ -174,11 +174,10 @@ cc_library(
     srcs = ["target_util.cc"],
     hdrs = ["target_util.h"],
     deps = [
-        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_builder_mixin",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm//:core",
@@ -275,7 +274,6 @@ cc_library(
     srcs = ["elemental_ir_emitter.cc"],
     hdrs = ["elemental_ir_emitter.h"],
     deps = [
-        ":ir_emission_utils",
         ":target_util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -376,8 +374,42 @@ tf_cuda_library(
 )
 
 cc_library(
+    name = "gpu_debug_info_manager",
+    srcs = [
+        "gpu_debug_info_manager.cc",
+    ],
+    hdrs = [
+        "gpu_debug_info_manager.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_proto_util",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_debug_info_manager_test",
+    srcs = ["gpu_debug_info_manager_test.cc"],
+    deps = [
+        ":gpu_constants",
+        ":gpu_debug_info_manager",
+        ":gpu_hlo_schedule",
+        ":stream_assignment",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "gpu_executable",
     srcs = [
+        "collective_permute_thunk.cc",
         "conditional_thunk.cc",
         "convolution_thunk.cc",
         "copy_thunk.cc",
@@ -391,6 +423,7 @@ cc_library(
         "kernel_thunk.cc",
         "memset_thunk.cc",
         "outfeed_thunk.cc",
+        "replica_id_thunk.cc",
         "sequential_thunk.cc",
         "thunk_schedule.cc",
         "triangular_solve_thunk.cc",
@@ -402,6 +435,7 @@ cc_library(
        ])
       +  if_rocm_is_configured(["amdgpu_executable.cc"]),
     hdrs = [
+        "collective_permute_thunk.h",
         "conditional_thunk.h",
         "convolution_thunk.h",
         "copy_thunk.h",
@@ -415,6 +449,7 @@ cc_library(
         "kernel_thunk.h",
         "memset_thunk.h",
         "outfeed_thunk.h",
+        "replica_id_thunk.h",
         "sequential_thunk.h",
         "thunk_schedule.h",
         "triangular_solve_thunk.h",
@@ -428,6 +463,7 @@ cc_library(
     deps = [
         ":buffer_allocations",
         ":cudnn_conv_runner",
+        ":gpu_debug_info_manager",
         ":hlo_execution_profiler",
         ":infeed_manager",
         ":ir_emission_utils",
@@ -439,6 +475,7 @@ cc_library(
         ":thunk",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:refcounting_hash_map",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -450,6 +487,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_execution_profile",
         "//tensorflow/compiler/xla/service:logical_buffer",
         "//tensorflow/compiler/xla/service:shaped_buffer",
@@ -522,7 +560,6 @@ cc_library(
         ":gpu_autotuning_proto",
         ":gpu_executable",
         ":ir_emission_utils",
-        ":redzone_allocator",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -537,6 +574,7 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor:device_memory_allocator",
+        "//tensorflow/stream_executor/cuda:redzone_allocator",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -580,59 +618,6 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory_allocator",
     ],
-)
-
-cc_library(
-    name = "redzone_allocator",
-    srcs = ["redzone_allocator.cc"],
-    hdrs = ["redzone_allocator.h"],
-    deps = [
-        ":gpu_constants",
-        ":partition_assignment",
-        ":stream_executor_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo_module_config",
-        "//tensorflow/compiler/xla/service:shaped_buffer",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
-        "//tensorflow/stream_executor:device_memory",
-        "//tensorflow/stream_executor:stream_executor_headers",
-        "//tensorflow/stream_executor:device_memory_allocator",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
-        "//tensorflow/stream_executor/cuda:ptxas_utils",
-    ],
-)
-
-tf_cc_test(
-    name = "redzone_allocator_test",
-    srcs = ["redzone_allocator_test.cc"],
-    tags = ["no_rocm"]
-     + tf_cuda_tests_tags(),
-    deps = [
-        ":redzone_allocator",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo_module_config",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//tensorflow/core:stream_executor_no_cuda",
-        "//tensorflow/core:test",
-        "//tensorflow/stream_executor:device_memory_allocator",
-        "//tensorflow/stream_executor:event",
-        "//tensorflow/stream_executor:kernel",
-    ]
-     + if_cuda_is_configured([
-        ":cusolver_context",
-        "//tensorflow/stream_executor/cuda:cuda_activation",
-        "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
-        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
-     ])
-     + if_rocm_is_configured([
-        "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
-     ]),
 )
 
 cc_library(
@@ -762,6 +747,7 @@ tf_cc_test(
     name = "instruction_fusion_test",
     srcs = ["instruction_fusion_test.cc"],
     deps = [
+        ":gpu_fusible",
         ":instruction_fusion",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -795,6 +781,7 @@ tf_cc_test(
     name = "multi_output_fusion_test",
     srcs = ["multi_output_fusion_test.cc"],
     deps = [
+        ":gpu_fusible",
         ":instruction_fusion",
         ":multi_output_fusion",
         "//tensorflow/compiler/xla:status_macros",
@@ -945,6 +932,11 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "nvptx_constants",
+    hdrs = ["nvptx_constants.h"],
+)
+
+cc_library(
     name = "gpu_transfer_manager",
     srcs = ["gpu_transfer_manager.cc"],
     hdrs = ["gpu_transfer_manager.h"],
@@ -995,6 +987,7 @@ cc_library(
         ":ir_emission_utils",
         ":ir_emitter",
         ":multi_output_fusion",
+        ":nvptx_constants",
         ":partition_assignment",
         ":stream_assignment",
         ":stream_executor_util",
@@ -1263,7 +1256,6 @@ cc_library(
     srcs = ["buffer_comparator.cc"],
     hdrs = ["buffer_comparator.h"],
     deps = [
-        ":gpu_executable",
         ":partition_assignment",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -1289,6 +1281,7 @@ tf_cc_test(
         "//tensorflow/core:core",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
         "//tensorflow/stream_executor:device_memory",
     ],
 )

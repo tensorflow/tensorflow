@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -56,6 +57,7 @@ class ConstantFolding : public GraphOptimizer {
                 const GraphDef& optimize_output, double result) override;
 
  private:
+  bool ForwardInputs(NodeDef* node, absl::Span<const int> inputs_to_forward);
   string OptimizedNodeName(const NodeDef& node, StringPiece suffix) const;
   bool OptimizedNodeExists(const NodeDef& node, StringPiece suffix) const;
 
@@ -71,9 +73,11 @@ class ConstantFolding : public GraphOptimizer {
                                      const GraphProperties& properties);
   Status MaterializeConstantValuedNode(NodeDef* node,
                                        const GraphProperties& properties);
+  Status MaterializeOutputValues(NodeDef* node,
+                                 const GraphProperties& properties);
   Status MaterializeConstants(const GraphProperties& properties);
 
-  bool IsFoldable(const NodeDef& node) const;
+  bool IsFoldable(const NodeDef& node, const GraphProperties* properties) const;
 
   Status EvaluateNode(const NodeDef& node,
                       const gtl::InlinedVector<TensorValue, 4>& inputs,
@@ -102,8 +106,13 @@ class ConstantFolding : public GraphOptimizer {
                                       const GraphProperties& properties,
                                       const TensorShapeProto& shape,
                                       NodeDef* node, GraphDef* graph);
+
+  // Notice: Destroys *value.
+  Status ReplaceOperationWithConstantTensor(DataType dtype, TensorProto* value,
+                                            NodeDef* node, GraphDef* graph);
+
   void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
-  Status FoldGraph(GraphDef* output,
+  Status FoldGraph(const GraphProperties& properties, GraphDef* output,
                    absl::flat_hash_set<string>* nodes_to_not_simplify);
 
   bool IsSimplifiableReshape(const NodeDef& node,

@@ -24,6 +24,7 @@ import scipy.sparse
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -93,6 +94,34 @@ def compare_two_inputs_op_to_numpy(keras_op,
 
 
 class BackendResetTest(test.TestCase, parameterized.TestCase):
+
+  @test_util.run_all_in_graph_and_eager_modes
+  def test_new_config(self):
+    # User defined jit setting
+    config.set_optimizer_jit(False)
+    sess = keras.backend.get_session()
+    default_config = context.context().config
+    self.assertEqual(
+        sess._config.graph_options.optimizer_options.global_jit_level,
+        default_config.graph_options.optimizer_options.global_jit_level)
+    keras.backend.clear_session()
+
+    # New session has the same jit setting
+    sess = keras.backend.get_session()
+    default_config = context.context().config
+    self.assertEqual(
+        sess._config.graph_options.optimizer_options.global_jit_level,
+        default_config.graph_options.optimizer_options.global_jit_level)
+    keras.backend.clear_session()
+
+    # Change respected
+    config.set_optimizer_jit(True)
+    sess = keras.backend.get_session()
+    default_config = context.context().config
+    self.assertEqual(
+        sess._config.graph_options.optimizer_options.global_jit_level,
+        default_config.graph_options.optimizer_options.global_jit_level)
+    keras.backend.clear_session()
 
   # We can't use the normal parameterized decorator because the test session
   # will block graph clearing.

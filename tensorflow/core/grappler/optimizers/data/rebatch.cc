@@ -40,8 +40,10 @@ Status RebatchOptimizer::Init(
 
 namespace {
 
+constexpr char kAddOp[] = "Add";
 constexpr char kConstOp[] = "Const";
 constexpr char kIdentityOp[] = "Identity";
+constexpr char kSubOp[] = "Sub";
 constexpr char kTruncateDivOp[] = "TruncateDiv";
 
 constexpr std::array<const char*, 5> kBatchDatasetOps = {
@@ -57,12 +59,23 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ZipDataset"
 };
 
-constexpr std::array<const char*, 16> kPassThroughOps = {
-    "CacheDataset",       "FilterDataset",   "Identity",
-    "MapDataset",         "ModelDataset",    "OptimizeDataset",
-    "ParallelMapDataset", "PrefetchDataset", "ReduceDataset",
-    "RepeatDataset",      "ShardDataset",    "ShuffleAndRepeatDataset",
-    "ShuffleDataset",     "SkipDataset",     "TakeDataset",
+constexpr std::array<const char*, 17> kPassThroughOps = {
+    "CacheDataset",
+    "ExperimentalScanDataset",
+    "FilterDataset",
+    "Identity",
+    "MapDataset",
+    "ModelDataset",
+    "OptimizeDataset",
+    "ParallelMapDataset",
+    "PrefetchDataset",
+    "ReduceDataset",
+    "RepeatDataset",
+    "ShardDataset",
+    "ShuffleAndRepeatDataset",
+    "ShuffleDataset",
+    "SkipDataset",
+    "TakeDataset",
     "WindowDataset"};
 
 constexpr std::array<const char*, 4> kFuncDatasetOps = {
@@ -118,14 +131,17 @@ Status UpdateOutputShapes(const string& node_name, int64 num_workers,
   }
   AttrValue output_shapes = node->attr().at("output_shapes");
   for (auto& shape : *output_shapes.mutable_list()->mutable_shape()) {
-    shape.mutable_dim(0)->set_size(shape.dim(0).size() / num_workers);
+    if (shape.dim(0).size() != -1) {
+      shape.mutable_dim(0)->set_size(shape.dim(0).size() / num_workers);
+    }
   }
   (*node->mutable_attr())["output_shapes"] = output_shapes;
   return Status::OK();
 }
 
-// Given a "batch" dataset node, modifies the batch_size input to divide the
-// current batch size by num_workers.
+// Given a "batch" dataset node, we replace the `batch_size` input with a new
+// input that corresponds to the original input divided by `num_workers`. If
+// `num_workers` does not divide `batch_size` evenly, the value is rounded up.
 Status MutateBatchSize(const NodeDef& node, int64 num_workers,
                        MutableGraphView* graph) {
   // For all the batching datasets the batch_size is input number 1 except for
@@ -146,23 +162,20 @@ Status MutateBatchSize(const NodeDef& node, int64 num_workers,
       return errors::Internal("Batch size node shape should be scalar");
     }
     int64 batch_size = batch_size_tensor.scalar<int64>()();
-    if (batch_size % num_workers != 0) {
-      return errors::InvalidArgument(
-          "Batch size: ", batch_size,
-          " is not divisible by num_workers: ", num_workers);
-    }
-    batch_size /= num_workers;
+    batch_size = (batch_size + num_workers - 1) / num_workers;
     new_batch_size_node =
         graph_utils::AddScalarConstNode<int64>(batch_size, graph);
   } else {
-    // TODO(jsimsa): To provide parity with the case where the batch size is a
-    // constant, consider generating a subgraph that would fail when number of
-    // workers does not divide the original batch size evenly (instead of
-    // using truncated division).
+    NodeDef* one_node = graph_utils::AddScalarConstNode<int64>(1, graph);
     NodeDef* num_workers_node =
         graph_utils::AddScalarConstNode<int64>(num_workers, graph);
+    NodeDef* numerator_node =
+        AddBinaryNode(batch_size_node->name(), num_workers_node->name(), kAddOp,
+                      DT_INT64, graph);
+    numerator_node = AddBinaryNode(numerator_node->name(), one_node->name(),
+                                   kSubOp, DT_INT64, graph);
     new_batch_size_node =
-        AddBinaryNode(batch_size_node->name(), num_workers_node->name(),
+        AddBinaryNode(numerator_node->name(), num_workers_node->name(),
                       kTruncateDivOp, DT_INT64, graph);
   }
   // We don't call UpdateFanouts here because CSE elimination might lead to

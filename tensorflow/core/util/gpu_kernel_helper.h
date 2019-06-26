@@ -66,17 +66,32 @@ using gpuError_t = hipError_t;
 
 #endif
 
+// macro wrapper to declare dynamic shared memory
+#if GOOGLE_CUDA
+
+#define GPU_DYNAMIC_SHARED_MEM_DECL(ALIGN, TYPE, NAME) \
+  extern __shared__ __align__(ALIGN) TYPE NAME[]
+
+#elif TENSORFLOW_USE_ROCM
+
+#define GPU_DYNAMIC_SHARED_MEM_DECL(ALIGN, TYPE, NAME) \
+  HIP_DYNAMIC_SHARED(TYPE, NAME)
+
+#endif
+
 namespace tensorflow {
+
 #if GOOGLE_CUDA
 // cudaGetErrorString is available to both host and device
 __host__ __device__ inline const char* GpuGetErrorString(cudaError_t error) {
   return cudaGetErrorString(error);
+}
 #elif TENSORFLOW_USE_ROCM
 // hipGetErrorString is available on host side only
 inline const char* GpuGetErrorString(hipError_t error) {
   return hipGetErrorString(error);
-#endif
 }
+#endif
 
 inline const gpuStream_t& GetGpuStream(OpKernelContext* context) {
   // Returns a raw reference to the current cuda stream. Required by a
@@ -90,6 +105,7 @@ inline const gpuStream_t& GetGpuStream(OpKernelContext* context) {
   return *ptr;
 }
 
+// Launches a GPU kernel through cudaLaunchKernel in CUDA environment, or
 // hipLaunchKernel in ROCm environment with the given arguments.
 //
 // The kernel parameters 'Ts' must be constructible from the arguments 'Args'.

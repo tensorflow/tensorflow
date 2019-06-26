@@ -67,7 +67,8 @@ MicroInterpreter::MicroInterpreter(const Model* model,
       op_resolver_(op_resolver),
       tensor_allocator_(tensor_allocator),
       error_reporter_(error_reporter),
-      initialization_status_(kTfLiteOk) {
+      initialization_status_(kTfLiteOk),
+      context_() {
   auto* subgraphs = model->subgraphs();
   if (subgraphs->size() != 1) {
     error_reporter->Report("Only 1 subgraph is currently supported.\n");
@@ -82,22 +83,14 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   context_.tensors =
       reinterpret_cast<TfLiteTensor*>(tensor_allocator_->AllocateMemory(
           sizeof(TfLiteTensor) * context_.tensors_size, 4));
+  context_.impl_ = static_cast<void*>(this);
+  context_.ReportError = ReportOpError;
+  context_.recommended_num_threads = 1;
 
   initialization_status_ = AllocateInputAndActTensors();
   if (initialization_status_ != kTfLiteOk) {
     return;
   }
-
-  context_.impl_ = static_cast<void*>(this);
-  context_.GetExecutionPlan = nullptr;
-  context_.ResizeTensor = nullptr;
-  context_.ReportError = ReportOpError;
-  context_.AddTensors = nullptr;
-  context_.GetNodeAndRegistration = nullptr;
-  context_.ReplaceNodeSubsetsWithDelegateKernels = nullptr;
-  context_.recommended_num_threads = 1;
-  context_.GetExternalContext = nullptr;
-  context_.SetExternalContext = nullptr;
 
   initialization_status_ = AllocateTemporaryTensors();
   if (initialization_status_ != kTfLiteOk) {

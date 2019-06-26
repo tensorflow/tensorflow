@@ -25,6 +25,11 @@ limitations under the License.
 %}
 
 
+%typemap(in) TfLiteDelegate* {
+ $1 = reinterpret_cast<TfLiteDelegate*>(PyLong_AsVoidPtr($input));
+}
+
+
 %include "tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.h"
 
 namespace tflite {

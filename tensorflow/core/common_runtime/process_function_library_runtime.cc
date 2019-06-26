@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
@@ -737,7 +738,10 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   };
 
   int i = 0;
-  FunctionNameGenerator name_generator(&data->lib_def_, function_name);
+  // Generate a random function_name to avoid one function reuse the partition
+  // function instantiated by another function.
+  FunctionNameGenerator name_generator(
+      &data->lib_def_, absl::StrCat(function_name, "_", random::New64()));
   for (const auto& pair : subgraphs) {
     i += 1;
     const string& target = pair.first;
@@ -1157,12 +1161,12 @@ void ProcessFunctionLibraryRuntime::RunInternal(
     return;
   }
   if (parent_ != nullptr) {
-    parent_->Run(opts, local_handle, args, rets, std::move(done));
     auto cleanup_item = absl::make_unique<CleanUpItem>();
     cleanup_item->device = target_device;
     cleanup_item->step_id = opts.step_id;
     cleanup_item->local_handle = local_handle;
     cleanup_items->emplace_back(std::move(cleanup_item));
+    parent_->Run(opts, local_handle, args, rets, std::move(done));
     return;
   }
   done(errors::Internal("Could not find device"));

@@ -57,6 +57,21 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
+cuda_py_test(
+    name = "multi_worker_training_state_test",
+    srcs = ["multi_worker_training_state_test.py"],
+    additional_deps = [
+        ":multi_worker_testing_utils",
+        ":multi_worker_training_state",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/keras",
+    ],
+    shard_count = 4,
+    xla_enable_strict_auto_jit = True,
+)
+
 py_library(
     name = "distribute_strategy_test_lib",
     srcs = [
@@ -84,10 +99,10 @@ distribute_py_test(
     srcs = ["distribute_strategy_test.py"],
     full_precision = True,
     main = "distribute_strategy_test.py",
-    shard_count = 4,
+    shard_count = 5,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_rocm",  # times out on ROCm, along with nccl-related warnings
         "no_windows_gpu",
         "notsan",
     ],
@@ -149,6 +164,8 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_windows_gpu",
+        # TODO(b/134764123): Re-enable this test.
+        "notap",
         "notsan",
     ],
     deps = [
@@ -332,6 +349,7 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     # TODO(b/132384649): Enable for guitar and oss tests.
+    shard_count = 24,
     tags = [
         "no_oss",
         "noguitar",
@@ -354,9 +372,11 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     shard_count = 14,
-    # TODO(b/132384649): Enable for guitar and oss tests.
+    # TODO(b/132384649): Enable once fixed.
     tags = [
+        "manual",
         "no_oss",
+        "no_tap",
         "noguitar",
     ],
     xla_enable_strict_auto_jit = True,

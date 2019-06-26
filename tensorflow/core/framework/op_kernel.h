@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -163,7 +164,6 @@ class OpKernel {
   const string& name() const;              // Same as def().name()
   const string& type_string() const;       // Same as def().op()
   const string& requested_device() const;  // Same as def().device()
-  bool is_internal() const { return is_internal_; }
 
   int num_inputs() const { return input_types_.size(); }
   DataType input_type(int i) const { return input_types_[i]; }
@@ -219,7 +219,6 @@ class OpKernel {
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
   const int graph_def_version_;
-  const bool is_internal_;  // True if this is an internal operation
   bool expensive_;
   std::atomic_uint_fast64_t cost_estimate_;
 
@@ -684,6 +683,9 @@ class OpKernelContext {
     // Unique session identifier. Can be empty.
     string session_handle;
 
+    // Metadata about the session. Can be nullptr.
+    const SessionMetadata* session_metadata = nullptr;
+
     // The tensor store for this op.
     TensorStore* tensor_store = nullptr;
 
@@ -1123,6 +1125,11 @@ class OpKernelContext {
   // Unique identifier of the session it belongs to. Can be empty.
   string session_handle() const { return params_->session_handle; }
 
+  // Metadata about the session. Can be nullptr.
+  const SessionMetadata* session_metadata() const {
+    return params_->session_metadata;
+  }
+
   // An op kernel can access the tensor store of the run it belongs to.
   TensorStore* tensor_store() const { return params_->tensor_store; }
 
@@ -1298,6 +1305,10 @@ class OpKernelContext {
                          Tensor* out_tensor, AllocatorAttributes allocator_attr,
                          const AllocationAttributes& allocation_attr);
 
+  // Initialize the allocated_scope_ids_ set the first time this method is
+  // called.
+  void maybe_initialize_scope_id_set();
+
   // This is called by PersistentTensor::AccessTensor whenever the
   // wrapped tensor is retrieved, to ensure the runtime knows that the
   // Tensor is being accessed within an Op. This is necessary for
@@ -1313,8 +1324,9 @@ class OpKernelContext {
   gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators_ GUARDED_BY(mu_);
   gtl::InlinedVector<TensorValue, 4> outputs_;
 
-  // Keep track of calls to ScopeAllocator.
-  std::unordered_set<int32> allocated_scope_ids_;
+  // Keep track of calls to ScopedAllocator.
+  // TODO(ayushd): change to absl::flat_hash_set.
+  std::unique_ptr<std::unordered_set<int32>> allocated_scope_ids_;
 
   // Constructed only if <params->record_tensor_accesses>.
   ManualConstructor<UniqueTensorReferences> referenced_tensors_ GUARDED_BY(mu_);
@@ -1331,6 +1343,17 @@ class OpKernelContext {
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelContext);
 };
+
+template <>
+const Eigen::ThreadPoolDevice& OpKernelContext::eigen_device() const;
+
+template <>
+const Eigen::GpuDevice& OpKernelContext::eigen_device() const;
+
+#ifdef TENSORFLOW_USE_SYCL
+template <>
+const Eigen::SyclDevice& OpKernelContext::eigen_device() const;
+#endif
 
 // Register your OpKernel by specifying the Op's name, the device the
 // kernel runs on, any type attr constraints for this kernel, any

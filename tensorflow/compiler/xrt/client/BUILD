@@ -1,15 +1,14 @@
 # Description: Operations defined for XRT
 
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
 package(
     default_visibility = [
         "//tensorflow:internal",
         "//tensorflow/compiler:__subpackages__",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
 cc_library(
     name = "xrt_grpc_eager_client",

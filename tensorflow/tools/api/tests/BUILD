@@ -4,6 +4,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "py_test",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
     default_visibility = ["//tensorflow/tools/api:__subpackages__"],
@@ -14,8 +15,6 @@ exports_files([
     "README.txt",
     "API_UPDATE_WARNING.txt",
 ])
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 py_test(
     name = "api_compatibility_test",

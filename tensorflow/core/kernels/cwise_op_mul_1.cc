@@ -48,6 +48,7 @@ REGISTER_KERNEL_BUILDER(Name("Mul")
 REGISTER5(BinaryOp, GPU, "MulNoNan", functor::mul_no_nan, Eigen::half, float,
           double, complex64, complex128);
 #elif TENSORFLOW_USE_ROCM
+// ROCM TODO: re-enable complex64 / complex128 after compiler fix
 REGISTER3(BinaryOp, GPU, "MulNoNan", functor::mul_no_nan, Eigen::half, float,
           double);
 #endif

@@ -127,10 +127,12 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
 string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
                                 PrimitiveType output_type,
                                 llvm::IRBuilder<>* b) {
+  // The device math functions differentiate between "double" and "float" by
+  // appending a double or float specific suffix to a root name. The suffix and
+  // the root name are specific to the target.
   llvm::Triple target_triple =
       llvm::Triple(b->GetInsertBlock()->getModule()->getTargetTriple());
-  struct TargetDeviceFunction gpu_root_names =
-      GetDeviceFunctionRoot(func_id);
+  struct TargetDeviceFunction gpu_root_names = GetDeviceFunctionRoot(func_id);
   if (target_triple.isNVPTX()) {
     if (output_type == F32) {
       return StrCat(gpu_root_names.nvptx_root, "f");
@@ -152,46 +154,6 @@ string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
   }
 }
 
-unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module) {
-  llvm::Triple target_triple = llvm::Triple(module.getTargetTriple());
-  if (target_triple.getArch() == llvm::Triple::amdgcn){
-    return kAMDGPUGlobalMemoryAddrSpace;
-  }
-  return 0;
-}
-
-unsigned GetSharedMemoryAddressSpace(const llvm::Module& module) {
-  llvm::Triple target_triple = llvm::Triple(module.getTargetTriple());
-  if (target_triple.getArch() == llvm::Triple::nvptx ||
-      target_triple.getArch() == llvm::Triple::nvptx64) {
-    return kNVPTXSharedMemoryAddrSpace;
-  } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
-    return kAMDGPUSharedMemoryAddrSpace;
-  }
-  return 0;
-}
-
-void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
-                           llvm::IRBuilder<>* b) {
-  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
-  if (target_triple.getArch() == llvm::Triple::nvptx ||
-      target_triple.getArch() == llvm::Triple::nvptx64) {
-    // Add the declaration of this kernel to llvm.nvvm.annotations so that NVPTX
-    // treats it as a CUDA kernel.
-    llvm::LLVMContext& context = module->getContext();
-    llvm::NamedMDNode* nvvm_annotations_node =
-        module->getOrInsertNamedMetadata("nvvm.annotations");
-    nvvm_annotations_node->addOperand(llvm::MDNode::get(
-        context, {llvm::ConstantAsMetadata::get(func),
-                  llvm::MDString::get(context, "kernel"),
-                  llvm::ConstantAsMetadata::get(b->getInt32(1))}));
-
-  } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
-    func->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
-    func->addFnAttr("amdgpu-flat-work-group-size", "1, 1024");
-  }
-}
-
 llvm::CallInst* EmitCallToTargetIntrinsic(
     TargetIntrinsicID intrinsic_id, absl::Span<llvm::Value* const> operands,
     absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b) {
@@ -199,9 +161,7 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
   struct TargetIntrinsics gpu_intrinsic_id = GetIntrinsic(intrinsic_id);
   llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
   llvm::Intrinsic::ID llvm_intrinsic_id = llvm::Intrinsic::not_intrinsic;
-
-  if ((target_triple.getArch() == llvm::Triple::nvptx) ||
-      (target_triple.getArch() == llvm::Triple::nvptx64)) {
+  if (target_triple.isNVPTX()) {
     llvm_intrinsic_id = gpu_intrinsic_id.nvptx_intrinsic;
   } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
     llvm_intrinsic_id = gpu_intrinsic_id.amdgpu_intrinsic;
@@ -212,6 +172,29 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
   llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
       module, llvm_intrinsic_id, llvm_ir::AsArrayRef(overloaded_types));
   return b->CreateCall(intrinsic, llvm_ir::AsArrayRef(operands));
+}
+
+void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
+                                 llvm::IRBuilder<>* b) {
+  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
+  if (target_triple.isNVPTX()) {
+    // Add the declaration of this kernel to llvm.nvvm.annotations so that NVPTX
+    // treats function as a CUDA kernel.
+    llvm::LLVMContext& context = module->getContext();
+    llvm::NamedMDNode* nvvm_annotations_node =
+        module->getOrInsertNamedMetadata("nvvm.annotations");
+    nvvm_annotations_node->addOperand(llvm::MDNode::get(
+        context, {llvm::ConstantAsMetadata::get(func),
+                  llvm::MDString::get(context, "kernel"),
+                  llvm::ConstantAsMetadata::get(b->getInt32(1))}));
+
+  } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
+    // Attach information so AMDGPU can recognize function as a AMDGPU kernel.
+    func->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
+    func->addFnAttr("amdgpu-flat-work-group-size", "1, 1024");
+  } else {
+    LOG(FATAL) << "Invalid triple " << target_triple.str();
+  }
 }
 
 }  // namespace gpu

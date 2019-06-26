@@ -179,7 +179,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     # Calling get_concrete_function wraps in a second call operation; we want to
     # inspect the original function body for the control output; digging into
     # graph.as_graph_def() and its FunctionDefLibrary is another option.
-    imported_concrete, = imported.f._concrete_functions
+    imported_concrete, = imported.f.concrete_functions
     imported_graph = imported_concrete.graph
     self.assertIn(
         imported_graph.get_operation_by_name("should_be_control_output"),
@@ -1709,6 +1709,27 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         [[-3.]],
         f(x=constant_op.constant([[-1.]]))["output_0"].numpy())
+
+
+  def test_object_with_extra_dependencies(self):
+
+    class Extra(tracking.AutoTrackable):
+
+      def _list_extra_dependencies_for_serialization(self, cache):
+        if self not in cache:
+          cache[self] = {"a": variables.Variable(5.)}
+        return cache[self]
+    root = Extra()
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    save.save(root, path)
+    imported = load.load(path)
+    self.assertEqual(5, self.evaluate(imported.a))
+
+    root.a = variables.Variable(3.)
+    with self.assertRaisesRegexp(
+        ValueError,
+        "object has an attribute named a, which is reserved."):
+      save.save(root, path)
 
 
 if __name__ == "__main__":

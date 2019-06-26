@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // XLA implementation of BatchNorm operations.
+#include "tensorflow/compiler/tf2xla/kernels/relu_op.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -28,7 +29,11 @@ namespace {
 
 class FusedBatchNormOp : public XlaOpKernel {
  public:
-  explicit FusedBatchNormOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+  explicit FusedBatchNormOp(OpKernelConstruction* ctx)
+      : FusedBatchNormOp(ctx, false) {}
+
+  FusedBatchNormOp(OpKernelConstruction* ctx, bool is_batch_norm_ex)
+      : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("epsilon", &epsilon_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("is_training", &is_training_));
     string data_format_str;
@@ -36,6 +41,26 @@ class FusedBatchNormOp : public XlaOpKernel {
     OP_REQUIRES(
         ctx, FormatFromString(data_format_str, &data_format_),
         errors::InvalidArgument("Invalid data format: ", data_format_str));
+
+    if (is_batch_norm_ex) {
+      int num_side_inputs;
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("num_side_inputs", &num_side_inputs));
+      OP_REQUIRES(ctx, num_side_inputs >= 0 && num_side_inputs <= 1,
+                  errors::InvalidArgument(
+                      "FusedBatchNormEx supports at most 1 side input."));
+      add_side_input_ = (num_side_inputs == 1);
+      string activation_mode;
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("activation_mode", &activation_mode));
+      OP_REQUIRES(ctx,
+                  activation_mode == "Identity" || activation_mode == "Relu",
+                  errors::InvalidArgument(
+                      "Unsupported FusedBatchNormEx activation mode: ",
+                      activation_mode));
+      apply_relu_ = (activation_mode == "Relu");
+    } else {
+      add_side_input_ = false;
+      apply_relu_ = false;
+    }
     is_on_gpu_ = ctx->device_type().type_string() == DEVICE_GPU_XLA_JIT;
   }
 
@@ -66,9 +91,18 @@ class FusedBatchNormOp : public XlaOpKernel {
           input, ctx->Input(1), ctx->Input(2), epsilon_, feature_index);
 
       // In training mode, outputs the normalized value as well as the
-      // calculated mean and variance.
-      ctx->SetOutput(0, xla::ConvertElementType(xla::GetTupleElement(output, 0),
-                                                input_type));
+      // calculated mean and variance. Optionally we add side input and apply
+      // relu activation.
+      xla::XlaOp converted =
+          xla::ConvertElementType(xla::GetTupleElement(output, 0), input_type);
+      if (add_side_input_ && apply_relu_) {
+        ctx->SetOutput(0, xla::Relu(xla::Add(ctx->Input(5), converted)));
+      } else if (apply_relu_) {
+        ctx->SetOutput(0, xla::Relu(converted));
+      } else {
+        ctx->SetOutput(0, converted);
+      }
+
       ctx->SetOutput(1, xla::GetTupleElement(output, 1));
       xla::XlaOp variance = xla::GetTupleElement(output, 2);
       // Apply Bessel's correction.
@@ -103,7 +137,16 @@ class FusedBatchNormOp : public XlaOpKernel {
       xla::XlaOp output = xla::BatchNormInference(
           input, ctx->Input(1), ctx->Input(2), ctx->Input(3), ctx->Input(4),
           epsilon_, feature_index);
-      ctx->SetOutput(0, xla::ConvertElementType(output, input_type));
+
+      xla::XlaOp converted = xla::ConvertElementType(output, input_type);
+      if (add_side_input_ && apply_relu_) {
+        ctx->SetOutput(0, xla::Relu(xla::Add(ctx->Input(5), converted)));
+      } else if (apply_relu_) {
+        ctx->SetOutput(0, xla::Relu(converted));
+      } else {
+        ctx->SetOutput(0, converted);
+      }
+
       // Directly send input to output as mean and variance in inference mode.
       ctx->SetOutput(1, ctx->Input(3));
       ctx->SetOutput(2, ctx->Input(4));
@@ -116,6 +159,8 @@ class FusedBatchNormOp : public XlaOpKernel {
   float epsilon_;
   TensorFormat data_format_;
   bool is_training_;
+  bool add_side_input_;
+  bool apply_relu_;
   bool is_on_gpu_;
 };
 
@@ -131,17 +176,26 @@ class FusedBatchNormOpV3 : public FusedBatchNormOp {
     }
     ctx->SetConstantOutput(5, Tensor());
   }
+};
 
- private:
-  float epsilon_;
-  TensorFormat data_format_;
-  bool is_training_;
-  bool is_on_gpu_;
+class FusedBatchNormOpEx : public FusedBatchNormOp {
+ public:
+  explicit FusedBatchNormOpEx(OpKernelConstruction* ctx)
+      : FusedBatchNormOp(ctx, /*is_batch_norm_ex=*/true) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    FusedBatchNormOp::CompileImpl(ctx);
+    if (!ctx->status().ok()) {
+      return;
+    }
+    ctx->SetConstantOutput(5, Tensor());
+  }
 };
 
 REGISTER_XLA_OP(Name("FusedBatchNorm"), FusedBatchNormOp);
 REGISTER_XLA_OP(Name("FusedBatchNormV2"), FusedBatchNormOp);
 REGISTER_XLA_OP(Name("FusedBatchNormV3"), FusedBatchNormOpV3);
+REGISTER_XLA_OP(Name("_FusedBatchNormEx"), FusedBatchNormOpEx);
 
 class FusedBatchNormGradOp : public XlaOpKernel {
  public:

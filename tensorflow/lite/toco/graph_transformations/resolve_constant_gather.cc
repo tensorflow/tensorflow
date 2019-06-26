@@ -142,12 +142,7 @@ inline void Gather(const Array& input_array, const Array& coords_array,
       break;
   }
 
-  // Erase input arrays if no longer used after we remove the op.
-  DeleteArrayIfUsedOnce(op->inputs[0], model);
-  DeleteArrayIfUsedOnce(op->inputs[1], model);
-
-  // Erase the operator.
-  model->operators.erase(it);
+  DeleteOpAndArrays(model, op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

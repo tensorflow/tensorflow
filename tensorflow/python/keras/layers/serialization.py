@@ -74,11 +74,18 @@ def deserialize(config, custom_objects=None):
   Returns:
       Layer instance (may be Model, Sequential, Network, Layer...)
   """
+  # Prevent circular dependencies.
   from tensorflow.python.keras import models  # pylint: disable=g-import-not-at-top
+  from tensorflow.python.feature_column import feature_column_v2  # pylint: disable=g-import-not-at-top
+
   globs = globals()  # All layers.
   globs['Network'] = models.Network
   globs['Model'] = models.Model
   globs['Sequential'] = models.Sequential
+
+  # Prevent circular dependencies with FeatureColumn serialization.
+  globs['DenseFeatures'] = feature_column_v2.DenseFeatures
+
   layer_class_name = config['class_name']
   if layer_class_name in _DESERIALIZATION_TABLE:
     config['class_name'] = _DESERIALIZATION_TABLE[layer_class_name]

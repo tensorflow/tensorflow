@@ -278,5 +278,10 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         (tensor_shape.TensorShape([5, 3]), dtypes.int32,
          tensor_shape.TensorShape(None), dtypes.bool, "red"))
 
+  def testFromValue(self):
+    value = TwoTensors([1, 2, 3], [1.0, 2.0], "red")
+    spec = type_spec.type_spec_from_value(value)
+    self.assertEqual(spec, TwoTensorsSpec.from_value(value))
+
 if __name__ == "__main__":
   googletest.main()

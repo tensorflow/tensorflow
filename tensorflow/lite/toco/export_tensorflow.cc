@@ -1145,7 +1145,8 @@ void ConvertSplitOperator(const Model& model,
   for (const auto& input : src_op.inputs) {
     *split_op->add_input() = input;
   }
-  (*split_op->mutable_attr())["T"].set_type(DT_FLOAT);
+  (*split_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.outputs[0]));
   (*split_op->mutable_attr())["num_split"].set_i(src_op.num_split);
   const auto& split_dim_array = model.GetArray(src_op.inputs[0]);
   CHECK(split_dim_array.buffer);
@@ -1168,17 +1169,11 @@ void ConvertSplitVOperator(const Model& model,
     *split_v_op->add_input() = input;
   }
   (*split_v_op->mutable_attr())["T"].set_type(
-      GetTensorFlowDataType(model, src_op.inputs[0]));
+      GetTensorFlowDataType(model, src_op.outputs[0]));
+  (*split_v_op->mutable_attr())["Tlen"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[1]));
   (*split_v_op->mutable_attr())["num_split"].set_i(src_op.num_split);
-  const auto& split_dim_array = model.GetArray(src_op.inputs[1]);
-  CHECK(split_dim_array.buffer);
-  CHECK(split_dim_array.data_type == ArrayDataType::kInt32);
-  const auto& split_dim_data =
-      split_dim_array.GetBuffer<ArrayDataType::kInt32>().data;
-  CHECK_EQ(split_dim_data.size(), 1);
-  const int split_dim = split_dim_data[0];
-  CreateDummyConcatDimTensorConst(src_op.inputs[0], split_dim,
-                                  tensorflow_graph);
+  ConvertIntTensorConst(model, src_op.inputs[1], tensorflow_graph);
 }
 
 void ConvertCastOperator(const Model& model, const CastOperator& src_op,

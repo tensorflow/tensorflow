@@ -1,9 +1,5 @@
 # Experimental extensions to the C API for eager execution of kernels.
 
-package(
-    licenses = ["notice"],  # Apache 2.0
-)
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
@@ -19,6 +15,10 @@ load(
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
+)
+
+package(
+    licenses = ["notice"],  # Apache 2.0
 )
 
 tf_cuda_library(

@@ -26,25 +26,34 @@ namespace tensorflow {
 class CopyToDeviceNode : public EagerNode {
  public:
   CopyToDeviceNode(TensorHandle* src, Device* dstd, EagerContext* ctx)
-      : EagerNode(ctx->NextId()),
-        src_(src),
-        dstd_(dstd),
-        ctx_(ctx),
-        dst_(new TensorHandle(id, dstd_, dstd_, nullptr, src->dtype, ctx)) {
+      : EagerNode(ctx->NextId()), src_(src), dstd_(dstd), ctx_(ctx) {
     src_->Ref();
-    dst_->Ref();
+    status_ = TensorHandle::CreateAsyncLocalHandle(dstd_, dstd_, nullptr,
+                                                   src_->dtype, ctx, &dst_);
+    if (status_.ok()) {
+      dst_->Ref();
+    }
   }
 
   ~CopyToDeviceNode() override {
     src_->Unref();
-    dst_->Unref();
+    if (dst_) {
+      dst_->Unref();
+    }
   }
 
   Status Run() override {
+    if (!status_.ok()) {
+      return status_;
+    }
     TensorHandle* temp = nullptr;
-    TF_RETURN_IF_ERROR(src_->CopyToDevice(ctx_, dstd_, &temp));
+    Status status = src_->CopyToDevice(ctx_, dstd_, &temp);
+    if (!status.ok()) {
+      dst_->Poison(status);
+      return status;
+    }
     const Tensor* tensor = nullptr;
-    Status status = temp->Tensor(&tensor);
+    status = temp->Tensor(&tensor);
     // `temp` is a ready handle. So the following call should return OK.
     TF_DCHECK_OK(status) << status.error_message();
     DCHECK(tensor);
@@ -53,6 +62,8 @@ class CopyToDeviceNode : public EagerNode {
     return Status::OK();
   }
 
+  void Abort(Status status) override { dst_->Poison(status); }
+
   TensorHandle* dst() { return dst_; }
 
  private:
@@ -60,6 +71,7 @@ class CopyToDeviceNode : public EagerNode {
   Device* dstd_;
   EagerContext* ctx_;
   TensorHandle* dst_;
+  Status status_;
 };
 
 }  // namespace tensorflow

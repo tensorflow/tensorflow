@@ -41,8 +41,8 @@ AMDGPUExecutable::AMDGPUExecutable(
     const string& text, const std::vector<uint8>& binary,
     int isa_version,
     std::unique_ptr<const ThunkSchedule> thunk_schedule,
-    std::unique_ptr< HloModule> hlo_module,
-    std::unique_ptr<const BufferAssignment> assignment,
+    std::shared_ptr< HloModule> hlo_module,
+    std::shared_ptr<const BufferAssignment> assignment,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
     : GpuExecutable(std::move(text), std::move(binary),

@@ -1,7 +1,6 @@
-licenses(["notice"])  # Apache 2.0
-
 package(
     default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 test_suite(

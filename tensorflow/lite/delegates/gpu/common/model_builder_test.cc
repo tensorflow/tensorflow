@@ -34,7 +34,7 @@ TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefSucceedsForRank0) {
   tflite_tensor.type = TfLiteType::kTfLiteFloat32;
   tflite_tensor.dims = TfLiteIntArrayCreate(1);
   tflite_tensor.dims->data[0] = 4;
-  TensorRefFloat32 tensor_ref;
+  TensorRef<BHWC> tensor_ref;
   const auto status =
       ConvertTfLiteTensorToTensorRef(tflite_tensor, &tensor_ref);
   TfLiteIntArrayFree(tflite_tensor.dims);
@@ -49,7 +49,7 @@ TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefSucceedsForRank1) {
   tflite_tensor.dims = TfLiteIntArrayCreate(2);
   tflite_tensor.dims->data[0] = 4;
   tflite_tensor.dims->data[1] = 5;
-  TensorRefFloat32 tensor_ref;
+  TensorRef<BHWC> tensor_ref;
   const auto status =
       ConvertTfLiteTensorToTensorRef(tflite_tensor, &tensor_ref);
   TfLiteIntArrayFree(tflite_tensor.dims);
@@ -65,7 +65,7 @@ TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefSucceedsForRank2) {
   tflite_tensor.dims->data[0] = 4;
   tflite_tensor.dims->data[1] = 5;
   tflite_tensor.dims->data[2] = 6;
-  TensorRefFloat32 tensor_ref;
+  TensorRef<BHWC> tensor_ref;
   const auto status =
       ConvertTfLiteTensorToTensorRef(tflite_tensor, &tensor_ref);
   TfLiteIntArrayFree(tflite_tensor.dims);
@@ -82,7 +82,7 @@ TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefSucceedsForRank3) {
   tflite_tensor.dims->data[1] = 5;
   tflite_tensor.dims->data[2] = 6;
   tflite_tensor.dims->data[3] = 7;
-  TensorRefFloat32 tensor_ref;
+  TensorRef<BHWC> tensor_ref;
   const auto status =
       ConvertTfLiteTensorToTensorRef(tflite_tensor, &tensor_ref);
   TfLiteIntArrayFree(tflite_tensor.dims);
@@ -95,7 +95,7 @@ TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefFailsForRankLT0) {
   TfLiteTensor tflite_tensor;
   tflite_tensor.type = TfLiteType::kTfLiteFloat32;
   tflite_tensor.dims = TfLiteIntArrayCreate(0);
-  TensorRefFloat32 tensor_ref;
+  TensorRef<BHWC> tensor_ref;
   const auto status =
       ConvertTfLiteTensorToTensorRef(tflite_tensor, &tensor_ref);
   TfLiteIntArrayFree(tflite_tensor.dims);
@@ -107,7 +107,7 @@ TEST(ModelBuilderTest, ConvertTfLiteTensorToTensorRefFailsForRankGT3) {
   TfLiteTensor tflite_tensor;
   tflite_tensor.type = TfLiteType::kTfLiteFloat32;
   tflite_tensor.dims = TfLiteIntArrayCreate(5);
-  TensorRefFloat32 tensor_ref;
+  TensorRef<BHWC> tensor_ref;
   const auto status =
       ConvertTfLiteTensorToTensorRef(tflite_tensor, &tensor_ref);
   TfLiteIntArrayFree(tflite_tensor.dims);
@@ -162,6 +162,7 @@ class InterpreterFp16 {
     // Set inputs to Dequantize node to the specified type.
     const std::vector<int> dims = {1};
     TfLiteQuantization quantization;
+    quantization.type = kTfLiteNoQuantization;
     EXPECT_EQ(
         interpreter_.SetTensorParametersReadWrite(
             0, TfLiteType::kTfLiteFloat16, "t0", dims, quantization, false),
@@ -261,6 +262,7 @@ class InterpreterFp32 {
 
     const std::vector<int> dims = {1};
     TfLiteQuantization quantization;
+    quantization.type = kTfLiteNoQuantization;
     EXPECT_EQ(
         interpreter_.SetTensorParametersReadWrite(
             0, TfLiteType::kTfLiteFloat32, "t0", dims, quantization, false),

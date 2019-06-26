@@ -36,6 +36,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "input_spec"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "losses"
     mtype: "<type \'property\'>"
   }
@@ -157,7 +161,7 @@ tf_class {
   }
   member_method {
     name: "from_config"
-    argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'cls\', \'config\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "get_config"

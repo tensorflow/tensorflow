@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -75,12 +76,25 @@ struct TFE_Context {
 };
 
 struct TFE_TensorHandle {
-  explicit TFE_TensorHandle(tensorflow::TensorHandle* handle)
-      : handle(handle) {}
-  explicit TFE_TensorHandle(const tensorflow::Tensor& t)
-      : handle(new tensorflow::TensorHandle(t)) {}
-  TFE_TensorHandle(const tensorflow::Tensor& t, tensorflow::Device* d)
-      : handle(new tensorflow::TensorHandle(t, d, nullptr)) {}
+  explicit TFE_TensorHandle(tensorflow::TensorHandle* h) : handle(h) {}
+  static TFE_TensorHandle* CreateLocalHandle(const class tensorflow::Tensor& t,
+                                             TF_Status* s) {
+    tensorflow::TensorHandle* handle;
+    s->status = tensorflow::TensorHandle::CreateLocalHandle(t, &handle);
+    if (!s->status.ok()) {
+      return nullptr;
+    }
+    return new TFE_TensorHandle(handle);
+  }
+  static tensorflow::Status CreateLocalHandle(const class tensorflow::Tensor& t,
+                                              tensorflow::Device* d,
+                                              TFE_TensorHandle** h) {
+    tensorflow::TensorHandle* handle;
+    TF_RETURN_IF_ERROR(
+        tensorflow::TensorHandle::CreateLocalHandle(t, d, nullptr, &handle));
+    *h = new TFE_TensorHandle(handle);
+    return tensorflow::Status::OK();
+  }
 
   tensorflow::TensorHandle* handle;
 

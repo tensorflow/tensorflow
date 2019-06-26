@@ -39,7 +39,6 @@ __global__ void BucketizeCustomKernel(
   const float* boundaries = GetGpuDeviceArrayOnDevice(&boundaries_array);
 
   GPU_DYNAMIC_SHARED_MEM_DECL(sizeof(float), unsigned char, shared_mem);
-
   float* shared_mem_boundaries = reinterpret_cast<float*>(shared_mem);
 
   if (useSharedMem) {

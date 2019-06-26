@@ -1,14 +1,14 @@
+load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load(
+    "//tensorflow/lite/experimental/micro/testing:micro_test.bzl",
+    "tflite_micro_cc_test",
+)
+
 package(
     default_visibility = [
         "//visibility:public",
     ],
     licenses = ["notice"],  # Apache 2.0
-)
-
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load(
-    "//tensorflow/lite/experimental/micro/testing:micro_test.bzl",
-    "tflite_micro_cc_test",
 )
 
 cc_library(
@@ -29,6 +29,7 @@ cc_library(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:padding",
+        "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
@@ -68,6 +69,7 @@ cc_library(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:padding",
+        "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",

@@ -53,9 +53,9 @@ struct EyeFunctor<GPUDevice, Scalar> {
     const int n = matrix_batch.dimension(2);
     GpuLaunchConfig config = GetGpuLaunchConfig(batch_size * m * n, device);
     TF_CHECK_OK(GpuLaunchKernel(EyeKernel<Scalar>, config.block_count,
-                                 config.thread_per_block, 0, device.stream(),
-                                 config.virtual_thread_count, batch_size, m, n,
-                                 matrix_batch.data()));
+                                config.thread_per_block, 0, device.stream(),
+                                config.virtual_thread_count, batch_size, m, n,
+                                matrix_batch.data()));
   }
 };
 

@@ -1441,10 +1441,8 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNCHWSmall(
   typedef typename detail::PseudoHalfType<T>::Type S;
   assert(CanLaunchDepthwiseConv2dBackpropFilterGPUSmall(args, blockDim.x));
   // Holds block plus halo and filter data for blockDim.z depths.
-  static_assert(sizeof(S) <= 8, "Insufficient aligement detected");
-
   GPU_DYNAMIC_SHARED_MEM_DECL(8, unsigned char, shared_memory);
-
+  static_assert(sizeof(S) <= 8, "Insufficient alignment detected");
   S* const shared_data = reinterpret_cast<S*>(shared_memory);
 
   const int num_batches = args.batch;

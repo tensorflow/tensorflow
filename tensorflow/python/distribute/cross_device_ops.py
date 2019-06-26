@@ -48,7 +48,7 @@ def check_destinations(destinations):
     Boolean which is True if `destinations` is not empty.
   """
   # Calling bool() on a ResourceVariable is not allowed.
-  if isinstance(destinations, resource_variable_ops.ResourceVariable):
+  if isinstance(destinations, resource_variable_ops.BaseResourceVariable):
     return bool(destinations.device)
   return bool(destinations)
 
@@ -56,7 +56,7 @@ def check_destinations(destinations):
 def validate_destinations(destinations):
   if not isinstance(destinations,
                     (value_lib.DistributedValues,
-                     resource_variable_ops.ResourceVariable,
+                     resource_variable_ops.BaseResourceVariable,
                      value_lib.AggregatingVariable,
                      six.string_types,
                      value_lib.TPUMirroredVariable,
@@ -998,14 +998,15 @@ class CollectiveAllReduce(CrossDeviceOps):
       return all_reduced
     devices = device_map.logical_to_actual_devices(logical_device)
     index = []
-    for d in devices:
-      if d in all_reduced.devices:
-        index.append(all_reduced.get(d))
-      else:
-        # TODO(josh11b): Once we add support for model parallelism, get the
-        # copy from the corresponding replica instead of the primary.
-        with ops.control_dependencies(all_reduced.values), ops.device(d):
-          index.append(array_ops.identity(all_reduced.primary))
+    with ops.control_dependencies(all_reduced.values):
+      for d in devices:
+        with ops.device(d):
+          if d in all_reduced.devices:
+            index.append(array_ops.identity(all_reduced.get(d)))
+          else:
+            # TODO(josh11b): Once we add support for model parallelism, get the
+            # copy from the corresponding replica instead of the primary.
+            index.append(array_ops.identity(all_reduced.primary))
 
     return value_lib.Mirrored(device_map, index, logical_device)
 

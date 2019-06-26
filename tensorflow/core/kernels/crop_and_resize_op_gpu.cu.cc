@@ -185,40 +185,40 @@ __global__ void CropAndResizeBackpropImageKernel(
 
       const float dtop = (1 - y_lerp) * grads_ptr[out_idx];
       GpuAtomicAdd(grads_image_ptr +
-                        ((b_in * image_height + top_y_index) * image_width +
-                         left_x_index) *
-                            depth +
-                        d,
-                    static_cast<T>((1 - x_lerp) * dtop));
+                       ((b_in * image_height + top_y_index) * image_width +
+                        left_x_index) *
+                           depth +
+                       d,
+                   static_cast<T>((1 - x_lerp) * dtop));
       GpuAtomicAdd(grads_image_ptr +
-                        ((b_in * image_height + top_y_index) * image_width +
-                         right_x_index) *
-                            depth +
-                        d,
-                    static_cast<T>(x_lerp * dtop));
+                       ((b_in * image_height + top_y_index) * image_width +
+                        right_x_index) *
+                           depth +
+                       d,
+                   static_cast<T>(x_lerp * dtop));
 
       const float dbottom = y_lerp * grads_ptr[out_idx];
       GpuAtomicAdd(grads_image_ptr +
-                        ((b_in * image_height + bottom_y_index) * image_width +
-                         left_x_index) *
-                            depth +
-                        d,
-                    static_cast<T>((1 - x_lerp) * dbottom));
+                       ((b_in * image_height + bottom_y_index) * image_width +
+                        left_x_index) *
+                           depth +
+                       d,
+                   static_cast<T>((1 - x_lerp) * dbottom));
       GpuAtomicAdd(grads_image_ptr +
-                        ((b_in * image_height + bottom_y_index) * image_width +
-                         right_x_index) *
-                            depth +
-                        d,
-                    static_cast<T>(x_lerp * dbottom));
+                       ((b_in * image_height + bottom_y_index) * image_width +
+                        right_x_index) *
+                           depth +
+                       d,
+                   static_cast<T>(x_lerp * dbottom));
     } else {  // method_id == NEAREST
       const int closest_x_index = roundf(in_x);
       const int closest_y_index = roundf(in_y);
       GpuAtomicAdd(grads_image_ptr +
-                        ((b_in * image_height + closest_y_index) * image_width +
-                         closest_x_index) *
-                            depth +
-                        d,
-                    static_cast<T>(grads_ptr[out_idx]));
+                       ((b_in * image_height + closest_y_index) * image_width +
+                        closest_x_index) *
+                           depth +
+                       d,
+                   static_cast<T>(grads_ptr[out_idx]));
     }
   }
 }

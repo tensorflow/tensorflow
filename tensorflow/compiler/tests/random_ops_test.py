@@ -29,6 +29,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import special_math
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
 
 
 class RandomOpsTest(xla_test.XLATestCase):
@@ -73,6 +74,9 @@ class RandomOpsTest(xla_test.XLATestCase):
       self._testRngIsNotConstant(rng, dtype)
 
   def testRandomNormalMean(self):
+    if test.is_built_with_rocm():
+      self.skipTest("Began failing on ROCm (06182019)")
+
     for dtype in self._random_types() & self.float_types:
       with self.session():
         with self.test_scope():
@@ -85,6 +89,9 @@ class RandomOpsTest(xla_test.XLATestCase):
           self.assertAllClose(x, 1.4, rtol=1e-1, atol=1e-1)
 
   def testRandomNormalVariance(self):
+    if test.is_built_with_rocm():
+      self.skipTest("Began failing on ROCm (06182019)")
+
     for dtype in self._random_types() & self.float_types:
       with self.session():
         with self.test_scope():

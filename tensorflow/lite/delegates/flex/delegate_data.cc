@@ -37,7 +37,7 @@ tensorflow::Status DelegateData::Prepare(
   TF_RETURN_IF_ERROR(tensorflow::DeviceFactory::AddDevices(
       session_options, "/job:localhost/replica:0/task:0", &devices));
 
-  std::unique_ptr<tensorflow::DeviceMgr> device_mgr =
+  auto device_mgr =
       absl::make_unique<tensorflow::DeviceMgr>(std::move(devices));
   // Note that Rendezvous is ref-counted so it will be automatically deleted.
   tensorflow::Rendezvous* rendezvous =
@@ -45,7 +45,8 @@ tensorflow::Status DelegateData::Prepare(
   eager_context_ = new tensorflow::EagerContext(
       session_options,
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      /*async=*/false, std::move(device_mgr), rendezvous);
+      /*async=*/false, device_mgr.release(), /*device_mgr_owned*/ true,
+      rendezvous, nullptr);
   return tensorflow::Status();
 }
 

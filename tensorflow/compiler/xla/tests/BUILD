@@ -705,12 +705,11 @@ xla_test(
         ":client_library_test_base",
         ":literal_test_util",
         ":test_macros_header",
+        ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:bit_cast",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/base",
     ],
 )
 
@@ -745,6 +744,7 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
+	"no_rocm",
     ],
     deps = [
         ":test_macros_header",
@@ -777,6 +777,7 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
+	"no_rocm",
     ],
     deps = [
         ":test_macros_header",
@@ -839,7 +840,10 @@ xla_test(
         ],
     },
     shard_count = 20,
-    tags = ["optonly"],
+    tags = [
+	"optonly",
+	"no_rocm",
+    ],
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:array2d",
@@ -1163,6 +1167,7 @@ xla_test(
 
 xla_test(
     name = "dynamic_ops_test",
+    tags = ["no_rocm"],
     timeout = "moderate",
     srcs = ["dynamic_ops_test.cc"],
     deps = [
@@ -1710,8 +1715,8 @@ xla_test(
 )
 
 xla_test(
-    name = "multi_device_all_reduce_test",
-    srcs = ["multi_device_all_reduce_test.cc"],
+    name = "collective_ops_test",
+    srcs = ["collective_ops_test.cc"],
     backends = ["gpu"],
     tags = [
         # This test is tagged "manual" because it requires multiple GPUs, and

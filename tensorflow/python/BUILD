@@ -17,9 +17,10 @@ visibility = [
     "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
 ]
 
-package(default_visibility = visibility)
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = visibility,
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -111,6 +112,7 @@ py_library(
         "//tensorflow/python/tools/api/generator:__pkg__",
         "//tensorflow/tools/api/tests:__pkg__",
         "//tensorflow/tools/compatibility/update:__pkg__",
+        "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
         ":array_ops",
@@ -152,6 +154,7 @@ py_library(
         ":platform",
         ":proto_ops",
         ":pywrap_tensorflow",
+        ":rnn_ops_gen",
         ":saver_test_utils",
         ":script_ops",
         ":session_ops",
@@ -417,6 +420,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:script_ops_op_lib",
+        "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
@@ -705,13 +709,11 @@ py_library(
         ":framework_for_generated_wrappers",
         ":function",
         ":graph_util",
-        ":indexed_slices_tensor_spec",
         ":lib",
         ":platform",
         ":pywrap_tensorflow",
         ":random_seed",
         ":sparse_tensor",
-        ":sparse_tensor_spec",
         ":tensor_spec",
         ":tensor_util",
         ":type_spec",
@@ -949,12 +951,16 @@ py_library(
         ":device",
         ":dtypes",
         ":error_interpolation",
+        ":indexed_slices",
         ":op_def_registry",
         ":platform",
         ":registry",
+        ":tensor_conversion_registry",
+        ":tensor_like",
         ":tensor_shape",
         ":tf2",
         ":traceable_stack",
+        ":type_spec",
         ":util",
         ":versions",
         "//tensorflow/core:protos_all_py",
@@ -963,6 +969,37 @@ py_library(
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/eager:tape",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "tensor_like",
+    srcs = ["framework/tensor_like.py"],
+    srcs_version = "PY2AND3",
+    deps = [],
+)
+
+py_library(
+    name = "indexed_slices",
+    srcs = ["framework/indexed_slices.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":composite_tensor",
+        ":dtypes",
+        ":tensor_conversion_registry",
+        ":tensor_shape",
+        ":type_spec",
+        ":util",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_library(
+    name = "tensor_conversion_registry",
+    srcs = ["framework/tensor_conversion_registry.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -1102,7 +1139,9 @@ py_library(
         ":composite_tensor",
         ":dtypes",
         ":framework_ops",
+        ":tensor_like",
         ":tensor_util",
+        ":type_spec",
     ],
 )
 
@@ -1112,7 +1151,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":dtypes",
-        ":framework_ops",
         ":tensor_util",
     ],
 )
@@ -1210,32 +1248,9 @@ py_library(
         ":common_shapes",
         ":dtypes",
         ":tensor_shape",
+        ":type_spec",
         ":util",
         "//third_party/py/numpy",
-    ],
-)
-
-py_library(
-    name = "sparse_tensor_spec",
-    srcs = ["framework/sparse_tensor_spec.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":dtypes",
-        ":sparse_tensor",
-        ":tensor_shape",
-        ":tensor_spec",
-    ],
-)
-
-py_library(
-    name = "indexed_slices_tensor_spec",
-    srcs = ["framework/indexed_slices_tensor_spec.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":dtypes",
-        ":framework_ops",
-        ":sparse_tensor",
-        ":tensor_shape",
     ],
 )
 
@@ -1244,6 +1259,7 @@ py_library(
     srcs = ["framework/tensor_util.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":tensor_like",
         ":tensor_shape",
         ":util",
         "//tensorflow/core:protos_all_py",
@@ -1698,6 +1714,7 @@ tf_py_test(
         ":framework_test_lib",
         ":platform_test",
         "//tensorflow/core:protos_all_py",
+        "@absl_py//absl/testing:parameterized",
     ],
     main = "framework/tensor_shape_test.py",
 )
@@ -2220,6 +2237,13 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/contrib/text:__pkg__",
         "//learning/brain/contrib/text/python/ragged:__pkg__",
         "//tensorflow/python/ops/ragged:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "rnn_ops_gen",
+    visibility = [
+        "//tensorflow/contrib/rnn:__pkg__",
     ],
 )
 
@@ -3197,6 +3221,7 @@ py_library(
         ":random_ops",
         ":tensor_shape",
         ":tensor_util",
+        "//tensorflow/python/eager:monitoring",
         "//third_party/py/numpy",
     ],
 )
@@ -3889,6 +3914,7 @@ cuda_py_test(
         ":variable_scope",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
+        "//tensorflow/python/keras:engine",
     ],
     tags = ["no_oss"],  # b/118709825
     xla_enable_strict_auto_jit = True,
@@ -4072,13 +4098,25 @@ cuda_py_test(
         ":variables",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
-        "//tensorflow/python/distribute:mirrored_strategy",
     ],
     tags = [
         "no_windows",
     ],
     xla_enable_strict_auto_jit = True,
     flaky = True,
+)
+
+py_test(
+    name = "nn_loss_scaling_utilities_test",
+    size = "small",
+    srcs = ["ops/nn_loss_scaling_utilities_test.py"],
+    python_version = "PY2",
+    deps = [
+        ":client_testlib",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )
 
 cuda_py_test(
@@ -4358,6 +4396,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = visibility + [
         "//tensorflow:__pkg__",
+        "//third_party/py/tensorflow_core:__subpackages__",
         "//third_party/py/tf_agents:__subpackages__",
     ],
     deps = [
@@ -4593,6 +4632,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/python:ndarray_tensor",
     ],
 )
 

@@ -30,7 +30,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
 __global__ void DiagGpuKernel(const int num_threads, const int64 size,
-                               const T* in, T* out) {
+                              const T* in, T* out) {
   GPU_1D_KERNEL_LOOP(index, num_threads) {
     // Fill the diagonal elements or set to zero in other place.
     if (index % (1 + size) == 0) {
@@ -62,24 +62,10 @@ struct DiagFunctor<GPUDevice, T> {
     const GPUDevice& device = context->eigen_device<GPUDevice>();
     GpuLaunchConfig diag_config =
         GetGpuLaunchConfig(virtual_thread_count, device);
-    TF_CHECK_OK(
-        GpuLaunchKernel(DiagGpuKernel<T>, diag_config.block_count,
-                         diag_config.thread_per_block, 0, device.stream(),
-                         diag_config.virtual_thread_count, size, in, out));
+    TF_CHECK_OK(GpuLaunchKernel(
+        DiagGpuKernel<T>, diag_config.block_count, diag_config.thread_per_block,
+        0, device.stream(), diag_config.virtual_thread_count, size, in, out));
 
-#if GOOGLE_CUDA
-    auto err = cudaGetLastError();
-    if (err != cudaSuccess) {
-      return errors::Internal(
-          "Could not launch DiagOp kernel: ", cudaGetErrorString(err), ".");
-    }
-#elif TENSORFLOW_USE_ROCM
-    auto err = hipGetLastError();
-    if (err != hipSuccess) {
-      return errors::Internal(
-          "Could not launch DiagOp kernel: ", hipGetErrorString(err), ".");
-    }
-#endif
     return Status::OK();
   }
 };
@@ -93,7 +79,7 @@ template struct DiagFunctor<GPUDevice, complex128>;
 
 template <typename T>
 __global__ void DiagPartGpuKernel(const int num_threads, const int64 size,
-                                   const T* in, T* out) {
+                                  const T* in, T* out) {
   GPU_1D_KERNEL_LOOP(index, num_threads) {
     out[index] = in[(1 + size) * index];
   }
@@ -113,22 +99,9 @@ struct DiagPartFunctor<GPUDevice, T> {
     GpuLaunchConfig diag_config = GetGpuLaunchConfig(size, device);
     TF_CHECK_OK(
         GpuLaunchKernel(DiagPartGpuKernel<T>, diag_config.block_count,
-                         diag_config.thread_per_block, 0, device.stream(),
-                         diag_config.virtual_thread_count, size, in, out));
+                        diag_config.thread_per_block, 0, device.stream(),
+                        diag_config.virtual_thread_count, size, in, out));
 
-#if GOOGLE_CUDA
-    auto err = cudaGetLastError();
-    if (err != cudaSuccess) {
-      return errors::Internal(
-          "Could not launch DiagPartOp kernel: ", cudaGetErrorString(err), ".");
-    }
-#elif TENSORFLOW_USE_ROCM
-    auto err = hipGetLastError();
-    if (err != hipSuccess) {
-      return errors::Internal(
-          "Could not launch DiagPartOp kernel: ", hipGetErrorString(err), ".");
-    }
-#endif
     return Status::OK();
   }
 };

@@ -43,6 +43,7 @@ limitations under the License.
 #ifndef TENSORFLOW_USE_ROCM
   #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #endif
+#include "tensorflow/compiler/xla/service/gpu/collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
@@ -63,6 +64,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/replica_id_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
@@ -227,6 +229,8 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
       fn_arg->setName(StrCat("alloc", alloc->index()));
     }
   }
+
+  AnnotateFunctionAsGpuKernel(module, kernel, &b_);
 
   // TODO(b/65380986): Investigate if adding fast math flags for generated
   // kernels makes sense.
@@ -1027,8 +1031,7 @@ Status IrEmitterUnnested::HandleRng(HloInstruction* rng) {
   // Emit a kernel to increment the global state for Philox RNG algorithm.
   std::unique_ptr<Thunk> increment_seed_thunk =
       BuildKernelThunk(rng, /*implements_whole_instruction=*/false);
-  unsigned global_address_space = GetGlobalMemoryAddressSpace(*module_);
-  llvm_ir::IncrementVariableForPhiloxRngState(1, module_, &b_, global_address_space);
+  llvm_ir::IncrementVariableForPhiloxRngState(1, module_, &b_);
 
   // Build the SequentialThunk for the RNG hlo.
   std::vector<std::unique_ptr<Thunk>> thunks;
@@ -1389,6 +1392,18 @@ Status IrEmitterUnnested::HandleTupleSelect(HloInstruction* tuple_select) {
   AddThunkToThunkSequence(
       BuildKernelThunk(tuple_select, /*implements_whole_instruction=*/true));
   return IrEmitter::HandleTupleSelect(tuple_select);
+}
+
+Status IrEmitterUnnested::HandleReplicaId(HloInstruction* hlo) {
+  AddThunkToThunkSequence(
+      absl::make_unique<ReplicaIdThunk>(GetAllocationSlice(*hlo), hlo));
+  return Status::OK();
+}
+
+Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {
+  AddThunkToThunkSequence(absl::make_unique<CollectivePermuteThunk>(
+      GetAllocationSlice(*hlo->operand(0)), GetAllocationSlice(*hlo), hlo));
+  return Status::OK();
 }
 
 namespace {
@@ -2780,7 +2795,7 @@ void IrEmitterUnnested::EmitPrologueForReduction(
 void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForAllReduces(
     absl::Span<HloComputation* const> reducers,
     absl::Span<llvm::AllocaInst* const> partial_result_addresses) {
-  for (int distance = 16; distance >= 1; distance /= 2) {
+  for (int distance = kWarpSize/2; distance >= 1; distance /= 2) {
     for (int i = 0; i != reducers.size(); ++i) {
       llvm::Type* element_type =
           partial_result_addresses[i]->getType()->getElementType();
@@ -3827,14 +3842,13 @@ Status IrEmitterUnnested::EmitConstantGlobals() {
     //
     // We may have to be more more clever here in the future if we notice that
     // we're keeping around too many globals because of their linkage.
-    unsigned global_address_space =
-        GetGlobalMemoryAddressSpace(*(ir_emitter_context_->llvm_module()));
+    unsigned global_address_space = llvm_ir::GetGlobalMemoryAddressSpace(
+        *ir_emitter_context_->llvm_module());
     llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
         global_type, /*isConstant=*/should_emit_initializer,
         llvm::GlobalValue::ExternalLinkage,
         /*Initializer=*/initializer,
-        llvm_ir::AsStringRef(
-            llvm_ir::ConstantBufferAllocationToGlobalName(allocation)),
+        llvm_ir::ConstantBufferAllocationToGlobalName(allocation),
         /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
         /*AddressSpace=*/global_address_space,
         /*isExternallyInitialized=*/false);

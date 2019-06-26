@@ -108,7 +108,7 @@ between 0.0 and 1.0, 1.0 being the highest.
 
 ## Example output
 
-<img alt="Animation showing pose estimation" src="https://www.tensorflow.org/images/models/pose_estimation.gif" />
+<img alt="Animation showing pose estimation" src="https://www.tensorflow.org/images/lite/models/pose_estimation.gif"/>
 
 ## How it performs
 

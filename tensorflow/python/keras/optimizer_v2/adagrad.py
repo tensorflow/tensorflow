@@ -139,7 +139,7 @@ class Adagrad(optimizer_v2.OptimizerV2):
 
   def _resource_apply_dense(self, grad, var):
     var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
+    lr_t = self._decayed_lr_t[var_dtype]
     epsilon_t = ops.convert_to_tensor(self.epsilon, var_dtype)
     acc = self.get_slot(var, 'accumulator')
 
@@ -157,7 +157,7 @@ class Adagrad(optimizer_v2.OptimizerV2):
         return x.value()
 
     var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
+    lr_t = self._decayed_lr_t[var_dtype]
     epsilon_t = ops.convert_to_tensor(self.epsilon, var_dtype)
     acc = self.get_slot(var, 'accumulator')
 
