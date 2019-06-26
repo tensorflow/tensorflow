@@ -171,7 +171,8 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
         (layer_cls.__name__, x, actual_output.dtype,
          computed_output_signature.dtype, kwargs))
   if expected_output is not None:
-    np.testing.assert_allclose(actual_output, expected_output, rtol=1e-3)
+    np.testing.assert_allclose(actual_output, expected_output,
+                               rtol=1e-3, atol=1e-6)
 
   # test serialization, weight setting at model level
   model_config = model.get_config()
@@ -180,7 +181,7 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     weights = model.get_weights()
     recovered_model.set_weights(weights)
     output = recovered_model.predict(input_data)
-    np.testing.assert_allclose(output, actual_output, rtol=2e-3)
+    np.testing.assert_allclose(output, actual_output, rtol=1e-3, atol=1e-6)
 
   # test training mode (e.g. useful for dropout tests)
   # Rebuild the model to avoid the graph being reused between predict() and
@@ -225,7 +226,8 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
              computed_output_shape,
              kwargs))
   if expected_output is not None:
-    np.testing.assert_allclose(actual_output, expected_output, rtol=1e-3)
+    np.testing.assert_allclose(actual_output, expected_output,
+                               rtol=1e-3, atol=1e-6)
 
   # test serialization, weight setting at model level
   model_config = model.get_config()
@@ -234,7 +236,7 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     weights = model.get_weights()
     recovered_model.set_weights(weights)
     output = recovered_model.predict(input_data)
-    np.testing.assert_allclose(output, actual_output, rtol=2e-3)
+    np.testing.assert_allclose(output, actual_output, rtol=1e-3, atol=1e-6)
 
   # for further checks in the caller function
   return actual_output
