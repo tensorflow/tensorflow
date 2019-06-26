@@ -20,19 +20,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/Module.h"
-#include "mlir/Parser.h"
-#include "mlir/Support/FileUtilities.h"
-#include "mlir/Translation.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/FileUtilities.h"
+#include "mlir/Support/LogicalResult.h"
+#include "mlir/Support/TranslateClParser.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/PrettyStackTrace.h"
-#include "llvm/Support/SourceMgr.h"
-#include "llvm/Support/ToolOutputFile.h"
 
 using namespace mlir;
 
@@ -43,102 +35,6 @@ static llvm::cl::opt<std::string> inputFilename(llvm::cl::Positional,
 static llvm::cl::opt<std::string>
     outputFilename("o", llvm::cl::desc("Output filename"),
                    llvm::cl::value_desc("filename"), llvm::cl::init("-"));
-
-static Module *parseMLIRInput(StringRef inputFilename, MLIRContext *context,
-                              llvm::SourceMgr &sourceMgr) {
-  // Set up the input file.
-  std::string errorMessage;
-  auto file = openInputFile(inputFilename, &errorMessage);
-  if (!file) {
-    llvm::errs() << errorMessage << "\n";
-    return nullptr;
-  }
-
-  sourceMgr.AddNewSourceBuffer(std::move(file), llvm::SMLoc());
-  return parseSourceFile(sourceMgr, context);
-}
-
-static bool printMLIROutput(Module &module, llvm::StringRef outputFilename) {
-  if (failed(module.verify()))
-    return true;
-  auto file = openOutputFile(outputFilename);
-  if (!file)
-    return true;
-  module.print(file->os());
-  file->keep();
-  return false;
-}
-
-// Common interface for source-to-source translation functions.
-using TranslateFunction =
-    std::function<bool(StringRef, StringRef, MLIRContext *)>;
-
-// Storage for the translation function wrappers that survive the parser.
-static llvm::SmallVector<TranslateFunction, 16> wrapperStorage;
-
-// Custom parser for TranslateFunction.
-// Wraps TranslateToMLIRFunctions and TranslateFromMLIRFunctions into
-// TranslateFunctions before registering them as options.
-struct TranslationParser : public llvm::cl::parser<const TranslateFunction *> {
-  TranslationParser(llvm::cl::Option &opt);
-
-  void printOptionInfo(const llvm::cl::Option &O,
-                       size_t GlobalWidth) const override;
-};
-
-TranslationParser::TranslationParser(llvm::cl::Option &opt)
-    : llvm::cl::parser<const TranslateFunction *>(opt) {
-  const auto &toMLIRRegistry = getTranslationToMLIRRegistry();
-  const auto &fromMLIRRegistry = getTranslationFromMLIRRegistry();
-
-  // Reserve the required capacity upfront so that pointers are not
-  // invalidated on reallocation.
-  wrapperStorage.reserve(toMLIRRegistry.size() + fromMLIRRegistry.size());
-  for (const auto &kv : toMLIRRegistry) {
-    TranslateToMLIRFunction function = kv.second;
-    TranslateFunction wrapper = [function](StringRef inputFilename,
-                                           StringRef outputFilename,
-                                           MLIRContext *context) {
-      std::unique_ptr<Module> module = function(inputFilename, context);
-      if (!module)
-        return true;
-      return printMLIROutput(*module, outputFilename);
-    };
-    wrapperStorage.emplace_back(std::move(wrapper));
-
-    addLiteralOption(kv.first(), &wrapperStorage.back(), kv.first());
-  }
-
-  for (const auto &kv : fromMLIRRegistry) {
-    TranslateFromMLIRFunction function = kv.second;
-    TranslateFunction wrapper = [function](StringRef inputFilename,
-                                           StringRef outputFilename,
-                                           MLIRContext *context) {
-      llvm::SourceMgr sourceMgr;
-      SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, context);
-      auto module = std::unique_ptr<Module>(
-          parseMLIRInput(inputFilename, context, sourceMgr));
-      if (!module)
-        return true;
-      return function(module.get(), outputFilename);
-    };
-    wrapperStorage.emplace_back(std::move(wrapper));
-
-    addLiteralOption(kv.first(), &wrapperStorage.back(), kv.first());
-  }
-}
-
-void TranslationParser::printOptionInfo(const llvm::cl::Option &O,
-                                        size_t GlobalWidth) const {
-  TranslationParser *TP = const_cast<TranslationParser *>(this);
-  llvm::array_pod_sort(TP->Values.begin(), TP->Values.end(),
-                       [](const TranslationParser::OptionInfo *VT1,
-                          const TranslationParser::OptionInfo *VT2) {
-                         return VT1->Name.compare(VT2->Name);
-                       });
-  using llvm::cl::parser;
-  parser<const TranslateFunction *>::printOptionInfo(O, GlobalWidth);
-}
 
 int main(int argc, char **argv) {
   llvm::PrettyStackTraceProgram x(argc, argv);
@@ -151,5 +47,6 @@ int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv, "MLIR translation driver\n");
 
   MLIRContext context;
-  return (*translationRequested)(inputFilename, outputFilename, &context);
+  return failed(
+      (*translationRequested)(inputFilename, outputFilename, &context));
 }
