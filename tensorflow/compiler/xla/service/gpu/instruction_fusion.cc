@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -42,15 +43,27 @@ bool IsIEEEFloatingPointScalarConstant(const HloInstruction* constant) {
 
 /*static*/ bool GpuInstructionFusion::IsExpensive(
     const HloInstruction& instruction) {
-  switch (instruction.opcode()) {
-    // We say that floating-point division is cheap on the GPU.
-    case HloOpcode::kDivide:
-      return !ShapeUtil::ElementIsFloating(instruction.shape()) &&
-             InstructionFusion::IsExpensive(instruction);
-
-    default:
-      return InstructionFusion::IsExpensive(instruction);
+  // We say that floating-point division is cheap on the GPU.
+  if (instruction.opcode() == HloOpcode::kDivide &&
+      ShapeUtil::ElementIsFloating(instruction.shape())) {
+      return false;
   }
+  // LLVM optimizes the integer division/remainder by a
+  // constant scalar to a few fast operations.
+  if ((instruction.opcode() == HloOpcode::kDivide ||
+       instruction.opcode() == HloOpcode::kRemainder) &&
+      ShapeUtil::ElementIsIntegral(instruction.shape())) {
+    auto* operand1 = instruction.operands()[1];
+    if (hlo_query::IsScalarConstant(operand1)) {
+      return false;
+    }
+    // Broadcasted scalar is also being optimized.
+    if (operand1->opcode() == HloOpcode::kBroadcast &&
+        hlo_query::IsScalarConstant(operand1->operands()[0])) {
+      return false;
+    }
+  }
+  return InstructionFusion::IsExpensive(instruction);
 }
 
 bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
