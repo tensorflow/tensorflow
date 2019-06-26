@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <atomic>
+#include <fstream>
 #include <functional>
 #include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <utility>
@@ -626,7 +627,35 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   }
 
   string ptx;
-  {
+
+  // Generate the PTX or load it if provided.
+  // If the xla_gpu_ptx_code options is set, be explicit when a file is used
+  // and warn when a file is not used to ease catching typo in filename.
+  string prefix = FilenameFor(*module, ptx);
+  string ptx_filename;
+  for (const string filename : module->config().debug_options().xla_gpu_ptx_code()) {
+    // To ease comparing many PTX versions, accept different suffix then
+    // the original filename.
+    if(absl::StartsWith(filename, prefix)) {
+      ptx_filename = filename;
+      VLOG(0) << "RunBackend() - Will load PTX from file: " << filename;
+      break;
+    } else {
+      VLOG(0) << "RunBackend() - For module with prefix '" << prefix
+              << "', we skip PTX code file: " << filename;
+    }
+  }
+  if (module->config().debug_options().xla_gpu_ptx_code().size() > 0 &&
+      ptx_filename.size() == 0) {
+    VLOG(0) << "RunBackend() - For module with prefix '" << prefix
+            << "', we did not found a PTX file to load.";
+  }
+  if(!ptx_filename.empty()) {
+    std::ifstream ifs(ptx_filename, std::ifstream::in);
+    ptx = std::string(std::istreambuf_iterator<char>(ifs),
+                      std::istreambuf_iterator<char>());
+    CHECK(ptx.size() > 0) << "Empty or non existing PTX file: " << ptx_filename;
+  } else {
     XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - CompileToPtx");
     TF_ASSIGN_OR_RETURN(ptx, CompileToPtx(&llvm_module, {cc_major, cc_minor},
                                           module->config(), libdevice_dir));

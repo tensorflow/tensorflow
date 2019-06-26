@@ -276,13 +276,16 @@ message DebugOptions {
   // directory.
   bool xla_dump_hlo_snapshots = 118;
 
+  bool xla_gpu_force_conv_nchw = 125;
+
+  // Path to a file with ptx code.
+  repeated string xla_gpu_ptx_code = 127;
+
   //
   // END flags controlling dumping HLO modules.
   //
 
-  bool xla_gpu_force_conv_nchw = 125;
-
-  // Next id: 127
+  // Next id: 128
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
