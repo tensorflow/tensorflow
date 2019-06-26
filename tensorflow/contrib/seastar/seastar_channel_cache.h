@@ -1,30 +1,31 @@
 #ifndef TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CHANNEL_CACHE_H_
 #define TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CHANNEL_CACHE_H_
-#include <map>
+
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
+#include "tensorflow/contrib/seastar/seastar_engine.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "third_party/seastar/core/channel.hh"
 
-namespace seastar {
-class channel;
-}
 namespace tensorflow {
-class SeastarEngine;
+
 class SeastarChannelSpec {
  public:
   struct HostPortsJob {
     HostPortsJob(const std::string& job_id,
-                 const std::map<int, std::string>& host_ports)
+                 const std::unordered_map<int, std::string>& host_ports)
         : job_id(job_id), host_ports(host_ports) {}
     const std::string job_id;
-    const std::map<int, std::string> host_ports;
+    const std::unordered_map<int, std::string> host_ports;
   };
   virtual ~SeastarChannelSpec() {}
 
-  Status AddHostPortsJob(const std::string& job_id,
-                         const std::map<int, std::string>& host_ports);
+  Status AddHostPortsJob(
+      const std::string& job_id,
+      const std::unordered_map<int, std::string>& host_ports);
 
   const std::vector<HostPortsJob>& host_ports_jobs() const {
     return host_ports_jobs_;
@@ -48,5 +49,7 @@ class SeastarChannelCache {
 
 SeastarChannelCache* NewSeastarChannelCache(
     SeastarEngine* engine, const SeastarChannelSpec& channel_spec);
-}  // tensorflow
+
+}  // namespace tensorflow
+
 #endif  // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CHANNEL_CACHE_H_

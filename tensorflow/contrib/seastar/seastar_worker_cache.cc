@@ -1,12 +1,13 @@
 #include "tensorflow/contrib/seastar/seastar_worker_cache.h"
-#include "tensorflow/contrib/seastar/seastar_channel_cache.h"
+
 #include "tensorflow/contrib/seastar/seastar_remote_worker.h"
 #include "tensorflow/core/distributed_runtime/worker_cache_logger.h"
 #include "tensorflow/core/distributed_runtime/worker_cache_partial.h"
-#include "tensorflow/core/distributed_runtime/worker_interface.h"
 
 namespace tensorflow {
+
 namespace {
+
 class SeastarWorkerCache : public WorkerCachePartial {
  public:
   explicit SeastarWorkerCache(SeastarChannelCache* channel_cache,
@@ -66,7 +67,8 @@ class SeastarWorkerCache : public WorkerCachePartial {
   SeastarChannelCache* channel_cache_;
   WorkerEnv* env_;
 };
-}
+
+}  // namespace
 
 WorkerCacheInterface* NewSeastarWorkerCache(SeastarChannelCache* channel_cache,
                                             WorkerEnv* env) {
@@ -78,4 +80,5 @@ WorkerCacheInterface* NewSeastarWorkerCacheWithLocalWorker(
     const string& local_target, WorkerEnv* env) {
   return new SeastarWorkerCache(channel_cache, local_worker, local_target, env);
 }
-}
+
+}  // namespace tensorflow

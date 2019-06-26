@@ -1,15 +1,15 @@
 #ifndef TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_SERVER_LIB_H_
 #define TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_SERVER_LIB_H_
 
+#include "tensorflow/contrib/seastar/seastar_channel_cache.h"
+#include "tensorflow/contrib/seastar/seastar_engine.h"
+#include "tensorflow/contrib/seastar/seastar_worker_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
-class SeastarEngine;
-class SeastarWorker;
-class SeastarWorkerService;
-class SeastarChannelSpec;
+
 class SeastarPortMgr;
 
 class SeastarServer : public GrpcServer {
@@ -35,6 +35,7 @@ class SeastarServer : public GrpcServer {
   SeastarEngine* seastar_engine_ = nullptr;
   SeastarPortMgr* seastar_port_mgr_ = nullptr;
 };
-}
+
+}  // namespace tensorflow
 
 #endif

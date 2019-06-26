@@ -22,4 +22,4 @@ void SeastarMessage::SerializeMessage(const SeastarMessage& sm, char* message) {
          sizeof(sm.tensor_bytes_));
 }
 
-}  // end namespace tensorflow
+}  // namespace tensorflow

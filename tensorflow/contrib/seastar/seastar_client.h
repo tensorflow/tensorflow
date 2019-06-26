@@ -1,14 +1,12 @@
 #ifndef TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CLIENT_H_
 #define TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CLIENT_H_
 
-#include "core/future-util.hh"
-#include "net/api.hh"
+#include "tensorflow/contrib/seastar/seastar_tag_factory.h"
+#include "third_party/seastar/core/channel.hh"
+#include "third_party/seastar/core/future-util.hh"
+#include "third_party/seastar/net/api.hh"
 
-namespace seastar {
-class channel;
-}
 namespace tensorflow {
-class SeastarTagFactory;
 
 class SeastarClient {
  public:
@@ -27,5 +25,7 @@ class SeastarClient {
     seastar::future<> Read();
   };
 };
-}
+
+}  // namespace tensorflow
+
 #endif  // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CLIENT_H_

@@ -2,35 +2,28 @@
 #define TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_SERVER_TAG_H_
 
 #include <functional>
-#include "core/channel.hh"
-#include "core/packet_queue.hh"
-#include "core/temporary_buffer.hh"
 
 #include "tensorflow/contrib/seastar/seastar_tensor_coding.h"
+#include "tensorflow/contrib/seastar/seastar_worker_service.h"
 #include "tensorflow/contrib/seastar/seastar_worker_service_method.h"
+#include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
+#include "third_party/seastar/core/channel.hh"
+#include "third_party/seastar/core/packet_queue.hh"
+#include "third_party/seastar/core/temporary_buffer.hh"
 
 namespace tensorflow {
-typedef std::function<void(const Status&)> StatusCallback;
+
+// Required for circular dependency
 class SeastarWorkerService;
-class SeastarTensorResponse;
-class SeastarServerTag;
-
-void InitSeastarServerTag(protobuf::Message* request,
-                          protobuf::Message* response, SeastarServerTag* tag);
-
-void InitSeastarServerTag(protobuf::Message* request,
-                          SeastarTensorResponse* response,
-                          SeastarServerTag* tag, StatusCallback clear);
 
 class SeastarServerTag {
  public:
   // Server Header struct 32B:
   // |ID:8B|tag_id:8B|method:4B|status:2B|err_msg_len:2B|body_len:8B|err_msg...|
   static const uint64_t HEADER_SIZE = 32;
-  using HandleRequestFunction =
-      void (SeastarWorkerService::*)(SeastarServerTag*);
+
   SeastarServerTag(seastar::channel* seastar_channel,
                    SeastarWorkerService* seastar_worker_service);
 
@@ -74,6 +67,13 @@ class SeastarServerTag {
   SeastarWorkerService* seastar_worker_service_;
 };
 
-}  // end of namespace tensorflow
+void InitSeastarServerTag(protobuf::Message* request,
+                          protobuf::Message* response, SeastarServerTag* tag);
+
+void InitSeastarServerTag(protobuf::Message* request,
+                          SeastarTensorResponse* response,
+                          SeastarServerTag* tag, StatusCallback clear);
+
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_SERVER_TAG_H_

@@ -8,6 +8,7 @@
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
 struct SeastarBuf {
   uint64_t len_ = 0;
   char* data_ = nullptr;
@@ -51,6 +52,7 @@ class SeastarTensorResponse {
   TensorProto tensor_proto_;
   DataType data_type_;
 };
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_TENSOR_CODING_H_

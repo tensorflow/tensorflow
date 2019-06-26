@@ -1,7 +1,9 @@
 #include "tensorflow/contrib/seastar/seastar_tensor_coding.h"
+
 #include "tensorflow/core/common_runtime/device.h"
 
 namespace tensorflow {
+
 void SeastarTensorResponse::InitAlloc(Device* d,
                                       const AllocatorAttributes& aa) {
   Clear();
@@ -22,4 +24,5 @@ void SeastarTensorResponse::Clear() {
   tensor_ = Tensor();
   tensor_proto_ = TensorProto();
 }
+
 }  // namespace tensorflow

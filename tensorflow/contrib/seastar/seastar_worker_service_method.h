@@ -2,6 +2,7 @@
 #define TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_WORKER_SERVICE_METHOD_H_
 
 namespace tensorflow {
+
 enum class SeastarWorkerServiceMethod {
   kGetStatus = 0,
   kCreateWorkerSession,
@@ -20,6 +21,7 @@ enum class SeastarWorkerServiceMethod {
   kCompleteInstance,
   kGetStepSequence,
 };
-}  // tensorflow
+
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_WORKER_SERVICE_METHOD_H_

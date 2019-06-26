@@ -1,7 +1,4 @@
 #include "tensorflow/contrib/seastar/seastar_cpuset.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/cpu_info.h"
-#include "tensorflow/core/platform/logging.h"
 
 #include <dirent.h>
 #include <sys/file.h>
@@ -10,14 +7,21 @@
 #include <unistd.h>
 #include <string>
 
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/logging.h"
+
 namespace tensorflow {
+
 namespace {
+
 const char* ROOT_PATH = "/tmp_tf";
 const char* DEFAULT_ROOT_PATH = "/tmp";
 const char* CPUSET_FILE_PATH = "/cpuset";
 const size_t CORES_PER_FILE = 1;
 const size_t INIT_CPU_ID = 0;
-}
+
+}  // namespace
 
 class FileLocker {
  public:
@@ -127,4 +131,5 @@ std::string CpusetAllocator::ToCpuset(
       strings::StrCat("--cpuset=", str_util::Join(locked_files, ","));
   return cpuset.substr(0, cpuset.size() - 1);
 }
-}
+
+}  // namespace tensorflow

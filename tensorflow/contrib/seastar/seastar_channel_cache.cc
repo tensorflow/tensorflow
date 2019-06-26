@@ -1,6 +1,5 @@
 #include "tensorflow/contrib/seastar/seastar_channel_cache.h"
-#include "core/channel.hh"
-#include "tensorflow/contrib/seastar/seastar_engine.h"
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -15,7 +14,9 @@
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
+
 namespace {
+
 string MakeAddress(const string& job, int task) {
   return strings::StrCat("/job:", job, "/replica:0/task:", task);
 }
@@ -30,22 +31,7 @@ Status ValidateHostPortPair(const string& host_port) {
   }
   return Status::OK();
 }
-}  // namespace
 
-Status SeastarChannelSpec::AddHostPortsJob(
-    const string& job_id, const std::map<int, string>& host_ports) {
-  if (!job_ids_.insert(job_id).second) {
-    return errors::InvalidArgument(
-        "Duplicate job ID in cluster specification: ", job_id);
-  }
-  for (const auto& id_host_port : host_ports) {
-    TF_RETURN_IF_ERROR(ValidateHostPortPair(id_host_port.second));
-  }
-  host_ports_jobs_.emplace_back(job_id, host_ports);
-  return Status::OK();
-}
-
-namespace {
 class CachingSeastarChannelCache : public SeastarChannelCache {
  public:
   CachingSeastarChannelCache() {}
@@ -142,7 +128,7 @@ class MultiSeastarChannelCache : public CachingSeastarChannelCache {
 class SparseSeastarChannelCache : public CachingSeastarChannelCache {
  public:
   SparseSeastarChannelCache(const string& job_id,
-                            const std::map<int, string>& host_ports,
+                            const std::unordered_map<int, string>& host_ports,
                             SeastarEngine* engine)
       : job_id_(job_id), host_ports_(host_ports), engine_(engine) {
     LOG(INFO) << "Initialize SeastarChannelCache for job " << ToString();
@@ -209,9 +195,23 @@ class SparseSeastarChannelCache : public CachingSeastarChannelCache {
   }
 
   const string job_id_;
-  const std::map<int, std::string> host_ports_;
+  const std::unordered_map<int, std::string> host_ports_;
   SeastarEngine* engine_;
 };
+
+}  // namespace
+
+Status SeastarChannelSpec::AddHostPortsJob(
+    const string& job_id, const std::unordered_map<int, string>& host_ports) {
+  if (!job_ids_.insert(job_id).second) {
+    return errors::InvalidArgument(
+        "Duplicate job ID in cluster specification: ", job_id);
+  }
+  for (const auto& id_host_port : host_ports) {
+    TF_RETURN_IF_ERROR(ValidateHostPortPair(id_host_port.second));
+  }
+  host_ports_jobs_.emplace_back(job_id, host_ports);
+  return Status::OK();
 }
 
 SeastarChannelCache* NewSeastarChannelCache(SeastarEngine* engine,
@@ -231,4 +231,4 @@ SeastarChannelCache* NewSeastarChannelCache(SeastarEngine* engine,
   return caches.size() == 1 ? caches[0] : new MultiSeastarChannelCache(caches);
 }
 
-}  // tensorflow
+}  // namespace tensorflow

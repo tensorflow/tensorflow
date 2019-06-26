@@ -1,12 +1,13 @@
 #include "tensorflow/contrib/seastar/seastar_server_tag.h"
+
 #include "tensorflow/contrib/seastar/seastar_message.h"
-#include "tensorflow/contrib/seastar/seastar_tensor_coding.h"
-#include "tensorflow/contrib/seastar/seastar_worker_service.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
+
 namespace {
+
 void SerializeTensorMessage(const Tensor& in, const TensorProto& inp,
                             bool is_dead, SeastarBuf* message_buf,
                             SeastarBuf* tensor_buf) {
@@ -33,7 +34,8 @@ void SerializeTensorMessage(const Tensor& in, const TensorProto& inp,
   message_buf->data_ = new char[message_buf->len_];
   SeastarMessage::SerializeMessage(sm, message_buf->data_);
 }
-}  // end of anonymous namespace
+
+}  // namespace
 
 void InitSeastarServerTag(protobuf::Message* request,
                           protobuf::Message* response, SeastarServerTag* tag) {
@@ -142,7 +144,8 @@ void SeastarServerTag::RecvReqDone(Status s) {
     return;
   }
 
-  HandleRequestFunction handle = seastar_worker_service_->GetHandler(method_);
+  SeastarWorkerService::HandleRequestFunction handle =
+      seastar_worker_service_->GetHandler(method_);
   (seastar_worker_service_->*handle)(this);
 }
 
@@ -152,8 +155,7 @@ void SeastarServerTag::SendRespDone() {
   delete this;
 }
 
-// called when request has been processed, mainly serialize resp to wire-format,
-// and send response
+// Serialize and send response.
 void SeastarServerTag::ProcessDone(Status s) {
   // LOG(INFO) << "enter seastarServerTag::ProcessDone";
   send_resp_(s);
@@ -198,4 +200,5 @@ seastar::user_packet* SeastarServerTag::ToUserPacketWithTensor() {
   up->_done = [this]() { this->SendRespDone(); };
   return up;
 }
-}  // end of namespace tensorflow
+
+}  // namespace tensorflow

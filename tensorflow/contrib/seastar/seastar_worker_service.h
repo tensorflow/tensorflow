@@ -1,18 +1,18 @@
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SEASTAR_SEASTAR_WORKER_SERVICE_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SEASTAR_SEASTAR_WORKER_SERVICE_H_
 
-#include <map>
+#include <unordered_map>
+
+#include "tensorflow/contrib/seastar/seastar_server_tag.h"
+#include "tensorflow/contrib/seastar/seastar_tensor_coding.h"
 #include "tensorflow/contrib/seastar/seastar_worker_interface.h"
 #include "tensorflow/contrib/seastar/seastar_worker_service_method.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
+#include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
-class SeastarServerTag;
-class CallOptions;
-class RecvTensorRequest;
-class SeastarTensorResponse;
-struct WorkerEnv;
 
 class SeastarWorker : public Worker, public SeastarWorkerInterface {
  public:
@@ -55,7 +55,8 @@ class SeastarWorkerService {
  private:
   void Schedule(std::function<void()> f);
 
-  std::map<SeastarWorkerServiceMethod, HandleRequestFunction> handler_map_;
+  std::unordered_map<SeastarWorkerServiceMethod, HandleRequestFunction>
+      handler_map_;
   SeastarWorker* worker_;
 };
 

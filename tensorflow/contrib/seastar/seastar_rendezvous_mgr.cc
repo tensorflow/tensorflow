@@ -1,9 +1,9 @@
 #include "tensorflow/contrib/seastar/seastar_rendezvous_mgr.h"
+
 #include "tensorflow/contrib/seastar/seastar_tensor_coding.h"
 #include "tensorflow/contrib/seastar/seastar_worker_cache.h"
 #include "tensorflow/contrib/seastar/seastar_worker_interface.h"
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
@@ -16,7 +16,9 @@
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
 namespace {
+
 class SeastarRemoteRendezvous : public BaseRemoteRendezvous {
  public:
   SeastarRemoteRendezvous(const WorkerEnv* env, int64 step_id)

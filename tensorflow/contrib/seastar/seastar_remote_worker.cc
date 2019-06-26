@@ -1,13 +1,11 @@
+#include "tensorflow/contrib/seastar/seastar_remote_worker.h"
+
 #include <utility>
 
 #include "tensorflow/contrib/seastar/seastar_client_tag.h"
-#include "tensorflow/contrib/seastar/seastar_remote_worker.h"
 #include "tensorflow/contrib/seastar/seastar_tensor_coding.h"
 #include "tensorflow/contrib/seastar/seastar_worker_interface.h"
 #include "tensorflow/core/common_runtime/process_util.h"
-#include "tensorflow/core/distributed_runtime/worker_cache_logger.h"
-#include "tensorflow/core/distributed_runtime/worker_env.h"
-#include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"

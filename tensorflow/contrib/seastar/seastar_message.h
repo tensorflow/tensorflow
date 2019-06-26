@@ -4,6 +4,7 @@
 #include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
+
 // message for recv tensor response
 struct SeastarMessage {
   bool is_dead_;
@@ -31,6 +32,6 @@ struct SeastarMessage {
   static void DeserializeMessage(SeastarMessage* rm, const char* data);
 };
 
-}  // end of namespace tensorflow
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_MESSAGE_H_

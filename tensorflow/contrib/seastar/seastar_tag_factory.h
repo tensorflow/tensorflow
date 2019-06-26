@@ -1,15 +1,13 @@
 #ifndef TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_TAG_FACTORY_H_
 #define TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_TAG_FACTORY_H_
 
-#include "core/temporary_buffer.hh"
+#include "tensorflow/contrib/seastar/seastar_client_tag.h"
+#include "tensorflow/contrib/seastar/seastar_server_tag.h"
+#include "tensorflow/contrib/seastar/seastar_worker_service.h"
+#include "third_party/seastar/core/channel.hh"
+#include "third_party/seastar/core/temporary_buffer.hh"
 
-namespace seastar {
-class channel;
-}
 namespace tensorflow {
-class SeastarClientTag;
-class SeastarServerTag;
-class SeastarWorkerService;
 
 class SeastarTagFactory {
  public:

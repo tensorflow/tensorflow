@@ -4,11 +4,13 @@ cc_library(
     name = "seastar",
     includes = [
         ".",
+        "core",
         "cached-fmt",
         "cached-c-ares",
         "cached-build/release/gen",
         "cached-build/release/c-ares",
     ],
+    include_prefix = "third_party/seastar",
     copts = [
         "-std=gnu++1y",
         "-DNO_EXCEPTION_HACK",
@@ -25,6 +27,9 @@ cc_library(
         "-ldl",
         "-lm",
     ],
+    hdrs = glob(
+        ["**/*.hh"],
+    ),
     srcs = glob(
         ["**/*.cc"],
         exclude = [

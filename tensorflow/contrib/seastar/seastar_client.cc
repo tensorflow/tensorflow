@@ -1,12 +1,11 @@
 #include "tensorflow/contrib/seastar/seastar_client.h"
-#include "core/channel.hh"
-#include "core/reactor.hh"
-#include "core/sleep.hh"
 #include "tensorflow/contrib/seastar/seastar_client_tag.h"
-#include "tensorflow/contrib/seastar/seastar_tag_factory.h"
 #include "tensorflow/core/platform/logging.h"
+#include "third_party/seastar/core/reactor.hh"
+#include "third_party/seastar/core/sleep.hh"
 
 namespace tensorflow {
+
 SeastarClient::Connection::Connection(seastar::connected_socket&& fd,
                                       seastar::channel* chan,
                                       SeastarTagFactory* tag_factory,
@@ -133,4 +132,5 @@ void SeastarClient::Connect(seastar::ipv4_addr server_addr, std::string s,
             });
       });
 }
-}
+
+}  // namespace tensorflow

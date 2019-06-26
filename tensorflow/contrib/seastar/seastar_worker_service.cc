@@ -1,9 +1,7 @@
 #include "tensorflow/contrib/seastar/seastar_worker_service.h"
-#include "tensorflow/contrib/seastar/seastar_server_tag.h"
+
 #include "tensorflow/contrib/seastar/seastar_tag_factory.h"
-#include "tensorflow/contrib/seastar/seastar_tensor_coding.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
-#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -11,15 +9,18 @@
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
+
 namespace {
 
 template <class RequestMessage, class ResponseMessage>
+
 class SeastarCall {
  public:
   RequestMessage req_;
   ResponseMessage resp_;
 };
-}  // end of anonymous namespace
+
+}  // namespace
 
 using HandleRequestFunction = void (SeastarWorkerService::*)(SeastarServerTag*);
 
@@ -316,4 +317,4 @@ std::unique_ptr<SeastarWorkerService> NewSeastarWorkerService(
       new SeastarWorkerService(worker));
 }
 
-}  // end of namespace tensorflow
+}  // namespace tensorflow

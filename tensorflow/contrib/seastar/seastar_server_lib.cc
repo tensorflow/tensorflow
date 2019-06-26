@@ -1,23 +1,23 @@
 #include "tensorflow/contrib/seastar/seastar_server_lib.h"
+
 #include <fstream>
-#include <map>
+#include <unordered_map>
+
 #include "grpc/support/alloc.h"
-#include "tensorflow/contrib/seastar/seastar_channel_cache.h"
-#include "tensorflow/contrib/seastar/seastar_engine.h"
 #include "tensorflow/contrib/seastar/seastar_rendezvous_mgr.h"
 #include "tensorflow/contrib/seastar/seastar_worker_cache.h"
-#include "tensorflow/contrib/seastar/seastar_worker_service.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mem.h"
 
 namespace tensorflow {
 
 namespace {
+
 const char* kEndpointMapFile = ".endpoint_map";
+
 }  // namespace
 
 class SeastarPortMgr {
@@ -144,7 +144,7 @@ Status SeastarServer::Init() {
 Status SeastarServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
                                        SeastarChannelSpec* channel_spec) {
   for (const auto& job : options.cluster_def->job()) {
-    std::map<int, string> host_ports;
+    std::unordered_map<int, string> host_ports;
     for (const auto& task : job.tasks()) {
       string& host_port = host_ports[task.first];
       if (!host_port.empty()) {
@@ -228,6 +228,7 @@ Status SeastarServer::Create(const ServerDef& server_def, Env* env,
 }
 
 namespace {
+
 class SeastarServerFactory : public ServerFactory {
  public:
   bool AcceptsOptions(const ServerDef& server_def) override {
@@ -254,5 +255,7 @@ class SeastarServerRegistrar {
 };
 
 static SeastarServerRegistrar registrar;
-}
+
+}  // namespace
+
 }  // namespace tensorflow

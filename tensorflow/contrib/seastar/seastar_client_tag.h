@@ -1,33 +1,21 @@
 #ifndef TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CLIENT_TAG_H_
 #define TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CLIENT_TAG_H_
 
-#include <functional>
-#include "core/channel.hh"
-#include "core/packet_queue.hh"
-#include "core/temporary_buffer.hh"
-
 #include "tensorflow/contrib/seastar/seastar_tensor_coding.h"
+#include "tensorflow/contrib/seastar/seastar_worker_service.h"
 #include "tensorflow/contrib/seastar/seastar_worker_service_method.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
+#include "tensorflow/core/distributed_runtime/worker_cache.h"
+#include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
+#include "third_party/seastar/core/channel.hh"
+#include "third_party/seastar/core/packet_queue.hh"
+#include "third_party/seastar/core/temporary_buffer.hh"
 
 namespace tensorflow {
-typedef std::function<void(const Status&)> StatusCallback;
+
 typedef std::function<Status()> ParseMessageCallback;
-
-class SeastarWorkerService;
-class SeastarTensorResponse;
-class SeastarClientTag;
-struct WorkerEnv;
-
-void InitSeastarClientTag(protobuf::Message* request,
-                          protobuf::Message* response, StatusCallback done,
-                          SeastarClientTag* tag, CallOptions* call_opts);
-
-void InitSeastarClientTag(protobuf::Message* request,
-                          SeastarTensorResponse* response, StatusCallback done,
-                          SeastarClientTag* tag, CallOptions* call_opts);
 
 class SeastarClientTag {
  public:
@@ -79,6 +67,14 @@ class SeastarClientTag {
   int timeout_in_ms_;
 };
 
-}  // end of namespace tensorflow
+void InitSeastarClientTag(protobuf::Message* request,
+                          protobuf::Message* response, StatusCallback done,
+                          SeastarClientTag* tag, CallOptions* call_opts);
+
+void InitSeastarClientTag(protobuf::Message* request,
+                          SeastarTensorResponse* response, StatusCallback done,
+                          SeastarClientTag* tag, CallOptions* call_opts);
+
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CLIENT_TAG_H_

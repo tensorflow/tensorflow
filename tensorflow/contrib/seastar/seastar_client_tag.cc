@@ -1,14 +1,14 @@
+#include "tensorflow/contrib/seastar/seastar_client_tag.h"
+
+#include "tensorflow/contrib/seastar/seastar_message.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
-#include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/logging.h"
 
-#include "tensorflow/contrib/seastar/seastar_client_tag.h"
-#include "tensorflow/contrib/seastar/seastar_message.h"
-#include "tensorflow/contrib/seastar/seastar_tensor_coding.h"
-
 namespace tensorflow {
+
 namespace {
+
 void ProcessCallOptions(SeastarClientTag* tag) {
   if (tag->call_opts_ != nullptr) {
     if (tag->call_opts_->GetTimeout() > 0) {
@@ -16,6 +16,7 @@ void ProcessCallOptions(SeastarClientTag* tag) {
     }
   }
 }
+
 }  // namespace
 
 void InitSeastarClientTag(protobuf::Message* request,
