@@ -22,7 +22,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_image_ops
-from tensorflow.python.ops.math_ops import cast, add, reciprocal, square
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.array_ops import stack
 
 
@@ -167,7 +167,7 @@ def _CustomReciprocal(x, my_eps=1e-10):
   Returns:
     x_reciprocal -> reciprocal of x added with my_eps
   """
-  return reciprocal(x + my_eps)
+  return math_ops.div_no_nan(1.0, x)
 
 
 @ops.RegisterGradient("RGBToHSV")
@@ -197,13 +197,19 @@ def _RGBToHSVGrad(op, grad):
   # Mask/Indicator for max and min values of each pixel.
   # Arbitrary assignment in case of tie breakers with R>G>B.
   # Max values
-  red_biggest = cast((reds >= blues) & (reds >= greens), dtypes.float32)
-  green_biggest = cast((greens > reds) & (greens >= blues), dtypes.float32)
-  blue_biggest = cast((blues > reds) & (blues > greens), dtypes.float32)
+  red_biggest = math_ops.cast((reds >= blues) & \
+                 (reds >= greens), dtypes.float32)
+  green_biggest = math_ops.cast((greens > reds) & \
+                   (greens >= blues), dtypes.float32)
+  blue_biggest = math_ops.cast((blues > reds) & \
+                  (blues > greens), dtypes.float32)
   # Min values
-  red_smallest = cast((reds < blues) & (reds < greens), dtypes.float32)
-  green_smallest = cast((greens <= reds) & (greens < blues), dtypes.float32)
-  blue_smallest = cast((blues <= reds) & (blues <= greens), dtypes.float32)
+  red_smallest = math_ops.cast((reds < blues) & \
+                  (reds < greens), dtypes.float32)
+  green_smallest = math_ops.cast((greens <= reds) & \
+                    (greens < blues), dtypes.float32)
+  blue_smallest = math_ops.cast((blues <= reds) & \
+                   (blues <= greens), dtypes.float32)
 
   # Derivatives of R, G, B wrt Value slice
   dv_dr = red_biggest
@@ -218,19 +224,22 @@ def _RGBToHSVGrad(op, grad):
   # The second term is the case when the corresponding color from
   # (r,g,b) was "MIN"
   # -> derivative = -1/MAX, MAX could be one of the other two colours.
-  ds_dr = cast(reds > 0, dtypes.float32) * add(red_biggest * \
-               add(green_smallest * greens, blue_smallest * blues) * \
-               _CustomReciprocal(square(reds)),\
+  ds_dr = math_ops.cast(reds > 0, dtypes.float32) * \
+               math_ops.add(red_biggest * \
+               math_ops.add(green_smallest * greens, blue_smallest * blues) * \
+               _CustomReciprocal(math_ops.square(reds)),\
                red_smallest * -1 * _CustomReciprocal((green_biggest * \
                greens) + (blue_biggest * blues)))
-  ds_dg = cast(greens > 0, dtypes.float32) * add(green_biggest * \
-               add(red_smallest * reds, blue_smallest * blues) * \
-               _CustomReciprocal(square(greens)),\
+  ds_dg = math_ops.cast(greens > 0, dtypes.float32) * \
+               math_ops.add(green_biggest * \
+               math_ops.add(red_smallest * reds, blue_smallest * blues) * \
+               _CustomReciprocal(math_ops.square(greens)),\
                green_smallest * -1 * _CustomReciprocal((red_biggest * \
                reds) + (blue_biggest * blues)))
-  ds_db = cast(blues > 0, dtypes.float32) * add(blue_biggest * \
-               add(green_smallest * greens, red_smallest * reds) * \
-               _CustomReciprocal(square(blues)),\
+  ds_db = math_ops.cast(blues > 0, dtypes.float32) * \
+               math_ops.add(blue_biggest * \
+               math_ops.add(green_smallest * greens, red_smallest * reds) * \
+               _CustomReciprocal(math_ops.square(blues)),\
                blue_smallest * -1 * _CustomReciprocal((green_biggest * \
                greens) + (red_biggest * reds)))
 
@@ -256,18 +265,20 @@ def _RGBToHSVGrad(op, grad):
   #     reciprocal(square(blues - reds))
   #   dh_dr_5 ->
   #   if red was NOT MIN -> 60 * 1/MAX-MIN == 60 * reciprocal(blues-greens)
-  dh_dr_1 = 60 * (cast(reds > 0, dtypes.float32) * red_biggest * -1  * \
-                  (greens - blues) * _CustomReciprocal(square(saturation)) *\
-                  _CustomReciprocal(square(value)))
-  dh_dr_2 = 60 * (cast(greens > 0, dtypes.float32) * green_biggest * \
+  dh_dr_1 = 60 * (math_ops.cast(reds > 0, dtypes.float32) * red_biggest * \
+                  -1  * \
+                  (greens - blues) * \
+                  _CustomReciprocal(math_ops.square(saturation)) *\
+                  _CustomReciprocal(math_ops.square(value)))
+  dh_dr_2 = 60 * (math_ops.cast(greens > 0, dtypes.float32) * green_biggest * \
                   red_smallest  * (blues - greens) * \
-                  _CustomReciprocal(square(reds - greens)))
-  dh_dr_3 = 60 * (cast(greens > 0, dtypes.float32) * green_biggest * \
+                  _CustomReciprocal(math_ops.square(reds - greens)))
+  dh_dr_3 = 60 * (math_ops.cast(greens > 0, dtypes.float32) * green_biggest * \
                   blue_smallest * -1 * _CustomReciprocal(greens - blues))
-  dh_dr_4 = 60 * (cast(blues > 0, dtypes.float32) * blue_biggest * \
+  dh_dr_4 = 60 * (math_ops.cast(blues > 0, dtypes.float32) * blue_biggest * \
                   red_smallest * (blues - greens) * \
-                  _CustomReciprocal(square(blues - reds)))
-  dh_dr_5 = 60 * (cast(blues > 0, dtypes.float32) * blue_biggest * \
+                  _CustomReciprocal(math_ops.square(blues - reds)))
+  dh_dr_5 = 60 * (math_ops.cast(blues > 0, dtypes.float32) * blue_biggest * \
                   green_smallest * _CustomReciprocal(blues - greens))
 
   dh_dr = dh_dr_1 + dh_dr_2 + dh_dr_3 + dh_dr_4 + dh_dr_5
@@ -293,18 +304,19 @@ def _RGBToHSVGrad(op, grad):
   #     reciprocal(square(blues-greens)))
   #   dh_dr_5 ->
   #   if green was NOT MIN -> 60 * -1/MAX-MIN == -60 * reciprocal(blues - reds)
-  dh_dg_1 = 60 * (cast(greens > 0, dtypes.float32) * green_biggest * \
-                  -1 * (blues - reds) * _CustomReciprocal(square(saturation))\
-                  * _CustomReciprocal(square(value)))
-  dh_dg_2 = 60 * (cast(reds > 0, dtypes.float32) * red_biggest * \
+  dh_dg_1 = 60 * (math_ops.cast(greens > 0, dtypes.float32) * green_biggest * \
+                  -1 * (blues - reds) * \
+                  _CustomReciprocal(math_ops.square(saturation))\
+                  * _CustomReciprocal(math_ops.square(value)))
+  dh_dg_2 = 60 * (math_ops.cast(reds > 0, dtypes.float32) * red_biggest * \
                   green_smallest * (reds - blues) * \
-                  _CustomReciprocal(square(reds - greens)))
-  dh_dg_3 = 60 * (cast(reds > 0, dtypes.float32) * red_biggest * \
+                  _CustomReciprocal(math_ops.square(reds - greens)))
+  dh_dg_3 = 60 * (math_ops.cast(reds > 0, dtypes.float32) * red_biggest * \
                   blue_smallest * _CustomReciprocal(reds - blues))
-  dh_dg_4 = 60 * (cast(blues > 0, dtypes.float32) * blue_biggest * \
+  dh_dg_4 = 60 * (math_ops.cast(blues > 0, dtypes.float32) * blue_biggest * \
                   green_smallest * (reds - blues) * \
-                  _CustomReciprocal(square(blues - greens)))
-  dh_dg_5 = 60 * (cast(blues > 0, dtypes.float32) * blue_biggest * \
+                  _CustomReciprocal(math_ops.square(blues - greens)))
+  dh_dg_5 = 60 * (math_ops.cast(blues > 0, dtypes.float32) * blue_biggest * \
                   red_smallest * -1 * _CustomReciprocal(blues - reds))
 
   dh_dg = dh_dg_1 + dh_dg_2 + dh_dg_3 + dh_dg_4 + dh_dg_5
@@ -329,18 +341,20 @@ def _RGBToHSVGrad(op, grad):
   #     reciprocal(square(greens - blues)))
   #   dh_dr_5 ->
   #   if blue was NOT MIN -> 60 * 1/MAX-MIN == 60 * reciprocal(greens - reds)
-  dh_db_1 = 60 * (cast(blues > 0, dtypes.float32) * blue_biggest * -1 * \
-                  (reds - greens) * _CustomReciprocal(square(saturation)) * \
-                  _CustomReciprocal(square(value)))
-  dh_db_2 = 60 * (cast(reds > 0, dtypes.float32) * red_biggest *\
+  dh_db_1 = 60 * (math_ops.cast(blues > 0, dtypes.float32) * blue_biggest * \
+                   -1 * \
+                  (reds - greens) * \
+                  _CustomReciprocal(math_ops.square(saturation)) * \
+                  _CustomReciprocal(math_ops.square(value)))
+  dh_db_2 = 60 * (math_ops.cast(reds > 0, dtypes.float32) * red_biggest *\
                   blue_smallest * (greens - reds) * \
-                  _CustomReciprocal(square(reds - blues)))
-  dh_db_3 = 60 * (cast(reds > 0, dtypes.float32) * red_biggest * \
+                  _CustomReciprocal(math_ops.square(reds - blues)))
+  dh_db_3 = 60 * (math_ops.cast(reds > 0, dtypes.float32) * red_biggest * \
                   green_smallest * -1 * _CustomReciprocal(reds - greens))
-  dh_db_4 = 60 * (cast(greens > 0, dtypes.float32) * green_biggest * \
+  dh_db_4 = 60 * (math_ops.cast(greens > 0, dtypes.float32) * green_biggest * \
                   blue_smallest * (greens - reds) * \
-                  _CustomReciprocal(square(greens - blues)))
-  dh_db_5 = 60 * (cast(greens > 0, dtypes.float32) * green_biggest * \
+                  _CustomReciprocal(math_ops.square(greens - blues)))
+  dh_db_5 = 60 * (math_ops.cast(greens > 0, dtypes.float32) * green_biggest * \
                   red_smallest * _CustomReciprocal(greens - reds))
 
   dh_db = dh_db_1 + dh_db_2 + dh_db_3 + dh_db_4 + dh_db_5
@@ -356,6 +370,6 @@ def _RGBToHSVGrad(op, grad):
                    grad[..., 0] * dh_dg,
                    grad[..., 0] * dh_db], axis=-1)
 
-  gradient_input = add(add(dv_drgb, ds_drgb), dh_drgb)
+  gradient_input = math_ops.add(math_ops.add(dv_drgb, ds_drgb), dh_drgb)
 
   return gradient_input
