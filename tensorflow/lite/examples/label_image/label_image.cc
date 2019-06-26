@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/examples/label_image/bitmap_helpers.h"
-#include "tensorflow/lite/examples/label_image/get_top_n.h"
+#include "tensorflow/lite/examples/label_image/label_image.h"
 
 #include <fcntl.h>      // NOLINT(build/include_order)
 #include <getopt.h>     // NOLINT(build/include_order)
@@ -43,6 +42,9 @@ limitations under the License.
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
+#include "tensorflow/lite/examples/label_image/bitmap_helpers.h"
+#include "tensorflow/lite/examples/label_image/get_top_n.h"
+
 #define LOG(x) std::cerr
 
 namespace tflite {
@@ -53,13 +55,14 @@ double get_us(struct timeval t) { return (t.tv_sec * 1000000 + t.tv_usec); }
 using TfLiteDelegatePtr = tflite::Interpreter::TfLiteDelegatePtr;
 using TfLiteDelegatePtrMap = std::map<std::string, TfLiteDelegatePtr>;
 
-Interpreter::TfLiteDelegatePtr CreateGPUDelegate(Settings* s) {
+TfLiteDelegatePtr CreateGPUDelegate(Settings* s) {
   TfLiteGpuDelegateOptions options;
   options.metadata = TfLiteGpuDelegateGetModelMetadata(s->model->GetModel());
-  if (s->allow_fp16)
+  if (s->allow_fp16) {
     options.compile_options.precision_loss_allowed = 1;
-  else
+  } else {
     options.compile_options.precision_loss_allowed = 0;
+  }
   options.compile_options.preferred_gl_object_type =
       TFLITE_GL_OBJECT_TYPE_FASTEST;
   options.compile_options.dynamic_batch_enabled = 0;
@@ -71,18 +74,20 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s) {
   TfLiteDelegatePtrMap delegates;
   if (s->gl_backend) {
     auto delegate = CreateGPUDelegate(s);
-    if (!delegate)
+    if (!delegate) {
       LOG(INFO) << "GPU acceleration is unsupported on this platform.";
-    else
+    } else {
       delegates.emplace("GPU", std::move(delegate));
+    }
   }
 
   if (s->accel) {
     auto delegate = evaluation::CreateNNAPIDelegate();
-    if (!delegate)
+    if (!delegate) {
       LOG(INFO) << "NNAPI acceleration is unsupported on this platform.";
-    else
+    } else {
       delegates.emplace("NNAPI", evaluation::CreateNNAPIDelegate());
+    }
   }
   return delegates;
 }
@@ -194,7 +199,6 @@ void RunInference(Settings* s) {
     LOG(INFO) << "number of outputs: " << outputs.size() << "\n";
   }
 
-#if defined(__ANDROID__)
   auto delegates_ = GetDelegates(s);
   for (const auto& delegate : delegates_) {
     if (interpreter->ModifyGraphWithDelegate(delegate.second.get()) !=
@@ -204,7 +208,6 @@ void RunInference(Settings* s) {
       LOG(INFO) << "Applied " << delegate.first << " delegate.";
     }
   }
-#endif
 
   if (interpreter->AllocateTensors() != kTfLiteOk) {
     LOG(FATAL) << "Failed to allocate tensors!";
