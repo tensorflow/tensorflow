@@ -352,8 +352,10 @@ cuda_py_test(
     # TODO(b/132384649): Enable for guitar and oss tests.
     shard_count = 24,
     tags = [
+        "manual",
         "no_oss",
         "noguitar",
+        "notap",
     ],
     xla_enable_strict_auto_jit = True,
 )
