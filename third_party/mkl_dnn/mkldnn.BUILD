@@ -34,6 +34,7 @@ template_rule(
 # set to "version_major.version_minor.version_patch". The git hash version can
 # be set to NA.
 # TODO(agramesh1) Automatically get the version numbers from CMakeLists.txt.
+# TODO(bhavanis): MKL-DNN version needs to be updated for MKL-DNN v1.x
 
 template_rule(
     name = "mkldnn_version_h",
@@ -42,20 +43,6 @@ template_rule(
     substitutions = {
         "@MKLDNN_VERSION_MAJOR@": "0",
         "@MKLDNN_VERSION_MINOR@": "18",
-        "@MKLDNN_VERSION_PATCH@": "0",
-        "@MKLDNN_VERSION_HASH@": "N/A",
-    },
-)
-
-# TODO(bhavanis): Once we automatically get version numbers from CMakeLists.txt,
-# the following template rule needs to be removed.
-template_rule(
-    name = "mkldnn_v1_version_h",
-    src = "include/mkldnn_version.h.in",
-    out = "include/mkldnn_version.h",
-    substitutions = {
-        "@MKLDNN_VERSION_MAJOR@": "0",
-        "@MKLDNN_VERSION_MINOR@": "95",
         "@MKLDNN_VERSION_PATCH@": "0",
         "@MKLDNN_VERSION_HASH@": "N/A",
     },
@@ -141,7 +128,7 @@ cc_library(
         "src/cpu/rnn/*.hpp",
         "src/cpu/xbyak/*.h",
     ]) + [
-        ":mkldnn_v1_version_h",  # newly added
+        ":mkldnn_version_h",
         ":mkldnn_config_h",  # newly added
     ],
     hdrs = glob(["include/*"]),
