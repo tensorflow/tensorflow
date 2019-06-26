@@ -40,6 +40,11 @@ set(LIBS
   MLIRSupport
   MLIRVectorOps
 )
+if(MLIR_CUDA_CONVERSIONS_ENABLED)
+  list(APPEND LIBS
+    MLIRGPUtoCUDATransforms
+  )
+endif()
 add_llvm_executable(mlir-opt
  mlir-opt.cpp
 )

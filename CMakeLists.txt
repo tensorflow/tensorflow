@@ -39,6 +39,14 @@ function(whole_archive_link target)
   set_target_properties(${target} PROPERTIES LINK_FLAGS ${link_flags})
 endfunction(whole_archive_link)
 
+# Build the CUDA conversions and run according tests if the NVPTX backend
+# is available
+if ("NVPTX" IN_LIST LLVM_TARGETS_TO_BUILD)
+  set(MLIR_CUDA_CONVERSIONS_ENABLED 1)
+else()
+  set(MLIR_CUDA_CONVERSIONS_ENABLED 0)
+endif()
+
 include_directories( "include")
 include_directories( ${MLIR_INCLUDE_DIR})
 

@@ -43,31 +43,52 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 
-#include "cuda.h"
+using namespace mlir;
 
-namespace mlir {
 namespace {
-
 // TODO(herhut): Move to shared location.
-constexpr const char *kCubinAnnotation = "nvvm.cubin";
+static constexpr const char *kCubinAnnotation = "nvvm.cubin";
 
-inline void emit_cuda_error(const llvm::Twine &message, CUresult error,
-                            Function &function) {
-  function.emitError(
-      message.concat(" failed with error code").concat(llvm::Twine{error}));
-}
+/// A pass converting tagged kernel functions to cubin blobs.
+class GpuKernelToCubinPass : public ModulePass<GpuKernelToCubinPass> {
+public:
+  GpuKernelToCubinPass(
+      CubinGenerator cubinGenerator = compilePtxToCubinForTesting)
+      : cubinGenerator(cubinGenerator) {}
 
-#define RETURN_ON_CUDA_ERROR(expr, msg)                                        \
-  do {                                                                         \
-    auto _cuda_error = (expr);                                                 \
-    if (_cuda_error != CUDA_SUCCESS) {                                         \
-      emit_cuda_error(msg, _cuda_error, function);                             \
-      return {};                                                               \
-    }                                                                          \
-  } while (0)
+  // Run the dialect converter on the module.
+  void runOnModule() override {
+    // Make sure the NVPTX target is initialized.
+    LLVMInitializeNVPTXTarget();
+    LLVMInitializeNVPTXTargetInfo();
+    LLVMInitializeNVPTXTargetMC();
+    LLVMInitializeNVPTXAsmPrinter();
 
-std::string translateModuleToPtx(llvm::Module &module,
-                                 llvm::TargetMachine &target_machine) {
+    for (auto &function : getModule()) {
+      if (!gpu::GPUDialect::isKernel(&function) || function.isExternal()) {
+        continue;
+      }
+      if (failed(translateGpuKernelToCubinAnnotation(function)))
+        signalPassFailure();
+    }
+  }
+
+private:
+  static OwnedCubin compilePtxToCubinForTesting(const std::string &ptx,
+                                                Function &function);
+
+  std::string translateModuleToPtx(llvm::Module &module,
+                                   llvm::TargetMachine &target_machine);
+  OwnedCubin convertModuleToCubin(llvm::Module &llvmModule, Function &function);
+  LogicalResult translateGpuKernelToCubinAnnotation(Function &function);
+
+  CubinGenerator cubinGenerator;
+};
+
+} // anonymous namespace
+
+std::string GpuKernelToCubinPass::translateModuleToPtx(
+    llvm::Module &module, llvm::TargetMachine &target_machine) {
   std::string ptx;
   {
     llvm::raw_string_ostream stream(ptx);
@@ -81,51 +102,15 @@ std::string translateModuleToPtx(llvm::Module &module,
   return ptx;
 }
 
-using OwnedCubin = std::unique_ptr<std::vector<char>>;
-
-llvm::Optional<OwnedCubin> compilePtxToCubin(std::string &ptx,
-                                             Function &function) {
-  RETURN_ON_CUDA_ERROR(cuInit(0), "cuInit");
-
-  // Linking requires a device context.
-  // TODO(herhut): Figure out why context is required and what it is used for.
-  CUdevice device;
-  RETURN_ON_CUDA_ERROR(cuDeviceGet(&device, 0), "cuDeviceGet");
-  CUcontext context;
-  RETURN_ON_CUDA_ERROR(cuCtxCreate(&context, 0, device), "cuCtxCreate");
-  CUlinkState linkState;
-  RETURN_ON_CUDA_ERROR(cuLinkCreate(0,       /* number of jit options */
-                                    nullptr, /* jit options */
-                                    nullptr, /* jit option values */
-                                    &linkState),
-                       "cuLinkCreate");
-  RETURN_ON_CUDA_ERROR(
-      cuLinkAddData(linkState, CUjitInputType::CU_JIT_INPUT_PTX,
-                    const_cast<void *>(static_cast<const void *>(ptx.c_str())),
-                    ptx.length(), function.getName().c_str(), /* kernel name */
-                    0,       /* number of jit options */
-                    nullptr, /* jit options */
-                    nullptr  /* jit option values */
-                    ),
-      "cuLinkAddData");
-
-  void *cubinData;
-  size_t cubinSize;
-  RETURN_ON_CUDA_ERROR(cuLinkComplete(linkState, &cubinData, &cubinSize),
-                       "cuLinkComplete");
-
-  char *cubinAsChar = static_cast<char *>(cubinData);
-  OwnedCubin result = llvm::make_unique<std::vector<char>>(
-      cubinAsChar, cubinAsChar + cubinSize);
-
-  // This will also destroy the cubin data.
-  RETURN_ON_CUDA_ERROR(cuLinkDestroy(linkState), "cuLinkDestroy");
-
-  return result;
+OwnedCubin
+GpuKernelToCubinPass::compilePtxToCubinForTesting(const std::string &ptx,
+                                                  Function &function) {
+  const char data[] = "CUBIN";
+  return llvm::make_unique<std::vector<char>>(data, data + sizeof(data) - 1);
 }
 
-llvm::Optional<OwnedCubin> convertModuleToCubin(llvm::Module &llvmModule,
-                                                Function &function) {
+OwnedCubin GpuKernelToCubinPass::convertModuleToCubin(llvm::Module &llvmModule,
+                                                      Function &function) {
   std::unique_ptr<llvm::TargetMachine> targetMachine;
   {
     std::string error;
@@ -147,10 +132,11 @@ llvm::Optional<OwnedCubin> convertModuleToCubin(llvm::Module &llvmModule,
 
   auto ptx = translateModuleToPtx(llvmModule, *targetMachine);
 
-  return compilePtxToCubin(ptx, function);
+  return cubinGenerator(ptx, function);
 }
 
-LogicalResult translateGpuKernelToCubinAnnotation(Function &function) {
+LogicalResult
+GpuKernelToCubinPass::translateGpuKernelToCubinAnnotation(Function &function) {
   Builder builder(function.getContext());
 
   std::unique_ptr<Module> module(builder.createModule());
@@ -165,8 +151,7 @@ LogicalResult translateGpuKernelToCubinAnnotation(Function &function) {
     return function.emitError("Translation to CUDA binary failed.");
 
   function.setAttr(kCubinAnnotation,
-                   builder.getStringAttr(
-                       {cubin.getValue()->data(), cubin.getValue()->size()}));
+                   builder.getStringAttr({cubin->data(), cubin->size()}));
 
   // Remove the body of the kernel function now that it has been translated.
   // The main reason to do this is so that the resulting module no longer
@@ -177,34 +162,11 @@ LogicalResult translateGpuKernelToCubinAnnotation(Function &function) {
   return success();
 }
 
-} // anonymous namespace
-
-/// A pass converting tagged kernel functions to cubin blobs.
-class GpuKernelToCubinPass : public ModulePass<GpuKernelToCubinPass> {
-public:
-  // Run the dialect converter on the module.
-  void runOnModule() override {
-    // Make sure the NVPTX target is initialized.
-    LLVMInitializeNVPTXTarget();
-    LLVMInitializeNVPTXTargetInfo();
-    LLVMInitializeNVPTXTargetMC();
-    LLVMInitializeNVPTXAsmPrinter();
-
-    for (auto &function : getModule()) {
-      if (!gpu::GPUDialect::isKernel(&function) || function.isExternal()) {
-        continue;
-      }
-      if (failed(translateGpuKernelToCubinAnnotation(function)))
-        signalPassFailure();
-    }
-  }
-};
-
-ModulePassBase *createConvertGPUKernelToCubinPass() {
-  return new GpuKernelToCubinPass();
+ModulePassBase *
+mlir::createConvertGPUKernelToCubinPass(CubinGenerator cubinGenerator) {
+  return new GpuKernelToCubinPass(cubinGenerator);
 }
 
 static PassRegistration<GpuKernelToCubinPass>
-    pass("kernel-to-cubin", "Convert all kernel functions to CUDA cubin blobs");
-
-} // namespace mlir
+    pass("test-kernel-to-cubin",
+         "Convert all kernel functions to CUDA cubin blobs");

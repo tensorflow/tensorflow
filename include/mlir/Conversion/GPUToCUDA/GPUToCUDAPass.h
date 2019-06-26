@@ -17,20 +17,31 @@
 #ifndef MLIR_CONVERSION_GPUTOCUDA_GPUTOCUDAPASS_H_
 #define MLIR_CONVERSION_GPUTOCUDA_GPUTOCUDAPASS_H_
 
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+
 namespace mlir {
 
 class ModulePassBase;
+class Function;
+
+using OwnedCubin = std::unique_ptr<std::vector<char>>;
+using CubinGenerator =
+    std::function<OwnedCubin(const std::string &, Function &)>;
 
 /// Creates a pass to convert kernel functions into CUBIN blobs.
 ///
 /// This transformation takes the body of each function that is annotated with
 /// the 'nvvm.kernel' attribute, copies it to a new LLVM module, compiles the
-/// module with help of the nvptx backend and the CUDA driver into a CUDA
-/// binary blob (cubin) and attaches such blob as a string attribute named
-/// 'nvvm.cubin' to the kernel function.
+/// module with help of the nvptx backend to PTX and then invokes the provided
+/// cubinGenerator to produce a binary blob (the cubin). Such blob is then
+/// attached as a string attribute named 'nvvm.cubin' to the kernel function.
 /// After the transformation, the body of the kernel function is removed (i.e.,
 /// it is turned into a declaration).
-ModulePassBase *createConvertGPUKernelToCubinPass();
+ModulePassBase *
+createConvertGPUKernelToCubinPass(CubinGenerator cubinGenerator);
 
 /// Creates a pass to convert a gpu.launch_func operation into a sequence of
 /// CUDA calls.

@@ -32,6 +32,7 @@ config.mlir_obj_root = "@MLIR_BINARY_DIR@"
 config.mlir_tools_dir = "@MLIR_TOOLS_DIR@"
 config.linalg_test_lib_dir = "@MLIR_LINALG_INTEGRATION_TEST_LIB_DIR@"
 config.build_examples = @LLVM_BUILD_EXAMPLES@
+config.run_cuda_tests = @MLIR_CUDA_CONVERSIONS_ENABLED@
 
 # Support substitution of the tools_dir with user parameters. This is
 # used when we can't determine the tool dir at configuration time.
