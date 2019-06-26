@@ -708,7 +708,8 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedUint8) {
   HybridFullyConnectedOpModel m(
       /*units=*/3, /*batches=*/2,
       /*input=*/{TensorType_FLOAT32, {2, 10}},
-      /*weights=*/{TensorType_UINT8, {3, 10}, -63.5, 64});  // Hybrid
+      /*weights=*/
+      {TensorType_UINT8, {3, 10}, 0, 0, 10.0 / 127.0, 0});  // Hybrid
 
   m.SetWeights({
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
@@ -736,7 +737,7 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedInt8) {
   HybridFullyConnectedOpModel m(
       /*units=*/3, /*batches=*/2,
       /*input=*/{TensorType_FLOAT32, {2, 10}},
-      /*weights=*/{TensorType_INT8, {3, 10}, -63.5, 64});  // Hybrid
+      /*weights=*/{TensorType_INT8, {3, 10}, 0, 0, 10.0 / 127.0, 0});  // Hybrid
 
   m.SetSignedWeights({
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
