@@ -1005,11 +1005,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
-    tags = [
-        "manual",
-        "no_rocm",
-        "notap",
-    ],
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
