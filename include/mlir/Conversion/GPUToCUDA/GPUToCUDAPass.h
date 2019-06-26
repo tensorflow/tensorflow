@@ -51,6 +51,9 @@ createConvertGPUKernelToCubinPass(CubinGenerator cubinGenerator);
 /// ontop of CUDA.
 ModulePassBase *createConvertGpuLaunchFuncToCudaCallsPass();
 
+/// Creates a pass to augment a module with getter functions for all contained
+/// cubins as encoded via the 'nvvm.cubin' attribute.
+ModulePassBase *createGenerateCubinAccessorPass();
 } // namespace mlir
 
 #endif // MLIR_CONVERSION_GPUTOCUDA_GPUTOCUDAPASS_H_

@@ -4,6 +4,7 @@ if(MLIR_CUDA_CONVERSIONS_ENABLED)
   add_llvm_library(MLIRGPUtoCUDATransforms
     ConvertKernelFuncToCubin.cpp
     ConvertLaunchFuncToCudaCalls.cpp
+    GenerateCubinAccessors.cpp
   )
   target_link_libraries(MLIRGPUtoCUDATransforms
     MLIRGPU
