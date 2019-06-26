@@ -202,7 +202,7 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
 //
 // https://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl-sync
 llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
-                                     llvm::IRBuilder<>* b);
+                                     llvm::IRBuilder<>* builder);
 
 // Emits code that determines whether the current thread is thread 0 within
 // block 0 of the kernel.
