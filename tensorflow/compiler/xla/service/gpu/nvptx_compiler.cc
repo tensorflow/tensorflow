@@ -62,7 +62,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.h"
-#include "tensorflow/compiler/xla/service/gpu/nvptx_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/nvptx_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
@@ -636,7 +635,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     }
   }
 
-  auto* nvptx_executable = new NVPTXExecutable(
+  auto* nvptx_executable = new GpuExecutable(
       ptx, cubin, {cc_major, cc_minor}, std::move(thunk_schedule),
       std::move(module), std::move(buffer_assignment),
       std::move(profile_printer), std::move(profile_index_map));

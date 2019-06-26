@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/amdgpu_compiler.h"
 
 #include <stdlib.h>
+
 #include <atomic>
 #include <functional>
 #include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
@@ -41,14 +42,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
-#include "tensorflow/compiler/xla/service/gpu/amdgpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
@@ -543,10 +544,10 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
         *profile_index_map, cost_analysis, entry_computation->name());
   }
 
-  auto* amdgpu_executable = new AMDGPUExecutable(
-        "", std::move(hsaco), isa_version, std::move(thunk_schedule),
-        std::move(module), std::move(buffer_assignment),
-        std::move(profile_printer), std::move(profile_index_map));
+  auto* amdgpu_executable = new GpuExecutable(
+      "", std::move(hsaco), isa_version, std::move(thunk_schedule),
+      std::move(module), std::move(buffer_assignment),
+      std::move(profile_printer), std::move(profile_index_map));
   if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
     amdgpu_executable->set_ir_module_string(ir_module_string_before_opt);
