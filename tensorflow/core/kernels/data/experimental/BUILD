@@ -1,17 +1,17 @@
 # Description:
 #   Contains experimental kernels for datasets and iterators.
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_kernel_library",
+)
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_kernel_library",
-)
 
 tf_kernel_library(
     name = "assert_next_dataset_op",
