@@ -14607,8 +14607,12 @@ func ResourceSparseApplyAdagrad(scope *Scope, var_ tf.Output, accum tf.Output, l
 
 // Add all input tensors element wise.
 //
-// Arguments:
-//	inputs: Must all be the same size and shape.
+//   Inputs must be of same size and shape.
+//
+//   ```python
+//   x = [9, 7, 10]
+//   tf.math.add_n(x) ==> 26
+//   ```
 func AddN(scope *Scope, inputs []tf.Output) (sum tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -18154,6 +18158,17 @@ func ResourceApplyAddSign(scope *Scope, var_ tf.Output, m tf.Output, lr tf.Outpu
 }
 
 // Computes inverse hyperbolic tangent of x element-wise.
+//
+//   Given an input tensor, this function computes inverse hyperbolic tangent
+//   for every element in the tensor. Input range is `[-1,1]` and output range is
+//   `[-inf, inf]`. If input is `-1`, output will be `-inf` and if the
+//   input is `1`, output will be `inf`. Values outside the range will have
+//   `nan` as output.
+//
+//   ```python
+//   x = tf.constant([-float("inf"), -1, -0.5, 1, 0, 0.5, 10, float("inf")])
+//   tf.math.atanh(x) ==> [nan -inf -0.54930615 inf  0. 0.54930615 nan nan]
+//   ```
 func Atanh(scope *Scope, x tf.Output) (y tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -22848,6 +22863,15 @@ func FilterByLastComponentDataset(scope *Scope, input_dataset tf.Output, output_
 }
 
 // Computes inverse hyperbolic sine of x element-wise.
+//
+//   Given an input tensor, this function computes inverse hyperbolic sine
+//   for every element in the tensor. Both input and output has a range of
+//   `[-inf, inf]`.
+//
+//   ```python
+//   x = tf.constant([-float("inf"), -2, -0.5, 1, 1.2, 200, 10000, float("inf")])
+//   tf.math.asinh(x) ==> [-inf -1.4436355 -0.4812118 0.8813736 1.0159732 5.991471 9.903487 inf]
+//   ```
 func Asinh(scope *Scope, x tf.Output) (y tf.Output) {
 	if scope.Err() != nil {
 		return
