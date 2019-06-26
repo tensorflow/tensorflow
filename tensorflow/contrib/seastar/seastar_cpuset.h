@@ -7,11 +7,11 @@
 
 namespace tensorflow {
 class CpusetAllocator {
-public:
-  virtual ~CpusetAllocator(){}
+ public:
+  virtual ~CpusetAllocator() {}
   std::string GetCpuset(size_t core_number);
 
-private:
+ private:
   bool ExistDir();
   void CreateDir();
   void CreateFiles();
@@ -19,9 +19,9 @@ private:
   std::vector<std::string> LockFiles(size_t core_number);
   std::string ToCpuset(const std::vector<std::string>& locked_files);
 
-private:
+ private:
   std::string root_dir_;
   std::vector<std::string> files_;
 };
 }
-#endif // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CPUSET_H_
+#endif  // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CPUSET_H_

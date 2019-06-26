@@ -6,60 +6,58 @@
 #include "tensorflow/contrib/seastar/seastar_engine.h"
 #include "tensorflow/contrib/seastar/seastar_server.h"
 #include "tensorflow/contrib/seastar/seastar_tag_factory.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 namespace {
-  const static int DEFAULT_CORE_NUM = 4;
-  const static int kWaitTimeInUs = 50000;
-  const static int kRetryCount = 10000;
+const static int DEFAULT_CORE_NUM = 4;
+const static int kWaitTimeInUs = 50000;
+const static int kRetryCount = 10000;
 
-  // sesatar can't use localhost directly
-  string LocalhostToIp(const string& ip) {
-    const auto& vec = str_util::Split(ip, ':');
-    if (vec[0] == "localhost") {
-      return strings::StrCat(string("127.0.0.1:"), vec[1]);
-    } else {
-      return ip;
-    }
+// sesatar can't use localhost directly
+string LocalhostToIp(const string& ip) {
+  const auto& vec = str_util::Split(ip, ':');
+  if (vec[0] == "localhost") {
+    return strings::StrCat(string("127.0.0.1:"), vec[1]);
+  } else {
+    return ip;
+  }
+}
+
+size_t GetCoreNumber() {
+  int64 core_number;
+  Status s = ReadInt64FromEnvVar("SEASTAR_CORE_NUMBER", DEFAULT_CORE_NUM,
+                                 &core_number);
+  return core_number;
+}
+
+// force to avoid cleanup static variables and global variables in seastar
+// engine which would trigger core
+void SeastarExit(int status, void* arg) { _exit(status); }
+
+void WaitForReady(const std::atomic_bool& a, int retry = kRetryCount) {
+  while (!a.load() && retry > 0) {
+    retry--;
+    usleep(kWaitTimeInUs);
   }
 
-  size_t GetCoreNumber() {
-    int64 core_number;
-    Status s = ReadInt64FromEnvVar("SEASTAR_CORE_NUMBER", DEFAULT_CORE_NUM,
-                                   &core_number);
-    return core_number;
+  if (!a.load()) {
+    LOG(FATAL) << "Seastar initialization failure!";
   }
-
-  // force to avoid cleanup static variables and global variables in seastar
-  // engine which would trigger core
-  void SeastarExit(int status, void* arg) {
-    _exit(status);
-  }
-
-  void WaitForReady(const std::atomic_bool& a, int retry = kRetryCount) {
-    while (!a.load() && retry > 0) {
-      retry--;
-      usleep(kWaitTimeInUs);
-    }
-
-    if (!a.load()) {
-      LOG(FATAL) << "Seastar initialization failure!";
-    }
-  }
+}
 }
 
 SeastarEngine::SeastarEngine(uint16_t local,
                              SeastarWorkerService* worker_service)
-  : local_(local), core_id_(0), is_server_ready_(false) {
-    ::on_exit(SeastarExit, (void*)nullptr);
-    tag_factory_ = new SeastarTagFactory(worker_service);
-    core_number_ = GetCoreNumber();
-    client_ = new SeastarClient();
-    thread_ = std::thread(&SeastarEngine::AsyncStartServer, this);
+    : local_(local), core_id_(0), is_server_ready_(false) {
+  ::on_exit(SeastarExit, (void*)nullptr);
+  tag_factory_ = new SeastarTagFactory(worker_service);
+  core_number_ = GetCoreNumber();
+  client_ = new SeastarClient();
+  thread_ = std::thread(&SeastarEngine::AsyncStartServer, this);
 }
 
 SeastarEngine::~SeastarEngine() {
@@ -77,7 +75,7 @@ seastar::channel* SeastarEngine::GetChannel(const std::string& ip) {
 }
 
 seastar::channel* SeastarEngine::AsyncConnect(const std::string& ip) {
-  size_t core_id = core_id_ ++ % core_number_;
+  size_t core_id = core_id_++ % core_number_;
   string s = LocalhostToIp(ip);
   auto ch = new seastar::channel(s);
   alien::submit_to(core_id, [core_id, s, ch, this] {
@@ -86,7 +84,7 @@ seastar::channel* SeastarEngine::AsyncConnect(const std::string& ip) {
     client_->Connect(seastar::ipv4_addr{s}, s, ch, tag_factory_);
     return seastar::make_ready_future();
   });
-  return ch; 
+  return ch;
 }
 
 /*
@@ -140,10 +138,8 @@ void SeastarEngine::ConstructArgs(int* argc, char*** argv) {
   (*argv)[3] = av3;
 
   VLOG(2) << "Construct args result, argc: " << *(argc)
-          << ", argv[0]: " << (*argv)[0]
-          << ", argv[1]: " << (*argv)[1]
-          << ", argv[2]: " << (*argv)[2]
-          << ", argv[3]: " << (*argv)[3];
+          << ", argv[0]: " << (*argv)[0] << ", argv[1]: " << (*argv)[1]
+          << ", argv[2]: " << (*argv)[2] << ", argv[3]: " << (*argv)[3];
 }
 
 void SeastarEngine::AsyncStartServer() {
@@ -153,16 +149,17 @@ void SeastarEngine::AsyncStartServer() {
 
   seastar::app_template app;
   app.run_deprecated(argc, argv, [&] {
-    return server_.start().then([this] {
-      return server_.invoke_on_all(&SeastarServer::start,
-                                   local_,
-                                   tag_factory_);
-    }).then([this]() {
-        is_server_ready_ = true;
-        VLOG(2) << "Seastar server started successfully"
-                << ", listen port: " << local_ << ".";
-        return seastar::make_ready_future();
-      }); 
+    return server_.start()
+        .then([this] {
+          return server_.invoke_on_all(&SeastarServer::start, local_,
+                                       tag_factory_);
+        })
+        .then([this]() {
+          is_server_ready_ = true;
+          VLOG(2) << "Seastar server started successfully"
+                  << ", listen port: " << local_ << ".";
+          return seastar::make_ready_future();
+        });
   });
 }
 }

@@ -20,6 +20,6 @@ enum class SeastarWorkerServiceMethod {
   kCompleteInstance,
   kGetStepSequence,
 };
-} // tensorflow
+}  // tensorflow
 
-#endif // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_WORKER_SERVICE_METHOD_H_
+#endif  // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_WORKER_SERVICE_METHOD_H_

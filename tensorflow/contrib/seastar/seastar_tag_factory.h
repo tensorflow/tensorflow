@@ -12,7 +12,7 @@ class SeastarServerTag;
 class SeastarWorkerService;
 
 class SeastarTagFactory {
-public:
+ public:
   explicit SeastarTagFactory(SeastarWorkerService* worker_service);
   virtual ~SeastarTagFactory() {}
 
@@ -22,11 +22,11 @@ public:
   SeastarServerTag* CreateSeastarServerTag(
       seastar::temporary_buffer<char>& header,
       seastar::channel* seastar_channel);
-  
-private:
+
+ private:
   SeastarWorkerService* worker_service_;
 };
 
-} // namespace tensorflow
+}  // namespace tensorflow
 
-#endif // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_TAG_FACTORY_H_
+#endif  // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_TAG_FACTORY_H_

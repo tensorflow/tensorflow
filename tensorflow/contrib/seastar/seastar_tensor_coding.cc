@@ -2,7 +2,8 @@
 #include "tensorflow/core/common_runtime/device.h"
 
 namespace tensorflow {
-void SeastarTensorResponse::InitAlloc(Device* d, const AllocatorAttributes& aa) {
+void SeastarTensorResponse::InitAlloc(Device* d,
+                                      const AllocatorAttributes& aa) {
   Clear();
   device_ = d;
   alloc_attrs_ = aa;

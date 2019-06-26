@@ -2,8 +2,8 @@
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SEASTAR_SEASTAR_WORKER_SERVICE_H_
 
 #include <map>
-#include "tensorflow/contrib/seastar/seastar_worker_service_method.h"
 #include "tensorflow/contrib/seastar/seastar_worker_interface.h"
+#include "tensorflow/contrib/seastar/seastar_worker_service_method.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -22,13 +22,14 @@ class SeastarWorker : public Worker, public SeastarWorkerInterface {
 
   // Specialized version of RecvTensor for seastar.
   void RecvTensorAsync(CallOptions* opts, const RecvTensorRequest* request,
-                       SeastarTensorResponse *response, StatusCallback done);
+                       SeastarTensorResponse* response, StatusCallback done);
   WorkerEnv* env();
 };
 
 class SeastarWorkerService {
-public:
-  using HandleRequestFunction = void (SeastarWorkerService::*)(SeastarServerTag*);
+ public:
+  using HandleRequestFunction =
+      void (SeastarWorkerService::*)(SeastarServerTag*);
 
   explicit SeastarWorkerService(SeastarWorker* worker);
   virtual ~SeastarWorkerService() {}
@@ -51,7 +52,7 @@ public:
   void CompleteInstanceHandler(SeastarServerTag* tag);
   void GetStepSequenceHandler(SeastarServerTag* tag);
 
-private:
+ private:
   void Schedule(std::function<void()> f);
 
   std::map<SeastarWorkerServiceMethod, HandleRequestFunction> handler_map_;
@@ -59,8 +60,9 @@ private:
 };
 
 std::unique_ptr<SeastarWorker> NewSeastarWorker(WorkerEnv* worker_env);
-std::unique_ptr<SeastarWorkerService> NewSeastarWorkerService(SeastarWorker* worker);
+std::unique_ptr<SeastarWorkerService> NewSeastarWorkerService(
+    SeastarWorker* worker);
 
 }  // namespace tensorflow
 
-#endif // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SEASTAR_SEASTAR_WORKER_SERVICE_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SEASTAR_SEASTAR_WORKER_SERVICE_H_

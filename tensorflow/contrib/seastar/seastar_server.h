@@ -12,7 +12,8 @@ namespace tensorflow {
 class SeastarTagFactory;
 class SeastarServer {
  public:
-  // here should named start & stop, which used by seastar template class distributed<>
+  // here should named start & stop, which used by seastar template class
+  // distributed<>
   void start(uint16_t port, SeastarTagFactory* tag_factory);
   seastar::future<> stop();
 
@@ -24,8 +25,7 @@ class SeastarServer {
     SeastarTagFactory* tag_factory_;
     seastar::socket_address addr_;
 
-    Connection(seastar::connected_socket&& fd,
-               SeastarTagFactory* tag_factory,
+    Connection(seastar::connected_socket&& fd, SeastarTagFactory* tag_factory,
                seastar::socket_address addr);
     seastar::future<> Read();
     ~Connection();
@@ -34,4 +34,4 @@ class SeastarServer {
   seastar::lw_shared_ptr<seastar::server_socket> listener_;
 };
 }
-#endif // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_SERVER_H_
+#endif  // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_SERVER_H_

@@ -19,4 +19,4 @@ class SeastarRendezvousMgr : public BaseRendezvousMgr {
 };
 }  // namespace tensorflow
 
-#endif // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_RENDEZVOUS_MGR_H_
+#endif  // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_RENDEZVOUS_MGR_H_

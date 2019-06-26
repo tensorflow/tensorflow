@@ -1,14 +1,14 @@
 #include "tensorflow/contrib/seastar/seastar_cpuset.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/logging.h"
 
 #include <dirent.h>
-#include <string>
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <string>
 
 namespace tensorflow {
 namespace {
@@ -20,7 +20,7 @@ const size_t INIT_CPU_ID = 0;
 }
 
 class FileLocker {
-public:
+ public:
   FileLocker(const std::string& rd) : root_dir_(rd) {}
   virtual ~FileLocker() {}
 
@@ -32,7 +32,7 @@ public:
     LockerOpImpl(file_name, LOCK_UN | LOCK_NB);
   }
 
-private:
+ private:
   bool LockerOpImpl(const std::string& file_name, int lock_type) {
     std::string file_path;
     file_path += root_dir_ + std::string("/") + file_name;
@@ -46,7 +46,7 @@ private:
     return (stat == 0);
   }
 
-private:
+ private:
   const std::string root_dir_;
 };
 
@@ -74,7 +74,7 @@ bool CpusetAllocator::ExistDir() {
 }
 
 void CpusetAllocator::CreateDir() {
-  int flag=mkdir(root_dir_.c_str(), 0777);
+  int flag = mkdir(root_dir_.c_str(), 0777);
   if (flag != 0) {
     LOG(FATAL) << "Seastar: create cpuset dir failure";
   }
@@ -91,8 +91,7 @@ void CpusetAllocator::CreateFiles() {
     int fd = open(file_path.c_str(), O_RDWR | O_CREAT, 0777);
     if (fd < 0) {
       LOG(FATAL) << "Seastar error: can't create lock files for cpuset,"
-                 << ", please try other protocol, filepath:"
-                 << file_path;
+                 << ", please try other protocol, filepath:" << file_path;
     }
     close(fd);
 
@@ -104,8 +103,7 @@ std::vector<std::string> CpusetAllocator::LockFiles(size_t core_number) {
   std::vector<std::string> locked_files;
   FileLocker locker(root_dir_);
   for (auto file : files_) {
-    if (core_number <= 0) 
-      break;
+    if (core_number <= 0) break;
     if (locker.Lock(file)) {
       core_number -= CORES_PER_FILE;
       locked_files.emplace_back(file);
@@ -124,10 +122,9 @@ std::vector<std::string> CpusetAllocator::LockFiles(size_t core_number) {
 
 std::string CpusetAllocator::ToCpuset(
     const std::vector<std::string>& locked_files) {
-  if (locked_files.empty())
-    return std::string();
+  if (locked_files.empty()) return std::string();
   const std::string& cpuset =
-    strings::StrCat("--cpuset=", str_util::Join(locked_files, ","));
+      strings::StrCat("--cpuset=", str_util::Join(locked_files, ","));
   return cpuset.substr(0, cpuset.size() - 1);
 }
 }

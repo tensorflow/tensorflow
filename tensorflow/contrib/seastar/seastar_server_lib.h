@@ -13,22 +13,22 @@ class SeastarChannelSpec;
 class SeastarPortMgr;
 
 class SeastarServer : public GrpcServer {
-protected:
+ protected:
   SeastarServer(const ServerDef& server_def, Env* env);
 
-public:
+ public:
   static Status Create(const ServerDef& server_def, Env* env,
                        std::unique_ptr<ServerInterface>* out_server);
   virtual ~SeastarServer();
   Status Init();
 
-protected:
+ protected:
   Status ParseChannelSpec(const WorkerCacheFactoryOptions& options,
                           SeastarChannelSpec* channel_spec);
   Status WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
                             WorkerCacheInterface** worker_cache) override;
 
-private:
+ private:
   int seastar_bound_port_ = 0;
   std::unique_ptr<SeastarWorker> seastar_worker_impl_;
   SeastarWorkerService* seastar_worker_service_ = nullptr;

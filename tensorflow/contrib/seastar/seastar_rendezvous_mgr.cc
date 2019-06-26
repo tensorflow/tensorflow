@@ -120,7 +120,7 @@ class SeastarRecvTensorCall : public BaseRecvTensorCall {
     seastar_wi_->RecvTensorAsync(&opts_, &req_, &resp_, std::move(cb));
   }
 
-private:
+ private:
   string src_worker_;
   string src_rel_device_;
   WorkerInterface* wi_;
@@ -180,7 +180,7 @@ class SeastarRecvTensorFreeList {
 
 static SeastarRecvTensorFreeList* get_call_freelist() {
   static SeastarRecvTensorFreeList* call_freelist =
-    new SeastarRecvTensorFreeList();
+      new SeastarRecvTensorFreeList();
   return call_freelist;
 }
 
@@ -200,7 +200,8 @@ void SeastarRemoteRendezvous::RecvFromRemoteAsync(
                          " is invalid remote source device.");
   }
   WorkerSession* sess = session();
-  WorkerInterface* rwi = sess->worker_cache->GetOrCreateWorker(call->src_worker_);
+  WorkerInterface* rwi =
+      sess->worker_cache->GetOrCreateWorker(call->src_worker_);
   if (s.ok() && rwi == nullptr) {
     s = errors::Internal("No worker known as ", call->src_worker_);
   }
@@ -253,8 +254,8 @@ void SeastarRemoteRendezvous::RecvFromRemoteAsync(
 SeastarRendezvousMgr::SeastarRendezvousMgr(const WorkerEnv* env)
     : BaseRendezvousMgr(env) {}
 
-BaseRemoteRendezvous* SeastarRendezvousMgr::Create(int64 step_id,
-                                               const WorkerEnv* worker_env) {
+BaseRemoteRendezvous* SeastarRendezvousMgr::Create(
+    int64 step_id, const WorkerEnv* worker_env) {
   return new SeastarRemoteRendezvous(worker_env, step_id);
 }
 

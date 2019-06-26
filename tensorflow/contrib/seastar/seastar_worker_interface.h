@@ -7,12 +7,12 @@ class RecvTensorRequest;
 class SeastarTensorResponse;
 
 class SeastarWorkerInterface {
-public:
+ public:
   virtual void RecvTensorAsync(CallOptions* call_opts,
                                const RecvTensorRequest* request,
                                SeastarTensorResponse* response,
                                StatusCallback done) = 0;
 };
-} // namespace tensorflow
+}  // namespace tensorflow
 
-#endif //TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_WOKRER_INTERFACE_H_
+#endif  // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_WOKRER_INTERFACE_H_

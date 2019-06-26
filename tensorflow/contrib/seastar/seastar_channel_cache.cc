@@ -1,14 +1,14 @@
-#include "core/channel.hh"
 #include "tensorflow/contrib/seastar/seastar_channel_cache.h"
+#include "core/channel.hh"
 #include "tensorflow/contrib/seastar/seastar_engine.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -26,11 +26,11 @@ Status ValidateHostPortPair(const string& host_port) {
   if (parts.size() != 2 || !strings::safe_strtou32(parts[1], &port) ||
       parts[0].find("/") != string::npos) {
     return errors::InvalidArgument("Could not interpret \"", host_port,
-        "\" as a host-port pair.");
+                                   "\" as a host-port pair.");
   }
   return Status::OK();
 }
-} // namespace
+}  // namespace
 
 Status SeastarChannelSpec::AddHostPortsJob(
     const string& job_id, const std::map<int, string>& host_ports) {
@@ -47,7 +47,7 @@ Status SeastarChannelSpec::AddHostPortsJob(
 
 namespace {
 class CachingSeastarChannelCache : public SeastarChannelCache {
-public:
+ public:
   CachingSeastarChannelCache() {}
   ~CachingSeastarChannelCache() override {}
 
@@ -68,18 +68,19 @@ public:
     return ch;
   }
 
-protected:
+ protected:
   virtual seastar::channel* FindChannelOnce(const string& target) = 0;
 
-private:
+ private:
   mutex mu_;
   std::unordered_map<string, seastar::channel*> channels_ GUARDED_BY(mu_);
 };
 
 class MultiSeastarChannelCache : public CachingSeastarChannelCache {
-public:
-  explicit MultiSeastarChannelCache(const std::vector<SeastarChannelCache*> caches)
-   : CachingSeastarChannelCache(), caches_(caches) {}
+ public:
+  explicit MultiSeastarChannelCache(
+      const std::vector<SeastarChannelCache*> caches)
+      : CachingSeastarChannelCache(), caches_(caches) {}
 
   ~MultiSeastarChannelCache() override {
     for (SeastarChannelCache* cache : caches_) {
@@ -113,11 +114,12 @@ public:
         }
       }
     }
-    CHECK(cache) << "Could not find SeastarChannelCache holding channel for " << target;
+    CHECK(cache) << "Could not find SeastarChannelCache holding channel for "
+                 << target;
     return cache->TranslateTask(target);
   }
 
-protected:
+ protected:
   seastar::channel* FindChannelOnce(const string& target) override {
     for (SeastarChannelCache* cache : caches_) {
       seastar::channel* ch(cache->FindWorkerChannel(target));
@@ -130,20 +132,19 @@ protected:
     return nullptr;
   }
 
-private:
+ private:
   const std::vector<SeastarChannelCache*> caches_;
   mutex mu_;
-  std::unordered_map<string, SeastarChannelCache*> target_caches_ GUARDED_BY(mu_);
+  std::unordered_map<string, SeastarChannelCache*> target_caches_
+      GUARDED_BY(mu_);
 };
 
 class SparseSeastarChannelCache : public CachingSeastarChannelCache {
-public:
+ public:
   SparseSeastarChannelCache(const string& job_id,
                             const std::map<int, string>& host_ports,
                             SeastarEngine* engine)
-    : job_id_(job_id),
-      host_ports_(host_ports),
-      engine_(engine) {
+      : job_id_(job_id), host_ports_(host_ports), engine_(engine) {
     LOG(INFO) << "Initialize SeastarChannelCache for job " << ToString();
   }
 
@@ -185,7 +186,7 @@ public:
     return iter->second;
   }
 
-protected:
+ protected:
   seastar::channel* FindChannelOnce(const string& target) override {
     const string host_port = TranslateTask(target);
     if (host_port.empty()) {
@@ -195,7 +196,7 @@ protected:
     return engine_->GetChannel(host_port);
   }
 
-private:
+ private:
   string ToString() {
     std::vector<string> task_strings;
     task_strings.reserve(host_ports_.size());
@@ -213,7 +214,8 @@ private:
 };
 }
 
-SeastarChannelCache* NewSeastarChannelCache(SeastarEngine* engine, const SeastarChannelSpec& spec) {
+SeastarChannelCache* NewSeastarChannelCache(SeastarEngine* engine,
+                                            const SeastarChannelSpec& spec) {
   const int num_jobs = spec.host_ports_jobs().size();
   if (!num_jobs) {
     LOG(ERROR) << "Empty channel spec.";
@@ -223,9 +225,10 @@ SeastarChannelCache* NewSeastarChannelCache(SeastarEngine* engine, const Seastar
   std::vector<SeastarChannelCache*> caches;
   caches.reserve(num_jobs);
   for (auto& job : spec.host_ports_jobs()) {
-    caches.push_back(new SparseSeastarChannelCache(job.job_id, job.host_ports, engine));
+    caches.push_back(
+        new SparseSeastarChannelCache(job.job_id, job.host_ports, engine));
   }
   return caches.size() == 1 ? caches[0] : new MultiSeastarChannelCache(caches);
 }
 
-} // tensorflow
+}  // tensorflow

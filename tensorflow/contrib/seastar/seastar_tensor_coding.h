@@ -10,21 +10,21 @@
 namespace tensorflow {
 struct SeastarBuf {
   uint64_t len_ = 0;
-  char *data_ = nullptr;
+  char* data_ = nullptr;
   bool owned_ = true;
 };
 
 class SeastarTensorResponse {
-public:
+ public:
   virtual ~SeastarTensorResponse() {}
 
-  void SetIsDead(bool is_dead) { is_dead_ = is_dead;}
+  void SetIsDead(bool is_dead) { is_dead_ = is_dead; }
   bool GetIsDead() const { return is_dead_; }
 
   // for dst device
   void InitAlloc(Device* d, const AllocatorAttributes& aa);
   Allocator* GetAlloc() { return allocator_; }
-  AllocatorAttributes GetAllocAttributes() {return alloc_attrs_;}
+  AllocatorAttributes GetAllocAttributes() { return alloc_attrs_; }
   Device* GetDevice() const { return device_; }
   bool GetOnHost() const { return on_host_; }
 

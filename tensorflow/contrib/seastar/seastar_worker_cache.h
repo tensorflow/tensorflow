@@ -8,7 +8,8 @@ class WorkerInterface;
 class WorkerEnv;
 class SeastarChannelCache;
 
-WorkerCacheInterface* NewSeastarWorkerCache(SeastarChannelCache* channel_cache, WorkerEnv* env);
+WorkerCacheInterface* NewSeastarWorkerCache(SeastarChannelCache* channel_cache,
+                                            WorkerEnv* env);
 
 WorkerCacheInterface* NewSeastarWorkerCacheWithLocalWorker(
     SeastarChannelCache* channel_cache, WorkerInterface* local_worker,

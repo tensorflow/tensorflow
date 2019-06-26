@@ -40,9 +40,13 @@ package(default_visibility = [
 
 cc_library(
     name = "seastar_tensor_coding",
-    srcs = select({"//tensorflow:with_seastar_support": ["seastar_tensor_coding.cc",
-                                                         "seastar_message.cc"],
-                   "//conditions:default": []}),
+    srcs = select({
+        "//tensorflow:with_seastar_support": [
+            "seastar_tensor_coding.cc",
+            "seastar_message.cc",
+        ],
+        "//conditions:default": [],
+    }),
     hdrs = [
         "seastar_tensor_coding.h",
         "seastar_message.h",
@@ -54,11 +58,15 @@ cc_library(
 
 cc_library(
     name = "seastar_worker_service",
-    srcs = select({"//tensorflow:with_seastar_support": ["seastar_worker_service.cc",
-                                                         "seastar_client_tag.cc",
-                                                         "seastar_server_tag.cc",
-                                                         "seastar_tag_factory.cc"],
-                   "//conditions:default": []}),
+    srcs = select({
+        "//tensorflow:with_seastar_support": [
+            "seastar_worker_service.cc",
+            "seastar_client_tag.cc",
+            "seastar_server_tag.cc",
+            "seastar_tag_factory.cc",
+        ],
+        "//conditions:default": [],
+    }),
     hdrs = [
         "seastar_worker_service_method.h",
         "seastar_worker_service.h",
@@ -75,25 +83,31 @@ cc_library(
         "-DNO_EXCEPTION_INTERCEPT",
         "-DHAVE_LZ4_COMPRESS_DEFAULT",
     ],
-    deps = select({"//tensorflow:with_seastar_support": ["@seastar//:seastar",
-                                                         ":seastar_tensor_coding"],
-                   "//conditions:default": []})
-    + [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:master_proto_cc",
-        "//tensorflow/core:worker_proto_cc",
-        "//tensorflow/core/distributed_runtime:worker",
-        "//tensorflow/core/distributed_runtime:worker_env",
-        "//tensorflow/core/distributed_runtime:call_options",
-        "//tensorflow/core:gpu_runtime",
-    ],
+    deps = select({
+               "//tensorflow:with_seastar_support": [
+                   "@seastar//:seastar",
+                   ":seastar_tensor_coding",
+               ],
+               "//conditions:default": [],
+           }) +
+           [
+               "//tensorflow/core:lib",
+               "//tensorflow/core:master_proto_cc",
+               "//tensorflow/core:worker_proto_cc",
+               "//tensorflow/core/distributed_runtime:worker",
+               "//tensorflow/core/distributed_runtime:worker_env",
+               "//tensorflow/core/distributed_runtime:call_options",
+               "//tensorflow/core:gpu_runtime",
+           ],
     alwayslink = 1,
 )
 
 cc_library(
     name = "seastar_cpuset",
-    srcs = select({"//tensorflow:with_seastar_support": ["seastar_cpuset.cc"],
-                   "//conditions:default": []}),
+    srcs = select({
+        "//tensorflow:with_seastar_support": ["seastar_cpuset.cc"],
+        "//conditions:default": [],
+    }),
     hdrs = ["seastar_cpuset.h"],
     linkstatic = 1,
     deps = ["//tensorflow/core:lib"],
@@ -102,10 +116,14 @@ cc_library(
 
 cc_library(
     name = "seastar_engine",
-    srcs = select({"//tensorflow:with_seastar_support": ["seastar_engine.cc",
-                                                         "seastar_client.cc",
-                                                         "seastar_server.cc"],
-                   "//conditions:default": []}),
+    srcs = select({
+        "//tensorflow:with_seastar_support": [
+            "seastar_engine.cc",
+            "seastar_client.cc",
+            "seastar_server.cc",
+        ],
+        "//conditions:default": [],
+    }),
     hdrs = [
         "seastar_engine.h",
         "seastar_client.h",
@@ -119,16 +137,22 @@ cc_library(
         "-DNO_EXCEPTION_INTERCEPT",
         "-DHAVE_LZ4_COMPRESS_DEFAULT",
     ],
-    deps = select({"//tensorflow:with_seastar_support": [":seastar_cpuset",
-                                                         ":seastar_worker_service"],
-                   "//conditions:default": []}),
+    deps = select({
+        "//tensorflow:with_seastar_support": [
+            ":seastar_cpuset",
+            ":seastar_worker_service",
+        ],
+        "//conditions:default": [],
+    }),
     alwayslink = 1,
 )
 
 cc_library(
     name = "seastar_remote_worker",
-    srcs = select({"//tensorflow:with_seastar_support": ["seastar_remote_worker.cc"],
-                   "//conditions:default": []}),
+    srcs = select({
+        "//tensorflow:with_seastar_support": ["seastar_remote_worker.cc"],
+        "//conditions:default": [],
+    }),
     hdrs = ["seastar_remote_worker.h"],
     linkstatic = 1,
     copts = [
@@ -138,25 +162,31 @@ cc_library(
         "-DNO_EXCEPTION_INTERCEPT",
         "-DHAVE_LZ4_COMPRESS_DEFAULT",
     ],
-    deps = select({"//tensorflow:with_seastar_support": [":seastar_worker_service"],
-                   "//conditions:default": []})
-    + [
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core/distributed_runtime:worker_cache_logger",
-    ],
+    deps = select({
+               "//tensorflow:with_seastar_support": [":seastar_worker_service"],
+               "//conditions:default": [],
+           }) +
+           [
+               "//tensorflow/core:core_cpu",
+               "//tensorflow/core:lib",
+               "//tensorflow/core:framework",
+               "//tensorflow/core/distributed_runtime:worker_cache_logger",
+           ],
     alwayslink = 1,
 )
 
 cc_library(
     name = "seastar_worker_cache",
-    srcs = select({"//tensorflow:with_seastar_support": ["seastar_worker_cache.cc",
-                                                         "seastar_channel_cache.cc"],
-                   "//conditions:default": []}),
+    srcs = select({
+        "//tensorflow:with_seastar_support": [
+            "seastar_worker_cache.cc",
+            "seastar_channel_cache.cc",
+        ],
+        "//conditions:default": [],
+    }),
     hdrs = [
         "seastar_worker_cache.h",
-        "seastar_channel_cache.h"
+        "seastar_channel_cache.h",
     ],
     linkstatic = 1,
     copts = [
@@ -166,17 +196,23 @@ cc_library(
         "-DNO_EXCEPTION_INTERCEPT",
         "-DHAVE_LZ4_COMPRESS_DEFAULT",
     ],
-    deps = select({"//tensorflow:with_seastar_support": [":seastar_remote_worker",
-                                                         ":seastar_engine"],
-                   "//conditions:default": []})
-    + ["//tensorflow/core/distributed_runtime:worker_cache_partial"],
+    deps = select({
+               "//tensorflow:with_seastar_support": [
+                   ":seastar_remote_worker",
+                   ":seastar_engine",
+               ],
+               "//conditions:default": [],
+           }) +
+           ["//tensorflow/core/distributed_runtime:worker_cache_partial"],
     alwayslink = 1,
 )
 
 cc_library(
     name = "seastar_rendezvous_mgr",
-    srcs = select({"//tensorflow:with_seastar_support": ["seastar_rendezvous_mgr.cc"],
-                   "//conditions:default": []}),
+    srcs = select({
+        "//tensorflow:with_seastar_support": ["seastar_rendezvous_mgr.cc"],
+        "//conditions:default": [],
+    }),
     hdrs = ["seastar_rendezvous_mgr.h"],
     linkstatic = 1,
     copts = [
@@ -186,26 +222,32 @@ cc_library(
         "-DNO_EXCEPTION_INTERCEPT",
         "-DHAVE_LZ4_COMPRESS_DEFAULT",
     ],
-    deps = select({"//tensorflow:with_seastar_support": [":seastar_worker_cache"],
-                   "//conditions:default": []})
-    + [
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/distributed_runtime:base_rendezvous_mgr",
-        "//tensorflow/core/distributed_runtime:worker_cache",
-        "//tensorflow/core/distributed_runtime:worker_env",
-        "//tensorflow/core/distributed_runtime:worker_interface",
-    ],
+    deps = select({
+               "//tensorflow:with_seastar_support": [":seastar_worker_cache"],
+               "//conditions:default": [],
+           }) +
+           [
+               "//tensorflow/core:core_cpu_internal",
+               "//tensorflow/core:framework",
+               "//tensorflow/core:lib",
+               "//tensorflow/core/distributed_runtime:base_rendezvous_mgr",
+               "//tensorflow/core/distributed_runtime:worker_cache",
+               "//tensorflow/core/distributed_runtime:worker_env",
+               "//tensorflow/core/distributed_runtime:worker_interface",
+           ],
     alwayslink = 1,
 )
 
 cc_library(
     name = "seastar_server_lib",
-    srcs = select({"//tensorflow:with_seastar_support": ["seastar_server_lib.cc"],
-                   "//conditions:default": []}),
-    hdrs = select({"//tensorflow:with_seastar_support": ["seastar_server_lib.h"],
-                   "//conditions:default": []}),
+    srcs = select({
+        "//tensorflow:with_seastar_support": ["seastar_server_lib.cc"],
+        "//conditions:default": [],
+    }),
+    hdrs = select({
+        "//tensorflow:with_seastar_support": ["seastar_server_lib.h"],
+        "//conditions:default": [],
+    }),
     linkstatic = 1,
     copts = [
         "-std=gnu++1y",
@@ -214,16 +256,18 @@ cc_library(
         "-DNO_EXCEPTION_INTERCEPT",
         "-DHAVE_LZ4_COMPRESS_DEFAULT",
     ],
-    deps = select({"//tensorflow:with_seastar_support": [":seastar_rendezvous_mgr"],
-                   "//conditions:default": []})
-    + [
-        "//tensorflow/core/distributed_runtime:local_master",
-        "//tensorflow/core/distributed_runtime:master",
-        "//tensorflow/core/distributed_runtime:master_env",
-        "//tensorflow/core/distributed_runtime:master_session",
-        "//tensorflow/core/distributed_runtime:server_lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_master_service",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
-    ],
+    deps = select({
+               "//tensorflow:with_seastar_support": [":seastar_rendezvous_mgr"],
+               "//conditions:default": [],
+           }) +
+           [
+               "//tensorflow/core/distributed_runtime:local_master",
+               "//tensorflow/core/distributed_runtime:master",
+               "//tensorflow/core/distributed_runtime:master_env",
+               "//tensorflow/core/distributed_runtime:master_session",
+               "//tensorflow/core/distributed_runtime:server_lib",
+               "//tensorflow/core/distributed_runtime/rpc:grpc_master_service",
+               "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+           ],
     alwayslink = 1,
 )

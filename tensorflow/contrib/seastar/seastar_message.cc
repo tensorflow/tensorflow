@@ -13,15 +13,13 @@ void SeastarMessage::DeserializeMessage(SeastarMessage* sm,
          sizeof(sm->tensor_bytes_));
 }
 
-void SeastarMessage::SerializeMessage(const SeastarMessage& sm,
-                                      char* message) {
+void SeastarMessage::SerializeMessage(const SeastarMessage& sm, char* message) {
   memcpy(&message[kIsDeadStartIndex], &sm.is_dead_, sizeof(sm.is_dead_));
-  memcpy(&message[kDataTypeStartIndex], &sm.data_type_,
-         sizeof(sm.data_type_));
+  memcpy(&message[kDataTypeStartIndex], &sm.data_type_, sizeof(sm.data_type_));
   memcpy(&message[kTensorShapeStartIndex], &sm.tensor_shape_,
          sizeof(sm.tensor_shape_));
   memcpy(&message[kTensorBytesStartIndex], &sm.tensor_bytes_,
-           sizeof(sm.tensor_bytes_));
+         sizeof(sm.tensor_bytes_));
 }
 
-} // end namespace tensorflow
+}  // end namespace tensorflow

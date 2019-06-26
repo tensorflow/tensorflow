@@ -18,20 +18,19 @@ class SeastarTensorResponse;
 class SeastarServerTag;
 
 void InitSeastarServerTag(protobuf::Message* request,
-                          protobuf::Message* response,
-                          SeastarServerTag* tag);
+                          protobuf::Message* response, SeastarServerTag* tag);
 
 void InitSeastarServerTag(protobuf::Message* request,
                           SeastarTensorResponse* response,
-                          SeastarServerTag* tag,
-                          StatusCallback clear);
+                          SeastarServerTag* tag, StatusCallback clear);
 
 class SeastarServerTag {
  public:
   // Server Header struct 32B:
   // |ID:8B|tag_id:8B|method:4B|status:2B|err_msg_len:2B|body_len:8B|err_msg...|
   static const uint64_t HEADER_SIZE = 32;
-  using HandleRequestFunction = void (SeastarWorkerService::*)(SeastarServerTag*);
+  using HandleRequestFunction =
+      void (SeastarWorkerService::*)(SeastarServerTag*);
   SeastarServerTag(seastar::channel* seastar_channel,
                    SeastarWorkerService* seastar_worker_service);
 
@@ -67,7 +66,7 @@ class SeastarServerTag {
 
   seastar::channel* seastar_channel_;
   int64_t client_tag_id_;
-  
+
   // Used to serialize and send response data.
   StatusCallback send_resp_;
   StatusCallback clear_;
@@ -75,6 +74,6 @@ class SeastarServerTag {
   SeastarWorkerService* seastar_worker_service_;
 };
 
-} // end of namespace tensorflow
+}  // end of namespace tensorflow
 
-#endif // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_SERVER_TAG_H_
+#endif  // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_SERVER_TAG_H_

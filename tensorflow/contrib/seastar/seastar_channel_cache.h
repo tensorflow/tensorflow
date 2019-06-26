@@ -13,9 +13,10 @@ class channel;
 namespace tensorflow {
 class SeastarEngine;
 class SeastarChannelSpec {
-public:
+ public:
   struct HostPortsJob {
-    HostPortsJob(const std::string& job_id, const std::map<int, std::string>& host_ports)
+    HostPortsJob(const std::string& job_id,
+                 const std::map<int, std::string>& host_ports)
         : job_id(job_id), host_ports(host_ports) {}
     const std::string job_id;
     const std::map<int, std::string> host_ports;
@@ -35,17 +36,17 @@ public:
 };
 
 class SeastarChannelCache {
-public:
+ public:
   virtual ~SeastarChannelCache() {}
 
   virtual void ListWorkers(std::vector<std::string>* workers) const = 0;
   virtual void ListWorkersInJob(const string& job_name,
-                                std::vector<string>* workers) = 0; 
+                                std::vector<string>* workers) = 0;
   virtual seastar::channel* FindWorkerChannel(const std::string& target) = 0;
   virtual std::string TranslateTask(const std::string& task) = 0;
 };
 
 SeastarChannelCache* NewSeastarChannelCache(
     SeastarEngine* engine, const SeastarChannelSpec& channel_spec);
-} // tensorflow
-#endif // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CHANNEL_CACHE_H_
+}  // tensorflow
+#endif  // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CHANNEL_CACHE_H_

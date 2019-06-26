@@ -19,14 +19,13 @@ class SeastarTagFactory;
 using namespace seastar;
 
 class SeastarEngine {
-public:
-  SeastarEngine(uint16_t local,
-                SeastarWorkerService* worker_service);
+ public:
+  SeastarEngine(uint16_t local, SeastarWorkerService* worker_service);
   virtual ~SeastarEngine();
 
   seastar::channel* GetChannel(const std::string& server_ip);
 
-private:
+ private:
   void AsyncStartServer();
   void ConstructArgs(int* argc, char*** argv);
   void GetCpuset(char**);
@@ -44,4 +43,4 @@ private:
   size_t core_number_;
 };
 }
-#endif // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_ENGINE_H_
+#endif  // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_ENGINE_H_

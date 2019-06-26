@@ -1,15 +1,15 @@
+#include "tensorflow/contrib/seastar/seastar_tag_factory.h"
 #include "core/channel.hh"
 #include "tensorflow/contrib/seastar/seastar_client_tag.h"
 #include "tensorflow/contrib/seastar/seastar_message.h"
 #include "tensorflow/contrib/seastar/seastar_server_tag.h"
-#include "tensorflow/contrib/seastar/seastar_tag_factory.h"
 #include "tensorflow/contrib/seastar/seastar_tensor_coding.h"
 #include "tensorflow/contrib/seastar/seastar_worker_service.h"
 
 namespace tensorflow {
 
-SeastarTagFactory::SeastarTagFactory(SeastarWorkerService* worker_service) :
-  worker_service_(worker_service) {}
+SeastarTagFactory::SeastarTagFactory(SeastarWorkerService* worker_service)
+    : worker_service_(worker_service) {}
 
 SeastarClientTag* SeastarTagFactory::CreateSeastarClientTag(
     seastar::temporary_buffer<char>& header) {
@@ -31,8 +31,8 @@ SeastarServerTag* SeastarTagFactory::CreateSeastarServerTag(
     seastar::temporary_buffer<char>& header,
     seastar::channel* seastar_channel) {
   char* p = const_cast<char*>(header.get());
-  SeastarServerTag* tag = new SeastarServerTag(seastar_channel,
-                                               worker_service_);
+  SeastarServerTag* tag =
+      new SeastarServerTag(seastar_channel, worker_service_);
   memcpy(&tag->client_tag_id_, p + 8, 8);
   memcpy(&tag->method_, p + 16, 4);
   // ignore the status segment 2B
@@ -42,5 +42,4 @@ SeastarServerTag* SeastarTagFactory::CreateSeastarServerTag(
   return tag;
 }
 
-} // namespace tensorflow
-
+}  // namespace tensorflow

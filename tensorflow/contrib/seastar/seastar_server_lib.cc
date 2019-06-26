@@ -1,12 +1,12 @@
+#include "tensorflow/contrib/seastar/seastar_server_lib.h"
 #include <fstream>
 #include <map>
 #include "grpc/support/alloc.h"
 #include "tensorflow/contrib/seastar/seastar_channel_cache.h"
 #include "tensorflow/contrib/seastar/seastar_engine.h"
 #include "tensorflow/contrib/seastar/seastar_rendezvous_mgr.h"
-#include "tensorflow/contrib/seastar/seastar_server_lib.h"
-#include "tensorflow/contrib/seastar/seastar_worker_service.h"
 #include "tensorflow/contrib/seastar/seastar_worker_cache.h"
+#include "tensorflow/contrib/seastar/seastar_worker_service.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -18,10 +18,10 @@ namespace tensorflow {
 
 namespace {
 const char* kEndpointMapFile = ".endpoint_map";
-} // namespace
+}  // namespace
 
 class SeastarPortMgr {
-public:
+ public:
   explicit SeastarPortMgr(const ServerDef& server_def) {
     ParseGrpcServerDef(server_def);
     LoadEndpointMapForFile();
@@ -68,11 +68,9 @@ public:
     return local_seastar_port;
   }
 
-  std::string get_job_name() const {
-    return job_name_;
-  }
+  std::string get_job_name() const { return job_name_; }
 
-private:
+ private:
   void ParseGrpcServerDef(const ServerDef& server_def) {
     job_name_ = server_def.job_name();
     task_index_ = server_def.task_index();
@@ -107,17 +105,17 @@ private:
     }
   }
 
-private:
+ private:
   std::unordered_map<std::string, std::string> endpoint_grpc2seastar_;
-  std::unordered_map<std::string,
-      std::unordered_map<int, std::string>> grpc_cluster_spec_;
+  std::unordered_map<std::string, std::unordered_map<int, std::string>>
+      grpc_cluster_spec_;
   std::string job_name_;
   int task_index_;
   std::string local_grpc_ip_port_;
 };
 
 SeastarServer::SeastarServer(const ServerDef& server_def, Env* env)
-  : GrpcServer(server_def, env) {
+    : GrpcServer(server_def, env) {
   seastar_port_mgr_ = new SeastarPortMgr(server_def);
 }
 
@@ -130,15 +128,13 @@ SeastarServer::~SeastarServer() {
 Status SeastarServer::Init() {
   seastar_worker_impl_ = NewSeastarWorker(worker_env());
   seastar_worker_service_ =
-    NewSeastarWorkerService(seastar_worker_impl_.get()).release();
+      NewSeastarWorkerService(seastar_worker_impl_.get()).release();
   seastar_bound_port_ = seastar_port_mgr_->GetLocalSeastarPort();
-  seastar_engine_ = new SeastarEngine(seastar_bound_port_,
-                                      seastar_worker_service_);
+  seastar_engine_ =
+      new SeastarEngine(seastar_bound_port_, seastar_worker_service_);
 
   RendezvousMgrCreationFunction rendezvous_mgr_func =
-      [this](const WorkerEnv* env) {
-        return new SeastarRendezvousMgr(env);
-      };
+      [this](const WorkerEnv* env) { return new SeastarRendezvousMgr(env); };
 
   GrpcServerOptions opts;
   opts.rendezvous_mgr_func = rendezvous_mgr_func;
@@ -163,14 +159,13 @@ Status SeastarServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
         host_port = task.second;
         int grpc_port = -1;
         const std::vector<string> vec = str_util::Split(host_port, ':');
-        if (vec.size() != 2 ||
-            !strings::safe_strto32(vec[1], &grpc_port)) {
+        if (vec.size() != 2 || !strings::safe_strto32(vec[1], &grpc_port)) {
           LOG(ERROR) << "error host port schema " << host_port;
           return errors::Cancelled("error host port schema ", host_port);
         }
 
-        std::string seastar_host_port
-          = seastar_port_mgr_->GetSeastarIpPort(job.name(), task.first);
+        std::string seastar_host_port =
+            seastar_port_mgr_->GetSeastarIpPort(job.name(), task.first);
         LOG(INFO) << "host port: " << host_port
                   << ", remote seastar host port: " << seastar_host_port;
         host_port = seastar_host_port;
@@ -182,8 +177,9 @@ Status SeastarServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
   return Status::OK();
 }
 
-Status SeastarServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
-                                         WorkerCacheInterface** worker_cache) {
+Status SeastarServer::WorkerCacheFactory(
+    const WorkerCacheFactoryOptions& options,
+    WorkerCacheInterface** worker_cache) {
   if (options.job_name == nullptr || options.job_name->empty()) {
     Status s = errors::InvalidArgument(
         "The master (current machine) is not included in the provided "
@@ -207,18 +203,19 @@ Status SeastarServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& option
   if (!strings::safe_strto32(str_util::Split(host_port, ':')[1],
                              &requested_port)) {
     return errors::Internal("Could not parse port for local server from \"",
-                           channel_cache->TranslateTask(name_prefix), "\".");
+                            channel_cache->TranslateTask(name_prefix), "\".");
   }
 
   LOG(INFO) << "SeastarWorkerCacheFactory, name_prefix:" << name_prefix;
   *worker_cache = NewSeastarWorkerCacheWithLocalWorker(
-      channel_cache.release(), seastar_worker_impl_.get(), name_prefix, worker_env());
+      channel_cache.release(), seastar_worker_impl_.get(), name_prefix,
+      worker_env());
 
   return Status::OK();
 }
 
 Status SeastarServer::Create(const ServerDef& server_def, Env* env,
-                          std::unique_ptr<ServerInterface>* out_server) {
+                             std::unique_ptr<ServerInterface>* out_server) {
   std::unique_ptr<SeastarServer> ret(
       new SeastarServer(server_def, env == nullptr ? Env::Default() : env));
   Status s = ret->Init();
@@ -232,19 +229,19 @@ Status SeastarServer::Create(const ServerDef& server_def, Env* env,
 
 namespace {
 class SeastarServerFactory : public ServerFactory {
-public:
+ public:
   bool AcceptsOptions(const ServerDef& server_def) override {
     return server_def.protocol() == "grpc+seastar";
   }
 
   Status NewServer(const ServerDef& server_def,
-      std::unique_ptr<ServerInterface>* out_server) override {
+                   std::unique_ptr<ServerInterface>* out_server) override {
     return SeastarServer::Create(server_def, Env::Default(), out_server);
   }
 };
 
 class SeastarServerRegistrar {
-public:
+ public:
   SeastarServerRegistrar() {
     gpr_allocation_functions alloc_fns;
     memset(&alloc_fns, 0, sizeof(alloc_fns));
@@ -253,9 +250,9 @@ public:
     alloc_fns.free_fn = port::Free;
     gpr_set_allocation_functions(alloc_fns);
     ServerFactory::Register("SEASTAR_SERVER", new SeastarServerFactory());
-}
+  }
 };
 
 static SeastarServerRegistrar registrar;
 }
-} // namespace tensorflow
+}  // namespace tensorflow

@@ -22,16 +22,12 @@ class SeastarClientTag;
 struct WorkerEnv;
 
 void InitSeastarClientTag(protobuf::Message* request,
-                          protobuf::Message* response,
-                          StatusCallback done,
-                          SeastarClientTag* tag,
-                          CallOptions* call_opts);
+                          protobuf::Message* response, StatusCallback done,
+                          SeastarClientTag* tag, CallOptions* call_opts);
 
 void InitSeastarClientTag(protobuf::Message* request,
-                          SeastarTensorResponse* response,
-                          StatusCallback done,
-                          SeastarClientTag* tag,
-                          CallOptions* call_opts);
+                          SeastarTensorResponse* response, StatusCallback done,
+                          SeastarClientTag* tag, CallOptions* call_opts);
 
 class SeastarClientTag {
  public:
@@ -48,7 +44,8 @@ class SeastarClientTag {
   bool IsRecvTensor();
   Status ParseMessage();
 
-  // Called by seastar engine, handle the upper layer callback, ex. callback of 'RecvOp'.
+  // Called by seastar engine, handle the upper layer callback, ex. callback of
+  // 'RecvOp'.
   void RecvRespDone(Status s);
 
   uint64_t GetResponseBodySize();
@@ -82,6 +79,6 @@ class SeastarClientTag {
   int timeout_in_ms_;
 };
 
-} // end of namespace tensorflow
+}  // end of namespace tensorflow
 
-#endif // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CLIENT_TAG_H_
+#endif  // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_CLIENT_TAG_H_

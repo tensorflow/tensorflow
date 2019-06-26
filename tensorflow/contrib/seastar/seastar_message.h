@@ -31,6 +31,6 @@ struct SeastarMessage {
   static void DeserializeMessage(SeastarMessage* rm, const char* data);
 };
 
-} // end of namespace tensorflow
+}  // end of namespace tensorflow
 
-#endif // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_MESSAGE_H_
+#endif  // TENSORFLOW_CONTRIB_SEASTAR_SEASTAR_MESSAGE_H_
