@@ -1054,7 +1054,7 @@ Attribute Parser::parseAttribute(Type type) {
 ///
 ///   attribute-dict ::= `{` `}`
 ///                    | `{` attribute-entry (`,` attribute-entry)* `}`
-///   attribute-entry ::= bare-id `:` attribute-value
+///   attribute-entry ::= bare-id `=` attribute-value
 ///
 ParseResult
 Parser::parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes) {
@@ -1069,9 +1069,9 @@ Parser::parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes) {
     Identifier nameId = builder.getIdentifier(getTokenSpelling());
     consumeToken();
 
-    // Try to parse the ':' for the attribute value.
-    if (!consumeIf(Token::colon)) {
-      // If there is no ':', we treat this as a unit attribute.
+    // Try to parse the '=' for the attribute value.
+    if (!consumeIf(Token::equal)) {
+      // If there is no '=', we treat this as a unit attribute.
       attributes.push_back({nameId, builder.getUnitAttr()});
       return success();
     }

@@ -117,7 +117,7 @@ ParseResult linalg::SliceOp::parse(OpAsmParser *parser,
 // A SliceOp prints as:
 //
 // ```{.mlir}
-//   linalg.slice %0[%i0] {dim: 0} : !linalg.view<?xf32>, index
+//   linalg.slice %0[%i0] {dim = 0} : !linalg.view<?xf32>, index
 // ```
 //
 // Where %0 is an ssa-value holding a `view<?x?xf32>`, %i0 is an ssa-value
@@ -125,7 +125,7 @@ ParseResult linalg::SliceOp::parse(OpAsmParser *parser,
 void linalg::SliceOp::print(OpAsmPrinter *p) {
   *p << getOperationName() << " " << *getParentView() << "[" << *getIndexing()
      << "]";
-  *p << " {dim: ";
+  *p << " {dim = ";
   p->printAttribute(getAttr("dim"));
   *p << "}";
   p->printOptionalAttrDict(getAttrs(), {"dim"});

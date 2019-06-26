@@ -18,7 +18,7 @@ func @func_with_ops(f32) {
   %t = "getTensor"() : () -> tensor<4x4x?xf32>
 
   // CHECK: %1 = dim %0, 2 : tensor<4x4x?xf32>
-  %t2 = "std.dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> index
+  %t2 = "std.dim"(%t){index = 2} : (tensor<4x4x?xf32>) -> index
 
   // CHECK: %2 = addf %arg0, %arg0 : f32
   %x = "std.addf"(%a, %a) : (f32,f32) -> (f32)
@@ -31,7 +31,7 @@ func @func_with_ops(f32) {
 func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
 ^bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32, %idx : index):
   // CHECK: %0 = dim %arg0, 2 : tensor<4x4x?xf32>
-  %a = "std.dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> index
+  %a = "std.dim"(%t){index = 2} : (tensor<4x4x?xf32>) -> index
 
   // CHECK: %1 = dim %arg0, 2 : tensor<4x4x?xf32>
   %a2 = dim %t, 2 : tensor<4x4x?xf32>
@@ -73,13 +73,13 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
   %i6 = muli %i2, %i2 : i32
 
   // CHECK: %c42_i32 = constant 42 : i32
-  %x = "std.constant"(){value: 42 : i32} : () -> i32
+  %x = "std.constant"(){value = 42 : i32} : () -> i32
 
   // CHECK: %c42_i32_0 = constant 42 : i32
   %7 = constant 42 : i32
 
-  // CHECK: %c43 = constant {crazy: "std.foo"} 43 : index
-  %8 = constant {crazy: "std.foo"} 43: index
+  // CHECK: %c43 = constant {crazy = "std.foo"} 43 : index
+  %8 = constant {crazy = "std.foo"} 43: index
 
   // CHECK: %cst = constant 4.300000e+01 : bf16
   %9 = constant 43.0 : bf16
@@ -107,13 +107,13 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
 
   // Predicate 1 means inequality comparison.
   // CHECK: %{{[0-9]+}} = cmpi "ne", %{{[0-9]+}}, %{{[0-9]+}} : i32
-  %15 = "std.cmpi"(%i3, %i4) {predicate: 1} : (i32, i32) -> i1
+  %15 = "std.cmpi"(%i3, %i4) {predicate = 1} : (i32, i32) -> i1
 
   // CHECK: %{{[0-9]+}} = cmpi "slt", %cst_3, %cst_3 : vector<4xi32>
   %16 = cmpi "slt", %13, %13 : vector<4 x i32>
 
   // CHECK: %{{[0-9]+}} = cmpi "ne", %cst_3, %cst_3 : vector<4xi32>
-  %17 = "std.cmpi"(%13, %13) {predicate: 1} : (vector<4 x i32>, vector<4 x i32>) -> vector<4 x i1>
+  %17 = "std.cmpi"(%13, %13) {predicate = 1} : (vector<4 x i32>, vector<4 x i32>) -> vector<4 x i1>
 
   // CHECK: %{{[0-9]+}} = cmpi "slt", %arg3, %arg3 : index
   %18 = cmpi "slt", %idx, %idx : index
@@ -262,13 +262,13 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
 
   // Predicate 0 means ordered equality comparison.
   // CHECK: %{{[0-9]+}} = cmpf "oeq", %{{[0-9]+}}, %{{[0-9]+}} : f32
-  %66 = "std.cmpf"(%f3, %f4) {predicate: 1} : (f32, f32) -> i1
+  %66 = "std.cmpf"(%f3, %f4) {predicate = 1} : (f32, f32) -> i1
 
   // CHECK: %{{[0-9]+}} = cmpf "olt", %cst_8, %cst_8 : vector<4xf32>
   %67 = cmpf "olt", %vcf32, %vcf32 : vector<4 x f32>
 
   // CHECK: %{{[0-9]+}} = cmpf "oeq", %cst_8, %cst_8 : vector<4xf32>
-  %68 = "std.cmpf"(%vcf32, %vcf32) {predicate: 1} : (vector<4 x f32>, vector<4 x f32>) -> vector<4 x i1>
+  %68 = "std.cmpf"(%vcf32, %vcf32) {predicate = 1} : (vector<4 x f32>, vector<4 x f32>) -> vector<4 x i1>
 
   // CHECK: %{{[0-9]+}} = cmpf "oeq", %cst_7, %cst_7 : tensor<42xf32>
   %69 = cmpf "oeq", %tcf32, %tcf32 : tensor<42 x f32>
@@ -296,11 +296,11 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
 
 // CHECK-LABEL: func @affine_apply() {
 func @affine_apply() {
-  %i = "std.constant"() {value: 0: index} : () -> index
-  %j = "std.constant"() {value: 1: index} : () -> index
+  %i = "std.constant"() {value = 0: index} : () -> index
+  %j = "std.constant"() {value = 1: index} : () -> index
 
   // CHECK: affine.apply #map0(%c0)
-  %a = "affine.apply" (%i) { map: (d0) -> (d0 + 1) } :
+  %a = "affine.apply" (%i) { map = (d0) -> (d0 + 1) } :
     (index) -> (index)
 
   // CHECK: affine.apply #map1()[%c0]
@@ -334,7 +334,7 @@ func @calls(%arg0: i32) {
   // CHECK: %1 = call @return_op(%0) : (i32) -> i32
   %y = call @return_op(%x) : (i32) -> i32
   // CHECK: %2 = call @return_op(%0) : (i32) -> i32
-  %z = "std.call"(%x) {callee: @return_op} : (i32) -> i32
+  %z = "std.call"(%x) {callee = @return_op} : (i32) -> i32
 
   // CHECK: %f = constant @affine_apply : () -> ()
   %f = constant @affine_apply : () -> ()
@@ -356,7 +356,7 @@ func @calls(%arg0: i32) {
 
 // CHECK-LABEL: func @extract_element(%arg0: tensor<*xi32>, %arg1: tensor<4x4xf32>) -> i32 {
 func @extract_element(%arg0: tensor<*xi32>, %arg1 : tensor<4x4xf32>) -> i32 {
-  %c0 = "std.constant"() {value: 0: index} : () -> index
+  %c0 = "std.constant"() {value = 0: index} : () -> index
 
   // CHECK: %0 = extract_element %arg0[%c0, %c0, %c0, %c0] : tensor<*xi32>
   %0 = extract_element %arg0[%c0, %c0, %c0, %c0] : tensor<*xi32>
@@ -408,18 +408,18 @@ func @test_dimop(%arg0: tensor<4x4x?xf32>) {
 func @test_vector.transfer_ops(%arg0: memref<?x?xf32>) {
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
-  // CHECK: %0 = vector.transfer_read %arg0[%c3, %c3] {permutation_map: #[[map_proj_d0d1_d0]]} : memref<?x?xf32>, vector<128xf32>
-  %0 = vector.transfer_read %arg0[%c3, %c3] {permutation_map: (d0, d1)->(d0)} : memref<?x?xf32>, vector<128xf32>
-  // CHECK: %1 = vector.transfer_read %arg0[%c3, %c3] {permutation_map: #[[map_proj_d0d1_d1d0]]} : memref<?x?xf32>, vector<3x7xf32>
-  %1 = vector.transfer_read %arg0[%c3, %c3] {permutation_map: (d0, d1)->(d1, d0)} : memref<?x?xf32>, vector<3x7xf32>
-  // CHECK: %2 = vector.transfer_read %arg0[%c3, %c3], (%cst) {permutation_map: #[[map_proj_d0d1_d0]]} : memref<?x?xf32>,  vector<128xf32>
-  %2 = vector.transfer_read %arg0[%c3, %c3], (%cst) {permutation_map: (d0, d1)->(d0)} : memref<?x?xf32>,  vector<128xf32>
-  // CHECK: %3 = vector.transfer_read %arg0[%c3, %c3], (%cst) {permutation_map: #[[map_proj_d0d1_d1]]} : memref<?x?xf32>,  vector<128xf32>
-  %3 = vector.transfer_read %arg0[%c3, %c3], (%cst) {permutation_map: (d0, d1)->(d1)} : memref<?x?xf32>,  vector<128xf32>
+  // CHECK: %0 = vector.transfer_read %arg0[%c3, %c3] {permutation_map = #[[map_proj_d0d1_d0]]} : memref<?x?xf32>, vector<128xf32>
+  %0 = vector.transfer_read %arg0[%c3, %c3] {permutation_map = (d0, d1)->(d0)} : memref<?x?xf32>, vector<128xf32>
+  // CHECK: %1 = vector.transfer_read %arg0[%c3, %c3] {permutation_map = #[[map_proj_d0d1_d1d0]]} : memref<?x?xf32>, vector<3x7xf32>
+  %1 = vector.transfer_read %arg0[%c3, %c3] {permutation_map = (d0, d1)->(d1, d0)} : memref<?x?xf32>, vector<3x7xf32>
+  // CHECK: %2 = vector.transfer_read %arg0[%c3, %c3], (%cst) {permutation_map = #[[map_proj_d0d1_d0]]} : memref<?x?xf32>,  vector<128xf32>
+  %2 = vector.transfer_read %arg0[%c3, %c3], (%cst) {permutation_map = (d0, d1)->(d0)} : memref<?x?xf32>,  vector<128xf32>
+  // CHECK: %3 = vector.transfer_read %arg0[%c3, %c3], (%cst) {permutation_map = #[[map_proj_d0d1_d1]]} : memref<?x?xf32>,  vector<128xf32>
+  %3 = vector.transfer_read %arg0[%c3, %c3], (%cst) {permutation_map = (d0, d1)->(d1)} : memref<?x?xf32>,  vector<128xf32>
   //
-  // CHECK: vector.transfer_write %0, %arg0[%c3, %c3] {permutation_map: #[[map_proj_d0d1_d0]]} : vector<128xf32>, memref<?x?xf32>
-  vector.transfer_write %0, %arg0[%c3, %c3] {permutation_map: (d0, d1)->(d0)} : vector<128xf32>, memref<?x?xf32>
-  // CHECK: vector.transfer_write %1, %arg0[%c3, %c3] {permutation_map: #[[map_proj_d0d1_d1d0]]} : vector<3x7xf32>, memref<?x?xf32>
-  vector.transfer_write %1, %arg0[%c3, %c3] {permutation_map: (d0, d1)->(d1, d0)} : vector<3x7xf32>, memref<?x?xf32>
+  // CHECK: vector.transfer_write %0, %arg0[%c3, %c3] {permutation_map = #[[map_proj_d0d1_d0]]} : vector<128xf32>, memref<?x?xf32>
+  vector.transfer_write %0, %arg0[%c3, %c3] {permutation_map = (d0, d1)->(d0)} : vector<128xf32>, memref<?x?xf32>
+  // CHECK: vector.transfer_write %1, %arg0[%c3, %c3] {permutation_map = #[[map_proj_d0d1_d1d0]]} : vector<3x7xf32>, memref<?x?xf32>
+  vector.transfer_write %1, %arg0[%c3, %c3] {permutation_map = (d0, d1)->(d1, d0)} : vector<3x7xf32>, memref<?x?xf32>
   return
 }

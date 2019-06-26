@@ -12,7 +12,7 @@ func @real_addew_fixedpoint_isomorphic(%arg0 : !type_lhs, %arg1: !type_rhs) -> !
   // CHECK-NEXT: %2 = "fxpmath.convertis"(%0) : (tensor<4xi8>) -> tensor<4xi16>
   // CHECK-NEXT: %3 = "fxpmath.convertis"(%1) : (tensor<4xi8>) -> tensor<4xi16>
   // CHECK-NEXT: %4 = addi %2, %3 : tensor<4xi16>
-  // CHECK-NEXT: %5 = "fxpmath.clampis"(%4) {clamp_max: 127 : i16, clamp_min: -128 : i16} : (tensor<4xi16>) -> tensor<4xi16>
+  // CHECK-NEXT: %5 = "fxpmath.clampis"(%4) {clamp_max = 127 : i16, clamp_min = -128 : i16} : (tensor<4xi16>) -> tensor<4xi16>
   // CHECK-NEXT: %6 = "fxpmath.convertis"(%5) : (tensor<4xi16>) -> tensor<4xi8>
   // CHECK-NEXT: %7 = "quant.scast"(%6) : (tensor<4xi8>) -> tensor<4x!quant.uniform<i8:f32, 6.250000e-02>>
   // CHECK-NEXT: return %7 : tensor<4x!quant.uniform<i8:f32, 6.250000e-02>>
@@ -35,7 +35,7 @@ func @real_addew_affine_isomorphic(%arg0 : !type_lhs, %arg1: !type_rhs) -> !type
   // CHECK-NEXT: %3 = "fxpmath.convertis"(%1) : (tensor<4xi8>) -> tensor<4xi16>
   // CHECK-NEXT: %4 = addi %2, %3 : tensor<4xi16>
   // CHECK-NEXT: %5 = addi %4, %cst : tensor<4xi16>
-  // CHECK-NEXT: %6 = "fxpmath.clampis"(%5) {clamp_max: 127 : i16, clamp_min: -128 : i16} : (tensor<4xi16>) -> tensor<4xi16>
+  // CHECK-NEXT: %6 = "fxpmath.clampis"(%5) {clamp_max = 127 : i16, clamp_min = -128 : i16} : (tensor<4xi16>) -> tensor<4xi16>
   // CHECK-NEXT: %7 = "fxpmath.convertis"(%6) : (tensor<4xi16>) -> tensor<4xi8>
   // CHECK-NEXT: %8 = "quant.scast"(%7) : (tensor<4xi8>) -> tensor<4x!quant.uniform<i8:f32, 6.250000e-02:-5>>
   // CHECK-NEXT: return %8 : tensor<4x!quant.uniform<i8:f32, 6.250000e-02:-5>>
@@ -56,11 +56,11 @@ func @real_addew_fixedpoint_clamp(%arg0 : !type_lhs, %arg1: !type_rhs) -> !type_
   // CHECK-NEXT: %2 = "fxpmath.convertis"(%0) : (tensor<4xi8>) -> tensor<4xi16>
   // CHECK-NEXT: %3 = "fxpmath.convertis"(%1) : (tensor<4xi8>) -> tensor<4xi16>
   // CHECK-NEXT: %4 = addi %2, %3 : tensor<4xi16>
-  // CHECK-NEXT: %5 = "fxpmath.clampis"(%4) {clamp_max: 64 : i16, clamp_min: -64 : i16} : (tensor<4xi16>) -> tensor<4xi16>
+  // CHECK-NEXT: %5 = "fxpmath.clampis"(%4) {clamp_max = 64 : i16, clamp_min = -64 : i16} : (tensor<4xi16>) -> tensor<4xi16>
   // CHECK-NEXT: %6 = "fxpmath.convertis"(%5) : (tensor<4xi16>) -> tensor<4xi8>
   // CHECK-NEXT: %7 = "quant.scast"(%6) : (tensor<4xi8>) -> tensor<4x!quant.uniform<i8:f32, 6.250000e-02>>
   // CHECK-NEXT: return %7 : tensor<4x!quant.uniform<i8:f32, 6.250000e-02>>
-  %0 = "fxpmath.real_add_ew"(%arg0, %arg1) { clamp_min:-4.0, clamp_max:4.0 }
+  %0 = "fxpmath.real_add_ew"(%arg0, %arg1) { clamp_min = -4.0, clamp_max = 4.0 }
       : (!type_lhs, !type_rhs) -> (!type_result)
   return %0 : !type_result
 }

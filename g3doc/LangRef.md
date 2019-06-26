@@ -647,8 +647,8 @@ Syntax:
 attribute-dict ::= `{` `}`
                  | `{` attribute-entry (`,` attribute-entry)* `}`
 attribute-entry ::= dialect-attribute-entry | dependent-attribute-entry
-dialect-attribute-entry ::= dialect-namespace `.` bare-id `:` attribute-value
-dependent-attribute-entry ::= dependent-attribute-name `:` attribute-value
+dialect-attribute-entry ::= dialect-namespace `.` bare-id `=` attribute-value
+dependent-attribute-entry ::= dependent-attribute-name `=` attribute-value
 dependent-attribute-name ::= (letter|[_]) (letter|digit|[_$])*
 ```
 

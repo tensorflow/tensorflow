@@ -803,13 +803,13 @@ func @cond_br_arguments(%arg0: !llvm.i1, %arg1: !llvm.i1) {
 }
 
 // CHECK-LABEL: define void @llvm_noalias(float* noalias) {
-func @llvm_noalias(%arg0: !llvm<"float*"> {llvm.noalias: true}) {
+func @llvm_noalias(%arg0: !llvm<"float*"> {llvm.noalias = true}) {
   llvm.return
 }
 
 // CHECK-LABEL: @llvm_varargs(...) 
 func @llvm_varargs()
-  attributes {std.varargs: true}
+  attributes {std.varargs = true}
 
 func @intpointerconversion(%arg0 : !llvm.i32) -> !llvm.i32 {
 // CHECK:      %2 = inttoptr i32 %0 to i32*

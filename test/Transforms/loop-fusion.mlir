@@ -2107,7 +2107,7 @@ func @should_not_slice_past_slice_barrier() {
     affine.for %i1 = 0 to 16 {
       %1 = "op1"() : () -> f32
       store %1, %0[%i0, %i1] : memref<100x16xf32>
-    } {slice_fusion_barrier: true}
+    } {slice_fusion_barrier = true}
   }
   affine.for %i2 = 0 to 100 {
     affine.for %i3 = 0 to 16 {
@@ -2123,7 +2123,7 @@ func @should_not_slice_past_slice_barrier() {
 // CHECK-NEXT:       %2 = affine.apply [[MAP3]](%i0, %i0, %i1)
 // CHECK-NEXT:       %3 = affine.apply [[MAP4]](%i0, %i0, %i1)
 // CHECK-NEXT:       store %1, %0[%2, %3] : memref<1x16xf32>
-// CHECK-NEXT:     } {slice_fusion_barrier: true}
+// CHECK-NEXT:     } {slice_fusion_barrier = true}
 // CHECK-NEXT:     affine.for %i2 = 0 to 16 {
 // CHECK-NEXT:       %4 = affine.apply [[MAP3]](%i0, %i0, %i2)
 // CHECK-NEXT:       %5 = affine.apply [[MAP4]](%i0, %i0, %i2)

@@ -59,10 +59,10 @@ TEST_FUNC(linalg_ops) {
   dot(sA, sB, ssC);
   ret();
   // CHECK-LABEL: func @linalg_ops(%arg0: index, %arg1: index, %arg2: index) {
-  //       CHECK: {{.*}} = linalg.slice {{.*}}[{{.*}}] {dim: 1} : !linalg.view<?x?xf32>, index
-  //  CHECK-NEXT: {{.*}} = linalg.slice {{.*}}[{{.*}}] {dim: 1} : !linalg.view<?x?xf32>, index
-  //  CHECK-NEXT: {{.*}} = linalg.slice {{.*}}[{{.*}}] {dim: 0} : !linalg.view<?x?xf32>, index
-  //  CHECK-NEXT: {{.*}} = linalg.slice {{.*}}[{{.*}}] {dim: 0} : !linalg.view<?xf32>, index
+  //       CHECK: {{.*}} = linalg.slice {{.*}}[{{.*}}] {dim = 1} : !linalg.view<?x?xf32>, index
+  //  CHECK-NEXT: {{.*}} = linalg.slice {{.*}}[{{.*}}] {dim = 1} : !linalg.view<?x?xf32>, index
+  //  CHECK-NEXT: {{.*}} = linalg.slice {{.*}}[{{.*}}] {dim = 0} : !linalg.view<?x?xf32>, index
+  //  CHECK-NEXT: {{.*}} = linalg.slice {{.*}}[{{.*}}] {dim = 0} : !linalg.view<?xf32>, index
   //       CHECK: linalg.matmul({{.*}}, {{.*}}, {{.*}}) : !linalg.view<?x?xf32>
   //  CHECK-NEXT: linalg.matvec({{.*}}, {{.*}}, {{.*}}) : !linalg.view<?xf32>
   //  CHECK-NEXT: linalg.dot({{.*}}, {{.*}}, {{.*}}) : !linalg.view<f32>

@@ -32,7 +32,7 @@ func @affine_apply_operand_non_index(%arg0 : i32) {
   // Custom parser automatically assigns all arguments the `index` so we must
   // use the generic syntax here to exercise the verifier.
   // expected-error@+1 {{operands must be of type 'index'}}
-  %0 = "affine.apply"(%arg0) {map: (d0) -> (d0)} : (i32) -> (index)
+  %0 = "affine.apply"(%arg0) {map = (d0) -> (d0)} : (i32) -> (index)
   return
 }
 
@@ -42,7 +42,7 @@ func @affine_apply_resul_non_index(%arg0 : index) {
   // Custom parser automatically assigns `index` as the result type so we must
   // use the generic syntax here to exercise the verifier.
   // expected-error@+1 {{result must be of type 'index'}}
-  %0 = "affine.apply"(%arg0) {map: (d0) -> (d0)} : (index) -> (i32)
+  %0 = "affine.apply"(%arg0) {map = (d0) -> (d0)} : (index) -> (i32)
   return
 }
 

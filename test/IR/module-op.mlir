@@ -12,8 +12,8 @@ func @module_parsing() {
     "module_terminator"() : () -> ()
   }
 
-  // CHECK: module attributes {foo.attr: true} {
-  module attributes {foo.attr: true} {
+  // CHECK: module attributes {foo.attr = true} {
+  module attributes {foo.attr = true} {
   }
 
   return

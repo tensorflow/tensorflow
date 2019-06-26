@@ -50,7 +50,7 @@ func @array_constant() -> () {
 
 func @value_result_type_mismatch() -> () {
   // expected-error @+1 {{result type ('vector<4xi32>') does not match value type ('tensor<4xi32>')}}
-  %0 = "spv.constant"() {value: dense<0> : tensor<4xi32>} : () -> (vector<4xi32>)
+  %0 = "spv.constant"() {value = dense<0> : tensor<4xi32>} : () -> (vector<4xi32>)
 }
 
 // -----
@@ -63,8 +63,8 @@ func @value_result_type_mismatch() -> () {
 func @module_without_cap_ext() -> () {
   // CHECK: spv.module
   spv.module { } attributes {
-    addressing_model: "Logical",
-    memory_model: "VulkanKHR"
+    addressing_model = "Logical",
+    memory_model = "VulkanKHR"
   }
   return
 }
@@ -73,10 +73,10 @@ func @module_without_cap_ext() -> () {
 func @module_with_cap_ext() -> () {
   // CHECK: spv.module
   spv.module { } attributes {
-    capability: ["Shader"],
-    extension: ["SPV_KHR_16bit_storage"],
-    addressing_model: "Logical",
-    memory_model: "VulkanKHR"
+    capability = ["Shader"],
+    extension = ["SPV_KHR_16bit_storage"],
+    addressing_model = "Logical",
+    memory_model = "VulkanKHR"
   }
   return
 }
@@ -87,8 +87,8 @@ func @module_with_explict_module_end() -> () {
   spv.module {
     spv._module_end
   } attributes {
-    addressing_model: "Logical",
-    memory_model: "VulkanKHR"
+    addressing_model = "Logical",
+    memory_model = "VulkanKHR"
   }
   return
 }
@@ -101,8 +101,8 @@ func @module_with_func() -> () {
       spv.Return
     }
   } attributes {
-    addressing_model: "Logical",
-    memory_model: "VulkanKHR"
+    addressing_model = "Logical",
+    memory_model = "VulkanKHR"
   }
   return
 }
@@ -119,7 +119,7 @@ func @missing_addressing_model() -> () {
 
 func @wrong_addressing_model() -> () {
   // expected-error@+1 {{attribute 'addressing_model' failed to satisfy constraint}}
-  spv.module { } attributes {addressing_model: "Physical", memory_model: "VulkanHKR"}
+  spv.module { } attributes {addressing_model = "Physical", memory_model = "VulkanHKR"}
   return
 }
 
@@ -127,7 +127,7 @@ func @wrong_addressing_model() -> () {
 
 func @missing_memory_model() -> () {
   // expected-error@+1 {{requires attribute 'memory_model'}}
-  spv.module { } attributes {addressing_model: "Logical"}
+  spv.module { } attributes {addressing_model = "Logical"}
   return
 }
 
@@ -141,8 +141,8 @@ func @module_with_multiple_blocks() -> () {
   ^second:
     spv.Return
   } attributes {
-    addressing_model: "Logical",
-    memory_model: "VulkanKHR"
+    addressing_model = "Logical",
+    memory_model = "VulkanKHR"
   }
   return
 }
@@ -154,8 +154,8 @@ func @use_non_spv_op_inside_module() -> () {
     // expected-error @+1 {{'spv.module' can only contain func and spv.* ops}}
     "dialect.op"() : () -> ()
   } attributes {
-    addressing_model: "Logical",
-    memory_model: "VulkanKHR"
+    addressing_model = "Logical",
+    memory_model = "VulkanKHR"
   }
   return
 }
@@ -169,8 +169,8 @@ func @use_non_spv_op_inside_func() -> () {
       "dialect.op"() : () -> ()
     }
   } attributes {
-    addressing_model: "Logical",
-    memory_model: "VulkanKHR"
+    addressing_model = "Logical",
+    memory_model = "VulkanKHR"
   }
   return
 }
@@ -182,8 +182,8 @@ func @use_extern_func() -> () {
     // expected-error @+1 {{'spv.module' cannot contain external functions}}
     func @extern() -> ()
   } attributes {
-    addressing_model: "Logical",
-    memory_model: "VulkanKHR"
+    addressing_model = "Logical",
+    memory_model = "VulkanKHR"
   }
   return
 }
@@ -200,8 +200,8 @@ func @module_with_nested_func() -> () {
       spv.Return
     }
   } attributes {
-    addressing_model: "Logical",
-    memory_model: "VulkanKHR"
+    addressing_model = "Logical",
+    memory_model = "VulkanKHR"
   }
   return
 }

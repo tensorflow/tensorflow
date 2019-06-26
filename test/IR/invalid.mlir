@@ -295,8 +295,8 @@ func @test() {
 
 func @redef() {
 ^bb42:
-  %x = "xxx"(){index: 0} : ()->i32 // expected-note {{previously defined here}}
-  %x = "xxx"(){index: 0} : ()->i32 // expected-error {{redefinition of SSA value '%x'}}
+  %x = "xxx"(){index = 0} : ()->i32 // expected-note {{previously defined here}}
+  %x = "xxx"(){index = 0} : ()->i32 // expected-error {{redefinition of SSA value '%x'}}
   return
 }
 
@@ -585,35 +585,35 @@ func@n(){^b(
 
 func @elementsattr_non_tensor_type() -> () {
 ^bb0:
-  "foo"(){bar: dense<[4]> : i32} : () -> () // expected-error {{elements literal must be a ranked tensor or vector type}}
+  "foo"(){bar = dense<[4]> : i32} : () -> () // expected-error {{elements literal must be a ranked tensor or vector type}}
 }
 
 // -----
 
 func @elementsattr_non_ranked() -> () {
 ^bb0:
-  "foo"(){bar: dense<[4]> : tensor<?xi32>} : () -> () // expected-error {{elements literal type must have static shape}}
+  "foo"(){bar = dense<[4]> : tensor<?xi32>} : () -> () // expected-error {{elements literal type must have static shape}}
 }
 
 // -----
 
 func @elementsattr_shape_mismatch() -> () {
 ^bb0:
-  "foo"(){bar: dense<[4]> : tensor<5xi32>} : () -> () // expected-error {{inferred shape of elements literal ([1]) does not match type ([5])}}
+  "foo"(){bar = dense<[4]> : tensor<5xi32>} : () -> () // expected-error {{inferred shape of elements literal ([1]) does not match type ([5])}}
 }
 
 // -----
 
 func @elementsattr_invalid() -> () {
 ^bb0:
-  "foo"(){bar: dense<[4, [5]]> : tensor<2xi32>} : () -> () // expected-error {{tensor literal is invalid; ranks are not consistent between elements}}
+  "foo"(){bar = dense<[4, [5]]> : tensor<2xi32>} : () -> () // expected-error {{tensor literal is invalid; ranks are not consistent between elements}}
 }
 
 // -----
 
 func @elementsattr_badtoken() -> () {
 ^bb0:
-  "foo"(){bar: dense<[tf_opaque]> : tensor<1xi32>} : () -> () // expected-error {{expected element literal of primitive type}}
+  "foo"(){bar = dense<[tf_opaque]> : tensor<1xi32>} : () -> () // expected-error {{expected element literal of primitive type}}
 }
 
 // -----
@@ -621,7 +621,7 @@ func @elementsattr_badtoken() -> () {
 func @elementsattr_floattype1() -> () {
 ^bb0:
   // expected-error@+1 {{expected integer elements, but parsed floating-point}}
-  "foo"(){bar: dense<[4.0]> : tensor<1xi32>} : () -> ()
+  "foo"(){bar = dense<[4.0]> : tensor<1xi32>} : () -> ()
 }
 
 // -----
@@ -629,7 +629,7 @@ func @elementsattr_floattype1() -> () {
 func @elementsattr_floattype1() -> () {
 ^bb0:
   // expected-error@+1 {{expected integer elements, but parsed floating-point}}
-  "foo"(){bar: dense<4.0> : tensor<i32>} : () -> ()
+  "foo"(){bar = dense<4.0> : tensor<i32>} : () -> ()
 }
 
 // -----
@@ -637,49 +637,49 @@ func @elementsattr_floattype1() -> () {
 func @elementsattr_floattype2() -> () {
 ^bb0:
   // expected-error@+1 {{expected floating-point elements, but parsed integer}}
-  "foo"(){bar: dense<[4]> : tensor<1xf32>} : () -> ()
+  "foo"(){bar = dense<[4]> : tensor<1xf32>} : () -> ()
 }
 
 // -----
 
 func @elementsattr_toolarge1() -> () {
 ^bb0:
-  "foo"(){bar: dense<[777]> : tensor<1xi8>} : () -> () // expected-error {{integer constant out of range}}
+  "foo"(){bar = dense<[777]> : tensor<1xi8>} : () -> () // expected-error {{integer constant out of range}}
 }
 
 // -----
 
 func @elementsattr_toolarge2() -> () {
 ^bb0:
-  "foo"(){bar: dense<[-777]> : tensor<1xi8>} : () -> () // expected-error {{integer constant out of range}}
+  "foo"(){bar = dense<[-777]> : tensor<1xi8>} : () -> () // expected-error {{integer constant out of range}}
 }
 
 // -----
 
 func @elementsattr_malformed_opaque() -> () {
 ^bb0:
-  "foo"(){bar: opaque<10, "0xQZz123"> : tensor<1xi8>} : () -> () // expected-error {{expected dialect namespace}}
+  "foo"(){bar = opaque<10, "0xQZz123"> : tensor<1xi8>} : () -> () // expected-error {{expected dialect namespace}}
 }
 
 // -----
 
 func @elementsattr_malformed_opaque1() -> () {
 ^bb0:
-  "foo"(){bar: opaque<"", "0xQZz123"> : tensor<1xi8>} : () -> () // expected-error {{opaque string only contains hex digits}}
+  "foo"(){bar = opaque<"", "0xQZz123"> : tensor<1xi8>} : () -> () // expected-error {{opaque string only contains hex digits}}
 }
 
 // -----
 
 func @elementsattr_malformed_opaque2() -> () {
 ^bb0:
-  "foo"(){bar: opaque<"", "00abc"> : tensor<1xi8>} : () -> () // expected-error {{opaque string should start with '0x'}}
+  "foo"(){bar = opaque<"", "00abc"> : tensor<1xi8>} : () -> () // expected-error {{opaque string should start with '0x'}}
 }
 
 // -----
 
 func @elementsattr_malformed_opaque3() -> () {
 ^bb0:
-  "foo"(){bar: opaque<"t", "0xabc"> : tensor<1xi8>} : () -> () // expected-error {{no registered dialect with namespace 't'}}
+  "foo"(){bar = opaque<"t", "0xabc"> : tensor<1xi8>} : () -> () // expected-error {{no registered dialect with namespace 't'}}
 }
 
 // -----
@@ -779,25 +779,25 @@ func @type_alias_unknown(!unknown_alias) -> () { // expected-error {{undefined s
 func @complex_loops() {
   affine.for %i1 = 1 to 100 {
   // expected-error @+1 {{expected '"' in string literal}}
-  "opaqueIntTensor"(){bar: opaque<"", "0x686]> : tensor<2x1x4xi32>} : () -> ()
+  "opaqueIntTensor"(){bar = opaque<"", "0x686]> : tensor<2x1x4xi32>} : () -> ()
 
 // -----
 
 func @mi() {
   // expected-error @+1 {{expected element literal of primitive type}}
-  "fooi64"(){bar: sparse<vector<1xi64>,[,[,1]
+  "fooi64"(){bar = sparse<vector<1xi64>,[,[,1]
 
 // -----
 
 func @invalid_tensor_literal() {
   // expected-error @+1 {{expected 1-d tensor for values}}
-  "foof16"(){bar: sparse<[[0, 0, 0]],  [[-2.0]]> : vector<1x1x1xf16>} : () -> ()
+  "foof16"(){bar = sparse<[[0, 0, 0]],  [[-2.0]]> : vector<1x1x1xf16>} : () -> ()
 
 // -----
 
 func @invalid_tensor_literal() {
   // expected-error @+1 {{expected element literal of primitive type}}
-  "fooi16"(){bar: sparse<[[1, 1, 0], [0, 1, 0], [0,, [[0, 0, 0]], [-2.0]> : tensor<2x2x2xi16>} : () -> ()
+  "fooi16"(){bar = sparse<[[1, 1, 0], [0, 1, 0], [0,, [[0, 0, 0]], [-2.0]> : tensor<2x2x2xi16>} : () -> ()
 
 // -----
 
@@ -894,7 +894,7 @@ func @$invalid_function_name()
 // -----
 
 // expected-error @+1 {{function arguments may only have dialect attributes}}
-func @invalid_func_arg_attr(i1 {non_dialect_attr: 10})
+func @invalid_func_arg_attr(i1 {non_dialect_attr = 10})
 
 // -----
 

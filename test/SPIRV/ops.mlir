@@ -171,8 +171,8 @@ func @return_mismatch_func_signature() -> () {
       spv.Return
     }
   } attributes {
-    addressing_model: "Logical",
-    memory_model: "VulkanKHR"
+    addressing_model = "Logical",
+    memory_model = "VulkanKHR"
   }
   return
 }
@@ -314,8 +314,8 @@ func @variable_bind() -> () {
 
 func @variable_init_bind() -> () {
   %0 = spv.constant 4.0 : f32
-  // CHECK: spv.Variable init(%0) {binding: 5 : i32} : !spv.ptr<f32, Private>
-  %1 = spv.Variable init(%0) {binding: 5 : i32} : !spv.ptr<f32, Private>
+  // CHECK: spv.Variable init(%0) {binding = 5 : i32} : !spv.ptr<f32, Private>
+  %1 = spv.Variable init(%0) {binding = 5 : i32} : !spv.ptr<f32, Private>
   return
 }
 
@@ -340,7 +340,7 @@ func @variable_init(%arg0: f32) -> () {
 func @storage_class_mismatch() -> () {
   %0 = spv.constant 5.0 : f32
   // expected-error @+1 {{storage class must match result pointer's storage class}}
-  %1 = "spv.Variable"(%0) {storage_class : "Uniform"} : (f32) -> !spv.ptr<f32, Function>
+  %1 = "spv.Variable"(%0) {storage_class = "Uniform"} : (f32) -> !spv.ptr<f32, Function>
   return
 }
 

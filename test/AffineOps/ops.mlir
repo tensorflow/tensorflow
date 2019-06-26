@@ -6,27 +6,27 @@
 // CHECK-LABEL: @empty
 func @empty() {
   // CHECK: affine.for %i
-  // CHECK-NEXT: } {some_attr: true}
+  // CHECK-NEXT: } {some_attr = true}
   //
   // GENERIC:      "affine.for"()
   // GENERIC-NEXT: ^bb1(%i0: index):
   // GENERIC-NEXT:   "affine.terminator"() : () -> ()
   // GENERIC-NEXT: })
   affine.for %i = 0 to 10 {
-  } {some_attr: true}
+  } {some_attr = true}
 
   // CHECK: affine.if
-  // CHECK-NEXT: } {some_attr: true}
+  // CHECK-NEXT: } {some_attr = true}
   //
   // GENERIC:      "affine.if"()
   // GENERIC-NEXT:   "affine.terminator"() : () -> ()
   // GENERIC-NEXT: },  {
   // GENERIC-NEXT: })
   affine.if () : () () {
-  } {some_attr: true}
+  } {some_attr = true}
 
   // CHECK: } else {
-  // CHECK: } {some_attr: true}
+  // CHECK: } {some_attr = true}
   //
   // GENERIC:      "affine.if"()
   // GENERIC-NEXT:   "affine.terminator"() : () -> ()
@@ -37,7 +37,7 @@ func @empty() {
   affine.if () : () () {
   } else {
     "foo"() : () -> ()
-  } {some_attr: true}
+  } {some_attr = true}
 
   return
 }
@@ -52,7 +52,7 @@ func @affine_terminator() {
   // GENERIC:      "affine.for"() ( {
   // GENERIC-NEXT: ^bb1(%i0: index):	// no predecessors
   // GENERIC-NEXT:   "affine.terminator"() : () -> ()
-  // GENERIC-NEXT: }) {lower_bound: #map0, step: 1 : index, upper_bound: #map1} : () -> ()
+  // GENERIC-NEXT: }) {lower_bound = #map0, step = 1 : index, upper_bound = #map1} : () -> ()
   affine.for %i = 0 to 10 {
     "affine.terminator"() : () -> ()
   }

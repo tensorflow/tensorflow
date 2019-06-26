@@ -635,7 +635,7 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
     os << '{';
     interleaveComma(attr.cast<DictionaryAttr>().getValue(),
                     [&](NamedAttribute attr) {
-                      os << attr.first << ": ";
+                      os << attr.first << " = ";
                       printAttribute(attr.second);
                     });
     os << '}';
@@ -1153,7 +1153,7 @@ void ModulePrinter::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
     if (attr.second.isa<UnitAttr>())
       return;
 
-    os << ": ";
+    os << " = ";
     printAttributeAndType(attr.second);
   });
   os << '}';

@@ -28,10 +28,10 @@ func @slice_op(%arg0: memref<?x?xf32>) {
   %5 = linalg.view %arg0[%3, %4] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
   affine.for %i0 = 0 to (d0) -> (d0)(%1) {
     affine.for %i1 = 0 to (d0) -> (d0)(%2) {
-      %6 = linalg.slice %5[%i0] {dim: 1} : !linalg.view<?x?xf32>, index
+      %6 = linalg.slice %5[%i0] {dim = 1} : !linalg.view<?x?xf32>, index
       "some_consumer"(%6) : (!linalg.view<?xf32>) -> ()
-      %7 = linalg.slice %5[%i1] {dim: 0} : !linalg.view<?x?xf32>, index
-      %8 = linalg.slice %7[%i0] {dim: 0} : !linalg.view<?xf32>, index
+      %7 = linalg.slice %5[%i1] {dim = 0} : !linalg.view<?x?xf32>, index
+      %8 = linalg.slice %7[%i0] {dim = 0} : !linalg.view<?xf32>, index
     }
   }
   return
@@ -44,9 +44,9 @@ func @slice_op(%arg0: memref<?x?xf32>) {
 //       CHECK:  %[[V:.*]] = linalg.view %arg0[%[[r1]], %[[r2]]] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
 //       CHECK:  affine.for %i0 = 0 to #map1(%0) {
 //       CHECK:    affine.for %i1 = 0 to #map1(%1) {
-//       CHECK:      {{.*}} = linalg.slice %[[V]][%i0] {dim: 1} : !linalg.view<?x?xf32>, index
-//       CHECK:      %[[V2:.*]] = linalg.slice %[[V]][%i1] {dim: 0} : !linalg.view<?x?xf32>, index
-//       CHECK:      {{.*}} = linalg.slice %[[V2]][%i0] {dim: 0} : !linalg.view<?xf32>, index
+//       CHECK:      {{.*}} = linalg.slice %[[V]][%i0] {dim = 1} : !linalg.view<?x?xf32>, index
+//       CHECK:      %[[V2:.*]] = linalg.slice %[[V]][%i1] {dim = 0} : !linalg.view<?x?xf32>, index
+//       CHECK:      {{.*}} = linalg.slice %[[V2]][%i0] {dim = 0} : !linalg.view<?xf32>, index
 
 func @rangeConversion(%arg0: index, %arg1: index, %arg2: index) {
   %0 = linalg.range %arg0:%arg1:%arg2 : !linalg.range
@@ -120,7 +120,7 @@ func @viewNonRangeConversion(%arg0: memref<?x?xf32>, %arg1: !linalg.range, %arg2
 
 func @sliceRangeConversion(%arg0: memref<?x?xf32>, %arg1: !linalg.range, %arg2: !linalg.range, %arg3: !linalg.range) {
   %0 = linalg.view %arg0[%arg1, %arg2] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
-  %1 = linalg.slice %0[%arg3] {dim: 0} : !linalg.view<?x?xf32>, !linalg.range
+  %1 = linalg.slice %0[%arg3] {dim = 0} : !linalg.view<?x?xf32>, !linalg.range
   return
 }
 // LLVM-LABEL: @sliceRangeConversion
@@ -148,7 +148,7 @@ func @sliceRangeConversion(%arg0: memref<?x?xf32>, %arg1: !linalg.range, %arg2: 
 
 func @sliceNonRangeConversion2(%arg0: memref<?x?xf32>, %arg1: !linalg.range, %arg2: !linalg.range, %arg3: index) {
   %0 = linalg.view %arg0[%arg1, %arg2] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
-  %1 = linalg.slice %0[%arg3] {dim: 0} : !linalg.view<?x?xf32>, index
+  %1 = linalg.slice %0[%arg3] {dim = 0} : !linalg.view<?x?xf32>, index
   return
 }
 // LLVM-LABEL: @sliceNonRangeConversion2

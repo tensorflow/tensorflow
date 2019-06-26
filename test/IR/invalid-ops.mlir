@@ -2,7 +2,7 @@
 
 func @dim(tensor<1xf32>) {
 ^bb(%0: tensor<1xf32>):
-  "std.dim"(%0){index: "xyz"} : (tensor<1xf32>)->index // expected-error {{attribute 'index' failed to satisfy constraint: arbitrary integer attribute}}
+  "std.dim"(%0){index = "xyz"} : (tensor<1xf32>)->index // expected-error {{attribute 'index' failed to satisfy constraint: arbitrary integer attribute}}
   return
 }
 
@@ -10,7 +10,7 @@ func @dim(tensor<1xf32>) {
 
 func @dim2(tensor<1xf32>) {
 ^bb(%0: tensor<1xf32>):
-  "std.dim"(){index: "xyz"} : ()->index // expected-error {{'std.dim' op requires a single operand}}
+  "std.dim"(){index = "xyz"} : ()->index // expected-error {{'std.dim' op requires a single operand}}
   return
 }
 
@@ -18,7 +18,7 @@ func @dim2(tensor<1xf32>) {
 
 func @dim3(tensor<1xf32>) {
 ^bb(%0: tensor<1xf32>):
-  "std.dim"(%0){index: 1} : (tensor<1xf32>)->index // expected-error {{'std.dim' op index is out of range}}
+  "std.dim"(%0){index = 1} : (tensor<1xf32>)->index // expected-error {{'std.dim' op index is out of range}}
   return
 }
 
@@ -34,7 +34,7 @@ func @rank(f32) {
 
 func @constant() {
 ^bb:
-  %x = "std.constant"(){value: "xyz"} : () -> i32 // expected-error {{requires a result type that aligns with the 'value' attribute}}
+  %x = "std.constant"(){value = "xyz"} : () -> i32 // expected-error {{requires a result type that aligns with the 'value' attribute}}
   return
 }
 
@@ -42,7 +42,7 @@ func @constant() {
 
 func @constant_out_of_range() {
 ^bb:
-  %x = "std.constant"(){value: 100} : () -> i1 // expected-error {{requires attribute's type ('i64') to match op's return type ('i1')}}
+  %x = "std.constant"(){value = 100} : () -> i1 // expected-error {{requires attribute's type ('i64') to match op's return type ('i1')}}
   return
 }
 
@@ -50,7 +50,7 @@ func @constant_out_of_range() {
 
 func @constant_wrong_type() {
 ^bb:
-  %x = "std.constant"(){value: 10.} : () -> f32 // expected-error {{requires attribute's type ('f64') to match op's return type ('f32')}}
+  %x = "std.constant"(){value = 10.} : () -> f32 // expected-error {{requires attribute's type ('f64') to match op's return type ('f32')}}
   return
 }
 
@@ -67,7 +67,7 @@ func @affine_apply_no_map() {
 func @affine_apply_wrong_operand_count() {
 ^bb0:
   %i = constant 0 : index
-  %x = "affine.apply" (%i) {map: (d0, d1) -> ((d0 + 1), (d1 + 2))} : (index) -> (index) //  expected-error {{'affine.apply' op operand count and affine map dimension and symbol count must match}}
+  %x = "affine.apply" (%i) {map = (d0, d1) -> ((d0 + 1), (d1 + 2))} : (index) -> (index) //  expected-error {{'affine.apply' op operand count and affine map dimension and symbol count must match}}
   return
 }
 
@@ -77,7 +77,7 @@ func @affine_apply_wrong_result_count() {
 ^bb0:
   %i = constant 0 : index
   %j = constant 1 : index
-  %x = "affine.apply" (%i, %j) {map: (d0, d1) -> ((d0 + 1), (d1 + 2))} : (index,index) -> (index) //  expected-error {{'affine.apply' op mapping must produce one value}}
+  %x = "affine.apply" (%i, %j) {map = (d0, d1) -> ((d0 + 1), (d1 + 2))} : (index,index) -> (index) //  expected-error {{'affine.apply' op mapping must produce one value}}
   return
 }
 
@@ -85,7 +85,7 @@ func @affine_apply_wrong_result_count() {
 
 func @unknown_custom_op() {
 ^bb0:
-  %i = crazyThing() {value: 0} : () -> index  // expected-error {{custom op 'crazyThing' is unknown}}
+  %i = crazyThing() {value = 0} : () -> index  // expected-error {{custom op 'crazyThing' is unknown}}
   return
 }
 
@@ -149,8 +149,8 @@ func @test_alloc_memref_map_rank_mismatch() {
 
 func @intlimit2() {
 ^bb:
-  %0 = "std.constant"() {value: 0} : () -> i4096
-  %1 = "std.constant"() {value: 1} : () -> i4097 // expected-error {{integer bitwidth is limited to 4096 bits}}
+  %0 = "std.constant"() {value = 0} : () -> i4096
+  %1 = "std.constant"() {value = 1} : () -> i4097 // expected-error {{integer bitwidth is limited to 4096 bits}}
   return
 }
 
@@ -202,7 +202,7 @@ func @func_with_ops(i32) {
 func @func_with_ops(i32) {
 ^bb0(%a : i32):
   // expected-error@+1 {{'predicate' attribute value out of range}}
-  %r = "std.cmpi"(%a, %a) {predicate: 42} : (i32, i32) -> i1
+  %r = "std.cmpi"(%a, %a) {predicate = 42} : (i32, i32) -> i1
 }
 
 // -----
@@ -234,7 +234,7 @@ func @func_with_ops(f32, f32) {
 // Result type must be boolean like.
 func @func_with_ops(i32, i32) {
 ^bb0(%a : i32, %b : i32):
-  %r = "std.cmpi"(%a, %b) {predicate: 0} : (i32, i32) -> i32 // expected-error {{op result #0 must be bool-like}}
+  %r = "std.cmpi"(%a, %b) {predicate = 0} : (i32, i32) -> i32 // expected-error {{op result #0 must be bool-like}}
 }
 
 // -----
@@ -242,7 +242,7 @@ func @func_with_ops(i32, i32) {
 func @func_with_ops(i32, i32) {
 ^bb0(%a : i32, %b : i32):
   // expected-error@+1 {{requires an integer attribute named 'predicate'}}
-  %r = "std.cmpi"(%a, %b) {foo: 1} : (i32, i32) -> i1
+  %r = "std.cmpi"(%a, %b) {foo = 1} : (i32, i32) -> i1
 }
 
 // -----
@@ -251,7 +251,7 @@ func @func_with_ops() {
 ^bb0:
   %c = constant dense<0> : vector<42 x i32>
   // expected-error@+1 {{op requires the same shape for all operands and results}}
-  %r = "std.cmpi"(%c, %c) {predicate: 0} : (vector<42 x i32>, vector<42 x i32>) -> vector<41 x i1>
+  %r = "std.cmpi"(%c, %c) {predicate = 0} : (vector<42 x i32>, vector<42 x i32>) -> vector<41 x i1>
 }
 
 // -----
@@ -340,7 +340,7 @@ func @test_vector.transfer_read(memref<?x?xf32>) {
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{requires an AffineMapAttr named 'permutation_map'}}
-  %0 = vector.transfer_read %arg0[%c3, %c3] {perm: (d0)->(d0)} : memref<?x?xf32>, vector<128xf32>
+  %0 = vector.transfer_read %arg0[%c3, %c3] {perm = (d0)->(d0)} : memref<?x?xf32>, vector<128xf32>
 }
 
 // -----
@@ -350,7 +350,7 @@ func @test_vector.transfer_read(memref<?x?xf32>) {
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{requires a permutation_map with input dims of the same rank as the memref type}}
-  %0 = vector.transfer_read %arg0[%c3, %c3] {permutation_map: (d0)->(d0)} : memref<?x?xf32>, vector<128xf32>
+  %0 = vector.transfer_read %arg0[%c3, %c3] {permutation_map = (d0)->(d0)} : memref<?x?xf32>, vector<128xf32>
 }
 
 // -----
@@ -360,7 +360,7 @@ func @test_vector.transfer_read(memref<?x?xf32>) {
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{requires a permutation_map with result dims of the same rank as the vector type}}
-  %0 = vector.transfer_read %arg0[%c3, %c3] {permutation_map: (d0, d1)->(d0, d1)} : memref<?x?xf32>, vector<128xf32>
+  %0 = vector.transfer_read %arg0[%c3, %c3] {permutation_map = (d0, d1)->(d0, d1)} : memref<?x?xf32>, vector<128xf32>
 }
 
 // -----
@@ -370,7 +370,7 @@ func @test_vector.transfer_read(memref<?x?xf32>) {
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{requires a projected permutation_map (at most one dim or the zero constant can appear in each result)}}
-  %0 = vector.transfer_read %arg0[%c3, %c3] {permutation_map: (d0, d1)->(d0 + d1)} : memref<?x?xf32>, vector<128xf32>
+  %0 = vector.transfer_read %arg0[%c3, %c3] {permutation_map = (d0, d1)->(d0 + d1)} : memref<?x?xf32>, vector<128xf32>
 }
 
 // -----
@@ -380,7 +380,7 @@ func @test_vector.transfer_read(memref<?x?xf32>) {
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{requires a projected permutation_map (at most one dim or the zero constant can appear in each result)}}
-  %0 = vector.transfer_read %arg0[%c3, %c3] {permutation_map: (d0, d1)->(d0 + 1)} : memref<?x?xf32>, vector<128xf32>
+  %0 = vector.transfer_read %arg0[%c3, %c3] {permutation_map = (d0, d1)->(d0 + 1)} : memref<?x?xf32>, vector<128xf32>
 }
 
 // -----
@@ -390,7 +390,7 @@ func @test_vector.transfer_read(memref<?x?x?xf32>) {
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{requires a permutation_map that is a permutation (found one dim used more than once)}}
-  %0 = vector.transfer_read %arg0[%c3, %c3, %c3] {permutation_map: (d0, d1, d2)->(d0, d0)} : memref<?x?x?xf32>, vector<3x7xf32>
+  %0 = vector.transfer_read %arg0[%c3, %c3, %c3] {permutation_map = (d0, d1, d2)->(d0, d0)} : memref<?x?x?xf32>, vector<3x7xf32>
 }
 
 // -----
@@ -430,7 +430,7 @@ func @test_vector.transfer_write(memref<?x?xf32>) {
   %c3 = constant 3 : index
   %cst = constant dense<3.0> : vector<128 x f32>
   // expected-error@+1 {{requires an AffineMapAttr named 'permutation_map'}}
-  vector.transfer_write %cst, %arg0[%c3, %c3] {perm: (d0)->(d0)} : vector<128xf32>, memref<?x?xf32>
+  vector.transfer_write %cst, %arg0[%c3, %c3] {perm = (d0)->(d0)} : vector<128xf32>, memref<?x?xf32>
 }
 
 // -----
@@ -440,7 +440,7 @@ func @test_vector.transfer_write(memref<?x?xf32>) {
   %c3 = constant 3 : index
   %cst = constant dense<3.0> : vector<128 x f32>
   // expected-error@+1 {{requires a permutation_map with input dims of the same rank as the memref type}}
-  vector.transfer_write %cst, %arg0[%c3, %c3] {permutation_map: (d0)->(d0)} : vector<128xf32>, memref<?x?xf32>
+  vector.transfer_write %cst, %arg0[%c3, %c3] {permutation_map = (d0)->(d0)} : vector<128xf32>, memref<?x?xf32>
 }
 
 // -----
@@ -450,7 +450,7 @@ func @test_vector.transfer_write(memref<?x?xf32>) {
   %c3 = constant 3 : index
   %cst = constant dense<3.0> : vector<128 x f32>
   // expected-error@+1 {{requires a permutation_map with result dims of the same rank as the vector type}}
-  vector.transfer_write %cst, %arg0[%c3, %c3] {permutation_map: (d0, d1)->(d0, d1)} : vector<128xf32>, memref<?x?xf32>
+  vector.transfer_write %cst, %arg0[%c3, %c3] {permutation_map = (d0, d1)->(d0, d1)} : vector<128xf32>, memref<?x?xf32>
 }
 
 // -----
@@ -460,7 +460,7 @@ func @test_vector.transfer_write(memref<?x?xf32>) {
   %c3 = constant 3 : index
   %cst = constant dense<3.0> : vector<128 x f32>
   // expected-error@+1 {{requires a projected permutation_map (at most one dim or the zero constant can appear in each result)}}
-  vector.transfer_write %cst, %arg0[%c3, %c3] {permutation_map: (d0, d1)->(d0 + d1)} : vector<128xf32>, memref<?x?xf32>
+  vector.transfer_write %cst, %arg0[%c3, %c3] {permutation_map = (d0, d1)->(d0 + d1)} : vector<128xf32>, memref<?x?xf32>
 }
 
 // -----
@@ -470,7 +470,7 @@ func @test_vector.transfer_write(memref<?x?xf32>) {
   %c3 = constant 3 : index
   %cst = constant dense<3.0> : vector<128 x f32>
   // expected-error@+1 {{requires a projected permutation_map (at most one dim or the zero constant can appear in each result)}}
-  vector.transfer_write %cst, %arg0[%c3, %c3] {permutation_map: (d0, d1)->(d0 + 1)} : vector<128xf32>, memref<?x?xf32>
+  vector.transfer_write %cst, %arg0[%c3, %c3] {permutation_map = (d0, d1)->(d0 + 1)} : vector<128xf32>, memref<?x?xf32>
 }
 // -----
 
@@ -479,7 +479,7 @@ func @test_vector.transfer_write(memref<?x?x?xf32>) {
   %c3 = constant 3 : index
   %cst = constant dense<3.0> : vector<3 x 7 x f32>
   // expected-error@+1 {{requires a permutation_map that is a permutation (found one dim used more than once)}}
-  vector.transfer_write %cst, %arg0[%c3, %c3, %c3] {permutation_map: (d0, d1, d2)->(d0, d0)} : vector<3x7xf32>, memref<?x?x?xf32>
+  vector.transfer_write %cst, %arg0[%c3, %c3, %c3] {permutation_map = (d0, d1, d2)->(d0, d0)} : vector<3x7xf32>, memref<?x?x?xf32>
 }
 
 // -----
@@ -534,7 +534,7 @@ func @invalid_cmp_attr(%idx : i32) {
 
 func @cmpf_generic_invalid_predicate_value(%a : f32) {
   // expected-error@+1 {{'predicate' attribute value out of range}}
-  %r = "std.cmpf"(%a, %a) {predicate: 42} : (f32, f32) -> i1
+  %r = "std.cmpf"(%a, %a) {predicate = 42} : (f32, f32) -> i1
 }
 
 // -----
@@ -568,7 +568,7 @@ func @cmpf_canonical_no_predicate_attr(%a : f32, %b : f32) {
 
 func @cmpf_generic_no_predicate_attr(%a : f32, %b : f32) {
   // expected-error@+1 {{requires an integer attribute named 'predicate'}}
-  %r = "std.cmpf"(%a, %b) {foo: 1} : (f32, f32) -> i1
+  %r = "std.cmpf"(%a, %b) {foo = 1} : (f32, f32) -> i1
 }
 
 // -----
@@ -581,7 +581,7 @@ func @cmpf_wrong_type(%a : i32, %b : i32) {
 
 func @cmpf_generic_wrong_result_type(%a : f32, %b : f32) {
   // expected-error@+1 {{result #0 must be bool-like}}
-  %r = "std.cmpf"(%a, %b) {predicate: 0} : (f32, f32) -> f32
+  %r = "std.cmpf"(%a, %b) {predicate = 0} : (f32, f32) -> f32
 }
 
 // -----
@@ -596,21 +596,21 @@ func @cmpf_canonical_wrong_result_type(%a : f32, %b : f32) -> f32 {
 
 func @cmpf_result_shape_mismatch(%a : vector<42xf32>) {
   // expected-error@+1 {{op requires the same shape for all operands and results}}
-  %r = "std.cmpf"(%a, %a) {predicate: 0} : (vector<42 x f32>, vector<42 x f32>) -> vector<41 x i1>
+  %r = "std.cmpf"(%a, %a) {predicate = 0} : (vector<42 x f32>, vector<42 x f32>) -> vector<41 x i1>
 }
 
 // -----
 
 func @cmpf_operand_shape_mismatch(%a : vector<42xf32>, %b : vector<41xf32>) {
   // expected-error@+1 {{op requires all operands to have the same type}}
-  %r = "std.cmpf"(%a, %b) {predicate: 0} : (vector<42 x f32>, vector<41 x f32>) -> vector<42 x i1>
+  %r = "std.cmpf"(%a, %b) {predicate = 0} : (vector<42 x f32>, vector<41 x f32>) -> vector<42 x i1>
 }
 
 // -----
 
 func @cmpf_generic_operand_type_mismatch(%a : f32, %b : f64) {
   // expected-error@+1 {{op requires all operands to have the same type}}
-  %r = "std.cmpf"(%a, %b) {predicate: 0} : (f32, f64) -> i1
+  %r = "std.cmpf"(%a, %b) {predicate = 0} : (f32, f64) -> i1
 }
 
 // -----

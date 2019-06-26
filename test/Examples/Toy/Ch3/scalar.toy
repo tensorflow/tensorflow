@@ -6,7 +6,7 @@ def main() {
 }
 
 # CHECK-LABEL: func @main() {
-# CHECK-NEXT:    %0 = "toy.constant"() {value: dense<5.500000e+00> : tensor<1xf64>} : () -> !toy.array<1>
+# CHECK-NEXT:    %0 = "toy.constant"() {value = dense<5.500000e+00> : tensor<1xf64>} : () -> !toy.array<1>
 # CHECK-NEXT:    %1 = "toy.reshape"(%0) : (!toy.array<1>) -> !toy.array<2, 2>
 # CHECK-NEXT:    "toy.print"(%1) : (!toy.array<2, 2>) -> ()
 # CHECK-NEXT:    "toy.return"() : () -> ()

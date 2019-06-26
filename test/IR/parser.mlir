@@ -348,42 +348,42 @@ func @attributes() {
   // CHECK: "foo"()
   "foo"(){} : ()->()
 
-  // CHECK: "foo"() {a: 1 : i64, b: -423 : i64, c: [true, false], d: 1.600000e+01 : f64}  : () -> ()
-  "foo"() {a: 1, b: -423, c: [true, false], d: 16.0 } : () -> ()
+  // CHECK: "foo"() {a = 1 : i64, b = -423 : i64, c = [true, false], d = 1.600000e+01 : f64}  : () -> ()
+  "foo"() {a = 1, b = -423, c = [true, false], d = 16.0 } : () -> ()
 
-  // CHECK: "foo"() {map1: #map{{[0-9]+}}}
-  "foo"() {map1: #map1} : () -> ()
+  // CHECK: "foo"() {map1 = #map{{[0-9]+}}}
+  "foo"() {map1 = #map1} : () -> ()
 
-  // CHECK: "foo"() {map2: #map{{[0-9]+}}}
-  "foo"() {map2: (d0, d1, d2) -> (d0, d1, d2)} : () -> ()
+  // CHECK: "foo"() {map2 = #map{{[0-9]+}}}
+  "foo"() {map2 = (d0, d1, d2) -> (d0, d1, d2)} : () -> ()
 
-  // CHECK: "foo"() {map12: [#map{{[0-9]+}}, #map{{[0-9]+}}]}
-  "foo"() {map12: [#map1, #map2]} : () -> ()
+  // CHECK: "foo"() {map12 = [#map{{[0-9]+}}, #map{{[0-9]+}}]}
+  "foo"() {map12 = [#map1, #map2]} : () -> ()
 
-  // CHECK: "foo"() {set1: #set{{[0-9]+}}}
-  "foo"() {set1: #set1} : () -> ()
+  // CHECK: "foo"() {set1 = #set{{[0-9]+}}}
+  "foo"() {set1 = #set1} : () -> ()
 
-  // CHECK: "foo"() {set2: #set{{[0-9]+}}}
-  "foo"() {set2: (d0, d1, d2) : (d0 >= 0, d1 >= 0, d2 - d1 == 0)} : () -> ()
+  // CHECK: "foo"() {set2 = #set{{[0-9]+}}}
+  "foo"() {set2 = (d0, d1, d2) : (d0 >= 0, d1 >= 0, d2 - d1 == 0)} : () -> ()
 
-  // CHECK: "foo"() {set12: [#set{{[0-9]+}}, #set{{[0-9]+}}]}
-  "foo"() {set12: [#set1, #set2]} : () -> ()
+  // CHECK: "foo"() {set12 = [#set{{[0-9]+}}, #set{{[0-9]+}}]}
+  "foo"() {set12 = [#set1, #set2]} : () -> ()
 
-  // CHECK: "foo"() {dictionary: {bool: true, fn: @ifinst}}
-  "foo"() {dictionary: {bool: true, fn: @ifinst}} : () -> ()
+  // CHECK: "foo"() {dictionary = {bool = true, fn = @ifinst}}
+  "foo"() {dictionary = {bool = true, fn = @ifinst}} : () -> ()
 
   // Check that the dictionary attribute elements are sorted.
-  // CHECK: "foo"() {dictionary: {bar: false, bool: true, fn: @ifinst}}
-  "foo"() {dictionary: {fn: @ifinst, bar: false, bool: true}} : () -> ()
+  // CHECK: "foo"() {dictionary = {bar = false, bool = true, fn = @ifinst}}
+  "foo"() {dictionary = {fn = @ifinst, bar = false, bool = true}} : () -> ()
 
-  // CHECK: "foo"() {d: 1.000000e-09 : f64, func: [], i123: 7 : i64, if: "foo"} : () -> ()
-  "foo"() {if: "foo", func: [], i123: 7, d: 1.e-9} : () -> ()
+  // CHECK: "foo"() {d = 1.000000e-09 : f64, func = [], i123 = 7 : i64, if = "foo"} : () -> ()
+  "foo"() {if = "foo", func = [], i123 = 7, d = 1.e-9} : () -> ()
 
-  // CHECK: "foo"() {fn: @attributes, if: @ifinst} : () -> ()
-  "foo"() {fn: @attributes, if: @ifinst} : () -> ()
+  // CHECK: "foo"() {fn = @attributes, if = @ifinst} : () -> ()
+  "foo"() {fn = @attributes, if = @ifinst} : () -> ()
 
-  // CHECK: "foo"() {int: 0 : i42} : () -> ()
-  "foo"() {int: 0 : i42} : () -> ()
+  // CHECK: "foo"() {int = 0 : i42} : () -> ()
+  "foo"() {int = 0 : i42} : () -> ()
   return
 }
 
@@ -502,23 +502,23 @@ func @constants() -> (i32, i23, i23, i1, i1) {
 // CHECK-LABEL: func @typeattr
 func @typeattr() -> () {
 ^bb0:
-// CHECK: "foo"() {bar: tensor<*xf32>} : () -> ()
-  "foo"(){bar: tensor<*xf32>} : () -> ()
+// CHECK: "foo"() {bar = tensor<*xf32>} : () -> ()
+  "foo"(){bar = tensor<*xf32>} : () -> ()
   return
 }
 
 // CHECK-LABEL: func @stringquote
 func @stringquote() -> () {
 ^bb0:
-  // CHECK: "foo"() {bar: "a\22quoted\22string"} : () -> ()
-  "foo"(){bar: "a\"quoted\"string"} : () -> ()
+  // CHECK: "foo"() {bar = "a\22quoted\22string"} : () -> ()
+  "foo"(){bar = "a\"quoted\"string"} : () -> ()
   return
 }
 
 // CHECK-LABEL: func @unitAttrs
 func @unitAttrs() -> () {
   // CHECK-NEXT: "foo"() {unitAttr} : () -> ()
-  "foo"() {unitAttr : unit} : () -> ()
+  "foo"() {unitAttr = unit} : () -> ()
 
   // CHECK-NEXT: "foo"() {unitAttr} : () -> ()
   "foo"() {unitAttr} : () -> ()
@@ -528,15 +528,15 @@ func @unitAttrs() -> () {
 // CHECK-LABEL: func @floatAttrs
 func @floatAttrs() -> () {
 ^bb0:
-  // CHECK: "foo"() {a: 4.000000e+00 : f64, b: 2.000000e+00 : f64, c: 7.100000e+00 : f64, d: -0.000000e+00 : f64} : () -> ()
-  "foo"(){a: 4.0, b: 2.0, c: 7.1, d: -0.0} : () -> ()
+  // CHECK: "foo"() {a = 4.000000e+00 : f64, b = 2.000000e+00 : f64, c = 7.100000e+00 : f64, d = -0.000000e+00 : f64} : () -> ()
+  "foo"(){a = 4.0, b = 2.0, c = 7.1, d = -0.0} : () -> ()
   return
 }
 
 // CHECK-LABEL: func @externalfuncattr
 func @externalfuncattr() -> ()
-  // CHECK: attributes {dialect.a: "a\22quoted\22string", dialect.b: 4.000000e+00 : f64, dialect.c: tensor<*xf32>}
-  attributes {dialect.a: "a\"quoted\"string", dialect.b: 4.0, dialect.c: tensor<*xf32>}
+  // CHECK: attributes {dialect.a = "a\22quoted\22string", dialect.b = 4.000000e+00 : f64, dialect.c = tensor<*xf32>}
+  attributes {dialect.a = "a\"quoted\"string", dialect.b = 4.0, dialect.c = tensor<*xf32>}
 
 // CHECK-LABEL: func @funcattrempty
 func @funcattrempty() -> ()
@@ -544,8 +544,8 @@ func @funcattrempty() -> ()
 
 // CHECK-LABEL: func @funcattr
 func @funcattr() -> ()
-  // CHECK: attributes {dialect.a: "a\22quoted\22string", dialect.b: 4.000000e+00 : f64, dialect.c: tensor<*xf32>}
-  attributes {dialect.a: "a\"quoted\"string", dialect.b: 4.0, dialect.c: tensor<*xf32>} {
+  // CHECK: attributes {dialect.a = "a\22quoted\22string", dialect.b = 4.000000e+00 : f64, dialect.c = tensor<*xf32>}
+  attributes {dialect.a = "a\"quoted\"string", dialect.b = 4.0, dialect.c = tensor<*xf32>} {
 ^bb0:
   return
 }
@@ -590,25 +590,25 @@ func @funcsimplemap(%arg0: index, %arg1: index) -> () {
 // CHECK-LABEL: func @splattensorattr
 func @splattensorattr() -> () {
 ^bb0:
-  // CHECK: "splatBoolTensor"() {bar: dense<0> : tensor<i1>} : () -> ()
-  "splatBoolTensor"(){bar: dense<false> : tensor<i1>} : () -> ()
+  // CHECK: "splatBoolTensor"() {bar = dense<0> : tensor<i1>} : () -> ()
+  "splatBoolTensor"(){bar = dense<false> : tensor<i1>} : () -> ()
 
-  // CHECK: "splatIntTensor"() {bar: dense<5> : tensor<2x1x4xi32>} : () -> ()
-  "splatIntTensor"(){bar: dense<5> : tensor<2x1x4xi32>} : () -> ()
+  // CHECK: "splatIntTensor"() {bar = dense<5> : tensor<2x1x4xi32>} : () -> ()
+  "splatIntTensor"(){bar = dense<5> : tensor<2x1x4xi32>} : () -> ()
 
-  // CHECK: "splatFloatTensor"() {bar: dense<-5.000000e+00> : tensor<2x1x4xf32>} : () -> ()
-  "splatFloatTensor"(){bar: dense<-5.0> : tensor<2x1x4xf32>} : () -> ()
+  // CHECK: "splatFloatTensor"() {bar = dense<-5.000000e+00> : tensor<2x1x4xf32>} : () -> ()
+  "splatFloatTensor"(){bar = dense<-5.0> : tensor<2x1x4xf32>} : () -> ()
 
-  // CHECK: "splatIntVector"() {bar: dense<5> : vector<2x1x4xi64>} : () -> ()
-  "splatIntVector"(){bar: dense<5> : vector<2x1x4xi64>} : () -> ()
+  // CHECK: "splatIntVector"() {bar = dense<5> : vector<2x1x4xi64>} : () -> ()
+  "splatIntVector"(){bar = dense<5> : vector<2x1x4xi64>} : () -> ()
 
-  // CHECK: "splatFloatVector"() {bar: dense<-5.000000e+00> : vector<2x1x4xf16>} : () -> ()
-  "splatFloatVector"(){bar: dense<-5.0> : vector<2x1x4xf16>} : () -> ()
+  // CHECK: "splatFloatVector"() {bar = dense<-5.000000e+00> : vector<2x1x4xf16>} : () -> ()
+  "splatFloatVector"(){bar = dense<-5.0> : vector<2x1x4xf16>} : () -> ()
 
-  // CHECK: "splatIntScalar"() {bar: dense<5> : tensor<i9>} : () -> ()
-  "splatIntScalar"() {bar: dense<5> : tensor<i9>} : () -> ()
-  // CHECK: "splatFloatScalar"() {bar: dense<-5.000000e+00> : tensor<f16>} : () -> ()
-  "splatFloatScalar"() {bar: dense<-5.0> : tensor<f16>} : () -> ()
+  // CHECK: "splatIntScalar"() {bar = dense<5> : tensor<i9>} : () -> ()
+  "splatIntScalar"() {bar = dense<5> : tensor<i9>} : () -> ()
+  // CHECK: "splatFloatScalar"() {bar = dense<-5.000000e+00> : tensor<f16>} : () -> ()
+  "splatFloatScalar"() {bar = dense<-5.0> : tensor<f16>} : () -> ()
   return
 }
 
@@ -617,60 +617,60 @@ func @densetensorattr() -> () {
 ^bb0:
 
 // NOTE: The {{\[\[}} syntax is because "[[" confuses FileCheck.
-// CHECK: "fooi3"() {bar: dense<{{\[\[\[}}1, -2, 1, 2]], {{\[\[}}0, 2, -1, 2]]]> : tensor<2x1x4xi3>} : () -> ()
-  "fooi3"(){bar: dense<[[[1, -2, 1, 2]], [[0, 2, -1, 2]]]> : tensor<2x1x4xi3>} : () -> ()
-// CHECK: "fooi6"() {bar: dense<{{\[\[\[}}5, -6, 1, 2]], {{\[\[}}7, 8, 3, 4]]]> : tensor<2x1x4xi6>} : () -> ()
-  "fooi6"(){bar: dense<[[[5, -6, 1, 2]], [[7, 8, 3, 4]]]> : tensor<2x1x4xi6>} : () -> ()
-// CHECK: "fooi8"() {bar: dense<5> : tensor<1x1x1xi8>} : () -> ()
-  "fooi8"(){bar: dense<[[[5]]]> : tensor<1x1x1xi8>} : () -> ()
-// CHECK: "fooi13"() {bar: dense<{{\[\[\[}}1, -2, 1, 2]], {{\[\[}}0, 2, -1, 2]]]> : tensor<2x1x4xi13>} : () -> ()
-  "fooi13"(){bar: dense<[[[1, -2, 1, 2]], [[0, 2, -1, 2]]]> : tensor<2x1x4xi13>} : () -> ()
-// CHECK: "fooi16"() {bar: dense<-5> : tensor<1x1x1xi16>} : () -> ()
-  "fooi16"(){bar: dense<[[[-5]]]> : tensor<1x1x1xi16>} : () -> ()
-// CHECK: "fooi23"() {bar: dense<{{\[\[\[}}1, -2, 1, 2]], {{\[\[}}0, 2, -1, 2]]]> : tensor<2x1x4xi23>} : () -> ()
-  "fooi23"(){bar: dense<[[[1, -2, 1, 2]], [[0, 2, -1, 2]]]> : tensor<2x1x4xi23>} : () -> ()
-// CHECK: "fooi32"() {bar: dense<5> : tensor<1x1x1xi32>} : () -> ()
-  "fooi32"(){bar: dense<[[[5]]]> : tensor<1x1x1xi32>} : () -> ()
-// CHECK: "fooi33"() {bar: dense<{{\[\[\[}}1, -2, 1, 2]], {{\[\[}}0, 2, -1, 2]]]> : tensor<2x1x4xi33>} : () -> ()
-  "fooi33"(){bar: dense<[[[1, -2, 1, 2]], [[0, 2, -1, 2]]]> : tensor<2x1x4xi33>} : () -> ()
-// CHECK: "fooi43"() {bar: dense<{{\[\[\[}}1, -2, 1, 2]], {{\[\[}}0, 2, -1, 2]]]> : tensor<2x1x4xi43>} : () -> ()
-  "fooi43"(){bar: dense<[[[1, -2, 1, 2]], [[0, 2, -1, 2]]]> : tensor<2x1x4xi43>} : () -> ()
-// CHECK: "fooi53"() {bar: dense<{{\[\[\[}}1, -2, 1, 2]], {{\[\[}}0, 2, -1, 2]]]> : tensor<2x1x4xi53>} : () -> ()
-  "fooi53"(){bar: dense<[[[1, -2, 1, 2]], [[0, 2, -1, 2]]]> : tensor<2x1x4xi53>} : () -> ()
-// CHECK: "fooi64"() {bar: dense<{{\[\[\[}}1, -2, 1, 2]], {{\[\[}}0, 3, -1, 2]]]> : tensor<2x1x4xi64>} : () -> ()
-  "fooi64"(){bar: dense<[[[1, -2, 1, 2]], [[0, 3, -1, 2]]]> : tensor<2x1x4xi64>} : () -> ()
-// CHECK: "fooi64"() {bar: dense<-5> : tensor<1x1x1xi64>} : () -> ()
-  "fooi64"(){bar: dense<[[[-5]]]> : tensor<1x1x1xi64>} : () -> ()
-// CHECK: "fooi67"() {bar: dense<{{\[\[\[}}-5, 4, 6, 2]]]> : vector<1x1x4xi67>} : () -> ()
-  "fooi67"(){bar: dense<[[[-5, 4, 6, 2]]]> : vector<1x1x4xi67>} : () -> ()
+// CHECK: "fooi3"() {bar = dense<{{\[\[\[}}1, -2, 1, 2]], {{\[\[}}0, 2, -1, 2]]]> : tensor<2x1x4xi3>} : () -> ()
+  "fooi3"(){bar = dense<[[[1, -2, 1, 2]], [[0, 2, -1, 2]]]> : tensor<2x1x4xi3>} : () -> ()
+// CHECK: "fooi6"() {bar = dense<{{\[\[\[}}5, -6, 1, 2]], {{\[\[}}7, 8, 3, 4]]]> : tensor<2x1x4xi6>} : () -> ()
+  "fooi6"(){bar = dense<[[[5, -6, 1, 2]], [[7, 8, 3, 4]]]> : tensor<2x1x4xi6>} : () -> ()
+// CHECK: "fooi8"() {bar = dense<5> : tensor<1x1x1xi8>} : () -> ()
+  "fooi8"(){bar = dense<[[[5]]]> : tensor<1x1x1xi8>} : () -> ()
+// CHECK: "fooi13"() {bar = dense<{{\[\[\[}}1, -2, 1, 2]], {{\[\[}}0, 2, -1, 2]]]> : tensor<2x1x4xi13>} : () -> ()
+  "fooi13"(){bar = dense<[[[1, -2, 1, 2]], [[0, 2, -1, 2]]]> : tensor<2x1x4xi13>} : () -> ()
+// CHECK: "fooi16"() {bar = dense<-5> : tensor<1x1x1xi16>} : () -> ()
+  "fooi16"(){bar = dense<[[[-5]]]> : tensor<1x1x1xi16>} : () -> ()
+// CHECK: "fooi23"() {bar = dense<{{\[\[\[}}1, -2, 1, 2]], {{\[\[}}0, 2, -1, 2]]]> : tensor<2x1x4xi23>} : () -> ()
+  "fooi23"(){bar = dense<[[[1, -2, 1, 2]], [[0, 2, -1, 2]]]> : tensor<2x1x4xi23>} : () -> ()
+// CHECK: "fooi32"() {bar = dense<5> : tensor<1x1x1xi32>} : () -> ()
+  "fooi32"(){bar = dense<[[[5]]]> : tensor<1x1x1xi32>} : () -> ()
+// CHECK: "fooi33"() {bar = dense<{{\[\[\[}}1, -2, 1, 2]], {{\[\[}}0, 2, -1, 2]]]> : tensor<2x1x4xi33>} : () -> ()
+  "fooi33"(){bar = dense<[[[1, -2, 1, 2]], [[0, 2, -1, 2]]]> : tensor<2x1x4xi33>} : () -> ()
+// CHECK: "fooi43"() {bar = dense<{{\[\[\[}}1, -2, 1, 2]], {{\[\[}}0, 2, -1, 2]]]> : tensor<2x1x4xi43>} : () -> ()
+  "fooi43"(){bar = dense<[[[1, -2, 1, 2]], [[0, 2, -1, 2]]]> : tensor<2x1x4xi43>} : () -> ()
+// CHECK: "fooi53"() {bar = dense<{{\[\[\[}}1, -2, 1, 2]], {{\[\[}}0, 2, -1, 2]]]> : tensor<2x1x4xi53>} : () -> ()
+  "fooi53"(){bar = dense<[[[1, -2, 1, 2]], [[0, 2, -1, 2]]]> : tensor<2x1x4xi53>} : () -> ()
+// CHECK: "fooi64"() {bar = dense<{{\[\[\[}}1, -2, 1, 2]], {{\[\[}}0, 3, -1, 2]]]> : tensor<2x1x4xi64>} : () -> ()
+  "fooi64"(){bar = dense<[[[1, -2, 1, 2]], [[0, 3, -1, 2]]]> : tensor<2x1x4xi64>} : () -> ()
+// CHECK: "fooi64"() {bar = dense<-5> : tensor<1x1x1xi64>} : () -> ()
+  "fooi64"(){bar = dense<[[[-5]]]> : tensor<1x1x1xi64>} : () -> ()
+// CHECK: "fooi67"() {bar = dense<{{\[\[\[}}-5, 4, 6, 2]]]> : vector<1x1x4xi67>} : () -> ()
+  "fooi67"(){bar = dense<[[[-5, 4, 6, 2]]]> : vector<1x1x4xi67>} : () -> ()
 
-// CHECK: "foo2"() {bar: dense<[]> : tensor<0xi32>} : () -> ()
-  "foo2"(){bar: dense<[]> : tensor<0xi32>} : () -> ()
-// CHECK: "foo2"() {bar: dense<{{\[\[}}]]> : tensor<1x0xi32>} : () -> ()
-  "foo2"(){bar: dense<[[]]> : tensor<1x0xi32>} : () -> ()
-// CHECK: "foo3"() {bar: dense<{{\[\[\[}}5, -6, 1, 2]], {{\[\[}}7, 8, 3, 4]]]> : tensor<2x1x4xi32>} : () -> ()
-  "foo3"(){bar: dense<[[[5, -6, 1, 2]], [[7, 8, 3, 4]]]> : tensor<2x1x4xi32>} : () -> ()
+// CHECK: "foo2"() {bar = dense<[]> : tensor<0xi32>} : () -> ()
+  "foo2"(){bar = dense<[]> : tensor<0xi32>} : () -> ()
+// CHECK: "foo2"() {bar = dense<{{\[\[}}]]> : tensor<1x0xi32>} : () -> ()
+  "foo2"(){bar = dense<[[]]> : tensor<1x0xi32>} : () -> ()
+// CHECK: "foo3"() {bar = dense<{{\[\[\[}}5, -6, 1, 2]], {{\[\[}}7, 8, 3, 4]]]> : tensor<2x1x4xi32>} : () -> ()
+  "foo3"(){bar = dense<[[[5, -6, 1, 2]], [[7, 8, 3, 4]]]> : tensor<2x1x4xi32>} : () -> ()
 
-// CHECK: "float1"() {bar: dense<5.000000e+00> : tensor<1x1x1xf32>} : () -> ()
-  "float1"(){bar: dense<[[[5.0]]]> : tensor<1x1x1xf32>} : () -> ()
-// CHECK: "float2"() {bar: dense<[]> : tensor<0xf32>} : () -> ()
-  "float2"(){bar: dense<[]> : tensor<0xf32>} : () -> ()
-// CHECK: "float2"() {bar: dense<{{\[\[}}]]> : tensor<1x0xf32>} : () -> ()
-  "float2"(){bar: dense<[[]]> : tensor<1x0xf32>} : () -> ()
+// CHECK: "float1"() {bar = dense<5.000000e+00> : tensor<1x1x1xf32>} : () -> ()
+  "float1"(){bar = dense<[[[5.0]]]> : tensor<1x1x1xf32>} : () -> ()
+// CHECK: "float2"() {bar = dense<[]> : tensor<0xf32>} : () -> ()
+  "float2"(){bar = dense<[]> : tensor<0xf32>} : () -> ()
+// CHECK: "float2"() {bar = dense<{{\[\[}}]]> : tensor<1x0xf32>} : () -> ()
+  "float2"(){bar = dense<[[]]> : tensor<1x0xf32>} : () -> ()
 
-// CHECK: "bfloat16"() {bar: dense<{{\[\[\[}}-5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00]], {{\[\[}}7.000000e+00, -8.000000e+00, 3.000000e+00, 4.000000e+00]]]> : tensor<2x1x4xbf16>} : () -> ()
-  "bfloat16"(){bar: dense<[[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]> : tensor<2x1x4xbf16>} : () -> ()
-// CHECK: "float16"() {bar: dense<{{\[\[\[}}-5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00]], {{\[\[}}7.000000e+00, -8.000000e+00, 3.000000e+00, 4.000000e+00]]]> : tensor<2x1x4xf16>} : () -> ()
-  "float16"(){bar: dense<[[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]> : tensor<2x1x4xf16>} : () -> ()
-// CHECK: "float32"() {bar: dense<{{\[\[\[}}-5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00]], {{\[\[}}7.000000e+00, -8.000000e+00, 3.000000e+00, 4.000000e+00]]]> : tensor<2x1x4xf32>} : () -> ()
-  "float32"(){bar: dense<[[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]> : tensor<2x1x4xf32>} : () -> ()
-// CHECK: "float64"() {bar: dense<{{\[\[\[}}-5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00]], {{\[\[}}7.000000e+00, -8.000000e+00, 3.000000e+00, 4.000000e+00]]]> : tensor<2x1x4xf64>} : () -> ()
-  "float64"(){bar: dense<[[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]> : tensor<2x1x4xf64>} : () -> ()
+// CHECK: "bfloat16"() {bar = dense<{{\[\[\[}}-5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00]], {{\[\[}}7.000000e+00, -8.000000e+00, 3.000000e+00, 4.000000e+00]]]> : tensor<2x1x4xbf16>} : () -> ()
+  "bfloat16"(){bar = dense<[[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]> : tensor<2x1x4xbf16>} : () -> ()
+// CHECK: "float16"() {bar = dense<{{\[\[\[}}-5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00]], {{\[\[}}7.000000e+00, -8.000000e+00, 3.000000e+00, 4.000000e+00]]]> : tensor<2x1x4xf16>} : () -> ()
+  "float16"(){bar = dense<[[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]> : tensor<2x1x4xf16>} : () -> ()
+// CHECK: "float32"() {bar = dense<{{\[\[\[}}-5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00]], {{\[\[}}7.000000e+00, -8.000000e+00, 3.000000e+00, 4.000000e+00]]]> : tensor<2x1x4xf32>} : () -> ()
+  "float32"(){bar = dense<[[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]> : tensor<2x1x4xf32>} : () -> ()
+// CHECK: "float64"() {bar = dense<{{\[\[\[}}-5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00]], {{\[\[}}7.000000e+00, -8.000000e+00, 3.000000e+00, 4.000000e+00]]]> : tensor<2x1x4xf64>} : () -> ()
+  "float64"(){bar = dense<[[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]> : tensor<2x1x4xf64>} : () -> ()
 
-// CHECK: "intscalar"() {bar: dense<1> : tensor<i32>} : () -> ()
-  "intscalar"(){bar: dense<1> : tensor<i32>} : () -> ()
-// CHECK: "floatscalar"() {bar: dense<5.000000e+00> : tensor<f32>} : () -> ()
-  "floatscalar"(){bar: dense<5.0> : tensor<f32>} : () -> ()
+// CHECK: "intscalar"() {bar = dense<1> : tensor<i32>} : () -> ()
+  "intscalar"(){bar = dense<1> : tensor<i32>} : () -> ()
+// CHECK: "floatscalar"() {bar = dense<5.000000e+00> : tensor<f32>} : () -> ()
+  "floatscalar"(){bar = dense<5.0> : tensor<f32>} : () -> ()
   return
 }
 
@@ -678,29 +678,29 @@ func @densetensorattr() -> () {
 func @densevectorattr() -> () {
 ^bb0:
 // NOTE: The {{\[\[}} syntax is because "[[" confuses FileCheck.
-// CHECK: "fooi8"() {bar: dense<5> : vector<1x1x1xi8>} : () -> ()
-  "fooi8"(){bar: dense<[[[5]]]> : vector<1x1x1xi8>} : () -> ()
-// CHECK: "fooi16"() {bar: dense<-5> : vector<1x1x1xi16>} : () -> ()
-  "fooi16"(){bar: dense<[[[-5]]]> : vector<1x1x1xi16>} : () -> ()
-// CHECK: "foo32"() {bar: dense<5> : vector<1x1x1xi32>} : () -> ()
-  "foo32"(){bar: dense<[[[5]]]> : vector<1x1x1xi32>} : () -> ()
-// CHECK: "fooi64"() {bar: dense<-5> : vector<1x1x1xi64>} : () -> ()
-  "fooi64"(){bar: dense<[[[-5]]]> : vector<1x1x1xi64>} : () -> ()
+// CHECK: "fooi8"() {bar = dense<5> : vector<1x1x1xi8>} : () -> ()
+  "fooi8"(){bar = dense<[[[5]]]> : vector<1x1x1xi8>} : () -> ()
+// CHECK: "fooi16"() {bar = dense<-5> : vector<1x1x1xi16>} : () -> ()
+  "fooi16"(){bar = dense<[[[-5]]]> : vector<1x1x1xi16>} : () -> ()
+// CHECK: "foo32"() {bar = dense<5> : vector<1x1x1xi32>} : () -> ()
+  "foo32"(){bar = dense<[[[5]]]> : vector<1x1x1xi32>} : () -> ()
+// CHECK: "fooi64"() {bar = dense<-5> : vector<1x1x1xi64>} : () -> ()
+  "fooi64"(){bar = dense<[[[-5]]]> : vector<1x1x1xi64>} : () -> ()
 
-// CHECK: "foo3"() {bar: dense<{{\[\[\[}}5, -6, 1, 2]], {{\[\[}}7, 8, 3, 4]]]> : vector<2x1x4xi32>} : () -> ()
-  "foo3"(){bar: dense<[[[5, -6, 1, 2]], [[7, 8, 3, 4]]]> : vector<2x1x4xi32>} : () -> ()
+// CHECK: "foo3"() {bar = dense<{{\[\[\[}}5, -6, 1, 2]], {{\[\[}}7, 8, 3, 4]]]> : vector<2x1x4xi32>} : () -> ()
+  "foo3"(){bar = dense<[[[5, -6, 1, 2]], [[7, 8, 3, 4]]]> : vector<2x1x4xi32>} : () -> ()
 
-// CHECK: "float1"() {bar: dense<5.000000e+00> : vector<1x1x1xf32>} : () -> ()
-  "float1"(){bar: dense<[[[5.0]]]> : vector<1x1x1xf32>} : () -> ()
+// CHECK: "float1"() {bar = dense<5.000000e+00> : vector<1x1x1xf32>} : () -> ()
+  "float1"(){bar = dense<[[[5.0]]]> : vector<1x1x1xf32>} : () -> ()
 
-// CHECK: "bfloat16"() {bar: dense<{{\[\[\[}}-5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00]], {{\[\[}}7.000000e+00, -8.000000e+00, 3.000000e+00, 4.000000e+00]]]> : vector<2x1x4xbf16>} : () -> ()
-  "bfloat16"(){bar: dense<[[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]> : vector<2x1x4xbf16>} : () -> ()
-// CHECK: "float16"() {bar: dense<{{\[\[\[}}-5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00]], {{\[\[}}7.000000e+00, -8.000000e+00, 3.000000e+00, 4.000000e+00]]]> : vector<2x1x4xf16>} : () -> ()
-  "float16"(){bar: dense<[[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]> : vector<2x1x4xf16>} : () -> ()
-// CHECK: "float32"() {bar: dense<{{\[\[\[}}-5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00]], {{\[\[}}7.000000e+00, -8.000000e+00, 3.000000e+00, 4.000000e+00]]]> : vector<2x1x4xf32>} : () -> ()
-  "float32"(){bar: dense<[[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]> : vector<2x1x4xf32>} : () -> ()
-// CHECK: "float64"() {bar: dense<{{\[\[\[}}-5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00]], {{\[\[}}7.000000e+00, -8.000000e+00, 3.000000e+00, 4.000000e+00]]]> : vector<2x1x4xf64>} : () -> ()
-  "float64"(){bar: dense<[[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]> : vector<2x1x4xf64>} : () -> ()
+// CHECK: "bfloat16"() {bar = dense<{{\[\[\[}}-5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00]], {{\[\[}}7.000000e+00, -8.000000e+00, 3.000000e+00, 4.000000e+00]]]> : vector<2x1x4xbf16>} : () -> ()
+  "bfloat16"(){bar = dense<[[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]> : vector<2x1x4xbf16>} : () -> ()
+// CHECK: "float16"() {bar = dense<{{\[\[\[}}-5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00]], {{\[\[}}7.000000e+00, -8.000000e+00, 3.000000e+00, 4.000000e+00]]]> : vector<2x1x4xf16>} : () -> ()
+  "float16"(){bar = dense<[[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]> : vector<2x1x4xf16>} : () -> ()
+// CHECK: "float32"() {bar = dense<{{\[\[\[}}-5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00]], {{\[\[}}7.000000e+00, -8.000000e+00, 3.000000e+00, 4.000000e+00]]]> : vector<2x1x4xf32>} : () -> ()
+  "float32"(){bar = dense<[[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]> : vector<2x1x4xf32>} : () -> ()
+// CHECK: "float64"() {bar = dense<{{\[\[\[}}-5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00]], {{\[\[}}7.000000e+00, -8.000000e+00, 3.000000e+00, 4.000000e+00]]]> : vector<2x1x4xf64>} : () -> ()
+  "float64"(){bar = dense<[[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]> : vector<2x1x4xf64>} : () -> ()
   return
 }
 
@@ -708,31 +708,31 @@ func @densevectorattr() -> () {
 func @sparsetensorattr() -> () {
 ^bb0:
 // NOTE: The {{\[\[}} syntax is because "[[" confuses FileCheck.
-// CHECK: "fooi8"() {bar: sparse<0, -2> : tensor<1x1x1xi8>} : () -> ()
-  "fooi8"(){bar: sparse<0, -2> : tensor<1x1x1xi8>} : () -> ()
-// CHECK: "fooi16"() {bar: sparse<{{\[\[}}1, 1, 0], {{\[}}0, 1, 0], {{\[}}0, 0, 1]], {{\[}}2, -1, 5]> : tensor<2x2x2xi16>} : () -> ()
-  "fooi16"(){bar: sparse<[[1, 1, 0], [0, 1, 0], [0, 0, 1]], [2, -1, 5]> : tensor<2x2x2xi16>} : () -> ()
-// CHECK: "fooi32"() {bar: sparse<{{\[}}], {{\[}}]> : tensor<1x1xi32>} : () -> ()
-  "fooi32"(){bar: sparse<[], []> : tensor<1x1xi32>} : () -> ()
-// CHECK: "fooi64"() {bar: sparse<0, -1> : tensor<1xi64>} : () -> ()
-  "fooi64"(){bar: sparse<[[0]], [-1]> : tensor<1xi64>} : () -> ()
-// CHECK: "foo2"() {bar: sparse<{{\[}}], {{\[}}]> : tensor<0xi32>} : () -> ()
-  "foo2"(){bar: sparse<[], []> : tensor<0xi32>} : () -> ()
-// CHECK: "foo3"() {bar: sparse<{{\[}}], {{\[}}]> : tensor<i32>} : () -> ()
-  "foo3"(){bar: sparse<[], []> : tensor<i32>} : () -> ()
+// CHECK: "fooi8"() {bar = sparse<0, -2> : tensor<1x1x1xi8>} : () -> ()
+  "fooi8"(){bar = sparse<0, -2> : tensor<1x1x1xi8>} : () -> ()
+// CHECK: "fooi16"() {bar = sparse<{{\[\[}}1, 1, 0], {{\[}}0, 1, 0], {{\[}}0, 0, 1]], {{\[}}2, -1, 5]> : tensor<2x2x2xi16>} : () -> ()
+  "fooi16"(){bar = sparse<[[1, 1, 0], [0, 1, 0], [0, 0, 1]], [2, -1, 5]> : tensor<2x2x2xi16>} : () -> ()
+// CHECK: "fooi32"() {bar = sparse<{{\[}}], {{\[}}]> : tensor<1x1xi32>} : () -> ()
+  "fooi32"(){bar = sparse<[], []> : tensor<1x1xi32>} : () -> ()
+// CHECK: "fooi64"() {bar = sparse<0, -1> : tensor<1xi64>} : () -> ()
+  "fooi64"(){bar = sparse<[[0]], [-1]> : tensor<1xi64>} : () -> ()
+// CHECK: "foo2"() {bar = sparse<{{\[}}], {{\[}}]> : tensor<0xi32>} : () -> ()
+  "foo2"(){bar = sparse<[], []> : tensor<0xi32>} : () -> ()
+// CHECK: "foo3"() {bar = sparse<{{\[}}], {{\[}}]> : tensor<i32>} : () -> ()
+  "foo3"(){bar = sparse<[], []> : tensor<i32>} : () -> ()
 
-// CHECK: "foof16"() {bar: sparse<0, -2.000000e+00> : tensor<1x1x1xf16>} : () -> ()
-  "foof16"(){bar: sparse<0, -2.0> : tensor<1x1x1xf16>} : () -> ()
-// CHECK: "foobf16"() {bar: sparse<{{\[\[}}1, 1, 0], {{\[}}0, 1, 0], {{\[}}0, 0, 1]], {{\[}}2.000000e+00, -1.000000e+00, 5.000000e+00]> : tensor<2x2x2xbf16>} : () -> ()
-  "foobf16"(){bar: sparse<[[1, 1, 0], [0, 1, 0], [0, 0, 1]], [2.0, -1.0, 5.0]> : tensor<2x2x2xbf16>} : () -> ()
-// CHECK: "foof32"() {bar: sparse<{{\[}}], {{\[}}]> : tensor<1x0x1xf32>} : () -> ()
-  "foof32"(){bar: sparse<[], []> : tensor<1x0x1xf32>} : () -> ()
-// CHECK:  "foof64"() {bar: sparse<0, -1.000000e+00> : tensor<1xf64>} : () -> ()
-  "foof64"(){bar: sparse<[[0]], [-1.0]> : tensor<1xf64>} : () -> ()
-// CHECK: "foof320"() {bar: sparse<{{\[}}], {{\[}}]> : tensor<0xf32>} : () -> ()
-  "foof320"(){bar: sparse<[], []> : tensor<0xf32>} : () -> ()
-// CHECK: "foof321"() {bar: sparse<{{\[}}], {{\[}}]> : tensor<f32>} : () -> ()
-  "foof321"(){bar: sparse<[], []> : tensor<f32>} : () -> ()
+// CHECK: "foof16"() {bar = sparse<0, -2.000000e+00> : tensor<1x1x1xf16>} : () -> ()
+  "foof16"(){bar = sparse<0, -2.0> : tensor<1x1x1xf16>} : () -> ()
+// CHECK: "foobf16"() {bar = sparse<{{\[\[}}1, 1, 0], {{\[}}0, 1, 0], {{\[}}0, 0, 1]], {{\[}}2.000000e+00, -1.000000e+00, 5.000000e+00]> : tensor<2x2x2xbf16>} : () -> ()
+  "foobf16"(){bar = sparse<[[1, 1, 0], [0, 1, 0], [0, 0, 1]], [2.0, -1.0, 5.0]> : tensor<2x2x2xbf16>} : () -> ()
+// CHECK: "foof32"() {bar = sparse<{{\[}}], {{\[}}]> : tensor<1x0x1xf32>} : () -> ()
+  "foof32"(){bar = sparse<[], []> : tensor<1x0x1xf32>} : () -> ()
+// CHECK:  "foof64"() {bar = sparse<0, -1.000000e+00> : tensor<1xf64>} : () -> ()
+  "foof64"(){bar = sparse<[[0]], [-1.0]> : tensor<1xf64>} : () -> ()
+// CHECK: "foof320"() {bar = sparse<{{\[}}], {{\[}}]> : tensor<0xf32>} : () -> ()
+  "foof320"(){bar = sparse<[], []> : tensor<0xf32>} : () -> ()
+// CHECK: "foof321"() {bar = sparse<{{\[}}], {{\[}}]> : tensor<f32>} : () -> ()
+  "foof321"(){bar = sparse<[], []> : tensor<f32>} : () -> ()
   return
 }
 
@@ -740,21 +740,21 @@ func @sparsetensorattr() -> () {
 func @sparsevectorattr() -> () {
 ^bb0:
 // NOTE: The {{\[\[}} syntax is because "[[" confuses FileCheck.
-// CHECK: "fooi8"() {bar: sparse<0, -2> : vector<1x1x1xi8>} : () -> ()
-  "fooi8"(){bar: sparse<0, -2> : vector<1x1x1xi8>} : () -> ()
-// CHECK: "fooi16"() {bar: sparse<{{\[\[}}1, 1, 0], {{\[}}0, 1, 0], {{\[}}0, 0, 1]], {{\[}}2, -1, 5]> : vector<2x2x2xi16>} : () -> ()
-  "fooi16"(){bar: sparse<[[1, 1, 0], [0, 1, 0], [0, 0, 1]], [2, -1, 5]> : vector<2x2x2xi16>} : () -> ()
-// CHECK: "fooi32"() {bar: sparse<{{\[}}], {{\[}}]> : vector<1x1xi32>} : () -> ()
-  "fooi32"(){bar: sparse<[], []> : vector<1x1xi32>} : () -> ()
-// CHECK: "fooi64"() {bar: sparse<0, -1> : vector<1xi64>} : () -> ()
-  "fooi64"(){bar: sparse<[[0]], [-1]> : vector<1xi64>} : () -> ()
+// CHECK: "fooi8"() {bar = sparse<0, -2> : vector<1x1x1xi8>} : () -> ()
+  "fooi8"(){bar = sparse<0, -2> : vector<1x1x1xi8>} : () -> ()
+// CHECK: "fooi16"() {bar = sparse<{{\[\[}}1, 1, 0], {{\[}}0, 1, 0], {{\[}}0, 0, 1]], {{\[}}2, -1, 5]> : vector<2x2x2xi16>} : () -> ()
+  "fooi16"(){bar = sparse<[[1, 1, 0], [0, 1, 0], [0, 0, 1]], [2, -1, 5]> : vector<2x2x2xi16>} : () -> ()
+// CHECK: "fooi32"() {bar = sparse<{{\[}}], {{\[}}]> : vector<1x1xi32>} : () -> ()
+  "fooi32"(){bar = sparse<[], []> : vector<1x1xi32>} : () -> ()
+// CHECK: "fooi64"() {bar = sparse<0, -1> : vector<1xi64>} : () -> ()
+  "fooi64"(){bar = sparse<[[0]], [-1]> : vector<1xi64>} : () -> ()
 
-// CHECK: "foof16"() {bar: sparse<0, -2.000000e+00> : vector<1x1x1xf16>} : () -> ()
-  "foof16"(){bar: sparse<0, -2.0> : vector<1x1x1xf16>} : () -> ()
-// CHECK: "foobf16"() {bar: sparse<{{\[\[}}1, 1, 0], {{\[}}0, 1, 0], {{\[}}0, 0, 1]], {{\[}}2.000000e+00, -1.000000e+00, 5.000000e+00]> : vector<2x2x2xbf16>} : () -> ()
-  "foobf16"(){bar: sparse<[[1, 1, 0], [0, 1, 0], [0, 0, 1]], [2.0, -1.0, 5.0]> : vector<2x2x2xbf16>} : () -> ()
-// CHECK:  "foof64"() {bar: sparse<0, -1.000000e+00> : vector<1xf64>} : () -> ()
-  "foof64"(){bar: sparse<0, [-1.0]> : vector<1xf64>} : () -> ()
+// CHECK: "foof16"() {bar = sparse<0, -2.000000e+00> : vector<1x1x1xf16>} : () -> ()
+  "foof16"(){bar = sparse<0, -2.0> : vector<1x1x1xf16>} : () -> ()
+// CHECK: "foobf16"() {bar = sparse<{{\[\[}}1, 1, 0], {{\[}}0, 1, 0], {{\[}}0, 0, 1]], {{\[}}2.000000e+00, -1.000000e+00, 5.000000e+00]> : vector<2x2x2xbf16>} : () -> ()
+  "foobf16"(){bar = sparse<[[1, 1, 0], [0, 1, 0], [0, 0, 1]], [2.0, -1.0, 5.0]> : vector<2x2x2xbf16>} : () -> ()
+// CHECK:  "foof64"() {bar = sparse<0, -1.000000e+00> : vector<1xf64>} : () -> ()
+  "foof64"(){bar = sparse<0, [-1.0]> : vector<1xf64>} : () -> ()
   return
 }
 
@@ -802,7 +802,7 @@ func @verbose_if(%N: index) {
     %z = "add"(%c, %c) : (index, index) -> index
     "affine.terminator"() : () -> ()
   })
-  { condition: #set0 } : (index, index, index) -> ()
+  { condition = #set0 } : (index, index, index) -> ()
   return
 }
 
@@ -827,19 +827,19 @@ func @unregistered_term(%arg0 : i1) -> i1 {
 
 // CHECK-LABEL: func @dialect_attrs
 func @dialect_attrs()
-    // CHECK-NEXT: attributes  {dialect.attr: 10
-    attributes {dialect.attr: 10} {
+    // CHECK-NEXT: attributes  {dialect.attr = 10
+    attributes {dialect.attr = 10} {
   return
 }
 
 // CHECK-LABEL: func @_valid.function$name
 func @_valid.function$name()
 
-// CHECK-LABEL: func @external_func_arg_attrs(i32, i1 {dialect.attr: 10 : i64}, i32)
-func @external_func_arg_attrs(i32, i1 {dialect.attr: 10 : i64}, i32)
+// CHECK-LABEL: func @external_func_arg_attrs(i32, i1 {dialect.attr = 10 : i64}, i32)
+func @external_func_arg_attrs(i32, i1 {dialect.attr = 10 : i64}, i32)
 
-// CHECK-LABEL: func @func_arg_attrs(%arg0: i1 {dialect.attr: 10 : i64})
-func @func_arg_attrs(%arg0: i1 {dialect.attr: 10 : i64}) {
+// CHECK-LABEL: func @func_arg_attrs(%arg0: i1 {dialect.attr = 10 : i64})
+func @func_arg_attrs(%arg0: i1 {dialect.attr = 10 : i64}) {
   return
 }
 
@@ -865,24 +865,24 @@ func @pretty_form_multi_result() -> (i16, i16) {
 // CHECK-LABEL: func @pretty_dialect_attribute()
 func @pretty_dialect_attribute() {
 
-  // CHECK: "foo.unknown_op"() {foo: #foo.simpleattr} : () -> ()
-  "foo.unknown_op"() {foo: #foo.simpleattr} : () -> ()
+  // CHECK: "foo.unknown_op"() {foo = #foo.simpleattr} : () -> ()
+  "foo.unknown_op"() {foo = #foo.simpleattr} : () -> ()
 
-  // CHECK: "foo.unknown_op"() {foo: #foo.complexattr<abcd>} : () -> ()
-  "foo.unknown_op"() {foo: #foo.complexattr<abcd>} : () -> ()
+  // CHECK: "foo.unknown_op"() {foo = #foo.complexattr<abcd>} : () -> ()
+  "foo.unknown_op"() {foo = #foo.complexattr<abcd>} : () -> ()
 
-  // CHECK: "foo.unknown_op"() {foo: #foo.complexattr<abcd<f32>>} : () -> ()
-  "foo.unknown_op"() {foo: #foo.complexattr<abcd<f32>>} : () -> ()
+  // CHECK: "foo.unknown_op"() {foo = #foo.complexattr<abcd<f32>>} : () -> ()
+  "foo.unknown_op"() {foo = #foo.complexattr<abcd<f32>>} : () -> ()
 
-  // CHECK: "foo.unknown_op"() {foo: #foo.complexattr<abcd<[f]$$[32]>>} : () -> ()
-  "foo.unknown_op"() {foo: #foo.complexattr<abcd<[f]$$[32]>>} : () -> ()
+  // CHECK: "foo.unknown_op"() {foo = #foo.complexattr<abcd<[f]$$[32]>>} : () -> ()
+  "foo.unknown_op"() {foo = #foo.complexattr<abcd<[f]$$[32]>>} : () -> ()
 
-  // CHECK: "foo.unknown_op"() {foo: #foo.dialect<!x@#!@#>} : () -> ()
-  "foo.unknown_op"() {foo: #foo.dialect<!x@#!@#>} : () -> ()
+  // CHECK: "foo.unknown_op"() {foo = #foo.dialect<!x@#!@#>} : () -> ()
+  "foo.unknown_op"() {foo = #foo.dialect<!x@#!@#>} : () -> ()
 
   // Extraneous extra > character can't use the pretty syntax.
-  // CHECK: "foo.unknown_op"() {foo: #foo<"dialect<!x@#!@#>>">} : () -> ()
-  "foo.unknown_op"() {foo: #foo<"dialect<!x@#!@#>>">} : () -> ()
+  // CHECK: "foo.unknown_op"() {foo = #foo<"dialect<!x@#!@#>>">} : () -> ()
+  "foo.unknown_op"() {foo = #foo<"dialect<!x@#!@#>>">} : () -> ()
 
   return
 }
@@ -934,5 +934,5 @@ func @scoped_names() {
   return
 }
 
-// CHECK-LABEL: func @loc_attr(i1 {foo.loc_attr: loc(callsite("foo" at "mysource.cc":10:8))})
-func @loc_attr(i1 {foo.loc_attr: loc(callsite("foo" at "mysource.cc":10:8))})
+// CHECK-LABEL: func @loc_attr(i1 {foo.loc_attr = loc(callsite("foo" at "mysource.cc":10:8))})
+func @loc_attr(i1 {foo.loc_attr = loc(callsite("foo" at "mysource.cc":10:8))})

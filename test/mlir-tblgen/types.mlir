@@ -83,7 +83,7 @@ func @nested_tuple_multi_level_wrong_type() {
 
 // CHECK-LABEL: @fixed_element_types
 func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
-  %0 = "test.arg_and_res_have_fixed_element_types"(%arg0, %arg1) {attr: ""} : (tensor<* x i32>, tensor<* x f32>) -> tensor<* x i16>
+  %0 = "test.arg_and_res_have_fixed_element_types"(%arg0, %arg1) {attr = ""} : (tensor<* x i32>, tensor<* x f32>) -> tensor<* x i16>
   return
 }
 
@@ -91,7 +91,7 @@ func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
 
 func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
   // expected-error@+1 {{'res' is 16-bit integer}}
-  %0 = "test.arg_and_res_have_fixed_element_types"(%arg0, %arg1) {attr: ""}: (tensor<* x i32>, tensor<* x f32>) -> tensor<* x i32>
+  %0 = "test.arg_and_res_have_fixed_element_types"(%arg0, %arg1) {attr = ""}: (tensor<* x i32>, tensor<* x f32>) -> tensor<* x i32>
   return
 }
 
@@ -99,7 +99,7 @@ func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
 
 func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
   // expected-error@+1 {{fixed type combination}}
-  %0 = "test.arg_and_res_have_fixed_element_types"(%arg1, %arg0) {attr: ""}: (tensor<* x f32>, tensor<* x i32>) -> tensor<* x i16>
+  %0 = "test.arg_and_res_have_fixed_element_types"(%arg1, %arg0) {attr = ""}: (tensor<* x f32>, tensor<* x i32>) -> tensor<* x i16>
   return
 }
 

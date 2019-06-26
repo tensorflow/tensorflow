@@ -10,7 +10,7 @@ func @fakeQuantArgs_Quint8_0_1(tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
   // CHECK-NEXT: %1 = "quant.dcast"(%0) : (tensor<8x4x3x!quant.uniform<u8:f32, 0.0039215686274509803>>)
   // CHECK-SAME: -> tensor<8x4x3xf32>
   %0 = "quant.const_fake_quant"(%arg0) {
-    min: 0.0 : f32, max: 1.0 : f32, num_bits: 8
+    min = 0.0 : f32, max = 1.0 : f32, num_bits = 8
   } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
   return %0 : tensor<8x4x3xf32>
 }
@@ -25,7 +25,7 @@ func @fakeQuantArgs_Quint8_NarrowRange(tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
   // CHECK-NEXT: %1 = "quant.dcast"(%0) : (tensor<8x4x3x!quant.uniform<u8<1:255>:f32, 0.003937007874015748:1>>)
   // CHECK-SAME: -> tensor<8x4x3xf32>
   %0 = "quant.const_fake_quant"(%arg0) {
-    min: 0.0 : f32, max: 1.0 : f32, num_bits: 8, narrow_range: true
+    min = 0.0 : f32, max = 1.0 : f32, num_bits = 8, narrow_range = true
   } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
   return %0 : tensor<8x4x3xf32>
 }
@@ -40,7 +40,7 @@ func @fakeQuantArgs_Quint8_SymmetricRange(tensor<8x4x3xf32>) -> tensor<8x4x3xf32
   // CHECK-NEXT: %1 = "quant.dcast"(%0) : (tensor<8x4x3x!quant.uniform<u8:f32, 7.812500e-03:128>>)
   // CHECK-SAME: -> tensor<8x4x3xf32>
   %0 = "quant.const_fake_quant"(%arg0) {
-    min: -1.0 : f32, max: 0.9921875 : f32, num_bits: 8, narrow_range: false
+    min = -1.0 : f32, max = 0.9921875 : f32, num_bits = 8, narrow_range = false
   } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
   return %0 : tensor<8x4x3xf32>
 }
@@ -56,7 +56,7 @@ func @fakeQuantArgs_Qint16_Symmetric(tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
   // CHECK-NEXT: %1 = "quant.dcast"(%0) : (tensor<8x4x3x!quant.uniform<i16:f32, 3.0517578125E-5>>)
   // CHECK-SAME: -> tensor<8x4x3xf32>
   %0 = "quant.const_fake_quant"(%arg0) {
-    min: -1.0 : f32, max: 0.999969482 : f32, num_bits: 16
+    min = -1.0 : f32, max = 0.999969482 : f32, num_bits = 16
   } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
   return %0 : tensor<8x4x3xf32>
 }
@@ -71,7 +71,7 @@ func @fakeQuantArgs_UnrankedTensor(tensor<f32>) -> tensor<f32> {
   // CHECK-NEXT: %1 = "quant.dcast"(%0) : (tensor<!quant.uniform<u8:f32, 0.0039215686274509803>>)
   // CHECK-SAME: -> tensor<f32>
   %0 = "quant.const_fake_quant"(%arg0) {
-    min: 0.0 : f32, max: 1.0 : f32, num_bits: 8
+    min = 0.0 : f32, max = 1.0 : f32, num_bits = 8
   } : (tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
 }

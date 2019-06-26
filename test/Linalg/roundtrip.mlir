@@ -123,13 +123,13 @@ func @copy_view(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf32>) {
 //       CHECK:   linalg.copy(%arg0, %arg1) : !linalg.view<?xf32>, !linalg.view<?xf32>
 
 func @copy_view3(%arg0: !linalg.view<?x?x?xf32>, %arg1: !linalg.view<?x?x?xf32>) {
-  linalg.copy(%arg0, %arg1) {inputPermutation : (i, j, k) -> (i, k, j),
-                             outputPermutation : (i, j, k) -> (k, j, i)} :
+  linalg.copy(%arg0, %arg1) {inputPermutation = (i, j, k) -> (i, k, j),
+                             outputPermutation = (i, j, k) -> (k, j, i)} :
     !linalg.view<?x?x?xf32>, !linalg.view<?x?x?xf32>
   return
 }
 // CHECK-LABEL: func @copy_view3(%arg0: !linalg.view<?x?x?xf32>, %arg1: !linalg.view<?x?x?xf32>) {
-//       CHECK:   linalg.copy(%arg0, %arg1) {inputPermutation: #[[map0]], outputPermutation: #[[map1]]} : !linalg.view<?x?x?xf32>, !linalg.view<?x?x?xf32>
+//       CHECK:   linalg.copy(%arg0, %arg1) {inputPermutation = #[[map0]], outputPermutation = #[[map1]]} : !linalg.view<?x?x?xf32>, !linalg.view<?x?x?xf32>
 
 func @conv_view3(%arg0: !linalg.view<?x?x?xf32>, %arg1: !linalg.view<?x?x?xf32>, %arg2: !linalg.view<?x?x?xf32>) {
   linalg.conv(%arg0, %arg1, %arg2) : !linalg.view<?x?x?xf32>, !linalg.view<?x?x?xf32>, !linalg.view<?x?x?xf32>
@@ -139,11 +139,11 @@ func @conv_view3(%arg0: !linalg.view<?x?x?xf32>, %arg1: !linalg.view<?x?x?xf32>,
 //       CHECK:   linalg.conv(%arg0, %arg1, %arg2) : !linalg.view<?x?x?xf32>, !linalg.view<?x?x?xf32>, !linalg.view<?x?x?xf32>
 
 func @conv_view6(%arg0: !linalg.view<?x?x?x?x?x?xf32>, %arg1: !linalg.view<?x?x?x?x?x?xf32>, %arg2: !linalg.view<?x?x?x?x?x?xf32>) {
-  linalg.conv(%arg0, %arg1, %arg2) {dilations: [4, 4, 5, 5], strides: [2, 2, 3, 3]} : !linalg.view<?x?x?x?x?x?xf32>, !linalg.view<?x?x?x?x?x?xf32>, !linalg.view<?x?x?x?x?x?xf32>
+  linalg.conv(%arg0, %arg1, %arg2) {dilations = [4, 4, 5, 5], strides = [2, 2, 3, 3]} : !linalg.view<?x?x?x?x?x?xf32>, !linalg.view<?x?x?x?x?x?xf32>, !linalg.view<?x?x?x?x?x?xf32>
   return
 }
 // CHECK-LABEL: func @conv_view6(%arg0: !linalg.view<?x?x?x?x?x?xf32>, %arg1: !linalg.view<?x?x?x?x?x?xf32>, %arg2: !linalg.view<?x?x?x?x?x?xf32>) {
-//       CHECK:   linalg.conv(%arg0, %arg1, %arg2) {dilations: [4, 4, 5, 5], strides: [2, 2, 3, 3]} : !linalg.view<?x?x?x?x?x?xf32>, !linalg.view<?x?x?x?x?x?xf32>, !linalg.view<?x?x?x?x?x?xf32>
+//       CHECK:   linalg.conv(%arg0, %arg1, %arg2) {dilations = [4, 4, 5, 5], strides = [2, 2, 3, 3]} : !linalg.view<?x?x?x?x?x?xf32>, !linalg.view<?x?x?x?x?x?xf32>, !linalg.view<?x?x?x?x?x?xf32>
 
 func @subview(%arg0: !linalg.view<?x?xvector<3x4xi4>>) {
   %c0 = constant 0 : index

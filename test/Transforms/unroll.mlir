@@ -77,7 +77,7 @@ func @loop_nest_body_def_use() {
     // UNROLL-FULL-NEXT: %9 = affine.apply [[MAP0]](%8)
     // UNROLL-FULL-NEXT: %10 = "addi32"(%9, %c0_0) : (index, index) -> index
     affine.for %j = 0 to 4 {
-      %x = "affine.apply" (%j) { map: (d0) -> (d0 + 1) } :
+      %x = "affine.apply" (%j) { map = (d0) -> (d0 + 1) } :
         (index) -> (index)
       %y = "addi32"(%x, %c0) : (index, index) -> index
     }
@@ -97,7 +97,7 @@ func @loop_nest_strided() {
     // UNROLL-FULL-NEXT: %3 = affine.apply [[MAP0]](%2)
     // UNROLL-FULL-NEXT: %4 = "addi32"(%3, %3) : (index, index) -> index
     affine.for %j = 2 to 6 step 2 {
-      %x = "affine.apply" (%j) { map: (d0) -> (d0 + 1) } :
+      %x = "affine.apply" (%j) { map = (d0) -> (d0 + 1) } :
         (index) -> (index)
       %y = "addi32"(%x, %x) : (index, index) -> index
     }
@@ -110,7 +110,7 @@ func @loop_nest_strided() {
     // UNROLL-FULL-NEXT: %11 = affine.apply [[MAP0]](%10)
     // UNROLL-FULL-NEXT: %12 = "addi32"(%11, %11) : (index, index) -> index
     affine.for %k = 2 to 7 step 2 {
-      %z = "affine.apply" (%k) { map: (d0) -> (d0 + 1) } :
+      %z = "affine.apply" (%k) { map = (d0) -> (d0 + 1) } :
         (index) -> (index)
       %w = "addi32"(%z, %z) : (index, index) -> index
     }
@@ -169,7 +169,7 @@ func @loop_nest_seq_imperfect(%a : memref<128x128xf32>) {
     // UNROLL-FULL-NEXT: %14 = "vmulf"(%12, %13) : (index, index) -> index
     // UNROLL-FULL-NEXT: %15 = "vaddf"(%14, %14) : (index, index) -> index
     affine.for %j = 0 to 4 {
-      %x = "affine.apply" (%j) { map: (d0) -> (d0 + 1) } :
+      %x = "affine.apply" (%j) { map = (d0) -> (d0 + 1) } :
         (index) -> (index)
        %y = "vmulf"(%j, %x) : (index, index) -> index
        %z = "vaddf"(%y, %y) : (index, index) -> index
@@ -198,7 +198,7 @@ func @loop_nest_seq_multiple() {
   // UNROLL-FULL-NEXT: %6 = affine.apply [[MAP0]](%5)
   // UNROLL-FULL-NEXT: "mul"(%6, %6) : (index, index) -> ()
   affine.for %j = 0 to 4 {
-    %x = "affine.apply" (%j) { map: (d0) -> (d0 + 1) } :
+    %x = "affine.apply" (%j) { map = (d0) -> (d0 + 1) } :
       (index) -> (index)
     "mul"(%x, %x) : (index, index) -> ()
   }
@@ -219,9 +219,9 @@ func @loop_nest_seq_multiple() {
     // UNROLL-FULL-NEXT: %16 = affine.apply [[MAP0]](%15)
     // UNROLL-FULL-NEXT: %17 = affine.apply [[MAP6]](%15)[%c99]
     affine.for %n = 0 to 4 {
-      %y = "affine.apply" (%n) { map: (d0) -> (d0 + 1) } :
+      %y = "affine.apply" (%n) { map = (d0) -> (d0 + 1) } :
         (index) -> (index)
-      %z = "affine.apply" (%n, %k) { map: (d0) [s0] -> (d0 + s0 + 1) } :
+      %z = "affine.apply" (%n, %k) { map = (d0) [s0] -> (d0 + s0 + 1) } :
         (index, index) -> (index)
     }     // UNROLL-FULL }
   }       // UNROLL-FULL }
@@ -252,7 +252,7 @@ func @loop_nest_outer_unroll() {
   // SHORT-NEXT: }
   affine.for %i = 0 to 2 {
     affine.for %j = 0 to 4 {
-      %x = "affine.apply" (%j) { map: (d0) -> (d0 + 1) } :
+      %x = "affine.apply" (%j) { map = (d0) -> (d0 + 1) } :
         (index) -> (index)
       %y = "addi32"(%x, %x) : (index, index) -> index
     }
@@ -291,19 +291,19 @@ func @loop_nest_seq_long() -> i32 {
       affine.for %i2 = 0 to 8 {
         // CHECK-NOT: affine.for %i3
         // CHECK: %{{[0-9]+}} = affine.apply
-        %b2 = "affine.apply" (%y, %i2) {map: (d0, d1) -> (16*d0 + d1)} : (index, index) -> index
+        %b2 = "affine.apply" (%y, %i2) {map = (d0, d1) -> (16*d0 + d1)} : (index, index) -> index
         %z = load %B[%x, %b2] : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
         "op1"(%z) : (i32) -> ()
       }
       affine.for %j1 = 0 to 8 {
         affine.for %j2 = 0 to 8 {
-          %a2 = "affine.apply" (%y, %j2) {map: (d0, d1) -> (16*d0 + d1)} : (index, index) -> index
+          %a2 = "affine.apply" (%y, %j2) {map = (d0, d1) -> (16*d0 + d1)} : (index, index) -> index
           %v203 = load %A[%j1, %a2] : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
           "op2"(%v203) : (i32) -> ()
         }
         affine.for %k2 = 0 to 8 {
           %s0 = "op3"() : () -> i32
-          %c2 = "affine.apply" (%x, %k2) {map: (d0, d1) -> (16*d0 + d1)} : (index, index) -> index
+          %c2 = "affine.apply" (%x, %k2) {map = (d0, d1) -> (16*d0 + d1)} : (index, index) -> index
           %s1 =  load %C[%j1, %c2] : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
           %s2 = "addi32"(%s0, %s1) : (i32, i32) -> i32
           store %s2, %C[%j1, %c2] : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>

@@ -23,16 +23,16 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   // CHECK-NEXT:     %[[CST3:.*]] = constant dense<1.000000e+00> : vector<8xf32>
   // CHECK-NEXT:     %[[VAL00:.*]] = affine.apply [[ID1]]{{.*}}
   // CHECK-NEXT:     %[[VAL01:.*]] = affine.apply [[ID1]]{{.*}}
-  // CHECK-NEXT:     vector.transfer_write %[[CST0]], {{.*}}[%[[VAL00]], %[[VAL01]]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>, memref<?x?xf32>
+  // CHECK-NEXT:     vector.transfer_write %[[CST0]], {{.*}}[%[[VAL00]], %[[VAL01]]] {permutation_map = [[D0D1TOD1]]} : vector<8xf32>, memref<?x?xf32>
   // CHECK-NEXT:     %[[VAL10:.*]] = affine.apply [[ID1]]{{.*}}
   // CHECK-NEXT:     %[[VAL11:.*]] = affine.apply [[D0P8]]{{.*}}
-  // CHECK-NEXT:     vector.transfer_write %[[CST1]], {{.*}}[%[[VAL10]], %[[VAL11]]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>, memref<?x?xf32>
+  // CHECK-NEXT:     vector.transfer_write %[[CST1]], {{.*}}[%[[VAL10]], %[[VAL11]]] {permutation_map = [[D0D1TOD1]]} : vector<8xf32>, memref<?x?xf32>
   // CHECK-NEXT:     %[[VAL20:.*]] = affine.apply [[ID1]]{{.*}}
   // CHECK-NEXT:     %[[VAL21:.*]] = affine.apply [[D0P16]]{{.*}}
-  // CHECK-NEXT:     vector.transfer_write %[[CST2]], {{.*}}[%[[VAL20]], %[[VAL21]]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>, memref<?x?xf32>
+  // CHECK-NEXT:     vector.transfer_write %[[CST2]], {{.*}}[%[[VAL20]], %[[VAL21]]] {permutation_map = [[D0D1TOD1]]} : vector<8xf32>, memref<?x?xf32>
   // CHECK-NEXT:     %[[VAL30:.*]] = affine.apply [[ID1]]{{.*}}
   // CHECK-NEXT:     %[[VAL31:.*]] = affine.apply [[D0P24]]{{.*}}
-  // CHECK-NEXT:     vector.transfer_write %[[CST3]], {{.*}}[%[[VAL30]], %[[VAL31]]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>
+  // CHECK-NEXT:     vector.transfer_write %[[CST3]], {{.*}}[%[[VAL30]], %[[VAL31]]] {permutation_map = [[D0D1TOD1]]} : vector<8xf32>
   //
   affine.for %i0 = 0 to %M {
     affine.for %i1 = 0 to %N {
@@ -49,16 +49,16 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   // CHECK-NEXT:     %[[CST3:.*]] = constant dense<2.000000e+00> : vector<8xf32>
   // CHECK-NEXT:     %[[VAL00:.*]] = affine.apply [[ID1]]{{.*}}
   // CHECK-NEXT:     %[[VAL01:.*]] = affine.apply [[ID1]]{{.*}}
-  // CHECK-NEXT:     vector.transfer_write %[[CST0]], {{.*}}[%[[VAL00]], %[[VAL01]]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>, memref<?x?xf32>
+  // CHECK-NEXT:     vector.transfer_write %[[CST0]], {{.*}}[%[[VAL00]], %[[VAL01]]] {permutation_map = [[D0D1TOD1]]} : vector<8xf32>, memref<?x?xf32>
   // CHECK-NEXT:     %[[VAL10:.*]] = affine.apply [[ID1]]{{.*}}
   // CHECK-NEXT:     %[[VAL11:.*]] = affine.apply [[D0P8]]{{.*}}
-  // CHECK-NEXT:     vector.transfer_write %[[CST1]], {{.*}}[%[[VAL10]], %[[VAL11]]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>, memref<?x?xf32>
+  // CHECK-NEXT:     vector.transfer_write %[[CST1]], {{.*}}[%[[VAL10]], %[[VAL11]]] {permutation_map = [[D0D1TOD1]]} : vector<8xf32>, memref<?x?xf32>
   // CHECK-NEXT:     %[[VAL20:.*]] = affine.apply [[ID1]]{{.*}}
   // CHECK-NEXT:     %[[VAL21:.*]] = affine.apply [[D0P16]]{{.*}}
-  // CHECK-NEXT:     vector.transfer_write %[[CST2]], {{.*}}[%[[VAL20]], %[[VAL21]]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>, memref<?x?xf32>
+  // CHECK-NEXT:     vector.transfer_write %[[CST2]], {{.*}}[%[[VAL20]], %[[VAL21]]] {permutation_map = [[D0D1TOD1]]} : vector<8xf32>, memref<?x?xf32>
   // CHECK-NEXT:     %[[VAL30:.*]] = affine.apply [[ID1]]{{.*}}
   // CHECK-NEXT:     %[[VAL31:.*]] = affine.apply [[D0P24]]{{.*}}
-  // CHECK-NEXT:     vector.transfer_write %[[CST3]], {{.*}}[%[[VAL30]], %[[VAL31]]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>, memref<?x?xf32>
+  // CHECK-NEXT:     vector.transfer_write %[[CST3]], {{.*}}[%[[VAL30]], %[[VAL31]]] {permutation_map = [[D0D1TOD1]]} : vector<8xf32>, memref<?x?xf32>
   //
   affine.for %i2 = 0 to %M {
     affine.for %i3 = 0 to %N {

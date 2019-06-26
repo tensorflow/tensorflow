@@ -57,7 +57,7 @@ class EdscTest:
     # CHECK-LABEL: testBlockContext
     #       CHECK: %c42 = constant 42 : index
     #       CHECK: ^bb1:
-    #       CHECK: %0 = "affine.apply"() {map: () -> (84)} : () -> index
+    #       CHECK: %0 = "affine.apply"() {map = () -> (84)} : () -> index
 
   def testBlockContextAppend(self):
     self.setUp()
@@ -283,7 +283,7 @@ class EdscTest:
     f = self.module.declare_function("foo", [t, t_llvm_noalias, t_readonly], [])
     printWithCurrentFunctionName(str(self.module))
     # CHECK-LABEL: testFunctionDeclaration
-    #       CHECK: func @foo(memref<10xf32>, memref<10xf32> {llvm.noalias: true}, memref<10xf32> {readonly: true})
+    #       CHECK: func @foo(memref<10xf32>, memref<10xf32> {llvm.noalias = true}, memref<10xf32> {readonly = true})
 
   def testFunctionMultiple(self):
     self.setUp()
@@ -316,8 +316,8 @@ class EdscTest:
     #       CHECK:  %0 = load %arg0[%i0, %i1] : memref<10x42xf32>
     #       CHECK:  %1 = addf %0, %cst : f32
     #       CHECK:  store %1, %arg0[%i0, %i1] : memref<10x42xf32>
-    #       CHECK: {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (42)}
-    #       CHECK: {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (10)}
+    #       CHECK: {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (42)}
+    #       CHECK: {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (10)}
 
   def testLoopContext(self):
     self.setUp()
@@ -334,9 +334,9 @@ class EdscTest:
     #       CHECK:   ^bb1(%i0: index):
     #       CHECK: "affine.for"(%c42, %2) (
     #       CHECK: ^bb2(%i1: index):
-    #       CHECK: "affine.apply"(%i0, %i1) {map: (d0, d1) -> (d0 + d1)} : (index, index) -> index
-    #       CHECK: {lower_bound: (d0) -> (d0), step: 2 : index, upper_bound: (d0) -> (d0)} : (index, index) -> ()
-    #       CHECK: {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (42)}
+    #       CHECK: "affine.apply"(%i0, %i1) {map = (d0, d1) -> (d0 + d1)} : (index, index) -> index
+    #       CHECK: {lower_bound = (d0) -> (d0), step = 2 : index, upper_bound = (d0) -> (d0)} : (index, index) -> ()
+    #       CHECK: {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (42)}
 
   def testLoopNestContext(self):
     self.setUp()
@@ -355,7 +355,7 @@ class EdscTest:
     #       CHECK: ^bb3(%i2: index):
     #       CHECK: "affine.for"() (
     #       CHECK: ^bb4(%i3: index):
-    #       CHECK: %2 = "affine.apply"(%i0, %i1, %i2, %i3) {map: (d0, d1, d2, d3) -> (d0 + d1 + d2 + d3)} : (index, index, index, index) -> index
+    #       CHECK: %2 = "affine.apply"(%i0, %i1, %i2, %i3) {map = (d0, d1, d2, d3) -> (d0 + d1 + d2 + d3)} : (index, index, index, index) -> index
 
   def testMLIRBooleanCompilation(self):
     self.setUp()
@@ -437,9 +437,9 @@ class EdscTest:
     #   CHECK-DAG:  %1 = load %arg1[%i2, %i1] : memref<32x32xf32>
     #       CHECK:  %2 = mulf %0, %1 : f32
     #       CHECK:  store %2, %arg2[%i0, %i1] : memref<32x32xf32>
-    #       CHECK: {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (32)} : () -> ()
-    #       CHECK: {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (32)} : () -> ()
-    #       CHECK: {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (32)} : () -> ()
+    #       CHECK: {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (32)} : () -> ()
+    #       CHECK: {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (32)} : () -> ()
+    #       CHECK: {lower_bound = () -> (0), step = 1 : index, upper_bound = () -> (32)} : () -> ()
 
   def testRet(self):
     self.setUp()
@@ -479,4 +479,4 @@ def runTests():
     test()
 
 if __name__ == '__main__':
-    runTests()
+  runTests()

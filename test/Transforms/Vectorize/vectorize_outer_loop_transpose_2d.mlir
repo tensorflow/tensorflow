@@ -22,7 +22,7 @@ func @vec2d(%A : memref<?x?x?xf32>) {
    // CHECK: affine.for %i3 = 0 to %0 step 32
    // CHECK:   affine.for %i4 = 0 to %1 step 256
    // CHECK:     affine.for %i5 = 0 to %2 {
-   // CHECK:       {{.*}} = vector.transfer_read %arg0[%i4, %i5, %i3] {permutation_map: #[[map_proj_d0d1d2_d2d0]]} : memref<?x?x?xf32>, vector<32x256xf32>
+   // CHECK:       {{.*}} = vector.transfer_read %arg0[%i4, %i5, %i3] {permutation_map = #[[map_proj_d0d1d2_d2d0]]} : memref<?x?x?xf32>, vector<32x256xf32>
    affine.for %i3 = 0 to %M {
      affine.for %i4 = 0 to %N {
        affine.for %i5 = 0 to %P {
@@ -40,12 +40,12 @@ func @vec2d_imperfectly_nested(%A : memref<?x?x?xf32>) {
    // CHECK: affine.for %i0 = 0 to %0 step 32 {
    // CHECK:   affine.for %i1 = 0 to %1 {
    // CHECK:     affine.for %i2 = 0 to %2 step 256 {
-   // CHECK:       %3 = vector.transfer_read %arg0[%i2, %i1, %i0] {permutation_map: #[[map_proj_d0d1d2_d2d0]]} : memref<?x?x?xf32>, vector<32x256xf32>
+   // CHECK:       %3 = vector.transfer_read %arg0[%i2, %i1, %i0] {permutation_map = #[[map_proj_d0d1d2_d2d0]]} : memref<?x?x?xf32>, vector<32x256xf32>
    // CHECK:   affine.for %i3 = 0 to %1 step 256 {
    // CHECK:     affine.for %i4 = 0 to %2 {
-   // CHECK:       %4 = vector.transfer_read %arg0[%i3, %i4, %i0] {permutation_map: #[[map_proj_d0d1d2_d2d0]]} : memref<?x?x?xf32>, vector<32x256xf32>
+   // CHECK:       %4 = vector.transfer_read %arg0[%i3, %i4, %i0] {permutation_map = #[[map_proj_d0d1d2_d2d0]]} : memref<?x?x?xf32>, vector<32x256xf32>
    // CHECK:     affine.for %i5 = 0 to %2 {
-   // CHECK:       %5 = vector.transfer_read %arg0[%i3, %i5, %i0] {permutation_map: #[[map_proj_d0d1d2_d2d0]]} : memref<?x?x?xf32>, vector<32x256xf32>
+   // CHECK:       %5 = vector.transfer_read %arg0[%i3, %i5, %i0] {permutation_map = #[[map_proj_d0d1d2_d2d0]]} : memref<?x?x?xf32>, vector<32x256xf32>
    affine.for %i0 = 0 to %0 {
      affine.for %i1 = 0 to %1 {
        affine.for %i2 = 0 to %2 {

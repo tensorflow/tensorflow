@@ -19,10 +19,10 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   // CHECK-NEXT:     {{.*}} = constant dense<1.000000e+00> : vector<3x16xf32>
   // CHECK-NEXT:     %[[VAL00:.*]] = affine.apply [[ID1]](%i0)
   // CHECK-NEXT:     %[[VAL01:.*]] = affine.apply [[ID1]](%i1)
-  // CHECK-NEXT:     vector.transfer_write {{.*}}, {{.*}}[%[[VAL00]], %[[VAL01]]] {permutation_map: [[ID2]]} : vector<3x16xf32>, memref<?x?xf32>
+  // CHECK-NEXT:     vector.transfer_write {{.*}}, {{.*}}[%[[VAL00]], %[[VAL01]]] {permutation_map = [[ID2]]} : vector<3x16xf32>, memref<?x?xf32>
   // CHECK-NEXT:     %[[VAL10:.*]] = affine.apply [[ID1]](%i0)
   // CHECK-NEXT:     %[[VAL11:.*]] = affine.apply [[D0P16]](%i1)
-  // CHECK-NEXT:     vector.transfer_write {{.*}}, {{.*}}[%[[VAL10]], %[[VAL11]]] {permutation_map: [[ID2]]} : vector<3x16xf32>, memref<?x?xf32>
+  // CHECK-NEXT:     vector.transfer_write {{.*}}, {{.*}}[%[[VAL10]], %[[VAL11]]] {permutation_map = [[ID2]]} : vector<3x16xf32>, memref<?x?xf32>
   //
   affine.for %i0 = 0 to %M {
     affine.for %i1 = 0 to %N {
@@ -37,10 +37,10 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   // CHECK-NEXT:     {{.*}} = constant dense<2.000000e+00> : vector<3x16xf32>
   // CHECK-NEXT:     %[[VAL00:.*]] = affine.apply [[ID1]](%i2)
   // CHECK-NEXT:     %[[VAL01:.*]] = affine.apply [[ID1]](%i3)
-  // CHECK-NEXT:     vector.transfer_write {{.*}}, {{.*}}[%[[VAL00]], %[[VAL01]]] {permutation_map: [[ID2]]} : vector<3x16xf32>, memref<?x?xf32>
+  // CHECK-NEXT:     vector.transfer_write {{.*}}, {{.*}}[%[[VAL00]], %[[VAL01]]] {permutation_map = [[ID2]]} : vector<3x16xf32>, memref<?x?xf32>
   // CHECK-NEXT:     %[[VAL10:.*]] = affine.apply [[ID1]](%i2)
   // CHECK-NEXT:     %[[VAL11:.*]] = affine.apply [[D0P16]](%i3)
-  // CHECK-NEXT:     vector.transfer_write {{.*}}, {{.*}}[%[[VAL10]], %[[VAL11]]] {permutation_map: [[ID2]]} : vector<3x16xf32>, memref<?x?xf32>
+  // CHECK-NEXT:     vector.transfer_write {{.*}}, {{.*}}[%[[VAL10]], %[[VAL11]]] {permutation_map = [[ID2]]} : vector<3x16xf32>, memref<?x?xf32>
   //
   affine.for %i2 = 0 to %M {
     affine.for %i3 = 0 to %N {

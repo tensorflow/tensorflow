@@ -570,10 +570,10 @@ TEST_FUNC(vectorize_2d) {
   //  CHECK-NEXT: affine.for %i0 = 0 to (d0) -> (d0)(%[[M]]) {
   //  CHECK-NEXT:   affine.for %i1 = 0 to (d0) -> (d0)(%[[N]]) step 4 {
   //  CHECK-NEXT:     affine.for %i2 = 0 to (d0) -> (d0)(%[[P]]) step 4 {
-  //  CHECK-NEXT:       %[[vA:.*]] = "vector.transfer_read"(%arg1, %i0, %i1, %i2) {permutation_map: (d0, d1, d2) -> (d1, d2)} : (memref<?x?x?xf32>, index, index, index) -> vector<4x4xf32>
-  //  CHECK-NEXT:       %[[vB:.*]] =  "vector.transfer_read"(%arg0, %i0, %i1, %i2) {permutation_map: (d0, d1,  d2) -> (d1, d2)} : (memref<?x?x?xf32>, index, index, index) -> vector<4x4xf32>
+  //  CHECK-NEXT:       %[[vA:.*]] = "vector.transfer_read"(%arg1, %i0, %i1, %i2) {permutation_map = (d0, d1, d2) -> (d1, d2)} : (memref<?x?x?xf32>, index, index, index) -> vector<4x4xf32>
+  //  CHECK-NEXT:       %[[vB:.*]] =  "vector.transfer_read"(%arg0, %i0, %i1, %i2) {permutation_map = (d0, d1,  d2) -> (d1, d2)} : (memref<?x?x?xf32>, index, index, index) -> vector<4x4xf32>
   //  CHECK-NEXT:       %[[vRES:.*]] = addf %[[vB]], %[[vA]] : vector<4x4xf32>
-  //  CHECK-NEXT:       "vector.transfer_write"(%[[vRES:.*]], %arg2, %i0, %i1, %i2) {permutation_map: (d0, d1, d2) -> (d1, d2)} : (vector<4x4xf32>, memref<?x?x?xf32>, index, index, index) -> ()
+  //  CHECK-NEXT:       "vector.transfer_write"(%[[vRES:.*]], %arg2, %i0, %i1, %i2) {permutation_map = (d0, d1, d2) -> (d1, d2)} : (vector<4x4xf32>, memref<?x?x?xf32>, index, index, index) -> ()
   // clang-format on
 
   mlir::PassManager pm;

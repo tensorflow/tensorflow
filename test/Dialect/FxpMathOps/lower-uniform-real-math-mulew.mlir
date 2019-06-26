@@ -12,9 +12,9 @@ func @real_mulew_fixedpoint(%arg0 : !type_lhs, %arg1: !type_rhs) -> !type_result
   // CHECK-NEXT: %2 = "fxpmath.convertis"(%0) : (tensor<4xi8>) -> tensor<4xi32>
   // CHECK-NEXT: %3 = "fxpmath.convertis"(%1) : (tensor<4xi8>) -> tensor<4xi32>
   // CHECK-NEXT: %4 = muli %2, %3 : tensor<4xi32>
-  // CHECK-NEXT: %5 = "fxpmath.vs_saturating_rounding_doubling_high_mulis"(%4) {b: 1562722842 : i32} : (tensor<4xi32>) -> tensor<4xi32>
-  // CHECK-NEXT: %6 = "fxpmath.rounding_divide_by_potis"(%5) {exponent: 5 : i32} : (tensor<4xi32>) -> tensor<4xi32>
-  // CHECK-NEXT: %7 = "fxpmath.clampis"(%6) {clamp_max: 127 : i32, clamp_min: -128 : i32} : (tensor<4xi32>) -> tensor<4xi32>
+  // CHECK-NEXT: %5 = "fxpmath.vs_saturating_rounding_doubling_high_mulis"(%4) {b = 1562722842 : i32} : (tensor<4xi32>) -> tensor<4xi32>
+  // CHECK-NEXT: %6 = "fxpmath.rounding_divide_by_potis"(%5) {exponent = 5 : i32} : (tensor<4xi32>) -> tensor<4xi32>
+  // CHECK-NEXT: %7 = "fxpmath.clampis"(%6) {clamp_max = 127 : i32, clamp_min = -128 : i32} : (tensor<4xi32>) -> tensor<4xi32>
   // CHECK-NEXT: %8 = "fxpmath.convertis"(%7) : (tensor<4xi32>) -> tensor<4xi8>
   // CHECK-NEXT: %9 = "quant.scast"(%8) : (tensor<4xi8>) -> tensor<4x!quant.uniform<i8:f32, 1.065000e-01>>
   // CHECK-NEXT: return %9 : tensor<4x!quant.uniform<i8:f32, 1.065000e-01>>
@@ -38,8 +38,8 @@ func @real_mulew_affine_clamp(%arg0 : !type_lhs, %arg1: !type_rhs) -> !type_resu
   // CHECK: addi %3, %cst_0 : tensor<4xi32>
   // CHECK: muli %4, %5 : tensor<4xi32>
   // CHECK: addi %8, %cst_1 : tensor<4xi32>
-  // CHECK: {clamp_max: 55 : i32, clamp_min: -73 : i32}
-  %0 = "fxpmath.real_mul_ew"(%arg0, %arg1) { clamp_min:-4.0, clamp_max:4.0 } : (!type_lhs, !type_rhs) -> (!type_result)
+  // CHECK: {clamp_max = 55 : i32, clamp_min = -73 : i32}
+  %0 = "fxpmath.real_mul_ew"(%arg0, %arg1) { clamp_min = -4.0, clamp_max = 4.0 } : (!type_lhs, !type_rhs) -> (!type_result)
   return %0 : !type_result
 }
 
