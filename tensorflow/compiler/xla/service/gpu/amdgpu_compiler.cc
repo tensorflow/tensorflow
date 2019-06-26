@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/amdgpu_compiler.h"
 
 #include <stdlib.h>
-
 #include <atomic>
 #include <functional>
 #include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
