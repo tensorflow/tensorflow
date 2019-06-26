@@ -285,15 +285,19 @@ HloValue& HloDataflowAnalysis::GetValue(HloValue::Id value_id) {
 }
 
 HloValueSet HloDataflowAnalysis::GetFlattenedValueSet(
-    const HloInstruction* instruction) {
+    const HloInstruction* instruction) const {
   HloValueSet value_set;
 
   const InstructionValueSet& value_set_tree =
       GetInstructionValueSet(instruction);
 
-  for (auto pair : value_set_tree) {
-    value_set.AssignUnionOf({&pair.second});
+  std::vector<const HloValueSet*> all_sets;
+  for (auto& pair : value_set_tree) {
+    const HloValueSet& value_set = pair.second;
+    all_sets.push_back(&value_set);
   }
+  value_set.AssignUnionOf(all_sets);
+
   return value_set;
 }
 
