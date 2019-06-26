@@ -35,7 +35,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 65
+// Next ID: 67
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -52,6 +52,9 @@ message HloInstructionProto {
   // Use backend_config instead for custom_call_opaque.
   reserved 53;
   reserved "custom_call_opaque";
+  // Use backend_config instead for all_reduce_barrier.
+  reserved 46;
+  reserved "all_reduce_barrier";
 
   string name = 1;
   string opcode = 2;
@@ -172,7 +175,6 @@ message HloInstructionProto {
   // Cross replica op fields.
   repeated ReplicaGroup replica_groups = 49;
   int64 all_reduce_id = 45;
-  string all_reduce_barrier = 46;
 
   // Whether this Send/Recv instruction transfers data to/from the host. Only
   // present for Send and Recv instructions and their SendDone and RecvDone
@@ -218,6 +220,13 @@ message HloInstructionProto {
   // It's illegal to partition a dimension into more shards than there are
   // elements in that dimension.
   repeated int64 outer_dimension_partitions = 64;
+
+  // Whether the kCustomCall instruction has side-effects, only present for
+  // kCustomCall.
+  bool custom_call_has_side_effect = 65;
+
+  // The delta value for kRngGetAndUpdateState.
+  int64 delta = 66;
 }
 
 // Serialization of HloComputation.

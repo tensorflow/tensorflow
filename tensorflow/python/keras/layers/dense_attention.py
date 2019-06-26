@@ -23,6 +23,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_layer import Layer
@@ -70,6 +71,7 @@ class BaseDenseAttention(Layer):
   def __init__(self, causal=False, **kwargs):
     super(BaseDenseAttention, self).__init__(**kwargs)
     self.causal = causal
+    self.supports_masking = True
 
   def _calculate_scores(self, query, key):
     """Calculates attention scores.
@@ -143,6 +145,15 @@ class BaseDenseAttention(Layer):
       q_mask = array_ops.expand_dims(q_mask, axis=-1)
       result *= math_ops.cast(q_mask, dtype=result.dtype)
     return result
+
+  def compute_mask(self, inputs, mask=None):
+    self._validate_call_args(inputs=inputs, mask=mask)
+    if mask:
+      q_mask = mask[0]
+      if q_mask is None:
+        return None
+      return ops.convert_to_tensor(q_mask)
+    return None
 
   def _validate_call_args(self, inputs, mask):
     """Validates arguments of the call method."""

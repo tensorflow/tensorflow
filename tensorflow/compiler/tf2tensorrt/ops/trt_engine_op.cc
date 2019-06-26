@@ -38,7 +38,6 @@ REGISTER_OP("TRTEngineOp")
     .Attr("segment_funcdef_name: string")
     .Attr("InT: list({int8,float16,float32,int32})")
     .Attr("OutT: list({int8,float16,float32,int32})")
-    .Attr("cached_engine_batches: list(int) >= 0 = []")
     .Attr("max_cached_engines_count: int = 1")
     .Attr("workspace_size_bytes: int")
     .Attr("precision_mode: {'FP32', 'FP16', 'INT8'}")
@@ -54,6 +53,7 @@ REGISTER_OP("TRTEngineOp")
     // inference function as a workaround.
     .SetShapeFn(shape_inference::UnknownShape)
     // Deprecated attributes.
+    .Attr("cached_engine_batches: list(int) >= 0 = []")
     .Attr("fixed_input_size: bool = true")
     .Attr("static_engine: bool = true");
 }  // namespace tensorflow

@@ -234,6 +234,14 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
     DedupControlInputs(target_node);
   }
 
+  bool IsReallyConstant(const NodeDef& node) const {
+    if (!IsConstant(node)) {
+      return false;
+    }
+    // If the node is fed it's not constant anymore.
+    return ctx().feed_nodes->find(node.name()) == ctx().feed_nodes->end();
+  }
+
   bool IsInPreserveSet(const NodeDef& node) const {
     return ctx().nodes_to_preserve->find(node.name()) !=
            ctx().nodes_to_preserve->end();
@@ -257,6 +265,14 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
       }
     }
     return false;
+  }
+
+  bool GetTensorFromConstNode(const string& node_name_or_input,
+                              Tensor* tensor) {
+    const NodeDef* node = ctx().node_map->GetNode(node_name_or_input);
+    return node != nullptr && IsReallyConstant(*node) &&
+           CheckAttrExists(*node, "value").ok() &&
+           tensor->FromProto(node->attr().at("value").tensor());
   }
 
  private:
@@ -533,10 +549,10 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
     using SigKV = decltype(shape_sig_to_inputs)::value_type;
     VLOG(3) << "Add/AddN group has " << shape_sig_to_inputs.size()
             << " unique shapes: "
-            << str_util::Join(shape_sig_to_inputs, ", ",
-                              [](string* out, SigKV p) {
-                                strings::StrAppend(out, p.first);
-                              });
+            << absl::StrJoin(shape_sig_to_inputs, ", ",
+                             [](string* out, SigKV p) {
+                               strings::StrAppend(out, p.first);
+                             });
 
     // Collect all the shapes from representative elements.
     std::vector<TensorShapeProto> shapes;
@@ -2032,7 +2048,7 @@ class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
   // GPU. The transpose might not be implemented for image.type, or
   // might be slower with image.type than with cast_dst_type.
   bool NodeIsOnCpuOrGpu(const NodeDef* node) const {
-    using str_util::StrContains;
+    using absl::StrContains;
 
     string task;
     string device;
@@ -2348,7 +2364,7 @@ class ReplaceMulWithSquare : public ArithmeticOptimizerStage {
     string device;
     bool is_on_cpu =
         DeviceNameUtils::SplitDeviceName(node->device(), &task, &device) &&
-        str_util::StrContains(device, DEVICE_CPU);
+        absl::StrContains(device, DEVICE_CPU);
 
     if (!is_complex || is_on_cpu) {
       NodeDef* new_square_node = AddCopyNode(optimized_node_name, node);
@@ -2480,101 +2496,78 @@ class ConvertPowStage : public ArithmeticOptimizerStage {
 
   bool IsSupported(const NodeDef* node) const override {
     return IsPow(*node) &&
-           ctx().graph_properties->GetInputProperties(node->name()).size() == 2;
+           ctx().graph_properties->HasOutputProperties(node->name()) &&
+           ctx().graph_properties->HasInputProperties(node->name());
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
-    const auto& pow_props =
-        ctx().graph_properties->GetInputProperties(node->name())[1];
-    PartialTensorShape shape(pow_props.shape());
-    if (!shape.IsFullyDefined()) {
-      // skip if p is not fully defined.
-      return Status::OK();
+    Tensor pow;
+    if (!GetTensorFromConstNode(node->input(1), &pow)) return Status::OK();
+    complex128 prev, curr;
+    for (int i = 0; i < pow.NumElements(); ++i) {
+      if (!GetElementUnexhaustive(pow, i, {pow.dtype()}, &curr)) {
+        // input data type is not supported by Pow. Skip.
+        return Status::OK();
+      }
+      if (i != 0 && curr != prev) {
+        // pow has different values on different elements. Skip.
+        return Status::OK();
+      }
+      prev = curr;
     }
-    if (TensorShape::IsValid(pow_props.shape()) && pow_props.has_value()) {
-      Tensor pow(pow_props.dtype(), pow_props.shape());
-      if (!pow.FromProto(pow_props.value())) {
-        return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                       pow_props.value().DebugString());
+    NodeDef *x, *y;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &x));
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &y));
+    const auto& value_props =
+        ctx().graph_properties->GetInputProperties(node->name())[0];
+    const TensorShapeProto& output_shape =
+        ctx().graph_properties->GetOutputProperties(node->name())[0].shape();
+    if (curr == complex128(2, 0)) {
+      node->set_op("Square");
+      node->set_input(1, AsControlDependency(y->name()));
+      AddToOptimizationQueue(node);
+      AddToOptimizationQueue(y);
+    } else if (curr == complex128(1, 0) &&
+               ShapesSymbolicallyEqual(value_props.shape(), output_shape)) {
+      // Pow could be used to broadcast, so make sure the shapes of the two
+      // arguments are identical before replacing Pow with Identity.
+      node->set_op("Identity");
+      node->set_input(1, AsControlDependency(y->name()));
+      AddToOptimizationQueue(node);
+      AddToOptimizationQueue(y);
+    } else if (curr == complex128(0.5, 0)) {
+      node->set_op("Sqrt");
+      node->set_input(1, AsControlDependency(y->name()));
+      AddToOptimizationQueue(node);
+      AddToOptimizationQueue(y);
+    } else if (curr == complex128(0, 0) &&
+               ShapesSymbolicallyEqual(value_props.shape(), output_shape) &&
+               PartialTensorShape(output_shape).IsFullyDefined()) {
+      const auto dtype = node->attr().at("T").type();
+      Tensor ones(dtype, output_shape);
+      for (int i = 0; i < ones.NumElements(); ++i) {
+        TF_RETURN_IF_ERROR(SetElementToOne(i, &ones));
       }
-
-      complex128 prev, curr;
-      for (int i = 0; i < pow.NumElements(); ++i) {
-        if (!GetElementUnexhaustive(pow, i, {pow_props.dtype()}, &curr)) {
-          // input data type is not supported by Pow. Skip.
-          return Status::OK();
-        }
-        if (i != 0 && curr != prev) {
-          // pow has different values on different elements. Skip.
-          return Status::OK();
-        }
-        prev = curr;
-      }
-      NodeDef *x, *y;
-      TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &x));
-      TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &y));
-      const auto& value_props =
-          ctx().graph_properties->GetInputProperties(node->name())[0];
-      const TensorShapeProto& output_shape =
-          ctx().graph_properties->GetOutputProperties(node->name())[0].shape();
-      if (curr == complex128(2, 0)) {
-        node->set_op("Square");
-        node->set_input(1, AsControlDependency(y->name()));
-        AddToOptimizationQueue(node);
-        AddToOptimizationQueue(y);
-      } else if (curr == complex128(1, 0) &&
-                 ShapesSymbolicallyEqual(value_props.shape(), output_shape)) {
-        // Pow could be used to broadcast, so make sure the shapes of the two
-        // arguments are identical before replacing Pow with Identity.
-        node->set_op("Identity");
-        node->set_input(1, AsControlDependency(y->name()));
-        AddToOptimizationQueue(node);
-        AddToOptimizationQueue(y);
-      } else if (curr == complex128(0.5, 0)) {
-        node->set_op("Sqrt");
-        node->set_input(1, AsControlDependency(y->name()));
-        AddToOptimizationQueue(node);
-        AddToOptimizationQueue(y);
-      } else if (curr == complex128(0, 0) &&
-                 ShapesSymbolicallyEqual(value_props.shape(), output_shape)) {
-        PartialTensorShape shape(value_props.shape());
-        if (!shape.IsFullyDefined()) {
-          // skip if b is not fully defined.
-          return Status::OK();
-        }
-        if (TensorShape::IsValid(value_props.shape()) &&
-            value_props.has_value()) {
-          Tensor base(value_props.dtype(), value_props.shape());
-          if (!base.FromProto(value_props.value())) {
-            return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                           value_props.value().DebugString());
-          }
-          node->set_op("Const");
-          Tensor c(base.dtype(), base.shape());
-          for (int i = 0; i < c.NumElements(); ++i) {
-            TF_RETURN_IF_ERROR(SetElementToOne(i, &c));
-          }
-          (*node->mutable_attr())["dtype"].set_type(base.dtype());
-          c.AsProtoTensorContent(
-              (*node->mutable_attr())["value"].mutable_tensor());
-          node->mutable_attr()->erase("T");
-          node->set_input(0, AsControlDependency(x->name()));
-          node->set_input(1, AsControlDependency(y->name()));
-          AddToOptimizationQueue(node);
-          AddToOptimizationQueue(x);
-          AddToOptimizationQueue(y);
-        }
-      } else if (curr == complex128(-0.5, 0)) {
-        node->set_op("Rsqrt");
-        node->set_input(1, AsControlDependency(y->name()));
-        AddToOptimizationQueue(node);
-        AddToOptimizationQueue(y);
-      } else if (curr == complex128(-1, 0)) {
-        node->set_op("Reciprocal");
-        node->set_input(1, AsControlDependency(y->name()));
-        AddToOptimizationQueue(node);
-        AddToOptimizationQueue(y);
-      }
+      node->set_op("Const");
+      (*node->mutable_attr())["dtype"].set_type(dtype);
+      node->mutable_attr()->erase("T");
+      ones.AsProtoTensorContent(
+          (*node->mutable_attr())["value"].mutable_tensor());
+      node->set_input(0, AsControlDependency(x->name()));
+      node->set_input(1, AsControlDependency(y->name()));
+      AddToOptimizationQueue(node);
+      AddToOptimizationQueue(x);
+      AddToOptimizationQueue(y);
+    } else if (curr == complex128(-0.5, 0)) {
+      node->set_op("Rsqrt");
+      node->set_input(1, AsControlDependency(y->name()));
+      AddToOptimizationQueue(node);
+      AddToOptimizationQueue(y);
+    } else if (curr == complex128(-1, 0)) {
+      node->set_op("Reciprocal");
+      node->set_input(1, AsControlDependency(y->name()));
+      AddToOptimizationQueue(node);
+      AddToOptimizationQueue(y);
     }
     return Status::OK();
   }
@@ -2638,12 +2631,12 @@ class ConvertLog1pStage : public ArithmeticOptimizerStage {
   }
 
  private:
-  Status TrySimplifyInternal(NodeDef* node, NodeDef* input, int i, int j,
+  Status TrySimplifyInternal(NodeDef* node, NodeDef* add_node, int i, int j,
                              bool* modified) {
     const auto& t =
-        ctx().graph_properties->GetInputProperties(input->name())[i];
+        ctx().graph_properties->GetInputProperties(add_node->name())[i];
     const auto& c =
-        ctx().graph_properties->GetInputProperties(input->name())[j];
+        ctx().graph_properties->GetInputProperties(add_node->name())[j];
     for (int k = 0; k < c.shape().dim_size(); ++k) {
       // Skip if c shape is not fully determined.
       if (c.shape().dim(k).size() < 0) {
@@ -2659,13 +2652,13 @@ class ConvertLog1pStage : public ArithmeticOptimizerStage {
       // broadcast.
       return Status::OK();
     }
-    if (TensorShape::IsValid(c.shape()) && c.has_value()) {
-      Tensor constant(c.dtype(), c.shape());
-      if (!constant.FromProto(c.value())) {
-        return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                       c.value().DebugString());
-      }
+    Tensor constant;
+    if (GetTensorFromConstNode(add_node->input(j), &constant)) {
       complex128 element;
+      // TODO(rmlarsen): Refactor the more general IsOnes from
+      // constant_folding.cc and use it here. Perhaps also convert log(x - (-1))
+      // or (preferably) add a passes to canonicalize Sub(x, -1) to Add(x, 1),
+      // and Neg(-1) to 1.
       for (int k = 0; k < constant.NumElements(); ++k) {
         if (!GetElementUnexhaustive(constant, k,
                                     {DT_BFLOAT16, DT_HALF, DT_FLOAT, DT_DOUBLE,
@@ -2680,15 +2673,15 @@ class ConvertLog1pStage : public ArithmeticOptimizerStage {
         }
       }
       NodeDef *x, *y;
-      TF_RETURN_IF_ERROR(GetInputNode(input->input(i), &x));
-      TF_RETURN_IF_ERROR(GetInputNode(input->input(j), &y));
+      TF_RETURN_IF_ERROR(GetInputNode(add_node->input(i), &x));
+      TF_RETURN_IF_ERROR(GetInputNode(add_node->input(j), &y));
       node->set_op("Log1p");
-      node->set_input(0, input->input(i));
+      node->set_input(0, add_node->input(i));
       node->add_input(AsControlDependency(y->name()));
-      ForwardControlDependencies(node, {input});
+      ForwardControlDependencies(node, {add_node});
 
       AddToOptimizationQueue(node);
-      AddToOptimizationQueue(input);
+      AddToOptimizationQueue(add_node);
       AddToOptimizationQueue(x);
       AddToOptimizationQueue(y);
       *modified = true;
@@ -2717,25 +2710,8 @@ class ConvertExpm1Stage : public ArithmeticOptimizerStage {
     if (ctx().graph_properties->GetInputProperties(node->name()).size() < 2) {
       return Status::OK();
     }
-
-    NodeDef* exp;
-    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &exp));
-    if (!IsExp(*exp)) {
-      return Status::OK();
-    }
-
-    if (ctx().graph_properties->GetInputProperties(exp->name()).empty()) {
-      return Status::OK();
-    }
-
-    const auto& t = ctx().graph_properties->GetInputProperties(exp->name())[0];
+    const auto& t = ctx().graph_properties->GetInputProperties(node->name())[0];
     const auto& c = ctx().graph_properties->GetInputProperties(node->name())[1];
-    for (int k = 0; k < c.shape().dim_size(); ++k) {
-      // Skip if c shape is not fully determined.
-      if (c.shape().dim(k).size() < 0) {
-        return Status::OK();
-      }
-    }
     TensorShapeProto broadcast_shape;
     if (!ShapeAfterBroadcast(t.shape(), c.shape(), &broadcast_shape)) {
       return Status::OK();
@@ -2745,39 +2721,39 @@ class ConvertExpm1Stage : public ArithmeticOptimizerStage {
       // broadcast.
       return Status::OK();
     }
-    if (TensorShape::IsValid(c.shape()) && c.has_value()) {
-      Tensor constant(c.dtype(), c.shape());
-      if (!constant.FromProto(c.value())) {
-        return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                       c.value().DebugString());
+    Tensor constant;
+    if (!GetTensorFromConstNode(node->input(1), &constant)) return Status::OK();
+    // TODO(rmlarsen): Use the more general IsOnes helper here.
+    complex128 element;
+    for (int k = 0; k < constant.NumElements(); ++k) {
+      if (!GetElementUnexhaustive(constant, k,
+                                  {DT_BFLOAT16, DT_HALF, DT_FLOAT, DT_DOUBLE,
+                                   DT_COMPLEX64, DT_COMPLEX128},
+                                  &element)) {
+        // input data type is not supported by expm1. Skip.
+        return Status::OK();
       }
-      complex128 element;
-      for (int k = 0; k < constant.NumElements(); ++k) {
-        if (!GetElementUnexhaustive(constant, k,
-                                    {DT_BFLOAT16, DT_HALF, DT_FLOAT, DT_DOUBLE,
-                                     DT_COMPLEX64, DT_COMPLEX128},
-                                    &element)) {
-          // input data type is not supported by expm1. Skip.
-          return Status::OK();
-        }
-        if (element != complex128(1)) {
-          // current element is not 1. Skip.
-          return Status::OK();
-        }
+      LOG(INFO) << "Got element = " << element;
+      if (element != complex128(1)) {
+        // current element is not 1. Skip.
+        return Status::OK();
       }
-      NodeDef *exp_input, *ones;
-      TF_RETURN_IF_ERROR(GetInputNode(exp->input(0), &exp_input));
-      TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &ones));
-      node->set_op("Expm1");
-      node->set_input(0, exp->input(0));
-      node->set_input(1, AsControlDependency(ones->name()));
-      ForwardControlDependencies(node, {exp});
-
-      AddToOptimizationQueue(node);
-      AddToOptimizationQueue(exp);
-      AddToOptimizationQueue(exp_input);
-      AddToOptimizationQueue(ones);
     }
+    NodeDef* exp;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &exp));
+    NodeDef *exp_input, *ones;
+    TF_RETURN_IF_ERROR(GetInputNode(exp->input(0), &exp_input));
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &ones));
+    node->set_op("Expm1");
+    node->set_input(0, exp->input(0));
+    node->set_input(1, AsControlDependency(ones->name()));
+    ForwardControlDependencies(node, {exp});
+
+    AddToOptimizationQueue(node);
+    AddToOptimizationQueue(exp);
+    AddToOptimizationQueue(exp_input);
+    AddToOptimizationQueue(ones);
+    *simplified_node_name = node->name();
     return Status::OK();
   }
 };
@@ -2968,7 +2944,7 @@ class UnaryOpsComposition : public ArithmeticOptimizerStage {
     std::reverse(op_names.begin(), op_names.end());
 
     VLOG(2) << "Fuse unary ops: root=" << root->name() << " op_names=["
-            << str_util::Join(op_names, ", ") << "]";
+            << absl::StrJoin(op_names, ", ") << "]";
 
     NodeDef* composition_node = ctx().optimized_graph->add_node();
     composition_node->set_name(OptimizedNodeName(*root));
@@ -3010,7 +2986,7 @@ class UnaryOpsComposition : public ArithmeticOptimizerStage {
 
   // UnaryOpsComposition is defined only for CPU.
   bool NodeIsOnCpu(const NodeDef& node) const {
-    using str_util::StartsWith;
+    using absl::StartsWith;
 
     string task;
     string device;
@@ -3096,14 +3072,6 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
   }
 
  protected:
-  bool IsReallyConstant(const NodeDef& node) const {
-    if (!IsConstant(node)) {
-      return false;
-    }
-    // If the node is fed it's not constant anymore.
-    return ctx().feed_nodes->find(node.name()) == ctx().feed_nodes->end();
-  }
-
   bool GetConstantAsInt64(const NodeDef& node, DataType dtype,
                           std::vector<int64>* values) {
     if (dtype == DT_INT32) {
@@ -3430,8 +3398,6 @@ bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
 
 void ArithmeticOptimizer::DedupComputations() {
   CanonicalizeGraph(optimized_graph_);
-  // LOG(INFO) << "Graph after canonicalization: \n"
-  //           << optimized_graph_->DebugString();
 
   GraphTopologyView graph_view;
   if (!graph_view.InitializeFromGraph(*optimized_graph_).ok()) {
@@ -3601,7 +3567,7 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<FuseSquaredDiffStage>(ctx, ctx_ext);
 
   VLOG(1) << "Run " << pipeline.NumStages() << " arithmetic optimizer stages: "
-          << str_util::Join(pipeline.StageNames(), ", ");
+          << absl::StrJoin(pipeline.StageNames(), ", ");
 
   while (!nodes_to_simplify.Empty()) {
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
@@ -3683,7 +3649,10 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
 
   graph_properties_.reset(new GraphProperties(optimized_item));
   const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
-  const Status status = graph_properties_->InferStatically(assume_valid_feeds);
+  const Status status =
+      graph_properties_->InferStatically(assume_valid_feeds,
+                                         /*aggressive_shape_inference=*/false,
+                                         /*include_tensor_values=*/false);
   const bool can_use_shapes = status.ok();
   if (!can_use_shapes) {
     VLOG(1) << "Shape inference failed." << status.error_message();

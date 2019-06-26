@@ -13,11 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 common_linkopts = tflite_linkopts() + select({
     "//conditions:default": [],
@@ -123,8 +124,10 @@ cc_test(
     linkstatic = 1,
     deps = [
         ":tflite_inference_stage",
+        "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/tools/evaluation:utils",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_googletest//:gtest_main",
@@ -144,5 +147,36 @@ cc_library(
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
+    ],
+)
+
+cc_library(
+    name = "inference_profiler_stage",
+    srcs = ["inference_profiler_stage.cc"],
+    hdrs = ["inference_profiler_stage.h"],
+    copts = tflite_copts(),
+    deps = [
+        ":tflite_inference_stage",
+        "//tensorflow/core:stats_calculator_portable",
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite/tools/evaluation:evaluation_stage",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
+    ],
+)
+
+cc_test(
+    name = "inference_profiler_stage_test",
+    srcs = ["inference_profiler_stage_test.cc"],
+    data = ["//tensorflow/lite:testdata/add_quantized.bin"],
+    linkopts = common_linkopts,
+    linkstatic = 1,
+    deps = [
+        ":inference_profiler_stage",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
+        "@com_google_googletest//:gtest_main",
     ],
 )

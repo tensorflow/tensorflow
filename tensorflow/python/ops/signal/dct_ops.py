@@ -27,13 +27,12 @@ from tensorflow.python.ops import math_ops as _math_ops
 from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.util.tf_export import tf_export
 
-
 def _validate_dct_arguments(input_tensor, dct_type, n, axis, norm):
   """Checks that DCT/IDCT arguments are compatible and well formed."""
-  if n is not None:
-    raise NotImplementedError("The DCT length argument is not implemented.")
   if axis != -1:
     raise NotImplementedError("axis must be -1. Got: %s" % axis)
+  if n is not None and n < 1:
+    raise ValueError("n should be a positive integer or None")
   if dct_type not in (1, 2, 3):
     raise ValueError("Only Types I, II and III (I)DCT are supported.")
   if dct_type == 1:
@@ -48,7 +47,7 @@ def _validate_dct_arguments(input_tensor, dct_type, n, axis, norm):
         "Unknown normalization. Expected None or 'ortho', got: %s" % norm)
 
 
-# TODO(rjryan): Implement `n` and `axis` parameters.
+# TODO(rjryan): Implement `axis` parameter.
 @tf_export("signal.dct", v1=["signal.dct", "spectral.dct"])
 def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disable=redefined-builtin
   """Computes the 1D [Discrete Cosine Transform (DCT)][dct] of `input`.
@@ -69,7 +68,10 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
     input: A `[..., samples]` `float32` `Tensor` containing the signals to
       take the DCT of.
     type: The DCT type to perform. Must be 1, 2 or 3.
-    n: For future expansion. The length of the transform. Must be `None`.
+    n: The length of the transform. If length is less than sequence length,
+      only the first n elements of the sequence are considered for the DCT.
+      If n is greater than the sequence length, zeros are padded and then
+      the DCT is computed as usual.
     axis: For future expansion. The axis to compute the DCT along. Must be `-1`.
     norm: The normalization to apply. `None` for no normalization or `'ortho'`
       for orthonormal normalization.
@@ -79,8 +81,9 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
     A `[..., samples]` `float32` `Tensor` containing the DCT of `input`.
 
   Raises:
-    ValueError: If `type` is not `1`, `2` or `3`, `n` is not `None, `axis` is
-      not `-1`, or `norm` is not `None` or `'ortho'`.
+    ValueError: If `type` is not `1`, `2` or `3`, `axis` is
+      not `-1`, `n` is not `None` or greater than 0,
+      or `norm` is not `None` or `'ortho'`.
     ValueError: If `type` is `1` and `norm` is `ortho`.
 
   [dct]: https://en.wikipedia.org/wiki/Discrete_cosine_transform
@@ -90,6 +93,19 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
     # We use the RFFT to compute the DCT and TensorFlow only supports float32
     # for FFTs at the moment.
     input = _ops.convert_to_tensor(input, dtype=_dtypes.float32)
+
+    seq_len = (
+        tensor_shape.dimension_value(input.shape[-1]) or
+        _array_ops.shape(input)[-1])
+    if n is not None:
+      if n <= seq_len:
+        input = input[..., 0:n]
+      else:
+        rank = len(input.shape)
+        padding = [[0, 0] for i in range(rank)]
+        padding[rank - 1][1] = n - seq_len
+        padding = _ops.convert_to_tensor(padding, dtype=_dtypes.int32)
+        input = _array_ops.pad(input, paddings=padding)
 
     axis_dim = (tensor_shape.dimension_value(input.shape[-1])
                 or _array_ops.shape(input)[-1])

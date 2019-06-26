@@ -20,11 +20,14 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "include/pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/shared_device_buffer.h"
 #include "tensorflow/compiler/xla/python/worker_thread.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -40,54 +43,6 @@ namespace xla {
 // "xla._CPU_CUSTOM_CALL_TARGET".
 Status RegisterCpuCustomCallTarget(const std::string& fn_name,
                                    pybind11::capsule capsule);
-
-// Class that manages destruction of Python objects.
-//
-// We must not destroy Python objects without holding the GIL. However, we
-// frequently want to hold references to Python objects for the duration of
-// an asynchronous transfer on a Stream, and release our reference when the
-// transfer completes.
-//
-// This class holds references to Python objects outside a GIL scope, that can
-// be collected later when the GIL is held by calling CollectGarbage().
-class PythonRefManager {
- public:
-  PythonRefManager() = default;
-
-  // Holds references to a set of pybind11::objects, adding the references to
-  // the PythonRefManager on destruction.
-  class ManagedPyObjects {
-   public:
-    ManagedPyObjects() = default;
-    ManagedPyObjects(PythonRefManager* manager,
-                     absl::Span<pybind11::object> objects);
-
-    ~ManagedPyObjects();
-
-    ManagedPyObjects(const ManagedPyObjects& other) = default;
-    ManagedPyObjects(ManagedPyObjects&& other) = default;
-    ManagedPyObjects& operator=(const ManagedPyObjects& other) = default;
-    ManagedPyObjects& operator=(ManagedPyObjects&& other) = default;
-
-   private:
-    PythonRefManager* manager_ = nullptr;
-    absl::InlinedVector<pybind11::object, 1> objects_;
-  };
-
-  // Creates a managed std::shared_ptr to an object. When the shared_ptr is
-  // destroyed, the reference to 'object' will be added to python_garbage_,
-  // and collected next time CollectGarbage() is called.
-  ManagedPyObjects ManageReferences(absl::Span<pybind11::object> objects);
-
-  // Releases the contents of python_garbage_. Requires that the GIL is held.
-  // The client calls this method during API entry points where the GIL is held
-  // to free any garbage that has accumulated.
-  void CollectGarbage();
-
- private:
-  absl::Mutex mu_;
-  std::deque<pybind11::object> python_garbage_ GUARDED_BY(mu_);
-};
 
 // Class that encapsulates state relating to a device (e.g., a GPU) on which we
 // can perform computation and transfers.
@@ -107,7 +62,7 @@ class Device {
   // each execution or transfer. This is intended for debugging only.
   Device(se::StreamExecutor* executor, bool use_multiple_streams,
          bool synchronous_deallocation, bool asynchronous);
-  ~Device();
+  virtual ~Device();
 
   bool use_multiple_streams() const { return use_multiple_streams_; }
   bool synchronous_deallocation() const { return synchronous_deallocation_; }
@@ -119,6 +74,16 @@ class Device {
   se::Stream* device_to_host_stream() const {
     return device_to_host_stream_.get();
   }
+
+  // Returns a device to device stream. Allocates streams in a round-robin
+  // fashion amongst the available streams.
+  se::Stream* GetDeviceToDeviceStream();
+
+  // Enqueues a copy of `src_buffer` to `dst_buffer` onto `src_stream`.
+  virtual Status ThenMemcpyDeviceToDevice(se::Stream* src_stream,
+                                          se::Stream* dst_stream,
+                                          se::DeviceMemoryBase src_buffer,
+                                          se::DeviceMemoryBase dst_buffer);
 
   // A worker thread, used for replicated computation launches and callbacks.
   WorkerThread* worker_thread() const { return worker_thread_.get(); }
@@ -169,12 +134,21 @@ class Device {
   }
 
  private:
+  Status SynchronizeAllActivity();
+
   bool use_multiple_streams_;
   bool synchronous_deallocation_;
   bool asynchronous_;
   std::shared_ptr<se::Stream> compute_stream_;
   std::shared_ptr<se::Stream> host_to_device_stream_;
   std::shared_ptr<se::Stream> device_to_host_stream_;
+  std::vector<std::shared_ptr<se::Stream>> device_to_device_streams_;
+
+  // Number of device-to-device streams to create in the multistream case.
+  static constexpr int kNumDeviceToDeviceStreams = 4;
+
+  absl::Mutex mu_;
+  int next_device_to_device_stream_ GUARDED_BY(mu_) = 0;
 
   // Callback stream is used for running short host-side callbacks after device
   // side events, without preventing the device-side stream from doing useful
@@ -193,8 +167,15 @@ struct AllocatorConfig {
   };
   Kind kind = Kind::kDefault;
 
-  // Only used if kind == kBFC. Fraction of available memory to allocate.
-  double memory_fraction = .9;
+  // Only used if kind == kBFC. The maximum fraction of available memory to
+  // allocate.
+  double memory_fraction = 0.9;
+
+  // Only used if kind == kBFC. If true, the allocator will immediately allocate
+  // the maximum amount allowed by `memory_fraction`. This reduces
+  // fragmentation, allowing more of the total memory to be used. If false, the
+  // allocator will allocate more memory as allocations are requested.
+  bool preallocate = true;
 };
 
 // Encapsulates the state of Python session with XLA.
@@ -208,6 +189,7 @@ class PyLocalClient {
 
   // `allocator` may null, in which case the platform default allocator is used.
   explicit PyLocalClient(std::string platform_name, LocalClient* client,
+                         std::vector<std::unique_ptr<Device>> devices,
                          std::unique_ptr<se::DeviceMemoryAllocator> allocator,
                          bool asynchronous);
   virtual ~PyLocalClient() = default;
@@ -217,7 +199,7 @@ class PyLocalClient {
                                                  int device_ordinal);
 
   int device_count() const { return client_->device_count(); }
-  const Device& device(int device_ordinal) const {
+  Device& device(int device_ordinal) const {
     return *devices_.at(device_ordinal);
   }
   LocalClient* client() const { return client_; }
@@ -242,49 +224,92 @@ class PyLocalClient {
 };
 
 // Holds a reference from Python to one or more device buffers.
+// A PyLocalBuffer can be either valid or invalid. An invalid buffer is one that
+// has never been initialized, or a buffer that has been deleted (e.g., by
+// calling Delete). We allow PyLocalBuffer objects to outlive the underlying
+// device buffers so we can decouple buffer lifetimes from the corresponding
+// Python references if needed.
+// Thread-safe.
 class PyLocalBuffer {
  public:
-  static StatusOr<PyLocalBuffer> FromPython(
+  static StatusOr<std::unique_ptr<PyLocalBuffer>> FromPython(
       const pybind11::object& argument, std::shared_ptr<PyLocalClient> client,
       int device_ordinal);
 
   // Converts multiple (python object, device ordinal) pairs into
   // PyLocalBuffers in parallel.
-  static StatusOr<std::vector<PyLocalBuffer>> FromPythonValues(
+  static StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> FromPythonValues(
       const std::vector<std::pair<pybind11::object, int>>& argument,
       std::shared_ptr<PyLocalClient> client);
 
-  static StatusOr<PyLocalBuffer> MakeTuple(
-      const std::vector<PyLocalBuffer> buffers,
+  static StatusOr<std::unique_ptr<PyLocalBuffer>> MakeTuple(
+      const std::vector<PyLocalBuffer*> buffers,
       std::shared_ptr<PyLocalClient> client, int device_ordinal);
 
   PyLocalBuffer() = default;
   PyLocalBuffer(Shape on_host_shape,
                 std::shared_ptr<PySharedDeviceBuffer> device_buffer,
                 std::shared_ptr<PyLocalClient> client);
-  StatusOr<pybind11::object> ToPython() const;
-  const Shape& on_host_shape() const { return on_host_shape_; }
-  const std::shared_ptr<PySharedDeviceBuffer>& device_buffer() const {
-    return device_buffer_;
-  }
-  int device_ordinal() const { return device_buffer_->device_ordinal(); }
 
-  void Delete() {
-    device_buffer_ = nullptr;
-    client_ = nullptr;
-  }
+  PyLocalBuffer(const PyLocalBuffer&) = delete;
+  PyLocalBuffer(PyLocalBuffer&&) = delete;
+  PyLocalBuffer& operator=(const PyLocalBuffer&) = delete;
+  PyLocalBuffer& operator=(PyLocalBuffer&&) = delete;
+
+  const Shape& on_host_shape() const { return on_host_shape_; }
+  int device_ordinal() const { return device_ordinal_; }
+
+  // Returns the buffer's value as a tuple DAG of Python arrays. If the value
+  // has previously been prefetched to the host, then returns the prefetched
+  // version, otherwise copies the buffer to the host. Blocks until the
+  // value is ready.
+  StatusOr<pybind11::object> ToPython();
+
+  // Initiates a copy of the buffer to the host. Does not block waiting for
+  // the transfer to complete. The value can be retrieved by a later call to
+  // ToPython().
+  Status CopyToHostAsync();
+
+  // Returns the associated device buffer. Returns a nullptr if the buffer is
+  // invalid.
+  std::shared_ptr<PySharedDeviceBuffer> DeviceBuffer() const;
+
+  // Deletes the device memory associated with this buffer, leaving it in an
+  // invalid state.
+  void Delete();
 
   // Returns a view of the PyLocalBuffer DAG as a ShapedBuffer. The
   // PyLocalBuffer retains ownership of the device buffers.
-  ShapedBuffer AsShapedBuffer() const;
+  StatusOr<ShapedBuffer> AsShapedBuffer() const;
 
   // Destructures a tuple-valued PyLocalBuffer into its constituent elements.
-  StatusOr<std::vector<PyLocalBuffer>> DestructureTuple();
+  StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> DestructureTuple();
+
+  // Copies the buffer to device `dst_device_ordinal`.
+  StatusOr<std::unique_ptr<PyLocalBuffer>> CopyToDevice(int dst_device_ordinal);
+
+  // Blocks the host until the buffer's value has been computed and is ready for
+  // immediate use on the device. Useful in particular for timing benchmarks.
+  Status BlockHostUntilReady();
 
  private:
-  std::shared_ptr<PyLocalClient> client_ = nullptr;
-  Shape on_host_shape_;
-  std::shared_ptr<PySharedDeviceBuffer> device_buffer_;
+  const std::shared_ptr<PyLocalClient> client_;
+  const Shape on_host_shape_;
+  const int device_ordinal_;
+  mutable absl::Mutex mu_;
+  std::shared_ptr<PySharedDeviceBuffer> device_buffer_ GUARDED_BY(mu_);
+
+  // The cached value of the buffer on the host, produced either from a call to
+  // CopyToHost or from a call to ToPython. Once a value has been fetched to
+  // the host, it persists Delete() is called or the PyLocalBuffer is destroyed.
+  struct HostValue {
+    absl::Notification ready;
+    // status and value are valid for reading only after `ready` has been
+    // notified.
+    Status status;
+    std::shared_ptr<xla::Literal> value;
+  };
+  std::shared_ptr<HostValue> host_value_ GUARDED_BY(mu_);
 };
 
 // Represents a compiled computation that can be executed given handles to
@@ -293,9 +318,11 @@ class PyLocalExecutable {
  public:
   // Compiles a computation to an executable.
   static StatusOr<std::unique_ptr<PyLocalExecutable>> Compile(
-      const XlaComputation& computation, std::vector<Shape> argument_layouts,
+      const XlaComputation& computation,
+      absl::optional<std::vector<Shape>> argument_layouts,
       const ExecutableBuildOptions* build_options,
-      std::shared_ptr<PyLocalClient> client);
+      std::shared_ptr<PyLocalClient> client,
+      absl::optional<DeviceAssignment> device_assignment);
 
   PyLocalExecutable(std::shared_ptr<LocalExecutable> executable,
                     DeviceAssignment device_assignment,
@@ -312,20 +339,21 @@ class PyLocalExecutable {
     return device_assignment_;
   }
 
-  StatusOr<PyLocalBuffer> Execute(
+  StatusOr<std::unique_ptr<PyLocalBuffer>> Execute(
       absl::Span<PyLocalBuffer* const> argument_handles);
 
   // Execute on many replicas. Takes a sequence of argument lists (one argument
   // list per replica) and returns a tuple of results (one result per replica).
   // The number of argument lists must be equal to the replica count.
-  StatusOr<std::vector<PyLocalBuffer>> ExecutePerReplica(
+  StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> ExecutePerReplica(
       absl::Span<const std::vector<PyLocalBuffer*>> argument_handles);
 
   void Delete() { executable_ = nullptr; }
 
  private:
-  StatusOr<PyLocalBuffer> ExecuteHelper(
-      absl::Span<PyLocalBuffer* const> argument_handles, int replica);
+  StatusOr<std::unique_ptr<PyLocalBuffer>> ExecuteHelper(
+      absl::Span<PyLocalBuffer* const> argument_handles, int replica,
+      const RunId& run_id);
 
   std::shared_ptr<PyLocalClient> const client_;
   std::shared_ptr<LocalExecutable> executable_;

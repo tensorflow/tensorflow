@@ -32,6 +32,7 @@ from tensorflow.python.ops import data_flow_grad
 from tensorflow.python.ops import manip_grad
 from tensorflow.python.ops import math_grad
 from tensorflow.python.ops import random_grad
+from tensorflow.python.ops import rnn_grad
 from tensorflow.python.ops import sparse_grad
 from tensorflow.python.ops import state_grad
 from tensorflow.python.ops import tensor_array_grad

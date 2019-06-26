@@ -48,11 +48,9 @@ CustomCallThunk::CustomCallThunk(
              instr->shape().ToString(), result_slices.shape().ToString());
 }
 
-Status CustomCallThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
   // gpu_stream is CUstream or e.g. the equivalent type in ROCm.
-  auto gpu_stream = se::gpu::AsGpuStreamValue(stream);
+  auto gpu_stream = se::gpu::AsGpuStreamValue(params.stream);
   auto typed_call_target =
       reinterpret_cast<void (*)(decltype(gpu_stream), void** /*buffers*/,
                                 const char* /*opaque*/, size_t /*opaque_len*/)>(
@@ -65,7 +63,8 @@ Status CustomCallThunk::ExecuteOnStream(
       if (slice.allocation() == nullptr) {
         buffers.push_back(nullptr);
       }
-      buffers.push_back(buffer_allocations.GetDeviceAddress(slice).opaque());
+      buffers.push_back(
+          params.buffer_allocations->GetDeviceAddress(slice).opaque());
     });
   };
   for (const auto& slices : operand_slices_) {

@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/graph_view.h"
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/tensor_id.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -1360,6 +1363,238 @@ void MutableGraphView::RemoveNodesInternal(
   }
 }
 
+namespace {
+constexpr int kTopologicalSortDone = -1;
+
+const char kMutableGraphViewSortTopologicallyError[] =
+    "MutableGraphView::SortTopologically error: ";
+
+// TraversalState is an enum representing the state of a node when it is being
+// traversed via DFS.
+enum TraversalState : uint8_t { PENDING, PROCESSING, PROCESSED };
+
+// RecursionStackState is an enum representing the recursion stack state
+// when using DFS iteratively. `ENTER` is the state representing entering into
+// a recursive call, while `EXIT` is the state representing exiting a
+// recursive call.
+enum RecursionStackState : bool { ENTER, EXIT };
+
+// RecursionStackEntry is a helper struct representing an instance of a
+// recursive call in the iterative DFS simulating a recursive ordering.
+struct RecursionStackEntry {
+  RecursionStackEntry(int node_index, RecursionStackState recursion_state)
+      : node_index(node_index), recursion_state(recursion_state) {}
+
+  const int node_index;
+  const RecursionStackState recursion_state;
+};
+
+// Edge is a helper struct representing an edge in the graph.
+struct Edge {
+  Edge(int from, int to) : from(from), to(to) {}
+
+  const int from;
+  const int to;
+};
+}  // namespace
+
+Status MutableGraphView::SortTopologically(
+    bool ignore_cycles,
+    absl::Span<const TopologicalDependency> extra_dependencies) {
+  if (!mutation_.updated_nodes_.empty() || !mutation_.new_nodes_.empty()) {
+    // Cannot sort when there is an active mutation due to indices possibly
+    // being changed or invalidated.
+    return errors::InvalidArgument(kMutableGraphViewSortTopologicallyError,
+                                   "active mutation exists.");
+  }
+
+  const int num_nodes = nodes_.size();
+
+  // Group extra dependencies by `from` node.
+  absl::flat_hash_map<int, std::vector<int>> extra_dependencies_by_parent;
+  for (const auto& extra_dependency : extra_dependencies) {
+    if (extra_dependency.graph_view_ != this ||
+        extra_dependency.from_ == extra_dependency.to_ ||
+        extra_dependency.from_ < 0 || extra_dependency.from_ >= num_nodes ||
+        extra_dependency.to_ < 0 || extra_dependency.to_ >= num_nodes) {
+      return errors::InvalidArgument(kMutableGraphViewSortTopologicallyError,
+                                     "invalid extra dependencies.");
+    }
+    extra_dependencies_by_parent[extra_dependency.from_].push_back(
+        extra_dependency.to_);
+  }
+
+  // Reversed colored post-order DFS traversal. This does not fail on cycles,
+  // but there are no guarantees on ordering within a cycle.
+  std::vector<TraversalState> traversal_state(num_nodes, PENDING);
+  int curr_pos = num_nodes - 1;
+  std::vector<int> order(num_nodes);
+  std::vector<Edge> edges_in_cycle;
+
+  auto push_onto_stack = [this](
+                             const int curr_index, const int fanout_index,
+                             std::vector<RecursionStackEntry>* recursion_stack,
+                             std::vector<TraversalState>* traversal_state,
+                             std::vector<Edge>* edges_in_cycle) {
+    // Ignore NextIteration -> Merge connections to break control flow cycles.
+    if (IsNextIteration(graph_->node(curr_index)) &&
+        IsMerge(graph_->node(fanout_index))) {
+      return;
+    }
+    auto& fanout_traversal_state = (*traversal_state)[fanout_index];
+    if (fanout_traversal_state == PROCESSING) {
+      // Cycle detected.
+      edges_in_cycle->push_back({curr_index, fanout_index});
+    } else if (fanout_traversal_state == PENDING) {
+      // Unvisited node, simply add to stack for future traversal.
+      recursion_stack->push_back({fanout_index, ENTER});
+    }
+  };
+
+  auto process_fanouts = [this, &extra_dependencies_by_parent,
+                          &push_onto_stack](
+                             const int curr_index,
+                             std::vector<RecursionStackEntry>* recursion_stack,
+                             std::vector<TraversalState>* traversal_state,
+                             std::vector<Edge>* edges_in_cycle) {
+    const auto& node_view = nodes_[curr_index];
+    // Regular fanouts.
+    for (const auto& regular_fanouts_port_i : node_view.GetRegularFanouts()) {
+      for (const auto& regular_fanout : regular_fanouts_port_i) {
+        push_onto_stack(curr_index, regular_fanout.node_index_, recursion_stack,
+                        traversal_state, edges_in_cycle);
+      }
+    }
+    // Controlled fanouts.
+    for (const auto& controlled_fanout : node_view.GetControlledFanouts()) {
+      push_onto_stack(curr_index, controlled_fanout.node_index_,
+                      recursion_stack, traversal_state, edges_in_cycle);
+    }
+    // Extra dependencies.
+    auto it = extra_dependencies_by_parent.find(curr_index);
+    if (it != extra_dependencies_by_parent.end()) {
+      for (const auto& extra_fanout : it->second) {
+        push_onto_stack(curr_index, extra_fanout, recursion_stack,
+                        traversal_state, edges_in_cycle);
+      }
+    }
+  };
+
+  auto reversed_postorder_dfs =
+      [&process_fanouts](const MutableNodeView& root_node_view,
+                         std::vector<int>* order,
+                         std::vector<TraversalState>* traversal_state,
+                         int* curr_pos, std::vector<Edge>* edges_in_cycle) {
+        std::vector<RecursionStackEntry> recursion_stack;
+        // Add the root to stack to start the traversal.
+        const int root_index = root_node_view.node_index_;
+        auto& root_traversal_state = (*traversal_state)[root_index];
+        if (root_traversal_state == PENDING) {
+          recursion_stack.push_back({root_index, ENTER});
+        }
+        while (!recursion_stack.empty()) {
+          auto curr_entry = recursion_stack.back();
+          recursion_stack.pop_back();
+          const int curr_index = curr_entry.node_index;
+          auto& curr_traversal_state = (*traversal_state)[curr_index];
+          if (curr_traversal_state == PROCESSED) {
+            // Node already processed which can be ignored.
+            continue;
+          } else if (curr_entry.recursion_state == EXIT) {
+            // Node from recursion stack where all fanouts were visited.
+            // Instead of adding node index to a vector, simply set what its
+            // index would be, so there will not be a need for inversion later
+            // on. The value set is in decending order so the reversed
+            // post-order is returned.
+            (*order)[curr_index] = *curr_pos;
+            curr_traversal_state = PROCESSED;
+            --(*curr_pos);
+          } else {
+            // Process current node and fanouts.
+            curr_traversal_state = PROCESSING;
+            recursion_stack.push_back({curr_index, EXIT});
+            process_fanouts(curr_index, &recursion_stack, traversal_state,
+                            edges_in_cycle);
+          }
+        }
+      };
+
+  // Determine sources to start DFS (nodes with no inputs) and unique fanout
+  // nodes.
+  for (int i = num_nodes - 1; i >= 0; --i) {
+    auto& node = nodes_[i];
+    if (node.NumRegularFanins() + node.NumControllingFanins() == 0) {
+      reversed_postorder_dfs(node, &order, &traversal_state, &curr_pos,
+                             &edges_in_cycle);
+    }
+  }
+
+  if (!ignore_cycles && !edges_in_cycle.empty()) {
+    std::vector<string> edges_formatted;
+    edges_formatted.reserve(edges_in_cycle.size());
+    for (const auto& edge : edges_in_cycle) {
+      edges_formatted.push_back(
+          absl::StrCat("'", graph_->node(edge.from).name(), "' -> '",
+                       graph_->node(edge.to).name(), "'"));
+    }
+    const string edges_str =
+        absl::StrCat("{", absl::StrJoin(edges_formatted, ", "), "}");
+    return errors::InvalidArgument(kMutableGraphViewSortTopologicallyError,
+                                   "detected edge(s) creating cycle(s) ",
+                                   edges_str, ".");
+  }
+  if (curr_pos != kTopologicalSortDone) {
+    // Not all nodes were processed.
+    if (!ignore_cycles) {
+      return errors::InvalidArgument(
+          kMutableGraphViewSortTopologicallyError,
+          "was not able to sort all nodes topologically.");
+    }
+    // Otherwise process all nodes regardless of cycles.
+    for (const auto& node : nodes_) {
+      reversed_postorder_dfs(node, &order, &traversal_state, &curr_pos,
+                             &edges_in_cycle);
+    }
+  }
+
+  // Permute nodes by reversed post-order DFS.
+  std::vector<MutableNodeView> permuted_nodes(num_nodes);
+  for (int i = 0; i < num_nodes; ++i) {
+    permuted_nodes[order[i]] = std::move(nodes_[i]);
+  }
+  nodes_.swap(permuted_nodes);
+
+  // Fix up indices of MutableNodeViews.
+  for (MutableNodeView& node_view : nodes_) {
+    const int prev_node_index = node_view.node_index_;
+    if (prev_node_index != order[prev_node_index]) {
+      const string& node_name = graph_->node(prev_node_index).name();
+      node_view.node_index_ = order[prev_node_index];
+      node_index_by_name_.find(node_name)->second = node_view.node_index_;
+    }
+    for (MutableFanoutView& regular_fanin : node_view.regular_fanins_) {
+      regular_fanin.node_index_ = order[regular_fanin.node_index_];
+    }
+    for (MutableFanoutView& controlling_fanin : node_view.controlling_fanins_) {
+      controlling_fanin.node_index_ = order[controlling_fanin.node_index_];
+    }
+    for (std::vector<MutableFaninView>& regular_fanouts_port_i :
+         node_view.regular_fanouts_by_port_) {
+      for (MutableFaninView& regular_fanout : regular_fanouts_port_i) {
+        regular_fanout.node_index_ = order[regular_fanout.node_index_];
+      }
+    }
+    for (MutableFaninView& controlled_fanout : node_view.controlled_fanouts_) {
+      controlled_fanout.node_index_ = order[controlled_fanout.node_index_];
+    }
+  }
+
+  // Permute graph NodeDefs.
+  PermuteNodesInPlace(graph_, &order, /*invert_permutation=*/false);
+
+  return Status::OK();
+}
+
 inline Status MutableGraphView::ValidateInternal(
     absl::flat_hash_map<absl::string_view, int>* node_names,
     std::vector<RenamedOrOverwrittenNode>* renamed_nodes,
@@ -1410,8 +1645,8 @@ Status MutableGraphView::ApplyMutationInternal() {
   // Node name and associated fanouts.
   absl::flat_hash_map<string, NodeViewFanouts> renamed_fanouts;
   // Removed nodes where name was overwritten by a renamed node.
-  std::vector<bool> overwritten_name_removed_nodes;
-  overwritten_name_removed_nodes.resize(mutation_.updated_nodes_.size(), false);
+  std::vector<bool> overwritten_name_removed_nodes(
+      mutation_.updated_nodes_.size());
   // Fix renaming of existing nodes by swapping fanouts and rehashing names.
   // This will also overwrite removed or unmodified nodes.
   FixRenamedNodes(&renamed_nodes, &renamed_fanouts,

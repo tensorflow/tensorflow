@@ -73,12 +73,13 @@ class StreamExecutor {
  public:
   StreamExecutor(
       const Platform *platform,
-      std::unique_ptr<internal::StreamExecutorInterface> implementation);
+      std::unique_ptr<internal::StreamExecutorInterface> implementation,
+      int device_ordinal);
 
   ~StreamExecutor();
 
   port::Status Init();
-  port::Status Init(int device_ordinal, DeviceOptions device_options);
+  port::Status Init(DeviceOptions device_options);
 
   // Returns the platform that this StreamExecutor is acting upon.
   ABSL_DEPRECATED("Use platform() instead.")
@@ -393,11 +394,11 @@ class StreamExecutor {
   // Create an RNN descriptor based on model shapes and configurations.
   // The caller retains the ownership of the descriptor.
   port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
-      int num_layers, int hidden_size, int input_size, int batch_size,
-      dnn::RnnInputMode input_mode, dnn::RnnDirectionMode direction_mode,
-      dnn::RnnMode rnn_mode, dnn::DataType data_type,
-      const dnn::AlgorithmConfig &algorithm_config, float dropout, uint64 seed,
-      ScratchAllocator *state_allocator);
+      int num_layers, int hidden_size, int input_size, int cell_size,
+      int batch_size, dnn::RnnInputMode input_mode,
+      dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
+      dnn::DataType data_type, const dnn::AlgorithmConfig &algorithm_config,
+      float dropout, uint64 seed, ScratchAllocator *state_allocator);
 
   // Create a RNN sequence descriptor that specifies either the input or output
   // sequence. The caller retains the ownership of the returned descriptor.
@@ -423,6 +424,19 @@ class StreamExecutor {
 
   // Returns a borrowed pointer to the underlying StreamExecutor implementation.
   internal::StreamExecutorInterface *implementation();
+
+  // Creates a kernel which can be launched with stream.ThenLaunch, such that
+  // the types of the arguments provided for launch would have to match
+  // types of the arguments provided at creation time.
+  //
+  // The kernel has a name kernel_name, and is based from provided PTX in ptx,
+  // and (optional) compiled PTX in cubin_data.
+  // The canonical storage for both ptx and cubin_data should outlive the
+  // lifetime of the kernel.
+  template <typename... Args>
+  port::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
+      absl::string_view kernel_name, absl::string_view ptx,
+      absl::Span<const uint8> cubin_data);
 
   // Warning: use Stream::ThenLaunch instead, this method is not for general
   // consumption. However, this is the only way to launch a kernel for which
@@ -482,12 +496,7 @@ class StreamExecutor {
   //
   // Creates the allocator object on the first access, as the device ordinal
   // of this stream_executor is not set in constructor.
-  StreamExecutorMemoryAllocator *GetAllocator() {
-    if (!allocator_.has_value()) {
-      allocator_.emplace(this);
-    }
-    return &allocator_.value();
-  }
+  StreamExecutorMemoryAllocator *GetAllocator() { return &allocator_; }
 
  private:
   template <typename BeginCallT, typename CompleteCallT,
@@ -719,7 +728,7 @@ class StreamExecutor {
   // limit.
   int64 memory_limit_bytes_;
 
-  absl::optional<StreamExecutorMemoryAllocator> allocator_;
+  StreamExecutorMemoryAllocator allocator_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutor);
 };
@@ -762,6 +771,27 @@ class ScopedModuleHandle {
 ////////////
 // Inlines
 
+template <typename... Args>
+inline port::StatusOr<std::unique_ptr<TypedKernel<Args...>>>
+StreamExecutor::CreateTypedKernel(absl::string_view kernel_name,
+                                  absl::string_view ptx,
+                                  absl::Span<const uint8> cubin_data) {
+  auto kernel_base = absl::make_unique<TypedKernel<Args...>>(this);
+  MultiKernelLoaderSpec loader_spec(kernel_base->kNumberOfParameters);
+  loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
+
+  if (!cubin_data.empty()) {
+    loader_spec.AddCudaCubinInMemory(
+        reinterpret_cast<const char *>(cubin_data.data()), kernel_name);
+  }
+
+  if (!GetKernel(loader_spec, kernel_base.get())) {
+    return port::InternalError("Unable to load kernel");
+  }
+
+  return std::move(kernel_base);
+}
+
 template <typename T>
 inline DeviceMemory<T> StreamExecutor::AllocateArray(uint64 element_count) {
   uint64 bytes = sizeof(T) * element_count;
@@ -795,7 +825,7 @@ ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(
     std::vector<ElemT> local(values);
     if (!parent->SynchronousMemcpy(ptr(), const_cast<const ElemT *>(&local[0]),
                                    ptr()->size())) {
-      Free();
+      TF_CHECK_OK(Free());
     }
   }
 }

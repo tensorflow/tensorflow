@@ -133,6 +133,8 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
     // ops, we rely on Grappler to do the correct graph pruning.
     optimization_options.allow_pruning_stateful_and_dataset_ops = true;
 
+    optimization_options.is_eager_mode = true;
+
     // All the nested function calls will be executed and optimized via
     // PartitionedCallOp, there is no need to optimize functions now.
     optimization_options.optimize_function_library = false;
@@ -296,14 +298,26 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
     if (device_->TraceUsingAnnotations()) {
       // 'ScopedActivity' will trace the OpKernel scheduling time on host.
       profiler::TraceMe activity(
-          [&] { return strings::StrCat(op_name, ":", kernel_->type_string()); },
+          [&] {
+            return strings::StrCat(
+                op_name, ":", kernel_->type_string(),
+                "#id=n/a,step_container_name=",
+                step_container == nullptr ? "n/a" : step_container->name(),
+                ",device=", device_->name(), ",async=false#");
+          },
           profiler::TraceMeLevel::kInfo);
       // 'ScopedAnnotation' will trace the OpKernel execution time on device.
       tracing::ScopedAnnotation annotation(op_name, kernel_->type_string());
       device_->Compute(kernel_.get(), &context);
     } else {
       profiler::TraceMe activity(
-          [&] { return strings::StrCat(op_name, ":", kernel_->type_string()); },
+          [&] {
+            return strings::StrCat(
+                op_name, ":", kernel_->type_string(),
+                "#id=n/a,step_container_name=",
+                step_container == nullptr ? "n/a" : step_container->name(),
+                ",device=", device_->name(), ",async=false#");
+          },
           profiler::TraceMeLevel::kInfo);
       device_->Compute(kernel_.get(), &context);
     }
@@ -356,13 +370,17 @@ Status KernelAndDeviceFunc::Run(
   for (const TensorValue& tensor_value : inputs) {
     input_vector.push_back(*tensor_value.tensor);
   }
-
-  pflr_->Run(opts, handle_, input_vector, outputs,
-             [&status, &done](const Status& s) {
-               status = s;
-               done.Notify();
-             });
-  done.WaitForNotification();
+  {
+    profiler::TraceMe activity(
+        [&] { return absl::StrCat("FunctionRun:", name()); },
+        profiler::TraceMeLevel::kInfo);
+    pflr_->Run(opts, handle_, input_vector, outputs,
+               [&status, &done](const Status& s) {
+                 status = s;
+                 done.Notify();
+               });
+    done.WaitForNotification();
+  }
 
   rendezvous->Unref();
   if (step_stats_collector != nullptr) {

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/pending_counts.h"
+#include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -1253,6 +1254,7 @@ class ExecutorState {
   CollectiveExecutor* collective_executor_ = nullptr;
   SessionState* session_state_;
   string session_handle_;
+  const SessionMetadata* session_metadata_ = nullptr;
   TensorStore* tensor_store_;
   // Step-local container.
   ScopedStepContainer* step_container_;
@@ -1266,6 +1268,8 @@ class ExecutorState {
   CallFrameInterface* call_frame_;
   const ExecutorImpl* impl_;
   CancellationManager* cancellation_manager_;
+  // If not null, use this device to schedule intra-op operation
+  std::unique_ptr<DeviceBase> user_device_;
   Executor::Args::Runner runner_;
   bool sync_on_finish_;
   const bool trace_using_annotations_;
@@ -1388,6 +1392,7 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       collective_executor_(args.collective_executor),
       session_state_(args.session_state),
       session_handle_(args.session_handle),
+      session_metadata_(impl->params_.session_metadata),
       tensor_store_(args.tensor_store),
       step_container_(args.step_container),
       stats_collector_(args.stats_collector),
@@ -1402,6 +1407,12 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       sync_on_finish_(args.sync_on_finish),
       trace_using_annotations_(impl->params_.device->TraceUsingAnnotations()),
       num_outstanding_ops_(0) {
+  if (args.user_intra_op_threadpool != nullptr) {
+    Device* device = impl_->params_.device;
+    user_device_ = RenamedDevice::NewRenamedDevice(
+        device->name(), device, false, false, args.user_intra_op_threadpool);
+  }
+
   // We start the entire execution in iteration 0 of the root frame
   // so let us create the root frame and the state for iteration 0.
   // We assume root_frame_->frame_name.empty().
@@ -1624,8 +1635,13 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
 
   OpKernelContext::Params params;
   params.step_id = step_id_;
+  // Override device's threadpool if user provides an intra_op_threadpool
   Device* device = impl_->params_.device;
-  params.device = device;
+  if (user_device_) {
+    params.device = user_device_.get();
+  } else {
+    params.device = device;
+  }
   params.log_memory = log_memory_;
   params.record_tensor_accesses = impl_->device_record_tensor_accesses_;
   params.rendezvous = rendezvous_;
@@ -1633,6 +1649,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.collective_executor = collective_executor_;
   params.session_state = session_state_;
   params.session_handle = session_handle_;
+  params.session_metadata = session_metadata_;
   params.tensor_store = tensor_store_;
   params.cancellation_manager = cancellation_manager_;
   params.call_frame = call_frame_;
@@ -1799,7 +1816,22 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
           if (completed) ScheduleFinish();
         };
         nodestats::SetOpStart(stats);
-        device->ComputeAsync(async, &state->ctx, done);
+        if (TF_PREDICT_FALSE(
+                MightTrace(item, event_collector_, trace_using_annotations_))) {
+          profiler::TraceMe activity(
+              [&] {
+                return strings::StrCat(
+                    op_kernel->name(), ":", op_kernel->type_string(),
+                    "#id=", step_id_, ",step_container_name=",
+                    step_container_ == nullptr ? "n/a"
+                                               : step_container_->name(),
+                    ",device=", device->name(), ",async=true#");
+              },
+              profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
+          device->ComputeAsync(async, &state->ctx, done);
+        } else {
+          device->ComputeAsync(async, &state->ctx, done);
+        }
       } else {
         // Synchronous computes.
         OpKernelContext ctx(&params, item.num_outputs);
@@ -1809,7 +1841,10 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
                 MightTrace(item, event_collector_, trace_using_annotations_))) {
           const string& op_name = op_kernel->name();
           const string kernel_label = strings::StrCat(
-              op_name, ":", op_kernel->type_string(), "#id=", step_id_, "#");
+              op_name, ":", op_kernel->type_string(), "#id=", step_id_,
+              ",step_container_name=",
+              step_container_ == nullptr ? "n/a" : step_container_->name(),
+              ",device=", device->name(), ",async=false#");
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                        op_name);
           if (trace_using_annotations_) {
@@ -2035,14 +2070,9 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       // Set the allocator attributes of the output entry.
       out->alloc_attr = ctx->output_alloc_attr(i);
 
-      // Sanity check of output tensor types.
-      DataType dtype;
-      if (val.is_ref()) {
-        tf_shared_lock ml(*val.mutex_if_ref);
-        dtype = MakeRefType(val->dtype());
-      } else {
-        dtype = val->dtype();
-      }
+      // Sanity check of output tensor types. We need to inspect this safely as
+      // we are in the tensor buffer.
+      DataType dtype = val.dtype_safe();
       if (dtype == item.output_type(i)) {
         if (stats && val.tensor->IsInitialized()) {
           nodestats::SetOutput(stats, i, val.tensor);

@@ -1,13 +1,13 @@
-package(default_visibility = [
-    "//tensorflow/lite:__subpackages__",
-    "//tensorflow/tools/pip_package:__subpackages__",
-])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "py_binary")
+load("//tensorflow:tensorflow.bzl", "py_binary", "tf_py_test")
+
+package(
+    default_visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow/tools/pip_package:__subpackages__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 config_setting(
     name = "tflite_convert_with_select_tf_ops",
@@ -76,9 +76,6 @@ tf_py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
-    ],
-    data = [
-        ":toco_from_protos.par",
     ],
     tags = [
         "no_oss",

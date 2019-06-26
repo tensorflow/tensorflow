@@ -133,7 +133,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
             scope=name)
         conv_name = name
       if with_bypass:
-        node = math_ops.add(inputs, node, name='test/Add')
+        node = math_ops.add(inputs, node, name='test/AddV2')
         relu(node, name='test/' + relu_op_name)
 
       fold_batch_norms.FoldBatchNorms(
@@ -159,7 +159,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
         conv_name + '/correction_add',
         self._BathNormBiasName(conv_name, fused_batch_norm)
     ])
-    output_op_names = ['test/Add' if with_bypass else 'test/' + relu_op_name]
+    output_op_names = ['test/AddV2' if with_bypass else 'test/' + relu_op_name]
     self._AssertOutputGoesToOps(folded_add, g, output_op_names)
     if freeze_batch_norm_delay is not None:
       self._AssertMovingAveragesAreFrozen(g, name)
@@ -305,7 +305,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
               scale=has_scaling, fused=fused_batch_norm),
           scope=scope)
       if with_bypass:
-        node = math_ops.add(inputs, node, name='test/Add')
+        node = math_ops.add(inputs, node, name='test/AddV2')
         relu(node, name='test/' + relu_op_name)
 
       fold_batch_norms.FoldBatchNorms(
@@ -330,7 +330,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
         scope + '/correction_add',
         self._BathNormBiasName(scope, fused_batch_norm)
     ])
-    output_op_names = ['test/Add' if with_bypass else 'test/' + relu_op_name]
+    output_op_names = ['test/AddV2' if with_bypass else 'test/' + relu_op_name]
     self._AssertOutputGoesToOps(folded_add, g, output_op_names)
     if freeze_batch_norm_delay is not None:
       self._AssertMovingAveragesAreFrozen(g, scope)
@@ -400,7 +400,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
             scope=name)
         fc_name = name
       if with_bypass:
-        node = math_ops.add(inputs, node, name='test/Add')
+        node = math_ops.add(inputs, node, name='test/AddV2')
         relu(node, name='test/' + relu_op_name)
 
       fold_batch_norms.FoldBatchNorms(
@@ -426,7 +426,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
         fc_name + '/correction_add',
         self._BathNormBiasName(fc_name, fused_batch_norm)
     ])
-    output_op_names = ['test/Add' if with_bypass else 'test/' + relu_op_name]
+    output_op_names = ['test/AddV2' if with_bypass else 'test/' + relu_op_name]
     self._AssertOutputGoesToOps(folded_add, g, output_op_names)
     if freeze_batch_norm_delay is not None:
       self._AssertMovingAveragesAreFrozen(g, name)
@@ -499,7 +499,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
             scope=name)
         sep_conv_name = name
       if with_bypass:
-        node = math_ops.add(inputs, node, name='test/Add')
+        node = math_ops.add(inputs, node, name='test/AddV2')
         relu(node, name='test/' + relu_op_name)
 
       fold_batch_norms.FoldBatchNorms(
@@ -538,7 +538,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
         sep_conv_name + '/correction_add',
         self._BathNormBiasName(sep_conv_name, fused_batch_norm)
     ])
-    output_op_names = ['test/Add' if with_bypass else 'test/' + relu_op_name]
+    output_op_names = ['test/AddV2' if with_bypass else 'test/' + relu_op_name]
     self._AssertOutputGoesToOps(folded_add, g, output_op_names)
     if freeze_batch_norm_delay is not None:
       self._AssertMovingAveragesAreFrozen(g, name)
@@ -612,7 +612,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
             scope=name)
         sep_conv_name = name
       if with_bypass:
-        node = math_ops.add(inputs, node, name='test/Add')
+        node = math_ops.add(inputs, node, name='test/AddV2')
         relu(node, name='test/' + relu_op_name)
 
       fold_batch_norms.FoldBatchNorms(
@@ -656,7 +656,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
         sep_conv_name + '/correction_add',
         self._BathNormBiasName(sep_conv_name, fused_batch_norm)
     ])
-    output_op_names = ['test/Add' if with_bypass else 'test/' + relu_op_name]
+    output_op_names = ['test/AddV2' if with_bypass else 'test/' + relu_op_name]
     self._AssertOutputGoesToOps(folded_add, g, output_op_names)
     if freeze_batch_norm_delay is not None:
       self._AssertMovingAveragesAreFrozen(g, name)
@@ -712,7 +712,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
               scale=has_scaling, fused=fused_batch_norm),
           scope=scope)
       if with_bypass:
-        node = math_ops.add(inputs, node, name='test/Add')
+        node = math_ops.add(inputs, node, name='test/AddV2')
       relu_node = relu(node, name='test/' + relu_op_name)
     folded_g = self._CopyGraph(unfolded_g)
     with folded_g.as_default():

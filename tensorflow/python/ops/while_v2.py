@@ -30,6 +30,7 @@ from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util_v2 as util
@@ -76,10 +77,16 @@ def while_loop(cond,
   if shape_invariants is not None:
     nest.assert_same_structure(orig_loop_vars, shape_invariants,
                                expand_composites=False)
+    signature = nest.map_structure(
+        control_flow_ops._shape_invariant_to_type_spec, loop_vars,
+        list(shape_invariants), expand_composites=False)
     shape_invariants = nest.map_structure(
         control_flow_ops._get_shape_invariant, loop_vars,
         list(shape_invariants), expand_composites=False)
+
   else:
+    signature = nest.map_structure(
+        type_spec.type_spec_from_value, loop_vars, expand_composites=False)
     shape_invariants = nest.map_structure(
         control_flow_ops._get_shape_invariant, loop_vars,
         expand_composites=False)
@@ -100,8 +107,12 @@ def while_loop(cond,
     # Add loop counter needed for computing gradients.
     loop_vars = [loop_counter, maximum_iterations_loop_var] + loop_vars
 
-    shape_invariants = type(shape_invariants)(
-        [tensor_shape.scalar(), tensor_shape.scalar()]) + shape_invariants
+    shape_invariants = (
+        [tensor_shape.scalar(), tensor_shape.scalar()] + shape_invariants)
+    signature = (
+        [tensor_spec.TensorSpec.from_tensor(loop_counter),
+         tensor_spec.TensorSpec.from_tensor(maximum_iterations_loop_var)] +
+        signature)
 
     # Automatic control dependencies are added in defuns, but not in v1
     # graphs. Propagate that behavior here.
@@ -128,7 +139,7 @@ def while_loop(cond,
         wrapped_cond,
         [],  # We provide signature instead of args.
         {},
-        signature=_build_signature(loop_vars, shape_invariants),
+        signature=signature,
         func_graph=util.WhileCondFuncGraph(
             cond_name, collections=ops.get_default_graph()._collections),  # pylint: disable=protected-access
         add_control_dependencies=add_control_dependencies)
@@ -173,7 +184,7 @@ def while_loop(cond,
         wrapped_body,
         [],  # We provide signature instead of args.
         {},
-        signature=_build_signature(loop_vars, shape_invariants),
+        signature=signature,
         func_graph=util.WhileBodyFuncGraph(
             body_name, collections=ops.get_default_graph()._collections),  # pylint: disable=protected-access
         add_control_dependencies=add_control_dependencies)
@@ -214,14 +225,20 @@ def while_loop(cond,
     flattened_loop_vars = nest.flatten(loop_vars, expand_composites=True)
     _check_num_inputs_outputs(cond_graph, body_graph,
                               len(flattened_loop_vars))
+    _check_inputs_outputs_types_match(body_graph, flattened_loop_vars)
 
     with ops.control_dependencies(
         list(cond_graph.control_captures) + list(body_graph.control_captures)):
+      output_shapes = [t.shape for t in body_graph.outputs]
+      orig_loop_vars_range = slice(first_loop_var_index,
+                                   first_loop_var_index + num_flattened_outputs)
+      output_shapes[orig_loop_vars_range] = nest.flatten(
+          shape_invariants, expand_composites=True)[orig_loop_vars_range]
       outputs = gen_functional_ops._while(
           flattened_loop_vars,
           util.create_new_tf_function(cond_graph),
           util.create_new_tf_function(body_graph),
-          output_shapes=[t.shape for t in body_graph.outputs],
+          output_shapes=output_shapes,
           parallel_iterations=parallel_iterations,
           name=scope)
 
@@ -879,6 +896,15 @@ def _check_num_inputs_outputs(cond_graph, body_graph, num_flattened_loop_vars):
                                                    num_flattened_loop_vars))
 
 
+def _check_inputs_outputs_types_match(body_graph, flattened_loop_vars):
+  for inp, out, loop_var in zip(body_graph.inputs, body_graph.outputs,
+                                flattened_loop_vars):
+    if inp.dtype != out.dtype:
+      raise TypeError("Loop var {} enters the loop with type {} "
+                      "but has type {} after 1 iteration.".format(
+                          loop_var.name, inp.dtype, out.dtype))
+
+
 def _copy_handle_data(src_tensors, tgt_tensors):
   for src_t, tgt_t in zip(src_tensors, tgt_tensors):
     custom_gradient.copy_handle_data(src_t, tgt_t)
@@ -914,14 +940,6 @@ def _tensor_array_to_flow(loop_vars):
     return maybe_ta
 
   return nest.map_structure(f, loop_vars, expand_composites=True)
-
-
-def _build_signature(loop_vars, shape_invariants):
-  return nest.pack_sequence_as(loop_vars, [
-      tensor_spec.TensorSpec(s, t.dtype, name=t.op.name)
-      for s, t in zip(nest.flatten(shape_invariants, expand_composites=True),
-                      nest.flatten(loop_vars, expand_composites=True))
-  ], expand_composites=True)
 
 
 def _build_maximum_iterations_loop_var(maximum_iterations):

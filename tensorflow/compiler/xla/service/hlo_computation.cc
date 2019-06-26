@@ -166,14 +166,23 @@ Status HloComputation::RemoveParameter(int64 param_no) {
   return Status::OK();
 }
 
-Status HloComputation::RemoveUnusedParameters() {
-  CHECK(IsFusionComputation());
+Status HloComputation::RemoveUnusedParametersFromFusedComputation() {
+  return RemoveUnusedParametersImpl(/*allow_non_fusion=*/false);
+}
+
+Status HloComputation::RemoveUnusedParametersFromAnyComputation() {
+  return RemoveUnusedParametersImpl(/*allow_non_fusion=*/true);
+}
+
+Status HloComputation::RemoveUnusedParametersImpl(bool allow_non_fusion) {
+  CHECK(allow_non_fusion || IsFusionComputation());
   int64 removed = 0;
   for (int64 i = 0; i < param_instructions_.size(); ++i) {
     HloInstruction* param_instruction = param_instructions_[i];
     if (param_instruction->user_count() == 0 &&
         param_instruction != root_instruction()) {
-      TF_RETURN_IF_ERROR(RemoveInstruction(param_instruction));
+      TF_RETURN_IF_ERROR(
+          RemoveInstructionImpl(param_instruction, allow_non_fusion));
       ++removed;
       continue;
     }
@@ -185,14 +194,15 @@ Status HloComputation::RemoveUnusedParameters() {
                                           StrCat("param_", param_no)));
       TF_RETURN_IF_ERROR(param_instruction->ReplaceAllUsesWith(new_instr));
       param_instructions_[param_no] = new_instr;
-      TF_RETURN_IF_ERROR(RemoveInstruction(param_instruction));
+      TF_RETURN_IF_ERROR(
+          RemoveInstructionImpl(param_instruction, allow_non_fusion));
     }
   }
   param_instructions_.resize(param_instructions_.size() - removed);
   return Status::OK();
 }
 
-bool HloComputation::IsRemovable(const HloInstruction* instruction) {
+bool HloComputation::IsSafelyRemovable(const HloInstruction* instruction) {
   // If the instruction has control predecessors or successors then we cannot
   // remove the instruction without violating ordering constraints (added, for
   // example, to avert interference due to buffer aliasing).
@@ -223,7 +233,7 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
   TF_RET_CHECK(root_instruction() != instruction);
 
   TF_RET_CHECK(instruction->user_count() == 0);
-  TF_RET_CHECK(IsRemovable(instruction))
+  TF_RET_CHECK(IsSafelyRemovable(instruction))
       << "Cannot remove instruction: " << instruction->ToString();
   absl::flat_hash_set<HloInstruction*> removed;
   std::queue<HloInstruction*> worklist;
@@ -233,7 +243,7 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
     worklist.pop();
 
     if (removed.contains(item) || item->user_count() != 0 ||
-        item == root_instruction() || !IsRemovable(item) ||
+        item == root_instruction() || !IsSafelyRemovable(item) ||
         (item->HasSideEffect() && item != instruction)) {
       continue;
     }
@@ -248,9 +258,18 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
 }
 
 Status HloComputation::RemoveInstruction(HloInstruction* instruction) {
+  return RemoveInstructionImpl(instruction, /*ignore_safety_check=*/false);
+}
+
+Status HloComputation::ForceRemoveInstruction(HloInstruction* instruction) {
+  return RemoveInstructionImpl(instruction, /*ignore_safety_check=*/true);
+}
+
+Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
+                                             bool ignore_safety_check) {
   VLOG(2) << "Removing instruction " << instruction->name()
           << " from computation " << name();
-  TF_RET_CHECK(IsRemovable(instruction))
+  TF_RET_CHECK(ignore_safety_check || IsSafelyRemovable(instruction))
       << "cannot remove instruction: " << instruction->ToString();
   TF_RET_CHECK(root_instruction() != instruction)
       << "cannot remove root instruction " << instruction->name();
@@ -881,18 +900,6 @@ template Status HloComputation::AcceptOrdered(
 template Status HloComputation::AcceptOrdered(
     ConstDfsHloVisitor*, absl::Span<HloInstruction* const>) const;
 
-Status HloComputation::Accept(
-    const std::function<Status(HloInstruction*)>& visitor_func) {
-  FunctionVisitor visitor(visitor_func);
-  return this->Accept(&visitor);
-}
-
-Status HloComputation::Accept(
-    const std::function<Status(const HloInstruction*)>& visitor_func) const {
-  ConstFunctionVisitor visitor(visitor_func);
-  return this->Accept(&visitor);
-}
-
 std::unique_ptr<HloComputation> HloComputation::Clone(
     const string& suffix, HloCloneContext* context) {
   return CloneWithReplacements(
@@ -1061,4 +1068,7 @@ HloInstruction* HloComputation::GetInstructionWithName(absl::string_view name) {
   return it == instructions_in_computation.end() ? nullptr : *it;
 }
 
+bool HloComputation::IsEntryComputation() const {
+  return parent()->entry_computation() == this;
+}
 }  // namespace xla

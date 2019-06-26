@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import abc
 import enum  # pylint: disable=g-bad-import-order
+import itertools
 import functools
 import os
 import six
@@ -160,18 +161,8 @@ def validate_synchronization_aggregation_trainable(
       raise ValueError(
           "Invalid variable synchronization mode: {} for variable: {}".format(
               synchronization, name))
-  if synchronization == VariableSynchronization.ON_READ:
-    if trainable:
-      raise ValueError(
-          "Synchronization value can be set to "
-          "VariableSynchronization.ON_READ only for non-trainable variables. "
-          "You have specified trainable=True and "
-          "synchronization=VariableSynchronization.ON_READ.")
-    else:
-      # Set trainable to be false when variable is to be synced on read.
-      trainable = False
-  elif trainable is None:
-    trainable = True
+  if trainable is None:
+    trainable = synchronization != VariableSynchronization.ON_READ
   return synchronization, aggregation, trainable
 
 
@@ -383,7 +374,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
   def __init__(self,
                initial_value=None,
-               trainable=True,
+               trainable=None,
                validate_shape=True,
                caching_device=None,
                name=None,
@@ -412,8 +403,9 @@ class Variable(six.with_metaclass(VariableMetaclass,
         callable with no argument that returns the initial value when called. In
         that case, `dtype` must be specified. (Note that initializer functions
         from init_ops.py must first be bound to a shape before being used here.)
-      trainable: If `True`, the default, GradientTapes automatically watch uses
-        of this variable.
+      trainable: If `True`, GradientTapes automatically watch uses
+        of this variable. Defaults to `True`, unless `synchronization` is
+        set to `ON_READ`, in which case it defaults to `False`.
       validate_shape: If `False`, allows the variable to be initialized with a
         value of unknown shape. If `True`, the default, the shape of
         `initial_value` must be known.
@@ -444,8 +436,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
-        when to synchronize. If `synchronization` is set to `ON_READ`,
-        `trainable` must not be set to `True`.
+        when to synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
@@ -654,10 +645,10 @@ class Variable(six.with_metaclass(VariableMetaclass,
     raise NotImplementedError
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
-    """Subtracts `IndexedSlices` from this variable.
+    """Subtracts `tf.IndexedSlices` from this variable.
 
     Args:
-      sparse_delta: `IndexedSlices` to be subtracted from this variable.
+      sparse_delta: `tf.IndexedSlices` to be subtracted from this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -666,15 +657,15 @@ class Variable(six.with_metaclass(VariableMetaclass,
       the scattered subtraction has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     raise NotImplementedError
 
   def scatter_add(self, sparse_delta, use_locking=False, name=None):
-    """Adds `IndexedSlices` to this variable.
+    """Adds `tf.IndexedSlices` to this variable.
 
     Args:
-      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      sparse_delta: `tf.IndexedSlices` to be added to this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -683,15 +674,85 @@ class Variable(six.with_metaclass(VariableMetaclass,
       the scattered addition has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    raise NotImplementedError
+
+  def scatter_max(self, sparse_delta, use_locking=False, name=None):
+    """Updates this variable with the max of `tf.IndexedSlices` and itself.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to use as an argument of max
+        with this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered maximization has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    raise NotImplementedError
+
+  def scatter_min(self, sparse_delta, use_locking=False, name=None):
+    """Updates this variable with the min of `tf.IndexedSlices` and itself.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to use as an argument of min
+        with this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered minimization has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    raise NotImplementedError
+
+  def scatter_mul(self, sparse_delta, use_locking=False, name=None):
+    """Multiply this variable by `tf.IndexedSlices`.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to multiply this variable by.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered multiplication has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    raise NotImplementedError
+
+  def scatter_div(self, sparse_delta, use_locking=False, name=None):
+    """Divide this variable by `tf.IndexedSlices`.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to divide this variable by.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered division has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     raise NotImplementedError
 
   def scatter_update(self, sparse_delta, use_locking=False, name=None):
-    """Assigns `IndexedSlices` to this variable.
+    """Assigns `tf.IndexedSlices` to this variable.
 
     Args:
-      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      sparse_delta: `tf.IndexedSlices` to be assigned to this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -700,12 +761,12 @@ class Variable(six.with_metaclass(VariableMetaclass,
       the scattered assignment has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     raise NotImplementedError
 
   def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
-    """Assigns `IndexedSlices` to this variable batch-wise.
+    """Assigns `tf.IndexedSlices` to this variable batch-wise.
 
     Analogous to `batch_gather`. This assumes that this variable and the
     sparse_delta IndexedSlices have a series of leading dimensions that are the
@@ -738,7 +799,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
     efficient than this implementation.
 
     Args:
-      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      sparse_delta: `tf.IndexedSlices` to be assigned to this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -747,7 +808,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
       the scattered assignment has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     raise NotImplementedError
 
@@ -796,9 +857,6 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the scattered subtraction has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
     """
     raise NotImplementedError
 
@@ -847,9 +905,6 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the scattered addition has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
     """
     raise NotImplementedError
 
@@ -898,9 +953,6 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the scattered assignment has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
     """
     raise NotImplementedError
 
@@ -1361,7 +1413,7 @@ class VariableV1(Variable):
 
   def __init__(self,  # pylint: disable=super-init-not-called
                initial_value=None,
-               trainable=True,
+               trainable=None,
                collections=None,
                validate_shape=True,
                caching_device=None,
@@ -1393,9 +1445,11 @@ class VariableV1(Variable):
         callable with no argument that returns the initial value when called. In
         that case, `dtype` must be specified. (Note that initializer functions
         from init_ops.py must first be bound to a shape before being used here.)
-      trainable: If `True`, the default, also adds the variable to the graph
+      trainable: If `True`, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
+        Defaults to `True`, unless `synchronization` is set to `ON_READ`, in
+        which case it defaults to `False`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       validate_shape: If `False`, allows the variable to be initialized with a
@@ -1427,8 +1481,14 @@ class VariableV1(Variable):
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
       use_resource: whether to use resource variables.
-      synchronization: unused
-      aggregation: unused
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        `tf.VariableSynchronization`. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        `tf.VariableAggregation`.
       shape: (optional) The shape of this variable. If None, the shape of
         `initial_value` will be used. When setting this argument to
         `tf.TensorShape(None)` (representing an unspecified shape), the variable
@@ -1450,7 +1510,7 @@ class RefVariable(VariableV1):
 
   def __init__(self,  # pylint: disable=super-init-not-called
                initial_value=None,
-               trainable=True,
+               trainable=None,
                collections=None,
                validate_shape=True,
                caching_device=None,
@@ -1481,9 +1541,11 @@ class RefVariable(VariableV1):
         callable with no argument that returns the initial value when called. In
         that case, `dtype` must be specified. (Note that initializer functions
         from init_ops.py must first be bound to a shape before being used here.)
-      trainable: If `True`, the default, also adds the variable to the graph
+      trainable: If `True`, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
+        Defaults to `True`, unless `synchronization` is set to `ON_READ`, in
+        which case it defaults to `False`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       validate_shape: If `False`, allows the variable to be initialized with a
@@ -1518,8 +1580,7 @@ class RefVariable(VariableV1):
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
-        when to synchronize. If `synchronization` is set to `ON_READ`,
-        `trainable` must not be set to `True`.
+        when to synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
@@ -1568,7 +1629,7 @@ class RefVariable(VariableV1):
 
   def _init_from_args(self,
                       initial_value=None,
-                      trainable=True,
+                      trainable=None,
                       collections=None,
                       validate_shape=True,
                       caching_device=None,
@@ -1588,9 +1649,11 @@ class RefVariable(VariableV1):
         callable with no argument that returns the initial value when called.
         (Note that initializer functions from init_ops.py must first be bound
          to a shape before being used here.)
-      trainable: If `True`, the default, also adds the variable to the graph
+      trainable: If `True`, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
+        Defaults to `True`, unless `synchronization` is set to `ON_READ`, in
+        which case it defaults to `False`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       validate_shape: If `False`, allows the variable to be initialized with a
@@ -1619,8 +1682,7 @@ class RefVariable(VariableV1):
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
-        when to synchronize. If `synchronization` is set to `ON_READ`,
-        `trainable` must not be set to `True`.
+        when to synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
@@ -1988,10 +2050,10 @@ class RefVariable(VariableV1):
     return assign.op
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
-    """Subtracts `IndexedSlices` from this variable.
+    """Subtracts `tf.IndexedSlices` from this variable.
 
     Args:
-      sparse_delta: `IndexedSlices` to be subtracted from this variable.
+      sparse_delta: `tf.IndexedSlices` to be subtracted from this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -2000,10 +2062,10 @@ class RefVariable(VariableV1):
       the scattered subtraction has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
-      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_sub(
         self._variable,
         sparse_delta.indices,
@@ -2012,10 +2074,10 @@ class RefVariable(VariableV1):
         name=name)
 
   def scatter_add(self, sparse_delta, use_locking=False, name=None):
-    """Adds `IndexedSlices` from this variable.
+    """Adds `tf.IndexedSlices` to this variable.
 
     Args:
-      sparse_delta: `IndexedSlices` to be added to this variable.
+      sparse_delta: `tf.IndexedSlices` to be added to this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -2024,10 +2086,10 @@ class RefVariable(VariableV1):
       the scattered addition has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
-      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_add(
         self._variable,
         sparse_delta.indices,
@@ -2035,11 +2097,109 @@ class RefVariable(VariableV1):
         use_locking=use_locking,
         name=name)
 
-  def scatter_update(self, sparse_delta, use_locking=False, name=None):
-    """Assigns `IndexedSlices` to this variable.
+  def scatter_max(self, sparse_delta, use_locking=False, name=None):
+    """Updates this variable with the max of `tf.IndexedSlices` and itself.
 
     Args:
-      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      sparse_delta: `tf.IndexedSlices` to use as an argument of max
+        with this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered maximization has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return gen_state_ops.scatter_max(
+        self._variable,
+        sparse_delta.indices,
+        sparse_delta.values,
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_min(self, sparse_delta, use_locking=False, name=None):
+    """Updates this variable with the min of `tf.IndexedSlices` and itself.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to use as an argument of min
+        with this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered minimization has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return gen_state_ops.scatter_min(
+        self._variable,
+        sparse_delta.indices,
+        sparse_delta.values,
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_mul(self, sparse_delta, use_locking=False, name=None):
+    """Multiply this variable by `tf.IndexedSlices`.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to multiply this variable by.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered multiplication has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return gen_state_ops.scatter_mul(
+        self._variable,
+        sparse_delta.indices,
+        sparse_delta.values,
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_div(self, sparse_delta, use_locking=False, name=None):
+    """Divide this variable by `tf.IndexedSlices`.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to divide this variable by.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered division has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return gen_state_ops.scatter_div(
+        self._variable,
+        sparse_delta.indices,
+        sparse_delta.values,
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_update(self, sparse_delta, use_locking=False, name=None):
+    """Assigns `tf.IndexedSlices` to this variable.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to be assigned to this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -2048,10 +2208,10 @@ class RefVariable(VariableV1):
       the scattered assignment has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
-      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_update(
         self._variable,
         sparse_delta.indices,
@@ -2060,7 +2220,7 @@ class RefVariable(VariableV1):
         name=name)
 
   def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
-    """Assigns `IndexedSlices` to this variable batch-wise.
+    """Assigns `tf.IndexedSlices` to this variable batch-wise.
 
     Analogous to `batch_gather`. This assumes that this variable and the
     sparse_delta IndexedSlices have a series of leading dimensions that are the
@@ -2093,7 +2253,7 @@ class RefVariable(VariableV1):
     efficient than this implementation.
 
     Args:
-      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      sparse_delta: `tf.IndexedSlices` to be assigned to this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -2102,7 +2262,7 @@ class RefVariable(VariableV1):
       the scattered assignment has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     return state_ops.batch_scatter_update(
         self, sparse_delta.indices, sparse_delta.values,
@@ -2153,9 +2313,6 @@ class RefVariable(VariableV1):
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the scattered subtraction has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
     """
     return gen_state_ops.scatter_nd_sub(
         self._variable, indices, updates, use_locking=True, name=name)
@@ -2205,9 +2362,6 @@ class RefVariable(VariableV1):
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the scattered addition has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
     """
     return gen_state_ops.scatter_nd_add(
         self._variable, indices, updates, use_locking=True, name=name)
@@ -2257,9 +2411,6 @@ class RefVariable(VariableV1):
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the scattered assignment has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
     """
     return gen_state_ops.scatter_nd_update(
         self._variable, indices, updates, use_locking=True, name=name)
@@ -2497,23 +2648,27 @@ def _try_guard_against_uninitialized_dependencies(name, initial_value):
     raise TypeError("initial_value needs to be a Tensor: %s" % initial_value)
 
   # Don't modify initial_value if it contains any cyclic dependencies.
-  if _has_cycle(initial_value.op, path=set()):
+  if _has_cycle(initial_value.op, state={}):
     return initial_value
   return _safe_initial_value_from_tensor(name, initial_value, op_cache={})
 
 
-def _has_cycle(op, path):
+_UNKNOWN, _STARTED, _FINISHED = range(3)
+
+
+def _has_cycle(op, state):
   """Detect cycles in the dependencies of `initial_value`."""
-  if op.name in path:
+  op_state = state.get(op.name, _UNKNOWN)
+  if op_state == _STARTED:
     return True
-  path.add(op.name)
-  for op_input in op.inputs:
-    if _has_cycle(op_input.op, path):
+  elif op_state == _FINISHED:
+    return False
+
+  state[op.name] = _STARTED
+  for i in itertools.chain((i.op for i in op.inputs), op.control_inputs):
+    if _has_cycle(i, state):
       return True
-  for op_control_input in op.control_inputs:
-    if _has_cycle(op_control_input, path):
-      return True
-  path.remove(op.name)
+  state[op.name] = _FINISHED
   return False
 
 

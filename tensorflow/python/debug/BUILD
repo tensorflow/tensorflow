@@ -8,19 +8,15 @@
 #   For a user interface walkthrough, see https://www.tensorflow.org/guide/debugger
 # ":grpc_debug_server": Server interface for grpc:// debug URLs.
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "if_not_v2", "if_not_windows", "py_binary", "py_test")
+
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
-licenses(["notice"])  # Apache 2.0
-
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "py_binary")
-load("//tensorflow:tensorflow.bzl", "if_not_v2")
-load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 py_library(
     name = "debug_py",
@@ -81,6 +77,10 @@ py_library(
     name = "debug_data",
     srcs = ["lib/debug_data.py"],
     srcs_version = "PY2AND3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":debug_graphs",
         "//tensorflow/core:protos_all_py",
@@ -327,6 +327,10 @@ py_library(
     name = "dumping_wrapper",
     srcs = ["wrappers/dumping_wrapper.py"],
     srcs_version = "PY2AND3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":debug_data",
         ":framework",
@@ -368,6 +372,10 @@ py_library(
     name = "hooks",
     srcs = ["wrappers/hooks.py"],
     srcs_version = "PY2AND3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":debug_utils",
         ":dumping_wrapper",
@@ -1071,7 +1079,6 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
-    data = [":grpc_tensorflow_server.par"],
     grpc_enabled = True,
     tags = [
         "no_oss",  # Incompatible with bazel_pip.
@@ -1128,6 +1135,7 @@ py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )

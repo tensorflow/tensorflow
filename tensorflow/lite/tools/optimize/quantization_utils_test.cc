@@ -56,7 +56,8 @@ TEST(QuantizationUtilsTest, NumElements) {
   EXPECT_EQ(num_elements, 5);
 
   tensor.shape = {};
-  EXPECT_EQ(kTfLiteError, NumElements(tensor, &num_elements));
+  EXPECT_EQ(kTfLiteOk, NumElements(tensor, &num_elements));
+  EXPECT_EQ(num_elements, 1);
 }
 
 TEST(QuantizationUtilsTest, GetAsymmetricQuantizationParamsUnitRange) {
@@ -385,7 +386,7 @@ TEST(QuantizationUtilsTest, SymmetricPerChannelBiasQuantize) {
   // Call and verify.
   EXPECT_EQ(SymmetricPerChannelBiasQuantize(
                 model.get(), model->subgraphs[0]->tensors[0].get(), input_scale,
-                weight_scales.data(), 2, 0),
+                weight_scales.data(), 2),
             kTfLiteOk);
   EXPECT_THAT(model->buffers[model->subgraphs[0]->tensors[0]->buffer]->data,
               ElementsAreArray({16, 0, 0, 0, 2, 0, 0, 0}));

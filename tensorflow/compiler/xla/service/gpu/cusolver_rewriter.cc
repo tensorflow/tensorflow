@@ -21,9 +21,9 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/scratch_allocator.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/stream_executor/blas.h"
 
 namespace xla {
@@ -48,7 +47,6 @@ void SetFortranLayout(Shape* shape) {
 }
 
 StatusOr<HloInstruction*> CreateCholesky(CusolverContext* context,
-                                         ScratchAllocator* allocator,
                                          HloInstruction* operand,
                                          const CholeskyOptions& options,
                                          const OpMetadata& metadata) {
@@ -59,47 +57,17 @@ StatusOr<HloInstruction*> CreateCholesky(CusolverContext* context,
   CHECK_GE(ndim, 2);
   int64 n = a_shape.dimensions(ndim - 1);
 
-  int64 batch_size = std::accumulate(a_shape.dimensions().begin(),
-                                     a_shape.dimensions().end() - 2, int64{1},
-                                     [](int64 a, int64 b) { return a * b; });
+  std::vector<int64> batch_dims(a_shape.dimensions().begin(),
+                                a_shape.dimensions().end() - 2);
+  std::vector<int64> batch_dim_ids(batch_dims.size());
+  absl::c_iota(batch_dim_ids, 0);
 
   // Find the workspace size.
   se::blas::UpperLower uplo = options.lower() ? se::blas::UpperLower::kLower
                                               : se::blas::UpperLower::kUpper;
   int64 workspace_size;  // Number of elements of size a_shape.element_type()
-  switch (a_shape.element_type()) {
-    case F32: {
-      TF_ASSIGN_OR_RETURN(auto a,
-                          allocator->Allocate<float>(context->stream(), n * n));
-      TF_ASSIGN_OR_RETURN(workspace_size,
-                          context->PotrfBufferSize(uplo, n, a, n));
-      break;
-    }
-    case F64: {
-      TF_ASSIGN_OR_RETURN(
-          auto a, allocator->Allocate<double>(context->stream(), n * n));
-      TF_ASSIGN_OR_RETURN(workspace_size,
-                          context->PotrfBufferSize(uplo, n, a, n));
-      break;
-    }
-    case C64: {
-      TF_ASSIGN_OR_RETURN(auto a, allocator->Allocate<std::complex<float>>(
-                                      context->stream(), n * n));
-      TF_ASSIGN_OR_RETURN(workspace_size,
-                          context->PotrfBufferSize(uplo, n, a, n));
-      break;
-    }
-    case C128: {
-      TF_ASSIGN_OR_RETURN(auto a, allocator->Allocate<std::complex<double>>(
-                                      context->stream(), n * n));
-      TF_ASSIGN_OR_RETURN(workspace_size,
-                          context->PotrfBufferSize(uplo, n, a, n));
-      break;
-    }
-    default:
-      return InvalidArgument("Invalid type for cholesky decomposition: %s",
-                             a_shape.ToString());
-  }
+  TF_ASSIGN_OR_RETURN(workspace_size, context->PotrfBufferSize(
+                                          a_shape.element_type(), uplo, n, n));
 
   // TODO(phawkins): Ideally we would relax this constraint. What we actually
   // want is that:
@@ -114,24 +82,54 @@ StatusOr<HloInstruction*> CreateCholesky(CusolverContext* context,
   // * info contains the Potrf success/failure status.
   // Currently we have no meaningful way to report an error, so we simply
   // discard the success/failure information. Obviously this is suboptimal.
+  Shape info_shape = ShapeUtil::MakeShape(S32, batch_dims);
   Shape call_shape = ShapeUtil::MakeTupleShape(
       {a_shape,
        ShapeUtil::MakeShape(operand->shape().element_type(), {workspace_size}),
-       ShapeUtil::MakeShape(S32, {batch_size})});
+       info_shape});
 
   HloInstruction* custom_call =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
           call_shape, {operand}, kCusolverCholeskyCallTarget, {a_shape}));
   custom_call->set_metadata(metadata);
   TF_RETURN_IF_ERROR(custom_call->set_backend_config(options));
-  return custom_call;
+  HloInstruction* out = computation->AddInstruction(
+      HloInstruction::CreateGetTupleElement(a_shape, custom_call, 0));
+  HloInstruction* info = computation->AddInstruction(
+      HloInstruction::CreateGetTupleElement(info_shape, custom_call, 2));
+
+  // If info was non-zero, indicating that the Cholesky decomposition failed,
+  // returns an array full of NaNs for the corresponding batch element.
+  HloInstruction* zero = computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
+  HloInstruction* zeros =
+      computation->AddInstruction(HloInstruction::CreateBroadcast(
+          info_shape, zero, /*broadcast_dimensions=*/{}));
+  HloInstruction* ok = computation->AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, batch_dims),
+                                    info, zeros, ComparisonDirection::kEq));
+  ok = computation->AddInstruction(HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeShape(PRED, a_shape.dimensions()), ok,
+      /*broadcast_dimensions=*/batch_dim_ids));
+
+  TF_ASSIGN_OR_RETURN(Literal nan_literal,
+                      LiteralUtil::NanValue(a_shape.element_type()));
+  HloInstruction* nan = computation->AddInstruction(
+      HloInstruction::CreateConstant(std::move(nan_literal)));
+  HloInstruction* nans =
+      computation->AddInstruction(HloInstruction::CreateBroadcast(
+          a_shape, nan, /*broadcast_dimensions=*/{}));
+
+  HloInstruction* select =
+      computation->AddInstruction(HloInstruction::CreateTernary(
+          a_shape, HloOpcode::kSelect, ok, out, nans));
+  return select;
 }
 
 }  // namespace
 
 // Tries to rewrite a single convolution into a call to cudnn.
 StatusOr<bool> RunOnInstruction(CusolverContext* context,
-                                ScratchAllocator* allocator,
                                 HloInstruction* instruction) {
   if (instruction->opcode() != HloOpcode::kCholesky) {
     return false;
@@ -139,17 +137,14 @@ StatusOr<bool> RunOnInstruction(CusolverContext* context,
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction * custom_call,
-      CreateCholesky(context, allocator, instruction->mutable_operand(0),
+      CreateCholesky(context, instruction->mutable_operand(0),
                      instruction->cholesky_options(), instruction->metadata()));
 
   VLOG(1) << "Replacing " << instruction->ToString() << " with "
           << custom_call->ToString();
 
-  // The CustomCall returns a tuple (conv_result, scratch_memory).  Extract out
-  // the conv result and replace `conv` with it.
-  TF_RETURN_IF_ERROR(instruction->parent()->ReplaceWithNewInstruction(
-      instruction, HloInstruction::CreateGetTupleElement(instruction->shape(),
-                                                         custom_call, 0)));
+  TF_RETURN_IF_ERROR(
+      instruction->parent()->ReplaceInstruction(instruction, custom_call));
   return true;
 }
 
@@ -167,41 +162,18 @@ StatusOr<bool> CusolverRewriter::RunOnComputation(HloComputation* computation) {
     return false;
   }
 
-  // Create a stream for us to do our work on. We don't really need to do any
-  // work, just allocate memory, but that's the cuSolver API.
-  se::Stream stream{stream_exec_};
-  stream.Init();
-  const auto device_ordinal = stream_exec_->device_ordinal();
-
-  // allocator either points to this->allocator_ or, if that's null, to a
-  // se::StreamExecutorMemoryAllocator for stream_exec_.
-  se::DeviceMemoryAllocator* allocator;
-  absl::optional<se::StreamExecutorMemoryAllocator> se_allocator;
-  if (allocator_ != nullptr) {
-    allocator = allocator_;
-  } else {
-    se_allocator.emplace(stream_exec_->platform(),
-                         absl::Span<se::StreamExecutor* const>({stream_exec_}));
-    allocator = &*se_allocator;
-  }
-  ScratchAllocator scratch_allocator(device_ordinal, allocator);
-
   TF_ASSIGN_OR_RETURN(CusolverContext context,
-                      CusolverContext::Create(&stream));
+                      CusolverContext::Create(/*stream=*/nullptr));
 
   bool changed = false;
   for (HloInstruction* instruction : cusolver_calls) {
-    TF_ASSIGN_OR_RETURN(
-        bool result,
-        RunOnInstruction(&context, &scratch_allocator, instruction));
+    TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(&context, instruction));
     changed |= result;
   }
   return changed;
 }
 
-CusolverRewriter::CusolverRewriter(se::StreamExecutor* stream_exec,
-                                   se::DeviceMemoryAllocator* allocator)
-    : stream_exec_(stream_exec), allocator_(allocator) {}
+CusolverRewriter::CusolverRewriter() = default;
 
 StatusOr<bool> CusolverRewriter::Run(HloModule* module) {
   bool changed = false;

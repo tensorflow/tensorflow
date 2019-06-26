@@ -36,10 +36,10 @@ const int Graph::kControlSlot = -1;
 
 struct NodeProperties {
  public:
-  NodeProperties(const OpDef* op_def, const NodeDef& node_def,
+  NodeProperties(const OpDef* op_def, NodeDef node_def,
                  const DataTypeSlice inputs, const DataTypeSlice outputs)
       : op_def(op_def),
-        node_def(node_def),
+        node_def(std::move(node_def)),
         input_types(inputs.begin(), inputs.end()),
         output_types(outputs.begin(), outputs.end()) {}
 
@@ -58,6 +58,7 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
     *new std::unordered_map<string, Node::NodeClass>({
         // Keep in same order as NodeClass values
         REF_CLASS("Switch", NC_SWITCH),
+        REF_CLASS("_SwitchN", NC_SWITCH),
         REF_CLASS("Merge", NC_MERGE),
         REF_CLASS("Enter", NC_ENTER),
         REF_CLASS("Exit", NC_EXIT),
@@ -409,7 +410,7 @@ Graph::~Graph() {
 const VersionDef& Graph::versions() const { return *versions_; }
 void Graph::set_versions(const VersionDef& versions) { *versions_ = versions; }
 
-Node* Graph::AddNode(const NodeDef& node_def, Status* status) {
+Node* Graph::AddNode(NodeDef node_def, Status* status) {
   const OpDef* op_def;
   status->Update(ops_.LookUpOpDef(node_def.op(), &op_def));
   if (!status->ok()) return nullptr;
@@ -422,9 +423,9 @@ Node* Graph::AddNode(const NodeDef& node_def, Status* status) {
     return nullptr;
   }
 
-  Node* node = AllocateNode(
-      std::make_shared<NodeProperties>(op_def, node_def, inputs, outputs),
-      nullptr);
+  Node* node = AllocateNode(std::make_shared<NodeProperties>(
+                                op_def, std::move(node_def), inputs, outputs),
+                            nullptr);
   return node;
 }
 

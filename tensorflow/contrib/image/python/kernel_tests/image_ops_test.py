@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import unittest
 import numpy as np
 
 from tensorflow.contrib.image.ops import gen_image_ops
@@ -48,6 +49,8 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
                 image_ops.rotate(image, angle).eval(),
                 np.zeros(shape, dtype.as_numpy_dtype()))
 
+  # TODO(b/133773834) Re-enable these tests.
+  @unittest.skip("Skipping because of b/133773834.")
   def test_rotate_even(self):
     for dtype in _DTYPES:
       with self.cached_session():

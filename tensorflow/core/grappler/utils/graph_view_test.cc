@@ -48,13 +48,15 @@ GraphDef SimpleTestGraph() {
 }
 
 template <typename T>
-class TypedGraphViewTest : public ::testing::Test {
- public:
-  const string type_as_string_ =
-      std::is_same<T, GraphView>::value ? "GraphView" : "MutableGraphView";
-};
+const string GetGraphViewTypeAsString() {
+  return std::is_same<T, class GraphView>::value ? "GraphView"
+                                                 : "MutableGraphView";
+}
 
 using GraphViewTypes = ::testing::Types<GraphView, MutableGraphView>;
+
+template <typename T>
+class TypedGraphViewTest : public ::testing::Test {};
 TYPED_TEST_SUITE(TypedGraphViewTest, GraphViewTypes);
 
 TYPED_TEST(TypedGraphViewTest, GraphWithDuplicateNodeNames) {
@@ -67,7 +69,7 @@ TYPED_TEST(TypedGraphViewTest, GraphWithDuplicateNodeNames) {
   EXPECT_EQ(s.error_message(),
             absl::Substitute(
                 "$0::$0 error: graph has multiple nodes with the name 'a'.",
-                this->type_as_string_));
+                GetGraphViewTypeAsString<TypeParam>()));
 }
 
 TYPED_TEST(TypedGraphViewTest, GraphWithMissingFanins) {
@@ -78,7 +80,7 @@ TYPED_TEST(TypedGraphViewTest, GraphWithMissingFanins) {
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.error_message(),
             absl::Substitute("$0::$0 error: node 'a' has missing fanin 'b:3'.",
-                             this->type_as_string_));
+                             GetGraphViewTypeAsString<TypeParam>()));
 }
 
 TYPED_TEST(TypedGraphViewTest, GraphWithSelfCycles) {
@@ -90,7 +92,7 @@ TYPED_TEST(TypedGraphViewTest, GraphWithSelfCycles) {
   EXPECT_EQ(
       s.error_message(),
       absl::Substitute("$0::$0 error: node 'a' has self cycle fanin 'a:4'.",
-                       this->type_as_string_));
+                       GetGraphViewTypeAsString<TypeParam>()));
 }
 
 TYPED_TEST(TypedGraphViewTest, GraphWithMisorderedFanins) {
@@ -103,7 +105,7 @@ TYPED_TEST(TypedGraphViewTest, GraphWithMisorderedFanins) {
   EXPECT_EQ(s.error_message(),
             absl::Substitute("$0::$0 error: node 'a' has regular fanin 'b:4' "
                              "after controlling fanins.",
-                             this->type_as_string_));
+                             GetGraphViewTypeAsString<TypeParam>()));
 }
 
 TYPED_TEST(TypedGraphViewTest, GetNodeWithIndex) {
@@ -788,7 +790,7 @@ TYPED_TEST(TypedNodeViewTest, HasAttr) {
   EXPECT_FALSE(c_node->HasAttr("attr"));
 }
 
-class MutationTest : public GrapplerTest {
+class CompareGraphTest : public GrapplerTest {
  public:
   void CompareGraphViewWithGraph(MutableGraphView* graph_view,
                                  const GraphDef& expected_graph) {
@@ -950,6 +952,8 @@ class MutationTest : public GrapplerTest {
     CompareGraphs(*graph_view->graph(), expected_graph);
   }
 };
+
+class MutationTest : public CompareGraphTest {};
 
 constexpr char kDeviceCPU0[] = "/device:CPU:0";
 constexpr char kDeviceGPU0[] = "/device:GPU:0";
@@ -1993,6 +1997,366 @@ TEST_F(MutationTest, EmptyMutationUpdateIndexPersisting) {
   CompareGraphViewWithGraph(&graph_view, test_graph());
 }
 
+class TopologicalSortTest : public CompareGraphTest {
+ protected:
+  void CompareGraphOrder(const MutableGraphView& graph_view,
+                         absl::Span<const string> node_names) {
+    const int num_nodes = graph_view.NumNodes();
+    ASSERT_EQ(num_nodes, node_names.size());
+    for (int i = 0; i < num_nodes; ++i) {
+      EXPECT_EQ(graph_view.GetNode(i)->GetName(), node_names[i]);
+    }
+  }
+
+  void CompareGraphNodePrecedences(
+      const MutableGraphView& graph_view,
+      absl::Span<const std::pair<string, string>> node_precedences) {
+    for (const auto& node_precedence : node_precedences) {
+      auto* parent_node = graph_view.GetNode(node_precedence.first);
+      ASSERT_NE(parent_node, nullptr);
+      auto* child_node = graph_view.GetNode(node_precedence.second);
+      ASSERT_NE(child_node, nullptr);
+      EXPECT_TRUE(parent_node->node_index() < child_node->node_index());
+    }
+  }
+};
+
+TEST_F(TopologicalSortTest, ActiveMutationSort) {
+  auto test_graph = []() {
+    return GDef({NDef("a", kIdentity, {}, {{"T", DT_FLOAT}}, kDeviceGPU0),
+                 NDef("b", kIdentity, {"a"}, {{"T", DT_FLOAT}}, kDeviceGPU1)},
+                /*funcs=*/{});
+  };
+
+  GraphDef graph = test_graph();
+  Status status;
+  MutableGraphView graph_view(&graph, &status);
+  TF_ASSERT_OK(status);
+
+  Mutation* mutation = graph_view.GetMutationBuilder();
+  mutation->AddNode({}, &status);
+  TF_ASSERT_OK(status);
+
+  for (bool ignore_cycles : {false, true}) {
+    status = graph_view.SortTopologically(ignore_cycles, {});
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(
+        status.error_message(),
+        "MutableGraphView::SortTopologically error: active mutation exists.");
+    CompareGraphViewWithGraph(&graph_view, test_graph());
+    CompareGraphOrder(graph_view, {"a", "b"});
+  }
+}
+
+TEST_F(TopologicalSortTest, BadExtraDependenciesSort) {
+  auto test_graph = []() {
+    return GDef({NDef("a", kIdentity, {}, {{"T", DT_FLOAT}}, kDeviceGPU0),
+                 NDef("b", kIdentity, {}, {{"T", DT_FLOAT}}, kDeviceGPU1)},
+                /*funcs=*/{});
+  };
+
+  GraphDef graph_1 = test_graph();
+  Status status;
+  MutableGraphView graph_view_1(&graph_1, &status);
+  TF_ASSERT_OK(status);
+  MutableNodeView* a_node_1 = graph_view_1.GetNode("a");
+
+  GraphDef graph_2 = test_graph();
+  MutableGraphView graph_view_2(&graph_2, &status);
+  TF_ASSERT_OK(status);
+  MutableNodeView* b_node_2 = graph_view_2.GetNode("b");
+
+  for (bool ignore_cycles : {false, true}) {
+    status =
+        graph_view_2.SortTopologically(ignore_cycles, {{a_node_1, b_node_2}});
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.error_message(),
+              "MutableGraphView::SortTopologically error: invalid extra "
+              "dependencies.");
+    CompareGraphViewWithGraph(&graph_view_2, test_graph());
+    CompareGraphOrder(graph_view_2, {"a", "b"});
+  }
+}
+
+TEST_F(TopologicalSortTest, NoCyclesAllowed) {
+  auto test_graph = []() {
+    return GDef(
+        {NDef("a", kIdentity, {}, {{"T", DT_FLOAT}}, kDeviceGPU0),
+         NDef("b", kIdentity, {"a", "c"}, {{"T", DT_FLOAT}}, kDeviceGPU1),
+         NDef("c", kIdentity, {"b"}, {{"T", DT_FLOAT}}, kDeviceGPU1)},
+        /*funcs=*/{});
+  };
+
+  GraphDef graph = test_graph();
+  Status status;
+  MutableGraphView graph_view(&graph, &status);
+  TF_ASSERT_OK(status);
+
+  status = graph_view.SortTopologically(/*ignore_cycles=*/false, {});
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.error_message(),
+            "MutableGraphView::SortTopologically error: detected edge(s) "
+            "creating cycle(s) {'c' -> 'b'}.");
+  CompareGraphViewWithGraph(&graph_view, test_graph());
+  CompareGraphOrder(graph_view, {"a", "b", "c"});
+
+  TF_EXPECT_OK(graph_view.SortTopologically(/*ignore_cycles=*/true, {}));
+  CompareGraphViewWithGraph(&graph_view, test_graph());
+  CompareGraphNodePrecedences(graph_view, {{"a", "b"}, {"a", "c"}});
+}
+
+TEST_F(TopologicalSortTest, NoNodesWithZeroFanins) {
+  auto test_graph = []() {
+    return GDef({NDef("a", kIdentity, {"b"}, {{"T", DT_FLOAT}}, kDeviceGPU0),
+                 NDef("b", kIdentity, {"a"}, {{"T", DT_FLOAT}}, kDeviceGPU1)},
+                /*funcs=*/{});
+  };
+
+  GraphDef graph = test_graph();
+  Status status;
+  MutableGraphView graph_view(&graph, &status);
+  TF_ASSERT_OK(status);
+
+  status = graph_view.SortTopologically(/*ignore_cycles=*/false, {});
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.error_message(),
+            "MutableGraphView::SortTopologically error: was not able to sort "
+            "all nodes topologically.");
+  CompareGraphViewWithGraph(&graph_view, test_graph());
+  CompareGraphOrder(graph_view, {"a", "b"});
+
+  TF_EXPECT_OK(graph_view.SortTopologically(/*ignore_cycles=*/true, {}));
+  CompareGraphViewWithGraph(&graph_view, test_graph());
+}
+
+TEST_F(TopologicalSortTest, DidNotReachAllNodes) {
+  auto test_graph = []() {
+    return GDef({NDef("c", kIdentity, {}, {{"T", DT_FLOAT}}, kDeviceGPU2),
+                 NDef("a", kIdentity, {"b"}, {{"T", DT_FLOAT}}, kDeviceGPU0),
+                 NDef("b", kIdentity, {"a"}, {{"T", DT_FLOAT}}, kDeviceGPU1)},
+                /*funcs=*/{});
+  };
+
+  GraphDef graph = test_graph();
+  Status status;
+  MutableGraphView graph_view(&graph, &status);
+  TF_ASSERT_OK(status);
+
+  status = graph_view.SortTopologically(/*ignore_cycles=*/false, {});
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.error_message(),
+            "MutableGraphView::SortTopologically error: was not able to sort "
+            "all nodes topologically.");
+  CompareGraphViewWithGraph(&graph_view, test_graph());
+  CompareGraphOrder(graph_view, {"c", "a", "b"});
+
+  TF_EXPECT_OK(graph_view.SortTopologically(/*ignore_cycles=*/true, {}));
+  CompareGraphViewWithGraph(&graph_view, test_graph());
+  CompareGraphOrder(graph_view, {"a", "b", "c"});
+}
+
+TEST_F(TopologicalSortTest, NoLoopGraph) {
+  auto test_graph = []() {
+    return GDef({NDef("c", kIdentity, {"f"}), NDef("a", kIdentity, {"f", "e"}),
+                 NDef("b", kIdentity, {"e", "d"}), NDef("d", kIdentity, {"c"}),
+                 NDef("f", kIdentity, {}), NDef("e", kIdentity, {})},
+                /*funcs=*/{});
+  };
+
+  GraphDef graph = test_graph();
+  Status status;
+  MutableGraphView graph_view(&graph, &status);
+  TF_ASSERT_OK(status);
+
+  TF_EXPECT_OK(graph_view.SortTopologically(/*ignore_cycles=*/false, {}));
+  CompareGraphViewWithGraph(&graph_view, test_graph());
+  CompareGraphNodePrecedences(
+      graph_view,
+      {{"f", "a"}, {"f", "c"}, {"e", "a"}, {"e", "b"}, {"c", "d"}, {"d", "b"}});
+}
+
+TEST_F(TopologicalSortTest, ValidLoopGraph) {
+  // Control flow loop.
+  auto test_graph = []() {
+    return GDef(
+        {NDef("while/Const_1", "Const", {}),
+         NDef("while/Enter_2", "Enter", {"while/Const_1"},
+              {{"frame_name", "while/while_context"}}),
+         NDef("while/Const", "Const", {}),
+         NDef("while/Enter_1", "Enter", {"while/Const"},
+              {{"frame_name", "while/while_context"}}),
+         NDef("while/iteration_counter", "Const", {}),
+         NDef("while/Enter", "Enter", {"while/iteration_counter"},
+              {{"frame_name", "while/while_context"}}),
+         NDef("while/maximum_iterations", "Const", {}),
+         NDef("while/Less/Enter", "Enter", {"while/maximum_iterations"},
+              {{"frame_name", "while/while_context"}}),
+         NDef("while/Less", "Less", {"while/Merge", "while/Less/Enter"}),
+         NDef("while/LogicalAnd", "LogicalAnd",
+              {"while/Less", "while/cond/Merge"}),
+         NDef("while/LoopCond", "LoopCond", {"while/LogicalAnd"}),
+         NDef("while/Switch", "Switch", {"while/Merge", "while/LoopCond"},
+              {{"_class", "loc:@while/Merge"}}),
+         NDef("while/Identity", "Identity", {"while/Switch:1"}),
+         NDef("while/add", "Add", {"while/Identity", "while/add/y"}),
+         NDef("while/NextIteration", "NextIteration", {"while/add"}),
+         NDef("while/Merge", "Merge", {"while/Enter", "while/NextIteration"}),
+         NDef("while/Less_1/y", "Const", {"^while/Merge"}),
+         NDef("while/add/y", "Const", {"^while/Identity"}),
+         NDef("while/mul/y", "Const", {"^while/Identity"}),
+         NDef("while/add_2/y", "Const", {"^while/Identity"}),
+         NDef("while/Switch_1", "Switch", {"while/Merge_1", "while/LoopCond"},
+              {{"_class", "loc:@while/Merge_1"}}),
+         NDef("while/Identity_1", "Identity", {"while/Switch_1:1"}),
+         NDef("while/add_2", "Add", {"while/Identity_1", "while/add_2/y"}),
+         NDef("while/NextIteration_1", "NextIteration", {"while/add_2"}),
+         NDef("while/Merge_1", "Merge",
+              {"while/Enter_1", "while/NextIteration_1"}),
+         NDef("while/Less_1", "Less", {"while/Merge_1", "while/Less_1/y"}),
+         NDef("while/cond/Switch", "Switch", {"while/Less_1", "while/Less_1"}),
+         NDef("while/cond/switch_f", "Identity", {"while/cond/Switch"}),
+         NDef("while/cond/Const_1", "Const", {"^while/cond/switch_f"}),
+         NDef("while/cond/switch_t", "Identity", {"while/cond/Switch:1"}),
+         NDef("while/cond/Const", "Const", {"^while/cond/switch_t"}),
+         NDef("while/cond/Merge", "Merge",
+              {"while/cond/Const_1", "while/cond/Const"}),
+         NDef("TensorArrayUnstack/range/delta", "Const", {}),
+         NDef("TensorArrayUnstack/range/start", "Const", {}),
+         NDef("TensorArrayUnstack/strided_slice/stack_2", "Const", {}),
+         NDef("TensorArrayUnstack/strided_slice/stack_1", "Const", {}),
+         NDef("TensorArrayUnstack/strided_slice/stack", "Const", {}),
+         NDef("TensorArrayUnstack/Shape", "Const", {}),
+         NDef("TensorArrayUnstack/strided_slice", "StridedSlice",
+              {"TensorArrayUnstack/Shape",
+               "TensorArrayUnstack/strided_slice/stack",
+               "TensorArrayUnstack/strided_slice/stack_1",
+               "TensorArrayUnstack/strided_slice/stack_2"}),
+         NDef("TensorArrayUnstack/range", "Range",
+              {"TensorArrayUnstack/range/start",
+               "TensorArrayUnstack/strided_slice",
+               "TensorArrayUnstack/range/delta"}),
+         NDef("TensorArray/size", "Const", {}),
+         NDef("TensorArray", "TensorArrayV3", {"TensorArray/size"}),
+         NDef("while/TensorArrayReadV3/Enter", "Enter", {"TensorArray"},
+              {{"frame_name", "while/while_context"}}),
+         NDef("Const", "Const", {}),
+         NDef("TensorArrayUnstack/TensorArrayScatter/TensorArrayScatterV3",
+              "TensorArrayScatterV3",
+              {"TensorArray", "TensorArrayUnstack/range", "Const",
+               "TensorArray:1"},
+              {{"_class", "loc@Const"}}),
+         NDef("while/TensorArrayReadV3/Enter_1", "Enter",
+              {"TensorArrayUnstack/TensorArrayScatter/TensorArrayScatterV3"},
+              {{"frame_name", "while/while_context"}}),
+         NDef("while/TensorArrayReadV3", "TensorArrayReadV3",
+              {"while/TensorArrayReadV3/Enter", "while/Identity_1",
+               "while/TensorArrayReadV3/Enter_1"}),
+         NDef("while/add_1", "Add", {"while/mul", "while/TensorArrayReadV3"}),
+         NDef("while/NextIteration_2", "NextIteration", {"while/add_1"}),
+         NDef("while/Merge_2", "Merge",
+              {"while/Enter_2", "while/NextIteration_2"}),
+         NDef("while/Switch_2", "Switch", {"while/Merge_2", "while/LoopCond"},
+              {{"_class", "loc@while/Merge_2"}}),
+         NDef("while/Exit_2", "Exit", {"while/Switch_2"}),
+         NDef("while/Identity_2", "Identity", {"while/Switch_2:1"}),
+         NDef("while/mul", "Mul", {"while/Identity_2", "while/mul/y"})},
+        /*funcs=*/{});
+  };
+
+  GraphDef graph = test_graph();
+  Status status;
+  MutableGraphView graph_view(&graph, &status);
+  TF_ASSERT_OK(status);
+
+  TF_EXPECT_OK(graph_view.SortTopologically(/*ignore_cycles=*/false, {}));
+  CompareGraphViewWithGraph(&graph_view, test_graph());
+}
+
+TEST_F(TopologicalSortTest, DuplicateFanins) {
+  auto test_graph = []() {
+    return GDef(
+        {NDef("b", kIdentity, {"a", "a", "^a"}), NDef("a", "Const", {})},
+        /*funcs=*/{});
+  };
+
+  GraphDef graph = test_graph();
+  Status status;
+  MutableGraphView graph_view(&graph, &status);
+  TF_ASSERT_OK(status);
+
+  TF_EXPECT_OK(graph_view.SortTopologically(/*ignore_cycles=*/false, {}));
+  CompareGraphViewWithGraph(&graph_view, test_graph());
+  CompareGraphOrder(graph_view, {"a", "b"});
+}
+
+TEST_F(TopologicalSortTest, DiamondDependencyNotACycle) {
+  auto test_graph = []() {
+    return GDef({NDef("e", kIdentity, {"b", "c", "d"}),
+                 NDef("b", kIdentity, {"a"}), NDef("a", "Const", {}),
+                 NDef("d", kIdentity, {"a"}), NDef("c", kIdentity, {"a"})},
+                /*funcs=*/{});
+  };
+
+  GraphDef graph = test_graph();
+  Status status;
+  MutableGraphView graph_view(&graph, &status);
+  TF_ASSERT_OK(status);
+
+  TF_EXPECT_OK(graph_view.SortTopologically(/*ignore_cycles=*/false, {}));
+  CompareGraphViewWithGraph(&graph_view, test_graph());
+  CompareGraphNodePrecedences(
+      graph_view,
+      {{"a", "b"}, {"a", "c"}, {"a", "d"}, {"b", "e"}, {"c", "e"}, {"d", "e"}});
+}
+
+TEST_F(TopologicalSortTest, ExtraDependencies) {
+  auto test_graph = []() {
+    return GDef({NDef("c", kIdentity, {"f"}), NDef("a", kIdentity, {"f", "e"}),
+                 NDef("b", kIdentity, {"e", "d"}), NDef("d", kIdentity, {"c"}),
+                 NDef("f", kIdentity, {}), NDef("e", kIdentity, {})},
+                /*funcs=*/{});
+  };
+
+  GraphDef graph = test_graph();
+  Status status;
+  MutableGraphView graph_view(&graph, &status);
+  TF_ASSERT_OK(status);
+
+  auto* e_node = graph_view.GetNode("e");
+  ASSERT_NE(e_node, nullptr);
+  auto* f_node = graph_view.GetNode("f");
+  ASSERT_NE(f_node, nullptr);
+
+  TF_EXPECT_OK(graph_view.SortTopologically(/*ignore_cycles=*/false,
+                                            {{e_node, f_node}}));
+  CompareGraphViewWithGraph(&graph_view, test_graph());
+  CompareGraphNodePrecedences(graph_view, {{"f", "a"},
+                                           {"f", "c"},
+                                           {"e", "a"},
+                                           {"e", "b"},
+                                           {"c", "d"},
+                                           {"d", "b"},
+                                           {"e", "f"}});
+}
+
+TEST_F(TopologicalSortTest, PushVisitedNodes) {
+  auto test_graph = []() {
+    return GDef({NDef("d", kIdentity, {"c"}), NDef("c", kIdentity, {"b", "a"}),
+                 NDef("b", kIdentity, {"a"}), NDef("a", kIdentity, {})},
+                /*funcs=*/{});
+  };
+
+  GraphDef graph = test_graph();
+  Status status;
+  MutableGraphView graph_view(&graph, &status);
+  TF_ASSERT_OK(status);
+
+  TF_EXPECT_OK(graph_view.SortTopologically(/*ignore_cycles=*/false, {}));
+  CompareGraphViewWithGraph(&graph_view, test_graph());
+  CompareGraphNodePrecedences(graph_view,
+                              {{"a", "b"}, {"a", "c"}, {"b", "c"}, {"c", "d"}});
+}
+
 #define RUN_NUM_NODE_NUM_EDGE_BENCHMARK(name) \
   BENCHMARK(name)                             \
       ->ArgPair(10, 2)                        \
@@ -2538,6 +2902,23 @@ RUN_NUM_FANIN_NUM_FANOUT_BENCHMARK(BM_GraphViewHasControlledFanoutFirst);
 RUN_NUM_FANIN_NUM_FANOUT_BENCHMARK(BM_GraphViewHasControlledFanoutLast);
 RUN_NUM_FANIN_NUM_FANOUT_BENCHMARK(BM_MutableGraphViewHasControlledFanoutFirst);
 RUN_NUM_FANIN_NUM_FANOUT_BENCHMARK(BM_MutableGraphViewHasControlledFanoutLast);
+
+static void BM_SortTopologically(int iters, int size) {
+  testing::StopTiming();
+
+  GraphDef graph = test::CreateRandomGraph(size);
+  Status status;
+  MutableGraphView graph_view(&graph, &status);
+  TF_ASSERT_OK(status);
+
+  testing::StartTiming();
+  for (int i = 0; i < iters; i++) {
+    TF_EXPECT_OK(graph_view.SortTopologically(/*ignore_cycles=*/false, {}));
+  }
+  testing::StopTiming();
+}
+
+RUN_NUM_NODE_BENCHMARK(BM_SortTopologically);
 
 }  // namespace
 }  // namespace utils

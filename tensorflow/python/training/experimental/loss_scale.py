@@ -289,7 +289,7 @@ class DynamicLossScale(LossScale):
       initial_loss_scale: A Python float.  The loss scale to use at the
         beginning. It's better to start this at a very high number, because a
         loss scale that is too high gets lowered far more quickly than a loss
-        scale that is to low gets raised. The default is 2 ** 15, which is
+        scale that is too low gets raised. The default is 2 ** 15, which is
         approximately half the maximum float16 value.
       increment_period: Increases loss scale every `increment_period`
         consecutive steps that finite gradients are encountered. If a nonfinite

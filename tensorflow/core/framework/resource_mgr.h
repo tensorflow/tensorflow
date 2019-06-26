@@ -145,19 +145,6 @@ class ResourceMgr {
                     std::vector<std::unique_ptr<T, core::RefCountDeleter>>*
                         resources) const TF_MUST_USE_RESULT;
 
-  // Retrieves all the resources within a container. If the container does not
-  // exist, it will not be created and the result vector will be empty. The
-  // resource member of the returned ResourceEntry data structures will own
-  // a reference to the ResourceBase object(s).
-  struct ResourceEntry {
-    ResourceEntry(string name, ResourceBase* resource)
-        : name(std::move(name)), resource(resource) {}
-    string name;
-    std::unique_ptr<ResourceBase, core::RefCountDeleter> resource;
-  };
-  void GetContainerResources(const string& container,
-                             std::vector<ResourceEntry>* resources) const;
-
   // If "container" has a resource "name", returns it in
   // "*resource". Otherwise, invokes creator() to create the resource.
   // The caller takes the ownership of one ref on "*resource".
@@ -246,14 +233,17 @@ class ResourceMgr {
 
 // Makes a resource handle with the specified type for a given container /
 // name.
-ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
-                                  const string& name,
-                                  const TypeIndex& type_index);
+ResourceHandle MakeResourceHandle(
+    OpKernelContext* ctx, const string& container, const string& name,
+    const TypeIndex& type_index,
+    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {});
 
 template <typename T>
-ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
-                                  const string& name) {
-  return MakeResourceHandle(ctx, container, name, MakeTypeIndex<T>());
+ResourceHandle MakeResourceHandle(
+    OpKernelContext* ctx, const string& container, const string& name,
+    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {}) {
+  return MakeResourceHandle(ctx, container, name, MakeTypeIndex<T>(),
+                            dtypes_and_shapes);
 }
 
 Status MakeResourceHandleToOutput(OpKernelContext* context, int output_index,
@@ -283,12 +273,19 @@ Status CreateResource(OpKernelContext* ctx, const ResourceHandle& p, T* value);
 template <typename T, bool use_dynamic_cast = false>
 Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p, T** value);
 
+// Looks up a resource pointed by a given resource handle.
+//
+// Prefer usage of LookupResource taking `core::RefCountPtr` to avoid
+// requiring the caller to explicitly call `Unref()`.
+template <typename T>
+Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
+                      core::RefCountPtr<T>* value);
+
 // Looks up multiple resources pointed by a sequence of resource handles.  If
 // p[i] is uninitialized then values[i] is unmodified.
 template <typename T>
-Status LookupResources(
-    OpKernelContext* ctx, absl::Span<ResourceHandle const> p,
-    std::vector<std::unique_ptr<T, core::RefCountDeleter>>* values);
+Status LookupResources(OpKernelContext* ctx, absl::Span<ResourceHandle const> p,
+                       std::vector<core::RefCountPtr<T>>* values);
 
 // Looks up or creates a resource.
 //
@@ -296,9 +293,18 @@ Status LookupResources(
 // must call its `Unref()` method when it has finished using it. If the
 // `creator` is invoked, its reference on the created resource is transferred
 // to `ctx->resource_mgr()`.
+//
+// Prefer usage of LookupOrCreateResource taking `core::RefCountPtr` to avoid
+// requiring the caller to explicitly call `Unref()`.
 template <typename T>
 Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
                               T** value, std::function<Status(T**)> creator);
+
+// Looks up or creates a resource.
+template <typename T>
+Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
+                              core::RefCountPtr<T>* value,
+                              std::function<Status(T**)> creator);
 
 // Destroys a resource pointed by a given resource handle.
 template <typename T>
@@ -600,9 +606,19 @@ Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
 }
 
 template <typename T>
-Status LookupResources(
-    OpKernelContext* ctx, absl::Span<ResourceHandle const* const> p,
-    std::vector<std::unique_ptr<T, core::RefCountDeleter>>* values) {
+Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
+                      core::RefCountPtr<T>* value) {
+  T* raw_ptr = nullptr;
+  TF_RETURN_IF_ERROR(LookupResource<T, false>(ctx, p, &raw_ptr));
+  value->reset(raw_ptr);
+
+  return Status::OK();
+}
+
+template <typename T>
+Status LookupResources(OpKernelContext* ctx,
+                       absl::Span<ResourceHandle const* const> p,
+                       std::vector<core::RefCountPtr<T>>* values) {
   std::vector<std::pair<const string*, const string*>> containers_and_names(
       p.size());
   for (size_t i = 0; i < p.size(); ++i) {
@@ -618,6 +634,17 @@ Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
   TF_RETURN_IF_ERROR(internal::ValidateDeviceAndType<T>(ctx, p));
   return ctx->resource_manager()->LookupOrCreate(p.container(), p.name(), value,
                                                  creator);
+}
+
+template <typename T>
+Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
+                              core::RefCountPtr<T>* value,
+                              std::function<Status(T**)> creator) {
+  T* raw_ptr = nullptr;
+  TF_RETURN_IF_ERROR(LookupOrCreateResource<T>(ctx, p, &raw_ptr, creator));
+  value->reset(raw_ptr);
+
+  return Status::OK();
 }
 
 template <typename T>

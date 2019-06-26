@@ -28,6 +28,8 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import ResidualWrapper
 from tensorflow.python.ops.array_ops import concat
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import object_identity
@@ -331,6 +333,7 @@ class TimeDistributedTest(test.TestCase):
           [None, 2, 8])
 
 
+@tf_test_util.run_all_in_graph_and_eager_modes
 class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
   def test_bidirectional(self):
@@ -554,8 +557,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       # test passing invalid initial_state: passing a tensor
       input2 = keras.layers.Input((timesteps, dim))
       with self.assertRaises(ValueError):
-        output = keras.layers.Bidirectional(
-            rnn(units))(input2, initial_state=state[0])
+        keras.layers.Bidirectional(rnn(units))(input2, initial_state=state[0])
 
       # test valid usage: passing a list
       output = keras.layers.Bidirectional(rnn(units))(input2,
@@ -566,6 +568,23 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       inputs = [np.random.rand(samples, timesteps, dim),
                 np.random.rand(samples, timesteps, dim)]
       model.predict(inputs)
+
+  def test_Bidirectional_state_reuse_with_np_input(self):
+    # See https://github.com/tensorflow/tensorflow/issues/28761 for more detail.
+    rnn = keras.layers.LSTM
+    samples = 2
+    dim = 5
+    timesteps = 3
+    units = 3
+
+    with self.cached_session():
+      input1 = np.random.rand(samples, timesteps, dim).astype(np.float32)
+      layer = keras.layers.Bidirectional(
+          rnn(units, return_state=True, return_sequences=True))
+      state = layer(input1)[1:]
+
+      input2 = np.random.rand(samples, timesteps, dim).astype(np.float32)
+      keras.layers.Bidirectional(rnn(units))(input2, initial_state=state)
 
   def test_Bidirectional_trainable(self):
     # test layers that need learning_phase to be set
@@ -591,10 +610,12 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       assert not layer.updates
       assert not layer.get_updates_for(None)
       assert not layer.get_updates_for(x)
-      layer.forward_layer.add_update(x_reachable_update, inputs=x)
-      layer.forward_layer.add_update(1, inputs=None)
-      layer.backward_layer.add_update(x_reachable_update, inputs=x)
-      layer.backward_layer.add_update(1, inputs=None)
+      # TODO(b/128684069): Remove when Wrapper sublayers are __call__'d.
+      with base_layer_utils.call_context().enter(layer, x, True, None):
+        layer.forward_layer.add_update(x_reachable_update, inputs=x)
+        layer.forward_layer.add_update(1, inputs=None)
+        layer.backward_layer.add_update(x_reachable_update, inputs=x)
+        layer.backward_layer.add_update(1, inputs=None)
       assert len(layer.updates) == 4
       assert len(layer.get_updates_for(None)) == 2
       assert len(layer.get_updates_for(x)) == 2
@@ -948,6 +969,31 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
     bidirectional_rnn = keras.layers.Bidirectional(
         forward_layer, merge_mode=merge_mode)
     outputs = _to_list(bidirectional_rnn(inputs))
+
+    model = keras.Model(inputs, outputs)
+    model.compile(optimizer='rmsprop', loss='mse')
+    model.fit(
+        np.random.random((batch, timesteps, dim)),
+        np.random.random((batch, units)),
+        epochs=1,
+        batch_size=10)
+
+  @tf_test_util.run_v2_only
+  def test_wrapped_rnn_cell(self):
+    # See https://github.com/tensorflow/tensorflow/issues/26581.
+    batch = 20
+    dim = 5
+    timesteps = 3
+    units = 5
+    merge_mode = 'sum'
+
+    cell = keras.layers.LSTMCell(units)
+    cell = ResidualWrapper(cell)
+    rnn = keras.layers.RNN(cell)
+
+    inputs = keras.Input((timesteps, dim))
+    wrapped = keras.layers.Bidirectional(rnn, merge_mode=merge_mode)
+    outputs = _to_list(wrapped(inputs))
 
     model = keras.Model(inputs, outputs)
     model.compile(optimizer='rmsprop', loss='mse')

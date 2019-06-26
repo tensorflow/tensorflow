@@ -1,10 +1,11 @@
-package(default_visibility = [
-    "//visibility:public",
-])
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-
-licenses(["notice"])  # Apache 2.0
 
 cc_library(
     name = "nnapi_delegate",
@@ -23,6 +24,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/nnapi:nnapi_implementation",
@@ -42,6 +44,8 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/nnapi:nnapi_lib",
         "@com_google_googletest//:gtest",
     ],
 )

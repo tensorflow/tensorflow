@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
@@ -128,16 +129,30 @@ Status HloModuleGroupMetadata::Build() {
       TF_RETURN_IF_ERROR(computation->Accept(&function_visitor));
     }
   }
+
+  // While building the companion sets, initial sets may be removed by inserting
+  // nullptr in companion_sets_. Prune those removed sets to compact.
+  std::vector<std::unique_ptr<std::vector<HloInstruction*>>> sets;
+  for (int64 i = 0; i < companion_sets_.size(); ++i) {
+    if (companion_sets_[i] == nullptr) {
+      continue;
+    }
+    sets.push_back(std::move(companion_sets_[i]));
+    for (HloInstruction* hlo : *sets.back()) {
+      companion_set_index_[hlo] = sets.size() - 1;
+    }
+  }
+  companion_sets_ = std::move(sets);
+
   TF_RETURN_IF_ERROR(VerifyCompanionSets());
   if (VLOG_IS_ON(4)) {
     DumpCollectedStats();
   }
 
   for (HloModule* module : modules_) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
-        TuplePointsToAnalysis::Run(module));
-    points_to_analyses_[module] = std::move(points_to_analysis);
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                        HloAliasAnalysis::Run(module));
+    alias_analyses_[module] = std::move(alias_analysis);
   }
 
   return Status::OK();

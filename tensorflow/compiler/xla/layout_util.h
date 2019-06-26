@@ -38,7 +38,8 @@ class LayoutUtil {
   // convenience function for protobuf construction.)
   static Layout MakeLayout(absl::Span<const int64> minor_to_major,
                            absl::Span<const Tile> tiles = {},
-                           int64 element_size_in_bits = 0);
+                           int64 element_size_in_bits = 0,
+                           int64 memory_space = 0);
 
   // Similar to MakeLayout, but take indices in reverse order.
   static Layout MakeLayoutFromMajorToMinor(

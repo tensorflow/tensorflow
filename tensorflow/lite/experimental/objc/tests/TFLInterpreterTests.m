@@ -33,9 +33,6 @@ static NSString *const kAddQuantizedModelResourceName = @"add_quantized";
 /** Model resource type. */
 static NSString *const kAddModelResourceType = @"bin";
 
-/** Rank of the input and output tensor in the Add model. */
-static const NSUInteger kAddModelTensorRank = 1U;
-
 /** Size of the first (and only) dimension of the input and output tensor in the Add model. */
 static const NSUInteger kAddModelTensorFirstDimensionSize = 2U;
 
@@ -100,8 +97,7 @@ static const float kTestAccuracy = 1E-5F;
 
 - (void)testSuccessfulFullRunAddFloatModel {
   // Shape for both input and output tensor.
-  NSMutableArray *shape = [NSMutableArray arrayWithCapacity:kAddModelTensorRank];
-  shape[0] = [NSNumber numberWithUnsignedInteger:kAddModelTensorFirstDimensionSize];
+  NSArray<NSNumber *> *shape = @[@(kAddModelTensorFirstDimensionSize)];
 
   // Creates the interpreter options.
   TFLInterpreterOptions *options = [[TFLInterpreterOptions alloc] init];
@@ -184,8 +180,7 @@ static const float kTestAccuracy = 1E-5F;
 
 - (void)testSuccessfulFullRunQuantizedModel {
   // Shape for both input and output tensor.
-  NSMutableArray *shape = [NSMutableArray arrayWithCapacity:kAddModelTensorRank];
-  shape[0] = [NSNumber numberWithUnsignedInteger:kAddModelTensorFirstDimensionSize];
+  NSArray<NSNumber *> *shape = @[@(kAddModelTensorFirstDimensionSize)];
 
   // Creates the interpreter options.
   TFLInterpreterOptions *options = [[TFLInterpreterOptions alloc] init];
@@ -276,10 +271,6 @@ static const float kTestAccuracy = 1E-5F;
 }
 
 - (void)testInitWithModelPath_invalidPath {
-  // Shape for both input and output tensor.
-  NSMutableArray *shape = [NSMutableArray arrayWithCapacity:kAddModelTensorRank];
-  shape[0] = [NSNumber numberWithUnsignedInteger:kAddModelTensorFirstDimensionSize];
-
   // Creates the interpreter.
   NSError *error;
   TFLInterpreter *brokenInterpreter = [[TFLInterpreter alloc] initWithModelPath:@"InvalidPath"
@@ -308,8 +299,7 @@ static const float kTestAccuracy = 1E-5F;
 }
 
 - (void)testResizeInputTensorAtIndex_invalidIndex {
-  NSMutableArray *shape = [NSMutableArray arrayWithCapacity:kAddModelTensorRank];
-  shape[0] = [NSNumber numberWithUnsignedInteger:kAddModelTensorFirstDimensionSize];
+  NSArray<NSNumber *> *shape = @[@(kAddModelTensorFirstDimensionSize)];
   NSError *error;
   XCTAssertFalse([self.interpreter resizeInputTensorAtIndex:kInvalidInputTensorIndex
                                                     toShape:shape
@@ -325,8 +315,7 @@ static const float kTestAccuracy = 1E-5F;
 }
 
 - (void)testResizeInputTensorAtIndex_zeroDimensionSize {
-  NSMutableArray *shape = [NSMutableArray arrayWithCapacity:kAddModelTensorRank];
-  shape[0] = [NSNumber numberWithUnsignedInteger:0];
+  NSArray<NSNumber *> *shape = @[@0];
   NSError *error;
   XCTAssertFalse([self.interpreter resizeInputTensorAtIndex:0 toShape:shape error:&error]);
   XCTAssertEqual(error.code, TFLInterpreterErrorCodeInvalidShape);

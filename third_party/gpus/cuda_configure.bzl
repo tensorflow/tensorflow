@@ -194,7 +194,8 @@ def _get_win_cuda_defines(repository_ctx):
     )
 
     # nvcc will generate some temporary source files under %{nvcc_tmp_dir}
-    # The generated files are guranteed to have unique name, so they can share the same tmp directory
+    # The generated files are guaranteed to have unique name, so they can share
+    # the same tmp directory
     escaped_cxx_include_directories = [
         _get_nvcc_tmp_dir_for_windows(repository_ctx),
     ]

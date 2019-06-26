@@ -69,5 +69,10 @@ if ! grep -q '#include "subdir_3/something.h"' ${OUTPUT_FILE}; then
   exit 1
 fi
 
+if ! grep -q 'int tflite_micro_main(' ${OUTPUT_FILE}; then
+  echo "ERROR: No int tflite_micro_main() definition found in output '${OUTPUT_FILE}'"
+  exit 1
+fi
+
 echo
 echo "SUCCESS: transform_arduino_source test PASSED"

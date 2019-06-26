@@ -28,9 +28,26 @@ limitations under the License.
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/gpu/gpu_helpers.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace stream_executor {
 namespace cuda {
+
+#if defined(PLATFORM_WINDOWS)
+port::StatusOr<std::vector<uint8>> CompilePtx(int device_ordinal,
+                                              const char* ptx_contents,
+                                              PtxCompilationOptions options) {
+  // TODO(b/134675935): Subprocess invocation not supported on Windows.
+  return port::InternalError("Invoking ptxas not supported on Windows");
+}
+
+port::StatusOr<absl::Span<const uint8>> CompilePtxOrGetCached(
+    int device_ordinal, const char* ptx,
+    PtxCompilationOptions compilation_options) {
+  return CompilePtx(device_ordinal, ptx, compilation_options);
+}
+
+#else
 
 // Prints a warning if the ptxas at ptxas_path has known bugs.
 //
@@ -120,11 +137,9 @@ port::StatusOr<absl::Span<const uint8>> CompilePtxOrGetCached(
                         compilation_options.ToTuple()};
   auto it = ptx_cache.find(cache_key);
   if (it == ptx_cache.end()) {
-    auto compiled_or = CompilePtx(device_ordinal, ptx, compilation_options);
-    TF_RETURN_IF_ERROR(compiled_or.status());
-    std::vector<uint8> compiled = std::move(compiled_or.ValueOrDie());
-    it =
-        ptx_cache.emplace(cache_key, std::move(compiled_or.ValueOrDie())).first;
+    TF_ASSIGN_OR_RETURN(std::vector<uint8> compiled,
+                        CompilePtx(device_ordinal, ptx, compilation_options));
+    it = ptx_cache.emplace(cache_key, std::move(compiled)).first;
   }
 
   CHECK(it != ptx_cache.end());
@@ -199,10 +214,10 @@ port::StatusOr<std::vector<uint8>> CompilePtx(int device_ordinal,
   string stderr_output;
   int exit_status = ptxas_info_dumper.Communicate(
       /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
-  LOG(INFO) << stderr_output;
   if (exit_status != 0) {
-    return port::InternalError(absl::StrFormat(
-        "ptxas exited with non-zero error code %d", exit_status));
+    return port::InternalError(
+        absl::StrFormat("ptxas exited with non-zero error code %d, output: %s",
+                        exit_status, stderr_output));
   }
 
   // Read in the result of compilation and return it as a byte vector.
@@ -212,6 +227,8 @@ port::StatusOr<std::vector<uint8>> CompilePtx(int device_ordinal,
   std::vector<uint8> cubin_vector(cubin.begin(), cubin.end());
   return cubin_vector;
 }
+
+#endif  // PLATFORM_WINDOWS
 
 }  // namespace cuda
 }  // namespace stream_executor

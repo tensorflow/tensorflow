@@ -9,10 +9,9 @@ load(
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load(":build_defs.bzl", "runtime_copts")
 
-licenses(["notice"])  # Apache 2.0
-
 package(
     default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 package_group(
@@ -77,7 +76,6 @@ cc_library(
         ":compiler_functor",
         ":buffer_info_util",
         ":conv_canonicalization",
-        ":cpu_copy_insertion",
         ":cpu_executable",
         ":cpu_hlo_support_checker",
         ":cpu_instruction_fusion",
@@ -93,6 +91,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         ":target_machine_features",
         "@com_google_absl//absl/types:span",
+        "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:map_inliner",
@@ -958,18 +957,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cpu_copy_insertion",
-    srcs = ["cpu_copy_insertion.cc"],
-    hdrs = ["cpu_copy_insertion.h"],
-    deps = [
-        "//tensorflow/compiler/xla/service:copy_insertion",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
     name = "vector_support_library",
     srcs = ["vector_support_library.cc"],
     hdrs = ["vector_support_library.h"],
@@ -984,26 +971,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm//:core",
         "@llvm//:support",
-    ],
-)
-
-tf_cc_test(
-    name = "cpu_copy_insertion_test",
-    srcs = ["cpu_copy_insertion_test.cc"],
-    deps = [
-        ":cpu_copy_insertion",
-        "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:test_helpers",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_graph_dumper",
-        "//tensorflow/compiler/xla/service:hlo_matchers",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:test",
     ],
 )
 

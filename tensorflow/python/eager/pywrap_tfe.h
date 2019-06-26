@@ -157,6 +157,9 @@ void TFE_Py_TapeSetStopOnThread();
 // Restarts gradient recording on the current thread.
 void TFE_Py_TapeSetRestartOnThread();
 
+// Returns if gradient recording is stopped on the current thread.
+PyObject* TFE_Py_TapeSetIsStopped();
+
 // Records an operation in the gradient tape stack.type is a string for the
 // operation type, used in the backprop code. output_tensors should be a list of
 // python ops.Tensor objects. input_tensor_ids should be a list of python
@@ -214,6 +217,22 @@ PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
 // Returns all variables watched by the given tape in the order those variables
 // were created.
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape);
+
+// Creates a new forward accumulator and adds it to the active set.
+PyObject* TFE_Py_ForwardAccumulatorNew();
+
+// Removes a forward accumulator from the active set, meaning it will no longer
+// be watching operations.
+void TFE_Py_ForwardAccumulatorSetRemove(PyObject* accumulator);
+
+// Tell the forward accumulator `accumulator` to watch `tensor`, with a Tensor
+// tangent vector `tangent` of matching shape and dtype.
+void TFE_Py_ForwardAccumulatorWatch(PyObject* accumulator, PyObject* tensor,
+                                    PyObject* tangent);
+
+// Looks up the Jacobian-vector product of `tensor` in the forward accumulator
+// `accumulator`. Returns None if no JVP is available.
+PyObject* TFE_Py_ForwardAccumulatorJVP(PyObject* accumulator, PyObject* tensor);
 
 // Returns an EagerTensor of dimension [len(`tensors`)] containing
 // the `slice_dim`'th dimension of each tensor in `tensors`. In other words,

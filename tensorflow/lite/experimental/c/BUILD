@@ -1,13 +1,15 @@
-package(default_visibility = [":experimental"])
+package(
+    default_visibility = [":experimental"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "experimental",
     packages = [
+        "//dart/tensorflow/...",  # whitelisted
         "//tensorflow/lite/experimental/...",
     ],
 )
-
-licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow/lite:build_def.bzl",

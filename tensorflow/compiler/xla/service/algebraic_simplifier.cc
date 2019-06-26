@@ -1122,20 +1122,6 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
     return ReplaceInstruction(divide, new_divide);
   }
 
-  // A / Broaddcast(B) => A * Broadcast(1/B)
-  if (Match(divide, m::Divide(m::Op(&a), m::Broadcast(&c, m::Op(&b))))) {
-    auto one = MakeBroadcastHlo(
-        computation_->AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::One(b->shape().element_type()))),
-        {}, b->shape().dimensions());
-    TF_ASSIGN_OR_RETURN(auto recip, MakeBinaryHlo(HloOpcode::kDivide, one, b));
-    auto recip_broadcast =
-        MakeBroadcastHlo(recip, c->dimensions(), c->shape().dimensions());
-    TF_ASSIGN_OR_RETURN(auto new_divide, MakeBinaryHlo(HloOpcode::kMultiply, a,
-                                                       recip_broadcast));
-    return ReplaceInstruction(divide, new_divide);
-  }
-
   // (A / B) / (C / D)  =>  (A / B)*(D / C) => (A * D) / (B * C)
   if (Match(divide, m::Divide(m::Divide(m::Op(&a), m::Op(&b)),
                               m::Divide(m::Op(&c), m::Op(&d))))) {
@@ -1251,7 +1237,8 @@ StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfConcat(
     HloInstruction* dot) {
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
   if (dnums.lhs_contracting_dimensions_size() != 1 ||
-      dnums.lhs_batch_dimensions_size() != 0) {
+      dnums.lhs_batch_dimensions_size() != 0 ||
+      dot->shape().dimensions_size() != 2) {  // dot output 2D
     return nullptr;
   }
 
@@ -1751,12 +1738,6 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         dot, HloInstruction::CreateBroadcast(dot->shape(), zero, {}));
   }
 
-  // Only optimize F32 or BF16 dot operations where the dot, rhs and lhs.
-  if (dot->shape().element_type() != F32 &&
-      dot->shape().element_type() != BF16) {
-    return Status::OK();
-  }
-
   // If there are no contracting dimensions, a dot can be rewritten as
   // mul(broadcast(transpose(x)),broadcast(transpose(y)))
   if (dot->dot_dimension_numbers().lhs_contracting_dimensions_size() == 0) {
@@ -1797,12 +1778,16 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
 
   // If the lhs or rhs have only batch and contracting dimensions, a dot can be
   // rewritten as reduce(mul(broadcast(transpose(x)),broadcast(transpose(y))))
-  if ((dot->dot_dimension_numbers().lhs_batch_dimensions_size() +
-           dot->dot_dimension_numbers().lhs_contracting_dimensions_size() ==
-       lhs->shape().rank()) ||
-      (dot->dot_dimension_numbers().rhs_contracting_dimensions_size() +
-           dot->dot_dimension_numbers().rhs_batch_dimensions_size() ==
-       rhs->shape().rank())) {
+  if (options_.enable_dot_strength_reduction() &&
+      (dot->shape().element_type() == F32 ||
+       dot->shape().element_type() == F16 ||
+       dot->shape().element_type() == BF16) &&
+      ((dot->dot_dimension_numbers().lhs_batch_dimensions_size() +
+            dot->dot_dimension_numbers().lhs_contracting_dimensions_size() ==
+        lhs->shape().rank()) ||
+       (dot->dot_dimension_numbers().rhs_contracting_dimensions_size() +
+            dot->dot_dimension_numbers().rhs_batch_dimensions_size() ==
+        rhs->shape().rank()))) {
     TF_ASSIGN_OR_RETURN(
         HloInstruction * new_lhs,
         NormalizeDotOperandToBatchMajorAndContractingMinor(
@@ -1898,12 +1883,10 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
     return ReplaceInstruction(dot, dot_of_gather_optimized);
   }
 
-  if (options_.enable_dot_strength_reduction()) {
-    TF_ASSIGN_OR_RETURN(bool removed_degenerate_dimensions,
-                        RemoveDegenerateDimensionFromDot(dot));
-    if (removed_degenerate_dimensions) {
-      return Status::OK();
-    }
+  TF_ASSIGN_OR_RETURN(bool removed_degenerate_dimensions,
+                      RemoveDegenerateDimensionFromDot(dot));
+  if (removed_degenerate_dimensions) {
+    return Status::OK();
   }
 
   // Simplify dot(transpose(a), transpose(b)) to transpose(dot(b,a)).
@@ -3532,6 +3515,38 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
                        transpose->shape(), operand->mutable_operand(0),
                        ComposePermutations(operand->dimensions(),
                                            transpose->dimensions())));
+  }
+
+  // Convert transpose(dot(a,b)) to dot(b,a).
+  if (operand->opcode() == HloOpcode::kDot && operand->user_count() == 1 &&
+      operand->shape().rank() == 2) {
+    TF_ASSIGN_OR_RETURN(bool did_transform, [&]() -> StatusOr<bool> {
+      const auto& dnums = operand->dot_dimension_numbers();
+      if (dnums.lhs_batch_dimensions_size() != 0) {
+        return false;
+      }
+      HloInstruction* lhs = operand->mutable_operand(0);
+      if (lhs->shape().rank() != 1 + dnums.lhs_contracting_dimensions_size()) {
+        return false;
+      }
+      HloInstruction* rhs = operand->mutable_operand(1);
+      if (rhs->shape().rank() != 1 + dnums.rhs_contracting_dimensions_size()) {
+        return false;
+      }
+      DotDimensionNumbers new_dnums;
+      *new_dnums.mutable_lhs_contracting_dimensions() =
+          dnums.rhs_contracting_dimensions();
+      *new_dnums.mutable_rhs_contracting_dimensions() =
+          dnums.lhs_contracting_dimensions();
+      TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
+          transpose, HloInstruction::CreateDot(transpose->shape(), /*lhs=*/rhs,
+                                               /*rhs=*/lhs, new_dnums,
+                                               operand->precision_config())));
+      return true;
+    }());
+    if (did_transform) {
+      return Status::OK();
+    }
   }
 
   // Replace transpose with a reshape if more than one degenerate method is

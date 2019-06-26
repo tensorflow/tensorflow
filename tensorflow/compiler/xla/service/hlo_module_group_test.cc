@@ -146,6 +146,7 @@ TEST_F(HloModuleGroupTest, ModuleGroupCompanionOrder) {
 HloModule module_%d
 
 while_cond {
+  param = s32[] parameter(0)
   ROOT p = pred[] constant(true)
 }
 
@@ -156,7 +157,8 @@ while_body {
   send = (s32[], u32[], token[]) send(param, token.s), channel_id=%d
   send-done = token[] send-done(send), channel_id=%d
   recv = (s32[], u32[], token[]) recv(token.r), channel_id=%d
-  ROOT recv-done = (s32[], token[]) recv-done(recv), channel_id=%d
+  recv-done = (s32[], token[]) recv-done(recv), channel_id=%d
+  ROOT data = s32[] get-tuple-element(recv-done), index=0
 }
 
 ENTRY entry {

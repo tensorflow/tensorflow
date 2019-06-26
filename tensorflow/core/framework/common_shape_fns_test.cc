@@ -141,7 +141,7 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
                        {}, {}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_TRUE(str_util::StrContains(
+    EXPECT_TRUE(absl::StrContains(
         s.ToString(), "Invalid argument: Shape must be rank 2 but is rank 1"));
   }
 
@@ -161,7 +161,7 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
                        {S({2, 5}), S({3, 4})}, {}, {}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_TRUE(str_util::StrContains(
+    EXPECT_TRUE(absl::StrContains(
         s.ToString(),
         "Invalid argument: Dimensions must be equal, but are 5 and 3"));
   }
@@ -172,7 +172,7 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
                        {S({2, 5, 3}), S({3, 5, 4})}, {}, {}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_TRUE(str_util::StrContains(
+    EXPECT_TRUE(absl::StrContains(
         s.ToString(), "Invalid argument: Shape must be rank 2 but is rank 3"));
   }
 
@@ -505,6 +505,33 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
                        {}, {}, {});
     EXPECT_FALSE(BiasAddShape(&c).ok());
   }
+}
+
+TEST(CommonShapeFnsTest, FusedBatchNormExTest) {
+  ShapeInferenceTestOp op("_FusedBatchNormEx");
+
+  std::vector<NodeDefBuilder::NodeOut> no_side_inputs;
+  TF_CHECK_OK(NodeDefBuilder("test", "_FusedBatchNormEx")
+                  .Input("x", 0, DT_HALF)
+                  .Input("scale", 0, DT_FLOAT)
+                  .Input("offset", 0, DT_FLOAT)
+                  .Input("mean", 0, DT_FLOAT)
+                  .Input("variance", 0, DT_FLOAT)
+                  .Input(no_side_inputs)
+                  .Attr("T", DT_HALF)
+                  .Attr("U", DT_FLOAT)
+                  .Attr("epsilon", 0.001)
+                  .Attr("data_format", "NHWC")
+                  .Attr("activation_mode", "Relu")
+                  .Attr("num_side_inputs", 0)
+                  .Attr("is_training", true)
+                  .Finalize(&op.node_def));
+
+  // Channels are not multiple of 4.
+  INFER_ERROR("must be divisible by 4", op, "[2,2,2,2];[2];[2];[0];[0]");
+
+  INFER_OK(op, "[2,2,2,4];[4];[4];[0];[0]",
+           "[d0_0,d0_1,d0_2,d0_3];[d0_3];[d0_3];[d0_3];[d0_3];?");
 }
 
 TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {

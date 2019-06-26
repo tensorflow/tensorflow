@@ -1,16 +1,15 @@
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
 
 package(
     default_visibility = [
         "//learning/brain:__subpackages__",
         "//tensorflow/compiler:__subpackages__",
     ],
-)
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")
-load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
+    licenses = ["notice"],  # Apache 2.0
 )
 
 cc_library(
@@ -34,6 +33,8 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xrt:xrt_proto",
         "//tensorflow/compiler/xrt:xrt_server",

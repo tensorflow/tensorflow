@@ -936,9 +936,39 @@ class TensorContractionSubMapper<
            m_rowIndex + last_row >= m_base_mapper.m_inputRows;
   }
   EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE bool padOrSkipRow(const Index row,
+                                        Index* orig_row) const {
+    eigen_assert(nonStandardPatches());
+
+    const Index input_row = m_rowIndex + row * m_base_mapper.m_in_row_strides;
+    *orig_row = (m_base_mapper.m_patch_row_inflate_strides == 1)
+                    ? input_row
+                    : ((input_row >= 0)
+                           ? (input_row / m_base_mapper.m_fastInputRowStride)
+                           : 0);
+
+    return (*orig_row < 0 || *orig_row >= m_base_mapper.m_inputRows) ||
+           (input_row != *orig_row * m_base_mapper.m_patch_row_inflate_strides);
+  }
+  EIGEN_DEVICE_FUNC
   EIGEN_ALWAYS_INLINE bool padCol(const Index col) const {
     const Index c = m_colIndex + col;
     return c < 0 || c >= m_base_mapper.m_inputCols;
+  }
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE bool padOrSkipCol(const Index col,
+                                        Index* orig_col) const {
+    eigen_assert(nonStandardPatches());
+
+    const Index input_col = m_colIndex + col * m_base_mapper.m_in_col_strides;
+    *orig_col = (m_base_mapper.m_patch_col_inflate_strides == 1)
+                    ? input_col
+                    : ((input_col >= 0)
+                           ? (input_col / m_base_mapper.m_fastInputColStride)
+                           : 0);
+
+    return (*orig_col < 0 || *orig_col >= m_base_mapper.m_inputCols) ||
+           (input_col != *orig_col * m_base_mapper.m_patch_col_inflate_strides);
   }
   EIGEN_DEVICE_FUNC
   EIGEN_ALWAYS_INLINE Index baseIndex(const Index row, const Index col) const {
@@ -946,6 +976,14 @@ class TensorContractionSubMapper<
     const Index c = m_colIndex + col;
     return r * m_base_mapper.m_rowInputStride +
            c * m_base_mapper.m_colInputStride + m_otherIndex;
+  }
+  // Compute a base index when original input row and column were precomputed
+  // using padOrSkipRow and padOrSkipCol. Used only for non standard patches.
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE Index origBaseIndex(const Index orig_row,
+                                          const Index orig_col) const {
+    return orig_row * m_base_mapper.m_rowInputStride +
+           orig_col * m_base_mapper.m_colInputStride + m_otherIndex;
   }
 
   EIGEN_DEVICE_FUNC

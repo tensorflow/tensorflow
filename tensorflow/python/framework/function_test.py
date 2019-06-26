@@ -1610,6 +1610,7 @@ class UnrollLSTMTest(test.TestCase):
 
 class FunctionInlineControlTest(test.TestCase):
 
+  @test_util.disable_xla("XLA changes the names, breaking graph analysis")
   def testFoo(self):
     dtype = dtypes.float32
     cfg = config_pb2.ConfigProto(

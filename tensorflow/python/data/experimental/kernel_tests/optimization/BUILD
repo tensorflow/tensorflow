@@ -1,10 +1,11 @@
-package(default_visibility = ["//tensorflow:internal"])
+load("//tensorflow:tensorflow.bzl", "py_test")
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_test(
     name = "assert_next_dataset_test",

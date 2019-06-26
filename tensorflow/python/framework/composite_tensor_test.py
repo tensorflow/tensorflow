@@ -22,35 +22,55 @@ import gc
 import sys
 import weakref
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import type_spec
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import nest
 
 
+class CTSpec(type_spec.TypeSpec):
+  """A generic CompositeTensor TypeSpec, used for constructing tests."""
+
+  def __init__(self, component_specs, metadata=None):
+    self.component_specs = component_specs
+    self.metadata = metadata
+
+  value_type = property(lambda self: CT)
+  _component_specs = property(lambda self: self.component_specs)
+
+  def _serialize(self):
+    return (self.component_specs, self.metadata)
+
+  def _to_components(self, value):
+    return value.components
+
+  def _from_components(self, tensor_list):
+    return CT(tensor_list, self.metadata)
+
+
 class CT(composite_tensor.CompositeTensor):
   """A generic CompositeTensor, used for constructing tests."""
+  _type_spec_class = CTSpec
 
   def __init__(self, components, metadata=None):
+    if isinstance(components, list):
+      components = tuple(components)
     self.components = components
     self.metadata = metadata
 
-  def _to_components(self):
-    return self.components
-
-  def _component_metadata(self):
-    return self.metadata
-
-  @classmethod
-  def _from_components(cls, components, metadata):
-    return cls(components, metadata)
-
-  def _shape_invariant_to_components(self, shape=None):
-    raise NotImplementedError('CompositeTensor._shape_invariant_to_components')
-
-  def _is_graph_tensor(self):
-    return False
+  @property
+  def _type_spec(self):
+    component_specs = nest.map_structure(type_spec.type_spec_from_value,
+                                         self.components)
+    return self._type_spec_class(component_specs, self.metadata)
 
   def __repr__(self):
     return '%s(%r, %r)' % (type(self).__name__, self.components, self.metadata)
@@ -61,12 +81,14 @@ class CT(composite_tensor.CompositeTensor):
             self.metadata == other.metadata)
 
 
-class CT2(CT):
-  """Another test CompositeTensor class.
-
-  `tf.nest` should treat different CT classes as different structure types.
-  """
+# Another test CompositeTensor class.  `tf.nest` should treat different CT
+# classes as different structure types (e.g. for assert_same_structure).
+class CTSpec2(CTSpec):
   pass
+
+
+class CT2(CT):
+  _type_spec_class = CTSpec2
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -128,11 +150,6 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
        'paths': [(0,)]},
       {'s1': [[CT([9, 9, 9])], 999, {'y': CT([9, 9])}],
        's2': [[CT([1, 2, 3])], 100, {'y': CT([CT([4, 5]), 6])}],
-       'expected': [1, 2, 3, 100, CT([4, 5]), 6],
-       'paths': [(0, 0, 'CT', 0), (0, 0, 'CT', 1), (0, 0, 'CT', 2),
-                 (1,), (2, 'y', 'CT', 0), (2, 'y', 'CT', 1)]},
-      {'s1': [[CT([9, 9, 9])], 999, {'y': CT([9, 9])}],
-       's2': [[CT([1, 2, 3])], 100, {'y': CT([CT([4, 5]), 6])}],
        'expand_composites': False,
        'expected': [CT([1, 2, 3]), 100, CT([CT([4, 5]), 6])],
        'paths': [(0, 0), (1,), (2, 'y')]},
@@ -179,9 +196,9 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(result, expected)
 
   @parameterized.parameters([
-      {'s1': CT(0), 's2': CT('xyz')},
+      {'s1': CT('abc'), 's2': CT('xyz')},
       {'s1': CT(['a', 'b', 'c']), 's2': CT(['d', 'e', 'f'])},
-      {'s1': [1, CT(['a']), CT('b', metadata='xyz')],
+      {'s1': [1, CT([10]), CT(200, metadata='xyz')],
        's2': [8, CT([55]), CT(100, metadata='xyz')]},
   ])  # pyformat: disable
   def testNestAssertSameStructure(self, s1, s2, expand_composites=True):
@@ -199,7 +216,6 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       {'s1': [1, CT(['a']), CT('b', metadata='xyz')],
        's2': [8, CT([55, 66]), CT(100, metadata='abc')]},
       {'s1': CT(0), 's2': CT2(0), 'error': TypeError},
-      {'s1': CT((1, 2)), 's2': CT([1, 2]), 'error': TypeError},
   ])  # pyformat: disable
   def testNestAssertSameStructureCompositeMismatch(self,
                                                    s1,
@@ -214,11 +230,10 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.parameters([
       # Note: there are additional test cases in testNestAssertSameStructure.
-      {'s1': CT(1), 's2': CT([1])},
-      {'s1': CT(1), 's2': CT(CT(1))},
       {'s1': [1], 's2': [CT(1)]},
       {'s1': [[CT([1, 2, 3])], 100, {'y': CT([5, 6])}],
-       's2': [[CT([1, 2, 3])], 100, {'y': CT([CT([4, 5]), 6])}]},
+       's2': [[CT([1, 2, 3])], 100, {'y': CT([CT([4, 5]), 6])}],
+       'expand_composites': False},
       {'s1': [[CT([1, 2, 3])], 100, {'y': CT([CT([4, 5]), 6])}],
        's2': [[CT([1, 2, 3])], 100, {'y': CT([5, 6])}],
        'expand_composites': False},
@@ -239,7 +254,7 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                                       s1,
                                                       s2,
                                                       check_types=True):
-    with self.assertRaises(TypeError):  # pylint: disable=g-error-prone-assert-raises
+    with self.assertRaises((TypeError, ValueError)):  # pylint: disable=g-error-prone-assert-raises
       nest.assert_shallow_structure(
           s1, s2, expand_composites=True, check_types=check_types)
 
@@ -258,9 +273,9 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(result, expected)
 
   @parameterized.parameters([
-      {'s1': [[CT([1, 2, 3])], 100, {'y': CT([5, 6])}],
+      {'s1': [[CT([1, 2, 3])], 100, {'y': 4}],
        's2': [[CT([1, 2, 3])], 100, {'y': CT([CT([4, 5]), 6])}],
-       'expected': [[CT([11, 12, 13])], 110, {'y': CT([CT([4, 5]), 16])}]}
+       'expected': [[CT([11, 12, 13])], 110, {'y': CT([CT([4, 5]), 6])}]}
   ])  # pyformat: disable
   def testNestMapStructureUpTo(self, s1, s2, expected):
     func = lambda x: x + 10 if isinstance(x, int) else x
@@ -272,8 +287,6 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
        'expected': CT('CT:a')},
       {'structure': CT(['a', 'b']),
        'expected': CT(['CT/0:a', 'CT/1:b'])},
-      {'structure': CT({'x': 'a', 'y': 'b'}),
-       'expected': CT({'x': 'CT/x:a', 'y': 'CT/y:b'})},
       {'structure': [[CT([1, 2, 3])], 100, {'y': CT([CT([4, 5]), 6])}],
        'expected': [
            [CT(['0/0/CT/0:1', '0/0/CT/1:2', '0/0/CT/2:3'])],
@@ -302,12 +315,12 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(result, expected)
 
   @parameterized.parameters([
-      {'s1': [[CT([1, 2, 3])], 100, {'y': CT([5, 6])}],
-       's2': [[CT([1, 2, 3])], 100, {'y': CT([CT([4, 5]), 6])}],
+      {'s1': [[CT([1, 2, 3])], 100, {'y': [4, 5]}],
+       's2': [[CT([1, 2, 3])], 100, {'y': [CT([4, 5]), 6]}],
        'expected': [
            [CT(['0/0/CT/0:1', '0/0/CT/1:2', '0/0/CT/2:3'])],
            ('1:100'),
-           {'y': CT(['2/y/CT/0:CT([4, 5], None)', '2/y/CT/1:6'])}]},
+           {'y': ['2/y/0:CT((4, 5), None)', '2/y/1:6']}]},
   ])  # pyformat: disable
   def testNestMapStructureWithTuplePathsUpTo(self, s1, s2, expected):
 
@@ -328,22 +341,21 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(result, expected)
 
   def testMemoryIsFreed(self):
-    # Note: we use `set` values for components and metadata because we need
-    # to construct weakrefs to them.  Other builtin types, such as `list` and
-    # `tuple`, do not support weakrefs.
-    ct1 = CT(set([1, 2]), set(['no', 'leaks']))
-    ct2 = CT(set([3, 4]), set(['no', 'leaks']))
-    ct3 = CT(set([5, 6]), set(['other', 'metadata']))
+    # Note: we use `np.array` values for CT and `set` values for
+    # metadata because we need to construct weakrefs to them.  Other builtin
+    # types, such as `list` and `tuple`, do not support weakrefs.
+    ct1 = CT(np.array([1, 2]), set(['no', 'leaks']))
+    ct2 = CT(np.array([3, 4]), set(['no', 'leaks']))
+    ct3 = CT(np.array([5, 6]), set(['other', 'metadata']))
 
     # Note: map_structure exercises flatten, pack_sequence_as, and
     # assert_same_structure.
-    func = lambda x, y: x | y
+    func = lambda x, y: x + y
     ct4 = nest.map_structure(func, ct1, ct2, expand_composites=True)
 
     # Check that the exception-raising path in assert_same_structure
     # doesn't leak any objects.
-    with self.assertRaisesRegexp(ValueError,
-                                 ".*don't have the same nested structure.*"):
+    with self.assertRaises(ValueError):
       nest.map_structure(func, ct2, ct3, expand_composites=True)
     if hasattr(sys, 'exc_clear'):
       sys.exc_clear()  # Remove any references in exception stack traces.
@@ -362,6 +374,40 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     gc.collect()
     for ref in refs:
       self.assertIsNone(ref())
+
+  # pylint: disable=g-long-lambda
+  @parameterized.named_parameters([
+      ('IndexedSlicesNoDenseShape', lambda: ops.IndexedSlices(
+          constant_op.constant([1, 2, 3]), constant_op.constant([2, 8, 4]))),
+      ('IndexedSlicesInt32DenseShape', lambda: ops.IndexedSlices(
+          constant_op.constant([1, 2, 3]), constant_op.constant([2, 8, 4]),
+          constant_op.constant([10], dtypes.int32))),
+      ('IndexedSlicesInt64DenseShape', lambda: ops.IndexedSlices(
+          constant_op.constant([[1, 2], [3, 4]]), constant_op.constant([2, 8]),
+          constant_op.constant([10, 2], dtypes.int64))),
+      ('RaggedTensorRaggedRank1',
+       lambda: ragged_factory_ops.constant([[1, 2], [3]])),
+      ('RaggedTensorRaggedRank2',
+       lambda: ragged_factory_ops.constant([[[1, 2], [3]], [[6, 7, 8]]])),
+      ('SparseTensor',
+       lambda: sparse_tensor.SparseTensor([[3], [7]], ['a', 'b'], [10])),
+      ('Nested structure', lambda: {
+          'a':
+              ops.IndexedSlices(
+                  constant_op.constant([1, 2, 3]),
+                  constant_op.constant([2, 8, 4])),
+          'b': [
+              ragged_factory_ops.constant([[1, 2], [3]]),
+              sparse_tensor.SparseTensor([[3], [7]], ['a', 'b'], [10])
+          ]
+      }),
+  ])
+  def testAssertSameStructureWithValueAndTypeSpec(self, value_func):
+    value = value_func()
+    spec = nest.map_structure(type_spec.type_spec_from_value, value,
+                              expand_composites=False)
+    nest.assert_same_structure(value, spec, expand_composites=True)
+
 
 if __name__ == '__main__':
   googletest.main()

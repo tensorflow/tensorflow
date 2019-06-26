@@ -376,7 +376,8 @@ static std::pair<int, char**> AddXlaHloProfileFlag(int argc, char** argv) {
   // pass, otherwise a while loop is transformed and we could not match the
   // original name in the ProfileWhileComputation test.
   new_argv[argc + 1] = strdup(
-      "--xla_disable_hlo_passes=fusion,while-loop-invariant-code-motion");
+      "--xla_disable_hlo_passes=fusion,fusion_merger,multi_output_fusion,"
+      "while-loop-invariant-code-motion");
   return {argc + 2, new_argv};
 }
 

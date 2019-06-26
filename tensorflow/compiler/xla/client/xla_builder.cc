@@ -1919,8 +1919,6 @@ XlaOp XlaBuilder::ReduceWindow(const XlaOp& operand, const XlaOp& init_value,
                                absl::Span<const int64> window_strides,
                                Padding padding) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-
     TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
     TF_RETURN_IF_ERROR(
         ValidatePaddingValues(AsInt64Slice(operand_shape.dimensions()),

@@ -191,6 +191,28 @@ class Defun(object):
         **self._extra_kwargs)
 
 
+class _DefinedFunctionDeleter(object):
+  """Unregister function from eager context."""
+
+  def __init__(self, name):
+    self.name = name
+
+  def __del__(self):
+    try:
+      context.remove_function(self.name)
+    except TypeError:
+      # Suppress some exceptions, mainly for the case when we're running on
+      # module deletion. Things that can go wrong include the context module
+      # already being unloaded, self._handle._handle_data no longer being
+      # valid, and so on. Printing warnings in these cases is silly
+      # (exceptions raised from __del__ are printed as warnings to stderr).
+      pass  # 'NoneType' object is not callable when the handle has been
+      # partially unloaded.
+    except AttributeError:
+      pass  # 'NoneType' object has no attribute 'eager_mode' when context has
+      # been unloaded. Will catch other module unloads as well.
+
+
 class _DefinedFunction(object):
   """_DefinedFunction encapsulates a function definition and its properties.
 
@@ -262,6 +284,7 @@ class _DefinedFunction(object):
     self._definition = None
     # Constructed only when C API is enabled, lazily
     self._c_func = None
+    self._function_deleter = None
     self._sub_functions = {}  # Constructed with _definition or _c_func
     # pylint: disable=protected-access
     device_funcs = ops.get_default_graph()._device_functions_outer_to_inner
@@ -297,6 +320,11 @@ class _DefinedFunction(object):
         fdef = function_pb2.FunctionDef()
         proto_data = c_api.TF_GetBuffer(buf)
         fdef.ParseFromString(compat.as_bytes(proto_data))
+        with ops.init_scope():
+          if context.executing_eagerly():
+            context.add_function(self._c_func.func)
+            self._function_deleter = _DefinedFunctionDeleter(
+                fdef.signature.name)
       return fdef
     return self._definition
 
@@ -448,7 +476,7 @@ class _DefinedFunction(object):
 
     self._stateful_ops = [(op.name, op.type)
                           for op in temp_graph.get_operations()
-                          if op.op_def.is_stateful]
+                          if op._is_stateful]  # pylint: disable=protected-access
 
   def _set_c_attrs(self, attrs):
     """Sets `attrs` as attributes of self._c_func.
@@ -762,7 +790,7 @@ class _FuncGraph(ops.Graph):
           collections=collections,
           use_resource=use_resource)
       self.extra_vars.append(var)
-      if (isinstance(var, resource_variable_ops.ResourceVariable) and
+      if (isinstance(var, resource_variable_ops.BaseResourceVariable) and
           self._capture_resource_var_by_value):
         # For resource-based variables read the variable outside the function
         # and pass in the value. This ensures that the function is pure and
@@ -825,13 +853,13 @@ class _FuncGraph(ops.Graph):
   def _add_op_and_parents(self, op):
     # pylint: disable=protected-access
     op_def = graph_to_function_def._get_op_def(op)
-    # pylint: enable=protected-access
-    if op_def.is_stateful and op not in self._whitelisted_stateful_ops:
+    if op._is_stateful and op not in self._whitelisted_stateful_ops:
       raise ValueError("Cannot capture a stateful node (name:%s, type:%s) "
                        "by value." % (op.name, op.type))
     elif op.type in ("Placeholder", "PlaceholderV2"):
       raise ValueError("Cannot capture a placeholder (name:%s, type:%s) "
                        "by value." % (op.name, op.type))
+    # pylint: enable=protected-access
 
     captured_inputs = [self._add_tensor_and_parents(x) for x in op.inputs]
 

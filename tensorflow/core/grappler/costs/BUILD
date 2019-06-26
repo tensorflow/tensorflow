@@ -1,9 +1,20 @@
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_protos_grappler",
+)
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_additional_all_protos",
+    "tf_proto_library",
+)
+load(
+    "@local_config_cuda//cuda:build_defs.bzl",
+    "if_cuda",
+)
+
+package(
+    licenses = ["notice"],  # Apache 2.0
 )
 
 filegroup(
@@ -15,21 +26,11 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_additional_all_protos",
-    "tf_proto_library",
-)
-load(
-    "@local_config_cuda//cuda:build_defs.bzl",
-    "if_cuda",
-)
-
 tf_proto_library(
     name = "op_performance_data",
     srcs = ["op_performance_data.proto"],
     cc_api_version = 2,
-    default_header = True,
+    make_default_target_header_only = True,
     protodeps = tf_additional_all_protos(),
     visibility = ["//visibility:public"],
 )

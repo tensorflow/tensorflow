@@ -31,6 +31,7 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+typedef Eigen::DenseIndex IndexType;
 
 template <typename Device, typename T, typename Index>
 class GatherOp : public OpKernel {
@@ -161,14 +162,14 @@ class GatherOp : public OpKernel {
       // batches is large, between parallel vs sequential runs.
       for (int64 batch = 0; batch < batch_size; ++batch) {
         auto params_flat = typename TTypes<T, 3>::ConstTensor(
-            &batched_params(batch, 0), static_cast<Index>(outer_size),
-            static_cast<Index>(gather_dim_size),
-            static_cast<Index>(inner_size));
+            &batched_params(batch, 0), static_cast<IndexType>(outer_size),
+            static_cast<IndexType>(gather_dim_size),
+            static_cast<IndexType>(inner_size));
         auto indices_flat = typename TTypes<Index>::ConstFlat(
             &batched_indices(batch, 0), batched_indices.dimension(1));
         auto out_flat = typename TTypes<T, 3>::Tensor(
-            &batched_out(batch, 0), static_cast<Index>(outer_size),
-            static_cast<Index>(N), static_cast<Index>(inner_size));
+            &batched_out(batch, 0), static_cast<IndexType>(outer_size),
+            static_cast<IndexType>(N), static_cast<IndexType>(inner_size));
 
         functor::GatherFunctor<Device, T, Index> functor;
         const int64 bad_i = functor(c, params_flat, indices_flat, out_flat);
@@ -231,7 +232,7 @@ TF_CALL_uint64(REGISTER_GATHER_CPU);
 
 #undef REGISTER_GATHER_CPU
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Registration of the GPU implementations.
 #define REGISTER_GATHER_GPU(type) REGISTER_GATHER_ALL_INDICES(GPU, type)
@@ -245,7 +246,7 @@ TF_CALL_complex128(REGISTER_GATHER_GPU);
 
 #undef REGISTER_GATHER_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef REGISTER_GATHER_ALL_INDICES
 #undef REGISTER_GATHER_FULL

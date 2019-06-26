@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xrt/client/xrt_client.h"
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xrt/client/xrt_tf_client.h"
@@ -109,13 +110,21 @@ XrtBuffer::~XrtBuffer() { Delete(); }
 
 /*static*/ xla::StatusOr<std::shared_ptr<XrtBuffer>> XrtBuffer::MakeTuple(
     const std::shared_ptr<XrtContext>& context,
-    const std::vector<std::shared_ptr<XrtBuffer>>& elements) {
+    const std::vector<std::shared_ptr<XrtBuffer>>& elements,
+    int xrt_device_ordinal) {
   if (elements.empty()) {
-    return errors::Unimplemented(
-        "The arity zero case of MakeTuple is not implemented.");
+    // XRTMakeTuple cannot construct empty tuples. Construct via a literal
+    // instead.
+    return FromLiteral(context, xrt_device_ordinal,
+                       xla::LiteralUtil::MakeTuple({}));
   }
-  int xrt_device_ordinal = elements[0]->xrt_device_ordinal();
-  int tf_device_id = elements[0]->handle().device_id();
+
+  if (xrt_device_ordinal < 0 ||
+      xrt_device_ordinal >= context->tf_device_ids().size()) {
+    return errors::InvalidArgument("Invalid XRT device ordinal ",
+                                   xrt_device_ordinal);
+  }
+  int tf_device_id = context->tf_device_ids().at(xrt_device_ordinal);
   xrt::XLATupleNode tuple_description;
   std::vector<xla::Shape> element_shapes;
   element_shapes.reserve(elements.size());

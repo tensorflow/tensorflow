@@ -1,12 +1,13 @@
 # Recurrent library.
 
-package(default_visibility = ["//visibility:public"])
+load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 
 py_library(
     name = "recurrent_py",

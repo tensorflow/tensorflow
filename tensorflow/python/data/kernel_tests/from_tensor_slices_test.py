@@ -56,6 +56,19 @@ class FromTensorSlicesTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       results = self.evaluate(get_next())
 
+  def testFromTensorSlicesDataset(self):
+    dss = [dataset_ops.Dataset.range(10) for _ in range(10)]
+    ds = dataset_ops.Dataset.from_tensor_slices(dss)
+    ds = ds.flat_map(lambda x: x)
+    self.assertDatasetProduces(ds, expected_output=list(range(10)) * 10)
+
+  def testFromTensorSlicesDatasetInFunction(self):
+    dss = [dataset_ops.Dataset.range(10) for _ in range(10)]
+    ds = dataset_ops.Dataset.from_tensors(dss)
+    ds = ds.flat_map(dataset_ops.Dataset.from_tensor_slices)
+    ds = ds.flat_map(lambda x: x)
+    self.assertDatasetProduces(ds, expected_output=list(range(10)) * 10)
+
   def testFromTensorSlicesSparse(self):
     """Test a dataset that represents the slices from a tuple of tensors."""
     components = (sparse_tensor.SparseTensorValue(
@@ -245,11 +258,26 @@ class FromTensorSlicesTest(test_base.DatasetTestBase):
         if sparse_tensor.is_sparse(component):
           self.assertSparseValuesEqual(component, result_component)
         elif ragged_tensor.is_ragged(component):
-          self.assertRaggedEqual(component, result_component)
+          self.assertAllEqual(component, result_component)
         else:
           self.assertAllEqual(component, result_component)
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
+
+  def testFromTensorSlicesWithUintDtypes(self):
+    components = (
+        np.tile(np.array([[0], [1]], dtype=np.uint8), 2),
+        np.tile(np.array([[2], [256]], dtype=np.uint16), 2),
+        np.tile(np.array([[4], [65536]], dtype=np.uint32), 2),
+        np.tile(np.array([[8], [4294967296]], dtype=np.uint64), 2),
+    )
+    expected_types = (dtypes.uint8, dtypes.uint16, dtypes.uint32, dtypes.uint64)
+    expected_output = [tuple([c[i] for c in components]) for i in range(2)]
+
+    dataset = dataset_ops.Dataset.from_tensor_slices(components)
+    self.assertEqual(expected_types,
+                     dataset_ops.get_legacy_output_types(dataset))
+    self.assertDatasetProduces(dataset, expected_output)
 
 
 if __name__ == "__main__":

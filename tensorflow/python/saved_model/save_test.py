@@ -124,6 +124,23 @@ class SaveTest(test.TestCase):
     root = util.Checkpoint(model=sequential.Sequential([core.Dense(2)]))
     save.save(root, os.path.join(self.get_temp_dir(), "saved_model"))
 
+  def test_captured_symbolic_tensor_exception(self):
+    root = module.Module()
+    symbolic_tensor = []
+
+    @def_function.function
+    def captured_intermediate(x):
+      symbolic_tensor.append(math_ops.add(x, x, name="a_tensor"))
+      return symbolic_tensor[-1] * 2
+
+    captured_intermediate(constant_op.constant(1.))
+
+    root.f = def_function.function(lambda: symbolic_tensor[-1],
+                                   input_signature=[])
+    with self.assertRaisesRegexp(ValueError, "a_tensor"):
+      save.save(root, os.path.join(self.get_temp_dir(), "saved_model"),
+                signatures=root.f)
+
   def test_version_information_included(self):
     root = tracking.AutoTrackable()
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
@@ -171,11 +188,6 @@ class SaveTest(test.TestCase):
         input_signature=([tensor_spec.TensorSpec(None, dtypes.float32),
                           tensor_spec.TensorSpec(None, dtypes.float32)],))
     root.f([constant_op.constant(1.), constant_op.constant(1.)])
-    # Concrete functions must always have uniquely named Tensor inputs. Save
-    # relies on this.
-    with self.assertRaisesRegexp(
-        ValueError, "two arguments named 'x'"):
-      root.f.get_concrete_function()
 
   def test_nested_outputs(self):
     root = tracking.AutoTrackable()
@@ -267,7 +279,7 @@ class SaveTest(test.TestCase):
 
   def test_docstring(self):
 
-    class Adder(util.Checkpoint):
+    class Adder(module.Module):
 
       @def_function.function(input_signature=[tensor_spec.TensorSpec(
           shape=None, dtype=dtypes.float32)])

@@ -12,12 +12,6 @@
 #    a watch state.
 # ":debug_node_key" - Defines a struct used for tracking tensors.
 
-package(
-    default_visibility = ["//tensorflow:internal"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
@@ -32,11 +26,11 @@ load(
     "tf_additional_all_protos",
     "tf_kernel_tests_linkstatic",
     "tf_proto_library",
-    "tf_proto_library_cc",
 )
-load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
+
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 # Check that tensorflow/core:tensorflow does not depend on grpc.
@@ -132,6 +126,7 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )

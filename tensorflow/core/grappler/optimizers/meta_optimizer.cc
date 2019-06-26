@@ -700,7 +700,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   VLOG(1) << "Optimized " << optimized_funcs.size()
-          << " functions: " << str_util::Join(optimized_funcs, ", ");
+          << " functions: " << absl::StrJoin(optimized_funcs, ", ");
 
   if (VLOG_IS_ON(1)) {
     DumpGraphDefToFile(

@@ -27,6 +27,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import tensor_pb2
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -55,6 +56,7 @@ from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 
 
+@test_util.with_control_flow_v2
 class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                               parameterized.TestCase):
 
@@ -262,6 +264,32 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.assertEqual(self.evaluate(read), [[3]])
 
   @test_util.run_in_graph_and_eager_modes
+  def testGradientGatherNd(self):
+    v = resource_variable_ops.ResourceVariable(
+        np.random.uniform(size=[2, 2]), dtype=dtypes.float32)
+
+    with backprop.GradientTape() as tape:
+      l = array_ops.gather_nd(v, [[1, 1]])
+      l = math_ops.reduce_sum(l)
+
+    grads = tape.gradient(l, v)
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(self.evaluate(grads), [[0., 0.], [0., 1.]])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGradientGatherNdIndexedSlices(self):
+    v = resource_variable_ops.ResourceVariable(
+        np.random.uniform(size=[2, 2]), dtype=dtypes.float32)
+
+    with backprop.GradientTape() as tape:
+      l = array_ops.gather_nd(v, [[1], [1]])
+      l = math_ops.reduce_sum(l)
+
+    grads = tape.gradient(l, v)
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(self.evaluate(grads.values), [[1., 1.], [1., 1.]])
+
+  @test_util.run_in_graph_and_eager_modes
   def testScatterSub(self):
     handle = resource_variable_ops.var_handle_op(
         dtype=dtypes.int32, shape=[1, 1])
@@ -455,6 +483,74 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
             handle, [0], constant_op.constant(3, dtype=dtypes.int32)))
     read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
     self.assertEqual(self.evaluate(read), [[6]])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testScatterAddVariableMethod(self):
+    v = resource_variable_ops.ResourceVariable([0.0, 1.5], name="add")
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(
+        v.scatter_add(ops.IndexedSlices(indices=[1], values=[2.5])))
+    self.assertAllEqual([0.0, 4.0], self.evaluate(v))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testScatterSubVariableMethod(self):
+    v = resource_variable_ops.ResourceVariable([0.0, 2.5], name="sub")
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(
+        v.scatter_sub(ops.IndexedSlices(indices=[1], values=[1.5])))
+    self.assertAllEqual([0.0, 1.0], self.evaluate(v))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testScatterMaxVariableMethod(self):
+    v = resource_variable_ops.ResourceVariable([0.0, 4.0], name="max1")
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(
+        v.scatter_max(ops.IndexedSlices(indices=[1], values=[5.0])))
+    self.assertAllEqual([0.0, 5.0], self.evaluate(v))
+
+    v = resource_variable_ops.ResourceVariable([0.0, 3.5], name="max2")
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(
+        v.scatter_max(ops.IndexedSlices(indices=[1], values=[2.0])))
+    self.assertAllEqual([0.0, 3.5], self.evaluate(v))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testScatterMinVariableMethod(self):
+    v = resource_variable_ops.ResourceVariable([0.0, 4.0], name="min1")
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(
+        v.scatter_min(ops.IndexedSlices(indices=[1], values=[5.0])))
+    self.assertAllEqual([0.0, 4.0], self.evaluate(v))
+
+    v = resource_variable_ops.ResourceVariable([0.0, 3.5], name="min2")
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(
+        v.scatter_min(ops.IndexedSlices(indices=[1], values=[2.0])))
+    self.assertAllEqual([0.0, 2.0], self.evaluate(v))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testScatterMulVariableMethod(self):
+    v = resource_variable_ops.ResourceVariable([0.0, 4.0], name="mul")
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(
+        v.scatter_mul(ops.IndexedSlices(indices=[1], values=[3.0])))
+    self.assertAllEqual([0.0, 12.0], self.evaluate(v))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testScatterDivVariableMethod(self):
+    v = resource_variable_ops.ResourceVariable([0.0, 6.0], name="div")
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(
+        v.scatter_div(ops.IndexedSlices(indices=[1], values=[2.0])))
+    self.assertAllEqual([0.0, 3.0], self.evaluate(v))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testScatterUpdateVariableMethod(self):
+    v = resource_variable_ops.ResourceVariable([0.0, 6.0], name="update")
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(
+        v.scatter_update(ops.IndexedSlices(indices=[1], values=[3.0])))
+    self.assertAllEqual([0.0, 3.0], self.evaluate(v))
 
   @test_util.run_deprecated_v1
   def testScatterUpdateString(self):
@@ -904,7 +1000,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       v = resource_variable_ops.ResourceVariable(initial_value=zero)
       return (i + 1, v.read_value())
 
-    with self.assertRaisesRegexp(ValueError, "inside a control-flow"):
+    with self.assertRaisesRegexp(ValueError, "initializer"):
       control_flow_ops.while_loop(cond, body, [0, 0])
 
   def testVariableEager(self):

@@ -60,7 +60,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
   """Test cases for stateful random-number generator operators."""
 
   _ints = INTS
-  _floats = [dtypes.bfloat16, dtypes.float32]
+  _floats = [dtypes.bfloat16, dtypes.float32, dtypes.float64]
 
   @parameterized.parameters(ALGS)
   @test_util.run_v2_only

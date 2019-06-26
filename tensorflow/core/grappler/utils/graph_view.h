@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -78,8 +79,15 @@ class FanoutView : public internal::NodeIndexAndPortIndex<NodeView, GraphView> {
 class NodeView : public internal::NodeViewInternal<FaninView, FanoutView,
                                                    GraphView, true> {
  public:
-  using NodeViewInternal::NodeViewInternal;
+  explicit NodeView(GraphView* graph_view, int node_index)
+      : NodeViewInternal(graph_view, node_index) {}
+
+  NodeView() : NodeViewInternal() {}
+
   ~NodeView() override = default;
+
+  NodeView(NodeView&&) = default;
+  NodeView& operator=(NodeView&&) = default;
 
   const NodeDef* node() const override;
 
@@ -200,8 +208,15 @@ class MutableNodeView
     : public internal::NodeViewInternal<MutableFaninView, MutableFanoutView,
                                         MutableGraphView, false> {
  public:
-  using NodeViewInternal::NodeViewInternal;
+  explicit MutableNodeView(MutableGraphView* graph_view, int node_index)
+      : NodeViewInternal(graph_view, node_index) {}
+
+  MutableNodeView() : NodeViewInternal() {}
+
   ~MutableNodeView() override = default;
+
+  MutableNodeView(MutableNodeView&&) = default;
+  MutableNodeView& operator=(MutableNodeView&&) = default;
 
   NodeDef* node() const override;
 
@@ -229,15 +244,18 @@ class MutableNodeView
 };
 
 class MutationNewNode {
+ public:
+  MutationNewNode() {}
+
  private:
   explicit MutationNewNode(Mutation* mutation, int mutation_counter, int index)
       : mutation_(mutation),
         mutation_counter_(mutation_counter),
         index_(index) {}
 
-  const Mutation* mutation_;
-  const int mutation_counter_;
-  const int index_;
+  Mutation* mutation_ = nullptr;
+  int mutation_counter_ = internal::kMissingSlot;
+  int index_ = internal::kMissingIndex;
 
   friend class Mutation;
 };
@@ -363,6 +381,34 @@ class MutableGraphView
 
   // Returns a Mutation (builder) that can be used to modify MutableGraphView.
   Mutation* GetMutationBuilder();
+
+  // Helper class representing an extra dependency for topological sorting.
+  class TopologicalDependency {
+   public:
+    TopologicalDependency(const MutableNodeView* from_node,
+                          const MutableNodeView* to_node) {
+      if (from_node->graph_view_ == to_node->graph_view_) {
+        graph_view_ = from_node->graph_view_;
+        from_ = from_node->node_index_;
+        to_ = to_node->node_index_;
+      }
+    }
+
+   private:
+    MutableGraphView* graph_view_ = nullptr;
+    int from_ = internal::kMissingIndex;
+    int to_ = internal::kMissingIndex;
+
+    friend class MutableGraphView;
+  };
+
+  // Sorts graph topologically in-place. If `ignore_cycles` is set, a
+  // topological like sorting will be performed when there are cycles. Otherwise
+  // if a cycle is detected or if the graph cannot be sorted, an error will be
+  // returned.
+  Status SortTopologically(
+      bool ignore_cycles,
+      absl::Span<const TopologicalDependency> extra_dependencies);
 
  private:
   bool AddUniqueNodeInternal(NodeDef* node);

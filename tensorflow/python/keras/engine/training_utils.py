@@ -18,11 +18,16 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import atexit
 import collections
 from collections import OrderedDict
+import multiprocessing.pool
+import threading
+import time
 
 import numpy as np
 import six
+from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import cardinality
@@ -35,6 +40,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
@@ -44,6 +50,7 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
@@ -112,70 +119,193 @@ class MetricsAggregator(Aggregator):
     self.results[0] /= self.num_samples_or_steps
 
 
+class ConcatAggregator(Aggregator):
+  """Combine tensor-likes which cannot be merged on the fly.
+
+  This class expects to aggregate a single tensor-like rather than a nested
+  structure of tensor-likes.
+  """
+
+  def __init__(self):
+    self.composite = None
+    super(ConcatAggregator, self).__init__(
+        use_steps=True, num_samples_or_steps=None)
+
+  def create(self, batch_element):
+    self.composite = composite_tensor_utils.is_composite_or_composite_value(
+        batch_element)
+
+  def aggregate(self, batch_element, batch_start=None, batch_end=None):
+    self.results.append(batch_element)
+
+  def finalize(self):
+    # Special case of single batch inference which skips a copy.
+    if len(self.results) == 1:
+      self.results = self.results[0]
+
+    elif self.composite:
+      # TODO(taylorrobie): efficiently concatenate.
+      results = self.results[0]
+      for r in self.results[1:]:
+        results = composite_tensor_utils.append_composite_tensor(results, r)
+      self.results = results
+
+    else:
+      self.results = np.concatenate(self.results, axis=0)
+
+    if isinstance(self.results, ops.EagerTensor):
+      self.results = self.results._cpu_nograd()._numpy()  # pylint: disable=protected-access
+
+
+_COPY_THREADS = 4
+_COPY_POOL = None
+
+
+def get_copy_pool():
+  """Shared threadpool for copying arrays.
+
+  Pool instantiation takes ~ 2ms, so a singleton pool is used rather than
+  creating a pool per SliceAggregator.
+
+  Returns:
+    The global copy threadpool.
+  """
+  global _COPY_POOL
+  if _COPY_POOL is None:
+    _COPY_POOL = multiprocessing.pool.ThreadPool(_COPY_THREADS)
+    atexit.register(_COPY_POOL.close)
+  return _COPY_POOL
+
+
+class SliceAggregator(Aggregator):
+  """Combine arrays where the final size is known.
+
+  This class expects to aggregate a single tensor-like rather than a nested
+  structure of tensor-likes.
+
+  NumPy copies are an operation that threads handle quite well because all of
+  the heavy lifting is in c and does not need the GIL. Moreover, we can perform
+  lock-free writes to the same buffer in multiple threads because the nature of
+  result aggregation guarantees that either the indices are disjoint or the
+  aggregator will throw an exception in finalize. Moreover, because aggregation
+  is performed on the slowest varying dimension, assignments for a given batch
+  will write to contiguous blocks of memory, further minimizing contention.
+
+  There is, however, some scheduling and context switching overhead which will
+  offset the gains from pipelining the slice assignment. Below a given threshold
+  it is faster to simply assign in the main thread rather than enqueue the
+  assigmnet in a side thread. The exact threshold will vary from system to
+  system, but the time is not very sensitive to the exact transition so a value
+  of 2 ** 14 was chosen which should be reasonable on most systems.
+  """
+
+  _BINARY_SIZE_THRESHOLD = 2 ** 14
+  _MAX_COPY_SECONDS = 300
+
+  def __init__(self, num_samples_or_steps):
+    self._async_copies = []
+    self._pool = get_copy_pool()
+    self._errors = []
+    super(SliceAggregator, self).__init__(
+        use_steps=False, num_samples_or_steps=num_samples_or_steps)
+
+  def create(self, batch_element):
+    # This step does not need to be pipelined because NumPy empty array
+    # initialization is effectively instantaneous.
+    shape = (self.num_samples_or_steps,) + batch_element.shape[1:]
+    dtype = batch_element.dtype
+    if isinstance(batch_element, ops.EagerTensor):
+      dtype = dtype.as_numpy_dtype()
+
+    self.results = np.empty(shape=shape, dtype=dtype)
+
+  def aggregate(self, batch_element, batch_start, batch_end):
+    # Fail early.
+    if self._errors:
+      six.reraise(type(self._errors[0]), self._errors[0])
+
+    # In the special case of single batch inference, no copy is needed.
+    if batch_end - batch_start == self.num_samples_or_steps:
+      self.results = batch_element
+      return
+
+    # This is an approximate threshold, so we don't need to consider the number
+    # of bytes per element.
+    num_elements = np.prod(batch_element.shape)
+    if num_elements < self._BINARY_SIZE_THRESHOLD:
+      self.results[batch_start:batch_end] = batch_element
+    else:
+      is_finished = threading.Event()
+      self._pool.apply_async(
+          self._slice_assign,
+          args=(batch_element, batch_start, batch_end, is_finished))
+      self._async_copies.append(is_finished)
+
+  def _slice_assign(self, batch_element, batch_start, batch_end, is_finished):
+    try:
+      self.results[batch_start:batch_end] = batch_element
+
+    except Exception as e:  # pylint: disable=broad-except
+      # `_slice_assign` should only be called in threads and exceptions raised
+      # in threads do not carry over to the main thread. So instead we perform a
+      # a broad catch in the thread and then store the exception to be re-raised
+      # in the main thread.
+      self._errors.append(e)
+
+    finally:
+      is_finished.set()
+
+  def finalize(self):
+    start_time = time.time()
+    for is_finished in self._async_copies:
+      timeout = max([0., self._MAX_COPY_SECONDS - (time.time() - start_time)])
+      if not is_finished.wait(timeout):
+        raise ValueError('Timed out waiting for copy to complete.')
+
+    if self._errors:
+      six.reraise(self._errors[0].__class__, self._errors[0])
+
+
 class OutputsAggregator(Aggregator):
   """Aggregator that concatenates outputs."""
 
-  # Used to indicate that the aggregator cannot allocate an object for the
-  # output at this location.
-  _DEFER_OUTPUT_ALLOCATION = '__defer_output_allocation__'
+  _structure = None
 
   def create(self, batch_outs):
-    if self.use_steps:
-      # Cannot pre-allocate the returned NumPy arrays bc
-      # batch sizes are unknown. Concatenate batches at the end.
-      for _ in batch_outs:
-        self.results.append([])
-    else:
-      # Pre-allocate NumPy arrays.
-      for batch_out in batch_outs:
-        if composite_tensor_utils.is_composite_or_composite_value(batch_out):
-          # If the output is not a ndarray, it will be either a composite tensor
-          # or a composite tensor's Value object. In either case, we can't
-          # allocate an array to hold the object - we'll handle it later.
-          self.results.append(self._DEFER_OUTPUT_ALLOCATION)
-        elif isinstance(batch_out, np.ndarray):
-          # If the output is a ndarray, append an output array pre-allocated
-          # to the expected shape of the output.
-          shape = (self.num_samples_or_steps,) + batch_out.shape[1:]
-          self.results.append(np.zeros(shape, dtype=batch_out.dtype))
-        else:
-          # This is not a ndarray, a CompositeTensor, or a CompositeTensorValue.
-          # Fail fast rather than trying to concatenate it.
-          raise RuntimeError('Attempted to aggregate unsupported object %s.' %
-                             batch_out)
+    # SparseTensorValue is a named tuple which nest will flatten, so we need
+    # to guard it to properly handle the structure.
+    self._structure = nest.get_traverse_shallow_structure(
+        lambda x: not composite_tensor_utils.is_composite_or_composite_value(x),
+        batch_outs)
+    batch_outs = nest.flatten_up_to(self._structure, batch_outs)
+
+    for batch_element in batch_outs:
+      if composite_tensor_utils.is_composite_or_composite_value(batch_element):
+        # If the output is not a ndarray, it will be either a composite tensor
+        # or a composite tensor's Value object. In either case, we can't
+        # allocate an array to hold the object - we'll handle it later.
+        self.results.append(ConcatAggregator())
+      elif isinstance(batch_element, (np.ndarray, ops.EagerTensor)):
+        self.results.append(ConcatAggregator() if self.use_steps else
+                            SliceAggregator(self.num_samples_or_steps))
+      else:
+        # This is not a ndarray, a CompositeTensor, or a CompositeTensorValue.
+        # Fail fast rather than trying to concatenate it.
+        raise RuntimeError('Attempted to aggregate unsupported object {}.'
+                           .format(batch_element))
+
+      self.results[-1].create(batch_element)
 
   def aggregate(self, batch_outs, batch_start=None, batch_end=None):
-    if self.use_steps:
-      for i, batch_out in enumerate(batch_outs):
-        self.results[i].append(batch_out)
-    else:
-      for i, batch_out in enumerate(batch_outs):
-        if composite_tensor_utils.is_composite_or_composite_value(batch_out):
-          # This is the case where we're outputting some object (a
-          # CompositeTensor or CompositeTensor's value) and so cannot simply
-          # convert to a numpy array.
-          if self.results[i] == self._DEFER_OUTPUT_ALLOCATION:
-            # If there is not yet an element in this output slot, assign the
-            # currently-examined batch object.
-            self.results[i] = batch_out
-          else:
-            # If there will be multiple calls to aggregate(), create an array
-            # of objects - we cannot assume we know how to combine them.
-            self.results[i] = composite_tensor_utils.append_composite_tensor(
-                self.results[i], batch_out)
-        elif isinstance(batch_out, np.ndarray):
-          # In this case, 'results' is an ndarray - we know it's been fully
-          # allocated and we can just
-          self.results[i][batch_start:batch_end] = batch_out
-        else:
-          # This is not a ndarray, a CompositeTensor, or a CompositeTensorValue.
-          # Fail fast rather than trying to concatenate it.
-          raise RuntimeError('Attempted to aggregate unsupported object %s.' %
-                             batch_out)
+    batch_outs = nest.flatten_up_to(self._structure, batch_outs)
+    for batch_element, result in zip(batch_outs, self.results):
+      result.aggregate(batch_element, batch_start, batch_end)
 
   def finalize(self):
-    if self.use_steps:
-      self.results = [np.concatenate(result, axis=0) for result in self.results]
+    for result in self.results:
+      result.finalize()
+    self.results = [i.results for i in self.results]
+    self.results = nest.pack_sequence_as(self._structure, self.results)
 
 
 def get_progbar(model, count_mode):
@@ -252,6 +382,7 @@ def check_num_samples(ins, batch_size=None, steps=None, steps_name='steps'):
                      ' is set, the `batch_size` must be None.')
   if check_steps_argument(ins, steps, steps_name):
     return None
+
   if hasattr(ins[0], 'shape'):
     return int(ins[0].shape[0])
   return None  # Edge case where ins == [static_learning_phase]
@@ -261,6 +392,9 @@ def standardize_single_array(x, expected_shape=None):
   """Expand data of shape (x,) to (x, 1), unless len(expected_shape)==1."""
   if x is None:
     return None
+
+  if composite_tensor_utils.is_composite_or_composite_value(x):
+    return x
 
   if (x.shape is not None and len(x.shape) == 1 and
       (expected_shape is None or len(expected_shape) != 1)):
@@ -329,6 +463,7 @@ def standardize_input_data(data,
   else:
     data = data.values if data.__class__.__name__ == 'DataFrame' else data
     data = [data]
+
   if shapes is not None:
     data = [
         standardize_single_array(x, shape) for (x, shape) in zip(data, shapes)
@@ -366,8 +501,12 @@ def standardize_input_data(data,
           if not tensorshape:
             continue
           data_shape = tuple(tensorshape.as_list())
+        elif composite_tensor_utils.is_composite_or_composite_value(data[i]):
+          tensorshape = composite_tensor_utils.get_shape(data[i])
+          data_shape = tuple(tensorshape.as_list())
         else:
           data_shape = data[i].shape
+
         shape = shapes[i]
         if len(data_shape) != len(shape):
           raise ValueError('Error when checking ' + exception_prefix +
@@ -401,16 +540,17 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
   Raises:
       ValueError: In case of invalid user-provided argument.
   """
-  if x_weight is None or (isinstance(x_weight, list) and len(x_weight) == 0):  # pylint: disable=g-explicit-length-test
+  if x_weight is None or (isinstance(x_weight, (list, tuple)) and
+                          len(x_weight) == 0):  # pylint: disable=g-explicit-length-test
     return [None for _ in output_names]
   if len(output_names) == 1:
-    if isinstance(x_weight, list) and len(x_weight) == 1:
+    if isinstance(x_weight, (list, tuple)) and len(x_weight) == 1:
       return x_weight
     if isinstance(x_weight, dict) and output_names[0] in x_weight:
       return [x_weight[output_names[0]]]
     else:
       return [x_weight]
-  if isinstance(x_weight, list):
+  if isinstance(x_weight, (list, tuple)):
     if len(x_weight) != len(output_names):
       raise ValueError('Provided `' + weight_type + '` was a list of ' +
                        str(len(x_weight)) + ' elements, but the model has ' +
@@ -453,6 +593,10 @@ def check_array_lengths(inputs, targets, weights=None):
       ValueError: in case of incorrectly formatted data.
   """
 
+  def is_tensor_or_composite_tensor(x):
+    return tensor_util.is_tensor(
+        x) or composite_tensor_utils.is_composite_or_composite_value(x)
+
   def set_of_lengths(x):
     # Returns a set with the variation between
     # different shapes, with None => 0
@@ -462,7 +606,7 @@ def check_array_lengths(inputs, targets, weights=None):
       return set([
           y.shape[0]
           for y in x
-          if y is not None and not tensor_util.is_tensor(y)
+          if y is not None and not is_tensor_or_composite_tensor(y)
       ])
 
   set_x = set_of_lengths(inputs)
@@ -865,8 +1009,8 @@ def call_metric_function(metric_fn,
       weights = mask
     else:
       # Update dimensions of weights to match with mask.
-      mask, _, weights = losses_utils.squeeze_or_expand_dimensions(
-          mask, None, weights)
+      mask, _, weights = tf_losses_utils.squeeze_or_expand_dimensions(
+          mask, sample_weight=weights)
       weights *= mask
 
   if y_pred is not None:
@@ -978,7 +1122,6 @@ def check_steps_argument(input_data, steps, steps_name):
       ValueError: if `steps` argument is required for given input data type
         but not provided.
   """
-  # TODO(fchollet): allow datasets with steps=None if cardinality is known.
   is_x_iterator = isinstance(
       input_data, (iterator_ops.Iterator, iterator_ops.IteratorV2))
   if (input_data is None or is_x_iterator or has_symbolic_tensors(input_data) or
@@ -989,6 +1132,18 @@ def check_steps_argument(input_data, steps, steps_name):
                        ' specify the `{steps_name}` argument.'.format(
                            input_type=input_type_str, steps_name=steps_name))
     return True
+
+  if isinstance(input_data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
+    return True
+
+  if steps is not None:
+    list_types = (np.ndarray, list, tuple)
+    if (isinstance(input_data, list_types) or
+        (isinstance(input_data, dict) and
+         any(isinstance(v, list_types) for v in input_data.values()))):
+      logging.warning('When passing input data as arrays, do not specify '
+                      '`steps_per_epoch`/`steps` argument. '
+                      'Please use `batch_size` instead.')
   return False
 
 
@@ -1452,9 +1607,7 @@ class ModelInputs(object):
     # TODO(karmel): There is a side-effect here where what you get
     # with as_list and as_dict depends on whether you have called this
     # method first, since it modifies in place.
-    for i in range(len(self._flattened_inputs)):
-      k = self._input_names[i]
-      v = self._flattened_inputs[i]
+    for i, (k, v) in enumerate(zip(self._input_names, self._flattened_inputs)):
       if isinstance(v, (list, float, int)):
         v = np.asarray(v)
         if v.ndim == 1:
@@ -1466,13 +1619,17 @@ class ModelInputs(object):
         # we have. The user should call `model._set_inputs(placeholders)`
         # to specify custom placeholders if the need arises.
         shape = (None,) + tuple(v.shape[1:])
+        if shape == (None,):
+          shape = (None, 1)
         dtype = dtypes.as_dtype(v.dtype)
         if dtype.is_floating:
           dtype = K.floatx()
         v = K.placeholder(shape=shape, name=k, dtype=dtype)
-      elif isinstance(v, tensor_shape.TensorShape):
-        shape = (None,) + tuple(v.as_list()[1:])
-        v = K.placeholder(shape=shape, name=k)
+      elif isinstance(v, tensor_spec.TensorSpec):
+        shape = (None,) + tuple(v.shape.as_list()[1:])
+        if shape == (None,):
+          shape = (None, 1)
+        v = K.placeholder(shape=shape, name=k, dtype=v.dtype)
 
       self._flattened_inputs[i] = v
 
@@ -1484,8 +1641,8 @@ class ModelInputs(object):
 
   def as_dict(self):
     """An iterable over a dictionary version of inputs."""
-    for i in range(len(self._flattened_inputs)):
-      yield self._input_names[i], self._flattened_inputs[i]
+    for k, v in zip(self._input_names, self._flattened_inputs):
+      yield k, v
 
   def as_list(self):
     """Returning the inputs as a list."""
@@ -1594,3 +1751,58 @@ def should_run_validation(validation_freq, epoch):
     raise ValueError('`validation_freq` must be an Integer or '
                      '`collections.Container` (e.g. list, tuple, etc.)')
   return one_indexed_epoch in validation_freq
+
+
+class TrainingLoop(object):
+  """TrainingLoop is a wrapper class around the training logic.
+
+  This class is trying to encapsulate the different logic of fit/eval/predict
+  with regard to different data input and model condition.
+
+  Note that TrainingLoop is stateless, which means it doesn't contain any
+  internal field and can be reused with different model and inputs.
+  """
+
+  def fit(self,
+          model,
+          x=None,
+          y=None,
+          batch_size=None,
+          epochs=1,
+          verbose=1,
+          callbacks=None,
+          validation_split=0.,
+          validation_data=None,
+          shuffle=True,
+          class_weight=None,
+          sample_weight=None,
+          initial_epoch=0,
+          steps_per_epoch=None,
+          validation_steps=None,
+          validation_freq=1,
+          **kwargs):
+    """Train the model with the inputs and targets."""
+    raise NotImplementedError()
+
+  def evaluate(self,
+               model,
+               x=None,
+               y=None,
+               batch_size=None,
+               verbose=1,
+               sample_weight=None,
+               steps=None,
+               callbacks=None,
+               **kwargs):
+    """Returns the loss value & metrics values for the model in test mode."""
+    raise NotImplementedError()
+
+  def predict(self,
+              model,
+              x,
+              batch_size=None,
+              verbose=0,
+              steps=None,
+              callbacks=None,
+              **kwargs):
+    raise NotImplementedError()

@@ -63,41 +63,36 @@ void GenericTransferManager::TransferLiteralFromDevice(
     se::Stream* stream, const ShapedBuffer& device_buffer,
     MutableBorrowingLiteral literal, std::function<void(Status)> done,
     const TransferMetadata* /*transfer_metadata*/) {
-  Status status = stream->BlockHostUntilDone();
-  if (!status.ok()) {
-    return done(status);
-  }
-
-  done(TransferLiteralFromDeviceInternal(stream->parent(), device_buffer,
-                                         literal));
-}
-
-Status GenericTransferManager::TransferLiteralFromDeviceInternal(
-    se::StreamExecutor* executor, const ShapedBuffer& device_buffer,
-    MutableBorrowingLiteral literal) {
   VLOG(2) << "transferring literal from device ordinal "
-          << executor->device_ordinal() << "; device buffer: " << device_buffer;
-  TF_RET_CHECK(executor->device_ordinal() == device_buffer.device_ordinal());
+          << stream->parent()->device_ordinal()
+          << "; device buffer: " << device_buffer;
+  Status status = [&]() -> Status {
+    TF_RET_CHECK(stream->parent()->device_ordinal() ==
+                 device_buffer.device_ordinal());
 
-  // The on-host and on-device shape should always be the same for the generic
-  // transfer manager.
-  TF_RET_CHECK(ShapeUtil::Equal(device_buffer.on_device_shape(),
-                                device_buffer.on_host_shape()));
+    // The on-host and on-device shape should always be the same for the generic
+    // transfer manager.
+    TF_RET_CHECK(ShapeUtil::Equal(device_buffer.on_device_shape(),
+                                  device_buffer.on_host_shape()));
 
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      device_buffer.on_host_shape(),
-      [&](const Shape& subshape, const ShapeIndex& index) -> Status {
-        if (subshape.IsArray()) {
-          TF_RETURN_IF_ERROR(executor->SynchronousMemcpyD2H(
-              /*source=*/device_buffer.buffer(index),
-              /*size=*/GetByteSizeRequirement(subshape),
-              /*destination=*/
-              literal.untyped_data(index)));
-        }
-
-        return Status::OK();
-      }));
-  return Status::OK();
+    TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+        device_buffer.on_host_shape(),
+        [&](const Shape& subshape, const ShapeIndex& index) -> Status {
+          if (subshape.IsArray()) {
+            stream->ThenMemcpy(
+                /*host_dst=*/literal.untyped_data(index),
+                /*gpu_src=*/device_buffer.buffer(index),
+                /*size=*/GetByteSizeRequirement(subshape));
+          }
+          return Status::OK();
+        }));
+    return Status::OK();
+  }();
+  if (!status.ok()) {
+    done(status);
+    return;
+  }
+  done(stream->BlockHostUntilDone());
 }
 
 Status GenericTransferManager::TransferLiteralToDeviceAsync(

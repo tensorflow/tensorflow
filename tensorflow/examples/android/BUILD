@@ -2,15 +2,14 @@
 #   TensorFlow camera demo app for Android.
 
 load("@build_bazel_rules_android//android:rules.bzl", "android_binary")
-
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
-    "tf_opts_nortti_if_android",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])

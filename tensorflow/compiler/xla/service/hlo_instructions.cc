@@ -511,11 +511,10 @@ bool HloCollectiveInstruction::IdenticalSlowPath(
 HloAllReduceInstruction::HloAllReduceInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
-    const std::vector<ReplicaGroup>& replica_groups, absl::string_view barrier,
+    const std::vector<ReplicaGroup>& replica_groups,
     const absl::optional<int64>& all_reduce_id)
     : HloCollectiveInstruction(HloOpcode::kAllReduce, shape, operands,
                                replica_groups),
-      all_reduce_barrier_(barrier),
       all_reduce_id_(all_reduce_id) {
   AppendComputation(reduce_computation);
 }
@@ -531,7 +530,6 @@ HloInstructionProto HloAllReduceInstruction::ToProto() const {
   if (all_reduce_id_) {
     proto.set_all_reduce_id(*all_reduce_id_);
   }
-  proto.set_all_reduce_barrier(all_reduce_barrier_);
   return proto;
 }
 
@@ -548,9 +546,6 @@ std::vector<string> HloAllReduceInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   std::vector<string> result =
       HloCollectiveInstruction::ExtraAttributesToStringImpl(options);
-  if (!all_reduce_barrier().empty()) {
-    result.push_back(StrCat("barrier=\"", all_reduce_barrier(), "\""));
-  }
   if (all_reduce_id_) {
     result.push_back(StrCat("all_reduce_id=", *all_reduce_id_));
   }
@@ -564,7 +559,6 @@ bool HloAllReduceInstruction::IdenticalSlowPath(
   const auto& casted_other = static_cast<const HloAllReduceInstruction&>(other);
   return HloCollectiveInstruction::IdenticalSlowPath(other, eq_computations) &&
          eq_computations(to_apply(), casted_other.to_apply()) &&
-         all_reduce_barrier() == casted_other.all_reduce_barrier() &&
          all_reduce_id() == casted_other.all_reduce_id();
 }
 
@@ -573,8 +567,7 @@ HloAllReduceInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* /*context*/) const {
   return absl::make_unique<HloAllReduceInstruction>(
-      shape, new_operands, to_apply(), replica_groups(), all_reduce_barrier(),
-      all_reduce_id());
+      shape, new_operands, to_apply(), replica_groups(), all_reduce_id());
 }
 
 HloAllToAllInstruction::HloAllToAllInstruction(
@@ -1596,8 +1589,8 @@ Status HloFusionInstruction::DeduplicateFusionOperands() {
   if (operands_to_remove.empty()) {
     return Status::OK();
   }
-  TF_RETURN_IF_ERROR(
-      fused_instructions_computation()->RemoveUnusedParameters());
+  TF_RETURN_IF_ERROR(fused_instructions_computation()
+                         ->RemoveUnusedParametersFromFusedComputation());
   RemoveOperandsAtAscendingIndices(operands_to_remove);
   return Status::OK();
 }
@@ -2054,7 +2047,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
       feature_group_count_(1),
       batch_group_count_(1),
-      layout_constrained_(false) {
+      layout_constrained_(false),
+      custom_call_has_side_effect_(false) {
   set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -2071,7 +2065,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       batch_group_count_(1),
       layout_constrained_(true),
       operand_shapes_with_layout_(operand_shapes_with_layout.begin(),
-                                  operand_shapes_with_layout.end()) {
+                                  operand_shapes_with_layout.end()),
+      custom_call_has_side_effect_(false) {
   set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -2096,6 +2091,7 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
       *proto.add_operand_shapes_with_layout() = shape.ToProto();
     }
   }
+  proto.set_custom_call_has_side_effect(custom_call_has_side_effect_);
   return proto;
 }
 
@@ -2129,6 +2125,9 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
     }
     extra.push_back(StrCat("operand_layout_constraints={",
                            StrJoin(shape_strings, ", "), "}"));
+  }
+  if (custom_call_has_side_effect_) {
+    extra.push_back("custom_call_has_side_effect=true");
   }
   return extra;
 }
@@ -2169,6 +2168,10 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
       }
     }
   }
+  if (custom_call_has_side_effect_ !=
+      casted_other.custom_call_has_side_effect()) {
+    return false;
+  }
   // Note: backend_config comparison is done in Identical, which is the
   // intended/exposed way to compare computations, and so not repeated here.
   return custom_call_target_ == casted_other.custom_call_target_;
@@ -2192,6 +2195,7 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
   }
   cloned->set_feature_group_count(feature_group_count_);
   cloned->set_batch_group_count(batch_group_count_);
+  cloned->set_custom_call_has_side_effect(custom_call_has_side_effect_);
   return std::move(cloned);
 }
 
@@ -2674,6 +2678,41 @@ HloGetDimensionSizeInstruction::CloneWithNewOperandsImpl(
   }
   return absl::make_unique<HloGetDimensionSizeInstruction>(
       shape, new_operands[0], dimension());
+}
+
+HloRngGetAndUpdateStateInstruction::HloRngGetAndUpdateStateInstruction(
+    const Shape& shape, int64 delta)
+    : HloInstruction(HloOpcode::kRngGetAndUpdateState, shape), delta_(delta) {}
+
+HloInstructionProto HloRngGetAndUpdateStateInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_delta(delta_);
+  return proto;
+}
+
+std::vector<string>
+HloRngGetAndUpdateStateInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& /*options*/) const {
+  return {StrCat("delta={", delta(), "}")};
+}
+
+bool HloRngGetAndUpdateStateInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    /*eq_computations*/) const {
+  const auto& casted_other =
+      static_cast<const HloRngGetAndUpdateStateInstruction&>(other);
+  return delta() == casted_other.delta();
+}
+
+std::unique_ptr<HloInstruction>
+HloRngGetAndUpdateStateInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* /*context*/) const {
+  if (!new_operands.empty()) {
+    LOG(FATAL) << "expects 0 operand";
+  }
+  return absl::make_unique<HloRngGetAndUpdateStateInstruction>(shape, delta());
 }
 
 }  // namespace xla

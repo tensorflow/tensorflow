@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/round.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -34,9 +35,6 @@ const int8_t kMaxQuantizedValue = 127;
 }  // namespace
 
 TfLiteStatus NumElements(const TensorT& tensor, uint64_t* num_elements) {
-  if (tensor.shape.empty()) {
-    return kTfLiteError;
-  }
   *num_elements = 1;
   for (const uint64_t dim : tensor.shape) {
     *num_elements *= dim;
@@ -307,8 +305,8 @@ TfLiteStatus SymmetricPerLayerBiasQuantize(ModelT* model, TensorT* tensor,
 
   for (int32_t i = 0; i < float_data_size; i++) {
     float scaling_factor_inv = (scaling_factor == 0) ? 0 : 1.0 / scaling_factor;
-    const int32_t quantized_value =
-        static_cast<int32_t>(TfLiteRound(float_data[i] * scaling_factor_inv));
+    const int32_t quantized_value = tflite::SafeCast<int32_t>(
+        TfLiteRound(float_data[i] * scaling_factor_inv));
     final_buffer[i] = std::min(kScale, std::max(-kScale, quantized_value));
   }
 
@@ -324,8 +322,7 @@ TfLiteStatus SymmetricPerLayerBiasQuantize(ModelT* model, TensorT* tensor,
 TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,
                                              float input_scale,
                                              const float* weight_scales,
-                                             int number_of_dimension,
-                                             int dimension_index) {
+                                             int number_of_dimension) {
   // Compute scales.
   std::vector<float> scales(number_of_dimension);
   for (size_t i = 0; i < number_of_dimension; i++) {
@@ -344,7 +341,7 @@ TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,
        channel_idx++) {
     float scaling_factor = scales[channel_idx];
     float scaling_factor_inv = (scaling_factor == 0) ? 0 : 1.0 / scaling_factor;
-    const int32_t quantized_value = static_cast<int32_t>(
+    const int32_t quantized_value = tflite::SafeCast<int32_t>(
         TfLiteRound(float_data[channel_idx] * scaling_factor_inv));
     final_buffer[channel_idx] =
         std::min(kScale, std::max(-kScale, quantized_value));
@@ -354,13 +351,15 @@ TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,
   uint8_t* uint8_buffer = reinterpret_cast<uint8_t*>(final_buffer.data());
   size_t buffer_size = num_elements * sizeof(int32_t);
   std::vector<int64_t> zero_point(scales.size(), 0);
-  return AddQuantizationParams(scales, zero_point, dimension_index,
-                               uint8_buffer, buffer_size, TensorType_INT32,
-                               model, tensor);
+  return AddQuantizationParams(scales, zero_point, 0, uint8_buffer, buffer_size,
+                               TensorType_INT32, model, tensor);
 }
 
 TfLiteStatus QuantizeWeight(ModelT* model, TensorT* tensor, bool per_channel,
                             int per_axis_index) {
+  // TODO(suharshs): Currently we conflate quantizing weights and constants. Its
+  // possible that the right thing to do is asymmetric quantize the weight. Add
+  // support for this.
   if (per_channel) {
     return SymmetricQuantizeTensorPerChannel(model, tensor, per_axis_index);
   } else {

@@ -318,28 +318,29 @@ class FusedConv2DBiasActivationTest(object):
       tensors = []
       ref_tensors = []
       for (data_format, use_gpu) in _GetTestConfigs():
-        for dtype in self._DtypesToTest(use_gpu):
-          for filter_format in self._FilterFormatsToTest(use_gpu):
-            result, expected = self._SetupValuesForDevice(
-                tensor_in_sizes, filter_in_sizes, bias, strides, padding,
-                "Relu", data_format, filter_format, dtype)
-          tensors.append(result)
-          ref_tensors.append(expected)
+        with ops.device("/gpu:0" if use_gpu else "/cpu:0"):
+          for dtype in self._DtypesToTest(use_gpu):
+            for filter_format in self._FilterFormatsToTest(use_gpu):
+              result, expected = self._SetupValuesForDevice(
+                  tensor_in_sizes, filter_in_sizes, bias, strides, padding,
+                  "Relu", data_format, filter_format, dtype)
+            tensors.append(result)
+            ref_tensors.append(expected)
 
-          values = sess.run(tensors)
-          ref_values = sess.run(ref_tensors)
-          for i in range(len(tensors)):
-            conv = tensors[i]
-            value = values[i]
-            ref_value = ref_values[i]
-            tf_logging.info("expected = %s", ref_value)
-            tf_logging.info("actual = %s", value)
-            tol = 1e-5
-            if value.dtype == np.float16:
-              tol = 1e-3
-            self.assertAllClose(
-                np.ravel(ref_value), np.ravel(value), atol=tol, rtol=tol)
-            self.assertShapeEqual(value, conv)
+            values = sess.run(tensors)
+            ref_values = sess.run(ref_tensors)
+            for i in range(len(tensors)):
+              conv = tensors[i]
+              value = values[i]
+              ref_value = ref_values[i]
+              tf_logging.info("expected = %s", ref_value)
+              tf_logging.info("actual = %s", value)
+              tol = 1e-5
+              if value.dtype == np.float16:
+                tol = 1e-3
+              self.assertAllClose(
+                  np.ravel(ref_value), np.ravel(value), atol=tol, rtol=tol)
+              self.assertShapeEqual(value, conv)
 
   def testConv2D1x1Filter(self, gpu_only=True):
     if gpu_only and not test.is_gpu_available():
@@ -640,6 +641,21 @@ def _GetFusedConvInt8TestParams():
   """Returns test parameters shared by all Int8 FusedConv tests."""
   _test_params = [
       {
+          "batch_size": 4,
+          "input_channels": 256,
+          "output_channels": 256,
+          "input_height": 228,
+          "input_width": 228,
+          "filter_height": 6,
+          "filter_width": 6,
+          "vertical_stride": 1,
+          "horizontal_stride": 1,
+          "conv_input_scale": 0.00002,
+          "side_input_scale": 0.2,
+          "bias_scale": 1.0,
+          "padding_type": "SAME"
+      },
+      {
           "batch_size": 1,
           "input_channels": 4,
           "output_channels": 4,
@@ -909,14 +925,27 @@ class FusedConvInt8CPUTests(object):
               [batch_size, input_height, input_width, input_channels],
               minval=-0.0,
               maxval=1.0,
-              dtype=dtypes.float32), -1.0, 1.0, dtypes.qint8)
+              dtype=dtypes.float32),
+          -1.0,
+          1.0,
+          dtypes.qint8,
+          mode="SCALED")
+      self.assertTrue(
+          sess.run(
+              math_ops.reduce_all(
+                  math_ops.greater_equal(
+                      array_ops.bitcast(conv_input, dtypes.int8), 0))))
 
       kernel, _, _ = gen_array_ops.quantize_v2(
           random_ops.random_uniform(
               [filter_height, filter_width, input_channels, output_channels],
               minval=-1.0,
               maxval=1.0,
-              dtype=dtypes.float32), -1.0, 1.0, dtypes.qint8)
+              dtype=dtypes.float32),
+          -1.0,
+          1.0,
+          dtypes.qint8,
+          mode="SCALED")
 
       output_height = _CalculateConvolvedOutputDim(input_height, filter_height,
                                                    vertical_stride,
@@ -932,7 +961,11 @@ class FusedConvInt8CPUTests(object):
               [batch_size, output_height, output_width, output_channels],
               minval=0.0,
               maxval=1.0,
-              dtype=dtypes.float32), -1.0, 1.0, dtypes.qint8)
+              dtype=dtypes.float32),
+          -1.0,
+          1.0,
+          dtypes.qint8,
+          mode="SCALED")
 
       biases = random_ops.random_uniform([output_channels],
                                          minval=-10 * bias_scale,
@@ -966,6 +999,37 @@ class FusedConvInt8CPUTests(object):
       for test_param in self._test_params:
         self.runTest(test_param, apply_relu)
 
+  def testRoundingMode(self):
+    """Verify the fused convolution op uses half-to-even rounding mode."""
+    batches = 1
+    input_size = 2
+    input_channels = 1
+    output_channels = 1
+    conv_input = np.array([1, 2, 3, 4]).reshape(
+        (batches, input_size, input_size, input_channels)).astype(np.int8)
+    kernel = np.array([1]).reshape(
+        (1, 1, input_channels, output_channels)).astype(np.int8)
+    biases = np.zeros((output_channels)).astype(np.float32)
+
+    with self.session() as sess, self.test_scope():
+      actual = fused_conv2d_bias_activation_op.fused_conv2d_bias_activation(
+          math_ops.cast(conv_input, dtypes.qint8),
+          math_ops.cast(kernel, dtypes.qint8),
+          biases,
+          strides=[1, 1, 1, 1],
+          padding="SAME",
+          conv_input_scale=0.5,
+          side_input_scale=0.0,
+          activation_mode="None",
+          data_format="NHWC",
+          filter_format="HWIO")
+      actual_value = sess.run(actual)
+      # The convolution output scaled is [0.5, 1.0, 1.5, 2.0]. After rounding
+      # half to even, the final output is [0, 1, 2, 2].
+      self.assertTrue(
+          np.array_equal(actual_value.flatten(),
+                         np.array([0, 1, 2, 2]).astype(np.int8)))
+
 
 # Test that GPU and CPU kernels produce identical results for QInt8 data type.
 class FusedConvInt8CorrespondenceTests(object):
@@ -998,19 +1062,31 @@ class FusedConvInt8CorrespondenceTests(object):
       conv_input, _, _ = gen_array_ops.quantize_v2(
           random_ops.random_uniform(
               [batch_size, input_channels // 4, input_height, input_width, 4],
-              minval=-0.0,
+              minval=0.0,
               maxval=1.0,
-              dtype=dtypes.float32), -1.0, 1.0, dtypes.qint8)
+              dtype=dtypes.float32),
+          -1.0,
+          1.0,
+          dtypes.qint8,
+          mode="SCALED")
+      self.assertTrue(
+          sess.run(
+              math_ops.reduce_all(
+                  math_ops.greater_equal(
+                      array_ops.bitcast(conv_input, dtypes.int8), 0))))
 
       kernel, _, _ = gen_array_ops.quantize_v2(
           random_ops.random_uniform([
               output_channels, input_channels // 4, filter_height, filter_width,
               4
           ],
-                                    minval=-1.0,
-                                    maxval=1.0,
-                                    dtype=dtypes.float32), -1.0, 1.0,
-          dtypes.qint8)
+                                    minval=-128.0,
+                                    maxval=127.0,
+                                    dtype=dtypes.float32),
+          -128.0,
+          127.0,
+          dtypes.qint8,
+          mode="SCALED")
 
       output_height = _CalculateConvolvedOutputDim(input_height, filter_height,
                                                    vertical_stride,
@@ -1027,8 +1103,11 @@ class FusedConvInt8CorrespondenceTests(object):
           ],
                                     minval=0.0,
                                     maxval=1.0,
-                                    dtype=dtypes.float32), -1.0, 1.0,
-          dtypes.qint8)
+                                    dtype=dtypes.float32),
+          -1.0,
+          1.0,
+          dtypes.qint8,
+          mode="SCALED")
 
       biases = random_ops.random_uniform([output_channels],
                                          minval=-10 * bias_scale,

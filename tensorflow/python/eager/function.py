@@ -53,10 +53,18 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+
+# Loaded lazily due to a circular dependency (roughly
+# tf.function->autograph->->dataset->tf.function).
+# TODO(b/133251390): Use a regular import.
+ag_ctx = lazy_loader.LazyLoader(
+    "ag_ctx", globals(),
+    "tensorflow.python.autograph.core.ag_ctx")
 
 
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
@@ -64,8 +72,9 @@ BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 
 
 CacheKey = collections.namedtuple("CacheKey", [
-    "input_signature", "parent_graph", "device_functions",
-    "colocation_stack"])
+    "input_signature", "parent_graph", "device_functions", "colocation_stack",
+    "in_cross_replica_context"
+])
 
 CacheKey.replace = CacheKey._replace  # pylint: disable=protected-access
 
@@ -164,7 +173,7 @@ def _compatible_shapes(flat_relaxed, flat_to_check):
              for relaxed, to_check in zip(flat_relaxed, flat_to_check))
 
 
-def _common_shape(x, y):
+def common_shape(x, y):
   """Find a `TensorShape` that is compatible with both `x` and `y`."""
   if x is None != y is None:
     raise RuntimeError(
@@ -256,21 +265,20 @@ class _InterpolateFunctionError(object):
     _, tags = error_interpolation.parse_message(message)
     g = None
     func_stack = []
-    # pylint: disable=protected-access
     for t in tags:
       if t.type == "function_node":
+        # TODO(mdan): Tests should cover this.
         if t.name == compat.as_str(self._func.name):
-          g = self._func._graph
+          g = self._func.graph
         elif g:
           next_func = g._get_function(t.name)
           if next_func is not None and isinstance(next_func,
                                                   _EagerDefinedFunction):
-            g = next_func._graph
+            g = next_func.graph
         if g:
           func_stack.append(g.name)
         else:
           func_stack.append("<unknown>")
-    # pylint: enable=protected-access
     if g:
       message = error_interpolation.interpolate(message, g)
       message += "\n\nFunction call stack:\n"
@@ -302,7 +310,19 @@ class _EagerDefinedFunctionDeleter(object):
     self.name = name
 
   def __del__(self):
-    context.remove_function(self.name)
+    try:
+      context.remove_function(self.name)
+    except TypeError:
+      # Suppress some exceptions, mainly for the case when we're running on
+      # module deletion. Things that can go wrong include the context module
+      # already being unloaded, self._handle._handle_data no longer being
+      # valid, and so on. Printing warnings in these cases is silly
+      # (exceptions raised from __del__ are printed as warnings to stderr).
+      pass  # 'NoneType' object is not callable when the handle has been
+      # partially unloaded.
+    except AttributeError:
+      pass  # 'NoneType' object has no attribute 'eager_mode' when context has
+      # been unloaded. Will catch other module unloads as well.
 
 
 # TODO(apassos) get rid of this by splitting framework.function._DefinedFunction
@@ -376,7 +396,7 @@ class _EagerDefinedFunction(object):
     self._c_func = c_api_util.ScopedTFFunction(fn)
     self._grad_func = None
     self.graph = graph
-    self._stateful_ops = tuple(op for op in operations if op.op_def.is_stateful)
+    self._stateful_ops = tuple(op for op in operations if op._is_stateful)  # pylint: disable=protected-access
 
   def add_to_graph(self, g=None):
     # pylint: disable=protected-access
@@ -487,6 +507,8 @@ class ConcreteFunction(object):
     self._num_positional_args = None
     self._func_graph = func_graph
     self._captured_inputs = list(self._func_graph.captures.keys())
+    self._captured_closures = [
+        x[0] for x in self._func_graph.deferred_captures.values()]
     self._num_outputs = len(self._func_graph.outputs)
     self._output_shapes = tuple(
         output.shape for output in self._func_graph.outputs)
@@ -528,7 +550,7 @@ class ConcreteFunction(object):
           raise NotImplementedError(
               "Keyword arguments not supported when calling a "
               "wrap_function-decorated function.")
-        return self._call_flat(args)
+        return self._call_flat(args, self.captured_inputs)
       raise AssertionError(
           "Tried to call a concrete function obtained from an internal API "
           "through the public interface. Use get_concrete_function instead.")
@@ -558,7 +580,7 @@ class ConcreteFunction(object):
           raise TypeError("Got two values for keyword '{}'.".format(unused_key))
       raise TypeError("Keyword arguments {} unknown. Expected {}.".format(
           list(kwargs.keys()), list(self._arg_keywords)))
-    return self._call_flat(args)
+    return self._call_flat(args, self.captured_inputs)
 
   def _filtered_call(self, args, kwargs):
     """Executes the function, filtering arguments from the Python function.
@@ -577,14 +599,17 @@ class ConcreteFunction(object):
     return self._call_flat(
         (t for t in nest.flatten((args, kwargs), expand_composites=True)
          if isinstance(t, (ops.Tensor,
-                           resource_variable_ops.ResourceVariable))))
+                           resource_variable_ops.BaseResourceVariable))),
+        self.captured_inputs)
 
-  def _call_flat(self, args):
+  def _call_flat(self, args, captured_inputs):
     """Executes the wrapped function.
 
     Args:
       args: a list of Tensors or Variables.  Any CompositeTensors should be
         expanded before calling this method.
+      captured_inputs: the captured inputs that are also part of the input args
+        to the actual execution. By default, it should be self._captured_inputs.
 
     Returns:
       The result of applying the TF function to `args`.
@@ -608,7 +633,7 @@ class ConcreteFunction(object):
     tensor_inputs = []
     variables_used = set([])
     for i, arg in enumerate(args):
-      if isinstance(arg, resource_variable_ops.ResourceVariable):
+      if isinstance(arg, resource_variable_ops.BaseResourceVariable):
         # We can pass a variable more than once, and in this case we need to
         # pass its handle only once.
         if arg.handle in variables_used:
@@ -646,10 +671,10 @@ class ConcreteFunction(object):
         raise ValueError("All inputs to `ConcreteFunction`s must be Tensors; "
                          "on invocation of %s, the %d-th input (%s) was not a "
                          "Tensor." % (self._func_graph.name, i, str(arg)))
-    args = tensor_inputs + self._captured_inputs
+    args = tensor_inputs + captured_inputs
 
     if (tape.should_record(tensor_inputs) or
-        tape.should_record(self._captured_inputs)):
+        tape.should_record(captured_inputs)):
       if context.executing_eagerly():
         return self._eager_backprop_call(args)
       else:
@@ -705,7 +730,8 @@ class ConcreteFunction(object):
     side_outputs = op.outputs[num_inference_outputs:]
     args = list(doutputs[:num_inference_outputs]) + list(side_outputs)
     return self._backward_graph_function._call_flat(  # pylint: disable=protected-access
-        (a for a in args if a is not None))
+        (a for a in args if a is not None),
+        self._backward_graph_function.captured_inputs)
 
   @property
   def name(self):
@@ -743,7 +769,7 @@ class ConcreteFunction(object):
 
     self.__call__(*args) passes `args + self.captured_inputs` to the function.
     """
-    return self._captured_inputs
+    return self._captured_inputs + [x() for x in self._captured_closures]
 
   @property
   def function_def(self):
@@ -892,7 +918,8 @@ class ConcreteFunction(object):
       args = [a for i, a in enumerate(args)
               if a is not None and i not in skip_positions]
       return self._backward_graph_function._call_flat(  # pylint: disable=protected-access
-          list(args) + side_outputs)
+          list(args) + side_outputs,
+          self._backward_graph_function.captured_inputs)
 
     tape.record_operation(self._forward_function.signature.name, real_outputs,
                           args, backward_function)
@@ -988,18 +1015,49 @@ class FunctionSpec(object):
         new_defaults = fullargspec.defaults
         new_args = fullargspec.args
         if fullargspec.defaults:
-          num_defaults = len(fullargspec.defaults)
-          args_with_default = fullargspec.args[-num_defaults:]
+          # To be able to canonicalize the function properly, we want to ignore
+          # default values that are overridden via a partial kwarg. For example:
+          #
+          #   def func(a, b, c, d=5, e=7):
+          #     return a, b, c, d, e
+          #   p_func = functools.partial(tf.function(func, 10, e=9))
+          #
+          # Here we want to drop from the defaults the parameter `e`. If we
+          # forwarded the call to the partial function with a default for `e`
+          # we would get an error for passing two values for one parameter.
+          #
+          # Note that this has a limitation: we can only override parameters at
+          # the end of the parameter list.
+          #
+          # In this case we want to end up with 3 arguments (b, c, d) and 1
+          # default value (5). We do this by constructing a mask where 0 stands
+          # for a value that was overridden by a partial kwarg. The seemingly
+          # complicated logic below does just that - for arguments (b, c, d, e)
+          # we would get a mask (1, 1, 1, 0).
+          old_args = fullargspec.args
+          old_defaults = fullargspec.defaults
+
+          no_default = object()
+          num_args_without_defaults = len(old_args) - len(old_defaults)
+          left_padding = tuple([no_default] * num_args_without_defaults)
+
+          args_with_defaults = zip(old_args, left_padding + old_defaults)
+
+          # Create a mask where 0 stands for args that had a partial kwarg
+          # defined.
           non_keyword_defaults_mask = [
-              0 if key in unwrapped.keywords else 1 for key in args_with_default
+              0 if key in unwrapped.keywords else 1 for key in old_args
           ]
           # Keep only arguments and defaults that were not kwargs of partial.
-          new_defaults = tuple(
-              itertools.compress(fullargspec.defaults,
-                                 non_keyword_defaults_mask))
-          new_args = list(
-              itertools.compress(fullargspec.args, non_keyword_defaults_mask))
-
+          new_args_with_defaults = list(
+              itertools.compress(args_with_defaults, non_keyword_defaults_mask))
+          # Keep all args.
+          new_args = [arg for arg, _ in new_args_with_defaults]
+          # Keep only real default values.
+          new_defaults = [
+              default for _, default in new_args_with_defaults
+              if default is not no_default
+          ]
         fullargspec = tf_inspect.FullArgSpec(
             args=new_args,
             varargs=fullargspec.varargs,
@@ -1120,7 +1178,12 @@ class FunctionSpec(object):
 
     if not kwargs:
       inputs = args
-      for index in sorted(self._arg_indices_to_default_values.keys()):
+      default_keys = sorted(self._arg_indices_to_default_values.keys())
+      if default_keys:
+        assert min(default_keys) <= len(
+            args), "Not enough arguments (%s, %s, %s)" % (args, default_keys,
+                                                          self.arg_names)
+      for index in default_keys:
         if index >= len(args):
           inputs += (self._arg_indices_to_default_values[index],)
     else:
@@ -1395,40 +1458,25 @@ class Function(object):
       kwargs = {}
     seen_names = set()
     captured = frozenset(graph_function.graph.internal_captures)
-    allowed_positional = 0
-    if args:
-      for outer_arg in args:
-        # TODO(allenl): Consider allowing arguments with defaults in the Python
-        # function's signature to be passed as positional arguments to the
-        # concrete function.
-        if not isinstance(
-            outer_arg,
-            (ops.Tensor, resource_variable_ops.ResourceVariable,
-             tensor_spec.TensorSpec)):
-          break
-        allowed_positional += 1
     # pylint: disable=protected-access
-    graph_function._num_positional_args = allowed_positional
     graph_function._arg_keywords = []
+    prefix_counts = {}
     # pylint: enable=protected-access
+    num_positional = 0
     for arg in graph_function.graph.inputs:
       if arg in captured:
         break
-      user_arg_name = arg.op.get_attr("_user_specified_name")
-      if user_arg_name in seen_names:
-        raise ValueError(
-            ("Unable to construct a concrete function for {} since some "
-             "arguments do not have unique names. Got two arguments named "
-             "'{}'. When constructing a concrete TensorFlow function from a "
-             "Python function which takes nested structures or variadic "
-             "positional arguments, pass unique names to tf.TensorSpec objects "
-             "used to identify these Tensor inputs. These names may then be "
-             "used as keyword arguments to the concrete function.")
-            .format(
-                self._python_function,
-                compat.as_str(arg.op.get_attr("_user_specified_name"))))
-      seen_names.add(user_arg_name)
-      graph_function._arg_keywords.append(user_arg_name)  # pylint: disable=protected-access
+      num_positional += 1
+      user_arg_name = compat.as_str(arg.op.get_attr("_user_specified_name"))
+      proposal = user_arg_name
+      while proposal in seen_names:
+        index = prefix_counts.get(user_arg_name, 1)
+        proposal = "{}_{}".format(user_arg_name, index)
+        prefix_counts[user_arg_name] = index + 1
+      seen_names.add(proposal)
+      graph_function._arg_keywords.append(proposal)  # pylint: disable=protected-access
+    # Anything can be a positional argument, in the same order as .inputs
+    graph_function._num_positional_args = num_positional  # pylint: disable=protected-access
     return graph_function
 
   def __get__(self, instance, owner):
@@ -1494,8 +1542,11 @@ class Function(object):
     # TODO(b/117617952): The current distribution strategy will affect graph
     # building (e.g. accessing different variables from different devices) and
     # so requires retracing for each device.
-    uses_distribution_strategy = bool(
-        default_graph._distribution_strategy_stack)
+    strategy_stack = default_graph._distribution_strategy_stack
+    uses_distribution_strategy = (
+        strategy_stack and
+        strategy_stack[-1].strategy.extended._retrace_functions_for_each_device
+    )
     if executing_eagerly:
       colocation_stack = ()
       if uses_distribution_strategy:
@@ -1512,9 +1563,15 @@ class Function(object):
         device_functions = tuple(default_graph._device_functions_outer_to_inner)
       else:
         device_functions = ()
-    # pylint: enable=protected-access
+
+    in_cross_replica_context = False
+    try:
+      in_cross_replica_context = (strategy_stack[-1].replica_context is None)  # pylint: disable=protected-access
+    except (AttributeError, IndexError):
+      pass
+
     return CacheKey(input_signature, parent_graph, device_functions,
-                    colocation_stack)
+                    colocation_stack, in_cross_replica_context)
 
   def _create_graph_function(self, args, kwargs, override_flat_arg_shapes=None):
     """Create a `ConcreteFunction` from `args` and `kwargs`."""
@@ -1581,7 +1638,7 @@ class Function(object):
                            "relaxed_arg_shapes len: %d vs. %d"
                            % (len(arg_shapes), len(relaxed_arg_shapes)))
       relaxed_arg_shapes = [
-          _common_shape(x, y) for (x, y) in zip(
+          common_shape(x, y) for (x, y) in zip(
               arg_shapes, relaxed_arg_shapes)]
     self._function_cache.arg_relaxed_shapes[rank_only_cache_key] = (
         relaxed_arg_shapes)
@@ -1614,6 +1671,7 @@ class Function(object):
     if self.input_signature is None or args is not None or kwargs is not None:
       args, kwargs = self._function_spec.canonicalize_function_inputs(
           *args, **kwargs)
+
     cache_key = self._cache_key(args, kwargs)
 
     try:
@@ -1637,21 +1695,27 @@ class Function(object):
                    kwargs)
 
       call_context_key = cache_key.replace(input_signature=None)
-      # Build a function with shape relaxation retracing if:
-      # 1. shape relaxation is explicitly enabled
-      # and 2. there's no provided input signature
-      # and 3. there's been a cache miss for this calling context
-      if (self._experimental_relax_shapes
-          and self.input_signature is None
-          and call_context_key in self._function_cache.missed):
-        return self._define_function_with_shape_relaxation(args, kwargs)
 
-      self._function_cache.missed.add(call_context_key)
-      graph_function = self._function_cache.primary.get(cache_key, None)
-      if graph_function is None:
-        graph_function = self._create_graph_function(args, kwargs)
-        self._function_cache.primary[cache_key] = graph_function
-      return graph_function, args, kwargs
+      ag_status = (
+          ag_ctx.Status.ENABLED if self._autograph else ag_ctx.Status.DISABLED)
+      with ag_ctx.ControlStatusCtx(
+          status=ag_status, options=self._autograph_options):
+
+        # Build a function with shape relaxation retracing if:
+        # 1. shape relaxation is explicitly enabled
+        # and 2. there's no provided input signature
+        # and 3. there's been a cache miss for this calling context
+        if (self._experimental_relax_shapes
+            and self.input_signature is None
+            and call_context_key in self._function_cache.missed):
+          return self._define_function_with_shape_relaxation(args, kwargs)
+
+        self._function_cache.missed.add(call_context_key)
+        graph_function = self._function_cache.primary.get(cache_key, None)
+        if graph_function is None:
+          graph_function = self._create_graph_function(args, kwargs)
+          self._function_cache.primary[cache_key] = graph_function
+        return graph_function, args, kwargs
 
 
 def register(func, *args, **kwargs):
@@ -1683,8 +1747,9 @@ def register(func, *args, **kwargs):
 def validate_signature(signature):
   if any(not isinstance(arg, tensor_spec.TensorSpec)
          for arg in nest.flatten(signature, expand_composites=True)):
-    raise TypeError("Invalid input_signature %s; input_signature must be "
-                    "a possibly nested sequence of TensorSpec objects.")
+    raise TypeError("Invalid input_signature {}; input_signature must be "
+                    "a possibly nested sequence of TensorSpec objects."
+                    .format(signature))
 
 
 def defun(func=None,
