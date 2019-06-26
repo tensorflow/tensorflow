@@ -69,6 +69,19 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "embedding_lookup_test",
+    size = "medium",
+    srcs = ["python/tests/embedding_lookup_test.py"],
+    additional_deps = [
+        ":ipu",
+        ":test_util",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:layers",
+    ],
+)
+
+tf_py_test(
     name = "case_test",
     size = "small",
     srcs = ["python/tests/case_test.py"],
@@ -436,6 +449,7 @@ test_suite(
         "case_test",
         "conditional_test",
         "dump_poplar_info",
+        "embedding_lookup_test",
         "infeed_outfeed_test",
         "mapping_test",
         "multi_ipu_test",
