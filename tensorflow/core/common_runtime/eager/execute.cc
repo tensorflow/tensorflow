@@ -822,48 +822,11 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
           &retvals[i]));
     }
 
-    // Copy the output handles, since the container for them might get
-    // destroyed.
-    gtl::InlinedVector<TensorHandle*, 2> retvals_copy;
-    for (int i = 0; i < *num_retvals; i++) {
-      retvals_copy.push_back(retvals[i]);
-      retvals_copy[i]->Ref();
-    }
-
-    // This is required to ensure that the tensor handles stay alive across the
-    // execution.
-    gtl::InlinedVector<TensorHandle*, 4> inputs = op->Inputs();
-    for (auto* handle : inputs) {
-      handle->Ref();
-    }
-
     // TODO(gjn): If the retval TensorHandle is simply going to be used as a
     // mirror then there should be no need to call SetRemoteShape
-    // Unable to capture via std::move, so bind instead.
     std::unique_ptr<EagerNode> node(new eager::RemoteExecuteNode(
-        remote_node_id, std::move(request), eager_client,
-        std::bind(
-            [inputs](const gtl::InlinedVector<TensorHandle*, 2>& retvals,
-                     const Status& status,
-                     const eager::EnqueueResponse& response) {
-              for (int i = 0; i < retvals.size(); i++) {
-                if (status.ok()) {
-                  Status s = retvals[i]->SetRemoteShape(
-                      response.queue_response(0).shape(i));
-                  if (!s.ok()) {
-                    retvals[i]->Poison(s);
-                  }
-                } else {
-                  retvals[i]->Poison(status);
-                }
-                retvals[i]->Unref();
-              }
-              for (auto* handle : inputs) {
-                handle->Unref();
-              }
-            },
-            std::move(retvals_copy), std::placeholders::_1,
-            std::placeholders::_2)));
+        remote_node_id, std::move(request), eager_client, op->Inputs(), retvals,
+        *num_retvals));
     op->EagerContext()->ExecutorAdd(std::move(node));
   } else {
     Notification n;
