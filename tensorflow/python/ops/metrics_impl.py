@@ -1,5 +1,4 @@
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -2982,12 +2981,14 @@ def _num_relevant(labels, k):
     if isinstance(labels, sparse_tensor.SparseTensor):
       return math_ops.minimum(sets.set_size(labels), k, name=scope)
 
-    # For dense Tensor, calculate scalar count based on last dimension, and
-    # tile across labels shape.
-    labels_shape = array_ops.shape(labels)
-    labels_size = labels_shape[-1]
-    num_relevant_scalar = math_ops.minimum(labels_size, k)
-    return array_ops.fill(labels_shape[0:-1], num_relevant_scalar, name=scope)
+    # The relevant values for each (d1, ... dN) is the minimum between k and the
+    # number of labels along the last dimension that are non-negative.
+    num_labels = math_ops.reduce_sum(
+        array_ops.where_v2(math_ops.greater_equal(labels, 0),
+                           array_ops.ones_like(labels),
+                           array_ops.zeros_like(labels)),
+        axis=-1)
+    return math_ops.minimum(num_labels, k, name=scope)
 
 
 def _sparse_average_precision_at_top_k(labels, predictions_idx):
@@ -3008,7 +3009,7 @@ def _sparse_average_precision_at_top_k(labels, predictions_idx):
       num_labels=1. N >= 1 and num_labels is the number of target classes for
       the associated prediction. Commonly, N=1 and `labels` has shape
       [batch_size, num_labels]. [D1, ... DN] must match `predictions_idx`.
-      Values should be in range [0, num_classes).
+      Values should be non-negative. Negative values are ignored.
     predictions_idx: Integer `Tensor` with shape [D1, ... DN, k] where N >= 1.
       Commonly, N=1 and `predictions_idx` has shape [batch size, k]. The final
       dimension must be set and contains the top `k` predicted class indices.
@@ -3108,7 +3109,7 @@ def _streaming_sparse_average_precision_at_top_k(labels,
       num_labels=1. N >= 1 and num_labels is the number of target classes for
       the associated prediction. Commonly, N=1 and `labels` has shape
       [batch_size, num_labels]. [D1, ... DN] must match `predictions_idx`.
-      Values should be in range [0, num_classes).
+      Values should be non-negative. Negative values are ignored.
     predictions_idx: Integer `Tensor` with shape [D1, ... DN, k] where N >= 1.
       Commonly, N=1 and `predictions_idx` has shape [batch size, k]. The final
       dimension contains the top `k` predicted class indices. [D1, ... DN] must
@@ -3170,6 +3171,43 @@ def _streaming_sparse_average_precision_at_top_k(labels,
       ops.add_to_collections(updates_collections, update)
 
     return mean_average_precision, update
+
+
+def _clean_out_of_range_indices(labels, num_classes):
+  """Replaces large out of range labels by small out of range labels.
+
+  Replaces any value in `labels` that is greater or equal to `num_classes` by
+  -1. Do this conditionally, for efficiency in case there are no such values.
+
+  Args:
+    labels: `int64` `Tensor` or `SparseTensor`.
+    num_classes: `int64` scalar `Tensor`.
+  Returns:
+    a tensor as `labels` with potentially corrected values.
+  """
+
+  def _sparse_clean_out_of_range_tensor():
+    """Replaces large out of range labels in the sparse tensor `labels`."""
+    return sparse_tensor.SparseTensorValue(
+        indices=labels.indices,
+        values=array_ops.where_v2(
+            math_ops.greater_equal(labels.values, num_classes),
+            -1 * array_ops.ones_like(labels.values),
+            labels.values),
+        dense_shape=labels.dense_shape)
+
+  if isinstance(labels, (sparse_tensor.SparseTensor,
+                         sparse_tensor.SparseTensorValue)):
+    max_labels = math_ops.reduce_max(labels.values)
+    return control_flow_ops.cond(
+        math_ops.greater_equal(max_labels, num_classes),
+        _sparse_clean_out_of_range_tensor,
+        lambda: labels)
+  else:
+    max_labels = math_ops.reduce_max(labels)
+    return array_ops.where_v2(math_ops.greater_equal(labels, num_classes),
+                              -1 * array_ops.ones_like(labels),
+                              labels)
 
 
 @tf_export(v1=['metrics.sparse_average_precision_at_k'])
@@ -3262,6 +3300,12 @@ def average_precision_at_k(labels,
                       (predictions, labels, weights)) as scope:
     # Calculate top k indices to produce [D1, ... DN, k] tensor.
     _, predictions_idx = nn.top_k(predictions, k)
+    # The documentation states that labels should be in [0, ..., num_classes),
+    # but num_classes is lost when predictions_idx replaces predictions.
+    # For conformity with the documentation, any labels >= num_classes is
+    # replaced by -1, which are ignored.
+    labels = _clean_out_of_range_indices(
+        labels, math_ops.cast(array_ops.shape(predictions)[-1], dtypes.int64))
     return _streaming_sparse_average_precision_at_top_k(
         labels=labels,
         predictions_idx=predictions_idx,
