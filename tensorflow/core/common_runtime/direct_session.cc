@@ -1270,12 +1270,8 @@ Status DirectSession::CreateExecutors(
   const auto& optimizer_opts =
       options_.config.graph_options().optimizer_options();
 
-  int graph_def_version;
-  {
-    mutex_lock l(graph_state_lock_);
-    graph_def_version =
-        execution_state_->original_graph_def().versions().producer();
-  }
+  int graph_def_version = graphs.begin()->second->versions().producer();
+
   func_info->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_.get(), options_.env, graph_def_version,
       func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first));
@@ -1524,8 +1520,7 @@ Status DirectSession::CreateGraphs(
     prune_options.stateful_placements = stateful_placements_;
     prune_options.session_handle = session_handle_;
     TF_RETURN_IF_ERROR(GraphExecutionState::MakeForPrunedGraph(
-        execution_state_->original_graph_def().library(), prune_options,
-        execution_state_->original_graph_def(), subgraph_options,
+        *execution_state_, prune_options, subgraph_options,
         &temp_exec_state_holder, &client_graph));
     execution_state = temp_exec_state_holder.get();
   } else {
