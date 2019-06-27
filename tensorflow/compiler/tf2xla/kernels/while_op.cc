@@ -38,7 +38,7 @@ namespace tensorflow {
 namespace {
 
 // Verify that input resources are grouped in the end.
-Status VerifyBodyFunctionSignature(XlaOpKernelContext* ctx,
+Status VerifyResourceArgsGroupedAtEnd(XlaOpKernelContext* ctx,
                                    const NameAttrList& body_name_attr) {
   const FunctionBody* body;
   TF_RETURN_IF_ERROR(ctx->compiler()->FindFunctionBody(body_name_attr, &body));
@@ -49,8 +49,8 @@ Status VerifyBodyFunctionSignature(XlaOpKernelContext* ctx,
       if (arg_type != DT_RESOURCE) {
           return errors::InvalidArgument(
               "Expect input resources are grouped in the end of while body ",
-              body_name_attr.name(), ", but see non-resource input ",
-              body->arg_nodes[i]->name(), ".");
+              body_name_attr.name(), ", but the ", i, "-th argument ",
+              body->arg_nodes[i]->name(), " is not a resource.");
       }
     } else {
       if (arg_type == DT_RESOURCE) {
@@ -296,7 +296,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
 
   // Input resources need to be grouped in the end of the body function
   // according to the convention of the XLA bridge.
-  OP_REQUIRES_OK(ctx, VerifyBodyFunctionSignature(ctx, body_name_attr_));
+  OP_REQUIRES_OK(ctx, VerifyResourceArgsGroupedAtEnd(ctx, body_name_attr_));
 
   std::vector<XlaCompiler::Argument> arguments;
   bool has_uninitialized_vars;
