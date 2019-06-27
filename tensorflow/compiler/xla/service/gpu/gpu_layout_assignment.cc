@@ -180,14 +180,6 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
   return Status::OK();
 }
 
-static DotDimensionNumbers GetGemmDotDimensionNumbers(
-    const HloInstruction* instr) {
-  CHECK(IsCublasGemm(*instr));
-  return instr->backend_config<GemmBackendConfig>()
-      .ConsumeValueOrDie()
-      .dot_dimension_numbers();
-}
-
 Status GpuLayoutAssignment::AddBackendConstraints(
     LayoutConstraints* constraints) {
   // Add convolution constraints in reverse postorder that the earliest
@@ -202,14 +194,16 @@ Status GpuLayoutAssignment::AddBackendConstraints(
           Cast<HloCustomCallInstruction>(instruction), constraints));
     }
 
+    CHECK(!IsCublasGemm(*instruction))
+        << "Gemm rewriting should run after layout assignment";
+
     // For batched dot we require the default layout.
     // TODO(b/112111608): This is overly conservative, the only real restriction
     // is that batch dimensions must be major.
-    if (IsCublasGemm(*instruction) &&
-        GetGemmDotDimensionNumbers(instruction).lhs_batch_dimensions_size() >
-            0) {
+    if (IsMatrixMultiplication(*instruction) &&
+        instruction->dot_dimension_numbers().lhs_batch_dimensions_size() > 0) {
       // Verify that the batch dims come before the row and col dims.
-      DotDimensionNumbers dim_nums = GetGemmDotDimensionNumbers(instruction);
+      DotDimensionNumbers dim_nums = instruction->dot_dimension_numbers();
       CHECK_EQ(dim_nums.lhs_batch_dimensions_size(),
                dim_nums.rhs_batch_dimensions_size());
       CHECK_EQ(dim_nums.lhs_batch_dimensions_size() + 2,

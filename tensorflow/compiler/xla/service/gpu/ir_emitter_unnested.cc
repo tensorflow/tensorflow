@@ -1788,6 +1788,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
   // first.
   if (gemm_config.beta() != 0.0) {
     const HloInstruction* bias = inst->operand(2);
+    CHECK_EQ(bias->shape(), inst->shape());
     if (GetAllocationSlice(*bias) != GetAllocationSlice(*inst)) {
       std::vector<std::unique_ptr<Thunk>> thunks;
       thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(

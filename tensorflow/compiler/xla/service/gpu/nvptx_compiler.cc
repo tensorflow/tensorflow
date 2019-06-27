@@ -266,12 +266,6 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
   }
 
   {
-    HloPassPipeline pipeline("gemm_canonicalization");
-    pipeline.AddPass<GemmRewriter>();
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
-
-  {
     // Convert convolutions into CustomCalls to cudnn, then canonicalize them
     // (CudnnConvPaddingLegalization). Also expand cuSolver calls.
     HloPassPipeline pipeline("conv_canonicalization");
@@ -322,6 +316,9 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
+
+    // Rewrite GEMMs into custom calls.
+    pipeline.AddPass<GemmRewriter>();
 
     // Choose the fastest algorithm for each conv.
     //

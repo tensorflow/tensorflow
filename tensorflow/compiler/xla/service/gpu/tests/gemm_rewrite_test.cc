@@ -307,31 +307,6 @@ ENTRY AddDotsFunc {
       )");
 }
 
-TEST_F(GemmRewriteTest, BiasDifferentLayoutNoRewrite) {
-  const char* hlo_text = R"(
-HloModule BiasDifferentLayoutNoRewrite
-
-ENTRY AddDotsFunc {
-  x = f32[2,2]{1,0} parameter(0)
-  y = f32[2,2]{1,0} parameter(1)
-  bias = f32[2,2]{0,1} parameter(2)
-  dot = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT out = f32[2,2] add(dot, bias)
-}
-
-)";
-
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
-
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2], bias: f32[2,2]) -> f32[2,2] {
-; CHECK-NEXT:    %x = f32[2,2]{1,0} parameter(0)
-; CHECK-NEXT:    %y = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha_real:1,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
-      )");
-}
-
 TEST_F(GemmRewriteTest, SharedBufferAssignment) {
   const char* hlo_text = R"(
 HloModule SharedBufferAssignment
