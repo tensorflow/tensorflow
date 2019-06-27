@@ -1998,6 +1998,17 @@ class IndexTableFromTensor(test.TestCase):
     ids = table.lookup(constant_op.constant(("salad", "surgery", "tarkus")))
     self.assertAllEqual((1, 2, 3), self.evaluate(ids))
 
+  def test_index_table_from_tensor_with_tensor_init_in_function(self):
+    @function.defun()
+    def lookup_fn():
+      vocabulary_list = constant_op.constant(["brain", "salad", "surgery"])
+      table = lookup_ops.index_table_from_tensor(
+          vocabulary_list=vocabulary_list, num_oov_buckets=1)
+      return table.lookup(constant_op.constant(("salad", "surgery", "tarkus")))
+
+    ids = lookup_fn()
+    self.assertAllEqual((1, 2, 3), self.evaluate(ids))
+
   def test_int32_index_table_from_tensor_with_tensor_init(self):
     with self.cached_session():
       table = lookup_ops.index_table_from_tensor(
