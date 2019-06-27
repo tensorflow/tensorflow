@@ -520,12 +520,12 @@ static void print(spirv::VariableOp varOp, OpAsmPrinter *printer) {
   }
 
   // Print optional descriptor binding
-  auto set = varOp.getAttr(kDescriptorSetAttrName);
-  auto binding = varOp.getAttr(kBindingAttrName);
+  auto set = varOp.getAttrOfType<IntegerAttr>(kDescriptorSetAttrName);
+  auto binding = varOp.getAttrOfType<IntegerAttr>(kBindingAttrName);
   if (set && binding) {
     elidedAttrs.push_back(kDescriptorSetAttrName);
     elidedAttrs.push_back(kBindingAttrName);
-    *printer << " bind(" << set << ", " << binding << ")";
+    *printer << " bind(" << set.getInt() << ", " << binding.getInt() << ")";
   }
 
   printer->printOptionalAttrDict(op->getAttrs(), elidedAttrs);

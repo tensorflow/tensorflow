@@ -72,7 +72,7 @@ func @ops(%arg0 : !llvm.i32, %arg1 : !llvm.float) {
 
 ^bb2:
 // CHECK:       %22 = llvm.undef : !llvm<"{ i32, double, i32 }">
-// CHECK-NEXT:  %23 = llvm.constant(42) : !llvm.i47
+// CHECK-NEXT:  %23 = llvm.constant(42 : i64) : !llvm.i47
   %22 = llvm.undef : !llvm<"{ i32, double, i32 }">
   %23 = llvm.constant(42) : !llvm.i47
 
@@ -94,15 +94,15 @@ func @ops(%arg0 : !llvm.i32, %arg1 : !llvm.float) {
 // An larger self-contained function.
 // CHECK-LABEL:func @foo(%arg0: !llvm.i32) -> !llvm<"{ i32, double, i32 }"> {
 func @foo(%arg0: !llvm.i32) -> !llvm<"{ i32, double, i32 }"> {
-// CHECK-NEXT:  %0 = llvm.constant(3) : !llvm.i32
-// CHECK-NEXT:  %1 = llvm.constant(3) : !llvm.i32
-// CHECK-NEXT:  %2 = llvm.constant(4.200000e+01) : !llvm.double
-// CHECK-NEXT:  %3 = llvm.constant(4.200000e+01) : !llvm.double
+// CHECK-NEXT:  %0 = llvm.constant(3 : i64) : !llvm.i32
+// CHECK-NEXT:  %1 = llvm.constant(3 : i64) : !llvm.i32
+// CHECK-NEXT:  %2 = llvm.constant(4.200000e+01 : f64) : !llvm.double
+// CHECK-NEXT:  %3 = llvm.constant(4.200000e+01 : f64) : !llvm.double
 // CHECK-NEXT:  %4 = llvm.add %0, %1 : !llvm.i32
 // CHECK-NEXT:  %5 = llvm.mul %4, %1 : !llvm.i32
 // CHECK-NEXT:  %6 = llvm.fadd %2, %3 : !llvm.double
 // CHECK-NEXT:  %7 = llvm.fsub %3, %6 : !llvm.double
-// CHECK-NEXT:  %8 = llvm.constant(1) : !llvm.i1
+// CHECK-NEXT:  %8 = llvm.constant(1 : i64) : !llvm.i1
 // CHECK-NEXT:  llvm.cond_br %8, ^bb1(%4 : !llvm.i32), ^bb2(%4 : !llvm.i32)
   %0 = llvm.constant(3) : !llvm.i32
   %1 = llvm.constant(3) : !llvm.i32

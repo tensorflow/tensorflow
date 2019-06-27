@@ -335,12 +335,11 @@ public:
   }
 
   void print(Module *module);
-  void printAttributeAndType(Attribute attr) {
-    printAttributeOptionalType(attr, /*includeType=*/true);
-  }
-  void printAttribute(Attribute attr) {
-    printAttributeOptionalType(attr, /*includeType=*/false);
-  }
+
+  /// Print the given attribute. If 'mayElideType' is true, some attributes are
+  /// printed without the type when the type matches the default used in the
+  /// parser (for example i64 is the default for integer attributes).
+  void printAttribute(Attribute attr, bool mayElideType = false);
 
   void printType(Type type);
   void print(Function *fn);
@@ -359,7 +358,6 @@ protected:
 
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                              ArrayRef<StringRef> elidedAttrs = {});
-  void printAttributeOptionalType(Attribute attr, bool includeType);
   void printTrailingLocation(Location loc);
   void printLocationInternal(LocationAttr loc, bool pretty = false);
   void printDenseElementsAttr(DenseElementsAttr attr);
@@ -591,8 +589,7 @@ static void printDialectSymbol(raw_ostream &os, StringRef symPrefix,
   os << "<\"" << symString << "\">";
 }
 
-void ModulePrinter::printAttributeOptionalType(Attribute attr,
-                                               bool includeType) {
+void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
   if (!attr) {
     os << "<<NULL ATTRIBUTE>>";
     return;
@@ -630,7 +627,9 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
     break;
   case StandardAttributes::Bool:
     os << (attr.cast<BoolAttr>().getValue() ? "true" : "false");
-    break;
+
+    // BoolAttr always elides the type.
+    return;
   case StandardAttributes::Dictionary:
     os << '{';
     interleaveComma(attr.cast<DictionaryAttr>().getValue(),
@@ -646,21 +645,19 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
     bool isSigned = intAttr.getType().isIndex() ||
                     intAttr.getType().getIntOrFloatBitWidth() != 1;
     intAttr.getValue().print(os, isSigned);
-    // Print the type.
-    if (includeType) {
-      os << " : ";
-      printType(intAttr.getType());
-    }
+
+    // IntegerAttr elides the type if I64.
+    if (mayElideType && intAttr.getType().isInteger(64))
+      return;
     break;
   }
   case StandardAttributes::Float: {
     auto floatAttr = attr.cast<FloatAttr>();
     printFloatValue(floatAttr.getValue(), os);
-    // Print the type.
-    if (includeType) {
-      os << " : ";
-      printType(floatAttr.getType());
-    }
+
+    // FloatAttr elides the type if F64.
+    if (mayElideType && floatAttr.getType().isF64())
+      return;
     break;
   }
   case StandardAttributes::String:
@@ -670,13 +667,16 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
     break;
   case StandardAttributes::Array:
     os << '[';
-    interleaveComma(attr.cast<ArrayAttr>().getValue(),
-                    [&](Attribute attr) { printAttribute(attr); });
+    interleaveComma(attr.cast<ArrayAttr>().getValue(), [&](Attribute attr) {
+      printAttribute(attr, /*mayElideType=*/true);
+    });
     os << ']';
     break;
   case StandardAttributes::AffineMap:
     attr.cast<AffineMapAttr>().getValue().print(os);
-    break;
+
+    // AffineMap always elides the type.
+    return;
   case StandardAttributes::IntegerSet:
     attr.cast<IntegerSetAttr>().getValue().print(os);
     break;
@@ -690,16 +690,14 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
   case StandardAttributes::OpaqueElements: {
     auto eltsAttr = attr.cast<OpaqueElementsAttr>();
     os << "opaque<\"" << eltsAttr.getDialect()->getNamespace() << "\", ";
-    os << '"' << "0x" << llvm::toHex(eltsAttr.getValue()) << "\"> : ";
-    printType(eltsAttr.getType());
+    os << '"' << "0x" << llvm::toHex(eltsAttr.getValue()) << "\">";
     break;
   }
   case StandardAttributes::DenseElements: {
     auto eltsAttr = attr.cast<DenseElementsAttr>();
     os << "dense<";
     printDenseElementsAttr(eltsAttr);
-    os << "> : ";
-    printType(eltsAttr.getType());
+    os << '>';
     break;
   }
   case StandardAttributes::SparseElements: {
@@ -708,8 +706,7 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
     printDenseElementsAttr(elementsAttr.getIndices());
     os << ", ";
     printDenseElementsAttr(elementsAttr.getValues());
-    os << "> : ";
-    printType(elementsAttr.getType());
+    os << '>';
     break;
   }
 
@@ -722,6 +719,27 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
     printLocation(attr.cast<LocationAttr>());
     break;
   }
+
+  // Print the type if it isn't a 'none' type.
+  auto attrType = attr.getType();
+  if (!attrType.isa<NoneType>()) {
+    os << " : ";
+    printType(attrType);
+  }
+}
+
+/// Print the integer element of the given DenseElementsAttr at 'index'.
+static void printDenseIntElement(DenseElementsAttr attr, raw_ostream &os,
+                                 unsigned index) {
+  APInt value = *std::next(attr.getIntValues().begin(), index);
+  value.print(os, /*isSigned=*/value.getBitWidth() != 1);
+}
+
+/// Print the float element of the given DenseElementsAttr at 'index'.
+static void printDenseFloatElement(DenseElementsAttr attr, raw_ostream &os,
+                                   unsigned index) {
+  APFloat value = *std::next(attr.getFloatValues().begin(), index);
+  printFloatValue(value, os);
 }
 
 void ModulePrinter::printDenseElementsAttr(DenseElementsAttr attr) {
@@ -729,17 +747,20 @@ void ModulePrinter::printDenseElementsAttr(DenseElementsAttr attr) {
   auto shape = type.getShape();
   auto rank = type.getRank();
 
-  SmallVector<Attribute, 16> elements;
-  attr.getValues(elements);
+  // The function used to print elements of this attribute.
+  auto printEltFn = type.getElementType().isa<IntegerType>()
+                        ? printDenseIntElement
+                        : printDenseFloatElement;
 
   // Special case for 0-d and splat tensors.
   if (attr.isSplat()) {
-    printAttribute(elements[0]);
+    printEltFn(attr, os, 0);
     return;
   }
 
   // Special case for degenerate tensors.
-  if (elements.empty()) {
+  auto numElements = type.getNumElements();
+  if (numElements == 0) {
     for (int i = 0; i < rank; ++i)
       os << '[';
     for (int i = 0; i < rank; ++i)
@@ -770,13 +791,13 @@ void ModulePrinter::printDenseElementsAttr(DenseElementsAttr attr) {
       }
   };
 
-  for (unsigned idx = 0, e = elements.size(); idx != e; ++idx) {
+  for (unsigned idx = 0, e = numElements; idx != e; ++idx) {
     if (idx != 0)
       os << ", ";
     while (openBrackets++ < rank)
       os << '[';
     openBrackets = rank;
-    printAttribute(elements[idx]);
+    printEltFn(attr, os, idx);
     bumpCounter();
   }
   while (openBrackets-- > 0)
@@ -1154,7 +1175,7 @@ void ModulePrinter::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
       return;
 
     os << " = ";
-    printAttributeAndType(attr.second);
+    printAttribute(attr.second);
   });
   os << '}';
 }
@@ -1186,9 +1207,6 @@ public:
   void printType(Type type) override { ModulePrinter::printType(type); }
   void printAttribute(Attribute attr) override {
     ModulePrinter::printAttribute(attr);
-  }
-  void printAttributeAndType(Attribute attr) override {
-    ModulePrinter::printAttributeAndType(attr);
   }
   void printOperand(Value *value) override { printValueID(value); }
 
@@ -1652,7 +1670,7 @@ void ModulePrinter::print(Function *fn) { FunctionPrinter(fn, *this).print(); }
 
 void Attribute::print(raw_ostream &os) const {
   ModuleState state(/*no context is known*/ nullptr);
-  ModulePrinter(os, state).printAttributeAndType(*this);
+  ModulePrinter(os, state).printAttribute(*this);
 }
 
 void Attribute::dump() const {

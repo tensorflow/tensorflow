@@ -330,9 +330,9 @@ func @multireturn() -> (i64, f32, memref<42x?x10x?xf32>) {
   %1 = call @get_f32() : () -> (f32)
   %2 = call @get_memref() : () -> (memref<42x?x10x?xf32>)
 // CHECK-NEXT:  {{.*}} = llvm.undef : !llvm<"{ i64, float, { float*, i64, i64 } }">
-// CHECK-NEXT:  {{.*}} = llvm.insertvalue {{.*}}, {{.*}}[0] : !llvm<"{ i64, float, { float*, i64, i64 } }">
-// CHECK-NEXT:  {{.*}} = llvm.insertvalue {{.*}}, {{.*}}[1] : !llvm<"{ i64, float, { float*, i64, i64 } }">
-// CHECK-NEXT:  {{.*}} = llvm.insertvalue {{.*}}, {{.*}}[2] : !llvm<"{ i64, float, { float*, i64, i64 } }">
+// CHECK-NEXT:  {{.*}} = llvm.insertvalue {{.*}}, {{.*}}[0 : index] : !llvm<"{ i64, float, { float*, i64, i64 } }">
+// CHECK-NEXT:  {{.*}} = llvm.insertvalue {{.*}}, {{.*}}[1 : index] : !llvm<"{ i64, float, { float*, i64, i64 } }">
+// CHECK-NEXT:  {{.*}} = llvm.insertvalue {{.*}}, {{.*}}[2 : index] : !llvm<"{ i64, float, { float*, i64, i64 } }">
 // CHECK-NEXT:  llvm.return {{.*}} : !llvm<"{ i64, float, { float*, i64, i64 } }">
   return %0, %1, %2 : i64, f32, memref<42x?x10x?xf32>
 }
@@ -342,9 +342,9 @@ func @multireturn() -> (i64, f32, memref<42x?x10x?xf32>) {
 func @multireturn_caller() {
 ^bb0:
 // CHECK-NEXT:  {{.*}} = llvm.call @multireturn() : () -> !llvm<"{ i64, float, { float*, i64, i64 } }">
-// CHECK-NEXT:  {{.*}} = llvm.extractvalue {{.*}}[0] : !llvm<"{ i64, float, { float*, i64, i64 } }">
-// CHECK-NEXT:  {{.*}} = llvm.extractvalue {{.*}}[1] : !llvm<"{ i64, float, { float*, i64, i64 } }">
-// CHECK-NEXT:  {{.*}} = llvm.extractvalue {{.*}}[2] : !llvm<"{ i64, float, { float*, i64, i64 } }">
+// CHECK-NEXT:  {{.*}} = llvm.extractvalue {{.*}}[0 : index] : !llvm<"{ i64, float, { float*, i64, i64 } }">
+// CHECK-NEXT:  {{.*}} = llvm.extractvalue {{.*}}[1 : index] : !llvm<"{ i64, float, { float*, i64, i64 } }">
+// CHECK-NEXT:  {{.*}} = llvm.extractvalue {{.*}}[2 : index] : !llvm<"{ i64, float, { float*, i64, i64 } }">
   %0:3 = call @multireturn() : () -> (i64, f32, memref<42x?x10x?xf32>)
   %1 = constant 42 : i64
 // CHECK:       {{.*}} = llvm.add {{.*}}, {{.*}} : !llvm.i64

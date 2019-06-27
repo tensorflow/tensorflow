@@ -65,7 +65,6 @@ public:
   }
   virtual void printType(Type type) = 0;
   virtual void printAttribute(Attribute attr) = 0;
-  virtual void printAttributeAndType(Attribute attr) = 0;
 
   /// Print a successor, and use list, of a terminator operation given the
   /// terminator and the successor index.

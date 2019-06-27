@@ -709,19 +709,7 @@ static ParseResult parseUndefOp(OpAsmParser *parser, OperationState *result) {
 //===----------------------------------------------------------------------===//
 
 static void printConstantOp(OpAsmPrinter *p, ConstantOp &op) {
-  *p << op.getOperationName() << '(' << op.value();
-  // Print attribute types other than i64 and f64 because attribute parsing will
-  // assume those in absence of explicit attribute type.
-  if (auto intAttr = op.value().dyn_cast<IntegerAttr>()) {
-    auto type = intAttr.getType();
-    if (!type.isInteger(64))
-      *p << " : " << intAttr.getType();
-  } else if (auto floatAttr = op.value().dyn_cast<FloatAttr>()) {
-    auto type = floatAttr.getType();
-    if (!type.isF64())
-      *p << " : " << type;
-  }
-  *p << ')';
+  *p << op.getOperationName() << '(' << op.value() << ')';
   p->printOptionalAttrDict(op.getAttrs(), {"value"});
   *p << " : " << op.res()->getType();
 }

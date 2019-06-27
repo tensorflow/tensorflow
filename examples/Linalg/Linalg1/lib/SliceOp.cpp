@@ -125,9 +125,7 @@ ParseResult linalg::SliceOp::parse(OpAsmParser *parser,
 void linalg::SliceOp::print(OpAsmPrinter *p) {
   *p << getOperationName() << " " << *getParentView() << "[" << *getIndexing()
      << "]";
-  *p << " {dim = ";
-  p->printAttribute(getAttr("dim"));
-  *p << "}";
+  *p << " {dim = " << getAttrOfType<IntegerAttr>("dim").getInt() << "}";
   p->printOptionalAttrDict(getAttrs(), {"dim"});
   *p << " : " << getParentViewType() << ", " << getIndexing()->getType();
 }

@@ -1036,7 +1036,7 @@ static void print(OpAsmPrinter *p, ConstantOp &op) {
 
   if (op.getAttrs().size() > 1)
     *p << ' ';
-  p->printAttributeAndType(op.getValue());
+  p->printAttribute(op.getValue());
 
   // If the value is a function, print a trailing type.
   if (op.getValue().isa<FunctionAttr>()) {
