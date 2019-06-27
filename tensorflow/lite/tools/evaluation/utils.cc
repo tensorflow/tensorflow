@@ -86,15 +86,13 @@ Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate() {
 #endif  // defined(__ANDROID__)
 }
 
+#if defined(__ANDROID__)
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
     tflite::FlatBufferModel* model, TfLiteGpuDelegateOptions* options) {
-#if defined(__ANDROID__)
   return Interpreter::TfLiteDelegatePtr(TfLiteGpuDelegateCreate(options),
                                         &TfLiteGpuDelegateDelete);
-#else
-  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
-#endif  // defined(__ANDROID__)
 }
+#endif  // defined(__ANDROID__)
 
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
     tflite::FlatBufferModel* model) {

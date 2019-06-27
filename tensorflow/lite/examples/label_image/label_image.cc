@@ -56,6 +56,7 @@ using TfLiteDelegatePtr = tflite::Interpreter::TfLiteDelegatePtr;
 using TfLiteDelegatePtrMap = std::map<std::string, TfLiteDelegatePtr>;
 
 TfLiteDelegatePtr CreateGPUDelegate(Settings* s) {
+#if defined(__ANDROID__)
   TfLiteGpuDelegateOptions options;
   options.metadata = TfLiteGpuDelegateGetModelMetadata(s->model->GetModel());
   if (s->allow_fp16) {
@@ -68,6 +69,9 @@ TfLiteDelegatePtr CreateGPUDelegate(Settings* s) {
   options.compile_options.dynamic_batch_enabled = 0;
 
   return evaluation::CreateGPUDelegate(s->model, &options);
+#else
+  return evaluation::CreateGPUDelegate(s->model);
+#endif
 }
 
 TfLiteDelegatePtrMap GetDelegates(Settings* s) {
