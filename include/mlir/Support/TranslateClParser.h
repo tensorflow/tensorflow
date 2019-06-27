@@ -28,7 +28,7 @@
 
 namespace mlir {
 
-class LogicalResult;
+struct LogicalResult;
 class MLIRContext;
 
 /// Common interface for source-to-source translation functions.
