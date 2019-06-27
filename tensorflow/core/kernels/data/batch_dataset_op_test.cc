@@ -27,8 +27,10 @@ class BatchDatasetOpTest : public DatasetOpsTestBase {
       bool parallel_copy, const DataTypeVector& output_types,
       const std::vector<PartialTensorShape>& output_shapes,
       std::unique_ptr<OpKernel>* batch_dataset_op_kernel) {
+    name_utils::OpNameParams params;
+    params.op_version = kOpVersion;
     NodeDef node_def = test::function::NDef(
-        kNodeName, name_utils::OpName(BatchDatasetOp::kDatasetType, kOpVersion),
+        kNodeName, name_utils::OpName(BatchDatasetOp::kDatasetType, params),
         {BatchDatasetOp::kInputDataset, BatchDatasetOp::kBatchSize,
          BatchDatasetOp::kDropRemainder},
         {{BatchDatasetOp::kParallelCopy, parallel_copy},
@@ -339,8 +341,10 @@ TEST_P(ParameterizedBatchDatasetOpTest, DatasetTypeString) {
                              batch_dataset_context.get(), &batch_dataset));
   core::ScopedUnref scoped_unref_batch_dataset(batch_dataset);
 
+  name_utils::OpNameParams params;
+  params.op_version = kOpVersion;
   EXPECT_EQ(batch_dataset->type_string(),
-            name_utils::OpName(BatchDatasetOp::kDatasetType, kOpVersion));
+            name_utils::OpName(BatchDatasetOp::kDatasetType, params));
 }
 
 TEST_P(ParameterizedBatchDatasetOpTest, DatasetOutputDtypes) {
@@ -614,9 +618,11 @@ TEST_P(ParameterizedBatchDatasetOpTest, IteratorOutputPrefix) {
   std::unique_ptr<IteratorBase> iterator;
   TF_ASSERT_OK(
       batch_dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
-
-  EXPECT_EQ(iterator->prefix(), name_utils::IteratorPrefix(
-                                    BatchDatasetOp::kDatasetType, "Iterator"));
+  name_utils::IteratorPrefixParams params;
+  params.op_version = kOpVersion;
+  params.prefix = "Iterator";
+  EXPECT_EQ(iterator->prefix(),
+            name_utils::IteratorPrefix(BatchDatasetOp::kDatasetType, params));
 }
 
 TEST_P(ParameterizedBatchDatasetOpTest, Roundtrip) {

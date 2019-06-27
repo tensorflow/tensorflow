@@ -43,12 +43,13 @@ constexpr char kBatchDataset[] = "BatchDataset";
 class BatchDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, int64 batch_size, bool drop_remainder,
-          bool parallel_copy, const DatasetBase* input)
+          bool parallel_copy, const DatasetBase* input, int op_version)
       : DatasetBase(DatasetContext(ctx)),
         batch_size_(batch_size),
         drop_remainder_(drop_remainder),
         parallel_copy_(parallel_copy),
-        input_(input) {
+        input_(input),
+        op_version_(op_version) {
     input_->Ref();
 
     // NOTE(mrry): Currently we implement "batch up to" semantics. If
@@ -71,8 +72,11 @@ class BatchDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
+    name_utils::IteratorPrefixParams params;
+    params.op_version = op_version_;
+    params.prefix = prefix;
     return absl::make_unique<Iterator>(Iterator::Params{
-        this, name_utils::IteratorPrefix(kDatasetType, prefix)});
+        this, name_utils::IteratorPrefix(kDatasetType, params)});
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -84,7 +88,10 @@ class BatchDatasetOp::Dataset : public DatasetBase {
   }
 
   string DebugString() const override {
-    return name_utils::DatasetDebugString(kDatasetType, batch_size_);
+    name_utils::DatasetDebugStringParams params;
+    params.op_version = op_version_;
+    params.set_args(batch_size_);
+    return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
   int64 Cardinality() const override {
@@ -269,6 +276,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
   const bool drop_remainder_;
   const bool parallel_copy_;
   const DatasetBase* const input_;
+  const int op_version_;
   std::vector<PartialTensorShape> output_shapes_;
 };
 
@@ -294,7 +302,8 @@ void BatchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
         ctx, ParseScalarArgument<bool>(ctx, kDropRemainder, &drop_remainder));
   }
 
-  *output = new Dataset(ctx, batch_size, drop_remainder, parallel_copy_, input);
+  *output = new Dataset(ctx, batch_size, drop_remainder, parallel_copy_, input,
+                        op_version_);
 }
 
 namespace {

@@ -119,10 +119,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
+    name_utils::IteratorPrefixParams params;
+    params.op_version = op_version_;
+    params.prefix = prefix;
     return absl::make_unique<ParallelInterleaveIterator>(
         ParallelInterleaveIterator::Params{
             this, name_utils::IteratorPrefix(
-                      ParallelInterleaveDatasetOp::kDatasetType, prefix)},
+                      ParallelInterleaveDatasetOp::kDatasetType, params)},
         sloppy_);
   }
 

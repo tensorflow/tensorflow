@@ -891,10 +891,12 @@ TEST_F(ParallelInterleaveDatasetOpTest, IteratorOutputPrefix) {
   std::unique_ptr<IteratorBase> iterator;
   TF_ASSERT_OK(parallel_interleave_dataset->MakeIterator(
       iterator_ctx.get(), "Iterator", &iterator));
-
+  name_utils::IteratorPrefixParams params;
+  params.op_version = kOpVersion;
+  params.prefix = "Iterator";
   EXPECT_EQ(iterator->prefix(),
             name_utils::IteratorPrefix(
-                ParallelInterleaveDatasetOp::kDatasetType, "Iterator"));
+                ParallelInterleaveDatasetOp::kDatasetType, params));
 }
 
 TEST_P(ParameterizedParallelInterleaveDatasetOpTest, Roundtrip) {

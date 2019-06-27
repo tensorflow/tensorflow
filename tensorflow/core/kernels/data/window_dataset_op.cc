@@ -74,9 +74,10 @@ class WindowDatasetOp::Dataset : public DatasetBase {
   }
 
   string DebugString() const override {
-    return name_utils::DatasetDebugString(kDatasetType, window_size_,
-                                          window_shift_, window_stride_,
-                                          drop_remainder_);
+    name_utils::DatasetDebugStringParams params;
+    params.set_args(window_size_, window_shift_, window_stride_,
+                    drop_remainder_);
+    return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
   int64 Cardinality() const override {
