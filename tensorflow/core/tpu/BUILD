@@ -1,6 +1,8 @@
 # Description: Utilities for TPU Operations
 
-licenses(["notice"])  # Apache 2.0
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "tpu_embedding_optimization_parameters_utils",

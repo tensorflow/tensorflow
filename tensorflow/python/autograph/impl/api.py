@@ -34,6 +34,7 @@ from enum import Enum
 import six
 # pylint:enable=g-bad-import-order
 
+from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import conversion
 from tensorflow.python.autograph.operators import py_builtins
@@ -129,8 +130,57 @@ class StackTraceMapper(tf_stack.StackTraceMapper):
     return origin.loc.filename, origin.loc.lineno, origin.function_name
 
 
-# TODO(mdan): This should behave like to_graph (e.g. convert statically).
-def convert(recursive=False, optional_features=None):
+def tf_convert(f, ctx, convert_by_default=True, force_conversion=False):
+  """Decorator that applies AutoGraph to a function.
+
+  Use in internal APIs.
+
+  This API is suitable for high order functions internal to the TensorFlow API,
+  and more generally any function to which Autograph is not applied.
+
+  Guidance: convert was a decorator meant for use directly by developers, and
+  will be soon deprecated in favor of tf.function. tf_convert is to be called
+  from high order functions internal to TF.
+
+  Args:
+    f: Callable.
+    ctx: ag_ctx.ControlStatusCtx, the Autograph context in which `f` is used.
+    convert_by_default: bool, whether to use AutoGraph when the context doesn't
+      specify.
+    force_conversion: bool, whether to ignore the conversion whitelist. See
+      ConversionOptions.force_conversion.
+
+  Returns:
+    Either `f or the converted version of `f`.
+  """
+
+  if hasattr(f, '__ag_compiled'):
+    return f
+  f_wrapper = f
+  decorators, f = tf_decorator.unwrap(f)
+
+  # TODO(mdan): Grab features from context.
+  if ctx.status == ag_ctx.Status.ENABLED:
+    wrapper = convert(recursive=True, force_conversion=force_conversion)(f)
+  elif ctx.status == ag_ctx.Status.DISABLED:
+    wrapper = do_not_convert(f)
+  elif ctx.status == ag_ctx.Status.UNSPECIFIED:
+    if convert_by_default:
+      wrapper = convert(recursive=True, force_conversion=force_conversion)(f)
+    else:
+      wrapper = call_with_unspecified_conversion_status(f)
+  else:
+    raise ValueError(ctx.status)
+
+  if decorators:
+    wrapper = tf_decorator.rewrap(f_wrapper, f, wrapper)
+
+  setattr(wrapper, '__ag_compiled', True)
+  return wrapper
+
+
+# TODO(mdan): Make private.
+def convert(recursive=False, optional_features=None, force_conversion=True):
   """Decorator that compiles a function to use TensorFlow ops.
 
   The decorator is dynamic - it recompiles the target whenever the decorated
@@ -144,6 +194,8 @@ def convert(recursive=False, optional_features=None):
     optional_features: converted.Feature, allows toggling optional or
       experimental features. When set to None, only the core features are
       enabled.
+    force_conversion: bool, whether to ignore the conversion whitelist. See
+      ConversionOptions.force_conversion.
 
   Returns:
     Callable, a decorator that converts the given function into an equivalent
@@ -153,29 +205,33 @@ def convert(recursive=False, optional_features=None):
   def decorator(f):
     """Decorator implementation."""
 
-    @functools.wraps(f)
     def wrapper(*args, **kwargs):
       """Wrapper that calls the converted version of f."""
-      try:
-        return converted_call(
-            f, None,
-            converter.ConversionOptions(
-                recursive=recursive,
-                force_conversion=True,
-                optional_features=optional_features,
-            ), args, kwargs)
-      except Exception as e:  # pylint:disable=broad-except
-        if hasattr(e, 'ag_error_metadata'):
-          raise e.ag_error_metadata.to_exception(type(e))
-        else:
-          raise
+      with ag_ctx.ControlStatusCtx(
+          status=ag_ctx.Status.ENABLED, options=optional_features):
+        try:
+          return converted_call(
+              f, None,
+              converter.ConversionOptions(
+                  recursive=recursive,
+                  force_conversion=force_conversion,
+                  optional_features=optional_features,
+              ), args, kwargs)
+        except Exception as e:  # pylint:disable=broad-except
+          if hasattr(e, 'ag_error_metadata'):
+            raise e.ag_error_metadata.to_exception(type(e))
+          else:
+            raise
 
-    wrapper = tf_decorator.make_decorator(f, wrapper)
+    if inspect.isfunction(f) or inspect.ismethod(f):
+      wrapper = functools.update_wrapper(wrapper, f)
+
+    decorated_wrapper = tf_decorator.make_decorator(f, wrapper)
 
     # Sometimes the decorator is just desugared, making it impossible to detect.
     # This attribute makes detection easier.
-    setattr(wrapper, '__ag_compiled', True)
-    return wrapper
+    setattr(decorated_wrapper, '__ag_compiled', True)
+    return decorated_wrapper
 
   return decorator
 
@@ -194,6 +250,19 @@ class RunMode(Enum):
   PY_FUNC = 2
 
 
+def call_with_unspecified_conversion_status(func):
+  """Decorator that resets the conversion context to the unspecified status."""
+  def wrapper(*args, **kwargs):
+    with ag_ctx.ControlStatusCtx(status=ag_ctx.Status.UNSPECIFIED):
+      return func(*args, **kwargs)
+
+  if inspect.isfunction(func) or inspect.ismethod(func):
+    wrapper = functools.update_wrapper(wrapper, func)
+
+  setattr(wrapper, '__ag_compiled', True)
+  return wrapper
+
+
 def do_not_convert_internal(f):
   """Decorator that marks internal functions which do not need conversion."""
   setattr(f, '__ag_compiled', True)
@@ -201,12 +270,13 @@ def do_not_convert_internal(f):
 
 
 @tf_export('autograph.experimental.do_not_convert')
-def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
+def do_not_convert(func=None, run_as=RunMode.GRAPH, return_dtypes=None):
   """Decorator that suppresses the conversion of a function.
 
   See also: docs/pyfunc_dtypes.md
 
   Args:
+    func: function to decorate.
     run_as: RunMode, specifies how to use the function in TensorFlow.
     return_dtypes: Optional[Iterable[ Union[tf.DType,
       utils.py_func.MatchDType]]], the return data types of the converted
@@ -214,35 +284,41 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
       None if the function has no return values.
 
   Returns:
-    Callable, a decorator that wraps the original function.
+    If `func` is not None, returns a `Callable` which is equivalent to
+    `func`, but is not converted by AutoGraph.
+    If `func` is None, returns a decorator that, when invoked with a
+    single `func` argument, returns a `Callable` equivalent to the
+    above case.
   """
+  if func is None:
+    return functools.partial(
+        do_not_convert,
+        run_as=run_as,
+        return_dtypes=return_dtypes)
 
-  def decorator(f):
-    """Decorator implementation."""
+  def graph_wrapper(*args, **kwargs):
+    with ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED):
+      return func(*args, **kwargs)
 
-    @functools.wraps(f)
-    def graph_wrapper(*args, **kwargs):
-      return f(*args, **kwargs)
+  def py_func_wrapper(*args, **kwargs):
+    if kwargs:
+      raise NotImplementedError('RunMode.PY_FUNC does not yet support kwargs')
+    # TODO(mdan): Add support for kwargs.
+    return py_func.wrap_py_func(
+        func, return_dtypes, args, kwargs, use_dummy_return=not return_dtypes)
 
-    @functools.wraps(f)
-    def py_func_wrapper(*args, **kwargs):
-      if kwargs:
-        raise NotImplementedError('RunMode.PY_FUNC does not yet support kwargs')
-      # TODO(mdan): Add support for kwargs.
-      return py_func.wrap_py_func(
-          f, return_dtypes, args, kwargs, use_dummy_return=not return_dtypes)
+  if run_as == RunMode.GRAPH:
+    wrapper = graph_wrapper
+  elif run_as == RunMode.PY_FUNC:
+    wrapper = py_func_wrapper
+  else:
+    raise ValueError('unknown value for run_as: %s' % run_as)
 
-    if run_as == RunMode.GRAPH:
-      wrapper = graph_wrapper
-    elif run_as == RunMode.PY_FUNC:
-      wrapper = py_func_wrapper
-    else:
-      raise ValueError('unknown value for run_as: %s' % run_as)
+  if inspect.isfunction(func) or inspect.ismethod(func):
+    wrapper = functools.update_wrapper(wrapper, func)
 
-    setattr(wrapper, '__ag_compiled', True)
-    return wrapper
-
-  return decorator
+  setattr(wrapper, '__ag_compiled', True)
+  return wrapper
 
 
 def _attach_metadata(e, f, converted):
@@ -333,10 +409,17 @@ def converted_call(f, owner, options, args, kwargs):
                 composite_desc, args, kwargs)
 
   if inspect_utils.isbuiltin(f):
+    if f is eval:
+      return py_builtins.eval_in_original_context(f, args, 1)
     if kwargs:
       return py_builtins.overload_of(f)(*args, **kwargs)
     else:
       return py_builtins.overload_of(f)(*args)
+
+  # TODO(mdan): Clean up the naming inconsistency.
+  if hasattr(f, 'autograph_info__') or hasattr(f, '__ag_compiled'):
+    logging.log(2, 'Permanently whitelisted: %s: already converted', f)
+    return _call_unconverted(f, args, kwargs)
 
   # TODO(b/122265385): Remove this bypass.
   if (_is_known_loaded_type(f, 'wrapt', 'FunctionWrapper') or
@@ -388,6 +471,7 @@ def converted_call(f, owner, options, args, kwargs):
 
     # Unwrap functools.partial objects
     # TODO(mdan): Consider sharing unwrapping logic with tf_inspect.
+    # TODO(b/120224672): This unwrapping should be done before the checks above.
     while isinstance(f, functools.partial):
       args = f.args + args
       new_kwargs = {}
@@ -409,6 +493,11 @@ def converted_call(f, owner, options, args, kwargs):
       else:
         effective_args = args
 
+    elif hasattr(f, '__call__') and hasattr(f, '__class__'):
+      # Callable objects
+      target_entity = f.__call__
+      effective_args = (f,) + args
+
     elif tf_inspect.isclass(f):
       # Constructors
       # Note: Until we support class constructurs, and enable whole-class
@@ -416,11 +505,6 @@ def converted_call(f, owner, options, args, kwargs):
       # TODO(mdan): Consider removing unless there is a compelling use case.
       target_entity = f
       effective_args = args
-
-    elif hasattr(f, '__call__') and hasattr(f, '__class__'):
-      # Callable objects
-      target_entity = f.__call__
-      effective_args = (f,) + args
 
     else:
       target_entity = f
@@ -466,20 +550,20 @@ def converted_call(f, owner, options, args, kwargs):
       raise
     logging.warn(
         'Entity %s could not be transformed and will be executed as-is.'
-        ' Please report this to the AutgoGraph team. When filing the bug, set'
+        ' Please report this to the AutoGraph team. When filing the bug, set'
         ' the verbosity to 10 (on Linux, `export AUTOGRAPH_VERBOSITY=10`) and'
         ' attach the full output. Cause: %s', target_entity, e)
     return _call_unconverted(f, args, kwargs)
 
-  try:
-    with StackTraceMapper(converted_f), tf_stack.CurrentModuleFilter():
+  with StackTraceMapper(converted_f), tf_stack.CurrentModuleFilter():
+    try:
       if kwargs is not None:
         result = converted_f(*effective_args, **kwargs)
       else:
         result = converted_f(*effective_args)
-  except Exception as e:
-    _attach_metadata(e, converted_f, True)
-    raise
+    except Exception as e:
+      _attach_metadata(e, converted_f, True)
+      raise
 
   return result
 

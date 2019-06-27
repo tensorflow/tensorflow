@@ -152,6 +152,10 @@ class LiteralUtil {
   // Creates a scalar literal value containing the maximum value of the given
   // primitive type. For floating-point types, returns inf.
   static Literal MaxValue(PrimitiveType primitive_type);
+  // Creates a scalar literal value containing the NaN value of the given
+  // primitive type. Fail for non-inexact types. For complex types, returns a
+  // nan + nan * j value.
+  static StatusOr<Literal> NanValue(PrimitiveType primitive_type);
   // Creates a literal of the given shape where each element is `value`.
   template <typename NativeT>
   static Literal CreateFullWithDescendingLayout(

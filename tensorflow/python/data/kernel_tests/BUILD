@@ -1,12 +1,12 @@
 # Tests of TensorFlow kernels written using the Python API.
 
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 tf_py_test(
     name = "batch_test",
@@ -100,6 +100,9 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:script_ops",
         "//tensorflow/python:sparse_tensor",
+    ],
+    tags = [
+        "no_rocm",
     ],
 )
 
@@ -273,9 +276,12 @@ tf_py_test(
     additional_deps = [
         ":test_base",
         "//third_party/py/numpy",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -355,6 +361,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["iterator_test.py"],
     additional_deps = [
+        ":test_base",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python/data/ops:readers",
@@ -461,7 +468,6 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
     ],
     tags = [
-        "no_oss",  # TODO(b/117920141): Investigate breakage and re-enable.
         "no_windows_gpu",
     ],
     xla_enable_strict_auto_jit = True,
@@ -706,12 +712,12 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/ops/ragged",
-        "//tensorflow/python/ops/ragged:ragged_test_util",
     ],
 )
 

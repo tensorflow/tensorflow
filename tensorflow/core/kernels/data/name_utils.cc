@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/name_utils.h"
 
+#include "absl/strings/match.h"
+#include "re2/re2.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -21,39 +23,43 @@ namespace data {
 namespace name_utils {
 
 ABSL_CONST_INIT const char kDelimiter[] = "::";
+ABSL_CONST_INIT const char kDefaultDatasetDebugStringPrefix[] = "";
+
+constexpr char kDataset[] = "Dataset";
+constexpr char kOp[] = "Op";
+constexpr char kVersion[] = "V";
+constexpr char kVersionNumRegex[] = "V(\\d+)$";
 
 string OpName(const string& dataset_type) {
-  if (dataset_type == "Concatenate") {
-    return "ConcatenateDataset";
-  } else if (dataset_type == "Filter") {
-    return "FilterDataset";
-  } else if (dataset_type == "FlatMap") {
-    return "FlatMapDataset";
-  } else if (dataset_type == "Map") {
-    return "MapDataset";
-  } else if (dataset_type == "Prefetch") {
-    return "PrefetchDataset";
-  } else if (dataset_type == "Range") {
-    return "RangeDataset";
+  // For the dataset ops with different versions of kernels (e.g.
+  // ParallelInterleaveDatasetOp), the version number needs to be added to the
+  // end of op name.
+  int version_num;
+  if (RE2::PartialMatch(dataset_type, kVersionNumRegex, &version_num)) {
+    string op_name = dataset_type;
+    RE2::Replace(&op_name, kVersionNumRegex,
+                 strings::StrCat(kDataset, kVersion, version_num));
+    return op_name;
+  } else {
+    return strings::StrCat(dataset_type, kDataset);
   }
-  LOG(WARNING) << "Unknown dataset type " << dataset_type << std::endl;
-  return "UnknownDataset";
+}
+
+string ArgsToString(std::initializer_list<StringPiece> args) {
+  return strings::StrCat("(", absl::StrJoin(args, ", "), ")");
 }
 
 string DatasetDebugString(const string& dataset_type,
+                          const string& dataset_name_prefix,
                           std::initializer_list<StringPiece> args) {
   if (args.size() == 0) {
-    return strings::StrCat(OpName(dataset_type), "Op", kDelimiter, "Dataset");
+    return strings::StrCat(OpName(dataset_type), kOp, kDelimiter,
+                           dataset_name_prefix, kDataset);
   }
 
   string debug_str;
-  strings::StrAppend(&debug_str, dataset_type, "Op(");
-  auto iter = args.begin();
-  while (iter != args.end() - 1) {
-    strings::StrAppend(&debug_str, *iter, ", ");
-    ++iter;
-  }
-  strings::StrAppend(&debug_str, *iter, ")", kDelimiter, "Dataset");
+  strings::StrAppend(&debug_str, OpName(dataset_type), kOp, ArgsToString(args));
+  strings::StrAppend(&debug_str, kDelimiter, dataset_name_prefix, kDataset);
   return debug_str;
 }
 

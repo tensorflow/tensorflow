@@ -225,15 +225,13 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         maximum_cached_engines=1,
         use_calibration=run_params.use_calibration,
         use_function_backup=False,
-        max_batch_size=min(batch_list),
-        cached_engine_batches=None)
+        max_batch_size=min(batch_list))
     return conversion_params._replace(
         use_function_backup=IsQuantizationWithCalibration(conversion_params))
 
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""
-    # This setting combination requires quantization nodes to be present in
-    # order to build the engine.
+    # Ensure use_calibration=True in case of INT8 precision
     return (run_params.use_calibration or
             not IsQuantizationMode(run_params.precision_mode))
 
@@ -333,7 +331,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         minimum_segment_size=conversion_params.minimum_segment_size,
         is_dynamic_op=conversion_params.is_dynamic_op,
         maximum_cached_engines=conversion_params.maximum_cached_engines,
-        cached_engine_batches=conversion_params.cached_engine_batches,
         use_calibration=conversion_params.use_calibration,
         use_function_backup=conversion_params.use_function_backup)
     return converter
@@ -345,7 +342,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     assert conversion_params.precision_mode == "INT8"
     assert conversion_params.is_dynamic_op
     assert conversion_params.maximum_cached_engines == 1
-    assert not conversion_params.cached_engine_batches
     assert conversion_params.use_calibration
 
     # We only support calibrating single engine.
@@ -424,6 +420,11 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
     # Compute the expected mapping from each node to its input nodes.
     expected_input_map = {}
+    removed_const_nodes = set([
+        self._ToString(node.name)
+        for node in original_gdef.node
+        if node.op == "Const"
+    ])
     for node in original_gdef.node:
       name_str = self._ToString(node.name)
       target_node_name = old_to_new_node_map[name_str]
@@ -433,17 +434,20 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       input_set = expected_input_map[target_node_name]
       for inp in node.input:
         (prefix, inp_name) = _InputName(inp)
+        mapped_input = old_to_new_node_map[inp_name]
         # Add the input only if it's outside the segment (note that it could be
         # in a different engine).
-        if (not is_engine_op or
-            old_to_new_node_map[inp_name] != target_node_name):
-          if is_engine_op and name_to_node_map[inp_name].op == "Const":
-            # Const data input nodes to the segment has been copied to the
-            # segment graphdef and the engine, and the dependency has been
-            # converted to control dependendy.
-            input_set.add("^" + old_to_new_node_map[inp_name])
-          else:
-            input_set.add(prefix + old_to_new_node_map[inp_name])
+        if not is_engine_op or (mapped_input != target_node_name and
+                                name_to_node_map[inp_name].op != "Const"):
+          input_set.add(prefix + mapped_input)
+          if mapped_input in removed_const_nodes:
+            removed_const_nodes.remove(mapped_input)
+    # Remove const nodes that have no outputs.
+    expected_input_map = {
+        k: v
+        for k, v in expected_input_map.items()
+        if k not in removed_const_nodes
+    }
 
     # Compute the actual mapping from each node to its input nodes.
     actual_input_map = {}
@@ -458,7 +462,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     self.assertEqual(
         expected_input_map,
         actual_input_map,
-        msg="expected:\n%s\nvs actual:\n%s" %
+        msg="\nexpected:\n%s\nvs actual:\n%s" %
         (sorted(expected_input_map.items()), sorted(actual_input_map.items())))
 
   def _GetGraphDef(self, gdef_or_saved_model_dir):

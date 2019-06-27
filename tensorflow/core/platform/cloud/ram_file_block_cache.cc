@@ -165,7 +165,7 @@ Status RamFileBlockCache::Read(const string& filename, size_t offset, size_t n,
   if (n == 0) {
     return Status::OK();
   }
-  if (!IsCacheEnabled()) {
+  if (!IsCacheEnabled() || (n > max_bytes_)) {
     // The cache is effectively disabled, so we pass the read through to the
     // fetcher without breaking it up into blocks.
     return block_fetcher_(filename, offset, n, buffer, bytes_transferred);

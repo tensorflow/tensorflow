@@ -27,9 +27,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/segment/segment.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
@@ -64,24 +63,6 @@ namespace tensorrt {
 namespace convert {
 using absl::StrAppend;
 using absl::StrCat;
-
-TrtCandidateSelector::TrtCandidateSelector(
-    const grappler::GraphProperties& graph_properties,
-    TrtPrecisionMode precision_mode)
-    : graph_properties_(graph_properties), precision_mode_(precision_mode) {}
-
-Status TrtCandidateSelector::IsTensorRTCandidate(const Node* node) {
-  std::vector<const Edge*> input_edges;
-  TF_RETURN_IF_ERROR(node->input_edges(&input_edges));
-  std::vector<std::pair<const NodeDef*, int>> input_node_and_ports;
-  input_node_and_ports.reserve(input_edges.size());
-  for (const Edge* input_edge : input_edges) {
-    input_node_and_ports.emplace_back(&input_edge->src()->def(),
-                                      input_edge->src_output());
-  }
-  return validator_.ValidateNode(node->def(), input_node_and_ports,
-                                 precision_mode_, graph_properties_);
-}
 
 namespace {
 
@@ -200,10 +181,12 @@ Status GetEngineInfo(const Graph* g,
         continue;
       }
       if (edge->IsControlEdge()) {
-        // Control input.
-        info->connections.emplace_back(input_node->name(), input_node->id(),
-                                       node_name, node_id,
-                                       /*input_edge=*/true);
+        if (input_node->type_string() != "Const") {
+          // Non-Const control input.
+          info->connections.emplace_back(input_node->name(), input_node->id(),
+                                         node_name, node_id,
+                                         /*input_edge=*/true);
+        }
       } else if (input_node->type_string() == "Const") {
         // Add constant data input nodes into the segment graphdef (thus also in
         // the engine). We don't care if it has other output edges going into
@@ -218,12 +201,6 @@ Status GetEngineInfo(const Graph* g,
           continue;
         }
         VLOG(1) << "Adding const node " << input_node->name();
-        // Since we already add (duplicate) the const input node to the segment
-        // graphdef, it's now not a data dependency any more, but to make the
-        // dependency correct we still add a control dependency.
-        info->connections.emplace_back(input_node->name(), input_node->id(),
-                                       node_name, node_id,
-                                       /*input_edge=*/true);
       } else {
         // Non-const data input.
         int port = Graph::kControlSlot - 1;
@@ -483,10 +460,6 @@ Status CreateTRTNode(const ConversionParams& params,
     node_builder.ControlInput(c);
   }
 
-  if (info.engine_type == EngineInfo::EngineType::TRTStatic &&
-      !info.cached_engine_batches.empty()) {
-    LOG(WARNING) << "Cached engine batches are ignored for static engines";
-  }
   NodeDef trt_node;
   Status status =
       node_builder.Attr("input_shapes", input_shape_protos)
@@ -745,13 +718,13 @@ Status ConvertAfterShapes(const ConversionParams& params) {
   }
   segment_options.minimum_segment_size = params.minimum_segment_size;
   segment::SegmentNodesVector initial_segments;
-  TrtCandidateSelector candidate_selector(*params.graph_properties,
-                                          params.precision_mode);
+  TrtNodeValidator validator(*params.graph_properties, params.precision_mode,
+                             params.use_calibration);
   TF_RETURN_IF_ERROR(segment::SegmentGraph(
       &graph,
-      std::bind(&TrtCandidateSelector::IsTensorRTCandidate, &candidate_selector,
+      std::bind(&TrtNodeValidator::IsTensorRTCandidate, &validator,
                 std::placeholders::_1),
-      // Input validation is already done by TrtCandidateSelector, so we don't
+      // Input validation is already done by TrtNodeValidator, so we don't
       // need to check the input edges.
       [](const Edge* edge) { return true; }, OutputEdgeValidator(),
       segment_options, &initial_segments));
@@ -787,7 +760,6 @@ Status ConvertAfterShapes(const ConversionParams& params) {
                                    ? EngineInfo::EngineType::TRTDynamic
                                    : EngineInfo::EngineType::TRTStatic);
     curr_engine.use_calibration = params.use_calibration;
-    curr_engine.cached_engine_batches = params.cached_engine_batches;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
     if (params.use_function_backup) {
       status = RegisterSegmentFunctionToFunctionLibrary(

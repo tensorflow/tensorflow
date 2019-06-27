@@ -24,7 +24,6 @@ Pod::Spec.new do |s|
   s.public_header_files = objc_dir + 'apis/*.h'
   s.source_files = [
     objc_dir + '{apis,sources}/*.{h,m,mm}',
-    tfl_dir + 'c/c_api_internal.h',
     tfl_dir + 'experimental/c/c_api.h',
     tfl_dir + 'experimental/c/c_api_types.h',
   ]

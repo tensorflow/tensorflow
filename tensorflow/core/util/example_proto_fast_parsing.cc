@@ -1037,6 +1037,7 @@ Status FastParseExample(const Config& config,
                     "around 2^32 entries in your config.";
     hasher.seed++;
     config_index.Clear(config_size);
+    ok = true;
   }
   if (!ok) {
     return errors::Internal(
@@ -1309,6 +1310,7 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
                     "around 2^32 entries in your config.";
     hasher.seed++;
     config_index.Clear(config_size);
+    ok = true;
   }
   if (!ok) {
     return errors::Internal(

@@ -360,7 +360,7 @@ class TestNode : public model::Node {
     return 0;
   }
 
-  double TotalProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
     return 0;
   }
 };
@@ -399,6 +399,33 @@ TEST(SetterGetterTest, Node) {
   EXPECT_EQ(node->num_elements(), 1);
 }
 
+// Returns a weighted sum of a prior and the actual processing time.
+double weighted_processing_time(int64 num_elements, double processing_time,
+                                double prior) {
+  if (num_elements < 30) {
+    double prior_weight = 1.0L / static_cast<double>(2 << num_elements);
+    return prior_weight * prior + (1.0L - prior_weight) * processing_time;
+  } else {
+    return processing_time;
+  }
+}
+
+TEST(TestManyElements, Model) {
+  std::shared_ptr<Node> interleave_many =
+      model::MakeInterleaveManyNode({0, "interleave_many", nullptr});
+  std::shared_ptr<Node> source1 =
+      model::MakeSourceNode({1, "source1", interleave_many});
+  interleave_many->add_input(source1);
+  interleave_many->add_processing_time(100);
+  interleave_many->record_element();
+  source1->add_processing_time(200);
+  for (int i = 0; i < 100; i++) {
+    source1->record_element();
+  }
+  EXPECT_LE(interleave_many->TotalProcessingTime(),
+            (weighted_processing_time(100, 2, 0)) + 100);
+  EXPECT_GE(interleave_many->TotalProcessingTime(), 0);
+}
 }  // namespace
 }  // namespace model
 }  // namespace data

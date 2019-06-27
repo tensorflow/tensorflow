@@ -23,6 +23,9 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
@@ -112,6 +115,21 @@ class DispatchTest(test_util.TensorFlowTestCase):
       @dispatch.dispatch_for_types(some_op, CustomTensor)
       def override_for_some_op(x, y):  # pylint: disable=unused-variable
         return x if x.score > 0 else y
+
+  @test.mock.patch.object(tf_logging, "warning", autospec=True)
+  def testInteractionWithDeprecationWarning(self, mock_warning):
+    @deprecation.deprecated(date=None, instructions="Instructions")
+    @dispatch.add_dispatch_support
+    def some_op(x):
+      return x
+
+    some_op(5)
+
+    message = mock_warning.call_args[0][0] % mock_warning.call_args[0][1:]
+    self.assertRegexpMatches(
+        message,
+        r".*some_op \(from __main__\) is deprecated and will be "
+        "removed in a future version.*")
 
 
 if __name__ == "__main__":

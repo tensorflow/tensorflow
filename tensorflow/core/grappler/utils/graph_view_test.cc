@@ -2176,12 +2176,91 @@ TEST_F(TopologicalSortTest, NoLoopGraph) {
 }
 
 TEST_F(TopologicalSortTest, ValidLoopGraph) {
-  // NextIteration -> Merge loop.
+  // Control flow loop.
   auto test_graph = []() {
-    return GDef({NDef("b", "Merge", {"a", "e"}), NDef("c", "Switch", {"b"}),
-                 NDef("d", kIdentity, {"c"}), NDef("e", "NextIteration", {"d"}),
-                 NDef("a", "Const", {})},
-                /*funcs=*/{});
+    return GDef(
+        {NDef("while/Const_1", "Const", {}),
+         NDef("while/Enter_2", "Enter", {"while/Const_1"},
+              {{"frame_name", "while/while_context"}}),
+         NDef("while/Const", "Const", {}),
+         NDef("while/Enter_1", "Enter", {"while/Const"},
+              {{"frame_name", "while/while_context"}}),
+         NDef("while/iteration_counter", "Const", {}),
+         NDef("while/Enter", "Enter", {"while/iteration_counter"},
+              {{"frame_name", "while/while_context"}}),
+         NDef("while/maximum_iterations", "Const", {}),
+         NDef("while/Less/Enter", "Enter", {"while/maximum_iterations"},
+              {{"frame_name", "while/while_context"}}),
+         NDef("while/Less", "Less", {"while/Merge", "while/Less/Enter"}),
+         NDef("while/LogicalAnd", "LogicalAnd",
+              {"while/Less", "while/cond/Merge"}),
+         NDef("while/LoopCond", "LoopCond", {"while/LogicalAnd"}),
+         NDef("while/Switch", "Switch", {"while/Merge", "while/LoopCond"},
+              {{"_class", "loc:@while/Merge"}}),
+         NDef("while/Identity", "Identity", {"while/Switch:1"}),
+         NDef("while/add", "Add", {"while/Identity", "while/add/y"}),
+         NDef("while/NextIteration", "NextIteration", {"while/add"}),
+         NDef("while/Merge", "Merge", {"while/Enter", "while/NextIteration"}),
+         NDef("while/Less_1/y", "Const", {"^while/Merge"}),
+         NDef("while/add/y", "Const", {"^while/Identity"}),
+         NDef("while/mul/y", "Const", {"^while/Identity"}),
+         NDef("while/add_2/y", "Const", {"^while/Identity"}),
+         NDef("while/Switch_1", "Switch", {"while/Merge_1", "while/LoopCond"},
+              {{"_class", "loc:@while/Merge_1"}}),
+         NDef("while/Identity_1", "Identity", {"while/Switch_1:1"}),
+         NDef("while/add_2", "Add", {"while/Identity_1", "while/add_2/y"}),
+         NDef("while/NextIteration_1", "NextIteration", {"while/add_2"}),
+         NDef("while/Merge_1", "Merge",
+              {"while/Enter_1", "while/NextIteration_1"}),
+         NDef("while/Less_1", "Less", {"while/Merge_1", "while/Less_1/y"}),
+         NDef("while/cond/Switch", "Switch", {"while/Less_1", "while/Less_1"}),
+         NDef("while/cond/switch_f", "Identity", {"while/cond/Switch"}),
+         NDef("while/cond/Const_1", "Const", {"^while/cond/switch_f"}),
+         NDef("while/cond/switch_t", "Identity", {"while/cond/Switch:1"}),
+         NDef("while/cond/Const", "Const", {"^while/cond/switch_t"}),
+         NDef("while/cond/Merge", "Merge",
+              {"while/cond/Const_1", "while/cond/Const"}),
+         NDef("TensorArrayUnstack/range/delta", "Const", {}),
+         NDef("TensorArrayUnstack/range/start", "Const", {}),
+         NDef("TensorArrayUnstack/strided_slice/stack_2", "Const", {}),
+         NDef("TensorArrayUnstack/strided_slice/stack_1", "Const", {}),
+         NDef("TensorArrayUnstack/strided_slice/stack", "Const", {}),
+         NDef("TensorArrayUnstack/Shape", "Const", {}),
+         NDef("TensorArrayUnstack/strided_slice", "StridedSlice",
+              {"TensorArrayUnstack/Shape",
+               "TensorArrayUnstack/strided_slice/stack",
+               "TensorArrayUnstack/strided_slice/stack_1",
+               "TensorArrayUnstack/strided_slice/stack_2"}),
+         NDef("TensorArrayUnstack/range", "Range",
+              {"TensorArrayUnstack/range/start",
+               "TensorArrayUnstack/strided_slice",
+               "TensorArrayUnstack/range/delta"}),
+         NDef("TensorArray/size", "Const", {}),
+         NDef("TensorArray", "TensorArrayV3", {"TensorArray/size"}),
+         NDef("while/TensorArrayReadV3/Enter", "Enter", {"TensorArray"},
+              {{"frame_name", "while/while_context"}}),
+         NDef("Const", "Const", {}),
+         NDef("TensorArrayUnstack/TensorArrayScatter/TensorArrayScatterV3",
+              "TensorArrayScatterV3",
+              {"TensorArray", "TensorArrayUnstack/range", "Const",
+               "TensorArray:1"},
+              {{"_class", "loc@Const"}}),
+         NDef("while/TensorArrayReadV3/Enter_1", "Enter",
+              {"TensorArrayUnstack/TensorArrayScatter/TensorArrayScatterV3"},
+              {{"frame_name", "while/while_context"}}),
+         NDef("while/TensorArrayReadV3", "TensorArrayReadV3",
+              {"while/TensorArrayReadV3/Enter", "while/Identity_1",
+               "while/TensorArrayReadV3/Enter_1"}),
+         NDef("while/add_1", "Add", {"while/mul", "while/TensorArrayReadV3"}),
+         NDef("while/NextIteration_2", "NextIteration", {"while/add_1"}),
+         NDef("while/Merge_2", "Merge",
+              {"while/Enter_2", "while/NextIteration_2"}),
+         NDef("while/Switch_2", "Switch", {"while/Merge_2", "while/LoopCond"},
+              {{"_class", "loc@while/Merge_2"}}),
+         NDef("while/Exit_2", "Exit", {"while/Switch_2"}),
+         NDef("while/Identity_2", "Identity", {"while/Switch_2:1"}),
+         NDef("while/mul", "Mul", {"while/Identity_2", "while/mul/y"})},
+        /*funcs=*/{});
   };
 
   GraphDef graph = test_graph();
@@ -2191,7 +2270,6 @@ TEST_F(TopologicalSortTest, ValidLoopGraph) {
 
   TF_EXPECT_OK(graph_view.SortTopologically(/*ignore_cycles=*/false, {}));
   CompareGraphViewWithGraph(&graph_view, test_graph());
-  CompareGraphOrder(graph_view, {"a", "b", "c", "d", "e"});
 }
 
 TEST_F(TopologicalSortTest, DuplicateFanins) {
@@ -2249,8 +2327,8 @@ TEST_F(TopologicalSortTest, ExtraDependencies) {
   auto* f_node = graph_view.GetNode("f");
   ASSERT_NE(f_node, nullptr);
 
-  TF_EXPECT_OK(
-      graph_view.SortTopologically(/*ignore_cycles=*/true, {{e_node, f_node}}));
+  TF_EXPECT_OK(graph_view.SortTopologically(/*ignore_cycles=*/false,
+                                            {{e_node, f_node}}));
   CompareGraphViewWithGraph(&graph_view, test_graph());
   CompareGraphNodePrecedences(graph_view, {{"f", "a"},
                                            {"f", "c"},
@@ -2259,6 +2337,24 @@ TEST_F(TopologicalSortTest, ExtraDependencies) {
                                            {"c", "d"},
                                            {"d", "b"},
                                            {"e", "f"}});
+}
+
+TEST_F(TopologicalSortTest, PushVisitedNodes) {
+  auto test_graph = []() {
+    return GDef({NDef("d", kIdentity, {"c"}), NDef("c", kIdentity, {"b", "a"}),
+                 NDef("b", kIdentity, {"a"}), NDef("a", kIdentity, {})},
+                /*funcs=*/{});
+  };
+
+  GraphDef graph = test_graph();
+  Status status;
+  MutableGraphView graph_view(&graph, &status);
+  TF_ASSERT_OK(status);
+
+  TF_EXPECT_OK(graph_view.SortTopologically(/*ignore_cycles=*/false, {}));
+  CompareGraphViewWithGraph(&graph_view, test_graph());
+  CompareGraphNodePrecedences(graph_view,
+                              {{"a", "b"}, {"a", "c"}, {"b", "c"}, {"c", "d"}});
 }
 
 #define RUN_NUM_NODE_NUM_EDGE_BENCHMARK(name) \

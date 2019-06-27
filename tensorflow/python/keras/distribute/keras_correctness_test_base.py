@@ -90,11 +90,20 @@ def strategies_for_embedding_models():
 
 
 def test_combinations_for_embedding_model():
+  # TODO(sourabhbajaj): Enable tests for eager mode
+  eager_mode_strategies = [s for s in strategies_for_embedding_models()
+                           if not s.required_tpu]
+
   return (combinations.times(
       combinations.combine(
           distribution=strategies_for_embedding_models(),
           cloning=[True, False]),
-      (graph_mode_test_configuration() + eager_mode_test_configuration())))
+      (graph_mode_test_configuration())) +
+          combinations.times(
+              combinations.combine(
+                  distribution=eager_mode_strategies,
+                  cloning=[False]),
+              (eager_mode_test_configuration())))
 
 
 def test_combinations_with_tpu_strategies():
@@ -322,7 +331,7 @@ def compare_results(results_with_ds,
 
     return default_tolerance
 
-  for key in results_with_ds:
+  for key in sorted(results_with_ds.keys()):
     if (key.startswith('training_history') and
         isinstance(distribution, (tpu_strategy.TPUStrategy,
                                   tpu_strategy.TPUStrategyV1)) and
@@ -420,9 +429,9 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
   def get_model(self, distribution=None, cloning=None, input_shapes=None):
     raise NotImplementedError
 
-  def skip_unsupported_test_configuration(self, distribution):
-    if should_skip_tpu_with_eager(distribution):
-      self.skipTest('TPUStrategy does not support eager mode now.')
+  def skip_unsupported_test_configuration(self, distribution, cloning):
+    if should_skip_tpu_with_eager(distribution) and cloning:
+      self.skipTest('TPUStrategy does not support eager mode with cloning.')
     return
 
   def run_correctness_test(self,
@@ -434,16 +443,9 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
                            is_stateful_model=False,
                            partial_last_batch=None,
                            training_epochs=2):
-    # These tests pass in Google's internal build, but certain combinations
-    # fail in some of our open source builds. This next line is automatically
-    # rewritten by our conversion script.
-    in_tf_open_source = True
-    if (use_validation_data and not context.executing_eagerly() and
-        in_tf_open_source and distribution.num_replicas_in_sync > 1):
-      self.skipTest('Test broken; see b/129793413 and b/117920141')
     with self.cached_session():
       self.set_up_test_config(use_numpy, use_validation_data, with_batch_norm)
-      self.skip_unsupported_test_configuration(distribution)
+      self.skip_unsupported_test_configuration(distribution, cloning)
 
       if partial_last_batch == 'eval':
         x_train, y_train, x_eval, y_eval, x_predict = (
@@ -540,14 +542,14 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
   def run_dynamic_lr_test(self, distribution, cloning=None):
     with self.cached_session():
       self.set_up_test_config()
-      self.skip_unsupported_test_configuration(distribution)
+      self.skip_unsupported_test_configuration(distribution, cloning)
 
       x_train, y_train, _ = self.get_data()
       model = self.get_model(cloning=cloning, input_shapes=get_shapes(x_train))
       initial_weights = model.get_weights()
       update_freq = None
 
-      if (isinstance(distribution, tpu_strategy.TPUStrategy) and
+      if (isinstance(distribution, tpu_strategy.TPUStrategyV1) and
           distribution.extended.steps_per_run > 1):
         # For TPUStrategy with steps_per_run > 1, the callback is not invoked
         # every step. So, to compare the CPU/TPU, we let the CPU to behave the

@@ -60,6 +60,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
     rewriter_config.add_optimizers(kOptimizerName);
     rewriter_config.set_meta_optimizer_iterations(
         RewriterConfig_NumIterationsType_ONE);
+    rewriter_config.set_fail_on_optimizer_errors(true);
     auto custom_optimizer = rewriter_config.add_custom_optimizers();
     custom_optimizer->set_name(kOptimizerName);
     auto* custom_optimizations_list =

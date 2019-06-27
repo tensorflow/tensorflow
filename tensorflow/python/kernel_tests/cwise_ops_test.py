@@ -1005,6 +1005,16 @@ class ComplexMakeRealImagTest(test.TestCase):
       self._compareMake(real, 12.0, use_gpu)
       self._compareMake(23.0, imag, use_gpu)
 
+  def testRealImagNumericType(self):
+    for use_gpu in [True, False]:
+      for value in [1., 1j, 1. + 1j]:
+        np_real, np_imag = np.real(value), np.imag(value)
+        with test_util.device(use_gpu=use_gpu):
+          tf_real = math_ops.real(value)
+          tf_imag = math_ops.imag(value)
+          self.assertAllEqual(np_real, self.evaluate(tf_real))
+          self.assertAllEqual(np_imag, self.evaluate(tf_imag))
+
   def _compareRealImag(self, cplx, use_gpu):
     np_real, np_imag = np.real(cplx), np.imag(cplx)
     np_zeros = np_real * 0
@@ -1268,7 +1278,7 @@ class SingularGradientOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradientAtSingularity(self):
-    if not compat.forward_compatible(2019, 6, 14):
+    if not compat.forward_compatible(2019, 9, 14):
       self.skipTest("Skipping test for future functionality.")
 
     ops_and_singularity = [

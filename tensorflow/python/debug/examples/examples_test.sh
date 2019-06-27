@@ -103,6 +103,11 @@ cat << EOF | ${DEBUG_KERAS_BIN} --debug --ui_type=readline
 run -f has_inf_or_nan
 EOF
 
+# Test debugging of tf.keras, with non-debug runs included.
+cat << EOF | ${DEBUG_KERAS_BIN} --debug --ui_type=readline
+run -t 10
+EOF
+
 # Test offline_analyzer.
 echo
 echo "Testing offline_analyzer"

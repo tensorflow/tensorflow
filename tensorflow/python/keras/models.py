@@ -116,8 +116,7 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
     # If tensor comes from an input layer: cache the input layer.
     input_tensors = nest.flatten(input_tensors)
     input_tensors_ = []
-    for i in range(len(input_tensors)):
-      input_tensor = input_tensors[i]
+    for i, input_tensor in enumerate(input_tensors):
       if not K.is_keras_tensor(input_tensor):
         original_input_layer = model._input_layers[i]
         name = original_input_layer.name

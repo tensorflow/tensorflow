@@ -35,27 +35,33 @@ bool IsSequence(PyObject* o);
 
 // Implements the same interface as nest.is_sequence_or_composite
 // Returns a true if its input is a collections.Sequence (except strings)
-// or a CompositeTensor.
+// or a CompositeTensor or a TypeSpec (except TensorSpec).
 //
 // Args:
 //   seq: an input sequence.
 //
 // Returns:
 //   True if the sequence is a not a string and is a collections.Sequence or a
-//   dict or a CompositeTensor.
+//   dict or a CompositeTensor or a TypeSpec.
 bool IsSequenceOrComposite(PyObject* o);
 
-// Implements the same interface as nest.is_sequence_or_composite
-// Returns a true if its input is a collections.Sequence (except strings)
-// or a CompositeTensor.
+// Returns a true if its input is a CompositeTensor or a TypeSpec.
 //
 // Args:
 //   seq: an input sequence.
 //
 // Returns:
-//   True if the sequence is a not a string and is a collections.Sequence or a
-//   dict or a CompositeTensor.
+//   True if the sequence is a CompositeTensor.
 bool IsCompositeTensor(PyObject* o);
+
+// Returns a true if its input is a TypeSpec, but is not a TensorSpec.
+//
+// Args:
+//   seq: an input sequence.
+//
+// Returns:
+//   True if the sequence is a TypeSpec, but is not a TensorSpec.
+bool IsTypeSpec(PyObject* o);
 
 // Implements the same interface as tensorflow.util.nest._is_namedtuple
 // Returns Py_True iff `instance` should be considered a `namedtuple`.

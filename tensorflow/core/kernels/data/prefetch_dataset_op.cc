@@ -33,14 +33,20 @@ namespace data {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
+/* static */ constexpr const char* const PrefetchDatasetOp::kDatasetType;
+/* static */ constexpr const char* const PrefetchDatasetOp::kInputDataset;
+/* static */ constexpr const char* const PrefetchDatasetOp::kBufferSize;
+/* static */ constexpr const char* const PrefetchDatasetOp::kOutputTypes;
+/* static */ constexpr const char* const PrefetchDatasetOp::kOutputShapes;
+/* static */ constexpr const char* const PrefetchDatasetOp::kSlackPeriod;
+
 // Determines the fraction of slack time by which to delay prefetching of data.
 constexpr double kSleepFactor = 0.2;
-constexpr const char PrefetchDatasetOp::kDatasetType[];
-constexpr const char PrefetchDatasetOp::kInputDataset[];
-constexpr const char PrefetchDatasetOp::kBufferSize[];
-constexpr const char PrefetchDatasetOp::kOutputTypes[];
-constexpr const char PrefetchDatasetOp::kOutputShapes[];
-constexpr const char PrefetchDatasetOp::kSlackPeriod[];
+constexpr char kBuffer[] = "buffer";
+constexpr char kStatus[] = "status";
+constexpr char kSizeSuffix[] = ".size";
+constexpr char kCodeSuffix[] = ".code";
+constexpr char kErrorMessageSuffix[] = ".error_message";
 
 class PrefetchDatasetOp::Dataset : public DatasetBase {
  public:
@@ -197,11 +203,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(WriteStatus(writer, i, buffer_element.status));
         if (buffer_element.status.ok()) {
           TF_RETURN_IF_ERROR(writer->WriteScalar(
-              full_name(strings::StrCat("buffer[", i, "].size")),
+              full_name(strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix)),
               buffer_element.value.size()));
           for (size_t j = 0; j < buffer_element.value.size(); j++) {
             TF_RETURN_IF_ERROR(writer->WriteTensor(
-                full_name(strings::StrCat("buffer[", i, "][", j, "]")),
+                full_name(strings::StrCat(kBuffer, "[", i, "][", j, "]")),
                 buffer_element.value[j]));
           }
         }
@@ -230,14 +236,15 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           {
             int64 temp;
             TF_RETURN_IF_ERROR(reader->ReadScalar(
-                full_name(strings::StrCat("buffer[", i, "].size")), &temp));
+                full_name(strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix)),
+                &temp));
             value_size = static_cast<size_t>(temp);
           }
           buffer_element.value.reserve(value_size);
           for (size_t j = 0; j < value_size; j++) {
             buffer_element.value.emplace_back();
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                full_name(strings::StrCat("buffer[", i, "][", j, "]")),
+                full_name(strings::StrCat(kBuffer, "[", i, "][", j, "]")),
                 &buffer_element.value.back()));
           }
         }
@@ -408,11 +415,12 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
     string CodeKey(size_t index) {
-      return full_name(strings::StrCat("status[", index, "].code"));
+      return full_name(strings::StrCat(kStatus, "[", index, "]", kCodeSuffix));
     }
 
     string ErrorMessageKey(size_t index) {
-      return full_name(strings::StrCat("status[", index, "].error_message"));
+      return full_name(
+          strings::StrCat(kStatus, "[", index, "]", kErrorMessageSuffix));
     }
 
     // This mutex is used to ensure exclusivity between multiple threads
@@ -440,19 +448,24 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
   const int64 slack_period_;
 };
 
+PrefetchDatasetOp::PrefetchDatasetOp(OpKernelConstruction* ctx)
+    : UnaryDatasetOpKernel(ctx) {
+  if (ctx->HasAttr(kSlackPeriod)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kSlackPeriod, &slack_period_));
+  }
+}
+
 void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                     DatasetBase** output) {
   int64 buffer_size = 0;
   OP_REQUIRES_OK(ctx,
                  ParseScalarArgument<int64>(ctx, kBufferSize, &buffer_size));
-  OP_REQUIRES(ctx,
-              buffer_size >= 0 || buffer_size == PrefetchAutotuner::kAutoTune,
+  OP_REQUIRES(ctx, buffer_size >= 0 || buffer_size == model::kAutotune,
               errors::InvalidArgument("buffer_size must be >= 0 or set "
                                       "buffer_size to be ",
-                                      PrefetchAutotuner::kAutoTune,
-                                      " for auto-tuning"));
+                                      model::kAutotune, " for auto-tuning"));
 
-  if (buffer_size == PrefetchAutotuner::kAutoTune) {
+  if (buffer_size == model::kAutotune) {
     metrics::RecordTFDataAutotune(kDatasetType);
   }
 

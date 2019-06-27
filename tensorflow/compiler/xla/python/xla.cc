@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -131,6 +132,9 @@ PYBIND11_MODULE(xla_extension, m) {
   // Shapes
   py::class_<Shape> shape_class(m, "Shape");
   shape_class
+      .def(py::init([](const string& s) {
+        return absl::make_unique<Shape>(ValueOrThrow(ParseShape(s)));
+      }))
       .def_static(
           "tuple_shape",
           [](std::vector<Shape> shapes) -> Shape {
@@ -239,7 +243,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("__repr__", &ProgramShape::ToString);
 
   // Literals
-  py::class_<Literal>(m, "Literal").def("__repr__", &Literal::ToString);
+  py::class_<Literal, std::shared_ptr<Literal>>(m, "Literal")
+      .def("__repr__", &Literal::ToString);
   py::class_<LiteralSlice>(m, "LiteralSlice");
   py::implicitly_convertible<Literal, LiteralSlice>();
   py::implicitly_convertible<BorrowingLiteral, LiteralSlice>();
@@ -275,7 +280,8 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<AllocatorConfig> alloc_config(m, "AllocatorConfig");
   alloc_config.def(py::init<>())
       .def_readwrite("kind", &AllocatorConfig::kind)
-      .def_readwrite("memory_fraction", &AllocatorConfig::memory_fraction);
+      .def_readwrite("memory_fraction", &AllocatorConfig::memory_fraction)
+      .def_readwrite("preallocate", &AllocatorConfig::preallocate);
   py::enum_<AllocatorConfig::Kind>(alloc_config, "Kind")
       .value("DEFAULT", AllocatorConfig::Kind::kDefault)
       .value("PLATFORM", AllocatorConfig::Kind::kPlatform)
@@ -293,9 +299,11 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_static("from_python", &PyLocalBuffer::FromPython)
       .def_static("from_python_values", &PyLocalBuffer::FromPythonValues)
       .def_static("make_tuple", &PyLocalBuffer::MakeTuple)
+      .def("copy_to_device", &PyLocalBuffer::CopyToDevice)
       .def("delete", &PyLocalBuffer::Delete)
       .def("destructure", &PyLocalBuffer::DestructureTuple)
       .def("block_host_until_ready", &PyLocalBuffer::BlockHostUntilReady)
+      .def("copy_to_host_async", &PyLocalBuffer::CopyToHostAsync)
       .def("to_py", &PyLocalBuffer::ToPython)
       .def("shape", &PyLocalBuffer::on_host_shape)
       .def("device", &PyLocalBuffer::device_ordinal)
@@ -586,9 +594,13 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("TRANSPOSE", TriangularSolveOptions::TRANSPOSE)
       .value("ADJOINT", TriangularSolveOptions::ADJOINT);
 
+  py::enum_<PrecisionConfig::Precision>(m, "PrecisionConfig_Precision")
+      .value("DEFAULT", PrecisionConfig::DEFAULT)
+      .value("HIGH", PrecisionConfig::HIGH)
+      .value("HIGHEST", PrecisionConfig::HIGHEST);
+
   // TODO(phawkins): improve bindings for these types.
   py::class_<ChannelHandle>(m, "ChannelHandle");
-  py::class_<PrecisionConfig>(m, "PrecisionConfig");
 
   tensorflow::AddXrtSubmodule(&m);
 }

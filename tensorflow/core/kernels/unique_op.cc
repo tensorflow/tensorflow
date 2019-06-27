@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <functional>
+#include <unordered_map>
 #include <utility>
 
-#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -106,7 +106,7 @@ class UniqueOp : public OpKernel {
       auto Tin = input.flat<T>();
       const int64 N = static_cast<int64>(Tin.size());
 
-      absl::flat_hash_map<T, TIndex> uniq;
+      std::unordered_map<T, TIndex> uniq;
       uniq.reserve(2 * N);
       for (Eigen::Index i = 0, j = 0; i < N; ++i) {
         auto it = uniq.insert(std::make_pair(Tin(i), j));
@@ -153,8 +153,7 @@ class UniqueOp : public OpKernel {
         return true;
       };
 
-      absl::flat_hash_map<int64, int64, decltype(hash_fn),
-                          decltype(equal_to_fn)>
+      std::unordered_map<int64, int64, decltype(hash_fn), decltype(equal_to_fn)>
           uniq(0, hash_fn, equal_to_fn);
 
       uniq.reserve(2 * Tin.dimension(1));

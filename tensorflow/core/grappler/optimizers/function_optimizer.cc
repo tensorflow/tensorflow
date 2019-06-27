@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/lower_case_op.h"
 #include "tensorflow/core/common_runtime/lower_functional_ops.h"
 #include "tensorflow/core/common_runtime/lower_if_op.h"
 #include "tensorflow/core/common_runtime/lower_while_op.h"
@@ -1121,6 +1122,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
   std::unique_ptr<Graph> graph = absl::make_unique<Graph>(flib_def);
 
   GraphConstructorOptions graph_constructor_options;
+  graph_constructor_options.allow_internal_ops = true;
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(graph_constructor_options,
                                             item.graph, graph.get()));
 
@@ -1157,6 +1159,8 @@ Status InlineFunctionCalls(const GrapplerItem& item,
 
       if (n->type_string() == "If") {
         TF_RETURN_IF_ERROR(RewriteIfNode(n, graph.get(), flib_def, false));
+      } else if (n->type_string() == "Case") {
+        TF_RETURN_IF_ERROR(RewriteCaseNode(n, graph.get(), flib_def, false));
       } else if (n->type_string() == "While") {
         TF_RETURN_IF_ERROR(RewriteWhileNode(n, graph.get(), flib_def, false));
       }

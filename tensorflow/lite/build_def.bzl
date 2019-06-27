@@ -13,17 +13,11 @@ def tflite_copts():
         "-DFARMHASH_NO_CXX_STRING",
     ] + select({
         str(Label("//tensorflow:android_arm64")): [
-            "-std=c++11",
             "-O3",
         ],
         str(Label("//tensorflow:android_arm")): [
             "-mfpu=neon",
-            "-mfloat-abi=softfp",
-            "-std=c++11",
             "-O3",
-        ],
-        str(Label("//tensorflow:android_x86")): [
-            "-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK",
         ],
         str(Label("//tensorflow:ios_x86_64")): [
             "-msse4.1",
@@ -35,13 +29,11 @@ def tflite_copts():
         "//conditions:default": [
             "-Wno-sign-compare",
         ],
-    }) + select({
-        str(Label("//tensorflow:with_default_optimizations")): [],
-        "//conditions:default": ["-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK"],
     })
 
     return copts
 
+EXPORTED_SYMBOLS = "//tensorflow/lite/java/src/main/native:exported_symbols.lds"
 LINKER_SCRIPT = "//tensorflow/lite/java/src/main/native:version_script.lds"
 
 def tflite_linkopts_unstripped():
@@ -113,22 +105,28 @@ def tflite_jni_binary(
         copts = tflite_copts(),
         linkopts = tflite_jni_linkopts(),
         linkscript = LINKER_SCRIPT,
+        exported_symbols = EXPORTED_SYMBOLS,
         linkshared = 1,
         linkstatic = 1,
         testonly = 0,
         deps = [],
         srcs = []):
     """Builds a jni binary for TFLite."""
-    linkopts = linkopts + [
-        "-Wl,--version-script",  # Export only jni functions & classes.
-        "$(location {})".format(linkscript),
-    ]
+    linkopts = linkopts + select({
+        "//tensorflow:macos": [
+            "-Wl,-exported_symbols_list,$(location {})".format(exported_symbols),
+        ],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "-Wl,--version-script,$(location {})".format(linkscript),
+        ],
+    })
     native.cc_binary(
         name = name,
         copts = copts,
         linkshared = linkshared,
         linkstatic = linkstatic,
-        deps = deps + [linkscript],
+        deps = deps + [linkscript, exported_symbols],
         srcs = srcs,
         linkopts = linkopts,
         testonly = testonly,
@@ -139,7 +137,8 @@ def tflite_cc_shared_object(
         copts = tflite_copts(),
         linkopts = [],
         linkstatic = 1,
-        deps = []):
+        deps = [],
+        visibility = None):
     """Builds a shared object for TFLite."""
     tf_cc_shared_object(
         name = name,
@@ -148,6 +147,7 @@ def tflite_cc_shared_object(
         linkopts = linkopts + tflite_jni_linkopts(),
         framework_so = [],
         deps = deps,
+        visibility = visibility,
     )
 
 def tf_to_tflite(name, src, options, out):
@@ -308,6 +308,7 @@ def generated_test_models():
         "resolve_constant_strided_slice",
         "reverse_sequence",
         "reverse_v2",
+        "rfft2d",
         "round",
         "rsqrt",
         "shape",
@@ -351,14 +352,24 @@ def generated_test_models_failing(conversion_mode):
             "unidirectional_sequence_lstm",
             "unidirectional_sequence_rnn",
         ]
+    elif conversion_mode == "forward-compat":
+        return [
+            # TODO(b/135758082): L2Norm is broken in future forward
+            # compatibility horizon
+            "l2norm",
+            # TODO(b/135756979): Eye/MatrixDiag is broken in future
+            # forward compatibility horizon
+            "matrix_diag",
+            "matrix_set_diag",
+            "eye",
+        ]
 
     return []
 
 def generated_test_conversion_modes():
     """Returns a list of conversion modes."""
 
-    # TODO(nupurgarg): Add "pb2lite" when it's in open source. b/113614050.
-    return ["toco-flex", ""]
+    return ["toco-flex", "forward-compat", ""]
 
 def generated_test_models_all():
     """Generates a list of all tests with the different converters.
@@ -400,17 +411,16 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
     """
     toco = "//tensorflow/lite/toco:toco"
     flags = ""
-    if conversion_mode:
-        # TODO(nupurgarg): Comment in when pb2lite is in open source. b/113614050.
-        # if conversion_mode == "pb2lite":
-        #     toco = "//tensorflow/lite/experimental/pb2lite:pb2lite"
-        flags = "--ignore_converter_errors --run_with_flex"
+    if conversion_mode == "toco-flex":
+        flags += " --ignore_converter_errors --run_with_flex"
+    elif conversion_mode == "forward-compat":
+        flags += " --make_forward_compat_test"
 
     gen_zipped_test_file(
         name = "zip_%s" % test_name,
         file = "%s.zip" % test_name,
         toco = toco,
-        flags = flags,
+        flags = flags + " --save_graphdefs",
     )
     tf_cc_test(name, **kwargs)
 

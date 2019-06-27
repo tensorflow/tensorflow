@@ -1,26 +1,14 @@
 # Description:
 #   RPC communication interfaces and implementations for TensorFlow.
 
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
-filegroup(
-    name = "c_srcs",
-    data = glob([
-        "**/*.cc",
-        "**/*.h",
-    ]),
-)
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_cuda_library",
+    "tf_cc_binary",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 # For platform specific build config
 load(
@@ -32,9 +20,22 @@ load(
     "tf_cuda_tests_tags",
 )
 
-package(default_visibility = [
-    "//tensorflow:internal",
-])
+package(
+    default_visibility = [
+        "//tensorflow:internal",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
+
+filegroup(
+    name = "c_srcs",
+    data = glob([
+        "**/*.cc",
+        "**/*.h",
+    ]),
+)
 
 cc_library(
     name = "grpc_util",
@@ -63,15 +64,17 @@ cc_library(
 
 cc_library(
     name = "grpc_state",
-    srcs = [],
+    srcs = ["grpc_state.cc"],
     hdrs = ["grpc_state.h"],
     deps = [
         ":grpc_client_cq_tag",
         ":grpc_util",
         "//tensorflow:grpc++",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:tensor_coding",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -157,6 +160,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_cache_logger",
         "//tensorflow/core/distributed_runtime:worker_cache_partial",
         "//tensorflow/core/distributed_runtime:worker_interface",
+        "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
     ],
 )
 

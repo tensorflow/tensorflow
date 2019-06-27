@@ -1,14 +1,14 @@
 # Description:
 #   A small domain-specific language (DSL) for defining deep learning networks.
 
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
+
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 py_library(
     name = "specs",

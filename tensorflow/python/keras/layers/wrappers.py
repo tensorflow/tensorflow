@@ -452,7 +452,7 @@ class Bidirectional(Wrapper):
     self.return_state = layer.return_state
     self.supports_masking = True
     self._trainable = True
-    self._num_constants = None
+    self._num_constants = 0
     # We don't want to track `layer` since we're already tracking the two copies
     # of it we actually run.
     self._setattr_tracking = False
@@ -619,11 +619,10 @@ class Bidirectional(Wrapper):
         # forward and backward section, and be feed to layers accordingly.
         forward_inputs = [inputs[0]]
         backward_inputs = [inputs[0]]
-        pivot = (len(inputs) -
-                 (self._num_constants if self._num_constants else 0)) // 2 + 1
+        pivot = (len(inputs) - self._num_constants) // 2 + 1
         # add forward initial state
         forward_inputs += inputs[1:pivot]
-        if self._num_constants is None:
+        if not self._num_constants:
           # add backward initial state
           backward_inputs += inputs[pivot:]
         else:
@@ -722,7 +721,7 @@ class Bidirectional(Wrapper):
 
   def get_config(self):
     config = {'merge_mode': self.merge_mode}
-    if self._num_constants is not None:
+    if self._num_constants:
       config['num_constants'] = self._num_constants
 
     if hasattr(self, '_backward_layer_config'):
@@ -737,7 +736,7 @@ class Bidirectional(Wrapper):
   def from_config(cls, config, custom_objects=None):
     # Instead of updating the input, create a copy and use that.
     config = config.copy()
-    num_constants = config.pop('num_constants', None)
+    num_constants = config.pop('num_constants', 0)
     backward_layer_config = config.pop('backward_layer', None)
     if backward_layer_config is not None:
       from tensorflow.python.keras.layers import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top

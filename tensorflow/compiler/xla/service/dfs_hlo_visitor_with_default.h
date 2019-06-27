@@ -115,6 +115,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleRng(HloInstructionPtr random) override {
     return DefaultAction(random);
   }
+  Status HandleRngGetAndUpdateState(HloInstructionPtr random) override {
+    return DefaultAction(random);
+  }
   Status HandleInfeed(HloInstructionPtr infeed) override {
     return DefaultAction(infeed);
   }
@@ -193,6 +196,12 @@ class DfsHloVisitorWithDefaultBase
   }
   Status HandleConditional(HloInstructionPtr conditional) override {
     return DefaultAction(conditional);
+  }
+  Status HandleCopyStart(HloInstructionPtr copy_start) override {
+    return DefaultAction(copy_start);
+  }
+  Status HandleCopyDone(HloInstructionPtr copy_done) override {
+    return DefaultAction(copy_done);
   }
   Status HandleRecv(HloInstructionPtr recv) override {
     return DefaultAction(recv);

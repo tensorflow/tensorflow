@@ -104,7 +104,7 @@ class ConcatByAnyChannel : public NodeShader {
     auto inputs = ctx.graph->FindInputs(ctx.node->id);
 
     // Implementation supports concatenation by channels only.
-    if (attr.axis != ::tflite::gpu::Axis::CHANNELS) {
+    if (attr.axis != Axis::CHANNELS) {
       return false;
     }
 
@@ -324,7 +324,7 @@ class FlatConcatByHeight : public NodeShader {
     auto inputs = ctx.graph->FindInputs(ctx.node->id);
 
     // Implementation supports concatenation by height only.
-    if (attr.axis != ::tflite::gpu::Axis::HEIGHT) {
+    if (attr.axis != Axis::HEIGHT) {
       return false;
     }
 
@@ -390,7 +390,7 @@ class FlatConcatByWidth : public NodeShader {
     auto inputs = ctx.graph->FindInputs(ctx.node->id);
 
     // Implementation supports concatenation by width only.
-    if (attr.axis != ::tflite::gpu::Axis::WIDTH) {
+    if (attr.axis != Axis::WIDTH) {
       return false;
     }
 

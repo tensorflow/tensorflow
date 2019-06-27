@@ -1037,10 +1037,10 @@ TEST_F(ConstantFoldingTest, ControlDependencies) {
   Output i1 = ops::Identity(scope.WithOpName("i1"), {c});
   Output i2 =
       ops::Identity(scope.WithOpName("i2").WithControlDependencies(p2), {i1});
-  Output i3 = ops::Identity(scope.WithOpName("e"), {i2});
+  Output i3 = ops::Identity(scope.WithOpName("i3"), {i2});
 
   GrapplerItem item;
-  item.fetch.push_back("e");
+  item.fetch.push_back("i3");
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
   ConstantFolding optimizer(/*cpu_device=*/nullptr);
@@ -1048,18 +1048,18 @@ TEST_F(ConstantFoldingTest, ControlDependencies) {
   Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  std::vector<string> expected_nodes = {"dflt", "p1", "p2", "e"};
+  std::vector<string> expected_nodes = {"dflt", "p1", "p2", "i3"};
   EXPECT_EQ(output.node_size(), expected_nodes.size());
   int i = 0;
   int found = 0;
   for (const auto& node : output.node()) {
     EXPECT_EQ(expected_nodes[i], output.node(i).name());
     i++;
-    if (node.name() == "e") {
+    if (node.name() == "i3") {
       EXPECT_EQ("Const", node.op());
       ++found;
-      auto folded = EvaluateNodes(output, {"e"});
-      auto expected = EvaluateNodes(item.graph, {"e"});
+      auto folded = EvaluateNodes(output, {"i3"});
+      auto expected = EvaluateNodes(item.graph, {"i3"});
       EXPECT_EQ(1, expected.size());
       EXPECT_EQ(1, folded.size());
       test::ExpectTensorEqual<int>(folded[0], expected[0]);
@@ -2390,12 +2390,11 @@ TEST_F(ConstantFoldingTest, MergeConcat_PartialFolding) {
   TF_EXPECT_OK(status);
 
   GraphDef want;
-  AddNode("ConstantFolding/concat2_partial_split_0_0", "Const", {}, {}, &want);
+  AddNode("ConstantFolding/concat2_partial_split_0", "Const", {}, {}, &want);
   AddNode("axis", "Const", {}, {}, &want);
   AddNode("ph", "Placeholder", {}, {}, &want);
   AddNode("concat2", "ConcatV2",
-          {"ConstantFolding/concat2_partial_split_0_0", "ph", "axis"}, {},
-          &want);
+          {"ConstantFolding/concat2_partial_split_0", "ph", "axis"}, {}, &want);
 
   CompareGraphs(want, got);
 }
@@ -3037,7 +3036,7 @@ TEST_F(ConstantFoldingTest, MaterializeReductionIndices_NotFullReduction) {
 
 TEST_F(ConstantFoldingTest, LargeConstant) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
-  // Generate a 4k by 4k constant matrix.
+  // Generate a 4k by 4k constant, non-compressible matrix.
   Output mat_diag =
       ops::Const(scope.WithOpName("mat_diag"), 3.14f, TensorShape({1024 * 4}));
   Output mat = ops::Diag(scope.WithOpName("mat"), mat_diag);
@@ -3057,25 +3056,26 @@ TEST_F(ConstantFoldingTest, LargeConstant) {
   int found = 0;
   for (const NodeDef& node : output.node()) {
     if (node.name() == "out") {
-      EXPECT_EQ("Identity", node.op());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("mat", node.input(0));
+      EXPECT_EQ(node.op(), "Identity");
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "mat");
       ++found;
     } else if (node.name() == "mat") {
-      EXPECT_EQ("Diag", node.op());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("mat_diag", node.input(0));
+      EXPECT_EQ(node.op(), "Diag");
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "mat_diag");
       ++found;
     }
   }
-  EXPECT_EQ(2, found);
-
-  EXPECT_GT(1024 * 1024, output.ByteSizeLong());
+  EXPECT_EQ(found, 2);
+  // output should be no longer than the size of the constant "mat_diag"
+  // plus a small constant amount for the remaining nodes.
+  EXPECT_LT(output.ByteSizeLong(), sizeof(int) * 4 * 1024 + 500);
 
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
-  EXPECT_EQ(1, tensors_expected.size());
+  ASSERT_EQ(tensors_expected.size(), 1);
   auto tensors = EvaluateNodes(output, item.fetch);
-  EXPECT_EQ(1, tensors.size());
+  ASSERT_EQ(tensors.size(), 1);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
 
@@ -3776,8 +3776,10 @@ TEST_F(ConstantFoldingTest, MaterializeConstantValuedNode) {
 TEST_F(ConstantFoldingTest, MaterializeConstantValuedNodeHugeFill) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
   Output value = ops::Const(scope.WithOpName("value"), 42, {});
-  Output fill_huge = ops::Fill(scope.WithOpName("fill_huge"),
-                               {1024, 1024, 1024, 1024, 1024}, value);
+  Output shape_const = ops::Const(scope.WithOpName("shape"),
+                                  {1024, 1024, 1024, 1024, 1024}, {5});
+  Output fill_huge =
+      ops::Fill(scope.WithOpName("fill_huge"), shape_const, value);
 
   GrapplerItem item;
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
@@ -3801,8 +3803,8 @@ TEST_F(ConstantFoldingTest, MaterializeConstantValuedNodeHugeFill) {
     EXPECT_EQ(node.op(), "Const");
     if (node.name() == "fill_huge") {
       ASSERT_EQ(node.input_size(), 2);
-      EXPECT_EQ(node.input(0)[0], '^');
-      EXPECT_EQ(node.input(1)[0], '^');
+      EXPECT_EQ(node.input(0), "^shape");
+      EXPECT_EQ(node.input(1), "^value");
     }
   }
 }

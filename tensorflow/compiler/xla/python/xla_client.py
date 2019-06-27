@@ -128,6 +128,7 @@ def _gpu_backend_factory():
   """Returns a GPU backend. BFC allocator is used by default."""
   allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
   memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
+  preallocate = os.getenv('XLA_PYTHON_CLIENT_PREALLOCATE')
   if allocator not in ('default', 'platform', 'bfc'):
     raise ValueError(
         'XLA_PYTHON_CLIENT_ALLOCATOR env var must be "default", "platform", or '
@@ -141,6 +142,7 @@ def _gpu_backend_factory():
     config.kind = _xla.AllocatorConfig.Kind.BFC
   if memory_fraction:
     config.memory_fraction = float(memory_fraction)
+  config.preallocate = preallocate not in ('0', 'false', 'False')
 
   client = _xla.LocalClient.Get(
       platform='gpu', xla_platform_id='CUDA', asynchronous=True,
@@ -283,6 +285,8 @@ class Shape(object):
   def from_pyval(pyval) -> Shape:
     "Returns a Shape that describes a tuple-tree of Numpy arrays."
 
+  def __init__(self, str) -> Shape:
+    "Parses a shape string."
   def __eq__(self, other: Shape) -> bool:
   def __ne__(self, other: Shape) -> bool:
   def __hash__(self):
@@ -296,7 +300,6 @@ class Shape(object):
   def element_type(self) -> np.dtype:
   def dimensions(self) -> (int, int, ...):
   def rank(self) -> int:
-  def minor_to_major(self) -> [int]:
   def with_major_to_minor_layout_if_absent(self) -> Shape:
     "Returns a copy with missing layouts set to major-to-minor."
 
@@ -354,7 +357,6 @@ class Buffer(object):
   # Buffer is not an instantiable type and exists only for its static methods.
   # The underlying buffer objects are C++ object with the following
   # API:
-  # def to_py(self):
   # def shape(self) -> Shape:
   # def device(self) -> int:
   # def delete(self):
@@ -362,6 +364,16 @@ class Buffer(object):
   # def is_deleted(self) -> bool:
   # def block_host_until_ready(self):
   #    """Blocks the calling thread until the buffer is ready on device."""
+  # def copy_to_host_async(self):
+  #    """Requests a copy of the buffer to the host.
+  #
+  #       Does not block waiting for the copy. Values fetched are available via
+  #       `to_py()`; the purpose of `copy_to_host_async` is to prefetch values
+  #       for subsequent `to_py()` calls, especially when requesting many values
+  #       at once.
+  #    """
+  # def to_py(self):
+  #    """Returns the value of the buffer as a Python tuple tree of ndarrays."""
   #
   # TODO(phawkins): remove Buffer and its static methods completely, have
   # clients call methods on Backend to create buffers.
@@ -1244,7 +1256,7 @@ class ComputationBuilder(object):
     """
     return ops.BuildConstantSubGraph(operand)
 
-  def DotGeneral(self, lhs, rhs, dimension_numbers):
+  def DotGeneral(self, lhs, rhs, dimension_numbers, precision_config=None):
     """Enqueues a general dot operation onto the computation.
 
     Args:
@@ -1258,9 +1270,17 @@ class ComputationBuilder(object):
     """
     if isinstance(dimension_numbers, tuple):
       dimension_numbers = GetDotDimensionsFromLists(dimension_numbers)
-    return ops.DotGeneral(lhs, rhs, dimension_numbers)
+    return ops.DotGeneral(
+        lhs, rhs, dimension_numbers, precision_config=precision_config)
 
-  def Conv(self, lhs, rhs, window_strides, padding, feature_group_count=1):
+  def Conv(self,
+           lhs,
+           rhs,
+           window_strides,
+           padding,
+           feature_group_count=1,
+           batch_group_count=1,
+           precision_config=None):
     """Enqueues a Conv operation onto the computation.
 
     Args:
@@ -1269,6 +1289,7 @@ class ComputationBuilder(object):
       window_strides: length-N array-like of integer kernel strides.
       padding: PaddingType representing either 'SAME' or 'VALID' padding.
       feature_group_count: number of feature groups for grouped convolution.
+      batch_group_count: number of batch groups for grouped convolution.
     Returns: a XlaOp representing the Conv operation.
     """
     pads = _convert_padding_type_to_pad_values(
@@ -1281,7 +1302,9 @@ class ComputationBuilder(object):
         window_strides,
         pads, [], [],
         dimension_numbers=None,
-        feature_group_count=feature_group_count)
+        feature_group_count=feature_group_count,
+        batch_group_count=batch_group_count,
+        precision_config=precision_config)
 
   def ConvWithGeneralPadding(self,
                              lhs,
@@ -1290,7 +1313,9 @@ class ComputationBuilder(object):
                              padding,
                              lhs_dilation,
                              rhs_dilation,
-                             feature_group_count=1):
+                             feature_group_count=1,
+                             batch_group_count=1,
+                             precision_config=None):
     """Enqueues a ConvWithGeneralPadding operation onto the computation.
 
     Args:
@@ -1301,6 +1326,7 @@ class ComputationBuilder(object):
       lhs_dilation: length-N array-like of dilation factors.
       rhs_dilation: length-N array-like of dilation factors.
       feature_group_count: number of feature groups for grouped convolution.
+      batch_group_count: number of batch groups for grouped convolution.
 
     Returns:
       A ComputationdataHandle representing the added ConvWithGeneralPadding op.
@@ -1313,7 +1339,9 @@ class ComputationBuilder(object):
         list(lhs_dilation),
         list(rhs_dilation),
         dimension_numbers=None,
-        feature_group_count=feature_group_count)
+        feature_group_count=feature_group_count,
+        batch_group_count=batch_group_count,
+        precision_config=precision_config)
 
   def _GetConvDimensionNumbers(self, num_spatial_dims):
     """Create ConvolutionDimensionNumbers proto for convolutions."""
@@ -1338,7 +1366,9 @@ class ComputationBuilder(object):
                          lhs_dilation,
                          rhs_dilation,
                          dimension_numbers=None,
-                         feature_group_count=1):
+                         feature_group_count=1,
+                         batch_group_count=1,
+                         precision_config=None):
     """Enqueues a ConvGeneralDilated operation onto the computation.
 
     Args:
@@ -1368,6 +1398,7 @@ class ComputationBuilder(object):
           default, use the same dimension numbering as Conv and
           ConvWithGeneralPadding.
       feature_group_count: number of feature groups for grouped convolution.
+      batch_group_count: number of batch groups for grouped convolution.
     Returns: a XlaOp representing the ConvGenralDilated operation.
     """
     if dimension_numbers is None:
@@ -1391,9 +1422,17 @@ class ComputationBuilder(object):
       dimension_numbers.output_spatial_dimensions.extend(
           sorted((i for i, c in enumerate(out_spec) if c not in {'N', 'C'}),
                  key=lambda i: rhs_spec.index(out_spec[i])))
-    return ops.ConvGeneralDilated(lhs, rhs, window_strides, padding,
-                                  lhs_dilation, rhs_dilation, dimension_numbers,
-                                  feature_group_count)
+    return ops.ConvGeneralDilated(
+        lhs,
+        rhs,
+        window_strides,
+        padding,
+        lhs_dilation,
+        rhs_dilation,
+        dimension_numbers,
+        feature_group_count,
+        batch_group_count,
+        precision_config=precision_config)
 
   def Sort(self, operand, dimension=-1):
     """Enqueues a sort operation onto the computation."""
@@ -1635,6 +1674,16 @@ class ConvolutionDimensionNumbers(object):
     self.output_batch_dimension = 0
     self.output_feature_dimension = 0
     self.output_spatial_dimensions = []
+
+
+class PrecisionConfig(object):
+  """Python representation of a xla.PrecisionConfig protobuf."""
+  __slots__ = ('operand_precision',)
+
+  Precision = _xla.PrecisionConfig_Precision
+
+  def __init__(self):
+    self.operand_precision = []
 
 
 class GatherDimensionNumbers(object):

@@ -67,6 +67,7 @@ struct MklConvFwdParams {
   string dtypes = string("");
   struct PostOpParam {
     string name;
+    mkldnn::algorithm alg;
     std::vector<float> param;
   };
   std::vector<PostOpParam> post_op_params;
@@ -240,12 +241,12 @@ class MklConvFwdPrimitive : public MklPrimitive {
     mkldnn::post_ops post_ops;
     if (!post_op_params.empty()) {
       for (auto const& post_op_param : post_op_params) {
-        if (post_op_param.name == "relu") {
+        if (post_op_param.name == "activation") {
           DCHECK_EQ(post_op_param.param.size(), 3);
           float op_scale = post_op_param.param[0];
           float op_alpha = post_op_param.param[1];
           float op_beta = post_op_param.param[2];
-          post_ops.append_eltwise(op_scale, mkldnn::eltwise_relu, op_alpha,
+          post_ops.append_eltwise(op_scale, post_op_param.alg, op_alpha,
                                   op_beta);
         } else if (post_op_param.name == "sum") {
           DCHECK_EQ(post_op_param.param.size(), 1);
@@ -258,7 +259,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
             post_ops_attr.set_output_scales(2, post_op_param.param);
           }
         } else {
-          DCHECK((post_op_param.name == "relu") ||
+          DCHECK((post_op_param.name == "activation") ||
                  (post_op_param.name == "sum") ||
                  (post_op_param.name == "output_scale"));
         }
@@ -368,7 +369,7 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<float> {
 
     // Generate keys for post-ops
     for (auto const& post_op_param : convFwdDims.post_op_params) {
-      if (post_op_param.name == "relu") {
+      if (post_op_param.name == "activation") {
         DCHECK_EQ(post_op_param.param.size(), 3);
       } else if (post_op_param.name == "sum") {
         DCHECK_EQ(post_op_param.param.size(), 1);
@@ -757,7 +758,13 @@ class MklConvOp : public OpKernel {
 
  protected:
   void set_fuse_biasadd(bool fuse_biasadd) { fuse_biasadd_ = fuse_biasadd; }
-  void set_fuse_relu(bool fuse_relu) { fuse_relu_ = fuse_relu; }
+  void set_fuse_activation(bool fuse_activation,
+                           mkldnn::algorithm activation_alg,
+                           float relu_up_bound = 0.0) {
+    fuse_activation_ = fuse_activation;
+    activation_alg_ = activation_alg;
+    relu_up_bound_ = relu_up_bound;
+  }
   void set_fuse_pad(bool fuse_pad) {
     fuse_pad_ = fuse_pad;
     // In PadwithFusedConv OP, pad is the fourth index.
@@ -779,8 +786,13 @@ class MklConvOp : public OpKernel {
     // Add fusions as post ops
     // NOTE: Fusion of BiasAdd is handled directly inside MklConvOp by
     // checking `fuse_biasadd_` flag.
-    if (fuse_add_) params.post_op_params.push_back({"sum", {1.0}});
-    if (fuse_relu_) params.post_op_params.push_back({"relu", {1.0, 0.0, 0.0}});
+    if (fuse_add_) {
+      params.post_op_params.push_back({"sum", mkldnn::algorithm_undef, {1.0}});
+    }
+    if (fuse_activation_) {
+      params.post_op_params.push_back(
+          {"activation", activation_alg_, {1.0, relu_up_bound_, 0.0}});
+    }
   }
 
   virtual Tbias* GetBiasHandle(OpKernelContext* context,
@@ -866,9 +878,12 @@ class MklConvOp : public OpKernel {
 
   // Initialize to values the template is instantiated with
   bool fuse_biasadd_ = bias_enabled;
-  bool fuse_relu_ = false;
+  bool fuse_activation_ = false;
   bool fuse_pad_ = pad_enabled;
   bool fuse_add_ = false;
+
+  float relu_up_bound_ = 0.0;
+  mkldnn::algorithm activation_alg_ = mkldnn::algorithm_undef;
 
   int input_index_pad_ = 2;
 
@@ -1054,10 +1069,26 @@ class MklFusedConvOp
                   errors::InvalidArgument(
                       "Fused Conv2D must have one extra argument: bias."));
     } else if (fused_ops == std::vector<string>{"Relu"}) {
-      this->set_fuse_relu(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_relu);
+    } else if (fused_ops == std::vector<string>{"Relu6"}) {
+      this->set_fuse_activation(true, mkldnn::eltwise_bounded_relu, 6.0);
+    } else if (fused_ops == std::vector<string>{"Elu"}) {
+      this->set_fuse_activation(true, mkldnn::eltwise_elu);
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu"}) {
       this->set_fuse_biasadd(true);
-      this->set_fuse_relu(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_relu);
+      OP_REQUIRES(context, num_args == 1,
+                  errors::InvalidArgument(
+                      "Fused Conv2D must have one extra argument: bias."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu6"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_bounded_relu, 6.0);
+      OP_REQUIRES(context, num_args == 1,
+                  errors::InvalidArgument(
+                      "Fused Conv2D must have one extra argument: bias."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Elu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_elu);
       OP_REQUIRES(context, num_args == 1,
                   errors::InvalidArgument(
                       "Fused Conv2D must have one extra argument: bias."));
@@ -1071,7 +1102,23 @@ class MklFusedConvOp
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_add(true);
-      this->set_fuse_relu(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_relu);
+      OP_REQUIRES(
+          context, num_args == 2,
+          errors::InvalidArgument(
+              "Fused Conv2D must have two extra arguments: bias and add."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu6"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_bounded_relu, 6.0);
+      OP_REQUIRES(
+          context, num_args == 2,
+          errors::InvalidArgument(
+              "Fused Conv2D must have two extra arguments: bias and add."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Elu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      this->set_fuse_activation(true, mkldnn::eltwise_elu);
       OP_REQUIRES(
           context, num_args == 2,
           errors::InvalidArgument(
@@ -1226,7 +1273,8 @@ class MklQuantizedConv2DOp
         scales[i] = factor * input_range * filter_range /
                     (255.0f * 127.0f * output_range);
       }
-      params.post_op_params.push_back({"output_scale", scales});
+      params.post_op_params.push_back(
+          {"output_scale", mkldnn::algorithm_undef, scales});
     }
   }
 
@@ -1309,7 +1357,8 @@ class MklQuantizedConv2DReluOp
                            MklConvFwdParams& params) override {
     MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output, bias_enabled,
                          is_depthwise>::ExtendConvFwdParams(context, params);
-    params.post_op_params.push_back({"relu", {1.0, 0.0, 0.0}});
+    params.post_op_params.push_back(
+        {"activation", mkldnn::eltwise_relu, {1.0, 0.0, 0.0}});
   }
 };
 
@@ -1366,14 +1415,17 @@ class MklQuantizedConv2DSumReluOp
       // If it is not then  it is DT_INT8 and is scaled appropriately.
       if (summand_type == DT_QUINT8)
         params.post_op_params.push_back(
-            {"sum", {scale_summand / scale_output}});
+            {"sum", mkldnn::algorithm_undef, {scale_summand / scale_output}});
       else
         params.post_op_params.push_back(
-            {"sum", {255.0f * scale_summand / (scale_output * 127.0f)}});
+            {"sum",
+             mkldnn::algorithm_undef,
+             {255.0f * scale_summand / (scale_output * 127.0f)}});
     } else {
-      params.post_op_params.push_back({"sum", {1.0}});
+      params.post_op_params.push_back({"sum", mkldnn::algorithm_undef, {1.0}});
     }
-    params.post_op_params.push_back({"relu", {1.0, 0.0, 0.0}});
+    params.post_op_params.push_back(
+        {"activation", mkldnn::eltwise_relu, {1.0, 0.0, 0.0}});
   }
 
   void AllocateOutputTensor(OpKernelContext* context,
@@ -1823,49 +1875,51 @@ REGISTER_KERNEL_BUILDER(
       Name("_MklConv2D")                                                \
           .Device(DEVICE_CPU)                                           \
           .TypeConstraint<T>("T")                                       \
-          .Label(mkl_op_registry::kMklOpLabel),                         \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),          \
       MklConvOp<CPUDevice, T, T, T, T, T, int32, false, false, false>); \
   REGISTER_KERNEL_BUILDER(                                              \
       Name("_MklConv2DWithBias")                                        \
           .Device(DEVICE_CPU)                                           \
           .TypeConstraint<T>("T")                                       \
-          .Label(mkl_op_registry::kMklOpLabel),                         \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),          \
       MklConvOp<CPUDevice, T, T, T, T, T, int32, true, false, false>);  \
-  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DWithBias")              \
-                              .Device(DEVICE_CPU)                       \
-                              .TypeConstraint<T>("T")                   \
-                              .Label(mkl_op_registry::kMklOpLabel),     \
-                          MklDummyOp<CPUDevice, T>);                    \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("__MklDummyConv2DWithBias")                                  \
+          .Device(DEVICE_CPU)                                           \
+          .TypeConstraint<T>("T")                                       \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),          \
+      MklDummyOp<CPUDevice, T>);                                        \
   REGISTER_KERNEL_BUILDER(                                              \
       Name("_MklPadWithConv2D")                                         \
           .Device(DEVICE_CPU)                                           \
           .TypeConstraint<T>("T")                                       \
           .TypeConstraint<int32>("Tpaddings")                           \
-          .Label(mkl_op_registry::kMklOpLabel),                         \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),          \
       MklConvOp<CPUDevice, T, T, T, T, T, int32, false, true, false>);  \
   REGISTER_KERNEL_BUILDER(                                              \
       Name("_MklPadWithConv2D")                                         \
           .Device(DEVICE_CPU)                                           \
           .TypeConstraint<T>("T")                                       \
           .TypeConstraint<int64>("Tpaddings")                           \
-          .Label(mkl_op_registry::kMklOpLabel),                         \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),          \
       MklConvOp<CPUDevice, T, T, T, T, T, int64, false, true, false>);  \
-  REGISTER_KERNEL_BUILDER(Name("__MklDummyPadWithConv2D")               \
-                              .Device(DEVICE_CPU)                       \
-                              .TypeConstraint<T>("T")                   \
-                              .TypeConstraint<int32>("Tpaddings")       \
-                              .Label(mkl_op_registry::kMklOpLabel),     \
-                          MklDummyOp<CPUDevice, T>);
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("__MklDummyPadWithConv2D")                                   \
+          .Device(DEVICE_CPU)                                           \
+          .TypeConstraint<T>("T")                                       \
+          .TypeConstraint<int32>("Tpaddings")                           \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),          \
+      MklDummyOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU_2D);
 TF_CALL_bfloat16(REGISTER_MKL_CPU_2D);
 
-#define REGISTER_MKL_CPU_2D_DEPTHWISE(T)        \
-  REGISTER_KERNEL_BUILDER(                      \
-      Name("_MklDepthwiseConv2dNative")         \
-          .Device(DEVICE_CPU)                   \
-          .TypeConstraint<T>("T")               \
-          .Label(mkl_op_registry::kMklOpLabel), \
+#define REGISTER_MKL_CPU_2D_DEPTHWISE(T)                       \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklDepthwiseConv2dNative")                        \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
       MklConvOp<CPUDevice, T, T, T, T, T, int32, false, false, true>);
 
 TF_CALL_float(REGISTER_MKL_CPU_2D_DEPTHWISE);
@@ -1873,44 +1927,45 @@ TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_DEPTHWISE);
 
 // Note we are registering _MklFusedConv2D.
 // We check the fused_ops attributes to decide if bias is enabled or not.
-#define REGISTER_MKL_CPU_2D_FUSED(T)                                \
-  REGISTER_KERNEL_BUILDER(                                          \
-      Name("_MklFusedConv2D")                                       \
-          .Device(DEVICE_CPU)                                       \
-          .TypeConstraint<T>("T")                                   \
-          .Label(mkl_op_registry::kMklOpLabel),                     \
-      MklFusedConvOp<CPUDevice, T, T, T, T, T, int32, false>);      \
-  REGISTER_KERNEL_BUILDER(                                          \
-      Name("_MklPadWithFusedConv2D")                                \
-          .Device(DEVICE_CPU)                                       \
-          .TypeConstraint<int32>("Tpaddings")                       \
-          .TypeConstraint<T>("T")                                   \
-          .Label(mkl_op_registry::kMklOpLabel),                     \
-      MklFusedConvOp<CPUDevice, T, T, T, T, T, int32, true>);       \
-  REGISTER_KERNEL_BUILDER(                                          \
-      Name("_MklPadWithFusedConv2D")                                \
-          .Device(DEVICE_CPU)                                       \
-          .TypeConstraint<T>("T")                                   \
-          .TypeConstraint<int64>("Tpaddings")                       \
-          .Label(mkl_op_registry::kMklOpLabel),                     \
-      MklFusedConvOp<CPUDevice, T, T, T, T, T, int64, true>);       \
-  REGISTER_KERNEL_BUILDER(Name("__MklDummyPadWithFusedConv2D")      \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .TypeConstraint<int32>("Tpaddings")   \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklDummyOp<CPUDevice, T>);
+#define REGISTER_MKL_CPU_2D_FUSED(T)                           \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklFusedConv2D")                                  \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklFusedConvOp<CPUDevice, T, T, T, T, T, int32, false>); \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklPadWithFusedConv2D")                           \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<int32>("Tpaddings")                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklFusedConvOp<CPUDevice, T, T, T, T, T, int32, true>);  \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklPadWithFusedConv2D")                           \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .TypeConstraint<int64>("Tpaddings")                  \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklFusedConvOp<CPUDevice, T, T, T, T, T, int64, true>);  \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("__MklDummyPadWithFusedConv2D")                     \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .TypeConstraint<int32>("Tpaddings")                  \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklDummyOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU_2D_FUSED);
 TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_FUSED);
 
 // Register 3D operations
-#define REGISTER_MKL_CPU_3D(T)                  \
-  REGISTER_KERNEL_BUILDER(                      \
-      Name("_MklConv3D")                        \
-          .Device(DEVICE_CPU)                   \
-          .TypeConstraint<T>("T")               \
-          .Label(mkl_op_registry::kMklOpLabel), \
+#define REGISTER_MKL_CPU_3D(T)                                 \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklConv3D")                                       \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
       MklConvOp<CPUDevice, T, T, T, T, T, int32, false, false, false>);
 TF_CALL_float(REGISTER_MKL_CPU_3D);
 TF_CALL_bfloat16(REGISTER_MKL_CPU_3D);

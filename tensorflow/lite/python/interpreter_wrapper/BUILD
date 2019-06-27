@@ -1,9 +1,9 @@
+load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 
 cc_library(
     name = "numpy",
@@ -25,6 +25,7 @@ cc_library(
         ":python_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:builtin_ops",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",

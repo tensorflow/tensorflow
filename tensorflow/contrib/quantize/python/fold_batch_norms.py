@@ -562,7 +562,7 @@ def _FoldUnfusedBatchNorms(graph, is_training, freeze_batch_norm_delay):
     if add_bypass_ctx:
       add_bypass_ctx = add_bypass_ctx + '/'
 
-    add_bypass = graph.get_operation_by_name(add_bypass_ctx + 'Add')
+    add_bypass = graph.get_operation_by_name(add_bypass_ctx + 'AddV2')
     nodes_modified_count = common.RerouteTensor(
         folded_op.outputs[0], original_op.outputs[0], can_modify=[add_bypass])
     if nodes_modified_count != 1:
@@ -850,6 +850,7 @@ class _OpCloner(object):
     self.op_type_to_action = {
         'Mul': self._CloneMul,
         'Add': self._CloneAdd,
+        'AddV2': self._CloneAdd,
         'Conv2D': self._CloneConv2d,
         'DepthwiseConv2dNative': self._CloneDepthwiseConv2d,
         'MatMul': self._CloneMatMul,

@@ -87,7 +87,7 @@ class Adam(optimizer_v2.OptimizerV2):
 
       $$m_t := beta_1 * m_{t-1} + (1 - beta_1) * g$$
       $$v_t := beta_2 * v_{t-1} + (1 - beta_2) * g * g$$
-      $$v_hat_t := max(v_hat_{t-1}, v_t)
+      $$v_hat_t := max(v_hat_{t-1}, v_t)$$
       $$variable := variable - lr_t * m_t / (\sqrt{v_hat_t} + \epsilon)$$
 
     The default value of 1e-7 for epsilon might not be a good default in
@@ -161,7 +161,7 @@ class Adam(optimizer_v2.OptimizerV2):
 
   def _resource_apply_dense(self, grad, var):
     var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
+    lr_t = self._decayed_lr_t[var_dtype]
     m = self.get_slot(var, 'm')
     v = self.get_slot(var, 'v')
     beta_1_t = self._get_hyper('beta_1', var_dtype)
@@ -201,7 +201,7 @@ class Adam(optimizer_v2.OptimizerV2):
 
   def _resource_apply_sparse(self, grad, var, indices):
     var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
+    lr_t = self._decayed_lr_t[var_dtype]
     beta_1_t = self._get_hyper('beta_1', var_dtype)
     beta_2_t = self._get_hyper('beta_2', var_dtype)
     local_step = math_ops.cast(self.iterations + 1, var_dtype)

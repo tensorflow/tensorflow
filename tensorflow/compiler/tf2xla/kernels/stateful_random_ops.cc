@@ -36,7 +36,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-xla::BitGeneratorTy BitGenerator(Algorithm alg) {
+xla::BitGeneratorTy BitGen(Algorithm alg) {
   if (alg == RNG_ALG_PHILOX) {
     return [](xla::XlaOp key, xla::XlaOp state, const xla::Shape& shape) {
       return xla::PhiloxBitGenerator(key, state, shape, /*scramble=*/false);
@@ -52,14 +52,15 @@ xla::RngOutput StatefulRngUniform(Algorithm alg, xla::XlaOp key,
   xla::PrimitiveType type = shape.element_type();
   switch (type) {
     case xla::F32:
-      return xla::UniformF32Distribution(key, initial_state, BitGenerator(alg),
-                                         minval, maxval, shape);
+    case xla::F64:
+      return xla::UniformFloatingPointDistribution(
+          key, initial_state, BitGen(alg), minval, maxval, shape);
     case xla::U32:
     case xla::S32:
     case xla::U64:
     case xla::S64:
-      return UniformIntDistribution(key, initial_state, BitGenerator(alg),
-                                    minval, maxval, shape);
+      return UniformIntDistribution(key, initial_state, BitGen(alg), minval,
+                                    maxval, shape);
     default:
       return {key.builder()->ReportError(xla::Unimplemented(
                   "Types other than F32, U32, S32, U64 and S64 "
@@ -74,7 +75,7 @@ xla::RngOutput StatefulRngUniformFullInt(Algorithm alg, xla::XlaOp key,
                                          xla::XlaOp initial_state,
                                          const xla::Shape& shape) {
   xla::PrimitiveType type = shape.element_type();
-  xla::RngOutput output = BitGenerator(alg)(key, initial_state, shape);
+  xla::RngOutput output = BitGen(alg)(key, initial_state, shape);
   switch (type) {
     case xla::U32:
     case xla::U64:
@@ -206,10 +207,13 @@ class StatefulUniformOp : public XlaOpKernel {
                                    xla::XlaOp key,
                                    TensorShape shape) -> SamplerReturnType {
       xla::Shape xla_shape;
-      TF_RETURN_IF_ERROR(TensorShapeToXLAShape(DT_FLOAT, shape, &xla_shape));
+      DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
+      TF_RETURN_IF_ERROR(TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
+      xla::PrimitiveType rng_primitive_type = xla_shape.element_type();
       xla::RngOutput uniform_state = StatefulRngUniform(
-          alg, key, state, xla_shape, xla::ConstantR0<float>(builder, 0.0),
-          xla::ConstantR0<float>(builder, 1.0));
+          alg, key, state, xla_shape,
+          xla::ConstantR0WithType(builder, rng_primitive_type, 0.0),
+          xla::ConstantR0WithType(builder, rng_primitive_type, 1.0));
       xla::XlaOp uniform = uniform_state.value;
       state = uniform_state.state;
       uniform = MaybeConvertF32ToBF16(uniform, dtype_);
@@ -226,12 +230,12 @@ class StatefulUniformOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(StatefulUniformOp);
 };
 
-// TODO(wangpeng): Support plain float16 and float64 to get rid of the
-//   `TypeConstraint`.
+// TODO(wangpeng): Support plain float16 to get rid of the `TypeConstraint`.
 REGISTER_XLA_OP(Name("StatefulUniform")
                     .CompileTimeConstantInput("algorithm")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype", {DT_FLOAT, DT_BFLOAT16}),
+                    .TypeConstraint("dtype",
+                                    {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16}),
                 StatefulUniformOp);
 
 class StatefulStandardNormalOp : public XlaOpKernel {
@@ -247,9 +251,10 @@ class StatefulStandardNormalOp : public XlaOpKernel {
         [this](Algorithm alg, xla::XlaOp state, xla::XlaOp key,
                TensorShape shape) -> SamplerReturnType {
       xla::Shape xla_shape;
-      TF_RETURN_IF_ERROR(TensorShapeToXLAShape(DT_FLOAT, shape, &xla_shape));
-      xla::RngOutput value_state =
-          xla::NormalF32Distribution(key, state, BitGenerator(alg), xla_shape);
+      DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
+      TF_RETURN_IF_ERROR(TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
+      xla::RngOutput value_state = xla::NormalFloatingPointDistribution(
+          key, state, BitGen(alg), xla_shape);
       xla::XlaOp normal = MaybeConvertF32ToBF16(value_state.value, dtype_);
       return {{normal, value_state.state}};
     };
@@ -264,12 +269,12 @@ class StatefulStandardNormalOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(StatefulStandardNormalOp);
 };
 
-// TODO(wangpeng): Support plain float16 and float64 to get rid of the
-//   `TypeConstraint`.
+// TODO(wangpeng): Support plain float16 to get rid of the `TypeConstraint`.
 REGISTER_XLA_OP(Name("StatefulStandardNormalV2")
                     .CompileTimeConstantInput("algorithm")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype", {DT_FLOAT, DT_BFLOAT16}),
+                    .TypeConstraint("dtype",
+                                    {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16}),
                 StatefulStandardNormalOp);
 
 class StatefulTruncatedNormalOp : public XlaOpKernel {
@@ -286,7 +291,8 @@ class StatefulTruncatedNormalOp : public XlaOpKernel {
         [builder, this](Algorithm alg, xla::XlaOp state, xla::XlaOp key,
                         TensorShape shape) -> SamplerReturnType {
       xla::Shape xla_shape;
-      TF_RETURN_IF_ERROR(TensorShapeToXLAShape(DT_FLOAT, shape, &xla_shape));
+      DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
+      TF_RETURN_IF_ERROR(TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
 
       xla::RngOutput uniform_result = StatefulRngUniform(
           alg, key, state, xla_shape,
@@ -309,12 +315,12 @@ class StatefulTruncatedNormalOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(StatefulTruncatedNormalOp);
 };
 
-// TODO(wangpeng): Support plain float16 and float64 to get rid of the
-//   `TypeConstraint`.
+// TODO(wangpeng): Support plain float16 to get rid of the `TypeConstraint`.
 REGISTER_XLA_OP(Name("StatefulTruncatedNormal")
                     .CompileTimeConstantInput("algorithm")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype", {DT_FLOAT, DT_BFLOAT16}),
+                    .TypeConstraint("dtype",
+                                    {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16}),
                 StatefulTruncatedNormalOp);
 
 class StatefulUniformIntOp : public XlaOpKernel {

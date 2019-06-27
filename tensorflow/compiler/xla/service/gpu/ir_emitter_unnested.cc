@@ -39,8 +39,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
@@ -61,6 +63,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/replica_id_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
@@ -134,14 +137,6 @@ bool ReachRootViaOnlyTuples(const HloInstruction& hlo,
   }
 
   return true;
-}
-
-// If `hlo` is a Transpose, returns its operand; otherwise returns `hlo` itself.
-const HloInstruction* StripTranspose(const HloInstruction& hlo) {
-  if (hlo.IsRank2Transpose()) {
-    return hlo.operand(0);
-  }
-  return &hlo;
 }
 
 // Updates the launch dimensions in "thunk" and annotate the launch dimensions
@@ -238,17 +233,10 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
     }
   }
 
+  AnnotateFunctionAsGpuKernel(module, kernel, &b_);
+
   // TODO(b/65380986): Investigate if adding fast math flags for generated
   // kernels makes sense.
-
-  // Add the declaration of this kernel to llvm.nvvm.annotations so that NVPTX
-  // treats it as a CUDA kernel.
-  llvm::NamedMDNode* nvvm_annotations_node =
-      module->getOrInsertNamedMetadata("nvvm.annotations");
-  nvvm_annotations_node->addOperand(llvm::MDNode::get(
-      context, {llvm::ConstantAsMetadata::get(kernel),
-                llvm::MDString::get(context, "kernel"),
-                llvm::ConstantAsMetadata::get(b_.getInt32(1))}));
 
   // Update the insert point to the entry basic block.
   llvm::BasicBlock* entry_bb =
@@ -353,10 +341,6 @@ Status IrEmitterUnnested::DefaultAction(HloInstruction* hlo) {
 }
 
 Status IrEmitterUnnested::HandleDot(HloInstruction* dot) {
-  if (ImplementedAsGemm(*dot)) {
-    AddThunkToThunkSequence(BuildGemmThunk(dot));
-    return Status::OK();
-  }
   AddThunkToThunkSequence(
       BuildKernelThunk(dot, /*implements_whole_instruction=*/true));
   return IrEmitter::HandleDot(dot);
@@ -526,6 +510,11 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
           absl::make_unique<SequentialThunk>(std::move(thunks), custom_call));
     }
 
+    return Status::OK();
+  }
+
+  if (IsCublasGemm(*custom_call)) {
+    AddThunkToThunkSequence(BuildGemmThunk(custom_call));
     return Status::OK();
   }
 
@@ -702,11 +691,6 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
     return llvm_ir::EmitParallelFusedDynamicUpdateSliceInPlace(
         fusion, GetGeneratorForOperandIrArrays(fusion), output_array,
         &elemental_emitter, launch_dimensions, &b_);
-  }
-
-  if (ImplementedAsGemm(*fusion)) {
-    AddThunkToThunkSequence(BuildGemmThunk(fusion));
-    return Status::OK();
   }
 
   CHECK_EQ(fusion->fusion_kind(), HloInstruction::FusionKind::kLoop)
@@ -1022,37 +1006,30 @@ Status IrEmitterUnnested::HandleWhile(HloInstruction* xla_while) {
 }
 
 Status IrEmitterUnnested::HandleRng(HloInstruction* rng) {
-  // Build the kernel to generate the random numbers.
-  //
-  // Unroll the kernel so that the duplicated computation that calculates the
-  // 128 bit sample can be optimized away by LLVM.
-  std::unique_ptr<KernelThunk> rng_thunk = BuildKernelThunk(
-      rng, /*implements_whole_instruction=*/false, ComputeMaxUnrollFactor(rng));
-  ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
-  for (const HloInstruction* operand : rng->operands()) {
-    operand_to_generator[operand] = [=](const llvm_ir::IrArray::Index& index) {
-      return GetIrArray(*operand, *rng).EmitReadArrayElement(index, &b_);
-    };
-  }
-  TF_RETURN_IF_ERROR(EmitTargetElementLoopInThunk(
-      *rng,
-      GpuElementalIrEmitter(hlo_module_config_, module_, &b_,
-                            GetNestedComputer())
-          .MakeElementGenerator(rng, operand_to_generator),
-      rng_thunk.get()));
+  return Unimplemented("Rng should be expanded for GPU.");
+}
 
+Status IrEmitterUnnested::HandleRngGetAndUpdateState(
+    HloInstruction* rng_state) {
   // Emit a kernel to increment the global state for Philox RNG algorithm.
-  std::unique_ptr<Thunk> increment_seed_thunk =
-      BuildKernelThunk(rng, /*implements_whole_instruction=*/false);
-  llvm_ir::IncrementVariableForPhiloxRngState(1, module_, &b_);
-
-  // Build the SequentialThunk for the RNG hlo.
-  std::vector<std::unique_ptr<Thunk>> thunks;
-  thunks.reserve(2);
-  thunks.push_back(std::move(rng_thunk));
-  thunks.push_back(std::move(increment_seed_thunk));
   AddThunkToThunkSequence(
-      absl::make_unique<SequentialThunk>(std::move(thunks), rng));
+      BuildKernelThunk(rng_state, /*implements_whole_instruction=*/true));
+
+  llvm::Value* old_state = llvm_ir::RngGetAndUpdateState(
+      Cast<HloRngGetAndUpdateStateInstruction>(rng_state)->delta(), module_,
+      &b_);
+
+  llvm::Value* output_address =
+      GetIrArray(*rng_state, *rng_state)
+          .EmitArrayElementAddress(
+              llvm_ir::IrArray::Index(
+                  /*linear=*/b_.getInt64(0), rng_state->shape(), &b_),
+              &b_, "rng_state_address");
+  output_address = BitCast(
+      output_address, llvm::PointerType::get(
+                          old_state->getType(),
+                          output_address->getType()->getPointerAddressSpace()));
+  Store(old_state, output_address);
 
   return Status::OK();
 }
@@ -1405,6 +1382,18 @@ Status IrEmitterUnnested::HandleTupleSelect(HloInstruction* tuple_select) {
   AddThunkToThunkSequence(
       BuildKernelThunk(tuple_select, /*implements_whole_instruction=*/true));
   return IrEmitter::HandleTupleSelect(tuple_select);
+}
+
+Status IrEmitterUnnested::HandleReplicaId(HloInstruction* hlo) {
+  AddThunkToThunkSequence(
+      absl::make_unique<ReplicaIdThunk>(GetAllocationSlice(*hlo), hlo));
+  return Status::OK();
+}
+
+Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {
+  AddThunkToThunkSequence(absl::make_unique<CollectivePermuteThunk>(
+      GetAllocationSlice(*hlo->operand(0)), GetAllocationSlice(*hlo), hlo));
+  return Status::OK();
 }
 
 namespace {
@@ -1787,88 +1776,20 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildOutfeedThunk(
   return absl::make_unique<OutfeedThunk>(std::move(slices), inst);
 }
 
-namespace {
-double GetScalarConstantAsDouble(const Literal& literal) {
-  switch (literal.shape().element_type()) {
-    case F16:
-      return static_cast<double>(literal.Get<Eigen::half>({}));
-    case F32:
-      return literal.Get<float>({});
-    case F64:
-      return literal.Get<double>({});
-    default:
-      LOG(FATAL) << "Unsupported type.";
-  }
-}
-}  // namespace
-
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
     const HloInstruction* inst) {
-  if (inst->opcode() == HloOpcode::kDot) {
-    const HloInstruction* lhs = inst->operand(0);
-    const HloInstruction* rhs = inst->operand(1);
-    return absl::make_unique<GemmThunk>(
-        GetAllocationSlice(*lhs),   // The buffer assigned to LHS.
-        GetAllocationSlice(*rhs),   // The buffer assigned to RHS.
-        GetAllocationSlice(*inst),  // The output buffer.
-        lhs->shape(),               // The shape of LHS.
-        rhs->shape(),               // The shape of RHS.
-        inst->shape(),              // The shape of the output.
-        1.0,                        // alpha.
-        0.0,                        // beta.
-        inst, /*implements_whole_instruction=*/true);
-  }
+  auto config_or = inst->backend_config<GemmBackendConfig>();
+  GemmBackendConfig gemm_config = std::move(config_or.ValueOrDie());
+  const HloInstruction* lhs = inst->operand(0);
+  const HloInstruction* rhs = inst->operand(1);
 
-  if (inst->opcode() == HloOpcode::kFusion) {
-    CHECK_EQ(inst->fusion_kind(), HloInstruction::FusionKind::kOutput);
-    const HloInstruction* output_fused_op = inst->fused_expression_root();
-
-    double alpha_value = 1.0;
-    const HloInstruction* bias = nullptr;
-    const HloInstruction* dot = output_fused_op->operand(0);
-    if (output_fused_op->opcode() == HloOpcode::kMultiply) {
-      const HloInstruction* alpha = output_fused_op->operand(1);
-      if (dot->opcode() != HloOpcode::kDot) {
-        std::swap(dot, alpha);
-      }
-      if (alpha->opcode() == HloOpcode::kBroadcast) {
-        alpha = alpha->operand(0);
-      }
-      if (alpha->opcode() == HloOpcode::kParameter) {
-        alpha = inst->operand(alpha->parameter_number());
-      }
-      // TODO(b/74185543): Remove the following if block once we support fusion
-      // with a non-constant as well. Then we will just always use the constant
-      // on the device.
-      if (alpha->opcode() == HloOpcode::kCopy) {
-        alpha = alpha->operand(0);
-      }
-      alpha_value = GetScalarConstantAsDouble(alpha->literal());
-    } else {
-      // Fused bias add.
-      CHECK_EQ(output_fused_op->opcode(), HloOpcode::kAdd);
-      bias = output_fused_op->operand(1);
-      if (dot->opcode() != HloOpcode::kDot) {
-        std::swap(dot, bias);
-      }
-      bias = inst->operand(bias->parameter_number());
-    }
-
-    DCHECK(dot->opcode() == HloOpcode::kDot);
-    const HloInstruction* lhs_parameter = StripTranspose(*dot->operand(0));
-    const HloInstruction* rhs_parameter = StripTranspose(*dot->operand(1));
-    DCHECK(lhs_parameter->opcode() == HloOpcode::kParameter &&
-           rhs_parameter->opcode() == HloOpcode::kParameter);
-    const HloInstruction* lhs =
-        inst->operand(lhs_parameter->parameter_number());
-    const HloInstruction* rhs =
-        inst->operand(rhs_parameter->parameter_number());
-
-    // The bias is passed inside the output buffer. If those buffers are shared
-    // we can just use it, otherwise copy the bias values into the output buffer
-    // first.
-    if (bias != nullptr &&
-        GetAllocationSlice(*bias) != GetAllocationSlice(*inst)) {
+  // The bias is passed inside the output buffer. If those buffers are shared
+  // we can just use it, otherwise copy the bias values into the output buffer
+  // first.
+  if (gemm_config.beta() != 0.0) {
+    const HloInstruction* bias = inst->operand(2);
+    CHECK_EQ(bias->shape(), inst->shape());
+    if (GetAllocationSlice(*bias) != GetAllocationSlice(*inst)) {
       std::vector<std::unique_ptr<Thunk>> thunks;
       thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
           /*source_buffer=*/GetAllocationSlice(*bias),
@@ -1878,27 +1799,16 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
           GetAllocationSlice(*lhs),   // The buffer assigned to LHS.
           GetAllocationSlice(*rhs),   // The buffer assigned to RHS.
           GetAllocationSlice(*inst),  // The output buffer.
-          lhs->shape(),               // The shape of LHS.
-          rhs->shape(),               // The shape of RHS.
-          inst->shape(),              // The shape of the output.
-          alpha_value,                // alpha.
-          1.0,                        // beta.
-          inst, /*implements_whole_instruction=*/false));
+          /*implements_whole_instruction=*/false, inst));
       return absl::make_unique<SequentialThunk>(std::move(thunks), inst);
     }
-    return absl::make_unique<GemmThunk>(
-        GetAllocationSlice(*lhs),     // The buffer assigned to LHS.
-        GetAllocationSlice(*rhs),     // The buffer assigned to RHS.
-        GetAllocationSlice(*inst),    // The output buffer.
-        lhs->shape(),                 // The shape of LHS.
-        rhs->shape(),                 // The shape of RHS.
-        inst->shape(),                // The shape of the output.
-        alpha_value,                  // alpha.
-        bias != nullptr ? 1.0 : 0.0,  // beta.
-        inst, /*implements_whole_instruction=*/true);
   }
 
-  LOG(FATAL) << "Cannot build a GemmThunk for " << inst->ToString();
+  return absl::make_unique<GemmThunk>(
+      GetAllocationSlice(*lhs),   // The buffer assigned to LHS.
+      GetAllocationSlice(*rhs),   // The buffer assigned to RHS.
+      GetAllocationSlice(*inst),  // The output buffer.
+      /*implements_whole_instruction=*/true, inst);
 }
 
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildFftThunk(
@@ -3841,11 +3751,16 @@ Status IrEmitterUnnested::EmitConstantGlobals() {
     //
     // We may have to be more more clever here in the future if we notice that
     // we're keeping around too many globals because of their linkage.
+    unsigned global_address_space = llvm_ir::GetGlobalMemoryAddressSpace(
+        *ir_emitter_context_->llvm_module());
     llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
         global_type, /*isConstant=*/should_emit_initializer,
         llvm::GlobalValue::ExternalLinkage,
         /*Initializer=*/initializer,
-        llvm_ir::ConstantBufferAllocationToGlobalName(allocation));
+        llvm_ir::ConstantBufferAllocationToGlobalName(allocation),
+        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+        /*AddressSpace=*/global_address_space,
+        /*isExternallyInitialized=*/false);
     global_for_const->setAlignment(kConstantBufferAlignBytes);
     ir_emitter_context_->llvm_module()->getGlobalList().push_back(
         global_for_const);

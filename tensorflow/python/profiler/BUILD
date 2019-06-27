@@ -1,11 +1,10 @@
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 py_library(
     name = "profiler",
@@ -60,6 +59,7 @@ cuda_py_test(
     ],
     tags = [
         "no_pip",
+        "notap",
         "oss_serial",
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
@@ -132,7 +132,10 @@ cuda_py_test(
         "//tensorflow/python/profiler/internal:model_analyzer_testlib",
         "//tensorflow/python:variables",
     ],
-    tags = ["no_pip"],
+    tags = [
+        "no_gpu",  # b/136036359
+        "no_pip",
+    ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 

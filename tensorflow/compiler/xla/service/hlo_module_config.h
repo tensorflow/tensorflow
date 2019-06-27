@@ -45,6 +45,8 @@ class HloModuleConfig {
   explicit HloModuleConfig(const ProgramShape& program_shape,
                            bool ignore_layouts = true);
 
+  explicit HloModuleConfig(ComputationLayout entry_computation_layout);
+
   // Checks if this config has an entry computation layout already.
   bool has_entry_computation_layout() const {
     return entry_computation_layout_.has_value();

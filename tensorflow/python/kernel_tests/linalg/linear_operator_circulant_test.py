@@ -148,6 +148,7 @@ class LinearOperatorCirculantTestSelfAdjointOperator(
     return operator, mat
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("No registered Const")
   def test_simple_hermitian_spectrum_gives_operator_with_zero_imag_part(self):
     with self.cached_session():
       spectrum = math_ops.cast([1., 1j, -1j], dtypes.complex64)
@@ -216,6 +217,7 @@ class LinearOperatorCirculantTestHermitianSpectrum(
     return operator, mat
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("No registered Const")
   def test_simple_hermitian_spectrum_gives_operator_with_zero_imag_part(self):
     with self.cached_session():
       spectrum = math_ops.cast([1., 1j, -1j], dtypes.complex64)
@@ -272,6 +274,7 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
     return operator, mat
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("No registered Const")
   def test_simple_hermitian_spectrum_gives_operator_with_zero_imag_part(self):
     with self.cached_session():
       spectrum = math_ops.cast([1., 1j, -1j], dtypes.complex64)

@@ -446,11 +446,9 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
                         use_strategy_object=False,
                         local_mode=False):
     collective_keys = cross_device_utils.CollectiveKeys(
-        group_key_start=10 * num_gpus +
-        CollectiveAllReduceTest.collective_key_base,
-        instance_key_start=num_gpus * 100 +
-        CollectiveAllReduceTest.collective_key_base,
-        instance_key_with_id_start=num_gpus * 10000 +
+        group_key_start=10 + CollectiveAllReduceTest.collective_key_base,
+        op_instance_key_start=100 + CollectiveAllReduceTest.collective_key_base,
+        variable_instance_key_start=10000 +
         CollectiveAllReduceTest.collective_key_base)
     if local_mode:
       if num_gpus:

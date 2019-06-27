@@ -20,7 +20,6 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace {

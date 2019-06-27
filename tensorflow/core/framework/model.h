@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/histogram/histogram.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
@@ -35,7 +36,11 @@ namespace data {
 namespace model {
 
 // A constant that can be used to enable auto-tuning.
-constexpr int kAutoTune = -1;
+constexpr int64 kAutotune = -1;
+
+enum class AutotuneAlgorithm {
+  HILL_CLIMB = 0,
+};
 
 // Represents thread-safe state that can be shared between an input pipeline and
 // the performance model.
@@ -46,18 +51,18 @@ struct SharedState {
       : value(value),
         mu(std::move(mu)),
         cond_var(std::move(cond_var)),
-        tunable(value == kAutoTune) {}
+        tunable(value == kAutotune) {}
 
-  int64 value;
-  std::shared_ptr<mutex> mu;
-  std::shared_ptr<condition_variable> cond_var;
+  double value;
+  const std::shared_ptr<mutex> mu;
+  const std::shared_ptr<condition_variable> cond_var;
   const bool tunable;
 };
 
 // Represents a parameter.
 struct Parameter {
-  Parameter(const string& name, std::shared_ptr<SharedState> state, int64 min,
-            int64 max)
+  Parameter(const string& name, std::shared_ptr<SharedState> state, double min,
+            double max)
       : name(name),
         value(state->value),
         min(min),
@@ -65,17 +70,17 @@ struct Parameter {
         state(std::move(state)) {}
 
   // Human-readable name of the parameter.
-  string name;
+  const string name;
 
   // Identifies the model value of the parameter. This can be different from
   // the actual value (e.g. during optimization search).
-  int64 value;
+  double value;
 
   // Identifies the minimum value of the parameter.
-  int64 min;
+  const double min;
 
   // Identifies the maximum value of the parameter.
-  int64 max;
+  const double max;
 
   // Shared state of the parameter.
   std::shared_ptr<SharedState> state;
@@ -83,7 +88,7 @@ struct Parameter {
 
 std::shared_ptr<Parameter> MakeParameter(const string& name,
                                          std::shared_ptr<SharedState> state,
-                                         int64 min, int64 max);
+                                         double min, double max);
 
 // Abstract representation of a TensorFlow input pipeline node. It collects
 // information about inputs to this node, processing time spent executing the
@@ -302,7 +307,7 @@ class Node {
   }
 
   // Returns the per-element CPU time spent in the subtree rooted in this node.
-  double TotalProcessingTime() const LOCKS_EXCLUDED(mu_) {
+  double TotalProcessingTime() LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return TotalProcessingTimeLocked();
   }
@@ -342,14 +347,45 @@ class Node {
       SHARED_LOCKS_REQUIRED(mu_) = 0;
 
   // Returns the sum of per-element processing time for the inputs of this node.
+  // Processing time for a given input is a weighted combination of a statistic
+  // based on history of input processing time and the actual time. This is done
+  // to improve accuracy of processing time estimation for newly created inputs.
   //
-  // TODO(jsimsa): use processing time history as a prior for future inputs
-  double ProcessingTimeForInputs() const SHARED_LOCKS_REQUIRED(mu_) {
-    int64 sum = 0;
+  // Uniform distribution of per-element processing times across different
+  // inputs is assumed.
+  double TotalProcessingTimeForInputs() SHARED_LOCKS_REQUIRED(mu_) {
+    // If the number of elements produced by an input is smaller than this
+    // constant, then its processing time is estimated using a weighted average
+    // of the empirical processing time and processing time history.
+    constexpr int kNumElementsThreshold = 30;
+
+    // Identifies the minimum number of input processing times to collect
+    // before the processing time history is used as a prior.
+    constexpr int kCountThreshold = 30;
+
+    double sum = 0;
     for (auto& input : inputs_) {
       // Inputs for which autotuning is disabled are excluded.
       if (input->autotune()) {
-        sum += input->SelfProcessingTime();
+        double input_processing_time = input->TotalProcessingTime();
+        int64 num_elements = input->num_elements();
+        if (num_elements < kNumElementsThreshold) {
+          if (input_processing_time_count_ < kCountThreshold) {
+            sum += input_processing_time;
+          } else {
+            // The fewer elements the input has produced so far, the more weight
+            // is assigned to the prior to reduce volatility.
+            double prior_weight = 1.0L / static_cast<double>(2 << num_elements);
+            double prior =
+                input_processing_time_sum_ / input_processing_time_count_;
+            sum += (1.0L - prior_weight) * input_processing_time +
+                   prior_weight * prior;
+          }
+        } else {
+          sum += input_processing_time;
+          input_processing_time_count_++;
+          input_processing_time_sum_ += input_processing_time;
+        }
       }
     }
     return sum;
@@ -365,8 +401,7 @@ class Node {
   }
 
   // Returns the per-element CPU time spent in the subtree rooted in this node.
-  virtual double TotalProcessingTimeLocked() const
-      SHARED_LOCKS_REQUIRED(mu_) = 0;
+  virtual double TotalProcessingTimeLocked() SHARED_LOCKS_REQUIRED(mu_) = 0;
 
   mutable mutex mu_;
   const int64 id_;
@@ -381,6 +416,10 @@ class Node {
   int64 num_elements_ GUARDED_BY(mu_) = 0;
   std::map<std::thread::id, int64> work_start_ GUARDED_BY(mu_);
   std::map<string, std::shared_ptr<Parameter>> parameters_ GUARDED_BY(mu_);
+
+  // Statistic of inputs processing time history.
+  double input_processing_time_sum_ = 0.0L;
+  int64 input_processing_time_count_ = 0;
 
   // Inputs of this node. These can represent an iterator created from the input
   // dataset but also other input iterators (e.g. created by the user-defined
@@ -460,8 +499,9 @@ class Model {
   // Increments the processing time for the given node..
   void AddProcessingTime(const string& name, int64 delta) LOCKS_EXCLUDED(mu_);
 
-  // Runs optimization.
-  void Optimize(int64 cpu_budget) LOCKS_EXCLUDED(mu_);
+  // Uses the given algorithm to perform the autotuning optimization.
+  void Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget)
+      LOCKS_EXCLUDED(mu_);
 
   // Records that a node has produced an element.
   void RecordElement(const string& name) LOCKS_EXCLUDED(mu_);
@@ -485,6 +525,14 @@ class Model {
   // a mapping from a (unique) node name to a tunable parameter.
   std::map<string, std::shared_ptr<Parameter>> CollectTunableParameters(
       std::shared_ptr<Node> node);
+
+  // This optimization algorithm starts by setting all tunable parallelism
+  // parameters to 1. It then repeatedly identifies the parameter whose increase
+  // in parallelism decreases the output time the most. This process is repeated
+  // until all parameters reach their maximum values or the projected output
+  // time is less than or equal to the processing time needed to produce an
+  // element divided by CPU budget.
+  void OptimizeHillClimb(int64 cpu_budget);
 
   // Collects the output time for the given node.
   double OutputTime(std::shared_ptr<Node> node);

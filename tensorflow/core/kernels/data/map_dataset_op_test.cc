@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/kernels/data/map_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
@@ -25,21 +24,19 @@ constexpr char kNodeName[] = "map_dataset";
 
 class MapDatasetOpTest : public DatasetOpsTestBase {
  protected:
-  // Creates a new MapDataset op kernel. The `input_dataset` parameter should be
-  // same with the node name of the input dataset for the method
-  // `CreateMapDatasetContext()`. `T` specifies the output dtype of MapDataset.
-  template <typename T>
+  // Creates a new MapDataset op kernel.
   Status CreateMapDatasetOpKernel(
       const FunctionDefHelper::AttrValueWrapper& func,
+      const DataTypeVector& output_types,
+      const std::vector<PartialTensorShape>& output_shapes,
       std::unique_ptr<OpKernel>* map_kernel) {
     NodeDef map_dataset_node_def = test::function::NDef(
         kNodeName, name_utils::OpName(MapDatasetOp::kDatasetType),
         {MapDatasetOp::kInputDataset},
-        {{MapDatasetOp::kF, func},
+        {{MapDatasetOp::kFunc, func},
          {MapDatasetOp::kTarguments, {}},
-         {MapDatasetOp::kOutputShapes, gtl::ArraySlice<TensorShape>{{}}},
-         {MapDatasetOp::kOutputTypes,
-          gtl::ArraySlice<DataType>{tensorflow::DataTypeToEnum<T>::value}},
+         {MapDatasetOp::kOutputShapes, output_shapes},
+         {MapDatasetOp::kOutputTypes, output_types},
          {MapDatasetOp::kUseInterOpParallelism, true},
          {MapDatasetOp::kPreserveCardinality, false}});
     TF_RETURN_IF_ERROR(CreateOpKernel(map_dataset_node_def, map_kernel));
@@ -148,8 +145,9 @@ TEST_P(ParameterizedMapDatasetOpTest, GetNext) {
   map_dataset_inputs.emplace_back(&range_dataset_tensor);
 
   std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateMapDatasetOpKernel<int64>(test_case.func, &map_dataset_kernel));
+  TF_ASSERT_OK(CreateMapDatasetOpKernel(
+      test_case.func, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &map_dataset_kernel));
   std::unique_ptr<OpKernelContext> map_dataset_context;
   TF_ASSERT_OK(CreateMapDatasetContext(
       map_dataset_kernel.get(), &map_dataset_inputs, &map_dataset_context));
@@ -198,8 +196,9 @@ TEST_F(MapDatasetOpTest, DatasetNodeName) {
   map_dataset_inputs.emplace_back(&range_dataset_tensor);
 
   std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateMapDatasetOpKernel<int64>(test_case.func, &map_dataset_kernel));
+  TF_ASSERT_OK(CreateMapDatasetOpKernel(
+      test_case.func, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &map_dataset_kernel));
   std::unique_ptr<OpKernelContext> map_dataset_context;
   TF_ASSERT_OK(CreateMapDatasetContext(
       map_dataset_kernel.get(), &map_dataset_inputs, &map_dataset_context));
@@ -229,8 +228,9 @@ TEST_F(MapDatasetOpTest, DatasetTypeString) {
   map_dataset_inputs.emplace_back(&range_dataset_tensor);
 
   std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateMapDatasetOpKernel<int64>(test_case.func, &map_dataset_kernel));
+  TF_ASSERT_OK(CreateMapDatasetOpKernel(
+      test_case.func, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &map_dataset_kernel));
   std::unique_ptr<OpKernelContext> map_dataset_context;
   TF_ASSERT_OK(CreateMapDatasetContext(
       map_dataset_kernel.get(), &map_dataset_inputs, &map_dataset_context));
@@ -261,8 +261,9 @@ TEST_F(MapDatasetOpTest, DatasetOutputDtypes) {
   map_dataset_inputs.emplace_back(&range_dataset_tensor);
 
   std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateMapDatasetOpKernel<int64>(test_case.func, &map_dataset_kernel));
+  TF_ASSERT_OK(CreateMapDatasetOpKernel(
+      test_case.func, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &map_dataset_kernel));
   std::unique_ptr<OpKernelContext> map_dataset_context;
   TF_ASSERT_OK(CreateMapDatasetContext(
       map_dataset_kernel.get(), &map_dataset_inputs, &map_dataset_context));
@@ -293,8 +294,9 @@ TEST_F(MapDatasetOpTest, DatasetOutputShapes) {
   map_dataset_inputs.emplace_back(&range_dataset_tensor);
 
   std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateMapDatasetOpKernel<int64>(test_case.func, &map_dataset_kernel));
+  TF_ASSERT_OK(CreateMapDatasetOpKernel(
+      test_case.func, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &map_dataset_kernel));
   std::unique_ptr<OpKernelContext> map_dataset_context;
   TF_ASSERT_OK(CreateMapDatasetContext(
       map_dataset_kernel.get(), &map_dataset_inputs, &map_dataset_context));
@@ -325,8 +327,9 @@ TEST_P(ParameterizedMapDatasetOpTest, Cardinality) {
   map_dataset_inputs.emplace_back(&range_dataset_tensor);
 
   std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateMapDatasetOpKernel<int64>(test_case.func, &map_dataset_kernel));
+  TF_ASSERT_OK(CreateMapDatasetOpKernel(
+      test_case.func, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &map_dataset_kernel));
   std::unique_ptr<OpKernelContext> map_dataset_context;
   TF_ASSERT_OK(CreateMapDatasetContext(
       map_dataset_kernel.get(), &map_dataset_inputs, &map_dataset_context));
@@ -356,8 +359,9 @@ TEST_P(ParameterizedMapDatasetOpTest, DatasetSave) {
   map_dataset_inputs.emplace_back(&range_dataset_tensor);
 
   std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateMapDatasetOpKernel<int64>(test_case.func, &map_dataset_kernel));
+  TF_ASSERT_OK(CreateMapDatasetOpKernel(
+      test_case.func, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &map_dataset_kernel));
   std::unique_ptr<OpKernelContext> map_dataset_context;
   TF_ASSERT_OK(CreateMapDatasetContext(
       map_dataset_kernel.get(), &map_dataset_inputs, &map_dataset_context));
@@ -392,8 +396,9 @@ TEST_F(MapDatasetOpTest, IteratorOutputDtypes) {
   map_dataset_inputs.emplace_back(&range_dataset_tensor);
 
   std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateMapDatasetOpKernel<int64>(test_case.func, &map_dataset_kernel));
+  TF_ASSERT_OK(CreateMapDatasetOpKernel(
+      test_case.func, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &map_dataset_kernel));
   std::unique_ptr<OpKernelContext> map_dataset_context;
   TF_ASSERT_OK(CreateMapDatasetContext(
       map_dataset_kernel.get(), &map_dataset_inputs, &map_dataset_context));
@@ -431,8 +436,9 @@ TEST_F(MapDatasetOpTest, IteratorOutputShapes) {
   map_dataset_inputs.emplace_back(&range_dataset_tensor);
 
   std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateMapDatasetOpKernel<int64>(test_case.func, &map_dataset_kernel));
+  TF_ASSERT_OK(CreateMapDatasetOpKernel(
+      test_case.func, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &map_dataset_kernel));
   std::unique_ptr<OpKernelContext> map_dataset_context;
   TF_ASSERT_OK(CreateMapDatasetContext(
       map_dataset_kernel.get(), &map_dataset_inputs, &map_dataset_context));
@@ -470,8 +476,9 @@ TEST_F(MapDatasetOpTest, IteratorOutputPrefix) {
   map_dataset_inputs.emplace_back(&range_dataset_tensor);
 
   std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateMapDatasetOpKernel<int64>(test_case.func, &map_dataset_kernel));
+  TF_ASSERT_OK(CreateMapDatasetOpKernel(
+      test_case.func, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &map_dataset_kernel));
   std::unique_ptr<OpKernelContext> map_dataset_context;
   TF_ASSERT_OK(CreateMapDatasetContext(
       map_dataset_kernel.get(), &map_dataset_inputs, &map_dataset_context));
@@ -509,8 +516,9 @@ TEST_P(ParameterizedMapDatasetOpTest, Roundtrip) {
   map_dataset_inputs.emplace_back(&range_dataset_tensor);
 
   std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateMapDatasetOpKernel<int64>(test_case.func, &map_dataset_kernel));
+  TF_ASSERT_OK(CreateMapDatasetOpKernel(
+      test_case.func, test_case.expected_output_dtypes,
+      test_case.expected_output_shapes, &map_dataset_kernel));
   std::unique_ptr<OpKernelContext> map_dataset_context;
   TF_ASSERT_OK(CreateMapDatasetContext(
       map_dataset_kernel.get(), &map_dataset_inputs, &map_dataset_context));

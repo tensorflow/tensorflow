@@ -1,14 +1,14 @@
 # Description:
 #   Doc generator
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "doc_generator_visitor",
@@ -128,27 +128,8 @@ py_binary(
 )
 
 py_test(
-    name = "build_docs_test",
-    size = "medium",
-    srcs = ["build_docs_test.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    tags = [
-        # No reason to run sanitizers or fastbuild for this test.
-        "noasan",
-        "nomsan",
-        "notsan",
-        "optonly",
-    ],
-    deps = [
-        ":generate_lib",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python/debug:debug_py",
-    ],
-)
-
-py_test(
     name = "generate2_test",
+    size = "medium",
     srcs = ["generate2_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",

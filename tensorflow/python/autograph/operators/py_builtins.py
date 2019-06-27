@@ -21,6 +21,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
+
 import six
 
 from tensorflow.python.autograph.utils import py_func
@@ -44,6 +46,19 @@ def overload_of(f):
   if f in SUPPORTED_BUILTINS:
     return BUILTIN_FUINCTIONS_MAP[f.__name__]
   return f
+
+
+def eval_in_original_context(f, args, caller_level_delta):
+  """Executes the eval function with the user-specified globals/locals."""
+  ctx_frame = inspect.currentframe()
+  for _ in range(caller_level_delta + 1):
+    ctx_frame = ctx_frame.f_back
+  args = (
+      args[0],
+      ctx_frame.f_globals if len(args) < 2 else args[1],
+      ctx_frame.f_locals if len(args) < 3 else args[2],
+  )
+  return f(*args)
 
 
 def abs_(x):

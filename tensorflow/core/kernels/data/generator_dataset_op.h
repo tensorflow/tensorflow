@@ -24,6 +24,22 @@ namespace data {
 
 class GeneratorDatasetOp : public DatasetOpKernel {
  public:
+  static constexpr const char* const kDatasetType = "Generator";
+  static constexpr const char* const kInitFuncOtherArgs =
+      "init_func_other_args";
+  static constexpr const char* const kNextFuncOtherArgs =
+      "next_func_other_args";
+  static constexpr const char* const kFinalizeFuncOtherArgs =
+      "finalize_func_other_args";
+  static constexpr const char* const kInitFunc = "init_func";
+  static constexpr const char* const kNextFunc = "next_func";
+  static constexpr const char* const kFinalizeFunc = "finalize_func";
+  static constexpr const char* const kTinitFuncArgs = "Tinit_func_args";
+  static constexpr const char* const kTnextFuncArgs = "Tnext_func_args";
+  static constexpr const char* const kTfinalizeFuncArgs = "Tfinalize_func_args";
+  static constexpr const char* const kOutputTypes = "output_types";
+  static constexpr const char* const kOutputShapes = "output_shapes";
+
   explicit GeneratorDatasetOp(OpKernelConstruction* ctx);
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override;

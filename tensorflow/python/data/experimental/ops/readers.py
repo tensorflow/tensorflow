@@ -26,7 +26,6 @@ import numpy as np
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.experimental.ops import interleave_ops
-from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import parsing_ops
 from tensorflow.python.data.experimental.ops import shuffle_ops
 from tensorflow.python.data.ops import dataset_ops
@@ -224,7 +223,7 @@ def make_tf_record_dataset(file_pattern,
                            shuffle=True,
                            shuffle_buffer_size=None,
                            shuffle_seed=None,
-                           prefetch_buffer_size=optimization.AUTOTUNE,
+                           prefetch_buffer_size=dataset_ops.AUTOTUNE,
                            num_parallel_reads=None,
                            num_parallel_parser_calls=None,
                            drop_final_batch=False):
@@ -324,7 +323,7 @@ def make_csv_dataset_v2(
     shuffle=True,
     shuffle_buffer_size=10000,
     shuffle_seed=None,
-    prefetch_buffer_size=optimization.AUTOTUNE,
+    prefetch_buffer_size=dataset_ops.AUTOTUNE,
     num_parallel_reads=1,
     sloppy=False,
     num_rows_for_inference=100,
@@ -532,7 +531,7 @@ def make_csv_dataset_v1(
     shuffle=True,
     shuffle_buffer_size=10000,
     shuffle_seed=None,
-    prefetch_buffer_size=optimization.AUTOTUNE,
+    prefetch_buffer_size=dataset_ops.AUTOTUNE,
     num_parallel_reads=1,
     sloppy=False,
     num_rows_for_inference=100,
@@ -663,15 +662,14 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
         argument_default=[],
         argument_dtype=dtypes.int64,
     )
-    self._structure = structure.NestedStructure(
-        tuple(structure.TensorStructure(d.dtype, [])
-              for d in self._record_defaults))
+    self._structure = tuple(
+        structure.TensorStructure(d.dtype, []) for d in self._record_defaults)
     variant_tensor = gen_experimental_dataset_ops.experimental_csv_dataset(
         filenames=self._filenames,
         record_defaults=self._record_defaults,
         buffer_size=self._buffer_size,
         header=self._header,
-        output_shapes=self._structure._flat_shapes,  # pylint: disable=protected-access
+        output_shapes=self._flat_shapes,
         field_delim=self._field_delim,
         use_quote_delim=self._use_quote_delim,
         na_value=self._na_value,
@@ -716,7 +714,7 @@ def make_batched_features_dataset_v2(file_pattern,
                                      shuffle=True,
                                      shuffle_buffer_size=10000,
                                      shuffle_seed=None,
-                                     prefetch_buffer_size=optimization.AUTOTUNE,
+                                     prefetch_buffer_size=dataset_ops.AUTOTUNE,
                                      reader_num_threads=1,
                                      parser_num_threads=2,
                                      sloppy_ordering=False,
@@ -812,10 +810,8 @@ def make_batched_features_dataset_v2(file_pattern,
     ValueError: If `label_key` is not one of the `features` keys.
   """
   # Create dataset of all matching filenames
-  filenames = _get_file_names(file_pattern, False)
-  dataset = dataset_ops.Dataset.from_tensor_slices(filenames)
-  if shuffle:
-    dataset = dataset.shuffle(len(filenames), shuffle_seed)
+  dataset = dataset_ops.Dataset.list_files(
+      file_pattern, shuffle=shuffle, seed=shuffle_seed)
 
   if isinstance(reader, type) and issubclass(reader, io_ops.ReaderBase):
     raise TypeError("The `reader` argument must return a `Dataset` object. "
@@ -878,7 +874,7 @@ def make_batched_features_dataset_v1(file_pattern,  # pylint: disable=missing-do
                                      shuffle=True,
                                      shuffle_buffer_size=10000,
                                      shuffle_seed=None,
-                                     prefetch_buffer_size=optimization.AUTOTUNE,
+                                     prefetch_buffer_size=dataset_ops.AUTOTUNE,
                                      reader_num_threads=1,
                                      parser_num_threads=2,
                                      sloppy_ordering=False,
@@ -959,12 +955,11 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
         data_source_name, dtype=dtypes.string, name="data_source_name")
     self._query = ops.convert_to_tensor(
         query, dtype=dtypes.string, name="query")
-    self._structure = structure.NestedStructure(
-        nest.map_structure(
-            lambda dtype: structure.TensorStructure(dtype, []), output_types))
+    self._structure = nest.map_structure(
+        lambda dtype: structure.TensorStructure(dtype, []), output_types)
     variant_tensor = gen_experimental_dataset_ops.experimental_sql_dataset(
         self._driver_name, self._data_source_name, self._query,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(SqlDatasetV2, self).__init__(variant_tensor)
 
   @property

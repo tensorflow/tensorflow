@@ -70,19 +70,6 @@ constexpr char kReadaheadBufferSize[] = "GCS_READAHEAD_BUFFER_SIZE_BYTES";
 // This is the explicit alternative to setting BLOCK_SIZE or MAX_SIZE to 0, and
 // takes precedence over either of those environment variables.
 constexpr char kReadCacheDisabled[] = "GCS_READ_CACHE_DISABLED";
-// The environment variable that overrides the block size for aligned reads from
-// GCS. Specified in MB (e.g. "16" = 16 x 1024 x 1024 = 16777216 bytes).
-constexpr char kBlockSize[] = "GCS_READ_CACHE_BLOCK_SIZE_MB";
-constexpr size_t kDefaultBlockSize = 16 * 1024 * 1024;
-// The environment variable that overrides the max size of the LRU cache of
-// blocks read from GCS. Specified in MB.
-constexpr char kMaxCacheSize[] = "GCS_READ_CACHE_MAX_SIZE_MB";
-constexpr size_t kDefaultMaxCacheSize = kDefaultBlockSize;
-// The environment variable that overrides the maximum staleness of cached file
-// contents. Once any block of a file reaches this staleness, all cached blocks
-// will be evicted on the next read.
-constexpr char kMaxStaleness[] = "GCS_READ_CACHE_MAX_STALENESS";
-constexpr uint64 kDefaultMaxStaleness = 0;
 // The environment variable that overrides the maximum age of entries in the
 // Stat cache. A value of 0 (the default) means nothing is cached.
 constexpr char kStatCacheMaxAge[] = "GCS_STAT_CACHE_MAX_AGE";
@@ -618,18 +605,6 @@ class GcsReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
   uint64 length_;
 };
 
-// Helper function to extract an environment variable and convert it into a
-// value of type T.
-template <typename T>
-bool GetEnvVar(const char* varname, bool (*convert)(StringPiece, T*),
-               T* value) {
-  const char* env_value = std::getenv(varname);
-  if (!env_value) {
-    return false;
-  }
-  return convert(env_value, value);
-}
-
 bool StringPieceIdentity(StringPiece str, StringPiece* value) {
   *value = str;
   return true;
@@ -651,7 +626,7 @@ string ZoneToRegion(string* zone) {
 
 }  // namespace
 
-GcsFileSystem::GcsFileSystem() {
+GcsFileSystem::GcsFileSystem(bool make_default_cache) {
   uint64 value;
   size_t block_size = kDefaultBlockSize;
   size_t max_bytes = kDefaultMaxCacheSize;
@@ -680,7 +655,7 @@ GcsFileSystem::GcsFileSystem() {
   if (GetEnvVar(kMaxStaleness, strings::safe_strtou64, &value)) {
     max_staleness = value;
   }
-  if (std::getenv(kReadCacheDisabled)) {
+  if (std::getenv(kReadCacheDisabled) || !make_default_cache) {
     // Setting either to 0 disables the cache; set both for good measure.
     block_size = max_bytes = 0;
   }

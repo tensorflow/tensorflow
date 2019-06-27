@@ -21,6 +21,24 @@ limitations under the License.
 
 namespace xla {
 
+// Fusion configuration.
+using FusionConfig = std::vector<std::vector<bool>>;
+
+// Converts fusion config to string format.
+static string FusionConfigToString(const FusionConfig& config) {
+  string s = "";
+  for (auto& edge_list : config) {
+    for (auto edge : edge_list) {
+      if (edge) {
+        s += "1";
+      } else {
+        s += "0";
+      }
+    }
+  }
+  return s;
+}
+
 // A queue interface that allows implementations to choose fusion candidates in
 // custom order.
 class FusionQueue {
@@ -46,6 +64,9 @@ class FusionQueue {
   // A callback passed to the queue implementation to notify the removal of an
   // instruction.
   virtual void RemoveInstruction(HloInstruction* instruction) = 0;
+
+  // Returns the fusion configuration.
+  virtual const std::vector<bool>* FusionConfiguration() = 0;
 };
 
 }  // namespace xla

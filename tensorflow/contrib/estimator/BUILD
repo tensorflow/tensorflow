@@ -1,13 +1,13 @@
+load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+# PLACEHOLDER PIP REQUIREMENTS
+
 package(
     default_visibility = [
         "//tensorflow:internal",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-# PLACEHOLDER PIP REQUIREMENTS
 
 py_library(
     name = "estimator_py",

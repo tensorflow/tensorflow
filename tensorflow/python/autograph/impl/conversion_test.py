@@ -19,9 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 import imp
+import sys
+import threading
+
 import gast
+import six
 
 from tensorflow.python.autograph import utils
+from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import api
 from tensorflow.python.autograph.impl import conversion
@@ -56,6 +61,41 @@ class ConversionTest(test.TestCase):
     test_fn.__module__ = tf_like
 
     self.assertFalse(conversion.is_whitelisted_for_graph(tf_like.test_fn))
+
+  def test_is_whitelisted_for_graph_callable_whitelisted_call(self):
+
+    whitelisted_mod = imp.new_module('test_whitelisted_call')
+    sys.modules['test_whitelisted_call'] = whitelisted_mod
+    config.CONVERSION_RULES = ((config.DoNotConvert('test_whitelisted_call'),) +
+                               config.CONVERSION_RULES)
+
+    class TestClass(object):
+
+      def __call__(self):
+        pass
+
+      def whitelisted_method(self):
+        pass
+
+    TestClass.__module__ = 'test_whitelisted_call'
+    if six.PY2:
+      TestClass.__call__.__func__.__module__ = 'test_whitelisted_call'
+    else:
+      TestClass.__call__.__module__ = 'test_whitelisted_call'
+
+    class Subclass(TestClass):
+
+      def converted_method(self):
+        pass
+
+    tc = Subclass()
+
+    self.assertTrue(conversion.is_whitelisted_for_graph(TestClass.__call__))
+    self.assertTrue(conversion.is_whitelisted_for_graph(tc))
+    self.assertTrue(conversion.is_whitelisted_for_graph(tc.__call__))
+    self.assertTrue(conversion.is_whitelisted_for_graph(tc.whitelisted_method))
+    self.assertFalse(conversion.is_whitelisted_for_graph(Subclass))
+    self.assertFalse(conversion.is_whitelisted_for_graph(tc.converted_method))
 
   def test_convert_entity_to_ast_unsupported_types(self):
     with self.assertRaises(NotImplementedError):
@@ -213,6 +253,50 @@ class ConversionTest(test.TestCase):
     self.assertEqual(fn_node.name, 'tf__f')
     self.assertEqual('tf__f', name)
     self.assertIs(entity_info.namespace['b'], b)
+
+  def test_convert_concurrency(self):
+
+    def test_fn():
+      pass
+
+    generated_file_names = []
+
+    def conversion_thread():
+      new_f = conversion.convert(test_fn, self._simple_program_ctx())
+      generated_file_names.append(new_f.__code__.co_filename)
+
+    threads = tuple(
+        threading.Thread(target=conversion_thread) for _ in range(10))
+    for t in threads:
+      t.start()
+    for t in threads:
+      t.join()
+
+    # Races would potentially create multiple files (non-deterministically,
+    # but with high likelihood).
+    self.assertEqual(len(set(generated_file_names)), 1)
+
+  def test_convert_reentrance(self):
+
+    def test_fn():
+      pass
+
+    # There are no known ways to cause convert to re-enter. So we instrument
+    # an internal function to do that instead.
+    old_node_to_graph = conversion.node_to_graph
+    self.num_conversions = 0
+    def node_to_graph_wrapper(node, context):
+      self.num_conversions += 1
+      if self.num_conversions < 2:
+        conversion.convert(test_fn, self._simple_program_ctx())
+      return old_node_to_graph(node, context)
+
+    try:
+      conversion.node_to_graph = node_to_graph_wrapper
+      new_f = conversion.convert(test_fn, self._simple_program_ctx())
+      self.assertIsNotNone(new_f)
+    finally:
+      conversion.node_to_graph = old_node_to_graph
 
 
 if __name__ == '__main__':

@@ -63,7 +63,7 @@ class NcclManagerTest : public ::testing::Test {
     int num_completed = 0;
   };
 
-  static void SetUpTestCase() {
+  static void SetUpTestSuite() {
     setenv("NCCL_DEBUG", "INFO", 1 /* replace */);
     setenv("NCCL_LAUNCH_MODE", "PARALLEL", 1 /* replace */);
     devices_ = new std::vector<std::unique_ptr<BaseGPUDevice>>(GetGPUDevices());
@@ -74,7 +74,7 @@ class NcclManagerTest : public ::testing::Test {
 
   static int32 NumGPUs() { return static_cast<int32>(devices_->size()); }
 
-  static void TearDownTestCase() { delete devices_; }
+  static void TearDownTestSuite() { delete devices_; }
 
   TestCase* MakeReductionTestCase(int num_nodes, int num_ranks_per_node,
                                   ncclRedOp_t reduction_op, TensorShape shape,
