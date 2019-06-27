@@ -243,8 +243,12 @@ class MarkForCompilationPassImpl {
   // The pass proceeds in four steps, out of which `RunEdgeContractionLoop` and
   // `CreateClusters` do most of the heavy lifting.
 
-  // Initialize some internal data structures.
-  Status Initialize();
+  // Initializes some internal data structures.
+  //
+  // If this returns false then Initialize exited early (either because there is
+  // nothing to do or we saw a graph that we can't handle) and not all the
+  // fields in this MarkForCompilationPassImpl instance are set up.
+  StatusOr<bool> Initialize();
 
   // Runs through the entire cluster graph in post-order and calls `fn(from,
   // to)` on each edge.  `fn(from, to)` is expected to return true if it was
@@ -584,7 +588,7 @@ Status IgnoreResourceOpForSafetyAnalysis(
   return Status::OK();
 }
 
-Status MarkForCompilationPassImpl::Initialize() {
+StatusOr<bool> MarkForCompilationPassImpl::Initialize() {
   TF_RET_CHECK(!initialized_ && !edges_contracted_ && !clusters_created_);
   initialized_ = true;
 
@@ -592,13 +596,15 @@ Status MarkForCompilationPassImpl::Initialize() {
 
   if (compilation_candidates_.empty()) {
     VLOG(2) << "No compilable candidates";
-    return Status::OK();
+    return false;
   }
 
   TF_ASSIGN_OR_RETURN(bool cycle_detection_graph_ok,
                       CreateCycleDetectionGraph(graph_, &cycles_graph_));
   if (!cycle_detection_graph_ok) {
-    return Status::OK();
+    // TODO(sanjoy): This should be logged via the XLA activity listener.
+    VLOG(2) << "Could not form cycle detection graph";
+    return false;
   }
 
   if (!debug_options_.ignore_deadness_checks) {
@@ -609,7 +615,8 @@ Status MarkForCompilationPassImpl::Initialize() {
   // Each compilation candidate belongs to a cluster. The cluster's
   // representative names the node in the 'cycles' graph that represents the
   // cluster.
-  return BuildInitialClusterSet();
+  TF_RETURN_IF_ERROR(BuildInitialClusterSet());
+  return true;
 }
 
 template <typename FnTy>
@@ -721,6 +728,7 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
 
   // Phase 0: contract metadata operations with their producer.
 
+  VLOG(4) << "Running phase 0";
   TF_RETURN_IF_ERROR(
       ForEachEdgeInPostOrder([&](Cluster* from, Cluster* to) -> StatusOr<bool> {
         // Shape consuming operations are desirable to cluster with their
@@ -740,9 +748,10 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
         return TryToContractEdge(from, to);
       }).status());
 
-  // Phase 1: apply a heuristic to ensure that we don't mess up clusterig due to
-  // "group_deps".  After this phase most edges should have been contracted.
+  // Phase 1: apply a heuristic to ensure that we don't mess up clustering due
+  // to "group_deps".  After this phase most edges should have been contracted.
 
+  VLOG(4) << "Running phase 1";
   TF_RETURN_IF_ERROR(
       ForEachEdgeInPostOrder([&](Cluster* from, Cluster* to) -> StatusOr<bool> {
         // We split out this phase to get good clustering in the presence of a
@@ -798,6 +807,7 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
   //    leaving it more contractable. That is, if we have
   //    digraph { X->Y; Y->Z; } then collapsing X->Y does not make it possible
   //    to contract Y->Z if Y->Z was not contractible originally.
+  VLOG(4) << "Running phase 2";
   TF_RETURN_IF_ERROR(ForEachEdgeInPostOrder([&](Cluster* from, Cluster* to) {
                        return TryToContractEdge(from, to);
                      }).status());
@@ -806,6 +816,7 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
   // post order gives a maximal clustering) holds.  Once the linear time
   // post-order scheme has been battle tested we can move this to happen only in
   // debug builds.
+  VLOG(2) << "Checking idempotence";
   TF_ASSIGN_OR_RETURN(bool changed,
                       ForEachEdgeInPostOrder([&](Cluster* from, Cluster* to) {
                         return TryToContractEdge(from, to);
@@ -1320,7 +1331,13 @@ Status MarkForCompilationPassImpl::Run() {
   // some one-time work.
   XLA_SCOPED_LOGGING_TIMER_LEVEL("MarkForCompilationPassImpl::Run", 1);
 
-  TF_RETURN_IF_ERROR(Initialize());
+  TF_ASSIGN_OR_RETURN(bool initialized, Initialize());
+  if (!initialized) {
+    // Initialization exited early which means this instance of
+    // MarkForCompilationPassImpl is not set up to run the subsequent phases.
+    return Status::OK();
+  }
+
   TF_RETURN_IF_ERROR(RunEdgeContractionLoop());
   TF_RETURN_IF_ERROR(CreateClusters());
   TF_RETURN_IF_ERROR(DumpDebugInfo());
