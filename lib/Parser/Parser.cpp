@@ -926,7 +926,7 @@ ParseResult Parser::parseXInDimensionList() {
 ///                    | bool-literal
 ///                    | integer-literal (`:` (index-type | integer-type))?
 ///                    | float-literal (`:` float-type)?
-///                    | string-literal
+///                    | string-literal (`:` type)?
 ///                    | type
 ///                    | `[` (attribute-value (`,` attribute-value)*)? `]`
 ///                    | `{` (attribute-entry (`,` attribute-entry)*)? `}`
@@ -1034,6 +1034,13 @@ Attribute Parser::parseAttribute(Type type) {
   case Token::string: {
     auto val = getToken().getStringValue();
     consumeToken(Token::string);
+
+    // Parse the optional trailing colon type.
+    if (!type && consumeIf(Token::colon)) {
+      Type stringType = parseType();
+      return stringType ? StringAttr::get(val, stringType) : Attribute();
+    }
+
     return builder.getStringAttr(val);
   }
 

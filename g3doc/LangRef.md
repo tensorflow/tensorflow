@@ -871,7 +871,7 @@ the given function.
 Syntax:
 
 ``` {.ebnf}
-string-attribute ::= string-literal
+string-attribute ::= string-literal (`:` type)?
 ```
 
 A string attribute is an attribute that represents a string literal value.

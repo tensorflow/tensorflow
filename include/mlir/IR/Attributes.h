@@ -405,7 +405,11 @@ public:
   using Base::Base;
   using ValueType = StringRef;
 
+  /// Get an instance of a StringAttr with the given string.
   static StringAttr get(StringRef bytes, MLIRContext *context);
+
+  /// Get an instance of a StringAttr with the given string and Type.
+  static StringAttr get(StringRef bytes, Type type);
 
   StringRef getValue() const;
 

@@ -111,7 +111,7 @@ func @volatile_load_missing_lbrace() -> () {
 func @volatile_load_missing_rbrace() -> () {
   %0 = spv.Variable : !spv.ptr<f32, Function>
   // expected-error @+1 {{expected ']'}}
-  %1 = spv.Load "Function" %0 ["Volatile" : f32
+  %1 = spv.Load "Function" %0 ["Volatile"} : f32
   return
 }
 
@@ -247,7 +247,7 @@ func @volatile_store_missing_lbrace(%arg0 : f32) -> () {
 func @volatile_store_missing_rbrace(%arg0 : f32) -> () {
   %0 = spv.Variable : !spv.ptr<f32, Function>
   // expected-error @+1 {{expected ']'}}
-  spv.Store  "Function" %0, %arg0 ["Volatile" : f32
+  spv.Store "Function" %0, %arg0 ["Volatile"} : f32
   return
 }
 

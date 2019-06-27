@@ -255,7 +255,8 @@ FunctionAttr FunctionAttr::get(Function *value) {
 }
 
 FunctionAttr FunctionAttr::get(StringRef value, MLIRContext *ctx) {
-  return Base::get(ctx, StandardAttributes::Function, value);
+  return Base::get(ctx, StandardAttributes::Function, value,
+                   NoneType::get(ctx));
 }
 
 StringRef FunctionAttr::getValue() const { return getImpl()->value; }
@@ -332,7 +333,12 @@ LogicalResult OpaqueAttr::verifyConstructionInvariants(
 //===----------------------------------------------------------------------===//
 
 StringAttr StringAttr::get(StringRef bytes, MLIRContext *context) {
-  return Base::get(context, StandardAttributes::String, bytes);
+  return get(bytes, NoneType::get(context));
+}
+
+/// Get an instance of a StringAttr with the given string and Type.
+StringAttr StringAttr::get(StringRef bytes, Type type) {
+  return Base::get(type.getContext(), StandardAttributes::String, bytes, type);
 }
 
 StringRef StringAttr::getValue() const { return getImpl()->value; }

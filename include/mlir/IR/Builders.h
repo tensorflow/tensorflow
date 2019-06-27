@@ -107,6 +107,7 @@ public:
   FloatAttr getFloatAttr(Type type, double value);
   FloatAttr getFloatAttr(Type type, const APFloat &value);
   StringAttr getStringAttr(StringRef bytes);
+  StringAttr getStringAttr(StringRef bytes, Type type);
   ArrayAttr getArrayAttr(ArrayRef<Attribute> value);
   AffineMapAttr getAffineMapAttr(AffineMap map);
   IntegerSetAttr getIntegerSetAttr(IntegerSet set);

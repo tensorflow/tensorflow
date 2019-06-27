@@ -43,7 +43,9 @@ static ParseResult parseStorageClassAttribute(spirv::StorageClass &storageClass,
   Attribute storageClassAttr;
   SmallVector<NamedAttribute, 1> storageAttr;
   auto loc = parser->getCurrentLocation();
-  if (parser->parseAttribute(storageClassAttr, "storage_class", storageAttr)) {
+  if (parser->parseAttribute(storageClassAttr,
+                             parser->getBuilder().getNoneType(),
+                             "storage_class", storageAttr)) {
     return failure();
   }
   if (!storageClassAttr.isa<StringAttr>()) {

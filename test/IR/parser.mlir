@@ -512,6 +512,9 @@ func @stringquote() -> () {
 ^bb0:
   // CHECK: "foo"() {bar = "a\22quoted\22string"} : () -> ()
   "foo"(){bar = "a\"quoted\"string"} : () -> ()
+
+  // CHECK-NEXT: "typed_string" : !foo.string
+  "foo"(){bar = "typed_string" : !foo.string} : () -> ()
   return
 }
 

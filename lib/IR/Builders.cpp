@@ -159,6 +159,10 @@ StringAttr Builder::getStringAttr(StringRef bytes) {
   return StringAttr::get(bytes, context);
 }
 
+StringAttr Builder::getStringAttr(StringRef bytes, Type type) {
+  return StringAttr::get(bytes, type);
+}
+
 ArrayAttr Builder::getArrayAttr(ArrayRef<Attribute> value) {
   return ArrayAttr::get(value, context);
 }
