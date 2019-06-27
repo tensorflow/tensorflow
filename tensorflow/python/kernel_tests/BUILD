@@ -3244,6 +3244,7 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
+    shard_count = 3,
     tags = ["notap"],  # http://b/31080670
     xla_enable_strict_auto_jit = True,
 )
