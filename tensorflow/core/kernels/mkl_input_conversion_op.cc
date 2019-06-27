@@ -295,13 +295,12 @@ class MklInputConversionOp : public OpKernel {
 //               Register kernel
 ///////////////////////////////////////////////////////////
 
-#define REGISTER_CPU(T)                                        \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("_MklInputConversion")                              \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<T>("T")                              \
-          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
-      MklInputConversionOp<CPUDevice, T>);
+#define REGISTER_CPU(T)                                             \
+  REGISTER_KERNEL_BUILDER(Name("_MklInputConversion")               \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklInputConversionOp<CPUDevice, T>);
 
 // TODO(nhasabni): We cannot support all number types since MklDnn does
 // not support types.

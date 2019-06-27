@@ -133,13 +133,12 @@ class MklToTfOp : public OpKernel {
 //               Register kernel
 ///////////////////////////////////////////////////////////
 
-#define REGISTER_CPU(T)                                        \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("_MklToTf")                                         \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<T>("T")                              \
-          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
-      MklToTfOp<CPUDevice, T>);
+#define REGISTER_CPU(T)                                             \
+  REGISTER_KERNEL_BUILDER(Name("_MklToTf")                          \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklToTfOp<CPUDevice, T>);
 
 TF_CALL_NUMBER_TYPES(REGISTER_CPU);
 TF_CALL_QUANTIZED_TYPES(REGISTER_CPU);

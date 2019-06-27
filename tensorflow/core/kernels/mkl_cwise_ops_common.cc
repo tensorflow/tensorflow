@@ -60,13 +60,12 @@ class MklBinaryOp : public BinaryOp<Device, Functor> {
 // We will need to redefine "REGISTER" to include the mkl_op_registry flag
 #pragma push_macro("REGISTER")
 #undef REGISTER
-#define REGISTER(OP, D, N, F, T)                               \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name(N)                                                  \
-          .Device(DEVICE_##D)                                  \
-          .TypeConstraint<T>("T")                              \
-          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
-      OP<D##Device, F<T>>);
+#define REGISTER(OP, D, N, F, T)                                    \
+  REGISTER_KERNEL_BUILDER(Name(N)                                   \
+                              .Device(DEVICE_##D)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          OP<D##Device, F<T>>);
 
 REGISTER6(MklBinaryOp, CPU, "_MklAdd", functor::add, float, Eigen::half, double,
           int32, int64, bfloat16);

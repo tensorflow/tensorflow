@@ -473,15 +473,14 @@ class MklSliceOp : public OpKernel {
 };
 
 // MKL-DNN Slice registration
-#define REGISTER_MKL_SLICE(type)                               \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("_MklSlice")                                        \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<type>("T")                           \
-          .HostMemory("begin")                                 \
-          .HostMemory("size")                                  \
-          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
-      MklSliceOp<CPUDevice, type>);
+#define REGISTER_MKL_SLICE(type)                                    \
+  REGISTER_KERNEL_BUILDER(Name("_MklSlice")                         \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .HostMemory("begin")                  \
+                              .HostMemory("size")                   \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklSliceOp<CPUDevice, type>);
 
 TF_CALL_float(REGISTER_MKL_SLICE);
 TF_CALL_bfloat16(REGISTER_MKL_SLICE);
