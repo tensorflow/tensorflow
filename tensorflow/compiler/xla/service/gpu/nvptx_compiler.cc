@@ -662,8 +662,9 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     }
   }
 
+  auto gpu_version = std::make_pair(cc_major, cc_minor);
   auto* gpu_executable = new GpuExecutable(
-      ptx, cubin, {cc_major, cc_minor}, std::move(thunk_schedule),
+      ptx, cubin, gpu_version, std::move(thunk_schedule),
       std::move(module), std::move(buffer_assignment),
       std::move(profile_printer), std::move(profile_index_map));
   if (embed_ir_in_executable) {
