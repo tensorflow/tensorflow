@@ -602,9 +602,9 @@ HloAllToAllInstruction::CloneWithNewOperandsImpl(
 
 HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
     const Shape& shape, HloInstruction* operand,
-    const std::vector<std::pair<int64, int64>>& source_target_pairs)
-    : HloChannelInstruction(HloOpcode::kCollectivePermute, shape,
-                            absl::nullopt),
+    const std::vector<std::pair<int64, int64>>& source_target_pairs,
+    const absl::optional<int64>& channel_id)
+    : HloChannelInstruction(HloOpcode::kCollectivePermute, shape, channel_id),
       source_target_pairs_(source_target_pairs) {
   AppendOperand(operand);
 }
@@ -650,7 +650,7 @@ HloCollectivePermuteInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* /*context*/) const {
   return absl::make_unique<HloCollectivePermuteInstruction>(
-      shape, new_operands[0], source_target_pairs());
+      shape, new_operands[0], source_target_pairs(), channel_id());
 }
 
 HloReverseInstruction::HloReverseInstruction(const Shape& shape,

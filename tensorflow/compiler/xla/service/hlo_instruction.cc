@@ -411,12 +411,16 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kCollectivePermute: {
       std::vector<std::pair<int64, int64>> source_target_pairs(
           proto.source_target_pairs_size());
+      absl::optional<int64> channel_id;
+      if (proto.channel_id() > 0) {
+        channel_id = proto.channel_id();
+      }
       for (int i = 0; i < source_target_pairs.size(); i++) {
         source_target_pairs[i].first = proto.source_target_pairs(i).source();
         source_target_pairs[i].second = proto.source_target_pairs(i).target();
       }
-      instruction =
-          CreateCollectivePermute(shape, operands(0), source_target_pairs);
+      instruction = CreateCollectivePermute(shape, operands(0),
+                                            source_target_pairs, channel_id);
       break;
     }
     case HloOpcode::kReplicaId: {
@@ -880,9 +884,10 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateCollectivePermute(
     const Shape& shape, HloInstruction* operand,
-    const std::vector<std::pair<int64, int64>>& source_target_pairs) {
+    const std::vector<std::pair<int64, int64>>& source_target_pairs,
+    const absl::optional<int64>& channel_id) {
   return absl::make_unique<HloCollectivePermuteInstruction>(
-      shape, operand, source_target_pairs);
+      shape, operand, source_target_pairs, channel_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReplicaId() {

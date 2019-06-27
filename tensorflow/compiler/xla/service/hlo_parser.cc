@@ -872,6 +872,8 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<std::vector<int64>>> source_targets;
       attrs["source_target_pairs"] = {
           /*required=*/true, AttrTy::kBracedInt64ListList, &source_targets};
+      optional<int64> channel_id;
+      attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
         return false;
@@ -885,8 +887,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
         pairs[i].first = (*source_targets)[i][0];
         pairs[i].second = (*source_targets)[i][1];
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateCollectivePermute(shape, operands[0], pairs));
+      instruction =
+          builder->AddInstruction(HloInstruction::CreateCollectivePermute(
+              shape, operands[0], pairs, channel_id));
       break;
     }
     case HloOpcode::kReplicaId: {
