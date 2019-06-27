@@ -643,14 +643,6 @@ Status EagerLocalExecute(EagerOperation* op,
 Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
                              Device* recv_device, bool mirror,
                              TensorHandle** result) {
-  if (mirror) {
-    if (h->HasRemoteMirror(recv_device)) {
-      h->Ref();
-      *result = h;
-      return Status::OK();
-    }
-  }
-
   eager::EagerClient* eager_client;
   uint64 context_id;
   TF_RETURN_IF_ERROR(
@@ -1244,9 +1236,12 @@ Status ExecuteSend(EagerContext* ctx, Device* device, TensorHandle* h,
   return Status::OK();
 }
 
+// Execute a Recv to transfer a tensor handle to a specific device. The received
+// tensor handle will be returned in result. If mirror_dst is provided, the
+// tensor handle will be added as a mirror.
 Status ExecuteRecv(EagerContext* ctx, Device* device, DataType dtype,
                    StringPiece wire_id, Device* send_device,
-                   TensorHandle** result) {
+                   TensorHandle* mirror_dst, TensorHandle** result) {
   // TODO(gjn): We should consider just using the low-level RecvOp::Compute()
   // functionality here instead of constructing an Op.
   const AttrTypeMap* types;
@@ -1311,9 +1306,19 @@ Status ExecuteRecv(EagerContext* ctx, Device* device, DataType dtype,
     } else {
       TF_RETURN_IF_ERROR(EnqueueAndWait(eager_client, request, &response));
 
-      TF_RETURN_IF_ERROR(TensorHandle::CreateRemoteHandle(
+      auto tensor_handle_data = absl::make_unique<RemoteTensorHandleData>(
           id, 0, response.queue_response(0).shape(0), eager_client, context_id,
-          dtype, device, dtype == DT_RESOURCE ? device : nullptr, ctx, result));
+          ctx);
+      if (mirror_dst != nullptr) {
+        TF_RETURN_IF_ERROR(
+            mirror_dst->AddRemoteMirror(std::move(tensor_handle_data), device));
+        mirror_dst->Ref();
+        *result = mirror_dst;
+      } else {
+        TF_RETURN_IF_ERROR(TensorHandle::CreateRemoteHandle(
+            std::move(tensor_handle_data), dtype, device,
+            dtype == DT_RESOURCE ? device : nullptr, ctx, result));
+      }
     }
   }
 
@@ -1358,6 +1363,14 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
     return errors::Unimplemented(
         "Eager's remote execution is not available on mobile devices.");
 #else   // !IS_MOBILE_PLATFORM
+    if (mirror) {
+      if (h->HasRemoteMirror(recv_device)) {
+        h->Ref();
+        *result = h;
+        return Status::OK();
+      }
+    }
+
     if (ctx->UseSendTensorRPC() && sender_is_local && !recver_is_local) {
       return EagerRemoteSendTensor(ctx, h, recv_device, mirror, result);
     } else {
@@ -1366,7 +1379,7 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
           ExecuteSend(ctx, send_device, h, wire_id, recv_device));
 
       return ExecuteRecv(ctx, recv_device, h->dtype, wire_id, send_device,
-                         result);
+                         mirror ? h : nullptr, result);
     }
 #endif  // !IS_MOBILE_PLATFORM
   }
