@@ -346,12 +346,12 @@ public:
   /// cloned sub-operations to the corresponding operation that is copied,
   /// and adds those mappings to the map.
   Operation *clone(Operation &op, BlockAndValueMapping &mapper) {
-    Operation *cloneOp = op.clone(mapper, getContext());
+    Operation *cloneOp = op.clone(mapper);
     block->getOperations().insert(insertPoint, cloneOp);
     return cloneOp;
   }
   Operation *clone(Operation &op) {
-    Operation *cloneOp = op.clone(getContext());
+    Operation *cloneOp = op.clone();
     block->getOperations().insert(insertPoint, cloneOp);
     return cloneOp;
   }
@@ -360,12 +360,12 @@ public:
   /// empty. Operands are remapped using `mapper` (if present), and `mapper` is
   /// updated to contain the results.
   Operation *cloneWithoutRegions(Operation &op, BlockAndValueMapping &mapper) {
-    Operation *cloneOp = op.cloneWithoutRegions(mapper, getContext());
+    Operation *cloneOp = op.cloneWithoutRegions(mapper);
     block->getOperations().insert(insertPoint, cloneOp);
     return cloneOp;
   }
   Operation *cloneWithoutRegions(Operation &op) {
-    Operation *cloneOp = op.cloneWithoutRegions(getContext());
+    Operation *cloneOp = op.cloneWithoutRegions();
     block->getOperations().insert(insertPoint, cloneOp);
     return cloneOp;
   }

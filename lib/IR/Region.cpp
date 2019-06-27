@@ -77,15 +77,20 @@ bool Region::isProperAncestor(Region *other) {
 
 /// Clone the internal blocks from this region into `dest`. Any
 /// cloned blocks are appended to the back of dest.
-void Region::cloneInto(Region *dest, BlockAndValueMapping &mapper,
-                       MLIRContext *context) {
+void Region::cloneInto(Region *dest, BlockAndValueMapping &mapper) {
+  assert(dest && "expected valid region to clone into");
+  cloneInto(dest, dest->end(), mapper);
+}
+
+/// Clone this region into 'dest' before the given position in 'dest'.
+void Region::cloneInto(Region *dest, Region::iterator destPos,
+                       BlockAndValueMapping &mapper) {
   assert(dest && "expected valid region to clone into");
 
   // If the list is empty there is nothing to clone.
   if (empty())
     return;
 
-  iterator lastOldBlock = --dest->end();
   for (Block &block : *this) {
     Block *newBlock = new Block();
     mapper.map(&block, newBlock);
@@ -99,9 +104,9 @@ void Region::cloneInto(Region *dest, BlockAndValueMapping &mapper,
 
     // Clone and remap the operations within this block.
     for (auto &op : block)
-      newBlock->push_back(op.clone(mapper, context));
+      newBlock->push_back(op.clone(mapper));
 
-    dest->push_back(newBlock);
+    dest->getBlocks().insert(destPos, newBlock);
   }
 
   // Now that each of the blocks have been cloned, go through and remap the
@@ -115,7 +120,7 @@ void Region::cloneInto(Region *dest, BlockAndValueMapping &mapper,
         succOp.set(mappedOp);
   };
 
-  for (auto it = std::next(lastOldBlock), e = dest->end(); it != e; ++it)
+  for (iterator it(mapper.lookup(&front())); it != destPos; ++it)
     it->walk(remapOperands);
 }
 

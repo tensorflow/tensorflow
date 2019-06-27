@@ -92,8 +92,10 @@ public:
   /// cloned blocks are appended to the back of dest. If the mapper
   /// contains entries for block arguments, these arguments are not included
   /// in the respective cloned block.
-  void cloneInto(Region *dest, BlockAndValueMapping &mapper,
-                 MLIRContext *context);
+  void cloneInto(Region *dest, BlockAndValueMapping &mapper);
+  /// Clone this region into 'dest' before the given position in 'dest'.
+  void cloneInto(Region *dest, Region::iterator destPos,
+                 BlockAndValueMapping &mapper);
 
   /// Takes body of another region (that region will have no body after this
   /// operation completes).  The current body of this region is cleared.

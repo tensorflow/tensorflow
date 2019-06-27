@@ -135,7 +135,7 @@ void Function::cloneInto(Function *dest, BlockAndValueMapping &mapper) {
   dest->setAttrs(newAttrs.takeVector());
 
   // Clone the body.
-  body.cloneInto(&dest->body, mapper, getContext());
+  body.cloneInto(&dest->body, mapper);
 }
 
 /// Create a deep copy of this function and all of its blocks, remapping

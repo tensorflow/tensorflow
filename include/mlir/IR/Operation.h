@@ -91,15 +91,14 @@ public:
   /// them alone if no entry is present).  Replaces references to cloned
   /// sub-operations to the corresponding operation that is copied, and adds
   /// those mappings to the map.
-  Operation *clone(BlockAndValueMapping &mapper, MLIRContext *context);
-  Operation *clone(MLIRContext *context);
+  Operation *clone(BlockAndValueMapping &mapper);
+  Operation *clone();
 
   /// Create a deep copy of this operation but keep the operation regions empty.
   /// Operands are remapped using `mapper` (if present), and `mapper` is updated
   /// to contain the results.
-  Operation *cloneWithoutRegions(BlockAndValueMapping &mapper,
-                                 MLIRContext *context);
-  Operation *cloneWithoutRegions(MLIRContext *context);
+  Operation *cloneWithoutRegions(BlockAndValueMapping &mapper);
+  Operation *cloneWithoutRegions();
 
   /// Returns the operation block that contains this operation.
   Block *getBlock() { return block; }
