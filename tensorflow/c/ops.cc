@@ -78,15 +78,10 @@ void TF_RegisterOpDefinition(TF_OpDefinitionBuilder* builder,
   TF_SetStatus(status, TF_OK, "");
   ::tensorflow::OpRegistry::Global()->Register(
       [cc_builder](::tensorflow::OpRegistrationData* op_reg_data) -> Status {
-        return cc_builder->Finalize(op_reg_data);
+        Status result = cc_builder->Finalize(op_reg_data);
+        delete cc_builder;
+        return result;
       });
-
-  // Calling ProcessRegistrations ensures that the cc_builder's finalize method
-  // is called and that the builder can be deleted.
-  Set_TF_Status_from_Status(
-      status, ::tensorflow::OpRegistry::Global()->ProcessRegistrations());
-
-  delete cc_builder;
 }
 
 void TF_OpDefinitionBuilderSetShapeInferenceFunction(
