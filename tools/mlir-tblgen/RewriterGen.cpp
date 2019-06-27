@@ -429,7 +429,7 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
     auto &entities = appliedConstraint.entities;
 
     auto condition = constraint.getConditionTemplate();
-    auto cmd = "if (!{0}) return matchFailure();\n";
+    auto cmd = "if (!({0})) return matchFailure();\n";
 
     if (isa<TypeConstraint>(constraint)) {
       auto self = formatv("(*{0}->result_type_begin())",

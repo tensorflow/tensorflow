@@ -55,7 +55,7 @@ def : Pattern<(OpA:$res_a $operand, $attr),
 // CHECK:   s.operand = op0->getOperand(0);
 // CHECK:   attr = op0->getAttrOfType<IntegerAttr>("attr");
 // CHECK:   s.attr = attr;
-// CHECK:   if (!(s.res_a->hasOneUse())) return matchFailure();
+// CHECK:   if (!((s.res_a->hasOneUse()))) return matchFailure();
 
 // Test bound results in result pattern
 // ---
