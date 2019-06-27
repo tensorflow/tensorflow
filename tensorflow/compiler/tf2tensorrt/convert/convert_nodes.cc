@@ -1425,32 +1425,6 @@ void Converter::ProvideQuantizationRange(nvinfer1::ITensor* tensor,
   quantization_ranges_[tensor] = symmetric_range;
 }
 
-namespace {
-
-bool IsConvolution(const nvinfer1::ILayer* layer) {
-  return layer->getType() == nvinfer1::LayerType::kCONVOLUTION;
-}
-
-bool IsScale(const nvinfer1::ILayer* layer) {
-  return layer->getType() == nvinfer1::LayerType::kSCALE;
-}
-
-bool IsClipOrRelu(const nvinfer1::ILayer* layer) {
-  if (layer->getType() != nvinfer1::LayerType::kACTIVATION) {
-    return false;
-  }
-  auto activation_type = static_cast<const nvinfer1::IActivationLayer*>(layer)
-                             ->getActivationType();
-#if IS_TRT_VERSION_GE(5, 1, 2, 0)
-  return activation_type == nvinfer1::ActivationType::kRELU ||
-         activation_type == nvinfer1::ActivationType::kCLIP;
-#else
-  return activation_type == nvinfer1::ActivationType::kRELU;
-#endif
-}
-
-}  // namespace
-
 void Converter::MaybeApplyQuantizationRanges() {
   if (precision_mode() != TrtPrecisionMode::INT8) return;
 
@@ -1468,120 +1442,34 @@ void Converter::MaybeApplyQuantizationRanges() {
   }
 #endif
 
-  if (use_calibration()) return;
-  // Attempt to find tensors that are missing ranges, and set the corresponding
-  // layer's precision to FP16 to avoid Builder::buildCudaEngine() failing.
-  // TensorRT doesn't need ranges for intermediate tensors when layers are fused
-  // so find fused layers first.
-  // Get all tensors from network and deduce fused ops.
-  std::map<nvinfer1::ILayer*, std::vector<nvinfer1::ILayer*>> layer_consumers;
-  std::map<nvinfer1::ITensor*, nvinfer1::ILayer*> tensor_layer;
-  std::set<nvinfer1::ITensor*> all_tensors;
-  for (int i = 0; i < this->network()->getNbLayers(); i++) {
-    nvinfer1::ILayer* layer = this->network()->getLayer(i);
-    layer_consumers[layer] = {};
-    for (int j = 0; j < layer->getNbInputs(); j++) {
-      all_tensors.insert(layer->getInput(j));
-    }
-    for (int j = 0; j < layer->getNbOutputs(); j++) {
-      tensor_layer[layer->getOutput(j)] = layer;
-      all_tensors.insert(layer->getOutput(j));
-    }
-  }
-  for (int i = 0; i < this->network()->getNbLayers(); i++) {
-    nvinfer1::ILayer* layer = this->network()->getLayer(i);
-    layer_consumers[layer] = {};
-    for (int j = 0; j < layer->getNbInputs(); j++) {
-      nvinfer1::ITensor* input_tensor = layer->getInput(j);
-      auto input_layer = tensor_layer.find(input_tensor);
-      if (input_layer != tensor_layer.end()) {
-        auto consumed_layer = layer_consumers.find(input_layer->second);
-        if (consumed_layer != layer_consumers.end()) {
-          consumed_layer->second.push_back(layer);
-        }
-      }
-      all_tensors.insert(input_tensor);
-    }
-  }
-  // Identify fused tensors.
-  // Conv+BiasAdd+Activation(Clip or Relu), Conv+BiasAdd,
-  // Conv+Activation(Clip or Relu) are fused.
-  std::set<nvinfer1::ITensor*> fused_tensors;
-  typedef std::function<bool(const nvinfer1::ILayer*)> matcher;
-  const std::vector<std::pair<string, std::vector<matcher>>> fused_patterns = {
-      {"Fused Conv+Bias+Activation",
-       {
-           IsConvolution,
-           IsScale,
-           IsClipOrRelu,
-       }},
-      {"Fused Conv+Bias",
-       {
-           IsConvolution,
-           IsScale,
-       }},
-      {"Fused Conv+Activation",
-       {
-           IsConvolution,
-           IsClipOrRelu,
-       }},
-  };
-  for (int i = 0; i < this->network()->getNbLayers(); i++) {
-    for (const auto& pattern : fused_patterns) {
-      size_t last_matcher = pattern.second.size() - 1;
+  // Warn user about tensors that are missing ranges. If TRT fuses some layers
+  // then these tensors may not actually be required, which is why this is
+  // just a warning. If we are still missing ranges even after fusion,
+  // Builder::buildCudaEngine() will return nullptr and we will catch the
+  // error at that point.
+  if (!use_calibration()) {
+    // Get all tensors from network
+    std::set<nvinfer1::ITensor*> all_tensors;
+    for (int i = 0; i < this->network()->getNbLayers(); i++) {
       nvinfer1::ILayer* layer = this->network()->getLayer(i);
-      // We should skip this layer if its outputs are already marked as fused,
-      // but all the current patterns start with a convolution and are ordered
-      // in decreasing pattern length, so that is not necessary (yet).
-      std::vector<nvinfer1::ILayer*> fused_candidates;
-      for (size_t index = 0; index <= last_matcher; ++index) {
-        if ((!pattern.second[index](layer)) ||
-            (index < last_matcher && layer_consumers[layer].size() != 1)) {
-          fused_candidates.clear();
-          break;
-        }
-        if (index < last_matcher) {
-          fused_candidates.push_back(layer);
-        }
-        layer = layer_consumers[layer].front();
+      for (int j = 0; j < layer->getNbInputs(); j++) {
+        all_tensors.insert(layer->getInput(j));
       }
-      if (!fused_candidates.empty()) {
-        VLOG(1) << pattern.first;
-        for (const auto& fused_layer : fused_candidates) {
-          for (int i = 0; i < fused_layer->getNbOutputs(); i++) {
-            VLOG(1) << "  Fused output tensor:"
-                    << fused_layer->getOutput(i)->getName();
-            fused_tensors.insert(fused_layer->getOutput(i));
-          }
-        }
-        break;  // Don't try other patterns on this layer.
+      for (int j = 0; j < layer->getNbOutputs(); j++) {
+        all_tensors.insert(layer->getOutput(j));
       }
     }
-  }
-  // Find tensors with no ranges that are not fused and force their layers to
-  // not be quantized.
-  for (auto tensor : all_tensors) {
-    if (!quantization_ranges_.count(tensor) &&
-        fused_tensors.find(tensor) == fused_tensors.end()) {
-      // Note: there may be some warnings for "(Unnamed ITensor* N)". These
-      // are tensors which are created internally by TF-TRT. The ranges for
-      // these unnamed ITensors are always inferred from user provided ranges,
-      // thus there will also be a warning for the range(s) the user missed.
-      LOG(WARNING) << "Quantization range was not found for "
-                   << tensor->getName() << ". "
-                   << "Setting invalid quantization range.";
-      // Set the range to something unusable so the engine will fail if it
-      // tries to actually use the tensor's range.
-      tensor->setDynamicRange(0, 0);
-      auto layer = tensor_layer.find(tensor);
-      // If the tensor is the output of a layer, set the layer's precision
-      // to fp16 so that it isn't quantized.
-      // Shuffle doesn't support setting precision.
-      if (layer != tensor_layer.end() &&
-          layer->second->getType() != nvinfer1::LayerType::kSHUFFLE) {
-        VLOG(1) << "And setting layer " << layer->second->getName()
-                << " precision to fp16.";
-        layer->second->setPrecision(nvinfer1::DataType::kHALF);
+    // Find tensors with no ranges
+    for (auto tensor : all_tensors) {
+      if (!quantization_ranges_.count(tensor)) {
+        // Note: there may be some warnings for "(Unnamed ITensor* N)". These
+        // are tensors which are created internally by TF-TRT. The ranges for
+        // these unnamed ITensors are always inferred from user provided ranges,
+        // thus there will also be a warning for the range(s) the user missed.
+        LOG(WARNING) << "Quantization range was not found for "
+                     << tensor->getName() << ". "
+                     << "This is okay if TensorRT does not need the range "
+                     << "(e.g. due to node fusion).";
       }
     }
   }
@@ -1682,7 +1570,7 @@ Status CheckInputsWeights(
                                    " must be a constant, at ", node_def.name());
     }
     // TODO(tmorris): Remove this check and provide a method to automatically
-    // retrieve an input as a tensor, converting via CreateConstantLayer if it
+    // retrive an input as a tensor, converting via CreateConstantLayer if it
     // was originally a weight. We will want a caching mechanism to prevent many
     // duplicate constants from being created.
     if (!inputs_is_weight[i].second && inputs.at(i).is_weights()) {
@@ -4782,7 +4670,7 @@ Status ConvertResize(OpConverterParams* params) {
   // return after validation if only validation is requested.
   if (params->validation_only) return Status::OK();
 
-  // Transpose tensor from NHWC to NCHW format.
+  // Tranpose tensor from NHWC to NCHW format.
   TF_RETURN_IF_ERROR(
       params->converter->TransposeTensor(tensor, {0, 3, 1, 2}, &tensor));
 
