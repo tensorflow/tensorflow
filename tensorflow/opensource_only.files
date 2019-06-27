@@ -144,6 +144,7 @@ tensorflow/third_party/systemlibs/BUILD
 tensorflow/third_party/systemlibs/google_cloud_cpp.BUILD
 tensorflow/third_party/systemlibs/astor.BUILD
 tensorflow/third_party/systemlibs/six.BUILD
+tensorflow/third_party/systemlibs/opt_einsum.BUILD
 tensorflow/third_party/systemlibs/absl_py.absl.testing.BUILD
 tensorflow/third_party/systemlibs/boringssl.BUILD
 tensorflow/third_party/systemlibs/nsync.BUILD
@@ -214,6 +215,7 @@ tensorflow/third_party/mkl_dnn/LICENSE
 tensorflow/third_party/mkl_dnn/mkldnn.BUILD
 tensorflow/third_party/pcre.BUILD
 tensorflow/third_party/pybind11.BUILD
+tensorflow/third_party/opt_einsum.BUILD
 tensorflow/third_party/linenoise.BUILD
 tensorflow/third_party/sqlite.BUILD
 tensorflow/third_party/common.bzl
