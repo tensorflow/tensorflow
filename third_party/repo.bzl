@@ -61,15 +61,13 @@ def _repos_are_siblings():
     return Label("@foo//bar").workspace_root.startswith("../")
 
 # Apply a patch_file to the repository root directory
-# Runs 'patch -p1'
+# Runs 'git apply' on Unix, 'patch -p1' on Windows.
 def _apply_patch(ctx, patch_file):
-    # Don't check patch on Windows, because patch is only available under bash.
-    if not _is_windows(ctx) and not ctx.which("patch"):
-        fail("patch command is not found, please install it")
-    cmd = _wrap_bash_cmd(
-        ctx,
-        ["patch", "-p1", "-d", ctx.path("."), "-i", ctx.path(patch_file)],
-    )
+    if _is_windows(ctx):
+        patch_command = ["patch", "-p1", "-d", ctx.path("."), "-i", ctx.path(patch_file)]
+    else:
+        patch_command = ["git", "apply", "-v", ctx.path(patch_file)]
+    cmd = _wrap_bash_cmd(ctx, patch_command)
     _execute_and_check_ret_code(ctx, cmd)
 
 def _apply_delete(ctx, paths):
@@ -82,11 +80,11 @@ def _apply_delete(ctx, paths):
     _execute_and_check_ret_code(ctx, cmd)
 
 def _tf_http_archive(ctx):
-    if ("mirror.bazel.build" not in ctx.attr.urls[0] and
+    if ("mirror.tensorflow.org" not in ctx.attr.urls[0] and
         (len(ctx.attr.urls) < 2 and
          ctx.attr.name not in _SINGLE_URL_WHITELIST.to_list())):
         fail("tf_http_archive(urls) must have redundant URLs. The " +
-             "mirror.bazel.build URL must be present and it must come first. " +
+             "mirror.tensorflow.org URL must be present and it must come first. " +
              "Even if you don't have permission to mirror the file, please " +
              "put the correctly formatted mirror URL there anyway, because " +
              "someone will come along shortly thereafter and mirror the file.")
@@ -148,11 +146,11 @@ ensure best practices are followed.
 """
 
 def _third_party_http_archive(ctx):
-    if ("mirror.bazel.build" not in ctx.attr.urls[0] and
+    if ("mirror.tensorflow.org" not in ctx.attr.urls[0] and
         (len(ctx.attr.urls) < 2 and
          ctx.attr.name not in _SINGLE_URL_WHITELIST.to_list())):
         fail("tf_http_archive(urls) must have redundant URLs. The " +
-             "mirror.bazel.build URL must be present and it must come first. " +
+             "mirror.tensorflow.org URL must be present and it must come first. " +
              "Even if you don't have permission to mirror the file, please " +
              "put the correctly formatted mirror URL there anyway, because " +
              "someone will come along shortly thereafter and mirror the file.")
@@ -185,7 +183,7 @@ def _third_party_http_archive(ctx):
             _apply_patch(ctx, ctx.attr.patch_file)
         ctx.symlink(Label(ctx.attr.build_file), buildfile_path)
 
-    link_dict = dict()
+    link_dict = {}
     if use_syslib:
         link_dict.update(ctx.attr.system_link_files)
 

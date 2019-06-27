@@ -13,17 +13,11 @@ def tflite_copts():
         "-DFARMHASH_NO_CXX_STRING",
     ] + select({
         str(Label("//tensorflow:android_arm64")): [
-            "-std=c++11",
             "-O3",
         ],
         str(Label("//tensorflow:android_arm")): [
             "-mfpu=neon",
-            "-mfloat-abi=softfp",
-            "-std=c++11",
             "-O3",
-        ],
-        str(Label("//tensorflow:android_x86")): [
-            "-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK",
         ],
         str(Label("//tensorflow:ios_x86_64")): [
             "-msse4.1",
@@ -35,13 +29,11 @@ def tflite_copts():
         "//conditions:default": [
             "-Wno-sign-compare",
         ],
-    }) + select({
-        str(Label("//tensorflow:with_default_optimizations")): [],
-        "//conditions:default": ["-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK"],
     })
 
     return copts
 
+EXPORTED_SYMBOLS = "//tensorflow/lite/java/src/main/native:exported_symbols.lds"
 LINKER_SCRIPT = "//tensorflow/lite/java/src/main/native:version_script.lds"
 
 def tflite_linkopts_unstripped():
@@ -86,47 +78,55 @@ def tflite_jni_linkopts_unstripped():
         "//conditions:default": [],
     })
 
-def tflite_linkopts():
-    """Defines linker flags to reduce size of TFLite binary."""
-    return tflite_linkopts_unstripped() + select({
+def tflite_symbol_opts():
+    """Defines linker flags whether to include symbols or not."""
+    return select({
+        "//tensorflow:android": [
+            "-latomic",  # Required for some uses of ISO C++11 <atomic> in x86.
+        ],
+        "//conditions:default": [],
+    }) + select({
         "//tensorflow:debug": [],
         "//conditions:default": [
             "-s",  # Omit symbol table, for all non debug builds
         ],
     })
 
+def tflite_linkopts():
+    """Defines linker flags to reduce size of TFLite binary."""
+    return tflite_linkopts_unstripped() + tflite_symbol_opts()
+
 def tflite_jni_linkopts():
     """Defines linker flags to reduce size of TFLite binary with JNI."""
-    return tflite_jni_linkopts_unstripped() + [
-        "-latomic",  # Required for some uses of ISO C++11 <atomic> in x86.]
-    ] + select({
-        "//tensorflow:debug": [],
-        "//conditions:default": [
-            "-s",  # Omit symbol table, for all non debug builds
-        ],
-    })
+    return tflite_jni_linkopts_unstripped() + tflite_symbol_opts()
 
 def tflite_jni_binary(
         name,
         copts = tflite_copts(),
         linkopts = tflite_jni_linkopts(),
         linkscript = LINKER_SCRIPT,
+        exported_symbols = EXPORTED_SYMBOLS,
         linkshared = 1,
         linkstatic = 1,
         testonly = 0,
         deps = [],
         srcs = []):
     """Builds a jni binary for TFLite."""
-    linkopts = linkopts + [
-        "-Wl,--version-script",  # Export only jni functions & classes.
-        "$(location {})".format(linkscript),
-    ]
+    linkopts = linkopts + select({
+        "//tensorflow:macos": [
+            "-Wl,-exported_symbols_list,$(location {})".format(exported_symbols),
+        ],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "-Wl,--version-script,$(location {})".format(linkscript),
+        ],
+    })
     native.cc_binary(
         name = name,
         copts = copts,
         linkshared = linkshared,
         linkstatic = linkstatic,
-        deps = deps + [linkscript],
+        deps = deps + [linkscript, exported_symbols],
         srcs = srcs,
         linkopts = linkopts,
         testonly = testonly,
@@ -137,7 +137,8 @@ def tflite_cc_shared_object(
         copts = tflite_copts(),
         linkopts = [],
         linkstatic = 1,
-        deps = []):
+        deps = [],
+        visibility = None):
     """Builds a shared object for TFLite."""
     tf_cc_shared_object(
         name = name,
@@ -146,6 +147,7 @@ def tflite_cc_shared_object(
         linkopts = linkopts + tflite_jni_linkopts(),
         framework_so = [],
         deps = deps,
+        visibility = visibility,
     )
 
 def tf_to_tflite(name, src, options, out):
@@ -245,7 +247,9 @@ def generated_test_models():
         "elu",
         "equal",
         "exp",
+        "embedding_lookup",
         "expand_dims",
+        "eye",
         "fill",
         "floor",
         "floor_div",
@@ -258,6 +262,7 @@ def generated_test_models():
         "global_batch_norm",
         "greater",
         "greater_equal",
+        "identity",
         "sum",
         "l2norm",
         "l2norm_shared_epsilon",
@@ -272,6 +277,8 @@ def generated_test_models():
         "logical_or",
         "logical_xor",
         "lstm",
+        "matrix_diag",
+        "matrix_set_diag",
         "max_pool",
         "maximum",
         "mean",
@@ -301,6 +308,8 @@ def generated_test_models():
         "resolve_constant_strided_slice",
         "reverse_sequence",
         "reverse_v2",
+        "rfft2d",
+        "round",
         "rsqrt",
         "shape",
         "sigmoid",
@@ -323,6 +332,9 @@ def generated_test_models():
         "topk",
         "transpose",
         "transpose_conv",
+        "unfused_gru",
+        "unidirectional_sequence_lstm",
+        "unidirectional_sequence_rnn",
         "unique",
         "unpack",
         "unroll_batch_matmul",
@@ -337,7 +349,19 @@ def generated_test_models_failing(conversion_mode):
     if conversion_mode == "toco-flex":
         return [
             "lstm",  # TODO(b/117510976): Restore when lstm flex conversion works.
-            "unroll_batch_matmul",  # TODO(b/123030774): Fails in 1.13 tests.
+            "unidirectional_sequence_lstm",
+            "unidirectional_sequence_rnn",
+        ]
+    elif conversion_mode == "forward-compat":
+        return [
+            # TODO(b/135758082): L2Norm is broken in future forward
+            # compatibility horizon
+            "l2norm",
+            # TODO(b/135756979): Eye/MatrixDiag is broken in future
+            # forward compatibility horizon
+            "matrix_diag",
+            "matrix_set_diag",
+            "eye",
         ]
 
     return []
@@ -345,8 +369,7 @@ def generated_test_models_failing(conversion_mode):
 def generated_test_conversion_modes():
     """Returns a list of conversion modes."""
 
-    # TODO(nupurgarg): Add "pb2lite" when it's in open source. b/113614050.
-    return ["toco-flex", ""]
+    return ["toco-flex", "forward-compat", ""]
 
 def generated_test_models_all():
     """Generates a list of all tests with the different converters.
@@ -388,17 +411,16 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
     """
     toco = "//tensorflow/lite/toco:toco"
     flags = ""
-    if conversion_mode:
-        # TODO(nupurgarg): Comment in when pb2lite is in open source. b/113614050.
-        # if conversion_mode == "pb2lite":
-        #     toco = "//tensorflow/lite/experimental/pb2lite:pb2lite"
-        flags = "--ignore_toco_errors --run_with_flex"
+    if conversion_mode == "toco-flex":
+        flags += " --ignore_converter_errors --run_with_flex"
+    elif conversion_mode == "forward-compat":
+        flags += " --make_forward_compat_test"
 
     gen_zipped_test_file(
         name = "zip_%s" % test_name,
         file = "%s.zip" % test_name,
         toco = toco,
-        flags = flags,
+        flags = flags + " --save_graphdefs",
     )
     tf_cc_test(name, **kwargs)
 

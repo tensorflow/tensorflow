@@ -38,20 +38,18 @@ namespace gpu {
 IrEmitterNested::IrEmitterNested(const HloModuleConfig& hlo_module_config,
                                  const HloComputation& nested_computation,
                                  IrEmitterContext* ir_emitter_context)
-    : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/true) {
-  std::vector<const HloInstruction*> io_hlos;
-  emitted_function_ =
-      EmitBasePointersForNestedComputation(nested_computation, &io_hlos);
-}
+    : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/true),
+      nested_computation_(nested_computation) {}
 
-llvm::Function* IrEmitterNested::EmitBasePointersForNestedComputation(
-    const HloComputation& nested_computation,
-    std::vector<const HloInstruction*>* io_hlos) {
+// Nested function serves the same purpose on GPU as a thread-local function on
+// a CPU.
+Status IrEmitterNested::CodegenNestedComputation() {
+  std::vector<const HloInstruction*> io_hlos;
   std::vector<llvm::Type*> argument_types;
   std::vector<int64> argument_dereferenceable_bytes;
   for (const HloInstruction* param :
-       nested_computation.parameter_instructions()) {
-    io_hlos->push_back(param);
+       nested_computation_.parameter_instructions()) {
+    io_hlos.push_back(param);
     const Shape& param_shape = param->shape();
     argument_types.push_back(
         llvm_ir::ShapeToIrType(param_shape, module_)->getPointerTo());
@@ -59,9 +57,9 @@ llvm::Function* IrEmitterNested::EmitBasePointersForNestedComputation(
         llvm_ir::ByteSizeOf(param_shape, module_->getDataLayout());
     argument_dereferenceable_bytes.push_back(param_size);
   }
+
+  const HloInstruction* root = nested_computation_.root_instruction();
   {
-    const HloInstruction* root = nested_computation.root_instruction();
-    io_hlos->push_back(root);
     const Shape& root_shape = root->shape();
     argument_types.push_back(
         llvm_ir::ShapeToIrType(root_shape, module_)->getPointerTo());
@@ -77,9 +75,9 @@ llvm::Function* IrEmitterNested::EmitBasePointersForNestedComputation(
   llvm::Function* function = llvm::Function::Create(
       function_type,                       // The function type.
       llvm::GlobalValue::InternalLinkage,  // The linkage type.
-      llvm_ir::AsStringRef(ir_emitter_context_->name_uniquer()->GetUniqueName(
+      ir_emitter_context_->name_uniquer()->GetUniqueName(
           llvm_ir::SanitizeFunctionName(
-              nested_computation.name()))),  // The name of the function.
+              nested_computation_.name())),  // The name of the function.
       ir_emitter_context_->llvm_module());   // The parent LLVM module.
   for (size_t arg_no = 0; arg_no < argument_dereferenceable_bytes.size();
        ++arg_no) {
@@ -96,17 +94,61 @@ llvm::Function* IrEmitterNested::EmitBasePointersForNestedComputation(
       llvm::BasicBlock::Create(function->getContext(), "entry", function);
   // Emit a "return void" at entry_bb's end, and sets the insert point before
   // that return instruction.
-  b_.SetInsertPoint(llvm::ReturnInst::Create(function->getContext(), entry_bb));
+  llvm::ReturnInst* ret_instr =
+      llvm::ReturnInst::Create(function->getContext(), entry_bb);
+  b_.SetInsertPoint(ret_instr);
 
   std::vector<const HloInstruction*> non_io_hlos;
-  for (const auto* hlo : nested_computation.instructions()) {
+  non_io_hlos.push_back(root);
+  for (const auto* hlo : nested_computation_.instructions()) {
     if (hlo->opcode() != HloOpcode::kParameter &&
-        hlo != nested_computation.root_instruction()) {
+        hlo != nested_computation_.root_instruction()) {
       non_io_hlos.push_back(hlo);
     }
   }
-  bindings_.EmitBasePointersForHlos(*io_hlos, non_io_hlos);
-  return function;
+  bindings_.EmitBasePointersForHlos(io_hlos, non_io_hlos);
+
+  TF_RETURN_IF_ERROR(nested_computation_.root_instruction()->Accept(this));
+  b_.SetInsertPoint(ret_instr);
+
+  // Function epilogue: copy the output value back.
+  {
+    // TODO(cheshire) Duplication vs. EmitThreadLocalFunctionEpilogue
+    const HloInstruction* root_instruction =
+        nested_computation_.root_instruction();
+    llvm::Value* root_value = bindings_.GetBasePointer(*root_instruction);
+    const Shape& return_shape = root_instruction->shape();
+
+    // Second last argument is the out parameter.
+    llvm::Argument* out_parameter = std::prev(function->arg_end(), 2);
+
+    if (ShapeUtil::IsScalar(return_shape)) {
+      llvm::Value* ret_value = Load(root_value, "load_ret_value");
+      Store(ret_value,
+            BitCast(out_parameter, root_value->getType(), "bitcast_ret_value"));
+    } else {
+      CHECK(return_shape.IsTuple());
+      llvm::Type* tuple_type = llvm_ir::ShapeToIrType(return_shape, module_);
+      llvm::Type* tuple_type_ptr = tuple_type->getPointerTo();
+      llvm::Value* tuple_ptr = BitCast(out_parameter, tuple_type_ptr);
+
+      for (int i = 0; i < return_shape.tuple_shapes_size(); i++) {
+        const Shape& element_shape = return_shape.tuple_shapes(i);
+        llvm::Value* destination =
+            llvm_ir::EmitGetTupleElement(element_shape,
+                                         /*index=*/i,
+                                         /*alignment=*/1, tuple_ptr, &b_);
+        llvm::Value* source =
+            llvm_ir::EmitGetTupleElement(element_shape,
+                                         /*index=*/i,
+                                         /*alignment=*/1, root_value, &b_);
+        Store(Load(source), destination);
+      }
+    }
+  }
+  b_.SetInsertPoint(ret_instr);
+  emitted_function_ = function;
+  return Status::OK();
 }
 
 Status IrEmitterNested::HandleParameter(HloInstruction* parameter) {
@@ -118,12 +160,12 @@ Status IrEmitterNested::EmitTargetElementLoop(
     const llvm_ir::ElementGenerator& element_generator) {
   // For MOF we give the loop emitter an array for every output it should
   // generate.
-  if (hlo.IsMultiOutputFusion()) {
+  if (hlo.shape().IsTuple()) {
     std::vector<llvm_ir::IrArray> target_arrays =
         ConstructIrArrayForOutputs(hlo);
     TF_RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(element_generator, target_arrays, &b_).EmitLoop());
-    llvm_ir::EmitTuple(GetIrArray(hlo, hlo), target_arrays, &b_, module_);
+    llvm_ir::EmitTuple(GetIrArray(hlo, hlo), target_arrays, &b_);
     return Status::OK();
   }
   return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo, hlo), &b_)

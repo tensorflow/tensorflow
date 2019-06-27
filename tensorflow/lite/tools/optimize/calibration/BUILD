@@ -1,11 +1,12 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
-package(default_visibility = [
-    "//visibility:public",
-])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "calibrator_lib",
@@ -89,6 +90,7 @@ cc_library(
     name = "calibration_logger",
     hdrs = ["calibration_logger.h"],
     deps = [
+        "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/c:c_api_internal",
     ],
 )

@@ -414,7 +414,7 @@ class MklConvCustomBackpropFilterOp
         // if output tensor has more than 0 elements, we need to 0 them out.
         auto diff_filter_data = diff_filter_tensor->flat<T>().data();
         for (size_t i = 0; i < diff_filter_tf_shape.num_elements(); ++i) {
-          diff_filter_data[i] = 0;
+          diff_filter_data[i] = static_cast<T>(0);
         }
         return;
       }
@@ -699,38 +699,40 @@ class MklConvCustomBackpropFilterOp
   }
 };
 
-#define REGISTER_MKL_FILTER_KERNELS(T)                                   \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("_MklConv2DBackpropFilter")                                   \
-          .Device(DEVICE_CPU)                                            \
-          .TypeConstraint<T>("T")                                        \
-          .Label(mkl_op_registry::kMklOpLabel),                          \
-      MklConvCustomBackpropFilterOp<CPUDevice, T, false, false>);        \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("_MklConv2DBackpropFilterWithBias")                           \
-          .Device(DEVICE_CPU)                                            \
-          .TypeConstraint<T>("T")                                        \
-          .Label(mkl_op_registry::kMklOpLabel),                          \
-      MklConvCustomBackpropFilterOp<CPUDevice, T, true, false>);         \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("_MklDepthwiseConv2dNativeBackpropFilter")                    \
-          .Device(DEVICE_CPU)                                            \
-          .TypeConstraint<T>("T")                                        \
-          .Label(mkl_op_registry::kMklOpLabel),                          \
-      MklConvCustomBackpropFilterOp<CPUDevice, T, false, true>);         \
-  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DBackpropFilterWithBias") \
-                              .Device(DEVICE_CPU)                        \
-                              .TypeConstraint<T>("T")                    \
-                              .Label(mkl_op_registry::kMklOpLabel),      \
-                          MklDummyOp<CPUDevice, T>);                     \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("_MklConv3DBackpropFilterV2")                                 \
-          .Device(DEVICE_CPU)                                            \
-          .TypeConstraint<T>("T")                                        \
-          .Label(mkl_op_registry::kMklOpLabel),                          \
+#define REGISTER_MKL_FILTER_KERNELS(T)                            \
+  REGISTER_KERNEL_BUILDER(                                        \
+      Name("_MklConv2DBackpropFilter")                            \
+          .Device(DEVICE_CPU)                                     \
+          .TypeConstraint<T>("T")                                 \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),    \
+      MklConvCustomBackpropFilterOp<CPUDevice, T, false, false>); \
+  REGISTER_KERNEL_BUILDER(                                        \
+      Name("_MklConv2DBackpropFilterWithBias")                    \
+          .Device(DEVICE_CPU)                                     \
+          .TypeConstraint<T>("T")                                 \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),    \
+      MklConvCustomBackpropFilterOp<CPUDevice, T, true, false>);  \
+  REGISTER_KERNEL_BUILDER(                                        \
+      Name("_MklDepthwiseConv2dNativeBackpropFilter")             \
+          .Device(DEVICE_CPU)                                     \
+          .TypeConstraint<T>("T")                                 \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),    \
+      MklConvCustomBackpropFilterOp<CPUDevice, T, false, true>);  \
+  REGISTER_KERNEL_BUILDER(                                        \
+      Name("__MklDummyConv2DBackpropFilterWithBias")              \
+          .Device(DEVICE_CPU)                                     \
+          .TypeConstraint<T>("T")                                 \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),    \
+      MklDummyOp<CPUDevice, T>);                                  \
+  REGISTER_KERNEL_BUILDER(                                        \
+      Name("_MklConv3DBackpropFilterV2")                          \
+          .Device(DEVICE_CPU)                                     \
+          .TypeConstraint<T>("T")                                 \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),    \
       MklConvCustomBackpropFilterOp<CPUDevice, T, false, false>);
 
 TF_CALL_float(REGISTER_MKL_FILTER_KERNELS);
+TF_CALL_bfloat16(REGISTER_MKL_FILTER_KERNELS);
 #undef REGISTER_MKL_FILTER_KERNELS
 
 }  // namespace tensorflow

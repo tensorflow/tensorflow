@@ -1,14 +1,15 @@
 # Description:
 # Contains ops for remote fused graph
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
+
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 tf_gen_op_wrapper_py(
     name = "gen_remote_fused_graph_ops",
@@ -37,6 +38,7 @@ py_test(
     name = "remote_fused_graph_ops_test",
     size = "small",
     srcs = ["python/ops/remote_fused_graph_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":remote_fused_graph_ops_py",

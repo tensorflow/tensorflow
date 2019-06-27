@@ -1,6 +1,8 @@
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 filegroup(
     name = "all_files",
@@ -20,13 +22,11 @@ py_library(
         "arg_defaults.py",
         "asserts.py",
         "break_statements.py",
-        "builtin_functions.py",
         "call_trees.py",
         "conditional_expressions.py",
         "continue_statements.py",
         "control_flow.py",
         "directives.py",
-        "error_handlers.py",
         "function_scopes.py",
         "list_comprehensions.py",
         "lists.py",
@@ -73,18 +73,6 @@ py_test(
     name = "break_statements_test",
     srcs = ["break_statements_test.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/core:test_lib",
-    ],
-)
-
-py_test(
-    name = "builtin_functions_test",
-    srcs = ["builtin_functions_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["no_windows"],
     deps = [
         ":converters",
         "//tensorflow/python:client_testlib",
@@ -209,18 +197,6 @@ py_test(
 py_test(
     name = "return_statements_test",
     srcs = ["return_statements_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/autograph/pyct",
-    ],
-)
-
-py_test(
-    name = "error_handlers_test",
-    srcs = ["error_handlers_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":converters",

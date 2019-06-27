@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
+
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
 namespace xla {
@@ -30,9 +31,9 @@ Status HloInputOutputAliasConfig::SetUpAlias(const ShapeIndex& output_index,
   TF_RET_CHECK(kind == AliasKind::kUserAlias || kind == AliasKind::kSystemAlias)
       << kind;
   TF_RET_CHECK(ShapeUtil::IndexIsValid(alias_.shape(), output_index))
-      << absl::StrCat("Tring to set up alias at ", output_index.ToString(),
-                      " which is an invalid index for shape ",
-                      ShapeUtil::HumanString(alias_.shape()));
+      << "Trying to set up alias at " << output_index.ToString()
+      << " which is an invalid index for shape "
+      << ShapeUtil::HumanString(alias_.shape());
   TF_RET_CHECK(param_number >= 0) << param_number;
   TF_RET_CHECK(!OutputHasAlias(output_index))
       << "Output index " << output_index << " already has an alias setup";
@@ -81,8 +82,8 @@ HloInputOutputAliasProto HloInputOutputAliasConfig::ToProto() const {
 }
 
 StatusOr<HloInputOutputAliasConfig> HloInputOutputAliasConfig::CreateFromProto(
-    const Shape& output_shape, const HloInputOutputAliasProto& proto) {
-  HloInputOutputAliasConfig result(output_shape);
+    Shape output_shape, const HloInputOutputAliasProto& proto) {
+  HloInputOutputAliasConfig result(std::move(output_shape));
   for (const HloInputOutputAliasProto::AliasEntryProto& entry :
        proto.entries()) {
     ShapeIndex output_index(entry.output_shape_index().begin(),

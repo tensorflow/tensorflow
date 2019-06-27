@@ -207,7 +207,12 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
   if (engine == nullptr) {
     return Literal::CreateFromShape(shape);
   }
-  Literal literal(shape);
+  // Clear tiles/element size in shape's layout before using it for creating
+  // literal.
+  Shape new_shape = shape;
+  new_shape.mutable_layout()->clear_tiles();
+  new_shape.mutable_layout()->set_element_size_in_bits(0);
+  Literal literal(new_shape);
   switch (shape.element_type()) {
     case BF16:
       PopulateWithFloatingPointData<bfloat16>(&literal, engine, no_duplicates);
@@ -300,7 +305,12 @@ StatusOr<Literal> MakeFakeLiteralInternalWithBounds(const Shape& shape,
   if (engine == nullptr) {
     return Literal::CreateFromShape(shape);
   }
-  Literal literal(shape);
+  // Clear tiles/element size in shape's layout before using it for creating
+  // literal.
+  Shape new_shape = shape;
+  new_shape.mutable_layout()->clear_tiles();
+  new_shape.mutable_layout()->set_element_size_in_bits(0);
+  Literal literal(new_shape);
   switch (shape.element_type()) {
     case S8:
       PopulateWithRandomIntegralDataWithBounds<int8>(
@@ -575,13 +585,14 @@ Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
 std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
                                                       HloInstruction* lhs,
                                                       HloInstruction* rhs) {
-  CHECK_EQ(lhs->shape().rank(), 2);
-  CHECK_EQ(rhs->shape().rank(), 2);
+  CHECK_LE(lhs->shape().rank(), 2);
+  CHECK_LE(rhs->shape().rank(), 2);
   PrecisionConfig precision_config;
   precision_config.mutable_operand_precision()->Resize(
       2, PrecisionConfig::DEFAULT);
   DotDimensionNumbers dot_dimension_numbers;
-  dot_dimension_numbers.add_lhs_contracting_dimensions(1);
+  dot_dimension_numbers.add_lhs_contracting_dimensions(
+      lhs->shape().rank() > 1 ? 1 : 0);
   dot_dimension_numbers.add_rhs_contracting_dimensions(0);
   return absl::make_unique<HloDotInstruction>(
       shape, lhs, rhs, dot_dimension_numbers, precision_config);

@@ -497,7 +497,7 @@ class GradientsTest(test.TestCase):
     self.run_and_assert_equal(pfor_jacobian, while_jacobian)
 
   @test_util.disable_xla("This test never passed for XLA")
-  def test_dynamic_lstm_batch_jacobian(self):
+  def DISABLED_test_dynamic_lstm_batch_jacobian(self):
     pfor_jacobian, while_gradients = create_dynamic_lstm_batch_jacobian(8, 4, 3)
     with session.Session() as sess:
       init = variables.global_variables_initializer()
@@ -560,6 +560,13 @@ class GradientsTest(test.TestCase):
                               rtol=2e-3, atol=1e-3)
     self.run_and_assert_equal(jacobians, per_eg_jacobians_while,
                               rtol=2e-3, atol=1e-3)
+
+  def test_indexed_slice(self):
+    inp = random_ops.random_uniform([3, 2])
+    output = nn.embedding_lookup(inp, [0, 2])
+    pfor_jacobian = gradients.jacobian(output, inp, use_pfor=True)
+    while_jacobian = gradients.jacobian(output, inp, use_pfor=False)
+    self.run_and_assert_equal(while_jacobian, pfor_jacobian)
 
 
 class GradientsBenchmarks(test.Benchmark):

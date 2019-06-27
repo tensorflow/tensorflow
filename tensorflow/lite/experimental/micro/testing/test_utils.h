@@ -106,12 +106,16 @@ inline TfLiteIntArray* IntArrayFromInitializer(
 
 inline TfLiteTensor CreateFloatTensor(const float* data, TfLiteIntArray* dims,
                                       const char* name) {
-  const size_t bytes = ElementCount(*dims) * sizeof(float);
-  return {
-      kTfLiteFloat32, {const_cast<int*>(reinterpret_cast<const int*>(data))},
-      dims,           {},
-      kTfLiteMemNone, bytes,
-      nullptr,        name};
+  TfLiteTensor result;
+  result.type = kTfLiteFloat32;
+  result.data.f = const_cast<float*>(data);
+  result.dims = dims;
+  result.params = {};
+  result.allocation_type = kTfLiteMemNone;
+  result.bytes = ElementCount(*dims) * sizeof(float);
+  result.allocation = nullptr;
+  result.name = name;
+  return result;
 }
 
 inline TfLiteTensor CreateFloatTensor(std::initializer_list<float> data,
@@ -123,15 +127,17 @@ inline TfLiteTensor CreateQuantizedTensor(const uint8_t* data,
                                           TfLiteIntArray* dims,
                                           const char* name, float min,
                                           float max) {
-  const size_t bytes = ElementCount(*dims) * sizeof(uint8_t);
-  const TfLiteQuantizationParams q_params = {
-      ScaleFromMinMax<uint8_t>(min, max),
-      ZeroPointFromMinMax<uint8_t>(min, max)};
-  return {
-      kTfLiteUInt8,   {const_cast<int*>(reinterpret_cast<const int*>(data))},
-      dims,           q_params,
-      kTfLiteMemNone, bytes,
-      nullptr,        name};
+  TfLiteTensor result;
+  result.type = kTfLiteUInt8;
+  result.data.uint8 = const_cast<uint8_t*>(data);
+  result.dims = dims;
+  result.params = {ScaleFromMinMax<uint8_t>(min, max),
+                   ZeroPointFromMinMax<uint8_t>(min, max)};
+  result.allocation_type = kTfLiteMemNone;
+  result.bytes = ElementCount(*dims) * sizeof(uint8_t);
+  result.allocation = nullptr;
+  result.name = name;
+  return result;
 }
 
 inline TfLiteTensor CreateQuantizedTensor(std::initializer_list<uint8_t> data,
@@ -145,15 +151,17 @@ inline TfLiteTensor CreateQuantized32Tensor(const int32_t* data,
                                             TfLiteIntArray* dims,
                                             const char* name, float min,
                                             float max) {
-  const size_t bytes = ElementCount(*dims) * sizeof(int32_t);
-  const TfLiteQuantizationParams q_params = {
-      ScaleFromMinMax<int32_t>(min, max),
-      ZeroPointFromMinMax<int32_t>(min, max)};
-  return {
-      kTfLiteUInt8,   {const_cast<int*>(reinterpret_cast<const int*>(data))},
-      dims,           q_params,
-      kTfLiteMemNone, bytes,
-      nullptr,        name};
+  TfLiteTensor result;
+  result.type = kTfLiteInt32;
+  result.data.i32 = const_cast<int32_t*>(data);
+  result.dims = dims;
+  result.params = {ScaleFromMinMax<int32_t>(min, max),
+                   ZeroPointFromMinMax<int32_t>(min, max)};
+  result.allocation_type = kTfLiteMemNone;
+  result.bytes = ElementCount(*dims) * sizeof(int32_t);
+  result.allocation = nullptr;
+  result.name = name;
+  return result;
 }
 
 inline TfLiteTensor CreateQuantized32Tensor(std::initializer_list<int32_t> data,

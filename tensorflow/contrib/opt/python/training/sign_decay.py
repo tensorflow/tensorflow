@@ -23,7 +23,9 @@ from __future__ import division
 from __future__ import print_function
 
 import math
+
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
@@ -51,10 +53,10 @@ def get_linear_decay_fn(decay_steps):
     if global_step is None:
       raise ValueError("global_step is required for linear_decay.")
     global_step = math_ops.minimum(global_step, decay_steps)
-    remaining_steps = math_ops.to_int32(decay_steps) - math_ops.to_int32(
-        global_step)
-    decayed = math_ops.to_float(remaining_steps) / math_ops.to_float(
-        decay_steps)
+    remaining_steps = math_ops.cast(
+        decay_steps, dtypes.int32) - math_ops.cast(global_step, dtypes.int32)
+    decayed = (math_ops.cast(remaining_steps, dtypes.float32) /
+               math_ops.cast(decay_steps, dtypes.float32))
     return math_ops.maximum(0.0, decayed)
   # pylint:enable=missing-docstring
   return linear_decay_fn
@@ -92,8 +94,8 @@ def get_cosine_decay_fn(decay_steps, num_periods=0.5, zero_after=None):
     if global_step is None:
       raise ValueError("global_step is required for cosine_decay.")
     global_step = math_ops.minimum(global_step, decay_steps)
-    completed_fraction = math_ops.to_float(global_step) / math_ops.to_float(
-        decay_steps)
+    completed_fraction = (math_ops.cast(global_step, dtypes.float32) /
+                          math_ops.cast(decay_steps, dtypes.float32))
     fraction = 2.0 * num_periods * completed_fraction
     decayed = 0.5 * (
         1.0 + math_ops.cos(constant_op.constant(math.pi) * fraction))
@@ -143,14 +145,14 @@ def get_restart_decay_fn(decay_steps, num_periods=1, zero_after=None):
     if global_step is None:
       raise ValueError("global_step is required for cosine_decay.")
     global_step = math_ops.minimum(global_step, decay_steps)
-    num = math_ops.mod(num_periods * math_ops.to_float(global_step),
+    num = math_ops.mod(num_periods * math_ops.cast(global_step, dtypes.float32),
                        decay_steps)
-    fraction = num / math_ops.to_float(decay_steps)
+    fraction = num / math_ops.cast(decay_steps, dtypes.float32)
     decayed = 0.5 * (
         1.0 + math_ops.cos(constant_op.constant(math.pi) * fraction))
     if zero_after is not None:
-      tmp = math_ops.to_float(
-          num_periods * global_step) / math_ops.to_float(decay_steps)
+      tmp = (math_ops.cast(num_periods * global_step, dtypes.float32) /
+             math_ops.cast(decay_steps, dtypes.float32))
       decayed = array_ops.where(
           math_ops.greater_equal(tmp, zero_after), 0.0, decayed)
     return decayed

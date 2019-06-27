@@ -522,6 +522,7 @@ if (tensorflow_ENABLE_GPU)
     "#define CUDA_CUDA_CONFIG_H_\n"
     "#define TF_CUDA_CAPABILITIES ${TF_CUDA_CAP}\n"
     "#define TF_CUDA_VERSION \"64_${short_CUDA_VER}\"\n"
+    "#define TF_CUDA_LIB_VERSION \"64_${short_CUDA_VER}\"\n"
     "#define TF_CUDNN_VERSION \"64_${CUDNN_VERSION}\"\n"
     "#define TF_CUDA_TOOLKIT_PATH \"${CUDA_TOOLKIT_ROOT_DIR}\"\n"
     "#endif  // CUDA_CUDA_CONFIG_H_\n"

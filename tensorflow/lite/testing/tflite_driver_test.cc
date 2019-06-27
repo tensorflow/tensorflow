@@ -94,6 +94,32 @@ TEST(TfliteDriverTest, SingleAddOpTest) {
   EXPECT_EQ(runner->ReadOutput(6), "0.011,0.022,0.033,0.044");
 }
 
+TEST(TfliteDriverTest, AddQuantizedInt8Test) {
+  std::unique_ptr<TestRunner> runner(new TfLiteDriver(/*use_nnapi=*/false));
+
+  runner->SetModelBaseDir("tensorflow/lite");
+  runner->LoadModel("testdata/add_quantized_int8.bin");
+  ASSERT_TRUE(runner->IsValid());
+
+  ASSERT_THAT(runner->GetInputs(), ElementsAre(1));
+  ASSERT_THAT(runner->GetOutputs(), ElementsAre(2));
+
+  runner->ReshapeTensor(1, "1,2,2,1");
+  ASSERT_TRUE(runner->IsValid());
+
+  runner->AllocateTensors();
+
+  runner->SetInput(1, "1,1,1,1");
+
+  runner->SetExpectation(2, "3,3,3,3");
+
+  runner->Invoke();
+  ASSERT_TRUE(runner->IsValid());
+
+  ASSERT_TRUE(runner->CheckResults());
+  EXPECT_EQ(runner->ReadOutput(2), "3,3,3,3");
+}
+
 }  // namespace
 }  // namespace testing
 }  // namespace tflite

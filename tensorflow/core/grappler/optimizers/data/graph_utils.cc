@@ -300,6 +300,20 @@ Status EnsureNodeNamesUnique(Graph* g) {
 
   return Status::OK();
 }
+
+Status GetFetchNode(const MutableGraphView& graph, const GrapplerItem& item,
+                    NodeDef** fetch_node) {
+  if (item.fetch.size() != 1) {
+    return errors::InvalidArgument(
+        "Expected only one fetch node but there were ", item.fetch.size(), ": ",
+        absl::StrJoin(item.fetch, ", "));
+  }
+
+  *fetch_node = graph.GetNode(item.fetch.at(0));
+
+  return Status::OK();
+}
+
 }  // namespace graph_utils
 }  // namespace grappler
 }  // namespace tensorflow

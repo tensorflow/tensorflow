@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/window_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -222,7 +223,7 @@ R"(HloModule SelectR1F32WithCmpR1F32sFromParamsSmall_module
 ENTRY %SelectR1F32WithCmpR1F32sFromParamsSmall.v4 (v1: f32[4], v2: f32[4]) -> f32[4] {
   %v1 = f32[4]{0} parameter(0), sharding={maximal device=1}
   %v2 = f32[4]{0} parameter(1), sharding={maximal device=1}
-  %greater-than = pred[4]{0} greater-than(f32[4]{0} %v1, f32[4]{0} %v2), sharding={replicated}
+  %greater-than = pred[4]{0} compare(f32[4]{0} %v1, f32[4]{0} %v2), direction=GT, sharding={replicated}
   ROOT %select = f32[4]{0} select(pred[4]{0} %greater-than, f32[4]{0} %v1, f32[4]{0} %v2), sharding={}
 }
 
@@ -292,12 +293,30 @@ R"(HloModule WhileWithScalarS32Result_module
 %condition.v3 (prev.2: s32[]) -> pred[] {
   %constant.1 = s32[] constant(5)
   %prev.2 = s32[] parameter(0)
-  ROOT %greater-than = pred[] greater-than(s32[] %constant.1, s32[] %prev.2)
+  ROOT %greater-than = pred[] compare(s32[] %constant.1, s32[] %prev.2), direction=GT
 }
 
 ENTRY %WhileWithScalarS32Result.v2 () -> s32[] {
   %constant.2 = s32[] constant(0)
   ROOT %while = s32[] while(s32[] %constant.2), condition=%condition.v3, body=%body.v3
+}
+
+)"
+},
+// copy-start and copy-done
+{
+"CopyStartAndCopyDone",
+
+R"(HloModule CopyStartAndCopyDone_module
+
+ENTRY %CopyStartAndCopyDone (v1: f32[], v2: f32[2,3]) -> (f32[], f32[2,3]) {
+  %v1 = f32[] parameter(0)
+  %copy-start.1 = (f32[], u32[]) copy-start(f32[] %v1)
+  %copy-done.1 = f32[] copy-done((f32[], u32[]) %copy-start.1)
+  %v2 = f32[2,3]{1,0:S(1)} parameter(1)
+  %copy-start.2 = (f32[2,3]{1,0:S(2)}, u32[]) copy-start(f32[2,3]{1,0:S(1)} %v2)
+  %copy-done.2 = f32[2,3]{1,0:S(2)} copy-done((f32[2,3]{1,0:S(2)}, u32[]) %copy-start.2)
+  ROOT %tuple = (f32[], f32[2,3]{1,0:S(2)}) tuple(f32[] %copy-done.1, f32[2,3]{1,0:S(2)} %copy-done.2)
 }
 
 )"
@@ -359,6 +378,18 @@ R"(HloModule CallR0F32IdentityScalar_module
 ENTRY %CallR0F32IdentityScalar.v2 () -> f32[] {
   %constant = f32[] constant(42)
   ROOT %call = f32[] call(f32[] %constant), to_apply=%Identity.v1
+}
+
+)"
+},
+// CustomCall with backend_config.
+{
+"CustomCallWithOpaque",
+R"(HloModule custom_call
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar", backend_config="this string is opaque"
 }
 
 )"
@@ -474,7 +505,7 @@ R"(HloModule R4F32OverlapSmall_module
 %ge_F32.v3 (lhs: f32[], rhs: f32[]) -> pred[] {
   %lhs = f32[] parameter(0)
   %rhs = f32[] parameter(1)
-  ROOT %greater-than-or-equal-to = pred[] greater-than-or-equal-to(f32[] %lhs, f32[] %rhs)
+  ROOT %greater-than-or-equal-to = pred[] compare(f32[] %lhs, f32[] %rhs), direction=GE
 }
 
 %add_F32.v3 (lhs.1: f32[], rhs.1: f32[]) -> f32[] {
@@ -500,7 +531,7 @@ R"(HloModule select_and_scatter_scalar
 %ge_F32.v3 (lhs: f32[], rhs: f32[]) -> pred[] {
   %lhs = f32[] parameter(0)
   %rhs = f32[] parameter(1)
-  ROOT %greater-than-or-equal-to = pred[] greater-than-or-equal-to(f32[] %lhs, f32[] %rhs)
+  ROOT %greater-than-or-equal-to = pred[] compare(f32[] %lhs, f32[] %rhs), direction=GE
 }
 
 %add_F32.v3 (lhs.1: f32[], rhs.1: f32[]) -> f32[] {
@@ -932,6 +963,19 @@ ENTRY %CustomCallWithLayoutConstraints (p0: (f32[2,2], f32[42,2,3]), p1: f32[123
 
 )"
 },
+// CustomCallWithHasSideEffect
+{
+"CustomCallWithHasSideEffect",
+R"(HloModule CustomCallWithHasSideEffect
+
+ENTRY %CustomCallWithHasSideEffect (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4]) -> (f32[1,2,3], f32[1,2,3]) {
+  %p0 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
+  %p1 = f32[123,4]{0,1} parameter(1)
+  ROOT %custom-call = (f32[1,2,3]{0,2,1}, f32[1,2,3]{1,2,0}) custom-call((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) %p0, f32[123,4]{0,1} %p1), custom_call_target="baz", custom_call_has_side_effect=true
+}
+
+)"
+},
 // Parse c64 literal
 {
 "ParseC64Literal",
@@ -1037,7 +1081,7 @@ R"(HloModule TupleReduce
 max_argmax {
   value = f32[] parameter(2)
   prev_max = f32[] parameter(0)
-  is_next_larger = pred[] greater-than-or-equal-to(value, prev_max)
+  is_next_larger = pred[] compare(value, prev_max), direction=GE
   max = f32[] select(is_next_larger, value, prev_max)
   index = s32[] parameter(3)
   prev_argmax = s32[] parameter(1)
@@ -1106,7 +1150,7 @@ R"(HloModule sort
 compare {
   p.0.lhs = f32[] parameter(0)
   p.0.rhs = f32[] parameter(1)
-  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY Sort {
@@ -1126,7 +1170,7 @@ compare {
   p.1.rhs = s32[] parameter(3)
   p.0.lhs = f32[] parameter(0)
   p.0.rhs = f32[] parameter(1)
-  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY Sort {
@@ -1145,7 +1189,7 @@ R"(HloModule sort
 compare {
   p.0.lhs = f32[] parameter(0)
   p.0.rhs = f32[] parameter(1)
-  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY Sort {
@@ -1165,7 +1209,7 @@ compare {
   p.1.rhs = s32[] parameter(3)
   p.0.lhs = f32[] parameter(0)
   p.0.rhs = f32[] parameter(1)
-  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY Sort {
@@ -1190,7 +1234,7 @@ compare {
   p.3.rhs = f32[] parameter(7)
   p.0.lhs = f32[] parameter(0)
   p.0.rhs = f32[] parameter(1)
-  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY Sort {
@@ -1211,7 +1255,7 @@ R"(HloModule sort
 compare {
   p.0.lhs = f32[] parameter(0)
   p.0.rhs = f32[] parameter(1)
-  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY Sort {
@@ -1287,18 +1331,6 @@ ENTRY CustomCall {
 
 )"
 },
-// CustomCall with opaque value.
-{
-"CustomCallWithOpaque",
-R"(HloModule custom_call
-
-ENTRY CustomCall {
-  constant = f32[1]{0} constant({12345})
-  ROOT custom-call = f32[1,2,3]{0,2,1} custom-call(constant), custom_call_target="foo\"bar", opaque="this string is opaque"
-}
-
-)"
-},
 // Variables with non-default names
 {
 "NonDefaultNames",
@@ -1366,7 +1398,7 @@ add {
 
 ENTRY AllReduceWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
-  ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), replica_groups={{0,1},{2,3}}, barrier="abc", to_apply=add
+  ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), replica_groups={{0,1},{2,3}}, to_apply=add
 }
 
 )"
@@ -1384,8 +1416,8 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  crs.1 = f32[8]{0} all-reduce(input), replica_groups={{0}}, all_reduce_id=1, to_apply=add
-  ROOT crs.0 = f32[8]{0} all-reduce(input), replica_groups={{0}}, all_reduce_id=1, to_apply=add
+  crs.1 = f32[8]{0} all-reduce(input), channel_id=1, replica_groups={{0}}, to_apply=add
+  ROOT crs.0 = f32[8]{0} all-reduce(input), channel_id=1, replica_groups={{0}}, to_apply=add
 }
 
 )"
@@ -1437,6 +1469,17 @@ ENTRY Replica-id {
 
 )"
 },
+// partition-id
+{
+"PartitionId",
+R"(HloModule partition-id
+
+ENTRY PartitionId {
+  ROOT id = u32[] partition-id()
+}
+
+)"
+},
 // Iota
 {
 "Iota",
@@ -1469,7 +1512,7 @@ compare {
   p.1.rhs = s32[] parameter(3)
   p.0.lhs = f32[] parameter(0)
   p.0.rhs = f32[] parameter(1)
-  ROOT lhs = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lhs = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY Sort {
@@ -1531,6 +1574,29 @@ ENTRY MinMaxValues {
   x.f64 = f64[2]{0} constant({-1.79769e+308, 1.79769e+308})
   x.c64 = c64[2]{0} constant({(-3.40282e+38, 3.40282e+38), (3.40282e+38, -3.40282e+38)})
   ROOT c.c128 = c128[2]{0} constant({(-1.79769e+308, 1.79769e+308), (1.79769e+308, -1.79769e+308)})
+}
+
+)"
+},
+
+// Bitcast-convert usage
+{
+"BitcastConvert",
+R"(HloModule BitcastConvert
+
+ENTRY BitcastConvertUsage {
+  p = f32[100]{0} parameter(0)
+  ROOT out = u32[100]{0} bitcast-convert(p)
+}
+
+)"
+},
+{
+"OuterDimensionPartitions",
+R"(HloModule OuterDimensionPartitions
+
+ENTRY Test {
+  ROOT foo = f32[100]{0} parameter(0), outer_dimension_partitions={0,10,20}
 }
 
 )"
@@ -1656,7 +1722,7 @@ TEST_F(HloParserTest, WrongOperandsSize) {
 
 ENTRY %blabla (x: f32[]) -> pred[] {
   %x = f32[]{} parameter(0)
-  %eq = pred[]{} equal-to(f32[]{} %x)
+  %eq = pred[]{} compare(f32[]{} %x), direction=EQ
 }
 
 )";
@@ -1668,7 +1734,7 @@ TEST_F(HloParserTest, OperandNotFound) {
   const string original = R"(HloModule operand_not_found:
 ENTRY %blabla (x: f32[]) -> pred[] {
   %x = f32[]{} parameter(0)
-  %eq = pred[]{} equal-to(f32[]{} %x, f32[]{} %y)
+  %eq = pred[]{} compare(f32[]{} %x, f32[]{} %y), direction=EQ
 }
 )";
   auto result = ParseHloString(original);
@@ -2263,6 +2329,13 @@ TEST_F(HloParserTest, ParseConvolutionDimensionNumbers) {
   EXPECT_EQ(original, ConvolutionDimensionNumbersToString(dnums));
 }
 
+TEST_F(HloParserTest, ParseReplicaGroups) {
+  const string original = "{{0,1},{2,3}}";
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<ReplicaGroup> replica_groups,
+                          ParseReplicaGroupsOnly(original));
+  EXPECT_EQ(original, ReplicaGroupsToString(replica_groups));
+}
+
 TEST_F(HloParserTest, ParsePaddingConfigNoInteriorPadding) {
   const string original = "0_1x2_3";
   TF_ASSERT_OK_AND_ASSIGN(PaddingConfig dnums, ParsePaddingConfig(original));
@@ -2468,6 +2541,16 @@ TEST(HloParserSingleOpTest, ConvolutionTrivialFeatureGroupCount) {
   auto* convolution =
       Cast<HloConvolutionInstruction>(computation->root_instruction());
   EXPECT_EQ(convolution->feature_group_count(), 1);
+}
+
+TEST(HloParserSingleOpTest, MultipleOpsProducesError) {
+  const string text = R"(
+    param = f32[2,5,1,3] parameter(0)
+    transpose = f32[1,5,2,3] transpose(param), dimensions={2,1,0,3}
+  )";
+  auto status = ParseHloString(text).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Expected eof"));
 }
 
 TEST_F(HloParserTest, IsScheduledIsFalse) {
@@ -2766,6 +2849,33 @@ TEST_F(HloParserTest, ParseShapeStringWithSparseLayout) {
       << "actual: " << ShapeUtil::HumanString(actual);
 }
 
+TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
+  // Tile, element size, and memory space.
+  string shape_string = "pred[123,456]{1,0:T(2,128)E(1)S(3)}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0},
+                                                  {Tile({2, 128})}, 1, 3);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Element size and memory space.
+  shape_string = "pred[123,456]{1,0:E(1)S(3)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, 1, 3);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Memory space only.
+  shape_string = "pred[123,456]{1,0:S(3)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, 0, 3);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+}
+
 TEST_F(HloParserTest, ParseOpaqueType) {
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape("opaque[]"));
   Shape expected = ShapeUtil::MakeOpaqueShape();
@@ -2830,6 +2940,90 @@ TEST_F(HloParserTest, WrongNumberOfParameterLeafBuffersInReplication) {
   EXPECT_THAT(result.status().error_message(),
               ::testing::HasSubstr("parameter has 2 leaf buffers, but "
                                    "parameter_replication has 3 elements"));
+}
+
+TEST_F(HloParserTest, CheckIndexedConditionalDimension) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  branch0 {
+    tparam = f32[4] parameter(0)
+    ROOT tgte1 = f32[4] ceil(tparam)
+  }
+
+  branch1 {
+    fparam = f32[4] parameter(0)
+    ROOT fgte1 = f32[4] floor(fparam)
+  }
+
+  ENTRY entry {
+    p0 = f32[4] parameter(0)
+    b0 = s32[2] parameter(1)
+    ROOT conditional = f32[4] conditional(b0, p0, p0),
+      branch_computations={branch0, branch1}
+  }
+  )";
+  auto result = ParseHloString(hlo_string);
+  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_THAT(result.status().error_message(),
+              ::testing::HasSubstr("The first operand must be a scalar"));
+}
+
+TEST_F(HloParserTest, CheckIndexedConditionalElementType) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  branch0 {
+    tparam = f32[4] parameter(0)
+    ROOT tgte1 = f32[4] ceil(tparam)
+  }
+
+  branch1 {
+    fparam = f32[4] parameter(0)
+    ROOT fgte1 = f32[4] floor(fparam)
+  }
+
+  ENTRY entry {
+    p0 = f32[4] parameter(0)
+    b0 = f32[] parameter(1)
+    ROOT conditional = f32[4] conditional(b0, p0, p0),
+      branch_computations={branch0, branch1}
+  }
+  )";
+  auto result = ParseHloString(hlo_string);
+  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_THAT(result.status().error_message(),
+              ::testing::HasSubstr(
+                  "The first operand must be a scalar of PRED or S32"));
+}
+
+TEST_F(HloParserTest,
+       CheckPredicatedConditionalRequiresTrueAndFalseComputation) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  branch0 {
+    tparam = f32[4] parameter(0)
+    ROOT tgte1 = f32[4] ceil(tparam)
+  }
+
+  branch1 {
+    fparam = f32[4] parameter(0)
+    ROOT fgte1 = f32[4] floor(fparam)
+  }
+
+  ENTRY entry {
+    p0 = f32[4] parameter(0)
+    b0 = pred[] parameter(1)
+    ROOT conditional = f32[4] conditional(b0, p0, p0),
+      branch_computations={branch0, branch1}
+  }
+  )";
+  auto result = ParseHloString(hlo_string);
+  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_THAT(
+      result.status().error_message(),
+      ::testing::HasSubstr("unexpected attribute \"branch_computations\""));
 }
 
 }  // namespace

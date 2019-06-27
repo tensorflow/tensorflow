@@ -16,14 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_SCATTER_FUNCTOR_GPU_CU_H_
 #define TENSORFLOW_CORE_KERNELS_SCATTER_FUNCTOR_GPU_CU_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/scatter_functor.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -41,32 +41,32 @@ struct ScatterOpKernelBody<T, scatter_op::UpdateOp::ASSIGN> {
 
 template <typename T>
 struct ScatterOpKernelBody<T, scatter_op::UpdateOp::ADD> {
-  __device__ void operator()(T* dest, T src) const { CudaAtomicAdd(dest, src); }
+  __device__ void operator()(T* dest, T src) const { GpuAtomicAdd(dest, src); }
 };
 
 template <typename T>
 struct ScatterOpKernelBody<T, scatter_op::UpdateOp::SUB> {
-  __device__ void operator()(T* dest, T src) const { CudaAtomicSub(dest, src); }
+  __device__ void operator()(T* dest, T src) const { GpuAtomicSub(dest, src); }
 };
 
 template <typename T>
 struct ScatterOpKernelBody<T, scatter_op::UpdateOp::MUL> {
-  __device__ void operator()(T* dest, T src) const { CudaAtomicMul(dest, src); }
+  __device__ void operator()(T* dest, T src) const { GpuAtomicMul(dest, src); }
 };
 
 template <typename T>
 struct ScatterOpKernelBody<T, scatter_op::UpdateOp::DIV> {
-  __device__ void operator()(T* dest, T src) const { CudaAtomicDiv(dest, src); }
+  __device__ void operator()(T* dest, T src) const { GpuAtomicDiv(dest, src); }
 };
 
 template <typename T>
 struct ScatterOpKernelBody<T, scatter_op::UpdateOp::MIN> {
-  __device__ void operator()(T* dest, T src) const { CudaAtomicMin(dest, src); }
+  __device__ void operator()(T* dest, T src) const { GpuAtomicMin(dest, src); }
 };
 
 template <typename T>
 struct ScatterOpKernelBody<T, scatter_op::UpdateOp::MAX> {
-  __device__ void operator()(T* dest, T src) const { CudaAtomicMax(dest, src); }
+  __device__ void operator()(T* dest, T src) const { GpuAtomicMax(dest, src); }
 };
 
 template <typename T, typename Index, scatter_op::UpdateOp op>
@@ -76,7 +76,7 @@ __global__ void ScatterOpCustomKernel(T* params, const T* updates,
                                       Index indices_size) {
   Index update_block = updates_size / indices_size;
   ScatterOpKernelBody<T, op> body;
-  CUDA_1D_KERNEL_LOOP(i, updates_size) {
+  GPU_1D_KERNEL_LOOP(i, updates_size) {
     int indices_i = i / update_block;
     int updates_i = i;
     int param_first_index = indices[indices_i];
@@ -97,7 +97,7 @@ __global__ void ScatterScalarOpCustomKernel(T* params, const T* update,
                                             Index synthesized_updates_size) {
   Index update_block = synthesized_updates_size / indices_size;
   ScatterOpKernelBody<T, op> body;
-  CUDA_1D_KERNEL_LOOP(i, synthesized_updates_size) {
+  GPU_1D_KERNEL_LOOP(i, synthesized_updates_size) {
     int indices_i = i / update_block;
     int param_first_index = indices[indices_i];
     const T update_val = *update;
@@ -126,8 +126,8 @@ struct ScatterFunctor<GPUDevice, T, Index, op> {
     const Index first_dim_size = params.dimension(0);
     const Index indices_size = indices.size();
     const Index updates_size = updates.size();
-    CudaLaunchConfig config = GetCudaLaunchConfig(updates_size, d);
-    TF_CHECK_OK(CudaLaunchKernel(
+    GpuLaunchConfig config = GetGpuLaunchConfig(updates_size, d);
+    TF_CHECK_OK(GpuLaunchKernel(
         scatter_op_gpu::ScatterOpCustomKernel<T, Index, op>, config.block_count,
         config.thread_per_block, 0, d.stream(), params.data(), updates.data(),
         indices.data(), first_dim_size, updates_size, indices_size));
@@ -147,8 +147,8 @@ struct ScatterScalarFunctor<GPUDevice, T, Index, op> {
     const Index first_dim_size = params.dimension(0);
     const Index indices_size = indices.size();
     const Index synthesized_updates_size = indices_size * params.dimension(1);
-    CudaLaunchConfig config = GetCudaLaunchConfig(synthesized_updates_size, d);
-    TF_CHECK_OK(CudaLaunchKernel(
+    GpuLaunchConfig config = GetGpuLaunchConfig(synthesized_updates_size, d);
+    TF_CHECK_OK(GpuLaunchKernel(
         scatter_op_gpu::ScatterScalarOpCustomKernel<T, Index, op>,
         config.block_count, config.thread_per_block, 0, d.stream(),
         params.data(), update.data(), indices.data(), first_dim_size,
@@ -160,6 +160,6 @@ struct ScatterScalarFunctor<GPUDevice, T, Index, op> {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_SCATTER_FUNCTOR_GPU_CU_H_

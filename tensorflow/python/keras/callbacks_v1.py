@@ -158,13 +158,17 @@ class TensorBoard(callbacks.Callback):
     # One profiler session is running if it is True.
     self._is_profiling = False
 
+    # TensorBoard should only write summaries on the chief when in a
+    # Multi-Worker setting.
+    self._chief_worker_only = True
+
   def _init_writer(self, model):
     """Sets file writer."""
     if context.executing_eagerly():
       self.writer = summary_ops_v2.create_file_writer(self.log_dir)
       if not model.run_eagerly and self.write_graph:
         with self.writer.as_default():
-          summary_ops_v2.graph(K.get_graph())
+          summary_ops_v2.graph(K.get_graph(), step=0)
     elif self.write_graph:
       self.writer = tf_summary.FileWriter(self.log_dir, K.get_graph())
     else:
@@ -375,10 +379,10 @@ class TensorBoard(callbacks.Callback):
       self._epoch = epoch
       # pylint: disable=protected-access
       # add the histogram summary op if it should run this epoch
-      self.model._make_eval_function()
-      if self.merged not in self.model._eval_function.fetches:
-        self.model._eval_function.fetches.append(self.merged)
-        self.model._eval_function.fetch_callbacks[
+      self.model._make_test_function()
+      if self.merged not in self.model.test_function.fetches:
+        self.model.test_function.fetches.append(self.merged)
+        self.model.test_function.fetch_callbacks[
             self.merged] = self._fetch_callback
       # pylint: enable=protected-access
 
@@ -399,10 +403,10 @@ class TensorBoard(callbacks.Callback):
     # pop the histogram summary op after each epoch
     if self.histogram_freq:
       # pylint: disable=protected-access
-      if self.merged in self.model._eval_function.fetches:
-        self.model._eval_function.fetches.remove(self.merged)
-      if self.merged in self.model._eval_function.fetch_callbacks:
-        self.model._eval_function.fetch_callbacks.pop(self.merged)
+      if self.merged in self.model.test_function.fetches:
+        self.model.test_function.fetches.remove(self.merged)
+      if self.merged in self.model.test_function.fetch_callbacks:
+        self.model.test_function.fetch_callbacks.pop(self.merged)
       # pylint: enable=protected-access
 
     if self.embeddings_data is None and self.embeddings_freq:
@@ -421,6 +425,7 @@ class TensorBoard(callbacks.Callback):
         embeddings_data = self.embeddings_data
         n_samples = embeddings_data[0].shape[0]
         i = 0
+        sess = K.get_session()
         while i < n_samples:
           step = min(self.batch_size, n_samples - i)
           batch = slice(i, i + step)
@@ -438,8 +443,8 @@ class TensorBoard(callbacks.Callback):
           if not isinstance(K.learning_phase(), int):
             feed_dict[K.learning_phase()] = False
 
-          self.sess.run(self.assign_embeddings, feed_dict=feed_dict)
-          self.saver.save(self.sess,
+          sess.run(self.assign_embeddings, feed_dict=feed_dict)
+          self.saver.save(sess,
                           os.path.join(self.log_dir, 'keras_embedding.ckpt'),
                           epoch)
 

@@ -25,9 +25,13 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_ops.h"
 
 #include <string.h>
+
+#include <atomic>
 #include <map>
+#include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <vector>
 
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -35,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/deep_conv2d.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -55,6 +60,11 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/protobuf/autotuning.pb.h"
+#include "tensorflow/core/util/proto/proto_utils.h"
+#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
+#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -63,16 +73,18 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 namespace {
+
 template <typename Device, typename T>
 struct LaunchGeneric {
   void operator()(OpKernelContext* ctx, const Tensor& input,
                   const Tensor& filter, int row_stride, int col_stride,
                   int row_dilation, int col_dilation, const Padding& padding,
-                  Tensor* output, TensorFormat data_format) {
+                  const std::vector<int64>& explicit_paddings, Tensor* output,
+                  TensorFormat data_format) {
     CHECK(data_format == FORMAT_NHWC) << "Generic conv implementation only "
                                          "supports NHWC tensor format for now.";
     if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 && row_stride == 1 &&
-        col_stride == 1) {
+        col_stride == 1 && (padding == SAME || padding == VALID)) {
       // For 1x1 kernel, the 2D convolution is reduced to matrix
       // multiplication.
       //
@@ -108,10 +120,20 @@ struct LaunchGeneric {
           input.shaped<T, 2>({input.dim_size(0), k}),
           filter.shaped<T, 2>({k, filter.dim_size(3)}), dim_pair);
     } else {
-      functor::SpatialConvolution<Device, T>()(
-          ctx->eigen_device<Device>(), output->tensor<T, 4>(),
-          input.tensor<T, 4>(), filter.tensor<T, 4>(), row_stride, col_stride,
-          row_dilation, col_dilation, BrainPadding2EigenPadding(padding));
+      if (padding == EXPLICIT) {
+        functor::SpatialConvolution<Device, T>()(
+            ctx->eigen_device<Device>(), output->tensor<T, 4>(),
+            input.tensor<T, 4>(), filter.tensor<T, 4>(), row_stride, col_stride,
+            row_dilation, col_dilation, static_cast<int>(explicit_paddings[2]),
+            static_cast<int>(explicit_paddings[3]),
+            static_cast<int>(explicit_paddings[4]),
+            static_cast<int>(explicit_paddings[5]));
+      } else {
+        functor::SpatialConvolution<Device, T>()(
+            ctx->eigen_device<Device>(), output->tensor<T, 4>(),
+            input.tensor<T, 4>(), filter.tensor<T, 4>(), row_stride, col_stride,
+            row_dilation, col_dilation, BrainPadding2EigenPadding(padding));
+      }
     }
   }
 };
@@ -126,23 +148,30 @@ struct LaunchConv2DOp<CPUDevice, T> {
                   const std::vector<int64>& explicit_paddings, Tensor* output,
                   TensorFormat data_format) {
     if (data_format != FORMAT_NHWC) {
-      ctx->SetStatus(
-          errors::Unimplemented("Generic conv implementation only supports "
-                                "NHWC tensor format for now."));
+      ctx->SetStatus(errors::Unimplemented(
+          "The Conv2D op currently only supports the NHWC tensor format on the "
+          "CPU. The op was given the format: ",
+          ToString(data_format)));
       return;
     }
-    // TODO(reedwm): Enable explicit padding on the CPU.
-    OP_REQUIRES(
-        ctx, padding != Padding::EXPLICIT,
-        errors::Unimplemented("Generic conv implementation does not support "
-                              "EXPLICIT padding yet."));
     const int64 in_depth = GetTensorDim(input, data_format, 'C');
     OP_REQUIRES(ctx, in_depth == filter.dim_size(2),
-                errors::Unimplemented("Generic conv implementation does not "
-                                      "support grouped convolutions for now."));
+                errors::Unimplemented(
+                    "The Conv2D op currently does not support grouped "
+                    "convolutions on the CPU. A grouped convolution was "
+                    "attempted to be run because the input depth of ",
+                    in_depth, " does not match the filter input depth of ",
+                    filter.dim_size(2)));
+
+    for (int64 explicit_padding : explicit_paddings) {
+      if (!FastBoundsCheck(explicit_padding, std::numeric_limits<int>::max())) {
+        ctx->SetStatus(errors::InvalidArgument("filter too large"));
+        return;
+      }
+    }
     LaunchGeneric<CPUDevice, T>()(ctx, input, filter, row_stride, col_stride,
-                                  row_dilation, col_dilation, padding, output,
-                                  data_format);
+                                  row_dilation, col_dilation, padding,
+                                  explicit_paddings, output, data_format);
   }
 };
 
@@ -547,6 +576,11 @@ template struct LaunchConv2DOp<CPUDevice, float>;
 template struct LaunchConv2DOp<CPUDevice, double>;
 
 #if GOOGLE_CUDA
+static bool RedzoneCheckDisabled() {
+  const char* disable_rz_str = std::getenv("TF_DISABLE_RZ_CHECK");
+  return disable_rz_str != nullptr && std::strcmp(disable_rz_str, "1") == 0;
+}
+
 int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
                            int64 default_value_in_bytes) {
   const char* workspace_limit_in_mb_str = getenv(envvar_in_mb.c_str());
@@ -571,6 +605,45 @@ struct ConvAutoTuneGroup {
 typedef AutoTuneSingleton<ConvAutoTuneGroup, ConvParameters,
                           se::dnn::AlgorithmConfig>
     AutoTuneConv;
+
+// Check the passed allocator for redzone violations.
+// If violations have occurred, mark the corresponding autotune result
+// as a failure.
+static void CheckRedzones(const se::cuda::RedzoneAllocator& rz_allocator,
+                          se::Stream* stream,
+                          tensorflow::AutotuneResult* autotune_result) {
+  se::port::StatusOr<se::cuda::RedzoneAllocator::RedzoneCheckStatus> rz_status =
+      rz_allocator.CheckRedzones(stream);
+  if (!rz_status.ok()) {
+    static std::once_flag failure_logged;
+    std::call_once(failure_logged, [&]() {
+      LOG(WARNING) << "Failed to check cudnn convolutions for out-of-bounds "
+                   << "reads and writes with an error message: '"
+                   << rz_status.status().error_message()
+                   << "'; skipping this check. This only means that we won't "
+                   << "check cudnn for out-of-bounds reads and writes. This "
+                   << "message will only be printed once.";
+    });
+    return;
+  }
+  auto rz_check_status = rz_status.ValueOrDie();
+  if (!rz_check_status.ok()) {
+    auto* fail = autotune_result->mutable_failure();
+    fail->set_msg(rz_check_status.RedzoneFailureMsg());
+    fail->set_kind(AutotuneResult::REDZONE_MODIFIED);
+    fail->set_buffer_address(
+        reinterpret_cast<uint64>(rz_check_status.user_buffer_address));
+    LOG(ERROR)
+        << "Detected cudnn out-of-bounds write in convolution buffer! This is "
+           "likely a cudnn bug. We will skip this algorithm in the future, but "
+           "your GPU state may already be corrupted, leading to incorrect "
+           "results. Within Google, no action is needed on your part. Outside "
+           "of Google, please ensure you're running the latest version of "
+           "cudnn. If that doesn't fix the problem, please file a bug with "
+           "this full error message and we'll contact nvidia.";
+    LOG(ERROR) << rz_check_status.RedzoneFailureMsg();
+  }
+}
 
 template <typename T>
 void LaunchConv2DOp<GPUDevice, T>::operator()(
@@ -662,6 +735,24 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     return;
   }
 
+  // Tensor Core (NVIDIA Volta+ GPUs) supports efficient convolution with fp16
+  // in NHWC data layout. In all other configurations it's more efficient to
+  // run computation in NCHW data format.
+  const bool compute_in_nhwc =
+      DataTypeToEnum<T>::value == DT_HALF && IsVoltaOrLater(*stream->parent());
+
+  // We only do one directional conversion: NHWC->NCHW. We never convert in the
+  // other direction. Grappler layout optimizer selects preferred layout and
+  // adds necessary annotations to the graph.
+  // TODO(ezhulenev): Convert in other direction for fp16?
+  const TensorFormat compute_data_format =
+      (compute_in_nhwc && data_format == FORMAT_NHWC) ? FORMAT_NHWC
+                                                      : FORMAT_NCHW;
+
+  VLOG(3) << "Compute Conv2D with cuDNN:"
+          << " data_format=" << ToString(data_format)
+          << " compute_data_format=" << ToString(compute_data_format);
+
   const int64 out_batch = GetTensorDim(*output, data_format, 'N');
   const int64 out_rows = GetTensorDim(*output, data_format, 'H');
   const int64 out_cols = GetTensorDim(*output, data_format, 'W');
@@ -694,6 +785,11 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     // cuDNN only supports padding the same amount on the left and right sides,
     // and on the top and bottom sides. So we manually create a new padded
     // input tensor such that we can pass it to cuDNN.
+    VLOG(4) << "Pad input tensor:"
+            << " padding_top=" << padding_top
+            << " padding_bottom=" << padding_bottom
+            << " padding_left=" << padding_left
+            << " padding_right=" << padding_right;
 
     // TODO(reedwm): In some cases, we can avoid an allocation even if the two
     // padding sides are different. For example, if the input is 2x2, the filter
@@ -736,8 +832,9 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     in_cols = new_in_cols;
   }
 
-  if (data_format == FORMAT_NHWC) {
-    // Convert the input tensor from NHWC to NCHW.
+  if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
+    VLOG(4) << "Convert the input tensor from NHWC to NCHW.";
+
     TensorShape nchw_shape =
         ShapeFromFormat(FORMAT_NCHW, in_batch, in_rows, in_cols, in_depths);
     if (in_depths > 1) {
@@ -753,28 +850,48 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       // If depth <= 1, then just reshape.
       CHECK(input.CopyFrom(input, nchw_shape));
     }
+  } else {
+    CHECK(data_format == compute_data_format)  // Crash OK
+        << "Illegal data and compute format pair:"
+        << " data_format=" << ToString(data_format)
+        << " compute_data_format=" << ToString(compute_data_format);
   }
 
   CHECK(common_padding_rows >= 0 && common_padding_cols >= 0)  // Crash OK
       << "Negative row or col paddings: (" << common_padding_rows << ", "
       << common_padding_cols << ")";
+
+  constexpr auto kComputeInNHWC =
+      std::make_tuple(se::dnn::DataLayout::kBatchYXDepth,
+                      se::dnn::FilterLayout::kOutputYXInput);
+  constexpr auto kComputeInNCHW =
+      std::make_tuple(se::dnn::DataLayout::kBatchDepthYX,
+                      se::dnn::FilterLayout::kOutputInputYX);
+
+  se::dnn::DataLayout compute_data_layout;
+  se::dnn::FilterLayout filter_layout;
+
+  std::tie(compute_data_layout, filter_layout) =
+      compute_data_format == FORMAT_NHWC ? kComputeInNHWC : kComputeInNCHW;
+
   se::dnn::BatchDescriptor input_desc;
   input_desc.set_count(in_batch)
       .set_feature_map_count(in_depths)
       .set_height(in_rows)
       .set_width(in_cols)
-      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(compute_data_layout);
   se::dnn::BatchDescriptor output_desc;
   output_desc.set_count(out_batch)
       .set_height(out_rows)
       .set_width(out_cols)
       .set_feature_map_count(out_depths)
-      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(compute_data_layout);
   se::dnn::FilterDescriptor filter_desc;
   filter_desc.set_input_filter_height(patch_rows)
       .set_input_filter_width(patch_cols)
       .set_input_feature_map_count(patch_depths)
-      .set_output_feature_map_count(filter.dim_size(3));
+      .set_output_feature_map_count(filter.dim_size(3))
+      .set_layout(filter_layout);
   se::dnn::ConvolutionDescriptor conv_desc;
   conv_desc.set_vertical_dilation_rate(row_dilation)
       .set_horizontal_dilation_rate(col_dilation)
@@ -785,22 +902,44 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       .set_group_count(in_depths / patch_depths);
 
   Tensor transformed_filter;
-  OP_REQUIRES_OK(ctx, ctx->allocate_temp(
-                          DataTypeToEnum<T>::value,
-                          TensorShape({filter.dim_size(3), filter.dim_size(2),
-                                       filter.dim_size(0), filter.dim_size(1)}),
-                          &transformed_filter));
-  functor::TransformFilter<GPUDevice, T, int, 4>()(
-      ctx->eigen_device<GPUDevice>(), FORMAT_OIHW,
-      To32Bit(filter.tensor<T, 4>()),
-      To32Bit(transformed_filter.tensor<T, 4>()));
+
+  const auto transform_filter = [&](FilterTensorFormat dst_format) -> Status {
+    VLOG(4) << "Transform filter tensor from " << ToString(FORMAT_HWIO)
+            << " to " << ToString(dst_format);
+
+    TensorShape dst_shape =
+        dst_format == FORMAT_OIHW
+            ? TensorShape({filter.dim_size(3), filter.dim_size(2),
+                           filter.dim_size(0), filter.dim_size(1)})
+            : TensorShape({filter.dim_size(3), filter.dim_size(0),
+                           filter.dim_size(1), filter.dim_size(2)});
+
+    TF_RETURN_IF_ERROR(ctx->allocate_temp(DataTypeToEnum<T>::value, dst_shape,
+                                          &transformed_filter));
+    functor::TransformFilter<GPUDevice, T, int, 4>()(
+        ctx->eigen_device<GPUDevice>(), dst_format,
+        To32Bit(filter.tensor<T, 4>()),
+        To32Bit(transformed_filter.tensor<T, 4>()));
+
+    return Status::OK();
+  };
+
+  if (compute_data_format == FORMAT_NCHW) {
+    OP_REQUIRES_OK(ctx, transform_filter(FORMAT_OIHW));
+  } else if (compute_data_format == FORMAT_NHWC) {
+    OP_REQUIRES_OK(ctx, transform_filter(FORMAT_OHWI));
+  } else {
+    ctx->SetStatus(errors::InvalidArgument("Invalid compute data format: ",
+                                           ToString(compute_data_format)));
+    return;
+  }
 
   Tensor transformed_output;
-  if (data_format == FORMAT_NHWC) {
-    // Only allocate temporary memory when a layout transformation is needed.
+  if (data_format != compute_data_format) {
+    VLOG(4) << "Allocate temporary memory for output in compute data format";
     OP_REQUIRES_OK(
         ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                ShapeFromFormat(FORMAT_NCHW, out_batch,
+                                ShapeFromFormat(compute_data_format, out_batch,
                                                 out_rows, out_cols, out_depths),
                                 &transformed_output));
   } else {
@@ -828,7 +967,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       in_depths,                // in_depths
       {{in_rows,                // in_rows
         in_cols}},              // in_cols
-      FORMAT_NCHW,              // compute_data_format
+      compute_data_format,      // compute_data_format
       out_depths,               // out_depths
       {{patch_rows,             // filter_rows
         patch_cols,             // filter_cols
@@ -855,48 +994,84 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         errors::Unknown("Failed to get convolution algorithm. This is probably "
                         "because cuDNN failed to initialize, so try looking to "
                         "see if a warning log message was printed above."));
-    ProfileResult best_result;
-    ProfileResult best_result_no_scratch;
+
+    se::TfAllocatorAdapter tf_allocator_adapter(
+        stream->parent()->platform(), ctx->device()->GetAllocator({}));
+
+    se::cuda::RedzoneAllocator rz_allocator(stream->parent()->device_ordinal(),
+                                            &tf_allocator_adapter,
+                                            se::cuda::PtxCompilationOptions());
+
+    se::DeviceMemory<T> output_tensor;
+
+    if (!RedzoneCheckDisabled()) {
+      auto output_rz_or = rz_allocator.AllocateBytes(stream, output_ptr.size());
+      if (!output_rz_or.ok()) {
+        static std::once_flag rz_allocation_failure_logged;
+        std::call_once(rz_allocation_failure_logged, []() {
+          LOG(WARNING)
+              << "Failed to allocate memory for convolution redzone "
+              << "checking; skipping this check. This is benign and only "
+              << "means that we won't check cudnn for out-of-bounds reads "
+              << "and writes. This message will only be printed once.";
+        });
+        output_tensor = output_ptr;
+      } else {
+        output_tensor = se::DeviceMemory<T>(output_rz_or.ValueOrDie());
+      }
+    } else {
+      output_tensor = output_ptr;
+    }
+
+    std::vector<tensorflow::AutotuneResult> results;
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
+      se::cuda::RedzoneAllocator rz_scratch_allocator(
+          stream->parent()->device_ordinal(), &tf_allocator_adapter,
+          se::cuda::PtxCompilationOptions());
       DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+      se::ScratchAllocator* allocator_used =
+          !RedzoneCheckDisabled()
+              ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
+              : static_cast<se::ScratchAllocator*>(&scratch_allocator);
+
       ProfileResult profile_result;
       bool cudnn_launch_status =
           stream
               ->ThenConvolveWithAlgorithm(
                   input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                  output_desc, &output_ptr, &scratch_allocator,
+                  output_desc, &output_tensor, allocator_used,
                   AlgorithmConfig(profile_algorithm), &profile_result)
               .ok();
-      if (cudnn_launch_status) {
-        if (profile_result.is_valid()) {
-          if (profile_result.elapsed_time_in_ms() <
-              best_result.elapsed_time_in_ms()) {
-            best_result = profile_result;
-          }
-          if (scratch_allocator.TotalByteSize() == 0 &&
-              profile_result.elapsed_time_in_ms() <
-                  best_result_no_scratch.elapsed_time_in_ms()) {
-            best_result_no_scratch = profile_result;
-          }
-        }
+      if (cudnn_launch_status && profile_result.is_valid()) {
+        results.emplace_back();
+        auto& result = results.back();
+        result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
+        result.mutable_conv()->set_tensor_ops_enabled(
+            profile_algorithm.tensor_ops_enabled());
+
+        result.set_scratch_bytes(
+            rz_scratch_allocator.TotalAllocatedBytesExcludingRedzones());
+        *result.mutable_run_time() = proto_utils::ToDurationProto(
+            absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+
+        CheckRedzones(rz_scratch_allocator, stream, &result);
+        CheckRedzones(rz_allocator, stream, &result);
       }
     }
-    // TODO(yangzihao): refactor the profile result checking code into a common
-    // utility function.
-    OP_REQUIRES(ctx,
-                best_result.is_valid() || best_result_no_scratch.is_valid(),
-                errors::NotFound("No algorithm worked!"));
-    if (best_result.is_valid()) {
-      algorithm_config.set_algorithm(best_result.algorithm());
-    }
-    if (best_result_no_scratch.is_valid()) {
-      algorithm_config.set_algorithm_no_scratch(
-          best_result_no_scratch.algorithm());
-    }
+    LogConvAutotuneResults(se::dnn::ConvolutionKind::FORWARD,
+                           se::dnn::ToDataType<T>::value, input_ptr, filter_ptr,
+                           output_tensor, input_desc, filter_desc, output_desc,
+                           conv_desc, stream->parent(), results);
+    OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
     AutoTuneConv::GetInstance()->Insert(conv_parameters, algorithm_config);
   }
+
+  VLOG(4) << "Convolution Algorithm: "
+          << algorithm_config.algorithm()->algo_id();
+  VLOG(4) << "tensor_ops_enabled: "
+          << algorithm_config.algorithm()->tensor_ops_enabled();
 
   DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
   bool cudnn_launch_status =
@@ -913,8 +1088,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         ") filter shape(", filter.shape().DebugString(), ")"));
   }
 
-  // Convert the output tensor back from NCHW to NHWC.
-  if (data_format == FORMAT_NHWC) {
+  if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
+    VLOG(4) << "Convert the output tensor back from NCHW to NHWC.";
     functor::NCHWToNHWC<GPUDevice, T, 4>()(
         ctx->eigen_device<GPUDevice>(),
         const_cast<const Tensor&>(transformed_output).tensor<T, 4>(),

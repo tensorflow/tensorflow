@@ -34,6 +34,7 @@ namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 using SYCLDevice = Eigen::SyclDevice;
+using Index = Eigen::Index;
 
 namespace {
 template <class T>
@@ -310,6 +311,19 @@ struct ApplyAdamNonCuda {
                   typename TTypes<T>::ConstScalar beta2,
                   typename TTypes<T>::ConstScalar epsilon,
                   typename TTypes<T>::ConstFlat grad, bool use_nesterov) {
+    // Get params length and check if they can be vectorized by packet size.
+    Index length = var.size();
+    Index packet_size = Eigen::internal::packet_traits<T>::size;
+    if (length % packet_size == 0) {
+      length = length / packet_size;
+    } else {
+      packet_size = 1;
+    }
+
+    T* var_ptr = var.data();
+    T* m_ptr = m.data();
+    T* v_ptr = v.data();
+    const T* g_ptr = grad.data();
     const T alpha = lr() * Eigen::numext::sqrt(T(1) - beta2_power()) /
                     (T(1) - beta1_power());
     // beta1 == μ
@@ -317,14 +331,45 @@ struct ApplyAdamNonCuda {
     // v     == n
     // var   == θ
 
-    m.device(d) += (grad - m) * (T(1) - beta1());
-    v.device(d) += (grad.square() - v) * (T(1) - beta2());
-    if (use_nesterov) {
-      var.device(d) -= ((grad * (T(1) - beta1()) + beta1() * m) * alpha) /
-                       (v.sqrt() + epsilon());
-    } else {
-      var.device(d) -= (m * alpha) / (v.sqrt() + epsilon());
-    }
+    auto shard = [this, var_ptr, m_ptr, v_ptr, g_ptr, alpha, beta1, beta2,
+                  epsilon, use_nesterov, packet_size](int begin, int end) {
+      int t_size = (end - begin) * packet_size;
+      begin = begin * packet_size;
+      auto var = typename TTypes<T>::UnalignedTensor(var_ptr + begin, t_size);
+      auto m = typename TTypes<T>::UnalignedTensor(m_ptr + begin, t_size);
+      auto v = typename TTypes<T>::UnalignedTensor(v_ptr + begin, t_size);
+      auto g = typename TTypes<T>::UnalignedConstTensor(g_ptr + begin, t_size);
+
+      if (use_nesterov) {
+        m += (g - m) * (T(1) - beta1());
+        v += (g.square() - v) * (T(1) - beta2());
+        var -= ((g * (T(1) - beta1()) + beta1() * m) * alpha) /
+               (v.sqrt() + epsilon());
+      } else {
+        m += (g - m) * (T(1) - beta1());
+        v += (g.square() - v) * (T(1) - beta2());
+        var -= (m * alpha) / (v.sqrt() + epsilon());
+      }
+    };
+
+    // Input data: var, v, m, grad.
+    // Output data: var, v, m.
+    const int input_bytes = length * packet_size * sizeof(T) * 4;
+    const int output_bytes = length * packet_size * sizeof(T) * 3;
+    const int compute_cycles =
+        // Consider Sub as Add
+        (Eigen::TensorOpCost::AddCost<int>() * 5 +
+         Eigen::TensorOpCost::MulCost<int>() * 2 +
+         Eigen::TensorOpCost::AddCost<T>() * 10 +
+         Eigen::TensorOpCost::MulCost<T>() * 6 +
+         Eigen::TensorOpCost::DivCost<T>()) *
+        length;
+    const Eigen::TensorOpCost cost(input_bytes, output_bytes, compute_cycles);
+
+    // Eigen device must update 3 variables with 3 different expressions,
+    // which is bad for cache locality on CPU. Here use ParallelFor instead of
+    // "regular" tensor expressions to get better performance.
+    d.parallelFor(length, cost, shard);
   }
 };
 
@@ -562,7 +607,7 @@ TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                             \
@@ -723,7 +768,7 @@ TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                                    \
@@ -1196,7 +1241,7 @@ TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                               \
@@ -1381,7 +1426,16 @@ class SparseApplyAdagradOp : public OpKernel {
                 errors::InvalidArgument(
                     "Inner dimension should be greater than zero."));
 
+    // This op is implemented only for CPU device.
+    const auto& d = ctx->eigen_cpu_device();
+
     if (N > 0) {
+      const int in_bytes = inner_dim * sizeof(T) * 3;
+      const int out_bytes = inner_dim * sizeof(T) * 2;
+      const int cycles = inner_dim * (Eigen::TensorOpCost::AddCost<T>() * 2 +
+                                      Eigen::TensorOpCost::MulCost<T>() * 2);
+      const Eigen::TensorOpCost cost(in_bytes, out_bytes, cycles);
+
       if (inner_dim > 1) {
         const Tindex first_dim_size = var.dim_size(0);
         auto indices_vec = indices.vec<Tindex>();
@@ -1390,22 +1444,29 @@ class SparseApplyAdagradOp : public OpKernel {
         auto grad_flat = grad.flat_outer_dims<T>();
         T lr_scalar = lr.scalar<T>()();
 
-        // Note(yonghui): It might be worth multi-threading square() and
-        // rsqrt().
-        for (Tindex i = 0; i < N; i++) {
+        for (Tindex i = 0; i < N; ++i) {
           const Tindex index = internal::SubtleMustCopy(indices_vec(i));
           OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
                       errors::InvalidArgument(
                           strings::StrCat("Index ", index, " at offset ", i,
                                           " in indices is out of range")));
-          auto a = accum_flat.template chip<0>(index);
-          auto g = grad_flat.template chip<0>(i);
-          auto v = var_flat.template chip<0>(index);
-          if (update_slots_) {
-            a += g.square();
-          }
-          v -= g.constant(lr_scalar) * g * a.rsqrt();
         }
+
+        const auto shard = [&](Tindex start_idx, Tindex end_idx) -> void {
+          for (Tindex i = start_idx; i < end_idx; ++i) {
+            const Tindex index = internal::SubtleMustCopy(indices_vec(i));
+            auto a = accum_flat.template chip<0>(index);
+            auto g = grad_flat.template chip<0>(i);
+            auto v = var_flat.template chip<0>(index);
+            if (update_slots_) {
+              a += g.square();
+            }
+            v -= g.constant(lr_scalar) * g * a.rsqrt();
+          }
+        };
+
+        d.parallelFor(N, cost, shard);
+
       } else {
         auto indices_vec = indices.vec<Tindex>();
         auto var_flat = var.flat<T>();
@@ -1414,19 +1475,27 @@ class SparseApplyAdagradOp : public OpKernel {
         T lr_scalar = lr.scalar<T>()();
         const Tindex first_dim_size = accum_flat.size();
 
-        for (Tindex i = 0; i < N; i++) {
+        for (Tindex i = 0; i < N; ++i) {
           const Tindex index = internal::SubtleMustCopy(indices_vec(i));
           OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
                       errors::InvalidArgument(
                           strings::StrCat("Index ", index, " at offset ", i,
                                           " in indices is out of range")));
-          T& a = accum_flat(index);
-          const T& g = grad_flat(i);
-          if (update_slots_) {
-            a += g * g;
-          }
-          var_flat(index) -= lr_scalar * g / Eigen::numext::sqrt(a);
         }
+
+        const auto shard = [&](Tindex start_idx, Tindex end_idx) -> void {
+          for (Tindex i = start_idx; i < end_idx; ++i) {
+            const Tindex index = internal::SubtleMustCopy(indices_vec(i));
+            T& a = accum_flat(index);
+            const T& g = grad_flat(i);
+            if (update_slots_) {
+              a += g * g;
+            }
+            var_flat(index) -= lr_scalar * g / Eigen::numext::sqrt(a);
+          }
+        };
+
+        d.parallelFor(N, cost, shard);
       }
     }
 
@@ -2441,7 +2510,7 @@ TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                               \
@@ -2659,7 +2728,7 @@ TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                               \
@@ -3032,7 +3101,7 @@ TF_CALL_float(REGISTER_SYCL_KERNELS);
 TF_CALL_double(REGISTER_SYCL_KERNELS);
 #endif
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                   \
@@ -3173,7 +3242,7 @@ TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                   \
@@ -3304,7 +3373,7 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                   \
@@ -3538,7 +3607,7 @@ TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                                    \
@@ -3957,7 +4026,7 @@ TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                           \
@@ -4064,7 +4133,7 @@ TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                           \

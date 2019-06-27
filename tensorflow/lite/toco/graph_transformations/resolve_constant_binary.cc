@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -142,9 +143,9 @@ void EvaluateBinaryOperatorOnConstantInputs(Model* model,
     } else if (binary_op->type == OperatorType::kDiv) {
       outval = val0 / val1;
     } else if (binary_op->type == OperatorType::kFloorDiv) {
-      outval = floor(val0 / val1);
+      outval = std::floor(val0 / val1);
     } else if (binary_op->type == OperatorType::kFloorMod) {
-      outval = val0 - (floor(val0 / val1) * val1);
+      outval = val0 - (std::floor(val0 / val1) * val1);
     } else if (binary_op->type == OperatorType::kMinimum) {
       outval = std::min(val0, val1);
     } else if (binary_op->type == OperatorType::kMaximum) {
@@ -246,16 +247,7 @@ void EvaluateBinaryOperatorOnConstantInputs(Model* model,
   // Do the actual constants propagation
   EvaluateBinaryOperatorOnConstantInputs(model, binary_op);
 
-  // Remove the binary operator and its inputs
-  if (CountOpsWithInput(*model, binary_op->inputs[0]) == 1) {
-    model->EraseArray(binary_op->inputs[0]);
-  }
-  if (CountOpsWithInput(*model, binary_op->inputs[1]) == 1) {
-    model->EraseArray(binary_op->inputs[1]);
-  }
-  AddMessageF("Resolved constant %s to the equivalent constant array",
-              LogName(*binary_op));
-  model->operators.erase(binary_it);
+  DeleteOpAndArrays(model, binary_op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
+#include <algorithm>
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -144,11 +147,32 @@ const std::list<const Thunk*>& ThunkSchedule::DependsOn(
 }
 
 string ThunkSchedule::ToString() const {
+  if (thunk_total_order_.empty()) {
+    return "No thunks.";
+  }
+
+  const Thunk* thunk_with_longest_kind = *absl::c_max_element(
+      thunk_total_order_, [](const Thunk* a, const Thunk* b) {
+        return ThunkKindToString(a->kind()).length() <
+               ThunkKindToString(b->kind()).length();
+      });
+  int64 max_thunk_kind_len =
+      ThunkKindToString(thunk_with_longest_kind->kind()).length();
+
   string result = "Total order:\n";
   for (Thunk* thunk : thunk_total_order_) {
-    absl::StrAppend(&result, "\t", thunk->hlo_instruction()->ToString(), "\n");
+    // Write out the thunk kind, padded out to max_thunk_kind_len.
+    absl::string_view kind_str = ThunkKindToString(thunk->kind());
+    absl::StrAppend(&result, kind_str,
+                    string(max_thunk_kind_len - kind_str.length(), ' '), "\t");
+    if (thunk->hlo_instruction() != nullptr) {
+      absl::StrAppend(&result, thunk->hlo_instruction()->ToString());
+    } else {
+      absl::StrAppend(&result, "(no HloInstruction)");
+    }
+    absl::StrAppend(&result, "\n");
   }
-  absl::StrAppend(&result, "Dependencies:\n");
+  absl::StrAppend(&result, "\nDependencies:\n");
   for (const auto& entry : depends_on_) {
     const Thunk* dependent = entry.first;
     for (const Thunk* dependency : entry.second) {

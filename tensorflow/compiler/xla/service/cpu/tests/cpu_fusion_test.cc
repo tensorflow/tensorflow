@@ -39,6 +39,13 @@ class CpuFusionTest : public HloTestBase {
   CpuFusionTest() {}
 
   ErrorSpec error_spec_{0.0001, 1e-5};
+
+ private:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.add_xla_disable_hlo_passes("layout-assignment");
+    return debug_options;
+  }
 };
 
 TEST_F(CpuFusionTest, FuseTwoElementwiseOps) {
@@ -162,11 +169,11 @@ TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusibleInstruction) {
   auto reduce = builder.AddInstruction(HloInstruction::CreateReduce(
       cshape,
       builder.AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(F32, {6, 1}), concatenate)),
+          ShapeUtil::MakeShape(F32, {1, 6}), concatenate)),
       /*init_value=*/
       builder.AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0))),
-      /*dimensions_to_reduce=*/{1}, add_f32));
+      /*dimensions_to_reduce=*/{0}, add_f32));
 
   auto exp = builder.AddInstruction(
       HloInstruction::CreateUnary(cshape, HloOpcode::kExp, reduce));

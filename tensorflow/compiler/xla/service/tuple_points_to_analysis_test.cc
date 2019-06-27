@@ -328,6 +328,31 @@ TEST_F(TuplePointsToAnalysisTest, TupleCopy) {
       {constant1, constant2, copy});
 }
 
+TEST_F(TuplePointsToAnalysisTest, CopyStartAndCopyDone) {
+  // CopyDone forwards its operand to the output tuple at {0}.
+  auto builder = HloComputation::Builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  auto copy_start = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeTupleShape(
+          {constant->shape(), ShapeUtil::MakeShape(U32, {})}),
+      HloOpcode::kCopyStart, constant));
+  auto copy_done = builder.AddInstruction(HloInstruction::CreateUnary(
+      constant->shape(), HloOpcode::kCopyDone, copy_start));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(copy_start).IsAmbiguous());
+  EXPECT_TRUE(points_to_analysis_->GetPointsToSet(copy_start).IsDistinct());
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(copy_done).IsAmbiguous());
+  EXPECT_TRUE(points_to_analysis_->GetPointsToSet(copy_done).IsDistinct());
+
+  ExpectHasTopLevelBuffers(
+      points_to_analysis_->GetPointsToSet(copy_start).element({}),
+      {copy_start});
+  ExpectHasBufferAliases(copy_start, {0}, {{copy_start, {0}}, {copy_done, {}}});
+}
+
 TEST_F(TuplePointsToAnalysisTest, SendAndSendDone) {
   // Send forwards its operand to the output tuple at {0}.
   auto builder = HloComputation::Builder(TestName());
@@ -934,8 +959,8 @@ TEST_F(CanShareOperandBufferWithUserTest, ElementWiseDifferentShape) {
       HloInstruction::CreateParameter(0, in_shape, "param0"));
   auto param1 = builder.AddInstruction(
       HloInstruction::CreateParameter(1, in_shape, "param1"));
-  auto result = builder.AddInstruction(
-      HloInstruction::CreateBinary(out_shape, HloOpcode::kEq, param0, param1));
+  auto result = builder.AddInstruction(HloInstruction::CreateCompare(
+      out_shape, param0, param1, ComparisonDirection::kEq));
 
   BuildModuleAndRunAnalysis(builder.Build());
 
@@ -1185,8 +1210,8 @@ TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
     auto builder = HloComputation::Builder(TestName() + ".Cond");
     auto data = builder.AddInstruction(
         HloInstruction::CreateParameter(0, data_shape, "data"));
-    builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kEq, data, data));
+    builder.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), data, data, ComparisonDirection::kEq));
     return builder.Build();
   };
 

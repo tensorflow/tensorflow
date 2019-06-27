@@ -42,13 +42,28 @@ class EagerClient {
   CLIENT_METHOD(SendTensor);
 
 #undef CLIENT_METHOD
+
+  // Feeds `request` into the request stream of EagerService::StreamingEnqueue.
+  // `response` will be filled with the response for this `request`. The
+  // 1-to-1 correspondence between requests and responses is a property
+  // of the current service implementation. When the response is received,
+  // `done` is invoked with the current status of the StreamingEnqueue call.
+  // The status can contain an error because of an earlier request in the
+  // current streaming call.
+  // The client initiates a streaming call the first time StreamingEnqueueAsync
+  // is invoked and keeps it open until some error condition.
+  // Similarly to the methods above, the request can be deleted as soon as
+  // StreamingEnqueueAsync returns.
+  virtual void StreamingEnqueueAsync(const EnqueueRequest* request,
+                                     EnqueueResponse* response,
+                                     StatusCallback done) = 0;
 };
 
 // Simple wrapper class that can be used to retrieve EagerClients.
 class EagerClientCache {
  public:
   virtual ~EagerClientCache() {}
-  virtual EagerClient* GetClient(const string& target) = 0;
+  virtual Status GetClient(const string& target, EagerClient** client) = 0;
 };
 
 }  // namespace eager

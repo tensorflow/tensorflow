@@ -21,19 +21,18 @@ from __future__ import print_function
 import copy
 import threading
 from absl.testing import parameterized
-
-from tensorflow.contrib.distribute.python import combinations
-from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import parameter_server_strategy
-from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import central_storage_strategy
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import device_util
-from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy as core_parameter_server_strategy
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import backprop
@@ -53,7 +52,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import training_util
-from tensorflow.python.training.server_lib import ClusterSpec
 
 CHIEF = run_config.TaskType.CHIEF
 WORKER = run_config.TaskType.WORKER
@@ -65,15 +63,6 @@ def _get_replica_id_integer():
   if isinstance(replica_id, ops.Tensor):
     replica_id = tensor_util.constant_value(replica_id)
   return replica_id
-
-
-class MockCoreParameterServerStrategy(distribute_lib.DistributionStrategy):
-  """Mock the strategy to allow cluster resolver as an argument."""
-
-  def __init__(self, cluster_resolver):
-    super(MockCoreParameterServerStrategy, self).__init__(
-        core_parameter_server_strategy.ParameterServerStrategyExtended(
-            self, cluster_resolver=cluster_resolver))
 
 
 def create_test_objects(cluster_spec=None,
@@ -92,13 +81,15 @@ def create_test_objects(cluster_spec=None,
           task_type=task_type,
           task_id=task_id,
           num_accelerators={'GPU': num_gpus})
+      distribution = core_parameter_server_strategy.ParameterServerStrategy(
+          cluster_resolver)
       target = 'grpc://' + cluster_spec[WORKER][task_id]
     else:
-      cluster_resolver = SimpleClusterResolver(
-          ClusterSpec({}), num_accelerators={'GPU': num_gpus})
+      distribution = (
+          central_storage_strategy.CentralStorageStrategy._from_num_gpus(
+              num_gpus))
       target = ''
 
-    distribution = MockCoreParameterServerStrategy(cluster_resolver)
     sess_config = copy.deepcopy(sess_config)
     sess_config = distribution.update_config_proto(sess_config)
   else:
@@ -441,7 +432,8 @@ class ParameterServerStrategyTestBase(
       x, y, z, train_op = d.extended.call_for_each_replica(model_fn)
       train_op = d.group(train_op)
 
-      if context.num_gpus() < d.extended._num_gpus_per_worker:
+      if context.num_gpus() < sum(
+          1 for d in d.extended.worker_devices if 'GPU' in d.upper()):
         return True
 
       if task_id == 0:
@@ -514,7 +506,7 @@ class ParameterServerStrategyTestBase(
       def update(v, g):
         return v.assign_sub(0.05 * g, use_locking=True)
 
-      one = d.broadcast(constant_op.constant([[1.]]))
+      one = constant_op.constant([[1.]])
 
       def step():
         """Perform one optimization step."""
@@ -537,7 +529,8 @@ class ParameterServerStrategyTestBase(
 
       before_out, after_out = step()
 
-      if context.num_gpus() < d.extended._num_gpus_per_worker:
+      if context.num_gpus() < sum(
+          1 for d in d.extended.worker_devices if 'GPU' in d.upper()):
         return True
 
       if (not task_type or
@@ -572,6 +565,7 @@ class ParameterServerStrategyTestBase(
                               input_fn,
                               expected_values,
                               test_reinitialize=True,
+                              ignore_order=False,
                               use_core_strategy=False):
     distribution, master_target, config = self._get_test_objects(
         task_type, task_id, num_gpus, use_core_strategy=use_core_strategy)
@@ -587,7 +581,10 @@ class ParameterServerStrategyTestBase(
         next_element = iterator.get_next()
         computed_value = sess.run([values.select_replica(r, next_element)
                                    for r in range(len(devices))])
-        self.assertEqual(expected_value, computed_value)
+        if ignore_order:
+          self.assertCountEqual(expected_value, computed_value)
+        else:
+          self.assertEqual(expected_value, computed_value)
 
       with self.assertRaises(errors.OutOfRangeError):
         next_element = iterator.get_next()
@@ -602,7 +599,10 @@ class ParameterServerStrategyTestBase(
           next_element = iterator.get_next()
           computed_value = sess.run([values.select_replica(r, next_element)
                                      for r in range(len(devices))])
-          self.assertEqual(expected_value, computed_value)
+          if ignore_order:
+            self.assertCountEqual(expected_value, computed_value)
+          else:
+            self.assertEqual(expected_value, computed_value)
 
 
 class ParameterServerStrategyTest(
@@ -696,7 +696,6 @@ class ParameterServerStrategyTest(
   def testMinimizeLossGraphLocal(self, num_gpus, use_core_strategy):
     self._test_minimize_loss_graph(None, None, num_gpus, use_core_strategy)
 
-  # TODO(b/124344198): Re-enable after fixing this flaky test.
   # TODO(priyag): Refactor this and other multi worker tests.
   @combinations.generate(
       combinations.combine(
@@ -705,7 +704,7 @@ class ParameterServerStrategyTest(
           required_gpus=1,
           use_core_strategy=[True, False],
           use_dataset=[True, False]))
-  def DISABLED_testMakeInputFnIteratorDistributed(
+  def testMakeInputFnIteratorDistributed(
       self, num_gpus, use_core_strategy, use_dataset):
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
@@ -731,9 +730,9 @@ class ParameterServerStrategyTest(
         input_fn,
         expected_values,
         test_reinitialize=use_dataset,
+        ignore_order=not use_dataset,
         use_core_strategy=use_core_strategy)
 
-  # TODO(b/124344198): Re-enable after fixing this flaky test.
   @combinations.generate(
       combinations.combine(
           mode=['graph'],
@@ -741,8 +740,8 @@ class ParameterServerStrategyTest(
           required_gpus=1,
           use_core_strategy=[True, False],
           use_dataset=[True, False]))
-  def DISABLED_testMakeInputFnIteratorLocal(self, num_gpus, use_core_strategy,
-                                            use_dataset):
+  def testMakeInputFnIteratorLocal(self, num_gpus, use_core_strategy,
+                                   use_dataset):
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
     if use_dataset:
@@ -767,6 +766,7 @@ class ParameterServerStrategyTest(
         input_fn,
         expected_values,
         test_reinitialize=use_dataset,
+        ignore_order=not use_dataset,
         use_core_strategy=use_core_strategy)
 
   @combinations.generate(
@@ -779,9 +779,11 @@ class ParameterServerStrategyTest(
       combinations.combine(mode=['graph'], use_core_strategy=[True, False]))
   def testUpdateConfigProtoMultiWorker(self, use_core_strategy):
     strategy, _, _ = create_test_objects(
-        num_gpus=2, use_core_strategy=use_core_strategy)
-    strategy.configure(
-        cluster_spec=self._cluster_spec, task_type='worker', task_id=1)
+        cluster_spec=self._cluster_spec,
+        task_type='worker',
+        task_id=1,
+        num_gpus=2,
+        use_core_strategy=use_core_strategy)
 
     config_proto = config_pb2.ConfigProto(device_filters=['to_be_overridden'])
 
@@ -806,35 +808,45 @@ class ParameterServerStrategyTest(
     # Verify isolate_session_state
     self.assertTrue(new_config.isolate_session_state)
 
+  @combinations.generate(combinations.combine(required_gpus=[2]))
   def testAllReduceSum(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=2)
     self._test_all_reduce_sum(distribution)
 
+  @combinations.generate(combinations.combine(required_gpus=[2]))
   def testAllReduceSumGradients(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=2)
     self._test_all_reduce_sum_gradients(distribution)
 
+  @combinations.generate(combinations.combine(required_gpus=[2]))
   def testAllReduceSumGradientTape(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=2)
     self._test_all_reduce_sum_gradient_tape(distribution)
 
+  @combinations.generate(combinations.combine(required_gpus=[2]))
   def testAllReduceMean(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=2)
     self._test_all_reduce_mean(distribution)
 
+  @combinations.generate(combinations.combine(required_gpus=[2]))
   def testAllReduceMeanGradients(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=2)
     self._test_all_reduce_mean_gradients(distribution)
 
+  @combinations.generate(combinations.combine(required_gpus=[2]))
   def testAllReduceMeanGradientTape(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=2)
     self._test_all_reduce_mean_gradient_tape(distribution)
+
+  def testTrainableVariables(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy()
+    self._test_trainable_variable(distribution)
 
 
 class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
@@ -918,16 +930,16 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
       strategy.extended.call_for_each_replica(f)
 
 
-class LocalParameterServerStrategyTest(strategy_test_lib.DistributionTestBase,
-                                       parameterized.TestCase):
+class CentralStorageStrategyTest(strategy_test_lib.DistributionTestBase,
+                                 parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager'],
                                               use_core_strategy=[True, False],
                                               required_gpus=2))
-  def testNumpyIterator(self, use_core_strategy):
+  def testNumpyDataset(self, use_core_strategy):
     strategy, _, _ = create_test_objects(
         num_gpus=2, use_core_strategy=use_core_strategy)
-    self._test_numpy_iterator(strategy)
+    self._test_numpy_dataset(strategy)
 
 
 if __name__ == '__main__':

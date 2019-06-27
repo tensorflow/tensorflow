@@ -18,10 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.lite.python.convert import tensor_name
+from tensorflow.lite.python import util
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.client import session
-from tensorflow.python.framework import graph_util as tf_graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import constants
@@ -138,7 +137,7 @@ def _get_tensors(graph, signature_def_tensor_names=None,
     # Sort the tensor names.
     user_tensor_names = sorted(user_tensor_names)
 
-    tensors = get_tensors_from_tensor_names(graph, user_tensor_names)
+    tensors = util.get_tensors_from_tensor_names(graph, user_tensor_names)
   elif signature_def_tensor_names:
     tensors = [
         graph.get_tensor_by_name(name)
@@ -151,73 +150,6 @@ def _get_tensors(graph, signature_def_tensor_names=None,
         "Specify either signature_def_tensor_names or user_tensor_names")
 
   return tensors
-
-
-def get_tensors_from_tensor_names(graph, tensor_names):
-  """Gets the Tensors associated with the `tensor_names` in the provided graph.
-
-  Args:
-    graph: TensorFlow Graph.
-    tensor_names: List of strings that represent names of tensors in the graph.
-
-  Returns:
-    A list of Tensor objects in the same order the names are provided.
-
-  Raises:
-    ValueError:
-      tensor_names contains an invalid tensor name.
-  """
-  # Get the list of all of the tensors.
-  tensor_name_to_tensor = {
-      tensor_name(tensor): tensor for op in graph.get_operations()
-      for tensor in op.values()
-  }
-
-  # Get the tensors associated with tensor_names.
-  tensors = []
-  invalid_tensors = []
-  for name in tensor_names:
-    tensor = tensor_name_to_tensor.get(name)
-    if tensor is None:
-      invalid_tensors.append(name)
-    else:
-      tensors.append(tensor)
-
-  # Throw ValueError if any user input names are not valid tensors.
-  if invalid_tensors:
-    raise ValueError("Invalid tensors '{}' were found.".format(
-        ",".join(invalid_tensors)))
-  return tensors
-
-
-def set_tensor_shapes(tensors, shapes):
-  """Sets Tensor shape for each tensor if the shape is defined.
-
-  Args:
-    tensors: TensorFlow ops.Tensor.
-    shapes: Dict of strings representing input tensor names to list of
-      integers representing input shapes (e.g., {"foo": : [1, 16, 16, 3]}).
-
-  Raises:
-    ValueError:
-      `shapes` contains an invalid tensor.
-      `shapes` contains an invalid shape for a valid tensor.
-  """
-  if shapes:
-    tensor_names_to_tensor = {tensor_name(tensor): tensor for tensor in tensors}
-    for name, shape in shapes.items():
-      if name not in tensor_names_to_tensor:
-        raise ValueError("Invalid tensor \'{}\' found in tensor shapes "
-                         "map.".format(name))
-      if shape is not None:
-        tensor = tensor_names_to_tensor[name]
-        try:
-          tensor.set_shape(shape)
-        except ValueError as error:
-          message = ("The shape of tensor '{0}' cannot be changed from {1} to "
-                     "{2}. {3}".format(name, tensor.get_shape(), shape,
-                                       str(error)))
-          raise ValueError(message)
 
 
 def freeze_saved_model(saved_model_dir, input_arrays, input_shapes,
@@ -241,6 +173,7 @@ def freeze_saved_model(saved_model_dir, input_arrays, input_shapes,
     frozen_graph_def: Frozen GraphDef.
     in_tensors: List of input tensors for the graph.
     out_tensors: List of output tensors for the graph.
+    graph: `Graph` object.
 
   Raises:
     ValueError:
@@ -268,10 +201,7 @@ def freeze_saved_model(saved_model_dir, input_arrays, input_shapes,
     # TODO(zhixianyan): Use TFLite supported Op list to filter outputs.
     in_tensors = _get_tensors(graph, inputs, input_arrays)
     out_tensors = _get_tensors(graph, outputs, output_arrays)
-    set_tensor_shapes(in_tensors, input_shapes)
+    util.set_tensor_shapes(in_tensors, input_shapes)
 
-    output_names = [node.split(":")[0] for node in outputs]
-    frozen_graph_def = tf_graph_util.convert_variables_to_constants(
-        sess, graph.as_graph_def(), output_names)
-
-    return frozen_graph_def, in_tensors, out_tensors
+    frozen_graph_def = util.freeze_graph(sess, in_tensors, out_tensors)
+    return frozen_graph_def, in_tensors, out_tensors, sess.graph

@@ -36,9 +36,9 @@ limitations under the License.
 
 namespace xla {
 
-HloModule::HloModule(const string& name, const HloModuleConfig& config)
+HloModule::HloModule(const string& name, HloModuleConfig config)
     : name_(NameUniquer::GetSanitizedName(name)),
-      config_(config),
+      config_(std::move(config)),
       unique_id_(next_unique_module_id_++) {}
 
 Status HloModule::set_schedule(HloSchedule schedule) {
@@ -132,6 +132,7 @@ void HloModule::ReplaceComputations(
   for (std::unique_ptr<HloComputation>& computation : computations_) {
     for (auto* instruction : computation->instructions()) {
       switch (instruction->opcode()) {
+        case HloOpcode::kAllReduce:
         case HloOpcode::kCall:
         case HloOpcode::kMap:
         case HloOpcode::kReduce:

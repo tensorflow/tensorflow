@@ -33,6 +33,7 @@ from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
@@ -237,9 +238,8 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
                                  'the `steps` argument'):
       model.predict(dataset, verbose=0)
 
-  # TODO(b/123531973): Include tests using dataset_v1.
   @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  @keras_parameterized.run_all_keras_modes
   def test_training_and_eval_methods_on_multi_input_output_dataset(self):
     input_a = keras.layers.Input(shape=(3,), name='input_1')
     input_b = keras.layers.Input(shape=(3,), name='input_2')
@@ -294,7 +294,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     predict_dataset_dict = dataset_ops.Dataset.from_tensor_slices(
         input_dict)
     predict_dataset_dict = predict_dataset_dict.repeat(100)
-    predict_dataset_dict = dataset_dict.batch(10)
+    predict_dataset_dict = predict_dataset_dict.batch(10)
     model.predict(predict_dataset_dict, steps=1)
 
   @keras_parameterized.run_with_all_model_types
@@ -318,6 +318,30 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
     model.evaluate(dataset, steps=2, verbose=1)
     model.predict(dataset, steps=2)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_dataset_with_sample_weights_correctness(self):
+    x = keras.layers.Input(shape=(1,), name='input')
+    y = keras.layers.Dense(
+        1, kernel_initializer='ones', bias_initializer='zeros', name='dense')(x)
+    model = keras.Model(x, y)
+    optimizer = 'rmsprop'
+    loss = 'mse'
+    model.compile(optimizer, loss)
+    inputs = np.array([[0], [1], [2], [3]], np.float32)
+    targets = np.array([[2], [4], [6], [8]], np.float32)
+    sample_weights = np.array([0.25, 0.5, 0.75, 1], np.float32)
+    ds = dataset_ops.Dataset.from_tensor_slices((inputs, targets,
+                                                 sample_weights)).batch(2)
+    result = model.evaluate(ds, verbose=1)
+    # The per sample loss is multipled by the corresponding sample weight. The
+    # average of these weighted losses is the return value of the `evaluate`
+    # call. For example, in the test above the average weighted loss is
+    # calculated in the following manner:
+    # ((2-0)^2) * 0.25 + ((4-1)^2) * 0.5 + ((6-2)^2 * 0.75) + ((8-3)^2 * 1)
+    #  equals 42.5 / 4 = 10.625
+    self.assertEqual(result, 10.625)
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
@@ -357,12 +381,32 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     inputs[20:30, :] = 1
     inputs[30:, :] = 4
     targets = np.zeros((40, 1), dtype=np.float32)
-    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
-    dataset = dataset.batch(10)
-    history = model.fit(dataset,
-                        epochs=2, steps_per_epoch=2, verbose=1, shuffle=False)
+
+    # Test correctness with `steps_per_epoch`.
+    train_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (inputs, targets)).batch(10)
+    val_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (inputs, targets)).batch(10)
+    history = model.fit(train_dataset,
+                        epochs=2, steps_per_epoch=2, verbose=1,
+                        validation_data=val_dataset, validation_steps=2)
     self.assertListEqual(history.history['loss'],
                          [inputs[:20].sum() / 2, inputs[20:].sum() / 2])
+    # The validation dataset will be reset at the end of each validation run.
+    self.assertListEqual(history.history['val_loss'],
+                         [inputs[:20].sum() / 2, inputs[:20].sum() / 2])
+
+    # Test correctness with dataset reset.
+    train_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (inputs, targets)).batch(10)
+    val_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (inputs, targets)).batch(10)
+    history = model.fit(train_dataset,
+                        epochs=2, verbose=1, validation_data=val_dataset)
+    self.assertListEqual(history.history['loss'],
+                         [inputs.sum() / 4, inputs.sum() / 4])
+    self.assertListEqual(history.history['val_loss'],
+                         [inputs.sum() / 4, inputs.sum() / 4])
 
   @tf_test_util.run_deprecated_v1
   def test_dataset_input_shape_validation(self):
@@ -522,6 +566,19 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model.evaluate(dataset)
     out = model.predict(dataset)
     self.assertEqual(out.shape[0], 100)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_with_external_loss(self):
+    inp = keras.Input(shape=(4,), name='inp1')
+    out = keras.layers.Dense(2)(inp)
+    model = keras.Model(inp, out)
+    model.add_loss(math_ops.reduce_mean(out))
+    model.compile('rmsprop')
+    x = np.ones((10, 4))
+
+    # dataset contains only features, no labels.
+    dataset = dataset_ops.Dataset.from_tensor_slices(x).repeat(10).batch(10)
+    model.fit(dataset)
 
 
 class TestMetricsWithDatasetIterators(keras_parameterized.TestCase):

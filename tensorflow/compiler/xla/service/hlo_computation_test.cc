@@ -432,8 +432,9 @@ TEST_F(HloComputationTest, CycleDetection) {
   auto instructions = computation->MakeInstructionPostOrder();
   EXPECT_EQ(3, instructions.size());
 
-  const auto visitor = [](HloInstruction* instruction) { return Status::OK(); };
-  auto visit_status = computation->Accept(visitor);
+  FunctionVisitor visitor(
+      [](HloInstruction* instruction) { return Status::OK(); });
+  auto visit_status = computation->Accept(&visitor);
   ASSERT_FALSE(visit_status.ok());
   ASSERT_THAT(visit_status.error_message(),
               ::testing::ContainsRegex("cycle is detecte"));
@@ -509,8 +510,9 @@ TEST_F(HloComputationTest, CloneWithReplacements) {
       HloInstruction::CreateParameter(1, r0f32_, "p.0.rhs"));
   auto param2 =
       builder.AddInstruction(HloInstruction::CreateParameter(2, r0s64, "p.1"));
-  auto lt = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, param0, param1));
+  auto lt = builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), param0,
+                                    param1, ComparisonDirection::kLt));
   auto module = CreateNewVerifiedModule();
   auto computation =
       module->AddEntryComputation(builder.Build(/*root_instruction=*/lt));
@@ -686,10 +688,10 @@ add {
 ENTRY entry {
   param = f32[128] parameter(0), sharding={maximal device=0}
   crs0 = f32[128] all-reduce(param),
-    replica_groups={{0}}, all_reduce_id=1, barrier="", to_apply=add,
+    replica_groups={{0}}, channel_id=1, to_apply=add,
     sharding={maximal device=0}
   crs1 = f32[128] all-reduce(param),
-    replica_groups={{0}}, all_reduce_id=1, barrier="", to_apply=add,
+    replica_groups={{0}}, channel_id=1, to_apply=add,
     sharding={maximal device=1}
   add = f32[128] add(crs0, crs0), sharding={maximal device=0}
   ROOT t = (f32[128], f32[128]) tuple(add, crs1)

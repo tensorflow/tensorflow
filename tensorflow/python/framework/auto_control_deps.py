@@ -88,8 +88,9 @@ LEGACY_RANDOM_OPS = [
 _ALL_BLACKLISTED_OPS = set(ASYNC_STATEFUL_OPS) | set(LEGACY_RANDOM_OPS)
 
 
-def op_is_stateful(op_def):
-  return op_def.is_stateful and op_def.name not in _ALL_BLACKLISTED_OPS
+def op_is_stateful(op):
+  # pylint: disable=protected-access
+  return op._is_stateful and op.type not in _ALL_BLACKLISTED_OPS
 
 
 class AutomaticControlDependencies(object):
@@ -287,7 +288,7 @@ class AutomaticControlDependencies(object):
       control_inputs = set()
       # Ensure stateful ops run
       if (op.type not in self._graph._registered_ops  # pylint: disable=protected-access
-          or op_is_stateful(self._graph._registered_ops[op.type])):  # pylint: disable=protected-access
+          or op_is_stateful(op)):
         ops_which_must_run.add(op)
       # Ignore switches (they're handled separately)
       if op.type == "Switch" and op.inputs[0].dtype == dtypes_module.resource:
@@ -324,7 +325,7 @@ class AutomaticControlDependencies(object):
         if inp in merge_for_resource:
           merge_for_resource[inp]._add_control_input(op)  # pylint: disable=protected-access
         last_op_using_resource_tensor[inp] = op
-      if (op_is_stateful(op.op_def) and not found_resource
+      if (op_is_stateful(op) and not found_resource
           and op._control_flow_context is None):  # pylint: disable=protected-access
         if None in last_op_using_resource_tensor:
           op._add_control_input(last_op_using_resource_tensor[None])  # pylint: disable=protected-access
@@ -335,7 +336,7 @@ class AutomaticControlDependencies(object):
 
     # Ensure all ops which must run do run
     self.ops_which_must_run.update(ops_which_must_run)
-    for r in self._returned_tensors:
+    for r in nest.flatten(list(self._returned_tensors), expand_composites=True):
       if self.ops_which_must_run:
         r.op._add_control_inputs(  # pylint: disable=protected-access
             [o for o in self.ops_which_must_run

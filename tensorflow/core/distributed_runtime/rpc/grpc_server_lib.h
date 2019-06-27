@@ -95,9 +95,8 @@ class GrpcServer : public ServerInterface {
   WorkerEnv* worker_env() { return &worker_env_; }
   MasterEnv* master_env() { return &master_env_; }
 
-  std::shared_ptr<GrpcChannelCache> channel_cache() { return channel_cache_; }
-
  protected:
+  virtual Status GetPort(int* port) const;
   Status Init(const GrpcServerOptions& opts = GrpcServerOptions());
 
   // A subclass can override this method to support secure credentials.
@@ -109,8 +108,8 @@ class GrpcServer : public ServerInterface {
   virtual std::unique_ptr<Master> CreateMaster(MasterEnv* master_env);
 
   // Creates a WorkerCacheInterface for a session.
-  Status WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
-                            WorkerCacheInterface** worker_cache);
+  virtual Status WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
+                                    WorkerCacheInterface** worker_cache);
 
   // Parses a WorkerCacheFactoryOptions into a GrpcChannelSpec.
   Status ParseChannelSpec(const WorkerCacheFactoryOptions& options,
@@ -121,6 +120,8 @@ class GrpcServer : public ServerInterface {
   int bound_port() const { return bound_port_; }
 
   const ServerDef& server_def() const { return server_def_; }
+  GrpcWorker* worker_impl() const { return worker_impl_.get(); }
+
 
  private:
   // The overall server configuration.
@@ -150,7 +151,6 @@ class GrpcServer : public ServerInterface {
   std::unique_ptr<Master> master_impl_;
   AsyncServiceInterface* master_service_ = nullptr;
   std::unique_ptr<Thread> master_thread_ GUARDED_BY(mu_);
-  std::shared_ptr<GrpcChannelCache> channel_cache_;
 
   // Implementation of a TensorFlow worker, and RPC polling thread.
   WorkerEnv worker_env_;

@@ -13,31 +13,46 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/util/proto/descriptors.h"
+
+#include "absl/strings/match.h"
+#include "absl/strings/strip.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/proto/descriptor_pool_registry.h"
-
-#include "tensorflow/core/util/proto/descriptors.h"
 
 namespace tensorflow {
 namespace {
 
+Status CreatePoolFromSet(const protobuf::FileDescriptorSet& set,
+                         std::unique_ptr<protobuf::DescriptorPool>* out_pool) {
+  *out_pool = absl::make_unique<protobuf::DescriptorPool>();
+  for (const auto& file : set.file()) {
+    if ((*out_pool)->BuildFile(file) == nullptr) {
+      return errors::InvalidArgument("Failed to load FileDescriptorProto: ",
+                                     file.DebugString());
+    }
+  }
+  return Status::OK();
+}
+
 // Build a `DescriptorPool` from the named file or URI. The file or URI
 // must be available to the current TensorFlow environment.
 //
-// The file must contiain a serialized `FileDescriptorSet`. See
+// The file must contain a serialized `FileDescriptorSet`. See
 // `GetDescriptorPool()` for more information.
 Status GetDescriptorPoolFromFile(
     tensorflow::Env* env, const string& filename,
-    std::unique_ptr<tensorflow::protobuf::DescriptorPool>* owned_desc_pool) {
+    std::unique_ptr<protobuf::DescriptorPool>* owned_desc_pool) {
   Status st = env->FileExists(filename);
   if (!st.ok()) {
     return st;
   }
-
   // Read and parse the FileDescriptorSet.
-  tensorflow::protobuf::FileDescriptorSet descs;
-  std::unique_ptr<tensorflow::ReadOnlyMemoryRegion> buf;
+  protobuf::FileDescriptorSet descs;
+  std::unique_ptr<ReadOnlyMemoryRegion> buf;
   st = env->NewReadOnlyMemoryRegionFromFile(filename, &buf);
   if (!st.ok()) {
     return st;
@@ -46,25 +61,31 @@ Status GetDescriptorPoolFromFile(
     return errors::InvalidArgument(
         "descriptor_source contains invalid FileDescriptorSet: ", filename);
   }
+  return CreatePoolFromSet(descs, owned_desc_pool);
+}
 
-  // Build a DescriptorPool from the FileDescriptorSet.
-  owned_desc_pool->reset(new tensorflow::protobuf::DescriptorPool());
-  for (const auto& filedesc : descs.file()) {
-    if ((*owned_desc_pool)->BuildFile(filedesc) == nullptr) {
-      return errors::InvalidArgument(
-          "Problem loading FileDescriptorProto (missing dependencies?): ",
-          filename);
-    }
+Status GetDescriptorPoolFromBinary(
+    const string& source,
+    std::unique_ptr<protobuf::DescriptorPool>* owned_desc_pool) {
+  if (!absl::StartsWith(source, "bytes://")) {
+    return errors::InvalidArgument(
+        "Source does not represent serialized file descriptor set proto.");
   }
-  return Status::OK();
+  // Parse the FileDescriptorSet.
+  protobuf::FileDescriptorSet proto;
+  if (!proto.ParseFromString(string(absl::StripPrefix(source, "bytes://")))) {
+    return errors::InvalidArgument(
+        "Source does not represent serialized file descriptor set proto.");
+  }
+  return CreatePoolFromSet(proto, owned_desc_pool);
 }
 
 }  // namespace
 
 Status GetDescriptorPool(
-    tensorflow::Env* env, string const& descriptor_source,
-    tensorflow::protobuf::DescriptorPool const** desc_pool,
-    std::unique_ptr<tensorflow::protobuf::DescriptorPool>* owned_desc_pool) {
+    Env* env, string const& descriptor_source,
+    protobuf::DescriptorPool const** desc_pool,
+    std::unique_ptr<protobuf::DescriptorPool>* owned_desc_pool) {
   // Attempt to lookup the pool in the registry.
   auto pool_fn = DescriptorPoolRegistry::Global()->Get(descriptor_source);
   if (pool_fn != nullptr) {
@@ -77,7 +98,10 @@ Status GetDescriptorPool(
       GetDescriptorPoolFromFile(env, descriptor_source, owned_desc_pool);
   if (status.ok()) {
     *desc_pool = owned_desc_pool->get();
+    return Status::OK();
   }
+
+  status = GetDescriptorPoolFromBinary(descriptor_source, owned_desc_pool);
   *desc_pool = owned_desc_pool->get();
   return status;
 }

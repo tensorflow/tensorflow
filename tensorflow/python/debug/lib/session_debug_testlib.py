@@ -134,7 +134,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     """Run fetches with debugging and obtain DebugDumpDir.
 
     Args:
-      sess: the tf.Session to be used.
+      sess: the tf.compat.v1.Session to be used.
       fetches: fetches of the Session.run().
       feed_dict: feed dict for the Session.run().
       debug_ops: name(s) of the debug ops to be used.

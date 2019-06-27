@@ -41,18 +41,23 @@ Status EagerExecute(
     tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2>* retvals,
     int* num_retvals);
 
-// Low-level utility to execute the kernel specified by kernel on device
-// 'device', with the inputs op_inputs, in the context 'ctx'.
-Status EagerKernelExecute(EagerContext* ctx, Device* device,
+// Low-level utility to execute the kernel specified by `kernel` on
+// `kernel->device()`, with the inputs op_inputs, in the context 'ctx'.
+Status EagerKernelExecute(EagerContext* ctx,
                           const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
                           KernelAndDevice* kernel, NodeExecStats* maybe_stats,
                           StepStats* maybe_step_stats,
                           GraphCollector* graph_collector,
                           TensorHandle** retvals, int num_retvals);
 
-// Low-level utility to copy a tensor handle from one device to another.
+// Low-level utility to copy a tensor handle from one device to another. If
+// successful, result TensorHandle will be populated. If the caller requests for
+// the mirror flag, EagerCopyToDevice will attempt to add a mirror to the
+// original handle and update *result to point to h. Since this is not
+// guaranteed, callers should always use the value in *result.
 Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
-                         const char* device_name, TensorHandle** result);
+                         const char* device_name, bool mirror,
+                         TensorHandle** result);
 
 }  // namespace tensorflow
 

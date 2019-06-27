@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -133,6 +133,10 @@ class LiteralBase {
   // As Get(), but determines the correct type and converts the value into
   // int64.  This literal must be an array.
   StatusOr<int64> GetIntegralAsS64(absl::Span<const int64> multi_index) const;
+
+  // As Get(), but determines the correct type, and converts the value into
+  // double. This literal must be an array.
+  StatusOr<double> GetAsDouble(absl::Span<const int64> multi_index) const;
 
   // Returns the multi-index of the element in a sparse literal at the given
   // sparse element number.  The sparse element number is the position with in
@@ -637,6 +641,10 @@ class MutableLiteralBase : public LiteralBase {
   // This literal must be an array.
   Status SetIntegralAsS64(absl::Span<const int64> multi_index, int64 value);
 
+  // As Set(), but truncates `value` to the literal element type before storing.
+  // This literal must be an array.
+  Status SetFromDouble(absl::Span<const int64> multi_index, double value);
+
   // Populate this literal with the given values. Examples:
   //
   //   // Populate with floats.
@@ -804,7 +812,6 @@ class MutableBorrowingLiteral : public MutableLiteralBase {
   MutableBorrowingLiteral& operator=(const MutableBorrowingLiteral& literal);
 
   // Implicit conversion constructors.
-  MutableBorrowingLiteral(const MutableLiteralBase& literal);
   MutableBorrowingLiteral(MutableLiteralBase* literal);
   MutableBorrowingLiteral(MutableBorrowingLiteral literal,
                           const ShapeIndex& view_root);

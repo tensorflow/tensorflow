@@ -38,7 +38,7 @@ from tensorflow.python.util import tf_inspect
 
 
 def _is_tensor(t):
-  return isinstance(t, (ops.Tensor, resource_variable_ops.ResourceVariable))
+  return isinstance(t, (ops.Tensor, resource_variable_ops.BaseResourceVariable))
 
 
 def _call_concrete_function(function, inputs):
@@ -65,7 +65,7 @@ def _call_concrete_function(function, inputs):
     if isinstance(expected, tensor_spec.TensorSpec):
       tensor_inputs.append(
           ops.convert_to_tensor(arg, dtype_hint=expected.dtype))
-  result = function._call_flat(tensor_inputs)  # pylint: disable=protected-access
+  result = function._call_flat(tensor_inputs, function._captured_inputs)  # pylint: disable=protected-access
   if isinstance(result, ops.Operation):
     return None
   return result
@@ -89,6 +89,17 @@ def _concrete_function_callable_with(function, inputs, allow_conversion):
     flatten_inputs = nest.flatten_up_to(expected_structure, inputs)
   except (TypeError, ValueError):
     return False
+  try:
+    # Verify that no input elements were dropped during flattening.
+    repacked = nest.pack_sequence_as(expected_structure, flatten_inputs)
+    # TODO(b/129422719): Namedtuple subclasses re-created through
+    # saved_model.load don't compare equal in type to the original in
+    # assert_same_structure. Fix that and we can take out check_types=False
+    # here.
+    nest.assert_same_structure(inputs, repacked, check_types=False)
+  except (TypeError, ValueError):
+    return False
+
   for arg, expected in zip(flatten_inputs, nest.flatten(expected_structure)):
     if isinstance(expected, tensor_spec.TensorSpec):
       if allow_conversion:
@@ -105,23 +116,34 @@ def _concrete_function_callable_with(function, inputs, allow_conversion):
   return True
 
 
-def _deserialize_function_spec(function_spec_proto, coder):
+def _deserialize_function_spec_as_nonmethod(function_spec_proto, coder):
   """Deserialize a FunctionSpec object from its proto representation."""
   typeless_fullargspec = coder.decode_proto(function_spec_proto.fullargspec)
+
+  # Convert a method function into a non method.
+  if function_spec_proto.is_method:
+    if not typeless_fullargspec.args:
+      raise NotImplementedError(
+          "Missing support to deserialize a method function without a named "
+          "'self' argument.")
+    args = typeless_fullargspec.args[1:]
+  else:
+    args = typeless_fullargspec.args
+
   fullargspec = tf_inspect.FullArgSpec(
-      args=typeless_fullargspec.args,
+      args=args,
       varargs=typeless_fullargspec.varargs,
       varkw=typeless_fullargspec.varkw,
       defaults=typeless_fullargspec.defaults,
       kwonlyargs=typeless_fullargspec.kwonlyargs,
       kwonlydefaults=typeless_fullargspec.kwonlydefaults,
       annotations=typeless_fullargspec.annotations)
-  is_method = function_spec_proto.is_method
-  args_to_prepend = coder.decode_proto(function_spec_proto.args_to_prepend)
-  kwargs_to_include = coder.decode_proto(function_spec_proto.kwargs_to_include)
   input_signature = coder.decode_proto(function_spec_proto.input_signature)
-  return function_lib.FunctionSpec(fullargspec, is_method, args_to_prepend,
-                                   kwargs_to_include, input_signature)
+  return function_lib.FunctionSpec(fullargspec=fullargspec,
+                                   is_method=False,
+                                   args_to_prepend=[],
+                                   kwargs_to_include={},
+                                   input_signature=input_signature)
 
 
 # TODO(allenl): The fact that we can't derive ConcreteFunction calling
@@ -155,15 +177,16 @@ class RestoredFunction(def_function.Function):
     # TODO(mdan): We may enable autograph once exceptions are supported.
     super(RestoredFunction, self).__init__(
         python_function, name, autograph=False)
-    self._concrete_functions = concrete_functions
-    # This does not propagate to stateful and stateless functions of the
-    # RestoredFunction, which will have seen only defunned
-    # restored_function_body(*args, **kwargs). That's why we have to
-    # canonicalize inputs inside restored_function_body.
+    self.concrete_functions = concrete_functions
     self._function_spec = function_spec
 
   def _list_all_concrete_functions_for_serialization(self):
-    return self._concrete_functions
+    return self.concrete_functions
+
+  def _defun_with_scope(self, scope):
+    func = super(RestoredFunction, self)._defun_with_scope(scope)
+    func._function_spec = self._function_spec  # pylint: disable=protected-access
+    return func
 
 
 def recreate_function(saved_function, concrete_functions):
@@ -182,20 +205,25 @@ def recreate_function(saved_function, concrete_functions):
   # serialization cycle.
 
   coder = nested_structure_coder.StructureCoder()
-  function_spec = _deserialize_function_spec(saved_function.function_spec,
-                                             coder)
+
+  # Note: handling method functions is tricky since make_decorator does not
+  # allows control of "ismethod". Additionally since restored functions do
+  # not behave as methods i.e. they always use the same captured tensors
+  # independent of the object they are bound to, there is little value on
+  # propagating that correctly.
+  #
+  # Ideally this conversion should happen at serialization time. But since
+  # there are SavedModels which have "ismethod" populated and have an extra
+  # argument that they expect to be ignored, we do it at deserialization.
+  function_spec = _deserialize_function_spec_as_nonmethod(
+      saved_function.function_spec,
+      coder)
 
   def restored_function_body(*args, **kwargs):
     """Calls a restored function."""
-    # TODO(allenl): Functions saved with input_signatures should revive with
-    # input_signatures.
-    try:
-      canonicalized_inputs = function_spec.canonicalize_function_inputs(
-          *args, **kwargs)
-    except ValueError as e:
-      raise ValueError(
-          "Cannot canonicalize input args %r and kwargs %r. Error: %r." %
-          (args, kwargs, e))
+    # This is the format of function.graph.structured_input_signature. At this
+    # point, the args and kwargs have already been canonicalized.
+    inputs = (args, kwargs)
 
     # First try to find a concrete function that can be called without input
     # conversions. This allows one to pick a more specific trace in case there
@@ -203,19 +231,29 @@ def recreate_function(saved_function, concrete_functions):
     for allow_conversion in [False, True]:
       for function_name in saved_function.concrete_functions:
         function = concrete_functions[function_name]
-        if _concrete_function_callable_with(function,
-                                            canonicalized_inputs,
-                                            allow_conversion):
-          return _call_concrete_function(function, canonicalized_inputs)
+        if _concrete_function_callable_with(function, inputs, allow_conversion):
+          return _call_concrete_function(function, inputs)
 
-    available_signatures = [
-        concrete_functions[function_name].graph.structured_input_signature
-        for function_name in saved_function.concrete_functions
-    ]
+    signature_descriptions = []
+
+    def _pretty_format_positional(positional):
+      return "Positional arguments ({} total):\n    * {}".format(
+          len(positional),
+          "\n    * ".join([str(a) for a in positional]))
+
+    for index, function_name in enumerate(saved_function.concrete_functions):
+      concrete_function = concrete_functions[function_name]
+      positional, keyword = concrete_function.structured_input_signature
+      signature_descriptions.append(
+          "Option {}:\n  {}\n  Keyword arguments: {}"
+          .format(index + 1, _pretty_format_positional(positional), keyword))
     raise ValueError(
-        "Could not find matching function to call for canonicalized inputs %r. "
-        "Only existing signatures are %r."
-        % (canonicalized_inputs, available_signatures))
+        "Could not find matching function to call loaded from the SavedModel. "
+        "Got:\n  {}\n  Keyword arguments: {}\n\nExpected "
+        "these arguments to match one of the following {} option(s):\n\n{}"
+        .format(_pretty_format_positional(args), kwargs,
+                len(saved_function.concrete_functions),
+                "\n\n".join(signature_descriptions)))
 
   concrete_function_objects = []
   for concrete_function_name in saved_function.concrete_functions:
@@ -255,7 +293,13 @@ def load_function_def_library(library):
   for fdef in _sort_function_defs(library):
     copy = _fix_fdef(fdef, functions, load_shared_name_suffix)
 
-    func_graph = function_def_lib.function_def_to_graph(copy)
+    # There is no need to copy functions into the function def graph.
+    # It leads to a O(n^2) increase of memory when importing functions
+    # and the extra function definitions are a no-op since they already
+    # imported as a function before (due to the topologic sort import).
+    func_graph = function_def_lib.function_def_to_graph(
+        copy, copy_functions=False)
+
     for dep in _list_function_deps(fdef):
       functions[dep].add_to_graph(func_graph)
     func = function_lib.ConcreteFunction(func_graph)

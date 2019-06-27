@@ -430,8 +430,16 @@ _SEQUENCE_COUNTER = None
 # state can be essential to avoiding deadlocks. In order to accomplish this, we
 # need to be able to check on the status of Pools that we create.
 _DATA_POOLS = weakref.WeakSet()
-_WORKER_ID_QUEUE = multiprocessing.Queue()
+_WORKER_ID_QUEUE = None  # Only created if needed.
 _WORKER_IDS = set()
+
+
+def get_worker_id_queue():
+  """Lazily create the queue to track worker ids."""
+  global _WORKER_ID_QUEUE
+  if _WORKER_ID_QUEUE is None:
+    _WORKER_ID_QUEUE = multiprocessing.Queue()
+  return _WORKER_ID_QUEUE
 
 
 def init_pool(seqs):
@@ -496,7 +504,7 @@ def terminate_keras_multiprocessing_pools(grace_period=0.1, use_sigkill=False):
       # In rare cases, queue.qsize() overestimates the number of elements. This
       # loop is designed to be more robust.
       try:
-        _WORKER_IDS.add(_WORKER_ID_QUEUE.get_nowait())
+        _WORKER_IDS.add(get_worker_id_queue().get_nowait())
       except queue.Empty:
         break
 
@@ -716,7 +724,7 @@ class OrderedEnqueuer(SequenceEnqueuer):
     def pool_fn(seqs):
       pool = multiprocessing.Pool(
           workers, initializer=init_pool_generator,
-          initargs=(seqs, None, _WORKER_ID_QUEUE))
+          initargs=(seqs, None, get_worker_id_queue()))
       _DATA_POOLS.add(pool)
       return pool
 
@@ -855,7 +863,7 @@ class GeneratorEnqueuer(SequenceEnqueuer):
     def pool_fn(seqs):
       pool = multiprocessing.Pool(
           workers, initializer=init_pool_generator,
-          initargs=(seqs, self.random_seed, _WORKER_ID_QUEUE))
+          initargs=(seqs, self.random_seed, get_worker_id_queue()))
       _DATA_POOLS.add(pool)
       return pool
     return pool_fn

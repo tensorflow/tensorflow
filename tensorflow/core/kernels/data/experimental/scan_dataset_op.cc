@@ -16,10 +16,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
@@ -33,7 +35,10 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ScanDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
+    FunctionMetadata::Params params;
+    params.is_multi_device_function = true;
+    OP_REQUIRES_OK(ctx,
+                   FunctionMetadata::Create(ctx, "f", params, &func_metadata_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("Tstate", &state_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
@@ -50,10 +55,11 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
                                       initial_state_inputs.end());
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 &captured_func));
+    OP_REQUIRES_OK(
+        ctx, CapturedFunction::Create(ctx, func_metadata_, "other_arguments",
+                                      &captured_func));
 
-    *output = new Dataset(ctx, input, func_, std::move(initial_state),
+    *output = new Dataset(ctx, input, std::move(initial_state),
                           std::move(captured_func), state_types_, output_types_,
                           output_shapes_, preserve_cardinality_);
   }
@@ -62,7 +68,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            const NameAttrList& func, std::vector<Tensor> initial_state,
+            std::vector<Tensor> initial_state,
             std::unique_ptr<CapturedFunction> captured_func,
             const DataTypeVector& state_types,
             const DataTypeVector& output_types,
@@ -70,7 +76,6 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
             bool preserve_cardinality)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
-          func_(func),
           initial_state_(std::move(initial_state)),
           captured_func_(std::move(captured_func)),
           state_types_(state_types),
@@ -103,7 +108,6 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       Node* input_node;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
       std::vector<Node*> initial_state_nodes;
@@ -114,23 +118,11 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
         initial_state_nodes.emplace_back(node);
       }
       std::vector<Node*> other_arguments;
-      other_arguments.reserve(captured_func_->captured_inputs().size());
       DataTypeVector other_arguments_types;
-      other_arguments_types.reserve(captured_func_->captured_inputs().size());
-      for (const Tensor& t : captured_func_->captured_inputs()) {
-        Node* node;
-        DatasetBase* input;
-        Status s = GetDatasetFromVariantTensor(t, &input);
-        if (s.ok()) {
-          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
-        } else {
-          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        }
-        other_arguments.emplace_back(node);
-        other_arguments_types.emplace_back(t.dtype());
-      }
+      TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
+                                                    &other_arguments_types));
       AttrValue f;
-      b->BuildAttrValue(func_, &f);
+      b->BuildAttrValue(captured_func_->func(), &f);
       AttrValue state_types;
       b->BuildAttrValue(state_types_, &state_types);
       AttrValue other_arguments_types_attr;
@@ -283,7 +275,6 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
-    const NameAttrList func_;
     const std::vector<Tensor> initial_state_;
     const std::unique_ptr<CapturedFunction> captured_func_;
     const DataTypeVector state_types_;
@@ -292,15 +283,17 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
     const bool preserve_cardinality_;
   };
 
+  std::shared_ptr<FunctionMetadata> func_metadata_ = nullptr;
   DataTypeVector state_types_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  NameAttrList func_;
   bool preserve_cardinality_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ExperimentalScanDataset").Device(DEVICE_CPU),
                         ScanDatasetOp);
+
+REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalScanDataset");
 
 }  // namespace
 }  // namespace data

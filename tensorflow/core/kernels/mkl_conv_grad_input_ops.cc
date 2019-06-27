@@ -351,7 +351,7 @@ class MklConvCustomBackpropInputOp
         // if output tensor has more than 0 elements, we need to 0 them out.
         auto diff_src_data = diff_src_tensor->flat<T>().data();
         for (size_t i = 0; i < diff_src_tf_shape.num_elements(); ++i) {
-          diff_src_data[i] = 0;
+          diff_src_data[i] = static_cast<T>(0);
         }
         return;
       }
@@ -557,23 +557,28 @@ class MklConvCustomBackpropInputOp
   }
 };
 
-#define REGISTER_MKL_CPU_KERNELS(T)                                           \
-  REGISTER_KERNEL_BUILDER(Name("_MklConv2DBackpropInput")                     \
-                              .Device(DEVICE_CPU)                             \
-                              .TypeConstraint<T>("T")                         \
-                              .Label(mkl_op_registry::kMklOpLabel),           \
-                          MklConvCustomBackpropInputOp<CPUDevice, T, false>); \
-  REGISTER_KERNEL_BUILDER(Name("_MklConv3DBackpropInputV2")                   \
-                              .Device(DEVICE_CPU)                             \
-                              .TypeConstraint<T>("T")                         \
-                              .Label(mkl_op_registry::kMklOpLabel),           \
-                          MklConvCustomBackpropInputOp<CPUDevice, T, false>); \
-  REGISTER_KERNEL_BUILDER(Name("_MklDepthwiseConv2dNativeBackpropInput")      \
-                              .Device(DEVICE_CPU)                             \
-                              .TypeConstraint<T>("T")                         \
-                              .Label(mkl_op_registry::kMklOpLabel),           \
-                          MklConvCustomBackpropInputOp<CPUDevice, T, true>);
+#define REGISTER_MKL_CPU_KERNELS(T)                            \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklConv2DBackpropInput")                          \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklConvCustomBackpropInputOp<CPUDevice, T, false>);      \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklConv3DBackpropInputV2")                        \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklConvCustomBackpropInputOp<CPUDevice, T, false>);      \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklDepthwiseConv2dNativeBackpropInput")           \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklConvCustomBackpropInputOp<CPUDevice, T, true>);
+
 TF_CALL_float(REGISTER_MKL_CPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_MKL_CPU_KERNELS);
 #undef REGISTER_MKL_CPU_KERNELS
 
 }  // namespace tensorflow

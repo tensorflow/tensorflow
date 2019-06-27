@@ -30,7 +30,10 @@ _ffmpeg_so = loader.load_op_library(
     resource_loader.get_path_to_datafile('ffmpeg.so'))
 
 
-@deprecated('2018-09-04', 'This will be deleted and should not be used.')
+@deprecated('2018-09-04',
+            'tf.contrib.ffmpeg will be removed in 2.0, the support for video '
+            'and audio will continue to be provided in tensorflow-io: '
+            'https://github.com/tensorflow/io')
 def decode_audio(contents, file_format=None, samples_per_second=None,
                  channel_count=None, stream=None):
   """Create an op that decodes the contents of an audio file.
@@ -71,7 +74,10 @@ def decode_audio(contents, file_format=None, samples_per_second=None,
 ops.NotDifferentiable('DecodeAudio')
 
 
-@deprecated('2018-09-04', 'This will be deleted and should not be used.')
+@deprecated('2018-09-04',
+            'tf.contrib.ffmpeg will be removed in 2.0, the support for video '
+            'and audio will continue to be provided in tensorflow-io: '
+            'https://github.com/tensorflow/io')
 def encode_audio(audio, file_format=None, samples_per_second=None):
   """Creates an op that encodes an audio file using sampled audio from a tensor.
 
@@ -98,13 +104,15 @@ def encode_audio(audio, file_format=None, samples_per_second=None):
 ops.NotDifferentiable('EncodeAudio')
 
 
-@deprecated('2018-09-04', 'This will be deleted and should not be used.')
+@deprecated('2018-09-04',
+            'tf.contrib.ffmpeg will be removed in 2.0, the support for video '
+            'and audio will continue to be provided in tensorflow-io: '
+            'https://github.com/tensorflow/io')
 def decode_video(contents):
   """Create an op that decodes the contents of a video file.
 
   Args:
-    contents: The binary contents of the video file to decode. This is a
-      scalar.
+    contents: The binary contents of the video file to decode. This is a scalar.
 
   Returns:
     A rank-4 `Tensor` that has `[frames, height, width, 3]` RGB as output.

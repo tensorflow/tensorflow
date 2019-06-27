@@ -23,6 +23,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -45,11 +46,16 @@ class _ShuffleAndRepeatDataset(dataset_ops.UnaryUnchangedStructureDataset):
         count=self._count,
         seed=self._seed,
         seed2=self._seed2,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_ShuffleAndRepeatDataset, self).__init__(input_dataset,
                                                    variant_tensor)
 
 
+@deprecation.deprecated(
+    None,
+    "Use `tf.data.Dataset.shuffle(buffer_size, seed)` followed by "
+    "`tf.data.Dataset.repeat(count)`. Static tf.data optimizations will take "
+    "care of using the fused implementation.")
 @tf_export("data.experimental.shuffle_and_repeat")
 def shuffle_and_repeat(buffer_size, count=None, seed=None):
   """Shuffles and repeats a Dataset returning a new permutation for each epoch.
@@ -73,7 +79,7 @@ def shuffle_and_repeat(buffer_size, count=None, seed=None):
       indefinitely.
     seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
       random seed that will be used to create the distribution. See
-      `tf.set_random_seed` for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
 
   Returns:
     A `Dataset` transformation function, which can be passed to

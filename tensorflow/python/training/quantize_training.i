@@ -22,19 +22,19 @@ limitations under the License.
 static PyObject* DoQuantizeTrainingOnGraphDefHelper(
     const string& input_graph,
     int num_bits,
-    TF_Status* out_status) {
+    TF_Status* status) {
   string result;
   // TODO(suharshs): Make the QuantizeAndDequantizeV2 configurable.
-  tensorflow::Status status =
+  tensorflow::Status s =
       tensorflow::DoQuantizeTrainingOnSerializedGraphDef(input_graph, num_bits,
       "QuantizeAndDequantizeV2", &result);
-  if (!status.ok()) {
-    Set_TF_Status_from_Status(out_status, status);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
     Py_RETURN_NONE;
   }
   PyObject* py_str = PyBytes_FromStringAndSize(result.data(), result.size());
   if (!py_str) {
-    Set_TF_Status_from_Status(out_status,
+    Set_TF_Status_from_Status(status,
         tensorflow::Status(tensorflow::error::INTERNAL,
             "Failed to generate serialized string of the rewritten graph."));
     Py_RETURN_NONE;
@@ -51,7 +51,7 @@ static PyObject* DoQuantizeTrainingOnGraphDefHelper(
 PyObject* DoQuantizeTrainingOnGraphDefHelper(
     const string& input_graph,
     int num_bits,
-    TF_Status* out_status);
+    TF_Status* status);
 
 
 %insert("python") %{
@@ -70,10 +70,10 @@ def do_quantize_training_on_graphdef(input_graph, num_bits):
   """
   from tensorflow.core.framework.graph_pb2 import GraphDef
   from tensorflow.python.framework import errors
-  with errors.raise_exception_on_not_ok_status() as status:
-    graph = GraphDef()
-    result_graph_string = DoQuantizeTrainingOnGraphDefHelper(
-        input_graph.SerializeToString(), num_bits, status)
+
+  graph = GraphDef()
+  result_graph_string = DoQuantizeTrainingOnGraphDefHelper(
+      input_graph.SerializeToString(), num_bits)
 
   graph.ParseFromString(result_graph_string)
   return graph

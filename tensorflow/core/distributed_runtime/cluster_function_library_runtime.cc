@@ -17,10 +17,13 @@ limitations under the License.
 #include <map>
 
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/protobuf/named_tensor.pb.h"
+#include "tensorflow/core/protobuf/worker.pb.h"
 
 namespace tensorflow {
 
@@ -124,24 +127,32 @@ Status ClusterFunctionLibraryRuntime::Instantiate(
   VLOG(1) << "CFLR::Instantiate: " << function_name << " on " << options.target
           << " (this: " << this << ")";
   WorkerInterface* wi =
-      worker_session_->worker_cache->CreateWorker(options.target);
+      worker_session_->worker_cache->GetOrCreateWorker(options.target);
 
   if (wi == nullptr) {
     std::vector<string> workers;
     worker_session_->worker_cache->ListWorkers(&workers);
     return errors::InvalidArgument(
         "Could not find worker with target: ", options.target,
-        " Available workers: ", str_util::Join(workers, ", "));
+        " Available workers: ", absl::StrJoin(workers, ", "));
   }
 
   // Make RPC and obtain a graph handle.
-  const FunctionDef* fdef = lib_def.Find(function_name);
-  const OpDef& sig = fdef->signature();
   GraphDef gdef;
   std::vector<string> send_keys, recv_keys;
-  TF_RETURN_IF_ERROR(ConstructFunctionGraph(sig, attrs, options, &gdef,
-                                            &send_keys, &recv_keys));
-  *gdef.mutable_library() = lib_def.ToProto();
+  auto construct_graph_fn = [&](const FunctionLibraryDefinition* lib_def) {
+    const FunctionDef* fdef = lib_def->Find(function_name);
+    const OpDef& sig = fdef->signature();
+    TF_RETURN_IF_ERROR(ConstructFunctionGraph(sig, attrs, options, &gdef,
+                                              &send_keys, &recv_keys));
+    *gdef.mutable_library() = lib_def->ToProto();
+    return Status::OK();
+  };
+  if (options.lib_def) {
+    TF_RETURN_IF_ERROR(construct_graph_fn(options.lib_def));
+  } else {
+    TF_RETURN_IF_ERROR(construct_graph_fn(&lib_def));
+  }
 
   RegisterGraphRequest req;
   req.set_session_handle(worker_session_->session_name);
@@ -185,9 +196,7 @@ void ClusterFunctionLibraryRuntime::Run(
   req->set_session_handle(worker_session_->session_name);
   req->set_create_worker_session_called(create_worker_session_called_);
   req->set_graph_handle(function_data->graph_handle);
-  // Borrowed from master_session.cc
-  const uint64 step_id = (random::New64() & ((1uLL << 56) - 1)) | (1uLL << 56);
-  req->set_step_id(step_id);
+  req->set_step_id(opts.step_id);
   int i = 0;
   for (const auto& send_key : function_data->send_keys) {
     NamedTensorProto* send = req->add_send();
@@ -205,11 +214,16 @@ void ClusterFunctionLibraryRuntime::Run(
   wi->RunGraphAsync(
       call_options, req, resp,
       [call_options, req, resp, rets, recv_keys, done](const Status& status) {
-        if (!status.ok()) {
-          done(status);
-          delete call_options;
-          delete req;
-          delete resp;
+        Status* local_status = new Status(status);
+        auto cleanup =
+            gtl::MakeCleanup([call_options, req, resp, local_status, done] {
+              done(*local_status);
+              delete call_options;
+              delete req;
+              delete resp;
+              delete local_status;
+            });
+        if (!local_status->ok()) {
           return;
         }
         std::map<string, TensorProto*> mapped_recvs;
@@ -220,28 +234,47 @@ void ClusterFunctionLibraryRuntime::Run(
         for (const auto& recv_key : recv_keys) {
           TensorProto* tp = mapped_recvs[recv_key];
           if (tp == nullptr) {
-            done(errors::Internal("Could not find key: ", recv_key));
-            delete call_options;
-            delete req;
-            delete resp;
+            local_status->Update(
+                errors::Internal("Could not find key: ", recv_key));
             return;
           }
           Tensor t;
           if (t.FromProto(*tp)) {
             rets->push_back(t);
           } else {
-            done(errors::Internal("Could not convert tensor proto: ",
-                                  tp->DebugString()));
-            delete call_options;
-            delete req;
-            delete resp;
+            local_status->Update(errors::Internal(
+                "Could not convert tensor proto: ", tp->DebugString()));
             return;
           }
         }
-        done(status);
-        delete call_options;
-        delete req;
-        delete resp;
+      });
+}
+
+void ClusterFunctionLibraryRuntime::CleanUp(
+    uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
+    FunctionLibraryRuntime::DoneCallback done) {
+  FunctionData* function_data = nullptr;
+  {
+    mutex_lock l(mu_);
+    DCHECK_LE(handle, function_data_.size());
+    function_data = &function_data_[handle];
+  }
+
+  WorkerInterface* wi = function_data->wi;
+
+  if (wi == nullptr) {
+    done(errors::Internal("Could not find worker"));
+    return;
+  }
+  CleanupGraphRequest* cleanup_req = new CleanupGraphRequest;
+  cleanup_req->set_step_id(step_id);
+  CleanupGraphResponse* cleanup_resp = new CleanupGraphResponse;
+  wi->CleanupGraphAsync(
+      cleanup_req, cleanup_resp,
+      [cleanup_req, cleanup_resp, done](const Status& cleanup_status) {
+        done(cleanup_status);
+        delete cleanup_req;
+        delete cleanup_resp;
       });
 }
 

@@ -28,9 +28,15 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
+@deprecation.deprecated(
+    None,
+    "Use `tf.data.Dataset.interleave(map_func, cycle_length, block_length, "
+    "num_parallel_calls=tf.data.experimental.AUTOTUNE)` instead. If sloppy "
+    "execution is desired, use `tf.data.Options.experimental_determinstic`.")
 @tf_export("data.experimental.parallel_interleave")
 def parallel_interleave(map_func,
                         cycle_length,
@@ -123,7 +129,7 @@ class _DirectedInterleaveDataset(dataset_ops.Dataset):
         gen_experimental_dataset_ops.experimental_directed_interleave_dataset(
             self._selector_input._variant_tensor,
             [data_input._variant_tensor for data_input in self._data_inputs],
-            **dataset_ops.flat_structure(self)))
+            **self._flat_structure))
     # pylint: enable=protected-access
 
   def _inputs(self):
@@ -147,7 +153,7 @@ def sample_from_datasets_v2(datasets, weights=None, seed=None):
       `datasets`.
     seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
       random seed that will be used to create the distribution. See
-      `tf.set_random_seed` for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
 
   Returns:
     A dataset that interleaves elements from `datasets` at random, according to

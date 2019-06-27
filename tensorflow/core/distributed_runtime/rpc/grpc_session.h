@@ -64,6 +64,8 @@ class GrpcSession : public Session {
   // number "initial_version".
   Status Create(const GraphDef& graph) override;
   Status Create(const RunOptions& run_options, const GraphDef& graph) override;
+  Status Create(GraphDef&& graph) override;
+  Status Create(const RunOptions& run_options, GraphDef&& graph) override;
 
   // Runs with and without RunOptions.
   Status Run(const std::vector<std::pair<string, Tensor> >& inputs,
@@ -78,6 +80,8 @@ class GrpcSession : public Session {
 
   Status Extend(const GraphDef& graph) override;
   Status Extend(const RunOptions& run_options, const GraphDef& graph) override;
+  Status Extend(GraphDef&& graph) override;
+  Status Extend(const RunOptions& run_options, GraphDef&& graph) override;
 
   Status Close() override;
 
@@ -134,8 +138,8 @@ class GrpcSession : public Session {
                   MutableRunStepResponseWrapper* resp);
 
   // Implementations for all the public interfaces.
-  Status CreateImpl(CallOptions* call_options, const GraphDef& graph);
-  Status ExtendImpl(CallOptions* call_options, const GraphDef& graph);
+  Status CreateImpl(CallOptions* call_options, GraphDef graph);
+  Status ExtendImpl(CallOptions* call_options, GraphDef graph);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcSession);
 };

@@ -37,84 +37,6 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 
 
-class TensorFunctionsTest(test_util.TensorFlowTestCase):
-
-  @test_util.run_v1_only("b/120545219")
-  def testGetTensorsValid(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    _ = in_tensor + in_tensor
-    sess = session.Session()
-
-    tensors = convert_saved_model.get_tensors_from_tensor_names(
-        sess.graph, ["Placeholder"])
-    self.assertEqual("Placeholder:0", tensors[0].name)
-
-  @test_util.run_v1_only("b/120545219")
-  def testGetTensorsInvalid(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    _ = in_tensor + in_tensor
-    sess = session.Session()
-
-    with self.assertRaises(ValueError) as error:
-      convert_saved_model.get_tensors_from_tensor_names(sess.graph,
-                                                        ["invalid-input"])
-    self.assertEqual("Invalid tensors 'invalid-input' were found.",
-                     str(error.exception))
-
-  @test_util.run_v1_only("b/120545219")
-  def testSetTensorShapeValid(self):
-    tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
-    self.assertEqual([None, 3, 5], tensor.shape.as_list())
-
-    convert_saved_model.set_tensor_shapes([tensor], {"Placeholder": [5, 3, 5]})
-    self.assertEqual([5, 3, 5], tensor.shape.as_list())
-
-  @test_util.run_v1_only("b/120545219")
-  def testSetTensorShapeNoneValid(self):
-    tensor = array_ops.placeholder(dtype=dtypes.float32)
-    self.assertEqual(None, tensor.shape)
-
-    convert_saved_model.set_tensor_shapes([tensor], {"Placeholder": [1, 3, 5]})
-    self.assertEqual([1, 3, 5], tensor.shape.as_list())
-
-  @test_util.run_v1_only("b/120545219")
-  def testSetTensorShapeArrayInvalid(self):
-    # Tests set_tensor_shape where the tensor name passed in doesn't exist.
-    tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
-    self.assertEqual([None, 3, 5], tensor.shape.as_list())
-
-    with self.assertRaises(ValueError) as error:
-      convert_saved_model.set_tensor_shapes([tensor],
-                                            {"invalid-input": [5, 3, 5]})
-    self.assertEqual(
-        "Invalid tensor 'invalid-input' found in tensor shapes map.",
-        str(error.exception))
-    self.assertEqual([None, 3, 5], tensor.shape.as_list())
-
-  @test_util.run_deprecated_v1
-  def testSetTensorShapeDimensionInvalid(self):
-    # Tests set_tensor_shape where the shape passed in is incompatiable.
-    tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
-    self.assertEqual([None, 3, 5], tensor.shape.as_list())
-
-    with self.assertRaises(ValueError) as error:
-      convert_saved_model.set_tensor_shapes([tensor],
-                                            {"Placeholder": [1, 5, 5]})
-    self.assertIn("The shape of tensor 'Placeholder' cannot be changed",
-                  str(error.exception))
-    self.assertEqual([None, 3, 5], tensor.shape.as_list())
-
-  @test_util.run_v1_only("b/120545219")
-  def testSetTensorShapeEmpty(self):
-    tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
-    self.assertEqual([None, 3, 5], tensor.shape.as_list())
-
-    convert_saved_model.set_tensor_shapes([tensor], {})
-    self.assertEqual([None, 3, 5], tensor.shape.as_list())
-
-
 class FreezeSavedModelTest(test_util.TensorFlowTestCase):
 
   def _createSimpleSavedModel(self, shape):
@@ -168,13 +90,14 @@ class FreezeSavedModelTest(test_util.TensorFlowTestCase):
       tag_set = set([tag_constants.SERVING])
     if signature_key is None:
       signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-    graph_def, in_tensors, out_tensors = convert_saved_model.freeze_saved_model(
-        saved_model_dir=saved_model_dir,
-        input_arrays=input_arrays,
-        input_shapes=input_shapes,
-        output_arrays=output_arrays,
-        tag_set=tag_set,
-        signature_key=signature_key)
+    graph_def, in_tensors, out_tensors, _ = (
+        convert_saved_model.freeze_saved_model(
+            saved_model_dir=saved_model_dir,
+            input_arrays=input_arrays,
+            input_shapes=input_shapes,
+            output_arrays=output_arrays,
+            tag_set=tag_set,
+            signature_key=signature_key))
     return graph_def, in_tensors, out_tensors
 
   def testSimpleSavedModel(self):

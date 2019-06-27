@@ -17,7 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
 import enum  # pylint: disable=g-bad-import-order
+import itertools
 import functools
 import os
 import six
@@ -80,13 +82,14 @@ class VariableSynchronization(enum.Enum):
   ON_READ = 3
 
 
+# LINT.IfChange
 @tf_export("VariableAggregation", v1=[])
 class VariableAggregationV2(enum.Enum):
   """Indicates how a distributed variable will be aggregated.
 
-  `tf.contrib.distribute.DistributionStrategy` distributes a model by making
-  multiple copies (called "replicas") acting data-parallel on different elements
-  of the input batch. When performing some variable-update operation, say
+  `tf.distribute.Strategy` distributes a model by making multiple copies
+  (called "replicas") acting data-parallel on different elements of the input
+  batch. When performing some variable-update operation, say
   `var.assign_add(x)`, in a model, we need to resolve how to combine the
   different values for `x` computed in the different replicas.
 
@@ -125,11 +128,42 @@ class VariableAggregation(enum.Enum):
 
   def __hash__(self):
     return hash(self.value)
-
+# LINT.ThenChange(//tensorflow/core/framework/variable.proto)
+#
+# Note that we are currently relying on the integer values of the Python enums
+# matching the integer values of the proto enums.
 
 VariableAggregation.__doc__ = (
     VariableAggregationV2.__doc__ +
     "* `ONLY_FIRST_TOWER`: Deprecated alias for `ONLY_FIRST_REPLICA`.\n  ")
+
+
+def validate_synchronization_aggregation_trainable(
+    synchronization, aggregation, trainable, name):
+  """Given user-provided variable properties, sets defaults and validates."""
+  if aggregation is None:
+    aggregation = VariableAggregation.NONE
+  else:
+    if not isinstance(aggregation,
+                      (VariableAggregation, VariableAggregationV2)):
+      try:
+        aggregation = VariableAggregationV2(aggregation)
+      except ValueError:
+        raise ValueError(
+            "Invalid variable aggregation mode: {} for variable: {}".format(
+                aggregation, name))
+  if synchronization is None:
+    synchronization = VariableSynchronization.AUTO
+  else:
+    try:
+      synchronization = VariableSynchronization(synchronization)
+    except ValueError:
+      raise ValueError(
+          "Invalid variable synchronization mode: {} for variable: {}".format(
+              synchronization, name))
+  if trainable is None:
+    trainable = synchronization != VariableSynchronization.ON_READ
+  return synchronization, aggregation, trainable
 
 
 class VariableMetaclass(type):
@@ -149,7 +183,8 @@ class VariableMetaclass(type):
                         constraint=None,
                         use_resource=None,
                         synchronization=VariableSynchronization.AUTO,
-                        aggregation=VariableAggregation.NONE):
+                        aggregation=VariableAggregation.NONE,
+                        shape=None):
     """Call on Variable class. Useful to force the signature."""
     previous_getter = lambda **kwargs: default_variable_creator(None, **kwargs)
     for _, getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
@@ -172,7 +207,8 @@ class VariableMetaclass(type):
         constraint=constraint,
         use_resource=use_resource,
         synchronization=synchronization,
-        aggregation=aggregation)
+        aggregation=aggregation,
+        shape=shape)
 
   def _variable_v2_call(cls,
                         initial_value=None,
@@ -185,7 +221,8 @@ class VariableMetaclass(type):
                         import_scope=None,
                         constraint=None,
                         synchronization=VariableSynchronization.AUTO,
-                        aggregation=VariableAggregation.NONE):
+                        aggregation=VariableAggregation.NONE,
+                        shape=None):
     """Call on Variable class. Useful to force the signature."""
     previous_getter = lambda **kws: default_variable_creator_v2(None, **kws)
     for _, getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
@@ -205,7 +242,8 @@ class VariableMetaclass(type):
         import_scope=import_scope,
         constraint=constraint,
         synchronization=synchronization,
-        aggregation=aggregation)
+        aggregation=aggregation,
+        shape=shape)
 
   def __call__(cls, *args, **kwargs):
     if cls is VariableV1:
@@ -264,7 +302,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
   ```python
   # Launch the graph in a session.
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
       # Run the variable initializer.
       sess.run(w.initializer)
       # ...you now can run ops that use the value of 'w'...
@@ -276,10 +314,10 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
   ```python
   # Add an Op to initialize global variables.
-  init_op = tf.global_variables_initializer()
+  init_op = tf.compat.v1.global_variables_initializer()
 
   # Launch the graph in a session.
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
       # Run the Op that initializes global variables.
       sess.run(init_op)
       # ...you can now run any Op that uses variable values...
@@ -330,13 +368,13 @@ class Variable(six.with_metaclass(VariableMetaclass,
   not have these issues:
 
   * Add `use_resource=True` when constructing `tf.Variable`;
-  * Call `tf.get_variable_scope().set_use_resource(True)` inside a
-    `tf.variable_scope` before the `tf.get_variable()` call.
+  * Call `tf.compat.v1.get_variable_scope().set_use_resource(True)` inside a
+    `tf.compat.v1.variable_scope` before the `tf.compat.v1.get_variable()` call.
   """
 
   def __init__(self,
                initial_value=None,
-               trainable=True,
+               trainable=None,
                validate_shape=True,
                caching_device=None,
                name=None,
@@ -345,7 +383,8 @@ class Variable(six.with_metaclass(VariableMetaclass,
                import_scope=None,
                constraint=None,
                synchronization=VariableSynchronization.AUTO,
-               aggregation=VariableAggregation.NONE):
+               aggregation=VariableAggregation.NONE,
+               shape=None):
     """Creates a new variable with value `initial_value`.
 
     The new variable is added to the graph collections listed in `collections`,
@@ -364,8 +403,9 @@ class Variable(six.with_metaclass(VariableMetaclass,
         callable with no argument that returns the initial value when called. In
         that case, `dtype` must be specified. (Note that initializer functions
         from init_ops.py must first be bound to a shape before being used here.)
-      trainable: If `True`, the default, GradientTapes automatically watch uses
-        of this variable.
+      trainable: If `True`, GradientTapes automatically watch uses
+        of this variable. Defaults to `True`, unless `synchronization` is
+        set to `ON_READ`, in which case it defaults to `False`.
       validate_shape: If `False`, allows the variable to be initialized with a
         value of unknown shape. If `True`, the default, the shape of
         `initial_value` must be known.
@@ -396,11 +436,14 @@ class Variable(six.with_metaclass(VariableMetaclass,
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
-        when to synchronize. If `synchronization` is set to `ON_READ`,
-        `trainable` must not be set to `True`.
+        when to synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
+      shape: (optional) The shape of this variable. If None, the shape of
+        `initial_value` will be used. When setting this argument to
+        `tf.TensorShape(None)` (representing an unspecified shape), the variable
+        can be assigned with values of different shapes.
 
     Raises:
       ValueError: If both `variable_def` and initial_value are specified.
@@ -455,6 +498,14 @@ class Variable(six.with_metaclass(VariableMetaclass,
   def trainable(self):
     raise NotImplementedError
 
+  @property
+  def synchronization(self):
+    raise NotImplementedError
+
+  @property
+  def aggregation(self):
+    raise NotImplementedError
+
   def eval(self, session=None):
     """In a session, computes and returns the value of this variable.
 
@@ -462,14 +513,14 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     This convenience method requires a session where the graph
     containing this variable has been launched. If no session is
-    passed, the default session is used.  See `tf.Session` for more
+    passed, the default session is used.  See `tf.compat.v1.Session` for more
     information on launching a graph and on sessions.
 
     ```python
     v = tf.Variable([1, 2])
-    init = tf.global_variables_initializer()
+    init = tf.compat.v1.global_variables_initializer()
 
-    with tf.Session() as sess:
+    with tf.compat.v1.Session() as sess:
         sess.run(init)
         # Usage passing the session explicitly.
         print(v.eval(sess))
@@ -499,7 +550,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     ```python
     # Initialize 'v' with a random tensor.
-    v = tf.Variable(tf.truncated_normal([10, 40]))
+    v = tf.Variable(tf.random.truncated_normal([10, 40]))
     # Use `initialized_value` to guarantee that `v` has been
     # initialized before its value is used to initialize `w`.
     # The random values are picked only once.
@@ -594,10 +645,10 @@ class Variable(six.with_metaclass(VariableMetaclass,
     raise NotImplementedError
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
-    """Subtracts `IndexedSlices` from this variable.
+    """Subtracts `tf.IndexedSlices` from this variable.
 
     Args:
-      sparse_delta: `IndexedSlices` to be subtracted from this variable.
+      sparse_delta: `tf.IndexedSlices` to be subtracted from this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -606,46 +657,116 @@ class Variable(six.with_metaclass(VariableMetaclass,
       the scattered subtraction has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     raise NotImplementedError
 
   def scatter_add(self, sparse_delta, use_locking=False, name=None):
-    """Adds `IndexedSlices` to this variable.
+    """Adds `tf.IndexedSlices` to this variable.
 
     Args:
-      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      sparse_delta: `tf.IndexedSlices` to be added to this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered addition has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    raise NotImplementedError
+
+  def scatter_max(self, sparse_delta, use_locking=False, name=None):
+    """Updates this variable with the max of `tf.IndexedSlices` and itself.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to use as an argument of max
+        with this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered maximization has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    raise NotImplementedError
+
+  def scatter_min(self, sparse_delta, use_locking=False, name=None):
+    """Updates this variable with the min of `tf.IndexedSlices` and itself.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to use as an argument of min
+        with this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered minimization has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    raise NotImplementedError
+
+  def scatter_mul(self, sparse_delta, use_locking=False, name=None):
+    """Multiply this variable by `tf.IndexedSlices`.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to multiply this variable by.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered multiplication has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    raise NotImplementedError
+
+  def scatter_div(self, sparse_delta, use_locking=False, name=None):
+    """Divide this variable by `tf.IndexedSlices`.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to divide this variable by.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered division has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     raise NotImplementedError
 
   def scatter_update(self, sparse_delta, use_locking=False, name=None):
-    """Assigns `IndexedSlices` to this variable.
+    """Assigns `tf.IndexedSlices` to this variable.
 
     Args:
-      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      sparse_delta: `tf.IndexedSlices` to be assigned to this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     raise NotImplementedError
 
   def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
-    """Assigns `IndexedSlices` to this variable batch-wise.
+    """Assigns `tf.IndexedSlices` to this variable batch-wise.
 
     Analogous to `batch_gather`. This assumes that this variable and the
     sparse_delta IndexedSlices have a series of leading dimensions that are the
@@ -678,16 +799,16 @@ class Variable(six.with_metaclass(VariableMetaclass,
     efficient than this implementation.
 
     Args:
-      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      sparse_delta: `tf.IndexedSlices` to be assigned to this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     raise NotImplementedError
 
@@ -717,7 +838,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         op = v.scatter_nd_sub(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(op)
     ```
 
@@ -736,9 +857,6 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the scattered subtraction has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
     """
     raise NotImplementedError
 
@@ -768,7 +886,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         add = v.scatter_nd_add(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(add)
     ```
 
@@ -786,10 +904,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      the scattered addition has completed.
     """
     raise NotImplementedError
 
@@ -819,7 +934,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         op = v.scatter_nd_assign(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(op)
     ```
 
@@ -837,12 +952,40 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      the scattered assignment has completed.
     """
     raise NotImplementedError
+
+  def sparse_read(self, indices, name=None):
+    r"""Gather slices from params axis axis according to indices.
+
+    This function supports a subset of tf.gather, see tf.gather for details on
+    usage.
+
+    Args:
+      indices: The index `Tensor`.  Must be one of the following types: `int32`,
+        `int64`. Must be in range `[0, params.shape[axis])`.
+      name: A name for the operation (optional).
+
+    Returns:
+      A `Tensor`. Has the same type as `params`.
+    """
+    raise AttributeError
+
+  def gather_nd(self, indices, name=None):
+    r"""Gather slices from `params` into a Tensor with shape specified by `indices`.
+
+    See tf.gather_nd for details.
+
+    Args:
+      indices: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+        Index tensor.
+      name: A name for the operation (optional).
+
+    Returns:
+      A `Tensor`. Has the same type as `params`.
+    """
+    raise AttributeError
 
   @deprecated(None, "Prefer Dataset.range instead.")
   def count_up_to(self, limit):
@@ -877,14 +1020,14 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     This convenience method requires a session where the graph
     containing this variable has been launched. If no session is
-    passed, the default session is used.  See `tf.Session` for more
+    passed, the default session is used.  See `tf.compat.v1.Session` for more
     information on launching a graph and on sessions.
 
     ```python
     v = tf.Variable([1, 2])
-    init = tf.global_variables_initializer()
+    init = tf.compat.v1.global_variables_initializer()
 
-    with tf.Session() as sess:
+    with tf.compat.v1.Session() as sess:
         sess.run(init)
         # Usage passing the session explicitly.
         v.load([2, 3], sess)
@@ -1199,7 +1342,7 @@ class VariableV1(Variable):
 
   ```python
   # Launch the graph in a session.
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
       # Run the variable initializer.
       sess.run(w.initializer)
       # ...you now can run ops that use the value of 'w'...
@@ -1211,10 +1354,10 @@ class VariableV1(Variable):
 
   ```python
   # Add an Op to initialize global variables.
-  init_op = tf.global_variables_initializer()
+  init_op = tf.compat.v1.global_variables_initializer()
 
   # Launch the graph in a session.
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
       # Run the Op that initializes global variables.
       sess.run(init_op)
       # ...you can now run any Op that uses variable values...
@@ -1264,13 +1407,13 @@ class VariableV1(Variable):
   not have these issues:
 
   * Add `use_resource=True` when constructing `tf.Variable`;
-  * Call `tf.get_variable_scope().set_use_resource(True)` inside a
-    `tf.variable_scope` before the `tf.get_variable()` call.
+  * Call `tf.compat.v1.get_variable_scope().set_use_resource(True)` inside a
+    `tf.compat.v1.variable_scope` before the `tf.compat.v1.get_variable()` call.
   """
 
   def __init__(self,  # pylint: disable=super-init-not-called
                initial_value=None,
-               trainable=True,
+               trainable=None,
                collections=None,
                validate_shape=True,
                caching_device=None,
@@ -1282,7 +1425,8 @@ class VariableV1(Variable):
                constraint=None,
                use_resource=None,
                synchronization=VariableSynchronization.AUTO,
-               aggregation=VariableAggregation.NONE):
+               aggregation=VariableAggregation.NONE,
+               shape=None):
     """Creates a new variable with value `initial_value`.
 
     The new variable is added to the graph collections listed in `collections`,
@@ -1301,9 +1445,11 @@ class VariableV1(Variable):
         callable with no argument that returns the initial value when called. In
         that case, `dtype` must be specified. (Note that initializer functions
         from init_ops.py must first be bound to a shape before being used here.)
-      trainable: If `True`, the default, also adds the variable to the graph
+      trainable: If `True`, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
+        Defaults to `True`, unless `synchronization` is set to `ON_READ`, in
+        which case it defaults to `False`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       validate_shape: If `False`, allows the variable to be initialized with a
@@ -1335,8 +1481,18 @@ class VariableV1(Variable):
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
       use_resource: whether to use resource variables.
-      synchronization: unused
-      aggregation: unused
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        `tf.VariableSynchronization`. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        `tf.VariableAggregation`.
+      shape: (optional) The shape of this variable. If None, the shape of
+        `initial_value` will be used. When setting this argument to
+        `tf.TensorShape(None)` (representing an unspecified shape), the variable
+        can be assigned with values of different shapes.
 
     Raises:
       ValueError: If both `variable_def` and initial_value are specified.
@@ -1354,7 +1510,7 @@ class RefVariable(VariableV1):
 
   def __init__(self,  # pylint: disable=super-init-not-called
                initial_value=None,
-               trainable=True,
+               trainable=None,
                collections=None,
                validate_shape=True,
                caching_device=None,
@@ -1363,7 +1519,10 @@ class RefVariable(VariableV1):
                dtype=None,
                expected_shape=None,
                import_scope=None,
-               constraint=None):
+               constraint=None,
+               synchronization=None,
+               aggregation=None,
+               shape=None):
     """Creates a new variable with value `initial_value`.
 
     The new variable is added to the graph collections listed in `collections`,
@@ -1382,9 +1541,11 @@ class RefVariable(VariableV1):
         callable with no argument that returns the initial value when called. In
         that case, `dtype` must be specified. (Note that initializer functions
         from init_ops.py must first be bound to a shape before being used here.)
-      trainable: If `True`, the default, also adds the variable to the graph
+      trainable: If `True`, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
+        Defaults to `True`, unless `synchronization` is set to `ON_READ`, in
+        which case it defaults to `False`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       validate_shape: If `False`, allows the variable to be initialized with a
@@ -1415,6 +1576,18 @@ class RefVariable(VariableV1):
         variable and return the Tensor for the projected value
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        `tf.VariableSynchronization`. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        `tf.VariableAggregation`.
+      shape: (optional) The shape of this variable. If None, the shape of
+        `initial_value` will be used. When setting this argument to
+        `tf.TensorShape(None)` (representing an unspecified shape), the variable
+        can be assigned with values of different shapes.
 
     Raises:
       ValueError: If both `variable_def` and initial_value are specified.
@@ -1440,7 +1613,10 @@ class RefVariable(VariableV1):
           name=name,
           dtype=dtype,
           expected_shape=expected_shape,
-          constraint=constraint)
+          constraint=constraint,
+          synchronization=synchronization,
+          aggregation=aggregation,
+          shape=shape)
 
   def __repr__(self):
     if context.executing_eagerly() and not self._in_graph_mode:
@@ -1453,14 +1629,17 @@ class RefVariable(VariableV1):
 
   def _init_from_args(self,
                       initial_value=None,
-                      trainable=True,
+                      trainable=None,
                       collections=None,
                       validate_shape=True,
                       caching_device=None,
                       name=None,
                       dtype=None,
                       expected_shape=None,
-                      constraint=None):
+                      constraint=None,
+                      synchronization=None,
+                      aggregation=None,
+                      shape=None):
     """Creates a new variable from arguments.
 
     Args:
@@ -1470,9 +1649,11 @@ class RefVariable(VariableV1):
         callable with no argument that returns the initial value when called.
         (Note that initializer functions from init_ops.py must first be bound
          to a shape before being used here.)
-      trainable: If `True`, the default, also adds the variable to the graph
+      trainable: If `True`, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
+        Defaults to `True`, unless `synchronization` is set to `ON_READ`, in
+        which case it defaults to `False`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       validate_shape: If `False`, allows the variable to be initialized with a
@@ -1497,6 +1678,18 @@ class RefVariable(VariableV1):
         variable and return the Tensor for the projected value
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        `tf.VariableSynchronization`. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        `tf.VariableAggregation`.
+      shape: (optional) The shape of this variable. If None, the shape of
+        `initial_value` will be used. When setting this argument to
+        `tf.TensorShape(None)` (representing an unspecified shape), the variable
+        can be assigned with values of different shapes.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -1525,6 +1718,11 @@ class RefVariable(VariableV1):
       self._update_uid = initial_value.checkpoint_position.restore_uid
       initial_value = initial_value.wrapped_value
 
+    synchronization, aggregation, trainable = (
+        validate_synchronization_aggregation_trainable(
+            synchronization, aggregation, trainable, name))
+    self._synchronization = synchronization
+    self._aggregation = aggregation
     self._trainable = trainable
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
@@ -1540,7 +1738,7 @@ class RefVariable(VariableV1):
           # Use attr_scope and device(None) to simulate the behavior of
           # colocate_with when the variable we want to colocate with doesn't
           # yet exist.
-          true_name = ops._name_from_scope_name(name)  # pylint: disable=protected-access
+          true_name = ops.name_from_scope_name(name)  # pylint: disable=protected-access
           attr = attr_value_pb2.AttrValue(
               list=attr_value_pb2.AttrValue.ListValue(
                   s=[compat.as_bytes("loc:@%s" % true_name)]))
@@ -1549,8 +1747,9 @@ class RefVariable(VariableV1):
             with ops.name_scope("Initializer"), ops.device(None):
               self._initial_value = ops.convert_to_tensor(
                   initial_value(), name="initial_value", dtype=dtype)
-              shape = (self._initial_value.get_shape()
-                       if validate_shape else tensor_shape.unknown_shape())
+              if shape is None:
+                shape = (self._initial_value.get_shape()
+                         if validate_shape else tensor_shape.unknown_shape())
             self._variable = state_ops.variable_op_v2(
                 shape,
                 self._initial_value.dtype.base_dtype,
@@ -1568,9 +1767,10 @@ class RefVariable(VariableV1):
                 "construct, such as a loop or conditional. When creating a "
                 "variable inside a loop or conditional, use a lambda as the "
                 "initializer." % name)
-          # pylint: enable=protected-access
-          shape = (self._initial_value.get_shape()
-                   if validate_shape else tensor_shape.unknown_shape())
+          if shape is None:
+            # pylint: enable=protected-access
+            shape = (self._initial_value.get_shape()
+                     if validate_shape else tensor_shape.unknown_shape())
           # In this case, the variable op can't be created until after the
           # initial_value has been converted to a Tensor with a known type.
           self._variable = state_ops.variable_op_v2(
@@ -1635,7 +1835,15 @@ class RefVariable(VariableV1):
                                  import_scope=import_scope))
     else:
       self._initial_value = None
-    self._trainable = getattr(variable_def, "trainable", True)
+    synchronization, aggregation, trainable = (
+        validate_synchronization_aggregation_trainable(
+            variable_def.synchronization,
+            variable_def.aggregation,
+            variable_def.trainable,
+            variable_def.variable_name))
+    self._synchronization = synchronization
+    self._aggregation = aggregation
+    self._trainable = trainable
     self._snapshot = g.as_graph_element(
         ops.prepend_name_scope(variable_def.snapshot_name,
                                import_scope=import_scope))
@@ -1711,6 +1919,14 @@ class RefVariable(VariableV1):
   def trainable(self):
     return self._trainable
 
+  @property
+  def synchronization(self):
+    return self._synchronization
+
+  @property
+  def aggregation(self):
+    return self._aggregation
+
   def eval(self, session=None):
     """In a session, computes and returns the value of this variable.
 
@@ -1718,14 +1934,14 @@ class RefVariable(VariableV1):
 
     This convenience method requires a session where the graph
     containing this variable has been launched. If no session is
-    passed, the default session is used.  See `tf.Session` for more
+    passed, the default session is used.  See `tf.compat.v1.Session` for more
     information on launching a graph and on sessions.
 
     ```python
     v = tf.Variable([1, 2])
-    init = tf.global_variables_initializer()
+    init = tf.compat.v1.global_variables_initializer()
 
-    with tf.Session() as sess:
+    with tf.compat.v1.Session() as sess:
         sess.run(init)
         # Usage passing the session explicitly.
         print(v.eval(sess))
@@ -1834,10 +2050,10 @@ class RefVariable(VariableV1):
     return assign.op
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
-    """Subtracts `IndexedSlices` from this variable.
+    """Subtracts `tf.IndexedSlices` from this variable.
 
     Args:
-      sparse_delta: `IndexedSlices` to be subtracted from this variable.
+      sparse_delta: `tf.IndexedSlices` to be subtracted from this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -1846,10 +2062,10 @@ class RefVariable(VariableV1):
       the scattered subtraction has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
-      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_sub(
         self._variable,
         sparse_delta.indices,
@@ -1858,22 +2074,22 @@ class RefVariable(VariableV1):
         name=name)
 
   def scatter_add(self, sparse_delta, use_locking=False, name=None):
-    """Adds `IndexedSlices` from this variable.
+    """Adds `tf.IndexedSlices` to this variable.
 
     Args:
-      sparse_delta: `IndexedSlices` to be added to this variable.
+      sparse_delta: `tf.IndexedSlices` to be added to this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered addition has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
-      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_add(
         self._variable,
         sparse_delta.indices,
@@ -1881,23 +2097,121 @@ class RefVariable(VariableV1):
         use_locking=use_locking,
         name=name)
 
-  def scatter_update(self, sparse_delta, use_locking=False, name=None):
-    """Assigns `IndexedSlices` to this variable.
+  def scatter_max(self, sparse_delta, use_locking=False, name=None):
+    """Updates this variable with the max of `tf.IndexedSlices` and itself.
 
     Args:
-      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      sparse_delta: `tf.IndexedSlices` to use as an argument of max
+        with this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered maximization has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
-      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return gen_state_ops.scatter_max(
+        self._variable,
+        sparse_delta.indices,
+        sparse_delta.values,
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_min(self, sparse_delta, use_locking=False, name=None):
+    """Updates this variable with the min of `tf.IndexedSlices` and itself.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to use as an argument of min
+        with this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered minimization has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return gen_state_ops.scatter_min(
+        self._variable,
+        sparse_delta.indices,
+        sparse_delta.values,
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_mul(self, sparse_delta, use_locking=False, name=None):
+    """Multiply this variable by `tf.IndexedSlices`.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to multiply this variable by.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered multiplication has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return gen_state_ops.scatter_mul(
+        self._variable,
+        sparse_delta.indices,
+        sparse_delta.values,
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_div(self, sparse_delta, use_locking=False, name=None):
+    """Divide this variable by `tf.IndexedSlices`.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to divide this variable by.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered division has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return gen_state_ops.scatter_div(
+        self._variable,
+        sparse_delta.indices,
+        sparse_delta.values,
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_update(self, sparse_delta, use_locking=False, name=None):
+    """Assigns `tf.IndexedSlices` to this variable.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to be assigned to this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered assignment has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_update(
         self._variable,
         sparse_delta.indices,
@@ -1906,7 +2220,7 @@ class RefVariable(VariableV1):
         name=name)
 
   def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
-    """Assigns `IndexedSlices` to this variable batch-wise.
+    """Assigns `tf.IndexedSlices` to this variable batch-wise.
 
     Analogous to `batch_gather`. This assumes that this variable and the
     sparse_delta IndexedSlices have a series of leading dimensions that are the
@@ -1939,16 +2253,16 @@ class RefVariable(VariableV1):
     efficient than this implementation.
 
     Args:
-      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      sparse_delta: `tf.IndexedSlices` to be assigned to this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     return state_ops.batch_scatter_update(
         self, sparse_delta.indices, sparse_delta.values,
@@ -1980,7 +2294,7 @@ class RefVariable(VariableV1):
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         op = ref.scatter_nd_sub(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(op)
     ```
 
@@ -1999,9 +2313,6 @@ class RefVariable(VariableV1):
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the scattered subtraction has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
     """
     return gen_state_ops.scatter_nd_sub(
         self._variable, indices, updates, use_locking=True, name=name)
@@ -2032,7 +2343,7 @@ class RefVariable(VariableV1):
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         add = ref.scatter_nd_add(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(add)
     ```
 
@@ -2050,10 +2361,7 @@ class RefVariable(VariableV1):
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      the scattered addition has completed.
     """
     return gen_state_ops.scatter_nd_add(
         self._variable, indices, updates, use_locking=True, name=name)
@@ -2084,7 +2392,7 @@ class RefVariable(VariableV1):
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
         op = ref.scatter_nd_update(indices, updates)
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           print sess.run(op)
     ```
 
@@ -2102,10 +2410,7 @@ class RefVariable(VariableV1):
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      the scattered assignment has completed.
     """
     return gen_state_ops.scatter_nd_update(
         self._variable, indices, updates, use_locking=True, name=name)
@@ -2243,6 +2548,8 @@ class RefVariable(VariableV1):
         var_def.initial_value_name = ops.strip_name_scope(
             self._initial_value.name, export_scope)
       var_def.trainable = self.trainable
+      var_def.synchronization = self.synchronization.value
+      var_def.aggregation = self.aggregation.value
       var_def.initializer_name = ops.strip_name_scope(
           self.initializer.name, export_scope)
       var_def.snapshot_name = ops.strip_name_scope(
@@ -2341,23 +2648,27 @@ def _try_guard_against_uninitialized_dependencies(name, initial_value):
     raise TypeError("initial_value needs to be a Tensor: %s" % initial_value)
 
   # Don't modify initial_value if it contains any cyclic dependencies.
-  if _has_cycle(initial_value.op, path=set()):
+  if _has_cycle(initial_value.op, state={}):
     return initial_value
   return _safe_initial_value_from_tensor(name, initial_value, op_cache={})
 
 
-def _has_cycle(op, path):
+_UNKNOWN, _STARTED, _FINISHED = range(3)
+
+
+def _has_cycle(op, state):
   """Detect cycles in the dependencies of `initial_value`."""
-  if op.name in path:
+  op_state = state.get(op.name, _UNKNOWN)
+  if op_state == _STARTED:
     return True
-  path.add(op.name)
-  for op_input in op.inputs:
-    if _has_cycle(op_input.op, path):
+  elif op_state == _FINISHED:
+    return False
+
+  state[op.name] = _STARTED
+  for i in itertools.chain((i.op for i in op.inputs), op.control_inputs):
+    if _has_cycle(i, state):
       return True
-  for op_control_input in op.control_inputs:
-    if _has_cycle(op_control_input, path):
-      return True
-  path.remove(op.name)
+  state[op.name] = _FINISHED
   return False
 
 
@@ -2694,7 +3005,7 @@ def global_variables(scope=None):
   This convenience function returns the contents of that collection.
 
   An alternative to global variables are local variables. See
-  `tf.local_variables`
+  `tf.compat.v1.local_variables`
 
   Args:
     scope: (Optional.) A string. If supplied, the resulting list is filtered
@@ -2712,7 +3023,7 @@ def global_variables(scope=None):
 @tf_export(v1=["all_variables"])
 @deprecated("2017-03-02", "Please use tf.global_variables instead.")
 def all_variables():
-  """See `tf.global_variables`."""
+  """Use `tf.compat.v1.global_variables` instead."""
   return global_variables()
 
 
@@ -2747,7 +3058,7 @@ def local_variables(scope=None):
   This convenience function returns the contents of that collection.
 
   An alternative to local variables are global variables. See
-  `tf.global_variables`
+  `tf.compat.v1.global_variables`
 
   Args:
     scope: (Optional.) A string. If supplied, the resulting list is filtered
@@ -2853,7 +3164,7 @@ def variables_initializer(var_list, name="init"):
 @tf_should_use.should_use_result
 @deprecated("2017-03-02", "Use `tf.variables_initializer` instead.")
 def initialize_variables(var_list, name="init"):
-  """See `tf.variables_initializer`."""
+  """See `tf.compat.v1.variables_initializer`."""
   return variables_initializer(var_list, name=name)
 
 
@@ -2875,7 +3186,7 @@ def global_variables_initializer():
 @tf_should_use.should_use_result
 @deprecated("2017-03-02", "Use `tf.global_variables_initializer` instead.")
 def initialize_all_variables():
-  """See `tf.global_variables_initializer`."""
+  """See `tf.compat.v1.global_variables_initializer`."""
   return global_variables_initializer()
 
 
@@ -2897,7 +3208,7 @@ def local_variables_initializer():
 @tf_should_use.should_use_result
 @deprecated("2017-03-02", "Use `tf.local_variables_initializer` instead.")
 def initialize_local_variables():
-  """See `tf.local_variables_initializer`."""
+  """See `tf.compat.v1.local_variables_initializer`."""
   return local_variables_initializer()
 
 
@@ -3010,3 +3321,14 @@ def report_uninitialized_variables(var_list=None,
 ops.register_tensor_conversion_function(
     PartitionedVariable,
     PartitionedVariable._TensorConversionFunction)  # pylint: disable=protected-access
+
+
+class AbstractVariableMetaclass(VariableMetaclass, abc.ABCMeta):
+  """Metaclass combining `VariableMetaclass` and `abc.ABCMeta`."""
+  pass
+
+
+@six.add_metaclass(AbstractVariableMetaclass)
+class AbstractVariable(Variable):
+  """`Variable`, but abstract."""
+  pass

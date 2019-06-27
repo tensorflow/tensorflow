@@ -19,7 +19,8 @@ manipulating gradients, creating a `train_op` (an operation that computes the
 loss and applies the gradients) and a training loop function. The training loop
 allows the user to pass in the `train_op` and runs the optimization according
 to user-specified arguments. Note that the training loop uses the
-tf.train.Supervisor and its managed_session in its implementation to ensure the
+tf.compat.v1.train.Supervisor and its managed_session in its implementation to
+ensure the
 ability of worker processes to recover from failures.
 
 ************************************
@@ -35,7 +36,8 @@ ability of worker processes to recover from failures.
   total_loss = slim.losses.get_total_loss()
 
   # Define the optimizer:
-  optimizer = tf.train.MomentumOptimizer(FLAGS.learning_rate, FLAGS.momentum)
+  optimizer = tf.compat.v1.train.MomentumOptimizer(FLAGS.learning_rate,
+  FLAGS.momentum)
 
   # Create the train_op
   train_op = slim.learning.create_train_op(total_loss, optimizer)
@@ -104,8 +106,8 @@ default update ops or simply add additional update ops to the
      update_ops=my_other_update_ops)
 
   # Use an alternative set of update ops in addition to the default updates:
-  tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, my_update0)
-  tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, my_update1)
+  tf.compat.v1.add_to_collection(tf.GraphKeys.UPDATE_OPS, my_update0)
+  tf.compat.v1.add_to_collection(tf.GraphKeys.UPDATE_OPS, my_update1)
 
   train_op = slim.learning.create_train_op(
      total_loss,
@@ -115,7 +117,7 @@ default update ops or simply add additional update ops to the
   train_op = slim.learning.create_train_op(
      total_loss,
      optimizer,
-     update_ops=tf.get_collection(tf.GraphKeys.UPDATE_OPS))
+     update_ops=tf.compat.v1.get_collection(tf.GraphKeys.UPDATE_OPS))
 
 ******************************************
 * Initializing a model from a checkpoint *
@@ -393,12 +395,12 @@ def create_train_op(total_loss,
     update_ops: An optional list of updates to execute. If `update_ops` is
       `None`, then the update ops are set to the contents of the
       `tf.GraphKeys.UPDATE_OPS` collection. If `update_ops` is not `None`, but
-      it doesn't contain all of the update ops in `tf.GraphKeys.UPDATE_OPS`,
-      a warning will be displayed.
+      it doesn't contain all of the update ops in `tf.GraphKeys.UPDATE_OPS`, a
+      warning will be displayed.
     variables_to_train: an optional list of variables to train. If None, it will
-      default to all tf.trainable_variables().
-    clip_gradient_norm: If greater than 0 then the gradients would be clipped
-      by it.
+      default to all tf.compat.v1.trainable_variables().
+    clip_gradient_norm: If greater than 0 then the gradients would be clipped by
+      it.
     summarize_gradients: Whether or not add summaries for each gradient.
     gate_gradients: How to gate the computation of gradients. See tf.Optimizer.
     aggregation_method: Specifies the method used to combine gradient terms.
@@ -414,6 +416,7 @@ def create_train_op(total_loss,
     A `Tensor` that when evaluated, computes the gradients and returns the total
       loss value.
   """
+
   def transform_grads_fn(grads):
     if gradient_multipliers:
       with ops.name_scope('multiply_grads'):
@@ -458,8 +461,8 @@ def train_step(sess, train_op, global_step, train_step_kwargs):
 
   Args:
     sess: The current session.
-    train_op: An `Operation` that evaluates the gradients and returns the
-      total loss.
+    train_op: An `Operation` that evaluates the gradients and returns the total
+      loss.
     global_step: A `Tensor` representing the global training step.
     train_step_kwargs: A dictionary of keyword arguments.
 
@@ -495,9 +498,8 @@ def train_step(sess, train_op, global_step, train_step_kwargs):
     logging.info('Writing trace to %s', trace_filename)
     file_io.write_string_to_file(trace_filename, trace)
     if 'summary_writer' in train_step_kwargs:
-      train_step_kwargs['summary_writer'].add_run_metadata(run_metadata,
-                                                           'run_metadata-%d' %
-                                                           np_global_step)
+      train_step_kwargs['summary_writer'].add_run_metadata(
+          run_metadata, 'run_metadata-%d' % np_global_step)
 
   if 'should_log' in train_step_kwargs:
     if sess.run(train_step_kwargs['should_log']):
@@ -566,7 +568,8 @@ def train(train_op,
       checkpoints and summaries will not be written.
     train_step_fn: The function to call in order to execute a single gradient
       step. The function must have take exactly four arguments: the current
-      session, the `train_op` `Tensor`, a global step `Tensor` and a dictionary.
+        session, the `train_op` `Tensor`, a global step `Tensor` and a
+        dictionary.
     train_step_kwargs: A dictionary which is passed to the `train_step_fn`. By
       default, two `Boolean`, scalar ops called "should_stop" and "should_log"
       are provided.
@@ -581,44 +584,45 @@ def train(train_op,
       then training_util.get_or_create_global_step(), that is,
       tf.contrib.framework.global_step() is used.
     number_of_steps: The max number of gradient steps to take during training,
-      as measured by 'global_step': training will stop if global_step is
-      greater than 'number_of_steps'. If the value is left as None, training
-      proceeds indefinitely.
+      as measured by 'global_step': training will stop if global_step is greater
+        than 'number_of_steps'. If the value is left as None, training proceeds
+        indefinitely.
     init_op: The initialization operation. If left to its default value, then
-      the session is initialized by calling `tf.global_variables_initializer()`.
+      the session is initialized by calling
+      `tf.compat.v1.global_variables_initializer()`.
     init_feed_dict: A feed dictionary to use when executing the `init_op`.
     local_init_op: The local initialization operation. If left to its default
       value, then the session is initialized by calling
-      `tf.local_variables_initializer()` and `tf.tables_initializer()`.
+      `tf.compat.v1.local_variables_initializer()` and
+      `tf.compat.v1.tables_initializer()`.
     init_fn: An optional callable to be executed after `init_op` is called. The
       callable must accept one argument, the session being initialized.
     ready_op: Operation to check if the model is ready to use. If left to its
       default value, then the session checks for readiness by calling
-      `tf.report_uninitialized_variables()`.
+      `tf.compat.v1.report_uninitialized_variables()`.
     summary_op: The summary operation.
     save_summaries_secs: How often, in seconds, to save summaries.
-    summary_writer: `SummaryWriter` to use.  Can be `None`
-      to indicate that no summaries should be written. If unset, we
-      create a SummaryWriter.
+    summary_writer: `SummaryWriter` to use.  Can be `None` to indicate that no
+      summaries should be written. If unset, we create a SummaryWriter.
     startup_delay_steps: The number of steps to wait for before beginning. Note
       that this must be 0 if a sync_optimizer is supplied.
-    saver: Saver to save checkpoints. If None, a default one will be created
-      and used.
+    saver: Saver to save checkpoints. If None, a default one will be created and
+      used.
     save_interval_secs: How often, in seconds, to save the model to `logdir`.
-    sync_optimizer: an instance of tf.train.SyncReplicasOptimizer, or a list of
-      them. If the argument is supplied, gradient updates will be synchronous.
-      If left as `None`, gradient updates will be asynchronous.
-    session_config: An instance of `tf.ConfigProto` that will be used to
-      configure the `Session`. If left as `None`, the default will be used.
-    session_wrapper: A function that takes a `tf.Session` object as the only
-      argument and returns a wrapped session object that has the same methods
-      that the original object has, or `None`. Iff not `None`, the wrapped
-      object will be used for training.
+    sync_optimizer: an instance of tf.compat.v1.train.SyncReplicasOptimizer, or
+      a list of them. If the argument is supplied, gradient updates will be
+      synchronous. If left as `None`, gradient updates will be asynchronous.
+    session_config: An instance of `tf.compat.v1.ConfigProto` that will be used
+      to configure the `Session`. If left as `None`, the default will be used.
+    session_wrapper: A function that takes a `tf.compat.v1.Session` object as
+      the only argument and returns a wrapped session object that has the same
+      methods that the original object has, or `None`. Iff not `None`, the
+      wrapped object will be used for training.
     trace_every_n_steps: produce and save a `Timeline` in Chrome trace format
       and add it to the summaries every `trace_every_n_steps`. If None, no trace
       information will be produced or saved.
-    ignore_live_threads: If `True` ignores threads that remain running after
-      a grace period when stopping the supervisor, instead of raising a
+    ignore_live_threads: If `True` ignores threads that remain running after a
+      grace period when stopping the supervisor, instead of raising a
       RuntimeError.
 
   Returns:
@@ -677,8 +681,8 @@ def train(train_op,
             lookup_ops.tables_initializer())
 
       if sync_optimizer is not None and isinstance(sync_optimizer, list):
-        with ops.control_dependencies([local_init_op] if local_init_op is
-                                      not None else []):
+        with ops.control_dependencies(
+            [local_init_op] if local_init_op is not None else []):
           if is_chief:
             local_init_op = control_flow_ops.group(
                 *[opt.chief_init_op for opt in sync_optimizer])
@@ -700,7 +704,8 @@ def train(train_op,
       # Need to create these BEFORE the supervisor finalizes the graph:
       init_tokens_op = [opt.get_init_tokens_op() for opt in sync_optimizer]
       chief_queue_runner = [
-          opt.get_chief_queue_runner() for opt in sync_optimizer]
+          opt.get_chief_queue_runner() for opt in sync_optimizer
+      ]
 
     if train_step_kwargs == _USE_DEFAULT:
       with ops.name_scope('train_step'):
@@ -748,17 +753,17 @@ def train(train_op,
           master, start_standard_services=False, config=session_config) as sess:
         logging.info('Starting Session.')
         if session_wrapper is not None:
-          logging.info(
-              'Wrapping session with wrapper function: %s', session_wrapper)
+          logging.info('Wrapping session with wrapper function: %s',
+                       session_wrapper)
           sess = session_wrapper(sess)
         if is_chief:
           if logdir:
             sv.start_standard_services(sess)
         elif startup_delay_steps > 0:
-           # (use sys.maxsize because sys.maxint doesn't exist in Python 3)
-          _wait_for_step(sess, global_step,
-                         min(startup_delay_steps, number_of_steps or
-                             sys.maxsize))
+          # (use sys.maxsize because sys.maxint doesn't exist in Python 3)
+          _wait_for_step(
+              sess, global_step,
+              min(startup_delay_steps, number_of_steps or sys.maxsize))
         threads = sv.start_queue_runners(sess)
         logging.info('Starting Queues.')
         if is_chief and sync_optimizer is not None:
@@ -766,15 +771,15 @@ def train(train_op,
           sess.run(init_tokens_op)
         try:
           while not sv.should_stop():
-            total_loss, should_stop = train_step_fn(
-                sess, train_op, global_step, train_step_kwargs)
+            total_loss, should_stop = train_step_fn(sess, train_op, global_step,
+                                                    train_step_kwargs)
             if should_stop:
               logging.info('Stopping Training.')
               sv.request_stop()
               break
         except errors.OutOfRangeError as e:
           # OutOfRangeError is thrown when epoch limit per
-          # tf.train.limit_epochs is reached.
+          # tf.compat.v1.train.limit_epochs is reached.
           logging.info('Caught OutOfRangeError. Stopping Training. %s', e)
         if logdir and sv.is_chief:
           logging.info('Finished training! Saving model to disk.')

@@ -14,7 +14,7 @@ package(default_visibility = [
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "tf_copts", "tf_cuda_library")
 
 tf_cuda_library(
     name = "native",
@@ -33,13 +33,13 @@ tf_cuda_library(
         "//tensorflow:android": [],
         "//conditions:default": ["."],
     }),
-    deps = [
-        "//tensorflow/c:c_api",
-    ] + select({
+    deps = select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib",
         ],
         "//conditions:default": [
+            "//tensorflow/c:c_api",
+            "//tensorflow/c/eager:c_api",
             "//tensorflow/core:all_kernels",
             "//tensorflow/core:direct_session",
             "//tensorflow/core:ops",

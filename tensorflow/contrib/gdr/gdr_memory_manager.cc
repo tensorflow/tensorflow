@@ -250,10 +250,9 @@ Status GdrMemoryManager::Init() {
   LOG(INFO) << "Instrumenting CPU allocator(s)";
 
   for (int numa_idx = 0; numa_idx < port::NUMANumNodes(); ++numa_idx) {
-    GPUProcessState::singleton()->AddCUDAHostAllocVisitor(numa_idx,
-                                                          alloc_visitor);
-    GPUProcessState::singleton()->AddCUDAHostFreeVisitor(numa_idx,
-                                                         free_visitor);
+    GPUProcessState::singleton()->AddGpuHostAllocVisitor(numa_idx,
+                                                         alloc_visitor);
+    GPUProcessState::singleton()->AddGpuHostFreeVisitor(numa_idx, free_visitor);
   }
 
   if (IsGDRAvailable()) {

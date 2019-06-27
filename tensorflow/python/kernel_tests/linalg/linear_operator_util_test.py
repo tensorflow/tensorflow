@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -241,111 +242,6 @@ class CholeskySolveWithBroadcastTest(test.TestCase):
       self.assertAllClose(expected, result)
 
 
-class MatmulWithBroadcastTest(test.TestCase):
-
-  @test_util.run_deprecated_v1
-  def test_static_dims_broadcast_x_has_extra_dims(self):
-    # batch_shape = [2]
-    # for each batch member, we have a 1x3 matrix times a 3x7 matrix ==> 1x7
-    x = rng.rand(2, 1, 3)
-    y = rng.rand(3, 7)
-    y_broadcast = y + np.zeros((2, 1, 1))
-
-    with self.cached_session():
-      result = linear_operator_util.matmul_with_broadcast(x, y)
-      self.assertAllEqual((2, 1, 7), result.get_shape())
-      expected = math_ops.matmul(x, y_broadcast)
-      self.assertAllClose(expected.eval(), self.evaluate(result))
-
-  @test_util.run_deprecated_v1
-  def test_static_dims_broadcast_y_has_extra_dims(self):
-    # Since the second arg has extra dims, and the domain dim of the first arg
-    # is larger than the number of linear equations, code will "flip" the extra
-    # dims of the first arg to the far right, making extra linear equations
-    # (then call the matrix function, then flip back).
-    # We have verified that this optimization indeed happens.  How? We stepped
-    # through with a debugger.
-    x = rng.rand(5, 7)
-    y = rng.rand(2, 3, 7, 5)
-    x_broadcast = x + np.zeros((2, 3, 5, 7))
-
-    with self.cached_session():
-      result = linear_operator_util.matmul_with_broadcast(x, y)
-      self.assertAllEqual((2, 3, 5, 5), result.get_shape())
-      expected = math_ops.matmul(x_broadcast, y)
-      self.assertAllClose(expected.eval(), self.evaluate(result))
-
-  @test_util.run_deprecated_v1
-  def test_static_dims_broadcast_y_has_extra_dims_transpose_a_and_b(self):
-    # Since the second arg has extra dims, and the domain dim of the first arg
-    # is larger than the number of linear equations, code will "flip" the extra
-    # dims of the first arg to the far right, making extra linear equations
-    # (then call the matrix function, then flip back).
-    # We have verified that this optimization indeed happens.  How? We stepped
-    # through with a debugger.
-    x = rng.rand(1, 7, 5)
-    y = rng.rand(2, 3, 1, 7)
-    x_broadcast = x + np.zeros((2, 3, 1, 1))
-
-    with self.cached_session():
-      result = linear_operator_util.matmul_with_broadcast(
-          x, y, transpose_a=True, transpose_b=True)
-      self.assertAllEqual((2, 3, 5, 1), result.get_shape())
-      expected = math_ops.matmul(
-          x_broadcast, y, transpose_a=True, transpose_b=True)
-      self.assertAllClose(expected.eval(), self.evaluate(result))
-
-  @test_util.run_deprecated_v1
-  def test_static_dims_broadcast_y_has_extra_dims_transpose_dynamic(self):
-    # Since the second arg has extra dims, and the domain dim of the first arg
-    # is larger than the number of linear equations, code will "flip" the extra
-    # dims of the first arg to the far right, making extra linear equations
-    # (then call the matrix function, then flip back).
-    # We have verified that this optimization indeed happens.  How? We stepped
-    # through with a debugger.
-    x = rng.rand(1, 7, 5)
-    y = rng.rand(2, 3, 1, 7)
-    x_broadcast = x + np.zeros((2, 3, 1, 1))
-
-    x_ph = array_ops.placeholder(dtypes.float64, [None, None, None])
-    y_ph = array_ops.placeholder(dtypes.float64, [None, None, None, None])
-
-    with self.cached_session():
-      result = linear_operator_util.matmul_with_broadcast(
-          x_ph, y_ph, transpose_a=True, transpose_b=True)
-      self.assertAllEqual(4, result.shape.ndims)
-      expected = math_ops.matmul(
-          x_broadcast, y, transpose_a=True, transpose_b=True)
-      self.assertAllClose(expected.eval(),
-                          result.eval(feed_dict={
-                              x_ph: x,
-                              y_ph: y
-                          }))
-
-  @test_util.run_deprecated_v1
-  def test_dynamic_dims_broadcast_64bit(self):
-    # batch_shape = [2]
-    # for each batch member, we have a 1x3 matrix times a 3x7 matrix ==> 1x7
-    x = rng.rand(2, 1, 3)
-    y = rng.rand(3, 7)
-    y_broadcast = y + np.zeros((2, 1, 1))
-
-    x_ph = array_ops.placeholder(dtypes.float64)
-    y_ph = array_ops.placeholder(dtypes.float64)
-
-    with self.cached_session() as sess:
-      result, expected = sess.run(
-          [
-              linear_operator_util.matmul_with_broadcast(x_ph, y_ph),
-              math_ops.matmul(x, y_broadcast)
-          ],
-          feed_dict={
-              x_ph: x,
-              y_ph: y
-          })
-      self.assertAllClose(expected, result)
-
-
 class MatrixSolveWithBroadcastTest(test.TestCase):
 
   @test_util.run_deprecated_v1
@@ -562,6 +458,49 @@ class AssertCompatibleMatrixDimensionsTest(test.TestCase):
       with self.assertRaisesOpError("Incompatible matrix dimensions"):
         linear_operator_util.assert_compatible_matrix_dimensions(
             operator, x).run()  # pyformat: disable
+
+
+class DummyOperatorWithHint(object):
+
+  def __init__(self, **kwargs):
+    self.__dict__.update(kwargs)
+
+
+class UseOperatorOrProvidedHintUnlessContradictingTest(test.TestCase,
+                                                       parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ("none_none", None, None, None),
+      ("none_true", None, True, True),
+      ("true_none", True, None, True),
+      ("true_true", True, True, True),
+      ("none_false", None, False, False),
+      ("false_none", False, None, False),
+      ("false_false", False, False, False),
+  )
+  def test_computes_an_or_if_non_contradicting(self, operator_hint_value,
+                                               provided_hint_value,
+                                               expected_result):
+    self.assertEqual(
+        expected_result,
+        linear_operator_util.use_operator_or_provided_hint_unless_contradicting(
+            operator=DummyOperatorWithHint(my_hint=operator_hint_value),
+            hint_attr_name="my_hint",
+            provided_hint_value=provided_hint_value,
+            message="should not be needed here"))
+
+  @parameterized.named_parameters(
+      ("true_false", True, False),
+      ("false_true", False, True),
+  )
+  def test_raises_if_contradicting(self, operator_hint_value,
+                                   provided_hint_value):
+    with self.assertRaisesRegexp(ValueError, "my error message"):
+      linear_operator_util.use_operator_or_provided_hint_unless_contradicting(
+          operator=DummyOperatorWithHint(my_hint=operator_hint_value),
+          hint_attr_name="my_hint",
+          provided_hint_value=provided_hint_value,
+          message="my error message")
 
 
 if __name__ == "__main__":

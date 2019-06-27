@@ -13,7 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""contrib module containing volatile or experimental code."""
+"""Contrib module containing volatile or experimental code.
+
+Warning: The `tf.contrib` module will not be included in TensorFlow 2.0. Many
+of its submodules have been integrated into TensorFlow core, or spun-off into
+other projects like [`tensorflow_io`](https://github.com/tensorflow/io), or
+[`tensorflow_addons`](https://github.com/tensorflow/addons). For instructions
+on how to upgrade see the
+[Migration guide](https://www.tensorflow.org/beta/guide/migration_guide).
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -30,7 +38,6 @@ from tensorflow.contrib import checkpoint
 if os.name != "nt" and platform.machine() != "s390x":
   from tensorflow.contrib import cloud
 from tensorflow.contrib import cluster_resolver
-from tensorflow.contrib import coder
 from tensorflow.contrib import compiler
 from tensorflow.contrib import constrained_optimization
 from tensorflow.contrib import copy_graph

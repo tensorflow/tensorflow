@@ -1,9 +1,8 @@
 load("//tensorflow:tensorflow.bzl", "tf_copts", "tf_kernel_library")
 
-licenses(["notice"])  # Apache 2.0
-
 package(
     default_visibility = ["//tensorflow/compiler/tf2xla:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 tf_kernel_library(
@@ -33,7 +32,9 @@ tf_kernel_library(
         "diag_op.cc",
         "dynamic_slice_ops.cc",
         "dynamic_stitch_op.cc",
+        "einsum_op.cc",
         "elu_op.cc",
+        "elu_op.h",
         "empty_op.cc",
         "extract_image_patches_op.cc",
         "fake_param_op.cc",
@@ -46,15 +47,18 @@ tf_kernel_library(
         "identity_op.cc",
         "image_ops.cc",
         "image_resize_ops.cc",
+        "in_topk_op.cc",
         "index_ops.cc",
         "l2loss_op.cc",
         "listdiff_op.cc",
         "lrn_ops.cc",
         "matmul_op.cc",
         "matrix_band_part_op.cc",
+        "matrix_inverse_op.cc",
         "matrix_set_diag_op.cc",
         "matrix_triangular_solve_op.cc",
         "mirror_pad_op.cc",
+        "next_after_op.cc",
         "no_op.cc",
         "one_hot_op.cc",
         "pack_op.cc",
@@ -64,15 +68,19 @@ tf_kernel_library(
         "qr_op.cc",
         "quantize_and_dequantize_op.cc",
         "random_ops.cc",
+        "random_ops_util.h",
         "reduce_window_op.cc",
         "reduction_ops.cc",
         "reduction_ops.h",
         "reduction_ops_common.cc",
         "relu_op.cc",
+        "relu_op.h",
+        "replica_id_op.cc",
         "reshape_op.cc",
         "retval_op.cc",
         "reverse_op.cc",
         "reverse_sequence_op.cc",
+        "roll_op.cc",
         "scan_ops.cc",
         "scatter_nd_op.cc",
         "segment_reduction_ops.cc",
@@ -89,6 +97,7 @@ tf_kernel_library(
         "sparse_to_dense_op.cc",
         "split_op.cc",
         "stack_ops.cc",
+        "stateful_random_ops.cc",
         "stateless_random_ops.cc",
         "strided_slice_op.cc",
         "tensor_array_ops.cc",
@@ -98,6 +107,7 @@ tf_kernel_library(
         "training_ops.cc",
         "transpose_op.cc",
         "unary_ops.cc",
+        "unary_ops_composition.cc",
         "unpack_op.cc",
         "variable_ops.cc",
         "xla_broadcast_helper_op.cc",
@@ -108,6 +118,7 @@ tf_kernel_library(
         "xla_reduce_op.cc",
         "xla_select_and_scatter_op.cc",
         "xla_self_adjoint_eig_op.cc",
+        "xla_svd_op.cc",
     ],
     hdrs = [
         "index_ops.h",
@@ -118,10 +129,12 @@ tf_kernel_library(
         ":case_op",
         ":conv_op_helpers",
         ":if_op",
+        ":tensor_list_utils",
         ":while_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/lib:broadcast",
+        "//tensorflow/compiler/tf2xla/lib:data_format",
         "//tensorflow/compiler/tf2xla/lib:random",
         "//tensorflow/compiler/tf2xla/lib:scatter",
         "//tensorflow/compiler/tf2xla/lib:util",
@@ -137,6 +150,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/compiler/xla/client/lib:comparators",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:loops",
         "//tensorflow/compiler/xla/client/lib:math",
@@ -146,7 +160,9 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:qr",
         "//tensorflow/compiler/xla/client/lib:quantize",
         "//tensorflow/compiler/xla/client/lib:self_adjoint_eig",
+        "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/compiler/xla/client/lib:sorting",
+        "//tensorflow/compiler/xla/client/lib:svd",
         "//tensorflow/core:bitwise_ops_op_lib",
         "//tensorflow/core:control_flow_ops_op_lib",
         "//tensorflow/core:data_flow_ops_op_lib",
@@ -167,22 +183,25 @@ tf_kernel_library(
         "//tensorflow/core:sparse_ops_op_lib",
         "//tensorflow/core:spectral_ops_op_lib",
         "//tensorflow/core:state_ops_op_lib",
+        "//tensorflow/core:stateful_random_ops_op_lib",
         "//tensorflow/core:stateless_random_ops_op_lib",
         "//tensorflow/core:training_ops_op_lib",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:list_kernels",
-        "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/kernels:pooling_ops",
         "//tensorflow/core/kernels:random_op",
         "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core/kernels:sendrecv_ops",
         "//tensorflow/core/kernels:sparse_to_dense_op",
         "//tensorflow/core/kernels:stack_ops",
+        "//tensorflow/core/kernels:stateful_random_ops",
         "//tensorflow/core/kernels:training_ops",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -227,9 +246,32 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_bounds_check",
         "//tensorflow/core/kernels:conv_ops",
-        "//tensorflow/core/kernels:ops_util",
         "@com_google_absl//absl/types:span",
     ],
+)
+
+cc_library(
+    name = "tensor_list_utils",
+    srcs = ["tensor_list_utils.cc"],
+    hdrs = ["tensor_list_utils.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "if_while_utils",
+    srcs = ["if_while_utils.cc"],
+    hdrs = ["if_while_utils.h"],
 )
 
 tf_kernel_library(
@@ -237,15 +279,17 @@ tf_kernel_library(
     srcs = ["while_op.cc"],
     hdrs = ["while_op.h"],
     deps = [
+        ":if_while_utils",
+        ":tensor_list_utils",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
     ],
@@ -256,6 +300,7 @@ tf_kernel_library(
     srcs = ["if_op.cc"],
     hdrs = ["if_op.h"],
     deps = [
+        ":if_while_utils",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -273,6 +318,7 @@ tf_kernel_library(
     srcs = ["case_op.cc"],
     hdrs = ["case_op.h"],
     deps = [
+        ":if_while_utils",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -298,53 +344,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:logging_ops_op_lib",
-    ],
-    alwayslink = 1,
-)
-
-# Kernels that only work on CPU, because they use XLA custom calls.
-# Only link this when using the CPU backend for XLA.
-tf_kernel_library(
-    name = "xla_cpu_only_ops",
-    srcs = ["index_ops_cpu.cc"],
-    deps = [
-        ":index_ops_kernel_argmax_float_1d",
-        ":index_ops_kernel_argmax_float_2d",
-        "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client/lib:arithmetic",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_bounds_check",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "index_ops_kernel_argmax_float_1d",
-    srcs = ["index_ops_kernel_argmax_float_1d.cc"],
-    copts = tf_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
-        "//tensorflow/core:framework_lite",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "index_ops_kernel_argmax_float_2d",
-    srcs = ["index_ops_kernel_argmax_float_2d.cc"],
-    copts = tf_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
-        "//tensorflow/core:framework_lite",
-        "//third_party/eigen3",
     ],
     alwayslink = 1,
 )

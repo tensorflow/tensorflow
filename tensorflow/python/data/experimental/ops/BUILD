@@ -1,8 +1,27 @@
-package(default_visibility = ["//tensorflow:internal"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
+
+py_library(
+    name = "batching",
+    srcs = ["batching.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:convert",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:structure",
+    ],
+)
 
 py_library(
     name = "cardinality",
@@ -10,7 +29,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:experimental_dataset_ops_gen",
-        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -22,120 +41,34 @@ py_library(
         ":scan_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-py_library(
-    name = "get_single_element",
-    srcs = ["get_single_element.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:dataset_ops_gen",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:sparse",
-    ],
-)
-
-py_library(
-    name = "iterator_ops",
-    srcs = [
-        "iterator_ops.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:basic_session_run_hooks",
-        "//tensorflow/python:checkpoint_management",
-        "//tensorflow/python:dataset_ops_gen",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:saver",
-        "//tensorflow/python:session_run_hook",
-        "//tensorflow/python/data/ops:iterator_ops",
-        "//tensorflow/python/data/ops:optional_ops",
-    ],
-)
-
-py_library(
-    name = "random_ops",
-    srcs = [
-        "random_ops.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:experimental_dataset_ops_gen",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:random_seed",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/util:structure",
-    ],
-)
-
-py_library(
-    name = "readers",
-    srcs = [
-        "readers.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":batching",
-        ":interleave_ops",
-        ":optimization",
-        ":parsing_ops",
-        ":shuffle_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dataset_ops_gen",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:experimental_dataset_ops_gen",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:io_ops",
-        "//tensorflow/python:lib",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:readers",
-        "//tensorflow/python/data/util:convert",
-        "//tensorflow/python/data/util:nest",
-        "//third_party/py/numpy",
     ],
 )
 
 py_library(
-    name = "shuffle_ops",
+    name = "distribute",
     srcs = [
-        "shuffle_ops.py",
+        "distribute.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:errors",
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:structure",
     ],
 )
 
 py_library(
-    name = "batching",
-    srcs = ["batching.py"],
+    name = "distribute_options",
+    srcs = ["distribute_options.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":get_single_element",
-        ":grouping",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:dataset_ops_gen",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:experimental_dataset_ops_gen",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:tensor_util",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/util:convert",
-        "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:sparse",
-        "//tensorflow/python/data/util:structure",
-        "//third_party/py/numpy",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/util:options",
     ],
 )
 
@@ -150,23 +83,23 @@ py_library(
 )
 
 py_library(
-    name = "filter_for_shard_ops",
-    srcs = ["filter_for_shard_ops.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:ops",
-        "//tensorflow/python:tensor_util",
-    ],
-)
-
-py_library(
     name = "error_ops",
     srcs = ["error_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:sparse",
+    ],
+)
+
+py_library(
+    name = "get_single_element",
+    srcs = ["get_single_element.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
@@ -207,6 +140,24 @@ py_library(
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
+    ],
+)
+
+py_library(
+    name = "iterator_ops",
+    srcs = [
+        "iterator_ops.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:basic_session_run_hooks",
+        "//tensorflow/python:checkpoint_management",
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:saver",
+        "//tensorflow/python:session_run_hook",
+        "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/data/ops:optional_ops",
     ],
 )
 
@@ -274,6 +225,69 @@ py_library(
 )
 
 py_library(
+    name = "prefetching_ops",
+    srcs = ["prefetching_ops.py"],
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
+    ],
+)
+
+py_library(
+    name = "random_ops",
+    srcs = [
+        "random_ops.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:random_seed",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:structure",
+    ],
+)
+
+py_library(
+    name = "readers",
+    srcs = [
+        "readers.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":batching",
+        ":interleave_ops",
+        ":optimization",
+        ":parsing_ops",
+        ":shuffle_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/data/util:convert",
+        "//tensorflow/python/data/util:nest",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
     name = "resampling",
     srcs = ["resampling.py"],
     srcs_version = "PY2AND3",
@@ -301,10 +315,22 @@ py_library(
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:function",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
         "//tensorflow/python/data/util:structure",
+    ],
+)
+
+py_library(
+    name = "shuffle_ops",
+    srcs = [
+        "shuffle_ops.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 
@@ -315,6 +341,19 @@ py_library(
     deps = [
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_library(
+    name = "snapshot",
+    srcs = [
+        "snapshot.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:structure",
     ],
 )
 
@@ -418,44 +457,16 @@ py_library(
 )
 
 py_library(
-    name = "indexed_dataset_ops",
-    srcs = ["indexed_dataset_ops.py"],
-    deps = [
-        "//tensorflow/python:experimental_dataset_ops_gen",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:sparse",
-    ],
-)
-
-py_library(
-    name = "prefetching_ops",
-    srcs = ["prefetching_ops.py"],
-    deps = [
-        "//tensorflow/python:experimental_dataset_ops_gen",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:tensor_spec",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:sparse",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:function",
-    ],
-)
-
-py_library(
     name = "dataset_ops",
     deps = [
         ":batching",
         ":cardinality",
         ":counter",
+        ":distribute",
         ":enumerate_ops",
         ":error_ops",
-        ":filter_for_shard_ops",
         ":get_single_element",
         ":grouping",
-        ":indexed_dataset_ops",
         ":interleave_ops",
         ":map_defun",
         ":matching_files",
@@ -466,6 +477,7 @@ py_library(
         ":scan_ops",
         ":shuffle_ops",
         ":sleep",
+        ":snapshot",
         ":stats_ops",
         ":take_while_ops",
         ":threadpool",

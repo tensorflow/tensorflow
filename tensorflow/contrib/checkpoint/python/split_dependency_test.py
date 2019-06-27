@@ -54,7 +54,8 @@ class SaveTensorSlicesAsDeps(base.Trackable):
         fill_save_buffer_fn=_split_variable_closure(
             self.combined),
         consume_restore_buffer_fn=_combine_variable_closure(
-            self.combined))
+            self.combined),
+        device=self.combined.device)
     for name, dep in split_dependencies.items():
       self._track_trackable(dep, name=name)
 

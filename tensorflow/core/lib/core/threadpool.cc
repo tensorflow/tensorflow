@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 
 #define EIGEN_USE_THREADS
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/platform/context.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace thread {
@@ -85,27 +85,6 @@ struct EigenEnvironment {
   }
 };
 
-struct ThreadPool::Impl : Eigen::ThreadPoolTempl<EigenEnvironment> {
-  Impl(Env* env, const ThreadOptions& thread_options, const string& name,
-       int num_threads, bool low_latency_hint, Eigen::Allocator* allocator)
-      : Eigen::ThreadPoolTempl<EigenEnvironment>(
-            num_threads, low_latency_hint,
-            EigenEnvironment(env, thread_options, name)),
-        allocator_(allocator) {}
-
-  void ParallelFor(int64 total, int64 cost_per_unit,
-                   std::function<void(int64, int64)> fn) {
-    CHECK_GE(total, 0);
-    CHECK_EQ(total, (int64)(Eigen::Index)total);
-    Eigen::ThreadPoolDevice device(this, this->NumThreads(), allocator_);
-    device.parallelFor(
-        total, Eigen::TensorOpCost(0, 0, cost_per_unit),
-        [&fn](Eigen::Index first, Eigen::Index last) { fn(first, last); });
-  }
-
-  Eigen::Allocator* allocator_;
-};
-
 ThreadPool::ThreadPool(Env* env, const string& name, int num_threads)
     : ThreadPool(env, ThreadOptions(), name, num_threads, true, nullptr) {}
 
@@ -117,15 +96,25 @@ ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
                        const string& name, int num_threads,
                        bool low_latency_hint, Eigen::Allocator* allocator) {
   CHECK_GE(num_threads, 1);
-  impl_.reset(new ThreadPool::Impl(env, thread_options, "tf_" + name,
-                                   num_threads, low_latency_hint, allocator));
+  eigen_threadpool_.reset(new Eigen::ThreadPoolTempl<EigenEnvironment>(
+      num_threads, low_latency_hint,
+      EigenEnvironment(env, thread_options, "tf_" + name)));
+  underlying_threadpool_ = eigen_threadpool_.get();
+  threadpool_device_.reset(new Eigen::ThreadPoolDevice(underlying_threadpool_,
+                                                       num_threads, allocator));
+}
+
+ThreadPool::ThreadPool(thread::ThreadPoolInterface* user_threadpool) {
+  underlying_threadpool_ = user_threadpool;
+  threadpool_device_.reset(new Eigen::ThreadPoolDevice(
+      underlying_threadpool_, underlying_threadpool_->NumThreads(), nullptr));
 }
 
 ThreadPool::~ThreadPool() {}
 
 void ThreadPool::Schedule(std::function<void()> fn) {
   CHECK(fn != nullptr);
-  impl_->Schedule(std::move(fn));
+  underlying_threadpool_->Schedule(std::move(fn));
 }
 
 int ThreadPool::NumShardsUsedByTransformRangeConcurrently(
@@ -178,35 +167,58 @@ void ThreadPool::TransformRangeConcurrently(
 
 void ThreadPool::ParallelFor(int64 total, int64 cost_per_unit,
                              std::function<void(int64, int64)> fn) {
-  impl_->ParallelFor(total, cost_per_unit, std::move(fn));
+  CHECK_GE(total, 0);
+  CHECK_EQ(total, (int64)(Eigen::Index)total);
+  threadpool_device_->parallelFor(
+      total, Eigen::TensorOpCost(0, 0, cost_per_unit),
+      [&fn](Eigen::Index first, Eigen::Index last) { fn(first, last); });
 }
 
 void ThreadPool::ParallelForWithWorkerId(
     int64 total, int64 cost_per_unit,
     const std::function<void(int64, int64, int)>& fn) {
-  impl_->ParallelFor(total, cost_per_unit,
-                     [this, &fn](int64 start, int64 limit) {
-                       // ParallelFor may use the current thread to do some
-                       // work synchronously. When calling CurrentThreadId()
-                       // from outside of the thread pool, we get -1, so we can
-                       // shift every id up by 1.
-                       int id = CurrentThreadId() + 1;
-                       fn(start, limit, id);
-                     });
+  CHECK_GE(total, 0);
+  CHECK_EQ(total, (int64)(Eigen::Index)total);
+
+  threadpool_device_->parallelFor(total,
+                                  Eigen::TensorOpCost(0, 0, cost_per_unit),
+                                  [this, &fn](int64 start, int64 limit) {
+                                    // ParallelFor may use the current thread to
+                                    // do some work synchronously. When calling
+                                    // CurrentThreadId() from outside of the
+                                    // thread pool, we get -1, so we can shift
+                                    // every id up by 1.
+                                    int id = CurrentThreadId() + 1;
+                                    fn(start, limit, id);
+                                  });
 }
 
-int ThreadPool::NumThreads() const { return impl_->NumThreads(); }
+int ThreadPool::NumThreads() const {
+  return underlying_threadpool_->NumThreads();
+}
 
-int ThreadPool::CurrentThreadId() const { return impl_->CurrentThreadId(); }
+int ThreadPool::CurrentThreadId() const {
+  return underlying_threadpool_->CurrentThreadId();
+}
 
 void ThreadPool::ScheduleWithHint(std::function<void()> fn, int start,
                                   int limit) {
-  impl_->ScheduleWithHint(std::move(fn), start, limit);
+  underlying_threadpool_->ScheduleWithHint(std::move(fn), start, limit);
 }
 
 void ThreadPool::SetStealPartitions(
     const std::vector<std::pair<unsigned, unsigned>>& partitions) {
-  impl_->SetStealPartitions(partitions);
+  // ThreadPool::SetStealPartitions is only called in the constructor of
+  // RunHandlerPool::Impl, which currently instantiates ThreadPool using a
+  // constructor that does not take user_threadpool. Thus we assume
+  // eigen_threadpool_ is not null here.
+  DCHECK(eigen_threadpool_ != nullptr);
+  eigen_threadpool_->SetStealPartitions(partitions);
+}
+
+Eigen::ThreadPoolInterface* ThreadPool::AsEigenThreadPool() const {
+  DCHECK(underlying_threadpool_ != nullptr);
+  return underlying_threadpool_;
 }
 }  // namespace thread
 }  // namespace tensorflow

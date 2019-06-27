@@ -136,7 +136,7 @@ Literal ConvertType(LiteralSlice literal) {
       return LiteralUtil::CreateR0<bool>(false);
     case TUPLE:
       LOG(FATAL) << "tuple element type cannot take on value of 0";
-    case OPAQUE:
+    case OPAQUE_TYPE:
       LOG(FATAL) << "opaque element type cannot take on value of 0";
     default:
       LOG(FATAL) << "Unhandled primitive type " << primitive_type;
@@ -176,7 +176,7 @@ Literal ConvertType(LiteralSlice literal) {
       LOG(FATAL) << "u16/s16 literals not yet implemented";
     case TUPLE:
       LOG(FATAL) << "tuple element type cannot take on value of 1";
-    case OPAQUE:
+    case OPAQUE_TYPE:
       LOG(FATAL) << "opaque element type cannot take on value of 1";
     default:
       LOG(FATAL) << "Unhandled primitive type " << primitive_type;
@@ -220,7 +220,7 @@ Literal ConvertType(LiteralSlice literal) {
           static_cast<bfloat16>(-std::numeric_limits<float>::infinity()));
     case TUPLE:
       LOG(FATAL) << "tuple element type has no minimum value";
-    case OPAQUE:
+    case OPAQUE_TYPE:
       LOG(FATAL) << "opaque element type has no minimum value";
     default:
       LOG(FATAL) << "Unhandled primitive type " << primitive_type;
@@ -260,10 +260,39 @@ Literal ConvertType(LiteralSlice literal) {
           static_cast<bfloat16>(std::numeric_limits<float>::infinity()));
     case TUPLE:
       LOG(FATAL) << "tuple element type has no maximum value";
-    case OPAQUE:
+    case OPAQUE_TYPE:
       LOG(FATAL) << "opaque element type has no maximum value";
     default:
       LOG(FATAL) << "Unhandled primitive type " << primitive_type;
+  }
+}
+
+/* static */ StatusOr<Literal> LiteralUtil::NanValue(
+    PrimitiveType primitive_type) {
+  switch (primitive_type) {
+    case F16:
+      return LiteralUtil::CreateR0<half>(
+          static_cast<half>(std::numeric_limits<float>::quiet_NaN()));
+    case BF16:
+      return LiteralUtil::CreateR0<bfloat16>(
+          static_cast<bfloat16>(std::numeric_limits<float>::quiet_NaN()));
+    case F32:
+      return LiteralUtil::CreateR0<float>(
+          std::numeric_limits<float>::quiet_NaN());
+    case F64:
+      return LiteralUtil::CreateR0<double>(
+          std::numeric_limits<double>::quiet_NaN());
+    case C64: {
+      float nan = std::numeric_limits<float>::quiet_NaN();
+      return LiteralUtil::CreateR0<complex64>(complex64(nan, nan));
+    }
+    case C128: {
+      double nan = std::numeric_limits<double>::quiet_NaN();
+      return LiteralUtil::CreateR0<complex128>(complex128(nan, nan));
+    }
+    default:
+      return InvalidArgument("Invalid type for NanValue: %s",
+                             PrimitiveType_Name(primitive_type));
   }
 }
 

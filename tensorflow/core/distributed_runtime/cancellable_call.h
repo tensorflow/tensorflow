@@ -32,7 +32,7 @@ class CancellableCall {
       : cancel_mgr_(cancel_mgr),
         remote_worker_(remote_worker),
         wc_(wc),
-        wi_(wc_->CreateWorker(remote_worker_)) {}
+        wi_(wc_->GetOrCreateWorker(remote_worker_)) {}
 
   virtual ~CancellableCall() { wc_->ReleaseWorker(remote_worker_, wi_); }
 
@@ -40,8 +40,8 @@ class CancellableCall {
 
   void Start(const StatusCallback& done) {
     CancellationToken token = cancel_mgr_->get_cancellation_token();
-    const bool not_yet_cancelled = cancel_mgr_->RegisterCallback(
-        token, [this, token]() { opts_.StartCancel(); });
+    const bool not_yet_cancelled =
+        cancel_mgr_->RegisterCallback(token, [this]() { opts_.StartCancel(); });
     if (not_yet_cancelled) {
       IssueCall([this, token, done](const Status& s) {
         cancel_mgr_->DeregisterCallback(token);

@@ -32,16 +32,62 @@ OUTPUT_FILE=tf_env.txt
 python_bin_path=$(which python || which python3 || die "Cannot find Python binary")
 
 {
-  echo
-  echo "== cat /etc/issue ==============================================="
-  uname -a
-  uname=`uname -s`
-  if [ "$(uname)" == "Darwin" ]; then
-    echo Mac OS X `sw_vers -productVersion`
-  elif [ "$(uname)" == "Linux" ]; then
-    cat /etc/*release | grep VERSION
-  fi
-  
+echo
+echo '== check python ==================================================='
+} >> ${OUTPUT_FILE}
+
+cat <<EOF > /tmp/check_python.py
+import platform
+
+print("""python version: %s
+python branch: %s
+python build version: %s
+python compiler version: %s
+python implementation: %s
+""" % (
+platform.python_version(),
+platform.python_branch(),
+platform.python_build(),
+platform.python_compiler(),
+platform.python_implementation(),
+))
+EOF
+${python_bin_path} /tmp/check_python.py 2>&1  >> ${OUTPUT_FILE}
+
+{
+echo
+echo '== check os platform ==============================================='
+} >> ${OUTPUT_FILE}
+
+cat <<EOF > /tmp/check_os.py
+import platform
+
+print("""os: %s
+os kernel version: %s
+os release version: %s
+os platform: %s
+linux distribution: %s
+linux os distribution: %s
+mac version: %s
+uname: %s
+architecture: %s
+machine: %s
+""" % (
+platform.system(),
+platform.version(),
+platform.release(),
+platform.platform(),
+platform.linux_distribution(),
+platform.dist(),
+platform.mac_ver(),
+platform.uname(),
+platform.architecture(),
+platform.machine(),
+))
+EOF
+${python_bin_path} /tmp/check_os.py 2>&1  >> ${OUTPUT_FILE}
+
+{
   echo
   echo '== are we in docker ============================================='
   num=`cat /proc/1/cgroup | grep docker | wc -l`;
@@ -54,10 +100,6 @@ python_bin_path=$(which python || which python3 || die "Cannot find Python binar
   echo
   echo '== compiler ====================================================='
   c++ --version 2>&1
-  
-  echo
-  echo '== uname -a ====================================================='
-  uname -a
   
   echo
   echo '== check pips ==================================================='
@@ -74,15 +116,15 @@ python_bin_path=$(which python || which python3 || die "Cannot find Python binar
 
 cat <<EOF > /tmp/check_tf.py
 import tensorflow as tf;
-print("tf.VERSION = %s" % tf.VERSION)
-print("tf.GIT_VERSION = %s" % tf.GIT_VERSION)
-print("tf.COMPILER_VERSION = %s" % tf.GIT_VERSION)
+print("tf.version.VERSION = %s" % tf.version.VERSION)
+print("tf.version.GIT_VERSION = %s" % tf.version.GIT_VERSION)
+print("tf.version.COMPILER_VERSION = %s" % tf.version.COMPILER_VERSION)
 with tf.Session() as sess:
   print("Sanity check: %r" % sess.run(tf.constant([1,2,3])[:1]))
 EOF
 ${python_bin_path} /tmp/check_tf.py 2>&1  >> ${OUTPUT_FILE}
 
-DEBUG_LD=libs ${python_bin_path} -c "import tensorflow"  2>>${OUTPUT_FILE} > /tmp/loadedlibs
+LD_DEBUG=libs ${python_bin_path} -c "import tensorflow"  2>>${OUTPUT_FILE} > /tmp/loadedlibs
 
 {
   grep libcudnn.so /tmp/loadedlibs
@@ -110,6 +152,21 @@ DEBUG_LD=libs ${python_bin_path} -c "import tensorflow"  2>>${OUTPUT_FILE} > /tm
 
 find /usr/local -type f -name 'libcudart*'  2>/dev/null | grep cuda |  grep -v "\\.cache" >> ${OUTPUT_FILE}
 find /usr/local -type f -name 'libudnn*'  2>/dev/null | grep cuda |  grep -v "\\.cache" >> ${OUTPUT_FILE}
+
+{
+  echo
+  echo '== tensorflow installed from info =================='
+  pip show tensorflow
+
+  echo
+  echo '== python version  =============================================='
+  echo '(major, minor, micro, releaselevel, serial)'
+  python -c 'import sys; print(sys.version_info[:])'
+  
+  echo
+  echo '== bazel version  ==============================================='
+  bazel version
+} >> ${OUTPUT_FILE}
 
 # Remove any words with google.
 mv $OUTPUT_FILE old-$OUTPUT_FILE

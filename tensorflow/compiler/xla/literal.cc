@@ -293,8 +293,9 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
     return InvalidArgument("LiteralProto has no shape");
   }
   Shape shape(proto.shape());
-  if (ShapeUtil::HasPrimitiveType(shape, OPAQUE)) {
-    return InvalidArgument("Literal shape cannot include OPAQUE sub-shape");
+  if (ShapeUtil::HasPrimitiveType(shape, OPAQUE_TYPE)) {
+    return InvalidArgument(
+        "Literal shape cannot include OPAQUE_TYPE sub-shape");
   }
   if (!LayoutUtil::HasLayout(shape)) {
     return InvalidArgument("LiteralProto has no layout");
@@ -912,6 +913,24 @@ StatusOr<int64> LiteralBase::GetIntegralAsS64(
   }
 }
 
+StatusOr<double> LiteralBase::GetAsDouble(
+    absl::Span<const int64> multi_index) const {
+  CHECK(LayoutUtil::IsDenseArray(shape()));
+  switch (shape().element_type()) {
+    case F16:
+      return static_cast<double>(Get<half>(multi_index));
+    case F32:
+      return static_cast<double>(Get<float>(multi_index));
+    case F64:
+      return Get<double>(multi_index);
+    case BF16:
+      return static_cast<double>(Get<bfloat16>(multi_index));
+    default:
+      return FailedPrecondition("Array element type is not floating: %s",
+                                PrimitiveType_Name(shape().element_type()));
+  }
+}
+
 size_t LiteralBase::Hash() const {
   using tensorflow::Hash64;
   using tensorflow::Hash64Combine;
@@ -957,6 +976,29 @@ Status MutableLiteralBase::SetIntegralAsS64(absl::Span<const int64> multi_index,
       break;
     default:
       return FailedPrecondition("Array element type is not integral: %s",
+                                PrimitiveType_Name(shape().element_type()));
+  }
+  return Status::OK();
+}
+
+Status MutableLiteralBase::SetFromDouble(absl::Span<const int64> multi_index,
+                                         double value) {
+  CHECK(LayoutUtil::IsDenseArray(shape()));
+  switch (shape().element_type()) {
+    case F16:
+      Set<half>(multi_index, Eigen::half(value));
+      break;
+    case F32:
+      Set<float>(multi_index, value);
+      break;
+    case F64:
+      Set<double>(multi_index, value);
+      break;
+    case BF16:
+      Set<bfloat16>(multi_index, static_cast<bfloat16>(value));
+      break;
+    default:
+      return FailedPrecondition("Array element type is not floating: %s",
                                 PrimitiveType_Name(shape().element_type()));
   }
   return Status::OK();
@@ -2173,18 +2215,6 @@ MutableBorrowingLiteral& MutableBorrowingLiteral::operator=(
   CopyPieceSubtree(*shape_, &literal.root_piece(), root_piece_);
 
   return *this;
-}
-
-MutableBorrowingLiteral::MutableBorrowingLiteral(
-    const MutableLiteralBase& literal)
-    : MutableLiteralBase() {
-  shape_ = absl::make_unique<Shape>(literal.shape());
-  CHECK(LayoutUtil::HasLayout(*shape_));
-
-  root_piece_ = new Piece();
-  root_piece_->set_subshape(shape_.get());
-
-  CopyPieceSubtree(*shape_, &literal.root_piece(), root_piece_);
 }
 
 MutableBorrowingLiteral::MutableBorrowingLiteral(MutableLiteralBase* literal)

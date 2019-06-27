@@ -20,14 +20,16 @@ limitations under the License.
 
 #if TENSORFLOW_USE_ROCM
 
+#define __HIP_DISABLE_CPP_FUNCTIONS__
+
 #include "rocm/include/hip/hip_complex.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "rocm/include/hiprand/hiprand.h"
 
 #else  // CUDA
 
-#include "cuda/include/cuComplex.h"
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuComplex.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 
 // cannot include curand.h here
 //   because it triggers the #error in cuda/cuda_gpu_executor.cc

@@ -53,8 +53,8 @@ class AssertNextDatasetTest(test_base.DatasetTestBase):
     dataset = dataset_ops.Dataset.from_tensors(0).apply(
         optimization.assert_next(["Map", "Whoops"])).map(lambda x: x)
     options = dataset_ops.Options()
-    options.experimental_autotune = False
     options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.autotune = False
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(
         dataset,

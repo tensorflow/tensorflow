@@ -270,6 +270,48 @@ TEST(GraphUtilsTest, EnsureNodeNamesUnique) {
   EXPECT_NE(const_0->name(), const_2->name());
 }
 
+TEST(GraphUtilsTest, TestGetFetchNode) {
+  GrapplerItem item;
+  MutableGraphView graph(&item.graph);
+
+  NodeDef* node1 = AddNode("node1", "Identity", {}, {}, &graph);
+  NodeDef* node2 = AddNode("node2", "Identity", {node1->name()}, {}, &graph);
+  NodeDef* node3 = AddNode("node3", "Identity", {node2->name()}, {}, &graph);
+  item.fetch.push_back(node3->name());
+
+  NodeDef* sink_node;
+  TF_EXPECT_OK(GetFetchNode(graph, item, &sink_node));
+  EXPECT_EQ(sink_node->name(), node3->name());
+}
+
+TEST(GraphUtilsTest, TestFindSinkNodeMultipleFetches) {
+  GrapplerItem item;
+  MutableGraphView graph(&item.graph);
+
+  NodeDef* node1 = AddNode("node1", "Identity", {}, {}, &graph);
+  NodeDef* node2 = AddNode("node2", "Identity", {node1->name()}, {}, &graph);
+  NodeDef* node3 = AddNode("node3", "Identity", {node2->name()}, {}, &graph);
+  item.fetch.push_back(node2->name());
+  item.fetch.push_back(node3->name());
+
+  NodeDef* sink_node;
+  Status s = GetFetchNode(graph, item, &sink_node);
+  EXPECT_FALSE(s.ok());
+}
+
+TEST(GraphUtilsTest, TestFindSinkNodeNoFetches) {
+  GrapplerItem item;
+  MutableGraphView graph(&item.graph);
+
+  NodeDef* node1 = AddNode("node1", "Identity", {}, {}, &graph);
+  NodeDef* node2 = AddNode("node2", "Identity", {node1->name()}, {}, &graph);
+  AddNode("node3", "Identity", {node2->name()}, {}, &graph);
+
+  NodeDef* sink_node;
+  Status s = GetFetchNode(graph, item, &sink_node);
+  EXPECT_FALSE(s.ok());
+}
+
 }  // namespace
 }  // namespace graph_utils
 }  // namespace grappler

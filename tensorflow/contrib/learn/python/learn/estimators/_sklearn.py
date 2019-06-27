@@ -50,7 +50,7 @@ class _BaseEstimator(object):
       params : mapping of string to any
       Parameter names mapped to their values.
     """
-    out = dict()
+    out = {}
     param_names = [name for name in self.__dict__ if not name.startswith('_')]
     for key in param_names:
       value = getattr(self, key, None)
