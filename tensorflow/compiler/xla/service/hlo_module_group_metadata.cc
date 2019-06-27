@@ -83,7 +83,7 @@ Status HloModuleGroupMetadata::Build() {
       if (IsChannelInstruction(hlo)) {
         peers.push_back(PeerComputation(hlo));
       } else if (hlo->IsCrossModuleAllReduce()) {
-        for (HloInstruction* instr : GetAllReduceGroup(*hlo->all_reduce_id())) {
+        for (HloInstruction* instr : GetAllReduceGroup(*hlo->channel_id())) {
           if (instr == hlo) {
             continue;
           }
@@ -235,7 +235,7 @@ bool HloModuleGroupMetadata::HasChannel(int64 channel_id) const {
 HloComputation* HloModuleGroupMetadata::PeerComputation(
     const HloInstruction* instruction) const {
   CHECK(IsChannelInstruction(instruction));
-  const Channel& channel = GetChannel(instruction->channel_id());
+  const Channel& channel = GetChannel(*instruction->channel_id());
   switch (instruction->opcode()) {
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
@@ -249,8 +249,8 @@ HloComputation* HloModuleGroupMetadata::PeerComputation(
 }
 
 const std::vector<HloInstruction*>& HloModuleGroupMetadata::GetAllReduceGroup(
-    int64 all_reduce_id) const {
-  auto it = all_reduce_map_.find(all_reduce_id);
+    int64 channel_id) const {
+  auto it = all_reduce_map_.find(channel_id);
   CHECK(it != all_reduce_map_.end());
   return it->second;
 }
@@ -330,14 +330,14 @@ Status HloModuleGroupMetadata::RecordInstructions() {
           TrackedInstruction(hlo, ComputationKind::kCallFunction);
     }
 
-    // Group cross module all-reduce instructions by the all_reduce id.
+    // Group cross module all-reduce instructions by the channel id.
     if (hlo->IsCrossModuleAllReduce()) {
-      TF_RET_CHECK(channel_id_map_.find(*hlo->all_reduce_id()) ==
+      TF_RET_CHECK(channel_id_map_.find(*hlo->channel_id()) ==
                    channel_id_map_.end())
-          << "all_reduce_id " << *hlo->all_reduce_id()
+          << "channel_id " << *hlo->channel_id()
           << " is already used by a send/recv instruction";
-      all_reduce_map_[*hlo->all_reduce_id()].push_back(hlo);
-      max_channel_id_ = std::max(max_channel_id_, *hlo->all_reduce_id());
+      all_reduce_map_[*hlo->channel_id()].push_back(hlo);
+      max_channel_id_ = std::max(max_channel_id_, *hlo->channel_id());
       return Status::OK();
     }
 
@@ -345,41 +345,41 @@ Status HloModuleGroupMetadata::RecordInstructions() {
       return Status::OK();
     }
 
-    TF_RET_CHECK(all_reduce_map_.find(hlo->channel_id()) ==
+    TF_RET_CHECK(all_reduce_map_.find(*hlo->channel_id()) ==
                  all_reduce_map_.end())
-        << "channel id " << hlo->channel_id()
+        << "channel id " << *hlo->channel_id()
         << " is already used by an all-reduce instruction";
 
     // Add a new channel if needed.
-    if (channel_id_map_.find(hlo->channel_id()) == channel_id_map_.end()) {
+    if (channel_id_map_.find(*hlo->channel_id()) == channel_id_map_.end()) {
       channels_.emplace_back();
-      channels_.back().id = hlo->channel_id();
-      channel_id_map_[hlo->channel_id()] = channels_.size() - 1;
-      max_channel_id_ = std::max(max_channel_id_, hlo->channel_id());
+      channels_.back().id = *hlo->channel_id();
+      channel_id_map_[*hlo->channel_id()] = channels_.size() - 1;
+      max_channel_id_ = std::max(max_channel_id_, *hlo->channel_id());
     }
-    Channel& channel = channels_[channel_id_map_[hlo->channel_id()]];
+    Channel& channel = channels_[channel_id_map_[*hlo->channel_id()]];
 
     if (hlo->opcode() == HloOpcode::kSend) {
       TF_RET_CHECK(channel.send == nullptr)
-          << "channel id " << hlo->channel_id()
+          << "channel id " << *hlo->channel_id()
           << " is used by multiple send instructions";
       channel.send = hlo;
     }
     if (hlo->opcode() == HloOpcode::kRecv) {
       TF_RET_CHECK(channel.recv == nullptr)
-          << "channel id " << hlo->channel_id()
+          << "channel id " << *hlo->channel_id()
           << " is used by multiple recv instructions";
       channel.recv = hlo;
     }
     if (hlo->opcode() == HloOpcode::kSendDone) {
       TF_RET_CHECK(channel.send_done == nullptr)
-          << "channel id " << hlo->channel_id()
+          << "channel id " << *hlo->channel_id()
           << " is used by multiple send-done instructions";
       channel.send_done = hlo;
     }
     if (hlo->opcode() == HloOpcode::kRecvDone) {
       TF_RET_CHECK(channel.recv_done == nullptr)
-          << "channel id " << hlo->channel_id()
+          << "channel id " << *hlo->channel_id()
           << " is used by multiple recv-done instructions";
       channel.recv_done = hlo;
     }

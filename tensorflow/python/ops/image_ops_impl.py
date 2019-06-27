@@ -1209,7 +1209,7 @@ def resize_images_v2(images,
   `tf.image.resize_with_pad`.
 
   When 'antialias' is true, the sampling filter will anti-alias the input image
-  as well as interpolate.   When downsampling an image with [anti-aliasing](
+  as well as interpolate.  When downsampling an image with [anti-aliasing](
   https://en.wikipedia.org/wiki/Spatial_anti-aliasing) the sampling filter
   kernel is scaled in order to properly anti-alias the input image signal.
   'antialias' has no effect when upsampling an image.

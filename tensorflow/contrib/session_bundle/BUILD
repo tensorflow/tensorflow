@@ -11,7 +11,7 @@ load(
     "tf_cc_test",
 )
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
-# Placeholder for Google-internal load statements.
+# Placeholder: load("//tensorflow:tensorflow.bzl", "tf_portable_proto_lib")
 
 package(
     default_visibility = ["//visibility:public"],

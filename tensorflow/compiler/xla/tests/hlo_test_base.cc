@@ -212,9 +212,10 @@ Literal HloTestBase::ExecuteAndTransfer(std::unique_ptr<HloModule> module,
 
 StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
     std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
-    int64 num_replicas, bool use_threads) {
+    int64 num_replicas, bool use_threads, bool run_hlo_passes) {
   HloRunner::ReplicatedExecuteOptions options;
   options.num_replicas = num_replicas;
+  options.run_hlo_passes = run_hlo_passes;
   options.use_threads = use_threads;
   for (auto argument : arguments) {
     options.arguments.push_back(argument);

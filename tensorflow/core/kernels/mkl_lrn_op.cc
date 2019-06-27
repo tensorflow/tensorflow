@@ -671,17 +671,19 @@ class MklLRNGradOp : public OpKernel {
   float beta_;
 };
 
-#define REGISTER_MKL_LRN_CPU(T)                                     \
-  REGISTER_KERNEL_BUILDER(Name("_MklLRN")                           \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklLRNOp<T>);                             \
-  REGISTER_KERNEL_BUILDER(Name("_MklLRNGrad")                       \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklLRNGradOp<T>);
+#define REGISTER_MKL_LRN_CPU(T)                                \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklLRN")                                          \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklLRNOp<T>);                                            \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklLRNGrad")                                      \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklLRNGradOp<T>);
 
 TF_CALL_float(REGISTER_MKL_LRN_CPU);
 

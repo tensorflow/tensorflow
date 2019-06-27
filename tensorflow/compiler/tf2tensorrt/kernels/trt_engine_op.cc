@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -49,6 +50,7 @@ static Logger logger;
 using absl::StrAppend;
 using absl::StrCat;
 using ::nvinfer1::IRuntime;
+using ::stream_executor::port::StatusOr;
 
 // A helper class to call done() when destructed for asynchronous execution.
 // Helps simultaneous execution of native and TRT engines.
@@ -80,6 +82,10 @@ class TRTEngineOp : public AsyncOpKernel {
                     AsyncOpKernel::DoneCallback done) override;
 
  private:
+  using CacheType =
+      LRUCache<std::vector<TensorShape>, std::unique_ptr<EngineContext>,
+               VectorTensorShapeHasher>;
+
   // Execute calibration
   void ExecuteCalibration(OpKernelContext* ctx, AsyncHelper* helper);
 
@@ -98,12 +104,16 @@ class TRTEngineOp : public AsyncOpKernel {
                                       TRTCalibrationResource** cr);
 
   // Get engine for the input shape
-  EngineContext* GetEngine(const std::vector<TensorShape>& input_shapes,
-                           OpKernelContext* ctx);
+  StatusOr<EngineContext*> GetEngine(
+      const std::vector<TensorShape>& input_shapes, OpKernelContext* ctx);
+
+  // Verify that the input shapes are consistent and can be handled by this op.
+  Status VerifyInputShapes(const std::vector<TensorShape>& shapes);
 
   // Return engine batch in cached_engne_batch_sizes_ which is closest to input
   // batch.
-  bool GetCompatibleCachedEngine(
+  Status GetEngineInputShapes(
+      const CacheType& cache,
       const std::vector<TensorShape>& actual_input_shapes,
       std::vector<TensorShape>* engine_input_shapes);
 
@@ -130,9 +140,6 @@ class TRTEngineOp : public AsyncOpKernel {
 
   // Whether to calibrate INT8 engine.
   bool calibration_mode_;
-
-  // Batches of the cached engines
-  std::vector<int> cached_engine_batches_;
 
   // Maximum number of cached engines
   int max_cached_engines_;
@@ -227,16 +234,6 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
   native_func_ = kInvalidHandle;
   OP_REQUIRES_OK(context, context->GetAttr("max_cached_engines_count",
                                            &max_cached_engines_));
-  OP_REQUIRES_OK(context, context->GetAttr("cached_engine_batches",
-                                           &cached_engine_batches_));
-  std::sort(cached_engine_batches_.begin(), cached_engine_batches_.end());
-  if (VLOG_IS_ON(1)) {
-    string s("Engine Batches= ");
-    for (auto i : cached_engine_batches_) {
-      StrAppend(&s, i, " ");
-    }
-    VLOG(1) << s;
-  }
 }
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
@@ -327,34 +324,74 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   ExecuteNativeSegment(ctx, helper);
 }
 
-bool TRTEngineOp::GetCompatibleCachedEngine(
-    const std::vector<TensorShape>& actual_input_shapes,
+Status TRTEngineOp::VerifyInputShapes(const std::vector<TensorShape>& shapes) {
+  if (shapes.empty()) {
+    return errors::InvalidArgument("Input shapes are empty, for ", name());
+  }
+  if (shapes[0].dims() < 1) {
+    return errors::InvalidArgument("Input shapes contain scalar, for ", name(),
+                                   ": ",
+                                   TensorShapeUtils::ShapeListString(shapes));
+  }
+
+  const int batch_size = shapes[0].dim_size(0);
+  for (const TensorShape& shape : shapes) {
+    if (shape.dims() < 1 || batch_size != shape.dim_size(0)) {
+      return errors::InvalidArgument(
+          "Input shapes are inconsistent on the batch dimension, for ", name(),
+          ": ", TensorShapeUtils::ShapeListString(shapes));
+    }
+  }
+  return Status::OK();
+}
+
+Status TRTEngineOp::GetEngineInputShapes(
+    const CacheType& cache, const std::vector<TensorShape>& actual_input_shapes,
     std::vector<TensorShape>* engine_input_shapes) {
-  const int batch_size = actual_input_shapes[0].dim_size(0);
-  int smallest_batch_size = -1;
-  // Output shape will always be the same as the input but we will overwrite the
-  // batch size.
+  auto match_shape = [](const TensorShape& actual_shape,
+                        const TensorShape& cached_shape) {
+    // Match the rank.
+    if (actual_shape.dims() != cached_shape.dims()) return false;
+    // Match the batch size.
+    if (actual_shape.dim_size(0) > cached_shape.dim_size(0)) return false;
+    // Match remaining dimensions.
+    for (int i = 1; i < actual_shape.dims(); ++i) {
+      if (actual_shape.dim_size(i) != cached_shape.dim_size(i)) return false;
+    }
+    return true;
+  };
+  auto match_shapes = [&](const std::vector<TensorShape>& actual_shapes,
+                          const std::vector<TensorShape>& cached_shapes) {
+    for (int i = 0; i < actual_shapes.size(); ++i) {
+      if (!match_shape(actual_shapes[i], cached_shapes[i])) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  // VerifyInputShapes() already ensured that all input shapes have same
+  // batch size, and are not scalars.
   *engine_input_shapes = actual_input_shapes;
-  for (const int cached_batch_size : cached_engine_batches_) {
-    // Check if compatible: batch <= cached batch.
-    //
-    // TODO(laigd): here it only compare the first dim a.k.a the batch size,
-    // we'll need to to support non-batch dimensions as well. This will be done
-    // as part of the offline conversion implementation.
-    if (batch_size <= cached_batch_size) {
-      // First case: first compatible engine found
-      // Second case: smaller batch size engine found
-      if ((smallest_batch_size == -1) ||
-          (cached_batch_size < smallest_batch_size)) {
-        smallest_batch_size = cached_batch_size;
-        // Overwrite batch size for output
-        for (int i = 0; i < engine_input_shapes->size(); i++) {
-          (*engine_input_shapes)[i].set_dim(0, smallest_batch_size);
-        }
+  int64 min_matched_batch_size = kint64max;
+  for (const auto& pair : cache) {
+    const std::vector<TensorShape>& cached_input_shapes = pair.first;
+    // This should not happen, but just for safety.
+    if (actual_input_shapes.size() != cached_input_shapes.size()) {
+      return errors::InvalidArgument(
+          "Input shape list size mismatch for ", name(),
+          ", cached size: ", cached_input_shapes.size(),
+          " vs. actual size: ", actual_input_shapes.size());
+    }
+    if (match_shapes(actual_input_shapes, cached_input_shapes)) {
+      const int cached_batch_size = cached_input_shapes[0].dim_size(0);
+      if (min_matched_batch_size > cached_batch_size) {
+        min_matched_batch_size = cached_batch_size;
+        *engine_input_shapes = cached_input_shapes;
       }
     }
   }
-  return (smallest_batch_size != -1);
+  return Status::OK();
 }
 
 void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
@@ -371,7 +408,10 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   for (int i = 0; i < ctx->num_inputs(); ++i) {
     input_shapes.push_back(ctx->input(i).shape());
   }
-  EngineContext* engine_context = GetEngine(input_shapes, ctx);
+  OP_REQUIRES_OK_ASYNC(ctx, VerifyInputShapes(input_shapes), *helper);
+  StatusOr<EngineContext*> status = GetEngine(input_shapes, ctx);
+  OP_REQUIRES_OK_ASYNC(ctx, status.status(), *helper);
+  EngineContext* engine_context = status.ValueOrDie();
   if (!engine_context->cuda_engine) {
     VLOG(1) << "Engine retrieval for input shapes: "
             << TensorShapeUtils::ShapeListString(input_shapes)
@@ -515,7 +555,7 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   return !kRetry;
 }
 
-EngineContext* TRTEngineOp::GetEngine(
+StatusOr<EngineContext*> TRTEngineOp::GetEngine(
     const std::vector<TensorShape>& input_shapes, OpKernelContext* ctx) {
   static EngineContext empty_context;
   mutex_lock lock(engine_mutex_);
@@ -605,21 +645,11 @@ EngineContext* TRTEngineOp::GetEngine(
   // See if there is a compatible engine cached. The batch size should be <= the
   // cached batch size.
   std::vector<TensorShape> engine_input_shapes;
-  const bool matched_successfully =
-      GetCompatibleCachedEngine(input_shapes, &engine_input_shapes);
+  TF_RETURN_IF_ERROR(
+      GetEngineInputShapes(cache, input_shapes, &engine_input_shapes));
+
   // If matched, use that engine. Otherwise, we will look in cache for that
   // exact shape and possibly create a new engine if it is not in cache.
-  if (!matched_successfully) {
-    engine_input_shapes = input_shapes;
-    if (!cached_engine_batches_.empty()) {
-      // If user has explicitly defined cached_engine_batches, we should
-      // warn them that their input was non-compatible (batch size too high)
-      LOG(WARNING) << "No compatible cached engine was found for batch size: "
-                   << batch_size << ". A new engine will be created.";
-      cached_engine_batches_.push_back(batch_size);
-    }
-  }
-
   if (!cache.count(engine_input_shapes)) {
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     bool convert_successfully = false;

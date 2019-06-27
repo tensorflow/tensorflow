@@ -703,9 +703,10 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
             return;
           }
         } else if (shape_index.size() == 1) {
-          if (fusion->fused_expression_root()
-                  ->operand(shape_index[0])
-                  ->opcode() == HloOpcode::kDynamicUpdateSlice) {
+          if (fusion->fused_expression_root()->opcode() == HloOpcode::kTuple &&
+              fusion->fused_expression_root()
+                      ->operand(shape_index[0])
+                      ->opcode() == HloOpcode::kDynamicUpdateSlice) {
             current_properties_[kBytesAccessedKey] +=
                 GetShapeSize(fusion->fused_expression_root()
                                  ->operand(shape_index[0])

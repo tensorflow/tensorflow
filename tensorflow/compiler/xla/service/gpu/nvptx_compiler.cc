@@ -88,6 +88,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/stable_sort_expander.h"
@@ -170,6 +171,10 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
+
+    // Expand random number generation.
+    pipeline.AddPass<RngExpander>();
+
     // Remove zero-sized HLO from the input so that other passes don't have to
     // handle it.
     pipeline.AddPass<ZeroSizedHloElimination>();
@@ -261,12 +266,6 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
   }
 
   {
-    HloPassPipeline pipeline("gemm_canonicalization");
-    pipeline.AddPass<GemmRewriter>();
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
-
-  {
     // Convert convolutions into CustomCalls to cudnn, then canonicalize them
     // (CudnnConvPaddingLegalization). Also expand cuSolver calls.
     HloPassPipeline pipeline("conv_canonicalization");
@@ -317,6 +316,9 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
+
+    // Rewrite GEMMs into custom calls.
+    pipeline.AddPass<GemmRewriter>();
 
     // Choose the fastest algorithm for each conv.
     //
@@ -397,6 +399,23 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
   return Status::OK();
 }
 
+absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
+                                        const HloInstruction* operand,
+                                        const ShapeIndex& user_index) {
+  // Share the bias buffer with the parent instruction.
+  if (IsCublasGemm(*user)) {
+    if (user->operand_count() == 3 && user->operand(2) == operand) {
+      return true;
+    }
+  }
+  // The operand of cholesky can be shared with the first output.
+  if (user->opcode() == HloOpcode::kCustomCall &&
+      user->custom_call_target() == kCusolverCholeskyCallTarget) {
+    return user_index.size() == 1 && user_index[0] == 0;
+  }
+  return absl::nullopt;
+}
+
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
 // Unlike optimization passes, the passes are necessary for correctness.
 Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
@@ -421,7 +440,7 @@ Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   // with the rewrites.
   pipeline.AddPass<HloDCE>();
   pipeline.AddPass<FlattenCallGraph>();
-  pipeline.AddPass<GpuCopyInsertion>();
+  pipeline.AddPass<GpuCopyInsertion>(&CanShareBufferHint);
   pipeline.AddPass<GpuSanitizeConstantNames>();
   return pipeline.Run(hlo_module).status();
 }
@@ -487,23 +506,6 @@ StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
   TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
 
   return std::move(module);
-}
-
-static absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
-                                               const HloInstruction* operand,
-                                               const ShapeIndex& user_index) {
-  // Share the bias buffer with the parent instruction.
-  if (IsCublasGemm(*user)) {
-    if (user->operand_count() == 3 && user->operand(2) == operand) {
-      return true;
-    }
-  }
-  // The operand of cholesky can be shared with the first output.
-  if (user->opcode() == HloOpcode::kCustomCall &&
-      user->custom_call_target() == kCusolverCholeskyCallTarget) {
-    return user_index.size() == 1 && user_index[0] == 0;
-  }
-  return absl::nullopt;
 }
 
 StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(

@@ -47,8 +47,8 @@ class CopyInsertion : public HloModulePass {
  public:
   absl::string_view name() const override { return "copy-insertion"; }
 
-  // fusion_can_share_buffer: backend specific function that decides whether a
-  // fusion can share buffer with its operand.
+  // backend specific function that decides whether an instruction
+  // can share buffer with its operand.
   //
   // TODO(b/80315712): Find a better way to tell whether a fusion can share
   // buffer.
@@ -83,8 +83,8 @@ class CopyInsertion : public HloModulePass {
   virtual Status AddSpecialCaseCopies(const CallGraph& call_graph,
                                       HloModule* module);
 
-  // Backend specific function that decides whether a fusion can share buffer
-  // with its operand.
+  // Backend specific function that decides whether an instruction can share
+  // buffer with its operand.
   HloDataflowAnalysis::CanShareBuffer can_share_buffer_;
 
  private:

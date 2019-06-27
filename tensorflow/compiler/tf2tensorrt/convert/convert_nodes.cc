@@ -955,6 +955,31 @@ TRT_ShapedWeights TrtWeightStore::GetTempWeights(nvinfer1::DataType trt_dtype,
   return weights;
 }
 
+OpConverterParams::OpConverterParams(
+    const NodeDef& node_def, const std::vector<TRT_TensorOrWeights>& inputs,
+    std::vector<TRT_TensorOrWeights>* outputs, TrtWeightStore* weight_store,
+    TrtPrecisionMode precision_mode, bool use_calibration)
+    : node_def(node_def),
+      inputs(inputs),
+      outputs(outputs),
+      validation_only(true),
+      weight_store(weight_store),
+      precision_mode(precision_mode),
+      use_calibration(use_calibration) {}
+
+OpConverterParams::OpConverterParams(
+    Converter* converter, const NodeDef& node_def,
+    const std::vector<TRT_TensorOrWeights>& inputs,
+    std::vector<TRT_TensorOrWeights>* outputs, TrtWeightStore* weight_store)
+    : converter(converter),
+      node_def(node_def),
+      inputs(inputs),
+      outputs(outputs),
+      validation_only(false),
+      weight_store(weight_store),
+      precision_mode(converter->precision_mode()),
+      use_calibration(converter->use_calibration()) {}
+
 const std::set<string>* TrtNodeValidator::quantize_ops = new std::set<string>{
     "QuantizeAndDequantizeV2",
     "QuantizeAndDequantizeV3",
@@ -962,11 +987,17 @@ const std::set<string>* TrtNodeValidator::quantize_ops = new std::set<string>{
     "FakeQuantWithMinMaxArgs",
 };
 
-TrtNodeValidator::TrtNodeValidator() { RegisterOpValidators(); }
+TrtNodeValidator::TrtNodeValidator(
+    const grappler::GraphProperties& graph_properties,
+    TrtPrecisionMode precision_mode, bool use_calibration)
+    : graph_properties_(graph_properties),
+      precision_mode_(precision_mode),
+      use_calibration_(use_calibration) {
+  RegisterOpValidators();
+}
 
 Status TrtNodeValidator::ConvertToTensorOrWeights(
     const NodeDef& node_def, int output_port,
-    const grappler::GraphProperties& graph_properties,
     TRT_TensorOrWeights* tensor_or_weights) {
   if (node_def.op() == "Const") {
     if (output_port != 0) {
@@ -982,13 +1013,13 @@ Status TrtNodeValidator::ConvertToTensorOrWeights(
     std::vector<TRT_TensorOrWeights> inputs;
     return ConvertConstToWeights(node_def, inputs, tensor_or_weights);
   }
-  if (!graph_properties.HasOutputProperties(node_def.name())) {
+  if (!graph_properties_.HasOutputProperties(node_def.name())) {
     return errors::InvalidArgument("Shape and data type are unknown");
   }
 
   // Validate and convert shape and dtype.
   const auto& output_params =
-      graph_properties.GetOutputProperties(node_def.name());
+      graph_properties_.GetOutputProperties(node_def.name());
   const auto& tensor_properties = output_params.at(output_port);
   const DataType dtype = tensor_properties.dtype();
   const PartialTensorShape shape = tensor_properties.shape();
@@ -1006,20 +1037,16 @@ Status TrtNodeValidator::ConvertToTensorOrWeights(
   return Status::OK();
 }
 
-Status TrtNodeValidator::ValidateNode(
-    const NodeDef& node_def,
-    const std::vector<std::pair<const NodeDef*, int>>& input_node_and_ports,
-    const TrtPrecisionMode precision_mode,
-    const grappler::GraphProperties& graph_properties) {
-  const string& op = node_def.op();
+Status TrtNodeValidator::IsTensorRTCandidate(const Node* node) {
+  const string& op = node->def().op();
   // In INT8 mode, we will always apply the quantization ranges provided by
   // these ops to the relevant tensors. This happens regardless of the value of
   // use_calibration.
   bool is_supported_op = false;
   if (quantize_ops->count(op)) {
-    is_supported_op = (precision_mode == TrtPrecisionMode::INT8);
+    is_supported_op = (precision_mode_ == TrtPrecisionMode::INT8);
   } else {
-    is_supported_op = op_validators_.count(node_def.op());
+    is_supported_op = op_validators_.count(op);
   }
   if (!is_supported_op) {
     return errors::Unimplemented("Op type ", op, " is not supported.");
@@ -1028,23 +1055,24 @@ Status TrtNodeValidator::ValidateNode(
   // Convert input NodeDef and corresponding output ports to
   // TRT_TensorOrWeights.
   std::vector<TRT_TensorOrWeights> inputs;
-  for (int i = 0; i < input_node_and_ports.size(); ++i) {
-    const auto& pair = input_node_and_ports[i];
+  std::vector<const Edge*> input_edges;
+  TF_RETURN_IF_ERROR(node->input_edges(&input_edges));
+  for (const Edge* edge : input_edges) {
     TRT_TensorOrWeights tensor_or_weights;
-    Status status = ConvertToTensorOrWeights(
-        *pair.first, pair.second, graph_properties, &tensor_or_weights);
+    const NodeDef& src_def = edge->src()->def();
+    Status status = ConvertToTensorOrWeights(src_def, edge->src_output(),
+                                             &tensor_or_weights);
     if (!status.ok()) {
       return errors::Internal(
-          "Failed to convert input with index ", i,
+          "Failed to convert input ", src_def.name(),
           " to a TRT_TensorOrWeights: ", status.error_message());
     }
     inputs.push_back(tensor_or_weights);
   }
 
-  OpConverter validator = op_validators_[node_def.op()];
-  OpConverterParams params(
-      /*arg_converter=*/nullptr, node_def, inputs, /*arg_outputs=*/nullptr,
-      /*arg_validation_only=*/true, &weight_store_);
+  OpConverter validator = op_validators_[op];
+  OpConverterParams params(node->def(), inputs, /*arg_outputs=*/nullptr,
+                           &weight_store_, precision_mode_, use_calibration_);
   return validator(&params);
 }
 
@@ -1053,9 +1081,8 @@ Status TrtNodeValidator::ConvertConstToWeights(
     const std::vector<TRT_TensorOrWeights>& inputs,
     TRT_TensorOrWeights* output) {
   std::vector<TRT_TensorOrWeights> outputs;
-  OpConverterParams params(
-      /*arg_converter=*/nullptr, const_node_def, inputs, &outputs,
-      /*arg_validation_only=*/true, &weight_store_);
+  OpConverterParams params(const_node_def, inputs, &outputs, &weight_store_,
+                           precision_mode_, use_calibration_);
   Status status = op_validators_["Const"](&params);
   if (status.ok() && output) *output = outputs[0];
   return status;
@@ -1107,8 +1134,7 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
   std::vector<TRT_TensorOrWeights> inputs, outputs;
   TF_RETURN_IF_ERROR(this->GetInputs(node_def, &inputs));
 
-  OpConverterParams params(this, node_def, inputs, &outputs,
-                           /*arg_validation_only=*/false, &weight_store_);
+  OpConverterParams params(this, node_def, inputs, &outputs, &weight_store_);
   const string& op = node_def.op();
   auto itr = op_registry_.find(op);
   if (itr == op_registry_.end()) {
@@ -2794,7 +2820,7 @@ Status ConvertRelu6(OpConverterParams* params) {
 #endif
 }
 
-Status ConvertBiasAdd(OpConverterParams* params) {
+Status ConvertBiasAddInt8WithoutCalibration(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(
@@ -2887,6 +2913,71 @@ Status ConvertBiasAdd(OpConverterParams* params) {
         output_tensor, shuffle_layer->getOutput(0));
     output_tensor = shuffle_layer->getOutput(0);
   }
+
+  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return Status::OK();
+}
+
+Status ConvertBiasAdd(OpConverterParams* params) {
+  if (params->precision_mode == TrtPrecisionMode::INT8 &&
+      !params->use_calibration) {
+    // NOTE(laigd): based on some observation, it seems TensorRT cannot fuse
+    // IConvolutionLayer and IElementwiseLayer and will require range
+    // information for the output of Conv2D. Using IScaleLayer will fix the
+    // problem.
+    return ConvertBiasAddInt8WithoutCalibration(params);
+  }
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+
+  if (inputs.size() != 2) {
+    return errors::InvalidArgument(
+        "BiasAdd expects exactly 2 inputs, but received ", inputs.size());
+  }
+
+  if (inputs[0].is_weights() && inputs[1].is_weights()) {
+    return errors::InvalidArgument(
+        "All inputs are weights, but Grappler is expected to fold them.");
+  }
+
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+
+  TFAttrs attrs(node_def);
+  const string& data_format = attrs.get<string>("data_format");
+
+  nvinfer1::Dims input_shape = inputs.at(0).GetTrtDims();
+  nvinfer1::Dims bias_shape = inputs.at(1).GetTrtDims();
+  // If the input is NCHW, then we need to unsqueeze the bias such that its last
+  // dimensions are 1s (and the first dimension is C).
+  if (data_format == "NCHW") {
+    bias_shape.nbDims = input_shape.nbDims;
+    std::fill(bias_shape.d + 1, bias_shape.d + bias_shape.nbDims, 1);
+  } else {
+    // Next, broadcast the bias across the input.
+    TF_RETURN_IF_ERROR(GetTrtBroadcastShape(inputs.at(0), inputs.at(1),
+                                            &input_shape, &bias_shape));
+  }
+
+  // Convert input to a TRT tensor
+  nvinfer1::ITensor* input_tensor{nullptr};
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      inputs.at(0), input_shape, params->validation_only, &input_tensor));
+
+  // Finally, reshape bias. Since the bias is usually a constant, this will
+  // normally happen at conversion-time.
+  nvinfer1::ITensor* bias_tensor{nullptr};
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      inputs.at(1), bias_shape, params->validation_only, &bias_tensor));
+  VLOG(2) << "Bias shape adjusted to " << DebugString(bias_shape);
+
+  if (params->validation_only) return Status::OK();
+
+  nvinfer1::IElementWiseLayer* layer =
+      params->converter->network()->addElementWise(
+          *input_tensor, *bias_tensor, nvinfer1::ElementWiseOperation::kSUM);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();

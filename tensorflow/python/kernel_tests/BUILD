@@ -1,14 +1,12 @@
 # Tests of TensorFlow kernels written using the Python API.
 
+load("//tensorflow:tensorflow.bzl", "sycl_py_test", "tf_custom_op_library", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "sycl_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 
 # CPU only tests should use tf_py_test, GPU tests use cuda_py_test
 # Please avoid the py_tests and cuda_py_tests (plural) while we
@@ -3527,7 +3525,7 @@ cuda_py_test(
     ],
     # TODO(b/127344411): This test passes because XLA does not actually cluster
     # the svd op.
-    xla_enable_strict_auto_jit = False,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -3846,6 +3844,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",

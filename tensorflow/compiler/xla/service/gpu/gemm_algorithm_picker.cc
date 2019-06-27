@@ -39,8 +39,8 @@ namespace gpu {
 
 using tensorflow::AutotuneResult;
 
-using GemmCacheKey = std::tuple<se::StreamExecutor*, Shape, Shape, Shape,
-                                double, double, std::string>;
+using GemmCacheKey =
+    std::tuple<se::StreamExecutor*, Shape, Shape, Shape, std::string>;
 
 static tensorflow::mutex autotune_cache_mu(tensorflow::LINKER_INITIALIZED);
 static auto& autotune_cache GUARDED_BY(autotune_cache_mu) =
@@ -189,8 +189,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
 
   GemmCacheKey key =
       std::make_tuple(stream->parent(), lhs->shape(), rhs->shape(),
-                      instr->shape(), gemm_config.alpha(), gemm_config.beta(),
-                      gemm_config.dot_dimension_numbers().SerializeAsString());
+                      instr->shape(), gemm_config.SerializeAsString());
 
   tensorflow::mutex_lock cache_lock(autotune_cache_mu);
   auto it = autotune_cache.find(key);

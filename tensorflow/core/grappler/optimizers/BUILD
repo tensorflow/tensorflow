@@ -503,6 +503,7 @@ cc_library(
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/costs:virtual_placer",
         "//tensorflow/core/grappler/utils:frame",
+        "@com_google_absl//absl/strings",
     ],
 )
 
