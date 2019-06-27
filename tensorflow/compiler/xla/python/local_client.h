@@ -253,7 +253,7 @@ class PyLocalBuffer {
 
   PyLocalBuffer() = default;
   PyLocalBuffer(Shape on_host_shape,
-                std::shared_ptr<PySharedDeviceBuffer> device_buffer,
+                std::shared_ptr<SharedDeviceBuffer> device_buffer,
                 std::shared_ptr<PyLocalClient> client);
 
   PyLocalBuffer(const PyLocalBuffer&) = delete;
@@ -277,7 +277,7 @@ class PyLocalBuffer {
 
   // Returns the associated device buffer. Returns a nullptr if the buffer is
   // invalid.
-  std::shared_ptr<PySharedDeviceBuffer> DeviceBuffer() const;
+  std::shared_ptr<SharedDeviceBuffer> DeviceBuffer() const;
 
   // Deletes the device memory associated with this buffer, leaving it in an
   // invalid state.
@@ -302,7 +302,7 @@ class PyLocalBuffer {
   const Shape on_host_shape_;
   const int device_ordinal_;
   mutable absl::Mutex mu_;
-  std::shared_ptr<PySharedDeviceBuffer> device_buffer_ GUARDED_BY(mu_);
+  std::shared_ptr<SharedDeviceBuffer> device_buffer_ GUARDED_BY(mu_);
 
   // The cached value of the buffer on the host, produced either from a call to
   // CopyToHost or from a call to ToPython. Once a value has been fetched to
