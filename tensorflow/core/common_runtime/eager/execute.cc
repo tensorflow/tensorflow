@@ -1015,11 +1015,17 @@ Status EagerExecute(EagerOperation* op,
       LOG(INFO) << msg;
     }
   }
+
+#if defined(IS_MOBILE_PLATFORM)
+  return errors::Unimplemented(
+      "Eager's remote execution is not available on mobile devices.");
+#else   // !IS_MOBILE_PLATFORM
   if (out_op) {
     return EagerRemoteExecute(out_op.get(), retvals->data(), num_retvals);
   } else {
     return EagerRemoteExecute(op, retvals->data(), num_retvals);
   }
+#endif  // !IS_MOBILE_PLATFORM
 }
 
 Status EagerKernelExecute(EagerContext* ctx,
