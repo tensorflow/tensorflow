@@ -497,14 +497,14 @@ class HloInstruction {
   // For example, we have 4 replicas, then replica_groups={{0,2},{1,3}} means,
   // replica 0 and 2 are in subgroup 0, replica 1 and 3 are in subgroup 1.
   //
-  // `all_reduce_id`: for Allreduce nodes from different modules, if they have
-  // the same all_reduce_id, they will be 'Allreduce'd. If empty, Allreduce will
-  // not be applied cross modules.
+  // `channel_id`: for Allreduce nodes from different modules, if
+  // they have the same channel_id, they will be 'Allreduce'd. If
+  // empty, Allreduce will not be applied cross modules.
   static std::unique_ptr<HloInstruction> CreateAllReduce(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       const std::vector<ReplicaGroup>& replica_groups,
-      const absl::optional<int64>& all_reduce_id);
+      const absl::optional<int64>& channel_id);
 
   // An all-to-all op takes N array operands of the same shape and scatters them
   // to N replicas.  Each replica gathers the results into a tuple.
@@ -952,7 +952,7 @@ class HloInstruction {
       return false;
     }
 
-    // Two AllReduces are Identical if they have the same all_reduce_id.
+    // Two AllReduces are Identical if they have the same channel_id.
     // Their operands don't have to be Identical.
     if (!IsCrossModuleAllReduce()) {
       // Use an explicit loop rather than ContainerEquals, because copying
@@ -1428,8 +1428,9 @@ class HloInstruction {
   // Delegates to HloFftInstruction::fft_length.
   const std::vector<int64>& fft_length() const;
 
-  // Delegates to HloSendRecvInstruction::channel_id.
-  int64 channel_id() const;
+  // Delegates to HloChannelInstruction::channel_id.
+  absl::optional<int64> channel_id() const;
+  void set_channel_id(const absl::optional<int64>& channel_id);
 
   // Returns the dimension sizes or numbers associated with this instruction.
   virtual const std::vector<int64>& dimensions() const {
@@ -1570,10 +1571,6 @@ class HloInstruction {
 
   // Delegates to HloCollectivePermuteInstruction::source_target_pairs.
   const std::vector<std::pair<int64, int64>>& source_target_pairs() const;
-
-  // Delegates to HloAllReduceInstruction::all_reduce_id.
-  absl::optional<int64> all_reduce_id() const;
-  void set_all_reduce_id(const absl::optional<int64>& all_reduce_id);
 
   // Returns data on the window in a windowed operation such as
   // convolution.

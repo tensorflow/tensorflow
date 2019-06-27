@@ -1,10 +1,12 @@
 op {
   graph_op_name: "AddN"
-  in_arg {
-    name: "inputs"
-    description: <<END
-Must all be the same size and shape.
-END
-  }
   summary: "Add all input tensors element wise."
+  description: <<END
+  Inputs must be of same size and shape.
+
+  ```python
+  x = [9, 7, 10]
+  tf.math.add_n(x) ==> 26
+  ```
+END
 }

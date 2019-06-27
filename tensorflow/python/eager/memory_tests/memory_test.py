@@ -24,7 +24,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import time
 import six
 
@@ -32,14 +31,11 @@ from tensorflow.python import keras
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.variables import Variable
-from tensorflow.python.training import server_lib
 
 # memory_profiler might not be available in the OSS version of TensorFlow.
 try:
@@ -84,6 +80,10 @@ def assert_no_leak(f, num_iters=100000, increase_threshold_absolute_mb=10):
                                            increase_threshold_absolute_mb)
 
 
+def memory_profiler_is_available():
+  return memory_profiler is not None
+
+
 class MemoryTest(test.TestCase):
 
   def testMemoryLeakAnonymousVariable(self):
@@ -96,8 +96,7 @@ class MemoryTest(test.TestCase):
 
     assert_no_leak(f, num_iters=10000)
 
-  # TODO(b/136031434): De-flake
-  def DISABLE_testMemoryLeakInSimpleModelForwardOnly(self):
+  def testMemoryLeakInSimpleModelForwardOnly(self):
     if memory_profiler is None:
       self.skipTest("memory_profiler required to run this test")
 
@@ -140,39 +139,3 @@ class MemoryTest(test.TestCase):
       graph(constant_op.constant(42))
 
     assert_no_leak(f, num_iters=1000, increase_threshold_absolute_mb=30)
-
-
-class RemoteWorkerMemoryTest(test.TestCase):
-
-  def __init__(self, method):
-    super(RemoteWorkerMemoryTest, self).__init__(method)
-
-    # used for remote worker tests
-    os.environ["TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC"] = "1"
-    self._cached_server = server_lib.Server.create_local_server()
-    self._cached_server_target = self._cached_server.target[len("grpc://"):]
-
-  def testMemoryLeakInLocalCopy(self):
-    if memory_profiler is None:
-      self.skipTest("memory_profiler required to run this test")
-
-    remote.connect_to_remote_host(self._cached_server_target)
-
-    # Run a function locally with the input on a remote worker and ensure we
-    # do not leak a reference to the remote tensor.
-
-    @def_function.function
-    def local_func(i):
-      return i
-
-    def func():
-      with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
-        x = array_ops.zeros([1000, 1000], dtypes.int32)
-
-      local_func(x)
-
-    assert_no_leak(func, num_iters=100, increase_threshold_absolute_mb=50)
-
-
-if __name__ == "__main__":
-  test.main()

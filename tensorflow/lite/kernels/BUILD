@@ -715,6 +715,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels/internal:test_util",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],

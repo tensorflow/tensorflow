@@ -408,7 +408,7 @@ Status LayoutAssignment::BuildHostChannelConstraints(
       TF_RET_CHECK(data_shape.IsArray());
       TF_RET_CHECK(LayoutUtil::HasLayout(data_shape));
       const Layout* prev_layout = host_channel_constraints_.ConstrainChannel(
-          send_recv_instr->channel_id(), data_shape.layout());
+          *send_recv_instr->channel_id(), data_shape.layout());
       TF_RET_CHECK(prev_layout == nullptr)
           << "Cannot constrain host transfer layout as it was set to "
           << LayoutUtil::HumanString(*prev_layout) << ": "
@@ -480,7 +480,7 @@ Status LayoutAssignment::AddMandatoryConstraints(
                instruction->opcode() == HloOpcode::kRecv) {
       CHECK(get_channel_constraints(instruction))
           << "Multi-module layout assignment requires ChannelLayoutConstraints";
-      int64 channel_id = instruction->channel_id();
+      int64 channel_id = *instruction->channel_id();
       if (!get_channel_constraints(instruction)
                ->IsChannelConstrained(channel_id)) {
         continue;
@@ -492,7 +492,7 @@ Status LayoutAssignment::AddMandatoryConstraints(
         Shape new_buffer_shape =
             get_channel_constraints(instruction)
                 ->LayoutShapeForChannel(send_buffer_shape,
-                                        instruction->channel_id());
+                                        *instruction->channel_id());
         TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
             new_buffer_shape, instruction->operand(0)));
       } else {
@@ -503,18 +503,19 @@ Status LayoutAssignment::AddMandatoryConstraints(
             const LogicalBuffer* buffer,
             constraints->points_to_analysis().GetBufferDefinedAt(instruction,
                                                                  {0}));
-        Shape new_shape = get_channel_constraints(instruction)
-                              ->LayoutShapeForChannel(
-                                  recv_buffer_shape, instruction->channel_id());
+        Shape new_shape =
+            get_channel_constraints(instruction)
+                ->LayoutShapeForChannel(recv_buffer_shape,
+                                        *instruction->channel_id());
         TF_RETURN_IF_ERROR(
             constraints->SetBufferLayout(new_shape.layout(), *buffer));
       }
     } else if (instruction->IsCrossModuleAllReduce()) {
       CHECK(get_channel_constraints(instruction))
           << "Multi-module layout assignment requires ChannelLayoutConstraints";
-      int64 all_reduce_id = instruction->all_reduce_id().value();
+      int64 channel_id = instruction->channel_id().value();
       if (!get_channel_constraints(instruction)
-               ->IsChannelConstrained(all_reduce_id)) {
+               ->IsChannelConstrained(channel_id)) {
         continue;
       }
       // TODO(b/68493863): Change to use SetOperandLayout().
@@ -522,7 +523,7 @@ Status LayoutAssignment::AddMandatoryConstraints(
       TF_RET_CHECK(buffer_shape.IsArray());
       Shape new_buffer_shape =
           get_channel_constraints(instruction)
-              ->LayoutShapeForChannel(buffer_shape, all_reduce_id);
+              ->LayoutShapeForChannel(buffer_shape, channel_id);
       TF_RETURN_IF_ERROR(
           constraints->SetInstructionLayout(new_buffer_shape, instruction));
     }
@@ -1833,7 +1834,7 @@ Status LayoutAssignment::ConstrainChannelLayouts(
       const Layout* layout =
           get_channel_constraints(instruction)
               ->ConstrainChannel(
-                  instruction->channel_id(),
+                  *instruction->channel_id(),
                   ShapeUtil::GetSubshape(instruction->shape(), {0}).layout());
       TF_RET_CHECK(layout == nullptr)
           << instruction->ToString()
@@ -1848,7 +1849,7 @@ Status LayoutAssignment::ConstrainChannelLayouts(
     if (instruction->opcode() == HloOpcode::kSend) {
       HloInstruction* operand = instruction->mutable_operand(0);
       const Layout* layout = get_channel_constraints(instruction)
-                                 ->ConstrainChannel(instruction->channel_id(),
+                                 ->ConstrainChannel(*instruction->channel_id(),
                                                     operand->shape().layout());
       if (layout != nullptr) {
         // We found an already constrained layout which does not match the one
@@ -1873,7 +1874,7 @@ Status LayoutAssignment::ConstrainChannelLayouts(
     } else if (instruction->IsCrossModuleAllReduce()) {
       const Layout* layout =
           get_channel_constraints(instruction)
-              ->ConstrainChannel(instruction->all_reduce_id().value(),
+              ->ConstrainChannel(instruction->channel_id().value(),
                                  instruction->shape().layout());
       if (layout != nullptr) {
         // We found an already constrained layout which does not match the one

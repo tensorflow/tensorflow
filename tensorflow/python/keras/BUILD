@@ -185,6 +185,7 @@ py_library(
         ":callbacks",
         ":callbacks_v1",
         ":constraints",
+        ":data_adapter",
         ":engine_utils",
         ":initializers",
         ":input_spec",
@@ -210,6 +211,18 @@ py_library(
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "data_adapter",
+    srcs = ["engine/data_adapter.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":engine_utils",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 
@@ -560,6 +573,17 @@ tf_py_test(
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+tf_py_test(
+    name = "data_adapter_test",
+    size = "small",
+    srcs = ["engine/data_adapter_test.py"],
+    additional_deps = [
+        ":data_adapter",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
@@ -1005,11 +1029,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
-    tags = [
-        "manual",
-        "no_rocm",
-        "notap",
-    ],
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 

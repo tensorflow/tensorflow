@@ -328,6 +328,18 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
+        name = "opt_einsum_archive",
+        build_file = clean_dep("//third_party:opt_einsum.BUILD"),
+        sha256 = "d3d464b4da7ef09e444c30e4003a27def37f85ff10ff2671e5f7d7813adac35b",
+        strip_prefix = "opt_einsum-2.3.2",
+        system_build_file = clean_dep("//third_party/systemlibs:opt_einsum.BUILD"),
+        urls = [
+            "http://mirror.tensorflow.org/pypi.python.org/packages/f6/d6/44792ec668bcda7d91913c75237314e688f70415ab2acd7172c845f0b24f/opt_einsum-2.3.2.tar.gz",
+            "https://pypi.python.org/packages/f6/d6/44792ec668bcda7d91913c75237314e688f70415ab2acd7172c845f0b24f/opt_einsum-2.3.2.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
         name = "absl_py",
         sha256 = "3d0f39e0920379ff1393de04b573bca3484d82a5f8b939e9e83b20b6106c9bbe",
         strip_prefix = "abseil-py-pypi-v0.7.1",

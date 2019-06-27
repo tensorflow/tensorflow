@@ -97,6 +97,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
@@ -254,6 +255,9 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   HloPassPipeline pipeline("HLO passes through layout assignment");
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
+
+  // Expand random number generation.
+  pipeline.AddPass<RngExpander>();
 
   // Remove zero-sized HLO from the input so that other passes don't have to
   // handle it.

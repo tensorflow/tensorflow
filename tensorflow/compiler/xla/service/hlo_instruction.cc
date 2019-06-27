@@ -383,16 +383,21 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
           << "AllReduce should have 1 called computation but sees "
           << proto.called_computation_ids_size();
-      absl::optional<int64> all_reduce_id;
+      TF_RET_CHECK(proto.channel_id() <= 0 || proto.all_reduce_id() <= 0)
+          << "AllReduce cannot have both channel_id() and all_reduce_id()";
+      absl::optional<int64> channel_id;
+      if (proto.channel_id() > 0) {
+        channel_id = proto.channel_id();
+      }
       if (proto.all_reduce_id() > 0) {
-        all_reduce_id = proto.all_reduce_id();
+        channel_id = proto.all_reduce_id();
       }
       instruction = CreateAllReduce(
           shape, all_operands(), computations(0),
           /*replica_groups=*/
           std::vector<ReplicaGroup>(proto.replica_groups().begin(),
                                     proto.replica_groups().end()),
-          /*all_reduce_id=*/all_reduce_id);
+          /*channel_id=*/channel_id);
       break;
     }
     case HloOpcode::kAllToAll: {
@@ -860,9 +865,9 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     const std::vector<ReplicaGroup>& replica_groups,
-    const absl::optional<int64>& all_reduce_id) {
+    const absl::optional<int64>& channel_id) {
   return absl::make_unique<HloAllReduceInstruction>(
-      shape, operands, reduce_computation, replica_groups, all_reduce_id);
+      shape, operands, reduce_computation, replica_groups, channel_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
@@ -1279,7 +1284,7 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kTrace:
       return true;
     case HloOpcode::kAllReduce:
-      return all_reduce_id().has_value();
+      return channel_id().has_value();
     case HloOpcode::kCustomCall:
       return Cast<HloCustomCallInstruction>(this)
           ->custom_call_has_side_effect();
@@ -2232,11 +2237,11 @@ bool HloInstruction::IsElementwiseImpl(
 }
 
 bool HloInstruction::IsCrossModuleAllReduce() const {
-  return opcode() == HloOpcode::kAllReduce && all_reduce_id();
+  return opcode() == HloOpcode::kAllReduce && channel_id();
 }
 
 bool HloInstruction::IsCrossReplicaAllReduce() const {
-  return opcode() == HloOpcode::kAllReduce && !all_reduce_id();
+  return opcode() == HloOpcode::kAllReduce && !channel_id();
 }
 
 string HloInstruction::ToStringWithCanonicalNameMap(
@@ -3332,10 +3337,6 @@ const std::vector<int64>& HloInstruction::fft_length() const {
   return Cast<HloFftInstruction>(this)->fft_length();
 }
 
-int64 HloInstruction::channel_id() const {
-  return Cast<HloSendRecvInstruction>(this)->channel_id();
-}
-
 int64 HloInstruction::concatenate_dimension() const {
   return Cast<HloConcatenateInstruction>(this)->concatenate_dimension();
 }
@@ -3535,13 +3536,12 @@ HloInstruction::source_target_pairs() const {
   return Cast<HloCollectivePermuteInstruction>(this)->source_target_pairs();
 }
 
-absl::optional<int64> HloInstruction::all_reduce_id() const {
-  return Cast<HloAllReduceInstruction>(this)->all_reduce_id();
+absl::optional<int64> HloInstruction::channel_id() const {
+  return Cast<HloChannelInstruction>(this)->channel_id();
 }
 
-void HloInstruction::set_all_reduce_id(
-    const absl::optional<int64>& all_reduce_id) {
-  return Cast<HloAllReduceInstruction>(this)->set_all_reduce_id(all_reduce_id);
+void HloInstruction::set_channel_id(const absl::optional<int64>& channel_id) {
+  return Cast<HloChannelInstruction>(this)->set_channel_id(channel_id);
 }
 
 const ConvolutionDimensionNumbers&

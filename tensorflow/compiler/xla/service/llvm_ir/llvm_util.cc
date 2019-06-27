@@ -700,20 +700,25 @@ unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module) {
   return 0;
 }
 
-llvm::GlobalVariable* GetOrCreateVariableForPhiloxRngState(
-    llvm::Module* module, llvm::IRBuilder<>* b) {
-  static const char* kPhiloxRngStateVariableName = "philox_rng_state";
+llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
+                                                     llvm::IRBuilder<>* b) {
+  static const char* kRngStateVariableName = "rng_state";
   llvm::GlobalVariable* state_ptr =
-      module->getNamedGlobal(kPhiloxRngStateVariableName);
-  unsigned global_address_space = GetGlobalMemoryAddressSpace(*module);
+      module->getNamedGlobal(kRngStateVariableName);
   if (!state_ptr) {
+    unsigned global_address_space = GetGlobalMemoryAddressSpace(*module);
+    llvm::Type* state_type = b->getInt128Ty();
+    // Use a non-zero initial value as zero state can cause the result of the
+    // first random number generation not passing the chi-square test. The
+    // values used here are arbitrarily chosen, any non-zero values should be
+    // fine.
     state_ptr = new llvm::GlobalVariable(
         /*M=*/*module,
-        /*Ty=*/b->getInt64Ty(),
+        /*Ty=*/state_type,
         /*isConstant=*/false,
         /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
-        /*Initializer=*/b->getInt64(0),
-        /*Name=*/kPhiloxRngStateVariableName,
+        /*Initializer=*/llvm::ConstantInt::get(b->getInt128Ty(), 0x7012395ull),
+        /*Name=*/kRngStateVariableName,
         /*InsertBefore=*/nullptr,
         /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
         /*AddressSpace=*/global_address_space,
@@ -722,17 +727,17 @@ llvm::GlobalVariable* GetOrCreateVariableForPhiloxRngState(
   return state_ptr;
 }
 
-void IncrementVariableForPhiloxRngState(int64 value, llvm::Module* module,
-                                        llvm::IRBuilder<>* builder) {
+llvm::Value* RngGetAndUpdateState(uint64 delta, llvm::Module* module,
+                                  llvm::IRBuilder<>* builder) {
   llvm::GlobalVariable* state_ptr =
-      GetOrCreateVariableForPhiloxRngState(module, builder);
-  llvm::Value* state_value_old = builder->CreateLoad(state_ptr, "load_state");
-  // If the 64-bit value overflows, we use the wraparound value. This should
-  // be fine in practice as we only add one to the value each time when a RNG is
-  // executed.
+      GetOrCreateVariableForRngState(module, builder);
+  llvm::LoadInst* state_value_old =
+      builder->CreateLoad(state_ptr, "load_state");
   llvm::Value* state_value_new = builder->CreateAdd(
-      state_value_old, builder->getInt64(value), "inc_state");
+      state_value_old,
+      llvm::ConstantInt::get(state_value_old->getType(), delta));
   builder->CreateStore(state_value_new, state_ptr);
+  return state_value_old;
 }
 
 }  // namespace llvm_ir

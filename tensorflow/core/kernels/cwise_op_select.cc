@@ -245,6 +245,15 @@ class SelectV2Op : public OpKernel {
       case 5:
         HANDLE_DIM(5);
         break;
+      case 6:
+        HANDLE_DIM(6);
+        break;
+      case 7:
+        HANDLE_DIM(7);
+        break;
+      case 8:
+        HANDLE_DIM(8);
+        break;
       default:
         ctx->SetStatus(errors::Unimplemented(
             "Broadcast between ", ctx->input(0).shape().DebugString(), " and ",

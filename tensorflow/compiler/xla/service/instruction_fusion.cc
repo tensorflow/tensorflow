@@ -663,6 +663,10 @@ bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
+  if (consumer->opcode() == HloOpcode::kFusion && consumer->IsCustomFusion()) {
+    return false;
+  }
+
   if (producer->CouldBeBitcast() &&
       // We can't fuse parameters anyhow, so we leave the user unfused to become
       // a bitcast. If the operand is not a parameter, we would break a
