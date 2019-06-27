@@ -1050,6 +1050,11 @@ func @bad_complex(complex<i32)
 
 // -----
 
+// expected-error @+1 {{cannot parse type: i32 f32}}
+func @bad_tuple(!spv.ptr<i32 f32, Uniform>)
+
+// -----
+
 func @invalid_region_dominance() {
   "foo.region"() ({
     // expected-error @+1 {{operand #0 does not dominate this use}}

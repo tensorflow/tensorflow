@@ -4205,5 +4205,19 @@ Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context) {
   sourceMgr.AddNewSourceBuffer(std::move(memBuffer), SMLoc());
   SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, context);
   ParserState state(sourceMgr, context);
-  return Parser(state).parseType();
+  Parser parser(state);
+  auto start = parser.getToken().getLoc();
+  auto ty = parser.parseType();
+  if (!ty)
+    return Type();
+
+  auto end = parser.getToken().getLoc();
+  auto read = end.getPointer() - start.getPointer();
+  // Make sure that the parsing of type consumes the entire string
+  if (static_cast<size_t>(read) < typeStr.size()) {
+    parser.emitError("unexpected additional tokens: '")
+        << typeStr.substr(read) << "' after parsing type: " << ty;
+    return Type();
+  }
+  return ty;
 }

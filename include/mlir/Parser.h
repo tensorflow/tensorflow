@@ -59,7 +59,8 @@ Module *parseSourceString(llvm::StringRef moduleStr, MLIRContext *context);
 /// This parses a single MLIR type to an MLIR context if it was valid.  If not,
 /// an error message is emitted through a new SourceMgrDiagnosticHandler
 /// constructed from a new SourceMgr with a single a MemoryBuffer wrapping
-/// `typeStr`.
+/// `typeStr`. If the passed `typeStr` has additional tokens that were not part
+/// of the type, an error is emitted.
 // TODO(ntv) Improve diagnostic reporting.
 Type parseType(llvm::StringRef typeStr, MLIRContext *context);
 

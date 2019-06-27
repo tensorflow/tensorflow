@@ -80,7 +80,7 @@ static bool parseNumberX(StringRef &spec, int64_t &number) {
 static Type parseAndVerifyTypeImpl(SPIRVDialect const &dialect, Location loc,
                                    StringRef spec) {
   auto *context = dialect.getContext();
-  auto type = mlir::parseType(spec, context);
+  auto type = mlir::parseType(spec.trim(), context);
   if (!type) {
     emitError(loc, "cannot parse type: ") << spec;
     return Type();
