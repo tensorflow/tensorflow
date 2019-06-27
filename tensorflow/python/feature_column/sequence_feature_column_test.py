@@ -464,8 +464,7 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
     sequence_input_layer = sfc.SequenceFeatures(
         [numeric_column_a, numeric_column_b])
 
-    with self.assertRaisesRegexp(
-        errors.InvalidArgumentError, r'Condition x == y did not hold.*'):
+    with self.assertRaisesRegexp(errors.InvalidArgumentError, r'Condition x == y did not hold.*'):
         _, sequence_length = sequence_input_layer({'aaa': sparse_input_a, 'bbb': sparse_input_b})
         self.evaluate(sequence_length)
 
