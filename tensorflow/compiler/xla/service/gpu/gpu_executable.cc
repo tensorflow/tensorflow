@@ -87,6 +87,7 @@ void GpuExecutable::ComputeThunkAnnotations() {
                                           &canonical_name_map),
         hlo->metadata().op_name(), hlo->name(), hlo->GetModule()->name());
   }
+}
 
 Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
     const ServiceExecutableRunOptions* run_options) {

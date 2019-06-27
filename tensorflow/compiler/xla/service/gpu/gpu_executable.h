@@ -50,13 +50,10 @@ namespace gpu {
 // This is an immutable data type after initialization, and thus thread safe.
 class GpuExecutable : public Executable {
  public:
-<<<<<<< HEAD
   // cubin (i.e. the compiled ptx) may be empty, in which case we leave
   // compilation up to the GPU driver.
-=======
   using GpuVersion = absl::variant<std::pair<int, int>, int>;
 
->>>>>>> c22f0b0... Addressing review comments
   // We need to share ownership of hlo_module and assignment with profiler to
   // safely keep a reference to these objects during tracing period, thus they
   // are passed as shared pointers.
