@@ -3682,23 +3682,21 @@ def extract_glimpse(
   Usage Example:
     ```python
     BATCH_SIZE = 1
-    IMAGE_HEIGHT = 5
-    IMAGE_WIDTH = 5
+    IMAGE_HEIGHT = 3
+    IMAGE_WIDTH = 3
     CHANNELS = 1
-    GLIMPSE_SIZE = (3, 3)
-    image = tf.random.uniform(shape=(BATCH_SIZE, IMAGE_HEIGHT, 
-      IMAGE_WIDTH, CHANNELS) )
+    GLIMPSE_SIZE = (2, 2)
+    image = tf.reshape(tf.range(9, delta=1, dtype=tf.float32), 
+      shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS))
     output = tf.image.extract_glimpse(image, size=GLIMPSE_SIZE, 
       offsets=[[1, 1]], centered=False, normalized=False)
-    print(image)
-        <tf.Tensor: id=172, shape=(3, 3), dtype=float32, numpy=
-        array([[0.98461604, 0.14595735, 0.3296578 ],
-           [0.247967  , 0.17635965, 0.3487332 ],
-           [0.33684814, 0.971017  , 0.41953743]], dtype=float32)>
-    print(output)
-        tf.Tensor(
-        [[0.98461604 0.14595735]
-        [0.247967   0.17635965]], shape=(2, 2), dtype=float32)
+    print(image[0, :,:,0])
+        [[0. 1. 2.]
+        [3. 4. 5.]
+        [6. 7. 8.]]
+    print(output[0, :,:,0])
+        [[0. 1.]
+        [3. 4.]]
     ```    
   """
   return gen_image_ops.extract_glimpse(
@@ -3770,23 +3768,21 @@ def extract_glimpse_v2(
   Usage Example:
     ```python
     BATCH_SIZE = 1
-    IMAGE_HEIGHT = 5
-    IMAGE_WIDTH = 5
+    IMAGE_HEIGHT = 3
+    IMAGE_WIDTH = 3
     CHANNELS = 1
-    GLIMPSE_SIZE = (3, 3)
-    image = tf.random.uniform(shape=(BATCH_SIZE, IMAGE_HEIGHT, 
-      IMAGE_WIDTH, CHANNELS) )
+    GLIMPSE_SIZE = (2, 2)
+    image = tf.reshape(tf.range(9, delta=1, dtype=tf.float32), 
+      shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS))
     output = tf.image.extract_glimpse(image, size=GLIMPSE_SIZE, 
       offsets=[[1, 1]], centered=False, normalized=False)
-    print(image)
-        <tf.Tensor: id=172, shape=(3, 3), dtype=float32, numpy=
-        array([[0.98461604, 0.14595735, 0.3296578 ],
-           [0.247967  , 0.17635965, 0.3487332 ],
-           [0.33684814, 0.971017  , 0.41953743]], dtype=float32)>
-    print(output)
-        tf.Tensor(
-        [[0.98461604 0.14595735]
-        [0.247967   0.17635965]], shape=(2, 2), dtype=float32)
+    print(image[0, :,:,0])
+        [[0. 1. 2.]
+        [3. 4. 5.]
+        [6. 7. 8.]]
+    print(output[0, :,:,0])
+        [[0. 1.]
+        [3. 4.]]
     ```
   """
   return gen_image_ops.extract_glimpse(
