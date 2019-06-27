@@ -181,8 +181,20 @@ class RecursiveCompilabilityChecker {
       const NodeDef& call_def, FunctionLibraryRuntime* lib_runtime,
       std::vector<StackFrameView>* stack_trace,
       std::vector<UncompilableNodeInfo>* uncompilable_nodes = nullptr) const;
+  bool IsCompilableIf(
+      const Node& if_node, FunctionLibraryRuntime* lib_runtime,
+      std::vector<StackFrameView>* stack_trace,
+      std::vector<UncompilableNodeInfo>* uncompilable_nodes) const;
   bool IsCompilableWhile(
       const Node& while_node, FunctionLibraryRuntime* lib_runtime,
+      std::vector<StackFrameView>* stack_trace,
+      std::vector<UncompilableNodeInfo>* uncompilable_nodes) const;
+
+  // Returns compilability of node def retrieved from `node`'s attribute with
+  // name `attr_name`.
+  bool ExtractNodeDefAndCheckCompilability(
+      const Node& node, const std::string& attr_name,
+      const std::string& call_name, FunctionLibraryRuntime* lib_runtime,
       std::vector<StackFrameView>* stack_trace,
       std::vector<UncompilableNodeInfo>* uncompilable_nodes) const;
 
