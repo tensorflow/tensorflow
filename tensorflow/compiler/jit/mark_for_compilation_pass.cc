@@ -1014,6 +1014,39 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
   return Status::OK();
 }
 
+StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
+  if (!node->IsIdentity()) {
+    return false;
+  }
+
+  // Check if the Identity is driven by a Switch on its true path.
+  auto it = absl::c_find_if(node->in_edges(), [](const Edge* e) {
+    return e->src()->IsSwitch() && e->src_output() == 1;
+  });
+  if (it == node->in_edges().end()) {
+    return false;
+  }
+  const Node* switch_node = (*it)->src();
+
+  // Check if the Switch is driven by LoopCond.
+  const Node* maybe_loop_cond;
+  TF_RETURN_IF_ERROR(switch_node->input_node(1, &maybe_loop_cond));
+  if (!maybe_loop_cond->IsLoopCond()) {
+    return false;
+  }
+
+  // Check if the Identity is driving any const nodes through a control edge.
+  bool driving_any_consts =
+      absl::c_any_of(node->out_edges(), [](const Edge* e) {
+        return e->dst()->IsConstant() && e->IsControlEdge();
+      });
+  if (!driving_any_consts) {
+    return false;
+  }
+
+  return true;
+}
+
 Status MarkForCompilationPassImpl::FindCompilationCandidates() {
   OptimizerOptions opts;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
@@ -1133,6 +1166,35 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
           continue;
         }
       }
+    }
+
+    // This is a heuristic to avoid creating dependency between while loop
+    // condition and body computations.  Dependency between them can be created
+    // if a special Identity node in the following pattern is clustered in.
+    // That is, an Identity node in the loop cond computation is used to drive
+    // const nodes consumed by the loop body.  If this Identity node goes into
+    // the same cluster with nodes from the loop body, extra dependency is
+    // created between the loop cond and body computations and it hinders the
+    // progression of the loop cond computation at runtime with significant
+    // overhead.  Specifically, we look for the below pattern and do not cluster
+    // in this Identity to avoid the described issue.  Since Identity has low
+    // execution cost in native TF, the fact that this heuristic gives up these
+    // special Identity nodes as candidates should not harm any performance.  If
+    // other considerations emerge in the future, we can revisit the heuristic
+    // and only disallow these Identities to go into the cluster with nodes from
+    // the loop body but still consider them candidates.
+    //
+    // LoopCond ->
+    // Merge    -> Switch -> Identity -> i++ -> ... -> NextIteration
+    //                               ..> Const -> LoopBody
+    //                            (control edge)
+    TF_ASSIGN_OR_RETURN(bool is_identity_driving_consts_in_loop,
+                        IsIdentityDrivingConstsInLoop(node));
+    if (is_identity_driving_consts_in_loop) {
+      VLOG(2) << "Rejecting " << node->name()
+              << ": including it can create dependencies between while loop "
+                 "condition and body computations with runtime overhead.";
+      continue;
     }
 
     compilation_candidates_.insert(node);
@@ -1302,46 +1364,36 @@ void MarkForCompilationPassImpl::VLogClusteringSummary() {
     return;
   }
 
-  std::map<absl::string_view, int> cluster_name_to_size;
-  std::map<absl::string_view, std::map<absl::string_view, int>>
-      cluster_name_to_op_histogram;
-  std::map<absl::string_view, int> unclustered_op_histogram;
-  int clustered_node_count = 0;
-
-  for (Node* n : graph_->nodes()) {
-    absl::optional<absl::string_view> cluster_name = GetXlaClusterForNode(*n);
-    if (cluster_name) {
-      clustered_node_count++;
-      cluster_name_to_size[*cluster_name]++;
-      cluster_name_to_op_histogram[*cluster_name][n->type_string()]++;
-    } else {
-      unclustered_op_histogram[n->type_string()]++;
-    }
-  }
-
-  int unclustered_node_count = graph_->num_nodes() - clustered_node_count;
+  XlaAutoClusteringSummary auto_clustering_info =
+      GetXlaAutoClusteringSummary(*graph_);
 
   VLOG(2) << "*** Clustering info for graph of size " << graph_->num_nodes();
-  VLOG(2) << " Built " << cluster_name_to_size.size() << " clusters, size "
-          << RatioToString(clustered_node_count, graph_->num_nodes());
+  VLOG(2) << " Built " << auto_clustering_info.clusters_size()
+          << " clusters, size "
+          << RatioToString(auto_clustering_info.clustered_node_count(),
+                           graph_->num_nodes());
 
-  for (const auto& cluster_name_size_pair : cluster_name_to_size) {
-    absl::string_view cluster_name = cluster_name_size_pair.first;
-    int size = cluster_name_size_pair.second;
+  for (XlaAutoClusteringSummary::Cluster cluster :
+       auto_clustering_info.clusters()) {
+    absl::string_view cluster_name = cluster.name();
+    int size = cluster.size();
     VLOG(2) << "  " << cluster_name << " "
             << RatioToString(size, graph_->num_nodes());
-    for (const auto& op_count_pair :
-         cluster_name_to_op_histogram[cluster_name]) {
-      VLOG(3) << "   " << op_count_pair.first << ": " << op_count_pair.second
+    for (const XlaAutoClusteringSummary::OpAndCount& op_count :
+         cluster.op_histogram()) {
+      VLOG(3) << "   " << op_count.op() << ": " << op_count.count()
               << " instances";
     }
   }
 
-  if (!unclustered_op_histogram.empty()) {
+  if (!auto_clustering_info.unclustered_op_histogram().empty()) {
     VLOG(2) << " Unclustered nodes: "
-            << RatioToString(unclustered_node_count, graph_->num_nodes());
-    for (const auto& pair : unclustered_op_histogram) {
-      VLOG(3) << "  " << pair.first << ": " << pair.second << " instances";
+            << RatioToString(auto_clustering_info.unclustered_node_count(),
+                             graph_->num_nodes());
+    for (const XlaAutoClusteringSummary::OpAndCount& op_count :
+         auto_clustering_info.unclustered_op_histogram()) {
+      VLOG(3) << "  " << op_count.op() << ": " << op_count.count()
+              << " instances";
     }
   }
 

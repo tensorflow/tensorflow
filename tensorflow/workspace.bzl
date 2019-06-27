@@ -55,6 +55,11 @@ def clean_dep(dep):
 # path_prefix is no longer used.
 # tf_repo_name is thought to be under consideration.
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
+    tf_repositories(path_prefix, tf_repo_name)
+    tf_bind()
+
+# Define all external repositories required by TensorFlow
+def tf_repositories(path_prefix = "", tf_repo_name = ""):
     """All external dependencies for TF builds."""
 
     # Note that we check the minimum bazel version in WORKSPACE.
@@ -137,11 +142,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "com_google_absl",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
-        sha256 = "72c5399f3acb8777bb4931c42a4bead6748ce8ffd73da5eec3952e442e0e002f",
-        strip_prefix = "abseil-cpp-361cb8a9db2f2130442389fd80593255be26d681",
+        sha256 = "acd93f6baaedc4414ebd08b33bebca7c7a46888916101d8c0b8083573526d070",
+        strip_prefix = "abseil-cpp-43ef2148c0936ebf7cb4be6b19927a9d9d145b8f",
         urls = [
-            "http://mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/361cb8a9db2f2130442389fd80593255be26d681.tar.gz",
-            "https://github.com/abseil/abseil-cpp/archive/361cb8a9db2f2130442389fd80593255be26d681.tar.gz",
+            "http://mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/43ef2148c0936ebf7cb4be6b19927a9d9d145b8f.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/43ef2148c0936ebf7cb4be6b19927a9d9d145b8f.tar.gz",
         ],
     )
 
@@ -149,11 +154,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "48322e45a15aeee5414e8908fa0c48178091de71dd4624ead58c68c66e6554bc",
-        strip_prefix = "eigen-eigen-0cd24954b8a5",
+        sha256 = "e87a5b2e7febd15e56bb95639af77170d5d502014edc64871fc1606ef66e2960",
+        strip_prefix = "eigen-eigen-0eeb60526ce0",
         urls = [
-            "http://mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/0cd24954b8a5.tar.gz",
-            "https://bitbucket.org/eigen/eigen/get/0cd24954b8a5.tar.gz",
+            "http://mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/0eeb60526ce0.tar.gz",
+            "https://bitbucket.org/eigen/eigen/get/0eeb60526ce0.tar.gz",
         ],
     )
 
@@ -192,15 +197,15 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "com_github_googlecloudplatform_google_cloud_cpp",
-        sha256 = "a072103546cfa041ad8bfc599fe5a20c58e005a1a0ee18e94b2554dc3d485604",
-        strip_prefix = "google-cloud-cpp-0.9.0",
+        sha256 = "fd0c3e3b50f32af332b53857f8cd1bfa009e33d1eeecabc5c79a4825d906a90c",
+        strip_prefix = "google-cloud-cpp-0.10.0",
         system_build_file = clean_dep("//third_party/systemlibs:google_cloud_cpp.BUILD"),
         system_link_files = {
             "//third_party/systemlibs:google_cloud_cpp.google.cloud.bigtable.BUILD": "google/cloud/bigtable/BUILD",
         },
         urls = [
-            "http://mirror.tensorflow.org/github.com/googleapis/google-cloud-cpp/archive/v0.9.0.tar.gz",
-            "https://github.com/googleapis/google-cloud-cpp/archive/v0.9.0.tar.gz",
+            "http://mirror.tensorflow.org/github.com/googleapis/google-cloud-cpp/archive/v0.10.0.tar.gz",
+            "https://github.com/googleapis/google-cloud-cpp/archive/v0.10.0.tar.gz",
         ],
     )
 
@@ -323,6 +328,18 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
+        name = "opt_einsum_archive",
+        build_file = clean_dep("//third_party:opt_einsum.BUILD"),
+        sha256 = "d3d464b4da7ef09e444c30e4003a27def37f85ff10ff2671e5f7d7813adac35b",
+        strip_prefix = "opt_einsum-2.3.2",
+        system_build_file = clean_dep("//third_party/systemlibs:opt_einsum.BUILD"),
+        urls = [
+            "http://mirror.tensorflow.org/pypi.python.org/packages/f6/d6/44792ec668bcda7d91913c75237314e688f70415ab2acd7172c845f0b24f/opt_einsum-2.3.2.tar.gz",
+            "https://pypi.python.org/packages/f6/d6/44792ec668bcda7d91913c75237314e688f70415ab2acd7172c845f0b24f/opt_einsum-2.3.2.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
         name = "absl_py",
         sha256 = "3d0f39e0920379ff1393de04b573bca3484d82a5f8b939e9e83b20b6106c9bbe",
         strip_prefix = "abseil-py-pypi-v0.7.1",
@@ -371,41 +388,21 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         },
     )
 
-    # 5902e759108d14ee8e6b0b07653dac2f4e70ac73 is based on 3.7.1 with a fix for BUILD file.
+    # 310ba5ee72661c081129eb878c1bbcec936b20f0 is based on 3.8.0 with a fix for protobuf.bzl.
     PROTOBUF_URLS = [
-        "http://mirror.tensorflow.org/github.com/protocolbuffers/protobuf/archive/5902e759108d14ee8e6b0b07653dac2f4e70ac73.tar.gz",
-        "https://github.com/protocolbuffers/protobuf/archive/5902e759108d14ee8e6b0b07653dac2f4e70ac73.tar.gz",
+        "http://mirror.tensorflow.org/github.com/protocolbuffers/protobuf/archive/310ba5ee72661c081129eb878c1bbcec936b20f0.tar.gz",
+        "https://github.com/protocolbuffers/protobuf/archive/310ba5ee72661c081129eb878c1bbcec936b20f0.tar.gz",
     ]
-    PROTOBUF_SHA256 = "1c020fafc84acd235ec81c6aac22d73f23e85a700871466052ff231d69c1b17a"
-    PROTOBUF_STRIP_PREFIX = "protobuf-5902e759108d14ee8e6b0b07653dac2f4e70ac73"
+    PROTOBUF_SHA256 = "b9e92f9af8819bbbc514e2902aec860415b70209f31dfc8c4fa72515a5df9d59"
+    PROTOBUF_STRIP_PREFIX = "protobuf-310ba5ee72661c081129eb878c1bbcec936b20f0"
 
-    tf_http_archive(
-        name = "protobuf_archive",
-        sha256 = PROTOBUF_SHA256,
-        strip_prefix = PROTOBUF_STRIP_PREFIX,
-        system_build_file = clean_dep("//third_party/systemlibs:protobuf.BUILD"),
-        system_link_files = {
-            "//third_party/systemlibs:protobuf.bzl": "protobuf.bzl",
-        },
-        urls = PROTOBUF_URLS,
-    )
+    # protobuf depends on @zlib, it has to be renamed to @zlib_archive because "zlib" is already
+    # defined using bind for grpc.
+    PROTOBUF_PATCH = "//third_party/protobuf:protobuf.patch"
 
-    # We need to import the protobuf library under the names com_google_protobuf
-    # and com_google_protobuf_cc to enable proto_library support in bazel.
-    # Unfortunately there is no way to alias http_archives at the moment.
     tf_http_archive(
         name = "com_google_protobuf",
-        sha256 = PROTOBUF_SHA256,
-        strip_prefix = PROTOBUF_STRIP_PREFIX,
-        system_build_file = clean_dep("//third_party/systemlibs:protobuf.BUILD"),
-        system_link_files = {
-            "//third_party/systemlibs:protobuf.bzl": "protobuf.bzl",
-        },
-        urls = PROTOBUF_URLS,
-    )
-
-    tf_http_archive(
-        name = "com_google_protobuf_cc",
+        patch_file = clean_dep(PROTOBUF_PATCH),
         sha256 = PROTOBUF_SHA256,
         strip_prefix = PROTOBUF_STRIP_PREFIX,
         system_build_file = clean_dep("//third_party/systemlibs:protobuf.BUILD"),
@@ -522,11 +519,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "llvm",
         build_file = clean_dep("//third_party/llvm:llvm.autogenerated.BUILD"),
-        sha256 = "a0f29da4eeef5655f75dd758e04ae9f3016a3fb206cff0d8779ad331ca4a8f2e",
-        strip_prefix = "llvm-64267da8c68e9fa5d62eaa59b318755b20a213f9",
+        sha256 = "842b7629689b863d5ef196a63e7a24fb9b61ad08f9b2c61851ae5cc5698a01bc",
+        strip_prefix = "llvm-6e11f192fc555ebfca595403b0f5cdc3aa47a4de",
         urls = [
-            "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/64267da8c68e9fa5d62eaa59b318755b20a213f9.tar.gz",
-            "https://github.com/llvm-mirror/llvm/archive/64267da8c68e9fa5d62eaa59b318755b20a213f9.tar.gz",
+            "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/6e11f192fc555ebfca595403b0f5cdc3aa47a4de.tar.gz",
+            "https://github.com/llvm-mirror/llvm/archive/6e11f192fc555ebfca595403b0f5cdc3aa47a4de.tar.gz",
         ],
     )
 
@@ -580,10 +577,10 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "fft2d",
         build_file = clean_dep("//third_party/fft2d:fft2d.BUILD"),
-        sha256 = "52bb637c70b971958ec79c9c8752b1df5ff0218a4db4510e60826e0cb79b5296",
+        sha256 = "ada7e99087c4ed477bfdf11413f2ba8db8a840ba9bbf8ac94f4f3972e2a7cec9",
         urls = [
-            "http://mirror.tensorflow.org/www.kurims.kyoto-u.ac.jp/~ooura/fft.tgz",
-            "http://www.kurims.kyoto-u.ac.jp/~ooura/fft.tgz",
+            "http://mirror.tensorflow.org/www.kurims.kyoto-u.ac.jp/~ooura/fft2d.tgz",
+            "http://www.kurims.kyoto-u.ac.jp/~ooura/fft2d.tgz",
         ],
     )
 
@@ -920,6 +917,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         ],
     )
 
+def tf_bind():
+    """Bind targets for some external repositories"""
     ##############################################################################
     # BIND DEFINITIONS
     #
@@ -969,20 +968,20 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     # Needed by gRPC
     native.bind(
         name = "protobuf",
-        actual = "@protobuf_archive//:protobuf",
+        actual = "@com_google_protobuf//:protobuf",
     )
 
     # gRPC expects //external:protobuf_clib and //external:protobuf_compiler
     # to point to Protobuf's compiler library.
     native.bind(
         name = "protobuf_clib",
-        actual = "@protobuf_archive//:protoc_lib",
+        actual = "@com_google_protobuf//:protoc_lib",
     )
 
     # Needed by gRPC
     native.bind(
         name = "protobuf_headers",
-        actual = "@protobuf_archive//:protobuf_headers",
+        actual = "@com_google_protobuf//:protobuf_headers",
     )
 
     # Needed by Protobuf

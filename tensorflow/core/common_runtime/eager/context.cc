@@ -19,6 +19,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
@@ -37,6 +38,7 @@ limitations under the License.
 #endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/monitoring.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -51,33 +53,33 @@ bool ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val) {
   return default_val;
 }
 
+auto* eager_context_created =
+    monitoring::Gauge<bool, 0>::New("/tensorflow/core/eager_context_created",
+                                    "True if an eager context was created.");
+
 }  // namespace
 
-EagerContext::EagerContext(const SessionOptions& opts,
-                           ContextDevicePlacementPolicy default_policy,
-                           bool async,
-                           std::unique_ptr<const DeviceMgr> device_mgr,
-                           Rendezvous* rendezvous)
-    : EagerContext(opts, default_policy, async, device_mgr.release(),
-                   /*device_mgr_owned*/ true, rendezvous, nullptr) {}
-
 EagerContext::EagerContext(
-    const SessionOptions& opts, ContextDevicePlacementPolicy default_policy,
-    bool async, const DeviceMgr* device_mgr, bool device_mgr_owned,
-    Rendezvous* rendezvous, const CustomKernelCreator* custom_kernel_creator,
+    const SessionOptions& opts,
+    ContextDevicePlacementPolicy default_device_placement_policy,
+    ContextMirroringPolicy default_mirroring_policy, bool async,
+    const DeviceMgr* device_mgr, bool device_mgr_owned, Rendezvous* rendezvous,
+    const CustomKernelCreator* custom_kernel_creator,
     DistributedFunctionLibraryRuntime* cluster_flr,
     std::function<Rendezvous*(const int64)> rendezvous_creator,
     const DeviceMgr* remote_device_mgr)
-    : policy_(default_policy),
+    : default_device_placement_policy_(default_device_placement_policy),
+      default_mirroring_policy_(default_mirroring_policy),
       remote_unowned_device_manager_(remote_device_mgr),
       devices_(device_mgr->ListDevices()),
       rendezvous_(rendezvous),
       rendezvous_creator_(std::move(rendezvous_creator)),
       thread_pool_(NewThreadPoolFromSessionOptions(opts)),
+      custom_kernel_creator_(custom_kernel_creator),
       pflr_(new ProcessFunctionLibraryRuntime(
           device_mgr, opts.env, TF_GRAPH_DEF_VERSION, &func_lib_def_,
           opts.config.graph_options().optimizer_options(), thread_pool_.get(),
-          cluster_flr, custom_kernel_creator)),
+          cluster_flr, custom_kernel_creator_)),
       log_device_placement_(opts.config.log_device_placement()),
       num_active_steps_(0),
       async_default_(async),
@@ -89,6 +91,7 @@ EagerContext::EagerContext(
   // Starts exporting metrics through a platform-specific monitoring API (if
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
+  eager_context_created->GetCell()->Set(true);
   monitoring::StartExporter();
   if (device_mgr_owned) {
     local_device_manager_.reset(device_mgr);
@@ -173,16 +176,36 @@ void EagerContext::ClearCaches() {
 void EagerContext::SetThreadLocalDevicePlacementPolicy(
     ContextDevicePlacementPolicy policy) {
   mutex_lock ml(policy_map_mu_);
-  thread_local_policies_[std::this_thread::get_id()] = policy;
+  device_placement_policy_[std::this_thread::get_id()] = policy;
 }
 
-ContextDevicePlacementPolicy EagerContext::GetDevicePlacementPolicy() {
-  mutex_lock ml(policy_map_mu_);
-  auto policy_map_it = thread_local_policies_.find(std::this_thread::get_id());
-  if (policy_map_it != thread_local_policies_.end()) {
+ContextDevicePlacementPolicy EagerContext::GetDevicePlacementPolicy() const {
+  tf_shared_lock l(policy_map_mu_);
+  auto policy_map_it =
+      device_placement_policy_.find(std::this_thread::get_id());
+  if (policy_map_it != device_placement_policy_.end()) {
     return policy_map_it->second;
   }
-  return policy_;
+  return default_device_placement_policy_;
+}
+
+void EagerContext::SetThreadLocalMirroringPolicy(
+    ContextMirroringPolicy policy) {
+  mutex_lock ml(policy_map_mu_);
+  mirroring_policy_[std::this_thread::get_id()] = policy;
+}
+
+ContextMirroringPolicy EagerContext::GetMirroringPolicy() const {
+  tf_shared_lock l(policy_map_mu_);
+  auto policy_map_it = mirroring_policy_.find(std::this_thread::get_id());
+  if (policy_map_it != mirroring_policy_.end()) {
+    return policy_map_it->second;
+  }
+  return default_mirroring_policy_;
+}
+
+bool EagerContext::MirrorTensors() const {
+  return GetMirroringPolicy() == MIRRORING_ALL;
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -249,6 +272,12 @@ EagerContext::~EagerContext() {
 
   for (auto& thread : child_threads_) {
     thread.reset();
+  }
+
+  // Release resources ahead of destroying the device manager as the resource
+  // destructors (e.g. ~IteratorResource) assume devices still exist.
+  for (auto device : local_device_mgr()->ListDevices()) {
+    device->ClearResourceMgr();
   }
 }
 
@@ -619,7 +648,7 @@ Status EagerContext::InitializeRemote(
   local_device_manager_ = nullptr;
   pflr_.reset(new ProcessFunctionLibraryRuntime(
       local_unowned_device_manager_, env_, TF_GRAPH_DEF_VERSION, &func_lib_def_,
-      {}, thread_pool_.get(), cluster_flr));
+      {}, thread_pool_.get(), cluster_flr, custom_kernel_creator_));
 
   devices_ = local_unowned_device_manager_->ListDevices();
   devices_map_.clear();

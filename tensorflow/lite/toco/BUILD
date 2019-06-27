@@ -75,6 +75,8 @@ cc_library(
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/lite/kernels/internal:common",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:types",
     ],
@@ -165,7 +167,7 @@ cc_library(
     ],
     deps = [
         # Placeholder for internal file dependency.
-        "@protobuf_archive//:protobuf_headers",
+        "@com_google_protobuf//:protobuf_headers",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -327,7 +329,7 @@ cc_library(
         ":toco_flags_proto_cc",
         ":toco_port",
         ":tooling_util",
-        "@protobuf_archive//:protobuf_headers",
+        "@com_google_protobuf//:protobuf_headers",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:core_cpu_lib",
@@ -383,8 +385,8 @@ cc_library(
         "//tensorflow/lite/kernels/internal:types",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf_headers",
         "@com_googlesource_code_re2//:re2",
-        "@protobuf_archive//:protobuf_headers",
     ],
 )
 

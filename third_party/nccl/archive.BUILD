@@ -10,7 +10,6 @@ load(
     "cuda_rdc_library",
     "gen_device_srcs",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_default_copts")
 
 cc_library(
     name = "src_hdrs",
@@ -56,7 +55,11 @@ cuda_rdc_library(
     srcs = [
         "src/collectives/device/functions.cu.cc",
         ":device_srcs",
-    ],
+    ] + glob([
+        # Required for header inclusion checking, see below for details.
+        "src/collectives/device/*.h",
+        "src/nccl.h",
+    ]),
     deps = [
         ":device_hdrs",
         ":include_hdrs",
@@ -77,10 +80,11 @@ cc_library(
         # http://docs.bazel.build/versions/master/be/c-cpp.html#hdrs).
         # Files in src/ which #include "nccl.h" load it from there rather than
         # from the virtual includes directory.
+        "src/collectives.h",
+        "src/collectives/collectives.h",
         "src/nccl.h",
     ],
     hdrs = ["src/nccl.h"],
-    copts = cuda_default_copts() + ["-Wno-vla"],
     include_prefix = "third_party/nccl",
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],

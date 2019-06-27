@@ -429,10 +429,12 @@ class MathTest(PForTestCase):
       data = array_ops.gather(t, i)
       data_0 = array_ops.gather(t, 0)
       seg_ids = array_ops.gather(segment_ids, i)
+      seg_ids_0 = array_ops.gather(segment_ids, 0)
       return (math_ops.unsorted_segment_sum(data, seg_ids, num_segments),
-              math_ops.unsorted_segment_sum(data_0, seg_ids, num_segments))
+              math_ops.unsorted_segment_sum(data_0, seg_ids, num_segments),
+              math_ops.unsorted_segment_sum(data, seg_ids_0, num_segments))
 
-    self._test_loop_fn(loop_fn, 3, [dtypes.float32] * 2)
+    self._test_loop_fn(loop_fn, 3, [dtypes.float32] * 3)
 
   def test_cast(self):
     x = constant_op.constant([[1], [2]])

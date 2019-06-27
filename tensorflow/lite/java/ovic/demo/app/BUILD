@@ -11,7 +11,7 @@ android_binary(
     srcs = [
         "OvicBenchmarkerActivity.java",
     ],
-    aapt_version = "aapt",
+    aapt_version = "aapt2",
     assets = [
         "//tensorflow/lite/java/ovic/src/testdata:coco_labels.txt",
         "//tensorflow/lite/java/ovic/src/testdata:labels.txt",

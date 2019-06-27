@@ -51,17 +51,29 @@ except ImportError:
 class Delegate(object):
   """Python wrapper class to manage TfLiteDelegate objects.
 
-  Attributes:
-    library: Name of shared library containing the delegate with two functions:
-      TfLiteDelegate* tflite_plugin_create_delegate (char **, char **, int) void
-      tflite_plugin_destroy_delegate (TfLiteDelegate *)
-    options: Dictionary of options that are required to load the delegate. All
-      keys and values in the dictionary should be serializable. Consult the
-      documentation of the specific delegate for required and legal options.
-      (default None)
+  The shared library is expected to have two functions:
+    TfLiteDelegate* tflite_plugin_create_delegate(char**, char**, size_t)
+    void tflite_plugin_destroy_delegate(TfLiteDelegate*)
+
+  The first one creates a delegate object. It may return NULL to indicate an
+  error. The second one destroys delegate object and must be called for every
+  created delegate object. Passing NULL as argument value is allowed, i.e.
+
+    tflite_plugin_destroy_delegate(tflite_plugin_create_delegate(...))
+
+  always works.
   """
 
   def __init__(self, library, options=None):
+    """Loads delegate from the shared library.
+
+    Args:
+      library: Shared library name.
+      options: Dictionary of options that are required to load the delegate. All
+        keys and values in the dictionary should be serializable. Consult the
+        documentation of the specific delegate for required and legal options.
+        (default None)
+    """
     self._library = ctypes.pydll.LoadLibrary(library)
     self._library.tflite_plugin_create_delegate.argtypes = [
         ctypes.POINTER(ctypes.c_char_p),
@@ -98,24 +110,26 @@ class Delegate(object):
 
 @_tf_export('lite.experimental.load_delegate')
 def load_delegate(library, options=None):
-  """Returns a Delegate object.
-
-  The `library` is expected to have two functions:
-    TfLiteDelegate* tflite_plugin_create_delegate (char **, char **, int)
-    void tflite_plugin_destroy_delegate (TfLiteDelegate *)
+  """Returns loaded Delegate object.
 
   Args:
     library: Name of shared library containing the
       [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates).
     options: Dictionary of options that are required to load the delegate. All
-      keys and values in the dictionary should be serializable. Consult the
-      documentation of the specific delegate for required and legal options.
+      keys and values in the dictionary should be convertible to str. Consult
+      the documentation of the specific delegate for required and legal options.
       (default None)
 
   Returns:
     Delegate object.
+
+  Raises:
+    ValueError: Delegate failed to load.
   """
-  return Delegate(library, options)
+  delegate = Delegate(library, options)
+  if not delegate._get_native_delegate_pointer():  # pylint: disable=protected-access
+    raise ValueError('Failed to load delegate from {}'.format(library))
+  return delegate
 
 
 @_tf_export('lite.Interpreter')

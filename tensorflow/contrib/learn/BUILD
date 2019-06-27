@@ -602,6 +602,9 @@ py_test(
     srcs = ["python/learn/estimators/svm_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",  # b/134605801
+    ],
     deps = [
         ":learn",
         "//tensorflow/contrib/layers:layers_py",

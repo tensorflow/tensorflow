@@ -1,12 +1,6 @@
 # Description:
 #   OpKernels for RNN ops.
 
-package(
-    default_visibility = ["//tensorflow:internal"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_gpu_library",
@@ -16,6 +10,12 @@ load(
     "//tensorflow/core:platform/default/cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+
+package(
+    default_visibility = ["//tensorflow:internal"],
+)
+
+licenses(["notice"])  # Apache 2.0
 
 tf_gpu_library(
     name = "blas_gemm",

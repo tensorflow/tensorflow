@@ -1,5 +1,6 @@
 op {
   graph_op_name: "GRUBlockCellGrad"
+  visibility: HIDDEN
   summary: "Computes the GRU cell back-propagation for 1 time step."
   description: <<END
 Args

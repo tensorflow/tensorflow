@@ -48,7 +48,7 @@ def check_destinations(destinations):
     Boolean which is True if `destinations` is not empty.
   """
   # Calling bool() on a ResourceVariable is not allowed.
-  if isinstance(destinations, resource_variable_ops.ResourceVariable):
+  if isinstance(destinations, resource_variable_ops.BaseResourceVariable):
     return bool(destinations.device)
   return bool(destinations)
 
@@ -56,7 +56,7 @@ def check_destinations(destinations):
 def validate_destinations(destinations):
   if not isinstance(destinations,
                     (value_lib.DistributedValues,
-                     resource_variable_ops.ResourceVariable,
+                     resource_variable_ops.BaseResourceVariable,
                      value_lib.AggregatingVariable,
                      six.string_types,
                      value_lib.TPUMirroredVariable,
@@ -933,8 +933,8 @@ class MultiWorkerAllReduce(AllReduceCrossDeviceOps):
           aggregated_grads = range_agg_grads
         else:
           assert len(aggregated_grads) == len(range_agg_grads)
-          for i in range(len(aggregated_grads)):
-            aggregated_grads[i] += range_agg_grads[i]
+          for i, range_agg_grad in enumerate(range_agg_grads):
+            aggregated_grads[i] += range_agg_grad
     assert not remaining_grads
 
     return _ungroup_and_make_mirrored(aggregated_grads, per_replica_values[0],

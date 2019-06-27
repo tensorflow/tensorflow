@@ -1,4 +1,10 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_cuda_cc_test")
+load(
+    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
+load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library", "xla_py_proto_library")
+load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
 
 package(
     default_visibility = [":internal"],
@@ -26,13 +32,6 @@ package_group(
     ],
 )
 
-load(
-    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
-load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library", "xla_py_proto_library")
-load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
-
 cc_library(
     name = "tf2xla_supported_ops_lib",
     srcs = ["tf2xla_supported_ops.cc"],
@@ -40,7 +39,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":xla_compiler",
-        "//tensorflow/compiler/tf2xla/kernels:xla_cpu_only_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -108,7 +106,6 @@ cc_library(
         ":tf2xla_proto",
         ":tf2xla_util",
         ":xla_compiler",
-        "//tensorflow/compiler/tf2xla/kernels:xla_cpu_only_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:xla_computation",

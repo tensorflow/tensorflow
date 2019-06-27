@@ -124,8 +124,10 @@ cc_test(
     linkstatic = 1,
     deps = [
         ":tflite_inference_stage",
+        "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/tools/evaluation:utils",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_googletest//:gtest_main",
@@ -143,6 +145,7 @@ cc_library(
         ":topk_accuracy_eval_stage",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
+        "//tensorflow/lite/tools/evaluation:utils",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
     ],

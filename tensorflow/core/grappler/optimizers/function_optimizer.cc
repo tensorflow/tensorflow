@@ -1122,6 +1122,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
   std::unique_ptr<Graph> graph = absl::make_unique<Graph>(flib_def);
 
   GraphConstructorOptions graph_constructor_options;
+  graph_constructor_options.allow_internal_ops = true;
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(graph_constructor_options,
                                             item.graph, graph.get()));
 

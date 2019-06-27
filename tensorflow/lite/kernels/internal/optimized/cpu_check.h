@@ -16,35 +16,9 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_CPU_CHECK_H_
 
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 
 namespace tflite {
-
-#ifdef __ANDROID__
-#include "ndk/sources/android/cpufeatures/cpu-features.h"
-
-// Runtime check for Neon support on Android.
-inline bool TestCPUFeatureNeon() {
-#ifdef __aarch64__
-  // ARM-64 always has NEON support.
-  return true;
-#else
-  static bool kUseAndroidNeon =
-      (android_getCpuFamily() == ANDROID_CPU_FAMILY_ARM &&
-       android_getCpuFeatures() & ANDROID_CPU_ARM_FEATURE_ARMv7 &&
-       android_getCpuFeatures() & ANDROID_CPU_ARM_FEATURE_NEON);
-  return kUseAndroidNeon;
-#endif  // __aarch64__
-}
-
-#elif defined USE_NEON || defined __ARM_NEON
-
-inline bool TestCPUFeatureNeon() { return true; }
-
-#else
-
-inline bool TestCPUFeatureNeon() { return false; }
-
-#endif
 
 struct CpuFlags {
   bool neon_dotprod = false;
@@ -59,17 +33,5 @@ inline void GetCpuFlags(CpuBackendContext* cpu_backend_context,
 }
 
 }  // namespace tflite
-
-// NEON_OR_PORTABLE(SomeFunc, arcs) calls NeonSomeFunc(args) if Neon is both
-// enabled at build time and detected at runtime, or PortableSomeFunc(args)
-// otherwise.
-#ifdef __ARM_ARCH_5TE__
-// Neon isn't available at all on ARMv5.
-#define NEON_OR_PORTABLE(funcname, ...) Portable##funcname(__VA_ARGS__)
-#else
-#define NEON_OR_PORTABLE(funcname, ...)              \
-  TestCPUFeatureNeon() ? Neon##funcname(__VA_ARGS__) \
-                       : Portable##funcname(__VA_ARGS__)
-#endif
 
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_CPU_CHECK_H_

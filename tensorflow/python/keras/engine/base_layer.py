@@ -23,12 +23,14 @@ import functools
 import inspect  # Necessary supplement to tf_inspect to deal with variadic args.
 import itertools
 import json
+import threading
 
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import node_def_pb2
-from tensorflow.python import autograph
+from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
@@ -49,7 +51,7 @@ from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
 from tensorflow.python.keras.mixed_precision.experimental import policy
-from tensorflow.python.keras.saving import saved_model
+from tensorflow.python.keras.saving.saved_model import save as saved_model
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.
@@ -181,26 +183,17 @@ class Layer(module.Module):
     self._maybe_create_attribute('_trainable_weights', [])
     self._maybe_create_attribute('_non_trainable_weights', [])
     self._updates = []
+    # Object to store all thread local layer properties.
+    self._thread_local = threading.local()
     # A list of zero-argument lambdas which return Tensors, used for variable
     # regularizers.
     self._callable_losses = []
     # A list of symbolic Tensors containing activity regularizers and losses
     # manually added through `add_loss` in graph-building mode.
     self._losses = []
-    # A list of loss values containing activity regularizers and losses
-    # manually added through `add_loss` during eager execution. It is cleared
-    # after every batch.
-    # Because we plan on eventually allowing a same model instance to be trained
-    # in eager mode or graph mode alternatively, we need to keep track of
-    # eager losses and symbolic losses via separate attributes.
-    self._eager_losses = []
     # A list of metric instances corresponding to the symbolic metric tensors
     # added using the `add_metric` API.
     self._metrics = []
-    # TODO(psv): Remove this property.
-    # A dictionary that maps metric names to metric result tensors. The results
-    # are the running averages of metric values over an epoch.
-    self._metrics_tensors = {}
 
     self._set_dtype_and_policy(dtype)
     self._call_convention = (base_layer_utils
@@ -415,6 +408,7 @@ class Layer(module.Module):
       self._non_trainable_weights.append(variable)
     return variable
 
+  @base_layer_utils.default
   def get_config(self):
     """Returns the config of the layer.
 
@@ -430,11 +424,26 @@ class Layer(module.Module):
     Returns:
         Python dictionary.
     """
+    all_args = tf_inspect.getfullargspec(self.__init__).args
     config = {'name': self.name, 'trainable': self.trainable}
     if hasattr(self, '_batch_input_shape'):
       config['batch_input_shape'] = self._batch_input_shape
     if hasattr(self, 'dtype'):
       config['dtype'] = self.dtype
+    if hasattr(self, 'dynamic'):
+      # Only include `dynamic` in the `config` if it is `True`
+      if self.dynamic:
+        config['dynamic'] = self.dynamic
+      elif 'dynamic' in all_args:
+        all_args.remove('dynamic')
+    expected_args = config.keys()
+    # Finds all arguments in the `__init__` that are not in the config:
+    extra_args = [arg for arg in all_args if arg not in expected_args]
+    # Check that either the only argument in the `__init__` is  `self`,
+    # or that `get_config` has been overridden:
+    if len(extra_args) > 1 and hasattr(self.get_config, '_is_default'):
+      raise NotImplementedError('Layers with arguments in `__init__` must '
+                                'override `get_config`.')
     # TODO(reedwm): Handle serializing self._mixed_precision_policy.
     return config
 
@@ -677,19 +686,11 @@ class Layer(module.Module):
           # Wrapping `call` function in autograph to allow for dynamic control
           # dependencies in call. We are limiting this to subclassed layers as
           # autograph is strictly needed only for subclassed layers and models.
-          # As an additional optimization, we avoid calling autograph if the
-          # function is already converted or marked for no conversion. The
-          # effect is largely cosmetic - it avoid four extra frames in the call
-          # stack.
-          if (base_layer_utils.is_subclassed(self)
-              and not hasattr(self.call, '__ag_compiled')):
-            decorators, original_func = tf_decorator.unwrap(self.call)
-            converted_func = autograph.convert(recursive=True)(original_func)
-            if decorators:
-              call_fn = tf_decorator.rewrap(self.call, original_func,
-                                            converted_func)
-            else:
-              call_fn = converted_func
+          # tf_convert will respect the value of autograph setting in the
+          # enclosing tf.function, if any.
+          if base_layer_utils.is_subclassed(self):
+            call_fn = autograph.tf_convert(
+                self.call, ag_ctx.control_status_ctx())
           else:
             call_fn = self.call
 
@@ -790,6 +791,21 @@ class Layer(module.Module):
   def activity_regularizer(self, regularizer):
     """Optional regularizer function for the output of this layer."""
     self._activity_regularizer = regularizer
+
+  @property
+  def input_spec(self):
+    return self._input_spec
+
+  @input_spec.setter
+  # Must be decorated to prevent tracking, since the input_spec can be nested
+  # InputSpec objects.
+  @trackable.no_automatic_dependency_tracking
+  def input_spec(self, value):
+    for v in nest.flatten(value):
+      if v is not None and not isinstance(v, InputSpec):
+        raise TypeError('Layer input_spec must be an instance of InputSpec. '
+                        'Got: {}'.format(v))
+    self._input_spec = value
 
   @property
   def trainable_weights(self):
@@ -1678,7 +1694,6 @@ class Layer(module.Module):
         metric_obj, result_tensor = base_layer_utils.create_mean_metric(
             value, name)
         self._metrics.append(metric_obj)
-    self._metrics_tensors[metric_obj.name] = result_tensor
 
   def _handle_weight_regularization(self, name, variable, regularizer):
     """Create lambdas which compute regularization losses."""
@@ -2217,6 +2232,22 @@ class Layer(module.Module):
     return '_tf_keras_layer'
 
   @property
+  def _eager_losses(self):
+    # A list of loss values containing activity regularizers and losses
+    # manually added through `add_loss` during eager execution. It is cleared
+    # after every batch.
+    # Because we plan on eventually allowing a same model instance to be trained
+    # in eager mode or graph mode alternatively, we need to keep track of
+    # eager losses and symbolic losses via separate attributes.
+    if not hasattr(self._thread_local, '_eager_losses'):
+      self._thread_local._eager_losses = []
+    return self._thread_local._eager_losses
+
+  @_eager_losses.setter
+  def _eager_losses(self, losses):
+    self._thread_local._eager_losses = losses
+
+  @property
   def _tracking_metadata(self):
     """String stored in metadata field in the SavedModel proto.
 
@@ -2255,8 +2286,10 @@ class Layer(module.Module):
       # a NotImplementedError.
       pass
     if self.input_spec is not None:
+      # Layer's input_spec has already been type-checked in the property setter.
       metadata['input_spec'] = nest.map_structure(
-          lambda x: x.get_config(), self.input_spec)
+          lambda x: None if x is None else serialize_keras_object(x),
+          self.input_spec)
     else:
       metadata['input_spec'] = None
     if (self.activity_regularizer is not None and

@@ -432,27 +432,13 @@ def _convert_tensorarray_to_flow(tensor_or_tensor_array):
     return tensor_or_tensor_array
 
 
-def _make_tensor_array(ta, t_or_flow):
-  # pylint: disable=protected-access
-  new_ta = tensor_array_ops.TensorArray(
-      dtype=ta.dtype,
-      handle=ta.handle,
-      flow=t_or_flow,
-      infer_shape=ta._infer_shape,
-      colocate_with_first_write_call=ta._colocate_with_first_write_call)
-  new_ta._colocate_with = ta._colocate_with
-  new_ta._element_shape = ta._element_shape
-  # pylint: enable=protected-access
-  return new_ta
-
-
 def _convert_flows_to_tensorarrays(tensors_or_tensorarrays, tensors_or_flows):
   if len(tensors_or_tensorarrays) != len(tensors_or_flows):
     raise ValueError(
         "Lengths of original Tensor list and new list do not match: %d vs. %d" %
         (len(tensors_or_tensorarrays), len(tensors_or_flows)))
   return [
-      _make_tensor_array(ta, t_or_flow) if isinstance(
+      tensor_array_ops.build_ta_with_new_flow(ta, t_or_flow) if isinstance(
           ta, tensor_array_ops.TensorArray) else t_or_flow
       for (ta, t_or_flow) in zip(tensors_or_tensorarrays, tensors_or_flows)
   ]
@@ -2706,11 +2692,14 @@ def while_loop(cond,
       try_to_pack = len(loop_vars) == 1
       packed = False  # whether the body result was packed into a 1-item tuple
 
+      loop_var_structure = nest.map_structure(type_spec.type_spec_from_value,
+                                              list(loop_vars))
       while cond(*loop_vars):
         loop_vars = body(*loop_vars)
         if try_to_pack and not isinstance(loop_vars, (list, _basetuple)):
           packed = True
           loop_vars = (loop_vars,)
+        nest.assert_same_structure(loop_var_structure, list(loop_vars))
 
       def convert(x):
         if isinstance(x, tensor_array_ops.TensorArray):

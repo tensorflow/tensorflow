@@ -155,7 +155,7 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.version = 2;
       break;
     case BuiltinOperator_MUL:
-      property.inputs = {{0, {}}};
+      property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
       break;
@@ -214,6 +214,11 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
     }
     case BuiltinOperator_SUB:
       property.inputs = {{0, {}}, {1, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
+      break;
+    case BuiltinOperator_SUM:
+      property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
       break;

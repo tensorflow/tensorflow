@@ -315,6 +315,21 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "matrix_inverse_op_test",
+    size = "small",
+    timeout = "moderate",
+    srcs = ["matrix_inverse_op_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "matrix_triangular_solve_op_test",
     size = "small",
     timeout = "moderate",
@@ -557,6 +572,7 @@ tf_xla_py_test(
     name = "image_ops_test",
     size = "small",
     srcs = ["image_ops_test.py"],
+    shard_count = 10,
     tags = [
         "optonly",  # Times out frequently in fastbuild mode.
     ],
@@ -594,6 +610,19 @@ tf_xla_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "manip_ops_test",
+    size = "small",
+    srcs = ["manip_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:manip_ops",
         "//tensorflow/python:platform_test",
     ],
 )
@@ -970,6 +999,7 @@ tf_xla_py_test(
     name = "unary_ops_test",
     size = "medium",
     srcs = ["unary_ops_test.py"],
+    tags = ["notap"],  # b/136030724
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

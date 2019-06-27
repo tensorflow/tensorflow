@@ -612,6 +612,57 @@ TEST_F(OpLevelCostEstimatorTest, TestSliceCosts) {
   EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
 }
 
+TEST_F(OpLevelCostEstimatorTest, TestScatterOps) {
+  std::vector<string> scatter_ops = {"ScatterAdd",   "ScatterDiv", "ScatterMax",
+                                     "ScatterMin",   "ScatterMul", "ScatterSub",
+                                     "ScatterUpdate"};
+  for (const auto& op : scatter_ops) {
+    // Test updates.shape = indices.shape + ref.shape[1:]
+    {
+      OpContext op_context;
+      SetCpuDevice(&op_context.op_info);
+      op_context.op_info.set_op(op);
+      // Huge first dimension in input shouldn't affect Scatter execution and
+      // memory costs.
+      DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
+      DescribeArbitraryRankInput({16}, DT_INT64, &op_context.op_info);
+      DescribeArbitraryRankInput({16, 10}, DT_FLOAT, &op_context.op_info);
+      DescribeArbitraryRankOutput({10000000, 10}, DT_FLOAT,
+                                  &op_context.op_info);
+
+      auto cost = estimator_.PredictCosts(op_context);
+      EXPECT_EQ(Costs::Duration(205), cost.memory_time);
+      EXPECT_EQ(Costs::Duration(16), cost.compute_time);
+      EXPECT_EQ(Costs::Duration(221), cost.execution_time);
+      EXPECT_EQ(1, cost.num_ops_total);
+      EXPECT_FALSE(cost.inaccurate);
+      EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+    }
+
+    // Test updates.shape = [] and INT32 indices
+    {
+      OpContext op_context;
+      SetCpuDevice(&op_context.op_info);
+      op_context.op_info.set_op(op);
+      // Huge first dimension in input shouldn't affect Scatter execution and
+      // memory costs.
+      DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
+      DescribeArbitraryRankInput({16}, DT_INT32, &op_context.op_info);
+      DescribeArbitraryRankInput({}, DT_FLOAT, &op_context.op_info);
+      DescribeArbitraryRankOutput({10000000, 10}, DT_FLOAT,
+                                  &op_context.op_info);
+
+      auto cost = estimator_.PredictCosts(op_context);
+      EXPECT_EQ(Costs::Duration(135), cost.memory_time);
+      EXPECT_EQ(Costs::Duration(16), cost.compute_time);
+      EXPECT_EQ(Costs::Duration(151), cost.execution_time);
+      EXPECT_EQ(1, cost.num_ops_total);
+      EXPECT_FALSE(cost.inaccurate);
+      EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+    }
+  }
+}
+
 TEST_F(OpLevelCostEstimatorTest, BiasAddExecutionTime) {
   auto cost = PredictCosts(DescribeBiasAdd(1000, 10));
   EXPECT_EQ(Costs::Duration(8400), cost.memory_time);

@@ -318,6 +318,11 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
     self.assertEqual(lib.get_num_delegates_invoked(), 0)
     self.assertEqual(lib.get_options_counter(), 2)
 
+  def testFail(self):
+    with self.assertRaisesRegexp(ValueError, 'Failed to load delegate from .*'):
+      interpreter_wrapper.load_delegate(
+          self._delegate_file, options={'fail': 'fail'})
+
 
 if __name__ == '__main__':
   test.main()

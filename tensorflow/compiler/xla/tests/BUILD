@@ -704,12 +704,11 @@ xla_test(
         ":client_library_test_base",
         ":literal_test_util",
         ":test_macros_header",
+        ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:bit_cast",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/base",
     ],
 )
 
@@ -1548,7 +1547,9 @@ xla_test(
 
 xla_test(
     name = "prng_test",
+    timeout = "long",
     srcs = ["prng_test.cc"],
+    shard_count = 6,
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:literal",

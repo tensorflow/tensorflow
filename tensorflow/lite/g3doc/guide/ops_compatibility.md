@@ -134,8 +134,6 @@ TensorFlow operation not listed above are likely unsupported. Notably, the
 following common ops are not supported at the moment:
 
 *   [tf.depth_to_space](https://www.tensorflow.org/api_docs/python/tf/depth_to_space)
-*   [tf.image.resize_bilinear](https://www.tensorflow.org/api_docs/python/tf/image/resize_bilinear)
-*   [tf.tanh](https://www.tensorflow.org/api_docs/python/tf/tanh)
 
 ## TensorFlow Lite Operations
 
@@ -784,6 +782,22 @@ Options {
 }
 ```
 
+**RESIZE_BILINEAR**
+
+```
+Inputs {
+  0: a 4D tensor
+  1: a 1D tensor with 2 elements
+}
+Outputs {
+  0: A tensor of type `tensor 0` resized according to `tensor 1` height/width values
+  using bilinear interpolation.
+}
+Options {
+  align_corners
+}
+```
+
 **RESIZE_NEAREST_NEIGHBOR**
 
 ```
@@ -1001,6 +1015,17 @@ Options {
 }
 ```
 
+**TANH**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: result of computing element-wise hyperbolic tangent of the input tensor
+}
+```
+
 **TOP_K**
 
 ```
@@ -1103,8 +1128,6 @@ custom models yet:
 *   HASHTABLE_LOOKUP
 *   LSH_PROJECTION
 *   LSTM
-*   RESIZE_BILINEAR
 *   RNN
 *   SKIP_GRAM
 *   SVDF
-*   TANH

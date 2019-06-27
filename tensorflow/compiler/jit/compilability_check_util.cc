@@ -72,7 +72,47 @@ void LogNotCompilable(const Node& node, absl::string_view reason = "") {
 
 }  // anonymous namespace
 
-bool RecursiveCompilabilityChecker::HasXLAKernel(const Node& node) {
+std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
+RecursiveCompilabilityChecker::FindUncompilableNodes(
+    const Node& node, FunctionLibraryRuntime* lib_runtime,
+    const std::vector<RecursiveCompilabilityChecker::StackFrame>*
+        node_stack_trace) const {
+  std::vector<StackFrameView> stack_trace;
+  // If `node_stack_trace` is provided, that means `node` is inside
+  // a function body, and therefore, arg nodes and retval nodes are
+  // not considered uncompilable.
+  if (node_stack_trace != nullptr) {
+    for (const auto& frame : *node_stack_trace) {
+      stack_trace.emplace_back(StackFrameView{frame.name, frame.function_name});
+    }
+  }
+  stack_trace.emplace_back(StackFrameView{node.name(), ""});
+  std::vector<UncompilableNodeInfo> uncompilable_nodes;
+  IsCompilableNode(node, lib_runtime, &stack_trace, &uncompilable_nodes);
+  return uncompilable_nodes;
+}
+
+std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
+RecursiveCompilabilityChecker::FindUncompilableNodes(
+    const NodeDef& call_def, FunctionLibraryRuntime* lib_runtime,
+    const std::vector<RecursiveCompilabilityChecker::StackFrame>*
+        node_stack_trace) const {
+  // If `node_stack_trace` is provided, that means `call_def` is inside
+  // a function body, and therefore, arg nodes and retval nodes are
+  // not considered uncompilable.
+  std::vector<StackFrameView> stack_trace;
+  if (node_stack_trace != nullptr) {
+    for (const auto& frame : *node_stack_trace) {
+      stack_trace.emplace_back(StackFrameView{frame.name, frame.function_name});
+    }
+  }
+  stack_trace.emplace_back(StackFrameView{call_def.name(), ""});
+  std::vector<UncompilableNodeInfo> uncompilable_nodes;
+  IsCompilableCall(call_def, lib_runtime, &stack_trace, &uncompilable_nodes);
+  return uncompilable_nodes;
+}
+
+bool RecursiveCompilabilityChecker::HasXLAKernel(const Node& node) const {
   // There is a SymbolicGradient kernel on the XLA_JIT device, but the gradient
   // is really a kind of function call and will be handled by
   // IsCompilableCall().
@@ -104,7 +144,7 @@ bool RecursiveCompilabilityChecker::HasXLAKernel(const Node& node) {
 bool RecursiveCompilabilityChecker::IsCompilableWhile(
     const Node& while_node, FunctionLibraryRuntime* lib_runtime,
     std::vector<StackFrameView>* stack_trace,
-    std::vector<UncompilableNodeInfo>* uncompilable_nodes) {
+    std::vector<UncompilableNodeInfo>* uncompilable_nodes) const {
   const NameAttrList* name_attr;
   NodeDef call;
   Status status;
@@ -155,7 +195,7 @@ bool RecursiveCompilabilityChecker::IsCompilableWhile(
 bool RecursiveCompilabilityChecker::IsCompilableCall(
     const NodeDef& call_def, FunctionLibraryRuntime* lib_runtime,
     std::vector<StackFrameView>* stack_trace,
-    std::vector<UncompilableNodeInfo>* uncompilable_nodes) {
+    std::vector<UncompilableNodeInfo>* uncompilable_nodes) const {
   if (stack_trace->size() > kMaxRecursionDepth) {
     std::string uncompilable_reason = "function depth limit exceeded";
     MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
@@ -191,22 +231,24 @@ bool RecursiveCompilabilityChecker::IsCompilableCall(
   return is_compilable;
 }
 
-bool RecursiveCompilabilityChecker::OpIsInaccurate(const Node& node) {
+bool RecursiveCompilabilityChecker::OpIsInaccurate(const Node& node) const {
   // b/127344411: SelfAdjointEigV2 and Svd precision issues.
   return node.type_string() == "SelfAdjointEigV2" ||
          node.type_string() == "Svd";
 }
 
-bool RecursiveCompilabilityChecker::OpIsSlow(const Node& node) {
+bool RecursiveCompilabilityChecker::OpIsSlow(const Node& node) const {
   // b/128001705: SelfAdjointEigV2 and Svd performance issues.
+  // b/135640736: MatrixInverse performance issues.
   return node.type_string() == "SelfAdjointEigV2" ||
-         node.type_string() == "Svd" || node.type_string() == "Qr";
+         node.type_string() == "Svd" || node.type_string() == "Qr" ||
+         node.type_string() == "MatrixInverse";
 }
 
 bool RecursiveCompilabilityChecker::IsCompilableNode(
     const Node& node, FunctionLibraryRuntime* lib_runtime,
     std::vector<StackFrameView>* stack_trace,
-    std::vector<UncompilableNodeInfo>* uncompilable_nodes) {
+    std::vector<UncompilableNodeInfo>* uncompilable_nodes) const {
   auto stack_depth = stack_trace->size();
   if (node.IsSource() || node.IsSink()) {
     absl::string_view uncompilable_reason = "source or sink node";
@@ -358,7 +400,7 @@ RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
   return op_filter;
 }
 
-void RecursiveCompilabilityChecker::MaybeMarkUncompilableNode(
+/*static*/ void RecursiveCompilabilityChecker::MaybeMarkUncompilableNode(
     const absl::string_view reason,
     const std::vector<StackFrameView>& stack_trace,
     std::vector<UncompilableNodeInfo>* uncompilable_node_list) {

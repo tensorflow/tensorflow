@@ -361,7 +361,7 @@ def _lib_name(lib, cpu_value, version = "", static = False):
     Returns:
       The platform-specific name of the library.
     """
-    if cpu_value in ("Linux"):
+    if cpu_value in ("Linux", "FreeBSD"):
         if static:
             return "lib%s.a" % lib
         else:
@@ -772,7 +772,7 @@ def _create_local_rocm_repository(repository_ctx):
         "-DTENSORFLOW_COMPILER_IS_HIP_CLANG=1",
     ]))
 
-    rocm_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_rocm"
+    rocm_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
 
     # # Enable a few more warnings that aren't part of -Wall.
     # compiler_flag: "-Wunused-but-set-parameter"
@@ -785,7 +785,7 @@ def _create_local_rocm_repository(repository_ctx):
     rocm_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(host_compiler_includes +
                                                                             _rocm_include_path(repository_ctx, rocm_config))
 
-    rocm_defines["%{linker_files}"] = "clang/bin/crosstool_wrapper_driver_rocm"
+    rocm_defines["%{linker_files}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
 
     rocm_defines["%{win_linker_files}"] = ":empty"
 
@@ -825,6 +825,7 @@ def _create_local_rocm_repository(repository_ctx):
                 ["\"%s\"" % c for c in rocm_config.amdgpu_targets],
             ),
         },
+        out = "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
     )
 
     # Set up rocm_config.h, which is used by
@@ -849,21 +850,26 @@ def _create_remote_rocm_repository(repository_ctx, remote_config_repo):
         {
             "%{rocm_is_configured}": "True",
             "%{rocm_extra_copts}": _compute_rocm_extra_copts(
-                repository_ctx,  #_compute_capabilities(repository_ctx)
+                repository_ctx,
+                [],  #_compute_capabilities(repository_ctx)
             ),
         },
     )
-    _tpl(
-        repository_ctx,
-        "rocm:remote.BUILD",
-        {
-            "%{remote_rocm_repo}": remote_config_repo,
-        },
+    repository_ctx.template(
         "rocm/BUILD",
+        Label(remote_config_repo + "/rocm:BUILD"),
+        {},
     )
-    _tpl(repository_ctx, "crosstool:remote.BUILD", {
-        "%{remote_rocm_repo}": remote_config_repo,
-    }, "crosstool/BUILD")
+    repository_ctx.template(
+        "rocm/build_defs.bzl",
+        Label(remote_config_repo + "/rocm:build_defs.bzl"),
+        {},
+    )
+    repository_ctx.template(
+        "rocm/rocm/rocm_config.h",
+        Label(remote_config_repo + "/rocm:rocm/rocm_config.h"),
+        {},
+    )
 
 def _rocm_autoconf_impl(repository_ctx):
     """Implementation of the rocm_autoconf repository rule."""

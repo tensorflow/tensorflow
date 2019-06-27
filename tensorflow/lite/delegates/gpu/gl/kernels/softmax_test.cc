@@ -32,12 +32,12 @@ namespace gl {
 namespace {
 
 TEST(SoftmaxTest, WorksForChannelsAxis) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 2, 2, 1);
@@ -48,17 +48,17 @@ TEST(SoftmaxTest, WorksForChannelsAxis) {
   SingleOpModel model({ToString(OperationType::SOFT_MAX), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {0.1, 0.2, 0.1, 0.2}));
-  ASSERT_TRUE(model.Invoke(*NewSoftMaxNodeShader()));
+  ASSERT_OK(model.Invoke(*NewSoftMaxNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {1, 1, 1, 1}));
 }
 
 TEST(SoftmaxTest, DoesNotWorkForHeightAxis) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 2, 2, 1);
@@ -69,16 +69,18 @@ TEST(SoftmaxTest, DoesNotWorkForHeightAxis) {
   SingleOpModel model({ToString(OperationType::SOFT_MAX), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  EXPECT_FALSE(model.Invoke(*NewSoftMaxNodeShader()));
+  ASSERT_THAT(
+      model.Invoke(*NewSoftMaxNodeShader()).message(),
+      testing::HasSubstr("Softmax is only supported for channels axis."));
 }
 
 TEST(SoftmaxTest, DoesNotWorkForWidthAxis) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
   output.shape = BHWC(1, 2, 2, 1);
@@ -89,7 +91,9 @@ TEST(SoftmaxTest, DoesNotWorkForWidthAxis) {
   SingleOpModel model({ToString(OperationType::SOFT_MAX), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  EXPECT_FALSE(model.Invoke(*NewSoftMaxNodeShader()));
+  ASSERT_THAT(
+      model.Invoke(*NewSoftMaxNodeShader()).message(),
+      testing::HasSubstr("Softmax is only supported for channels axis."));
 }
 
 }  // namespace

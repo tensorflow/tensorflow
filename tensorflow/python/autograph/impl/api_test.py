@@ -36,6 +36,8 @@ from tensorflow.python.autograph.impl import api
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.utils import py_func
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
@@ -45,6 +47,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.util import function_utils
+from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
 tf = utils.fake_tf()
@@ -208,6 +211,16 @@ class ApiTest(test.TestCase):
     # arg spec.
     self.assertEqual((),
                      tuple(function_utils.fn_args(tc.test_method_whitelisted)))
+
+  def test_do_not_convert_callable_object(self):
+
+    class TestClass(object):
+
+      def __call__(self):
+        return 1
+
+    tc = TestClass()
+    self.assertEqual(1, api.do_not_convert(tc)())
 
   @test_util.run_deprecated_v1
   def test_convert_call_site_decorator(self):
@@ -415,6 +428,26 @@ class ApiTest(test.TestCase):
                            converter.ConversionOptions(recursive=True), (), {})
     self.assertEqual(1, self.evaluate(x))
 
+  def test_converted_call_callable_metaclass(self):
+
+    class TestMetaclass(type):
+
+      x = constant_op.constant(-1)
+
+      def __call__(cls):
+        if cls.x < 0:
+          cls.x = -cls.x
+        return cls
+
+    tc = TestMetaclass('TestClass', (), {})
+    # This functools.partial will hide the class form the constructor
+    # check. Not ideal. See b/120224672.
+    tc = functools.partial(tc)
+    converted_tc = api.converted_call(
+        tc, None, converter.ConversionOptions(recursive=True), (), {})
+    self.assertIsInstance(converted_tc, TestMetaclass)
+    self.assertEqual(1, self.evaluate(converted_tc.x))
+
   @test_util.run_deprecated_v1
   def test_converted_call_constructor(self):
 
@@ -436,6 +469,25 @@ class ApiTest(test.TestCase):
     # The error below is specific to the `if` statement not being converted.
     with self.assertRaisesRegex(
         TypeError, 'Using a `tf.Tensor` as a Python `bool`'):
+      tc.test_method()
+
+  def test_converted_call_mangled_properties(self):
+
+    class TestClass(object):
+
+      def __init__(self, x):
+        self.__private = x
+
+      def test_method(self):
+        if self.__private < 0:
+          return self.__private
+        return self.__private
+
+    tc = TestClass(constant_op.constant(-1))
+    # The error below is specific to the `if` statement not being converted.
+    with self.assertRaisesRegex(NotImplementedError, 'Mangled names'):
+      api.converted_call('test_method', tc,
+                         converter.ConversionOptions(recursive=True), (), {})
       tc.test_method()
 
   def test_converted_call_already_converted(self):
@@ -627,6 +679,26 @@ class ApiTest(test.TestCase):
 
     self.assertAllEqual(1, self.evaluate(x))
 
+  def test_converted_call_through_tf_dataset(self):
+
+    def other_fn(x):
+      if x > 0:
+        return x
+      return -x
+
+    def f():
+      return dataset_ops.Dataset.range(-3, 3).map(other_fn)
+
+    # Dataset iteration only works inside tf.function.
+    @def_function.function
+    def graph_fn():
+      opts = converter.ConversionOptions(recursive=True)
+      ds = api.converted_call(f, None, opts, (), {})
+      itr = iter(ds)
+      return next(itr), next(itr), next(itr)
+
+    self.assertAllEqual(self.evaluate(graph_fn()), (3, 2, 1))
+
   def assertNoMemoryLeaks(self, f):
     object_ids_before = {id(o) for o in gc.get_objects()}
     f()
@@ -686,6 +758,12 @@ class ApiTest(test.TestCase):
     converted_fn()
     self.assertEqual(
         ag_ctx.control_status_ctx().status, ag_ctx.Status.UNSPECIFIED)
+
+    @api.call_with_unspecified_conversion_status
+    def unspecified_fn():
+      self.assertEqual(
+          ag_ctx.control_status_ctx().status, ag_ctx.Status.UNSPECIFIED)
+    unspecified_fn()
 
   def test_to_graph_basic(self):
 
@@ -825,6 +903,83 @@ class ApiTest(test.TestCase):
 
     # Just check that the output is parseable Python code.
     self.assertIsNotNone(parser.parse_str(api.to_code(test_fn)))
+
+  def test_tf_convert_direct(self):
+
+    def f():
+      if tf.reduce_sum([1, 2]) > 0:
+        return -1
+      return 1
+
+    # Note: the autograph setting of tf.function has nothing to do with the
+    # test case. We just disable it to avoid confusion.
+    @def_function.function(autograph=False)
+    def test_fn(ctx):
+      return api.tf_convert(f, ctx)()
+
+    self.assertEqual(
+        self.evaluate(
+            test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED))), -1)
+    with self.assertRaisesRegex(TypeError, 'tf.Tensor.*bool'):
+      # The code in `f` is only valid with AutoGraph.
+      test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED))
+
+  def test_tf_convert_unspecified_not_converted_by_default(self):
+
+    def f():
+      self.assertEqual(
+          ag_ctx.control_status_ctx().status, ag_ctx.Status.UNSPECIFIED)
+      if tf.reduce_sum([1, 2]) > 0:
+        return -1
+      return 1
+
+    @def_function.function
+    def test_fn(ctx):
+      return api.tf_convert(f, ctx, convert_by_default=False)()
+
+    with self.assertRaisesRegex(TypeError, 'tf.Tensor.*bool'):
+      # The code in `f` is only valid with AutoGraph.
+      test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.UNSPECIFIED))
+
+  def test_tf_convert_whitelisted_method(self):
+
+    model = sequential.Sequential([
+        core.Dense(2)
+    ])
+    converted_call = api.tf_convert(
+        model.call, ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED))
+    _, converted_target = tf_decorator.unwrap(converted_call)
+    self.assertIs(converted_target.__func__, model.call.__func__)
+
+  def test_tf_convert_wrapped(self):
+
+    def f():
+      if tf.reduce_sum([1, 2]) > 0:
+        return -1
+      return 1
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+      return wrapper.__wrapped__(*args, **kwargs)
+
+    decorated_f = tf_decorator.make_decorator(f, wrapper)
+
+    # Note: the autograph setting of tf.function has nothing to do with the
+    # test case. We just disable it to avoid confusion.
+    @def_function.function(autograph=False)
+    def test_fn(ctx):
+      return api.tf_convert(decorated_f, ctx)()
+
+    self.assertEqual(
+        self.evaluate(
+            test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED))), -1)
+
+    # tf_convert mutates the decorator, so we need to create a new one for
+    # another test.
+    decorated_f = tf_decorator.make_decorator(f, wrapper)
+    with self.assertRaisesRegex(TypeError, 'tf.Tensor.*bool'):
+      # The code in `f` is only valid with AutoGraph.
+      test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED))
 
 
 if __name__ == '__main__':

@@ -599,6 +599,101 @@ TEST_F(HloVerifierTest, SelectTupleNotAllowed) {
               HasSubstr("Expected array argument for select"));
 }
 
+TEST_F(HloVerifierTestLayoutSensitive, CopyStartAndCopyDone) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY CopyStartAndCopyDone {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    copy-start = (f32[2,3]{1,0:S(2)}, u32[]) copy-start(p0)
+    ROOT copy-done = f32[2,3]{1,0:S(2)} copy-done(copy-start)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTestLayoutSensitive, CopyStartAndCopyDoneWrongLayout) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY CopyStartAndCopyDone {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    copy-start = (f32[2,3]{0,1:S(2)}, u32[]) copy-start(p0)
+    ROOT copy-done = f32[2,3]{1,0:S(2)} copy-done(copy-start)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Expected instruction to have shape equal to"));
+}
+
+TEST_F(HloVerifierTest, CopyStartAndCopyDoneWrongType) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY CopyStartAndCopyDone {
+    p0 = f32[2,3] parameter(0)
+    copy-start = f32[2,3] copy-start(p0)
+    ROOT copy-done = f32[2,3] copy-done(copy-start)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr(
+          "Expected instruction to have shape equal to (f32[2,3], u32[])"));
+}
+
+TEST_F(HloVerifierTest, CopyStartMultipleCopyDone) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY CopyStartAndCopyDone {
+    p0 = f32[2,3] parameter(0)
+    copy-start = (f32[2,3], u32[]) copy-start(p0)
+    copy-done.1 = f32[2,3] copy-done(copy-start)
+    copy-done.2 = f32[2,3] copy-done(copy-start)
+    ROOT tuple = (f32[2,3], f32[2,3]) tuple(copy-done.1, copy-done.2)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr("CopyStart instruction requires one consumer, found 2"));
+}
+
+TEST_F(HloVerifierTest, CopyDoneNoCopyStart) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY CopyStartAndCopyDone {
+    p0 = f32[2,3] parameter(0)
+    p1 = u32[] parameter(1)
+    tuple = (f32[2,3], u32[]) tuple(p0, p1)
+    ROOT copy-done = f32[2,3] copy-done(tuple)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("The operand of a CopyDone instruction needs to be "
+                        "CopyStart, found tuple"));
+}
+
 TEST_F(HloVerifierTest, IotaNonArrayResult) {
   const char* const hlo_string = R"(
   HloModule IotaTupleResult

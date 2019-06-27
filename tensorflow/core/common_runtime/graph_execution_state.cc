@@ -22,15 +22,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -58,21 +62,16 @@ limitations under the License.
 namespace tensorflow {
 
 GraphExecutionState::GraphExecutionState(
-    GraphDef* graph_def, const GraphExecutionStateOptions& options)
+    std::unique_ptr<GraphDef>&& graph_def,
+    std::unique_ptr<FunctionLibraryDefinition>&& flib_def,
+    const GraphExecutionStateOptions& options)
     : stateful_placements_(options.stateful_placements),
+      original_graph_def_(std::move(graph_def)),
       device_set_(options.device_set),
       session_options_(options.session_options),
       session_handle_(options.session_handle),
-      flib_def_(new FunctionLibraryDefinition(OpRegistry::Global(),
-                                              graph_def->library())),
-      graph_(nullptr) {
-  // NOTE(mrry): GraphDef does not have a move constructor, so we pass
-  // a non-const pointer and use `Swap()` to transfer the contents
-  // without copying.
-  original_graph_def_.Swap(graph_def);
-  // TODO(mrry): Publish placement visualizations or handle the log
-  // placement option.
-}
+      flib_def_(std::move(flib_def)),
+      graph_(nullptr) {}
 
 GraphExecutionState::~GraphExecutionState() {
   node_name_to_cost_id_map_.clear();
@@ -80,34 +79,65 @@ GraphExecutionState::~GraphExecutionState() {
 }
 
 /* static */ Status GraphExecutionState::MakeForBaseGraph(
-    GraphDef* graph_def, const GraphExecutionStateOptions& options,
+    GraphDef&& graph_def, const GraphExecutionStateOptions& options,
     std::unique_ptr<GraphExecutionState>* out_state) {
 #ifndef __ANDROID__
-  VLOG(4) << "Graph proto is \n" << graph_def->DebugString();
+  VLOG(4) << "Graph proto is \n" << graph_def.DebugString();
 #endif  // __ANDROID__
 
-  std::unique_ptr<GraphExecutionState> ret(
-      new GraphExecutionState(graph_def, options));
+  auto flib_def = absl::make_unique<FunctionLibraryDefinition>(
+      OpRegistry::Global(), graph_def.library());
 
-  TF_RETURN_IF_ERROR(
-      AddDefaultAttrsToGraphDef(&ret->original_graph_def_, *ret->flib_def_, 0));
-  // TODO(mrry): Refactor InitBaseGraph() so that we don't have to
-  // pass an empty BuildGraphOptions (that isn't going to be used when
-  // place_pruned_graph is false).
+  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&graph_def, *flib_def, 0));
+
+  std::unique_ptr<GraphExecutionState> ret;
+  const GraphDef* borrowed_graph_def;
+  if (options.session_options->config.graph_options().place_pruned_graph() ||
+      !options.session_options->config.experimental()
+           .optimize_for_static_graph()) {
+    ret = absl::WrapUnique(new GraphExecutionState(
+        absl::make_unique<GraphDef>(std::move(graph_def)), std::move(flib_def),
+        options));
+    borrowed_graph_def = ret->original_graph_def_.get();
+  } else {
+    ret = absl::WrapUnique(
+        new GraphExecutionState(nullptr, std::move(flib_def), options));
+    borrowed_graph_def = &graph_def;
+  }
+
   if (!ret->session_options_->config.graph_options().place_pruned_graph()) {
-    TF_RETURN_IF_ERROR(ret->InitBaseGraph(BuildGraphOptions()));
+    // TODO(mrry): Refactor InitBaseGraph() so that we don't have to
+    // pass an empty BuildGraphOptions (that isn't going to be used when
+    // place_pruned_graph is false).
+    TF_RETURN_IF_ERROR(
+        ret->InitBaseGraph(borrowed_graph_def, BuildGraphOptions()));
   }
   *out_state = std::move(ret);
   return Status::OK();
 }
 
 /* static */ Status GraphExecutionState::MakeForPrunedGraph(
-    const FunctionDefLibrary& func_def_lib,
-    const GraphExecutionStateOptions& options, const GraphDef& graph_def,
+    const GraphExecutionState& base_execution_state,
+    const GraphExecutionStateOptions& options,
     const BuildGraphOptions& subgraph_options,
     std::unique_ptr<GraphExecutionState>* out_state,
     std::unique_ptr<ClientGraph>* out_client_graph) {
-  DCHECK(options.session_options->config.graph_options().place_pruned_graph());
+  if (!(base_execution_state.session_options_->config.graph_options()
+            .place_pruned_graph() &&
+        options.session_options->config.graph_options().place_pruned_graph())) {
+    return errors::Internal(
+        "MakeForPrunedGraph is only supported when the `place_pruned_graph` "
+        "option is true.");
+  }
+  if (!base_execution_state.original_graph_def_) {
+    // NOTE(mrry): By adding this restriction, which matches the only current
+    // usage of this (fairly obscure) method, we do not need to store a
+    // redundant copy of the original graph in `*out_state`.
+    return errors::Internal(
+        "MakeForPrunedGraph is only supported when `base_execution_state` is "
+        "the Session-level `GraphExecutionState`.");
+  }
+
   // NOTE(mrry): This makes a copy of `graph_def`, which is
   // regrettable. We could make `GraphDef` objects sharable between
   // execution states to optimize pruned graph execution, but since
@@ -115,12 +145,13 @@ GraphExecutionState::~GraphExecutionState() {
   // bet that graph construction is not performance-critical. (Note
   // also that the previous version used `Extend()`, which is strictly
   // more expensive than copying a `GraphDef`.)
-  GraphDef temp(graph_def);
-  std::unique_ptr<GraphExecutionState> ret(
-      new GraphExecutionState(&temp, options));
-  TF_RETURN_IF_ERROR(
-      AddDefaultAttrsToGraphDef(&ret->original_graph_def_, *ret->flib_def_, 0));
-  TF_RETURN_IF_ERROR(ret->InitBaseGraph(subgraph_options));
+  GraphDef temp(*base_execution_state.original_graph_def_);
+  auto flib_def = absl::make_unique<FunctionLibraryDefinition>(
+      OpRegistry::Global(), temp.library());
+  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&temp, *flib_def, 0));
+  auto ret = absl::WrapUnique(
+      new GraphExecutionState(nullptr, std::move(flib_def), options));
+  TF_RETURN_IF_ERROR(ret->InitBaseGraph(&temp, subgraph_options));
   TF_RETURN_IF_ERROR(ret->BuildGraph(subgraph_options, out_client_graph));
   *out_state = std::move(ret);
   return Status::OK();
@@ -129,6 +160,12 @@ GraphExecutionState::~GraphExecutionState() {
 Status GraphExecutionState::Extend(
     const GraphDef& extension_def,
     std::unique_ptr<GraphExecutionState>* out) const {
+  if (session_options_->config.experimental().optimize_for_static_graph()) {
+    return errors::FailedPrecondition(
+        "Extending the graph is not supported when "
+        "`optimize_for_static_graph` is true.");
+  }
+
   GraphDef gdef;
 
   // 1. Copy the function library.
@@ -144,14 +181,14 @@ Status GraphExecutionState::Extend(
   // 3. Add the non-duplicates from the old graph to the new graph.
   //    Return an error if the same node name appears in both the
   //    old graph and the extension.
-  for (const NodeDef& node : original_graph_def_.node()) {
+  for (const NodeDef& node : original_graph_def_->node()) {
     if (new_names.count(node.name()) == 0) {
       *gdef.add_node() = node;
     } else {
-      return errors::InvalidArgument(tensorflow::strings::Printf(
-          "GraphDef argument to Extend includes node '%s', which was created "
-          "by a previous call to Create or Extend in this session.",
-          node.name().c_str()));
+      return errors::InvalidArgument(
+          "GraphDef argument to Extend includes node '", node.name(),
+          "', which was created by a previous call to Create or Extend in this "
+          "session.");
     }
   }
 
@@ -205,18 +242,19 @@ Status GraphExecutionState::Extend(
   combined_options.session_handle = session_handle_;
   combined_options.stateful_placements = stateful_placements_;
 
-  // NOTE(mrry): `gdef` is no longer valid after the constructor
-  // executes.
-  std::unique_ptr<GraphExecutionState> new_execution_state(
-      new GraphExecutionState(&gdef, combined_options));
+  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&gdef, *flib_def_, 0));
+  auto flib_def = absl::make_unique<FunctionLibraryDefinition>(
+      OpRegistry::Global(), gdef.library());
+  auto new_execution_state = absl::WrapUnique(
+      new GraphExecutionState(absl::make_unique<GraphDef>(std::move(gdef)),
+                              std::move(flib_def), combined_options));
 
-  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(
-      &new_execution_state->original_graph_def_, *flib_def_, 0));
   if (!session_options_->config.graph_options().place_pruned_graph()) {
     // TODO(mrry): Refactor InitBaseGraph() so that we don't have to
     // pass an empty BuildGraphOptions (that isn't going to be used
     // when place_pruned_graph is false).
-    TF_RETURN_IF_ERROR(new_execution_state->InitBaseGraph(BuildGraphOptions()));
+    TF_RETURN_IF_ERROR(new_execution_state->InitBaseGraph(
+        new_execution_state->original_graph_def_.get(), BuildGraphOptions()));
   }
   *out = std::move(new_execution_state);
 
@@ -545,9 +583,8 @@ Status GraphExecutionState::PruneGraph(
   return Status::OK();
 }
 
-Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
-  const GraphDef* graph_def = &original_graph_def_;
-
+Status GraphExecutionState::InitBaseGraph(const GraphDef* graph_def,
+                                          const BuildGraphOptions& options) {
   std::unique_ptr<Graph> new_graph(new Graph(OpRegistry::Global()));
   GraphConstructorOptions opts;
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, *graph_def, new_graph.get()));
@@ -651,15 +688,15 @@ Status GraphExecutionState::OptimizeGraph(
         }
         feeds.emplace(id.first);
       }
-      for (const NodeDef& node : original_graph_def_.node()) {
-        if (feeds.find(node.name()) == feeds.end()) {
+      for (const Node* node : graph_->nodes()) {
+        if (feeds.find(node->name()) == feeds.end()) {
           continue;
         }
         // Get the type and shape of the feed node.
         PartialTensorShape partial_shape;
         DataType type;
-        TF_RETURN_IF_ERROR(
-            GetFeedShapeAndTypeFromAttribute(node, &partial_shape, &type));
+        TF_RETURN_IF_ERROR(GetFeedShapeAndTypeFromAttribute(
+            node->def(), &partial_shape, &type));
         // If the shape of the placeholder is only partially known, we are free
         // to set unknown dimensions of its shape to any value we desire. We
         // choose 0 to minimize the memory impact. Note that this only matters
@@ -675,12 +712,13 @@ Status GraphExecutionState::OptimizeGraph(
           }
           if (!partial_shape.AsTensorShape(&shape)) {
             return errors::InvalidArgument(
-                "Could not derive shape for feed node: ", node.DebugString());
+                "Could not derive shape for feed node: ",
+                node->def().DebugString());
           }
         }
 
         Tensor fake_input(type, shape);
-        item.feed.emplace_back(node.name(), fake_input);
+        item.feed.emplace_back(node->name(), fake_input);
       }
     }
 

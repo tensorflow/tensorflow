@@ -1,9 +1,9 @@
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 tf_cuda_cc_test(
     name = "profiler_test",

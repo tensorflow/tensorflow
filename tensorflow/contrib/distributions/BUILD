@@ -152,6 +152,9 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform_test",
     ],
+    tags = [
+        "no_oss",  # b/134605801
+    ],
 )
 
 cuda_py_test(
@@ -519,6 +522,9 @@ cuda_py_test(
     additional_deps = [
         ":distributions_py",
         "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "no_oss",  # b/134605801
     ],
 )
 
@@ -1272,9 +1278,6 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
-    ],
-    tags = [
-        "no_oss",  # b/135063918
     ],
 )
 

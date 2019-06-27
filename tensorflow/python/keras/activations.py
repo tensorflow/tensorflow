@@ -201,12 +201,21 @@ def relu(x, alpha=0., max_value=None, threshold=0):
 
 @keras_export('keras.activations.tanh')
 def tanh(x):
-  """Hyperbolic Tangent activation function.
+  """Hyperbolic Tangent (tanh) activation function.
 
+  For example:
+
+  ```python
+  # Constant 1-D tensor populated with value list.
+  a = tf.constant([-3.0,-1.0, 0.0,1.0,3.0], dtype = tf.float32)
+  b = tf.keras.activations.tanh(a) #[-0.9950547,-0.7615942,
+  0.,0.7615942,0.9950547]
+  ```
   Arguments:
       x: Input tensor.
 
   Returns:
+      A tensor of same shape and dtype of input `x`.
       The tanh activation: `tanh(x) = sinh(x)/cosh(x) = ((exp(x) -
       exp(-x))/(exp(x) + exp(-x)))`.
   """
@@ -278,6 +287,9 @@ def linear(x):
 
   Returns:
       The linear activation: `x`.
+
+  Note:
+      Often used as last layer of regression networks.
   """
   return x
 

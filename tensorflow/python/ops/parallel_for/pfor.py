@@ -1173,6 +1173,7 @@ class PFor(object):
       return None
     if isinstance(y, sparse_tensor.SparseTensor):
       return self._convert_sparse(y)
+    assert isinstance(y, (ops.Tensor, ops.Operation)), y
     output = self._convert_helper(y)
     if isinstance(output, WrappedTensor):
       assert isinstance(y, ops.Tensor)
@@ -1742,6 +1743,45 @@ def _convert_matrix_set_diag(pfor_input):
   return wrap(array_ops.matrix_set_diag(t, diag), True)
 
 
+# Registrations for MatrixDiagV2, MatrixDiagPartv2, and MatrixSetDiagV2.
+# The input orders defined in the OpKernel and the actual python API are
+# different (for compatibility with V1), so we cannot use _convert_identity.
+@RegisterPFor("MatrixDiagV2")
+def _convert_matrix_diag_v2(pfor_input):
+  diagonal = pfor_input.stacked_input(0)
+  k = pfor_input.unstacked_input(1)
+  num_rows = pfor_input.unstacked_input(2)
+  num_cols = pfor_input.unstacked_input(3)
+  padding_value = pfor_input.unstacked_input(4)
+  return wrap(
+      array_ops.matrix_diag(
+          diagonal,
+          k=k,
+          num_rows=num_rows,
+          num_cols=num_cols,
+          padding_value=padding_value), True)
+
+
+# See notes for MatrixDiagV2
+@RegisterPFor("MatrixDiagPartV2")
+def _convert_matrix_diag_part_v2(pfor_input):
+  input = pfor_input.stacked_input(0)  # pylint:disable=redefined-builtin
+  k = pfor_input.unstacked_input(1)
+  padding_value = pfor_input.unstacked_input(2)
+  return wrap(
+      array_ops.matrix_diag_part(input, k=k, padding_value=padding_value), True)
+
+
+# See notes for MatrixDiagV2
+@RegisterPFor("MatrixSetDiagV2")
+def _convert_matrix_set_diag_v2(pfor_input):
+  pfor_input.stack_inputs([0, 1])
+  input = pfor_input.stacked_input(0)  # pylint:disable=redefined-builtin
+  diagonal = pfor_input.stacked_input(1)
+  k = pfor_input.unstacked_input(2)
+  return wrap(array_ops.matrix_set_diag(input, diagonal, k=k), True)
+
+
 @RegisterPFor("OneHot")
 def _convert_one_hot(pfor_input):
   indices = pfor_input.stacked_input(0)
@@ -2142,13 +2182,11 @@ def _convert_biasadd(pfor_input):
 
 @RegisterPFor("UnsortedSegmentSum")
 def _convert_unsortedsegmentsum(pfor_input):
-  data, data_stacked, _ = pfor_input.input(0)
-  # TODO(agarwal): handle unstacked?
+  pfor_input.stack_inputs([0, 1])
+  data = pfor_input.stacked_input(0)
   segment_ids = pfor_input.stacked_input(1)
   # TODO(agarwal): handle stacked?
   num_segments = pfor_input.unstacked_input(2)
-  if not data_stacked:
-    data = _stack(data, pfor_input.pfor.loop_len_vector).t
   segment_shape = array_ops.shape(segment_ids)
   n = segment_shape[0]
   ones = array_ops.ones_like(segment_shape)[1:]

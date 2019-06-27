@@ -58,6 +58,28 @@ xla_proto_library(
 )
 
 cc_library(
+    name = "bit_cast",
+    hdrs = ["bit_cast.h"],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/base",
+    ],
+)
+
+tf_cc_test(
+    name = "bit_cast_test",
+    srcs = ["bit_cast_test.cc"],
+    deps = [
+        ":bit_cast",
+        ":test",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "comparison_util",
     srcs = [
         "comparison_util.cc",
@@ -165,6 +187,10 @@ cc_library(
     hdrs = [
         "statusor.h",
     ],
+    linkopts = select({
+        "//tensorflow:freebsd": ["-lexecinfo"],
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":status",
@@ -848,11 +874,14 @@ cc_library(
     deps =
         [
             ":parse_flags_from_env",
-            ":status",
             ":xla_proto",
             "//tensorflow/compiler/xla/service:hlo",
             "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+            "@com_google_absl//absl/container:flat_hash_map",
+            "@com_google_absl//absl/container:node_hash_map",
             "@com_google_absl//absl/strings",
+            "@com_google_absl//absl/strings:str_format",
         ],
 )
 

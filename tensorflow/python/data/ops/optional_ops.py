@@ -21,6 +21,7 @@ import abc
 
 import six
 
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -93,8 +94,8 @@ class Optional(composite_tensor.CompositeTensor):
     """
     with ops.name_scope("optional") as scope:
       with ops.name_scope("value"):
-        value_structure = type_spec.type_spec_from_value(value)
-        encoded_value = value_structure._to_tensor_list(value)  # pylint: disable=protected-access
+        value_structure = structure.type_spec_from_value(value)
+        encoded_value = structure.to_tensor_list(value_structure, value)
 
     return _OptionalImpl(
         gen_dataset_ops.optional_from_value(encoded_value, name=scope),
@@ -136,13 +137,15 @@ class _OptionalImpl(Optional):
     # in `Iterator.get_next()` and `StructuredFunctionWrapper`.
     with ops.name_scope(name, "OptionalGetValue",
                         [self._variant_tensor]) as scope:
-      # pylint: disable=protected-access
-      return self._value_structure._from_tensor_list(
+      return structure.from_tensor_list(
+          self._value_structure,
           gen_dataset_ops.optional_get_value(
               self._variant_tensor,
               name=scope,
-              output_types=self._value_structure._flat_types,
-              output_shapes=self._value_structure._flat_shapes))
+              output_types=structure.get_flat_tensor_types(
+                  self._value_structure),
+              output_shapes=structure.get_flat_tensor_shapes(
+                  self._value_structure)))
 
   @property
   def value_structure(self):
@@ -154,7 +157,7 @@ class _OptionalImpl(Optional):
 
 
 # TODO(b/133606651) Rename this class to OptionalSpec
-@tf_export("data.experimental.OptionalStructure")
+@tf_export("OptionalSpec", "data.experimental.OptionalStructure")
 class OptionalStructure(type_spec.TypeSpec):
   """Represents an optional potentially containing a structured value."""
 

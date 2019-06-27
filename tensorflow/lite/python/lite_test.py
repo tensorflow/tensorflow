@@ -49,7 +49,20 @@ from tensorflow.python.saved_model import saved_model
 from tensorflow.python.training.training_util import write_graph
 
 
-class FromConstructor(test_util.TensorFlowTestCase):
+class TestModels(test_util.TensorFlowTestCase):
+
+  def assertValidDebugInfo(self, debug_info):
+    """Verify the DebugInfo is valid."""
+    file_names = set()
+    for file_path in debug_info.files:
+      file_names.add(os.path.basename(file_path))
+    # To make the test independent on how the nodes are created, we only assert
+    # the name of this test file.
+    self.assertIn('lite_test.py', file_names)
+    self.assertNotIn('lite_v2_test.py', file_names)
+
+
+class FromConstructor(TestModels):
 
   # Tests invalid constructors using a dummy value for the GraphDef.
   def testInvalidConstructor(self):
@@ -89,7 +102,7 @@ class FromConstructor(test_util.TensorFlowTestCase):
 
 
 @test_util.run_v1_only('Incompatible with 2.0.')
-class FromSessionTest(test_util.TensorFlowTestCase):
+class FromSessionTest(TestModels):
 
   def testFloat(self):
     in_tensor = array_ops.placeholder(
@@ -160,8 +173,9 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     sess = session.Session()
 
     # Convert model and ensure model is not None.
-    converter = lite.TFLiteConverter.from_session(
-        sess, [in_tensor_1, in_tensor_2], [out_tensor])
+    converter = lite.TFLiteConverter.from_session(sess,
+                                                  [in_tensor_1, in_tensor_2],
+                                                  [out_tensor])
     converter.inference_type = lite_constants.QUANTIZED_UINT8
     converter.quantized_input_stats = {
         'inputA': (0., 1.),
@@ -205,8 +219,9 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     sess = session.Session()
 
     # Convert model and ensure model is not None.
-    converter = lite.TFLiteConverter.from_session(
-        sess, [in_tensor_1, in_tensor_2], [out_tensor])
+    converter = lite.TFLiteConverter.from_session(sess,
+                                                  [in_tensor_1, in_tensor_2],
+                                                  [out_tensor])
     converter.inference_type = lite_constants.QUANTIZED_UINT8
     converter.quantized_input_stats = {'inputA': (0., 1.)}  # mean, std_dev
     with self.assertRaises(ValueError) as error:
@@ -819,6 +834,65 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
+  def testResizingIntermediateDynamicTensor(self):
+    # This is a regression test for the case where shape of dynamic output
+    # tensors changes between invocations.
+    # See also https://github.com/tensorflow/tensorflow/issues/26549
+    input_tensor = array_ops.placeholder(shape=[1, 1], dtype=dtypes.float32)
+    input2_tensor = array_ops.placeholder(shape=[1], dtype=dtypes.float32)
+
+    # The bug is triggered only when dynamic tensor is intermediate. Putting
+    # some other ops around it.
+    neg = math_ops.negative(input2_tensor)
+    padding = array_ops.placeholder(shape=[2, 2], dtype=dtypes.int32)
+    output_tensor = array_ops.pad(input_tensor, padding) + neg
+
+    sess = session.Session()
+    converter = lite.TFLiteConverter.from_session(
+        sess, [input_tensor, padding, input2_tensor], [output_tensor])
+    tflite_model = converter.convert()
+
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    interpreter.set_tensor(input_details[1]['index'],
+                           np.array([[1, 1], [1, 1]], dtype=np.int32))
+    interpreter.invoke()
+
+    # Without the fix, invocation will fail when changing the shape of
+    # intermediate dynamic tensors.
+    interpreter.set_tensor(input_details[1]['index'],
+                           np.array([[2, 2], [2, 2]], dtype=np.int32))
+    interpreter.invoke()
+
+  def testGraphDebugInfo(self):
+    """Test a session has debug info captured."""
+
+    @def_function.function
+    def plus_placeholder(x, placeholder):
+      return x + placeholder
+
+    with ops.Graph().as_default():
+      placeholder = array_ops.placeholder(
+          dtype=dtypes.float32, shape=[1], name='input')
+      variable_node = variables.Variable(1.0, name='variable_node')
+      defun_node = plus_placeholder(variable_node, placeholder)
+      output_node = math_ops.multiply(defun_node, 2.0, name='output_node')
+
+      # Initialize variables in the model.
+      sess = session.Session()
+      sess.run(variables.variables_initializer([variable_node]))
+
+    converter = lite.TFLiteConverter.from_session(sess, [placeholder],
+                                                  [output_node])
+    converter.convert()
+    self.assertValidDebugInfo(converter._debug_info)
+
+    # Check the add node in the inlined function is included.
+    func = sess.graph.as_graph_def().library.function[0].signature.name
+    self.assertIn((func + 'add'), converter._debug_info.traces)
+
 
 @test_util.run_v1_only('Incompatible with 2.0.')
 class FromFrozenGraphFile(test_util.TensorFlowTestCase):
@@ -981,6 +1055,25 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
     interpreter = Interpreter(model_content=tflite_model)
     interpreter.allocate_tensors()
 
+  def testGraphDebugInfo(self):
+    """Test a frozen graph doesn't have debug info captured."""
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    _ = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Write graph to file.
+    graph_def_file = os.path.join(self.get_temp_dir(), 'model.pb')
+    write_graph(sess.graph_def, '', graph_def_file, False)
+    sess.close()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_frozen_graph(graph_def_file,
+                                                     ['Placeholder'], ['add'])
+    converter.convert()
+    # GraphDebugInfo should be none for frozen graph.
+    self.assertTrue(not converter._debug_info)
+
 
 class FromFrozenGraphObjectDetection(test_util.TensorFlowTestCase):
 
@@ -1008,9 +1101,10 @@ class FromFrozenGraphObjectDetection(test_util.TensorFlowTestCase):
     # Tests the object detection model that cannot be loaded in TensorFlow.
     self._initObjectDetectionArgs()
 
-    converter = lite.TFLiteConverter.from_frozen_graph(
-        self._graph_def_file, self._input_arrays, self._output_arrays,
-        self._input_shapes)
+    converter = lite.TFLiteConverter.from_frozen_graph(self._graph_def_file,
+                                                       self._input_arrays,
+                                                       self._output_arrays,
+                                                       self._input_shapes)
     converter.allow_custom_ops = True
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
@@ -1049,8 +1143,9 @@ class FromFrozenGraphObjectDetection(test_util.TensorFlowTestCase):
 
     # Missing `input_shapes`.
     with self.assertRaises(ValueError) as error:
-      lite.TFLiteConverter.from_frozen_graph(
-          self._graph_def_file, self._input_arrays, self._output_arrays)
+      lite.TFLiteConverter.from_frozen_graph(self._graph_def_file,
+                                             self._input_arrays,
+                                             self._output_arrays)
     self.assertEqual('input_shapes must be defined for this model.',
                      str(error.exception))
 
@@ -1071,7 +1166,7 @@ class FromFrozenGraphObjectDetection(test_util.TensorFlowTestCase):
 
 
 @test_util.run_v1_only('Incompatible with 2.0.')
-class FromSavedModelTest(test_util.TensorFlowTestCase):
+class FromSavedModelTest(TestModels):
 
   def _createSavedModel(self, shape):
     """Create a simple SavedModel."""
@@ -1216,6 +1311,13 @@ class FromSavedModelTest(test_util.TensorFlowTestCase):
     interpreter = Interpreter(model_content=tflite_model)
     interpreter.allocate_tensors()
 
+  def testGraphDebugInfo(self):
+    """Test a SavedModel has debug info captured."""
+    saved_model_dir = self._createSavedModel(shape=[1, 16, 16, 3])
+    converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter.convert()
+    self.assertValidDebugInfo(converter._debug_info)
+
 
 class MyAddLayer(keras.layers.Layer):
 
@@ -1233,7 +1335,7 @@ class MyAddLayer(keras.layers.Layer):
 
 
 @test_util.run_v1_only('Incompatible with 2.0.')
-class FromKerasFile(test_util.TensorFlowTestCase, parameterized.TestCase):
+class FromKerasFile(TestModels, parameterized.TestCase):
 
   def setUp(self):
     super(FromKerasFile, self).setUp()
@@ -1595,9 +1697,19 @@ class FromKerasFile(test_util.TensorFlowTestCase, parameterized.TestCase):
     interpreter = Interpreter(model_content=tflite_model)
     interpreter.allocate_tensors()
 
+  @parameterized.named_parameters(('_graph', context.graph_mode),
+                                  ('_eager', context.eager_mode))
+  def testGraphDebugInfo(self, test_context):
+    """Test a Sequential tf.keras model has debug info captured."""
+    with test_context():
+      self._getSequentialModel()
+      converter = lite.TFLiteConverter.from_keras_model_file(self._keras_file)
+      converter.convert()
+      self.assertValidDebugInfo(converter._debug_info)
+
 
 @test_util.run_v1_only('Incompatible with 2.0.')
-class GrapplerTest(test_util.TensorFlowTestCase):
+class GrapplerTest(TestModels):
 
   def testConstantFolding(self):
     # Constant folding handles the tf.broadcast_to operation which was not

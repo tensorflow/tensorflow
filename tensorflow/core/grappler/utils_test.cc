@@ -393,11 +393,16 @@ TEST_F(UtilsTest, DeleteNodes) {
 TEST(IsKernelRegisteredForNode, All) {
   NodeDef node;
   node.set_name("foo");
-  node.set_op("NoOp");
+  node.set_op("MatMul");
   node.set_device("/cpu:0");
+  AttrValue v;
+  v.set_type(DataType::DT_FLOAT);
+  (*node.mutable_attr())["T"] = v;
   TF_EXPECT_OK(IsKernelRegisteredForNode(node));
+#ifdef GOOGLE_CUDA
   node.set_device("/gpu:0");
   TF_EXPECT_OK(IsKernelRegisteredForNode(node));
+#endif  // GOOGLE_CUDA
 
   // Bad device name.
   node.set_device("");

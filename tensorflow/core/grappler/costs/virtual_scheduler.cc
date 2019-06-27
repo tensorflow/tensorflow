@@ -1162,5 +1162,23 @@ const std::unordered_map<string, int64> VirtualScheduler::GetPeakMemoryUsage()
   return result;
 }
 
+const std::unordered_map<string, int64>
+VirtualScheduler::GetPersistentMemoryUsage() const {
+  std::unordered_map<string, int64> result;
+  for (const auto& device : device_) {
+    const string& name = device.first;
+    const DeviceState& state = device.second;
+    int64 persistent_memory_usage = 0;
+    for (const auto& node_port : state.persistent_nodes) {
+      const auto* node = node_port.first;
+      const auto port = node_port.second;
+      const auto output_size =
+          CalculateOutputSize(node_map_.at(node).output_properties, port);
+      persistent_memory_usage += output_size;
+    }
+    result[name] = persistent_memory_usage;
+  }
+  return result;
+}
 }  // end namespace grappler
 }  // end namespace tensorflow

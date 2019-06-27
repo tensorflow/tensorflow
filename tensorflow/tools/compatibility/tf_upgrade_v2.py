@@ -686,6 +686,14 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "Please check the new API and use that instead."
     )
 
+    contrib_estimator_head_comment = (
+        ast_edits.WARNING,
+        "(Manual edit required) `tf.contrib.estimator.*_head` has been "
+        "deprecated, and its implementation has been integrated with "
+        "`tf.estimator.*Head` in TensorFlow 2.0. "
+        "Please check the new API and use that instead."
+    )
+
     initializers_no_dtype_comment = (
         ast_edits.INFO, "Initializers no longer have the "
         "dtype argument in the constructor or partition_info argument in the "
@@ -892,6 +900,20 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
             assert_rank_comment,
         "tf.contrib.layers.layer_norm":
             contrib_layers_layer_norm_comment,
+        "tf.contrib.estimator.binary_classification_head":
+            contrib_estimator_head_comment,
+        "tf.contrib.estimator.logistic_regression_head":
+            contrib_estimator_head_comment,
+        "tf.contrib.estimator.multi_class_head":
+            contrib_estimator_head_comment,
+        "tf.contrib.estimator.multi_head":
+            contrib_estimator_head_comment,
+        "tf.contrib.estimator.multi_label_head":
+            contrib_estimator_head_comment,
+        "tf.contrib.estimator.poisson_regression_head":
+            contrib_estimator_head_comment,
+        "tf.contrib.estimator.regression_head":
+            contrib_estimator_head_comment,
         "tf.contrib.summary.all_summary_ops":
             contrib_summary_comment,
         "tf.contrib.summary.audio":
@@ -1182,6 +1204,15 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.summary.tensor_summary": summary_api_comment,
         "tf.summary.text": summary_api_comment,
     }
+
+    for symbol, replacement in all_renames_v2.addons_symbol_mappings.items():
+      warning = (
+          ast_edits.WARNING, (
+              "(Manual edit required) `{}` has been migrated to `{}` in "
+              "TensorFlow Addons. The API spec may have changed during the "
+              "migration. Please see https://github.com/tensorflow/addons "
+              "for more info.").format(symbol, replacement))
+      self.function_warnings[symbol] = warning
 
     # Warnings that are emitted only if a specific arg is found.
     self.function_arg_warnings = {

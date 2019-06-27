@@ -54,6 +54,7 @@ tf_kernel_library(
         "lrn_ops.cc",
         "matmul_op.cc",
         "matrix_band_part_op.cc",
+        "matrix_inverse_op.cc",
         "matrix_set_diag_op.cc",
         "matrix_triangular_solve_op.cc",
         "mirror_pad_op.cc",
@@ -79,6 +80,7 @@ tf_kernel_library(
         "retval_op.cc",
         "reverse_op.cc",
         "reverse_sequence_op.cc",
+        "roll_op.cc",
         "scan_ops.cc",
         "scatter_nd_op.cc",
         "segment_reduction_ops.cc",
@@ -342,53 +344,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:logging_ops_op_lib",
-    ],
-    alwayslink = 1,
-)
-
-# Kernels that only work on CPU, because they use XLA custom calls.
-# Only link this when using the CPU backend for XLA.
-tf_kernel_library(
-    name = "xla_cpu_only_ops",
-    srcs = ["index_ops_cpu.cc"],
-    deps = [
-        ":index_ops_kernel_argmax_float_1d",
-        ":index_ops_kernel_argmax_float_2d",
-        "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client/lib:arithmetic",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_bounds_check",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "index_ops_kernel_argmax_float_1d",
-    srcs = ["index_ops_kernel_argmax_float_1d.cc"],
-    copts = tf_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/xla/service:custom_call_target_registry",
-        "//tensorflow/core:framework_lite",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "index_ops_kernel_argmax_float_2d",
-    srcs = ["index_ops_kernel_argmax_float_2d.cc"],
-    copts = tf_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/xla/service:custom_call_target_registry",
-        "//tensorflow/core:framework_lite",
-        "//third_party/eigen3",
     ],
     alwayslink = 1,
 )

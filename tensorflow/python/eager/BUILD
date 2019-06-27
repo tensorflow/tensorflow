@@ -58,6 +58,7 @@ py_library(
         ":def_function",
         ":execute",
         ":execution_callbacks",
+        ":forwardprop",
         ":function",
         ":graph_only_ops",
         ":monitoring",
@@ -217,6 +218,16 @@ cuda_py_test(
         "//tensorflow/python:training",
     ],
     tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "forwardprop_test",
+    srcs = ["forwardprop_test.py"],
+    additional_deps = [
+        ":forwardprop",
+        ":test",
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -448,6 +459,18 @@ py_library(
     ],
 )
 
+py_library(
+    name = "forwardprop",
+    srcs = ["forwardprop.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:platform",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:util",
+    ],
+)
+
 cuda_py_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
@@ -457,6 +480,7 @@ cuda_py_test(
         ":function",
         ":test",
         ":profiler",
+        ":remote",
         "//third_party/py/numpy",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
@@ -540,25 +564,6 @@ py_library(
     ],
 )
 
-cuda_py_test(
-    name = "memory_test",
-    size = "medium",
-    srcs = ["memory_test.py"],
-    additional_deps = [
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "@six_archive//:six",
-    ],
-    tags = [
-        "optonly",  # The test is too slow in non-opt mode
-    ],
-    xla_enable_strict_auto_jit = True,
-)
-
 py_library(
     name = "def_function",
     srcs = ["def_function.py"],
@@ -585,8 +590,8 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":context",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:op_selector",
         "@six_archive//:six",
     ],
 )
@@ -620,7 +625,6 @@ tf_xla_py_test(
     srcs = ["def_function_xla_test.py"],
     tags = [
         "no_pip",
-        "no_rocm",
         "no_windows",
         "nomac",
     ],

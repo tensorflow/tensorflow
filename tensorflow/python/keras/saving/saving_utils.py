@@ -66,7 +66,7 @@ def model_input_signature(model):
 
   Returns:
     A list containing either a single TensorSpec or an object with nested
-    TensorSpecs.
+    TensorSpecs. This list does not contain the `training` argument.
   """
   try:
     inputs = model.inputs
@@ -136,7 +136,7 @@ def trace_model_call(model, input_signature=None):
     # When given a single input, Keras models will call the model on the tensor
     # rather than a list consisting of the single tensor.
     inputs = args[0] if len(input_signature) == 1 else list(args)
-    outputs_list = nest.flatten(model(inputs=inputs))
+    outputs_list = nest.flatten(model(inputs=inputs, training=False))
     try:
       output_names = model.output_names
     except AttributeError:

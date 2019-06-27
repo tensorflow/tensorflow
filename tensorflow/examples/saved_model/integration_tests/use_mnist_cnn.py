@@ -31,6 +31,7 @@ from absl import flags
 import tensorflow.compat.v2 as tf
 import tensorflow_hub as hub
 
+from tensorflow.examples.saved_model.integration_tests import distribution_strategy_utils as ds_utils
 from tensorflow.examples.saved_model.integration_tests import mnist_util
 
 FLAGS = flags.FLAGS
@@ -57,18 +58,20 @@ flags.DEFINE_bool(
 flags.DEFINE_bool(
     'fast_test_mode', False,
     'Shortcut training for running in unit tests.')
-flags.DEFINE_bool(
-    'use_mirrored_strategy', False,
-    'Whether to use mirrored distribution strategy.')
 flags.DEFINE_string(
     'output_saved_model_dir', None,
     'Directory of the SavedModel that was exported for reuse.')
+flags.DEFINE_bool(
+    'use_keras_save_api', False,
+    'Uses tf.keras.models.save_model() instead of tf.saved_model.save().')
+flags.DEFINE_string('strategy', None,
+                    'Name of the distribution strategy to use.')
 
 
 def make_feature_extractor(saved_model_path, trainable,
                            regularization_loss_multiplier):
   """Load a pre-trained feature extractor and wrap it for use in Keras."""
-  if regularization_loss_multiplier:
+  if regularization_loss_multiplier is not None:
     # TODO(b/63257857): Scaling regularization losses requires manual loading
     # and modification of the SavedModel
     obj = tf.saved_model.load(saved_model_path)
@@ -108,18 +111,12 @@ def make_classifier(feature_extractor, l2_strength=0.01, dropout_rate=0.5):
 def main(argv):
   del argv
 
-  if FLAGS.use_mirrored_strategy:
-    strategy = tf.distribute.MirroredStrategy()
-  else:
-    strategy = tf.distribute.get_strategy()
-
-  with strategy.scope():
+  with ds_utils.MaybeDistributionScope.from_name(FLAGS.strategy):
     feature_extractor = make_feature_extractor(
         FLAGS.input_saved_model_dir,
         FLAGS.retrain,
         FLAGS.regularization_loss_multiplier)
-    model = make_classifier(feature_extractor,
-                            dropout_rate=0.0)  # TODO(b/134660903): Remove.
+    model = make_classifier(feature_extractor)
 
     model.compile(loss=tf.keras.losses.categorical_crossentropy,
                   optimizer=tf.keras.optimizers.SGD(),
@@ -139,7 +136,10 @@ def main(argv):
             validation_data=(x_test, y_test))
 
   if FLAGS.output_saved_model_dir:
-    tf.saved_model.save(model, FLAGS.output_saved_model_dir)
+    if FLAGS.use_keras_save_api:
+      tf.keras.models.save_model(model, FLAGS.output_saved_model_dir)
+    else:
+      tf.saved_model.save(model, FLAGS.output_saved_model_dir)
 
 
 if __name__ == '__main__':

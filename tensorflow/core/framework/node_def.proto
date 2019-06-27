@@ -70,6 +70,15 @@ message NodeDef {
     // be {A, B}. This information can be used to map errors originating at the
     // current node to some top level source code.
     repeated string original_node_names = 1;
+
+    // This is intended to store the list of names of the functions from the
+    // original graph that this node was derived. For example if this node, say
+    // C, was result of a fusion of node A in function FA and node B in function
+    // FB, then `original_funcs` would be {FA, FB}. If the node is in the top
+    // level graph, the `original_func` is empty. This information, with the
+    // `original_node_names` can be used to map errors originating at the
+    // current ndoe to some top level source code.
+    repeated string original_func_names = 2;
   };
 
   // This stores debug information associated with the node.

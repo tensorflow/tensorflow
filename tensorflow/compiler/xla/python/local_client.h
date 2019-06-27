@@ -62,7 +62,7 @@ class Device {
   // each execution or transfer. This is intended for debugging only.
   Device(se::StreamExecutor* executor, bool use_multiple_streams,
          bool synchronous_deallocation, bool asynchronous);
-  ~Device();
+  virtual ~Device();
 
   bool use_multiple_streams() const { return use_multiple_streams_; }
   bool synchronous_deallocation() const { return synchronous_deallocation_; }
@@ -74,6 +74,16 @@ class Device {
   se::Stream* device_to_host_stream() const {
     return device_to_host_stream_.get();
   }
+
+  // Returns a device to device stream. Allocates streams in a round-robin
+  // fashion amongst the available streams.
+  se::Stream* GetDeviceToDeviceStream();
+
+  // Enqueues a copy of `src_buffer` to `dst_buffer` onto `src_stream`.
+  virtual Status ThenMemcpyDeviceToDevice(se::Stream* src_stream,
+                                          se::Stream* dst_stream,
+                                          se::DeviceMemoryBase src_buffer,
+                                          se::DeviceMemoryBase dst_buffer);
 
   // A worker thread, used for replicated computation launches and callbacks.
   WorkerThread* worker_thread() const { return worker_thread_.get(); }
@@ -132,6 +142,13 @@ class Device {
   std::shared_ptr<se::Stream> compute_stream_;
   std::shared_ptr<se::Stream> host_to_device_stream_;
   std::shared_ptr<se::Stream> device_to_host_stream_;
+  std::vector<std::shared_ptr<se::Stream>> device_to_device_streams_;
+
+  // Number of device-to-device streams to create in the multistream case.
+  static constexpr int kNumDeviceToDeviceStreams = 4;
+
+  absl::Mutex mu_;
+  int next_device_to_device_stream_ GUARDED_BY(mu_) = 0;
 
   // Callback stream is used for running short host-side callbacks after device
   // side events, without preventing the device-side stream from doing useful
@@ -152,7 +169,13 @@ struct AllocatorConfig {
 
   // Only used if kind == kBFC. The maximum fraction of available memory to
   // allocate.
-  double memory_fraction = 1.0;
+  double memory_fraction = 0.9;
+
+  // Only used if kind == kBFC. If true, the allocator will immediately allocate
+  // the maximum amount allowed by `memory_fraction`. This reduces
+  // fragmentation, allowing more of the total memory to be used. If false, the
+  // allocator will allocate more memory as allocations are requested.
+  bool preallocate = true;
 };
 
 // Encapsulates the state of Python session with XLA.
@@ -166,6 +189,7 @@ class PyLocalClient {
 
   // `allocator` may null, in which case the platform default allocator is used.
   explicit PyLocalClient(std::string platform_name, LocalClient* client,
+                         std::vector<std::unique_ptr<Device>> devices,
                          std::unique_ptr<se::DeviceMemoryAllocator> allocator,
                          bool asynchronous);
   virtual ~PyLocalClient() = default;
@@ -175,7 +199,7 @@ class PyLocalClient {
                                                  int device_ordinal);
 
   int device_count() const { return client_->device_count(); }
-  const Device& device(int device_ordinal) const {
+  Device& device(int device_ordinal) const {
     return *devices_.at(device_ordinal);
   }
   LocalClient* client() const { return client_; }
@@ -190,13 +214,18 @@ class PyLocalClient {
  protected:
   std::string platform_name_;
   LocalClient* client_;
+
+  // py_ref_manager_ must come after devices_ in the class destruction order
+  // (i.e., appear first in the class.)
+  // Destruction of devices waits for them to quiesce; callbacks on device
+  // streams may refer to py_ref_manager_ and we must wait for them to complete.
+  PythonRefManager py_ref_manager_;
+
   std::vector<std::unique_ptr<Device>> devices_;
   se::DeviceMemoryAllocator* allocator_;
   std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator_;
 
   tensorflow::thread::ThreadPool h2d_transfer_pool_;
-
-  PythonRefManager py_ref_manager_;
 };
 
 // Holds a reference from Python to one or more device buffers.
@@ -224,7 +253,7 @@ class PyLocalBuffer {
 
   PyLocalBuffer() = default;
   PyLocalBuffer(Shape on_host_shape,
-                std::shared_ptr<PySharedDeviceBuffer> device_buffer,
+                std::shared_ptr<SharedDeviceBuffer> device_buffer,
                 std::shared_ptr<PyLocalClient> client);
 
   PyLocalBuffer(const PyLocalBuffer&) = delete;
@@ -248,7 +277,7 @@ class PyLocalBuffer {
 
   // Returns the associated device buffer. Returns a nullptr if the buffer is
   // invalid.
-  std::shared_ptr<PySharedDeviceBuffer> DeviceBuffer() const;
+  std::shared_ptr<SharedDeviceBuffer> DeviceBuffer() const;
 
   // Deletes the device memory associated with this buffer, leaving it in an
   // invalid state.
@@ -261,6 +290,9 @@ class PyLocalBuffer {
   // Destructures a tuple-valued PyLocalBuffer into its constituent elements.
   StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> DestructureTuple();
 
+  // Copies the buffer to device `dst_device_ordinal`.
+  StatusOr<std::unique_ptr<PyLocalBuffer>> CopyToDevice(int dst_device_ordinal);
+
   // Blocks the host until the buffer's value has been computed and is ready for
   // immediate use on the device. Useful in particular for timing benchmarks.
   Status BlockHostUntilReady();
@@ -270,7 +302,7 @@ class PyLocalBuffer {
   const Shape on_host_shape_;
   const int device_ordinal_;
   mutable absl::Mutex mu_;
-  std::shared_ptr<PySharedDeviceBuffer> device_buffer_ GUARDED_BY(mu_);
+  std::shared_ptr<SharedDeviceBuffer> device_buffer_ GUARDED_BY(mu_);
 
   // The cached value of the buffer on the host, produced either from a call to
   // CopyToHost or from a call to ToPython. Once a value has been fetched to
@@ -325,7 +357,8 @@ class PyLocalExecutable {
 
  private:
   StatusOr<std::unique_ptr<PyLocalBuffer>> ExecuteHelper(
-      absl::Span<PyLocalBuffer* const> argument_handles, int replica);
+      absl::Span<PyLocalBuffer* const> argument_handles, int replica,
+      const RunId& run_id);
 
   std::shared_ptr<PyLocalClient> const client_;
   std::shared_ptr<LocalExecutable> executable_;

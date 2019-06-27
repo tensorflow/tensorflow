@@ -3,6 +3,19 @@
 # to be distributed and performed in parallel across multiple
 # processes.
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_copts", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+
+# For platform specific build config
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_kernel_tests_linkstatic",
+)
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
+
 package(
     default_visibility = [
         "//tensorflow:internal",
@@ -18,20 +31,6 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-)
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_copts")
-
-# For platform specific build config
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_kernel_tests_linkstatic",
-)
-load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
 )
 
 cc_library(
@@ -270,6 +269,7 @@ cc_library(
         ":worker_interface",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/distributed_runtime/eager:eager_client",
     ],
 )
 
@@ -620,6 +620,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 

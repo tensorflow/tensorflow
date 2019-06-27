@@ -73,6 +73,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 namespace {
+
 template <typename Device, typename T>
 struct LaunchGeneric {
   void operator()(OpKernelContext* ctx, const Tensor& input,
@@ -575,6 +576,11 @@ template struct LaunchConv2DOp<CPUDevice, float>;
 template struct LaunchConv2DOp<CPUDevice, double>;
 
 #if GOOGLE_CUDA
+static bool RedzoneCheckDisabled() {
+  const char* disable_rz_str = std::getenv("TF_DISABLE_RZ_CHECK");
+  return disable_rz_str != nullptr && std::strcmp(disable_rz_str, "1") == 0;
+}
+
 int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
                            int64 default_value_in_bytes) {
   const char* workspace_limit_in_mb_str = getenv(envvar_in_mb.c_str());
@@ -623,8 +629,10 @@ static void CheckRedzones(const se::cuda::RedzoneAllocator& rz_allocator,
   auto rz_check_status = rz_status.ValueOrDie();
   if (!rz_check_status.ok()) {
     auto* fail = autotune_result->mutable_failure();
-    fail->set_msg(rz_check_status.redzone_failure_msg);
+    fail->set_msg(rz_check_status.RedzoneFailureMsg());
     fail->set_kind(AutotuneResult::REDZONE_MODIFIED);
+    fail->set_buffer_address(
+        reinterpret_cast<uint64>(rz_check_status.user_buffer_address));
     LOG(ERROR)
         << "Detected cudnn out-of-bounds write in convolution buffer! This is "
            "likely a cudnn bug. We will skip this algorithm in the future, but "
@@ -633,7 +641,7 @@ static void CheckRedzones(const se::cuda::RedzoneAllocator& rz_allocator,
            "of Google, please ensure you're running the latest version of "
            "cudnn. If that doesn't fix the problem, please file a bug with "
            "this full error message and we'll contact nvidia.";
-    LOG(ERROR) << rz_check_status.redzone_failure_msg;
+    LOG(ERROR) << rz_check_status.RedzoneFailureMsg();
   }
 }
 
@@ -995,19 +1003,24 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                             se::cuda::PtxCompilationOptions());
 
     se::DeviceMemory<T> output_tensor;
-    auto output_rz_or = rz_allocator.AllocateBytes(stream, output_ptr.size());
-    if (!output_rz_or.ok()) {
-      static std::once_flag rz_allocation_failure_logged;
-      std::call_once(rz_allocation_failure_logged, []() {
-        LOG(WARNING)
-            << "Failed to allocate memory for convolution redzone "
-            << "checking; skipping this check. This is benign and only "
-            << "means that we won't check cudnn for out-of-bounds reads "
-            << "and writes. This message will only be printed once.";
-      });
-      output_tensor = output_ptr;
+
+    if (!RedzoneCheckDisabled()) {
+      auto output_rz_or = rz_allocator.AllocateBytes(stream, output_ptr.size());
+      if (!output_rz_or.ok()) {
+        static std::once_flag rz_allocation_failure_logged;
+        std::call_once(rz_allocation_failure_logged, []() {
+          LOG(WARNING)
+              << "Failed to allocate memory for convolution redzone "
+              << "checking; skipping this check. This is benign and only "
+              << "means that we won't check cudnn for out-of-bounds reads "
+              << "and writes. This message will only be printed once.";
+        });
+        output_tensor = output_ptr;
+      } else {
+        output_tensor = se::DeviceMemory<T>(output_rz_or.ValueOrDie());
+      }
     } else {
-      output_tensor = se::DeviceMemory<T>(output_rz_or.ValueOrDie());
+      output_tensor = output_ptr;
     }
 
     std::vector<tensorflow::AutotuneResult> results;
@@ -1017,13 +1030,18 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       se::cuda::RedzoneAllocator rz_scratch_allocator(
           stream->parent()->device_ordinal(), &tf_allocator_adapter,
           se::cuda::PtxCompilationOptions());
+      DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+      se::ScratchAllocator* allocator_used =
+          !RedzoneCheckDisabled()
+              ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
+              : static_cast<se::ScratchAllocator*>(&scratch_allocator);
 
       ProfileResult profile_result;
       bool cudnn_launch_status =
           stream
               ->ThenConvolveWithAlgorithm(
                   input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                  output_desc, &output_tensor, &rz_scratch_allocator,
+                  output_desc, &output_tensor, allocator_used,
                   AlgorithmConfig(profile_algorithm), &profile_result)
               .ok();
       if (cudnn_launch_status && profile_result.is_valid()) {
@@ -1043,9 +1061,9 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       }
     }
     LogConvAutotuneResults(se::dnn::ConvolutionKind::FORWARD,
-                           se::dnn::ToDataType<T>::value, input_desc,
-                           filter_desc, output_desc, conv_desc,
-                           stream->parent(), results);
+                           se::dnn::ToDataType<T>::value, input_ptr, filter_ptr,
+                           output_tensor, input_desc, filter_desc, output_desc,
+                           conv_desc, stream->parent(), results);
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
     AutoTuneConv::GetInstance()->Insert(conv_parameters, algorithm_config);
   }

@@ -119,4 +119,10 @@ try:
 except ImportError as e:
   pass
 
+# Also import module aliases
+try:
+  from tensorflow_core import losses, metrics, initializers, optimizers
+except ImportError:
+  pass
+
 # LINT.ThenChange(//tensorflow/virtual_root_template_v1.__init__.py.oss)

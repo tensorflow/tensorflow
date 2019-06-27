@@ -72,8 +72,9 @@ BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 
 
 CacheKey = collections.namedtuple("CacheKey", [
-    "input_signature", "parent_graph", "device_functions",
-    "colocation_stack"])
+    "input_signature", "parent_graph", "device_functions", "colocation_stack",
+    "in_cross_replica_context"
+])
 
 CacheKey.replace = CacheKey._replace  # pylint: disable=protected-access
 
@@ -172,7 +173,7 @@ def _compatible_shapes(flat_relaxed, flat_to_check):
              for relaxed, to_check in zip(flat_relaxed, flat_to_check))
 
 
-def _common_shape(x, y):
+def common_shape(x, y):
   """Find a `TensorShape` that is compatible with both `x` and `y`."""
   if x is None != y is None:
     raise RuntimeError(
@@ -395,7 +396,7 @@ class _EagerDefinedFunction(object):
     self._c_func = c_api_util.ScopedTFFunction(fn)
     self._grad_func = None
     self.graph = graph
-    self._stateful_ops = tuple(op for op in operations if op.op_def.is_stateful)
+    self._stateful_ops = tuple(op for op in operations if op._is_stateful)  # pylint: disable=protected-access
 
   def add_to_graph(self, g=None):
     # pylint: disable=protected-access
@@ -598,7 +599,7 @@ class ConcreteFunction(object):
     return self._call_flat(
         (t for t in nest.flatten((args, kwargs), expand_composites=True)
          if isinstance(t, (ops.Tensor,
-                           resource_variable_ops.ResourceVariable))),
+                           resource_variable_ops.BaseResourceVariable))),
         self.captured_inputs)
 
   def _call_flat(self, args, captured_inputs):
@@ -632,7 +633,7 @@ class ConcreteFunction(object):
     tensor_inputs = []
     variables_used = set([])
     for i, arg in enumerate(args):
-      if isinstance(arg, resource_variable_ops.ResourceVariable):
+      if isinstance(arg, resource_variable_ops.BaseResourceVariable):
         # We can pass a variable more than once, and in this case we need to
         # pass its handle only once.
         if arg.handle in variables_used:
@@ -1541,8 +1542,11 @@ class Function(object):
     # TODO(b/117617952): The current distribution strategy will affect graph
     # building (e.g. accessing different variables from different devices) and
     # so requires retracing for each device.
-    uses_distribution_strategy = bool(
-        default_graph._distribution_strategy_stack)
+    strategy_stack = default_graph._distribution_strategy_stack
+    uses_distribution_strategy = (
+        strategy_stack and
+        strategy_stack[-1].strategy.extended._retrace_functions_for_each_device
+    )
     if executing_eagerly:
       colocation_stack = ()
       if uses_distribution_strategy:
@@ -1559,9 +1563,15 @@ class Function(object):
         device_functions = tuple(default_graph._device_functions_outer_to_inner)
       else:
         device_functions = ()
-    # pylint: enable=protected-access
+
+    in_cross_replica_context = False
+    try:
+      in_cross_replica_context = (strategy_stack[-1].replica_context is None)  # pylint: disable=protected-access
+    except (AttributeError, IndexError):
+      pass
+
     return CacheKey(input_signature, parent_graph, device_functions,
-                    colocation_stack)
+                    colocation_stack, in_cross_replica_context)
 
   def _create_graph_function(self, args, kwargs, override_flat_arg_shapes=None):
     """Create a `ConcreteFunction` from `args` and `kwargs`."""
@@ -1628,7 +1638,7 @@ class Function(object):
                            "relaxed_arg_shapes len: %d vs. %d"
                            % (len(arg_shapes), len(relaxed_arg_shapes)))
       relaxed_arg_shapes = [
-          _common_shape(x, y) for (x, y) in zip(
+          common_shape(x, y) for (x, y) in zip(
               arg_shapes, relaxed_arg_shapes)]
     self._function_cache.arg_relaxed_shapes[rank_only_cache_key] = (
         relaxed_arg_shapes)
@@ -1661,6 +1671,7 @@ class Function(object):
     if self.input_signature is None or args is not None or kwargs is not None:
       args, kwargs = self._function_spec.canonicalize_function_inputs(
           *args, **kwargs)
+
     cache_key = self._cache_key(args, kwargs)
 
     try:
@@ -1736,8 +1747,9 @@ def register(func, *args, **kwargs):
 def validate_signature(signature):
   if any(not isinstance(arg, tensor_spec.TensorSpec)
          for arg in nest.flatten(signature, expand_composites=True)):
-    raise TypeError("Invalid input_signature %s; input_signature must be "
-                    "a possibly nested sequence of TensorSpec objects.")
+    raise TypeError("Invalid input_signature {}; input_signature must be "
+                    "a possibly nested sequence of TensorSpec objects."
+                    .format(signature))
 
 
 def defun(func=None,

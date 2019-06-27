@@ -88,7 +88,20 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export('autograph.experimental.Feature')
 class Feature(enum.Enum):
-  """Represents conversion options that can be toggled on or off.
+  """This enumeration represents optional conversion options.
+
+  These conversion options are experimental. They are subject to change without
+  notice and offer no guarantees.
+
+  _Example Usage_
+
+  ```python
+  optionals= tf.autograph.experimental.Feature.EQUALITY_OPERATORS
+  @tf.function(experimental_autograph_options=optionals)
+  def f(i):
+    if i == 0:  # EQUALITY_OPERATORS allows the use of == here.
+      tf.print('i is zero')
+  ```
 
   Attributes:
     ALL: Enable all features.

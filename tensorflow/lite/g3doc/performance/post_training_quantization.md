@@ -6,6 +6,10 @@ degradation in model accuracy. These techniques can be performed on an
 already-trained float TensorFlow model and applied during TensorFlow Lite
 conversion.
 
+### Optimization options
+
+![post-training optimization options](images/optimization.jpg)
+
 ### Quantizing weights
 
 The simplest form of post-training quantization quantizes weights from floating
@@ -66,7 +70,7 @@ deployment to accelerators that support float. To require the converter to only
 output integer operations, one can specify:
 
 ```
-converter.target_spec.supported_ops = [tf.lite.OpSet.TFLITE_BUILTINS_INT8]
+converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
 ```
 
 Note: `target_spec.supported_ops` was previously `target_ops` in the Python API.

@@ -57,9 +57,7 @@ class MasterSession : public core::RefCounted {
 
   // Initialize the MasterSession for "def".  Must be called before Extend(),
   // Run(), or Close().
-  //
-  // After this method returns, `def` will no longer be valid.
-  Status Create(GraphDef* def, const WorkerCacheFactoryOptions& options);
+  Status Create(GraphDef&& def, const WorkerCacheFactoryOptions& options);
 
   // Returns the session handle.
   const string& handle() const { return handle_; }

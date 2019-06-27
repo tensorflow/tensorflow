@@ -180,9 +180,9 @@ def experimental_tpu_fit_loop(model,
   # Add initial dummy values for loss and other metric tensors.
   initial_loop_values = {}
   initial_loop_values['loss'] = constant_op.constant(1e7)
-  for name in model.metrics_names[1:]:
-    tensor = model._all_metrics_tensors[name]
-    initial_loop_values[name] = array_ops.zeros(tensor.shape, tensor.dtype)
+  for m in model._get_training_eval_metrics():
+    tensor = m.result()
+    initial_loop_values[m.name] = array_ops.zeros(tensor.shape, tensor.dtype)
 
   iteration_value = min(steps_per_epoch,
                         current_strategy.extended.steps_per_run)
@@ -565,8 +565,7 @@ def experimental_tpu_predict_loop(model,
     prediction_result = np.concatenate(unconcatenated_outs[0], axis=0)
   else:
     prediction_result = [
-        np.concatenate(unconcatenated_outs[i], axis=0)
-        for i in range(len(unconcatenated_outs))
+        np.concatenate(out, axis=0) for out in unconcatenated_outs
     ]
 
   if padding_handler:
@@ -797,4 +796,3 @@ class DistributionMultiWorkerTrainingLoop(DistributionSingleWorkerTrainingLoop):
   evaluate = train_with_multi_worker(
       DistributionSingleWorkerTrainingLoop.evaluate)
   # Currently predict is still using the single worker implementation.
-

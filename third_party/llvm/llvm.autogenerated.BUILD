@@ -398,6 +398,26 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+py_binary(
+    name = "lit",
+    srcs = ["utils/lit/lit.py"] + glob(["utils/lit/lit/*.py"]),
+)
+
+cc_binary(
+    name = "count",
+    srcs = ["utils/count/count.c"],
+)
+
+cc_binary(
+    name = "not",
+    srcs = ["utils/not/not.cpp"],
+    copts = llvm_copts,
+    linkopts = llvm_linkopts,
+    deps = [
+        ":support",
+    ],
+)
+
 cc_library(
     name = "aarch64_asm_parser",
     srcs = glob([
@@ -2147,6 +2167,7 @@ cc_library(
     copts = llvm_copts,
     deps = [
         ":binary_format",
+        ":bit_reader",
         ":config",
         ":object",
         ":option",
@@ -2988,6 +3009,7 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/RISCV"],
     deps = [
+        ":analysis",
         ":asm_printer",
         ":code_gen",
         ":config",

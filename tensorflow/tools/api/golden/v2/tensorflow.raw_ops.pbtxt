@@ -441,6 +441,14 @@ tf_module {
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "BlockLSTM"
+    argspec: "args=[\'seq_len_max\', \'x\', \'cs_prev\', \'h_prev\', \'w\', \'wci\', \'wcf\', \'wco\', \'b\', \'forget_bias\', \'cell_clip\', \'use_peephole\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'3\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "BlockLSTMGrad"
+    argspec: "args=[\'seq_len_max\', \'x\', \'cs_prev\', \'h_prev\', \'w\', \'wci\', \'wcf\', \'wco\', \'b\', \'i\', \'cs\', \'f\', \'o\', \'ci\', \'co\', \'h\', \'cs_grad\', \'h_grad\', \'use_peephole\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "BoostedTreesAggregateStats"
     argspec: "args=[\'node_ids\', \'gradients\', \'hessians\', \'feature\', \'max_splits\', \'num_buckets\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -523,6 +531,10 @@ tf_module {
   member_method {
     name: "BoostedTreesSparseAggregateStats"
     argspec: "args=[\'node_ids\', \'gradients\', \'hessians\', \'feature_indices\', \'feature_values\', \'feature_shape\', \'max_splits\', \'num_buckets\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "BoostedTreesSparseCalculateBestFeatureSplit"
+    argspec: "args=[\'node_id_range\', \'stats_summary_indices\', \'stats_summary_values\', \'stats_summary_shape\', \'l1\', \'l2\', \'tree_complexity\', \'min_node_weight\', \'logits_dimension\', \'split_type\', \'name\'], varargs=None, keywords=None, defaults=[\'inequality\', \'None\'], "
   }
   member_method {
     name: "BoostedTreesTrainingPredict"
@@ -1001,6 +1013,10 @@ tf_module {
     argspec: "args=[\'hypothesis_indices\', \'hypothesis_values\', \'hypothesis_shape\', \'truth_indices\', \'truth_values\', \'truth_shape\', \'normalize\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
+    name: "Einsum"
+    argspec: "args=[\'inputs\', \'equation\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "Elu"
     argspec: "args=[\'features\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1441,6 +1457,14 @@ tf_module {
     argspec: "args=[\'input\', \'size\', \'paddings\', \'filter\', \'mode\', \'strides\', \'padding\', \'resize_align_corners\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
+    name: "GRUBlockCell"
+    argspec: "args=[\'x\', \'h_prev\', \'w_ru\', \'w_c\', \'b_ru\', \'b_c\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "GRUBlockCellGrad"
+    argspec: "args=[\'x\', \'h_prev\', \'w_ru\', \'w_c\', \'b_ru\', \'b_c\', \'r\', \'u\', \'c\', \'d_h\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "Gather"
     argspec: "args=[\'params\', \'indices\', \'validate_indices\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
@@ -1725,6 +1749,14 @@ tf_module {
     argspec: "args=[\'input_grads\', \'input_image\', \'output_image\', \'depth_radius\', \'bias\', \'alpha\', \'beta\', \'name\'], varargs=None, keywords=None, defaults=[\'5\', \'1\', \'1\', \'0.5\', \'None\'], "
   }
   member_method {
+    name: "LSTMBlockCell"
+    argspec: "args=[\'x\', \'cs_prev\', \'h_prev\', \'w\', \'wci\', \'wcf\', \'wco\', \'b\', \'forget_bias\', \'cell_clip\', \'use_peephole\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'3\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "LSTMBlockCellGrad"
+    argspec: "args=[\'x\', \'cs_prev\', \'h_prev\', \'w\', \'wci\', \'wcf\', \'wco\', \'b\', \'i\', \'cs\', \'f\', \'o\', \'ci\', \'co\', \'cs_grad\', \'h_grad\', \'use_peephole\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "LeakyRelu"
     argspec: "args=[\'features\', \'alpha\', \'name\'], varargs=None, keywords=None, defaults=[\'0.2\', \'None\'], "
   }
@@ -1985,6 +2017,14 @@ tf_module {
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "MatrixDiagPartV2"
+    argspec: "args=[\'input\', \'k\', \'padding_value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "MatrixDiagV2"
+    argspec: "args=[\'diagonal\', \'k\', \'num_rows\', \'num_cols\', \'padding_value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "MatrixExponential"
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1999,6 +2039,10 @@ tf_module {
   member_method {
     name: "MatrixSetDiag"
     argspec: "args=[\'input\', \'diagonal\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "MatrixSetDiagV2"
+    argspec: "args=[\'input\', \'diagonal\', \'k\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "MatrixSolve"
@@ -2114,7 +2158,7 @@ tf_module {
   }
   member_method {
     name: "ModelDataset"
-    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'cpu_budget\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'algorithm\', \'cpu_budget\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'None\'], "
   }
   member_method {
     name: "Mul"
@@ -2977,6 +3021,22 @@ tf_module {
     argspec: "args=[\'grads\', \'size\', \'align_corners\', \'half_pixel_centers\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
+    name: "ResourceAccumulatorApplyGradient"
+    argspec: "args=[\'handle\', \'local_step\', \'gradient\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "ResourceAccumulatorNumAccumulated"
+    argspec: "args=[\'handle\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "ResourceAccumulatorSetGlobalStep"
+    argspec: "args=[\'handle\', \'new_global_step\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "ResourceAccumulatorTakeGradient"
+    argspec: "args=[\'handle\', \'num_required\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "ResourceApplyAdaMax"
     argspec: "args=[\'var\', \'m\', \'v\', \'beta1_power\', \'lr\', \'beta1\', \'beta2\', \'epsilon\', \'grad\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
@@ -3043,6 +3103,10 @@ tf_module {
   member_method {
     name: "ResourceApplyRMSProp"
     argspec: "args=[\'var\', \'ms\', \'mom\', \'lr\', \'rho\', \'momentum\', \'epsilon\', \'grad\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "ResourceConditionalAccumulator"
+    argspec: "args=[\'dtype\', \'shape\', \'container\', \'shared_name\', \'reduction_type\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'MEAN\', \'None\'], "
   }
   member_method {
     name: "ResourceCountUpTo"
@@ -3502,7 +3566,7 @@ tf_module {
   }
   member_method {
     name: "SnapshotDataset"
-    argspec: "args=[\'input_dataset\', \'path\', \'output_types\', \'output_shapes\', \'compression\', \'reader_path_prefix\', \'writer_path_prefix\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'path\', \'output_types\', \'output_shapes\', \'compression\', \'reader_path_prefix\', \'writer_path_prefix\', \'shard_size_bytes\', \'pending_snapshot_expiry_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'10737418240\', \'86400\', \'None\'], "
   }
   member_method {
     name: "Softmax"

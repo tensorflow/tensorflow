@@ -1,6 +1,9 @@
 # Description:
 # TensorFlow SavedModel.
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
+
 package(
     # TODO(drpng): change that to //third_party/tensorflow:internal
     # when we have migrated all users.
@@ -9,11 +12,6 @@ package(
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
 
 py_library(
     name = "saved_model",
@@ -330,6 +328,7 @@ tf_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
     ],
+    tags = ["no_rocm"],
 )
 
 py_library(

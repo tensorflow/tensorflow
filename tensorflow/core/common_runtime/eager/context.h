@@ -62,7 +62,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Note: there's a copy enum in eager/c_api.h. It should be kept in sync.
+// LINT.IfChange
+// Note: Keep in sync with exported copy of enum in eager/c_api.h.
 enum ContextDevicePlacementPolicy {
   // Running operations with input tensors on the wrong device will fail.
   DEVICE_PLACEMENT_EXPLICIT = 0,
@@ -74,6 +75,19 @@ enum ContextDevicePlacementPolicy {
   // Placement policy which silently copies int32 tensors but not other dtypes.
   DEVICE_PLACEMENT_SILENT_FOR_INT32 = 3,
 };
+// LINT.ThenChange(//tensorflow/c/eager/c_api.h)
+
+// LINT.IfChange
+// Note: Keep in sync with exported copy of enum in eager/c_api_experimental.h.
+enum ContextMirroringPolicy {
+  // Do not maintain mirrors in a TensorHandle, instead make new TensorHandle
+  // copies with their own lifetime.
+  MIRRORING_NONE = 0,
+  // Mirroring any remote tensor handles, associating them with the lifetime of
+  // the local TensorHandle.
+  MIRRORING_ALL = 1,
+};
+// LINT.ThenChange(//tensorflow/c/eager/c_api_experimental.h)
 
 class RunMetadataListener {
  public:
@@ -83,21 +97,17 @@ class RunMetadataListener {
 
 class EagerContext : public core::RefCounted {
  public:
-  // TODO: remove this constructor once we migrate all callers to the next one.
-  EagerContext(const SessionOptions& opts,
-               ContextDevicePlacementPolicy default_policy, bool async,
-               std::unique_ptr<const DeviceMgr> device_mgr,
-               Rendezvous* rendezvous);
-
   EagerContext(
-      const SessionOptions& opts, ContextDevicePlacementPolicy default_policy,
-      bool async, const DeviceMgr* device_mgr, bool device_mgr_owned,
+      const SessionOptions& opts,
+      ContextDevicePlacementPolicy default_device_placement_policy,
+      ContextMirroringPolicy default_mirroring_policy, bool async,
+      const DeviceMgr* device_mgr, bool device_mgr_owned,
       Rendezvous* rendezvous, const CustomKernelCreator* custom_kernel_creator,
       DistributedFunctionLibraryRuntime* cluster_flr = nullptr,
       std::function<Rendezvous*(const int64)> rendezvous_creator = nullptr,
       const DeviceMgr* remote_device_mgr = nullptr);
 
-  ~EagerContext();
+  ~EagerContext() override;
 
   // Returns the function library runtime for the given device.
   FunctionLibraryRuntime* func_lib(const Device* d) const {
@@ -134,7 +144,15 @@ class EagerContext : public core::RefCounted {
   void SetThreadLocalDevicePlacementPolicy(ContextDevicePlacementPolicy policy);
 
   // Returns the device placement policy for the current thread.
-  ContextDevicePlacementPolicy GetDevicePlacementPolicy();
+  ContextDevicePlacementPolicy GetDevicePlacementPolicy() const;
+
+  // Sets the implicit copy policy for the current thread.
+  void SetThreadLocalMirroringPolicy(ContextMirroringPolicy);
+
+  // Returns the implicit copy policy for the current thread.
+  ContextMirroringPolicy GetMirroringPolicy() const;
+
+  bool MirrorTensors() const;
 
   Status AsyncWait() { return executor_.WaitForAllPendingNodes(); }
 
@@ -157,7 +175,9 @@ class EagerContext : public core::RefCounted {
 
   uint64 NextId() { return executor_.NextId(); }
 
-  void ExecutorAdd(EagerNode* node) { executor_.Add(node); }
+  void ExecutorAdd(std::unique_ptr<EagerNode> node) {
+    executor_.Add(std::move(node));
+  }
 
   Status AddFunctionDef(const FunctionDef& fdef);
 
@@ -290,13 +310,16 @@ class EagerContext : public core::RefCounted {
   void InitDeviceMapAndAsync();
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
 
-  const ContextDevicePlacementPolicy policy_;
+  const ContextDevicePlacementPolicy default_device_placement_policy_;
+  const ContextMirroringPolicy default_mirroring_policy_;
 
   // Note: we cannot use C++11 thread_local here as there is no concept of a
   // thread-local-object-local variable in C++11.
-  mutex policy_map_mu_;
+  mutable mutex policy_map_mu_;
   std::unordered_map<std::thread::id, ContextDevicePlacementPolicy>
-      thread_local_policies_ GUARDED_BY(policy_map_mu_);
+      device_placement_policy_ GUARDED_BY(policy_map_mu_);
+  std::unordered_map<std::thread::id, ContextMirroringPolicy> mirroring_policy_
+      GUARDED_BY(policy_map_mu_);
 
   // Only one of the below is set.
   std::unique_ptr<const DeviceMgr> local_device_manager_;
@@ -321,6 +344,7 @@ class EagerContext : public core::RefCounted {
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 
+  const CustomKernelCreator* const custom_kernel_creator_;
   // One FunctionLibraryRuntime per device.
   // func_libs[i] is the FunctionLibraryRuntime corresponding to
   // session->devices[i].

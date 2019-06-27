@@ -298,23 +298,37 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
     if (device_->TraceUsingAnnotations()) {
       // 'ScopedActivity' will trace the OpKernel scheduling time on host.
       profiler::TraceMe activity(
-          [&] { return strings::StrCat(op_name, ":", kernel_->type_string()); },
+          [&] {
+            return strings::StrCat(
+                op_name, ":", kernel_->type_string(),
+                "#id=n/a,step_container_name=",
+                step_container == nullptr ? "n/a" : step_container->name(),
+                ",device=", device_->name(), ",async=false#");
+          },
           profiler::TraceMeLevel::kInfo);
       // 'ScopedAnnotation' will trace the OpKernel execution time on device.
       tracing::ScopedAnnotation annotation(op_name, kernel_->type_string());
       device_->Compute(kernel_.get(), &context);
     } else {
       profiler::TraceMe activity(
-          [&] { return strings::StrCat(op_name, ":", kernel_->type_string()); },
+          [&] {
+            return strings::StrCat(
+                op_name, ":", kernel_->type_string(),
+                "#id=n/a,step_container_name=",
+                step_container == nullptr ? "n/a" : step_container->name(),
+                ",device=", device_->name(), ",async=false#");
+          },
           profiler::TraceMeLevel::kInfo);
       device_->Compute(kernel_.get(), &context);
     }
   }
   if (!context.status().ok()) return context.status();
 
-  outputs->clear();
-  for (int i = 0; i < context.num_outputs(); ++i) {
-    outputs->push_back(Tensor(*context.mutable_output(i)));
+  if (outputs != nullptr) {
+    outputs->clear();
+    for (int i = 0; i < context.num_outputs(); ++i) {
+      outputs->push_back(Tensor(*context.mutable_output(i)));
+    }
   }
   if (stats != nullptr) {
     UpdateStats(&context, step_stats_collector.get(), stats);

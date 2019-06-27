@@ -25,6 +25,8 @@ import weakref
 
 import numpy as np
 
+from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -35,7 +37,6 @@ from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -45,7 +46,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_strategy_util
@@ -81,61 +81,6 @@ def maybe_init_scope():
       yield
 
 
-# TODO(jhseu): Deduplicate with MirroredStrategy?
-def _create_tpu_mirrored_variable(  # pylint: disable=missing-docstring
-    strategy, device_map, logical_device, real_mirrored_creator,
-    *args, **kwargs):
-  # Figure out what collections this variable should be added to.
-  # We'll add the TPUMirroredVariable to those collections instead.
-  var_collections = kwargs.pop("collections", None)
-  if var_collections is None:
-    var_collections = [ops.GraphKeys.GLOBAL_VARIABLES]
-  kwargs["collections"] = []
-
-  # TODO(jhseu): Should we have different behavior for different
-  # synchronization settings?
-
-  # Get aggregation value
-  # TODO(jhseu): Support aggregation in a replica context.
-  aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
-  if aggregation not in [
-      vs.VariableAggregation.NONE,
-      vs.VariableAggregation.SUM,
-      vs.VariableAggregation.MEAN,
-      vs.VariableAggregation.ONLY_FIRST_REPLICA,
-  ]:
-    raise ValueError("Invalid variable aggregation mode: {} for variable: {}"
-                     .format(aggregation, kwargs["name"]))
-
-  # Ignore user-specified caching device, not needed for mirrored variables.
-  kwargs.pop("caching_device", None)
-
-  # TODO(josh11b,apassos): It would be better if variable initialization
-  # was never recorded on the tape instead of having to do this manually
-  # here.
-  with tape.stop_recording():
-    devices = device_map.logical_to_actual_devices(logical_device)
-    value_list = real_mirrored_creator(devices, *args, **kwargs)
-    result = values.TPUMirroredVariable(
-        strategy, device_map, value_list, aggregation,
-        logical_device=logical_device)
-
-  if not (context.executing_eagerly() or ops.inside_function()):
-    g = ops.get_default_graph()
-    # If "trainable" is True, next_creator() will add the member variables
-    # to the TRAINABLE_VARIABLES collection, so we manually remove
-    # them and replace with the MirroredVariable. We can't set
-    # "trainable" to False for next_creator() since that causes functions
-    # like implicit_gradients to skip those variables.
-    if kwargs.get("trainable", True):
-      var_collections.append(ops.GraphKeys.TRAINABLE_VARIABLES)
-      l = g.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES)
-      for v in value_list:
-        l.remove(v)
-    g.add_to_collections(var_collections, result)
-  return result
-
-
 @tf_export("distribute.experimental.TPUStrategy", v1=[])
 class TPUStrategy(distribute_lib.Strategy):
   """TPU distribution strategy implementation."""
@@ -148,9 +93,9 @@ class TPUStrategy(distribute_lib.Strategy):
     Args:
       tpu_cluster_resolver: A tf.distribute.cluster_resolver.TPUClusterResolver,
           which provides information about the TPU cluster.
-      device_assignment: Optional `tf.contrib.tpu.DeviceAssignment` to specify
-          the placement of replicas on the TPU cluster. Currently only supports
-          the usecase of using a single core within a TPU cluster.
+      device_assignment: Optional `tf.tpu.experimental.DeviceAssignment` to
+          specify the placement of replicas on the TPU cluster. Currently only
+          supports the usecase of using a single core within a TPU cluster.
     """
     super(TPUStrategy, self).__init__(TPUExtended(
         self, tpu_cluster_resolver, device_assignment=device_assignment))
@@ -160,8 +105,11 @@ class TPUStrategy(distribute_lib.Strategy):
   # This implementation runs a single step. It does not use infeed or outfeed.
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """See base class."""
+    # tf.distribute supports Eager functions, so AutoGraph should not be applied
+    # when when the caller is also in Eager mode.
+    fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx(),
+                              convert_by_default=False)
     return self.extended.tpu_run(fn, args, kwargs)
-
 
 
 @tf_export(v1=["distribute.experimental.TPUStrategy"])
@@ -182,9 +130,9 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
           metrics, summaries etc.
           This parameter is only used when Distribution Strategy is used with
           estimator or keras.
-      device_assignment: Optional `tf.contrib.tpu.DeviceAssignment` to specify
-          the placement of replicas on the TPU cluster. Currently only supports
-          the usecase of using a single core within a TPU cluster.
+      device_assignment: Optional `tf.tpu.experimental.DeviceAssignment` to
+          specify the placement of replicas on the TPU cluster. Currently only
+          supports the usecase of using a single core within a TPU cluster.
     """
     super(TPUStrategyV1, self).__init__(TPUExtended(
         self, tpu_cluster_resolver, steps_per_run, device_assignment))
@@ -199,6 +147,7 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
   # This implementation runs a single step. It does not use infeed or outfeed.
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """See base class."""
+    fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx())
     return self.extended.tpu_run(fn, args, kwargs)
 
 
@@ -268,7 +217,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self.experimental_enable_get_next_as_optional = True
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
-    values.validate_colocate_tpu_variable(colocate_with_variable, self)
+    values.validate_colocate(colocate_with_variable, self)
 
   def _make_dataset_iterator(self, dataset):
     """Make iterators for each of the TPU hosts."""
@@ -363,7 +312,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         replicate_inputs.append((nest.map_structure(
             select_replica, per_replica_inputs),))
 
-      replicate_outputs = tpu.replicate(run_fn, replicate_inputs)
+      replicate_outputs = tpu.replicate(
+          run_fn, replicate_inputs, device_assignment=self._device_assignment)
 
       # If run_fn has tensor outputs, tpu.replicate returns a list of list. We
       # will flatten it in this case. If run_fn has no tensor outputs,
@@ -426,7 +376,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     """Experimental method added to be used by Estimator.
 
     This is a private method only to be used by Estimator. Other frameworks
-    should directly be calling `tf.contrib.distribute.initialize_tpu_system`
+    should directly be calling `tf.tpu.experimental.initialize_tpu_system`
     """
     tpu_strategy_util.initialize_tpu_system(self._tpu_cluster_resolver)
 
@@ -472,9 +422,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           value_list.append(v)
       return value_list
 
-    return _create_tpu_mirrored_variable(
+    return distribute_lib.create_mirrored_variable(
         self._container_strategy(), device_map, logical_device,
-        _real_mirrored_creator, *args, **kwargs)
+        _real_mirrored_creator, values.TPUMirroredVariable,
+        values.TPUSyncOnReadVariable, *args, **kwargs)
 
   def _reduce_to(self, reduce_op, value, destinations):
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
@@ -517,8 +468,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     return output
 
   def _update(self, var, fn, args, kwargs, group):
-    assert isinstance(var, values.TPUMirroredVariable) or isinstance(
-        var, resource_variable_ops.ResourceVariable)
+    assert isinstance(var, values.TPUVariableMixin) or isinstance(
+        var, resource_variable_ops.BaseResourceVariable)
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
       if group:
         return fn(var, *args, **kwargs)
@@ -538,8 +489,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     return values.update_regroup(self, self._device_map, updates, group)
 
   def read_var(self, var):
-    assert isinstance(var, values.TPUMirroredVariable) or isinstance(
-        var, resource_variable_ops.ResourceVariable)
+    assert isinstance(var, values.TPUVariableMixin) or isinstance(
+        var, resource_variable_ops.BaseResourceVariable)
     return var.read_value()
 
   def _local_results(self, val):
@@ -720,8 +671,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         maximum_shapes = None
 
       with strategy.scope():
-        replicate_outputs = tpu.replicate(replicated_fn, replicate_inputs,
-                                          maximum_shapes=maximum_shapes)
+        replicate_outputs = tpu.replicate(
+            replicated_fn,
+            replicate_inputs,
+            device_assignment=self._device_assignment,
+            maximum_shapes=maximum_shapes)
 
       # Remove all no ops that may have been added during 'tpu.replicate()'
       if isinstance(result[0], list):

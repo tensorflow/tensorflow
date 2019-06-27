@@ -479,7 +479,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
   def _update(self, var, fn, args, kwargs, group):
     if isinstance(var, values.AggregatingVariable):
       var = var.get()
-    if not isinstance(var, resource_variable_ops.ResourceVariable):
+    if not isinstance(var, resource_variable_ops.BaseResourceVariable):
       raise ValueError(
           "You can not update `var` %r. It must be a Variable." % var)
     with ops.colocate_with(var), distribute_lib.UpdateContext(var.device):

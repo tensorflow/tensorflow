@@ -737,13 +737,14 @@ int TF_PickUnusedPortOrDie() {
 }
 
 TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType data_type,
-                                                void* data, size_t len) {
+                                                void* data, size_t len,
+                                                TF_Status* status) {
   auto dtype = static_cast<tensorflow::DataType>(data_type);
   DCHECK(tensorflow::DataTypeCanUseMemcpy(dtype));
 
   tensorflow::Tensor tensor(dtype, tensorflow::TensorShape({}));
   std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
-  return new TFE_TensorHandle(tensor);
+  return TFE_TensorHandle::CreateLocalHandle(tensor, status);
 }
 
 namespace {
@@ -993,4 +994,24 @@ TFE_TensorHandle* TFE_ConsumeInputConcreteTensorFromTraceContext(
   VLOG(1) << "Returning a new tensor handle " << ret << ": "
           << handle->DebugString();
   return ret;
+}
+
+void TFE_ContextOptionsSetMirroringPolicy(TFE_ContextOptions* options,
+                                          TFE_ContextMirroringPolicy policy) {
+  options->mirroring_policy = policy;
+}
+
+void TFE_ContextSetThreadLocalMirroringPolicy(
+    TFE_Context* ctx, TFE_ContextMirroringPolicy policy) {
+  ctx->context->SetThreadLocalMirroringPolicy(
+      static_cast<tensorflow::ContextMirroringPolicy>(policy));
+}
+
+// Note: this function looks up a thread local policy. So it should be called in
+// the appropriate client thread. In particular, in async mode, it may not be
+// safe to call this function from the async EagerExecutor threads.
+extern TFE_ContextMirroringPolicy TFE_ContextGetMirroringPolicy(
+    TFE_Context* ctx) {
+  return static_cast<TFE_ContextMirroringPolicy>(
+      ctx->context->GetMirroringPolicy());
 }

@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
@@ -825,21 +826,29 @@ Status OpKernelContext::allocate_persistent(DataType type,
   Status s = allocate_tensor(type, shape, &persistent, attr);
   if (s.ok()) {
     *out_persistent = PersistentTensor(persistent);
+    Tensor* t = out_persistent->AccessTensor(this);
+
     if (out_tensor) {
-      *out_tensor = out_persistent->AccessTensor(this);
+      *out_tensor = t;
     }
+
     if (track_allocations()) {
-      Tensor* t = out_persistent->AccessTensor(this);
       Allocator* a = get_allocator(attr);
       if (a->TracksAllocationSizes()) {
-        int64 alloc_size = a->AllocatedSize(t->tensor_data().data());
-        int64 alloc_id = a->AllocationId(t->tensor_data().data());
-        record_persistent_memory_allocation(alloc_size, alloc_id);
+        // Zero-byte Tensors don't use allocators: check and skip tracking.
+        AllocationDescription alloc_desc;
+        TensorReference tensor_ref(*t);
+        tensor_ref.FillDescription(&alloc_desc);
+        tensor_ref.Unref();
+
+        if (alloc_desc.allocated_bytes()) {  // Non-zero sized tensor.
+          int64 alloc_size = a->AllocatedSize(t->tensor_data().data());
+          int64 alloc_id = a->AllocationId(t->tensor_data().data());
+          record_persistent_memory_allocation(alloc_size, alloc_id);
+        }
       }
     } else if (record_memory_consumption_) {
-      mutex_lock l(stats_mu_);
-      persistent_memory_allocated_ +=
-          out_persistent->AccessTensor(this)->TotalBytes();
+      record_persistent_memory_allocation(t->TotalBytes());
     }
   }
   return s;

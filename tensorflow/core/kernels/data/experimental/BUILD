@@ -1,17 +1,17 @@
 # Description:
 #   Contains experimental kernels for datasets and iterators.
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_kernel_library",
+)
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_kernel_library",
-)
 
 tf_kernel_library(
     name = "assert_next_dataset_op",
@@ -210,7 +210,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:functional_ops_op_lib",
-        "//tensorflow/core/kernels/data:parallel_map_iterator",
+        "//tensorflow/core/kernels/data:parallel_map_dataset_op",
         "//tensorflow/core/kernels/data:stats_utils",
     ],
 )
@@ -318,6 +318,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/kernels/data:dataset_utils",
         "@com_google_absl//absl/time",
     ],
 )

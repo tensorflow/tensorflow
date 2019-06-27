@@ -101,12 +101,15 @@ import threading
 import weakref
 import six
 
+from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context as eager_context
+from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -500,6 +503,17 @@ class Strategy(object):
     # when using v1 optimizer with estimator.
     self._scale_loss_for_estimator = False
 
+    if not hasattr(extended, "_retrace_functions_for_each_device"):
+      # pylint: disable=protected-access
+      try:
+        extended._retrace_functions_for_each_device = (
+            len(extended.worker_devices) > 1)
+      except:  # pylint: disable=bare-except
+        # Default for the case where extended.worker_devices can't return
+        # a sensible value.
+        extended._retrace_functions_for_each_device = True
+      # pylint: enable=protected-access
+
   @property
   def extended(self):
     """`tf.distribute.StrategyExtended` with additional methods."""
@@ -634,6 +648,8 @@ class Strategy(object):
   def experimental_distribute_datasets_from_function(self, dataset_fn):
     """Distributes `tf.data.Dataset` instances created by calls to `dataset_fn`.
 
+    Note: This API can only be used in eager mode.
+
     `dataset_fn` will be called once for each worker in the strategy. Each
     replica on that worker will dequeue one batch of inputs from the local
     `Dataset` (i.e. if a worker has two replicas, two batches will be dequeued
@@ -675,8 +691,11 @@ class Strategy(object):
       A "distributed `Dataset`", which acts like a `tf.data.Dataset` except
       it produces "per-replica" values.
     """
-    return self._extended._experimental_distribute_datasets_from_function(  # pylint: disable=protected-access
-        dataset_fn)
+    if ops.executing_eagerly_outside_functions():
+      return self._extended._experimental_distribute_datasets_from_function(  # pylint: disable=protected-access
+          dataset_fn)
+    raise RuntimeError("`experimental_distribute_datasets_from_function` is "  # pylint: disable=g-doc-exception
+                       "only supported when eager execution is enabled.")
 
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """Runs ops in `fn` on each replica, with the given arguments.
@@ -705,6 +724,10 @@ class Strategy(object):
       (for example, if running on a single replica).
     """
     with self.scope():
+      # tf.distribute supports Eager functions, so AutoGraph should not be
+      # applied when when the caller is also in Eager mode.
+      fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx(),
+                                convert_by_default=False)
       return self._extended.call_for_each_replica(fn, args=args, kwargs=kwargs)
 
   def reduce(self, reduce_op, value, axis):
@@ -1935,28 +1958,70 @@ def _batch_reduce_destination(x):
 # ------------------------------------------------------------------------------
 
 
+_creating_default_strategy_singleton = False
+
+
 class _DefaultDistributionStrategy(StrategyV1):
   """Default `tf.distribute.Strategy` if none is explicitly selected."""
 
   def __init__(self):
+    if not _creating_default_strategy_singleton:
+      raise RuntimeError("Should only create a single instance of "
+                         "_DefaultDistributionStrategy")
     super(_DefaultDistributionStrategy, self).__init__(
         _DefaultDistributionExtended(self))
 
+  def __deepcopy__(self, memo):
+    del memo
+    raise RuntimeError("Should only create a single instance of "
+                       "_DefaultDistributionStrategy")
 
-class _DefaultDistributionExtended(StrategyExtendedV1):
-  """Implementation of _DefaultDistributionStrategy."""
 
-  def _scope(self, strategy):
-    """Context manager setting a variable creator and `self` as current."""
-    if distribution_strategy_context.has_strategy():
-      raise RuntimeError("Must not nest tf.distribute.Strategy scopes.")
+class _DefaultDistributionContext(object):
+  """Context manager setting the default `tf.distribute.Strategy`."""
+
+  def __init__(self, strategy):
 
     def creator(next_creator, *args, **kwargs):
       _require_strategy_scope_strategy(strategy)
       return next_creator(*args, **kwargs)
 
-    return _CurrentDistributionContext(
-        strategy, variable_scope.variable_creator_scope(creator))
+    self._var_creator_scope = variable_scope.variable_creator_scope(creator)
+    self._strategy = strategy
+    self._nested_count = 0
+
+  def __enter__(self):
+    # Allow this scope to be entered if this strategy is already in scope.
+    if distribution_strategy_context.has_strategy():
+      raise RuntimeError("Must not nest tf.distribute.Strategy scopes.")
+    if self._nested_count == 0:
+      self._var_creator_scope.__enter__()
+    self._nested_count += 1
+    return self._strategy
+
+  def __exit__(self, exception_type, exception_value, traceback):
+    self._nested_count -= 1
+    if self._nested_count == 0:
+      try:
+        self._var_creator_scope.__exit__(
+            exception_type, exception_value, traceback)
+      except RuntimeError as e:
+        six.raise_from(
+            RuntimeError("Variable creator scope nesting error: move call to "
+                         "tf.distribute.set_strategy() out of `with` scope."),
+            e)
+
+
+class _DefaultDistributionExtended(StrategyExtendedV1):
+  """Implementation of _DefaultDistributionStrategy."""
+
+  def __init__(self, container_strategy):
+    super(_DefaultDistributionExtended, self).__init__(container_strategy)
+    self._retrace_functions_for_each_device = False
+
+  def _scope(self, strategy):
+    """Context manager setting a variable creator and `self` as current."""
+    return _DefaultDistributionContext(strategy)
 
   def colocate_vars_with(self, colocate_with_variable):
     """Does not require `self.scope`."""
@@ -2104,3 +2169,84 @@ _get_per_thread_mode = distribution_strategy_context._get_per_thread_mode  # pyl
 _pop_per_thread_mode = distribution_strategy_context._pop_per_thread_mode  # pylint: disable=protected-access
 _get_default_replica_mode = (
     distribution_strategy_context._get_default_replica_mode)  # pylint: disable=protected-access
+
+
+def create_mirrored_variable(  # pylint: disable=missing-docstring
+    strategy, device_map, logical_device, real_mirrored_creator, mirrored_cls,
+    sync_on_read_cls, *args, **kwargs):
+  # Figure out what collections this variable should be added to.
+  # We'll add the MirroredVariable to those collections instead.
+  collections = kwargs.pop("collections", None)
+  if collections is None:
+    collections = [ops.GraphKeys.GLOBAL_VARIABLES]
+  kwargs["collections"] = []
+
+  synchronization = kwargs.get(
+      "synchronization", variable_scope.VariableSynchronization.ON_WRITE)
+
+  if synchronization == variable_scope.VariableSynchronization.NONE:
+    raise ValueError(
+        "`NONE` variable synchronization mode is not supported with `Mirrored` "
+        "distribution strategy. Please change the `synchronization` for "
+        "variable: " + kwargs["name"])
+  elif synchronization == variable_scope.VariableSynchronization.ON_READ:
+    is_sync_on_read = True
+  elif synchronization in (
+      variable_scope.VariableSynchronization.ON_WRITE,
+      variable_scope.VariableSynchronization.AUTO):
+    # `AUTO` synchronization defaults to `ON_WRITE`.
+    is_sync_on_read = False
+  else:
+    raise ValueError(
+        "Invalid variable synchronization mode: %s for variable: %s" %
+        (synchronization, kwargs["name"]))
+
+  aggregation = kwargs.pop(
+      "aggregation", variable_scope.VariableAggregation.NONE)
+
+  if aggregation not in (
+      variable_scope.VariableAggregation.NONE,
+      variable_scope.VariableAggregation.SUM,
+      variable_scope.VariableAggregation.MEAN,
+      variable_scope.VariableAggregation.ONLY_FIRST_REPLICA):
+    raise ValueError(
+        "Invalid variable aggregation mode: %s for variable: %s" %
+        (aggregation, kwargs["name"]))
+
+  # Ignore user-specified caching device, not needed for mirrored variables.
+  kwargs.pop("caching_device", None)
+
+  # TODO(josh11b,apassos): It would be better if variable initialization
+  # was never recorded on the tape instead of having to do this manually
+  # here.
+  with tape.stop_recording():
+    devices = device_map.logical_to_actual_devices(logical_device)
+    value_list = real_mirrored_creator(devices, *args, **kwargs)
+
+    var_cls = sync_on_read_cls if is_sync_on_read else mirrored_cls
+
+    result = var_cls(
+        strategy, device_map, value_list, aggregation,
+        logical_device=logical_device)
+
+  # Add the wrapped variable to the requested collections.
+  # The handling of eager mode and the global step matches
+  # ResourceVariable._init_from_args().
+  if not eager_context.executing_eagerly():
+    g = ops.get_default_graph()
+    # If "trainable" is True, next_creator() will add the member variables
+    # to the TRAINABLE_VARIABLES collection, so we manually remove
+    # them and replace with the MirroredVariable. We can't set
+    # "trainable" to False for next_creator() since that causes functions
+    # like implicit_gradients to skip those variables.
+    if kwargs.get("trainable", True):
+      collections.append(ops.GraphKeys.TRAINABLE_VARIABLES)
+      l = g.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES)
+      for v in value_list:
+        if v in l:
+          l.remove(v)
+    g.add_to_collections(collections, result)
+  elif ops.GraphKeys.GLOBAL_STEP in collections:
+    ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, result)
+
+  return result

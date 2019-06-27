@@ -57,8 +57,12 @@ DEVICE_PLACEMENT_WARN = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_WARN
 DEVICE_PLACEMENT_SILENT = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_SILENT
 DEVICE_PLACEMENT_SILENT_FOR_INT32 = (
     pywrap_tensorflow.TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32)
+
 SYNC = 0
 ASYNC = 1
+
+MIRRORING_NONE = pywrap_tensorflow.TFE_MIRRORING_NONE
+MIRRORING_ALL = pywrap_tensorflow.TFE_MIRRORING_ALL
 
 _tf2_gauge = monitoring.BoolGauge("/tensorflow/api/tf2_enable",
                                   "Whether tf2.enable() is called.")
@@ -334,6 +338,7 @@ class Context(object):
     if device_policy is None:
       device_policy = DEVICE_PLACEMENT_SILENT
     self._device_policy = device_policy
+    self._mirroring_policy = None
     if execution_mode not in (None, SYNC, ASYNC):
       raise ValueError(
           "execution_mode should be None/SYNC/ASYNC. Got %s" % execution_mode)
@@ -425,6 +430,9 @@ class Context(object):
         if self._device_policy is not None:
           pywrap_tensorflow.TFE_ContextOptionsSetDevicePlacementPolicy(
               opts, self._device_policy)
+        if self._mirroring_policy is not None:
+          pywrap_tensorflow.TFE_ContextOptionsSetMirroringPolicy(
+              opts, self._mirroring_policy)
         if self._execution_mode == ASYNC:
           pywrap_tensorflow.TFE_ContextOptionsSetAsync(opts, True)
         self._context_handle = pywrap_tensorflow.TFE_NewContext(opts)
@@ -827,12 +835,15 @@ class Context(object):
     visible_device_list = []
     virtual_devices = []
     gpu_index = -1
+    memory_growths = set()
     for dev in self.list_physical_devices("GPU"):
       gpu_index += 1
 
       if dev not in self._visible_device_list:
         continue
 
+      growth = self._memory_growth_map[dev]
+      memory_growths.add(growth)
       visible_device_list.append(str(gpu_index))
 
       if self._virtual_device_map:
@@ -847,8 +858,7 @@ class Context(object):
 
     # Only compute growth if virtual devices have not been configured and we
     # have GPUs
-    if not virtual_devices and self._memory_growth_map:
-      memory_growths = set(self._memory_growth_map.values())
+    if not virtual_devices and memory_growths:
       if len(memory_growths) > 1:
         raise ValueError("Memory growth cannot differ between GPU devices")
       allow_growth = memory_growths.pop()
@@ -1331,6 +1341,27 @@ class Context(object):
         pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
             self._handle, self._device_policy)
 
+  @property
+  def mirroring_policy(self):
+    # Only get the policy from the context if it has already been initialized
+    if self._context_handle is not None:
+      return pywrap_tensorflow.TFE_ContextGetMirroringPolicy(self._handle)
+
+    return self._device_policy
+
+  @mirroring_policy.setter
+  def mirroring_policy(self, policy):
+    if policy is None:
+      policy = MIRRORING_NONE
+
+    if self._mirroring_policy != policy:
+      self._mirroring_policy = policy
+
+      # Only set the policy if the context has already been initialized
+      if self._context_handle is not None:
+        pywrap_tensorflow.TFE_ContextSetThreadLocalMirroringPolicy(
+            self._handle, self._mirroring_policy)
+
   def enable_run_metadata(self):
     """Enables tracing of op execution via RunMetadata.
 
@@ -1619,6 +1650,18 @@ def device_policy(policy):
     yield
   finally:
     ctx.device_policy = old_policy
+
+
+@tf_contextlib.contextmanager
+def mirroring_policy(policy):
+  """Context manager for setting mirroring policy for current thread."""
+  ctx = context()
+  old_policy = ctx.mirroring_policy
+  try:
+    ctx.mirroring_policy = policy
+    yield
+  finally:
+    ctx.mirroring_policy = old_policy
 
 
 def set_execution_mode(mode):

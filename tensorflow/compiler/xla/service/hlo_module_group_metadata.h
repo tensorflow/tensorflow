@@ -24,10 +24,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -137,9 +137,8 @@ class HloModuleGroupMetadata {
   // Returns if the given channel id exists in metadata.
   bool HasChannel(int64 channel_id) const;
 
-  // Returns the all-reduce instructions with the same all_reduce_id.
-  const std::vector<HloInstruction*>& GetAllReduceGroup(
-      int64 all_reduce_id) const;
+  // Returns the all-reduce instructions with the same channel_id.
+  const std::vector<HloInstruction*>& GetAllReduceGroup(int64 channel_id) const;
 
   // Returns the computation that contains the peer channel instructions for
   // the given instruction.
@@ -205,11 +204,11 @@ class HloModuleGroupMetadata {
   // Returns all channels in the module group.
   const std::vector<Channel>& channels() const { return channels_; }
 
-  // Returns the maximum channel id or all_reduce_id used in the module group.
+  // Returns the maximum channel id used in the module group.
   int64 max_channel_id() const { return max_channel_id_; }
 
-  TuplePointsToAnalysis* points_to_analysis(HloModule* module) const {
-    return points_to_analyses_.at(module).get();
+  HloAliasAnalysis* alias_analysis(HloModule* module) const {
+    return alias_analyses_.at(module).get();
   }
 
  private:
@@ -283,8 +282,8 @@ class HloModuleGroupMetadata {
   // The modules that this metadata was built from.
   const std::vector<HloModule*> modules_;
 
-  absl::flat_hash_map<HloModule*, std::unique_ptr<TuplePointsToAnalysis>>
-      points_to_analyses_;
+  absl::flat_hash_map<HloModule*, std::unique_ptr<HloAliasAnalysis>>
+      alias_analyses_;
 };
 
 }  // namespace xla

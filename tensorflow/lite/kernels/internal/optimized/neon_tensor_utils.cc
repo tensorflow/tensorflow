@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <fcntl.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <cstdlib>
+#include <cstring>
 #include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
-#include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/internal/optimized/tensor_utils_impl.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_tensor_utils_impl.h"
 #include "tensorflow/lite/kernels/internal/round.h"
 
 #ifdef USE_NEON
@@ -33,7 +33,9 @@ limitations under the License.
 #define kFloatWeightsPerNeonLane 4
 
 #if __cplusplus >= 201703L || __STDC_VERSION__ >= 201112L
+#if !defined(__ANDROID__) || __ANDROID_API__ >= 28
 #define TFLITE_USE_STD_ALIGN
+#endif
 #endif
 
 #ifdef TFLITE_USE_STD_ALIGN

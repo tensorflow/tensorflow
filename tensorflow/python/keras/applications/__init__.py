@@ -42,7 +42,8 @@ def keras_modules_injection(base_fun):
 
   def wrapper(*args, **kwargs):
     kwargs['backend'] = backend
-    kwargs['layers'] = layers
+    if 'layers' not in kwargs:
+      kwargs['layers'] = layers
     kwargs['models'] = models
     kwargs['utils'] = utils
     return base_fun(*args, **kwargs)
@@ -52,6 +53,8 @@ def keras_modules_injection(base_fun):
 from tensorflow.python.keras.applications.densenet import DenseNet121
 from tensorflow.python.keras.applications.densenet import DenseNet169
 from tensorflow.python.keras.applications.densenet import DenseNet201
+from tensorflow.python.keras.applications.imagenet_utils import decode_predictions
+from tensorflow.python.keras.applications.imagenet_utils import preprocess_input
 from tensorflow.python.keras.applications.inception_resnet_v2 import InceptionResNetV2
 from tensorflow.python.keras.applications.inception_v3 import InceptionV3
 from tensorflow.python.keras.applications.mobilenet import MobileNet

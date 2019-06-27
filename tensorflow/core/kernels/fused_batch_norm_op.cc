@@ -39,8 +39,6 @@ using GPUDevice = Eigen::GpuDevice;
 
 namespace functor {
 
-enum class FusedBatchNormActivationMode { kIdentity, kRelu };
-
 string ToString(FusedBatchNormActivationMode activation_mode) {
   switch (activation_mode) {
     case FusedBatchNormActivationMode::kIdentity:
@@ -208,6 +206,8 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
     Tensor* dummy_reserve_space = nullptr;
     OP_REQUIRES_OK(context_, context_->allocate_output(output_index_, {},
                                                        &dummy_reserve_space));
+    // Initialize the memory, to avoid sanitizer alerts.
+    dummy_reserve_space->flat<T>()(0) = T();
   }
   CudnnBatchNormAllocatorInOutput(OpKernelContext* context, int output_index)
       : context_(context), output_index_(output_index) {}
@@ -477,20 +477,6 @@ struct FusedBatchNorm<GPUDevice, T, U> {
     auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available"));
 
-    // TODO(ezhulenev): cuDNN doesn't support side input and activation in
-    // inference mode. Write custom cuda kernel for that.
-    if (!is_training) {
-      OP_REQUIRES(
-          context, side_input.dim_size(0) == 0,
-          errors::Internal(
-              "The GPU implementation of FusedBatchNorm does not support "
-              "side input in inference mode."));
-      OP_REQUIRES(
-          context, activation_mode == FusedBatchNormActivationMode::kIdentity,
-          errors::Internal("The GPU implementation of FusedBatchNorm "
-                           "does not support activations in inference mode."));
-    }
-
     const int64 batch_size = GetTensorDim(x, tensor_format, 'N');
     const int64 channels = GetTensorDim(x, tensor_format, 'C');
     const int64 height = GetTensorDim(x, tensor_format, 'H');
@@ -532,6 +518,33 @@ struct FusedBatchNorm<GPUDevice, T, U> {
       functor::SetNanFunctor<U> f;
       f(context->eigen_device<GPUDevice>(), batch_mean->flat<U>());
       f(context->eigen_device<GPUDevice>(), batch_var->flat<U>());
+      return;
+    }
+
+    // In inference mode we use custom CUDA kernel, because cuDNN does not
+    // support side input and activations for inference.
+    const bool has_side_input = side_input.dim_size(0) != 0;
+    const bool has_activation =
+        activation_mode != FusedBatchNormActivationMode::kIdentity;
+
+    if (!is_training && (has_side_input || has_activation)) {
+      FusedBatchNormInferenceFunctor<GPUDevice, T, U> inference_functor;
+
+      if (has_side_input) {
+        inference_functor(context, tensor_format, x.tensor<T, 4>(),
+                          scale.vec<U>(), offset.vec<U>(),
+                          estimated_mean.vec<U>(), estimated_variance.vec<U>(),
+                          side_input.tensor<T, 4>(), epsilon, activation_mode,
+                          y->tensor<T, 4>());
+      } else {
+        typename TTypes<T, 4>::ConstTensor empty_tensor(nullptr, 0, 0, 0, 0);
+        inference_functor(context, tensor_format, x.tensor<T, 4>(),
+                          scale.vec<U>(), offset.vec<U>(),
+                          estimated_mean.vec<U>(), estimated_variance.vec<U>(),
+                          empty_tensor, epsilon, activation_mode,
+                          y->tensor<T, 4>());
+      }
+
       return;
     }
 
@@ -808,18 +821,32 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
 };
 
 // Forward declarations of the functor specializations for GPU.
-#define DECLARE_GPU_SPEC(T, U)                                           \
-  template <>                                                            \
-  void FusedBatchNormFreezeGrad<GPUDevice, T, U>::operator()(            \
-      const GPUDevice& d, const Tensor& y_backprop_input,                \
-      const Tensor& x_input, const Tensor& scale_input,                  \
-      const Tensor& mean_input, const Tensor& variance_input, U epsilon, \
-      Tensor* x_backprop_output, Tensor* scale_backprop_output,          \
-      Tensor* offset_backprop_output, typename TTypes<U>::Vec scratch1,  \
-      typename TTypes<U>::Vec scratch2);                                 \
-  extern template struct FusedBatchNormFreezeGrad<GPUDevice, T, U>;
+#define DECLARE_GPU_SPEC(T, U)                                                 \
+  template <>                                                                  \
+  void FusedBatchNormFreezeGrad<GPUDevice, T, U>::operator()(                  \
+      const GPUDevice& d, const Tensor& y_backprop_input,                      \
+      const Tensor& x_input, const Tensor& scale_input,                        \
+      const Tensor& mean_input, const Tensor& variance_input, U epsilon,       \
+      Tensor* x_backprop_output, Tensor* scale_backprop_output,                \
+      Tensor* offset_backprop_output, typename TTypes<U>::Vec scratch1,        \
+      typename TTypes<U>::Vec scratch2);                                       \
+  extern template struct FusedBatchNormFreezeGrad<GPUDevice, T, U>;            \
+  template <>                                                                  \
+  void FusedBatchNormInferenceFunctor<GPUDevice, T, U>::operator()(            \
+      OpKernelContext* context, TensorFormat tensor_format,                    \
+      typename TTypes<T, 4>::ConstTensor in,                                   \
+      typename TTypes<U>::ConstVec scale, typename TTypes<U>::ConstVec offset, \
+      typename TTypes<U>::ConstVec estimated_mean,                             \
+      typename TTypes<U>::ConstVec estimated_variance,                         \
+      typename TTypes<T, 4>::ConstTensor side_input, U epsilon,                \
+      FusedBatchNormActivationMode activation_mode,                            \
+      typename TTypes<T, 4>::Tensor out);                                      \
+  extern template struct FusedBatchNormInferenceFunctor<GPUDevice, T, U>;
+
 DECLARE_GPU_SPEC(float, float);
 DECLARE_GPU_SPEC(Eigen::half, float);
+
+#undef DECLARE_GPU_SPEC
 
 #endif  // GOOGLE_CUDA
 }  // namespace functor
@@ -854,7 +881,7 @@ class FusedBatchNormOpBase : public OpKernel {
                   errors::InvalidArgument(
                       "FusedBatchNorm accepts at most one side input."));
       has_side_input_ = (num_side_inputs == 1);
-      if (has_side_input_) {
+      if (has_side_input_ && is_training_) {
         OP_REQUIRES(
             context, activation_mode_ != FbnActivationMode::kIdentity,
             errors::InvalidArgument("Identity activation is not supported with "
@@ -862,13 +889,11 @@ class FusedBatchNormOpBase : public OpKernel {
       }
     }
 
-    if (activation_mode_ != FbnActivationMode::kIdentity) {
-      OP_REQUIRES(
-          context, is_training_,
-          errors::InvalidArgument("FusedBatchNorm with activation supported "
-                                  "only for is_training=True."));
+    if (activation_mode_ != FbnActivationMode::kIdentity && is_training_) {
       // NOTE(ezhulenev): Following requirements are coming from implementation
-      // details of cudnnBatchNormalizationForwardTrainingEx.
+      // details of cudnnBatchNormalizationForwardTrainingEx used in training
+      // mode. In inference mode we call custom CUDA kernel that supports all
+      // data formats and data types.
       OP_REQUIRES(context, DataTypeToEnum<T>::value == DT_HALF,
                   errors::InvalidArgument("FusedBatchNorm with activation "
                                           "supports only DT_HALF data type."));
@@ -923,7 +948,7 @@ class FusedBatchNormOpBase : public OpKernel {
       // NOTE(ezhulenev): This requirement is coming from implementation
       // details of cudnnBatchNormalizationForwardTrainingEx.
       OP_REQUIRES(
-          context, x.dim_size(3) % 4 == 0,
+          context, !is_training_ || x.dim_size(3) % 4 == 0,
           errors::InvalidArgument("FusedBatchNorm with activation requires "
                                   "channel dimension to be a multiple of 4."));
     }

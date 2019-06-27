@@ -488,6 +488,14 @@ def _flip(image, flip_index, scope_name):
 def rot90(image, k=1, name=None):
   """Rotate image(s) counter-clockwise by 90 degrees.
 
+
+  For example:
+  ```python
+  a=tf.constant([[[1],[2]],[[3],[4]]])
+  # rotating `a` counter clockwise by 90 degrees
+  a_rot=tf.image.rot90(a,k=1) #rotated `a`
+  print(a_rot) # [[[2],[4]],[[1],[3]]]
+  ```
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
@@ -1201,7 +1209,7 @@ def resize_images_v2(images,
   `tf.image.resize_with_pad`.
 
   When 'antialias' is true, the sampling filter will anti-alias the input image
-  as well as interpolate.   When downsampling an image with [anti-aliasing](
+  as well as interpolate.  When downsampling an image with [anti-aliasing](
   https://en.wikipedia.org/wiki/Spatial_anti-aliasing) the sampling filter
   kernel is scaled in order to properly anti-alias the input image signal.
   'antialias' has no effect when upsampling an image.
@@ -1737,8 +1745,22 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
 
   Returns:
     `image`, converted to `dtype`.
+  
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3), dtype=tf.float32)
+    >> tf.image.convert_image_dtype(x, dtype=tf.float16, saturate=False)
+    ```
+    
+  Raises:
+    AttributeError: Raises an attribute error when dtype is neither
+    float nor integer
   """
   image = ops.convert_to_tensor(image, name='image')
+  dtype = dtypes.as_dtype(dtype)
+  if not dtype.is_floating and not dtype.is_integer:
+    raise AttributeError('dtype must be either floating point or integer')
   if dtype == image.dtype:
     return array_ops.identity(image, name=name)
 

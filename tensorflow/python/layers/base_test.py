@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
-
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -189,28 +187,6 @@ class BaseLayerTest(test.TestCase):
     if not context.executing_eagerly():
       # op is only supported in GRAPH mode
       self.assertEqual(outputs.op.name, 'my_layer/Square')
-
-  @test_util.run_in_graph_and_eager_modes
-  def testDeepCopy(self):
-
-    class MyLayer(base_layers.Layer):
-
-      def call(self, inputs):
-        return math_ops.square(inputs)
-
-    layer = MyLayer(name='my_layer')
-    layer._private_tensor = random_ops.random_uniform(())
-    inputs = random_ops.random_uniform((5,), seed=1)
-    outputs = layer.apply(inputs)
-    self.assertEqual(layer.built, True)
-    if not context.executing_eagerly():
-      # op only supported in GRAPH mode.
-      self.assertEqual(outputs.op.name, 'my_layer/Square')
-
-    layer_copy = copy.deepcopy(layer)
-    self.assertEqual(layer_copy.name, layer.name)
-    self.assertEqual(layer_copy._scope.name, layer._scope.name)
-    self.assertEqual(layer_copy._private_tensor, layer._private_tensor)
 
   @test_util.run_in_graph_and_eager_modes
   def testScopeNaming(self):

@@ -47,6 +47,7 @@ tf_custom_op_py_library(
         "//tensorflow:__subpackages__",
         "//tensorflow_estimator:__subpackages__",
         "//tensorflow_model_optimization:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
         "//video/youtube/personalization:__subpackages__",
     ],
     deps = [

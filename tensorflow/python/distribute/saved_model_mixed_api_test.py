@@ -27,7 +27,7 @@ from __future__ import print_function
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import saved_model_test_base as test_base
 from tensorflow.python.eager import test
-from tensorflow.python.keras.saving import saved_model as keras_saved_model
+from tensorflow.python.keras.saving import saved_model_experimental as keras_saved_model
 
 _DEFAULT_FUNCTION_KEY = 'serving_default'
 
@@ -68,12 +68,15 @@ class SavedModelSaveAndLoadTest(test_base.TestSavedModelBase):
       combinations.times(test_base.simple_models_with_strategy_pairs(),
                          combinations.combine(save_in_scope=[True, False])))
   def test_save_strategy_restore_strategy(self, model_and_input,
-                                          distribution_pair, save_in_scope):
+                                          distribution_for_saving,
+                                          distribution_for_restoring,
+                                          save_in_scope):
     if save_in_scope:
       self.skipTest(('Saving model within tf.distribute.Strategy scope is not ',
                      'supported.'))
     self.run_test_save_strategy_restore_strategy(model_and_input,
-                                                 distribution_pair,
+                                                 distribution_for_saving,
+                                                 distribution_for_restoring,
                                                  save_in_scope)
 
 

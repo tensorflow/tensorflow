@@ -119,7 +119,7 @@ class Adadelta(optimizer_v2.OptimizerV2):
 
   def _resource_apply_dense(self, grad, var):
     var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
+    lr_t = self._decayed_lr_t[var_dtype]
     accum_grad = self.get_slot(var, 'accum_grad')
     accum_var = self.get_slot(var, 'accum_var')
     return training_ops.resource_apply_adadelta(
@@ -134,7 +134,7 @@ class Adadelta(optimizer_v2.OptimizerV2):
 
   def _resource_apply_sparse(self, grad, var, indices):
     var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
+    lr_t = self._decayed_lr_t[var_dtype]
     accum_grad = self.get_slot(var, 'accum_grad')
     accum_var = self.get_slot(var, 'accum_var')
     return training_ops.resource_sparse_apply_adadelta(
