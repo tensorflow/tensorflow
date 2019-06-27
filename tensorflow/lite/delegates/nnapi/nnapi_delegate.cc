@@ -810,7 +810,7 @@ class NNAPIDelegateKernel {
 
   // Return a function that knows how to translate a node into its operands
   // when called. You can use this function to see if a node is supported
-  // (i.e. that MappingFn is not nullptr).
+  // (i.e. if the returned MappingFn is null, then the node is not supported).
   static MappingFn Map(const TfLiteContext* context, int builtin_code,
                        int version, int android_sdk_version,
                        const TfLiteNode* node) {
@@ -1199,6 +1199,9 @@ class NNAPIDelegateKernel {
       case kTfLiteBuiltinDequantize:
         if (version == 1 || version == 2) {
           const auto& input = context->tensors[node->inputs->data[0]];
+          if (input.type == kTfLiteFloat16) {
+            return nullptr;
+          }
           const auto zero_point = input.params.zero_point;
           // NN API supports int8 type since version 1.2 but only for symmetric
           // quantization.
