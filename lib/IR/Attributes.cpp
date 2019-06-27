@@ -460,6 +460,31 @@ static bool hasSameElementsOrSplat(ShapedType type, const Values &values) {
          (type.getNumElements() == static_cast<int64_t>(values.size()));
 }
 
+//===----------------------------------------------------------------------===//
+// DenseElementAttr Iterators
+//===----------------------------------------------------------------------===//
+
+/// Constructs a new iterator.
+DenseElementsAttr::AttributeElementIterator::AttributeElementIterator(
+    DenseElementsAttr attr, size_t index)
+    : indexed_accessor_iterator<AttributeElementIterator, const void *,
+                                Attribute, Attribute, Attribute>(
+          attr.getAsOpaquePointer(), index) {}
+
+/// Accesses the Attribute value at this iterator position.
+Attribute DenseElementsAttr::AttributeElementIterator::operator*() const {
+  auto owner = getFromOpaquePointer(object).cast<DenseElementsAttr>();
+  Type eltTy = owner.getType().getElementType();
+  if (eltTy.isa<IntegerType>())
+    return IntegerAttr::get(eltTy, *IntElementIterator(owner, index));
+  if (auto floatEltTy = eltTy.dyn_cast<FloatType>()) {
+    IntElementIterator intIt(owner, index);
+    FloatElementIterator floatIt(floatEltTy.getFloatSemantics(), intIt);
+    return FloatAttr::get(eltTy, *floatIt);
+  }
+  llvm_unreachable("unexpected element type");
+}
+
 /// Constructs a new iterator.
 DenseElementsAttr::IntElementIterator::IntElementIterator(
     DenseElementsAttr attr, size_t index)
@@ -636,16 +661,7 @@ bool DenseElementsAttr::isSplat() const { return getImpl()->isSplat; }
 /// If this attribute corresponds to a splat, then get the splat value.
 /// Otherwise, return null.
 Attribute DenseElementsAttr::getSplatValue() const {
-  if (!isSplat())
-    return Attribute();
-
-  auto elementType = getType().getElementType();
-  if (elementType.isa<IntegerType>())
-    return IntegerAttr::get(elementType, *raw_int_begin());
-  if (auto fType = elementType.dyn_cast<FloatType>())
-    return FloatAttr::get(elementType,
-                          APFloat(fType.getFloatSemantics(), *raw_int_begin()));
-  llvm_unreachable("unexpected element type");
+  return isSplat() ? *attr_value_begin() : Attribute();
 }
 
 /// Return the value at the given index. If index does not refer to a valid
@@ -692,23 +708,16 @@ Attribute DenseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
   llvm_unreachable("unexpected element type");
 }
 
-void DenseElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
-  values.reserve(rawSize());
-
-  auto elementType = getType().getElementType();
-  if (elementType.isa<IntegerType>()) {
-    // Convert each value to an IntegerAttr.
-    for (auto intVal : getIntValues())
-      values.push_back(IntegerAttr::get(elementType, intVal));
-    return;
-  }
-  if (elementType.isa<FloatType>()) {
-    // Convert each value to a FloatAttr.
-    for (auto floatVal : getFloatValues())
-      values.push_back(FloatAttr::get(elementType, floatVal));
-    return;
-  }
-  llvm_unreachable("unexpected element type");
+/// Return the held element values as a range of Attributes.
+auto DenseElementsAttr::getAttributeValues() const
+    -> llvm::iterator_range<AttributeElementIterator> {
+  return {attr_value_begin(), attr_value_end()};
+}
+auto DenseElementsAttr::attr_value_begin() const -> AttributeElementIterator {
+  return AttributeElementIterator(*this, 0);
+}
+auto DenseElementsAttr::attr_value_end() const -> AttributeElementIterator {
+  return AttributeElementIterator(*this, rawSize());
 }
 
 /// Return the held element values as a range of APInts. The element type of
@@ -718,6 +727,16 @@ auto DenseElementsAttr::getIntValues() const
   assert(getType().getElementType().isa<IntegerType>() &&
          "expected integer type");
   return {raw_int_begin(), raw_int_end()};
+}
+auto DenseElementsAttr::int_value_begin() const -> IntElementIterator {
+  assert(getType().getElementType().isa<IntegerType>() &&
+         "expected integer type");
+  return raw_int_begin();
+}
+auto DenseElementsAttr::int_value_end() const -> IntElementIterator {
+  assert(getType().getElementType().isa<IntegerType>() &&
+         "expected integer type");
+  return raw_int_end();
 }
 
 /// Return the held element values as a range of APFloat. The element type of
@@ -729,6 +748,12 @@ auto DenseElementsAttr::getFloatValues() const
   const auto &elementSemantics = elementType.getFloatSemantics();
   return {FloatElementIterator(elementSemantics, raw_int_begin()),
           FloatElementIterator(elementSemantics, raw_int_end())};
+}
+auto DenseElementsAttr::float_value_begin() const -> FloatElementIterator {
+  return getFloatValues().begin();
+}
+auto DenseElementsAttr::float_value_end() const -> FloatElementIterator {
+  return getFloatValues().end();
 }
 
 /// Return a new DenseElementsAttr that has the same data as the current

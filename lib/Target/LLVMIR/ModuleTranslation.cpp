@@ -96,9 +96,7 @@ llvm::Constant *ModuleTranslation::getLLVMConstant(llvm::Type *llvmType,
     SmallVector<llvm::Constant *, 8> constants;
     uint64_t numElements = vectorType->getNumElements();
     constants.reserve(numElements);
-    SmallVector<Attribute, 8> nested;
-    denseAttr.getValues(nested);
-    for (auto n : nested) {
+    for (auto n : denseAttr.getAttributeValues()) {
       constants.push_back(
           getLLVMConstant(vectorType->getElementType(), n, loc));
       if (!constants.back())

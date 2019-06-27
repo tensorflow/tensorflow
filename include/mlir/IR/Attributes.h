@@ -547,6 +547,22 @@ public:
   // Iterators
   //===--------------------------------------------------------------------===//
 
+  /// A utility iterator that allows walking over the internal Attribute values
+  /// of a DenseElementsAttr.
+  class AttributeElementIterator
+      : public indexed_accessor_iterator<AttributeElementIterator, const void *,
+                                         Attribute, Attribute, Attribute> {
+  public:
+    /// Accesses the Attribute value at this iterator position.
+    Attribute operator*() const;
+
+  private:
+    friend DenseElementsAttr;
+
+    /// Constructs a new iterator.
+    AttributeElementIterator(DenseElementsAttr attr, size_t index);
+  };
+
   /// A utility iterator that allows walking over the internal raw APInt values.
   class IntElementIterator
       : public indexed_accessor_iterator<IntElementIterator, const char *,
@@ -597,9 +613,6 @@ public:
   /// element, then a null attribute is returned.
   Attribute getValue(ArrayRef<uint64_t> index) const;
 
-  /// Return the held element values as Attributes in 'values'.
-  void getValues(SmallVectorImpl<Attribute> &values) const;
-
   /// Return the held element values as an array of integer or floating-point
   /// values.
   template <typename T, typename = typename std::enable_if<
@@ -613,6 +626,16 @@ public:
                        rawData.size() / sizeof(T));
   }
 
+  /// Return the held element values as a range of Attributes.
+  llvm::iterator_range<AttributeElementIterator> getAttributeValues() const;
+  template <typename T, typename = typename std::enable_if<
+                            std::is_same<T, Attribute>::value>::type>
+  llvm::iterator_range<AttributeElementIterator> getValues() const {
+    return getAttributeValues();
+  }
+  AttributeElementIterator attr_value_begin() const;
+  AttributeElementIterator attr_value_end() const;
+
   /// Return the held element values as a range of APInts. The element type of
   /// this attribute must be of integer type.
   llvm::iterator_range<IntElementIterator> getIntValues() const;
@@ -621,6 +644,8 @@ public:
   llvm::iterator_range<IntElementIterator> getValues() const {
     return getIntValues();
   }
+  IntElementIterator int_value_begin() const;
+  IntElementIterator int_value_end() const;
 
   /// Return the held element values as a range of APFloat. The element type of
   /// this attribute must be of float type.
@@ -630,6 +655,8 @@ public:
   llvm::iterator_range<FloatElementIterator> getValues() const {
     return getFloatValues();
   }
+  FloatElementIterator float_value_begin() const;
+  FloatElementIterator float_value_end() const;
 
   //===--------------------------------------------------------------------===//
   // Mutation Utilities
@@ -704,8 +731,8 @@ public:
             llvm::function_ref<APInt(const APFloat &)> mapping) const;
 
   /// Iterator access to the float element values.
-  iterator begin() const { return getFloatValues().begin(); }
-  iterator end() const { return getFloatValues().end(); }
+  iterator begin() const { return float_value_begin(); }
+  iterator end() const { return float_value_end(); }
 
   /// Method for supporting type inquiry through isa, cast and dyn_cast.
   static bool classof(Attribute attr);
