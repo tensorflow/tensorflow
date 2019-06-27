@@ -19,9 +19,9 @@ limitations under the License.
 #include <memory>
 
 #include "absl/strings/str_cat.h"
-#include "third_party/eigen3/Eigen/Core"
 #include "rocm/include/miopen/miopen.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/scratch_allocator.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace {
 
@@ -2998,6 +2999,16 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithms(
   VLOG(kImmediateModeVlogLevel)
       << "Number of conv solutions max: " << maxSolutionCount;
 
+  // if the env var TF_ROCM_MIMIC_FIND_MODE is set, determine the best solution
+  // as per the "runtime" information for each solution (returned by the prior
+  // call to the *GetSolution api), and then return only the best solution
+  // The idea here is to mimic the old "find" mode, in which we relied upon
+  // the miopen api to determine the best solution, and use that solution
+  // without doing any further measurement in the TF layer
+  bool mimic_find_mode = false;
+  tensorflow::ReadBoolFromEnvVar("TF_ROCM_MIMIC_FIND_MODE", false,
+                                 &mimic_find_mode);
+
   size_t solutionCount = 0;
   std::unique_ptr<miopenConvSolution_t[]> solutions(
       new miopenConvSolution_t[maxSolutionCount]);
@@ -3015,18 +3026,58 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithms(
         return false;
       }
 
-      for (int i = 0; i < solutionCount; i++) {
-        miopenConvSolution_t solution = solutions[i];
+      VLOG(kImmediateModeVlogLevel)
+          << "Number of conv solutions actual: " << solutionCount;
+
+      if (mimic_find_mode) {
+        miopenConvSolution_t best_solution = solutions[0];
+
+        for (int i = 1; i < solutionCount; i++) {
+          miopenConvSolution_t solution = solutions[i];
+          if (solution.time < best_solution.time) {
+            best_solution = solution;
+          }
+        }
+
+        VLOG(kImmediateModeVlogLevel)
+            << "Best Solution (id, algo) = " << best_solution.solution_id
+            << ", " << ToString(best_solution.algorithm);
 
         status = wrap::miopenConvolutionForwardCompileSolution(
             miopen.handle(), filter.handle(), input_nd.handle(), conv.handle(),
-            output_nd.handle(), solution.solution_id);
+            output_nd.handle(), best_solution.solution_id);
 
         if (status != miopenStatusSuccess) {
-          LOG(FATAL)
-              << "call to miopenConvolutionForwardCompileSolution failed: "
-              << ToString(status);
+          LOG(FATAL) << "call to miopenConvolutionForwardCompileSolution "
+                        "failed: "
+                     << ToString(status);
           return false;
+        }
+
+        out_algorithms->emplace_back(best_solution.solution_id, false);
+
+      } else {
+        for (int i = 0; i < solutionCount; i++) {
+          miopenConvSolution_t solution = solutions[i];
+
+          VLOG(kImmediateModeVlogLevel)
+              << "solution " << i
+              << " (time, mem, id, algo) =  " << solution.time << ", "
+              << solution.workspace_size << ", " << solution.solution_id << ", "
+              << ToString(solution.algorithm);
+
+          status = wrap::miopenConvolutionForwardCompileSolution(
+              miopen.handle(), filter.handle(), input_nd.handle(),
+              conv.handle(), output_nd.handle(), solution.solution_id);
+
+          if (status != miopenStatusSuccess) {
+            LOG(FATAL)
+                << "call to miopenConvolutionForwardCompileSolution failed: "
+                << ToString(status);
+            return false;
+          }
+
+          out_algorithms->emplace_back(solution.solution_id, false);
         }
       }
       break;
@@ -3043,18 +3094,59 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithms(
         return false;
       }
 
-      for (int i = 0; i < solutionCount; i++) {
-        miopenConvSolution_t solution = solutions[i];
+      VLOG(kImmediateModeVlogLevel)
+          << "Number of conv solutions actual: " << solutionCount;
+
+      if (mimic_find_mode) {
+        miopenConvSolution_t best_solution = solutions[0];
+
+        for (int i = 1; i < solutionCount; i++) {
+          miopenConvSolution_t solution = solutions[i];
+          if (solution.time < best_solution.time) {
+            best_solution = solution;
+          }
+        }
+
+        VLOG(kImmediateModeVlogLevel)
+            << "Best Solution (id, algo) = " << best_solution.solution_id
+            << ", " << ToString(best_solution.algorithm);
 
         status = wrap::miopenConvolutionBackwardDataCompileSolution(
             miopen.handle(), output_nd.handle(), filter.handle(), conv.handle(),
-            input_nd.handle(), solution.solution_id);
+            input_nd.handle(), best_solution.solution_id);
 
         if (status != miopenStatusSuccess) {
-          LOG(FATAL) << " call to miopenConvolutionBackwardDataCompileSolution "
+          LOG(FATAL) << "call to miopenConvolutionBackwardDataCompileSolution "
                         "failed: "
                      << ToString(status);
           return false;
+        }
+
+        out_algorithms->emplace_back(best_solution.solution_id, false);
+
+      } else {
+        for (int i = 0; i < solutionCount; i++) {
+          miopenConvSolution_t solution = solutions[i];
+
+          VLOG(kImmediateModeVlogLevel)
+              << "solution " << i
+              << " (time, mem, id, algo) =  " << solution.time << ", "
+              << solution.workspace_size << ", " << solution.solution_id << ", "
+              << ToString(solution.algorithm);
+
+          status = wrap::miopenConvolutionBackwardDataCompileSolution(
+              miopen.handle(), output_nd.handle(), filter.handle(),
+              conv.handle(), input_nd.handle(), solution.solution_id);
+
+          if (status != miopenStatusSuccess) {
+            LOG(FATAL)
+                << " call to miopenConvolutionBackwardDataCompileSolution "
+                   "failed: "
+                << ToString(status);
+            return false;
+          }
+
+          out_algorithms->emplace_back(solution.solution_id, false);
         }
       }
       break;
@@ -3070,12 +3162,26 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithms(
         return false;
       }
 
-      for (int i = 0; i < solutionCount; i++) {
-        miopenConvSolution_t solution = solutions[i];
+      VLOG(kImmediateModeVlogLevel)
+          << "Number of conv solutions actual: " << solutionCount;
+
+      if (mimic_find_mode) {
+        miopenConvSolution_t best_solution = solutions[0];
+
+        for (int i = 1; i < solutionCount; i++) {
+          miopenConvSolution_t solution = solutions[i];
+          if (solution.time < best_solution.time) {
+            best_solution = solution;
+          }
+        }
+
+        VLOG(kImmediateModeVlogLevel)
+            << "Best Solution (id, algo) = " << best_solution.solution_id
+            << ", " << ToString(best_solution.algorithm);
 
         status = wrap::miopenConvolutionBackwardWeightsCompileSolution(
             miopen.handle(), output_nd.handle(), input_nd.handle(),
-            conv.handle(), filter.handle(), solution.solution_id);
+            conv.handle(), filter.handle(), best_solution.solution_id);
 
         if (status != miopenStatusSuccess) {
           LOG(FATAL)
@@ -3083,6 +3189,33 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithms(
                  "failed: "
               << ToString(status);
           return false;
+        }
+
+        out_algorithms->emplace_back(best_solution.solution_id, false);
+
+      } else {
+        for (int i = 0; i < solutionCount; i++) {
+          miopenConvSolution_t solution = solutions[i];
+
+          VLOG(kImmediateModeVlogLevel)
+              << "solution " << i
+              << " (time, mem, id, algo) =  " << solution.time << ", "
+              << solution.workspace_size << ", " << solution.solution_id << ", "
+              << ToString(solution.algorithm);
+
+          status = wrap::miopenConvolutionBackwardWeightsCompileSolution(
+              miopen.handle(), output_nd.handle(), input_nd.handle(),
+              conv.handle(), filter.handle(), solution.solution_id);
+
+          if (status != miopenStatusSuccess) {
+            LOG(FATAL)
+                << "call to miopenConvolutionBackwardWeightsCompileSolution "
+                   "failed: "
+                << ToString(status);
+            return false;
+          }
+
+          out_algorithms->emplace_back(solution.solution_id, false);
         }
       }
       break;
@@ -3092,17 +3225,6 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithms(
       return false;
       break;
     }
-  }
-
-  VLOG(kImmediateModeVlogLevel)
-      << "Number of conv solutions actual: " << solutionCount;
-  for (int i = 0; i < solutionCount; i++) {
-    miopenConvSolution_t solution = solutions[i];
-    VLOG(kImmediateModeVlogLevel)
-        << "solution " << i << " (time, mem, id, algo) =  " << solution.time
-        << ", " << solution.workspace_size << ", " << solution.solution_id
-        << ", " << ToString(solution.algorithm);
-    out_algorithms->emplace_back(solution.solution_id, false);
   }
 
   return true;
