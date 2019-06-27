@@ -235,12 +235,8 @@ Status BuildComputation(
       }
 
       case XlaExpression::Kind::kResource:
-        // Resources are pushed into elems later when processing resource
-        // arguments. We expect that the input and output resources are in the
-        // same order. For example, in the case of functionalized while body,
-        // this property is guaranteed since a corresponding output is always
-        // created for a DT_RESOURCE input in a corresponding location.
-        TF_RET_CHECK(retval.resource()->arg_num() == i);
+        // Resources will be pushed into elems later when processing resource
+        // arguments below.
         output.is_constant = false;
         output.input_index = retval.resource()->arg_num();
         output.shape = retval.resource()->shape();
