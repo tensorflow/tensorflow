@@ -493,6 +493,12 @@ class DistributedDatasetV1(DistributedDataset):
 
   def make_one_shot_iterator(self):
     """Get a one time use iterator for DistributedDatasetV1."""
+    # Graph mode with one shot iterator is disabled because we have to call
+    # `initialize` on the iterator which is only required if we are using a
+    # tf.distribute strategy.
+    if not context.executing_eagerly():
+      raise ValueError("Cannot create a one shot iterator. Please use "
+                       "`make_initializable_iterator()` instead.")
     return self._get_iterator()
 
   def make_initializable_iterator(self):
