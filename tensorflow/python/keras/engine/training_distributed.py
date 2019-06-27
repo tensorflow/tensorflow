@@ -624,7 +624,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
 
     val_dataset = None
     if validation_data:
-      val_x, val_y, val_sample_weights = model._unpack_validation_data(
+      val_x, val_y, val_sample_weights = training_utils.unpack_validation_data(
           validation_data)
       dist_utils.validate_inputs(val_x, val_y)
       _, validation_steps = self._process_batch_and_step_size(

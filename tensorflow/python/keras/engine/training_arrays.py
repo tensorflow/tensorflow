@@ -641,7 +641,7 @@ class ArrayLikeTrainingLoop(training_utils.TrainingLoop):
           validation_data, batch_size, validation_steps)
     elif validation_split and 0. < validation_split < 1.:
       (x, y, sample_weights, val_x, val_y,
-       val_sample_weights) = model._split_training_and_validation_data(
+       val_sample_weights) = training_utils.split_training_and_validation_data(
            x, y, sample_weights, validation_split)
     else:
       if validation_steps:
