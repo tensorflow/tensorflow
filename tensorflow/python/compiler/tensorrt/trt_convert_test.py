@@ -164,9 +164,9 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
             "v1": "Const",
             "add/ReadVariableOp": "Identity",
             "input": "Placeholder",
-            "add": "Add",
+            "add": "AddV2",
             "mul": "Mul",
-            "add_1": "Add",
+            "add_1": "AddV2",
             "output": "Identity"
         }, node_name_to_op)
     return graph_def
@@ -407,9 +407,9 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         {
             "add/ReadVariableOp": "Const",
             "input": "Placeholder",
-            "add": "Add",
+            "add": "AddV2",
             "mul": "Mul",
-            "add_1": "Add",
+            "add_1": "AddV2",
             "output": "Identity"
         }, node_name_to_op)
 
