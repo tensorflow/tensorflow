@@ -4166,7 +4166,7 @@ Module *mlir::parseSourceFile(StringRef filename, llvm::SourceMgr &sourceMgr,
               "only main buffer parsed at the moment");
     return nullptr;
   }
-  auto file_or_err = llvm::MemoryBuffer::getFile(filename);
+  auto file_or_err = llvm::MemoryBuffer::getFileOrSTDIN(filename);
   if (std::error_code error = file_or_err.getError()) {
     emitError(mlir::UnknownLoc::get(context),
               "could not open input file " + filename);
