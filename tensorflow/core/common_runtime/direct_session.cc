@@ -492,11 +492,16 @@ Status DirectSession::RunInternal(
     RunMetadata* run_metadata,
     const thread::ThreadPoolOptions& threadpool_options) {
   const uint64 start_time_usecs = options_.env->NowMicros();
-  profiler::TraceMe activity(
-      [&] { return strings::StrCat("SessionRun #id=", step_id, "#"); },
-      profiler::TraceMeLevel::kInfo);
-
   const int64 executor_step_count = executors_and_keys->step_count.fetch_add(1);
+  RunState run_state(step_id, &devices_);
+
+  profiler::TraceMe activity(
+      [&] {
+        return strings::StrCat(
+            "SessionRun #id=", step_id,
+            ",step_container_name=", run_state.step_container.name(), "#");
+      },
+      profiler::TraceMeLevel::kInfo);
 
   std::unique_ptr<DebuggerStateInterface> debugger_state;
   if (!run_options.debug_options().debug_tensor_watch_opts().empty()) {
@@ -506,8 +511,6 @@ Status DirectSession::RunInternal(
                             executor_step_count, &debugger_state));
   }
 
-  // Create a run state and start execution.
-  RunState run_state(step_id, &devices_);
   run_state.rendez = new IntraProcessRendezvous(device_mgr_.get());
 #ifndef __ANDROID__
   // Set up for collectives if ExecutorsAndKeys declares a key.
