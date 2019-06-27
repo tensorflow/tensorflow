@@ -47,7 +47,10 @@ void WaitForReady(const std::atomic_bool& a, int retry = kRetryCount) {
   }
 }
 
-void Server::start(uint16_t port, SeastarTagFactory* tag_factory) {
+}  // namespace
+
+void SeastarEngine::Server::start(uint16_t port,
+                                  SeastarTagFactory* tag_factory) {
   seastar::listen_options lo;
   lo.reuse_address = true;
 
@@ -73,11 +76,13 @@ void Server::start(uint16_t port, SeastarTagFactory* tag_factory) {
   }).or_terminate();
 }
 
-seastar::future<> Server::stop() { return seastar::make_ready_future<>(); }
+seastar::future<> SeastarEngine::Server::stop() {
+  return seastar::make_ready_future<>();
+}
 
-Server::Connection::Connection(seastar::connected_socket&& fd,
-                               SeastarTagFactory* tag_factory,
-                               seastar::socket_address addr)
+SeastarEngine::Server::Connection::Connection(seastar::connected_socket&& fd,
+                                              SeastarTagFactory* tag_factory,
+                                              seastar::socket_address addr)
     : tag_factory_(tag_factory), addr_(addr) {
   seastar::ipv4_addr ip_addr(addr);
   struct in_addr addr_v4 {
@@ -92,9 +97,9 @@ Server::Connection::Connection(seastar::connected_socket&& fd,
   channel_->init(seastar::engine().get_packet_queue(), std::move(fd_.output()));
 }
 
-Server::Connection::~Connection() { delete channel_; }
+SeastarEngine::Server::Connection::~Connection() { delete channel_; }
 
-seastar::future<> Server::Connection::Read() {
+seastar::future<> SeastarEngine::Server::Connection::Read() {
   return read_buf_.read_exactly(SeastarServerTag::HEADER_SIZE)
       .then([this](auto&& header) {
         if (header.size() == 0 ||
@@ -128,8 +133,6 @@ seastar::future<> Server::Connection::Read() {
       });
 }
 
-}  // namespace
-
 SeastarEngine::SeastarEngine(uint16_t local,
                              SeastarWorkerService* worker_service)
     : local_(local), core_id_(0), is_server_ready_(false) {
@@ -158,7 +161,7 @@ seastar::channel* SeastarEngine::AsyncConnect(const std::string& ip) {
   size_t core_id = core_id_++ % core_number_;
   string s = LocalhostToIp(ip);
   auto ch = new seastar::channel(s);
-  alien::submit_to(core_id, [core_id, s, ch, this] {
+  seastar::alien::submit_to(core_id, [core_id, s, ch, this] {
     VLOG(2) << "client start connect core:" << core_id
             << ", connect server:" << s;
     client_->Connect(seastar::ipv4_addr{s}, s, ch, tag_factory_);
@@ -231,7 +234,7 @@ void SeastarEngine::AsyncStartServer() {
   app.run_deprecated(argc, argv, [&] {
     return server_.start()
         .then([this] {
-          return server_.invoke_on_all(&SeastarServer::start, local_,
+          return server_.invoke_on_all(&SeastarEngine::Server::start, local_,
                                        tag_factory_);
         })
         .then([this]() {

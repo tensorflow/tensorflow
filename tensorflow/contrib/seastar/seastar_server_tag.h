@@ -4,7 +4,6 @@
 #include <functional>
 
 #include "tensorflow/contrib/seastar/seastar_tensor_coding.h"
-#include "tensorflow/contrib/seastar/seastar_worker_service.h"
 #include "tensorflow/contrib/seastar/seastar_worker_service_method.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -15,7 +14,7 @@
 
 namespace tensorflow {
 
-// Required for circular dependency
+// Required for break circular dependency
 class SeastarWorkerService;
 
 class SeastarServerTag {

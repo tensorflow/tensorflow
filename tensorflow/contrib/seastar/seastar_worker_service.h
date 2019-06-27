@@ -3,7 +3,6 @@
 
 #include <unordered_map>
 
-#include "tensorflow/contrib/seastar/seastar_server_tag.h"
 #include "tensorflow/contrib/seastar/seastar_tensor_coding.h"
 #include "tensorflow/contrib/seastar/seastar_worker_interface.h"
 #include "tensorflow/contrib/seastar/seastar_worker_service_method.h"
@@ -13,6 +12,9 @@
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
+
+// Required for break circular dependency
+class SeastarServerTag;
 
 class SeastarWorker : public Worker, public SeastarWorkerInterface {
  public:

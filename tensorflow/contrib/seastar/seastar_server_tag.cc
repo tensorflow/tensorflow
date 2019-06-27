@@ -1,6 +1,7 @@
 #include "tensorflow/contrib/seastar/seastar_server_tag.h"
 
 #include "tensorflow/contrib/seastar/seastar_message.h"
+#include "tensorflow/contrib/seastar/seastar_worker_service.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/platform/logging.h"
 

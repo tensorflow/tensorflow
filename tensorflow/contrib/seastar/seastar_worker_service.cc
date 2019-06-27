@@ -1,5 +1,6 @@
 #include "tensorflow/contrib/seastar/seastar_worker_service.h"
 
+#include "tensorflow/contrib/seastar/seastar_server_tag.h"
 #include "tensorflow/contrib/seastar/seastar_tag_factory.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
