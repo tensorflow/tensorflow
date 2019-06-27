@@ -1447,9 +1447,9 @@ void MarkForCompilationPassImpl::VLogClusteringSummary() {
     }
   }
 
-  VLOG(2) << "*** Inter-Cluster edges:";
+  VLOG(4) << "*** Inter-Cluster edges:";
   if (cluster_names_to_print.empty()) {
-    VLOG(2) << "   [none]";
+    VLOG(4) << "   [none]";
   }
 
   auto print_edge_info_set_for_cluster = [&](absl::string_view cluster_name,
@@ -1457,19 +1457,19 @@ void MarkForCompilationPassImpl::VLogClusteringSummary() {
                                              absl::string_view desc) {
     auto it = edge_info_map.find(cluster_name);
     if (it != edge_info_map.end()) {
-      VLOG(2) << "  " << it->second.size() << " " << desc << " edges";
+      VLOG(4) << "  " << it->second.size() << " " << desc << " edges";
       for (const auto& edge_info_count_pair : it->second) {
-        VLOG(2) << "   " << edge_info_count_pair.first.GetClusterName() << " "
+        VLOG(4) << "   " << edge_info_count_pair.first.GetClusterName() << " "
                 << edge_info_count_pair.first.node_name << " # "
                 << edge_info_count_pair.second;
       }
     } else {
-      VLOG(2) << "  No " << desc << " edges.";
+      VLOG(4) << "  No " << desc << " edges.";
     }
   };
 
   for (absl::string_view cluster_name : cluster_names_to_print) {
-    VLOG(2) << " ** Cluster " << cluster_name;
+    VLOG(4) << " ** Cluster " << cluster_name;
     print_edge_info_set_for_cluster(cluster_name, incoming_edge_infos,
                                     "incoming");
     print_edge_info_set_for_cluster(cluster_name, outgoing_edge_infos,
