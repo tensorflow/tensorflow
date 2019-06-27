@@ -2010,7 +2010,7 @@ cc_library(
         "//tensorflow/core/kernels:android_core_ops",
         "//tensorflow/core/kernels:android_extended_ops",
     ]),
-    copts = tf_copts() + ["-Os"] + ["-std=c++11"],
+    copts = tf_copts() + ["-Os"],
     visibility = ["//visibility:public"],
     deps = [
         ":ios_tensorflow_lib_lite",
@@ -2027,7 +2027,7 @@ cc_library(
 cc_library(
     name = "ios_tensorflow_lib_lite",
     srcs = if_ios([":android_srcs"]),
-    copts = tf_copts() + ["-Os"] + ["-std=c++11"],
+    copts = tf_copts() + ["-Os"],
     visibility = ["//visibility:public"],
     deps = [
         ":mobile_additional_lib_deps",
