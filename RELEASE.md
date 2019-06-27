@@ -139,7 +139,8 @@
 * TensorRT
   * Migrate TensorRT conversion sources from contrib to compiler directory in preparation for TF 2.0.
   * Add additional, user friendly `TrtGraphConverter` API for TensorRT conversion.
-  * Expand support for TensorFlow operators such as `CombinedNonMaxSuppression` in TensorRT conversion which significantly accelerates object detection models.
+  * Expand support for TensorFlow operators in TensorRT conversion (e.g. `Gather`, `Slice`, `Pack`, `Unpack`, `ArgMin`, `ArgMax`, `DepthSpaceShuffle`). 
+  * Support TensorFlow operator `CombinedNonMaxSuppression` in TensorRT conversion which significantly accelerates object detection models. Requires recompilation of TensorFlow 1.14 with TensorRT 5.1.
 
 
 ## Thanks to our Contributors
