@@ -78,7 +78,7 @@ class DequantizeOp : public OpKernel {
            std::numeric_limits<T>::min());
 
       const auto& input_tensor = input.flat<T>();
-      output->flat<float>().device(ctx->eigen_device<Device>()) =
+      output->flat<float>() =
           ((input_tensor.template cast<float>() + half_range) * scale_factor) +
           min_range;
 
@@ -99,7 +99,7 @@ class DequantizeOp : public OpKernel {
               : std::max(min_range / std::numeric_limits<T>::min(),
                          max_range / std::numeric_limits<T>::max());
       const auto& input_tensor = input.flat<T>();
-      output->flat<float>().device(ctx->eigen_device<Device>()) =
+      output->flat<float>() =
           input_tensor.template cast<int>().template cast<float>() *
           scale_factor;
     }
