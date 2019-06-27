@@ -12,6 +12,7 @@
     * `libtensorflow.so.1.14.0`, the main library
     * `libtensorflow.so.1`, symlinked to the main library
     * `libtensorflow.so`, symlinked to `.so.1`
+* Auto Mixed-Precision graph optimizer simplifies converting models to float16 for acceleration on Volta and Turing Tensor Cores. This feature can be enabled by wrapping an optimizer class with `tf.train.experimental.enable_mixed_precision_graph_rewrite()`.
 
 ## Behavioral changes
 
@@ -135,6 +136,10 @@
   * Use `tf.compat.v1.estimator.inputs` instead of `tf.estimator.inputs`
   * Replace `contrib` references with `tf.estimator.experimental.*` for APIs in `early_stopping.py`
   * Determining the “correct” value of the `--iterations_per_loop` for TPUEstimator or DistributionStrategy continues to be a challenge for our users. We propose dynamically tuning the `--iterations_per_loop` variable, specifically for using TPUEstimator in training mode, based on a user target TPU execution time. Users might specify a value such as: `--iterations_per_loop=300s`, which will result in roughly 300 seconds being spent on the TPU between host side operations.
+* TensorRT
+  * Migrate TensorRT conversion sources from contrib to compiler directory in preparation for TF 2.0.
+  * Add additional, user friendly `TrtGraphConverter` API for TensorRT conversion.
+  * Expand support for TensorFlow operators such as `CombinedNonMaxSuppression` in TensorRT conversion which significantly accelerates object detection models.
 
 
 ## Thanks to our Contributors
