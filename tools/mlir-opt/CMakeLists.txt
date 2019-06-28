@@ -32,6 +32,7 @@ set(LIBS
   MLIRQuantizerTransforms
   MLIRQuantOps
   MLIRSPIRV
+  MLIRSPIRVConversion
   MLIRStandardOps
   MLIRStandardToLLVM
   MLIRTransforms
