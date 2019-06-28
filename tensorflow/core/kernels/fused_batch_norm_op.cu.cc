@@ -53,12 +53,7 @@ __global__ void InvVarianceToVarianceKernel(int nthreads, double epsilon,
                                             int sample_size, T* variance) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     T inv_var = variance[index];
-#if GOOGLE_CUDA
     T var = __fdividef(1, inv_var * inv_var) - T(epsilon);
-#elif TENSORFLOW_USE_ROCM
-    // ROCM TODO: fix this in ROCDL or LC
-      T var = 1 / (inv_var * inv_var) - T(epsilon);
-#endif
     // This is for Bessel's correction
     var *= T(sample_size) / T((sample_size > 1) ? sample_size - 1 : 1);
     variance[index] = (var > 0) ? var : 0;
@@ -120,8 +115,8 @@ struct FusedBatchNormInferenceKernel {
       U var_v = var[channel];
 
       U scaling_factor_v = rsqrt(var_v + epsilon) * scale_v;
-      U scaled_v = (in_v - mean_v) * scaling_factor_v;
-      U shifted_v = scaled_v + offset_v;
+      static_assert(std::is_same<U, float>::value, "U data type must be float");
+      U shifted_v = fmaf(in_v - mean_v, scaling_factor_v, offset_v);
 
       if (add_side_input) {
         shifted_v += U(side_input[index]);
@@ -189,8 +184,8 @@ struct FusedBatchNormInferenceKernel<Eigen::half, float, tensor_format,
 
       half2 scaling_factor_v =
           __hmul2(h2rsqrt(__hadd2(var_v, epsilon_h2)), scale_v);
-      half2 scaled_v = __hmul2(__hsub2(in_v, mean_v), scaling_factor_v);
-      half2 shifted_v = __hadd2(scaled_v, offset_v);
+      half2 shifted_v =
+          __hfma2(__hsub2(in_v, mean_v), scaling_factor_v, offset_v);
 
       if (add_side_input) {
         shifted_v = __hadd2(shifted_v,
@@ -223,8 +218,7 @@ struct FusedBatchNormInferenceKernel<Eigen::half, float, tensor_format,
       half var_v = __float2half(var[channel]);
 
       half scaling_factor_v = __hmul(hrsqrt(__hadd(var_v, epsilon_h)), scale_v);
-      half scaled_v = __hmul(__hsub(in_v, mean_v), scaling_factor_v);
-      half shifted_v = __hadd(scaled_v, offset_v);
+      half shifted_v = __hfma(__hsub(in_v, mean_v), scaling_factor_v, offset_v);
 
       if (add_side_input) {
         shifted_v = __hadd(shifted_v, side_input[index]);
@@ -254,11 +248,12 @@ __global__ void FusedBatchNormInferenceMetaKernel(
     const U* scale, const U* offset, const U* mean, const U* var,
     const T* side_input, float epsilon, T* out) {
   // We prefer to run non-generic specialization, for the given types T and U.
+  // TODO(b/135435976): Temporary disable non-generic kernel implementation.
   FusedBatchNormInferenceKernel<
       T, U, tensor_format, add_side_input, activation_mode,
-      /*is_generic_kernel=*/false>::run(count, channels_size, inner_dim_size,
-                                        in, scale, offset, mean, var,
-                                        side_input, epsilon, out);
+      /*is_generic_kernel=*/true>::run(count, channels_size, inner_dim_size, in,
+                                       scale, offset, mean, var, side_input,
+                                       epsilon, out);
 }
 
 template <typename T, typename U>
