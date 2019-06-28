@@ -2,7 +2,7 @@
 
 Everyone is welcome to contribute to MLIR. There are several ways of getting involved and contributing including reporting bugs, improving documentation, writing models or tutorials. 
 
-Please read our our [Code of Conduct](https://github.com/tensorflow/tensorflow/blob/master/CODE_OF_CONDUCT.md) before participating.
+Please read our [Code of Conduct](https://github.com/tensorflow/tensorflow/blob/master/CODE_OF_CONDUCT.md) before participating.
 
 ## Community Guidelines
 
