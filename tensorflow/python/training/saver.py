@@ -1276,7 +1276,7 @@ class Saver(object):
     if save_path is None:
       raise ValueError("Can't load save_path when it is None.")
 
-    if not checkpoint_management.checkpoint_exists(compat.as_text(save_path)):
+    if not checkpoint_management.checkpoint_exists_internal(compat.as_text(save_path)):
       raise ValueError("The passed save_path is not a valid checkpoint: " +
                        compat.as_text(save_path))
 
