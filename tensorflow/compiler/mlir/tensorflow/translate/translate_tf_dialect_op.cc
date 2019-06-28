@@ -21,10 +21,8 @@ limitations under the License.
 #include "mlir/Translation.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 
-namespace mlir {
-
-static Operation* ExtractOnlyOp(Module* module) {
-  Function* fn = module->getNamedFunction("main");
+static mlir::Operation* ExtractOnlyOp(mlir::Module* module) {
+  mlir::Function* fn = module->getNamedFunction("main");
   if (!fn) return nullptr;
 
   if (fn->getBlocks().size() != 1) return nullptr;
@@ -39,22 +37,22 @@ static Operation* ExtractOnlyOp(Module* module) {
   return &block.front();
 }
 
-static bool MlirToTfNodeDef(Module* module, llvm::StringRef filename) {
+static bool MlirToTfNodeDef(mlir::Module* module, llvm::StringRef filename) {
   auto* context = module->getContext();
 
-  auto file = openOutputFile(filename);
+  auto file = mlir::openOutputFile(filename);
   if (!file) {
-    emitError(UnknownLoc::get(context))
+    mlir::emitError(mlir::UnknownLoc::get(context))
         << "failed to open output file " << filename;
     return true;
   }
 
-  Operation* op = ExtractOnlyOp(module);
+  mlir::Operation* op = ExtractOnlyOp(module);
   if (!op) {
-    emitError(UnknownLoc::get(context),
-              "modules with exactly one op other than terminator in a "
-              "'main' function's "
-              "only block are supported");
+    mlir::emitError(mlir::UnknownLoc::get(context),
+                    "modules with exactly one op other than terminator in a "
+                    "'main' function's "
+                    "only block are supported");
     return true;
   }
 
@@ -72,7 +70,5 @@ static bool MlirToTfNodeDef(Module* module, llvm::StringRef filename) {
 
 // Test only translation to convert a simple MLIR module with a single TF
 // dialect op to NodeDef.
-static TranslateFromMLIRRegistration translate_from_mlir_registration(
+static mlir::TranslateFromMLIRRegistration registration(
     "test-only-mlir-to-tf-nodedef", MlirToTfNodeDef);
-
-}  // namespace mlir

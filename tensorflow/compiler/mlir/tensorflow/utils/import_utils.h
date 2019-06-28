@@ -22,8 +22,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Reads text (.pbtext) or binary (.pb) format of a proto message from the given
-// file path. Returns error status of the file is not found or malformed proto.
+// Read text (.pbtext) or binary (.pb) format of a proto message from the given
+// file path. Return error status of the file is not found or malformed proto.
 Status LoadProtoFromFile(absl::string_view input_filename,
                          tensorflow::protobuf::Message* proto);
 

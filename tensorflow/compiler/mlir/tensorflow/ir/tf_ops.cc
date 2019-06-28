@@ -36,7 +36,7 @@ namespace TF {
 
 namespace {
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
-}  // namespace
+}  // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
 // TF op helper functions
@@ -59,14 +59,14 @@ static inline bool IsOfRankOrUnranked(Value *value, int64_t rank) {
   return true;
 }
 
-/// Returns true if the specified element type is a TensorFlow type that is ok
+/// Return true if the specified element type is a TensorFlow type that is ok
 /// in a tensor.
 static inline bool isValidTFElementType(Type type) {
   return type.isa<FloatType>() || type.isa<IntegerType>() ||
          type.isa<TensorFlowType>();
 }
 
-// Returns true if this is a valid TensorFlow tensor type.
+// Return true if this is a valid TensorFlow tensor type.
 static inline bool isValidTFTensorType(Type type) {
   // TensorFlow types should be tensors of one of the valid TensorFlow element
   // types.
@@ -81,7 +81,7 @@ static inline bool isValidTFTensorType(Type type) {
 
 void AddOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  RewriteListBuilder<AddToAddV2>::build(results, context);
+  mlir::RewriteListBuilder<AddToAddV2>::build(results, context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -90,7 +90,8 @@ void AddOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void AddV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
-  RewriteListBuilder<AddV2OfNegLeft, AddV2OfNegRight>::build(results, context);
+  mlir::RewriteListBuilder<AddV2OfNegLeft, AddV2OfNegRight>::build(results,
+                                                                   context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -99,7 +100,8 @@ void AddV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void BitcastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
-  RewriteListBuilder<BitcastSameType, BitcastNested>::build(results, context);
+  mlir::RewriteListBuilder<BitcastSameType, BitcastNested>::build(results,
+                                                                  context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -120,7 +122,7 @@ static LogicalResult Verify(BroadcastToOp op) {
 
 void CastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
-  RewriteListBuilder<CastSameType>::build(results, context);
+  mlir::RewriteListBuilder<CastSameType>::build(results, context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -129,7 +131,7 @@ void CastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void ConjOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
-  RewriteListBuilder<ConjNested>::build(results, context);
+  mlir::RewriteListBuilder<ConjNested>::build(results, context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -139,7 +141,7 @@ void ConjOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.empty() && "constant has no operands");
 
-  // Returns the held attribute value.
+  // Return the held attribute value.
   return value();
 }
 
@@ -177,7 +179,7 @@ void ConstOp::build(Builder *builder, OperationState *result, Type type,
 
 void DivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  RewriteListBuilder<DivWithSqrtDivisor>::build(results, context);
+  mlir::RewriteListBuilder<DivWithSqrtDivisor>::build(results, context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -343,7 +345,7 @@ LogicalResult IfOp::verify() {
 
 void InvertOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                            MLIRContext *context) {
-  RewriteListBuilder<InvertNested>::build(results, context);
+  mlir::RewriteListBuilder<InvertNested>::build(results, context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -377,7 +379,7 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
 
 void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  RewriteListBuilder<LogOfSoftmax>::build(results, context);
+  mlir::RewriteListBuilder<LogOfSoftmax>::build(results, context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -386,10 +388,10 @@ void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void LogicalNotOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  RewriteListBuilder<LogicalNotNested, LogicalNotOfEqual, LogicalNotOfNotEqual,
-                     LogicalNotOfGreater, LogicalNotOfGreaterEqual,
-                     LogicalNotOfLess, LogicalNotOfLessEqual>::build(results,
-                                                                     context);
+  mlir::RewriteListBuilder<LogicalNotNested, LogicalNotOfEqual,
+                           LogicalNotOfNotEqual, LogicalNotOfGreater,
+                           LogicalNotOfGreaterEqual, LogicalNotOfLess,
+                           LogicalNotOfLessEqual>::build(results, context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -398,7 +400,7 @@ void LogicalNotOp::getCanonicalizationPatterns(
 
 void NegOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  RewriteListBuilder<NegNested>::build(results, context);
+  mlir::RewriteListBuilder<NegNested>::build(results, context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -407,7 +409,7 @@ void NegOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void ReciprocalOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  RewriteListBuilder<ReciprocalNested>::build(results, context);
+  mlir::RewriteListBuilder<ReciprocalNested>::build(results, context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -466,7 +468,7 @@ void RankOp::build(Builder *builder, OperationState *result, Value *input) {
 
 void RealDivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
-  RewriteListBuilder<RealDivWithSqrtDivisor>::build(results, context);
+  mlir::RewriteListBuilder<RealDivWithSqrtDivisor>::build(results, context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -483,22 +485,22 @@ static LogicalResult Verify(ReshapeOp op) {
   auto typeOfTensor = op.tensor()->getType().cast<TensorType>();
   // No compile time verification for unknown sized shape.
   if (rankByShape == -1 || !typeOfTensor.hasRank()) return success();
-  // Checks values if constant shape. No compiling time verification for
+  // Check values if constant shape. No compiling time verification for
   // non-constant shape.
   auto *shapeOp = op.shape()->getDefiningOp();
   if (!shapeOp) return success();
   Attribute shapeCst;
-  if (auto shapeStdOp = dyn_cast<ConstantOp>(shapeOp)) {
+  if (auto shapeStdOp = dyn_cast<mlir::ConstantOp>(shapeOp)) {
     shapeCst = shapeStdOp.getValue();
   } else if (auto shapeTFOp = dyn_cast<ConstOp>(shapeOp)) {
     shapeCst = shapeTFOp.value();
   } else {
     return success();
   }
-  auto shapeCstAttr = shapeCst.dyn_cast<ElementsAttr>();
+  auto shapeCstAttr = shapeCst.dyn_cast<mlir::ElementsAttr>();
   if (!shapeCstAttr) return op.emitOpError("shape must be a valid tensor");
 
-  if (auto opaqueAttr = shapeCstAttr.dyn_cast<OpaqueElementsAttr>()) {
+  if (auto opaqueAttr = shapeCstAttr.dyn_cast<mlir::OpaqueElementsAttr>()) {
     opaqueAttr.decode(shapeCstAttr);
   }
 
@@ -525,7 +527,7 @@ static LogicalResult Verify(ReshapeOp op) {
   if (unknownDimCount == 1) {
     if (numByTensor % numByShape != 0)
       return op.emitOpError(
-          "one component of shape is -1 but couldn't infer the dimension");
+          "one componet of shape is -1 but couldn't infer the dimension");
     return success();
   }
   // If the elements by the tensor and implies by the shape don't match,
@@ -630,7 +632,7 @@ static LogicalResult Verify(SoftmaxOp op) {
 
 void SquareOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                            MLIRContext *context) {
-  RewriteListBuilder<SquareOfSub>::build(results, context);
+  mlir::RewriteListBuilder<SquareOfSub>::build(results, context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -639,7 +641,7 @@ void SquareOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void SubOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  RewriteListBuilder<SubOfNeg>::build(results, context);
+  mlir::RewriteListBuilder<SubOfNeg>::build(results, context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -710,7 +712,7 @@ void TransposeOp::build(Builder *builder, OperationState *result, Value *x,
 
 void TruncateDivOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  RewriteListBuilder<TruncateDivWithSqrtDivisor>::build(results, context);
+  mlir::RewriteListBuilder<TruncateDivWithSqrtDivisor>::build(results, context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -771,7 +773,7 @@ LogicalResult WhileOp::verify() {
   // tensors.  Compatibility requirement is not transitive.
 
   for (int i = 0; i < numTypeLists; ++i) {
-    // Skips the first pair as the While op operands and body function results
+    // Skip the first pair as the While op operands and body function results
     // does not need to be compatible with each other.
     for (int j = std::max(2, i + 1); j < numTypeLists; ++j) {
       auto &a = typeLists[i];
@@ -804,7 +806,7 @@ LogicalResult WhileOp::verify() {
 
 void XdivyOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
-  RewriteListBuilder<XdivyWithSqrtDivisor>::build(results, context);
+  mlir::RewriteListBuilder<XdivyWithSqrtDivisor>::build(results, context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -830,12 +832,12 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
       >();
 
-  // Supports unknown operations because not all TensorFlow operations are
+  // Support unknown operations because not all TensorFlow operations are
   // registered.
   allowUnknownOperations();
 }
 
-// Parses a type registered to this dialect.
+/// Parse a type registered to this dialect.
 Type TensorFlowDialect::parseType(StringRef data, Location loc) const {
   auto typeKind = llvm::StringSwitch<unsigned>(data)
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
@@ -848,14 +850,14 @@ Type TensorFlowDialect::parseType(StringRef data, Location loc) const {
       return (emitError(loc, "unknown TensorFlow type: " + data), nullptr);
 
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
-  case TensorFlowTypes::enumerant:              \
-    return tftype##Type::get(getContext());
+  case mlir::TF::TensorFlowTypes::enumerant:    \
+    return mlir::TF::tftype##Type::get(getContext());
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
   }
 }
 
-// Prints a type registered to this dialect.
+/// Print a type registered to this dialect.
 void TensorFlowDialect::printType(Type ty, raw_ostream &os) const {
   assert(ty.isa<TensorFlowType>());
   switch (ty.getKind()) {
@@ -875,12 +877,12 @@ Operation *TensorFlowDialect::materializeConstant(OpBuilder &builder,
                                                   Location loc) {
   // If this is an opaque elements attribute, then generate a tf.Const.
   if (value.isa<OpaqueElementsAttr>() && value.getType() == type)
-    return builder.create<ConstOp>(loc, type, value);
+    return builder.create<TF::ConstOp>(loc, type, value);
   return nullptr;
 }
 
-// This verifies that the Op is a well-formed TensorFlow op, checking
-// that all inputs and results are Tensor or other TensorFlow types, etc.
+/// This verifies that the Op is a well-formed TensorFlow op, checking
+/// that all inputs and results are Tensor or other TensorFlow types, etc.
 LogicalResult verifyTensorFlowOp(Operation *op) {
   if (op->getName().getDialect() != "tf")
     return op->emitError("TensorFlow op ")
@@ -901,5 +903,5 @@ LogicalResult verifyTensorFlowOp(Operation *op) {
   return success();
 }
 
-}  // namespace TF
-}  // namespace mlir
+}  // end namespace TF
+}  // end namespace mlir

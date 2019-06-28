@@ -18,14 +18,18 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
+namespace mlir {
+class Builder;
+class ElementsAttr;
+class OpaqueElementsAttr;
+}  // namespace mlir
+
 namespace tensorflow {
+class Tensor;
+class TensorProto;
+class TensorShapeProto;
 
 using stream_executor::port::StatusOr;
 

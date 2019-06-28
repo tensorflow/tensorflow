@@ -27,7 +27,7 @@ StatusScopedDiagnosticHandler::StatusScopedDiagnosticHandler(
 }
 
 StatusScopedDiagnosticHandler::~StatusScopedDiagnosticHandler() {
-  // Verifies errors were consumed and re-register old handler.
+  // Verify errors were consumed and re-register old handler.
   bool all_errors_produced_were_consumed = ok();
   DCHECK(all_errors_produced_were_consumed) << "Error status not consumed:\n"
                                             << instr_str_;
@@ -50,8 +50,8 @@ Status StatusScopedDiagnosticHandler::Combine(Status status) {
   // additionally then return this error.
   if (ok()) return status;
 
-  // Appends the diagnostics reported to the status. This repeats the behavior
-  // of TensorFlow's AppendToMessage without the additional formatting inserted
+  // Append the diagnostics reported to the status. This repeats the behavior of
+  // TensorFlow's AppendToMessage without the additional formatting inserted
   // there.
   status = ::tensorflow::Status(
       status.code(), absl::StrCat(status.error_message(), instr_str_));
@@ -60,7 +60,7 @@ Status StatusScopedDiagnosticHandler::Combine(Status status) {
 }
 
 void StatusScopedDiagnosticHandler::handler(Diagnostic diag) {
-  // Skips notes and warnings.
+  // Skip notes and warnings.
   if (diag.getSeverity() != DiagnosticSeverity::Error) {
 #ifndef NDEBUG
     VLOG(1) << "Non-error diagnostic: " << diag.str();
@@ -70,7 +70,7 @@ void StatusScopedDiagnosticHandler::handler(Diagnostic diag) {
     return;
   }
 
-  // Indents the diagnostic message to effectively show the diagnostics reported
+  // Indent the diagnostic message to effectively show the diagnostics reported
   // as nested under the returned Status's message.
   llvm::raw_string_ostream os(instr_str_);
   os.indent(2);
@@ -79,7 +79,7 @@ void StatusScopedDiagnosticHandler::handler(Diagnostic diag) {
        << fileLoc.getColumn() << ": ";
   os << "error: " << diag << '\n';
 
-  // Propagates error if needed.
+  // Propagate error if needed.
   if (propagate_) {
     propagateDiagnostic(std::move(diag));
   }

@@ -43,10 +43,10 @@ class TensorFlowDialect : public Dialect {
   // string description of gradient attribute.
   static StringRef GetGradientAttrName() { return "tf.gradient"; }
 
-  // Parses a type registered to this dialect.
+  // Parse a type registered to this dialect.
   Type parseType(StringRef data, Location loc) const override;
 
-  // Prints a type registered to this dialect.
+  // Print a type registered to this dialect.
   void printType(Type ty, raw_ostream &os) const override;
 
   // Registered hook to materialize a constant operation from a given attribute
@@ -158,7 +158,7 @@ class WhileOp : public Op<WhileOp, TensorFlowOp, OpTrait::VariadicOperands,
   LogicalResult verify();
 };
 
-}  // namespace TF
-}  // namespace mlir
+}  // end namespace TF
+}  // end namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_OPS_H_

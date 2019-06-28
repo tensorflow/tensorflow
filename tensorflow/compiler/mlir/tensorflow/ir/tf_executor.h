@@ -37,10 +37,10 @@ class TensorFlowExecutorDialect : public Dialect {
  public:
   explicit TensorFlowExecutorDialect(MLIRContext *context);
 
-  // Parses a type registered to this dialect.
+  // Parse a type registered to this dialect.
   Type parseType(StringRef data, Location loc) const override;
 
-  // Prints a type registered to this dialect.
+  // Print a type registered to this dialect.
   void printType(Type type, raw_ostream &os) const override;
 };
 
@@ -60,15 +60,15 @@ class ControlType : public Type::TypeBase<ControlType, Type> {
     return Base::get(context, TFTypes::Control);
   }
 
-  // Supports method to enable LLVM-style type casting.
+  // Support method to enable LLVM-style type casting.
   static bool kindof(unsigned kind) { return kind == TFTypes::Control; }
 };
 
-// Declares the operations for this dialect using the generated header.
+// Declare the operations for this dialect using the generated header.
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h.inc"
 
-}  // namespace tf_executor
-}  // namespace mlir
+}  // end namespace tf_executor
+}  // end namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_EXECUTOR_H_

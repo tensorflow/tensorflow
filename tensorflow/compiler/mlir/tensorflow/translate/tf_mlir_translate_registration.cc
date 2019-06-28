@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
-namespace mlir {
 using stream_executor::port::Status;
 using stream_executor::port::StatusOr;
 
@@ -40,29 +39,29 @@ inline absl::string_view StringRefToView(llvm::StringRef ref) {
 }
 }  // namespace
 
-static std::unique_ptr<Module> GraphdefToMlirTranslateFunction(
-    llvm::StringRef input_filename, MLIRContext* context) {
+static std::unique_ptr<mlir::Module> GraphdefToMlirTranslateFunction(
+    llvm::StringRef input_filename, mlir::MLIRContext* context) {
   return tensorflow::GraphdefToMlirTranslateFunction(
       StringRefToView(input_filename), debug_info_file, input_arrays,
       input_dtypes, input_shapes, output_arrays, inference_type, min_values,
       max_values, prune_unused_nodes, context);
 }
 
-static TranslateToMLIRRegistration GraphdefToMlirTranslate(
+static mlir::TranslateToMLIRRegistration GraphdefToMlirTranslate(
     "graphdef-to-mlir", GraphdefToMlirTranslateFunction);
 
-static std::unique_ptr<Module> GraphdefToSplattedMlirTranslateFunction(
-    llvm::StringRef input_filename, MLIRContext* context) {
+static std::unique_ptr<mlir::Module> GraphdefToSplattedMlirTranslateFunction(
+    llvm::StringRef input_filename, mlir::MLIRContext* context) {
   return tensorflow::GraphdefToSplattedMlirTranslateFunction(
       StringRefToView(input_filename), debug_info_file, input_arrays,
       input_dtypes, input_shapes, output_arrays, inference_type, min_values,
       max_values, prune_unused_nodes, context);
 }
 
-static TranslateToMLIRRegistration GraphdefToSplattedMlirTranslate(
+static mlir::TranslateToMLIRRegistration GraphdefToSplattedMlirTranslate(
     "graphdef-to-splatted-mlir", GraphdefToSplattedMlirTranslateFunction);
 
-static bool MlirToGraphdefTranslateFunction(Module* module,
+static bool MlirToGraphdefTranslateFunction(mlir::Module* module,
                                             llvm::StringRef output_filename) {
   if (!module) return true;
 
@@ -88,7 +87,5 @@ static bool MlirToGraphdefTranslateFunction(Module* module,
   return false;
 }
 
-static TranslateFromMLIRRegistration mlir_to_graphdef_translate(
+static mlir::TranslateFromMLIRRegistration MlirToGraphdefTranslate(
     "mlir-to-graphdef", MlirToGraphdefTranslateFunction);
-
-}  // namespace mlir

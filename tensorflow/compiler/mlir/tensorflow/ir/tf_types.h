@@ -24,7 +24,7 @@ namespace mlir {
 namespace TF {
 
 namespace TensorFlowTypes {
-// List of supported TensorFlowType kinds, necessary for isa/dyn_cast.
+/// List of supported TensorFlowType kinds, necessary for isa/dyn_cast.
 enum Kind {
   FIRST_USED_TENSORFLOW_TYPE = Type::FIRST_TENSORFLOW_TYPE,
 #define HANDLE_TF_TYPE(tftype, enumerant, name) enumerant,
@@ -33,12 +33,12 @@ enum Kind {
 };
 }  // namespace TensorFlowTypes
 
-// The base class in the tensor flow type hierarchy.
+/// The base class in the tensor flow type hierarchy.
 class TensorFlowType : public Type {
  public:
   using Type::Type;
 
-  // Support method to enable LLVM-style type casting.
+  /// Support method to enable LLVM-style type casting.
   static bool classof(Type type) {
     return type.getKind() >= Type::FIRST_TENSORFLOW_TYPE &&
            type.getKind() <= TensorFlowTypes::LAST_USED_TENSORFLOW_TYPE;
@@ -58,12 +58,12 @@ class TensorFlowTypeImpl : public Type::TypeBase<Derived, TensorFlowType> {
   using TFBase = TensorFlowTypeImpl<Derived>;
   using Base::Base;
 
-  // Gets the unique'ed type in the given context.
+  // Get the unique'ed type in the given context.
   static Derived get(MLIRContext *context) {
     return Base::get(context, Derived::getTypeKind());
   }
 
-  /// Supports method to enable LLVM-style type casting.
+  /// Support method to enable LLVM-style type casting.
   static bool kindof(unsigned kind) { return kind == Derived::getTypeKind(); }
 };
 }  // namespace detail
@@ -78,7 +78,7 @@ class TensorFlowTypeImpl : public Type::TypeBase<Derived, TensorFlowType> {
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
 
-}  // namespace TF
-}  // namespace mlir
+}  // end namespace TF
+}  // end namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_TYPES_H_

@@ -21,8 +21,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
 
-namespace mlir {
-namespace TFControlFlow {
+using namespace mlir;
+using namespace mlir::TFControlFlow;
 
 // TODO(ycao): Implement following verify methods when we know more about their
 // invariant.
@@ -50,18 +50,15 @@ TFControlFlowDialect::TFControlFlowDialect(MLIRContext *context)
   allowUnknownOperations();
 }
 
-// Parses a type registered to this dialect.
+/// Parse a type registered to this dialect.
 Type TFControlFlowDialect::parseType(StringRef tyData, Location loc) const {
   if (tyData != "control")
     return (emitError(loc, "unknown TFControl type: " + tyData), nullptr);
   return TFControlType::get(getContext());
 }
 
-// Prints a type registered to this dialect.
+/// Print a type registered to this dialect.
 void TFControlFlowDialect::printType(Type type, raw_ostream &os) const {
   assert(type.isa<TFControlType>());
   os << "control";
 }
-
-}  // namespace TFControlFlow
-}  // namespace mlir

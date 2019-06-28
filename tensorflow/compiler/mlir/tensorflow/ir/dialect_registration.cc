@@ -17,13 +17,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
-namespace mlir {
+using namespace mlir;
 
 // Static initialization for TF dialect registration.
 static DialectRegistration<TFControlFlow::TFControlFlowDialect>
-    tf_control_flow_ops;
-static DialectRegistration<TF::TensorFlowDialect> tf_ops;
+    TFControlFlowOps;
+static DialectRegistration<TF::TensorFlowDialect> TFOps;
 static DialectRegistration<tf_executor::TensorFlowExecutorDialect>
-    tf_excutor_dialect;
-
-}  // namespace mlir
+    TfExecutorDialect;

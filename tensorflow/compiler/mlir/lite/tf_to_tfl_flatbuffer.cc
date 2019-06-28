@@ -98,7 +98,7 @@ void AddTFToTFLConversionPasses(bool emit_builtin_tflite_ops, bool run_quantize,
                                 bool emit_quant_adaptor_ops,
                                 bool lower_tensor_list_ops,
                                 mlir::PassManager *pass_manager) {
-  pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
+  pass_manager->addPass(mlir::createRaiseTFControlFlowPass());
   // TODO(jpienaar): Revise post dialect constants.
   pass_manager->addPass(mlir::TF::CreateDecodeConstantPass());
   // Canonicalization includes const folding, which is utilized here to optimize

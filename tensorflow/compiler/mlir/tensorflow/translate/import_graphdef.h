@@ -16,30 +16,34 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_IMPORT_GRAPHDEF_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_IMPORT_GRAPHDEF_H_
 
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
+namespace mlir {
+class MLIRContext;
+class Module;
+}  // namespace mlir
+
 namespace tensorflow {
+class GraphDebugInfo;
+class Graph;
+class GraphDef;
+class NodeSpecs;
 
 // Given a GraphDef, returns a MLIR module containing the graph in control-flow
 // form.
 stream_executor::port::StatusOr<std::unique_ptr<mlir::Module>>
-ConvertGraphdefToMlir(const GraphDef& graphdef,
-                      const GraphDebugInfo& debug_info, const NodeSpecs& specs,
-                      mlir::MLIRContext* context,
-                      bool add_default_attributes = true);
+ConvertGraphdefToMlir(const tensorflow::GraphDef& graphdef,
+                      const tensorflow::GraphDebugInfo& debug_info,
+                      const NodeSpecs& specs, mlir::MLIRContext* context,
+                      bool add_default_attrbutes = true);
 
 // Given a Graph, returns a MLIR module containing the graph in control-flow
 // form.
 stream_executor::port::StatusOr<std::unique_ptr<mlir::Module>>
-ConvertGraphToMlir(const Graph& graph, const GraphDebugInfo& debug_info,
-                   const FunctionLibraryDefinition& flib_def,
+ConvertGraphToMlir(const tensorflow::Graph& graph,
+                   const tensorflow::GraphDebugInfo& debug_info,
+                   const tensorflow::FunctionLibraryDefinition& flib_def,
                    const NodeSpecs& specs, mlir::MLIRContext* context);
 
 }  // namespace tensorflow

@@ -25,11 +25,11 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
-namespace tensorflow {
-
 using mlir::Builder;
 using mlir::ShapedType;
 using mlir::Type;
+
+namespace tensorflow {
 
 Status ConvertDataType(const DataType& dtype, Builder builder, Type* type) {
   switch (dtype) {

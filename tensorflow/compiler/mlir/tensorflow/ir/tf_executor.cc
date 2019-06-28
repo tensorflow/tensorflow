@@ -122,7 +122,7 @@ LogicalResult Verify(GraphOp graph) {
     return fetch.emitOpError()
            << "invalid tf_executor.graph terminator, fetch expected";
 
-  // Ensures that the fetch terminator operands matches the graph result type.
+  // Ensure that the fetch terminator operands matches the graph result type.
   // All the non-control operands of the fetch operation must match the graph
   // returned value.
   if (fetch.getNumOperands() < graph.getNumResults())
@@ -130,7 +130,7 @@ LogicalResult Verify(GraphOp graph) {
                                   "graph returned values";
   for (int i : llvm::seq<int>(0, fetch.getNumOperands())) {
     Value *operand = fetch.getOperand(i);
-    // Breaks out of the loop at the first control operand encountered.
+    // Break out of the loop at the first control operand encountered.
     if (operand->getType().isa<ControlType>()) {
       if (i != graph.getNumResults())
         return fetch.emitOpError()
@@ -157,19 +157,19 @@ void Print(GraphOp graph, OpAsmPrinter *p) {
 ParseResult ParseGraphOp(OpAsmParser *parser, OperationState *result) {
   llvm::SMLoc loc = parser->getCurrentLocation();
 
-  // Parses the body region.
+  // Parse the body region.
   Region &body = *result->addRegion();
   if (parser->parseRegion(body, llvm::None, llvm::None)) return failure();
 
   if (body.getBlocks().size() > 1)
     return parser->emitError(loc) << "expects a single block region";
 
-  // Ensures that the region is well formed: it contains at least a block with
+  // Ensure that the region is well formed: it contains at least a block with
   // a FetchOp terminator.
   EnsureExecutorTerminator<FetchOp>(&body, &parser->getBuilder(),
                                     result->location);
 
-  // Gets the results type from the terminator type inside the graph.
+  // Get the results type from the terminator type inside the graph.
   Operation &fetch = body.back().back();
   if (!isa<FetchOp>(fetch))
     return parser->emitError(loc) << "expects a tf_executor.fetch terminator";
@@ -182,7 +182,7 @@ ParseResult ParseGraphOp(OpAsmParser *parser, OperationState *result) {
     result->types.push_back(type);
   }
 
-  // Parses the optional attribute list.
+  // Parse the optional attribute list.
   if (parser->parseOptionalAttributeDict(result->attributes)) return failure();
 
   return success();
@@ -229,7 +229,7 @@ LogicalResult Verify(IslandOp island) {
     return yield.emitOpError()
            << "invalid tf_executor.island terminator, yield expected";
 
-  // Ensures that the yield terminator operands matches the island results type.
+  // Ensure that the yield terminator operands matches the island results type.
   int result_count = island.getNumResults() - 1;  // -1 for the control token
   if (yield.getNumOperands() != result_count)
     return yield.emitOpError()
@@ -242,7 +242,7 @@ LogicalResult Verify(IslandOp island) {
              << "operand #" << operand_idx << " type mismatch island results";
   }
 
-  // Checks that there aren't any control results other than the last one.
+  // Check that there aren't any control results other than the last one.
   Type control_type = ControlType::get(island.getContext());
   for (int operand_idx : llvm::seq<int>(0, island.getNumResults() - 1)) {
     if (island.getResult(operand_idx)->getType() == control_type)
@@ -268,7 +268,7 @@ ParseResult ParseIslandOp(OpAsmParser *parser, OperationState *result) {
   llvm::SMLoc loc = parser->getCurrentLocation();
   Type control_type = ControlType::get(parser->getBuilder().getContext());
 
-  // Parses optional argument list (control dependencies only).
+  // Parse optional argument list (control dependencies only).
   SmallVector<OpAsmParser::OperandType, 4> op_infos;
   if (parser->parseOperandList(op_infos, OpAsmParser::Delimiter::OptionalParen))
     return failure();
@@ -278,7 +278,7 @@ ParseResult ParseIslandOp(OpAsmParser *parser, OperationState *result) {
     parser->resolveOperands(op_infos, types, loc, result->operands);
   }
 
-  // Parses the body region.
+  // Parse the body region.
   Region &body = *result->addRegion();
 
   // TODO(b/134773778): the custom parser is missing support to implement to
@@ -296,13 +296,13 @@ ParseResult ParseIslandOp(OpAsmParser *parser, OperationState *result) {
   EnsureExecutorTerminator<YieldOp>(&body, &parser->getBuilder(),
                                     result->location);
 
-  // Gets the results type for the island from the terminator operands.
+  // Get the results type for the island from the terminator operands.
   Operation &yield = body.back().back();
   result->types.reserve(yield.getNumOperands() + 1);
   result->types.append(yield.operand_type_begin(), yield.operand_type_end());
   result->types.push_back(control_type);
 
-  // Parses the optional attribute list.
+  // Parse the optional attribute list.
   if (parser->parseOptionalAttributeDict(result->attributes)) return failure();
   return success();
 }
@@ -347,7 +347,7 @@ ParseResult ParseSwitchOp(OpAsmParser *parser, OperationState *result) {
     return parser->emitError(parser->getNameLoc())
            << " expects only a single data type";
 
-  // Supports parsing either a functional type (in which case all the types are
+  // Support parsing either a functional type (in which case all the types are
   // fully qualified) or a short form with a single type (in which case the data
   // input and the outputs are all using this type).
   if (types.front().isa<FunctionType>()) {
@@ -399,7 +399,7 @@ LogicalResult Verify(SwitchNOp switchn) {
   if (!num_outs)
     return switchn.emitOpError() << "expects a `num_outs` integer attribute";
 
-  // Expects num_outs results + 1 control output.
+  // Expect num_outs results + 1 control output.
   if (switchn.getNumResults() != num_outs.getInt() + 1)
     return switchn.emitOpError()
            << "expect `num_outs` (" << num_outs.getInt() << ") results but got "
@@ -418,10 +418,10 @@ LogicalResult Verify(SwitchNOp switchn) {
 void Print(SwitchNOp switchn, OpAsmPrinter *p) {
   *p << switchn.getOperationName() << ' ';
   auto operands = switchn.getOperands();
-  // Prints the 2 data operands.
+  // Print the 2 data operands.
   p->printOperands(operands.begin(), std::next(operands.begin(), 2));
   *p << " of " << (switchn.getNumResults() - 1);
-  // Prints control dependencies if any
+  // print control dependencies if any
   if (!llvm::empty(switchn.controlInputs())) {
     *p << " (";
     p->printOperands(switchn.controlInputs());
@@ -485,8 +485,8 @@ LogicalResult Verify(MergeOp merge) {
   if (data_type.isa<ControlType>())
     return merge.emitOpError() << "expects a non-control input";
 
-  // Checks that all operands can be broadcasted to a common type compatible
-  // with the result type.
+  // Check that all operands can be broadcasted to a common type compatible with
+  // the result type.
   Type broadcasted_type = merge.output()->getType();
   for (Type operand_type : merge.getOperandTypes()) {
     if (operand_type.isa<ControlType>()) break;
@@ -496,7 +496,7 @@ LogicalResult Verify(MergeOp merge) {
       return merge.emitOpError()
              << "expects all operands to be broadcastable"
              << " but got " << broadcasted_type << " vs " << operand_type;
-    // Uses the broadcasted type unless we're losing the rank information here.
+    // Use the broadcasted type unless we're losing the rank information here.
     // This is because for example starting with a result of tensor<4xf32>, if
     // the first operand is unranked, the broadcasted type will be unranked.
     // Then any tensor operand will be broadcastable to this unranked type.
@@ -514,7 +514,7 @@ void Print(MergeOp merge, OpAsmPrinter *p) {
   *p << merge.getOperationName() << ' ';
   p->printOperands(merge.getOperands());
 
-  // Prints the type signature of the operation.
+  // Print the type signature of the operation.
   *p << " : " << merge.getType(0);
   p->printOptionalAttrDict(merge.getAttrs());
 }
@@ -529,7 +529,7 @@ ParseResult ParseMergeOp(OpAsmParser *parser, OperationState *result) {
     return parser->emitError(parser->getNameLoc())
            << " expects only a single data type";
 
-  // Expects the type once, but use it for both operands.
+  // Expect the type once, but use it for both operands.
   types.push_back(types.front());
   // Extra operands are expected to be control inputs.
   Type control_type = ControlType::get(parser->getBuilder().getContext());
@@ -640,4 +640,4 @@ ParseResult ParseEnterOp(OpAsmParser *parser, OperationState *result) {
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.cc.inc"
 
 }  // namespace tf_executor
-}  // namespace mlir
+}  // end namespace mlir

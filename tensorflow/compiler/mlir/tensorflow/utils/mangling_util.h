@@ -17,12 +17,13 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_MANGLING_UTIL_H_
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
+class TensorShapeProto;
+class TensorProto;
+
 namespace mangling_util {
 // The type of a mangled string.
 enum class MangledKind { kUnknown, kDataType, kTensorShape, kTensor };

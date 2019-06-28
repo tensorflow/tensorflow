@@ -22,10 +22,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
-namespace tensorflow {
-
-namespace {
 using stream_executor::port::StatusOr;
+
+namespace tensorflow {
 
 // Sets type list attribute with the given `name` to the given `types`. If the
 // attribute already exists with a different value, returns an error.
@@ -72,8 +71,6 @@ static StatusOr<string> getTensorFlowOpName(llvm::StringRef op_name) {
   }
   return op_name.str();
 }
-
-}  // namespace
 
 StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
     mlir::Operation* inst, llvm::StringRef name) {

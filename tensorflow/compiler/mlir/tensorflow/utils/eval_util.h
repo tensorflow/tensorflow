@@ -31,7 +31,6 @@ namespace tensorflow {
 mlir::LogicalResult EvaluateOperation(
     mlir::Operation* inst, llvm::ArrayRef<mlir::ElementsAttr> operands,
     TFE_Context* context, llvm::SmallVectorImpl<mlir::Attribute>* results);
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_EVAL_UTIL_H_

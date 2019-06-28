@@ -16,25 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_
 
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-
 namespace mlir {
-namespace TF {
-// Transforms functional control flow operations in the standard TensorFlow
-// dialect to MLIR Control Flow Graph (CFG) form.
-FunctionPassBase *CreateTFFunctionalControlFlowToCFG();
+class FunctionPassBase;
 
-// Optimizes Tensorflow graph.
-FunctionPassBase *CreateTFOptimizePass();
+/// Transform functional control flow operations in the standard TensorFlow
+/// dialect to MLIR Control Flow Graph (CFG) form.
+FunctionPassBase *createTFFunctionalControlFlowToCFG();
 
-}  // namespace TF
+/// Raise from the "TensorFlow Control Flow" dialect to the standard TensorFlow
+/// dialect.
+FunctionPassBase *createRaiseTFControlFlowPass();
 
-namespace TFControlFlow {
-// Raises from the "TensorFlow Control Flow" dialect to the standard TensorFlow
-// dialect.
-FunctionPassBase *CreateRaiseTFControlFlowPass();
-
-}  // namespace TFControlFlow
+/// Optimize Tensorflow graph.
+FunctionPassBase *createTFOptimizePass();
 
 }  // namespace mlir
 

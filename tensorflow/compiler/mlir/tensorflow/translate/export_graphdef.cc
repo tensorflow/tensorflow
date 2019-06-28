@@ -54,7 +54,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
-namespace tensorflow {
 using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
@@ -62,7 +61,7 @@ using mlir::Dialect;
 using mlir::Operation;
 using stream_executor::port::StatusOr;
 
-namespace {
+namespace tensorflow {
 
 // TODO(jpienaar): unify and move from here to be able to reuse with tflite
 std::string GetName(Operation* inst) {
@@ -70,7 +69,7 @@ std::string GetName(Operation* inst) {
     return name_loc.getName().str();
 
   if (auto call_loc = inst->getLoc().dyn_cast<mlir::CallSiteLoc>()) {
-    // Returns name if CallSiteLoc's callee has a NameLoc (as should be the case
+    // Return name if CallSiteLoc's callee has a NameLoc (as should be the case
     // if imported with DebugInfo), else use the fallback naming scheme below.
     if (auto name_loc = call_loc.getCallee().dyn_cast<mlir::NameLoc>())
       return name_loc.getName().str();
@@ -80,6 +79,8 @@ std::string GetName(Operation* inst) {
   // generated using the op type.
   return inst->getName().getStringRef().str();
 }
+
+namespace {
 
 // Stateful helper class to export a function into a Graph.
 class Exporter {
@@ -194,10 +195,10 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
       arg->getType().cast<mlir::TensorType>().getElementType(), &dtype));
-  AttrValue type_attr;
+  tensorflow::AttrValue type_attr;
   type_attr.set_type(dtype);
   (*node_def->mutable_attr())["T"] = type_attr;
-  AttrValue index_attr;
+  tensorflow::AttrValue index_attr;
   index_attr.set_i(index);
   (*node_def->mutable_attr())["index"] = index_attr;
   return node_def;
@@ -212,10 +213,10 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
       inst_op->getType().cast<mlir::TensorType>().getElementType(), &dtype));
-  AttrValue type_attr;
+  tensorflow::AttrValue type_attr;
   type_attr.set_type(dtype);
   (*node_def->mutable_attr())["T"] = type_attr;
-  AttrValue index_attr;
+  tensorflow::AttrValue index_attr;
   index_attr.set_i(index);
   (*node_def->mutable_attr())["index"] = index_attr;
   return node_def;

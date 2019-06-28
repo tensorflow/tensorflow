@@ -22,11 +22,12 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
+using stream_executor::port::StatusOr;
 
 // Converts an MLIR operation to TensorFlow NodeDef with given node name. This
 // name should be unique to the graph it is being inserted to.
-stream_executor::port::StatusOr<std::unique_ptr<NodeDef>>
-ConvertTFDialectOpToNodeDef(mlir::Operation* inst, llvm::StringRef name);
+StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
+    mlir::Operation* inst, llvm::StringRef name);
 
 }  // namespace tensorflow
 
