@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
 namespace gpu {
@@ -50,18 +51,17 @@ using tensorflow::tracing::ScopedAnnotation;
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(
-    const string& ptx, const std::vector<uint8>& cubin,
-    std::pair<int, int> compute_capability,
-    std::unique_ptr<const ThunkSchedule> thunk_schedule,
+    const string& text, const std::vector<uint8>& binary,
+    GpuVersion gpu_version, std::unique_ptr<const ThunkSchedule> thunk_schedule,
     std::shared_ptr<HloModule> hlo_module,
     std::shared_ptr<const BufferAssignment> assignment,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
-      ptx_(ptx),
-      cubin_(cubin),
-      compute_capability_(compute_capability),
+      text_(text),
+      binary_(binary),
+      gpu_version_(gpu_version),
       thunk_schedule_(std::move(thunk_schedule)),
       assignment_(std::move(assignment)) {
   CHECK(has_module() && assignment_);
@@ -89,26 +89,50 @@ void GpuExecutable::ComputeThunkAnnotations() {
   }
 }
 
+Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
+    const ServiceExecutableRunOptions* run_options) {
+  se::Stream* main_stream = run_options->stream();
+
+  stream_executor::PlatformKind platform_kind =
+      main_stream->parent()->platform_kind();
+  if (platform_kind == stream_executor::PlatformKind::kROCm) {
+    int stream_isa_version;
+    main_stream->parent()->GetDeviceDescription().rocm_amdgpu_isa_version(
+        &stream_isa_version);
+    GpuVersion amd_isa_version = stream_isa_version;
+    TF_RET_CHECK(amd_isa_version == gpu_version_)
+        << "AMDGPU GCN ISA version mismatch; expected {"
+        << absl::get<int>(gpu_version_) << ", but was " << stream_isa_version;
+  } else if (platform_kind == stream_executor::PlatformKind::kCuda) {
+    std::pair<int, int> stream_compute_compatibility;
+    main_stream->parent()->GetDeviceDescription().cuda_compute_capability(
+        &stream_compute_compatibility.first,
+        &stream_compute_compatibility.second);
+    GpuVersion nvdia_compute_compatibility = stream_compute_compatibility;
+    TF_RET_CHECK(nvdia_compute_compatibility == gpu_version_)
+        << "Compute capability mismatch; expected {"
+        << absl::get<std::pair<int, int>>(gpu_version_).first << ", "
+        << absl::get<std::pair<int, int>>(gpu_version_).second << "}, but was {"
+        << stream_compute_compatibility.first << ", "
+        << stream_compute_compatibility.second << "}";
+  } else {
+    return InternalError("Unknown platform: %d", platform_kind);
+  }
+
+  return Status::OK();
+}
+
 Status GpuExecutable::ExecuteThunks(
     const ServiceExecutableRunOptions* run_options,
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
     HloExecutionProfile* hlo_execution_profile) {
+  CheckCompatibilityWithServiceExecutableRunOptions(run_options);
   GpuDebugInfoManager::Get()->OnModuleStart(module().name());
   auto cleanup = MakeCleanup(
       [&]() { GpuDebugInfoManager::Get()->OnModuleStop(module().name()); });
 
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
-
-  std::pair<int, int> stream_compute_compatibility;
-  executor->GetDeviceDescription().cuda_compute_capability(
-      &stream_compute_compatibility.first,
-      &stream_compute_compatibility.second);
-  TF_RET_CHECK(stream_compute_compatibility == compute_capability_)
-      << "Compute capability mismatch; expected {" << compute_capability_.first
-      << ", " << compute_capability_.second << "}, but was {"
-      << stream_compute_compatibility.first << ", "
-      << stream_compute_compatibility.second << "}";
 
   bool do_profile = hlo_execution_profile != nullptr;
   if (do_profile) {
@@ -210,10 +234,10 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
   }
 
   se::MultiModuleLoaderSpec module_spec;
-  if (!cubin().empty()) {
-    module_spec.AddCudaCubinInMemory(cubin());
+  if (!binary().empty()) {
+    module_spec.AddCudaCubinInMemory(binary());
   }
-  module_spec.AddCudaPtxInMemory(ptx().c_str());
+  module_spec.AddCudaPtxInMemory(text().c_str());
 
   absl::flat_hash_map<int64, se::DeviceMemoryBase> globals;
   se::ModuleHandle module_handle;
