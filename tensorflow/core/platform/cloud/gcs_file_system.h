@@ -308,6 +308,10 @@ class GcsFileSystem : public FileSystem {
   std::unique_ptr<AuthProvider> auth_provider_ GUARDED_BY(mu_);
   std::shared_ptr<HttpRequest::Factory> http_request_factory_;
   std::unique_ptr<ZoneProvider> zone_provider_;
+
+  // Reads smaller than block_size_ will trigger a read of block_size_.
+  uint64 block_size_;
+
   // block_cache_lock_ protects the file_block_cache_ pointer (Note that
   // FileBlockCache instances are themselves threadsafe).
   mutex block_cache_lock_;
