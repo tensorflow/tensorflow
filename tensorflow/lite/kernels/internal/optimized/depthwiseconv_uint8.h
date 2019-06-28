@@ -2018,8 +2018,8 @@ inline void DepthwiseConvWithRounding(
 
 // Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
 // Jetson TX-2. This compiler does not support the offsetof() macro.
-#if defined(__aarch64__) && !defined(GOOGLE_L4T) && defined(__ANDROID__) && \
-    defined(__clang__)
+#if defined(__aarch64__) && !defined(GOOGLE_L4T)
+#if defined(__ANDROID__) && defined(__clang__)
   // Dispatch to dot-product 3x3 kernels when supported.
   if (cpu_flags.neon_dotprod) {
     using optimized_ops::depthwise_conv::DotProduct3x3KernelType;
@@ -2038,8 +2038,7 @@ inline void DepthwiseConvWithRounding(
     }
   }
 
-#elif defined(__aarch64__) && !defined(GOOGLE_L4T)
-
+#endif
   // Dispatch to non-dot-product 3x3 kernels when supported.
 
   const int stride_width = params.stride_width;
