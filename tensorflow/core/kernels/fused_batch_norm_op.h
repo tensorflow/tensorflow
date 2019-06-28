@@ -35,7 +35,7 @@ string ToString(FusedBatchNormActivationMode activation_mode);
 Status ParseActivationMode(OpKernelConstruction* context,
                            FusedBatchNormActivationMode* activation_mode);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // There is a behavior difference between cuDNN v4 and v5 with regard to the
 // scaling factor for function cudnnBatchNormalizationForwardInference.
@@ -82,7 +82,7 @@ struct FusedBatchNormInferenceFunctor {
                   typename TTypes<T, 4>::Tensor out);
 };
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Functor used by FusedBatchNormGradOp to do the computations when
 // is_training=False. Both CPU and GPU will use this functor.
