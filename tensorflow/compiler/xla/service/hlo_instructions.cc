@@ -515,7 +515,7 @@ HloCollectiveInstruction::HloCollectiveInstruction(
     const std::vector<ReplicaGroup>& replica_groups,
     const absl::optional<int64>& channel_id)
     : HloChannelInstruction(opcode, shape, channel_id),
-      replica_groups_({replica_groups.begin(), replica_groups.end()}) {
+      replica_groups_(replica_groups) {
   for (auto operand : operands) {
     AppendOperand(operand);
   }
