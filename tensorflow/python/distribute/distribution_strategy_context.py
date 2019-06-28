@@ -18,13 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import threading
+
 from tensorflow.python.framework import ops
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
 
-# There is a circular dependency between this and `distribute` module. So we
-# load it lazily to workaround this.
+# There is a circular dependency between this and the `distribute_lib` module.
+# So we load it lazily to work around this.
 distribute_lib = LazyLoader(
     "distribute_lib", globals(),
     "tensorflow.python.distribute.distribute_lib")
@@ -265,30 +267,45 @@ _defaults = {
     "replica_context": None,
     "replica_mode": None
 }
+# Note: These need to be different locks since _get_default_replica_context
+# calls _get_default_strategy inside its lock, and them using the same lock
+# can lead to deadlock.
+_default_strategy_lock = threading.Lock()
+_default_replica_context_lock = threading.Lock()
+_default_replica_mode_lock = threading.Lock()
 
 
 def _get_default_strategy():
   if _defaults["strategy"] is None:
-    # pylint: disable=protected-access
-    # Make sure distribute_lib module is loaded by accessing some member.
-    _ = distribute_lib._creating_default_strategy_singleton
-    distribute_lib._creating_default_strategy_singleton = True
-    _defaults["strategy"] = distribute_lib._DefaultDistributionStrategy()
-    distribute_lib._creating_default_strategy_singleton = False
-    # pylint: enable=protected-access
+    # Avoid race condition causing two defaults to be created
+    with _default_strategy_lock:
+      if _defaults["strategy"] is None:
+        # pylint: disable=protected-access
+        # Make sure distribute_lib module is loaded by accessing some member.
+        _ = distribute_lib._creating_default_strategy_singleton
+        distribute_lib._creating_default_strategy_singleton = True
+        _defaults["strategy"] = distribute_lib._DefaultDistributionStrategy()
+        distribute_lib._creating_default_strategy_singleton = False
+        # pylint: enable=protected-access
   return _defaults["strategy"]
 
 
 def _get_default_replica_context():
   if _defaults["replica_context"] is None:
-    _defaults["replica_context"] = distribute_lib.ReplicaContext(
-        _get_default_strategy(), replica_id_in_sync_group=0)
+    # Avoid race condition causing two defaults to be created
+    with _default_replica_context_lock:
+      if _defaults["replica_context"] is None:
+        _defaults["replica_context"] = distribute_lib.ReplicaContext(
+            _get_default_strategy(), replica_id_in_sync_group=0)
   return _defaults["replica_context"]
 
 
 def _get_default_replica_mode():
   if _defaults["replica_mode"] is None:
-    _defaults["replica_mode"] = _DefaultReplicaThreadMode()
+    # Avoid race condition causing two defaults to be created
+    with _default_replica_mode_lock:
+      if _defaults["replica_mode"] is None:
+        _defaults["replica_mode"] = _DefaultReplicaThreadMode()
   return _defaults["replica_mode"]
 
 
