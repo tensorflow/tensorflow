@@ -212,9 +212,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
                                std::vector<Tensor>* out_tensors,
                                bool* end_of_sequence) override {
           mutex_lock l(mu_);
-          TF_RETURN_IF_ERROR(
-              HandleEOF(EnsureLockFileExists(), end_of_sequence));
-          TF_RETURN_IF_ERROR(HandleEOF(writer_->status(), end_of_sequence));
+          *end_of_sequence = false;
+          TF_RETURN_IF_ERROR(EnsureLockFileExists(end_of_sequence));
+          if (*end_of_sequence) {
+            return Status::OK();
+          }
+          TF_RETURN_IF_ERROR(writer_->status());
           if (cur_index_ >= kMaxItems) {
             // As a courtesy, close the [truncated] cache file.
             Status s = Finish();
@@ -331,11 +334,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
         }
 
        private:
-        Status EnsureLockFileExists() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-          if (iteration_completed_)
-            return errors::OutOfRange(
-                "Attempting to call get_next after iteration should have "
-                "finished.");
+        Status EnsureLockFileExists(bool* end_of_sequence)
+            EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          if (iteration_completed_) {
+            *end_of_sequence = true;
+            return Status::OK();
+          }
           if (lockfile_created_ && !iteration_completed_) return Status::OK();
 
           // Perform rudimentary locking to help catch concurrent writes to the
@@ -417,13 +421,6 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
                 strings::StrCat(dataset()->filename_, "_", i, ".lockfile")));
           }
           return Status::OK();
-        }
-
-        Status HandleEOF(Status s, bool* end_of_sequence) {
-          if (errors::IsOutOfRange(s)) {
-            *end_of_sequence = true;
-          }
-          return s;
         }
 
         mutex mu_;
